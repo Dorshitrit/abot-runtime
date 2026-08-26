@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "resolveJsonModule": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "include": [
+    "index.ts",
+    "agent-bridge.ts",
+    "scripts/**/*.ts",
+    "src/**/*.ts",
+    "tests/private/**/*.ts"
+  ],
+  "exclude": ["tests/agent-bridge.test.ts", "node_modules", "dist"]
+}

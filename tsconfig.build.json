@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "declaration": true,
+    "declarationMap": false,
+    "sourceMap": false,
+    "noEmit": false
+  },
+  "include": [
+    "src/**/*.ts",
+    "scripts/add-runtime-model.ts",
+    "scripts/init-runtime.ts",
+    "scripts/runtime-setup-files.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "tests/**",
+    "src/**/__tests__/**",
+    "**/*.test.ts"
+  ]
+}

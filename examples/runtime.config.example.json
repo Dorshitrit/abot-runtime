@@ -1,0 +1,63 @@
+{
+  "agentBridgeUrl": "ws://127.0.0.1:8787/abot/agent-bridge",
+  "modelGatewayUrl": "http://127.0.0.1:3000",
+  "environment": {
+    "default": "prod",
+    "paths": {
+      "sharedDir": ".runtime/shared",
+      "compiledDir": ".runtime/compiled",
+      "workspaceDir": "workspace"
+    },
+    "profiles": {
+      "prod": {
+        "paths": {
+          "runtimeDir": ".runtime/prod",
+          "agentWorkDir": ".runtime/prod/agent-work",
+          "sessionsDir": ".runtime/prod/sessions",
+          "attachmentsDir": ".runtime/prod/attachments"
+        }
+      },
+      "dev": {
+        "paths": {
+          "runtimeDir": ".runtime/dev",
+          "agentWorkDir": ".runtime/dev/agent-work",
+          "sessionsDir": ".runtime/dev/sessions",
+          "attachmentsDir": ".runtime/dev/attachments"
+        }
+      }
+    }
+  },
+  "webUi": {
+    "openOnRuntimeServiceStart": false
+  },
+  "logging": {
+    "enabled": true,
+    "rotation": {
+      "maxFileSizeMb": 20,
+      "maxFiles": 10,
+      "maxAgeDays": 7
+    }
+  },
+  "plugins": {
+    "enabled": true,
+    "allow": ["*"],
+    "deny": []
+  },
+  "models": {
+    "providers": {
+      "provider": {
+        "type": "ollama",
+        "baseUrl": "http://127.0.0.1:11434",
+        "keepAlive": "3m"
+      }
+    },
+    "profiles": {
+      "default": {
+        "configRef": "./models/default.config.json"
+      }
+    }
+  },
+  "requestRunner": {
+    "configRef": "./request-runner.config.json"
+  }
+}

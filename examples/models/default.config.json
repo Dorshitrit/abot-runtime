@@ -1,0 +1,28 @@
+{
+  "label": "Replace with your model",
+  "provider": "provider",
+  "model": "replace-with-model-id",
+  "contextWindowTokens": 32768,
+  "context": {
+    "formatTokenAccounting": {
+      "mode": "estimate"
+    }
+  },
+  "calibration": {
+    "supervisor.decision": { "format": "json" },
+    "worker.decision": { "format": "json" },
+    "planner.decision": { "format": "json" },
+    "planner.graph": { "format": "json" },
+    "reviewer.decision": { "format": "json" },
+    "degraded.finalization": { "format": "json" },
+    "execution.decision": { "format": "json" },
+    "auditor.decision": { "format": "json" },
+    "context.compact": { "format": "json" },
+    "toolPayload.raw": {
+      "instructions": [
+        "Return only the literal payload text requested for the selected tool.",
+        "Do not include JSON wrappers, tool names, params, status text, markdown fences, or commentary."
+      ]
+    }
+  }
+}

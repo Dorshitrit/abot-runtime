@@ -1,0 +1,237 @@
+import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
+import {
+  createStructuredDecisionEnvelopeSchema,
+  structuredDecisionVariantSchemaPath,
+} from "../../model/structured-decision-envelope.js";
+import type { WorkerCapabilityCatalogGroup } from "../../orchestration/worker-capabilities/index.js";
+import { createWorkerCapabilityScopeDecisionContract } from "../worker-capability-scope-decision.js";
+import {
+  SUPERVISOR_ACKNOWLEDGEMENT_MAX_LENGTH,
+  SUPERVISOR_DELEGATE_ROLE_IDS,
+  SUPERVISOR_OBJECTIVE_MAX_LENGTH,
+  SUPERVISOR_TITLE_MAX_LENGTH,
+  type SupervisorDelegateRoleId,
+} from "./contracts.js";
+
+export function createSupervisorDecisionFormat(
+  params: Readonly<{
+    includeAcknowledgement?: boolean;
+    includeTitle?: boolean;
+    allowedRoleIds?: readonly SupervisorDelegateRoleId[];
+    availableWorkerCapabilityCatalog?: readonly WorkerCapabilityCatalogGroup[];
+  }> = {},
+): ModelGatewayJsonSchemaFormat {
+  const allowedRoleIds = uniqueRoleIds(
+    params.allowedRoleIds ?? SUPERVISOR_DELEGATE_ROLE_IDS,
+  );
+  const includeAcknowledgement = params.includeAcknowledgement === true;
+  const includeTitle = params.includeTitle === true;
+  const availableWorkerCapabilityCatalog =
+    params.availableWorkerCapabilityCatalog ?? [];
+  const workerCapabilityScopeContract =
+    createWorkerCapabilityScopeDecisionContract(
+      availableWorkerCapabilityCatalog,
+    );
+  const workerAvailable = allowedRoleIds.includes("worker");
+  const availableNonWorkerRoleIds = allowedRoleIds.filter(
+    (roleId): roleId is Exclude<SupervisorDelegateRoleId, "worker"> =>
+      roleId !== "worker",
+  );
+  const invokeVariants =
+    workerAvailable && workerCapabilityScopeContract.required
+      ? [
+          invokeRoleSchema(
+            includeAcknowledgement,
+            includeTitle,
+            ["worker"],
+            workerCapabilityScopeContract.schema,
+          ),
+          ...(availableNonWorkerRoleIds.length > 0
+            ? [
+                invokeRoleSchema(
+                  includeAcknowledgement,
+                  includeTitle,
+                  availableNonWorkerRoleIds,
+                ),
+              ]
+            : []),
+        ]
+      : allowedRoleIds.length > 0
+        ? [
+            invokeRoleSchema(
+              includeAcknowledgement,
+              includeTitle,
+              allowedRoleIds,
+            ),
+          ]
+        : [];
+  const variants = [
+    respondSchema(includeAcknowledgement, includeTitle),
+    ...invokeVariants,
+  ];
+  return {
+    type: "json_schema",
+    name: "supervisor_decision",
+    strict: true,
+    postValidatedSchemaConstraints: createPostValidatedConstraints({
+      includeAcknowledgement,
+      includeTitle,
+      variantCount: variants.length,
+      invokeVariantCount: invokeVariants.length,
+    }),
+    schema: createStructuredDecisionEnvelopeSchema(variants),
+  };
+}
+
+function respondSchema(
+  includeAcknowledgement: boolean,
+  includeTitle: boolean,
+): Record<string, unknown> {
+  return exactObject(
+    {
+      action: literal("respond"),
+      ...(includeAcknowledgement
+        ? {
+            acknowledgement: boundedText(
+              SUPERVISOR_ACKNOWLEDGEMENT_MAX_LENGTH,
+              2,
+            ),
+          }
+        : {}),
+      ...(includeTitle
+        ? { title: boundedText(SUPERVISOR_TITLE_MAX_LENGTH, 2) }
+        : {}),
+    },
+    [
+      "action",
+      ...(includeAcknowledgement ? ["acknowledgement"] : []),
+      ...(includeTitle ? ["title"] : []),
+    ],
+  );
+}
+
+function invokeRoleSchema(
+  includeAcknowledgement: boolean,
+  includeTitle: boolean,
+  allowedRoleIds: readonly SupervisorDelegateRoleId[],
+  workerCapabilityScopeSchema?: Record<string, unknown>,
+): Record<string, unknown> {
+  return exactObject(
+    {
+      action: literal("invoke_role"),
+      roleId: {
+        type: "string",
+        enum: [...allowedRoleIds],
+      },
+      objective: boundedText(SUPERVISOR_OBJECTIVE_MAX_LENGTH),
+      ...(workerCapabilityScopeSchema
+        ? { workerCapabilityScope: workerCapabilityScopeSchema }
+        : {}),
+      ...(includeAcknowledgement
+        ? {
+            acknowledgement: boundedText(
+              SUPERVISOR_ACKNOWLEDGEMENT_MAX_LENGTH,
+              2,
+            ),
+          }
+        : {}),
+      ...(includeTitle
+        ? { title: boundedText(SUPERVISOR_TITLE_MAX_LENGTH, 2) }
+        : {}),
+    },
+    [
+      "action",
+      "roleId",
+      "objective",
+      ...(workerCapabilityScopeSchema ? ["workerCapabilityScope"] : []),
+      ...(includeAcknowledgement ? ["acknowledgement"] : []),
+      ...(includeTitle ? ["title"] : []),
+    ],
+  );
+}
+
+function createPostValidatedConstraints(params: {
+  includeAcknowledgement: boolean;
+  includeTitle: boolean;
+  variantCount: number;
+  invokeVariantCount: number;
+}): Array<{ keyword: "maxLength"; path: string }> {
+  const base = (index: number) =>
+    structuredDecisionVariantSchemaPath(index, params.variantCount);
+  return [
+    ...(params.includeAcknowledgement
+      ? [
+          {
+            keyword: "maxLength" as const,
+            path: `${base(0)}/properties/acknowledgement/maxLength`,
+          },
+        ]
+      : []),
+    ...(params.includeTitle
+      ? [
+          {
+            keyword: "maxLength" as const,
+            path: `${base(0)}/properties/title/maxLength`,
+          },
+        ]
+      : []),
+    ...Array.from(
+      { length: params.invokeVariantCount },
+      (_, index) => index + 1,
+    ).flatMap((index) => [
+      {
+        keyword: "maxLength" as const,
+        path: `${base(index)}/properties/objective/maxLength`,
+      },
+      ...(params.includeAcknowledgement
+        ? [
+            {
+              keyword: "maxLength" as const,
+              path: `${base(index)}/properties/acknowledgement/maxLength`,
+            },
+          ]
+        : []),
+      ...(params.includeTitle
+        ? [
+            {
+              keyword: "maxLength" as const,
+              path: `${base(index)}/properties/title/maxLength`,
+            },
+          ]
+        : []),
+    ]),
+  ];
+}
+
+function uniqueRoleIds(
+  roleIds: readonly SupervisorDelegateRoleId[],
+): readonly SupervisorDelegateRoleId[] {
+  return [...new Set(roleIds)];
+}
+
+function exactObject(
+  properties: Readonly<Record<string, unknown>>,
+  required: readonly string[],
+): Record<string, unknown> {
+  return {
+    type: "object",
+    properties,
+    required: [...required],
+    additionalProperties: false,
+  };
+}
+
+function literal(value: string): Record<string, unknown> {
+  return { type: "string", enum: [value] };
+}
+
+function boundedText(
+  maxLength: number,
+  minLength: number = 1,
+): Record<string, unknown> {
+  return {
+    type: "string",
+    minLength,
+    maxLength,
+  };
+}

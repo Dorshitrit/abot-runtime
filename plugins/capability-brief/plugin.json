@@ -1,0 +1,33 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "capability-brief",
+  "version": "1.0.0",
+  "description": "Describe the request-effective ABot tool catalog on demand.",
+  "extensions": {
+    "ai.abot.runtime": {
+      "version": 1,
+      "entrypoint": "./src/index.cjs",
+      "catalogGroups": ["available-agent-tools"],
+      "capabilities": {
+        "capability_brief": {
+          "description": "Use this capability when the user asks what you can do, which capabilities, tools, or plugins are available, or which actions you can perform. Invoke it before answering and base the answer on the returned request-effective catalog; do not guess. Do not use it for ordinary task execution.",
+          "routingCapability": "semantic_lookup",
+          "skills": [],
+          "operations": {
+            "describe_available_tools": {
+              "summary": "List the tools and actions enabled for this request so you can answer what you can do. Invoke it before answering capability questions and do not guess.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {},
+                "required": []
+              },
+              "effect": "read_only",
+              "approval": "request_policy"
+            }
+          }
+        }
+      }
+    }
+  }
+}

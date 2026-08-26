@@ -1,0 +1,146 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "web",
+  "version": "0.1.0",
+  "description": "Search the public web and fetch readable content from public URLs.",
+  "extensions": {
+    "ai.abot.runtime": {
+      "version": 1,
+      "entrypoint": "./src/index.cjs",
+      "catalogGroups": ["web"],
+      "settings": {
+        "defaults": {
+          "retryBaseMs": 750
+        }
+      },
+      "secrets": {
+        "braveSearchApiKey": {
+          "env": "BRAVE_SEARCH_API_KEY",
+          "required": false
+        }
+      },
+      "capabilities": {
+        "web_search": {
+          "description": "Search real public Internet domains through Brave Search and return ranked snippets, URLs, and bounded readable source content. This capability requires BRAVE_SEARCH_API_KEY and cannot inspect local files, configured work paths, project state, or file URLs. Provide query for one search, or queries for up to five distinct searches that should run in parallel.",
+          "routingCapability": "web_lookup",
+          "developmentRoles": ["auxiliary"],
+          "eventPresentation": {
+            "lifecycle": {
+              "started": {
+                "status": "Web search start",
+                "message": "web_search: Start web search"
+              },
+              "completed": {
+                "status": "Web search completed",
+                "message": "web_search: Web search completed"
+              },
+              "failed": {
+                "status": "Web search failed",
+                "message": "web_search: Web search failed"
+              }
+            },
+            "metadata": {
+              "query": { "param": "query", "kind": "string" },
+              "queries": { "param": "queries", "kind": "string_array" }
+            }
+          },
+          "skills": ["web_search_skill"],
+          "operations": {
+            "search_one": {
+              "summary": "Search real public Internet domains for one current or external query; never use this operation for local files, configured work paths, or project state.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 400
+                  }
+                },
+                "required": ["query"]
+              },
+              "effect": "read_only",
+              "approval": "request_policy"
+            },
+            "search_many": {
+              "summary": "Search real public Internet domains for up to five distinct external queries in parallel; never use this operation for local files, configured work paths, or project state.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "queries": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 5,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 400
+                    }
+                  }
+                },
+                "required": ["queries"]
+              },
+              "effect": "read_only",
+              "approval": "request_policy"
+            }
+          }
+        },
+        "web_fetch": {
+          "description": "Fetch readable text from one or more real public http(s) domain URLs. This capability cannot access local files, configured work paths, file URLs, localhost, or private-network targets. Provide url for one page, or urls for up to three pages.",
+          "routingCapability": "web_lookup",
+          "developmentRoles": ["auxiliary"],
+          "eventPresentation": {
+            "metadata": {
+              "url": { "param": "url", "kind": "string" },
+              "urls": { "param": "urls", "kind": "string_array" }
+            }
+          },
+          "skills": ["web_fetch_skill"],
+          "operations": {
+            "fetch_one": {
+              "summary": "Fetch readable content from one real public http(s) domain URL; never use this operation for local files, configured work paths, localhost, or private-network targets.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  }
+                },
+                "required": ["url"]
+              },
+              "effect": "read_only",
+              "approval": "request_policy"
+            },
+            "fetch_many": {
+              "summary": "Fetch readable content from up to three real public http(s) domain URLs; never use this operation for local files, configured work paths, localhost, or private-network targets.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "urls": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 3,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096
+                    }
+                  }
+                },
+                "required": ["urls"]
+              },
+              "effect": "read_only",
+              "approval": "request_policy"
+            }
+          }
+        }
+      }
+    }
+  }
+}

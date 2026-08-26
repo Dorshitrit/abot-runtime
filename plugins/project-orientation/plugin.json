@@ -1,0 +1,63 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "project-orientation",
+  "version": "0.3.1",
+  "description": "Inspect a bounded project tree and its manifest metadata.",
+  "extensions": {
+    "ai.abot.runtime": {
+      "version": 1,
+      "entrypoint": "./src/index.cjs",
+      "catalogGroups": ["read"],
+      "settings": {
+        "defaults": {
+          "defaultDepth": 3,
+          "maxEntries": 200
+        }
+      },
+      "capabilities": {
+        "inspect_project": {
+          "description": "Inspect a bounded project tree. Path `.` and relative paths resolve inside the configured agent work directory; `workspace/...` targets configured workspace sources.",
+          "routingCapability": "semantic_lookup",
+          "runtimePathBindings": [
+            {
+              "operationId": "inspect_project",
+              "param": "path",
+              "base": "worker_working_directory",
+              "default": "."
+            }
+          ],
+          "skills": ["project_orientation_skill"],
+          "operations": {
+            "inspect_project": {
+              "summary": "Inspect structure and manifest metadata beneath the configured agent work directory, or beneath configured workspace sources when `workspace/...` is explicit.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 1024
+                  },
+                  "depth": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 6
+                  },
+                  "maxEntries": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 250
+                  }
+                },
+                "required": []
+              },
+              "effect": "read_only",
+              "approval": "request_policy"
+            }
+          }
+        }
+      }
+    }
+  }
+}

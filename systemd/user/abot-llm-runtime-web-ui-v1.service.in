@@ -1,0 +1,10 @@
+[Unit]
+Description=ABot Web UI for llm-runtime.service
+PartOf=llm-runtime.service
+After=llm-runtime.service
+
+[Service]
+Type=simple
+WorkingDirectory=@@ROOT_DIR@@
+ExecCondition=@@NODE@@ @@TSX_CLI@@ @@CONTROL_SCRIPT@@ condition
+ExecStart=@@NODE@@ @@TSX_CLI@@ @@WEB_UI_SERVER@@

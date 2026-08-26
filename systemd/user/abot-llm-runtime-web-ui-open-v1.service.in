@@ -1,0 +1,21 @@
+[Unit]
+Description=Open ABot Web UI once for each llm-runtime.service activation
+PartOf=llm-runtime.service
+After=llm-runtime.service abot-llm-runtime-web-ui-v1.service
+Wants=abot-llm-runtime-web-ui-v1.service
+ConditionPathExists=/mnt/wslg
+
+[Service]
+Type=oneshot
+WorkingDirectory=@@ROOT_DIR@@
+Environment=DISPLAY=:0
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=%t
+Environment=PULSE_SERVER=unix:/mnt/wslg/PulseServer
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
+ExecCondition=@@NODE@@ @@TSX_CLI@@ @@CONTROL_SCRIPT@@ condition
+ExecStart=@@NODE@@ @@TSX_CLI@@ @@CONTROL_SCRIPT@@ open
+RemainAfterExit=yes
+
+[Install]
+WantedBy=llm-runtime.service

@@ -1,0 +1,113 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "exec",
+  "version": "1.0.0",
+  "description": "Execute, observe, and cancel bounded non-interactive Linux /bin/bash processes.",
+  "extensions": {
+    "ai.abot.runtime": {
+      "version": 1,
+      "entrypoint": "./src/index.cjs",
+      "catalogGroups": ["exec"],
+      "settings": {
+        "defaults": {
+          "timeoutMs": 600000,
+          "yieldAfterMs": 15000,
+          "idleTimeoutMs": 120000,
+          "outputMaxChars": 8000
+        }
+      },
+      "capabilities": {
+        "exec": {
+          "catalogGroups": ["read", "write", "exec"],
+          "description": "Execute one bounded non-interactive Linux /bin/bash command. The explicit cwd must resolve inside agent work or the configured workspace; `.` means the agent-work root and `workspace/...` selects the workspace. The shell itself runs with the runtime process permissions and is not an operating-system sandbox. A command still running after the foreground window yields a process ID and cursor that exec_wait can resume without restarting it. Prefer dedicated inspection and file-mutation capabilities when they can express the task.",
+          "routingCapability": "filesystem_inspection",
+          "developmentRoles": ["inspect", "establish", "verify", "auxiliary"],
+          "eventPresentation": {
+            "metadata": {
+              "command": { "param": "command", "kind": "string" },
+              "cwd": { "param": "cwd", "kind": "string" }
+            }
+          },
+          "skills": ["exec_skill"],
+          "operations": {
+            "execute_command": {
+              "summary": "Execute one bounded non-interactive Linux /bin/bash command in an explicit existing agent-work or workspace directory. The cwd boundary is not an OS sandbox. Full-access availability does not authorize servers, GUI automation, installs, service changes, background work, or other sensitive effects.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "cwd": { "type": "string", "minLength": 1, "maxLength": 4096 }
+                },
+                "required": ["command", "cwd"]
+              },
+              "effect": "mixed",
+              "approval": "request_policy"
+            }
+          }
+        },
+        "exec_wait": {
+          "catalogGroups": ["read", "exec"],
+          "description": "Continue observing the exact running shell process returned by exec. Use only the process ID and next cursor from the latest exec or exec_wait result. This does not start the command again.",
+          "routingCapability": "filesystem_inspection",
+          "developmentRoles": ["inspect", "verify", "auxiliary"],
+          "skills": ["exec_process_skill"],
+          "operations": {
+            "wait_for_process": {
+              "summary": "Wait for the next bounded observation from one running exec process without restarting it.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "process_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "cursor": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000
+                  }
+                },
+                "required": ["process_id", "cursor"]
+              },
+              "effect": "read_only",
+              "approval": "request_policy"
+            }
+          }
+        },
+        "exec_cancel": {
+          "catalogGroups": ["write", "exec"],
+          "description": "Cancel one running shell process previously returned by exec. Use only when the current task no longer needs that process or the user asks to stop it.",
+          "routingCapability": "filesystem_inspection",
+          "developmentRoles": ["auxiliary"],
+          "skills": ["exec_process_skill"],
+          "operations": {
+            "cancel_process": {
+              "summary": "Stop one active exec process and report its final state.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "process_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "required": ["process_id"]
+              },
+              "effect": "mixed",
+              "approval": "request_policy"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "json-inspector",
+  "version": "0.3.1",
+  "description": "Validate a JSON file and return a bounded structural summary.",
+  "extensions": {
+    "ai.abot.runtime": {
+      "version": 1,
+      "entrypoint": "./src/index.cjs",
+      "catalogGroups": ["read"],
+      "settings": {
+        "defaults": {
+          "defaultDepth": 3
+        }
+      },
+      "capabilities": {
+        "inspect_json": {
+          "description": "Validate one JSON file and return a bounded structural summary. Relative paths resolve inside the configured agent work directory; `workspace/...` targets configured workspace sources.",
+          "routingCapability": "semantic_lookup",
+          "runtimePathBindings": [
+            { "operationId": "inspect_json", "param": "path", "base": "worker_working_directory" }
+          ],
+          "skills": ["json_inspector_skill"],
+          "operations": {
+            "inspect_json": {
+              "summary": "Validate and summarize JSON beneath the configured agent work directory, or beneath configured workspace sources when `workspace/...` is explicit.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "maxDepth": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 6
+                  }
+                },
+                "required": ["path"]
+              },
+              "effect": "read_only",
+              "approval": "request_policy"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,791 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://abot.local/runtime.config.schema.json",
+  "title": "abot config",
+  "type": "object",
+  "required": ["models", "requestRunner"],
+  "properties": {
+    "agentBridgeUrl": {
+      "type": "string",
+      "minLength": 1,
+      "description": "WebSocket bridge URL used by the default runtime host.",
+      "x-env": ["AGENT_BRIDGE_URL"],
+      "default": "ws://127.0.0.1:8787/abot/agent-bridge"
+    },
+    "agentBridgeToken": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional bridge authentication token.",
+      "x-env": ["AGENT_BRIDGE_TOKEN"]
+    },
+    "modelGatewayUrl": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Base URL for model gateway requests.",
+      "x-env": ["MODEL_GATEWAY_URL", "SIMPLE_LLM_SERVER_URL"],
+      "default": "http://127.0.0.1:3000"
+    },
+    "environment": {
+      "type": "object",
+      "description": "Optional named runtime environment profiles used to isolate runtime data roots while reusing the same runtime code and shared source directories.",
+      "properties": {
+        "default": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Default environment profile id used when no explicit runtime profile override is provided.",
+          "x-env": ["LLM_RUNTIME_PROFILE"]
+        },
+        "paths": {
+          "type": "object",
+          "description": "Base filesystem paths used by default runtime adapters before profile-specific environment overrides are applied.",
+          "properties": {
+            "runtimeDir": {
+              "type": "string",
+              "minLength": 1,
+              "default": ".runtime",
+              "description": "Directory for generated runtime state such as sessions and logs.",
+              "x-env": ["LLM_RUNTIME_DIR"]
+            },
+            "agentWorkDir": {
+              "type": "string",
+              "minLength": 1,
+              "default": "agent-work",
+              "description": "Primary directory used by plugins for generated and modified work artifacts.",
+              "x-env": ["LLM_RUNTIME_AGENT_WORK_DIR"]
+            },
+            "sessionsDir": {
+              "type": "string",
+              "minLength": 1,
+              "default": ".runtime/sessions",
+              "description": "Directory used by the default file-backed session store.",
+              "x-env": ["LLM_RUNTIME_SESSIONS_DIR"]
+            },
+            "attachmentsDir": {
+              "type": "string",
+              "minLength": 1,
+              "default": ".runtime/attachments",
+              "description": "Directory used by the default file-backed attachment store.",
+              "x-env": ["LLM_RUNTIME_ATTACHMENTS_DIR"]
+            },
+            "workspaceDir": {
+              "type": "string",
+              "minLength": 1,
+              "default": "workspace",
+              "description": "Directory containing workspace context source files.",
+              "x-env": ["LLM_RUNTIME_WORKSPACE_DIR"]
+            },
+            "sharedDir": {
+              "type": "string",
+              "minLength": 1,
+              "default": ".runtime/shared",
+              "description": "Directory for generated runtime state shared across environment profiles, such as shared service logs.",
+              "x-env": ["LLM_RUNTIME_SHARED_DIR"]
+            },
+            "compiledDir": {
+              "type": "string",
+              "minLength": 1,
+              "default": ".runtime/compiled",
+              "description": "Directory containing optional shared generated context artifacts such as file-provider skill manifests.",
+              "x-env": ["LLM_RUNTIME_COMPILED_DIR"]
+            },
+            "traceFile": {
+              "type": "string",
+              "minLength": 1,
+              "default": ".runtime/logs/runtime-debug.jsonl",
+              "description": "JSONL trace file used by runtime observability.",
+              "x-env": ["LLM_RUNTIME_TRACE_FILE"]
+            }
+          }
+        },
+        "profiles": {
+          "type": "object",
+          "description": "Named environment profiles keyed by profile id. Each profile can override filesystem paths for that data environment.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "paths": {
+                "type": "object",
+                "description": "Filesystem path overrides applied when this runtime environment profile is active.",
+                "properties": {
+                  "runtimeDir": {
+                    "type": "string",
+                    "minLength": 1,
+                    "default": ".runtime",
+                    "description": "Directory for generated runtime state such as sessions and logs.",
+                    "x-env": ["LLM_RUNTIME_DIR"]
+                  },
+                  "agentWorkDir": {
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "agent-work",
+                    "description": "Primary directory used by plugins for generated and modified work artifacts.",
+                    "x-env": ["LLM_RUNTIME_AGENT_WORK_DIR"]
+                  },
+                  "sessionsDir": {
+                    "type": "string",
+                    "minLength": 1,
+                    "default": ".runtime/sessions",
+                    "description": "Directory used by the default file-backed session store.",
+                    "x-env": ["LLM_RUNTIME_SESSIONS_DIR"]
+                  },
+                  "attachmentsDir": {
+                    "type": "string",
+                    "minLength": 1,
+                    "default": ".runtime/attachments",
+                    "description": "Directory used by the default file-backed attachment store.",
+                    "x-env": ["LLM_RUNTIME_ATTACHMENTS_DIR"]
+                  },
+                  "workspaceDir": {
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "workspace",
+                    "description": "Directory containing workspace context source files.",
+                    "x-env": ["LLM_RUNTIME_WORKSPACE_DIR"]
+                  },
+                  "sharedDir": {
+                    "type": "string",
+                    "minLength": 1,
+                    "default": ".runtime/shared",
+                    "description": "Directory for generated runtime state shared across environment profiles, such as shared service logs.",
+                    "x-env": ["LLM_RUNTIME_SHARED_DIR"]
+                  },
+                  "compiledDir": {
+                    "type": "string",
+                    "minLength": 1,
+                    "default": ".runtime/compiled",
+                    "description": "Directory containing optional shared generated context artifacts such as file-provider skill manifests.",
+                    "x-env": ["LLM_RUNTIME_COMPILED_DIR"]
+                  },
+                  "traceFile": {
+                    "type": "string",
+                    "minLength": 1,
+                    "default": ".runtime/logs/runtime-debug.jsonl",
+                    "description": "JSONL trace file used by runtime observability.",
+                    "x-env": ["LLM_RUNTIME_TRACE_FILE"]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "webUi": {
+      "type": "object",
+      "description": "Local Web UI startup behavior.",
+      "properties": {
+        "openOnRuntimeServiceStart": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the local Web UI should open automatically when the Runtime service starts."
+        }
+      },
+      "additionalProperties": false
+    },
+    "paths": {
+      "type": "object",
+      "description": "Filesystem paths used by default runtime adapters.",
+      "properties": {
+        "runtimeDir": {
+          "type": "string",
+          "minLength": 1,
+          "default": ".runtime",
+          "description": "Directory for generated runtime state such as sessions and logs.",
+          "x-env": ["LLM_RUNTIME_DIR"]
+        },
+        "agentWorkDir": {
+          "type": "string",
+          "minLength": 1,
+          "default": "agent-work",
+          "description": "Primary directory used by plugins for generated and modified work artifacts.",
+          "x-env": ["LLM_RUNTIME_AGENT_WORK_DIR"]
+        },
+        "sessionsDir": {
+          "type": "string",
+          "minLength": 1,
+          "default": ".runtime/sessions",
+          "description": "Directory used by the default file-backed session store.",
+          "x-env": ["LLM_RUNTIME_SESSIONS_DIR"]
+        },
+        "attachmentsDir": {
+          "type": "string",
+          "minLength": 1,
+          "default": ".runtime/attachments",
+          "description": "Directory used by the default file-backed attachment store.",
+          "x-env": ["LLM_RUNTIME_ATTACHMENTS_DIR"]
+        },
+        "workspaceDir": {
+          "type": "string",
+          "minLength": 1,
+          "default": "workspace",
+          "description": "Directory containing workspace context source files.",
+          "x-env": ["LLM_RUNTIME_WORKSPACE_DIR"]
+        },
+        "sharedDir": {
+          "type": "string",
+          "minLength": 1,
+          "default": ".runtime/shared",
+          "description": "Directory for generated runtime state shared across environment profiles, such as shared service logs.",
+          "x-env": ["LLM_RUNTIME_SHARED_DIR"]
+        },
+        "compiledDir": {
+          "type": "string",
+          "minLength": 1,
+          "default": ".runtime/compiled",
+          "description": "Directory containing optional shared generated context artifacts such as file-provider skill manifests.",
+          "x-env": ["LLM_RUNTIME_COMPILED_DIR"]
+        },
+        "traceFile": {
+          "type": "string",
+          "minLength": 1,
+          "default": ".runtime/logs/runtime-debug.jsonl",
+          "description": "JSONL trace file used by runtime observability.",
+          "x-env": ["LLM_RUNTIME_TRACE_FILE"]
+        }
+      }
+    },
+    "timeouts": {
+      "type": "object",
+      "description": "Runtime timeout values in milliseconds.",
+      "properties": {
+        "requestTimeoutMs": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Optional total request timeout in milliseconds.",
+          "x-env": ["LLM_RUNTIME_REQUEST_TIMEOUT_MS"]
+        },
+        "requestInactivityTimeoutMs": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Optional request inactivity timeout in milliseconds.",
+          "x-env": ["LLM_RUNTIME_REQUEST_INACTIVITY_TIMEOUT_MS"]
+        },
+        "modelStepTimeoutMs": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Optional model-step timeout in milliseconds.",
+          "x-env": ["LLM_RUNTIME_MODEL_STEP_TIMEOUT_MS"]
+        },
+        "streamInactivityTimeoutMs": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Optional model stream inactivity timeout in milliseconds.",
+          "x-env": ["LLM_RUNTIME_STREAM_INACTIVITY_TIMEOUT_MS"]
+        }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "description": "Runtime observability settings for the active JSONL trace file and its rotated siblings.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether runtime observability writes the active JSONL trace file."
+        },
+        "rotation": {
+          "type": "object",
+          "description": "Retention policy applied to the active JSONL trace file during writes.",
+          "properties": {
+            "maxFileSizeMb": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 20,
+              "description": "Rotate the active JSONL trace file when it reaches this size in megabytes."
+            },
+            "maxFiles": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 10,
+              "description": "Maximum number of rotated JSONL trace siblings retained beside the active file."
+            },
+            "maxAgeDays": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 7,
+              "description": "Maximum age in days for rotated JSONL trace siblings before cleanup removes them."
+            }
+          }
+        }
+      }
+    },
+    "plugins": {
+      "type": "object",
+      "description": "Installed runtime plugin selection. Plugin manifests own capability and skill declarations.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether installed runtime plugins are allowed to load."
+        },
+        "allow": {
+          "type": "array",
+          "default": ["*"],
+          "description": "Optional allow-list of installed plugin or capability ids. The wildcard enables every installed plugin.",
+          "items": { "type": "string" }
+        },
+        "deny": {
+          "type": "array",
+          "default": [],
+          "description": "Installed plugin or capability ids denied after applying the allow-list.",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "models": {
+      "type": "object",
+      "description": "Model profiles and defaults consumed by model-gateway policy.",
+      "properties": {
+        "providers": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "minLength": 1 },
+          "description": "Model provider declarations keyed by provider id. Profiles reference these ids.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[A-Za-z][A-Za-z0-9._-]*$",
+                "description": "Registered model-gateway provider adapter identifier."
+              },
+              "baseUrl": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Optional provider base URL override. OpenAI defaults to https://api.openai.com/v1."
+              },
+              "apiKeyEnv": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                "description": "Environment variable name containing this provider API key."
+              },
+              "keepAlive": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Ollama model residency duration passed as keep_alive."
+              },
+              "settings": {
+                "type": "object",
+                "description": "Provider-owned JSON settings interpreted by its adapter.",
+                "additionalProperties": true
+              }
+            },
+            "required": ["type"]
+          }
+        },
+        "profiles": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "minLength": 1 },
+          "description": "Host-defined model profiles keyed by profile id.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "configRef": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Optional path to a model profile config file, resolved relative to the runtime config file."
+              },
+              "label": { "type": "string", "minLength": 1 },
+              "provider": { "type": "string", "minLength": 1 },
+              "model": { "type": "string", "minLength": 1 },
+              "contextWindowTokens": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "description": "Declared physical context-window capacity. Required for every materialized model profile unless the provider supplies reliable discovery metadata."
+              },
+              "supportsThinking": { "type": "boolean" },
+              "capabilities": {
+                "type": "object",
+                "properties": {
+                  "inputModalities": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": ["text", "image", "audio"]
+                    }
+                  },
+                  "outputModalities": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": ["text", "image", "audio"]
+                    }
+                  }
+                }
+              },
+              "options": { "type": "object", "additionalProperties": true },
+              "generation": {
+                "type": "object",
+                "description": "Generation settings for a model profile.",
+                "properties": {
+                  "temperature": {
+                    "type": "number",
+                    "description": "Sampling temperature forwarded to the model provider."
+                  },
+                  "topP": {
+                    "type": "number",
+                    "description": "Nucleus sampling value forwarded to the model provider."
+                  },
+                  "reasoningEffort": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "minimal",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh"
+                    ],
+                    "description": "Default reasoning effort for providers/models that support it."
+                  }
+                }
+              },
+              "context": {
+                "type": "object",
+                "description": "Context projection and token-estimation policy.",
+                "properties": {
+                  "formatTokenAccounting": {
+                    "type": "object",
+                    "description": "Provider-neutral accounting for structured-response format tokens. Defaults to estimate mode with zero fixed overhead.",
+                    "properties": {
+                      "mode": {
+                        "type": "string",
+                        "enum": ["none", "estimate"]
+                      },
+                      "fixedOverheadTokens": { "type": "integer", "minimum": 0 }
+                    },
+                    "required": ["mode"]
+                  },
+                  "tokenEstimation": {
+                    "type": "object",
+                    "description": "Model-specific input token estimation used for pre-invocation context budgeting.",
+                    "properties": {
+                      "asciiCharactersPerToken": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "nonAsciiBytesPerToken": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "messageOverheadTokens": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    }
+                  }
+                }
+              },
+              "execution": {
+                "type": "object",
+                "description": "Runtime-only request execution policy for this model profile. Omission selects supervisor-worker-v1; execution-agent-v1 is an explicit per-profile opt-in. This metadata is not forwarded to the model gateway.",
+                "properties": {
+                  "policy": {
+                    "type": "string",
+                    "enum": ["supervisor-worker-v1", "execution-agent-v1"],
+                    "default": "supervisor-worker-v1"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "calibration": {
+                "type": "object",
+                "description": "Per-model calibration slots keyed by semantic slot id. Runtime step config can map internal modelStep names to these slots without naming a concrete model.",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Human-readable display name for this model calibration slot."
+                    },
+                    "description": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Short UI description explaining when this calibration slot is used."
+                    },
+                    "profileId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Optional model profile id override for this slot. When omitted, the selected/requested model profile remains the base."
+                    },
+                    "timeoutMs": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "description": "Optional runtime timeout override for this model and semantic step."
+                    },
+                    "generation": {
+                      "type": "object",
+                      "description": "Generation settings for a model profile.",
+                      "properties": {
+                        "temperature": {
+                          "type": "number",
+                          "description": "Sampling temperature forwarded to the model provider."
+                        },
+                        "topP": {
+                          "type": "number",
+                          "description": "Nucleus sampling value forwarded to the model provider."
+                        },
+                        "reasoningEffort": {
+                          "type": "string",
+                          "enum": [
+                            "none",
+                            "minimal",
+                            "low",
+                            "medium",
+                            "high",
+                            "xhigh"
+                          ],
+                          "description": "Default reasoning effort for providers/models that support it."
+                        }
+                      }
+                    },
+                    "context": {
+                      "type": "object",
+                      "description": "Context projection and token-estimation policy.",
+                      "properties": {
+                        "formatTokenAccounting": {
+                          "type": "object",
+                          "description": "Provider-neutral accounting for structured-response format tokens. Defaults to estimate mode with zero fixed overhead.",
+                          "properties": {
+                            "mode": {
+                              "type": "string",
+                              "enum": ["none", "estimate"]
+                            },
+                            "fixedOverheadTokens": {
+                              "type": "integer",
+                              "minimum": 0
+                            }
+                          },
+                          "required": ["mode"]
+                        },
+                        "tokenEstimation": {
+                          "type": "object",
+                          "description": "Model-specific input token estimation used for pre-invocation context budgeting.",
+                          "properties": {
+                            "asciiCharactersPerToken": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            },
+                            "nonAsciiBytesPerToken": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            },
+                            "messageOverheadTokens": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "format": {
+                      "oneOf": [
+                        { "type": "string", "enum": ["json"] },
+                        { "type": "object", "additionalProperties": true }
+                      ],
+                      "description": "Optional provider response format override for this invocation profile."
+                    },
+                    "instructions": {
+                      "type": "array",
+                      "default": [],
+                      "description": "Short calibration-only instructions injected for this model when runtime step config maps a modelStep to this semantic slot.",
+                      "items": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            },
+            "anyOf": [
+              { "required": ["model", "provider", "contextWindowTokens"] },
+              { "required": ["configRef"] }
+            ]
+          }
+        },
+        "invocationProfiles": {
+          "type": "object",
+          "description": "Invocation profiles keyed by id. They reference a model profile and override per-invocation generation, context, or format policy.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "profileId": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Model profile id used as the provider/model base for this invocation profile."
+              },
+              "generation": {
+                "type": "object",
+                "description": "Generation settings for a model profile.",
+                "properties": {
+                  "temperature": {
+                    "type": "number",
+                    "description": "Sampling temperature forwarded to the model provider."
+                  },
+                  "topP": {
+                    "type": "number",
+                    "description": "Nucleus sampling value forwarded to the model provider."
+                  },
+                  "reasoningEffort": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "minimal",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh"
+                    ],
+                    "description": "Default reasoning effort for providers/models that support it."
+                  }
+                }
+              },
+              "context": {
+                "type": "object",
+                "description": "Context projection and token-estimation policy.",
+                "properties": {
+                  "formatTokenAccounting": {
+                    "type": "object",
+                    "description": "Provider-neutral accounting for structured-response format tokens. Defaults to estimate mode with zero fixed overhead.",
+                    "properties": {
+                      "mode": {
+                        "type": "string",
+                        "enum": ["none", "estimate"]
+                      },
+                      "fixedOverheadTokens": { "type": "integer", "minimum": 0 }
+                    },
+                    "required": ["mode"]
+                  },
+                  "tokenEstimation": {
+                    "type": "object",
+                    "description": "Model-specific input token estimation used for pre-invocation context budgeting.",
+                    "properties": {
+                      "asciiCharactersPerToken": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "nonAsciiBytesPerToken": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "messageOverheadTokens": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    }
+                  }
+                }
+              },
+              "format": {
+                "oneOf": [
+                  { "type": "string", "enum": ["json"] },
+                  { "type": "object", "additionalProperties": true }
+                ],
+                "description": "Optional provider response format override for this invocation profile."
+              }
+            },
+            "required": ["profileId"]
+          }
+        },
+        "defaults": {
+          "type": "object",
+          "description": "Default model profile ids by runtime selection key.",
+          "properties": {
+            "overrideClientPreference": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether runtime model selection ignores the client model preference and relies on configured defaults, roles, and steps."
+            },
+            "profileId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Default model profile id for ordinary runtime model calls."
+            },
+            "roles": {
+              "type": "object",
+              "description": "Default model profile ids by runtime role.",
+              "additionalProperties": { "type": "string", "minLength": 1 }
+            },
+            "steps": {
+              "type": "object",
+              "description": "Default model selection by internal modelStep. Values may be legacy model profile ids, legacy invocation profile ids, or per-model calibration slot ids.",
+              "additionalProperties": { "type": "string", "minLength": 1 }
+            },
+            "context": {
+              "type": "object",
+              "description": "Context projection and token-estimation policy.",
+              "properties": {
+                "formatTokenAccounting": {
+                  "type": "object",
+                  "description": "Provider-neutral accounting for structured-response format tokens. Defaults to estimate mode with zero fixed overhead.",
+                  "properties": {
+                    "mode": { "type": "string", "enum": ["none", "estimate"] },
+                    "fixedOverheadTokens": { "type": "integer", "minimum": 0 }
+                  },
+                  "required": ["mode"]
+                },
+                "tokenEstimation": {
+                  "type": "object",
+                  "description": "Model-specific input token estimation used for pre-invocation context budgeting.",
+                  "properties": {
+                    "asciiCharactersPerToken": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "nonAsciiBytesPerToken": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "messageOverheadTokens": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "required": ["providers", "profiles"]
+    },
+    "requestRunner": {
+      "type": "object",
+      "description": "runtime request-runner configuration reference.",
+      "properties": {
+        "configRef": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path to the runtime request-runner config file, resolved relative to the runtime config file."
+        }
+      },
+      "required": ["configRef"],
+      "additionalProperties": false
+    },
+    "features": {
+      "type": "object",
+      "description": "Legacy feature flag map. Values must be boolean, number, or string.",
+      "additionalProperties": {
+        "anyOf": [
+          { "type": "boolean" },
+          { "type": "number" },
+          { "type": "string" }
+        ]
+      }
+    },
+    "featureFlags": {
+      "type": "object",
+      "description": "Feature flag map. Values must be boolean, number, or string.",
+      "additionalProperties": {
+        "anyOf": [
+          { "type": "boolean" },
+          { "type": "number" },
+          { "type": "string" }
+        ]
+      }
+    }
+  }
+}

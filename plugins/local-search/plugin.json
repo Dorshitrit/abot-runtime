@@ -1,0 +1,65 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "local-search",
+  "version": "0.1.0",
+  "description": "Search filenames and textual content beneath configured agent data roots.",
+  "extensions": {
+    "ai.abot.runtime": {
+      "version": 1,
+      "entrypoint": "./src/index.cjs",
+      "catalogGroups": ["read"],
+      "capabilities": {
+        "local_search": {
+          "description": "Search filenames and/or textual file contents beneath the configured agent work directory or explicit workspace sources. The result is bounded and read-only; it never searches outside configured agent data roots.",
+          "routingCapability": "filesystem_inspection",
+          "developmentRoles": ["inspect"],
+          "runtimePathBindings": [
+            {
+              "operationId": "search_local_files",
+              "param": "path",
+              "base": "worker_working_directory",
+              "default": "."
+            }
+          ],
+          "skills": ["local_search_skill"],
+          "operations": {
+            "search_local_files": {
+              "summary": "Find bounded filename or exact-content matches beneath the current Worker root. Omit path or use '.' for that root; use only relative subpaths (or workspace/... when configured).",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 4096
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": ["names", "content", "both"]
+                  },
+                  "case_sensitive": {
+                    "type": "boolean"
+                  },
+                  "max_results": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 200
+                  }
+                },
+                "required": ["query"]
+              },
+              "effect": "read_only",
+              "approval": "request_policy"
+            }
+          }
+        }
+      }
+    }
+  }
+}

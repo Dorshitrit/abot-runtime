@@ -1,0 +1,259 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "filesystem",
+  "version": "0.1.0",
+  "description": "Inspect and mutate files under the configured agent work directory and workspace roots.",
+  "extensions": {
+    "ai.abot.runtime": {
+      "version": 1,
+      "entrypoint": "./src/index.cjs",
+      "catalogGroups": ["read"],
+      "capabilities": {
+        "dev_view": {
+          "description": "Inspect a bounded sample from one current development directory or a bounded line-numbered window from one existing text file under agent work or workspace roots. For a file, provide path and either start_line/end_line or an exact locator. A locator takes precedence over numeric lines. Results declare scan and output truncation explicitly.",
+          "routingCapability": "filesystem_inspection",
+          "developmentRoles": ["inspect", "verify"],
+          "runtimePathBindings": [
+            {
+              "operationId": "inspect_target",
+              "param": "path",
+              "base": "worker_working_directory"
+            }
+          ],
+          "eventPresentation": {
+            "metadata": {
+              "path": { "param": "path", "kind": "string" },
+              "startLine": { "param": "start_line", "kind": "number" },
+              "endLine": { "param": "end_line", "kind": "number" },
+              "locator": { "param": "locator", "kind": "string" }
+            }
+          },
+          "skills": [],
+          "operations": {
+            "inspect_target": {
+              "summary": "Inspect one bounded directory sample or bounded file window when unresolved work requires current content. Choose either a locator or numeric lines; locator takes precedence. Truncation metadata distinguishes a complete result from a bounded scan.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "start_line": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000
+                  },
+                  "end_line": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000
+                  },
+                  "locator": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "context_lines": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 30
+                  }
+                },
+                "required": ["path"]
+              },
+              "effect": "read_only",
+              "approval": "request_policy"
+            }
+          }
+        },
+        "edit_file": {
+          "catalogGroups": ["write"],
+          "description": "Apply one coherent requested change to one existing development file. Provide the existing path and a concise natural-language instruction describing what should change and what must remain. A dedicated edit pipeline selects the current location, then generates only the raw edit body over a separate payload stage. Do not provide line numbers, edit handles, patches, anchors, or file content in the decision.",
+          "routingCapability": "filesystem_mutation",
+          "developmentRoles": ["mutate"],
+          "eventPresentation": {
+            "metadata": {
+              "path": { "param": "path", "kind": "string" }
+            }
+          },
+          "payloadChannelSpec": {
+            "params": ["selection", "content"],
+            "outputParam": "content",
+            "generationMode": "raw_text",
+            "targetParam": "path",
+            "targetRole": "operation_target",
+            "groundingWindow": 3,
+            "stages": [
+              {
+                "outputParam": "selection",
+                "contextScope": "target_only",
+                "targetContext": "full_numbered",
+                "responseFormat": {
+                  "type": "object",
+                  "properties": {
+                    "placement": {
+                      "type": "string",
+                      "enum": ["before", "after", "replace", "delete"]
+                    },
+                    "start_line": { "type": "integer", "minimum": 1 },
+                    "end_line": { "type": "integer", "minimum": 1 }
+                  },
+                  "required": ["placement", "start_line", "end_line"],
+                  "additionalProperties": false
+                },
+                "targetLineBoundProperties": ["start_line", "end_line"],
+                "promptHint": "Select the smallest current line boundary or contiguous current line range needed for the requested change. For an addition, choose before or after one existing sibling boundary and set start_line equal to end_line. To append after a target whose final current line is N, choose after line N; never choose N+1. For a replacement, choose replace and the inclusive current range being replaced. For a removal, choose delete and the inclusive current range being removed. Keep the selection outside unrelated nested owners. Return only the location object; do not generate edit content in this stage."
+              },
+              {
+                "outputParam": "content",
+                "contextScope": "target_with_artifacts",
+                "targetContext": "bounded",
+                "includeMaterializedParams": ["selection"],
+                "minBytes": 1,
+                "literalOutput": {
+                  "when": {
+                    "materializedParam": "selection",
+                    "property": "placement",
+                    "equals": "delete"
+                  },
+                  "value": ""
+                },
+                "promptHint": "The exact materializedParams.selection value is your binding choice from the prior stage. Its placement and inclusive start_line/end_line define the complete writable scope for this payload. When placement is delete, return an empty raw body because the selected lines are removed without replacement. Otherwise return only the raw content to insert at or replace those selected current lines, even when that content is not a complete enclosing function or section. Never repeat lines outside the selected range to compensate for the chosen scope; the runtime preserves them. Apply only instruction clauses owned by this target; leave changes for other artifacts out of this payload. Do not return JSON, line numbers, a patch, anchors, operation labels, explanation, or the complete target. Continue the target's observed conventions and dependencies, and do not introduce a parallel mechanism when the current target already demonstrates how equivalent work is expressed. When related artifact context contains identifiers or relationships used by the requested change, reuse those exact observed values instead of provisional or parallel names."
+              }
+            ]
+          },
+          "skills": ["follow_up_existing_file_edit_skill", "edit_file_skill"],
+          "operations": {
+            "edit_existing_file": {
+              "summary": "Apply one coherent ordinary addition, removal, or replacement to one existing file while preserving unrelated content. Provide the existing path and concise change instruction; runtime selects the current location and authors the raw edit body separately.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "instruction": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "selection": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  }
+                },
+                "required": ["path", "instruction", "selection"]
+              },
+              "payload": {
+                "kind": "raw_text",
+                "param": "content",
+                "instructions": "Return an empty raw body when the selected placement is delete. Otherwise return only the complete raw content to insert at or replace the selected current lines. Do not return JSON, markdown fences, line numbers, patches, explanations or unchanged neighboring content.",
+                "maxBytes": 1048576
+              },
+              "effect": "mutating",
+              "approval": "request_policy"
+            }
+          }
+        },
+        "read_file": {
+          "description": "Read one current text file under agent work or workspace roots. Small files are returned completely; larger files return a bounded head/tail view with explicit byte and truncation metadata.",
+          "routingCapability": "filesystem_inspection",
+          "developmentRoles": ["inspect", "verify"],
+          "runtimePathBindings": [
+            {
+              "operationId": "read_one_file",
+              "param": "path",
+              "base": "worker_working_directory"
+            }
+          ],
+          "eventPresentation": {
+            "metadata": {
+              "path": { "param": "path", "kind": "string" }
+            }
+          },
+          "skills": ["read_file_skill"],
+          "operations": {
+            "read_one_file": {
+              "summary": "Read one current text file, returning complete content within the read budget or an explicitly truncated head/tail view.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  }
+                },
+                "required": ["path"]
+              },
+              "effect": "read_only",
+              "approval": "request_policy"
+            }
+          }
+        },
+        "write_file": {
+          "catalogGroups": ["write"],
+          "description": "Create one new file or perform an explicitly requested intentional full-file replacement. Use when the complete desired file is already known, especially for new or nearly empty files. Do not choose write_file for an ordinary addition or change to an existing file when an active existing-target editor can preserve current content. For an explicit existing-file replacement, inspect the complete current file first; prior conversation summaries do not count as current file content. Selection uses only the target path; runtime collects the raw file body over a separate payload channel.",
+          "routingCapability": "filesystem_mutation",
+          "controlsRefinement": "mechanical_when_complete",
+          "developmentRoles": ["establish", "mutate"],
+          "eventPresentation": {
+            "metadata": {
+              "path": { "param": "path", "kind": "string" }
+            }
+          },
+          "payloadChannelSpec": {
+            "params": ["content"],
+            "outputParam": "content",
+            "generationMode": "raw_text",
+            "targetParam": "path",
+            "targetRole": "operation_target",
+            "contextScope": "target_with_artifacts",
+            "targetContext": "full",
+            "promptHint": "Generate the complete file contents for the selected path. Treat the selected path, including its filename and extension, as the payload target contract. Return raw file text only for that exact file, not wrapper text that would embed this content inside a different file. The payload must be complete through the final character of the file: if the content opens any structural boundary, block, container, or delimiter, include the matching closing content that belongs to this same file. For an existing file, this is a full replacement: preserve all unrelated existing content from the full current-file observation and apply only the requested change. Do not output a partial patch, a detached addition block, or a placeholder claiming existing content remains untouched. For edits to existing artifacts, do not return only the newly requested fragment; the payload must be the whole updated file for the selected path.",
+            "groundingWindow": 2,
+            "requiresCurrentTargetObservation": {
+              "targetParam": "path",
+              "contentRequirement": "full"
+            }
+          },
+          "skills": [],
+          "operations": {
+            "write_complete_file": {
+              "summary": "Create one missing or new file using a complete raw-text body authored outside the decision JSON. In one connected Worker call, establish source artifacts before consumers because later supported payload authoring receives bounded related successful artifacts automatically. Select this for an existing file only when the objective explicitly requires intentional full-file replacement; use edit_existing_file for ordinary changes to existing content. Do not create an unrequested adjacent artifact.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  }
+                },
+                "required": ["path"]
+              },
+              "payload": {
+                "kind": "raw_text",
+                "param": "content",
+                "instructions": "Return only the complete raw contents of the selected file through its final character. Do not return JSON, markdown fences, patches, explanations or placeholders for omitted content.",
+                "minBytes": 1,
+                "maxBytes": 1048576
+              },
+              "effect": "mutating",
+              "approval": "request_policy"
+            }
+          }
+        }
+      }
+    }
+  }
+}

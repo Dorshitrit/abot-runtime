@@ -1,0 +1,149 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "memory",
+  "version": "1.0.0",
+  "description": "Read, search, add, and delete deterministic long-term memory entries.",
+  "extensions": {
+    "ai.abot.runtime": {
+      "version": 1,
+      "entrypoint": "./src/index.cjs",
+      "catalogGroups": ["memory"],
+      "capabilities": {
+        "memory_get": {
+          "description": "Read one bounded page of stored memory entries (deterministic, no inference)",
+          "routingCapability": "semantic_lookup",
+          "developmentRoles": ["inspect"],
+          "skills": ["memory_lookup_skill"],
+          "operations": {
+            "list_memory": {
+              "summary": "Read one bounded page of currently stored long-term memory entries.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000000
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100
+                  }
+                },
+                "required": []
+              },
+              "effect": "read_only",
+              "approval": "request_policy"
+            }
+          }
+        },
+        "memory_search": {
+          "description": "Search stored memory entries by query and return matches only. When the user asks about previously saved personal facts or preferences without providing a search phrase, derive a short search query from the remembered subject of the request rather than from meta-instructions like 'search memory'.",
+          "routingCapability": "semantic_lookup",
+          "developmentRoles": ["inspect"],
+          "eventPresentation": {
+            "metadata": {
+              "query": {
+                "param": "query",
+                "kind": "string"
+              },
+              "queryCount": {
+                "param": "query",
+                "kind": "number",
+                "default": 1
+              }
+            }
+          },
+          "skills": ["memory_lookup_skill"],
+          "operations": {
+            "search_memory": {
+              "summary": "Search stored memory entries using one bounded query.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  }
+                },
+                "required": ["query"]
+              },
+              "effect": "read_only",
+              "approval": "request_policy"
+            }
+          }
+        },
+        "memory_add": {
+          "description": "Add a long-term semantic memory entry only when the user explicitly asks to remember or store a personal fact/preference for future conversations. Do not use memory_add as a substitute for saving files, documents, reports, artifacts, or generated output content; when the user asks for a file or artifact, use the appropriate filesystem mutation tool.",
+          "routingCapability": "semantic_mutation",
+          "developmentRoles": ["mutate"],
+          "eventPresentation": {
+            "metadata": {
+              "contentLength": {
+                "param": "content",
+                "kind": "length"
+              }
+            }
+          },
+          "skills": ["memory_mutation_skill"],
+          "operations": {
+            "add_memory": {
+              "summary": "Store one explicit long-term memory entry.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "content": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": ["content"]
+              },
+              "effect": "mutating",
+              "approval": "request_policy"
+            }
+          }
+        },
+        "memory_delete": {
+          "description": "Delete memory entry by exact id only",
+          "routingCapability": "semantic_mutation",
+          "developmentRoles": ["mutate"],
+          "eventPresentation": {
+            "metadata": {
+              "id": {
+                "param": "id",
+                "kind": "string"
+              }
+            }
+          },
+          "skills": ["memory_mutation_skill"],
+          "operations": {
+            "delete_memory": {
+              "summary": "Delete one stored memory entry by its exact ID.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "required": ["id"]
+              },
+              "effect": "mutating",
+              "approval": "request_policy"
+            }
+          }
+        }
+      }
+    }
+  }
+}

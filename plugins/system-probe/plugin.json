@@ -1,0 +1,60 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "system-probe",
+  "version": "1.0.0",
+  "description": "Inspect current machine health and disk capacity.",
+  "extensions": {
+    "ai.abot.runtime": {
+      "version": 1,
+      "entrypoint": "./src/index.cjs",
+      "catalogGroups": ["read", "system"],
+      "capabilities": {
+        "system_probe": {
+          "description": "Inspect current machine state such as uptime, load average, memory usage, CPU count, and disk usage. A path is optional and affects only the disk-usage scope.",
+          "routingCapability": "filesystem_inspection",
+          "developmentRoles": ["inspect", "verify"],
+          "eventPresentation": {
+            "metadata": {
+              "path": {
+                "param": "path",
+                "kind": "string",
+                "default": "/"
+              }
+            }
+          },
+          "skills": [],
+          "operations": {
+            "inspect_system_state": {
+              "summary": "Inspect current uptime, load, memory, CPU and root-filesystem disk state.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {},
+                "required": []
+              },
+              "effect": "read_only",
+              "approval": "request_policy"
+            },
+            "inspect_disk_state_for_path": {
+              "summary": "Inspect machine state while scoping disk statistics to one explicit existing filesystem path.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  }
+                },
+                "required": ["path"]
+              },
+              "effect": "read_only",
+              "approval": "request_policy"
+            }
+          }
+        }
+      }
+    }
+  }
+}

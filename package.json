@@ -1,0 +1,169 @@
+{
+  "bin": {
+    "abot": "./dist/src/cli/bin.js"
+  },
+  "bugs": {
+    "url": "https://github.com/Dorshitrit/abot-runtime/issues"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.29.8",
+    "@types/ws": "^8.18.1",
+    "@vscode/ripgrep": "1.18.0",
+    "dotenv": "^17.4.1",
+    "jszip": "^3.10.1",
+    "pdf-parse": "2.4.5",
+    "postcss": "^8.5.26",
+    "ws": "^8.21.0"
+  },
+  "description": "Open runtime for local AI agents.",
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "esbuild": "^0.27.7",
+    "prettier": "^3.8.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/src/runtime/index.js",
+      "types": "./dist/src/runtime/index.d.ts"
+    },
+    "./model-gateway": {
+      "import": "./dist/src/model-gateway/index.js",
+      "types": "./dist/src/model-gateway/index.d.ts"
+    },
+    "./package.json": "./package.json",
+    "./plugin-sdk": {
+      "import": "./dist/src/plugin-sdk/index.js",
+      "types": "./dist/src/plugin-sdk/index.d.ts"
+    },
+    "./runtime": {
+      "import": "./dist/src/runtime/index.js",
+      "types": "./dist/src/runtime/index.d.ts"
+    },
+    "./runtime.config.schema.json": "./runtime.config.schema.json",
+    "./runtime/adapters": {
+      "import": "./dist/src/runtime/adapters/index.js",
+      "types": "./dist/src/runtime/adapters/index.d.ts"
+    },
+    "./runtime/composition": {
+      "import": "./dist/src/runtime/composition.js",
+      "types": "./dist/src/runtime/composition.d.ts"
+    },
+    "./runtime/config": {
+      "import": "./dist/src/runtime/config.js",
+      "types": "./dist/src/runtime/config.d.ts"
+    },
+    "./runtime/default-adapters": {
+      "import": "./dist/src/runtime/default-adapters.js",
+      "types": "./dist/src/runtime/default-adapters.d.ts"
+    },
+    "./runtime/ports": {
+      "import": "./dist/src/runtime/ports.js",
+      "types": "./dist/src/runtime/ports.d.ts"
+    }
+  },
+  "files": [
+    "dist/scripts/",
+    "dist/src/cli/",
+    "dist/src/runtime/",
+    "dist/src/bridge/",
+    "dist/src/sessions/",
+    "dist/src/shared/",
+    "dist/src/capabilities/",
+    "dist/src/workspace/",
+    "dist/src/model-gateway/",
+    "dist/src/plugin-contract/",
+    "dist/src/plugin-sdk/",
+    "dist/src/web-ui/",
+    "runtime.config.schema.json",
+    "src/runtime/README.md",
+    "LICENSE",
+    "docs/architecture.md",
+    "docs/bridge-compatibility.md",
+    "docs/configuration.md",
+    "docs/installation.md",
+    "docs/known-limitations.md",
+    "docs/plugins.md",
+    "docs/publishing.md",
+    "docs/running-locally.md",
+    "docs/runtime-invariant-coverage.md",
+    "docs/runtime-library.md",
+    "docs/runtime-prompt-policy-contracts.md",
+    "docs/runtime-public-contracts.md",
+    "docs/tool-execution-result-evidence-contract.md",
+    "docs/troubleshooting.md",
+    "examples/minimal-runtime-composition.ts",
+    "examples/runtime-library-host.ts",
+    "examples/runtime.config.example.json",
+    "examples/env.example",
+    "examples/models/",
+    "examples/request-runner.config.example.json",
+    "plugins/capability-brief/",
+    "plugins/code-outline/",
+    "plugins/document-reader/",
+    "plugins/exec/",
+    "plugins/filesystem/",
+    "plugins/json-inspector/",
+    "plugins/local-search/",
+    "plugins/memory/",
+    "plugins/project-orientation/",
+    "plugins/system-probe/",
+    "plugins/web/"
+  ],
+  "homepage": "https://github.com/Dorshitrit/abot-runtime#readme",
+  "keywords": [
+    "llm",
+    "runtime",
+    "agents",
+    "tools",
+    "plugins",
+    "typescript"
+  ],
+  "license": "MIT",
+  "llmRuntime": {
+    "configSchema": "./runtime.config.schema.json"
+  },
+  "main": "./dist/src/runtime/index.js",
+  "name": "@abot-ai/runtime",
+  "overrides": {
+    "postcss": "^8.5.26"
+  },
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dorshitrit/abot-runtime.git"
+  },
+  "scripts": {
+    "add-model": "tsx scripts/add-runtime-model.ts",
+    "build": "npm run check:model-step-registry && npm run build-config-schema && npm run typecheck:plugins && npm run build:plugins && npm run clean-dist && tsc -p tsconfig.build.json && npm run copy-build-assets",
+    "build-config-schema": "tsx scripts/write-runtime-config-schema.ts",
+    "build:plugins": "tsx scripts/build-public-plugins.ts --write",
+    "check:model-step-registry": "tsx scripts/write-model-step-registry.ts --check",
+    "check:plugin-build": "npm run typecheck:plugins && tsx scripts/build-public-plugins.ts --check",
+    "check:plugins": "tsx scripts/check-plugins.ts",
+    "check:publication": "tsx scripts/check-publication-readiness.ts",
+    "check:runtime-package": "tsx scripts/check-runtime-package-contents.ts",
+    "clean-dist": "tsx scripts/clean-dist.ts",
+    "clean:dev-state": "tsx scripts/clean-dev-state.ts",
+    "copy-build-assets": "tsx scripts/copy-build-assets.ts",
+    "dev": "tsx index.ts",
+    "generate:model-step-registry": "tsx scripts/write-model-step-registry.ts",
+    "init": "tsx scripts/init-runtime.ts",
+    "model-gateway": "tsx src/model-gateway/server.ts",
+    "smoke:packed-runtime-package": "tsx scripts/smoke-packed-runtime-package.ts",
+    "smoke:runtime-package": "tsx scripts/smoke-runtime-package-import.ts",
+    "test": "vitest",
+    "typecheck:plugins": "tsc -p tsconfig.plugins.json",
+    "validate": "npm run check:plugin-build && npm test -- --run && npm run build && npm run check:plugins && npm run smoke:runtime-package && npm run check:runtime-package && npm run smoke:packed-runtime-package && npm run check:publication",
+    "web-ui": "tsx src/web-ui/server.ts",
+    "web-ui:install-user-services": "tsx scripts/install-runtime-web-ui-user-services.ts"
+  },
+  "type": "module",
+  "types": "./dist/src/runtime/index.d.ts",
+  "version": "1.0.0"
+}

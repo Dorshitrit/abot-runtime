@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": [
+    "scripts/build-public-plugins.ts",
+    "src/plugin-contract/**/*.ts",
+    "src/plugin-sdk/**/*.ts",
+    "plugins/code-outline/source/**/*.ts",
+    "plugins/document-reader/source/**/*.ts",
+    "plugins/exec/source/**/*.ts",
+    "plugins/filesystem/source/**/*.ts",
+    "plugins/json-inspector/source/**/*.ts",
+    "plugins/local-search/source/**/*.ts",
+    "plugins/memory/source/**/*.ts",
+    "plugins/project-orientation/source/**/*.ts",
+    "plugins/system-probe/source/**/*.ts",
+    "plugins/web/source/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist", "src/**/__tests__/**", "**/*.test.ts"]
+}

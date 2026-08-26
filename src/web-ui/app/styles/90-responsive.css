@@ -1,0 +1,451 @@
+/* Responsive workspace ----------------------------------------------------- */
+
+@media (max-width: 1260px) {
+  .chat-header {
+    padding-inline: 18px;
+  }
+
+  .header-controls {
+    max-width: 64%;
+  }
+
+  .control-label {
+    display: none;
+  }
+
+  .agent-mode-control {
+    width: 116px;
+    min-width: 116px;
+  }
+
+  .model-control {
+    width: 170px;
+    min-width: 0;
+  }
+
+  .workspace-page-body {
+    padding-inline: 28px;
+  }
+}
+
+@media (max-width: 980px) {
+  .chat-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    min-height: 0;
+    padding-block: 12px;
+  }
+
+  .header-controls {
+    display: grid;
+    grid-template-columns: minmax(112px, 0.8fr) minmax(150px, 1.2fr);
+    width: 100%;
+    max-width: 520px;
+  }
+
+  .agent-mode-control,
+  .model-control,
+  .agent-mode-button,
+  #modelSelect {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .chat-header h2 {
+    max-width: min(72vw, 620px);
+  }
+
+  .workspace-page-header {
+    padding-inline: 28px;
+  }
+
+  .workspace-page-body {
+    padding: 20px 24px 48px;
+  }
+
+  .config-dashboard-grid,
+  .config-loop-grid,
+  .config-steps-section .config-step-list,
+  .config-model-layout,
+  .config-field-grid,
+  .config-calibration-card .config-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .config-model-list {
+    max-height: 280px;
+  }
+}
+
+@media (max-width: 760px) {
+  :root {
+    --mobile-rail-height: 68px;
+  }
+
+  .app-shell,
+  .app-shell.operations-workspace,
+  .app-shell.config-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) var(--mobile-rail-height);
+    width: 100vw;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .workspace-rail {
+    position: relative;
+    inset: auto;
+    z-index: 80;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    grid-column: 1;
+    grid-row: 2;
+    width: 100%;
+    height: var(--mobile-rail-height);
+    min-height: var(--mobile-rail-height);
+    padding: 7px max(10px, env(safe-area-inset-right))
+      max(7px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+    border-top: 1px solid rgba(116, 166, 216, 0.18);
+    border-right: 0;
+    background: rgba(7, 20, 33, 0.96);
+    box-shadow: 0 -14px 34px rgba(0, 7, 18, 0.22);
+    backdrop-filter: blur(20px);
+  }
+
+  .rail-spacer,
+  .rail-runtime {
+    display: none;
+  }
+
+  .rail-actions {
+    display: contents;
+  }
+
+  .rail-history-button {
+    margin: 0;
+    order: 3;
+  }
+
+  #chatWorkspaceButton {
+    order: 1;
+  }
+
+  #newSessionButton {
+    order: 2;
+  }
+
+  #operationsWorkspaceButton {
+    order: 4;
+  }
+
+  #configWorkspaceButton {
+    order: 5;
+  }
+
+  .workspace-rail button.rail-button {
+    display: grid;
+    grid-template-rows: 22px 14px;
+    gap: 1px;
+    place-items: center;
+    width: 100%;
+    min-width: 0;
+    min-height: 52px;
+    padding: 5px 4px 4px;
+    border: 0;
+    border-radius: 11px;
+  }
+
+  .rail-button svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .workspace-rail .rail-button .rail-button-label {
+    position: static;
+    left: auto;
+    display: block;
+    max-width: 100%;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    background: transparent;
+    color: currentColor;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 9.5px;
+    line-height: 1;
+    opacity: 1;
+    pointer-events: none;
+    transform: none;
+  }
+
+  .chat-panel,
+  .workspace-page-panel {
+    grid-column: 1;
+    grid-row: 1;
+    width: 100vw;
+    height: calc(100dvh - var(--mobile-rail-height));
+    min-height: 0;
+  }
+
+  .workspace-sheet.sessions-sheet {
+    position: fixed;
+    inset: 0 0 var(--mobile-rail-height) 0;
+    z-index: 70;
+    width: 100vw;
+    max-width: none;
+    height: auto;
+    max-height: none;
+    padding: 16px max(16px, env(safe-area-inset-right)) 18px
+      max(16px, env(safe-area-inset-left));
+    border: 0;
+    border-radius: 0;
+    box-shadow: 0 -18px 52px rgba(0, 7, 18, 0.44);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(calc(100% + 18px));
+    transition:
+      transform 210ms ease,
+      opacity 160ms ease,
+      visibility 0s linear 210ms;
+  }
+
+  .app-shell.sessions-open .workspace-sheet.sessions-sheet {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(0);
+    transition-delay: 0s;
+  }
+
+  .panel-backdrop {
+    inset: 0 0 var(--mobile-rail-height) 0;
+    width: 100vw;
+    height: auto;
+    background: rgba(1, 8, 17, 0.5);
+  }
+
+  .chat-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+    min-height: 0;
+    padding: 10px 13px;
+  }
+
+  .chat-heading-group {
+    display: flex;
+    min-width: 0;
+  }
+
+  .chat-header h2 {
+    max-width: calc(100vw - 44px);
+    font-size: 15px;
+  }
+
+  .header-controls {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    gap: 6px;
+    width: 100%;
+    max-width: none;
+  }
+
+  .messages-list {
+    gap: 20px;
+    padding: 24px 15px 18px;
+  }
+
+  .message-avatar {
+    flex-basis: 26px;
+    width: 26px;
+    height: 26px;
+  }
+
+  .message-row.assistant .message-bubble {
+    max-width: calc(100% - 37px);
+  }
+
+  .message-row.assistant .approval-message-bubble {
+    width: 100%;
+    max-width: 100%;
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  .tool-approval-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tool-approval-button {
+    min-height: 38px;
+  }
+
+  .message-row.user .message-bubble {
+    max-width: 90%;
+  }
+
+  .message-actions,
+  .session-actions {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+
+  .composer-dock {
+    padding: 8px 10px 10px;
+  }
+
+  .composer {
+    grid-template-columns: 34px auto minmax(0, 1fr) 36px;
+    grid-template-rows: auto auto auto;
+    padding: 10px;
+    border-radius: 15px;
+  }
+
+  .composer.composer-has-split-action {
+    grid-template-columns: 34px auto minmax(0, 1fr) auto;
+  }
+
+  .composer-submit-control.split .send-button {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
+  }
+
+  .attachment-button,
+  .send-button {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+  }
+
+  .permission-mode-control {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .permission-mode-button {
+    width: auto;
+    height: 31px;
+    min-height: 31px;
+  }
+
+  .attachment-preview {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .composer-hint {
+    display: none;
+  }
+
+  .operations-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(72px, 1fr));
+    overflow-x: auto;
+  }
+
+  .workspace-page-header {
+    min-height: 66px;
+    padding: 11px 14px;
+  }
+
+  .workspace-page-heading h2 {
+    font-size: 18px;
+  }
+
+  .workspace-page-body {
+    padding: 16px 14px 42px;
+  }
+
+  .config-dashboard-header h3 {
+    font-size: 24px;
+  }
+
+  .config-hero,
+  .config-field-grid,
+  .config-calibration-meta,
+  .config-add-row,
+  .config-add-row.compact {
+    grid-template-columns: 1fr;
+  }
+
+  .config-section,
+  .config-model-editor,
+  .config-model-list,
+  .config-calibration-card,
+  .config-raw-panel {
+    border-radius: 12px;
+  }
+
+  .config-section-header,
+  .config-subheader,
+  .config-calibration-title {
+    align-items: flex-start;
+  }
+
+  .config-raw-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .toast-region {
+    right: 12px;
+    bottom: calc(var(--mobile-rail-height) + 12px);
+    max-width: calc(100vw - 24px);
+  }
+}
+
+@media (max-width: 460px) {
+  .runtime-summary {
+    padding: 10px;
+  }
+
+  .chat-empty-state,
+  .mode-empty-state {
+    padding-inline: 12px;
+  }
+
+  .mode-empty-title {
+    font-size: 24px;
+  }
+
+  .workspace-page-heading .eyebrow {
+    display: none;
+  }
+
+  .workspace-page-header {
+    gap: 10px;
+  }
+
+  .workspace-page-back {
+    width: auto;
+    min-width: 0;
+    height: 36px;
+    min-height: 36px;
+  }
+}
+
+@media (max-width: 360px) {
+  .tool-approval-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

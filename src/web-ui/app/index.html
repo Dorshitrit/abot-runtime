@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#07111f" />
+    <title>ABot Runtime</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <nav class="workspace-rail" aria-label="Workspace navigation">
+        <button
+          id="sessionsToggleButton"
+          class="rail-button rail-history-button"
+          type="button"
+          aria-label="Open conversations"
+          aria-controls="sessionsPanel"
+          aria-expanded="false"
+          title="Conversations"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 6.5h14M5 12h14M5 17.5h9" />
+          </svg>
+          <span class="rail-button-label">Chats</span>
+        </button>
+        <div class="rail-actions">
+          <button
+            id="chatWorkspaceButton"
+            class="rail-button"
+            type="button"
+            aria-label="Open chat workspace"
+            aria-controls="chatWorkspace"
+            aria-current="page"
+            title="Chat"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7 17.5 4 20v-5.2A7.5 7.5 0 1 1 7 17.5Z" />
+              <path d="M8 10h8M8 13h5" />
+            </svg>
+            <span class="rail-button-label">Chat</span>
+          </button>
+          <button
+            id="newSessionButton"
+            class="rail-button rail-new-button"
+            type="button"
+            aria-label="New conversation"
+            title="New conversation"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            <span class="rail-button-label">New</span>
+          </button>
+          <button
+            id="operationsWorkspaceButton"
+            class="rail-button"
+            type="button"
+            aria-label="Open operations workspace"
+            aria-controls="operationsWorkspacePanel"
+            title="Operations"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 6h16M4 12h10M4 18h13" />
+            </svg>
+            <span class="rail-button-label">Operations</span>
+          </button>
+          <button
+            id="configWorkspaceButton"
+            class="rail-button"
+            type="button"
+            aria-label="Open configuration workspace"
+            aria-controls="configWorkspacePanel"
+            title="Configuration"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
+              <circle cx="12" cy="12" r="4" />
+            </svg>
+            <span class="rail-button-label">Config</span>
+          </button>
+        </div>
+        <div class="rail-spacer"></div>
+        <div class="rail-runtime">
+          <select
+            id="environmentSelect"
+            class="agent-native-select"
+            aria-hidden="true"
+            tabindex="-1"
+          ></select>
+          <div class="agent-picker rail-environment">
+            <button
+              id="agentPickerButton"
+              class="rail-button rail-environment-button"
+              type="button"
+              aria-label="Choose environment"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              title="Environment"
+            ></button>
+            <div
+              id="agentPickerMenu"
+              class="agent-picker-menu"
+              role="menu"
+              aria-label="Environment"
+              hidden
+            ></div>
+          </div>
+          <span
+            id="connectionLabel"
+            class="rail-status"
+            role="status"
+            aria-live="polite"
+            title="Runtime connection"
+            >Connecting</span
+          >
+        </div>
+      </nav>
+
+      <aside
+        id="sessionsPanel"
+        class="sessions-panel workspace-sheet sessions-sheet"
+        aria-label="Conversations"
+        aria-hidden="true"
+        hidden
+      >
+        <div class="sidebar-topline">
+          <div class="brand-copy">
+            <p class="eyebrow">Workspace</p>
+            <h1 id="sessionsHeading">Conversations</h1>
+          </div>
+          <div class="sheet-heading-actions">
+            <button
+              id="refreshSessionsButton"
+              class="icon-button"
+              type="button"
+              aria-label="Refresh conversations"
+              title="Refresh conversations"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M20 11a8.1 8.1 0 0 0-15.5-2M4 5v4h4M4 13a8.1 8.1 0 0 0 15.5 2M20 19v-4h-4"
+                />
+              </svg>
+            </button>
+            <button
+              id="closeSessionsButton"
+              class="icon-button"
+              type="button"
+              aria-label="Close conversations"
+              title="Close conversations"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m7 7 10 10M17 7 7 17" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <section class="sessions-section" aria-labelledby="sessionsHeading">
+          <div class="sessions-heading-row">
+            <span class="sessions-list-label">Recent conversations</span>
+            <span id="sessionsCount" class="count-badge">0</span>
+          </div>
+          <label class="session-search">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="6.5" />
+              <path d="m16 16 4 4" />
+            </svg>
+            <span class="sr-only">Search conversations</span>
+            <input
+              id="sessionSearchInput"
+              type="search"
+              placeholder="Search conversations"
+              autocomplete="off"
+            />
+          </label>
+          <div id="sessionsList" class="sessions-list"></div>
+        </section>
+      </aside>
+
+      <main id="chatWorkspace" class="chat-panel">
+        <header class="chat-header">
+          <div class="chat-heading-group">
+            <div class="chat-heading-copy">
+              <h2 id="sessionTitle">New conversation</h2>
+            </div>
+          </div>
+
+          <div class="header-controls">
+            <div class="control-cluster agent-mode-control">
+              <span class="control-label">Depth</span>
+              <button
+                id="agentModeButton"
+                class="agent-mode-button"
+                type="button"
+                title="Reasoning depth"
+                aria-haspopup="menu"
+                aria-expanded="false"
+              >
+                Reasoning
+              </button>
+              <div id="agentModeMenu" class="agent-mode-menu"></div>
+            </div>
+            <div class="control-cluster model-control">
+              <span class="control-label">Model</span>
+              <button
+                id="modelSelectButton"
+                class="model-select-button"
+                type="button"
+                title="Model"
+                aria-label="Model"
+                aria-haspopup="menu"
+                aria-expanded="false"
+              >
+                <span id="modelSelectValue">Model</span>
+                <svg viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="m6 8 4 4 4-4" />
+                </svg>
+              </button>
+              <div id="modelSelectMenu" class="model-select-menu"></div>
+              <select
+                id="modelSelect"
+                title="Model"
+                aria-label="Model"
+                aria-hidden="true"
+                tabindex="-1"
+                hidden
+              ></select>
+            </div>
+          </div>
+        </header>
+
+        <section
+          id="runtimeSetupGuide"
+          class="runtime-setup-guide"
+          aria-label="Runtime setup guide"
+          aria-live="polite"
+          tabindex="0"
+          hidden
+        ></section>
+
+        <section
+          id="messagesList"
+          class="messages-list"
+          aria-label="Conversation messages"
+        ></section>
+        <div
+          id="messageStatusRegion"
+          class="sr-only"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        ></div>
+
+        <div class="composer-dock">
+          <button
+            id="jumpToLatestButton"
+            class="jump-to-latest"
+            type="button"
+            hidden
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+            <span>Jump to latest</span>
+          </button>
+          <form id="composerForm" class="composer">
+            <button
+              id="attachmentButton"
+              class="attachment-button"
+              type="button"
+              title="Attach file or image"
+              aria-label="Attach file or image"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="m9 12 6.8-6.8a3 3 0 0 1 4.2 4.2L10.7 18.7a5 5 0 0 1-7.1-7.1l9-9"
+                />
+              </svg>
+            </button>
+            <input
+              id="attachmentInput"
+              class="attachment-input"
+              type="file"
+              accept="image/png,image/jpeg,image/webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,text/csv,text/markdown,application/json,application/rtf"
+            />
+            <label class="sr-only" for="composerInput">Message ABot</label>
+            <textarea
+              id="composerInput"
+              dir="auto"
+              rows="1"
+              placeholder="Ask ABot anything…"
+            ></textarea>
+            <div id="attachmentPreview" class="attachment-preview"></div>
+            <div class="permission-mode-control">
+              <button
+                id="permissionModeButton"
+                class="permission-mode-button"
+                type="button"
+                title="Tool permissions"
+                aria-haspopup="menu"
+                aria-expanded="false"
+              >
+                Full
+              </button>
+              <div id="permissionModeMenu" class="permission-mode-menu"></div>
+            </div>
+            <div id="composerSubmitControl" class="composer-submit-control">
+              <button
+                id="sendButton"
+                class="send-button"
+                type="submit"
+                disabled
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" />
+                </svg>
+                <span id="sendButtonLabel" class="sr-only">Send</span>
+              </button>
+              <button
+                id="sendNextMenuButton"
+                class="send-next-menu-button"
+                type="button"
+                title="More send options"
+                aria-label="More send options"
+                aria-haspopup="menu"
+                aria-controls="sendNextMenu"
+                aria-expanded="false"
+                hidden
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="m4 6 4 4 4-4" />
+                </svg>
+              </button>
+              <div id="sendNextMenu" class="send-next-menu" role="menu" hidden>
+                <button id="sendNextButton" type="button" role="menuitem">
+                  Send next
+                </button>
+              </div>
+            </div>
+          </form>
+          <p class="composer-hint">
+            Enter to send · Shift + Enter for a new line
+          </p>
+        </div>
+      </main>
+
+      <section
+        id="operationsWorkspacePanel"
+        class="workspace-page-panel operations-workspace-panel"
+        aria-labelledby="operationsWorkspaceTitle"
+        hidden
+      >
+        <header class="workspace-page-header">
+          <div class="workspace-page-heading">
+            <p class="eyebrow">Runtime workspace</p>
+            <h2 id="operationsWorkspaceTitle">Operations</h2>
+            <p>Inspect runtime state, recent logs, and system health.</p>
+          </div>
+          <button
+            id="closeOperationsWorkspaceButton"
+            class="workspace-page-back"
+            type="button"
+            aria-label="Return to conversation"
+          >
+            Back to chat
+          </button>
+        </header>
+
+        <div class="workspace-page-body operations-workspace-body">
+          <div
+            class="operations-tabs"
+            role="tablist"
+            aria-label="Operations views"
+          >
+            <button
+              id="runtimeTabButton"
+              class="tab-button operations-tab-button active"
+              data-tab="runtime"
+              type="button"
+              role="tab"
+              aria-controls="runtimeTab"
+              aria-selected="true"
+            >
+              Runtime
+            </button>
+            <button
+              id="logsTabButton"
+              class="tab-button operations-tab-button"
+              data-tab="logs"
+              type="button"
+              role="tab"
+              aria-controls="logsTab"
+              aria-selected="false"
+            >
+              Logs
+            </button>
+            <button
+              id="healthTabButton"
+              class="tab-button operations-tab-button"
+              data-tab="health"
+              type="button"
+              role="tab"
+              aria-controls="healthTab"
+              aria-selected="false"
+            >
+              Health
+            </button>
+          </div>
+
+          <section
+            id="runtimeTab"
+            class="tab-page operations-tab-page active"
+            role="tabpanel"
+            aria-labelledby="runtimeTabButton"
+          >
+            <div class="panel-toolbar">
+              <span>Runtime status</span
+              ><button id="refreshRuntimeButton" type="button">Refresh</button>
+            </div>
+            <div id="runtimeStatus" class="runtime-card"></div>
+          </section>
+
+          <section
+            id="logsTab"
+            class="tab-page operations-tab-page"
+            role="tabpanel"
+            aria-labelledby="logsTabButton"
+          >
+            <div class="panel-toolbar">
+              <span>Recent logs</span
+              ><button id="refreshLogsButton" type="button">Refresh</button>
+            </div>
+            <pre id="runtimeLogs" class="logs-view"></pre>
+          </section>
+
+          <section
+            id="healthTab"
+            class="tab-page operations-tab-page"
+            role="tabpanel"
+            aria-labelledby="healthTabButton"
+          >
+            <div class="panel-toolbar">
+              <span>System health</span
+              ><button id="refreshHealthButton" type="button">Refresh</button>
+            </div>
+            <div id="healthStatus" class="runtime-card"></div>
+          </section>
+        </div>
+      </section>
+
+      <section
+        id="configWorkspacePanel"
+        class="workspace-page-panel config-workspace-panel"
+        aria-labelledby="configWorkspaceTitle"
+        hidden
+      >
+        <header class="workspace-page-header config-workspace-header">
+          <div class="workspace-page-heading config-workspace-heading">
+            <p class="eyebrow">Runtime workspace</p>
+            <h2 id="configWorkspaceTitle">Configuration</h2>
+            <p>Review and edit runtime configuration with explicit saves.</p>
+          </div>
+          <div class="toolbar-actions">
+            <button id="refreshConfigButton" type="button">Refresh</button>
+            <button
+              id="closeConfigWorkspaceButton"
+              class="workspace-page-back config-workspace-back"
+              type="button"
+              aria-label="Return to conversation"
+            >
+              Back to chat
+            </button>
+          </div>
+        </header>
+        <div class="workspace-page-body config-workspace-body">
+          <div id="configStatus" class="runtime-card"></div>
+          <div id="configDashboard" class="config-dashboard"></div>
+          <details class="config-raw-panel">
+            <summary>Raw JSON</summary>
+            <div class="config-raw-toolbar">
+              <select id="configRawFileSelect" title="Config file"></select
+              ><button id="configApplyRawButton" type="button">Apply</button
+              ><button id="configSaveRawButton" type="button">Save</button>
+            </div>
+            <textarea
+              id="configRawEditor"
+              class="config-view"
+              spellcheck="false"
+            ></textarea>
+          </details>
+        </div>
+      </section>
+
+      <button
+        id="panelBackdrop"
+        class="panel-backdrop"
+        type="button"
+        tabindex="-1"
+        aria-label="Close open panel"
+      ></button>
+      <div
+        id="toastRegion"
+        class="toast-region"
+        role="status"
+        aria-live="polite"
+      ></div>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

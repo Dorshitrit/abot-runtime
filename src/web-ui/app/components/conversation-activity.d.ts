@@ -1,0 +1,72 @@
+export type ConversationActivityInput = {
+  requestId?: unknown;
+  events?: unknown[];
+  taskProgress?: unknown;
+  contextWindow?: unknown;
+  streaming?: boolean;
+};
+
+export type ConversationContextWindowModel = {
+  invocationId: string;
+  modelStep: string;
+  profileId: string;
+  measurement: string;
+  source: string;
+  admissionOutcome: string;
+  contextWindowTokens: number;
+  estimatedInputTokens: number;
+  remainingContextTokens: number;
+  usedContextPercent: number;
+  remainingContextPercent: number;
+  compactionTriggerPercent: number;
+  outputReserveTokens: number;
+  safetyReserveTokens: number;
+  attachmentReserveTokens: number;
+  formatReserveTokens: number;
+  providerUsage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    source: string;
+  } | null;
+  compaction: {
+    beforePercent: number;
+    afterPercent: number;
+  } | null;
+};
+
+export declare function buildConversationActivityModel(
+  input?: ConversationActivityInput,
+): {
+  requestId: string;
+  events: unknown[];
+  progress: unknown;
+  contextWindow: ConversationContextWindowModel | null;
+  eventCount: number;
+  toolCount: number;
+  failureCount: number;
+  latestLabel: string;
+  currentLabel: string;
+  openByDefault: boolean;
+  hasContent: boolean;
+};
+
+export declare function pinConversationActivityToLatest(input?: {
+  details?: { open: boolean };
+  body?: { scrollTop: number; scrollHeight: number };
+  streaming?: boolean;
+}): boolean;
+
+export declare function createConversationActivity(options?: {
+  documentRoot?: Document;
+}): {
+  createNode(input?: ConversationActivityInput): HTMLElement | null;
+  forget(requestId: unknown): void;
+  reset(): void;
+};
+
+export declare function createConversationContextWindow(options?: {
+  documentRoot?: Document;
+}): {
+  createNode(input?: ConversationActivityInput): HTMLElement | null;
+};
