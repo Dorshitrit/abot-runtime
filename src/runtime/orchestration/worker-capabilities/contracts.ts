@@ -1,8 +1,10 @@
 import {
   ROLE_CAPABILITY_ID_MAX_LENGTH,
+  ROLE_CALL_OBJECTIVE_MAX_LENGTH,
   type RoleCallFrame,
   type RoleCallDependencyResult,
   type RoleCallLedger,
+  type RoleCallOperationSupervisionInterventionCommit,
   type RoleCapabilityEffect,
   type RoleCapabilityDeclaredEffect,
   type RoleCapabilityExecutionOutcome,
@@ -15,6 +17,9 @@ import type { CapabilityAdapterResult } from "../capability-adapters/result.js";
 export const WORKER_CAPABILITY_ID_MAX_LENGTH = ROLE_CAPABILITY_ID_MAX_LENGTH;
 /** Client-facing capability narration; never an execution objective or payload. */
 export const WORKER_CAPABILITY_INTENT_MAX_LENGTH = 500;
+/** Immutable Worker-only assignment for authoring one capability payload. */
+export const WORKER_CAPABILITY_AUTHORING_OBJECTIVE_MAX_LENGTH =
+  ROLE_CALL_OBJECTIVE_MAX_LENGTH;
 export const WORKER_CAPABILITY_SUMMARY_MAX_LENGTH = 512;
 export const WORKER_CAPABILITY_COUNT_MAX = 64;
 export const WORKER_CAPABILITY_CONTROL_COUNT_MAX = 16;
@@ -99,6 +104,8 @@ export type WorkerCapabilityDescriptor = Readonly<{
   controlsRefinement?: "mechanical_when_complete";
   /** Manifest-owned routing metadata projected only in capability selection. */
   catalogGroups?: readonly ToolCatalogGroup[];
+  /** Canonical payload contract requires a Worker authoring receipt. */
+  requiresPayloadAuthoringObjective?: true;
 }>;
 
 export type WorkerCapabilityControls = Readonly<Record<string, unknown>>;
@@ -138,20 +145,72 @@ export type WorkerCapabilityAdapterResult =
       references?: readonly RoleCapabilityResultReference[];
       /** Canonical adapter-owned result persisted for every settled execution. */
       exactResult?: CapabilityAdapterResult;
+      /**
+       * Opaque adapter-owned stable failure identity. `null` explicitly opts
+       * this one failure out of supervision; omission is a contract violation.
+       */
+      failureOutcomeFingerprint: string | null;
     }>;
+
+export type WorkerCapabilityAdapterExecutionInput<TContext> = Readonly<{
+  context: TContext;
+  call: RoleCallFrame;
+  executionId: string;
+  /** Client-facing presentation metadata for lifecycle events only. */
+  intent: string;
+  /** Worker-only payload assignment; forbidden for root and non-payload calls. */
+  authoringObjective?: string;
+  controls: WorkerCapabilityControls;
+  settledCapabilityResults: readonly WorkerSettledCapabilityResult[];
+  dependencyResults?: readonly RoleCallDependencyResult[];
+  executionFreshness?: WorkerCapabilityExecutionFreshness;
+}>;
+
+export type WorkerCapabilityPreparedExecution = Readonly<{
+  /** Opaque exact-action identity required from every preparing adapter. */
+  actionFingerprint?: string;
+  /**
+   * Canonical non-payload controls accepted by the preparing adapter,
+   * including any adapter-validated staged controls hidden from selection.
+   */
+  acceptedControls: WorkerCapabilityControls;
+  execute(executionId: string): Promise<WorkerCapabilityAdapterResult>;
+}>;
+
+export type WorkerCapabilityAdapterPreparationInput<TContext> = Readonly<
+  Omit<WorkerCapabilityAdapterExecutionInput<TContext>, "executionId"> & {
+    /** Non-canonical correlation for payload preparation and diagnostics only. */
+    preparationId: string;
+  }
+>;
 
 export type WorkerCapabilityExecutionReference = Readonly<{
   executionId: string;
 }>;
 
+export type WorkerCapabilityOperationInterventionReference = Readonly<{
+  kind: "operation_supervision_intervened";
+  commit: RoleCallOperationSupervisionInterventionCommit;
+}>;
+
+export type WorkerCapabilityAttemptReference =
+  | WorkerCapabilityExecutionReference
+  | WorkerCapabilityOperationInterventionReference;
+
 export type WorkerCapabilityBatchExecutionReference = Readonly<{
   executionIds: readonly string[];
 }>;
+
+export type WorkerCapabilityBatchAttemptReference =
+  | WorkerCapabilityBatchExecutionReference
+  | WorkerCapabilityOperationInterventionReference;
 
 export type WorkerCapabilityInvocation = Readonly<{
   capabilityId: string;
   /** Client-facing presentation metadata; execution must not infer from it. */
   intent: string;
+  /** Present only when the selected descriptor requires payload authoring. */
+  authoringObjective?: string;
   controls: WorkerCapabilityControls;
 }>;
 
@@ -172,18 +231,17 @@ export type WorkerSettledCapabilityResult = Readonly<{
 
 export type WorkerCapabilityAdapter<TContext> = Readonly<{
   descriptor: WorkerCapabilityDescriptor;
+  /**
+   * Optional exact-action preparation seam. Production tool adapters use this
+   * to materialize and normalize the complete invocation before admission.
+   * It must not perform the capability's externally observable effect; only
+   * the returned execute closure may do that after canonical admission.
+   */
+  prepare?(
+    input: WorkerCapabilityAdapterPreparationInput<TContext>,
+  ): Promise<WorkerCapabilityPreparedExecution>;
   execute(
-    input: Readonly<{
-      context: TContext;
-      call: RoleCallFrame;
-      executionId: string;
-      /** Client-facing presentation metadata for lifecycle events only. */
-      intent: string;
-      controls: WorkerCapabilityControls;
-      settledCapabilityResults: readonly WorkerSettledCapabilityResult[];
-      dependencyResults?: readonly RoleCallDependencyResult[];
-      executionFreshness?: WorkerCapabilityExecutionFreshness;
-    }>,
+    input: WorkerCapabilityAdapterExecutionInput<TContext>,
   ): Promise<WorkerCapabilityAdapterResult>;
 }>;
 
@@ -217,16 +275,18 @@ export type WorkerCapabilityBinding<TContext> = Readonly<{
     input: Readonly<{
       capabilityId: string;
       intent: unknown;
+      authoringObjective?: unknown;
       controls: unknown;
     }>,
-  ): Promise<WorkerCapabilityExecutionReference>;
+  ): Promise<WorkerCapabilityAttemptReference>;
   executeBatch(
     input: Readonly<{
       invocations: readonly Readonly<{
         capabilityId: string;
         intent: unknown;
+        authoringObjective?: unknown;
         controls: unknown;
       }>[];
     }>,
-  ): Promise<WorkerCapabilityBatchExecutionReference>;
+  ): Promise<WorkerCapabilityBatchAttemptReference>;
 }>;

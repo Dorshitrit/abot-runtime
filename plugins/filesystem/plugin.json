@@ -64,6 +64,7 @@
                 },
                 "required": ["path"]
               },
+              "selectionControlIds": ["path"],
               "effect": "read_only",
               "approval": "request_policy"
             }

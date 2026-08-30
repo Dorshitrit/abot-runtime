@@ -5,6 +5,7 @@ import {
 import {
   isRoleCapabilityId,
   projectRoleCallAssignmentScope,
+  projectImmediateRoleOperationSupervisionNotices,
   type RoleCallFrame,
   type RoleCallDependencyResult,
   type RoleCallLedger,
@@ -21,7 +22,7 @@ import type { RequestExecutionSeed } from "../../../request/contracts.js";
 import { projectWorkerCapabilityResumeContext } from "../ledger-projection.js";
 import {
   projectWorkerDecisionCallIdentity,
-  WORKER_DECISION_MODEL_STEP,
+  type WorkerDecisionDiagnosticContext,
 } from "../contracts.js";
 import { projectEffectiveWorkerSelectionControlIds } from "../runtime-path-refinement.js";
 import type {
@@ -37,13 +38,15 @@ export function prepareWorkerCanonicalState(
     Partial<Pick<RequestExecutionSeed, "contextCompactionStore">>,
   options: WorkerDecisionInputOptions,
   callIdentity: ReturnType<typeof projectWorkerDecisionCallIdentity>,
+  modelStep: WorkerDecisionDiagnosticContext["modelStep"],
+  capabilityExecutionPending: boolean,
 ): PreparedWorkerCanonicalState {
   const canonicalSource = options.capabilitySource ?? options.capabilityResume;
   const assignmentScope = canonicalSource
     ? projectRoleCallAssignmentScope({
         head: canonicalSource.head,
         call: options.call,
-        modelStep: WORKER_DECISION_MODEL_STEP,
+        modelStep,
       })
     : undefined;
   const dependencyResults = canonicalSource
@@ -52,7 +55,7 @@ export function prepareWorkerCanonicalState(
         prompt: request.prompt,
         head: canonicalSource.head,
         call: options.call,
-        consumer: WORKER_DECISION_MODEL_STEP,
+        consumer: modelStep,
         ...(request.contextCompactionStore
           ? { store: request.contextCompactionStore }
           : {}),
@@ -74,12 +77,35 @@ export function prepareWorkerCanonicalState(
   if (resume !== undefined && resume.requestId !== request.requestId) {
     throw new Error("worker_capability_resume_request_mismatch");
   }
+  const operationSupervision = shouldProjectWorkerOperationSupervision(
+    canonicalSource,
+    capabilityExecutionPending,
+  )
+    ? projectImmediateRoleOperationSupervisionNotices(
+        canonicalSource.head,
+        options.call,
+      )
+    : Object.freeze([]);
   return Object.freeze({
     canonicalSource,
     assignmentScope,
     dependencyResults,
     resume,
+    operationSupervision:
+      operationSupervision.length > 0 ? operationSupervision : undefined,
   });
+}
+
+function shouldProjectWorkerOperationSupervision(
+  canonicalSource:
+    | WorkerDecisionCapabilitySource
+    | WorkerDecisionCapabilityResumeSource
+    | undefined,
+  capabilityExecutionPending: boolean,
+): canonicalSource is
+  | WorkerDecisionCapabilitySource
+  | WorkerDecisionCapabilityResumeSource {
+  return canonicalSource !== undefined && !capabilityExecutionPending;
 }
 
 function hasBatchCapabilityResume(
@@ -138,7 +164,7 @@ export function projectCapabilities(
       descriptor === null ||
       !Object.isFrozen(descriptor) ||
       descriptorKeys.length < 5 ||
-      descriptorKeys.length > 8 ||
+      descriptorKeys.length > 9 ||
       descriptorKeys.some(
         (key) =>
           key !== "capabilityId" &&
@@ -148,7 +174,8 @@ export function projectCapabilities(
           key !== "selectionControlIds" &&
           key !== "runtimePathControlIds" &&
           key !== "controlsRefinement" &&
-          key !== "catalogGroups",
+          key !== "catalogGroups" &&
+          key !== "requiresPayloadAuthoringObjective",
       ) ||
       !isRoleCapabilityId(descriptor.capabilityId) ||
       seen.has(descriptor.capabilityId) ||
@@ -160,6 +187,8 @@ export function projectCapabilities(
         descriptor.effect !== "mixed") ||
       (descriptor.controlsRefinement !== undefined &&
         descriptor.controlsRefinement !== "mechanical_when_complete") ||
+      (descriptor.requiresPayloadAuthoringObjective !== undefined &&
+        descriptor.requiresPayloadAuthoringObjective !== true) ||
       !Array.isArray(descriptor.catalogGroups) ||
       descriptor.catalogGroups.length === 0 ||
       descriptor.catalogGroups.some(
@@ -218,6 +247,9 @@ export function projectCapabilities(
         : {}),
       ...(descriptor.controlsRefinement
         ? { controlsRefinement: descriptor.controlsRefinement }
+        : {}),
+      ...(descriptor.requiresPayloadAuthoringObjective
+        ? { requiresPayloadAuthoringObjective: true as const }
         : {}),
       catalogGroups: Object.freeze([...descriptor.catalogGroups]),
     });

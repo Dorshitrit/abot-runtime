@@ -5,11 +5,7 @@ import type {
   WorkerCapabilityExecutionFreshness,
   WorkerCapabilityPayloadAuthor,
 } from "../../orchestration/worker-capabilities/index.js";
-import type {
-  RegisteredToolNormalInvocationExecutor,
-  RegisteredToolNormalInvocationProjection,
-} from "../registered-tool-normal-invocations.js";
-import type { RegisteredToolWorkerCapabilityProviderDiagnostic } from "../registered-tool-worker-capability-diagnostics.js";
+import type { RegisteredToolNormalInvocationProjection } from "../registered-tool-normal-invocations.js";
 import { resolveRegisteredToolPayloadRelatedArtifactContexts } from "../registered-tool-payload-plan.js";
 import { normalizePayloadAuthoringResult } from "./payload-authoring-result.js";
 import {
@@ -20,11 +16,15 @@ import {
   STEERING_SUPERSEDED_SUMMARY,
 } from "./payload-rejection.js";
 import { prepareStagedOperationPayload } from "./payload-stages.js";
+import type {
+  PayloadLifecycleEmitter,
+  PayloadStageMaterializationDetails,
+} from "./payload-observability.js";
 
 export async function prepareOperationPayload(
   params: Readonly<{
     projection: RegisteredToolNormalInvocationProjection;
-    executor: RegisteredToolNormalInvocationExecutor;
+    executor: PayloadLifecycleEmitter;
     sharedState: ToolExecutionSharedState;
     payloadAuthor?: WorkerCapabilityPayloadAuthor;
     call: Parameters<WorkerCapabilityPayloadAuthor["author"]>[0]["call"];
@@ -33,6 +33,7 @@ export async function prepareOperationPayload(
       WorkerCapabilityPayloadAuthor["author"]
     >[0]["descriptor"];
     intent: string;
+    authoringObjective?: string;
     controls: Readonly<Record<string, unknown>>;
     dependencyResults?: Parameters<
       WorkerCapabilityPayloadAuthor["author"]
@@ -40,7 +41,9 @@ export async function prepareOperationPayload(
     settledCapabilityResults: Parameters<
       WorkerCapabilityPayloadAuthor["author"]
     >[0]["settledCapabilityResults"];
-    diagnostic: RegisteredToolWorkerCapabilityProviderDiagnostic;
+    deferPayloadStageMaterialized(
+      details: PayloadStageMaterializationDetails,
+    ): void;
     executionFreshness?: WorkerCapabilityExecutionFreshness;
   }>,
 ): Promise<
@@ -67,12 +70,15 @@ export async function prepareOperationPayload(
       executionId: params.executionId,
       descriptor: params.descriptor,
       intent: params.intent,
+      ...(params.authoringObjective
+        ? { authoringObjective: params.authoringObjective }
+        : {}),
       controls: params.controls,
       ...(params.dependencyResults
         ? { dependencyResults: params.dependencyResults }
         : {}),
       settledCapabilityResults: params.settledCapabilityResults,
-      diagnostic: params.diagnostic,
+      deferPayloadStageMaterialized: params.deferPayloadStageMaterialized,
       ...(params.executionFreshness
         ? { executionFreshness: params.executionFreshness }
         : {}),
@@ -119,6 +125,9 @@ export async function prepareOperationPayload(
       call: params.call,
       executionId: params.executionId,
       descriptor: params.descriptor,
+      ...(params.authoringObjective
+        ? { authoringObjective: params.authoringObjective }
+        : {}),
       controls: params.controls,
       contextScope,
       ...(params.dependencyResults

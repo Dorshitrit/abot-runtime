@@ -235,6 +235,12 @@ export const RUNTIME_CONFIG_SCHEMA_FIELDS: readonly RuntimeConfigSchemaField[] =
         "Host-defined model profiles keyed by profile id for model-gateway policy.",
     },
     {
+      path: "models.embeddingProfiles",
+      type: "object-map",
+      description:
+        "Provider and model bindings for non-generative embedding operations.",
+    },
+    {
       path: "models.profiles.<profileId>.configRef",
       type: "non-empty-string",
       description:
@@ -293,6 +299,26 @@ export const RUNTIME_CONFIG_SCHEMA_FIELDS: readonly RuntimeConfigSchemaField[] =
       type: "non-empty-string",
       description:
         "Path to the runtime request-runner config file, resolved relative to the runtime config file.",
+    },
+    {
+      path: "longTermMemory.enabled",
+      type: "boolean",
+      defaultValue: "false",
+      description:
+        "Whether passive cross-session memory retrieval and collection are enabled.",
+    },
+    {
+      path: "longTermMemory.emitClientEvents",
+      type: "boolean",
+      defaultValue: "false",
+      description:
+        "Whether bounded memory lifecycle events are visible to clients.",
+    },
+    {
+      path: "longTermMemory.embeddingProfileId",
+      type: "non-empty-string",
+      description:
+        "Embedding profile used by passive long-term memory when enabled.",
     },
     {
       path: "features",

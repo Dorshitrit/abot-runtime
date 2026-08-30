@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   normalizeWorkerCapabilityControlsSchema,
+  validateWorkerCapabilityAcceptedControls,
   validateWorkerCapabilityControls,
 } from "../orchestration/worker-capabilities/index.js";
 
@@ -69,6 +70,38 @@ describe("Worker capability controls", () => {
     ).toEqual({
       ok: false,
       issueCode: "controls_schema_string_invalid",
+    });
+  });
+
+  test("captures adapter-validated staged controls outside the public descriptor", () => {
+    const result = validateWorkerCapabilityAcceptedControls({
+      path: "target.txt",
+      selection: '{"placement":"replace","start_line":1,"end_line":1}',
+      lineBounds: [1, 1],
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        path: "target.txt",
+        selection: '{"placement":"replace","start_line":1,"end_line":1}',
+        lineBounds: [1, 1],
+      },
+    });
+    if (!result.ok) throw new Error(result.issueCode);
+    expect(Object.isFrozen(result.value)).toBe(true);
+    expect(Object.isFrozen(result.value.lineBounds)).toBe(true);
+  });
+
+  test("rejects a prepared action outside the shared flat controls envelope", () => {
+    expect(
+      validateWorkerCapabilityAcceptedControls({
+        selection: { placement: "replace" },
+      }),
+    ).toEqual({
+      ok: false,
+      issueCode: "accepted_controls_value_invalid",
+      controlId: "selection",
     });
   });
 });

@@ -61,10 +61,14 @@ const ROOT_REQUEST_STEERING = Object.freeze({
   updates: Object.freeze([]),
 });
 
+const AUTHORING_OBJECTIVE =
+  "Create the complete text document for the accepted target path.";
+
 const DESCRIPTOR = Object.freeze({
   capabilityId: "write_complete_file",
   summary: "Write one complete file.",
   effect: "mutation" as const,
+  requiresPayloadAuthoringObjective: true as const,
   controls: Object.freeze({
     type: "object" as const,
     additionalProperties: false as const,
@@ -251,6 +255,7 @@ describe("neutral Worker capability payload author", () => {
           acceptedCapability: {
             capabilityId: "write_complete_file",
             summary: "Write one complete file.",
+            authoringObjective: AUTHORING_OBJECTIVE,
             controls: { path: "sandbox/result.txt" },
           },
           contextScope: "standard",
@@ -267,6 +272,9 @@ describe("neutral Worker capability payload author", () => {
         }
         expect(Object.isFrozen(request.context.worker)).toBe(true);
         expect(Object.isFrozen(request.context.acceptedCapability)).toBe(true);
+        expect(request.context.acceptedCapability.authoringObjective).toBe(
+          AUTHORING_OBJECTIVE,
+        );
         expect(
           Object.isFrozen(request.context.acceptedCapability.controls),
         ).toBe(true);
@@ -284,6 +292,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-1",
         descriptor: DESCRIPTOR,
         controls,
@@ -312,6 +321,7 @@ describe("neutral Worker capability payload author", () => {
     });
     const canonicalInput = {
       call: WORKER_CALL,
+      authoringObjective: AUTHORING_OBJECTIVE,
       descriptor: DESCRIPTOR,
       controls: { path: "sandbox/result.txt" },
       settledCapabilityResults: [],
@@ -385,22 +395,34 @@ describe("neutral Worker capability payload author", () => {
       capabilityAuthorities: Object.freeze(["root"]),
       model: { invoke },
     });
+    const rootPayloadInput = {
+      call: ROOT_CALL,
+      executionId: "capability-execution-1",
+      descriptor: DESCRIPTOR,
+      controls: { path: "sandbox/result.txt" },
+      requestSteering: ROOT_REQUEST_STEERING,
+      settledCapabilityResults: [],
+      contract: {
+        instructions: "Return the complete file body.",
+        minBytes: 0,
+        maxBytes: 64,
+      },
+    } as const;
 
     await expect(
       author.author({
-        call: ROOT_CALL,
-        executionId: "capability-execution-1",
-        descriptor: DESCRIPTOR,
-        controls: { path: "sandbox/result.txt" },
-        requestSteering: ROOT_REQUEST_STEERING,
-        settledCapabilityResults: [],
-        contract: {
-          instructions: "Return the complete file body.",
-          minBytes: 0,
-          maxBytes: 64,
-        },
+        ...rootPayloadInput,
+        authoringObjective: AUTHORING_OBJECTIVE,
       }),
-    ).resolves.toEqual({ status: "authored", body: "direct body\n" });
+    ).resolves.toEqual({
+      status: "failed",
+      code: "payload_context_invalid",
+    });
+
+    await expect(author.author(rootPayloadInput)).resolves.toEqual({
+      status: "authored",
+      body: "direct body\n",
+    });
     expect(invoke).toHaveBeenCalledOnce();
   });
 
@@ -536,6 +558,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-1",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/result.txt" },
@@ -567,6 +590,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-1",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/result.txt" },
@@ -628,6 +652,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-1",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/result.txt" },
@@ -687,6 +712,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-1",
         descriptor: Object.freeze({
           ...DESCRIPTOR,
@@ -748,6 +774,7 @@ describe("neutral Worker capability payload author", () => {
         expect(request.responseFormat).toEqual(responseFormat);
         expect(request.context).toMatchObject({
           acceptedCapability: {
+            authoringObjective: AUTHORING_OBJECTIVE,
             controls: {
               path: "sandbox/result.txt",
               instruction: "Replace the first line.",
@@ -784,6 +811,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-1",
         descriptor: DESCRIPTOR,
         controls: {
@@ -833,6 +861,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-1",
         descriptor: Object.freeze({
           ...DESCRIPTOR,
@@ -934,6 +963,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-1",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/result.txt" },
@@ -1006,6 +1036,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-1",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/result.txt" },
@@ -1040,6 +1071,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-1",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/result.txt" },
@@ -1121,6 +1153,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-3",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/report.md" },
@@ -1178,6 +1211,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-2",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/report.md" },
@@ -1280,6 +1314,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-3",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/result.txt" },
@@ -1351,17 +1386,14 @@ describe("neutral Worker capability payload author", () => {
     const prompt = "Create the exact requested file body.";
     const semanticDigest = "CURRENT_TARGET_ONLY_COMPACTION_DIGEST";
     const contextCompactionStore = createRequestContextCompactionStore();
-    const checkpoint = commitPayloadSemanticCheckpoint(
-      contextCompactionStore,
-      {
-        requestId,
-        prompt,
-        executionId: "capability-execution-1",
-        sourceRevision: 2,
-        semanticDigest,
-        stageIndex: 1,
-      },
-    );
+    const checkpoint = commitPayloadSemanticCheckpoint(contextCompactionStore, {
+      requestId,
+      prompt,
+      executionId: "capability-execution-1",
+      sourceRevision: 2,
+      semanticDigest,
+      stageIndex: 1,
+    });
     const invoke = vi.fn(async (input) => {
       const messages = input.messages as readonly ChatMessage[];
       const canonicalMessage = messages.find(({ content }) =>
@@ -1399,15 +1431,15 @@ describe("neutral Worker capability payload author", () => {
       return { text: "selection", meta: {} };
     });
     const author = createRequestWorkerCapabilityPayloadAuthor(
-      deriveTestRequestExecutionScope(
-        payloadRequest(invoke, requestId),
-        { contextCompactionStore },
-      ),
+      deriveTestRequestExecutionScope(payloadRequest(invoke, requestId), {
+        contextCompactionStore,
+      }),
     );
 
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-1",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/result.txt" },
@@ -1500,10 +1532,11 @@ describe("neutral Worker capability payload author", () => {
     contextCompactionStore.commit(checkpoint);
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
       expect(input.modelStep).toBe(WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP);
-      const serialized = JSON.stringify(input.messages);
+      const messages = asChatMessages(input.messages);
+      const serialized = JSON.stringify(messages);
       expect(serialized).not.toContain("RAW_PAYLOAD_EVIDENCE");
       expect(serialized).toContain(semanticDigest);
-      const canonicalMessage = input.messages.find(({ content }) =>
+      const canonicalMessage = messages.find(({ content }) =>
         content.startsWith("Canonical runtime context:\n"),
       )!;
       const canonical = JSON.parse(
@@ -1528,6 +1561,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-2",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/result.txt" },
@@ -1556,6 +1590,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-2",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/report.md" },
@@ -1621,6 +1656,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-1",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/result.txt" },
@@ -1650,6 +1686,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-1",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/result.txt" },
@@ -1692,6 +1729,7 @@ describe("neutral Worker capability payload author", () => {
     });
     const input = {
       call,
+      authoringObjective: AUTHORING_OBJECTIVE,
       executionId: "capability-execution-2",
       descriptor: DESCRIPTOR,
       controls: { path: pathSecret },
@@ -1765,16 +1803,13 @@ describe("neutral Worker capability payload author", () => {
     const semanticDigest =
       "MID-FACT-01-954 and FINAL-MARKER-01-4204 from evidence/source-01.md";
     const contextCompactionStore = createRequestContextCompactionStore();
-    const checkpoint = commitPayloadSemanticCheckpoint(
-      contextCompactionStore,
-      {
-        requestId: "request-bound-payload",
-        prompt: exactRequest,
-        executionId: "capability-execution-1",
-        sourceRevision: 4,
-        semanticDigest,
-      },
-    );
+    const checkpoint = commitPayloadSemanticCheckpoint(contextCompactionStore, {
+      requestId: "request-bound-payload",
+      prompt: exactRequest,
+      executionId: "capability-execution-1",
+      sourceRevision: 4,
+      semanticDigest,
+    });
     const invoke = vi.fn(async (input) => {
       expect(input.messages).toHaveLength(3);
       expect(input.messages[0]?.role).toBe("system");
@@ -1853,6 +1888,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-1",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/result.txt" },
@@ -2039,6 +2075,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-1",
         descriptor: Object.freeze({
           ...DESCRIPTOR,
@@ -2085,6 +2122,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-2",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/connected-script.js" },
@@ -2202,6 +2240,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-3",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/current.js" },
@@ -2316,6 +2355,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-2",
         descriptor: DESCRIPTOR,
         controls: { path: targetPath },
@@ -2404,6 +2444,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-2",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/current.txt" },
@@ -2444,6 +2485,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-1",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/result.txt" },
@@ -2475,6 +2517,7 @@ describe("neutral Worker capability payload author", () => {
       await expect(
         author.author({
           call: WORKER_CALL,
+          authoringObjective: AUTHORING_OBJECTIVE,
           executionId: "capability-execution-1",
           descriptor: DESCRIPTOR,
           controls: { path: "sandbox/result.txt" },
@@ -2552,6 +2595,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: WORKER_CALL,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-1",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/result.txt" },
@@ -2579,6 +2623,7 @@ describe("neutral Worker capability payload author", () => {
     await expect(
       author.author({
         call: callWithPriorResults,
+        authoringObjective: AUTHORING_OBJECTIVE,
         executionId: "capability-execution-3",
         descriptor: DESCRIPTOR,
         controls: { path: "sandbox/result.txt" },

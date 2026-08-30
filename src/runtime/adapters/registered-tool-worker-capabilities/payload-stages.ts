@@ -5,10 +5,7 @@ import type {
   WorkerCapabilityExecutionFreshness,
   WorkerCapabilityPayloadAuthor,
 } from "../../orchestration/worker-capabilities/index.js";
-import type {
-  RegisteredToolNormalInvocationExecutor,
-  RegisteredToolNormalInvocationProjection,
-} from "../registered-tool-normal-invocations.js";
+import type { RegisteredToolNormalInvocationProjection } from "../registered-tool-normal-invocations.js";
 import {
   materializeRegisteredToolPayloadStageResponseFormat,
   resolveRegisteredToolPayloadRelatedArtifactContexts,
@@ -19,10 +16,6 @@ import {
   type RegisteredToolPayloadStage,
   type RegisteredToolStagedPayloadPlan,
 } from "../registered-tool-payload-plan.js";
-import {
-  traceRegisteredToolWorkerCapabilityPayloadStageMaterialized,
-  type RegisteredToolWorkerCapabilityProviderDiagnostic,
-} from "../registered-tool-worker-capability-diagnostics.js";
 import { normalizePayloadAuthoringResult } from "./payload-authoring-result.js";
 import {
   executionFreshnessRejection,
@@ -32,11 +25,15 @@ import {
   STEERING_SUPERSEDED_SUMMARY,
   type PayloadLifecycleContext,
 } from "./payload-rejection.js";
+import type {
+  PayloadLifecycleEmitter,
+  PayloadStageMaterializationDetails,
+} from "./payload-observability.js";
 
 export type StagedOperationPayloadParams = Readonly<{
   plan: RegisteredToolStagedPayloadPlan;
   handle: RegisteredToolNormalInvocationProjection["handle"];
-  executor: RegisteredToolNormalInvocationExecutor;
+  executor: PayloadLifecycleEmitter;
   sharedState: ToolExecutionSharedState;
   payloadAuthor?: WorkerCapabilityPayloadAuthor;
   call: Parameters<WorkerCapabilityPayloadAuthor["author"]>[0]["call"];
@@ -45,6 +42,7 @@ export type StagedOperationPayloadParams = Readonly<{
     WorkerCapabilityPayloadAuthor["author"]
   >[0]["descriptor"];
   intent: string;
+  authoringObjective?: string;
   controls: Readonly<Record<string, unknown>>;
   dependencyResults?: Parameters<
     WorkerCapabilityPayloadAuthor["author"]
@@ -52,7 +50,9 @@ export type StagedOperationPayloadParams = Readonly<{
   settledCapabilityResults: Parameters<
     WorkerCapabilityPayloadAuthor["author"]
   >[0]["settledCapabilityResults"];
-  diagnostic: RegisteredToolWorkerCapabilityProviderDiagnostic;
+  deferPayloadStageMaterialized(
+    details: PayloadStageMaterializationDetails,
+  ): void;
   executionFreshness?: WorkerCapabilityExecutionFreshness;
 }>;
 
@@ -322,6 +322,9 @@ class PayloadStageRunner {
           call: this.params.call,
           executionId: this.params.executionId,
           descriptor: this.params.descriptor,
+          ...(this.params.authoringObjective
+            ? { authoringObjective: this.params.authoringObjective }
+            : {}),
           controls: this.params.controls,
           contextScope,
           ...(this.params.dependencyResults
@@ -441,18 +444,12 @@ class PayloadStageRunner {
     }>,
   ): PayloadStageCompleted | PayloadStageRejection {
     if (input.stageInputs.literalResolution.status === "matched") {
-      traceRegisteredToolWorkerCapabilityPayloadStageMaterialized(
-        this.params.diagnostic,
-        this.params.descriptor.capabilityId,
-        this.params.call,
-        this.params.executionId,
-        {
-          payloadStage: input.started.stageIndex,
-          payloadStageCount: input.started.stageCount,
-          source: "manifest_literal",
-          byteCount: Buffer.byteLength(input.body, "utf8"),
-        },
-      );
+      this.params.deferPayloadStageMaterialized({
+        payloadStage: input.started.stageIndex,
+        payloadStageCount: input.started.stageCount,
+        source: "manifest_literal",
+        byteCount: Buffer.byteLength(input.body, "utf8"),
+      });
     }
     input.materialized[input.stage.outputParam] = input.body;
     const completed = this.params.executor.emitPayloadLifecycle({

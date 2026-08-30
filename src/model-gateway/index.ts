@@ -9,12 +9,18 @@ export {
   type ModelProviderInputTokenCount,
   type ModelProviderInputTokenCountParams,
   type ModelProviderInputTokenCountResult,
+  type ModelProviderEmbeddingParams,
+  type ModelProviderEmbeddingModelCatalog,
+  type ModelProviderEmbeddingModelCatalogResult,
+  type ModelProviderEmbeddingModelDiscoveryParams,
+  type ModelProviderEmbeddingResult,
   type ModelProviderInvocationParams,
   type ModelProviderInvocationResult,
   type ModelProviderRawInvocation,
 } from "./provider-adapter.js";
 export {
   createChatHandler,
+  createEmbeddingHandler,
   createInputTokenCountHandler,
   createModelGatewayServer,
   createRawHandler,
@@ -22,6 +28,11 @@ export {
   type GatewayResponse,
   type ModelGatewayHandlerOptions,
 } from "./server.js";
+export {
+  EmbeddingProviderRequestError,
+  executeEmbeddingRequest,
+} from "./embeddings/execution.js";
+export { discoverEmbeddingModels } from "./embeddings/discovery.js";
 export type {
   ModelContextConfig,
   ModelFormatTokenAccountingConfig,
@@ -29,6 +40,10 @@ export type {
   ModelGatewayProviderConfig,
   ModelGatewayInputTokenCountParams,
   ModelGatewayInputTokenCountResult,
+  ModelGatewayEmbeddingParams,
+  ModelGatewayEmbeddingProfileConfig,
+  ModelGatewayEmbeddingRequest,
+  ModelGatewayEmbeddingResult,
   ModelGatewayRequest,
   ModelProfile,
   ResolvedModelInvocation,

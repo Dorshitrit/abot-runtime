@@ -222,6 +222,58 @@ describe("local runtime web backend", () => {
     ]);
   });
 
+  test("serves passive memory onboarding from the shared local service", async () => {
+    const backend = new LocalRuntimeWebBackend({
+      rootDir,
+      defaultEnvironmentId: "prod",
+    });
+    server = createServer((req, res) => {
+      const pathname = new URL(req.url || "/", "http://localhost").pathname;
+      void backend.handleHttp(req, res, pathname);
+    });
+    const port = await listen(server);
+
+    const response = await fetch(
+      `http://127.0.0.1:${port}/web-api/runtime/memory`,
+    );
+    const payload = (await response.json()) as Record<string, unknown>;
+
+    expect(response.ok).toBe(true);
+    expect(payload).toEqual({
+      ok: true,
+      status: {
+        enabled: false,
+        emitClientEvents: false,
+        providers: [{ id: "ollama", type: "ollama" }],
+      },
+    });
+  });
+
+  test("serves canonical memory records from the selected runtime environment", async () => {
+    const backend = new LocalRuntimeWebBackend({
+      rootDir,
+      defaultEnvironmentId: "prod",
+    });
+    server = createServer((req, res) => {
+      const pathname = new URL(req.url || "/", "http://localhost").pathname;
+      void backend.handleHttp(req, res, pathname);
+    });
+    const port = await listen(server);
+
+    const response = await fetch(
+      `http://127.0.0.1:${port}/web-api/runtime/memory/records?environment=dev`,
+    );
+    const payload = (await response.json()) as Record<string, unknown>;
+
+    expect(response.ok).toBe(true);
+    expect(payload).toEqual({
+      ok: true,
+      status: { enabled: false, available: true },
+      items: [],
+      total: 0,
+    });
+  });
+
   test("keeps onboarding routes healthy before a provider and model are configured", async () => {
     await rm(join(rootDir, "runtime.config.json"));
     await rm(join(rootDir, "request-runner.config.json"));

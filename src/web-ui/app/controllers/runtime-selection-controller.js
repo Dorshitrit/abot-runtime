@@ -56,6 +56,14 @@ export function createRuntimeSelectionController({
   onModelCatalogLoaded = () => {},
   onModelCatalogUnavailable = () => {},
 }) {
+  let agentModeLoadRevision = 0;
+  const agentModeMutationRevisions = new Map();
+  let agentModeMutationInFlight = false;
+  let modelCatalogLoadRevision = 0;
+
+  const agentModeMutationRevisionFor = (environmentId) =>
+    agentModeMutationRevisions.get(environmentId) || 0;
+
   function configuredEnvironmentOptions() {
     const raw = Array.isArray(state.config?.environments)
       ? state.config.environments
@@ -277,6 +285,7 @@ export function createRuntimeSelectionController({
 
   function renderAgentMode() {
     const meta = agentModeMeta(state.agentMode);
+    dom.agentModeButton.disabled = agentModeMutationInFlight;
     dom.agentModeButton.innerHTML = `
       <span class="agent-mode-icon">${escapeHtml(meta.icon)}</span>
       <span>${escapeHtml(meta.label)}</span>`;
@@ -295,7 +304,7 @@ export function createRuntimeSelectionController({
         return `
           <button class="agent-mode-option ${selected ? "selected" : ""}" type="button"
             role="menuitemradio" aria-checked="${selected ? "true" : "false"}"
-            tabindex="${selected ? "0" : "-1"}" data-mode="${escapeAttribute(mode)}">
+            tabindex="${selected ? "0" : "-1"}" data-mode="${escapeAttribute(mode)}" ${agentModeMutationInFlight ? "disabled" : ""}>
             <span class="agent-mode-option-icon">${escapeHtml(item.icon)}</span>
             <span><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(item.description)}</small></span>
           </button>`;
@@ -312,42 +321,85 @@ export function createRuntimeSelectionController({
   }
 
   async function loadAgentMode() {
+    const revision = ++agentModeLoadRevision;
+    const environmentId = selectedEnvironmentId();
+    const mutationRevision = agentModeMutationRevisionFor(environmentId);
     renderAgentMode();
     try {
-      const payload = await client.getAgentMode(selectedEnvironmentId());
+      const payload = await client.getAgentMode(environmentId);
+      if (
+        revision !== agentModeLoadRevision ||
+        mutationRevision !== agentModeMutationRevisionFor(environmentId) ||
+        environmentId !== selectedEnvironmentId()
+      ) {
+        return false;
+      }
       state.agentMode = normalizeAgentMode(payload.mode);
       state.supportedAgentModes = Array.isArray(payload.supportedModes)
         ? payload.supportedModes.map(normalizeAgentMode)
         : state.supportedAgentModes;
       renderAgentMode();
+      return true;
     } catch {
+      if (
+        revision !== agentModeLoadRevision ||
+        mutationRevision !== agentModeMutationRevisionFor(environmentId) ||
+        environmentId !== selectedEnvironmentId()
+      ) {
+        return false;
+      }
       state.agentMode = "reasoning";
       renderAgentMode();
+      return false;
     }
   }
 
   async function setAgentMode(mode) {
+    if (agentModeMutationInFlight) return false;
+    agentModeMutationInFlight = true;
+    const environmentId = selectedEnvironmentId();
+    const revision = agentModeMutationRevisionFor(environmentId) + 1;
+    agentModeMutationRevisions.set(environmentId, revision);
+    const loadRevisionAtStart = ++agentModeLoadRevision;
     const previousMode = state.agentMode;
-    state.agentMode = normalizeAgentMode(mode);
+    const requestedMode = normalizeAgentMode(mode);
+    state.agentMode = requestedMode;
     state.agentModeMenuOpen = false;
     renderAgentMode();
     dom.agentModeButton.focus();
     try {
-      const payload = await client.setAgentMode(
-        state.agentMode,
-        selectedEnvironmentId(),
-      );
+      const payload = await client.setAgentMode(requestedMode, environmentId);
+      if (
+        revision !== agentModeMutationRevisionFor(environmentId) ||
+        environmentId !== selectedEnvironmentId()
+      ) {
+        return false;
+      }
+      agentModeLoadRevision += 1;
       state.agentMode = normalizeAgentMode(payload.mode);
       renderAgentMode();
+      return true;
     } catch (error) {
-      state.agentMode = previousMode;
-      renderAgentMode();
+      if (
+        revision !== agentModeMutationRevisionFor(environmentId) ||
+        environmentId !== selectedEnvironmentId()
+      ) {
+        return false;
+      }
+      if (agentModeLoadRevision === loadRevisionAtStart) {
+        state.agentMode = previousMode;
+        renderAgentMode();
+      }
       recordControlEvent({
         type: "control",
         name: "Reasoning mode update failed",
         tone: "failed",
         summary: error instanceof Error ? error.message : String(error),
       });
+      return false;
+    } finally {
+      agentModeMutationInFlight = false;
+      renderAgentMode();
     }
   }
 
@@ -375,23 +427,38 @@ export function createRuntimeSelectionController({
   }
 
   async function loadModels() {
+    const revision = ++modelCatalogLoadRevision;
+    const environmentId = selectedEnvironmentId();
     onModelCatalogLoading();
     let payload = null;
     try {
-      payload = await client.listModels(selectedEnvironmentId());
+      payload = await client.listModels(environmentId);
+      if (
+        revision !== modelCatalogLoadRevision ||
+        environmentId !== selectedEnvironmentId()
+      ) {
+        return false;
+      }
       state.defaultModelProfileId = textOf(payload.defaultProfileId);
       state.modelProfiles = Array.isArray(payload.profiles)
         ? payload.profiles
         : [];
     } catch (error) {
+      if (
+        revision !== modelCatalogLoadRevision ||
+        environmentId !== selectedEnvironmentId()
+      ) {
+        return false;
+      }
       state.defaultModelProfileId = "";
       state.modelProfiles = [];
       renderModels();
       onModelCatalogUnavailable(error);
-      return;
+      return false;
     }
     renderModels();
     onModelCatalogLoaded(payload);
+    return true;
   }
 
   return {

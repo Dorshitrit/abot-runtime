@@ -8,6 +8,11 @@ import type {
   RequestOutputTextMode,
 } from "../request/result.js";
 import type { RequestSessionStore } from "../request/session-store.js";
+import type {
+  LongTermMemoryService,
+  MemoryCandidate,
+} from "../long-term-memory/contracts.js";
+import { scheduleFinalResponseMemory } from "../long-term-memory/finalization.js";
 
 type RequestFinalizationResult =
   | { status: "completed"; output: string }
@@ -33,6 +38,8 @@ export async function finalizeRequest(params: {
   agentMode: AgentMode;
   thinkingTrace?: SessionThinkingTraceEntry[];
   finalObservation?: RequestObservation;
+  memoryCandidates?: readonly MemoryCandidate[];
+  longTermMemory?: LongTermMemoryService;
 }): Promise<RequestFinalizationResult> {
   if (!params.rawOutput.trim()) {
     failRequest({
@@ -69,6 +76,14 @@ export async function finalizeRequest(params: {
           observationContent: params.finalObservation.observationContent,
         }
       : {}),
+    afterPersist: () =>
+      scheduleFinalResponseMemory({
+        service: params.longTermMemory,
+        candidates: params.memoryCandidates,
+        requestId: params.requestId,
+        sessionId: params.sessionId,
+        onEvent: params.events.event.bind(params.events),
+      }),
   });
 
   return { status: "completed", output };

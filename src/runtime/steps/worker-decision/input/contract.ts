@@ -4,6 +4,7 @@ import { projectWorkerCapabilitySelectionCatalog } from "../capability-catalog.j
 import { normalizeWorkerCapabilitySelectionRejection } from "../capability-selection-rejection.js";
 import { WORKER_DECISION_ACTIONS } from "../contracts.js";
 import { createWorkerDecisionFormat } from "../format.js";
+import { resolveWorkerDecisionAllowedActions } from "./action-policy.js";
 import { canOfferCapabilityBatch } from "./capability-selection.js";
 import type {
   PreparedWorkerCapabilitySelection,
@@ -24,6 +25,7 @@ export function prepareWorkerDecisionContract(
       | WorkerDecisionCapabilitySource
       | WorkerDecisionCapabilityResumeSource
       | undefined;
+    dependencyResultCount: number;
     capabilitySelection: PreparedWorkerCapabilitySelection;
   }>,
 ): PreparedWorkerDecisionContract {
@@ -48,6 +50,8 @@ export function prepareWorkerDecisionContract(
       params.options.capabilitySource?.binding.capabilities,
       params.projectedCapabilities,
     );
+  const capabilitySelectionRejectionPresent =
+    params.options.capabilitySelectionRejection !== undefined;
   const capabilitySelectionRejection =
     !capabilityExecutionPending && params.options.capabilitySelectionRejection
       ? normalizeWorkerCapabilitySelectionRejection(
@@ -71,12 +75,14 @@ export function prepareWorkerDecisionContract(
     selectedCapabilityExecution,
     selectedCapabilityBatchExecution,
   });
-  const allowedActions = Object.freeze([
-    WORKER_DECISION_ACTIONS[0],
-    WORKER_DECISION_ACTIONS[1],
-    ...(canInvokeSingleCapability ? [WORKER_DECISION_ACTIONS[2]] : []),
-    ...(canInvokeCapabilityBatch ? [WORKER_DECISION_ACTIONS[3]] : []),
-  ]);
+  const allowedActions = resolveWorkerDecisionAllowedActions({
+    capabilityExecutionPending,
+    capabilitySelectionRejectionPresent,
+    dependencyResultCount: params.dependencyResultCount,
+    requestToolResultCount: params.options.requestToolResults.results.length,
+    canInvokeSingleCapability,
+    canInvokeCapabilityBatch,
+  });
   const remainingCapabilityExecutions = params.canonicalSource
     ? params.canonicalSource.head.policy.limits.maxCapabilityExecutions -
       params.canonicalSource.head.state.capabilityExecutions.length
@@ -90,6 +96,8 @@ export function prepareWorkerDecisionContract(
     capabilities,
     maxBatchCapabilityExecutions,
     allowSingleCapabilityInvocation: !selectedCapabilityBatchExecution,
+    allowReturnResult: allowedActions.includes(WORKER_DECISION_ACTIONS[0]),
+    allowReturnFailure: allowedActions.includes(WORKER_DECISION_ACTIONS[1]),
     ...(pendingCapabilitySelection ? { pendingCapabilitySelection } : {}),
     ...(pendingCapabilityBatchSelection
       ? {

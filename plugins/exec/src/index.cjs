@@ -1146,12 +1146,49 @@ async function captureFilesystemDelta(execution) {
     return null;
   }
 }
+function projectExecFilesystemEvidence(delta, logicalRoot) {
+  const effects = delta.actions.map(renderExecFilesystemEffect);
+  const omittedEffectCount = Math.max(
+    0,
+    delta.changedEntryCount - effects.length
+  );
+  const omittedEffectLine = omittedEffectCount > 0 ? `- ${omittedEffectCount} additional changed ${omittedEffectCount === 1 ? "entry" : "entries"} omitted by the ${delta.observation.actionLimit}-effect projection limit.` : void 0;
+  const outputLines = Object.freeze([
+    `Filesystem changes observed: ${delta.changedEntryCount}${delta.observation.complete ? "" : " (bounded observation)"}`,
+    "Filesystem effects observed:",
+    ...effects,
+    ...omittedEffectLine ? [omittedEffectLine] : []
+  ]);
+  return Object.freeze({
+    outputLines,
+    mutationGrounding: [
+      "Observed post-command filesystem effects (settled tool evidence; not command intent, semantic verification, or complete artifact content):",
+      `- observation root: ${logicalRoot}`,
+      `- observation complete: ${delta.observation.complete}`,
+      `- changed entries: ${delta.changedEntryCount}`,
+      `- listed effects: ${effects.length}`,
+      `- effects truncated: ${delta.observation.actionsTruncated}`,
+      "Effects:",
+      ...effects,
+      ...omittedEffectLine ? [omittedEffectLine] : []
+    ].join("\n")
+  });
+}
+function renderExecFilesystemEffect(action) {
+  const target = action.target ? `: ${action.target}` : "";
+  const state = action.details === "exec_filesystem_created" ? "created" : action.details === "exec_filesystem_modified" ? "modified" : action.details === "exec_filesystem_removed" ? "removed" : void 0;
+  return `- ${action.type}${target}${state ? ` (${state})` : ""}`;
+}
 async function finalizeExecResult(params) {
   const { snapshot, execution } = params;
   const exitCode = snapshot.exitCode ?? -1;
   const cancellationIsSuccess = params.cancellationIsSuccess === true && snapshot.terminationReason === "cancelled";
   const filesystemDelta = await captureFilesystemDelta(execution);
   const observedStateChange = filesystemDelta?.observedStateChange === true;
+  const filesystemEvidence = observedStateChange && filesystemDelta ? projectExecFilesystemEvidence(
+    filesystemDelta,
+    execution.cwd.logicalPath
+  ) : null;
   const commandHasData = snapshot.stdout.sawOutput || snapshot.stderr.sawOutput;
   const ok = exitCode === 0 || cancellationIsSuccess;
   const inconclusiveSuccess = exitCode === 0 && !commandHasData && !observedStateChange;
@@ -1166,9 +1203,7 @@ async function finalizeExecResult(params) {
       `Process ID: ${snapshot.processId}`,
       `Process status: ${snapshot.terminationReason ?? "completed"}`,
       `Exit code: ${exitCode}`,
-      ...filesystemDelta?.observedStateChange ? [
-        `Filesystem changes observed: ${filesystemDelta.changedEntryCount}${filesystemDelta.observation.complete ? "" : " (bounded observation)"}`
-      ] : [],
+      ...filesystemEvidence ? filesystemEvidence.outputLines : [],
       "STDOUT:",
       streamDisplay(snapshot.stdout),
       "STDERR:",
@@ -1181,6 +1216,7 @@ async function finalizeExecResult(params) {
   const data = {
     ...commandHasData ? { hasData: true } : {},
     ...observedStateChange ? { mutationEvidence: true } : {},
+    ...filesystemEvidence ? { mutationGrounding: filesystemEvidence.mutationGrounding } : {},
     processId: snapshot.processId,
     processStatus,
     outputBounds: outputBoundsData(

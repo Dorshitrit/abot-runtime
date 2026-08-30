@@ -37,6 +37,7 @@ import {
 } from "./payload-instructions.js";
 import { validateJsonSchemaValue } from "../../model/json-schema-value.js";
 import { isRuntimeDelegateRoleId } from "../roles.js";
+import { WORKER_CAPABILITY_AUTHORING_OBJECTIVE_MAX_LENGTH } from "./contracts.js";
 
 type PayloadAuthorInput = Parameters<
   WorkerCapabilityPayloadAuthor["author"]
@@ -226,7 +227,7 @@ function capturePayloadContext(
       input.requestSteering,
       requestSteering,
     ) ||
-    !validPayloadAssignment(input) ||
+    !validPayloadAssignment(input, principal) ||
     !validPayloadContract(input.contract) ||
     !validPayloadStageContract(input, contextScope) ||
     !validPayloadEvidenceContext(input, contextScope) ||
@@ -246,11 +247,6 @@ function capturePayloadContext(
     return null;
   }
   const sharedContext = {
-    acceptedCapability: {
-      capabilityId: input.descriptor.capabilityId,
-      summary: input.descriptor.summary,
-      controls: input.controls,
-    },
     contextScope,
     ...(input.dependencyResults
       ? { dependencyResults: input.dependencyResults }
@@ -274,12 +270,26 @@ function capturePayloadContext(
       : {}),
   };
   return principal.kind === "worker"
-    ? immutableSnapshot({ worker: principal.context, ...sharedContext })
+    ? immutableSnapshot({
+        worker: principal.context,
+        acceptedCapability: {
+          capabilityId: input.descriptor.capabilityId,
+          summary: input.descriptor.summary,
+          authoringObjective: input.authoringObjective!,
+          controls: input.controls,
+        },
+        ...sharedContext,
+      })
     : immutableSnapshot({
         root: {
           ...principal.context,
           steeringVersion: requestSteering!.version,
           updates: requestSteering!.updates,
+        },
+        acceptedCapability: {
+          capabilityId: input.descriptor.capabilityId,
+          summary: input.descriptor.summary,
+          controls: input.controls,
         },
         ...sharedContext,
       });
@@ -295,8 +305,24 @@ function payloadPrincipalMatchesSteering(
     : input === undefined;
 }
 
-function validPayloadAssignment(input: PayloadAuthorInput): boolean {
-  return typeof input.executionId === "string" && input.executionId.length > 0;
+function validPayloadAssignment(
+  input: PayloadAuthorInput,
+  principal: PayloadPrincipal,
+): boolean {
+  if (typeof input.executionId !== "string" || input.executionId.length === 0) {
+    return false;
+  }
+  const supplied = Object.hasOwn(input, "authoringObjective");
+  if (principal.kind === "root") return !supplied;
+  return (
+    input.descriptor.requiresPayloadAuthoringObjective === true &&
+    supplied &&
+    typeof input.authoringObjective === "string" &&
+    input.authoringObjective.trim() === input.authoringObjective &&
+    input.authoringObjective.length > 0 &&
+    input.authoringObjective.length <=
+      WORKER_CAPABILITY_AUTHORING_OBJECTIVE_MAX_LENGTH
+  );
 }
 
 function validPayloadContract(input: PayloadAuthorInput["contract"]): boolean {

@@ -1,5 +1,8 @@
 import { MODEL_STEPS } from "../../../shared/model-steps.js";
-import type { RoleCapabilitySelectionProjection } from "../../orchestration/role-calls/index.js";
+import type {
+  RoleCapabilitySelectionProjection,
+  RoleCapabilitySelectionReconsiderationCause,
+} from "../../orchestration/role-calls/index.js";
 import {
   CAPABILITY_CATALOG_GROUP_COUNT_MAX,
   type CapabilityControls,
@@ -72,6 +75,8 @@ export type ExecutionAgentCapabilityInvocation = Readonly<{
   capabilityId: string;
   /** Client-facing presentation metadata; never execution input. */
   intent: string;
+  /** Request-local execution input consumed only while refining controls. */
+  operationObjective?: string;
   selectionControls?: CapabilityControls;
   /** Present only when selection mechanically satisfies the full schema. */
   controls?: CapabilityControls;
@@ -117,10 +122,11 @@ export type ExecutionAgentDecision =
   | ExecutionAgentInvokePlannerDecision
   | ExecutionAgentInvokeAuditorDecision;
 
-/** Runtime-only transition emitted when refinement declines an accepted selection. */
+/** Runtime-only transition emitted when controls refinement exhausts validation. */
 export type ExecutionAgentReconsiderCapabilitySelectionDecision = Readonly<{
   action: "reconsider_capability_selection";
   selection: RoleCapabilitySelectionProjection;
+  cause: RoleCapabilitySelectionReconsiderationCause;
   acknowledgement?: undefined;
   title?: undefined;
 }>;

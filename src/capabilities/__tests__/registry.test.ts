@@ -160,6 +160,26 @@ describe("tool registry", () => {
     );
   });
 
+  test("rejects staged model outputs as decision selection controls", () => {
+    const base = createStagedLiteralModule();
+    const module: ToolModuleDeclaration = {
+      ...base,
+      normalInvocation: {
+        ...base.normalInvocation,
+        operations: [
+          {
+            ...base.normalInvocation.operations[0]!,
+            selectionControlIds: ["selection"],
+          },
+        ],
+      },
+    };
+
+    expect(() => buildToolRegistry([module])).toThrow(
+      "selection control selection must remain in the effective public input",
+    );
+  });
+
   test.each([
     {
       label: "coexists with minBytesOverride",
@@ -219,7 +239,7 @@ describe("tool registry", () => {
       label: "is declared on a non-final stage",
       mutate(module: MutableStagedLiteralModule) {
         const spec = module.definition.payloadChannelSpec;
-        const literalStage = {
+        const literalStage: Record<string, unknown> = {
           ...spec.stages[1]!,
           outputParam: "intermediate",
         };

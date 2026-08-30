@@ -13,7 +13,7 @@ import type {
   RuntimePluginLoadContext,
   ToolExecutionContext,
   ToolImplementationOutput,
-} from "../plugin.js";
+} from "../../plugin-sdk/index.js";
 import type { RuntimePaths } from "../ports.js";
 
 const rootDir = process.cwd();

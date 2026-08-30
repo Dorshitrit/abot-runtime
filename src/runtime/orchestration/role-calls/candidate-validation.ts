@@ -8,6 +8,26 @@ import {
   normalizeRoleCapabilitySelectionProjection,
 } from "./capability-selection-reconsideration.js";
 import {
+  createRoleCapabilitySelectionSupervisionFingerprint,
+  isRoleCapabilitySelectionSupervisionState,
+} from "./capability-selection-supervision.js";
+import { isIssuedRoleCapabilitySelectionSupervisionState } from "./capability-selection-supervision-issuance.js";
+import {
+  isRoleOperationFingerprint,
+  isRoleOperationOutcomeFingerprintForOutcome,
+  isSameRoleOperationIdentity,
+  replayRoleOperationSupervisionEvidence,
+  type RoleOperationSupervisionEntry,
+  type RoleOperationSupervisionInterventionRecord,
+  type RoleOperationSupervisionSettlement,
+} from "./operation-supervision.js";
+import { isIssuedRoleOperationSupervisionInterventionForRequest } from "./operation-supervision-issuance.js";
+import {
+  isRoleOperationSupervisionSettlementHistoryValid,
+  isRoleOperationSupervisionState,
+} from "./operation-supervision-state-validation.js";
+import { isReconsiderationCauseBoundToInvocationCount } from "./reconsideration-cause.js";
+import {
   isRoleCapabilityId,
   ROLE_CAPABILITY_EXECUTION_LIMIT_MAX,
   ROLE_CAPABILITY_INVOCATION_INTENT_MAX_LENGTH,
@@ -21,6 +41,7 @@ import {
   type RoleCapabilityExecution,
 } from "./contracts.js";
 import { validateRoleCallPlans } from "./plan.js";
+import { findRoleActivationBudgetIssue } from "./activation-budget.js";
 import { isRoleCallWorkerCapabilityScope } from "./worker-capability-scope.js";
 import {
   isRoleCallWorkingDirectoryRoleId,
@@ -82,6 +103,10 @@ export function validateRoleCallState(
     !Array.isArray(state?.results) ||
     !Array.isArray(state?.plans) ||
     !Array.isArray(state?.capabilityExecutions) ||
+    !isRoleOperationSupervisionState(state?.operationSupervision) ||
+    !isRoleCapabilitySelectionSupervisionState(
+      state?.capabilitySelectionSupervision,
+    ) ||
     !Number.isInteger(state?.callSequence) ||
     !Number.isInteger(state?.resultSequence) ||
     !Number.isInteger(state?.capabilityExecutionSequence) ||
@@ -123,6 +148,10 @@ export function validateRoleCallState(
       state.results.length > 0 ||
       state.plans.length > 0 ||
       state.capabilityExecutions.length > 0 ||
+      state.operationSupervision.entries.length > 0 ||
+      state.operationSupervision.interventions.length > 0 ||
+      state.capabilitySelectionSupervision.epoch !== null ||
+      state.capabilitySelectionSupervision.records.length > 0 ||
       state.rootResponse !== null
     ) {
       issues.push(issue("invalid_empty_role_call_state", "state.phase"));
@@ -148,6 +177,8 @@ export function validateRoleCallState(
     state.phase === "completed" &&
     (state.activeCallId !== null ||
       root?.status !== "completed" ||
+      state.capabilitySelectionSupervision.epoch !== null ||
+      state.capabilitySelectionSupervision.records.length > 0 ||
       !isCanonicalTerminalText(
         state.rootResponse,
         policy.limits.maxResponseChars,
@@ -252,7 +283,71 @@ export function validateRoleCallState(
   }
   issues.push(...validateRoleCallPlans(state, policy));
   validateCapabilityExecutions(state, policy, issues);
+  if (!isValidRoleOperationSupervision(state, policy)) {
+    issues.push(
+      issue("invalid_role_operation_supervision", "state.operationSupervision"),
+    );
+  }
+  if (!isValidRoleCapabilitySelectionSupervision(state, policy)) {
+    issues.push(
+      issue(
+        "invalid_role_capability_selection_supervision",
+        "state.capabilitySelectionSupervision",
+      ),
+    );
+  }
+  const activationBudgetIssue = findRoleActivationBudgetIssue(state, policy);
+  if (activationBudgetIssue) issues.push(activationBudgetIssue);
   return issues;
+}
+
+function isValidRoleCapabilitySelectionSupervision(
+  state: RoleCallState,
+  policy: RoleCallPolicy,
+): boolean {
+  const supervision = state.capabilitySelectionSupervision;
+  if (!isRoleCapabilitySelectionSupervisionState(supervision)) return false;
+  if (supervision.epoch === null) return supervision.records.length === 0;
+  if (!isIssuedRoleCapabilitySelectionSupervisionState({ state })) return false;
+  if (state.phase !== "running" || supervision.records.length < 1) {
+    return false;
+  }
+  const call = findCall(state, supervision.epoch.callId);
+  const lastRecord = supervision.records.at(-1);
+  const reconsideration = call?.lastCapabilitySelectionReconsideration;
+  let expectedSupervisionFingerprint: string | undefined;
+  if (reconsideration) {
+    try {
+      expectedSupervisionFingerprint =
+        createRoleCapabilitySelectionSupervisionFingerprint({
+          steeringVersion: reconsideration.steeringVersion,
+          selection: reconsideration.selection,
+        });
+    } catch {
+      return false;
+    }
+  }
+  if (
+    !hasCapabilityAuthority(policy.authority, state, call) ||
+    state.activeCallId !== call.callId ||
+    call.status !== "active" ||
+    !lastRecord ||
+    !reconsideration ||
+    supervision.epoch.steeringVersion !== reconsideration.steeringVersion ||
+    lastRecord.invocationAttempt !== reconsideration.invocationAttempt ||
+    lastRecord.receiptFingerprint !== reconsideration.fingerprint ||
+    lastRecord.supervisionFingerprint !== expectedSupervisionFingerprint ||
+    call.activationCount !== lastRecord.invocationAttempt + 1
+  ) {
+    return false;
+  }
+  return supervision.records.every((record, index, records) => {
+    const previous = records[index - 1];
+    return (
+      record.invocationAttempt < call.activationCount &&
+      (!previous || record.invocationAttempt === previous.invocationAttempt + 1)
+    );
+  });
 }
 
 function isValidCapabilitySelectionReconsideration(
@@ -270,6 +365,7 @@ function isValidCapabilitySelectionReconsideration(
       "steeringVersion",
       "fingerprint",
       "selection",
+      "cause",
     ]) ||
     !Number.isSafeInteger(reconsideration.invocationAttempt) ||
     reconsideration.invocationAttempt < 1 ||
@@ -286,6 +382,10 @@ function isValidCapabilitySelectionReconsideration(
   );
   return (
     selection !== undefined &&
+    isReconsiderationCauseBoundToInvocationCount(
+      reconsideration.cause,
+      selection.invocations.length,
+    ) &&
     createRoleCapabilitySelectionFingerprint({
       steeringVersion: reconsideration.steeringVersion,
       selection,
@@ -343,6 +443,7 @@ function validateCapabilityExecutions(
         ROLE_CAPABILITY_INVOCATION_INTENT_MAX_LENGTH,
       ) ||
       !isExactJsonObjectString(execution.controlsJson) ||
+      !isValidExecutionActionFingerprint(execution) ||
       (execution.status !== "running" && execution.status !== "settled")
     ) {
       issues.push(
@@ -360,6 +461,7 @@ function validateCapabilityExecutions(
         call.status !== "waiting_for_capability" ||
         call.activationCount !== execution.invocationAttempt ||
         execution.outcome !== null ||
+        execution.outcomeFingerprint !== null ||
         execution.observedEffect !== null ||
         execution.summary !== null ||
         execution.referenceData !== undefined ||
@@ -384,6 +486,11 @@ function validateCapabilityExecutions(
         !isValidCapabilityResultReferences(execution.references) ||
         !isExactResultValidForCall(call, execution.exactResult) ||
         (execution.outcome !== "succeeded" && execution.outcome !== "failed") ||
+        (execution.outcomeFingerprint !== null &&
+          !isRoleOperationOutcomeFingerprintForOutcome(
+            execution.outcomeFingerprint,
+            execution.outcome,
+          )) ||
         !isSettledObservedEffectCompatible({
           declaredEffect: execution.declaredEffect,
           outcome: execution.outcome,
@@ -437,6 +544,129 @@ function validateCapabilityExecutions(
       );
     }
   }
+}
+
+function isValidExecutionActionFingerprint(
+  execution: RoleCapabilityExecution,
+): boolean {
+  return (
+    execution.actionFingerprint === undefined ||
+    isRoleOperationFingerprint(execution.actionFingerprint)
+  );
+}
+
+function isValidRoleOperationSupervision(
+  state: RoleCallState,
+  policy: RoleCallPolicy,
+): boolean {
+  const interventions = state.operationSupervision.interventions;
+  const allInterventionsWereIssuedForRequest = interventions.every(
+    (intervention) =>
+      isIssuedRoleOperationSupervisionInterventionForRequest({
+        requestId: state.requestId,
+        intervention,
+      }),
+  );
+  if (!allInterventionsWereIssuedForRequest) return false;
+  const settlements = projectOperationSupervisionSettlements(
+    state.capabilityExecutions,
+  );
+  if (!isRoleOperationSupervisionSettlementHistoryValid(settlements)) {
+    return false;
+  }
+  const replayed = replayRoleOperationSupervisionEvidence({
+    settlements,
+    interventions,
+  });
+  if (
+    !replayed ||
+    state.operationSupervision.entries.length !== replayed.entries.length
+  ) {
+    return false;
+  }
+  return (
+    state.operationSupervision.entries.every((current, index) => {
+      const replayedEntry = replayed.entries[index];
+      return (
+        replayedEntry !== undefined &&
+        isSameRoleOperationSupervisionEntry(current, replayedEntry)
+      );
+    }) &&
+    interventions.every((intervention) =>
+      isValidOperationSupervisionIntervention(state, policy, intervention),
+    )
+  );
+}
+
+function projectOperationSupervisionSettlements(
+  executions: readonly RoleCapabilityExecution[],
+): readonly RoleOperationSupervisionSettlement[] {
+  const settlements: RoleOperationSupervisionSettlement[] = [];
+  for (const execution of executions) {
+    if (
+      execution.status !== "settled" ||
+      execution.outcome === null ||
+      execution.observedEffect === null
+    ) {
+      continue;
+    }
+    settlements.push({
+      capabilityId: execution.capabilityId,
+      ...(execution.actionFingerprint
+        ? { actionFingerprint: execution.actionFingerprint }
+        : {}),
+      outcome: execution.outcome,
+      ...(execution.outcomeFingerprint
+        ? { outcomeFingerprint: execution.outcomeFingerprint }
+        : {}),
+      observedEffect: execution.observedEffect,
+      originExecutionId: execution.executionId,
+    });
+  }
+  return settlements;
+}
+
+function isSameRoleOperationSupervisionEntry(
+  left: RoleOperationSupervisionEntry,
+  right: RoleOperationSupervisionEntry,
+): boolean {
+  if (
+    left.stage !== right.stage ||
+    !isSameRoleOperationIdentity(left, right) ||
+    left.priorOutcome !== right.priorOutcome ||
+    left.outcomeFingerprint !== right.outcomeFingerprint ||
+    left.originExecutionId !== right.originExecutionId ||
+    left.matchingOutcomeCount !== right.matchingOutcomeCount
+  ) {
+    return false;
+  }
+  if (left.stage !== "intervened" || right.stage !== "intervened") {
+    return true;
+  }
+  return (
+    left.interventionCount === right.interventionCount &&
+    left.interventionCallId === right.interventionCallId &&
+    left.interventionInvocationAttempt === right.interventionInvocationAttempt
+  );
+}
+
+function isValidOperationSupervisionIntervention(
+  state: RoleCallState,
+  policy: RoleCallPolicy,
+  intervention: RoleOperationSupervisionInterventionRecord,
+): boolean {
+  const call = findCall(state, intervention.interventionCallId);
+  const executionWasRecordedForIntervention = state.capabilityExecutions.some(
+    (execution) =>
+      execution.callId === intervention.interventionCallId &&
+      execution.invocationAttempt ===
+        intervention.interventionInvocationAttempt,
+  );
+  return (
+    hasCapabilityAuthority(policy.authority, state, call) &&
+    intervention.interventionInvocationAttempt < call.activationCount &&
+    !executionWasRecordedForIntervention
+  );
 }
 
 export function hasCapabilityAuthority(

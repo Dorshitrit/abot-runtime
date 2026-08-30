@@ -6,6 +6,7 @@ import type {
   RequestLifecycleRuntime,
   RequestModelInvocationView,
   RequestModelRuntime,
+  RequestMemoryRuntime,
   RequestPresentation,
 } from "./contracts.js";
 import { createFrozenSurface, enumerableGetter } from "./immutable-view.js";
@@ -15,6 +16,7 @@ export type RequestSeedFacets = Readonly<{
   input: AcceptedRequestInput;
   session: RequestSessionSnapshot;
   model: RequestModelRuntime;
+  memory: RequestMemoryRuntime;
   lifecycle: RequestLifecycleRuntime;
   presentation: RequestPresentation;
 }>;
@@ -59,6 +61,11 @@ export function createRequestSeedFacets(
       : {}),
     modelGatewayClient: seed.modelGatewayClient,
   });
+  const memory = Object.freeze({
+    ...(seed.longTermMemory !== undefined
+      ? { longTermMemory: seed.longTermMemory }
+      : {}),
+  });
   const lifecycle = Object.freeze({
     ...(seed.requestSteering !== undefined
       ? { requestSteering: seed.requestSteering }
@@ -82,6 +89,7 @@ export function createRequestSeedFacets(
     input,
     session,
     model,
+    memory,
     lifecycle,
     presentation,
   });

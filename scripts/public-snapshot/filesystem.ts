@@ -25,6 +25,7 @@ export type SafeSourceFile = Readonly<{
 
 const GENERATED_TOP_LEVEL_DIRECTORIES = new Set([
   ".git",
+  ".runtime",
   "coverage",
   "dist",
   "node_modules",

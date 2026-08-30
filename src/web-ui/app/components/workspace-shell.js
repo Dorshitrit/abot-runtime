@@ -10,6 +10,7 @@ export function createWorkspaceShell({
   dom,
   viewport = window,
   documentRoot = document,
+  beforeWorkspaceChange = () => true,
 }) {
   const shellState = {
     ...createInitialWorkspaceShellState(),
@@ -84,36 +85,75 @@ export function createWorkspaceShell({
       : dom.closeConfigWorkspaceButton;
   }
 
-  function activateWorkspace(destination, options = {}) {
+  function prepareWorkspaceTransition(destination) {
     const nextWorkspace = normalizeWorkspaceDestination(destination);
+    if (nextWorkspace === shellState.workspace) {
+      return { nextWorkspace, commitBeforeChange: () => {} };
+    }
+    const preparedChange = beforeWorkspaceChange({
+      from: shellState.workspace,
+      to: nextWorkspace,
+    });
+    if (preparedChange === false || preparedChange === null) return null;
+    return {
+      nextWorkspace,
+      commitBeforeChange:
+        typeof preparedChange === "function" ? preparedChange : () => {},
+    };
+  }
+
+  function commitWorkspaceActivation(preparedTransition, options = {}) {
+    preparedTransition.commitBeforeChange();
+    const nextWorkspace = preparedTransition.nextWorkspace;
     const previousWorkspace = shellState.workspace;
     const previousSheet = shellState.activeSheet;
     shellState.workspace = nextWorkspace;
     shellState.activeSheet = "";
     syncShell();
 
-    if (options.focus === false) return;
+    if (options.focus === false) return true;
     if (nextWorkspace !== "chat") {
       viewport.requestAnimationFrame(() =>
         workspaceBackButton(nextWorkspace)?.focus(),
       );
-      return;
+      return true;
     }
     if (previousWorkspace !== "chat" || previousSheet) {
       dom.chatWorkspaceButton.focus();
     }
+    return true;
+  }
+
+  function prepareWorkspaceActivation(destination, options = {}) {
+    const preparedTransition = prepareWorkspaceTransition(destination);
+    if (!preparedTransition) return null;
+    let committed = false;
+    return () => {
+      if (committed) return true;
+      const activated = commitWorkspaceActivation(preparedTransition, options);
+      committed = activated;
+      return activated;
+    };
+  }
+
+  function activateWorkspace(destination, options = {}) {
+    const preparedActivation = prepareWorkspaceActivation(destination, options);
+    return preparedActivation ? preparedActivation() : false;
   }
 
   function setSessionsDrawerOpen(open, options = {}) {
+    const preparedTransition = prepareWorkspaceTransition("chat");
+    if (!preparedTransition) return false;
+    preparedTransition.commitBeforeChange();
     const wasOpen = shellState.activeSheet === "sessions";
     shellState.workspace = "chat";
     shellState.activeSheet = open ? "sessions" : "";
     syncShell();
 
-    if (options.focus === false) return;
+    if (options.focus === false) return true;
     if (open) {
       viewport.requestAnimationFrame(() => dom.closeSessionsButton?.focus());
-      return;
+      return true;
     }
     if (
       wasOpen &&
@@ -122,6 +162,7 @@ export function createWorkspaceShell({
     ) {
       dom.sessionsToggleButton.focus();
     }
+    return true;
   }
 
   function toggleSessionsDrawer() {
@@ -166,8 +207,7 @@ export function createWorkspaceShell({
       return true;
     }
     if (shellState.workspace !== "chat") {
-      activateWorkspace("chat");
-      return true;
+      return activateWorkspace("chat");
     }
     return false;
   }
@@ -230,6 +270,7 @@ export function createWorkspaceShell({
     bind,
     closeOverlaysOnEscape,
     load,
+    prepareWorkspaceActivation,
     setSessionsDrawerOpen,
     showToast,
   };

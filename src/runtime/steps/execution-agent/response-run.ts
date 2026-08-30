@@ -17,6 +17,10 @@ import { createExecutionAgentCompactionController } from "./compaction.js";
 import { createSessionMemoryAwareCompactionController } from "../../context/session-memory/index.js";
 import { buildExecutionAgentResponseInput } from "./response-input.js";
 import { buildExecutionAgentResponseRepairHint } from "./response-prompt.js";
+import { retrieveResponseLongTermMemory } from "../../long-term-memory/response-context.js";
+import type { RootAuthoredResponse } from "../../long-term-memory/contracts.js";
+import { createPlainRootAuthoredResponse } from "../../orchestration/final-response/authoring-contract.js";
+import { invokeRootAuthoredResponse } from "../../orchestration/final-response/invoke.js";
 
 const EXECUTION_AGENT_RESPONSE_MAX_REPAIR_ATTEMPTS = 2;
 
@@ -28,32 +32,67 @@ export async function runExecutionAgentResponse(
     steeringSnapshot: RequestSteeringSnapshot;
   }>,
 ): Promise<string> {
-  const input = buildExecutionAgentResponseInput(request, options);
+  const authored = await runExecutionAgentAuthoredResponse(request, options);
+  return authored.finalResponse;
+}
+
+export async function runExecutionAgentAuthoredResponse(
+  request: RequestExecutionScope,
+  options: Readonly<{
+    head: RoleCallLedgerHead;
+    call: RoleCallFrame;
+    steeringSnapshot: RequestSteeringSnapshot;
+  }>,
+): Promise<RootAuthoredResponse> {
+  const memoryEnabled = request.longTermMemory?.enabled === true;
+  const memoryMessage = memoryEnabled
+    ? await retrieveResponseLongTermMemory(request, options.steeringSnapshot)
+    : undefined;
   const maxResponseChars = Math.min(
     EXECUTION_AGENT_RESPONSE_MAX_LENGTH,
     options.head.policy.limits.maxResponseChars,
   );
-  return invokeRepairableRawModelStep({
+  const input = buildExecutionAgentResponseInput(request, {
+    ...options,
+    ...(memoryEnabled
+      ? { memoryAuthoringMaxResponseChars: maxResponseChars }
+      : {}),
+    ...(memoryMessage ? { longTermMemoryMessage: memoryMessage } : {}),
+  });
+  const contextCompaction = createSessionMemoryAwareCompactionController(
+    request,
+    createExecutionAgentCompactionController(request, {
+      call: options.call,
+      sourceRevision: options.head.revision,
+      allowedConsumers: Object.freeze([
+        EXECUTION_AGENT_DECISION_MODEL_STEP,
+        EXECUTION_AGENT_RESPONSE_MODEL_STEP,
+      ]),
+    }),
+  );
+  if (memoryEnabled) {
+    return invokeRootAuthoredResponse({
+      request,
+      modelStep: input.modelStep,
+      messages: input.messages,
+      contextCompaction,
+      timeoutReason: "execution_agent_response_timeout",
+      invalidOutputReason: "invalid_execution_agent_authored_response",
+      maxResponseChars,
+    });
+  }
+  const output = await invokeRepairableRawModelStep({
     request,
     modelStep: input.modelStep,
     messages: input.messages,
-    contextCompaction: createSessionMemoryAwareCompactionController(
-      request,
-      createExecutionAgentCompactionController(request, {
-        call: options.call,
-        sourceRevision: options.head.revision,
-        allowedConsumers: Object.freeze([
-          EXECUTION_AGENT_DECISION_MODEL_STEP,
-          EXECUTION_AGENT_RESPONSE_MODEL_STEP,
-        ]),
-      }),
-    ),
+    contextCompaction,
     timeoutReason: "execution_agent_response_timeout",
     maxRepairAttempts: EXECUTION_AGENT_RESPONSE_MAX_REPAIR_ATTEMPTS,
     validate: (text) =>
       validateExecutionAgentResponseText(text, maxResponseChars),
     buildRepairHint: buildExecutionAgentResponseRepairHint,
   });
+  return createPlainRootAuthoredResponse(output);
 }
 
 function validateExecutionAgentResponseText(

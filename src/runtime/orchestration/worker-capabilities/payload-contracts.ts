@@ -12,9 +12,11 @@ import type {
 
 export const WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP =
   MODEL_STEPS.TOOL_PAYLOAD_RAW;
+export const CAPABILITY_CONTROLS_MODEL_STEP = MODEL_STEPS.CAPABILITY_CONTROLS;
 export const WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS =
   Object.freeze([
     MODEL_STEPS.WORKER_DECISION,
+    CAPABILITY_CONTROLS_MODEL_STEP,
     MODEL_STEPS.WORKER_RESULT,
     MODEL_STEPS.REVIEWER_DECISION,
     WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP,
@@ -73,11 +75,6 @@ export type WorkerCapabilityPayloadRelatedArtifactContext = Readonly<{
 }>;
 
 type WorkerCapabilityPayloadSharedContext = Readonly<{
-  acceptedCapability: Readonly<{
-    capabilityId: string;
-    summary: string;
-    controls: WorkerCapabilityControls;
-  }>;
   contextScope: WorkerCapabilityPayloadContextScope;
   dependencyResults?: readonly RoleCallDependencyResult[];
   settledCapabilityResults: readonly WorkerSettledCapabilityResult[];
@@ -97,6 +94,12 @@ export type WorkerCapabilityPayloadContext =
           invocationAttempt: number;
           objective: string;
         }>;
+        acceptedCapability: Readonly<{
+          capabilityId: string;
+          summary: string;
+          authoringObjective: string;
+          controls: WorkerCapabilityControls;
+        }>;
       } & WorkerCapabilityPayloadSharedContext
     >
   | Readonly<
@@ -107,6 +110,11 @@ export type WorkerCapabilityPayloadContext =
           objectiveSource: "runtime_request_source_plus_steering_v1";
           steeringVersion: number;
           updates: WorkerCapabilityExecutionFreshness["token"]["updates"];
+        }>;
+        acceptedCapability: Readonly<{
+          capabilityId: string;
+          summary: string;
+          controls: WorkerCapabilityControls;
         }>;
       } & WorkerCapabilityPayloadSharedContext
     >;
@@ -149,6 +157,8 @@ export type WorkerCapabilityPayloadAuthor = Readonly<{
       call: RoleCallFrame;
       executionId: string;
       descriptor: WorkerCapabilityDescriptor;
+      /** Required for Worker payloads and forbidden for direct-root payloads. */
+      authoringObjective?: string;
       controls: WorkerCapabilityControls;
       contextScope?: WorkerCapabilityPayloadContextScope;
       dependencyResults?: readonly RoleCallDependencyResult[];

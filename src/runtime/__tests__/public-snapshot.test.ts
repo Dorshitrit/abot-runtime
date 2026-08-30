@@ -328,9 +328,9 @@ describe("public package transform", () => {
     expect(
       (transformed.scripts as Record<string, string>).validate,
     ).not.toContain("git ");
-    expect(
-      (transformed.scripts as Record<string, string>).validate,
-    ).not.toContain("check-public-snapshot");
+    expect((transformed.scripts as Record<string, string>).validate).toContain(
+      "npm run check:public-snapshot",
+    );
     expect(PUBLIC_PACKAGE_FILES).not.toContain("plugins/");
     expect(PUBLIC_PACKAGE_FILES).not.toContain("plugins/internal-canary/");
     expect([...PUBLIC_PACKAGE_SCRIPT_NAMES]).not.toContain(
@@ -754,12 +754,7 @@ describe("public snapshot builder and verifier", () => {
       sourceRoot: extraFixture.sourceRoot,
       outputRoot: extraOutput,
     });
-    for (const generatedDirectory of [
-      ".git",
-      "coverage",
-      "dist",
-      "node_modules",
-    ]) {
+    for (const generatedDirectory of [".git", ".runtime", "coverage", "dist", "node_modules"]) {
       await writeFixtureFile(
         extraOutput,
         `${generatedDirectory}/generated.txt`,
@@ -771,7 +766,7 @@ describe("public snapshot builder and verifier", () => {
         outputRoot: extraOutput,
       }),
     ).resolves.toMatchObject({ schemaVersion: PUBLIC_SNAPSHOT_SCHEMA_VERSION });
-    await writeFile(join(extraOutput, "unexpected.txt"), "extra\n", "utf-8");
+    await writeFixtureFile(extraOutput, "src/.runtime/unexpected.txt", "extra\n");
     await expect(
       verifyPublicSnapshot({
         outputRoot: extraOutput,
@@ -779,7 +774,7 @@ describe("public snapshot builder and verifier", () => {
     ).rejects.toThrow(/positive allowlist/);
   });
 
-  it("validates an evolving public checkout without Git or frozen receipt checks", async () => {
+  it("keeps publication metadata checks separate from the frozen receipt", async () => {
     const fixture = await createFixture();
     const outputRoot = join(fixture.parent, "maintainable-public");
     await buildPublicSnapshot({

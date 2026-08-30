@@ -10,9 +10,33 @@ import type { RequestExecutionScope } from "../request/execution-scope.js";
 import { createTestRequestExecutionScope } from "./support/request-execution-scope.js";
 import {
   buildSupervisorResponseInput,
+  runSupervisorAuthoredResponse,
   runSupervisorResponse,
   SUPERVISOR_RESPONSE_MODEL_STEP,
 } from "../steps/supervisor-response/index.js";
+
+type TestModelMessage = Readonly<{ role: string; content: string }>;
+
+function readModelMessages(value: unknown): readonly TestModelMessage[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError("Expected model messages to be an array.");
+  }
+  const messages = value.filter(
+    (message): message is TestModelMessage =>
+      typeof message === "object" &&
+      message !== null &&
+      "role" in message &&
+      typeof message.role === "string" &&
+      "content" in message &&
+      typeof message.content === "string",
+  );
+  if (messages.length !== value.length) {
+    throw new TypeError(
+      "Expected every model message to contain text content.",
+    );
+  }
+  return messages;
+}
 
 const EMPTY_REQUEST_TOOL_RESULTS = Object.freeze({
   sourceRevision: 1,
@@ -57,6 +81,7 @@ const resume = Object.freeze({
       roleId: "planner" as const,
       objective: "Coordinate the bounded work and return its result.",
       workingDirectory: WORKING_DIRECTORY,
+      dependencyResultRefs: Object.freeze([]),
       outcome: "completed" as const,
       summary: "The first bounded outcome was completed.",
     }),
@@ -67,6 +92,7 @@ const resume = Object.freeze({
       roleId: "worker" as const,
       objective: "Check the remaining bounded outcome.",
       workingDirectory: WORKING_DIRECTORY,
+      dependencyResultRefs: Object.freeze([]),
       outcome: "failed" as const,
       summary: "The requested artifacts were not created.",
     }),
@@ -75,6 +101,7 @@ const resume = Object.freeze({
 
 function createRequest(
   invoke: ModelGatewayClient["invoke"] = vi.fn(),
+  longTermMemory?: RequestExecutionScope["longTermMemory"],
 ): RequestExecutionScope {
   return createTestRequestExecutionScope({
     requestId: "supervisor-response-request",
@@ -111,8 +138,7 @@ function createRequest(
           model: "supervisor-response-model",
           contextWindowTokens: 8_000,
           calibration: {
-            "supervisor.response": {
-            },
+            "supervisor.response": {},
           },
         },
       },
@@ -124,6 +150,7 @@ function createRequest(
       },
     },
     modelGatewayClient: { invoke, invokeRaw: vi.fn() },
+    ...(longTermMemory ? { longTermMemory } : {}),
     workerCapabilityProvider: {
       getDescriptors: () => Object.freeze([]),
       getAdapters: () => Object.freeze([]),
@@ -170,6 +197,7 @@ describe("Supervisor terminal response", () => {
           delegatedObjective:
             "Coordinate the bounded work and return its result.",
           workingDirectory: WORKING_DIRECTORY,
+          dependencyResultRefs: [],
           outcome: "completed",
           summary: "The first bounded outcome was completed.",
         }),
@@ -184,6 +212,7 @@ describe("Supervisor terminal response", () => {
           roleId: "worker",
           delegatedObjective: "Check the remaining bounded outcome.",
           workingDirectory: WORKING_DIRECTORY,
+          dependencyResultRefs: [],
           outcome: "failed",
           summary: "The requested artifacts were not created.",
         }),
@@ -327,6 +356,148 @@ describe("Supervisor terminal response", () => {
     expect(JSON.stringify(logs)).not.toContain(secretOutput);
   });
 
+  test("authors memory candidates before returning a raw Supervisor response", async () => {
+    const retrieve = vi.fn(async () => ({
+      available: true,
+      records: [],
+      message: {
+        role: "system" as const,
+        content: JSON.stringify({
+          kind: "runtime_long_term_memory_reference_v1",
+          authority: "passive_reference",
+          memories: [{ content: "User prefers concise answers.", tags: [] }],
+        }),
+      },
+    }));
+    const invoke = vi
+      .fn<ModelGatewayClient["invoke"]>()
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          memoryCandidates: [
+            { content: "User prefers concise answers.", tags: ["preference"] },
+          ],
+        }),
+        meta: {},
+      })
+      .mockResolvedValueOnce({ text: "Done.", meta: {} });
+    const request = createRequest(invoke, {
+      enabled: true,
+      retrieve,
+      processCandidates: vi.fn(),
+      scheduleCandidates: vi.fn(),
+      status: vi.fn(),
+      list: vi.fn(),
+      search: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      clear: vi.fn(),
+    });
+
+    await expect(
+      runSupervisorAuthoredResponse(request, {
+        call,
+        toolResults: EMPTY_REQUEST_TOOL_RESULTS,
+        steeringSnapshot: { version: 0, updates: Object.freeze([]) },
+      }),
+    ).resolves.toEqual({
+      finalResponse: "Done.",
+      memoryCandidates: [
+        { content: "User prefers concise answers.", tags: ["preference"] },
+      ],
+    });
+    expect(retrieve).toHaveBeenCalledWith(
+      expect.objectContaining({ query: request.prompt }),
+    );
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke.mock.calls[0]?.[0].format).toMatchObject({
+      type: "json_schema",
+      name: "supervisor_memory_candidates",
+    });
+    expect(invoke.mock.calls[1]?.[0]).not.toHaveProperty("format");
+    expect(JSON.stringify(invoke.mock.calls[0]?.[0].messages)).toContain(
+      "runtime_long_term_memory_reference_v1",
+    );
+    expect(JSON.stringify(invoke.mock.calls[1]?.[0].messages)).toContain(
+      "runtime_long_term_memory_reference_v1",
+    );
+    expect(JSON.stringify(invoke.mock.calls[1]?.[0].messages)).not.toContain(
+      "memoryCandidates",
+    );
+  });
+
+  test("accepts an empty memory proposal before the raw response", async () => {
+    const invoke = vi
+      .fn<ModelGatewayClient["invoke"]>()
+      .mockResolvedValueOnce({
+        text: JSON.stringify({ memoryCandidates: [] }),
+        meta: {},
+      })
+      .mockResolvedValueOnce({
+        text: "Nothing durable to remember.",
+        meta: {},
+      });
+    const request = createRequest(invoke, {
+      enabled: true,
+      retrieve: vi.fn(),
+      processCandidates: vi.fn(),
+      scheduleCandidates: vi.fn(),
+      status: vi.fn(),
+      list: vi.fn(),
+      search: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      clear: vi.fn(),
+    });
+
+    await expect(
+      runSupervisorAuthoredResponse(request, {
+        call,
+        toolResults: EMPTY_REQUEST_TOOL_RESULTS,
+      }),
+    ).resolves.toEqual({
+      finalResponse: "Nothing durable to remember.",
+      memoryCandidates: [],
+    });
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
+
+  test("isolates memory authoring failure from the raw response", async () => {
+    const invoke = vi
+      .fn<ModelGatewayClient["invoke"]>()
+      .mockRejectedValueOnce(new Error("memory authoring unavailable"))
+      .mockResolvedValueOnce({
+        text: "The raw response remains available.",
+        meta: {},
+      });
+    const request = createRequest(invoke, {
+      enabled: true,
+      retrieve: vi.fn(),
+      processCandidates: vi.fn(),
+      scheduleCandidates: vi.fn(),
+      status: vi.fn(),
+      list: vi.fn(),
+      search: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      clear: vi.fn(),
+    });
+
+    await expect(
+      runSupervisorAuthoredResponse(request, {
+        call,
+        toolResults: EMPTY_REQUEST_TOOL_RESULTS,
+      }),
+    ).resolves.toEqual({
+      finalResponse: "The raw response remains available.",
+      memoryCandidates: [],
+    });
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke.mock.calls[1]?.[0]).not.toHaveProperty("format");
+  });
+
   test("repairs one empty terminal response in the same Supervisor step", async () => {
     configureDebugLogger({ enabled: true });
     const repairedResponse = "The requested artifacts were created.";
@@ -346,8 +517,8 @@ describe("Supervisor terminal response", () => {
     ).resolves.toBe(repairedResponse);
 
     expect(invoke).toHaveBeenCalledTimes(2);
-    const firstMessages = invoke.mock.calls[0]![0].messages;
-    const repairMessages = invoke.mock.calls[1]![0].messages;
+    const firstMessages = readModelMessages(invoke.mock.calls[0]![0].messages);
+    const repairMessages = readModelMessages(invoke.mock.calls[1]![0].messages);
     expect(repairMessages).toHaveLength(firstMessages.length + 1);
     expect(repairMessages.at(-1)).toMatchObject({ role: "system" });
     const logs = consoleLog.mock.calls.map(
@@ -401,9 +572,9 @@ describe("Supervisor terminal response", () => {
     ).resolves.toBe(repairedResponse);
 
     expect(invoke).toHaveBeenCalledTimes(2);
-    expect(invoke.mock.calls[1]![0].messages.at(-1)?.content).toContain(
-      "supervisor_response_internal_envelope",
-    );
+    expect(
+      readModelMessages(invoke.mock.calls[1]![0].messages).at(-1)?.content,
+    ).toContain("supervisor_response_internal_envelope");
   });
 
   test("surfaces an output-limited terminal response without repair", async () => {

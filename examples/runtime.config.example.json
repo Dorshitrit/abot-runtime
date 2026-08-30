@@ -57,6 +57,10 @@
       }
     }
   },
+  "longTermMemory": {
+    "enabled": false,
+    "emitClientEvents": false
+  },
   "requestRunner": {
     "configRef": "./request-runner.config.json"
   }

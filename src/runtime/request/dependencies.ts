@@ -1,6 +1,7 @@
 import {
   invokeModelGateway,
   invokeRawModelGateway,
+  embedModelGateway,
 } from "../../model-gateway/client.js";
 import { defaultRuntimeSessionStore } from "../adapters/default-session-adapters.js";
 import { createRuntimeEventBus } from "../events/runtime-emitter.js";
@@ -9,6 +10,8 @@ import { loadRequestRunnerConfig } from "../config/runner/loader.js";
 import { createRequestModelPolicy } from "../config/runner/model-policy.js";
 import type { RequestHandlerOptions } from "./contracts.js";
 import { createModelSessionMemoryCompactor } from "../context/session-memory/index.js";
+import { createInMemoryLongTermMemoryRepository } from "../adapters/long-term-memory/in-memory-repository.js";
+import { createLongTermMemoryService } from "../long-term-memory/service.js";
 
 const defaultEventSinkFactory: EventSinkFactory = {
   create: createRuntimeEventBus,
@@ -17,7 +20,14 @@ const defaultEventSinkFactory: EventSinkFactory = {
 const defaultModelGatewayClient: ModelGatewayClient = {
   invoke: invokeModelGateway,
   invokeRaw: invokeRawModelGateway,
+  embed: embedModelGateway,
 };
+
+const defaultLongTermMemoryService = createLongTermMemoryService({
+  repository: createInMemoryLongTermMemoryRepository(),
+  enabled: false,
+  emitClientEvents: false,
+});
 
 export function resolveRequestDependencies(options: RequestHandlerOptions) {
   return {
@@ -27,6 +37,7 @@ export function resolveRequestDependencies(options: RequestHandlerOptions) {
     attachmentStore: options.attachmentStore,
     sessionMemoryCompactor:
       options.sessionMemoryCompactor ?? createModelSessionMemoryCompactor(),
+    longTermMemory: options.longTermMemory ?? defaultLongTermMemoryService,
     toolApprovalController: options.toolApprovalController,
     loadDecisionEnvironment: () => {
       const configPath = options.runtimeConfig?.requestRunner?.configPath;

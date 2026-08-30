@@ -109,6 +109,7 @@ class RequestHandlingSession {
       loadDecisionEnvironment,
       toolApprovalController,
       sessionMemoryCompactor,
+      longTermMemory,
     } = this.dependencies;
     const { runnerConfig, modelPolicy, modelExecutionPolicies } =
       loadDecisionEnvironment();
@@ -195,6 +196,7 @@ class RequestHandlingSession {
       modelGatewayClient,
       contextCompactionStore: createRequestContextCompactionStore(),
       sessionMemory,
+      longTermMemory,
       requestSteering: this.requestSteering,
       toolPermissionMode,
       ...(toolApprovalController ? { toolApprovalController } : {}),
@@ -253,6 +255,8 @@ class RequestHandlingSession {
       agentMode: modelSelection.agentMode,
       thinkingTrace: callbacks.getThinkingTrace(),
       finalObservation: runnerResult.finalObservation,
+      memoryCandidates: runnerResult.memoryCandidates,
+      longTermMemory,
     });
     this.finalized = true;
     if (finalization.status === "failed") return;

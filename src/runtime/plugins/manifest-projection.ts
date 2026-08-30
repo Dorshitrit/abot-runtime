@@ -113,6 +113,9 @@ export function projectManifestRuntimeContract(
             operationId,
             summary: operation.summary,
             input: operation.input,
+            ...(operation.selectionControlIds
+              ? { selectionControlIds: operation.selectionControlIds }
+              : {}),
             effect: operation.effect,
             approval: operation.approval,
             ...(operation.fixedParams

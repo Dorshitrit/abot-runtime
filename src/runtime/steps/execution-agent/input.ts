@@ -3,6 +3,7 @@ import type { RequestContextProjection } from "../../context/request-context-con
 import { projectRequestContext } from "../../context/request-context.js";
 import { projectRootSessionMemory } from "../../context/session-memory/root-projection.js";
 import { buildRequestTemporalContextMessage } from "../../context/request-temporal-context.js";
+import { buildImmediateOperationSupervisionEvidenceMessage } from "../../context/operation-supervision-evidence.js";
 import { resolveModelContextBudget } from "../../model/model-context-budget.js";
 import type {
   RoleCallFrame,
@@ -22,7 +23,6 @@ import {
 import { appendRequestSteeringContext } from "../../request/request-steering-context.js";
 import type { RequestSteeringSnapshot } from "../../request/request-steering.js";
 import { EXECUTION_AGENT_ROOT_AUDIT_CRITERION_ID } from "../auditor-decision/index.js";
-import { projectEffectiveWorkerSelectionControlIds } from "../worker-decision/runtime-path-refinement.js";
 import {
   EXECUTION_AGENT_DECISION_MODEL_STEP,
   type ExecutionAgentDecisionContractOptions,
@@ -33,7 +33,7 @@ import {
   buildExecutionCapabilityCatalogMessage,
   buildExecutionCapabilityGroupCatalogMessage,
   buildExecutionContinuationMessages,
-  buildExecutionStateMessage,
+  buildExecutionDecisionStateMessage,
 } from "./state-context.js";
 
 export type ExecutionAgentInput = Readonly<{
@@ -84,24 +84,7 @@ export function buildExecutionAgentInput(
           descriptorOf: (entry) => entry,
         }).entries
       : Object.freeze([]);
-  const capabilities = Object.freeze(
-    scopedCapabilities.map((descriptor) => {
-      const selectionControlIds = projectEffectiveWorkerSelectionControlIds(
-        descriptor,
-        eligibleSessionArtifactPaths.length > 0,
-      );
-      const configuredSelectionControlIds =
-        descriptor.selectionControlIds ?? Object.freeze([]);
-      return selectionControlIds.length ===
-        configuredSelectionControlIds.length &&
-        selectionControlIds.every(
-          (controlId, index) =>
-            controlId === configuredSelectionControlIds[index],
-        )
-        ? descriptor
-        : Object.freeze({ ...descriptor, selectionControlIds });
-    }),
-  );
+  const capabilities = scopedCapabilities;
   const knownGroupIds = Object.freeze(
     capabilityCatalogGroups.map(({ groupId }) => groupId),
   );
@@ -171,11 +154,23 @@ export function buildExecutionAgentInput(
       : {}),
     ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),
   });
+  const operationSupervisionEvidenceMessage =
+    buildImmediateOperationSupervisionEvidenceMessage(
+      options.head,
+      options.call,
+    );
   const referenceMessages = [
     ...(request.temporalContext
       ? [buildRequestTemporalContextMessage(request.temporalContext)]
       : []),
-    buildExecutionStateMessage(options.head, options.call),
+    buildExecutionDecisionStateMessage(
+      options.head,
+      options.call,
+      options.steeringSnapshot.version,
+    ),
+    ...(operationSupervisionEvidenceMessage
+      ? [operationSupervisionEvidenceMessage]
+      : []),
     buildExecutionCapabilityGroupCatalogMessage(capabilityCatalogGroups),
     ...(capabilities.length > 0
       ? [buildExecutionCapabilityCatalogMessage(capabilities)]

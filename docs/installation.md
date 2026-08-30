@@ -91,6 +91,24 @@ npx abot add-model --profile <profile-id> --provider openai --model <model-id>
 Add `--default` only to select that profile as the default. It does not delete
 the profiles that are already configured.
 
+### Optional Passive Long-Term Memory
+
+Long-term memory is disabled by default. After a provider is configured, choose
+an embedding model and enable it through the Web UI Config workspace or CLI:
+
+```bash
+npx abot memory status
+npx abot memory models --provider <provider-id>
+npx abot memory enable --provider <provider-id> --model <embedding-model-id>
+```
+
+ABot does not install or choose the embedding model. The enable command performs
+a real probe, writes config only after it succeeds, and reports that the Runtime
+must be restarted. OpenAI users enter the embedding model id manually; Ollama
+users can discover model ids installed at the configured Ollama endpoint.
+
+See [Passive Long-Term Memory](long-term-memory.md) before enabling persistence.
+
 ## Use As A Library
 
 After the package is published:
@@ -133,6 +151,9 @@ profile must name the exact model id that consumer pulled.
 The package includes the public plugin catalog. Additional consumer plugins may
 be installed under `<consumer-root>/plugins`. A consumer plugin cannot replace
 a bundled plugin: duplicate plugin ids fail closed.
+
+The passive long-term memory service belongs to the Runtime core and does not
+depend on the bundled `memory` plugin.
 
 Web URL fetching is available through the bundled Web plugin without a search
 credential. Set `BRAVE_SEARCH_API_KEY` to make `web_search` operational. With

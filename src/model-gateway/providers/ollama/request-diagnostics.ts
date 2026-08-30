@@ -2,6 +2,7 @@ import { traceDebug } from "../../../runtime/observability/debug-logger.js";
 import type { OllamaSchemaProjectionDiagnostic } from "../../structured-output/projection.js";
 import type { ResolvedModelInvocation } from "../../types.js";
 import type { ModelProviderInvocationParams } from "../contracts.js";
+import { resolveConfiguredOllamaBaseUrl } from "./base-url.js";
 import type { OllamaProviderTiming } from "./stream-normalizer.js";
 import { readEffectiveOption } from "./options.js";
 
@@ -46,7 +47,10 @@ export function resolveOllamaBaseUrl(
   invocation: ResolvedModelInvocation,
   fallbackUrl: string,
 ): string {
-  return invocation.profile.providerConfig?.baseUrl?.trim() || fallbackUrl;
+  return resolveConfiguredOllamaBaseUrl(
+    invocation.profile.providerConfig?.baseUrl,
+    fallbackUrl,
+  );
 }
 
 export function emitOllamaSchemaDiagnostics(

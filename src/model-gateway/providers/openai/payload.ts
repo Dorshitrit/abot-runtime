@@ -4,10 +4,7 @@ import {
   isToolResultMessage,
   validateModelGatewayMessages,
 } from "../../protocol/message-contract.js";
-import {
-  normalizeReasoning,
-  resolveModelInvocation,
-} from "../../policy/invocation-policy.js";
+import { resolveModelInvocation } from "../../policy/invocation-policy.js";
 import {
   projectOpenAIResponsesFormat,
   resolveModelGatewayFormat,
@@ -111,10 +108,7 @@ export function buildOpenAIResponsesPayload(
   const generation = invocation.profile.generation;
   const temperature = readFiniteNumber(generation.temperature);
   const topP = readFiniteNumber(generation.topP);
-  const reasoningEffort =
-    normalizeReasoning(requestBody.reasoningOverride) ??
-    generation.reasoningEffort ??
-    invocation.think;
+  const reasoningEffort = invocation.think;
   const formatProjection = projectOpenAIResponsesFormat(
     resolveModelGatewayFormat(requestBody.format, invocation.format),
   );
@@ -126,10 +120,9 @@ export function buildOpenAIResponsesPayload(
     !invocation.profile.supportsThinking ||
     reasoningEffort === undefined ||
     reasoningEffort === "none";
-  const shouldSendReasoning =
+  const shouldProjectOpenAIReasoning =
     invocation.profile.supportsThinking &&
-    reasoningEffort !== undefined &&
-    reasoningEffort !== "none";
+    reasoningEffort !== undefined;
 
   const payload: Record<string, unknown> = {
     model: invocation.model,
@@ -145,7 +138,7 @@ export function buildOpenAIResponsesPayload(
   if (canUseSamplingControls && topP !== undefined) {
     payload.top_p = topP;
   }
-  if (shouldSendReasoning) {
+  if (shouldProjectOpenAIReasoning) {
     payload.reasoning = { effort: reasoningEffort };
   }
   if (formatProjection.format) {

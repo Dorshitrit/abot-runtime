@@ -19,10 +19,13 @@ import type {
   PublicHttpResponse,
 } from "../../../plugins/web/source/public-http.js";
 
-function context(apiKey?: string): RuntimePluginLoadContext {
+function context(
+  apiKey?: string,
+): RuntimePluginLoadContext & Readonly<{ pluginRoot: string }> {
   return {
     id: "web",
-    path: "/plugins/web",
+    path: "/plugins/web/src/index.cjs",
+    pluginRoot: "/plugins/web",
     stateDir: "/state/web",
     rootDir: "/runtime",
     runtimeId: "test-runtime",

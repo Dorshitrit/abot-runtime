@@ -65,6 +65,7 @@ describe("Single Execution Agent structured decision", () => {
       allowRespond: true,
       includeAcknowledgement: false,
       includeTitle: false,
+      includeWorkingDirectory: false,
     });
 
     expect(instructions).toContain(
@@ -185,6 +186,15 @@ describe("Single Execution Agent structured decision", () => {
       createExecutionAgentDecisionFormat().schema,
     ).flatMap(readActionEnums);
     expect(defaultActions).toEqual(["respond", "blocked"]);
+
+    const parameterlessObservationActions = decisionVariants(
+      createExecutionAgentDecisionFormat({
+        capabilities: [observeProject],
+        maxBatchCapabilityExecutions: 2,
+      }).schema,
+    ).flatMap(readActionEnums);
+    expect(parameterlessObservationActions).toContain("invoke_capability");
+    expect(parameterlessObservationActions).toContain("invoke_capabilities");
 
     const activeScopeActions = decisionVariants(
       createExecutionAgentDecisionFormat({
@@ -508,25 +518,20 @@ describe("Single Execution Agent structured decision", () => {
       expect(Object.isFrozen(complete.decision.controls)).toBe(true);
     }
 
+    const refinementInvocation = {
+      action: "invoke_capability",
+      capabilityId: "write_file",
+      intent: "Write the requested file.",
+      operationObjective: "Write only the requested content to index.html.",
+      selectionControls: { path: "index.html" },
+    } as const;
     const requiresRefinement = parseExecutionAgentDecisionOutput(
-      JSON.stringify({
-        decision: {
-          action: "invoke_capability",
-          capabilityId: "write_file",
-          intent: "Write the requested file.",
-          selectionControls: { path: "index.html" },
-        },
-      }),
+      JSON.stringify({ decision: refinementInvocation }),
       { capabilities: [observeFile, writeFile] },
     );
     expect(requiresRefinement).toEqual({
       ok: true,
-      decision: {
-        action: "invoke_capability",
-        capabilityId: "write_file",
-        intent: "Write the requested file.",
-        selectionControls: { path: "index.html" },
-      },
+      decision: refinementInvocation,
     });
 
     const invalid = parseExecutionAgentDecisionOutput(
@@ -694,6 +699,132 @@ describe("Single Execution Agent structured decision", () => {
         }),
       ]),
     });
+  });
+
+  test("defers exact duplicate detection until repeated batch invocations are fully materialized", () => {
+    const accepted = parseExecutionAgentDecisionOutput(
+      JSON.stringify({
+        decision: {
+          action: "invoke_capabilities",
+          invocations: [
+            {
+              capabilityId: "observe_file",
+              intent: "Inspect index.html.",
+              selectionControls: { path: "index.html" },
+            },
+            {
+              capabilityId: "observe_file",
+              intent: "Inspect styles.css.",
+              selectionControls: { path: "styles.css" },
+            },
+          ],
+        },
+      }),
+      { capabilities: [observeFile], maxBatchCapabilityExecutions: 2 },
+    );
+    expect(accepted).toMatchObject({ ok: true });
+
+    const ambiguous = parseExecutionAgentDecisionOutput(
+      JSON.stringify({
+        decision: {
+          action: "invoke_capabilities",
+          invocations: [
+            {
+              capabilityId: "observe_project",
+              intent: "Inspect the first requested area.",
+            },
+            {
+              capabilityId: "observe_project",
+              intent: "Inspect the second requested area.",
+            },
+          ],
+        },
+      }),
+      { capabilities: [observeProject], maxBatchCapabilityExecutions: 2 },
+    );
+    expect(ambiguous).toMatchObject({
+      ok: true,
+      decision: {
+        action: "invoke_capabilities",
+        invocations: [
+          { capabilityId: "observe_project", controls: {} },
+          { capabilityId: "observe_project", controls: {} },
+        ],
+      },
+    });
+
+    const duplicate = parseExecutionAgentDecisionOutput(
+      JSON.stringify({
+        decision: {
+          action: "invoke_capabilities",
+          invocations: [
+            {
+              capabilityId: "observe_file",
+              intent: "Inspect index.html first.",
+              selectionControls: { path: "index.html" },
+            },
+            {
+              capabilityId: "observe_file",
+              intent: "Inspect index.html again.",
+              selectionControls: { path: "index.html" },
+            },
+          ],
+        },
+      }),
+      { capabilities: [observeFile], maxBatchCapabilityExecutions: 2 },
+    );
+    expect(duplicate).toMatchObject({
+      ok: true,
+      decision: {
+        action: "invoke_capabilities",
+        invocations: [
+          {
+            capabilityId: "observe_file",
+            selectionControls: { path: "index.html" },
+            controls: { path: "index.html" },
+          },
+          {
+            capabilityId: "observe_file",
+            selectionControls: { path: "index.html" },
+            controls: { path: "index.html" },
+          },
+        ],
+      },
+    });
+
+    const malformed = parseExecutionAgentDecisionOutput(
+      JSON.stringify({
+        decision: {
+          action: "invoke_capabilities",
+          invocations: [
+            {
+              capabilityId: "observe_file",
+              intent: "Inspect index.html.",
+              selectionControls: { path: "index.html" },
+            },
+            {
+              capabilityId: "observe_file",
+              intent: "Inspect styles.css.",
+              selectionControls: {},
+            },
+          ],
+        },
+      }),
+      { capabilities: [observeFile], maxBatchCapabilityExecutions: 2 },
+    );
+    expect(malformed).toMatchObject({
+      ok: false,
+      issues: [
+        expect.objectContaining({
+          code: "execution_agent_capability_controls_required_missing",
+          path: "decision.invocations.1.selectionControls.path",
+        }),
+      ],
+    });
+    if (malformed.ok) throw new Error("expected malformed batch rejection");
+    expect(
+      malformed.issues.some(({ code }) => code.includes("batch_binding")),
+    ).toBe(false);
   });
 
   test("gates Planner and Auditor and freezes accepted audit arrays", () => {

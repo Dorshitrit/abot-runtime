@@ -3,4 +3,7 @@
 @import url("./styles/10-shell-sessions.css");
 @import url("./styles/20-chat-composer.css");
 @import url("./styles/30-inspector-config.css");
+@import url("./styles/40-config-workspace.css");
+@import url("./styles/35-memory-onboarding.css");
+@import url("./styles/36-memory-management.css");
 @import url("./styles/90-responsive.css");

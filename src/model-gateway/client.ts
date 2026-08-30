@@ -16,7 +16,10 @@ import { projectModelGatewayMetricMessages } from "./client/message-projection.j
 import { getModelGatewayStreamInactivityTimeoutMs } from "./client/options.js";
 import { invokeRawModelGatewayWithOptions } from "./client/raw.js";
 import { classifyEmptyResponse } from "./client/stream-consumer.js";
+import { embedModelGatewayWithOptions } from "./client/embeddings.js";
 import type {
+  ModelGatewayEmbeddingParams,
+  ModelGatewayEmbeddingResult,
   ModelGatewayInputTokenCountParams,
   ModelGatewayInputTokenCountResult,
 } from "./types.js";
@@ -47,17 +50,25 @@ export async function invokeRawModelGateway(
   return invokeRawModelGatewayWithOptions(params);
 }
 
+export async function embedModelGateway(
+  params: ModelGatewayEmbeddingParams,
+): Promise<ModelGatewayEmbeddingResult> {
+  return embedModelGatewayWithOptions(params);
+}
+
 export function createModelGatewayClient(
   options: ModelGatewayClientOptions = {},
 ): {
   invoke: typeof invokeModelGateway;
   invokeRaw: typeof invokeRawModelGateway;
   countInputTokens: typeof countModelGatewayInputTokens;
+  embed: typeof embedModelGateway;
 } {
   const inputTokenCountCache: InputTokenCountCache = new Map();
   return {
     invoke: (params) => invokeModelGatewayWithOptions(params, options),
     invokeRaw: (params) => invokeRawModelGatewayWithOptions(params, options),
+    embed: (params) => embedModelGatewayWithOptions(params, options),
     countInputTokens: (params) =>
       countModelGatewayInputTokensWithOptions(
         params,

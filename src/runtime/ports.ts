@@ -30,6 +30,8 @@ import type { SessionMemoryRepository } from "../sessions/memory/contracts.js";
 import type {
   ModelGatewayInputTokenCountParams,
   ModelGatewayInputTokenCountResult,
+  ModelGatewayEmbeddingParams,
+  ModelGatewayEmbeddingResult,
   ModelGatewayPolicyConfig,
   ModelPreference,
   ModelTokenUsage,
@@ -49,6 +51,7 @@ import type {
 } from "../capabilities/tool-types.js";
 import type { RequestLifecycleState } from "./orchestration/lifecycle/request-lifecycle.js";
 import type { RuntimeModelExecutionPolicies } from "./config/model-execution-policy.js";
+import type { LongTermMemoryService } from "./long-term-memory/contracts.js";
 
 export type RuntimePaths = {
   rootDir: string;
@@ -93,6 +96,12 @@ export type RuntimePluginConfig = {
   deny?: string[];
 };
 
+export type RuntimeLongTermMemoryConfig = {
+  enabled: boolean;
+  emitClientEvents: boolean;
+  embeddingProfileId?: string;
+};
+
 export type RuntimeConfig = {
   runtimeId: string;
   agentBridgeUrl: string;
@@ -102,6 +111,7 @@ export type RuntimeConfig = {
   logging?: RuntimeLoggingConfig;
   timeouts?: RuntimeTimeouts;
   plugins?: RuntimePluginConfig;
+  longTermMemory?: RuntimeLongTermMemoryConfig;
   models?: RuntimeModelConfig;
   modelExecutionPolicies?: RuntimeModelExecutionPolicies;
   requestRunner: RuntimeRequestRunnerConfig;
@@ -118,6 +128,7 @@ export type RuntimeHostStartOptions = {
   modelGatewayClient?: ModelGatewayClient;
   sessionStore?: SessionStore;
   attachmentStore?: RuntimeAttachmentStore;
+  longTermMemoryService?: LongTermMemoryService;
   toolRegistry?: ToolRegistry;
 };
 
@@ -341,6 +352,9 @@ export type ModelGatewayClient = {
   countInputTokens?: (
     params: ModelGatewayInputTokenCountParams,
   ) => Promise<ModelGatewayInputTokenCountResult | undefined>;
+  embed?: (
+    params: ModelGatewayEmbeddingParams,
+  ) => Promise<ModelGatewayEmbeddingResult>;
 };
 
 export type EventSink = {

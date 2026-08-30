@@ -4,6 +4,10 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import type {
+  ModelGatewayPolicyConfig,
+  ModelGatewayProfileConfig,
+} from "../../model-gateway/types.js";
 import type { RuntimeAttachmentReference } from "../attachments/store.js";
 import { appendRequestAttachmentManifest } from "../orchestration/request/request-attachment-prompt.js";
 import {
@@ -43,7 +47,7 @@ function imageAttachment(index: number): RuntimeAttachmentReference {
 
 describe("request attachment model support", () => {
   test("uses the resolved model step profile when checking image support", () => {
-    const modelPolicy = {
+    const modelPolicy: ModelGatewayPolicyConfig = {
       providers: {
         ollama: { type: "ollama" as const },
       },
@@ -111,10 +115,10 @@ describe("request attachment model support", () => {
   });
 
   test("does not infer image support when the provider is unresolved", () => {
-    const imageProfile = {
+    const imageProfile: ModelGatewayProfileConfig = {
       model: "vision-model",
       capabilities: {
-        inputModalities: ["text", "image"] as const,
+        inputModalities: ["text", "image"],
       },
     };
 

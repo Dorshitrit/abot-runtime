@@ -7,6 +7,7 @@ import {
 import {
   createChatHandler,
   createInputTokenCountHandler,
+  createRawHandler,
   type GatewayResponse,
 } from "../server.js";
 
@@ -68,6 +69,55 @@ describe("model provider adapter registry", () => {
       },
     });
     expect(response.body).toContain('"text":"custom-model"');
+  });
+
+  test("passes explicit reasoning disable to custom chat and raw adapters", async () => {
+    const invoke = vi.fn<ModelProviderAdapter["invoke"]>(async (params) =>
+      params.endpoint === "chat"
+        ? {
+            kind: "chat",
+            async stream(events) {
+              events.emit({ type: "content", text: "ok" });
+            },
+          }
+        : { kind: "raw", body: { text: "ok" } },
+    );
+    const modelPolicy = {
+      ...CUSTOM_POLICY,
+      profiles: {
+        custom: {
+          ...CUSTOM_POLICY.profiles.custom,
+          supportsThinking: true,
+          generation: { reasoningEffort: "none" },
+        },
+      },
+    } as const;
+    const providerAdapters = createModelProviderAdapterRegistry([
+      {
+        type: "custom-protocol",
+        supportsImageInput: false,
+        invoke,
+      },
+    ]);
+
+    await createChatHandler({ modelPolicy, providerAdapters })(
+      { text: "hello" },
+      createResponse(),
+    );
+    await createRawHandler({ modelPolicy, providerAdapters })(
+      { prompt: "hello" },
+      createResponse(),
+    );
+
+    expect(
+      invoke.mock.calls.map(([params]) => ({
+        endpoint: params.endpoint,
+        think: params.invocation.think,
+      })),
+    ).toEqual([
+      { endpoint: "chat", think: "none" },
+      { endpoint: "raw", think: "none" },
+    ]);
   });
 
   test("fails explicitly when no adapter owns the configured provider", async () => {

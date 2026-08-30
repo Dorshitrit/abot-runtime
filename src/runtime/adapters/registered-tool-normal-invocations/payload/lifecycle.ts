@@ -1,6 +1,7 @@
 import type {
   BoundOperation,
   RegisteredToolNormalInvocationPayloadLifecycleInput,
+  RegisteredToolNormalInvocationPayloadLifecyclePreparation,
   RegisteredToolNormalInvocationPayloadLifecycleResult,
   RegisteredToolNormalInvocationRejection,
 } from "../shared/contracts.js";
@@ -14,6 +15,15 @@ export function emitNormalInvocationPayloadLifecycle(params: {
   input: RegisteredToolNormalInvocationPayloadLifecycleInput;
   onEvent?(name: string, payload: Record<string, unknown>): void;
 }): RegisteredToolNormalInvocationPayloadLifecycleResult {
+  const prepared = prepareNormalInvocationPayloadLifecycle(params);
+  return prepared.status === "prepared" ? prepared.emit() : prepared;
+}
+
+export function prepareNormalInvocationPayloadLifecycle(params: {
+  operationByHandle: WeakMap<object, BoundOperation>;
+  input: RegisteredToolNormalInvocationPayloadLifecycleInput;
+  onEvent?(name: string, payload: Record<string, unknown>): void;
+}): RegisteredToolNormalInvocationPayloadLifecyclePreparation {
   const source = params.operationByHandle.get(params.input.handle);
   if (!source) {
     return rejectNormalInvocation(
@@ -52,24 +62,37 @@ export function emitNormalInvocationPayloadLifecycle(params: {
     payloadStageCount: lifecycleStage.stage.count,
     ...(eventMeta ? { meta: eventMeta } : {}),
   };
-  switch (params.input.phase) {
+  const event = materializePayloadLifecycleEvent(params.input, base);
+  return Object.freeze({
+    status: "prepared" as const,
+    emit: () => {
+      params.onEvent?.(event.name, event.payload);
+      return Object.freeze({ status: "emitted" as const });
+    },
+  });
+}
+
+function materializePayloadLifecycleEvent(
+  input: RegisteredToolNormalInvocationPayloadLifecycleInput,
+  base: Readonly<Record<string, unknown>>,
+): Readonly<{ name: string; payload: Record<string, unknown> }> {
+  switch (input.phase) {
     case "started":
-      params.onEvent?.("tool.payload.started", base);
-      break;
+      return Object.freeze({ name: "tool.payload.started", payload: base });
     case "completed":
-      params.onEvent?.("tool.payload.completed", {
-        ...base,
-        ok: true,
+      return Object.freeze({
+        name: "tool.payload.completed",
+        payload: { ...base, ok: true },
       });
-      break;
     case "failed":
-      params.onEvent?.("tool.payload.failed", {
-        ...base,
-        ...(params.input.errorCode ? { error: params.input.errorCode } : {}),
+      return Object.freeze({
+        name: "tool.payload.failed",
+        payload: {
+          ...base,
+          ...(input.errorCode ? { error: input.errorCode } : {}),
+        },
       });
-      break;
   }
-  return Object.freeze({ status: "emitted" as const });
 }
 
 function resolvePayloadLifecycleStage(

@@ -184,6 +184,45 @@ function modelGatewayFormatSchema(): Record<string, unknown> {
   };
 }
 
+function embeddingProfilesSchema(): Record<string, unknown> {
+  return {
+    type: "object",
+    propertyNames: { minLength: 1 },
+    description:
+      "Non-generative embedding profiles used by core services such as long-term memory.",
+    additionalProperties: {
+      type: "object",
+      properties: {
+        label: { type: "string", minLength: 1 },
+        provider: { type: "string", minLength: 1 },
+        model: { type: "string", minLength: 1 },
+        options: { type: "object", additionalProperties: true },
+      },
+      required: ["provider", "model"],
+      additionalProperties: false,
+    },
+  };
+}
+
+function longTermMemorySchema(): Record<string, unknown> {
+  return {
+    type: "object",
+    description:
+      "Passive cross-session memory. Disabled unless the host opts in and binds an embedding profile.",
+    properties: {
+      enabled: { type: "boolean", default: false },
+      emitClientEvents: { type: "boolean", default: false },
+      embeddingProfileId: {
+        type: "string",
+        minLength: 1,
+        description:
+          "Profile id under models.embeddingProfiles used for retrieval and indexing.",
+      },
+    },
+    additionalProperties: false,
+  };
+}
+
 function modelInvocationProfilesSchema(): Record<string, unknown> {
   return {
     type: "object",
@@ -402,6 +441,7 @@ export function createRuntimeConfigJsonSchema(): RuntimeConfigJsonSchema {
         },
       },
       plugins: pluginsSchema(),
+      longTermMemory: longTermMemorySchema(),
       models: {
         type: "object",
         description:
@@ -524,6 +564,7 @@ export function createRuntimeConfigJsonSchema(): RuntimeConfigJsonSchema {
               ],
             },
           },
+          embeddingProfiles: embeddingProfilesSchema(),
           invocationProfiles: modelInvocationProfilesSchema(),
           defaults: {
             type: "object",

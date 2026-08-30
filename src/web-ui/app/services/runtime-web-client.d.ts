@@ -3,6 +3,44 @@ export declare function parseJsonResponseText(
   context: string,
 ): Record<string, unknown>;
 
+export declare class RuntimeWebClientError extends Error {
+  readonly status: number | undefined;
+  readonly code: string | undefined;
+  readonly payload: unknown;
+
+  constructor(
+    message: string,
+    options?: {
+      status?: number;
+      code?: string;
+      payload?: unknown;
+    },
+  );
+}
+
+export type LongTermMemoryRecord = Readonly<{
+  id: string;
+  content: string;
+  tags: readonly string[];
+  origin: string;
+  createdAt: string;
+  updatedAt: string;
+  [key: string]: unknown;
+}>;
+
+export type LongTermMemoryPage = Readonly<{
+  items: readonly LongTermMemoryRecord[];
+  total: number;
+  status?: Readonly<{
+    enabled: boolean;
+    available: boolean;
+  }>;
+}>;
+
+export type LongTermMemoryRecordResponse = Readonly<{
+  record: LongTermMemoryRecord;
+}>;
+
 export type RuntimeAvailability =
   | { status: "ready" }
   | {
@@ -92,5 +130,51 @@ export declare function createRuntimeWebClient(options: {
     kind: string;
     id: string;
     config: unknown;
+  }): Promise<Record<string, unknown>>;
+  loadLongTermMemoryStatus(
+    environmentId?: string,
+  ): Promise<Record<string, unknown>>;
+  discoverLongTermMemoryModels(options: {
+    environmentId?: string;
+    providerId: string;
+  }): Promise<Record<string, unknown>>;
+  enableLongTermMemory(options: {
+    environmentId?: string;
+    providerId: string;
+    model: string;
+    profileId?: string;
+    emitClientEvents: boolean;
+  }): Promise<Record<string, unknown>>;
+  disableLongTermMemory(
+    environmentId?: string,
+  ): Promise<Record<string, unknown>>;
+  listLongTermMemories(options?: {
+    environmentId?: string;
+    limit?: number;
+    offset?: number;
+    signal?: AbortSignal;
+  }): Promise<LongTermMemoryPage>;
+  searchLongTermMemories(options: {
+    environmentId?: string;
+    query: string;
+    limit?: number;
+    offset?: number;
+    signal?: AbortSignal;
+  }): Promise<LongTermMemoryPage>;
+  createLongTermMemory(options: {
+    environmentId?: string;
+    content: string;
+    tags: readonly string[];
+  }): Promise<LongTermMemoryRecordResponse>;
+  updateLongTermMemory(options: {
+    environmentId?: string;
+    id: string;
+    content: string;
+    tags: readonly string[];
+    expectedUpdatedAt: string;
+  }): Promise<LongTermMemoryRecordResponse>;
+  deleteLongTermMemory(options: {
+    environmentId?: string;
+    id: string;
   }): Promise<Record<string, unknown>>;
 };

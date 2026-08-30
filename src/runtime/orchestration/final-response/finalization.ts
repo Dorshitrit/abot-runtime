@@ -18,6 +18,7 @@ export async function finalizeResponse(params: {
   observationMeta?: SessionMessageObservationMeta;
   observationContent?: string;
   thinkingTrace?: SessionThinkingTraceEntry[];
+  afterPersist?: () => void;
 }): Promise<void> {
   const sessionStore = params.sessionStore ?? defaultRuntimeSessionStore;
   await sessionStore.appendMessage(params.sessionId, "assistant", params.output, {
@@ -32,6 +33,7 @@ export async function finalizeResponse(params: {
       : {}),
     ...(params.thinkingTrace ? { thinkingTrace: params.thinkingTrace } : {}),
   });
+  params.afterPersist?.();
   params.events.event("thinking.completed");
   params.events.completed(params.output);
 }

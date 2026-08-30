@@ -10,7 +10,11 @@ import {
   SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT,
   type RoleCallLedger,
   type RoleCallLedgerCommitResult,
+  type RoleCallFrame,
 } from "../orchestration/role-calls/index.js";
+
+const ACTION_FINGERPRINT_A = `sha256:${"a".repeat(64)}`;
+const ACTION_FINGERPRINT_B = `sha256:${"b".repeat(64)}`;
 
 function createLedger(): RoleCallLedger {
   return createRoleCallLedger({
@@ -115,4 +119,110 @@ describe("role-call transactions", () => {
       commit: rejectedCommit,
     });
   });
+
+  test("applies stale batch admission after head admission without tracking the actions", async () => {
+    const ledger = await createActiveWorkerLedger();
+    const before = ledger.current();
+    const call = requireActiveCall(ledger);
+    const entries = observationBatchEntries();
+    const isCurrent = vi.fn(() => false);
+
+    const result = await ledger.transactions!.beginCapabilityBatch({
+      expectedHead: before,
+      callId: call.callId,
+      invocationAttempt: call.activationCount,
+      entries,
+      admission: Object.freeze({ isCurrent }),
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.issueCode);
+    expect(result.commit.effect.type).toBe("capability_batch_begun");
+    expect(isCurrent).toHaveBeenCalledTimes(1);
+    expect(
+      result.commit.head.state.capabilityExecutions
+        .slice(-entries.length)
+        .map((execution) => execution.actionFingerprint),
+    ).toEqual([undefined, undefined]);
+    expect(result.commit.head.state.operationSupervision).toEqual(
+      before.state.operationSupervision,
+    );
+    expect(entries.map((entry) => entry.actionFingerprint)).toEqual([
+      ACTION_FINGERPRINT_A,
+      ACTION_FINGERPRINT_B,
+    ]);
+  });
+
+  test("does not evaluate batch admission when the expected head is stale", async () => {
+    const ledger = await createActiveWorkerLedger();
+    const staleHead = ledger.current();
+    const call = requireActiveCall(ledger);
+    const established = await ledger.transactions!.establishWorkingDirectory({
+      expectedHead: staleHead,
+      callId: call.callId,
+      invocationAttempt: call.activationCount,
+      workingDirectory: ".",
+    });
+    expect(established.ok).toBe(true);
+    const currentHead = ledger.current();
+    const isCurrent = vi.fn(() => false);
+
+    const result = await ledger.transactions!.beginCapabilityBatch({
+      expectedHead: staleHead,
+      callId: call.callId,
+      invocationAttempt: call.activationCount,
+      entries: observationBatchEntries(),
+      admission: Object.freeze({ isCurrent }),
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("Expected stale batch begin rejection.");
+    expect(result.issueCode).toBe("stale_head");
+    expect(isCurrent).not.toHaveBeenCalled();
+    expect(ledger.current()).toBe(currentHead);
+  });
 });
+
+async function createActiveWorkerLedger(): Promise<RoleCallLedger> {
+  const ledger = createLedger();
+  const rooted = await ledger.transactions!.createRoot({
+    expectedHead: ledger.current(),
+  });
+  if (!rooted.ok) throw new Error(rooted.issueCode);
+  const opened = await ledger.transactions!.openChild({
+    expectedHead: rooted.commit.head,
+    callerCallId: rooted.commit.effect.callId,
+    roleId: "worker",
+    objective: "Observe two independent bounded targets.",
+  });
+  if (!opened.ok) throw new Error(opened.issueCode);
+  return ledger;
+}
+
+function requireActiveCall(ledger: RoleCallLedger): RoleCallFrame {
+  const head = ledger.current();
+  const call = head.state.calls.find(
+    (candidate) => candidate.callId === head.state.activeCallId,
+  );
+  if (!call) throw new Error("Active role call missing.");
+  return call;
+}
+
+function observationBatchEntries() {
+  return Object.freeze([
+    Object.freeze({
+      capabilityId: "example.observe-a",
+      declaredEffect: "observation" as const,
+      intent: "Read the first current value.",
+      controlsJson: "{}",
+      actionFingerprint: ACTION_FINGERPRINT_A,
+    }),
+    Object.freeze({
+      capabilityId: "example.observe-b",
+      declaredEffect: "observation" as const,
+      intent: "Read the second current value.",
+      controlsJson: "{}",
+      actionFingerprint: ACTION_FINGERPRINT_B,
+    }),
+  ]);
+}

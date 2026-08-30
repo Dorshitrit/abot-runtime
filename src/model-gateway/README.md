@@ -129,7 +129,9 @@ match an invocation profile or model profile id, it is treated as a calibration
 slot on the selected model profile.
 
 Provider-specific request builders translate only the shared controls that the
-transport owns. The shared `generation` contract has no output-cap field, so
+transport owns. `ResolvedModelInvocation.think` is exact: an adapter must map
+`none` to its native disabled form or fail explicitly; only `undefined` permits
+omission. The shared `generation` contract has no output-cap field, so
 there is no configurable or calibrated per-step output cap. Ollama maps
 `temperature` and `topP` to `options`, and supplies a finite `num_predict`
 from the physical context remaining after the final projected provider input.
@@ -148,8 +150,9 @@ the Responses API and reads the API key from the configured env var.
 Set `apiKeyEnv` to an environment variable name such as `OPENAI_API_KEY`, not
 to the API key value.
 New external-provider profiles do not inherit Ollama sampling defaults.
-For OpenAI reasoning profiles, the gateway sends `reasoning.effort` and omits
-`temperature`/`top_p` unless reasoning is explicitly disabled with `none`.
+For OpenAI reasoning profiles, the gateway sends the resolved
+`reasoning.effort`, including explicit `none`, and omits `temperature`/`top_p`
+unless reasoning is disabled with `none`.
 Each `/chat` or `/raw` call writes `model.invocation.resolved` to the runtime
 debug log with the selected `profileId`, `provider`, concrete provider `model`,
 and reasoning level. This is the authoritative log event for identifying which

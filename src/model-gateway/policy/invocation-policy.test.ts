@@ -270,7 +270,7 @@ describe("model gateway invocation policy", () => {
     ]);
   });
 
-  test("omits OpenAI reasoning payload when reasoning is disabled", () => {
+  test("sends explicit OpenAI none when reasoning is disabled", () => {
     const payload = buildOpenAIResponsesPayload({
       agentMode: "fast",
       modelPolicy: {
@@ -289,7 +289,7 @@ describe("model gateway invocation policy", () => {
       },
     });
 
-    expect(payload).not.toHaveProperty("reasoning");
+    expect(payload.reasoning).toEqual({ effort: "none" });
     expect(payload).not.toHaveProperty("max_output_tokens");
   });
 
@@ -318,6 +318,9 @@ describe("model gateway invocation policy", () => {
       2_048,
     );
     expect(buildPayload(MODEL_STEPS.WORKER_RESULT)).not.toHaveProperty(
+      "max_output_tokens",
+    );
+    expect(buildPayload(MODEL_STEPS.CAPABILITY_CONTROLS)).not.toHaveProperty(
       "max_output_tokens",
     );
     expect(buildPayload("unregistered.decision")).not.toHaveProperty(
@@ -351,7 +354,7 @@ describe("model gateway invocation policy", () => {
       },
     });
 
-    expect(payload).not.toHaveProperty("reasoning");
+    expect(payload.reasoning).toEqual({ effort: "none" });
   });
 
   test("applies calibrated reasoning effort to Ollama model steps", () => {
@@ -784,6 +787,10 @@ describe("model gateway invocation policy", () => {
         2_048,
       );
       expect(buildPayload(MODEL_STEPS.WORKER_RESULT)).toHaveProperty(
+        "options.num_predict",
+        960,
+      );
+      expect(buildPayload(MODEL_STEPS.CAPABILITY_CONTROLS)).toHaveProperty(
         "options.num_predict",
         960,
       );

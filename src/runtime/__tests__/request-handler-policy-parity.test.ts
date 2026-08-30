@@ -133,7 +133,7 @@ describe("request handler policy parity", () => {
           request.requestId,
           request.executionPolicy.authority.id,
         );
-        expect(runnerOptions?.executionPolicy).toBeUndefined();
+        expect(runnerOptions).not.toHaveProperty("executionPolicy");
         record(timeline, request.requestId, "runner.enter");
         enteredCount += 1;
         if (enteredCount === fixtures.length) {
@@ -346,6 +346,10 @@ function createSessionStore(params: {
   };
 
   return {
+    compareAndSwapSessionMemoryCheckpoint: async (_sessionId, command) => ({
+      committed: true,
+      checkpoint: command.checkpoint,
+    }),
     getOrCreateSession: async (sessionId) => {
       record(params.timeline, requestIdForSession(sessionId), "session.open");
       return getSession(sessionId);

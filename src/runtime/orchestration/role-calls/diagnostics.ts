@@ -5,6 +5,8 @@ import type {
   RoleCallLedgerRejectionCode,
   RoleCallValidationIssue,
 } from "./contracts.js";
+import { resolveRoleActivationBudget } from "./activation-budget.js";
+import { isSuccessfulObservedMutation } from "./operation-supervision.js";
 
 const ROLE_CALL_LOG_SCOPE = "runtime.role_calls";
 
@@ -13,7 +15,11 @@ export type RoleCallRejectedCommandDiagnostic = Readonly<{
   attemptedDependencyResultRefs?: readonly string[];
   attemptedExecutionId?: string;
   attemptedInvocationAttempt?: number;
+  attemptedSteeringVersion?: number;
   attemptedCapabilityId?: string;
+  attemptedActionFingerprint?: string;
+  attemptedSelectionReceiptFingerprint?: string;
+  attemptedSelectionSupervisionFingerprint?: string;
   attemptedPlanMode?: "declare" | "select" | "extend";
   attemptedPlanItemIds?: readonly string[];
   attemptedPlanItemCount?: number;
@@ -38,6 +44,10 @@ export function traceRoleCallCommit(params: {
   effect: RoleCallCommitEffect;
 }): void {
   const state = params.head.state;
+  const activationBudget = resolveRoleActivationBudget(
+    state,
+    params.head.policy,
+  );
   const common = {
     requestId: state.requestId,
     previousRevision: params.previousHead.revision,
@@ -51,11 +61,13 @@ export function traceRoleCallCommit(params: {
     maxCalls: params.head.policy.limits.maxCalls,
     maxCapabilityExecutions: params.head.policy.limits.maxCapabilityExecutions,
     maxDepth: params.head.policy.limits.maxDepth,
+    ...activationBudget,
   };
   traceDebug(ROLE_CALL_LOG_SCOPE, "transition.committed", {
     ...common,
     effectType: params.effect.type,
   });
+  traceCapabilitySelectionSupervisionReset(params, common);
 
   switch (params.effect.type) {
     case "root_created": {
@@ -155,11 +167,29 @@ export function traceRoleCallCommit(params: {
         invocationAttempt: execution?.invocationAttempt,
         capabilityId: execution?.capabilityId,
         declaredEffect: execution?.declaredEffect,
+        actionFingerprint: execution?.actionFingerprint,
       });
       traceDebug(ROLE_CALL_LOG_SCOPE, "caller.suspended", {
         ...common,
         callId: params.effect.callId,
         capabilityExecutionId: params.effect.executionId,
+      });
+      return;
+    }
+    case "operation_supervision_intervened": {
+      const call = findCall(params.head, params.effect.callId);
+      traceDebug(ROLE_CALL_LOG_SCOPE, "operation.supervision_intervened", {
+        ...common,
+        callId: params.effect.callId,
+        invocationAttempt: params.effect.invocationAttempt,
+        capabilityId: params.effect.capabilityId,
+        actionFingerprint: params.effect.actionFingerprint,
+        priorOutcome: params.effect.priorOutcome,
+        outcomeFingerprint: params.effect.outcomeFingerprint,
+        originExecutionId: params.effect.originExecutionId,
+        matchingOutcomeCount: params.effect.matchingOutcomeCount,
+        interventionCount: params.effect.interventionCount,
+        activationCount: call?.activationCount,
       });
       return;
     }
@@ -176,10 +206,32 @@ export function traceRoleCallCommit(params: {
         invocationAttempt: execution?.invocationAttempt,
         capabilityId: execution?.capabilityId,
         declaredEffect: execution?.declaredEffect,
+        actionFingerprint: execution?.actionFingerprint,
         outcome: execution?.outcome,
+        outcomeFingerprint: execution?.outcomeFingerprint,
         observedEffect: execution?.observedEffect,
         summaryLength: execution?.summary?.length ?? 0,
       });
+      if (
+        execution &&
+        isSuccessfulObservedMutation(execution) &&
+        didClearOperationSupervision(params)
+      ) {
+        traceDebug(ROLE_CALL_LOG_SCOPE, "operation.supervision_reset", {
+          ...common,
+          callId: params.effect.callId,
+          executionId: params.effect.executionId,
+          invocationAttempt: execution.invocationAttempt,
+          capabilityId: execution.capabilityId,
+          actionFingerprint: execution.actionFingerprint,
+          cause: "successful_observed_mutation",
+          clearedEntryCount:
+            params.previousHead.state.operationSupervision.entries.length,
+          clearedInterventionCount:
+            params.previousHead.state.operationSupervision.interventions.length,
+          activationCount: call?.activationCount,
+        });
+      }
       traceDebug(ROLE_CALL_LOG_SCOPE, "caller.resumed", {
         ...common,
         callId: params.effect.callId,
@@ -223,6 +275,9 @@ export function traceRoleCallCommit(params: {
         invocationAttempt: executions[0]?.invocationAttempt,
         capabilityIds: executions.map((execution) => execution?.capabilityId),
         outcomes: executions.map((execution) => execution?.outcome),
+        outcomeFingerprints: executions.map(
+          (execution) => execution?.outcomeFingerprint,
+        ),
         observedEffects: executions.map(
           (execution) => execution?.observedEffect,
         ),
@@ -264,16 +319,52 @@ export function traceRoleCallCommit(params: {
     }
     case "capability_selection_reconsidered": {
       const call = findCall(params.head, params.effect.callId);
+      const reconsideration = call?.lastCapabilitySelectionReconsideration;
+      const cause = reconsideration?.cause;
       traceDebug(ROLE_CALL_LOG_SCOPE, "capability.selection_reconsidered", {
         ...common,
         callId: params.effect.callId,
         invocationAttempt: params.effect.invocationAttempt,
+        steeringVersion: reconsideration?.steeringVersion,
         selectionFingerprint: params.effect.fingerprint,
+        selectionReceiptFingerprint: params.effect.fingerprint,
+        selectionSupervisionFingerprint: params.effect.supervisionFingerprint,
+        selectionSupervisionStage: params.effect.supervisionStage,
+        selectionSupervisionTrigger: params.effect.supervisionTrigger,
+        matchingSelectionCount: params.effect.matchingSelectionCount,
+        totalReconsiderationCount: params.effect.totalReconsiderationCount,
         activationCount: call?.activationCount,
+        causeKind: cause?.kind,
+        ...(cause?.kind === "refinement_declined"
+          ? { declinedInvocationCount: cause.entries.length }
+          : {}),
+        ...(cause?.kind === "refinement_invalid_output"
+          ? {
+              validationStage: cause.validationStage,
+              issueCount: cause.issues.length,
+              repairAttempts: cause.repairAttempts,
+              repeatedInvalidOutput: cause.repeatedInvalidOutput,
+            }
+          : {}),
       });
       return;
     }
   }
+}
+
+function didClearOperationSupervision(params: {
+  previousHead: RoleCallLedgerHead;
+  head: RoleCallLedgerHead;
+}): boolean {
+  const previous = params.previousHead.state.operationSupervision;
+  const current = params.head.state.operationSupervision;
+  const hadSupervisionEvidence =
+    previous.entries.length > 0 || previous.interventions.length > 0;
+  return (
+    hadSupervisionEvidence &&
+    current.entries.length === 0 &&
+    current.interventions.length === 0
+  );
 }
 
 export function traceRoleCallCommitFault(params: {
@@ -307,10 +398,16 @@ export function traceRoleCallRejection(params: {
   command: RoleCallRejectedCommandDiagnostic;
   issues?: readonly RoleCallValidationIssue[];
 }): void {
+  const activationBudget = resolveRoleActivationBudget(
+    params.head.state,
+    params.head.policy,
+  );
   const execution = params.command.attemptedExecutionId
     ? findCapabilityExecution(params.head, params.command.attemptedExecutionId)
     : undefined;
-  traceDebug(ROLE_CALL_LOG_SCOPE, "transition.rejected", {
+  const selectionSupervision =
+    projectRejectedCapabilitySelectionSupervision(params);
+  const rejectionDiagnostic = {
     requestId: params.head.state.requestId,
     revision: params.head.revision,
     phase: params.head.state.phase,
@@ -318,7 +415,9 @@ export function traceRoleCallRejection(params: {
     activeCallId: params.head.state.activeCallId,
     commandType: params.commandType,
     rejectionCode: params.code,
+    ...activationBudget,
     ...params.command,
+    ...selectionSupervision,
     ...(execution
       ? {
           capabilityId: execution.capabilityId,
@@ -334,6 +433,114 @@ export function traceRoleCallRejection(params: {
     maxCalls: params.head.policy.limits.maxCalls,
     maxCapabilityExecutions: params.head.policy.limits.maxCapabilityExecutions,
     maxDepth: params.head.policy.limits.maxDepth,
+  };
+  traceDebug(ROLE_CALL_LOG_SCOPE, "transition.rejected", rejectionDiagnostic);
+  if (params.code === "capability_selection_supervision_limit_exceeded") {
+    traceDebug(
+      ROLE_CALL_LOG_SCOPE,
+      "capability_selection.supervision_terminal",
+      rejectionDiagnostic,
+    );
+  }
+}
+
+function traceCapabilitySelectionSupervisionReset(
+  params: {
+    previousHead: RoleCallLedgerHead;
+    head: RoleCallLedgerHead;
+    effect: RoleCallCommitEffect;
+  },
+  common: Readonly<Record<string, unknown>>,
+): void {
+  const previous = params.previousHead.state.capabilitySelectionSupervision;
+  const current = params.head.state.capabilitySelectionSupervision;
+  if (previous.records.length === 0) return;
+  const cause = resolveCapabilitySelectionSupervisionResetCause(params);
+  if (!cause) return;
+  traceDebug(ROLE_CALL_LOG_SCOPE, "capability_selection.supervision_reset", {
+    ...common,
+    callId: previous.epoch?.callId,
+    steeringVersion: previous.epoch?.steeringVersion,
+    resetReason: cause,
+    clearedRecordCount: previous.records.length,
+    clearedIdentityCount: new Set(
+      previous.records.map((record) => record.supervisionFingerprint),
+    ).size,
+    nextSteeringVersion: current.epoch?.steeringVersion,
+  });
+}
+
+function resolveCapabilitySelectionSupervisionResetCause(params: {
+  previousHead: RoleCallLedgerHead;
+  head: RoleCallLedgerHead;
+  effect: RoleCallCommitEffect;
+}): string | undefined {
+  const previous = params.previousHead.state.capabilitySelectionSupervision;
+  const current = params.head.state.capabilitySelectionSupervision;
+  if (
+    params.effect.type === "capability_selection_reconsidered" &&
+    previous.epoch?.steeringVersion !== current.epoch?.steeringVersion
+  ) {
+    return "steering_version_changed";
+  }
+  if (current.records.length > 0) return undefined;
+  switch (params.effect.type) {
+    case "root_response_committed":
+      return "root_completed";
+    case "child_opened":
+      return "child_opened";
+    case "child_returned":
+      return "child_returned";
+    case "capability_execution_begun":
+    case "capability_batch_begun":
+    case "operation_supervision_intervened":
+      return "materialized_capability_attempt";
+    case "capability_scope_updated":
+      return "capability_scope_updated";
+    case "working_directory_established":
+      return "working_directory_established";
+    default:
+      return undefined;
+  }
+}
+
+function projectRejectedCapabilitySelectionSupervision(params: {
+  head: RoleCallLedgerHead;
+  code: RoleCallLedgerRejectionCode;
+  command: RoleCallRejectedCommandDiagnostic;
+  issues?: readonly RoleCallValidationIssue[];
+}): Readonly<Record<string, unknown>> {
+  if (
+    params.code !== "capability_selection_supervision_limit_exceeded" ||
+    !params.command.attemptedSelectionSupervisionFingerprint
+  ) {
+    return Object.freeze({});
+  }
+  const state = params.head.state.capabilitySelectionSupervision;
+  const sameEpoch =
+    state.epoch?.callId === params.command.attemptedCallId &&
+    state.epoch?.steeringVersion === params.command.attemptedSteeringVersion;
+  const matchingSelectionCount =
+    (sameEpoch
+      ? state.records.filter(
+          (record) =>
+            record.supervisionFingerprint ===
+            params.command.attemptedSelectionSupervisionFingerprint,
+        ).length
+      : 0) + 1;
+  const totalReconsiderationCount = (sameEpoch ? state.records.length : 0) + 1;
+  const issueCode = params.issues?.[0]?.code;
+  const trigger =
+    issueCode === "capability_selection_repeat_limit_exceeded"
+      ? "repeat_identity"
+      : issueCode === "capability_selection_total_limit_exceeded"
+        ? "total_budget"
+        : "repeat_and_total";
+  return Object.freeze({
+    selectionSupervisionStage: "terminal",
+    selectionSupervisionTrigger: trigger,
+    matchingSelectionCount,
+    totalReconsiderationCount,
   });
 }
 

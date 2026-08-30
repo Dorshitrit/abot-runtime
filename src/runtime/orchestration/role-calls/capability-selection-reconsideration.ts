@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { exactKeys, isRecord } from "../../validation/strict-record.js";
 import {
   isRoleCapabilityId,
   ROLE_CAPABILITY_INVOCATION_CONTROLS_JSON_MAX_LENGTH,
@@ -208,17 +209,6 @@ function canonicalizeJsonValue(input: unknown): unknown {
   );
 }
 
-function exactKeys(
-  input: Record<string, unknown>,
-  expectedKeys: readonly string[],
-): boolean {
-  const expected = new Set(expectedKeys);
-  const actual = Object.keys(input);
-  return (
-    actual.length === expected.size && actual.every((key) => expected.has(key))
-  );
-}
-
 function sameStringArray(
   left: readonly string[],
   right: readonly string[],
@@ -227,8 +217,4 @@ function sameStringArray(
     left.length === right.length &&
     left.every((value, index) => value === right[index])
   );
-}
-
-function isRecord(input: unknown): input is Record<string, unknown> {
-  return input !== null && typeof input === "object" && !Array.isArray(input);
 }

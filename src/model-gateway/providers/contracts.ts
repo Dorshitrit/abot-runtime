@@ -1,6 +1,9 @@
 import type {
+  ModelGatewayEmbeddingRequest,
   ModelGatewayEvent,
+  ModelGatewayProviderConfig,
   ModelGatewayRequest,
+  ResolvedEmbeddingProfile,
   ResolvedModelInvocation,
 } from "../types.js";
 
@@ -45,6 +48,36 @@ export type ModelProviderInputTokenCountResult =
   | ModelProviderInvocationError
   | ModelProviderInputTokenCount;
 
+export type ModelProviderEmbeddingResult =
+  | ModelProviderInvocationError
+  | Readonly<{
+      kind: "embedded";
+      vectors: readonly (readonly number[])[];
+      modelFingerprint: string;
+    }>;
+
+export type ModelProviderEmbeddingParams = Readonly<{
+  requestBody: ModelGatewayEmbeddingRequest;
+  profile: ResolvedEmbeddingProfile;
+  texts: readonly string[];
+  fetchImpl: typeof fetch;
+}>;
+
+export type ModelProviderEmbeddingModelCatalog = Readonly<{
+  supported: boolean;
+  models: readonly string[];
+}>;
+
+export type ModelProviderEmbeddingModelDiscoveryParams = Readonly<{
+  providerId: string;
+  providerConfig: ModelGatewayProviderConfig;
+  fetchImpl: typeof fetch;
+}>;
+
+export type ModelProviderEmbeddingModelCatalogResult =
+  | ModelProviderInvocationError
+  | Readonly<{ kind: "listed"; models: readonly string[] }>;
+
 export type ModelProviderInvocationParams = Readonly<{
   endpoint: "chat" | "raw";
   requestBody: ModelGatewayRequest;
@@ -67,6 +100,12 @@ export type ModelProviderInputTokenCountParams = Readonly<{
 export type ModelProviderAdapter = Readonly<{
   type: string;
   supportsImageInput: boolean;
+  embed?(
+    params: ModelProviderEmbeddingParams,
+  ): Promise<ModelProviderEmbeddingResult>;
+  listEmbeddingModels?(
+    params: ModelProviderEmbeddingModelDiscoveryParams,
+  ): Promise<ModelProviderEmbeddingModelCatalogResult>;
   countInputTokens?(
     params: ModelProviderInputTokenCountParams,
   ): Promise<ModelProviderInputTokenCountResult>;

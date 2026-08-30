@@ -10,7 +10,6 @@ import {
   buildWorkerCapabilityExecutionInstructions,
   buildWorkerDecisionInstructions,
 } from "../prompt.js";
-import { WORKER_DECISION_MODEL_STEP } from "../contracts.js";
 import { WORKER_SESSION_ARTIFACT_PATH_PROJECTION_MAX } from "../runtime-path-refinement.js";
 import type {
   PreparedWorkerDecisionSession,
@@ -27,13 +26,15 @@ export function prepareWorkerPromptContext(
   references: PreparedWorkerReferenceContext,
 ): PreparedWorkerPromptContext {
   const { request, options, capabilitySelection } = session;
-  const { dependencyResults, resume } = session.canonicalState;
+  const { dependencyResults, operationSupervision, resume } =
+    session.canonicalState;
   const {
     selectedCapabilityExecution,
     selectedCapabilityBatchExecution,
     executionPending: capabilityExecutionPending,
   } = capabilitySelection;
   const {
+    allowedActions,
     capabilitiesAvailable,
     capabilitySelectionRejection,
     capabilityCatalogProjection,
@@ -42,7 +43,7 @@ export function prepareWorkerPromptContext(
   const budget = resolveModelContextBudget({
     runnerConfig: request.runnerConfig,
     agentMode: request.agentMode,
-    modelStep: WORKER_DECISION_MODEL_STEP,
+    modelStep: session.diagnostic.modelStep,
     ...(request.modelPreference
       ? { modelPreference: request.modelPreference }
       : {}),
@@ -55,6 +56,8 @@ export function prepareWorkerPromptContext(
           selectedCapabilityBatchExecution !== undefined,
         hasDependencyResults: dependencyResults.length > 0,
         hasRequestToolResults: requestToolResultsMessage !== undefined,
+        returnResultAvailable: allowedActions.includes("return_result"),
+        returnFailureAvailable: allowedActions.includes("return_failure"),
       })
     : buildWorkerDecisionInstructions({
         capabilitiesAvailable,
@@ -62,6 +65,7 @@ export function prepareWorkerPromptContext(
         hasCapabilityResult: resume !== undefined,
         hasDependencyResults: dependencyResults.length > 0,
         hasRequestToolResults: options.requestToolResults.results.length > 0,
+        hasOperationSupervision: operationSupervision !== undefined,
         hasCapabilitySelectionRejection:
           capabilitySelectionRejection !== undefined,
         capabilityCatalogProjection,
@@ -78,7 +82,7 @@ export function prepareWorkerPromptContext(
   const configuredInstructionMetadata =
     resolveConfiguredStepInstructionMetadata({
       runnerConfig: request.runnerConfig,
-      modelStep: WORKER_DECISION_MODEL_STEP,
+      modelStep: session.diagnostic.modelStep,
     });
   const prompt = buildWorkerAssignmentPrompt(session);
 
@@ -163,7 +167,7 @@ function buildWorkerAssignmentPrompt(
   session: PreparedWorkerDecisionSession,
 ): string {
   const { callIdentity, objective, options } = session;
-  const { dependencyResults } = session.canonicalState;
+  const { dependencyResults, operationSupervision } = session.canonicalState;
   const {
     pendingCapabilitySelection,
     pendingCapabilityBatchSelection,
@@ -185,6 +189,7 @@ function buildWorkerAssignmentPrompt(
       ? { workingDirectory: options.call.workingDirectory }
       : {}),
     ...(dependencyResults.length > 0 ? { dependencyResults } : {}),
+    ...(operationSupervision ? { operationSupervision } : {}),
   };
 
   if (capabilityExecutionPending) {

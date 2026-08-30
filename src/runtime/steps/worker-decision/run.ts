@@ -17,7 +17,9 @@ import { createModelStepCompactionController } from "../../context/model-step-co
 import { emitRuntimeStatus } from "../../events/runtime-status.js";
 import type { RoleCallFrame } from "../../orchestration/role-calls/index.js";
 import {
+  CAPABILITY_CONTROLS_MODEL_STEP,
   createWorkerCapabilityBinding,
+  isWorkerCapabilityOperationSupervisionLimitError,
   materializeWorkerCapabilityControlsIfComplete,
   partitionWorkerCapabilityControlsSchema,
   workerCapabilityContextCompactionScopeId,
@@ -90,6 +92,9 @@ type RunWorkerDecisionOptions = Readonly<{
   capabilitySelectionRejection?: WorkerCapabilitySelectionRejection;
 }>;
 
+const WORKER_OPERATION_SUPERVISION_LIMIT_SUMMARY =
+  "The runtime stopped a persistently repeated operation after intervention.";
+
 export async function runWorkerDecision(
   request: RequestExecutionScope,
   options: RunWorkerDecisionOptions,
@@ -114,7 +119,7 @@ export async function runWorkerDecision(
     traceWorkerCapabilitySelectionReopened({
       diagnostic: {
         requestId: request.requestId,
-        modelStep: WORKER_DECISION_MODEL_STEP,
+        modelStep: CAPABILITY_CONTROLS_MODEL_STEP,
         decisionPhase: "capability_execution",
         ...projectWorkerDecisionCallIdentity(options.call),
       },
@@ -204,7 +209,7 @@ export async function runWorkerDecision(
           traceWorkerCapabilityRefinementSkipped({
             diagnostic: {
               requestId: request.requestId,
-              modelStep: WORKER_DECISION_MODEL_STEP,
+              modelStep: CAPABILITY_CONTROLS_MODEL_STEP,
               decisionPhase: "capability_execution",
               ...projectWorkerDecisionCallIdentity(options.call),
             },
@@ -215,6 +220,9 @@ export async function runWorkerDecision(
             action: "invoke_capability" as const,
             capabilityId: decision.capabilityId,
             intent: decision.intent,
+            ...(decision.authoringObjective
+              ? { authoringObjective: decision.authoringObjective }
+              : {}),
             controls: materialized.value,
           });
         }
@@ -225,6 +233,9 @@ export async function runWorkerDecision(
       selectedCapabilityExecution: {
         capabilityId: decision.capabilityId,
         intent: decision.intent,
+        ...(decision.authoringObjective
+          ? { authoringObjective: decision.authoringObjective }
+          : {}),
         ...("selectionControls" in decision && decision.selectionControls
           ? { selectionControls: decision.selectionControls }
           : {}),
@@ -260,6 +271,11 @@ export async function runWorkerDecision(
             Object.freeze({
               capabilityId,
               intent,
+              ...(invocationSelection.authoringObjective
+                ? {
+                    authoringObjective: invocationSelection.authoringObjective,
+                  }
+                : {}),
               ...("selectionControls" in invocationSelection &&
               invocationSelection.selectionControls
                 ? {
@@ -313,6 +329,7 @@ async function runWorkerDecisionPhase(
           availableCapabilities: input.availableCapabilities,
           maxBatchCapabilityExecutions: input.maxBatchCapabilityExecutions,
           decisionPhase: diagnostic.decisionPhase,
+          allowedActions: input.allowedActions,
           ...(input.pendingCapabilitySelection
             ? {
                 pendingCapabilitySelection: input.pendingCapabilitySelection,
@@ -368,30 +385,31 @@ async function completeWorkerHandoffEvidence(
 ): Promise<WorkerResultAuthorSource> {
   const store = request.contextCompactionStore;
   if (!store) return input.resultAuthorSource;
-  const scopeId = workerCapabilityContextCompactionScopeId(
-    options.call.callId,
-  );
+  const scopeId = workerCapabilityContextCompactionScopeId(options.call.callId);
   const checkpoint = store.get(scopeId);
   if (!checkpoint) return input.resultAuthorSource;
   assertWorkerCheckpointApplicable(request, options.call, checkpoint);
 
+  const immediatePresentationEvidence =
+    input.resultAuthorSource.operationSupervisionEvidenceContextMessage;
+  const handoffCompactionMessages = immediatePresentationEvidence
+    ? input.context.messages.filter(
+        (message) => message !== immediatePresentationEvidence,
+      )
+    : input.context.messages;
   const prepared = await createModelStepCompactionController(request, {
     call: options.call,
     sourceRevision: options.requestToolResults.sourceRevision,
     allowedConsumers: WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS,
     scopeId,
-  }).prepare(input.context.messages);
+  }).prepare(handoffCompactionMessages);
   prepared.commit();
 
   const refreshedCheckpoint = store.get(scopeId);
   if (!refreshedCheckpoint) {
     throw new Error("context_compaction_handoff_checkpoint_missing");
   }
-  assertWorkerCheckpointApplicable(
-    request,
-    options.call,
-    refreshedCheckpoint,
-  );
+  assertWorkerCheckpointApplicable(request, options.call, refreshedCheckpoint);
   return buildWorkerDecisionInput(request, {
     ...options,
     requestToolResultsContextMessage: buildCompactedRequestToolResultsMessage(
@@ -506,15 +524,17 @@ export const GENERIC_WORKER_EXECUTOR: RoleExecutor<
       ledger,
       head,
     };
-    const capabilityResume = continuation
-      ? {
-          ledger,
-          head,
-          ...(continuation.kind === "capability_batch_execution"
-            ? { executionIds: continuation.executionIds }
-            : { executionId: continuation.executionId }),
-        }
-      : undefined;
+    const capabilityResume =
+      continuation?.kind === "capability_execution" ||
+      continuation?.kind === "capability_batch_execution"
+        ? {
+            ledger,
+            head,
+            ...(continuation.kind === "capability_batch_execution"
+              ? { executionIds: continuation.executionIds }
+              : { executionId: continuation.executionId }),
+          }
+        : undefined;
     const decision = await runWorkerDecision(context, {
       call,
       requestToolResults,
@@ -542,7 +562,7 @@ export const GENERIC_WORKER_EXECUTOR: RoleExecutor<
       traceWorkerClientBatchIntentsPublished({
         diagnostic: {
           requestId: context.requestId,
-          modelStep: WORKER_DECISION_MODEL_STEP,
+          modelStep: CAPABILITY_CONTROLS_MODEL_STEP,
           decisionPhase: "capability_execution",
           ...projectWorkerDecisionCallIdentity(call),
         },
@@ -551,13 +571,48 @@ export const GENERIC_WORKER_EXECUTOR: RoleExecutor<
         ),
         intentLengths: decision.invocations.map(({ intent }) => intent.length),
       });
-      const execution = await binding.executeBatch({
-        invocations: decision.invocations.map((invocation) => ({
-          capabilityId: invocation.capabilityId,
-          intent: invocation.intent,
-          controls: invocation.controls,
-        })),
-      });
+      let execution: Awaited<ReturnType<typeof binding.executeBatch>>;
+      try {
+        execution = await binding.executeBatch({
+          invocations: decision.invocations.map((invocation) => ({
+            capabilityId: invocation.capabilityId,
+            intent: invocation.intent,
+            ...(invocation.authoringObjective
+              ? { authoringObjective: invocation.authoringObjective }
+              : {}),
+            controls: invocation.controls,
+          })),
+        });
+      } catch (error: unknown) {
+        if (!isWorkerCapabilityOperationSupervisionLimitError(error))
+          throw error;
+        return Object.freeze({
+          kind: "terminal",
+          outcome: "failed",
+          summary: WORKER_OPERATION_SUPERVISION_LIMIT_SUMMARY,
+        });
+      }
+      if ("commit" in execution) {
+        return Object.freeze({
+          kind: "continue",
+          continuation: Object.freeze({
+            kind: "operation_supervision_intervention",
+            commit: execution.commit,
+          }),
+        });
+      }
+      if (execution.executionIds.length === 1) {
+        return Object.freeze({
+          kind: "continue",
+          continuation: Object.freeze({
+            kind: "capability_execution",
+            executionId: execution.executionIds[0]!,
+          }),
+        });
+      }
+      if (execution.executionIds.length === 0) {
+        throw new Error("worker_capability_batch_execution_empty");
+      }
       return Object.freeze({
         kind: "continue",
         continuation: Object.freeze({
@@ -570,18 +625,40 @@ export const GENERIC_WORKER_EXECUTOR: RoleExecutor<
     traceWorkerClientIntentPublished({
       diagnostic: {
         requestId: context.requestId,
-        modelStep: WORKER_DECISION_MODEL_STEP,
+        modelStep: CAPABILITY_CONTROLS_MODEL_STEP,
         decisionPhase: "capability_execution",
         ...projectWorkerDecisionCallIdentity(call),
       },
       capabilityId: decision.capabilityId,
       intentLength: decision.intent.length,
     });
-    const execution = await binding.execute({
-      capabilityId: decision.capabilityId,
-      intent: decision.intent,
-      controls: decision.controls,
-    });
+    let execution: Awaited<ReturnType<typeof binding.execute>>;
+    try {
+      execution = await binding.execute({
+        capabilityId: decision.capabilityId,
+        intent: decision.intent,
+        ...(decision.authoringObjective
+          ? { authoringObjective: decision.authoringObjective }
+          : {}),
+        controls: decision.controls,
+      });
+    } catch (error: unknown) {
+      if (!isWorkerCapabilityOperationSupervisionLimitError(error)) throw error;
+      return Object.freeze({
+        kind: "terminal",
+        outcome: "failed",
+        summary: WORKER_OPERATION_SUPERVISION_LIMIT_SUMMARY,
+      });
+    }
+    if ("commit" in execution) {
+      return Object.freeze({
+        kind: "continue",
+        continuation: Object.freeze({
+          kind: "operation_supervision_intervention",
+          commit: execution.commit,
+        }),
+      });
+    }
     return Object.freeze({
       kind: "continue",
       continuation: Object.freeze({

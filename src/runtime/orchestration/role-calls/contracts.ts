@@ -4,10 +4,21 @@ import type {
 } from "../state-head.js";
 import type { CapabilityAdapterResult } from "../capability-adapters/result.js";
 import type { RuntimeDelegateRoleId, RuntimeRoleId } from "../roles.js";
+import type {
+  RoleOperationFingerprint,
+  RoleOperationOutcomeFingerprint,
+  RoleOperationSupervisionState,
+} from "./operation-supervision.js";
+import type {
+  RoleCapabilitySelectionSupervisionStage,
+  RoleCapabilitySelectionSupervisionState,
+  RoleCapabilitySelectionSupervisionTrigger,
+} from "./capability-selection-supervision.js";
+import type { RoleCapabilitySelectionReconsiderationCause } from "./reconsideration-cause.js";
 
-export const ROLE_CALL_LEDGER_CONTRACT_VERSION = 11;
+export const ROLE_CALL_LEDGER_CONTRACT_VERSION = 15;
 export const ROLE_CALL_LEDGER_HEAD_KIND =
-  "runtime_role_call_ledger_v11" as const;
+  "runtime_role_call_ledger_v15" as const;
 export const ROLE_CALL_OBJECTIVE_MAX_LENGTH = 8_192;
 export const ROLE_CALL_RESULT_MAX_LENGTH = 8_192;
 export const ROLE_CALL_RESPONSE_MAX_LENGTH = 65_536;
@@ -109,6 +120,7 @@ export type RoleCapabilitySelectionReconsideration = Readonly<{
   steeringVersion: number;
   fingerprint: string;
   selection: RoleCapabilitySelectionProjection;
+  cause: RoleCapabilitySelectionReconsiderationCause;
 }>;
 
 export type RoleCallFrame = Readonly<{
@@ -217,8 +229,10 @@ export type RoleCapabilityExecution = Readonly<{
   declaredEffect: RoleCapabilityDeclaredEffect;
   intent: string;
   controlsJson: string;
+  actionFingerprint?: RoleOperationFingerprint;
   status: RoleCapabilityExecutionStatus;
   outcome: RoleCapabilityExecutionOutcome | null;
+  outcomeFingerprint: RoleOperationOutcomeFingerprint | null;
   observedEffect: RoleCapabilityObservedEffect | null;
   summary: string | null;
   referenceData?: string;
@@ -240,6 +254,8 @@ export type RoleCallState = Readonly<{
   results: readonly RoleCallResult[];
   plans: readonly RoleCallPlanState[];
   capabilityExecutions: readonly RoleCapabilityExecution[];
+  operationSupervision: RoleOperationSupervisionState;
+  capabilitySelectionSupervision: RoleCapabilitySelectionSupervisionState;
   rootResponse: string | null;
 }>;
 
@@ -291,6 +307,7 @@ export type BeginRoleCapabilityExecutionCommand = Readonly<{
   declaredEffect: RoleCapabilityDeclaredEffect;
   intent: string;
   controlsJson: string;
+  actionFingerprint?: RoleOperationFingerprint;
 }>;
 
 export type SettleRoleCapabilityExecutionCommand = Readonly<{
@@ -299,6 +316,7 @@ export type SettleRoleCapabilityExecutionCommand = Readonly<{
   callId: string;
   executionId: string;
   outcome: RoleCapabilityExecutionOutcome;
+  outcomeFingerprint?: RoleOperationOutcomeFingerprint;
   observedEffect: RoleCapabilityObservedEffect;
   summary: string;
   referenceData?: string;
@@ -311,6 +329,7 @@ export type RoleCapabilityObservationBatchEntry = Readonly<{
   declaredEffect: "observation";
   intent: string;
   controlsJson: string;
+  actionFingerprint?: RoleOperationFingerprint;
 }>;
 
 export type BeginRoleCapabilityBatchCommand = Readonly<{
@@ -324,6 +343,7 @@ export type BeginRoleCapabilityBatchCommand = Readonly<{
 export type RoleCapabilityBatchSettlement = Readonly<{
   executionId: string;
   outcome: RoleCapabilityExecutionOutcome;
+  outcomeFingerprint?: RoleOperationOutcomeFingerprint;
   observedEffect: RoleCapabilityObservedEffect;
   summary: string;
   referenceData?: string;
@@ -362,6 +382,7 @@ export type ReconsiderRoleCapabilitySelectionCommand = Readonly<{
   invocationAttempt: number;
   steeringVersion: number;
   selection: RoleCapabilitySelectionProjection;
+  cause: RoleCapabilitySelectionReconsiderationCause;
 }>;
 
 export type RoleCallLedgerCommand =
@@ -402,6 +423,18 @@ export type RoleCallCommitEffect =
       executionId: string;
     }>
   | Readonly<{
+      type: "operation_supervision_intervened";
+      callId: string;
+      invocationAttempt: number;
+      capabilityId: string;
+      actionFingerprint: RoleOperationFingerprint;
+      priorOutcome: RoleCapabilityExecutionOutcome;
+      outcomeFingerprint: RoleOperationOutcomeFingerprint;
+      originExecutionId: string;
+      matchingOutcomeCount: 2;
+      interventionCount: 1;
+    }>
+  | Readonly<{
       type: "capability_execution_settled";
       callId: string;
       executionId: string;
@@ -431,6 +464,11 @@ export type RoleCallCommitEffect =
       callId: string;
       invocationAttempt: number;
       fingerprint: string;
+      supervisionFingerprint: string;
+      supervisionStage: RoleCapabilitySelectionSupervisionStage;
+      supervisionTrigger: RoleCapabilitySelectionSupervisionTrigger;
+      matchingSelectionCount: number;
+      totalReconsiderationCount: number;
     }>;
 
 export type RoleCallValidationIssue = Readonly<{
@@ -463,7 +501,10 @@ export type RoleCallTransitionRejectionCode =
   | "capability_execution_mismatch"
   | "capability_scope_update_invalid"
   | "working_directory_establishment_invalid"
-  | "capability_selection_reconsideration_invalid";
+  | "capability_selection_reconsideration_invalid"
+  | "capability_selection_supervision_limit_exceeded"
+  | "operation_supervision_limit_exceeded"
+  | "role_activation_limit_exceeded";
 
 export type RoleCallTransitionResult =
   | Readonly<{
@@ -527,6 +568,23 @@ export type RoleCallLedgerCommitObservers = Readonly<{
 export type RoleCallTransactionInput<TCommand extends RoleCallLedgerCommand> =
   Readonly<{ expectedHead: unknown } & Omit<TCommand, "authority" | "type">>;
 
+/** Transient root fence evaluated after ledger-head admission and before transition. */
+export type RoleCallCapabilityExecutionAdmission = Readonly<{
+  isCurrent(): boolean;
+}>;
+
+export type BeginRoleCapabilityExecutionTransactionInput =
+  RoleCallTransactionInput<BeginRoleCapabilityExecutionCommand> &
+    Readonly<{
+      admission?: RoleCallCapabilityExecutionAdmission;
+    }>;
+
+export type BeginRoleCapabilityBatchTransactionInput =
+  RoleCallTransactionInput<BeginRoleCapabilityBatchCommand> &
+    Readonly<{
+      admission?: RoleCallCapabilityExecutionAdmission;
+    }>;
+
 export type RoleCallTransactionSuccess<
   TEffectType extends RoleCallCommitEffect["type"],
 > = Readonly<{
@@ -581,10 +639,10 @@ export type RoleCallTransactions = Readonly<{
     >
   >;
   beginCapabilityExecution(
-    input: RoleCallTransactionInput<BeginRoleCapabilityExecutionCommand>,
+    input: BeginRoleCapabilityExecutionTransactionInput,
   ): Promise<
     RoleCallTransactionResult<
-      "capability_execution_begun",
+      "capability_execution_begun" | "operation_supervision_intervened",
       "commit_effect_invalid"
     >
   >;
@@ -597,9 +655,12 @@ export type RoleCallTransactions = Readonly<{
     >
   >;
   beginCapabilityBatch(
-    input: RoleCallTransactionInput<BeginRoleCapabilityBatchCommand>,
+    input: BeginRoleCapabilityBatchTransactionInput,
   ): Promise<
-    RoleCallTransactionResult<"capability_batch_begun", "commit_effect_invalid">
+    RoleCallTransactionResult<
+      "capability_batch_begun" | "operation_supervision_intervened",
+      "commit_effect_invalid"
+    >
   >;
   settleCapabilityBatch(
     input: RoleCallTransactionInput<SettleRoleCapabilityBatchCommand>,
@@ -644,6 +705,7 @@ export type RoleCallLedger = Readonly<{
     input: Readonly<{
       expectedHead: unknown;
       command: unknown;
+      capabilityExecutionAdmission?: RoleCallCapabilityExecutionAdmission;
     }>,
   ): Promise<RoleCallLedgerCommitResult>;
 }>;

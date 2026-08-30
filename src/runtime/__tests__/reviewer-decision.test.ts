@@ -216,8 +216,7 @@ const modelPolicy = {
       contextWindowTokens: 8_000,
       supportsThinking: true,
       calibration: {
-        "reviewer.decision": {
-        },
+        "reviewer.decision": {},
       },
     },
   },
@@ -2444,8 +2443,7 @@ describe("generic Reviewer decision boundary", () => {
               tokenEstimation: { asciiCharactersPerToken: 4 },
             },
             calibration: {
-              "reviewer.decision": {
-              },
+              "reviewer.decision": {},
             },
           },
         },
@@ -2600,9 +2598,9 @@ describe("generic Reviewer decision boundary", () => {
     });
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(
-      request.onEvent.mock.calls.some(
-        ([name]) => name === "context.compaction.started",
-      ),
+      vi
+        .mocked(request.onEvent)
+        .mock.calls.some(([name]) => name === "context.compaction.started"),
     ).toBe(false);
   });
 
@@ -2696,7 +2694,9 @@ describe("generic Reviewer decision boundary", () => {
       });
       expect(ledger.current().state.activeCallId).toBe(call.callId);
       expect(
-        request.onEvent.mock.calls.filter(([name]) => name === "runtime.state"),
+        vi
+          .mocked(request.onEvent)
+          .mock.calls.filter(([name]) => name === "runtime.state"),
       ).toEqual([
         [
           "runtime.state",

@@ -1,3 +1,5 @@
+import { createLongTermMemoryRequests } from "./runtime-web-client/memory.js";
+
 export function parseJsonResponseText(text, context) {
   if (!text.trim()) return {};
   try {
@@ -5,6 +7,16 @@ export function parseJsonResponseText(text, context) {
   } catch {
     const preview = text.trim().replaceAll(/\s+/g, " ").slice(0, 140);
     throw new Error(`${context} returned non-JSON: ${preview || "empty body"}`);
+  }
+}
+
+export class RuntimeWebClientError extends Error {
+  constructor(message, { status, code, payload } = {}) {
+    super(message);
+    this.name = "RuntimeWebClientError";
+    this.status = status;
+    this.code = code;
+    this.payload = payload;
   }
 }
 
@@ -57,13 +69,25 @@ export function createRuntimeWebClient({
     });
     const data = parseJsonResponseText(await response.text(), context);
     if (!response.ok) {
-      throw new Error(data.message || data.error || `HTTP ${response.status}`);
+      throw new RuntimeWebClientError(
+        data.message || data.error || `HTTP ${response.status}`,
+        {
+          status: response.status,
+          code: typeof data.error === "string" ? data.error : "",
+          payload: data,
+        },
+      );
     }
     return data;
   }
 
   const requestApi = (path, options = {}) =>
     request(resolveApiPath(path), path, options);
+  const longTermMemoryRequests = createLongTermMemoryRequests({
+    requestApi,
+    getEnvironmentId,
+    environmentQuery,
+  });
 
   return {
     getRuntimeStatus() {
@@ -266,5 +290,7 @@ export function createRuntimeWebClient({
         }),
       });
     },
+
+    ...longTermMemoryRequests,
   };
 }

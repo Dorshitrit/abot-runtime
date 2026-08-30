@@ -3,8 +3,10 @@ import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 
 import { DEFAULT_RUNTIME_CONFIG_FILE } from "../runtime/config/constants.js";
-import { isRecord, resolveRuntimePath } from "../runtime/config/utils.js";
 import { REQUEST_INVOKED_STEP_IDS } from "../runtime/config/runner/contracts.js";
+import { assertSupportedRequestRunnerConfigVersion } from "../runtime/config/runner/schema-version.js";
+import { parseRequestRunnerConfig } from "../runtime/config/runner/versioned-config.js";
+import { isRecord, resolveRuntimePath } from "../runtime/config/utils.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -361,6 +363,12 @@ export async function saveConfigDashboardFile(params: {
     };
   }
   ensureInsideRoot(params.rootDir, filePath);
+  if (target.kind === "requestRunner") {
+    if (target.exists) {
+      assertSupportedRequestRunnerConfigVersion(target.config, filePath);
+    }
+    parseRequestRunnerConfig(params.config, filePath);
+  }
   const result = await writeJsonObject(filePath, params.config);
   const file = await readDescriptor({
     rootDir: params.rootDir,

@@ -56,6 +56,7 @@ const inspectTargetCapability = {
     required: ["path"],
     additionalProperties: false as const,
   },
+  selectionControlIds: ["path"],
 };
 const inspectJsonCapability = {
   capabilityId: "inspect_json",
@@ -107,6 +108,7 @@ const operationTargetSelectionFormat = createWorkerDecisionFormat({
 });
 const operationTargetExecutionFormat = createWorkerDecisionFormat({
   capabilities: [operationTargetCapability],
+  allowReturnResult: false,
   pendingCapabilitySelection: {
     capabilityId: operationTargetCapability.capabilityId,
     intent: operationTargetIntent,
@@ -128,11 +130,24 @@ const lunaBatchFormat = createWorkerDecisionFormat({
   ],
   maxBatchCapabilityExecutions: 5,
   allowSingleCapabilityInvocation: false,
+  allowReturnResult: false,
   pendingCapabilityBatchSelection: [
     { capabilityId: "inspect_project", intent: lunaBatchIntents[0] },
-    { capabilityId: "inspect_target", intent: lunaBatchIntents[1] },
-    { capabilityId: "inspect_target", intent: lunaBatchIntents[2] },
-    { capabilityId: "inspect_target", intent: lunaBatchIntents[3] },
+    {
+      capabilityId: "inspect_target",
+      intent: lunaBatchIntents[1],
+      selectionControls: { path: "index.html" },
+    },
+    {
+      capabilityId: "inspect_target",
+      intent: lunaBatchIntents[2],
+      selectionControls: { path: "styles.css" },
+    },
+    {
+      capabilityId: "inspect_target",
+      intent: lunaBatchIntents[3],
+      selectionControls: { path: "script.js" },
+    },
     { capabilityId: "inspect_json", intent: lunaBatchIntents[4] },
   ],
 });
@@ -157,6 +172,7 @@ const roleFormats = [
     "worker single controls",
     createWorkerDecisionFormat({
       capabilities: [observationCapability],
+      allowReturnResult: false,
       pendingCapabilitySelection: {
         capabilityId: observationCapability.capabilityId,
         intent: quotedWorkerIntent,
@@ -258,6 +274,7 @@ describe("canonical structured role-decision contract", () => {
       expect(schema).not.toContain('"capabilityId"');
       expect(schema).not.toContain('"intent"');
       expect(schema).not.toContain(operationTargetPath);
+      expect(schema).not.toContain('"return_result"');
     });
   });
 
@@ -273,7 +290,6 @@ describe("canonical structured role-decision contract", () => {
       properties: {
         decision: {
           anyOf: [
-            {},
             {},
             {
               properties: {
@@ -350,7 +366,6 @@ describe("canonical structured role-decision contract", () => {
         decision: {
           anyOf: [
             {},
-            {},
             {
               properties: {
                 invocations: {
@@ -373,7 +388,6 @@ describe("canonical structured role-decision contract", () => {
                       properties: {
                         controls: {
                           properties: {
-                            path: {},
                             start_line: {},
                             end_line: {},
                             locator: {},

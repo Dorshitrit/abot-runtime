@@ -5,6 +5,11 @@ import { dirname, join, resolve } from "node:path";
 export type Provider = string;
 export type JsonObject = Record<string, unknown>;
 
+export const DEFAULT_ROOT_RESPONSE_METHODOLOGY_FILES = Object.freeze([
+  "methodologies/response-ux.md",
+  "methodologies/memory-informed-response.md",
+]);
+
 export function resolveRuntimePackageRoot(startDir: string): string {
   let current = resolve(startDir);
   while (true) {

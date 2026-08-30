@@ -1,10 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { loadRuntimeConfig } from "../config.js";
+import { loadRequestRunnerConfig } from "../config/runner/loader.js";
 
 const rootDir = resolve(import.meta.dirname, "../../..");
 const initScript = join(rootDir, "scripts", "init-runtime.ts");
@@ -121,6 +122,20 @@ describe("init-runtime", () => {
       });
       expect(runtimeModels.defaults).toBeUndefined();
       expect(runnerDefaults.profileId).toBe("default");
+      expect(runnerConfig.schemaVersion).toBe(2);
+      expect(asRecord(runnerDefaults.steps)).toEqual({
+        "supervisor.response": "default",
+        "worker.result": "default",
+        "execution.response": "default",
+        "tool_payload.raw": "toolPayload.raw",
+      });
+      expect(asRecord(runnerConfig.stepDefaults)).toEqual({
+        timeoutMs: 90_000,
+      });
+      expect(Object.keys(asRecord(runnerConfig.steps))).toEqual([
+        "supervisor.response",
+        "execution.response",
+      ]);
       expect(modelConfig).toMatchObject({ label: model, provider, model });
       if (provider === "openai") {
         expect(modelConfig.execution).toEqual({
@@ -156,6 +171,27 @@ describe("init-runtime", () => {
       expect(loaded.modelExecutionPolicies?.default).toEqual(
         provider === "openai" ? { policy: "execution-agent-v1" } : undefined,
       );
+      const loadedRunner = loadRequestRunnerConfig({
+        configPath: join(
+          targetRoot,
+          "local",
+          "request-runner.config.json",
+        ),
+      });
+      const expectedResponseMethodologyRefs = [
+        "../methodologies/response-ux.md",
+        "../methodologies/memory-informed-response.md",
+      ];
+      expect(
+        loadedRunner.steps["supervisor.response"]?.instructionBlocks?.map(
+          (block) => block.ref,
+        ),
+      ).toEqual(expectedResponseMethodologyRefs);
+      expect(
+        loadedRunner.steps["execution.response"]?.instructionBlocks?.map(
+          (block) => block.ref,
+        ),
+      ).toEqual(expectedResponseMethodologyRefs);
       expect(
         JSON.stringify([runtimeConfig, runnerConfig, modelConfig]),
       ).not.toMatch(/gemma|gpt-5/i);
@@ -229,6 +265,24 @@ describe("init-runtime", () => {
       targetRoot,
     ]);
     expect(first.status, first.stderr).toBe(0);
+    const runnerConfigPath = join(
+      targetRoot,
+      "local",
+      "request-runner.config.json",
+    );
+    const publishedV1Runner = await readFile(
+      join(
+        rootDir,
+        "src",
+        "runtime",
+        "__tests__",
+        "fixtures",
+        "public-v1.0.0",
+        "request-runner.config.example.json",
+      ),
+      "utf-8",
+    );
+    await writeFile(runnerConfigPath, publishedV1Runner, "utf-8");
 
     const second = runInit([
       "--provider",
@@ -239,6 +293,7 @@ describe("init-runtime", () => {
       targetRoot,
     ]);
     expect(second.status, second.stderr).toBe(0);
+    expect(await readFile(runnerConfigPath, "utf-8")).toBe(publishedV1Runner);
     expect(
       await readJson(
         join(targetRoot, "local", "models", "default.config.json"),
@@ -260,5 +315,6 @@ describe("init-runtime", () => {
         join(targetRoot, "local", "models", "default.config.json"),
       ),
     ).toMatchObject({ provider: "openai", model: "second-model" });
+    expect((await readJson(runnerConfigPath)).schemaVersion).toBe(2);
   });
 });

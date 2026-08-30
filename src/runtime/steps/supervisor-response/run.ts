@@ -17,9 +17,16 @@ import {
   traceSupervisorResponseModelFailed,
   traceSupervisorResponseModelStarted,
 } from "./diagnostics.js";
-import { buildSupervisorResponseInput } from "./input.js";
+import {
+  buildSupervisorMemoryAuthoringInput,
+  buildSupervisorResponseInput,
+} from "./input.js";
 import { buildSupervisorResponseRepairHint } from "./prompt.js";
 import { SUPERVISOR_DECISION_MODEL_STEP } from "../supervisor-decision/contracts.js";
+import type { RequestSteeringSnapshot } from "../../request/request-steering.js";
+import { retrieveResponseLongTermMemory } from "../../long-term-memory/response-context.js";
+import type { RootAuthoredResponse } from "../../long-term-memory/contracts.js";
+import { authorSupervisorMemoryCandidates } from "./memory-authoring.js";
 
 const SUPERVISOR_RESPONSE_MAX_REPAIR_ATTEMPTS = 1;
 
@@ -31,12 +38,42 @@ export async function runSupervisorResponse(
     resume?: SupervisorResponseResumeContext;
   }>,
 ): Promise<string> {
+  const authored = await runSupervisorAuthoredResponse(request, options);
+  return authored.finalResponse;
+}
+
+export async function runSupervisorAuthoredResponse(
+  request: RequestExecutionScope,
+  options: Readonly<{
+    call: SupervisorResponseCallIdentity;
+    toolResults: RequestToolResultsView;
+    resume?: SupervisorResponseResumeContext;
+    steeringSnapshot?: RequestSteeringSnapshot;
+  }>,
+): Promise<RootAuthoredResponse> {
+  const memoryEnabled = request.longTermMemory?.enabled === true;
+  const memoryMessage =
+    memoryEnabled && options.steeringSnapshot
+      ? await retrieveResponseLongTermMemory(request, options.steeringSnapshot)
+      : undefined;
+  const inputOptions = {
+    ...options,
+    ...(memoryMessage ? { longTermMemoryMessage: memoryMessage } : {}),
+  };
+  const memoryCandidates = memoryEnabled
+    ? await authorSupervisorMemoryCandidates({
+        request,
+        messages: buildSupervisorMemoryAuthoringInput(request, inputOptions)
+          .context.messages,
+        contextCompaction: createSupervisorResponseCompaction(request, options),
+      })
+    : Object.freeze([]);
+  const input = buildSupervisorResponseInput(request, inputOptions);
   const diagnostic: SupervisorResponseDiagnosticContext = {
     requestId: request.requestId,
     modelStep: SUPERVISOR_RESPONSE_MODEL_STEP,
     ...options.call,
   };
-  const input = buildSupervisorResponseInput(request, options);
   const startedAt = Date.now();
 
   traceSupervisorResponseModelStarted({
@@ -49,36 +86,26 @@ export async function runSupervisorResponse(
   });
 
   try {
-    const output = await invokeRepairableRawModelStep({
+    const finalResponse = await invokeRepairableRawModelStep({
       request,
       modelStep: input.modelStep,
       messages: input.context.messages,
-      contextCompaction: createSessionMemoryAwareCompactionController(
-        request,
-        createModelStepCompactionController(request, {
-          call: {
-            roleId: "supervisor",
-            callId: options.call.callId,
-            objective: request.prompt,
-          },
-          sourceRevision: options.toolResults.sourceRevision,
-          allowedConsumers: Object.freeze([
-            SUPERVISOR_DECISION_MODEL_STEP,
-            SUPERVISOR_RESPONSE_MODEL_STEP,
-          ]),
-        }),
-      ),
+      contextCompaction: createSupervisorResponseCompaction(request, options),
       timeoutReason: "supervisor_response_timeout",
       maxRepairAttempts: SUPERVISOR_RESPONSE_MAX_REPAIR_ATTEMPTS,
       validate: validateSupervisorResponse,
       buildRepairHint: buildSupervisorResponseRepairHint,
     });
+    const authored: RootAuthoredResponse = Object.freeze({
+      finalResponse,
+      memoryCandidates,
+    });
     traceSupervisorResponseModelCompleted({
       diagnostic,
       durationMs: Date.now() - startedAt,
-      outputLength: output.length,
+      outputLength: authored.finalResponse.length,
     });
-    return output;
+    return authored;
   } catch (error: unknown) {
     traceSupervisorResponseModelFailed({
       diagnostic,
@@ -88,6 +115,30 @@ export async function runSupervisorResponse(
     });
     throw error;
   }
+}
+
+function createSupervisorResponseCompaction(
+  request: RequestExecutionScope,
+  options: Readonly<{
+    call: SupervisorResponseCallIdentity;
+    toolResults: RequestToolResultsView;
+  }>,
+) {
+  return createSessionMemoryAwareCompactionController(
+    request,
+    createModelStepCompactionController(request, {
+      call: {
+        roleId: "supervisor",
+        callId: options.call.callId,
+        objective: request.prompt,
+      },
+      sourceRevision: options.toolResults.sourceRevision,
+      allowedConsumers: Object.freeze([
+        SUPERVISOR_DECISION_MODEL_STEP,
+        SUPERVISOR_RESPONSE_MODEL_STEP,
+      ]),
+    }),
+  );
 }
 
 function validateSupervisorResponse(text: string): RawModelValidationResult {

@@ -12,6 +12,7 @@ import type {
   ModelContextConfig,
   ModelFormatTokenAccountingConfig,
   ModelGatewayProfileCapabilities,
+  ModelGatewayEmbeddingProfileConfig,
   ModelGatewayProfileConfig,
   ModelGatewayProviderConfig,
   ModelGenerationConfig,
@@ -547,6 +548,36 @@ function buildModelProviders(
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
+function buildEmbeddingProfiles(
+  profiles: unknown,
+): RuntimeModelConfig["embeddingProfiles"] | undefined {
+  if (!isRecord(profiles)) {
+    return undefined;
+  }
+  const entries: Array<[string, ModelGatewayEmbeddingProfileConfig]> = [];
+  for (const [profileId, value] of Object.entries(profiles)) {
+    if (!isRecord(value)) {
+      continue;
+    }
+    const provider = readNestedConfigString(value, "provider");
+    const model = readNestedConfigString(value, "model");
+    if (!provider || !model) {
+      continue;
+    }
+    const label = readNestedConfigString(value, "label");
+    entries.push([
+      profileId,
+      {
+        provider,
+        model,
+        ...(label ? { label } : {}),
+        ...(isRecord(value.options) ? { options: { ...value.options } } : {}),
+      },
+    ]);
+  }
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
 function buildModelProfiles(
   profiles: unknown,
   options?: { mainConfigPath?: string },
@@ -660,17 +691,25 @@ export function buildRuntimeModelConfiguration(
   }
   const providers = buildModelProviders(config.models.providers);
   const builtProfiles = buildModelProfiles(config.models.profiles, options);
+  const embeddingProfiles = buildEmbeddingProfiles(
+    config.models.embeddingProfiles,
+  );
   const invocationProfiles = buildModelInvocationProfiles(
     config.models.invocationProfiles,
   );
   const defaults = buildModelDefaults(config.models.defaults);
   const modelPolicy =
-    providers || builtProfiles.gatewayProfiles || invocationProfiles || defaults
+    providers ||
+    builtProfiles.gatewayProfiles ||
+    embeddingProfiles ||
+    invocationProfiles ||
+    defaults
       ? {
           ...(providers ? { providers } : {}),
           ...(builtProfiles.gatewayProfiles
             ? { profiles: builtProfiles.gatewayProfiles }
             : {}),
+          ...(embeddingProfiles ? { embeddingProfiles } : {}),
           ...(invocationProfiles ? { invocationProfiles } : {}),
           ...(defaults ? { defaults } : {}),
         }

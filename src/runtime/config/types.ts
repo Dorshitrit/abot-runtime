@@ -10,6 +10,7 @@ export type RuntimeConfigFile = {
   logging?: unknown;
   timeouts?: unknown;
   plugins?: unknown;
+  longTermMemory?: unknown;
   models?: unknown;
   requestRunner?: unknown;
   features?: unknown;

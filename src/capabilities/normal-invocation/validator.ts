@@ -501,13 +501,13 @@ function parseOperation(
     !hasExactKeys(
       raw,
       ["operationId", "summary", "input", "effect", "approval"],
-      ["fixedParams", "payload"],
+      ["selectionControlIds", "fixedParams", "payload"],
     )
   ) {
     fail(
       toolName,
       path,
-      "operation must contain operationId/summary/input/effect/approval and optional fixedParams/payload",
+      "operation must contain operationId/summary/input/effect/approval and optional selectionControlIds/fixedParams/payload",
     );
   }
   if (
@@ -521,6 +521,12 @@ function parseOperation(
     fail(toolName, `${path}.approval`, "expected request_policy or always");
   }
   const input = parseInput(toolName, `${path}.input`, raw.input);
+  const selectionControlIds = parseSelectionControlIds(
+    toolName,
+    `${path}.selectionControlIds`,
+    input,
+    raw.selectionControlIds,
+  );
   const fixedParams = parseFixedParams(
     toolName,
     `${path}.fixedParams`,
@@ -554,11 +560,47 @@ function parseOperation(
       MAX_SUMMARY_LENGTH,
     ),
     input,
+    ...(selectionControlIds ? { selectionControlIds } : {}),
     ...(fixedParams ? { fixedParams } : {}),
     ...(payload ? { payload } : {}),
     effect: raw.effect,
     approval: raw.approval,
   });
+}
+
+function parseSelectionControlIds(
+  toolName: string,
+  path: string,
+  input: ToolNormalInvocationInput,
+  value: unknown,
+): readonly string[] | undefined {
+  if (value === undefined) return undefined;
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > MAX_PROPERTIES
+  ) {
+    fail(
+      toolName,
+      path,
+      `expected a non-empty array of at most ${MAX_PROPERTIES} control identifiers`,
+    );
+  }
+  const controlIds = value.map((controlId, index) =>
+    identifier(toolName, `${path}.${index}`, controlId),
+  );
+  if (new Set(controlIds).size !== controlIds.length) {
+    fail(toolName, path, "expected unique control identifiers");
+  }
+  for (const controlId of controlIds) {
+    if (!Object.hasOwn(input.properties, controlId)) {
+      fail(toolName, path, `unknown input control ${controlId}`);
+    }
+    if (!input.required.includes(controlId)) {
+      fail(toolName, path, `selection control ${controlId} must be required`);
+    }
+  }
+  return Object.freeze(controlIds);
 }
 
 export function parseToolNormalInvocationContract(
@@ -604,6 +646,9 @@ type ToolNormalInvocationDefinition = Readonly<{
   name: string;
   params: Readonly<Record<string, string>>;
   executionEffect?: "read_only" | "mutating" | "mixed";
+  payloadChannelSpec?: Readonly<{
+    stages?: readonly Readonly<{ outputParam: string }>[];
+  }>;
   runtimePathBindings?: readonly Readonly<{
     operationId: string;
     param: string;
@@ -686,6 +731,15 @@ export function parseToolNormalInvocationForDefinition(
 ): ToolNormalInvocationContract | undefined {
   const contract = parseToolNormalInvocationContract(definition.name, raw);
   if (!contract) return undefined;
+  const stagedOutputParams =
+    definition.payloadChannelSpec?.stages &&
+    definition.payloadChannelSpec.stages.length >= 2
+      ? new Set(
+          definition.payloadChannelSpec.stages.map(
+            ({ outputParam }) => outputParam,
+          ),
+        )
+      : undefined;
   for (const [bindingIndex, binding] of (
     definition.runtimePathBindings ?? []
   ).entries()) {
@@ -710,6 +764,15 @@ export function parseToolNormalInvocationForDefinition(
   }
   for (const [operationIndex, operation] of contract.operations.entries()) {
     const operationPath = `normalInvocation.operations.${operationIndex}`;
+    for (const selectionControlId of operation.selectionControlIds ?? []) {
+      if (stagedOutputParams?.has(selectionControlId)) {
+        fail(
+          definition.name,
+          `${operationPath}.selectionControlIds`,
+          `selection control ${selectionControlId} must remain in the effective public input`,
+        );
+      }
+    }
     for (const [param, schema] of Object.entries(operation.input.properties)) {
       validateDeclaredParam(
         definition,

@@ -5,6 +5,7 @@ import type {
 import type { WorkerCapabilityAdapterResult } from "../../orchestration/worker-capabilities/index.js";
 import type { RegisteredToolNormalInvocationResult } from "../registered-tool-normal-invocations.js";
 import { executionProtocolError } from "./errors.js";
+import { createRegisteredToolWorkerFailureOutcomeFingerprint } from "./failure-outcome-fingerprint.js";
 import {
   boundedSummary,
   captureRegisteredToolResult,
@@ -15,6 +16,18 @@ import {
   validateToolExecutionResult,
 } from "./result-evidence.js";
 import { isPlainRecord, nonEmpty, safeIssueCode } from "./values.js";
+
+type ProjectedWorkerCapabilityAdapterResult =
+  | Extract<WorkerCapabilityAdapterResult, { outcome: "succeeded" }>
+  | Omit<
+      Extract<WorkerCapabilityAdapterResult, { outcome: "failed" }>,
+      "failureOutcomeFingerprint"
+    >;
+
+type ProjectedExternalResult = Readonly<{
+  result: ProjectedWorkerCapabilityAdapterResult;
+  sourceIssueCode?: string;
+}>;
 
 type ObservedExternalResult = Readonly<{
   result: WorkerCapabilityAdapterResult;
@@ -31,12 +44,21 @@ export function observeExternalResult(
     expectedEffect,
     directRoot,
   );
+  const exactResult = captureRegisteredToolResult(input);
   return Object.freeze({
     ...observed,
-    result: Object.freeze({
-      ...observed.result,
-      exactResult: captureRegisteredToolResult(input),
-    }),
+    result:
+      observed.result.outcome === "failed"
+        ? Object.freeze({
+            ...observed.result,
+            exactResult,
+            failureOutcomeFingerprint:
+              createRegisteredToolWorkerFailureOutcomeFingerprint(exactResult),
+          })
+        : Object.freeze({
+            ...observed.result,
+            exactResult,
+          }),
   });
 }
 
@@ -44,7 +66,7 @@ function observeExternalResultLegacy(
   input: RegisteredToolNormalInvocationResult,
   expectedEffect: "read_only" | "mutating" | "mixed",
   directRoot: boolean,
-): ObservedExternalResult {
+): ProjectedExternalResult {
   if (!isPlainRecord(input)) {
     throw executionProtocolError("result_not_object");
   }
@@ -69,11 +91,7 @@ function observeExternalResultLegacy(
   validateToolExecutionResult(result);
   const execution = result as ToolExecutionResult;
   if (expectedEffect === "mixed") {
-    return observeMixedResult(
-      execution,
-      input.completionActions,
-      directRoot,
-    );
+    return observeMixedResult(execution, input.completionActions, directRoot);
   }
   if (expectedEffect === "mutating") {
     return observeMutationResult(
@@ -126,7 +144,7 @@ function observeMixedResult(
   execution: ToolExecutionResult,
   completionActions: readonly ToolActionSummary[],
   directRoot: boolean,
-): ObservedExternalResult {
+): ProjectedExternalResult {
   const output = nonEmpty(execution.output);
   if (execution.ok && execution.data?.mutationEvidence === true) {
     const references = projectToolTargetReferences(completionActions);
@@ -196,7 +214,7 @@ function observeMutationResult(
   execution: ToolExecutionResult,
   completionActions: readonly ToolActionSummary[],
   directRoot: boolean,
-): ObservedExternalResult {
+): ProjectedExternalResult {
   const output = nonEmpty(execution.output);
   if (execution.ok && execution.data?.mutationEvidence === true) {
     const references = projectToolTargetReferences(completionActions);

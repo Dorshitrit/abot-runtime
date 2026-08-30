@@ -23,8 +23,13 @@ export function createAppEventBindings({
       () => void actions.loadSessions(),
     );
     dom.newSessionButton.addEventListener("click", () => {
+      const preparedWorkspaceActivation = shell.prepareWorkspaceActivation(
+        "chat",
+        { focus: false },
+      );
+      if (!preparedWorkspaceActivation) return;
       if (!actions.suspendQueueRecovery()) return;
-      shell.activateWorkspace("chat", { focus: false });
+      if (preparedWorkspaceActivation() === false) return;
       state.currentSessionId = createWebSessionId();
       actions.saveSessionId(
         actions.selectedEnvironmentId(),
@@ -43,16 +48,45 @@ export function createAppEventBindings({
       dom.composerInput.focus();
     });
     dom.environmentSelect.addEventListener("change", () => {
+      const previousEnvironmentId = actions.savedEnvironmentId?.() || "";
+      const nextEnvironmentId = dom.environmentSelect.value;
       const recoveryEnvironmentId =
         state.activeComposerQueueRecovery?.scope.environmentId ?? "";
-      if (!actions.suspendQueueRecovery()) {
-        if (recoveryEnvironmentId)
-          dom.environmentSelect.value = recoveryEnvironmentId;
+      const restoreEnvironmentSelection = () => {
+        dom.environmentSelect.value =
+          previousEnvironmentId || recoveryEnvironmentId;
+        state.agentPickerOpen = false;
+        actions.renderAgentPicker();
+      };
+      if (nextEnvironmentId === previousEnvironmentId) {
+        state.agentPickerOpen = false;
+        actions.renderAgentPicker();
         return;
       }
+      const preparedEnvironmentChange = actions.beforeEnvironmentChange
+        ? actions.beforeEnvironmentChange({
+            from: previousEnvironmentId,
+            to: nextEnvironmentId,
+          })
+        : true;
+      if (
+        preparedEnvironmentChange === false ||
+        preparedEnvironmentChange === null
+      ) {
+        restoreEnvironmentSelection();
+        return;
+      }
+      if (!actions.suspendQueueRecovery()) {
+        restoreEnvironmentSelection();
+        return;
+      }
+      if (typeof preparedEnvironmentChange === "function") {
+        preparedEnvironmentChange();
+      }
+      actions.invalidateSessionLoads?.();
       state.agentPickerOpen = false;
       actions.renderAgentPicker();
-      actions.saveEnvironmentId(dom.environmentSelect.value);
+      actions.saveEnvironmentId(nextEnvironmentId);
       state.currentSessionId = "";
       state.messages = [];
       actions.clearAttachments();
@@ -61,10 +95,13 @@ export function createAppEventBindings({
       actions.applyConversationChrome();
       actions.renderMessages();
       void (async () => {
-        await actions.loadModels();
         await Promise.allSettled([
+          actions.loadModels(),
           actions.loadAgentMode(),
-          actions.loadRuntimeConfig(),
+          actions.loadRuntimeConfig({
+            protectUnsaved: false,
+            clearBeforeLoad: true,
+          }),
         ]);
         await actions.restoreLastSession();
       })();

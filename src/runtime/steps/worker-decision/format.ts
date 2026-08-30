@@ -5,7 +5,9 @@ import {
 } from "../../model/structured-decision-envelope.js";
 import { isRoleCapabilityId } from "../../orchestration/role-calls/index.js";
 import {
+  WORKER_CAPABILITY_AUTHORING_OBJECTIVE_MAX_LENGTH,
   WORKER_CAPABILITY_COUNT_MAX,
+  canOfferWorkerCapabilityBatchSelection,
   normalizeWorkerCapabilityControlsSchema,
   partitionWorkerCapabilityControlsSchema,
   validateWorkerCapabilitySelectionControls,
@@ -26,29 +28,37 @@ type WorkerDecisionFormatCapability = Readonly<{
   effect: WorkerCapabilityDescriptor["effect"];
   controls: WorkerCapabilityControlsSchema;
   controlsPartition: WorkerCapabilityControlsPartition;
+  requiresPayloadAuthoringObjective: boolean;
 }>;
 
 type WorkerCapabilitySelectionSchemaGroup = Readonly<{
   capabilities: readonly WorkerDecisionFormatCapability[];
   partition: WorkerCapabilityControlsPartition;
+  requiresPayloadAuthoringObjective: boolean;
 }>;
 
 const WORKER_CAPABILITY_CLIENT_INTENT_DESCRIPTION =
   "Short client-facing statement of what will happen next. Presentation only; exclude sources, dependencies, controls, payload details, and execution instructions.";
+const WORKER_CAPABILITY_AUTHORING_OBJECTIVE_DESCRIPTION =
+  "Complete bounded content-authoring assignment for this payload. It cannot change the selected capability, controls, target, or authority.";
 
 export function createWorkerDecisionFormat(
   options: Readonly<{
     capabilities?: readonly WorkerCapabilityDescriptor[];
     maxBatchCapabilityExecutions?: number;
     allowSingleCapabilityInvocation?: boolean;
+    allowReturnResult?: boolean;
+    allowReturnFailure?: boolean;
     pendingCapabilitySelection?: Readonly<{
       capabilityId: string;
       intent: string;
+      authoringObjective?: string;
       selectionControls?: WorkerCapabilityControls;
     }>;
     pendingCapabilityBatchSelection?: readonly Readonly<{
       capabilityId: string;
       intent: string;
+      authoringObjective?: string;
       selectionControls?: WorkerCapabilityControls;
     }>[];
   }> = {},
@@ -64,6 +74,8 @@ export function createWorkerDecisionFormat(
     options.maxBatchCapabilityExecutions ?? 0;
   const allowSingleCapabilityInvocation =
     options.allowSingleCapabilityInvocation !== false;
+  const allowReturnResult = options.allowReturnResult !== false;
+  const allowReturnFailure = options.allowReturnFailure !== false;
   const uniqueCapabilityIds = new Set(
     suppliedCapabilities.map((capability) => capability?.capabilityId),
   );
@@ -83,7 +95,9 @@ export function createWorkerDecisionFormat(
         !isRoleCapabilityId(capability.capabilityId) ||
         (capability.effect !== "observation" &&
           capability.effect !== "mutation" &&
-          capability.effect !== "mixed")
+          capability.effect !== "mixed") ||
+        (capability.requiresPayloadAuthoringObjective !== undefined &&
+          capability.requiresPayloadAuthoringObjective !== true)
       ) {
         throw new Error("worker_capabilities_invalid");
       }
@@ -105,6 +119,8 @@ export function createWorkerDecisionFormat(
         effect: capability.effect,
         controls: controls.value,
         controlsPartition: controlsPartition.value,
+        requiresPayloadAuthoringObjective:
+          capability.requiresPayloadAuthoringObjective === true,
       });
     }),
   );
@@ -154,7 +170,15 @@ export function createWorkerDecisionFormat(
       )!
     : undefined;
   const batchEnabled =
-    maxBatchCapabilityExecutions >= 2 && batchCapabilities.length > 0;
+    pendingCapabilityBatchSelection !== undefined ||
+    (decisionPhase === "capability_selection" &&
+      maxBatchCapabilityExecutions >= 2 &&
+      canOfferWorkerCapabilityBatchSelection(
+        batchCapabilities.map((capability) => ({
+          capabilityId: capability.capabilityId,
+          selectionSchema: capability.controlsPartition.selectionSchema,
+        })),
+      ));
   const singleSelectionGroups =
     groupCapabilitiesBySelectionSchema(capabilities);
   const batchSelectionGroups =
@@ -169,6 +193,12 @@ export function createWorkerDecisionFormat(
               group.capabilities.map(({ capabilityId }) => capabilityId),
             ),
             intent: capabilityIntentSelectionSchema(),
+            ...(group.requiresPayloadAuthoringObjective
+              ? {
+                  authoringObjective:
+                    capabilityAuthoringObjectiveSelectionSchema(),
+                }
+              : {}),
             ...(group.partition.selectionControlIds.length > 0
               ? {
                   selectionControls: projectControlsSchema(
@@ -216,14 +246,32 @@ export function createWorkerDecisionFormat(
         maxItems: maxBatchCapabilityExecutions,
         items: projectCapabilitySelectionItemSchema(batchSelectionGroups),
       };
+  const returnResultVariants = allowReturnResult
+    ? [
+        exactObject({
+          action: literal("return_result"),
+        }),
+      ]
+    : [];
+  const returnFailureVariants = allowReturnFailure
+    ? [
+        exactObject({
+          action: literal("return_failure"),
+          reason: boundedText(WORKER_RESULT_MAX_LENGTH),
+        }),
+      ]
+    : [];
+  const singleCapabilityVariantCount = allowSingleCapabilityInvocation
+    ? singleCapabilityVariants.length
+    : 0;
+  const returnFailureVariantIndex = returnResultVariants.length;
+  const capabilityVariantStartIndex =
+    returnResultVariants.length + returnFailureVariants.length;
+  const batchVariantIndex =
+    capabilityVariantStartIndex + singleCapabilityVariantCount;
   const variants = [
-    exactObject({
-      action: literal("return_result"),
-    }),
-    exactObject({
-      action: literal("return_failure"),
-      reason: boundedText(WORKER_RESULT_MAX_LENGTH),
-    }),
+    ...returnResultVariants,
+    ...returnFailureVariants,
     ...singleCapabilityVariants,
     ...(batchEnabled
       ? [
@@ -234,24 +282,24 @@ export function createWorkerDecisionFormat(
         ]
       : []),
   ];
-  const singleCapabilityVariantCount = allowSingleCapabilityInvocation
-    ? singleCapabilityVariants.length
-    : 0;
-  const batchVariantIndex = singleCapabilityVariantCount + 2;
   return {
     type: "json_schema",
     name: "worker_decision",
     strict: true,
     postValidatedSchemaConstraints: [
-      {
-        keyword: "maxLength",
-        path: `${structuredDecisionVariantSchemaPath(1, variants.length)}/properties/reason/maxLength`,
-      },
+      ...(allowReturnFailure
+        ? [
+            {
+              keyword: "maxLength" as const,
+              path: `${structuredDecisionVariantSchemaPath(returnFailureVariantIndex, variants.length)}/properties/reason/maxLength`,
+            },
+          ]
+        : []),
       ...(allowSingleCapabilityInvocation && singleCapabilityVariants.length > 0
         ? decisionPhase === "capability_selection"
           ? singleSelectionGroups.flatMap((group, index) => {
               const variantPath = structuredDecisionVariantSchemaPath(
-                2 + index,
+                capabilityVariantStartIndex + index,
                 variants.length,
               );
               return [
@@ -259,6 +307,14 @@ export function createWorkerDecisionFormat(
                   keyword: "maxLength" as const,
                   path: `${variantPath}/properties/intent/maxLength`,
                 },
+                ...(group.requiresPayloadAuthoringObjective
+                  ? [
+                      {
+                        keyword: "maxLength" as const,
+                        path: `${variantPath}/properties/authoringObjective/maxLength`,
+                      },
+                    ]
+                  : []),
                 ...collectControlMaxLengthConstraints(
                   group.partition.selectionSchema,
                   `${variantPath}/properties/selectionControls`,
@@ -267,7 +323,7 @@ export function createWorkerDecisionFormat(
             })
           : collectControlMaxLengthConstraints(
               pendingSingleCapability!.controlsPartition.remainingSchema,
-              `${structuredDecisionVariantSchemaPath(2, variants.length)}/properties/controls`,
+              `${structuredDecisionVariantSchemaPath(capabilityVariantStartIndex, variants.length)}/properties/controls`,
             )
         : []),
       ...(batchEnabled
@@ -300,6 +356,7 @@ function validPendingSelection(
   pending: Readonly<{
     capabilityId: string;
     intent: string;
+    authoringObjective?: string;
     selectionControls?: WorkerCapabilityControls;
   }>,
   capabilities: readonly WorkerDecisionFormatCapability[],
@@ -311,7 +368,11 @@ function validPendingSelection(
   const expectsSelectionControls =
     capability.controlsPartition.selectionControlIds.length > 0;
   if (
-    Object.hasOwn(pending, "selectionControls") !== expectsSelectionControls
+    Object.hasOwn(pending, "selectionControls") !== expectsSelectionControls ||
+    Object.hasOwn(pending, "authoringObjective") !==
+      capability.requiresPayloadAuthoringObjective ||
+    (capability.requiresPayloadAuthoringObjective &&
+      !validAuthoringObjective(pending.authoringObjective))
   ) {
     return false;
   }
@@ -329,15 +390,20 @@ function groupCapabilitiesBySelectionSchema(
     {
       capabilities: WorkerDecisionFormatCapability[];
       partition: WorkerCapabilityControlsPartition;
+      requiresPayloadAuthoringObjective: boolean;
     }
   >();
   for (const capability of capabilities) {
-    const signature = JSON.stringify(
-      capability.controlsPartition.selectionSchema,
-    );
+    const signature = JSON.stringify({
+      selectionSchema: capability.controlsPartition.selectionSchema,
+      requiresPayloadAuthoringObjective:
+        capability.requiresPayloadAuthoringObjective,
+    });
     const group = groups.get(signature) ?? {
       capabilities: [],
       partition: capability.controlsPartition,
+      requiresPayloadAuthoringObjective:
+        capability.requiresPayloadAuthoringObjective,
     };
     group.capabilities.push(capability);
     groups.set(signature, group);
@@ -347,6 +413,8 @@ function groupCapabilitiesBySelectionSchema(
       Object.freeze({
         capabilities: Object.freeze([...group.capabilities]),
         partition: group.partition,
+        requiresPayloadAuthoringObjective:
+          group.requiresPayloadAuthoringObjective,
       }),
     ),
   );
@@ -361,6 +429,11 @@ function projectCapabilitySelectionItemSchema(
         group.capabilities.map(({ capabilityId }) => capabilityId),
       ),
       intent: capabilityIntentSelectionSchema(),
+      ...(group.requiresPayloadAuthoringObjective
+        ? {
+            authoringObjective: capabilityAuthoringObjectiveSelectionSchema(),
+          }
+        : {}),
       ...(group.partition.selectionControlIds.length > 0
         ? {
             selectionControls: projectControlsSchema(
@@ -389,6 +462,14 @@ function collectBatchSelectionMaxLengthConstraints(
         keyword: "maxLength" as const,
         path: `${itemPath}/properties/intent/maxLength`,
       },
+      ...(group.requiresPayloadAuthoringObjective
+        ? [
+            {
+              keyword: "maxLength" as const,
+              path: `${itemPath}/properties/authoringObjective/maxLength`,
+            },
+          ]
+        : []),
       ...collectControlMaxLengthConstraints(
         group.partition.selectionSchema,
         `${itemPath}/properties/selectionControls`,
@@ -423,6 +504,25 @@ function capabilityIntentSelectionSchema(): Record<string, unknown> {
     ...boundedText(WORKER_CAPABILITY_INTENT_MAX_LENGTH),
     description: WORKER_CAPABILITY_CLIENT_INTENT_DESCRIPTION,
   };
+}
+
+function capabilityAuthoringObjectiveSelectionSchema(): Record<
+  string,
+  unknown
+> {
+  return {
+    ...boundedText(WORKER_CAPABILITY_AUTHORING_OBJECTIVE_MAX_LENGTH),
+    description: WORKER_CAPABILITY_AUTHORING_OBJECTIVE_DESCRIPTION,
+  };
+}
+
+function validAuthoringObjective(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.trim() === value &&
+    value.length > 0 &&
+    value.length <= WORKER_CAPABILITY_AUTHORING_OBJECTIVE_MAX_LENGTH
+  );
 }
 
 function projectControlSchema(

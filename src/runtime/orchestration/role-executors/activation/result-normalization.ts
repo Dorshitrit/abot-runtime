@@ -8,6 +8,7 @@ import { isRuntimeDelegateRoleId } from "../../roles.js";
 import type {
   RoleExecutionResult,
   RoleExecutorActivationResult,
+  RoleOperationSupervisionInterventionContinuation,
 } from "../contracts.js";
 
 export function normalizeRoleExecutorActivationResult<TValue>(
@@ -96,6 +97,22 @@ export function normalizeRoleExecutorActivationResult<TValue>(
     !isPlainRecord(input.continuation)
   ) {
     return { ok: false, issueCode: "continuation_shape_invalid" };
+  }
+  if (
+    hasExactKeys(input.continuation, ["kind", "commit"]) &&
+    input.continuation.kind === "operation_supervision_intervention" &&
+    isPlainRecord(input.continuation.commit)
+  ) {
+    return {
+      ok: true,
+      value: Object.freeze({
+        kind: "continue",
+        continuation: Object.freeze({
+          kind: "operation_supervision_intervention",
+          commit: input.continuation.commit,
+        }) as RoleOperationSupervisionInterventionContinuation,
+      }),
+    };
   }
   if (
     hasExactKeys(input.continuation, ["kind", "executionId"]) &&

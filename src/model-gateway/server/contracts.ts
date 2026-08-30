@@ -1,4 +1,5 @@
 import type {
+  ModelGatewayEmbeddingRequest,
   ModelGatewayPolicyConfig,
   ModelGatewayRequest,
   ResolvedModelInvocation,
@@ -55,12 +56,13 @@ export type ModelGatewayStatusResult = {
 };
 
 export type ProviderRequestAbortScopeParams = Readonly<{
-  endpoint: "chat" | "raw" | "input_tokens";
-  requestBody: ModelGatewayRequest;
+  endpoint: "chat" | "raw" | "input_tokens" | "embeddings";
+  requestBody: ModelGatewayRequest | ModelGatewayEmbeddingRequest;
 }>;
 
-export type ProviderFetchParams = ProviderRequestAbortScopeParams &
-  Readonly<{
+export type ProviderFetchParams = Readonly<{
+    endpoint: "chat" | "raw" | "input_tokens";
+    requestBody: ModelGatewayRequest;
     invocation: ResolvedModelInvocation;
     fetchImpl: typeof fetch;
     abortSignal: AbortSignal;

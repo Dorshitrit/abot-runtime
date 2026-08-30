@@ -6,6 +6,7 @@ import {
   readFile,
   rm,
   symlink,
+  writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,7 +23,7 @@ import type {
   RuntimePluginEntrypoint,
   RuntimePluginLoadContext,
   ToolExecutionContext,
-} from "../plugin.js";
+} from "../../plugin-sdk/index.js";
 import type { RuntimePaths, ToolRegistry } from "../ports.js";
 import { ABOT_RUNTIME_EXTENSION } from "../../plugin-contract/manifest.js";
 import { parseAgentPluginManifest } from "../plugins/manifest-validator.js";
@@ -233,6 +234,8 @@ describe("exec Agent Plugin parity", () => {
     });
     expect(logical?.output).toContain("CWD: .");
     expect(logical?.output).not.toContain(runtimePaths.agentWorkDir);
+    expect(logical?.output).not.toContain("Filesystem effects observed:");
+    expect(logical?.data).not.toHaveProperty("mutationGrounding");
     await expect(
       handlers.exec?.({ command: "pwd", cwd: ".." }),
     ).resolves.toMatchObject({
@@ -300,6 +303,100 @@ describe("exec Agent Plugin parity", () => {
     await expect(
       access(join(runtimePaths.agentWorkDir, "MissingProject")),
     ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("projects explicit filesystem postconditions through the existing mutation result contract", async () => {
+    const runtimePaths = await createRuntimePaths();
+    const { handlers } = loadPlugin(runtimePaths);
+    const existingPath = join(runtimePaths.agentWorkDir, "existing.txt");
+    const removedPath = join(runtimePaths.agentWorkDir, "removed.txt");
+    await Promise.all([
+      writeFile(existingPath, "before", "utf8"),
+      writeFile(removedPath, "remove me", "utf8"),
+    ]);
+
+    const result = await handlers.exec?.({
+      command:
+        "printf created > created.txt && printf changed > existing.txt && rm removed.txt",
+      cwd: ".",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        mutationEvidence: true,
+        filesystemObservation: {
+          complete: true,
+          actionsTruncated: false,
+        },
+      },
+    });
+    expect(result?.output).toContain("Filesystem effects observed:");
+    expect(result?.output).toContain("- write_file: created.txt (created)");
+    expect(result?.output).toContain(
+      "- refine_target: existing.txt (modified)",
+    );
+    expect(result?.output).toContain("- refine_target: removed.txt (removed)");
+    const mutationGrounding = result?.data?.mutationGrounding;
+    if (typeof mutationGrounding !== "string") {
+      throw new Error("exec mutation grounding missing");
+    }
+    expect(mutationGrounding).toContain(
+      "settled tool evidence; not command intent",
+    );
+    expect(mutationGrounding).toContain("- observation root: .");
+    expect(mutationGrounding).toContain("- observation complete: true");
+    expect(mutationGrounding).toContain("- changed entries: 3");
+    expect(mutationGrounding).toContain("- effects truncated: false");
+    expect(mutationGrounding).toContain(
+      "- refine_target: existing.txt (modified)",
+    );
+    expect(mutationGrounding).not.toContain(runtimePaths.agentWorkDir);
+    await expect(
+      readFile(join(runtimePaths.agentWorkDir, "created.txt"), "utf8"),
+    ).resolves.toBe("created");
+    await expect(readFile(existingPath, "utf8")).resolves.toBe("changed");
+    await expect(access(removedPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("declares omitted filesystem effects when the bounded action projection is full", async () => {
+    const runtimePaths = await createRuntimePaths();
+    const { handlers } = loadPlugin(runtimePaths);
+    const targets = Array.from(
+      { length: 65 },
+      (_, index) => `entry-${String(index + 1).padStart(2, "0")}.txt`,
+    );
+
+    const result = await handlers.exec?.({
+      command: `touch ${targets.join(" ")}`,
+      cwd: ".",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        mutationEvidence: true,
+        filesystemObservation: {
+          complete: true,
+          actionLimit: 64,
+          actionsTruncated: true,
+        },
+      },
+    });
+    expect(result?.actions).toHaveLength(64);
+    expect(result?.output).toContain("Filesystem changes observed: 65");
+    expect(result?.output).toContain(
+      "1 additional changed entry omitted by the 64-effect projection limit.",
+    );
+    const mutationGrounding = result?.data?.mutationGrounding;
+    if (typeof mutationGrounding !== "string") {
+      throw new Error("bounded exec mutation grounding missing");
+    }
+    expect(mutationGrounding).toContain("- listed effects: 64");
+    expect(mutationGrounding).toContain("- effects truncated: true");
+    expect(mutationGrounding).toContain(
+      "1 additional changed entry omitted by the 64-effect projection limit.",
+    );
   });
 
   test("rejects commands above the canonical control bound without side effects", async () => {

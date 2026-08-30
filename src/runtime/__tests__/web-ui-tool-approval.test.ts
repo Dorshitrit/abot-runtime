@@ -1,6 +1,10 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { createToolApprovalCard } from "../../web-ui/app/components/tool-approval-card.js";
+import {
+  createToolApprovalCard,
+  type ToolApprovalCardOptions,
+  type ToolApprovalEvent,
+} from "../../web-ui/app/components/tool-approval-card.js";
 import { createToolApprovalController } from "../../web-ui/app/controllers/tool-approval-controller.js";
 import { formatEventDetail } from "../../web-ui/app/lib/event-presentation.js";
 
@@ -49,21 +53,22 @@ function fakeDocument(): Document {
 
 describe("web ui tool approval controller", () => {
   test("renders the latest unresolved approval and submits one exact decision", () => {
+    const events: ToolApprovalEvent[] = [
+      {
+        eventName: "tool.approval.required",
+        approvalId: "approval-1",
+        tool: "write_file",
+        summary: "Write the requested file",
+      },
+    ];
     const state = {
       connected: true,
-      events: [
-        {
-          eventName: "tool.approval.required",
-          approvalId: "approval-1",
-          tool: "write_file",
-          summary: "Write the requested file",
-        },
-      ],
+      events,
       submittedToolApprovalIds: new Set<string>(),
     };
     const sendRealtime = vi.fn(() => true);
     const renderMessages = vi.fn();
-    const createCard = vi.fn((input) =>
+    const createCard = vi.fn((input: ToolApprovalCardOptions) =>
       createToolApprovalCard({
         ...input,
         documentRoot: fakeDocument(),

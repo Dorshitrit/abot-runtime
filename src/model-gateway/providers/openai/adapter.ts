@@ -16,11 +16,13 @@ import {
   resolveOpenAIProviderSettings,
   type OpenAIMessageOutputNormalizationDiagnostic,
 } from "./protocol.js";
+import { embedWithOpenAI } from "./embeddings.js";
 
 export function createOpenAIProviderAdapter(): ModelProviderAdapter {
   return Object.freeze({
     type: "openai",
     supportsImageInput: false,
+    embed: embedWithOpenAI,
     countInputTokens: countOpenAIInputTokens,
     async invoke(params) {
       const settings = resolveOpenAIProviderSettings(params.requestBody);

@@ -1,6 +1,14 @@
 import { isRuntimeDelegateRoleId, RUNTIME_ROOT_ROLE_ID } from "../roles.js";
 import { normalizeRoleCapabilitySelectionProjection } from "./capability-selection-reconsideration.js";
 import {
+  isRoleOperationFingerprint,
+  isRoleOperationOutcomeFingerprintForOutcome,
+} from "./operation-supervision.js";
+import {
+  isReconsiderationCauseBoundToInvocationCount,
+  normalizeRoleCapabilitySelectionReconsiderationCause,
+} from "./reconsideration-cause.js";
+import {
   isRoleCapabilityId,
   type RoleCallLedgerCommand,
   type RoleCapabilityBatchSettlement,
@@ -150,21 +158,26 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
           }
         : { ok: false, code: "invalid_command" };
     case "begin_capability_execution":
-      return exactKeys(input, [
-        "authority",
-        "type",
-        "callId",
-        "invocationAttempt",
-        "capabilityId",
-        "declaredEffect",
-        "intent",
-        "controlsJson",
-      ]) &&
+      return exactKeys(
+        input,
+        [
+          "authority",
+          "type",
+          "callId",
+          "invocationAttempt",
+          "capabilityId",
+          "declaredEffect",
+          "intent",
+          "controlsJson",
+        ],
+        ["actionFingerprint"],
+      ) &&
         input.authority === "active_role" &&
         typeof input.callId === "string" &&
         Number.isInteger(input.invocationAttempt) &&
         typeof input.capabilityId === "string" &&
         isRoleCapabilityDeclaredEffect(input.declaredEffect) &&
+        isEligibleActionFingerprintInput(input) &&
         typeof input.intent === "string" &&
         typeof input.controlsJson === "string"
         ? {
@@ -178,6 +191,9 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
               declaredEffect: input.declaredEffect,
               intent: input.intent,
               controlsJson: input.controlsJson,
+              ...(typeof input.actionFingerprint === "string"
+                ? { actionFingerprint: input.actionFingerprint }
+                : {}),
             },
           }
         : { ok: false, code: "invalid_command" };
@@ -198,12 +214,17 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
           "summary",
           "exactResult",
         ],
-        ["referenceData", "references"],
+        ["outcomeFingerprint", "referenceData", "references"],
       ) &&
         input.authority === "runtime" &&
         typeof input.callId === "string" &&
         typeof input.executionId === "string" &&
         (input.outcome === "succeeded" || input.outcome === "failed") &&
+        (input.outcomeFingerprint === undefined ||
+          isRoleOperationOutcomeFingerprintForOutcome(
+            input.outcomeFingerprint,
+            input.outcome,
+          )) &&
         isRoleCapabilityObservedEffect(input.observedEffect) &&
         typeof input.summary === "string" &&
         (input.referenceData === undefined ||
@@ -219,6 +240,9 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
               callId: input.callId,
               executionId: input.executionId,
               outcome: input.outcome,
+              ...(typeof input.outcomeFingerprint === "string"
+                ? { outcomeFingerprint: input.outcomeFingerprint }
+                : {}),
               observedEffect: input.observedEffect,
               summary: input.summary,
               ...(typeof input.referenceData === "string"
@@ -333,6 +357,9 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
       const selection = normalizeRoleCapabilitySelectionProjection(
         input.selection,
       );
+      const cause = normalizeRoleCapabilitySelectionReconsiderationCause(
+        input.cause,
+      );
       return exactKeys(input, [
         "authority",
         "type",
@@ -340,13 +367,19 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
         "invocationAttempt",
         "steeringVersion",
         "selection",
+        "cause",
       ]) &&
         input.authority === "active_role" &&
         typeof input.callId === "string" &&
         Number.isInteger(input.invocationAttempt) &&
         Number.isSafeInteger(input.steeringVersion) &&
         (input.steeringVersion as number) >= 0 &&
-        selection
+        selection &&
+        cause &&
+        isReconsiderationCauseBoundToInvocationCount(
+          cause,
+          selection.invocations.length,
+        )
         ? {
             ok: true,
             value: {
@@ -356,6 +389,7 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
               invocationAttempt: input.invocationAttempt as number,
               steeringVersion: input.steeringVersion as number,
               selection,
+              cause,
             },
           }
         : { ok: false, code: "invalid_command" };
@@ -365,6 +399,15 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
   }
 }
 
+function isEligibleActionFingerprintInput(
+  input: Record<string, unknown>,
+): boolean {
+  return (
+    input.actionFingerprint === undefined ||
+    isRoleOperationFingerprint(input.actionFingerprint)
+  );
+}
+
 function parseObservationBatchEntries(
   input: unknown,
 ): readonly RoleCapabilityObservationBatchEntry[] | undefined {
@@ -372,14 +415,15 @@ function parseObservationBatchEntries(
   const entries = input.map((entry) => {
     if (
       !isRecord(entry) ||
-      !exactKeys(entry, [
-        "capabilityId",
-        "declaredEffect",
-        "intent",
-        "controlsJson",
-      ]) ||
+      !exactKeys(
+        entry,
+        ["capabilityId", "declaredEffect", "intent", "controlsJson"],
+        ["actionFingerprint"],
+      ) ||
       !isRoleCapabilityId(entry.capabilityId) ||
       entry.declaredEffect !== "observation" ||
+      (entry.actionFingerprint !== undefined &&
+        !isRoleOperationFingerprint(entry.actionFingerprint)) ||
       typeof entry.intent !== "string" ||
       typeof entry.controlsJson !== "string"
     ) {
@@ -390,6 +434,9 @@ function parseObservationBatchEntries(
       declaredEffect: "observation" as const,
       intent: entry.intent,
       controlsJson: entry.controlsJson,
+      ...(typeof entry.actionFingerprint === "string"
+        ? { actionFingerprint: entry.actionFingerprint }
+        : {}),
     });
   });
   return entries.some((entry) => entry === undefined)
@@ -411,12 +458,17 @@ function parseCapabilityBatchSettlements(
       !exactKeys(
         entry,
         ["executionId", "outcome", "observedEffect", "summary", "exactResult"],
-        ["referenceData", "references"],
+        ["outcomeFingerprint", "referenceData", "references"],
       ) ||
       typeof entry.executionId !== "string" ||
       entry.executionId.length === 0 ||
       seen.has(entry.executionId) ||
       (entry.outcome !== "succeeded" && entry.outcome !== "failed") ||
+      (entry.outcomeFingerprint !== undefined &&
+        !isRoleOperationOutcomeFingerprintForOutcome(
+          entry.outcomeFingerprint,
+          entry.outcome,
+        )) ||
       !isRoleCapabilityObservedEffect(entry.observedEffect) ||
       typeof entry.summary !== "string" ||
       (entry.referenceData !== undefined &&
@@ -432,6 +484,9 @@ function parseCapabilityBatchSettlements(
     return Object.freeze({
       executionId: entry.executionId,
       outcome: entry.outcome,
+      ...(typeof entry.outcomeFingerprint === "string"
+        ? { outcomeFingerprint: entry.outcomeFingerprint }
+        : {}),
       observedEffect: entry.observedEffect,
       summary: entry.summary,
       ...(typeof entry.referenceData === "string"

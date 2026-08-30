@@ -1,6 +1,7 @@
 import { projectWorkerCapabilityAffordances } from "../capability-affordances.js";
 import { projectWorkerCapabilitySelectionCatalog } from "../capability-catalog.js";
 import {
+  CAPABILITY_CONTROLS_MODEL_STEP,
   projectWorkerDecisionCallIdentity,
   WORKER_DECISION_MODEL_STEP,
   type WorkerDecisionDiagnosticContext,
@@ -145,11 +146,23 @@ export function resolveWorkerDecisionDiagnostic(
   if (options.diagnostic) return options.diagnostic;
   return {
     requestId,
-    modelStep: WORKER_DECISION_MODEL_STEP,
-    decisionPhase: hasPendingCapabilityExecution(options)
-      ? "capability_execution"
-      : "capability_selection",
+    ...resolveWorkerDecisionPhase(options),
     ...callIdentity,
+  };
+}
+
+function resolveWorkerDecisionPhase(
+  options: WorkerDecisionInputOptions,
+): Pick<WorkerDecisionDiagnosticContext, "modelStep" | "decisionPhase"> {
+  if (hasPendingCapabilityExecution(options)) {
+    return {
+      modelStep: CAPABILITY_CONTROLS_MODEL_STEP,
+      decisionPhase: "capability_execution",
+    };
+  }
+  return {
+    modelStep: WORKER_DECISION_MODEL_STEP,
+    decisionPhase: "capability_selection",
   };
 }
 

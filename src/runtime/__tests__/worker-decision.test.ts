@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import type { ChatMessage } from "../../model-gateway/types.js";
 import type { ModelGatewayClient } from "../ports.js";
 import type { RequestRunnerConfig } from "../config/runner/contracts.js";
 import type { RequestToolResultsView } from "../context/request-tool-results.js";
@@ -24,6 +25,7 @@ import type {
 import { createTestRequestExecutionScope } from "./support/request-execution-scope.js";
 import {
   buildWorkerDecisionInput,
+  CAPABILITY_CONTROLS_MODEL_STEP,
   createWorkerDecisionFormat,
   GENERIC_WORKER_EXECUTOR,
   parseWorkerDecisionOutput,
@@ -41,6 +43,7 @@ const runnerConfig: RequestRunnerConfig = {
       steps: {
         [WORKER_DECISION_MODEL_STEP]: "worker.decision",
         [WORKER_RESULT_MODEL_STEP]: "supervisor.response",
+        [CAPABILITY_CONTROLS_MODEL_STEP]: "capability.controls",
       },
     },
   },
@@ -52,6 +55,7 @@ const runnerConfig: RequestRunnerConfig = {
   steps: {
     [WORKER_DECISION_MODEL_STEP]: { timeoutMs: 20_000 },
     [WORKER_RESULT_MODEL_STEP]: { timeoutMs: 20_000 },
+    [CAPABILITY_CONTROLS_MODEL_STEP]: { timeoutMs: 20_000 },
   } as RequestRunnerConfig["steps"],
 };
 
@@ -64,8 +68,7 @@ const modelPolicy = {
       contextWindowTokens: 8_000,
       supportsThinking: true,
       calibration: {
-        "worker.decision": {
-        },
+        "worker.decision": {},
       },
     },
   },
@@ -74,6 +77,18 @@ const modelPolicy = {
     steps: {
       [WORKER_DECISION_MODEL_STEP]: "worker.decision",
       [WORKER_RESULT_MODEL_STEP]: "supervisor.response",
+      [CAPABILITY_CONTROLS_MODEL_STEP]: "capability.controls",
+    },
+  },
+};
+
+const operationSupervisionModelPolicy = {
+  ...modelPolicy,
+  profiles: {
+    ...modelPolicy.profiles,
+    "runtime-default": {
+      ...modelPolicy.profiles["runtime-default"],
+      contextWindowTokens: 32_000,
     },
   },
 };
@@ -98,10 +113,16 @@ const EMPTY_REQUEST_TOOL_RESULTS: RequestToolResultsView = Object.freeze({
 const REQUEST_SOURCE_PROMPT =
   "Write EXACT_WORKER_LITERAL to /tmp/worker target.txt.";
 
+function asChatMessages(input: unknown): readonly ChatMessage[] {
+  if (!Array.isArray(input)) throw new Error("expected model messages");
+  return input as readonly ChatMessage[];
+}
+
 function runtimeMessageByKind(
-  messages: readonly Readonly<{ content: string }>[],
+  input: unknown,
   kind: string,
 ): Record<string, unknown> {
+  const messages = asChatMessages(input);
   const decoded = messages.flatMap(({ content }) => {
     try {
       return [JSON.parse(content) as Record<string, unknown>];
@@ -114,11 +135,17 @@ function runtimeMessageByKind(
   return message;
 }
 
-function hasRuntimeMessageKind(
-  messages: readonly Readonly<{ content: string }>[],
-  kind: string,
-): boolean {
+function hasRuntimeMessageKind(input: unknown, kind: string): boolean {
+  const messages = asChatMessages(input);
   return messages.some(({ content }) => content.includes(`"kind":"${kind}"`));
+}
+
+function modelFormatSchema(
+  format: "json" | Record<string, unknown> | undefined,
+): unknown {
+  return typeof format === "object" && format !== null
+    ? format.schema
+    : undefined;
 }
 
 function requestToolResults(summary: string): RequestToolResultsView {
@@ -751,6 +778,14 @@ describe("generic Worker no-tool decision contract", () => {
         guidance: "SELECTED_EXECUTION_GUIDANCE",
       },
     });
+    expect(executionInput.modelStep).toBe(CAPABILITY_CONTROLS_MODEL_STEP);
+    expect(executionInput.allowedActions).toEqual([
+      "return_failure",
+      "invoke_capability",
+    ]);
+    expect(JSON.stringify(executionInput.format.schema)).not.toContain(
+      "return_result",
+    );
     expect(
       runtimeMessageByKind(
         executionInput.context.messages,
@@ -1212,6 +1247,7 @@ describe("generic Worker no-tool decision contract", () => {
       const serializedMessages = JSON.stringify(messages);
       if (modelInvocation === 1) {
         timeline.push("model.selection");
+        expect(input.modelStep).toBe(WORKER_DECISION_MODEL_STEP);
         expect(serializedMessages).not.toContain(skillSecret);
         return {
           text: workerDecisionText({
@@ -1224,6 +1260,7 @@ describe("generic Worker no-tool decision contract", () => {
       }
       if (modelInvocation === 2) {
         timeline.push("model.execution");
+        expect(input.modelStep).toBe(CAPABILITY_CONTROLS_MODEL_STEP);
         expect(serializedMessages).toContain(skillSecret);
         expect(JSON.stringify(input.format)).not.toContain('"capabilityId"');
         expect(JSON.stringify(input.format)).not.toContain('"intent"');
@@ -1259,6 +1296,7 @@ describe("generic Worker no-tool decision contract", () => {
       }
       if (modelInvocation === 3) {
         timeline.push("model.reentry");
+        expect(input.modelStep).toBe(WORKER_DECISION_MODEL_STEP);
         expect(serializedMessages).not.toContain(skillSecret);
         expect(
           hasRuntimeMessageKind(
@@ -1303,7 +1341,10 @@ describe("generic Worker no-tool decision contract", () => {
         executionId: "capability-execution-1",
       },
     });
-    if (firstResult.kind !== "continue") {
+    if (
+      firstResult.kind !== "continue" ||
+      firstResult.continuation.kind !== "capability_execution"
+    ) {
       throw new Error("expected capability continuation");
     }
     const resumedCall = ledger
@@ -1372,11 +1413,14 @@ describe("generic Worker no-tool decision contract", () => {
       );
     if (!call) throw new Error("canonical Worker call missing");
     const canonicalIntent = "Create the requested product data file.";
+    const authoringObjective =
+      "Create the complete product data JSON document requested by the Worker.";
     const execute = vi.fn<
       WorkerCapabilityAdapter<RequestCapabilityExecutionView>["execute"]
-    >(async ({ context, controls, intent }) => {
+    >(async ({ context, controls, intent, authoringObjective: assignment }) => {
       expect(context).not.toHaveProperty("sessionArtifactPaths");
       expect(intent).toBe(canonicalIntent);
+      expect(assignment).toBe(authoringObjective);
       expect(controls).toEqual({ path: "products.json" });
       return {
         outcome: "succeeded" as const,
@@ -1400,13 +1444,15 @@ describe("generic Worker no-tool decision contract", () => {
         },
         selectionControlIds: ["path"],
         runtimePathControlIds: ["path"],
+        requiresPayloadAuthoringObjective: true,
       },
       execute,
     };
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      const serializedFormat = JSON.stringify(input.format?.schema);
+      const serializedFormat = JSON.stringify(modelFormatSchema(input.format));
       const serializedMessages = JSON.stringify(input.messages);
       expect(serializedFormat).toContain('"selectionControls"');
+      expect(serializedFormat).toContain('"authoringObjective"');
       expect(serializedFormat).toContain('"path"');
       expect(serializedMessages).not.toContain(
         "runtime_session_artifact_paths_v1",
@@ -1416,6 +1462,7 @@ describe("generic Worker no-tool decision contract", () => {
           action: "invoke_capability",
           capabilityId: "write_complete_file",
           intent: canonicalIntent,
+          authoringObjective,
           selectionControls: { path: "products.json" },
         }),
         meta: {},
@@ -1520,43 +1567,45 @@ describe("generic Worker no-tool decision contract", () => {
         summary: "Found the requested release summary.",
       };
     });
-    const pathAdapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> = {
-      descriptor: {
-        capabilityId: "write_complete_file",
-        summary: "Write one complete file.",
-        effect: "mutation",
-        controlsRefinement: "mechanical_when_complete",
-        controls: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            path: { type: "string", minLength: 1, maxLength: 4_096 },
+    const pathAdapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> =
+      {
+        descriptor: {
+          capabilityId: "write_complete_file",
+          summary: "Write one complete file.",
+          effect: "mutation",
+          controlsRefinement: "mechanical_when_complete",
+          controls: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              path: { type: "string", minLength: 1, maxLength: 4_096 },
+            },
+            required: ["path"],
           },
-          required: ["path"],
+          selectionControlIds: ["path"],
+          runtimePathControlIds: ["path"],
         },
-        selectionControlIds: ["path"],
-        runtimePathControlIds: ["path"],
-      },
-      execute: pathExecute,
-    };
-    const queryAdapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> = {
-      descriptor: {
-        capabilityId: "lookup_release_summary",
-        summary: "Look up one release summary.",
-        effect: "observation",
-        controlsRefinement: "mechanical_when_complete",
-        controls: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            query: { type: "string", minLength: 1, maxLength: 4_096 },
+        execute: pathExecute,
+      };
+    const queryAdapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> =
+      {
+        descriptor: {
+          capabilityId: "lookup_release_summary",
+          summary: "Look up one release summary.",
+          effect: "observation",
+          controlsRefinement: "mechanical_when_complete",
+          controls: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              query: { type: "string", minLength: 1, maxLength: 4_096 },
+            },
+            required: ["query"],
           },
-          required: ["query"],
+          selectionControlIds: ["query"],
         },
-        selectionControlIds: ["query"],
-      },
-      execute: queryExecute,
-    };
+        execute: queryExecute,
+      };
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
       expect(input.modelStep).toBe(WORKER_DECISION_MODEL_STEP);
       expect(
@@ -1658,7 +1707,7 @@ describe("generic Worker no-tool decision contract", () => {
     let invocationIndex = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
       invocationIndex += 1;
-      const serializedFormat = JSON.stringify(input.format?.schema);
+      const serializedFormat = JSON.stringify(modelFormatSchema(input.format));
       if (invocationIndex === 1) {
         expect(serializedFormat).not.toContain('"selectionControls"');
         expect(
@@ -1693,7 +1742,7 @@ describe("generic Worker no-tool decision contract", () => {
         },
       });
       expect(
-        input.messages.findIndex(({ content }) =>
+        asChatMessages(input.messages).findIndex(({ content }) =>
           content.includes('"kind":"runtime_session_artifact_paths_v1"'),
         ),
       ).toBe(1);
@@ -1827,7 +1876,7 @@ describe("generic Worker no-tool decision contract", () => {
       ]),
     });
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      expect(JSON.stringify(input.format?.schema)).toContain(
+      expect(JSON.stringify(modelFormatSchema(input.format))).toContain(
         '"selectionControls"',
       );
       expect(
@@ -1917,61 +1966,63 @@ describe("generic Worker no-tool decision contract", () => {
         (candidate) => candidate.callId === ledger.current().state.activeCallId,
       );
     if (!firstCall) throw new Error("canonical Worker call missing");
-    const projectAdapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> = {
-      descriptor: {
-        capabilityId: "inspect_project",
-        summary: "Inspect one bounded project tree.",
-        effect: "observation",
-        controls: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            path: {
-              type: "string",
-              minLength: 0,
-              maxLength: 1_024,
+    const projectAdapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> =
+      {
+        descriptor: {
+          capabilityId: "inspect_project",
+          summary: "Inspect one bounded project tree.",
+          effect: "observation",
+          controls: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              path: {
+                type: "string",
+                minLength: 0,
+                maxLength: 1_024,
+              },
+              depth: { type: "integer", minimum: 0, maximum: 6 },
+              maxEntries: { type: "integer", minimum: 1, maximum: 500 },
             },
-            depth: { type: "integer", minimum: 0, maximum: 6 },
-            maxEntries: { type: "integer", minimum: 1, maximum: 500 },
+            required: ["path"],
           },
-          required: ["path"],
+          selectionControlIds: ["path"],
+          runtimePathControlIds: ["path"],
         },
-        selectionControlIds: ["path"],
-        runtimePathControlIds: ["path"],
-      },
-      execute: vi.fn(async ({ controls, settledCapabilityResults }) => ({
-        outcome: "succeeded" as const,
-        observedEffect: "observation" as const,
-        summary: `Inspected project ${String(controls.path)} with ${settledCapabilityResults.length} prior results.`,
-      })),
-    };
-    const jsonAdapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> = {
-      descriptor: {
-        capabilityId: "inspect_json",
-        summary: "Inspect one bounded JSON file.",
-        effect: "observation",
-        controls: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            path: {
-              type: "string",
-              minLength: 1,
-              maxLength: 1_024,
+        execute: vi.fn(async ({ controls, settledCapabilityResults }) => ({
+          outcome: "succeeded" as const,
+          observedEffect: "observation" as const,
+          summary: `Inspected project ${String(controls.path)} with ${settledCapabilityResults.length} prior results.`,
+        })),
+      };
+    const jsonAdapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> =
+      {
+        descriptor: {
+          capabilityId: "inspect_json",
+          summary: "Inspect one bounded JSON file.",
+          effect: "observation",
+          controls: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              path: {
+                type: "string",
+                minLength: 1,
+                maxLength: 1_024,
+              },
+              maxDepth: { type: "integer", minimum: 0, maximum: 6 },
             },
-            maxDepth: { type: "integer", minimum: 0, maximum: 6 },
+            required: ["path"],
           },
-          required: ["path"],
+          selectionControlIds: ["path"],
+          runtimePathControlIds: ["path"],
         },
-        selectionControlIds: ["path"],
-        runtimePathControlIds: ["path"],
-      },
-      execute: vi.fn(async ({ controls, settledCapabilityResults }) => ({
-        outcome: "succeeded" as const,
-        observedEffect: "observation" as const,
-        summary: `Inspected JSON ${String(controls.path)} with ${settledCapabilityResults.length} prior results.`,
-      })),
-    };
+        execute: vi.fn(async ({ controls, settledCapabilityResults }) => ({
+          outcome: "succeeded" as const,
+          observedEffect: "observation" as const,
+          summary: `Inspected JSON ${String(controls.path)} with ${settledCapabilityResults.length} prior results.`,
+        })),
+      };
     let modelInvocation = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
       modelInvocation += 1;
@@ -2009,12 +2060,12 @@ describe("generic Worker no-tool decision contract", () => {
         expect(serializedFormat).not.toContain('"intent"');
         expect(serializedFormat).not.toContain(JSON.stringify(intentA));
         expect(serializedFormat).not.toContain(JSON.stringify(intentB));
+        expect(serializedFormat).not.toContain("return_result");
         expect(input.format).toMatchObject({
           schema: {
             properties: {
               decision: {
                 anyOf: [
-                  {},
                   {},
                   {
                     properties: {
@@ -2155,7 +2206,10 @@ describe("generic Worker no-tool decision contract", () => {
         executionIds: ["capability-execution-1", "capability-execution-2"],
       },
     });
-    if (firstResult.kind !== "continue") {
+    if (
+      firstResult.kind !== "continue" ||
+      firstResult.continuation.kind !== "capability_batch_execution"
+    ) {
       throw new Error("expected capability batch continuation");
     }
     expect(ledger.current().state.capabilityExecutions).toEqual([
@@ -2227,5 +2281,348 @@ describe("generic Worker no-tool decision contract", () => {
           (event === "step.invalid_output" || event === "step.repair.started"),
       ),
     ).toEqual([]);
+  });
+
+  test("coalesces exact batches into the single lane and maps their persistent limit to failure", async () => {
+    const ledger = await createWorkerLedger();
+    const call = ledger
+      .current()
+      .state.calls.find(
+        (candidate) => candidate.callId === ledger.current().state.activeCallId,
+      );
+    if (!call) throw new Error("canonical Worker call missing");
+    const preparedExecute = vi.fn(async () => ({
+      outcome: "succeeded" as const,
+      observedEffect: "observation" as const,
+      summary: "Observed one exact materialized operation.",
+    }));
+    const directExecute = vi.fn(async () => ({
+      outcome: "succeeded" as const,
+      observedEffect: "observation" as const,
+      summary: "Legacy execution must not run.",
+    }));
+    const prepare = vi.fn<
+      NonNullable<
+        WorkerCapabilityAdapter<RequestCapabilityExecutionView>["prepare"]
+      >
+    >(async ({ controls }) =>
+      Object.freeze({
+        actionFingerprint: `sha256:${"b".repeat(64)}`,
+        acceptedControls: controls,
+        execute: preparedExecute,
+      }),
+    );
+    const adapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> = {
+      descriptor: {
+        capabilityId: "example.observe",
+        summary: "Observe one exact bounded query.",
+        effect: "observation",
+        controls: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            source: { type: "string", minLength: 1, maxLength: 64 },
+            query: { type: "string", minLength: 1, maxLength: 64 },
+          },
+          required: ["source", "query"],
+        },
+        selectionControlIds: ["source"],
+      },
+      prepare,
+      execute: directExecute,
+    };
+    let modelInvocation = 0;
+    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async () => {
+      modelInvocation += 1;
+      return modelInvocation % 2 === 1
+        ? {
+            text: workerDecisionText({
+              action: "invoke_capabilities",
+              invocations: [
+                {
+                  capabilityId: "example.observe",
+                  intent: "Observe the bounded source.",
+                  selectionControls: { source: "A" },
+                },
+                {
+                  capabilityId: "example.observe",
+                  intent: "Observe the same bounded source again.",
+                  selectionControls: { source: "A" },
+                },
+              ],
+            }),
+            meta: {},
+          }
+        : {
+            text: workerDecisionText({
+              action: "invoke_capabilities",
+              invocations: {
+                invocation_1: { controls: { query: "same" } },
+                invocation_2: { controls: { query: "same" } },
+              },
+            }),
+            meta: {},
+          };
+    });
+    const request = createTestRequestExecutionScope({
+      ...createRequest(invoke),
+      modelPolicy: operationSupervisionModelPolicy,
+      workerCapabilityProvider: {
+        getDescriptors: () => Object.freeze([adapter.descriptor]),
+        getExecutionGuidance: vi.fn(async () => ""),
+        getAdapters: () => Object.freeze([adapter]),
+      },
+    });
+
+    const first = await GENERIC_WORKER_EXECUTOR.execute({
+      context: request,
+      call,
+      ledger,
+      availableChildRoleIds: [],
+    });
+    expect(first).toEqual({
+      kind: "continue",
+      continuation: {
+        kind: "capability_execution",
+        executionId: "capability-execution-1",
+      },
+    });
+    if (
+      first.kind !== "continue" ||
+      first.continuation.kind !== "capability_execution"
+    ) {
+      throw new Error("coalesced capability continuation missing");
+    }
+    const activeCall = () => {
+      const head = ledger.current();
+      const current = head.state.calls.find(
+        (candidate) => candidate.callId === head.state.activeCallId,
+      );
+      if (!current) throw new Error("canonical Worker call missing");
+      return current;
+    };
+    const second = await GENERIC_WORKER_EXECUTOR.execute({
+      context: request,
+      call: activeCall(),
+      ledger,
+      availableChildRoleIds: [],
+      continuation: first.continuation,
+    });
+    expect(second).toMatchObject({
+      kind: "continue",
+      continuation: {
+        kind: "capability_execution",
+        executionId: "capability-execution-2",
+      },
+    });
+    if (
+      second.kind !== "continue" ||
+      second.continuation.kind !== "capability_execution"
+    ) {
+      throw new Error("second coalesced capability continuation missing");
+    }
+    const intervention = await GENERIC_WORKER_EXECUTOR.execute({
+      context: request,
+      call: activeCall(),
+      ledger,
+      availableChildRoleIds: [],
+      continuation: second.continuation,
+    });
+    expect(intervention).toMatchObject({
+      kind: "continue",
+      continuation: { kind: "operation_supervision_intervention" },
+    });
+    if (
+      intervention.kind !== "continue" ||
+      intervention.continuation.kind !== "operation_supervision_intervention"
+    ) {
+      throw new Error("batch operation supervision continuation missing");
+    }
+    await expect(
+      GENERIC_WORKER_EXECUTOR.execute({
+        context: request,
+        call: activeCall(),
+        ledger,
+        availableChildRoleIds: [],
+        continuation: intervention.continuation,
+      }),
+    ).resolves.toEqual({
+      kind: "terminal",
+      outcome: "failed",
+      summary:
+        "The runtime stopped a persistently repeated operation after intervention.",
+    });
+
+    expect(prepare).toHaveBeenCalledTimes(8);
+    expect(preparedExecute).toHaveBeenNthCalledWith(
+      1,
+      "capability-execution-1",
+    );
+    expect(preparedExecute).toHaveBeenNthCalledWith(
+      2,
+      "capability-execution-2",
+    );
+    expect(directExecute).not.toHaveBeenCalled();
+    expect(ledger.current().state.capabilityExecutions).toHaveLength(2);
+  });
+
+  test("projects warning and intervention receipts while keeping the Worker on its role", async () => {
+    const ledger = await createWorkerLedger();
+    const preparedExecute = vi.fn(async () => ({
+      outcome: "succeeded" as const,
+      observedEffect: "observation" as const,
+      summary: "Observed the exact same value.",
+    }));
+    const prepare = vi.fn<
+      NonNullable<
+        WorkerCapabilityAdapter<RequestCapabilityExecutionView>["prepare"]
+      >
+    >(async ({ controls }) =>
+      Object.freeze({
+        actionFingerprint: `sha256:${"c".repeat(64)}`,
+        acceptedControls: controls,
+        execute: preparedExecute,
+      }),
+    );
+    const adapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> = {
+      descriptor: {
+        capabilityId: "example.observe",
+        summary: "Observe one exact bounded query.",
+        effect: "observation",
+        controlsRefinement: "mechanical_when_complete",
+        controls: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            query: { type: "string", minLength: 1, maxLength: 64 },
+          },
+          required: ["query"],
+        },
+        selectionControlIds: ["query"],
+      },
+      prepare,
+      execute: vi.fn(async () => {
+        throw new Error("legacy execution must not run");
+      }),
+    };
+    let modelInvocation = 0;
+    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      modelInvocation += 1;
+      const assignment = runtimeMessageByKind(
+        input.messages as readonly Readonly<{ content: string }>[],
+        "runtime_worker_assignment",
+      );
+      if (modelInvocation === 3) {
+        expect(assignment.operationSupervision).toEqual([
+          expect.objectContaining({
+            kind: "runtime_operation_supervision_v1",
+            stage: "warning",
+            originExecutionId: "capability-execution-2",
+          }),
+        ]);
+      } else if (modelInvocation === 4) {
+        expect(assignment.operationSupervision).toEqual([
+          expect.objectContaining({
+            kind: "runtime_operation_supervision_v1",
+            stage: "intervention",
+            originExecutionId: "capability-execution-2",
+          }),
+        ]);
+      } else {
+        expect(assignment).not.toHaveProperty("operationSupervision");
+      }
+      return {
+        text: workerDecisionText({
+          action: "invoke_capability",
+          capabilityId: "example.observe",
+          intent: "Observe the bounded value.",
+          selectionControls: { query: "same" },
+        }),
+        meta: {},
+      };
+    });
+    const request = createTestRequestExecutionScope({
+      ...createRequest(invoke),
+      modelPolicy: operationSupervisionModelPolicy,
+      workerCapabilityProvider: {
+        getDescriptors: () => Object.freeze([adapter.descriptor]),
+        getExecutionGuidance: vi.fn(async () => ""),
+        getAdapters: () => Object.freeze([adapter]),
+      },
+    });
+    const activeCall = () => {
+      const head = ledger.current();
+      const call = head.state.calls.find(
+        (candidate) => candidate.callId === head.state.activeCallId,
+      );
+      if (!call) throw new Error("canonical Worker call missing");
+      return call;
+    };
+
+    const first = await GENERIC_WORKER_EXECUTOR.execute({
+      context: request,
+      call: activeCall(),
+      ledger,
+      availableChildRoleIds: [],
+    });
+    if (
+      first.kind !== "continue" ||
+      first.continuation.kind !== "capability_execution"
+    ) {
+      throw new Error("first capability continuation missing");
+    }
+    const second = await GENERIC_WORKER_EXECUTOR.execute({
+      context: request,
+      call: activeCall(),
+      ledger,
+      availableChildRoleIds: [],
+      continuation: first.continuation,
+    });
+    if (
+      second.kind !== "continue" ||
+      second.continuation.kind !== "capability_execution"
+    ) {
+      throw new Error("second capability continuation missing");
+    }
+    const intervention = await GENERIC_WORKER_EXECUTOR.execute({
+      context: request,
+      call: activeCall(),
+      ledger,
+      availableChildRoleIds: [],
+      continuation: second.continuation,
+    });
+    expect(intervention).toMatchObject({
+      kind: "continue",
+      continuation: {
+        kind: "operation_supervision_intervention",
+        commit: {
+          effect: { type: "operation_supervision_intervened" },
+        },
+      },
+    });
+    if (
+      intervention.kind !== "continue" ||
+      intervention.continuation.kind !== "operation_supervision_intervention"
+    ) {
+      throw new Error("operation supervision continuation missing");
+    }
+
+    await expect(
+      GENERIC_WORKER_EXECUTOR.execute({
+        context: request,
+        call: activeCall(),
+        ledger,
+        availableChildRoleIds: [],
+        continuation: intervention.continuation,
+      }),
+    ).resolves.toEqual({
+      kind: "terminal",
+      outcome: "failed",
+      summary:
+        "The runtime stopped a persistently repeated operation after intervention.",
+    });
+    expect(preparedExecute).toHaveBeenCalledTimes(2);
+    expect(prepare).toHaveBeenCalledTimes(4);
+    expect(modelInvocation).toBe(4);
   });
 });

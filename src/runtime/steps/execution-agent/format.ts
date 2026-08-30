@@ -6,6 +6,7 @@ import {
   CAPABILITY_INTENT_MAX_LENGTH,
   EXECUTION_WORKING_DIRECTORY_MAX_LENGTH,
   EXECUTION_WORKING_DIRECTORY_PATTERN,
+  canOfferCapabilityBatchSelection,
   normalizeCapabilityDescriptor,
   normalizeCapabilityControlsSchema,
   partitionCapabilityControlsSchema,
@@ -24,6 +25,10 @@ import {
   EXECUTION_AGENT_TITLE_MAX_LENGTH,
   type ExecutionAgentDecisionContractOptions,
 } from "./contracts.js";
+import {
+  executionOperationObjectiveSchema,
+  requiresExecutionOperationObjective,
+} from "./capability-invocation-contract.js";
 
 export type PreparedExecutionAgentCapability = Readonly<{
   capabilityId: string;
@@ -47,7 +52,7 @@ export type PreparedExecutionAgentDecisionContract = Readonly<{
   includeWorkingDirectory: boolean;
 }>;
 
-type CapabilitySchemaGroup = Readonly<{
+type CapabilityDecisionSchemaGroup = Readonly<{
   capabilities: readonly PreparedExecutionAgentCapability[];
   partition: CapabilityControlsPartition;
 }>;
@@ -57,15 +62,20 @@ export function createExecutionAgentDecisionFormat(
 ): ModelGatewayJsonSchemaFormat {
   const contract = prepareExecutionAgentDecisionContract(options);
   const presentation = presentationSchemas(contract);
-  const capabilityGroups = groupCapabilitiesBySelectionSchema(
+  const capabilityGroups = groupCapabilitiesByDecisionShape(
     contract.capabilities,
   );
-  const observationGroups = groupCapabilitiesBySelectionSchema(
+  const observationGroups = groupCapabilitiesByDecisionShape(
     contract.observationCapabilities,
   );
   const batchEnabled =
     contract.maxBatchCapabilityExecutions >= 2 &&
-    contract.observationCapabilities.length > 0;
+    canOfferCapabilityBatchSelection(
+      contract.observationCapabilities.map((capability) => ({
+        capabilityId: capability.capabilityId,
+        selectionSchema: capability.partition.selectionSchema,
+      })),
+    );
   const variants: Record<string, unknown>[] = [
     ...(contract.activeCapabilityCatalogGroupIds === null &&
     contract.capabilityCatalogGroupIds.length > 0
@@ -99,6 +109,9 @@ export function createExecutionAgentDecisionFormat(
           group.capabilities.map(({ capabilityId }) => capabilityId),
         ),
         intent: boundedText(CAPABILITY_INTENT_MAX_LENGTH),
+        ...(requiresExecutionOperationObjective(group.partition)
+          ? { operationObjective: executionOperationObjectiveSchema() }
+          : {}),
         ...(group.partition.selectionControlIds.length > 0
           ? {
               selectionControls: projectControlsSchema(
@@ -358,9 +371,9 @@ function presentationSchemas(
   };
 }
 
-function groupCapabilitiesBySelectionSchema(
+function groupCapabilitiesByDecisionShape(
   capabilities: readonly PreparedExecutionAgentCapability[],
-): readonly CapabilitySchemaGroup[] {
+): readonly CapabilityDecisionSchemaGroup[] {
   const groups = new Map<
     string,
     {
@@ -369,7 +382,10 @@ function groupCapabilitiesBySelectionSchema(
     }
   >();
   for (const capability of capabilities) {
-    const signature = JSON.stringify(capability.partition.selectionSchema);
+    const signature = JSON.stringify([
+      capability.partition.selectionSchema,
+      requiresExecutionOperationObjective(capability.partition),
+    ]);
     const group = groups.get(signature) ?? {
       capabilities: [],
       partition: capability.partition,
@@ -388,7 +404,7 @@ function groupCapabilitiesBySelectionSchema(
 }
 
 function projectCapabilitySelectionItemSchema(
-  groups: readonly CapabilitySchemaGroup[],
+  groups: readonly CapabilityDecisionSchemaGroup[],
 ): Record<string, unknown> {
   const variants = groups.map((group) =>
     exactObject({
@@ -396,6 +412,9 @@ function projectCapabilitySelectionItemSchema(
         group.capabilities.map(({ capabilityId }) => capabilityId),
       ),
       intent: boundedText(CAPABILITY_INTENT_MAX_LENGTH),
+      ...(requiresExecutionOperationObjective(group.partition)
+        ? { operationObjective: executionOperationObjectiveSchema() }
+        : {}),
       ...(group.partition.selectionControlIds.length > 0
         ? {
             selectionControls: projectControlsSchema(

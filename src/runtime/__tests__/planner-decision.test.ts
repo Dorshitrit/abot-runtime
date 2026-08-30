@@ -61,8 +61,7 @@ const modelPolicy = {
       contextWindowTokens: 32_000,
       supportsThinking: true,
       calibration: {
-        "planner.decision": {
-        },
+        "planner.decision": {},
       },
     },
   },
@@ -1943,7 +1942,9 @@ describe("generic Planner decision contract", () => {
     });
     expect(ledger.current()).toBe(head);
     expect(
-      request.onEvent.mock.calls.filter(([name]) => name === "runtime.state"),
+      vi
+        .mocked(request.onEvent)
+        .mock.calls.filter(([name]) => name === "runtime.state"),
     ).toEqual([
       [
         "runtime.state",

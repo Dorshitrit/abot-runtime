@@ -85,6 +85,7 @@ export const PUBLIC_PLUGIN_CAPABILITY_IDS = Object.freeze([
 export const PUBLIC_PACKAGE_SCRIPT_NAMES = Object.freeze([
   "init",
   "add-model",
+  "memory",
   "dev",
   "web-ui",
   "web-ui:install-user-services",
@@ -92,6 +93,7 @@ export const PUBLIC_PACKAGE_SCRIPT_NAMES = Object.freeze([
   "test",
   "clean:dev-state",
   "build",
+  "typecheck:all",
   "typecheck:plugins",
   "build:plugins",
   "check:plugin-build",
@@ -102,6 +104,7 @@ export const PUBLIC_PACKAGE_SCRIPT_NAMES = Object.freeze([
   "check:runtime-package",
   "check:plugins",
   "check:publication",
+  "check:public-snapshot",
   "check:model-step-registry",
   "validate",
   "build-config-schema",
@@ -111,7 +114,7 @@ export const PUBLIC_PACKAGE_SCRIPT_NAMES = Object.freeze([
 export const PUBLIC_PACKAGE_SCRIPT_OVERRIDES = Object.freeze({
   "check:publication": "tsx scripts/check-publication-readiness.ts",
   validate:
-    "npm run check:plugin-build && npm test -- --run && npm run build && npm run check:plugins && npm run smoke:runtime-package && npm run check:runtime-package && npm run smoke:packed-runtime-package && npm run check:publication",
+    "npm run check:plugin-build && npm run typecheck:all && npm test -- --run && npm run build && npm run check:plugins && npm run smoke:runtime-package && npm run check:runtime-package && npm run smoke:packed-runtime-package && npm run check:publication && npm run check:public-snapshot",
 } as const);
 
 export const PUBLIC_SCRIPT_FILES = Object.freeze([
@@ -124,6 +127,7 @@ export const PUBLIC_SCRIPT_FILES = Object.freeze([
   "scripts/clean-dist.ts",
   "scripts/copy-build-assets.ts",
   "scripts/init-runtime.ts",
+  "scripts/configure-long-term-memory.ts",
   "scripts/install-runtime-web-ui-user-services.ts",
   "scripts/runtime-setup-files.ts",
   "scripts/runtime-setup-presentation.ts",
@@ -140,6 +144,7 @@ export const PUBLIC_DOCUMENTATION_FILES = Object.freeze([
   "docs/configuration.md",
   "docs/installation.md",
   "docs/known-limitations.md",
+  "docs/long-term-memory.md",
   "docs/plugins.md",
   "docs/publishing.md",
   "docs/running-locally.md",
@@ -168,6 +173,8 @@ const PUBLIC_PACKAGE_NON_PLUGIN_FILES = [
   "src/runtime/README.md",
   "LICENSE",
   ...PUBLIC_DOCUMENTATION_FILES,
+  "methodologies/response-ux.md",
+  "methodologies/memory-informed-response.md",
   "examples/minimal-runtime-composition.ts",
   "examples/runtime-library-host.ts",
   "examples/runtime.config.example.json",

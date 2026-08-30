@@ -3,11 +3,12 @@ import type {
   WorkerCapabilityAdapterResult,
   WorkerCapabilityExecutionFreshness,
 } from "../../orchestration/worker-capabilities/index.js";
-import type { RegisteredToolNormalInvocationExecutor } from "../registered-tool-normal-invocations.js";
+import type { PayloadLifecycleEmitter } from "./payload-observability.js";
 import {
   boundedSummary,
   requireCapabilityAdapterResult,
 } from "./result-observer.js";
+import { createRegisteredToolWorkerFailureOutcomeFingerprint } from "./failure-outcome-fingerprint.js";
 
 export const STEERING_SUPERSEDED_BEFORE_EXTERNAL_EXECUTION =
   "steering_superseded_before_external_execution" as const;
@@ -16,15 +17,13 @@ export const STEERING_SUPERSEDED_SUMMARY =
 
 export type PayloadLifecycleContext = Readonly<
   Omit<
-    Parameters<
-      RegisteredToolNormalInvocationExecutor["emitPayloadLifecycle"]
-    >[0],
+    Parameters<PayloadLifecycleEmitter["emitPayloadLifecycle"]>[0],
     "phase" | "errorCode"
   >
 >;
 
 export function rejectPayloadLifecycle(params: {
-  executor: RegisteredToolNormalInvocationExecutor;
+  executor: PayloadLifecycleEmitter;
   lifecycle: PayloadLifecycleContext;
   code: string;
   message: string;
@@ -49,22 +48,27 @@ export function payloadRejection(
   sourceIssueCode: string;
   exactResult: CapabilityAdapterResult;
 }> {
+  const exactResult = requireCapabilityAdapterResult({
+    kind: "runtime_capability_rejection_v1",
+    authority: "runtime",
+    status: "rejected",
+    stage: "before_external_execution",
+    code: sourceIssueCode,
+    message: summary,
+  });
   return Object.freeze({
     status: "rejected" as const,
     result: Object.freeze({
       outcome: "failed" as const,
       observedEffect: "none" as const,
       summary: boundedSummary(summary),
+      failureOutcomeFingerprint:
+        sourceIssueCode === STEERING_SUPERSEDED_BEFORE_EXTERNAL_EXECUTION
+          ? null
+          : createRegisteredToolWorkerFailureOutcomeFingerprint(exactResult),
     }),
     sourceIssueCode,
-    exactResult: requireCapabilityAdapterResult({
-      kind: "runtime_capability_rejection_v1",
-      authority: "runtime",
-      status: "rejected",
-      stage: "before_external_execution",
-      code: sourceIssueCode,
-      message: summary,
-    }),
+    exactResult,
   });
 }
 

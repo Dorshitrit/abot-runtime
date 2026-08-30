@@ -12,10 +12,12 @@ import {
 import { RUNTIME_ROOT_ROLE_ID } from "../orchestration/roles.js";
 import {
   createRoleCapabilityBinding,
+  isWorkerCapabilityOperationSupervisionLimitError,
   projectWorkerCapabilityCatalogGroups,
   type WorkerCapabilityCatalogGroup,
   type WorkerCapabilityExecutionFreshness,
 } from "../orchestration/worker-capabilities/index.js";
+import { runDegradedFinalization } from "../steps/degraded-finalization/run.js";
 import {
   type CompiledRequestExecutionPolicy,
   type RequestExecutionScope,
@@ -40,6 +42,7 @@ import {
   traceSupervisorRootInvocationSuperseded,
   traceSupervisorRootResponseSuperseded,
 } from "./supervisor-root-execution-diagnostics.js";
+import { createPlainRootAuthoredResponse } from "../orchestration/final-response/authoring-contract.js";
 
 export type {
   RootContractCallIdentity,
@@ -85,6 +88,10 @@ type RootLoopControl =
 const CONTINUE_ROOT_EXECUTION = Object.freeze({
   kind: "continue" as const,
 });
+
+function isTerminalRootDecision(decision: RootContractDecision): boolean {
+  return decision.action === "respond" || decision.action === "blocked";
+}
 
 export async function runRootExecutionKernel(params: {
   request: RequestExecutionScope;
@@ -221,15 +228,13 @@ class RootExecutionSession {
     );
     const requiresFreshPresentation =
       this.policy.rootContract.deferRespondPresentation === true;
+    const isTerminalDecision = isTerminalRootDecision(decisionOutcome.decision);
     return Object.freeze({
       ...activation,
       decision: decisionOutcome.decision,
       decisionSteeringVersion: decisionOutcome.steeringVersion,
       requiresFreshPresentation,
-      deferPresentation:
-        requiresFreshPresentation &&
-        (decisionOutcome.decision.action === "respond" ||
-          decisionOutcome.decision.action === "blocked"),
+      deferPresentation: requiresFreshPresentation && isTerminalDecision,
     });
   }
 
@@ -252,7 +257,10 @@ class RootExecutionSession {
       await this.request.onSessionTitle(decision.title);
       this.titlePublished = true;
     }
-    if (decision.acknowledgement !== undefined) {
+    const acknowledgement = isTerminalRootDecision(decision)
+      ? undefined
+      : decision.acknowledgement;
+    if (acknowledgement !== undefined) {
       if (
         activation.requiresFreshPresentation &&
         !this.isInvocationCurrent(activation.decisionSteeringVersion)
@@ -260,13 +268,13 @@ class RootExecutionSession {
         return false;
       }
       attempt.failureStage = "publish_acknowledgement";
-      this.request.onAcknowledgement(decision.acknowledgement);
+      this.request.onAcknowledgement(acknowledgement);
       this.acknowledgementPublished = true;
       traceSupervisorRootAcknowledgementPublished({
         diagnostic: this.diagnostic,
         head: activation.head,
         call: activation.call,
-        acknowledgementLength: decision.acknowledgement.length,
+        acknowledgementLength: acknowledgement.length,
       });
     }
     return true;
@@ -356,8 +364,25 @@ class RootExecutionSession {
       invocationAttempt: activation.call.activationCount,
       steeringVersion: activation.decisionSteeringVersion,
       selection: decision.selection,
+      cause: decision.cause,
     });
     if (!reconsidered.ok) {
+      if (
+        reconsidered.issueCode ===
+          "capability_selection_supervision_limit_exceeded" ||
+        reconsidered.issueCode === "role_activation_limit_exceeded"
+      ) {
+        return this.completeSupervisionLimit({
+          head: activation.head,
+          call: activation.call,
+          decisionSteeringVersion: activation.decisionSteeringVersion,
+          attempt,
+          problem: Object.freeze({
+            stage: "capability_selection_supervision",
+            code: reconsidered.issueCode,
+          }),
+        });
+      }
       throw new Error(`role_call_ledger_rejected:${reconsidered.issueCode}`);
     }
     return CONTINUE_ROOT_EXECUTION;
@@ -432,17 +457,88 @@ class RootExecutionSession {
           }
         : {}),
     });
-    if (decision.action === "invoke_capability") {
-      await binding.execute({
-        capabilityId: decision.capabilityId,
-        intent: decision.intent,
-        controls: decision.controls,
+    try {
+      if (decision.action === "invoke_capability") {
+        await binding.execute({
+          capabilityId: decision.capabilityId,
+          intent: decision.intent,
+          controls: decision.controls,
+        });
+      } else {
+        await binding.executeBatch({ invocations: decision.invocations });
+      }
+    } catch (error: unknown) {
+      if (!isWorkerCapabilityOperationSupervisionLimitError(error)) {
+        throw error;
+      }
+      return this.completeSupervisionLimit({
+        head,
+        call,
+        decisionSteeringVersion: activation.decisionSteeringVersion,
+        attempt,
+        problem: Object.freeze({
+          stage: "operation_supervision",
+          code: "operation_supervision_limit_exceeded",
+        }),
       });
-    } else {
-      await binding.executeBatch({ invocations: decision.invocations });
     }
     this.resume = undefined;
     return CONTINUE_ROOT_EXECUTION;
+  }
+
+  private async completeSupervisionLimit(params: {
+    head: RoleCallLedgerHead;
+    call: RoleCallFrame;
+    decisionSteeringVersion: number;
+    attempt: RootActivationAttempt;
+    problem: Readonly<{
+      stage: "operation_supervision" | "capability_selection_supervision";
+      code:
+        | "operation_supervision_limit_exceeded"
+        | "capability_selection_supervision_limit_exceeded"
+        | "role_activation_limit_exceeded";
+    }>;
+  }): Promise<RootLoopControl> {
+    if (
+      !this.isResponseCurrent(params.decisionSteeringVersion, "before_response")
+    ) {
+      return CONTINUE_ROOT_EXECUTION;
+    }
+    params.attempt.failureStage = "compose_response";
+    const response = await runDegradedFinalization({
+      request: this.request,
+      input: Object.freeze({
+        problem: params.problem,
+        progress: null,
+      }),
+    });
+    if (
+      !this.isResponseCurrent(params.decisionSteeringVersion, "after_response")
+    ) {
+      return CONTINUE_ROOT_EXECUTION;
+    }
+    params.attempt.failureStage = "seal_response";
+    this.request.abortSignal.throwIfAborted();
+    if (!this.requestSteering.seal(params.decisionSteeringVersion)) {
+      this.traceResponseSuperseded(params.decisionSteeringVersion, "seal");
+      return CONTINUE_ROOT_EXECUTION;
+    }
+    params.attempt.failureStage = "commit_response";
+    const output = await commitSupervisorResponse({
+      transactions: this.transactions,
+      expectedHead: params.head,
+      callId: params.call.callId,
+      response,
+    });
+    return Object.freeze({
+      kind: "complete" as const,
+      result: Object.freeze({
+        output,
+        ...(this.policy.authority.terminalTextMode === "exact"
+          ? { outputTextMode: "exact" as const }
+          : {}),
+      }),
+    });
   }
 
   private async completeResponse(
@@ -463,9 +559,9 @@ class RootExecutionSession {
       ? projectSupervisorFinalObservation(this.observationHandoff, this.resume)
       : undefined;
     attempt.failureStage = "compose_response";
-    const response =
+    const authoredResponse =
       decision.action === "blocked"
-        ? decision.response
+        ? createPlainRootAuthoredResponse(decision.response)
         : await this.policy.rootContract.authorResponse(this.request, {
             head: activation.head,
             callFrame: activation.call,
@@ -493,13 +589,13 @@ class RootExecutionSession {
       this.traceResponseSuperseded(activation.decisionSteeringVersion, "seal");
       return CONTINUE_ROOT_EXECUTION;
     }
-    await this.publishDeferredPresentation(activation, attempt);
+    await this.publishDeferredTitle(activation, attempt);
     attempt.failureStage = "commit_response";
     const output = await commitSupervisorResponse({
       transactions: this.transactions,
       expectedHead: activation.head,
       callId: activation.call.callId,
-      response,
+      response: authoredResponse.finalResponse,
     });
     return Object.freeze({
       kind: "complete" as const,
@@ -509,11 +605,14 @@ class RootExecutionSession {
           ? { outputTextMode: "exact" as const }
           : {}),
         ...(finalObservation ? { finalObservation } : {}),
+        ...(authoredResponse.memoryCandidates.length > 0
+          ? { memoryCandidates: authoredResponse.memoryCandidates }
+          : {}),
       }),
     });
   }
 
-  private async publishDeferredPresentation(
+  private async publishDeferredTitle(
     activation: RootDecisionActivation,
     attempt: RootActivationAttempt,
   ): Promise<void> {
@@ -524,17 +623,6 @@ class RootExecutionSession {
       attempt.failureStage = "publish_title";
       await this.request.onSessionTitle(activation.decision.title);
       this.titlePublished = true;
-    }
-    if (activation.decision.acknowledgement !== undefined) {
-      attempt.failureStage = "publish_acknowledgement";
-      this.request.onAcknowledgement(activation.decision.acknowledgement);
-      this.acknowledgementPublished = true;
-      traceSupervisorRootAcknowledgementPublished({
-        diagnostic: this.diagnostic,
-        head: activation.head,
-        call: activation.call,
-        acknowledgementLength: activation.decision.acknowledgement.length,
-      });
     }
   }
 

@@ -1,12 +1,15 @@
 import type WebSocket from "ws";
+import { join } from "node:path";
 
 import { startAgentBridge } from "../bridge/start-agent-bridge.js";
 import { buildContextBuckets, buildContextWindow } from "../sessions/index.js";
 import {
   createModelGatewayClient,
+  embedModelGateway,
   invokeModelGateway,
   invokeRawModelGateway,
 } from "../model-gateway/client.js";
+import { MAX_MODEL_GATEWAY_EMBEDDING_BATCH_SIZE } from "../model-gateway/embeddings/constants.js";
 import {
   createBundledPluginSkillProvider,
   createConfiguredSkillProvider,
@@ -45,6 +48,13 @@ import type {
   RuntimeRequestHandler,
 } from "./composition.js";
 import { createModelSessionMemoryCompactor } from "./context/session-memory/index.js";
+import { createFileLongTermMemoryRepository } from "./adapters/long-term-memory/file-repository.js";
+import { createInMemoryLongTermMemoryRepository } from "./adapters/long-term-memory/in-memory-repository.js";
+import {
+  createLongTermMemoryService,
+  type LongTermMemoryEmbeddingClient,
+  type LongTermMemoryService,
+} from "./long-term-memory/index.js";
 
 export function createDefaultRuntimeHost(
   config?: RuntimeConfig,
@@ -152,16 +162,22 @@ function resolveRuntimeHostEnvironmentServices(
     createDefaultEventSinkFactory(runtimeConfig);
   const sessionMemoryCompactor =
     bound?.sessionMemoryCompactor ?? createModelSessionMemoryCompactor();
+  const mayReuseBoundLongTermMemory = mayReuseBound && models === bound?.models;
+  const longTermMemory =
+    params.options.longTermMemoryService ??
+    (mayReuseBoundLongTermMemory ? bound?.longTermMemory : undefined) ??
+    createDefaultLongTermMemoryService(runtimeConfig, models);
 
-  if (
+  const reusesAllBoundServices =
     mayReuseBound &&
     sessions === bound.sessions &&
     attachments === bound.attachments &&
     tools === bound.tools &&
     models === bound.models &&
     events === bound.events &&
-    sessionMemoryCompactor === bound.sessionMemoryCompactor
-  ) {
+    sessionMemoryCompactor === bound.sessionMemoryCompactor &&
+    longTermMemory === bound.longTermMemory;
+  if (reusesAllBoundServices) {
     return bound;
   }
   return Object.freeze({
@@ -172,6 +188,7 @@ function resolveRuntimeHostEnvironmentServices(
     models,
     events,
     sessionMemoryCompactor,
+    longTermMemory,
   });
 }
 
@@ -196,6 +213,7 @@ export type DefaultRuntimeHostBindings = Readonly<{
   sessionStore?: SessionStore;
   attachmentStore?: RuntimeAttachmentStore;
   toolRegistry?: ToolRegistry;
+  longTermMemoryService?: LongTermMemoryService;
   services?: RuntimeEnvironmentServices;
   requestHandler?: RuntimeRequestHandler;
   requestHandlerFactory?: (
@@ -214,6 +232,7 @@ export function createBoundRuntimeRequestHandler(
     attachmentStore: services.attachments,
     toolRegistry: services.tools,
     sessionMemoryCompactor: services.sessionMemoryCompactor,
+    longTermMemory: services.longTermMemory,
   };
   return Object.freeze({
     handle(ws, message, requestOptions = {}) {
@@ -291,12 +310,71 @@ export function createDefaultModelGatewayClient(
     return {
       invoke: invokeModelGateway,
       invokeRaw: invokeRawModelGateway,
+      embed: embedModelGateway,
     };
   }
   return createModelGatewayClient({
     baseUrl: config.modelGatewayUrl,
     streamInactivityTimeoutMs: config.timeouts?.streamInactivityTimeoutMs,
     ...(config.models ? { modelPolicy: config.models } : {}),
+  });
+}
+
+export function createDefaultLongTermMemoryService(
+  config: RuntimeConfig | undefined,
+  models: ModelGatewayClient,
+): LongTermMemoryService {
+  const memoryConfig = config?.longTermMemory ?? {
+    enabled: false,
+    emitClientEvents: false,
+  };
+  const repository = config
+    ? createFileLongTermMemoryRepository(
+        join(config.paths.runtimeDir, "long-term-memory"),
+      )
+    : createInMemoryLongTermMemoryRepository();
+  const embeddings =
+    memoryConfig.enabled && config
+      ? createLongTermMemoryEmbeddingClient({ config, models })
+      : undefined;
+  return createLongTermMemoryService({
+    repository,
+    enabled: memoryConfig.enabled,
+    emitClientEvents: memoryConfig.emitClientEvents,
+    ...(embeddings ? { embeddings } : {}),
+  });
+}
+
+function createLongTermMemoryEmbeddingClient(params: {
+  config: RuntimeConfig;
+  models: ModelGatewayClient;
+}): LongTermMemoryEmbeddingClient {
+  const profileId = params.config.longTermMemory?.embeddingProfileId;
+  if (!profileId) {
+    throw new Error("long_term_memory_embedding_profile_required");
+  }
+  if (!params.models.embed) {
+    throw new Error("long_term_memory_embedding_gateway_unavailable");
+  }
+  const embed = params.models.embed;
+  return Object.freeze({
+    maxBatchSize: MAX_MODEL_GATEWAY_EMBEDDING_BATCH_SIZE,
+    async embed(input) {
+      const result = await embed({
+        profileId,
+        texts: input.texts,
+        modelPolicy: params.config.models,
+        abortSignal: input.abortSignal,
+        ...(input.debugRequestId
+          ? { debugRequestId: input.debugRequestId }
+          : {}),
+      });
+      return Object.freeze({
+        modelFingerprint: result.modelFingerprint,
+        dimensions: result.dimensions,
+        vectors: result.vectors,
+      });
+    },
   });
 }
 

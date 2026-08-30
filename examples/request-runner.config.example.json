@@ -1,20 +1,12 @@
 {
+  "schemaVersion": 2,
   "models": {
     "defaults": {
       "profileId": "default",
       "steps": {
-        "supervisor.decision": "supervisor.decision",
         "supervisor.response": "default",
-        "worker.decision": "worker.decision",
         "worker.result": "default",
-        "planner.decision": "planner.decision",
-        "planner.graph": "planner.graph",
-        "reviewer.decision": "reviewer.decision",
-        "degraded.finalization": "degraded.finalization",
-        "execution.decision": "execution.decision",
         "execution.response": "default",
-        "auditor.decision": "auditor.decision",
-        "context.compact": "context.compact",
         "tool_payload.raw": "toolPayload.raw"
       }
     }
@@ -24,19 +16,21 @@
     "safetyReserveTokens": 1200,
     "attachmentReserveTokens": 1024
   },
+  "stepDefaults": {
+    "timeoutMs": 90000
+  },
   "steps": {
-    "supervisor.decision": { "timeoutMs": 90000 },
-    "supervisor.response": { "timeoutMs": 90000 },
-    "worker.decision": { "timeoutMs": 90000 },
-    "worker.result": { "timeoutMs": 90000 },
-    "planner.decision": { "timeoutMs": 90000 },
-    "planner.graph": { "timeoutMs": 90000 },
-    "reviewer.decision": { "timeoutMs": 90000 },
-    "degraded.finalization": { "timeoutMs": 90000 },
-    "execution.decision": { "timeoutMs": 90000 },
-    "execution.response": { "timeoutMs": 90000 },
-    "auditor.decision": { "timeoutMs": 90000 },
-    "context.compact": { "timeoutMs": 90000 },
-    "tool_payload.raw": { "timeoutMs": 90000 }
+    "supervisor.response": {
+      "instructionRefs": [
+        "../methodologies/response-ux.md",
+        "../methodologies/memory-informed-response.md"
+      ]
+    },
+    "execution.response": {
+      "instructionRefs": [
+        "../methodologies/response-ux.md",
+        "../methodologies/memory-informed-response.md"
+      ]
+    }
   }
 }

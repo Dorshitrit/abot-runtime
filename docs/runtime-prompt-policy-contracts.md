@@ -26,6 +26,15 @@ Instructions explain semantic choices. Parsers validate exact output shapes.
 The RoleCall ledger and shared capability binding remain the executable
 authority; prompt text never writes canonical state.
 
+## Configured Root Response Methodology
+
+`supervisor.response` and `execution.response` share the configured
+`response-ux.md` and `memory-informed-response.md` references. The first is
+always-active editorial guidance. The second governs restrained use of the
+optional passive long-term-memory projection. Neither methodology changes the
+response schema, current user intent, evidence requirements, routing, action,
+or completion authority.
+
 ## Authority Rules
 
 - Every request has one canonical root. The frozen policy selects its
@@ -46,8 +55,9 @@ authority; prompt text never writes canonical state.
 - Auditor returns a passive verdict over explicitly supplied criteria and whole
   evidence entries. Missing or omitted evidence cannot produce pass.
 - `reconsider_capability_selection` is a canonical mechanical transition after
-  direct refinement declines a selection. It executes nothing, chooses no
-  replacement, and cannot be treated as tool evidence or completion.
+  direct controls refinement exhausts structured-output validation. It
+  executes nothing, makes no semantic judgment, chooses no replacement, and
+  cannot be treated as tool evidence or completion.
 - A child result returns only to its exact caller frame.
 - Runtime code must not infer role choice from prompt words, paths, tool names,
   task categories, or model prose.

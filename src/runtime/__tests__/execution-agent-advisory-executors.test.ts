@@ -327,7 +327,12 @@ describe("execution-agent advisory Planner", () => {
   test("settles exhausted invalid model output as a passive failed result", async () => {
     const ledger = await createLedger("planner-invalid-request");
     const callerCall = requireActiveCall(ledger.current());
-    const invoke = vi.fn(async () => ({ text: "not-json", meta: {} }));
+    const invoke = vi.fn(
+      async (_input: Parameters<ModelGatewayClient["invoke"]>[0]) => ({
+        text: "not-json",
+        meta: {},
+      }),
+    );
 
     await expect(
       EXECUTION_AGENT_ROLE_EXECUTORS.invokeChild({

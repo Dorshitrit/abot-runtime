@@ -174,11 +174,17 @@ describe("delegated registered-tool evidence flow", () => {
       abortSignal: new AbortController().signal,
       model: { invoke: invokePayloadModel },
     });
+    const payloadDescriptor = Object.freeze({
+      ...provider.getDescriptors()[0]!,
+      requiresPayloadAuthoringObjective: true as const,
+    });
     await expect(
       payloadAuthor.author({
         call: resumedWorker,
         executionId: "capability-execution-2",
-        descriptor: provider.getDescriptors()[0]!,
+        descriptor: payloadDescriptor,
+        authoringObjective:
+          "Author the grounded body from the settled record evidence.",
         controls: {},
         contextScope: "standard",
         settledCapabilityResults: settledEvidence,

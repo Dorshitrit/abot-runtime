@@ -6,7 +6,7 @@ export function buildWorkerCapabilityPayloadRepairHint(
   const issue = input.issues[0];
   return [
     "Your previous payload was rejected before it reached a tool, file mutation, or user response.",
-    "Correct the same immutable payload assignment; do not change its capability, target, controls, or intent.",
+    "Correct the same immutable payload assignment; do not change its assignment objective, capability, target, or controls.",
     `Repair attempt: ${input.repairAttempt}.`,
     `Validation issue: ${issue?.message ?? "Return the complete required payload."} (${issue?.code ?? "payload_output_invalid"}).`,
     issue?.code === "payload_model_output_invalid"

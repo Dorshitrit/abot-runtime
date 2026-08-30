@@ -25,6 +25,19 @@ npm run check:publication
 git diff --check
 ```
 
+## Canonical Source And Public Distribution
+
+Make product changes in the private `llm-runtime` repository. The public
+`abot-runtime` repository is a generated distribution snapshot, not an
+independent development branch. Do not implement or hotfix a product change
+directly in the public repository.
+
+Every public release is generated again from one clean, validated private
+commit. If a public-package or snapshot defect is found, fix and validate it in
+the private source, then build a fresh snapshot. Never patch or reuse an older
+generated snapshot. Publishing the snapshot, npm package, tag, or GitHub Release
+requires separate explicit authorization after the exact artifacts are frozen.
+
 ## Runtime Core Rules
 
 - Keep runtime core mechanism-only.

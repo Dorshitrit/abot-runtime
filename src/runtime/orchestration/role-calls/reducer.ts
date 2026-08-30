@@ -13,12 +13,16 @@ import {
 } from "./candidate-validation.js";
 import { decodeRoleCallCommand } from "./command-decoder.js";
 import { dispatchRoleCallCommand } from "./command-dispatch.js";
+import { findRoleActivationReservationIssue } from "./activation-budget.js";
+import { createInitialRoleCapabilitySelectionSupervisionState } from "./capability-selection-supervision.js";
+import { issueInitialRoleCapabilitySelectionSupervisionState } from "./capability-selection-supervision-issuance.js";
+import { createInitialRoleOperationSupervisionState } from "./operation-supervision.js";
 import { reject, seal } from "./reducer-primitives.js";
 
 export { hasRoleCallCapabilityAuthority } from "./candidate-validation.js";
 
 export function createInitialRoleCallState(requestId: string): RoleCallState {
-  return seal({
+  const state: RoleCallState = seal({
     contractVersion: ROLE_CALL_LEDGER_CONTRACT_VERSION,
     requestId,
     phase: "empty",
@@ -31,8 +35,17 @@ export function createInitialRoleCallState(requestId: string): RoleCallState {
     results: [],
     plans: [],
     capabilityExecutions: [],
+    operationSupervision: createInitialRoleOperationSupervisionState(),
+    capabilitySelectionSupervision:
+      createInitialRoleCapabilitySelectionSupervisionState(),
     rootResponse: null,
   });
+  if (!issueInitialRoleCapabilitySelectionSupervisionState(state)) {
+    throw new Error(
+      "role_call_capability_selection_supervision_initial_issuance_invalid",
+    );
+  }
+  return state;
 }
 
 export function applyRoleCallCommand(
@@ -52,7 +65,17 @@ export function applyRoleCallCommand(
   if (!command.ok) {
     return reject(state, command.code);
   }
-  return dispatchRoleCallCommand(state, command.value, policy);
+  const transition = dispatchRoleCallCommand(state, command.value, policy);
+  if (!transition.ok) return transition;
+  const reservationIssue = findRoleActivationReservationIssue(
+    state,
+    policy,
+    command.value,
+  );
+  if (reservationIssue) {
+    return reject(state, "role_activation_limit_exceeded", [reservationIssue]);
+  }
+  return transition;
 }
 
 export function validateRoleCallCandidate(params: {

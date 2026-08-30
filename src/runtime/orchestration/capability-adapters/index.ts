@@ -46,6 +46,10 @@ export {
   validateWorkerCapabilitySelectionControls as validateCapabilitySelectionControls,
 } from "../worker-capabilities/selection-controls.js";
 
+export { canOfferWorkerCapabilityBatchSelection as canOfferCapabilityBatchSelection } from "../worker-capabilities/batch-selection.js";
+
+export { CAPABILITY_CONTROLS_MODEL_STEP } from "../worker-capabilities/payload-contracts.js";
+
 export type {
   WorkerCapabilityControlsPartition as CapabilityControlsPartition,
   WorkerCapabilityControlsPartitionResult as CapabilityControlsPartitionResult,

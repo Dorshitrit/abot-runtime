@@ -7,6 +7,13 @@ import { createRealtimeTransport } from "../../web-ui/app/services/realtime-tran
 import { createRuntimeWebClient } from "../../web-ui/app/services/runtime-web-client.js";
 
 function createQueueHarness(overrides: Record<string, unknown> = {}) {
+  type BlockedRelease = {
+    releaseToken: string;
+    item: {
+      text: string;
+      attachments: Array<{ id: string }>;
+    };
+  };
   const state = {
     currentSessionId: "session-1",
     activeRequestId: "request-1",
@@ -31,7 +38,7 @@ function createQueueHarness(overrides: Record<string, unknown> = {}) {
       releaseToken: "release-1",
     })),
     bindReleasedSuccess: vi.fn(() => true),
-    getBlockedRelease: vi.fn(() => null),
+    getBlockedRelease: vi.fn<() => BlockedRelease | null>(() => null),
     updateBlockedRelease: vi.fn(() => true),
   };
   const attachments = {

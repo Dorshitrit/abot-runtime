@@ -26,6 +26,7 @@ import type {
   RequestSessionMemory,
   SessionMemoryCompactor,
 } from "../context/session-memory/index.js";
+import type { LongTermMemoryService } from "../long-term-memory/contracts.js";
 
 export type RunRequestMessage = {
   type: string;
@@ -49,6 +50,7 @@ export type RequestHandlerOptions = {
   toolApprovalController?: ToolApprovalController;
   requestSteering?: RequestSteeringInbox;
   sessionMemoryCompactor?: SessionMemoryCompactor;
+  longTermMemory?: LongTermMemoryService;
 };
 
 /** Exact provider-free seed used to construct one request execution scope. */
@@ -73,6 +75,7 @@ export type RequestExecutionSeed = Readonly<{
   >;
   contextCompactionStore?: RequestContextCompactionStore;
   sessionMemory?: RequestSessionMemory;
+  longTermMemory?: LongTermMemoryService;
   requestSteering?: RequestSteeringInbox;
   toolPermissionMode: ToolPermissionMode;
   toolApprovalController?: ToolApprovalController;
@@ -114,6 +117,11 @@ export type RequestModelRuntime = Readonly<{
   modelPreference?: RequestExecutionSeed["modelPreference"];
   modelPolicy?: RequestExecutionSeed["modelPolicy"];
   modelGatewayClient: RequestExecutionSeed["modelGatewayClient"];
+}>;
+
+/** Core-owned passive memory service; never part of capability execution. */
+export type RequestMemoryRuntime = Readonly<{
+  longTermMemory?: RequestExecutionSeed["longTermMemory"];
 }>;
 
 /** Request-local cancellation, steering, capability controls, and events. */

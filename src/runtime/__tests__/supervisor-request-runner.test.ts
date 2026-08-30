@@ -53,7 +53,10 @@ import {
   SUPERVISOR_ROOT_CONTRACT,
 } from "../request/supervisor-root-execution.js";
 import { createRequestWorkerCapabilityProvider } from "../request/worker-capability-composition.js";
-import { WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP } from "../orchestration/worker-capabilities/index.js";
+import {
+  CAPABILITY_CONTROLS_MODEL_STEP,
+  WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP,
+} from "../orchestration/worker-capabilities/index.js";
 import { PLANNER_DECISION_MODEL_STEP } from "../steps/planner-decision/index.js";
 import { REVIEWER_DECISION_MODEL_STEP } from "../steps/reviewer-decision/index.js";
 import { SUPERVISOR_DECISION_MODEL_STEP } from "../steps/supervisor-decision/index.js";
@@ -74,6 +77,7 @@ const runnerConfig: RequestRunnerConfig = {
         [REVIEWER_DECISION_MODEL_STEP]: "reviewer.decision",
         [WORKER_DECISION_MODEL_STEP]: "worker.decision",
         [WORKER_RESULT_MODEL_STEP]: "supervisor.response",
+        [CAPABILITY_CONTROLS_MODEL_STEP]: "capability.controls",
         [WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP]: "toolPayload.raw",
       },
     },
@@ -90,6 +94,7 @@ const runnerConfig: RequestRunnerConfig = {
     [REVIEWER_DECISION_MODEL_STEP]: { timeoutMs: 20_000 },
     [WORKER_DECISION_MODEL_STEP]: { timeoutMs: 20_000 },
     [WORKER_RESULT_MODEL_STEP]: { timeoutMs: 20_000 },
+    [CAPABILITY_CONTROLS_MODEL_STEP]: { timeoutMs: 20_000 },
     [WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP]: { timeoutMs: 20_000 },
   } as RequestRunnerConfig["steps"],
 };
@@ -129,18 +134,13 @@ const modelPolicy = {
       contextWindowTokens: 32_000,
       supportsThinking: true,
       calibration: {
-        "supervisor.decision": {
-        },
-        "supervisor.response": {
-        },
-        "planner.decision": {
-        },
-        "reviewer.decision": {
-        },
-        "worker.decision": {
-        },
-        "tool_payload.raw": {
-        },
+        "supervisor.decision": {},
+        "supervisor.response": {},
+        "planner.decision": {},
+        "reviewer.decision": {},
+        "worker.decision": {},
+        "capability.controls": {},
+        "tool_payload.raw": {},
       },
     },
   },
@@ -153,6 +153,7 @@ const modelPolicy = {
       [REVIEWER_DECISION_MODEL_STEP]: "reviewer.decision",
       [WORKER_DECISION_MODEL_STEP]: "worker.decision",
       [WORKER_RESULT_MODEL_STEP]: "supervisor.response",
+      [CAPABILITY_CONTROLS_MODEL_STEP]: "capability.controls",
       [WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP]: "toolPayload.raw",
     },
   },
@@ -369,12 +370,14 @@ describe("Supervisor-root request runner slice", () => {
         meta: {},
       };
     });
+    const onEvent = vi.fn<NonNullable<TestRequestSeed["onEvent"]>>();
     const request = createRequest(invoke, {
       workerCapabilityProvider: {
         getDescriptors: getWorkerDescriptors,
         getAdapters: getWorkerAdapters,
       },
       shouldGenerateSessionTitle: true,
+      onEvent,
       historyMessages: [
         {
           id: "history-user",
@@ -441,9 +444,7 @@ describe("Supervisor-root request runner slice", () => {
       "Inspect the current configured system state.",
     );
     expect(supervisorSystemPrompt).not.toContain("private_capability_identity");
-    expect(request.onAcknowledgement).toHaveBeenCalledExactlyOnceWith(
-      REQUEST_ACKNOWLEDGEMENT,
-    );
+    expect(request.onAcknowledgement).not.toHaveBeenCalled();
     expect(request.onSessionTitle).toHaveBeenCalledExactlyOnceWith(
       "Supervisor ownership",
     );
@@ -457,9 +458,7 @@ describe("Supervisor-root request runner slice", () => {
       text: "Thinking",
     });
     expect(
-      request.onEvent.mock.calls.filter(
-        ([name]) => name !== "context.window.snapshot",
-      ),
+      onEvent.mock.calls.filter(([name]) => name !== "context.window.snapshot"),
     ).toEqual([]);
   });
 
@@ -467,28 +466,30 @@ describe("Supervisor-root request runner slice", () => {
     const requestSteering = createRequestSteeringInbox({
       requestId: "supervisor-runner-request",
     });
-    let decisionCount = 0;
+    let responseCount = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
       if (input.modelStep === SUPERVISOR_RESPONSE_MODEL_STEP) {
+        responseCount += 1;
+        if (responseCount === 1) {
+          expect(
+            requestSteering.append({
+              steerId: "steer-before-final",
+              text: "Please make the final answer shorter",
+            }),
+          ).toMatchObject({ ok: true, duplicate: false });
+          return { text: "Superseded final response.", meta: {} };
+        }
         return { text: "Updated final response.", meta: {} };
       }
-      decisionCount += 1;
       return {
         text: encodeDecision({
           action: "respond",
-          ...(decisionCount === 1
-            ? { acknowledgement: REQUEST_ACKNOWLEDGEMENT }
-            : {}),
+          acknowledgement: REQUEST_ACKNOWLEDGEMENT,
         }),
         meta: {},
       };
     });
-    const onAcknowledgement = vi.fn(() => {
-      requestSteering.append({
-        steerId: "steer-before-final",
-        text: "Please make the final answer shorter",
-      });
-    });
+    const onAcknowledgement = vi.fn();
     const request = createRequest(invoke, {
       requestSteering,
       onAcknowledgement,
@@ -500,11 +501,13 @@ describe("Supervisor-root request runner slice", () => {
 
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
+      SUPERVISOR_RESPONSE_MODEL_STEP,
+      SUPERVISOR_RESPONSE_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_RESPONSE_MODEL_STEP,
     ]);
-    expect(onAcknowledgement).toHaveBeenCalledOnce();
-    const secondDecisionMessages = invoke.mock.calls[1]?.[0]?.messages as
+    expect(onAcknowledgement).not.toHaveBeenCalled();
+    const secondDecisionMessages = invoke.mock.calls[3]?.[0]?.messages as
       | readonly Readonly<{ role: string; content: string }>[]
       | undefined;
     const steeringMessage = secondDecisionMessages?.find((message) => {
@@ -963,9 +966,7 @@ describe("Supervisor-root request runner slice", () => {
       REQUEST_ACKNOWLEDGEMENT,
     );
     expect(
-      onEvent.mock.calls.filter(
-        ([name]) => name !== "context.window.snapshot",
-      ),
+      onEvent.mock.calls.filter(([name]) => name !== "context.window.snapshot"),
     ).toEqual([
       [
         "runtime.state",
@@ -1225,6 +1226,7 @@ describe("Supervisor-root request runner slice", () => {
       outcome: "failed" as const,
       observedEffect: "none" as const,
       summary: "This adapter is not expected to execute.",
+      failureOutcomeFingerprint: "unexpected_test_execution",
     }));
     const workerAdapters = Object.freeze(
       workerDescriptors.map((descriptor) =>
@@ -1233,7 +1235,8 @@ describe("Supervisor-root request runner slice", () => {
     );
     const getWorkerDescriptors = vi.fn(() => workerDescriptors);
     const getWorkerAdapters = vi.fn(() => workerAdapters);
-    const baseRequest = createRequest(invoke);
+    const onEvent = vi.fn<NonNullable<TestRequestSeed["onEvent"]>>();
+    const baseRequest = createRequest(invoke, { onEvent });
     const request = createTestRequestExecutionScope({
       ...baseRequest,
       workerCapabilityProvider: Object.freeze({
@@ -1347,7 +1350,7 @@ describe("Supervisor-root request runner slice", () => {
     expect(getWorkerAdapters).toHaveBeenCalledOnce();
     expect(executeCapability).not.toHaveBeenCalled();
     expect(
-      request.onEvent.mock.calls.filter(([name]) => name === "runtime.state"),
+      onEvent.mock.calls.filter(([name]) => name === "runtime.state"),
     ).toEqual([
       [
         "runtime.state",
@@ -1949,11 +1952,12 @@ describe("Supervisor-root request runner slice", () => {
     });
     const request = createTestRequestExecutionScopeWithCapabilities(
       baseRequest,
-      (request) => createRequestWorkerCapabilityProvider({
-        request,
-        executionPolicyAuthority: SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT,
-        toolRegistryOverride: toolRegistry,
-      }),
+      (request) =>
+        createRequestWorkerCapabilityProvider({
+          request,
+          executionPolicyAuthority: SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT,
+          toolRegistryOverride: toolRegistry,
+        }),
     );
 
     await expect(runRequestRunner(request)).resolves.toEqual({
@@ -1963,7 +1967,7 @@ describe("Supervisor-root request runner slice", () => {
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
       WORKER_DECISION_MODEL_STEP,
-      WORKER_DECISION_MODEL_STEP,
+      CAPABILITY_CONTROLS_MODEL_STEP,
       WORKER_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_RESPONSE_MODEL_STEP,
@@ -2096,6 +2100,9 @@ describe("Supervisor-root request runner slice", () => {
     const objective =
       `Create a new file at ${logicalTarget} containing exactly: ` +
       JSON.stringify(body);
+    const authoringObjective =
+      `Author the complete contents of ${logicalTarget} with exactly: ` +
+      JSON.stringify(body);
     const runtimeConfig = createMutationRuntimeConfig(hostRoot, agentWorkDir);
     const toolRegistry = createDefaultToolRegistry(runtimeConfig);
     const listNormalInvocations = vi.spyOn(
@@ -2130,6 +2137,7 @@ describe("Supervisor-root request runner slice", () => {
               action: "invoke_capability",
               capabilityId: "write_complete_file",
               intent: "Create the exact requested file.",
+              authoringObjective,
               selectionControls: { path: logicalTarget },
             }),
             meta: {},
@@ -2164,13 +2172,16 @@ describe("Supervisor-root request runner slice", () => {
             },
             acceptedCapability: {
               capabilityId: "write_complete_file",
+              authoringObjective,
               controls: { path: logicalTarget },
             },
             payloadContract: {
               maxBytes: 1_048_576,
             },
           });
-          expect(payloadContext).not.toHaveProperty("acceptedCapability.intent");
+          expect(payloadContext).not.toHaveProperty(
+            "acceptedCapability.intent",
+          );
           return { text: body, meta: {} };
         }
         case 4: {
@@ -2229,12 +2240,13 @@ describe("Supervisor-root request runner slice", () => {
       });
       const request = createTestRequestExecutionScopeWithCapabilities(
         baseRequest,
-        (request) => createRequestWorkerCapabilityProvider({
-          request,
-          executionPolicyAuthority: SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT,
-          runtimeConfig,
-          toolRegistryOverride: toolRegistry,
-        }),
+        (request) =>
+          createRequestWorkerCapabilityProvider({
+            request,
+            executionPolicyAuthority: SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT,
+            runtimeConfig,
+            toolRegistryOverride: toolRegistry,
+          }),
       );
 
       await expect(runRequestRunner(request)).resolves.toEqual({
@@ -2353,7 +2365,7 @@ describe("Supervisor-root request runner slice", () => {
           expect.objectContaining({
             scope: "runtime.worker_capability_payload",
             event: "author.completed",
-            executionId: "capability-execution-1",
+            executionId: "capability-preparation:call-2:1:1",
             capabilityId: "write_complete_file",
             controlCount: 1,
             payloadBytes: Buffer.byteLength(body, "utf8"),

@@ -28,6 +28,14 @@ function fakeElement(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe("web ui controller transport ownership", () => {
@@ -141,6 +149,240 @@ describe("web ui controller transport ownership", () => {
     expect(state.modelProfiles).toEqual([{ id: "model-1", label: "Model 1" }]);
   });
 
+  test("selection controller ignores model and mode responses from a previous environment", async () => {
+    vi.stubGlobal("document", {
+      createElement: () => fakeElement(),
+    });
+    const staleDevMode = deferred<Record<string, unknown>>();
+    const prodMode = deferred<Record<string, unknown>>();
+    const currentDevMode = deferred<Record<string, unknown>>();
+    const staleModeMutation = deferred<Record<string, unknown>>();
+    const staleDevModels = deferred<Record<string, unknown>>();
+    const prodModels = deferred<Record<string, unknown>>();
+    const currentDevModels = deferred<Record<string, unknown>>();
+    const environmentSelect = fakeElement({ value: "dev" });
+    const state = {
+      config: {
+        defaultEnvironmentId: "dev",
+        environments: [
+          { id: "dev", label: "Development" },
+          { id: "prod", label: "Production" },
+        ],
+      },
+      agentMode: "reasoning",
+      supportedAgentModes: ["reasoning", "deep"],
+      agentModeMenuOpen: false,
+      agentPickerOpen: false,
+      permissionModeMenuOpen: false,
+      modelProfiles: [],
+      defaultModelProfileId: "",
+      sessionModes: {},
+      sessionModels: {},
+      lastModelByEnvironment: {},
+      pinnedSessionIds: new Set<string>(),
+      currentSessionId: "session-1",
+    };
+    const client = {
+      getAgentMode: vi
+        .fn()
+        .mockReturnValueOnce(staleDevMode.promise)
+        .mockReturnValueOnce(prodMode.promise)
+        .mockReturnValueOnce(currentDevMode.promise),
+      listModels: vi
+        .fn()
+        .mockReturnValueOnce(staleDevModels.promise)
+        .mockReturnValueOnce(prodModels.promise)
+        .mockReturnValueOnce(currentDevModels.promise),
+      setAgentMode: vi.fn(() => staleModeMutation.promise),
+    };
+    const controller = createRuntimeSelectionController({
+      state: state as never,
+      dom: {
+        environmentSelect,
+        modelSelect: fakeElement(),
+        agentModeButton: fakeElement(),
+        agentModeMenu: fakeElement(),
+        agentPickerButton: fakeElement(),
+        agentPickerMenu: fakeElement(),
+        permissionModeButton: fakeElement(),
+        permissionModeMenu: fakeElement(),
+      } as never,
+      preferences: {} as never,
+      modelSelector: { sync: vi.fn() },
+      client,
+      recordControlEvent: vi.fn(),
+      onAttachmentPolicyChange: vi.fn(),
+      onModelCatalogLoading: vi.fn(),
+      onModelCatalogLoaded: vi.fn(),
+      onModelCatalogUnavailable: vi.fn(),
+    });
+
+    const staleSet = controller.setAgentMode("deep");
+    const staleModeLoad = controller.loadAgentMode();
+    const staleModelLoad = controller.loadModels();
+    environmentSelect.value = "prod";
+    const staleProdModeLoad = controller.loadAgentMode();
+    const staleProdModelLoad = controller.loadModels();
+    environmentSelect.value = "dev";
+    const currentModeLoad = controller.loadAgentMode();
+    const currentModelLoad = controller.loadModels();
+    currentDevMode.resolve({
+      mode: "deep",
+      supportedModes: ["reasoning", "deep"],
+    });
+    currentDevModels.resolve({
+      defaultProfileId: "current-dev-model",
+      profiles: [{ id: "current-dev-model", label: "Current dev model" }],
+    });
+
+    await expect(currentModeLoad).resolves.toBe(true);
+    await expect(currentModelLoad).resolves.toBe(true);
+    staleDevMode.resolve({ mode: "reasoning", supportedModes: ["reasoning"] });
+    staleDevModels.resolve({
+      defaultProfileId: "stale-dev-model",
+      profiles: [{ id: "stale-dev-model", label: "Stale dev model" }],
+    });
+    prodMode.resolve({ mode: "reasoning", supportedModes: ["reasoning"] });
+    prodModels.resolve({
+      defaultProfileId: "prod-model",
+      profiles: [{ id: "prod-model", label: "Production model" }],
+    });
+    await expect(staleModeLoad).resolves.toBe(false);
+    await expect(staleModelLoad).resolves.toBe(false);
+    await expect(staleProdModeLoad).resolves.toBe(false);
+    await expect(staleProdModelLoad).resolves.toBe(false);
+    staleModeMutation.resolve({ mode: "fast" });
+    await expect(staleSet).resolves.toBe(true);
+
+    expect(state.agentMode).toBe("fast");
+    expect(state.defaultModelProfileId).toBe("current-dev-model");
+    expect(state.modelProfiles).toEqual([
+      { id: "current-dev-model", label: "Current dev model" },
+    ]);
+  });
+
+  test("keeps a successful mode mutation authoritative over an older read", async () => {
+    vi.stubGlobal("document", {
+      createElement: () => fakeElement(),
+    });
+    const modeMutation = deferred<Record<string, unknown>>();
+    const modeLoad = deferred<Record<string, unknown>>();
+    const environmentSelect = fakeElement({ value: "dev" });
+    const state = {
+      config: {
+        defaultEnvironmentId: "dev",
+        environments: [{ id: "dev", label: "Development" }],
+      },
+      agentMode: "reasoning",
+      supportedAgentModes: ["reasoning", "deep"],
+      agentModeMenuOpen: false,
+      agentPickerOpen: false,
+      permissionModeMenuOpen: false,
+      modelProfiles: [],
+      defaultModelProfileId: "",
+      sessionModes: {},
+      sessionModels: {},
+      lastModelByEnvironment: {},
+      pinnedSessionIds: new Set<string>(),
+      currentSessionId: "session-1",
+    };
+    const controller = createRuntimeSelectionController({
+      state: state as never,
+      dom: {
+        environmentSelect,
+        modelSelect: fakeElement(),
+        agentModeButton: fakeElement(),
+        agentModeMenu: fakeElement(),
+        agentPickerButton: fakeElement(),
+        agentPickerMenu: fakeElement(),
+        permissionModeButton: fakeElement(),
+        permissionModeMenu: fakeElement(),
+      } as never,
+      preferences: {} as never,
+      modelSelector: { sync: vi.fn() },
+      client: {
+        getAgentMode: vi.fn(() => modeLoad.promise),
+        setAgentMode: vi.fn(() => modeMutation.promise),
+        listModels: vi.fn(),
+      },
+      recordControlEvent: vi.fn(),
+      onAttachmentPolicyChange: vi.fn(),
+    });
+
+    const mutation = controller.setAgentMode("deep");
+    const load = controller.loadAgentMode();
+    modeMutation.resolve({ mode: "deep" });
+
+    await expect(mutation).resolves.toBe(true);
+    expect(state.agentMode).toBe("deep");
+
+    modeLoad.resolve({
+      mode: "reasoning",
+      supportedModes: ["reasoning", "deep"],
+    });
+    await expect(load).resolves.toBe(false);
+    expect(state.agentMode).toBe("deep");
+  });
+
+  test("does not issue overlapping mode writes", async () => {
+    vi.stubGlobal("document", {
+      createElement: () => fakeElement(),
+    });
+    const modeMutation = deferred<Record<string, unknown>>();
+    const agentModeButton = fakeElement();
+    const state = {
+      config: {
+        defaultEnvironmentId: "dev",
+        environments: [{ id: "dev", label: "Development" }],
+      },
+      agentMode: "reasoning",
+      supportedAgentModes: ["reasoning", "deep"],
+      agentModeMenuOpen: false,
+      agentPickerOpen: false,
+      permissionModeMenuOpen: false,
+      modelProfiles: [],
+      defaultModelProfileId: "",
+      sessionModes: {},
+      sessionModels: {},
+      lastModelByEnvironment: {},
+      pinnedSessionIds: new Set<string>(),
+      currentSessionId: "session-1",
+    };
+    const setAgentMode = vi.fn(() => modeMutation.promise);
+    const controller = createRuntimeSelectionController({
+      state: state as never,
+      dom: {
+        environmentSelect: fakeElement({ value: "dev" }),
+        modelSelect: fakeElement(),
+        agentModeButton,
+        agentModeMenu: fakeElement(),
+        agentPickerButton: fakeElement(),
+        agentPickerMenu: fakeElement(),
+        permissionModeButton: fakeElement(),
+        permissionModeMenu: fakeElement(),
+      } as never,
+      preferences: {} as never,
+      modelSelector: { sync: vi.fn() },
+      client: {
+        getAgentMode: vi.fn(),
+        setAgentMode,
+        listModels: vi.fn(),
+      },
+      recordControlEvent: vi.fn(),
+      onAttachmentPolicyChange: vi.fn(),
+    });
+
+    const firstMutation = controller.setAgentMode("deep");
+    expect(agentModeButton.disabled).toBe(true);
+    await expect(controller.setAgentMode("reasoning")).resolves.toBe(false);
+    expect(setAgentMode).toHaveBeenCalledOnce();
+
+    modeMutation.resolve({ mode: "deep" });
+    await expect(firstMutation).resolves.toBe(true);
+    expect(agentModeButton.disabled).toBe(false);
+    expect(state.agentMode).toBe("deep");
+  });
+
   test("attachment controller delegates preview, cleanup, and upload transport", async () => {
     vi.stubGlobal("document", {
       createElement: () => fakeElement(),
@@ -185,7 +427,11 @@ describe("web ui controller transport ownership", () => {
 
     expect(controller.previewUrl(attachment)).toBe("/preview/attachment-1");
     await controller.deletePending(attachment);
-    await controller.upload({ name: "notes.txt", type: "text/plain" });
+    await controller.upload(
+      Object.assign(new Blob(["notes"], { type: "text/plain" }), {
+        name: "notes.txt",
+      }),
+    );
 
     expect(client.attachmentPreviewUrl).toHaveBeenCalledWith({
       environmentId: "dev",

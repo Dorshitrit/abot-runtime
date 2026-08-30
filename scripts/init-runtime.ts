@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import {
   buildModelConfig,
   buildProviderConfig,
+  DEFAULT_ROOT_RESPONSE_METHODOLOGY_FILES,
   isRecord,
   parseBaseUrl,
   parseProvider,
@@ -156,6 +157,7 @@ function printHelp(commandMode: RuntimeSetupCommandMode): void {
       "- local/runtime.config.json",
       "- local/request-runner.config.json",
       "- local/models/default.config.json",
+      "- methodologies for root response authoring",
       "- .runtime/compiled",
       "- .runtime/shared/logs",
       "- .runtime/prod and .runtime/dev",
@@ -297,6 +299,16 @@ export async function runInitRuntime(
     targetPath: modelConfigPath,
     force: options.force,
   });
+  const methodologyStatuses = await Promise.all(
+    DEFAULT_ROOT_RESPONSE_METHODOLOGY_FILES.map(async (relativePath) => ({
+      relativePath,
+      status: await writeIfMissing({
+        sourcePath: join(templateRoot, relativePath),
+        targetPath: join(options.rootDir, relativePath),
+        force: options.force,
+      }),
+    })),
+  );
 
   if (configStatus !== "kept") {
     await configureRuntimeProvider(
@@ -333,6 +345,9 @@ export async function runInitRuntime(
       `${LOCAL_CONFIG_FILE}: ${configStatus}`,
       `${LOCAL_REQUEST_RUNNER_CONFIG_FILE}: ${requestRunnerConfigStatus}`,
       `${LOCAL_MODEL_CONFIG_FILE}: ${modelConfigStatus}`,
+      ...methodologyStatuses.map(
+        ({ relativePath, status }) => `${relativePath}: ${status}`,
+      ),
       "created runtime directories: .runtime/compiled, .runtime/shared/logs, .runtime/prod, .runtime/dev",
       "",
       ...getInitNextSteps(commandMode),

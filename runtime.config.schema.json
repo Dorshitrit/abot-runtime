@@ -333,6 +333,20 @@
       },
       "additionalProperties": false
     },
+    "longTermMemory": {
+      "type": "object",
+      "description": "Passive cross-session memory. Disabled unless the host opts in and binds an embedding profile.",
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "emitClientEvents": { "type": "boolean", "default": false },
+        "embeddingProfileId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Profile id under models.embeddingProfiles used for retrieval and indexing."
+        }
+      },
+      "additionalProperties": false
+    },
     "models": {
       "type": "object",
       "description": "Model profiles and defaults consumed by model-gateway policy.",
@@ -604,6 +618,22 @@
               { "required": ["model", "provider", "contextWindowTokens"] },
               { "required": ["configRef"] }
             ]
+          }
+        },
+        "embeddingProfiles": {
+          "type": "object",
+          "propertyNames": { "minLength": 1 },
+          "description": "Non-generative embedding profiles used by core services such as long-term memory.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string", "minLength": 1 },
+              "provider": { "type": "string", "minLength": 1 },
+              "model": { "type": "string", "minLength": 1 },
+              "options": { "type": "object", "additionalProperties": true }
+            },
+            "required": ["provider", "model"],
+            "additionalProperties": false
           }
         },
         "invocationProfiles": {

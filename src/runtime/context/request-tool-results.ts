@@ -24,6 +24,10 @@ import {
   createSemanticCompactionSha256Fingerprint,
   type SemanticCompactionCheckpoint,
 } from "./semantic-compaction/index.js";
+import {
+  projectAcceptedCapabilityAction,
+  type AcceptedCapabilityAction,
+} from "./accepted-capability-action.js";
 
 export const REQUEST_TOOL_RESULTS_MESSAGE_KIND =
   "runtime_request_tool_results_v1" as const;
@@ -41,6 +45,8 @@ export type RequestToolResult = Readonly<{
   summary: string;
   referenceData?: string;
   references?: readonly RoleCapabilityResultReference[];
+  /** Exact accepted action, projected only to the call that produced it. */
+  acceptedAction?: AcceptedCapabilityAction;
   /** Exact canonical evidence, projected only to the call that produced it. */
   adapterResult?: CapabilityAdapterResult;
   summaryProjection?: "superseded_target_evidence";
@@ -122,6 +128,14 @@ export function projectRequestToolResults(
         ...(execution.references
           ? { references: Object.freeze([...execution.references]) }
           : {}),
+        ...(execution.actionFingerprint
+          ? {
+              acceptedAction: projectAcceptedCapabilityAction(
+                params.head,
+                execution,
+              ),
+            }
+          : {}),
         adapterResult: exactResult.value,
       });
       sourceProjected.push(sourceResult);
@@ -129,6 +143,7 @@ export function projectRequestToolResults(
         const {
           referenceData: _referenceData,
           adapterResult: _adapterResult,
+          acceptedAction: _acceptedAction,
           ...summaryOnlyResult
         } = sourceResult;
         projected.push(Object.freeze(summaryOnlyResult));
@@ -455,10 +470,13 @@ function equivalentObservationKey(
   result: RequestToolResult,
   targets: readonly string[],
 ): string {
+  const acceptedAction = result.acceptedAction;
   return JSON.stringify([
     result.capabilityId,
     [...targets].sort(),
-    result.summary,
+    ...(acceptedAction
+      ? [acceptedAction.controls, acceptedAction.workingDirectory]
+      : [result.summary]),
   ]);
 }
 

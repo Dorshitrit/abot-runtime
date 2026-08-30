@@ -1,8 +1,11 @@
 import { isRoleCapabilityId } from "../../../orchestration/role-calls/index.js";
 import {
+  WORKER_CAPABILITY_AUTHORING_OBJECTIVE_MAX_LENGTH,
   WORKER_CAPABILITY_INTENT_MAX_LENGTH,
+  canOfferWorkerCapabilityBatchSelection,
   partitionWorkerCapabilityControlsSchema,
   validateWorkerCapabilitySelectionControls,
+  type WorkerCapabilityControlsSchema,
   type WorkerCapabilityDescriptor,
 } from "../../../orchestration/worker-capabilities/index.js";
 import type {
@@ -74,6 +77,9 @@ function projectPendingCapabilitySelection(
   return Object.freeze({
     capabilityId: selection.capabilityId,
     intent: selection.intent,
+    ...(selection.authoringObjective
+      ? { authoringObjective: selection.authoringObjective }
+      : {}),
     ...(selection.selectionControls
       ? { selectionControls: selection.selectionControls }
       : {}),
@@ -133,6 +139,10 @@ function normalizeSelectedCapabilityExecution(
     descriptor.selectionControlIds,
   );
   const hasSelectionControls = Object.hasOwn(input, "selectionControls");
+  const authoringObjective = normalizeSelectedAuthoringObjective(
+    input,
+    descriptor,
+  );
   const selectionControls = controlsPartition.ok
     ? validateWorkerCapabilitySelectionControls(
         controlsPartition.value,
@@ -141,6 +151,7 @@ function normalizeSelectedCapabilityExecution(
     : controlsPartition;
   if (
     !controlsPartition.ok ||
+    !authoringObjective.ok ||
     !selectionControls.ok ||
     hasSelectionControls !==
       controlsPartition.value.selectionControlIds.length > 0
@@ -150,6 +161,9 @@ function normalizeSelectedCapabilityExecution(
   return Object.freeze({
     capabilityId: input.capabilityId,
     intent: input.intent.trim(),
+    ...(authoringObjective.value
+      ? { authoringObjective: authoringObjective.value }
+      : {}),
     ...(controlsPartition.value.selectionControlIds.length > 0
       ? { selectionControls: selectionControls.value }
       : {}),
@@ -190,6 +204,10 @@ function normalizeSelectedCapabilityBatchExecution(
       descriptor.selectionControlIds,
     );
     const hasSelectionControls = Object.hasOwn(invocation, "selectionControls");
+    const authoringObjective = normalizeSelectedAuthoringObjective(
+      invocation,
+      descriptor,
+    );
     const selectionControls = controlsPartition.ok
       ? validateWorkerCapabilitySelectionControls(
           controlsPartition.value,
@@ -198,6 +216,7 @@ function normalizeSelectedCapabilityBatchExecution(
       : controlsPartition;
     if (
       !controlsPartition.ok ||
+      !authoringObjective.ok ||
       !selectionControls.ok ||
       hasSelectionControls !==
         controlsPartition.value.selectionControlIds.length > 0
@@ -207,6 +226,9 @@ function normalizeSelectedCapabilityBatchExecution(
     return Object.freeze({
       capabilityId: descriptor.capabilityId,
       intent: invocation.intent.trim(),
+      ...(authoringObjective.value
+        ? { authoringObjective: authoringObjective.value }
+        : {}),
       ...(controlsPartition.value.selectionControlIds.length > 0
         ? { selectionControls: selectionControls.value }
         : {}),
@@ -214,6 +236,27 @@ function normalizeSelectedCapabilityBatchExecution(
     });
   });
   return Object.freeze({ invocations: Object.freeze(invocations) });
+}
+
+function normalizeSelectedAuthoringObjective(
+  input: Readonly<{ authoringObjective?: string }>,
+  descriptor: WorkerCapabilityDescriptor,
+): Readonly<{ ok: true; value?: string }> | Readonly<{ ok: false }> {
+  const required = descriptor.requiresPayloadAuthoringObjective === true;
+  if (Object.hasOwn(input, "authoringObjective") !== required) {
+    return { ok: false };
+  }
+  if (!required) return { ok: true };
+  const value = input.authoringObjective;
+  if (
+    typeof value !== "string" ||
+    value.trim() !== value ||
+    value.length === 0 ||
+    value.length > WORKER_CAPABILITY_AUTHORING_OBJECTIVE_MAX_LENGTH
+  ) {
+    return { ok: false };
+  }
+  return { ok: true, value };
 }
 
 export function canOfferCapabilityBatch(params: {
@@ -233,8 +276,29 @@ export function canOfferCapabilityBatch(params: {
   const remaining =
     params.canonicalSource.head.policy.limits.maxCapabilityExecutions -
     params.canonicalSource.head.state.capabilityExecutions.length;
-  return (
-    remaining >= 2 &&
-    params.capabilities.some(({ effect }) => effect === "observation")
+  if (remaining < 2) return false;
+
+  return canOfferWorkerCapabilityBatchSelection(
+    params.capabilities
+      .filter(({ effect }) => effect === "observation")
+      .map(projectCapabilityBatchSelectionCandidate),
   );
+}
+
+function projectCapabilityBatchSelectionCandidate(
+  capability: WorkerCapabilityDescriptor,
+): Readonly<{
+  capabilityId: string;
+  selectionSchema?: WorkerCapabilityControlsSchema;
+}> {
+  const partition = partitionWorkerCapabilityControlsSchema(
+    capability.controls,
+    capability.selectionControlIds,
+  );
+  return Object.freeze({
+    capabilityId: capability.capabilityId,
+    ...(partition.ok
+      ? { selectionSchema: partition.value.selectionSchema }
+      : {}),
+  });
 }

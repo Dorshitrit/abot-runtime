@@ -4,9 +4,14 @@ import {
   materializeCapabilityControlsIfComplete,
   validateCapabilitySelectionControls,
   type CapabilityControls,
-  type CapabilityControlsSchema,
 } from "../../orchestration/capability-adapters/index.js";
 import { normalizeExecutionWorkingDirectory } from "../../orchestration/capability-adapters/working-directory.js";
+import {
+  executionCapabilityControlsIssue,
+  normalizeGeneratedExecutionCapabilityControls,
+  parseExecutionOperationObjective,
+  requiresExecutionOperationObjective,
+} from "./capability-invocation-contract.js";
 import {
   EXECUTION_AGENT_ACKNOWLEDGEMENT_MAX_LENGTH,
   EXECUTION_AGENT_AUDIT_CRITERION_COUNT_MAX,
@@ -386,6 +391,7 @@ function parseCapabilityBatch(
     return undefined;
   }
   const accepted: ExecutionAgentCapabilityInvocation[] = [];
+  const issueCountBeforeInvocations = issues.length;
   value.forEach((invocation, index) => {
     const parsed = parseCapabilityInvocation({
       value: invocation,
@@ -397,7 +403,12 @@ function parseCapabilityBatch(
     });
     if (parsed.value) accepted.push(parsed.value);
   });
-  return accepted.length === value.length ? Object.freeze(accepted) : undefined;
+  const invocationValidationFailed =
+    accepted.length !== value.length ||
+    issues.length !== issueCountBeforeInvocations;
+  if (invocationValidationFailed) return undefined;
+
+  return Object.freeze(accepted);
 }
 
 function parseCapabilityInvocation(
@@ -462,6 +473,9 @@ function parseCapabilityInvocation(
   }
   const expectedKeys = [
     ...baseExpectedKeys,
+    ...(capability && requiresExecutionOperationObjective(capability.partition)
+      ? ["operationObjective"]
+      : []),
     ...(capability?.partition.selectionControlIds.length
       ? ["selectionControls"]
       : []),
@@ -477,12 +491,20 @@ function parseCapabilityInvocation(
     label: "Capability intent",
     issues: params.issues,
   });
+  const operationObjective = parseExecutionOperationObjective({
+    value: record.operationObjective,
+    required:
+      capability !== undefined &&
+      requiresExecutionOperationObjective(capability.partition),
+    path: `${params.path}.operationObjective`,
+    issues: params.issues,
+  });
   let selectionControls: CapabilityControls | undefined;
   let controls: CapabilityControls | undefined;
   if (capability) {
     const normalizedSelectionControls =
       capability.partition.selectionControlIds.length > 0
-        ? normalizeGeneratedCapabilityControls(
+        ? normalizeGeneratedExecutionCapabilityControls(
             record.selectionControls,
             capability.partition.selectionSchema,
           )
@@ -493,7 +515,7 @@ function parseCapabilityInvocation(
     );
     if (!selection.ok) {
       params.issues.push(
-        capabilityControlsIssue({
+        executionCapabilityControlsIssue({
           issueCode: selection.issueCode,
           controlId: selection.controlId,
           path: selection.controlId
@@ -511,7 +533,7 @@ function parseCapabilityInvocation(
       );
       if (materialized && !materialized.ok) {
         params.issues.push(
-          capabilityControlsIssue({
+          executionCapabilityControlsIssue({
             issueCode: materialized.issueCode,
             controlId: materialized.controlId,
             path: materialized.controlId
@@ -527,7 +549,8 @@ function parseCapabilityInvocation(
   if (
     !capability ||
     (params.observationOnly && capability.effect !== "observation") ||
-    intent === undefined
+    intent === undefined ||
+    !operationObjective.ok
   ) {
     return { expectedKeys };
   }
@@ -536,6 +559,9 @@ function parseCapabilityInvocation(
     value: Object.freeze({
       capabilityId: capability.capabilityId,
       intent,
+      ...(operationObjective.value
+        ? { operationObjective: operationObjective.value }
+        : {}),
       ...(selectionControls ? { selectionControls } : {}),
       ...(controls ? { controls } : {}),
     }),
@@ -718,23 +744,6 @@ function validateBoundedText(
   return normalized;
 }
 
-function normalizeGeneratedCapabilityControls(
-  value: unknown,
-  schema: CapabilityControlsSchema,
-): unknown {
-  const record = asRecord(value);
-  if (!record) return value;
-  const required = new Set(schema.required);
-  return Object.fromEntries(
-    Object.entries(record).filter(
-      ([controlId, controlValue]) =>
-        controlValue !== null ||
-        required.has(controlId) ||
-        !Object.hasOwn(schema.properties, controlId),
-    ),
-  );
-}
-
 function readAction(value: unknown): ExecutionAgentDecisionAction | undefined {
   return typeof value === "string" &&
     EXECUTION_AGENT_DECISION_ACTIONS.includes(
@@ -764,22 +773,6 @@ function exactKeys(
       ),
     );
   }
-}
-
-function capabilityControlsIssue(
-  params: Readonly<{
-    issueCode: string;
-    controlId?: string;
-    path: string;
-  }>,
-): ExecutionAgentDecisionValidationIssue {
-  return issue(
-    `execution_agent_capability_${params.issueCode}`,
-    params.path,
-    params.controlId
-      ? `Capability control ${JSON.stringify(params.controlId)} failed ${params.issueCode}.`
-      : `Capability controls failed ${params.issueCode}.`,
-  );
 }
 
 function rejectEnvelope(

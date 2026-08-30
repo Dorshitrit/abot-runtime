@@ -5,8 +5,12 @@ export type {
   RegisteredToolNormalInvocationExecutor,
   RegisteredToolNormalInvocationHandle,
   RegisteredToolNormalInvocationPayloadLifecyclePhase,
+  RegisteredToolNormalInvocationPayloadLifecyclePreparation,
   RegisteredToolNormalInvocationPayloadLifecycleResult,
+  RegisteredToolNormalInvocationPreparation,
   RegisteredToolNormalInvocationProjection,
+  RegisteredToolPreparedNormalInvocation,
+  RegisteredToolPreparedNormalInvocationPayloadLifecycle,
   RegisteredToolNormalInvocationRejection,
   RegisteredToolNormalInvocationResult,
 } from "./registered-tool-normal-invocations/shared/contracts.js";

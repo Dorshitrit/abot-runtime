@@ -21,7 +21,11 @@ import {
   createRuntimeApplication,
   resetDebugLoggerConfig,
 } from "../index.js";
-import type { RuntimeConfig, RuntimeEnvironmentServices } from "../index.js";
+import type {
+  ModelGatewayClient,
+  RuntimeConfig,
+  RuntimeEnvironmentServices,
+} from "../index.js";
 
 const tempRoots: string[] = [];
 
@@ -171,6 +175,7 @@ describe("runtime composition", () => {
       models: defaults.services.models,
       events: defaults.services.events,
       sessionMemoryCompactor: defaults.services.sessionMemoryCompactor,
+      longTermMemory: defaults.services.longTermMemory,
     };
 
     const runtime = createDefaultRuntimeDependencies(config, overrides);
@@ -185,6 +190,7 @@ describe("runtime composition", () => {
     expect(runtime.sessionMemoryCompactor).toBe(
       overrides.sessionMemoryCompactor,
     );
+    expect(runtime.longTermMemory).toBe(overrides.longTermMemory);
   });
 
   test("keeps legacy host-start overrides authoritative over bound services", async () => {
@@ -224,6 +230,59 @@ describe("runtime composition", () => {
         requestHandler: reboundHandler,
       }),
     );
+  });
+
+  test("rebinds long-term memory to an overridden model gateway client", async () => {
+    const config: RuntimeConfig = {
+      ...(await createRuntimeConfig()),
+      longTermMemory: {
+        enabled: true,
+        emitClientEvents: false,
+        embeddingProfileId: "memory-embedding",
+      },
+    };
+    const boundEmbeddingCalls: string[] = [];
+    const overrideEmbeddingCalls: string[] = [];
+    const application = createRuntimeApplication(config, {
+      models: createEmbeddingModelGatewayClient(
+        "bound-model",
+        boundEmbeddingCalls,
+      ),
+    });
+    const reboundHandler = Object.freeze({
+      handle: vi.fn(async () => {}),
+    });
+    const requestHandlerFactory = vi.fn(
+      (_services: RuntimeEnvironmentServices) => reboundHandler,
+    );
+    const host = createDefaultRuntimeHost(config, {
+      services: application.services,
+      requestHandler: application.requests,
+      requestHandlerFactory,
+    });
+
+    host.start({
+      modelGatewayClient: createEmbeddingModelGatewayClient(
+        "override-model",
+        overrideEmbeddingCalls,
+      ),
+    });
+
+    const reboundServices = requestHandlerFactory.mock.calls[0]?.[0];
+    if (!reboundServices) {
+      throw new Error("missing rebound environment services");
+    }
+    expect(reboundServices.longTermMemory).not.toBe(
+      application.services.longTermMemory,
+    );
+    await reboundServices.longTermMemory.create({
+      content: "A durable memory.",
+      tags: ["fact"],
+      source: "management_api",
+      context: { abortSignal: new AbortController().signal },
+    });
+    expect(overrideEmbeddingCalls).toEqual(["A durable memory."]);
+    expect(boundEmbeddingCalls).toEqual([]);
   });
 
   test("rebuilds every unspecified service from an overridden runtime config", async () => {
@@ -394,3 +453,30 @@ describe("runtime composition", () => {
     );
   });
 });
+
+function createEmbeddingModelGatewayClient(
+  modelFingerprint: string,
+  calls: string[],
+): ModelGatewayClient {
+  return Object.freeze({
+    async invoke() {
+      throw new Error("unexpected model invocation");
+    },
+    async invokeRaw() {
+      throw new Error("unexpected raw model invocation");
+    },
+    async embed(input) {
+      calls.push(...input.texts);
+      return Object.freeze({
+        profileId: input.profileId,
+        provider: "ollama" as const,
+        model: "test-embedding-model",
+        modelFingerprint,
+        dimensions: 2,
+        vectors: Object.freeze(
+          input.texts.map(() => Object.freeze([1, 0] as const)),
+        ),
+      });
+    },
+  });
+}

@@ -1,0 +1,419 @@
+/* Long-term memory records inside the configuration workspace. */
+
+.memory-management-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.memory-management-heading,
+.memory-management-toolbar,
+.memory-editor-heading,
+.memory-pagination {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+
+.memory-management-heading {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--config-line, var(--line));
+}
+
+.memory-management-heading > div {
+  min-width: 0;
+}
+
+.memory-management-heading h4,
+.memory-management-heading p,
+.memory-editor-heading h5,
+.memory-editor-heading p {
+  margin: 0;
+}
+
+.memory-management-heading h4 {
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 520;
+  line-height: 1.3;
+}
+
+.memory-management-heading p:last-child,
+.memory-record-meta,
+.memory-pagination,
+.memory-editor-card small {
+  color: var(--config-muted, var(--muted));
+}
+
+.memory-management-heading p:last-child {
+  max-width: 620px;
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.memory-management-card .memory-status {
+  flex: none;
+}
+
+.memory-management-card .memory-status.unavailable {
+  border-color: rgba(255, 116, 128, 0.3);
+  color: var(--danger);
+}
+
+.memory-management-toolbar {
+  align-items: center;
+}
+
+.memory-search,
+.memory-management-primary-actions,
+.memory-editor-actions,
+.memory-pagination > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
+}
+
+.memory-search {
+  flex: 1 1 360px;
+}
+
+.memory-search-shell {
+  display: grid;
+  flex: 1 1 280px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  min-width: 0;
+  min-height: 32px;
+  border: 1px solid var(--config-line, var(--line));
+  border-radius: 7px;
+  background: var(--config-control, var(--panel-solid));
+}
+
+.memory-search-shell:focus-within {
+  border-color: rgba(87, 148, 255, 0.72);
+  outline: 2px solid rgba(87, 148, 255, 0.2);
+  outline-offset: 1px;
+}
+
+.memory-search-icon {
+  display: grid;
+  place-items: center;
+  padding-left: 9px;
+  color: var(--config-faint, var(--muted-2));
+}
+
+.memory-search-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.memory-management-card input,
+.memory-management-card textarea {
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--config-line, var(--line));
+  border-radius: 7px;
+  background: var(--config-control, var(--panel-solid));
+  color: var(--config-copy, var(--text));
+  font-size: 12.5px;
+  font-weight: 400;
+  box-shadow: none;
+}
+
+.memory-search-shell input {
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.memory-search-shell input:focus {
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
+.memory-search-submit {
+  min-height: 26px;
+  margin-right: 3px;
+  padding: 0 8px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--accent-strong);
+  font-size: 11px;
+}
+
+.memory-clear-search {
+  min-height: 30px;
+  padding: 0 8px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--config-muted, var(--muted));
+}
+
+.memory-management-primary-actions {
+  flex-wrap: nowrap;
+}
+
+.memory-management-card .memory-icon-button,
+.memory-content-toggle {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  border-color: transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--config-muted, var(--muted));
+  box-shadow: none;
+}
+
+.memory-management-card .memory-icon-button:hover,
+.memory-content-toggle:hover {
+  border-color: transparent;
+  background: var(--config-control-hover, var(--control-bg-hover));
+  color: var(--config-copy, var(--text));
+}
+
+.memory-management-card .memory-icon-button svg,
+.memory-content-toggle svg {
+  width: 14px;
+  height: 14px;
+}
+
+.memory-management-card .primary-button {
+  flex: none;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 7px;
+}
+
+.memory-add-button svg {
+  width: 13px;
+  height: 13px;
+}
+
+.memory-management-notice,
+.memory-management-feedback {
+  margin: 0;
+  padding: 7px 9px;
+  border-left: 2px solid var(--config-line-strong, var(--line-strong));
+  background: rgba(111, 151, 191, 0.045);
+  color: var(--config-muted, var(--muted));
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.memory-record-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  overflow: hidden;
+  border-top: 1px solid var(--config-line, var(--line));
+  background: transparent;
+}
+
+.memory-record {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+  padding: 10px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--config-line, var(--line));
+  border-radius: 0;
+  background: transparent;
+}
+
+.memory-record:hover {
+  background: rgba(111, 151, 191, 0.045);
+}
+
+.memory-record.editing {
+  background: rgba(87, 148, 255, 0.065);
+}
+
+.memory-record-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.memory-record-content {
+  display: flex;
+  gap: 5px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.memory-record-content-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.memory-record-content.collapsible .memory-record-content-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.memory-record.expanded .memory-record-content-text {
+  display: block;
+  overflow: visible;
+}
+
+.memory-content-toggle {
+  width: 25px;
+  min-width: 25px;
+  height: 25px;
+  min-height: 25px;
+  margin-top: -3px;
+}
+
+.memory-content-toggle svg {
+  width: 12px;
+  height: 12px;
+  transition: transform 150ms ease;
+}
+
+.memory-record.expanded .memory-content-toggle svg {
+  transform: rotate(180deg);
+}
+
+.memory-record-details,
+.memory-record-tags,
+.memory-record-meta,
+.memory-record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.memory-record-details {
+  gap: 5px 9px;
+}
+
+.memory-record-tags {
+  gap: 4px;
+}
+
+.memory-record-tags span {
+  padding: 2px 6px;
+  border: 1px solid var(--config-line, var(--line));
+  border-radius: 999px;
+  color: var(--config-muted, var(--muted));
+  font-size: 9.5px;
+  line-height: 1.25;
+}
+
+.memory-record-meta {
+  gap: 5px;
+  color: var(--config-faint, var(--muted-2));
+  font-size: 10px;
+}
+
+.memory-record-actions {
+  gap: 1px;
+  opacity: 0.66;
+}
+
+.memory-record:hover .memory-record-actions,
+.memory-record:focus-within .memory-record-actions {
+  opacity: 1;
+}
+
+.memory-editor-card {
+  display: grid;
+  gap: 10px;
+  padding: 13px 9px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--config-line, var(--line));
+  border-radius: 0;
+  background: rgba(87, 148, 255, 0.055);
+}
+
+.memory-editor-heading {
+  align-items: center;
+}
+
+.memory-editor-heading h5 {
+  color: var(--config-copy, var(--text));
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.memory-editor-heading p {
+  margin-top: 2px;
+  color: var(--config-faint, var(--muted-2));
+  font-size: 10.5px;
+}
+
+.memory-editor-card label {
+  display: grid;
+  gap: 5px;
+  color: var(--config-muted, var(--muted));
+  font-size: 10.5px;
+  font-weight: 450;
+}
+
+.memory-editor-card textarea {
+  min-height: 76px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.memory-editor-actions {
+  justify-content: flex-end;
+}
+
+.memory-editor-actions .primary-button {
+  min-width: 96px;
+}
+
+.memory-editor-dismiss {
+  justify-self: start;
+}
+
+.memory-management-empty {
+  padding: 18px 8px;
+  border-bottom: 1px solid var(--config-line, var(--line));
+  color: var(--config-muted, var(--muted));
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.memory-pagination {
+  align-items: center;
+  color: var(--config-muted, var(--muted));
+  font-size: 11px;
+}
+
+.memory-management-card .danger-button {
+  color: var(--danger);
+}
+
+.memory-management-card .danger-button:hover {
+  background: rgba(255, 116, 128, 0.08);
+  color: var(--danger);
+}

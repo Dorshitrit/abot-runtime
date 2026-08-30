@@ -39,7 +39,7 @@ afterEach(async () => {
   );
 });
 
-async function createFixture(): Promise<Fixture> {
+async function createFixture() {
   const root = await mkdtemp(join(tmpdir(), "filesystem-mutation-safety-"));
   temporaryRoots.push(root);
   const runtimePaths = {
@@ -79,9 +79,9 @@ async function createFixture(): Promise<Fixture> {
   return { root, runtimePaths, loadContext, runtimePathResolver };
 }
 
-function deferred<T = void>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  const promise = new Promise<T>((settle) => {
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((settle) => {
     resolve = settle;
   });
   return { promise, resolve };

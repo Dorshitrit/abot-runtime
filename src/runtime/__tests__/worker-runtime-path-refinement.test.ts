@@ -60,7 +60,7 @@ describe("Worker runtime path refinement", () => {
     expect(Object.isFrozen(eligible)).toBe(true);
   });
 
-  test("removes only runtime paths and preserves the no-registry selection array", () => {
+  test("still defers only Worker runtime paths and preserves other selection controls", () => {
     const selectionControlIds = Object.freeze(["path", "mode"]);
     const descriptor = {
       selectionControlIds,

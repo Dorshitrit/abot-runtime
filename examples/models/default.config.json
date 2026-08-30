@@ -11,6 +11,7 @@
   "calibration": {
     "supervisor.decision": { "format": "json" },
     "worker.decision": { "format": "json" },
+    "capability.controls": { "format": "json" },
     "planner.decision": { "format": "json" },
     "planner.graph": { "format": "json" },
     "reviewer.decision": { "format": "json" },

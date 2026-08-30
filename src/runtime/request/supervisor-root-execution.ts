@@ -6,7 +6,7 @@ import {
   SUPERVISOR_DECISION_MODEL_STEP,
 } from "../steps/supervisor-decision/index.js";
 import {
-  runSupervisorResponse,
+  runSupervisorAuthoredResponse,
   SUPERVISOR_RESPONSE_MODEL_STEP,
 } from "../steps/supervisor-response/index.js";
 import type { RequestExecutionScope } from "./execution-scope.js";
@@ -17,6 +17,7 @@ import {
   runRootExecutionKernel,
   type RequestRootContractAdapter,
 } from "./root-execution-kernel.js";
+import { projectRequestSteeringSnapshot } from "./request-steering.js";
 
 export const SUPERVISOR_ROOT_CONTRACT: RequestRootContractAdapter =
   Object.freeze({
@@ -38,9 +39,13 @@ export const SUPERVISOR_ROOT_CONTRACT: RequestRootContractAdapter =
       });
     },
     async authorResponse(request, options) {
-      return runSupervisorResponse(request, {
+      return runSupervisorAuthoredResponse(request, {
         call: options.call,
         toolResults: options.toolResults,
+        steeringSnapshot: projectRequestSteeringSnapshot(
+          request.requestSteering,
+          options.steeringVersion,
+        ),
         ...(options.resume ? { resume: options.resume } : {}),
       });
     },

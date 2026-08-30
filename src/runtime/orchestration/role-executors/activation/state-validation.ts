@@ -1,8 +1,12 @@
 import type {
   RoleCallFrame,
   RoleCallLedgerHead,
+  RoleCallOperationSupervisionInterventionCommit,
   RoleCapabilityExecution,
+  RoleOperationSupervisionEntry,
+  RoleOperationSupervisionInterventionRecord,
 } from "../../role-calls/index.js";
+import { isSameRoleOperationIdentity } from "../../role-calls/index.js";
 import { isRuntimeDelegateRoleId } from "../../roles.js";
 import {
   sameCallFrame,
@@ -74,7 +78,9 @@ export function validateCapabilityContinuation(
       afterState.capabilityExecutionSequence !==
         beforeState.capabilityExecutionSequence + params.executionIds.length ||
       afterState.activeCallId !== params.currentCall.callId ||
-      afterState.results !== beforeState.results
+      afterState.results !== beforeState.results ||
+      afterState.capabilitySelectionSupervision.epoch !== null ||
+      afterState.capabilitySelectionSupervision.records.length !== 0
     ) {
       return { ok: false, issueCode: "ledger_progress_invalid" };
     }
@@ -155,6 +161,212 @@ export function validateCapabilityContinuation(
   } catch {
     return { ok: false, issueCode: "continuation_state_invalid" };
   }
+}
+
+export function validateOperationSupervisionInterventionContinuation(
+  params: Readonly<{
+    before: RoleCallLedgerHead;
+    after: RoleCallLedgerHead;
+    currentCall: RoleCallFrame;
+    commit: RoleCallOperationSupervisionInterventionCommit;
+  }>,
+):
+  | Readonly<{ ok: true; call: RoleCallFrame }>
+  | Readonly<{ ok: false; issueCode: string }> {
+  try {
+    const commitIssue = validateOperationSupervisionInterventionCommit(params);
+    if (commitIssue) return { ok: false, issueCode: commitIssue };
+    const progressIssue =
+      validateOperationSupervisionInterventionProgress(params);
+    if (progressIssue) return { ok: false, issueCode: progressIssue };
+    const nextCall = params.after.state.calls.find(
+      (candidate) => candidate.callId === params.currentCall.callId,
+    );
+    if (!nextCall) return { ok: false, issueCode: "call_unavailable" };
+    const callIssue = validateIntervenedCall({
+      before: params.before,
+      after: params.after,
+      currentCall: params.currentCall,
+      nextCall,
+    });
+    if (callIssue) return { ok: false, issueCode: callIssue };
+    const supervisionIssue = validateOperationSupervisionTransition(params);
+    if (supervisionIssue) {
+      return { ok: false, issueCode: supervisionIssue };
+    }
+    return { ok: true, call: nextCall };
+  } catch {
+    return { ok: false, issueCode: "continuation_state_invalid" };
+  }
+}
+
+function validateOperationSupervisionInterventionCommit(
+  params: Readonly<{
+    before: RoleCallLedgerHead;
+    after: RoleCallLedgerHead;
+    currentCall: RoleCallFrame;
+    commit: RoleCallOperationSupervisionInterventionCommit;
+  }>,
+): string | undefined {
+  const { commit } = params;
+  if (commit.previousHead !== params.before || commit.head !== params.after) {
+    return "continuation_commit_mismatch";
+  }
+  if (commit.effect.type !== "operation_supervision_intervened") {
+    return "continuation_effect_invalid";
+  }
+  if (
+    commit.effect.callId !== params.currentCall.callId ||
+    commit.effect.invocationAttempt !== params.currentCall.activationCount ||
+    commit.effect.matchingOutcomeCount !== 2 ||
+    commit.effect.interventionCount !== 1
+  ) {
+    return "continuation_effect_mismatch";
+  }
+  return undefined;
+}
+
+function validateOperationSupervisionInterventionProgress(
+  params: Readonly<{
+    before: RoleCallLedgerHead;
+    after: RoleCallLedgerHead;
+    currentCall: RoleCallFrame;
+  }>,
+): string | undefined {
+  if (params.after === params.before) return "ledger_not_advanced";
+  if (params.after.revision !== params.before.revision + 1) {
+    return "revision_advance_invalid";
+  }
+  if (params.after.kind !== params.before.kind) return "ledger_kind_changed";
+  if (params.after.policy !== params.before.policy) return "policy_changed";
+  const beforeState = params.before.state;
+  const afterState = params.after.state;
+  const unrelatedStateChanged =
+    afterState.contractVersion !== beforeState.contractVersion ||
+    afterState.requestId !== beforeState.requestId ||
+    afterState.phase !== beforeState.phase ||
+    afterState.phase !== "running" ||
+    afterState.rootCallId !== beforeState.rootCallId ||
+    afterState.rootResponse !== beforeState.rootResponse ||
+    afterState.callSequence !== beforeState.callSequence ||
+    afterState.resultSequence !== beforeState.resultSequence ||
+    afterState.capabilityExecutionSequence !==
+      beforeState.capabilityExecutionSequence ||
+    afterState.activeCallId !== params.currentCall.callId ||
+    afterState.results !== beforeState.results ||
+    afterState.plans !== beforeState.plans ||
+    afterState.capabilityExecutions !== beforeState.capabilityExecutions ||
+    afterState.capabilitySelectionSupervision.epoch !== null ||
+    afterState.capabilitySelectionSupervision.records.length !== 0;
+  return unrelatedStateChanged ? "ledger_progress_invalid" : undefined;
+}
+
+function validateIntervenedCall(
+  params: Readonly<{
+    before: RoleCallLedgerHead;
+    after: RoleCallLedgerHead;
+    currentCall: RoleCallFrame;
+    nextCall: RoleCallFrame;
+  }>,
+): string | undefined {
+  if (params.after.state.calls.length !== params.before.state.calls.length) {
+    return "call_set_changed";
+  }
+  const callDidNotAdvanceExactlyOnce =
+    params.nextCall.status !== "active" ||
+    params.nextCall.activationCount !==
+      params.currentCall.activationCount + 1 ||
+    params.nextCall.lastCapabilitySelectionReconsideration !==
+      params.currentCall.lastCapabilitySelectionReconsideration ||
+    !sameCallIdentity(params.nextCall, params.currentCall);
+  if (callDidNotAdvanceExactlyOnce) return "activation_advance_invalid";
+  const unrelatedCallChanged = params.before.state.calls.some(
+    (beforeCall) =>
+      beforeCall.callId !== params.currentCall.callId &&
+      params.after.state.calls.find(
+        (candidate) => candidate.callId === beforeCall.callId,
+      ) !== beforeCall,
+  );
+  return unrelatedCallChanged ? "unrelated_call_changed" : undefined;
+}
+
+function validateOperationSupervisionTransition(
+  params: Readonly<{
+    before: RoleCallLedgerHead;
+    after: RoleCallLedgerHead;
+    commit: RoleCallOperationSupervisionInterventionCommit;
+  }>,
+): string | undefined {
+  const beforeSupervision = params.before.state.operationSupervision;
+  const afterSupervision = params.after.state.operationSupervision;
+  const effect = params.commit.effect;
+  const entryIndex = beforeSupervision.entries.findIndex((entry) =>
+    isSameRoleOperationIdentity(entry, effect),
+  );
+  const beforeEntry = beforeSupervision.entries[entryIndex];
+  const afterEntry = afterSupervision.entries[entryIndex];
+  const unrelatedEntryChanged = beforeSupervision.entries.some(
+    (entry, index) =>
+      index !== entryIndex && afterSupervision.entries[index] !== entry,
+  );
+  const interventionRecord =
+    afterSupervision.interventions[afterSupervision.interventions.length - 1];
+  const interventionHistoryChangedAppendOnly =
+    afterSupervision.interventions.length ===
+      beforeSupervision.interventions.length + 1 &&
+    beforeSupervision.interventions.every(
+      (intervention, index) =>
+        afterSupervision.interventions[index] === intervention,
+    );
+  const transitionDoesNotMatchEffect =
+    afterSupervision === beforeSupervision ||
+    entryIndex < 0 ||
+    afterSupervision.entries.length !== beforeSupervision.entries.length ||
+    unrelatedEntryChanged ||
+    beforeEntry?.stage !== "warning" ||
+    !hasMatchingOperationSupervisionEvidence(beforeEntry, effect) ||
+    afterEntry === beforeEntry ||
+    afterEntry?.stage !== "intervened" ||
+    !hasMatchingOperationSupervisionEvidence(afterEntry, effect) ||
+    !hasMatchingOperationSupervisionIntervention(afterEntry, effect) ||
+    !interventionHistoryChangedAppendOnly ||
+    !interventionRecord ||
+    !hasMatchingOperationSupervisionEvidence(interventionRecord, effect) ||
+    !hasMatchingOperationSupervisionIntervention(interventionRecord, effect);
+  return transitionDoesNotMatchEffect
+    ? "operation_supervision_state_invalid"
+    : undefined;
+}
+
+type OperationSupervisionInterventionEffect =
+  RoleCallOperationSupervisionInterventionCommit["effect"];
+
+function hasMatchingOperationSupervisionEvidence(
+  evidence:
+    | RoleOperationSupervisionEntry
+    | RoleOperationSupervisionInterventionRecord,
+  effect: OperationSupervisionInterventionEffect,
+): boolean {
+  return (
+    isSameRoleOperationIdentity(evidence, effect) &&
+    evidence.priorOutcome === effect.priorOutcome &&
+    evidence.outcomeFingerprint === effect.outcomeFingerprint &&
+    evidence.originExecutionId === effect.originExecutionId &&
+    evidence.matchingOutcomeCount === effect.matchingOutcomeCount
+  );
+}
+
+function hasMatchingOperationSupervisionIntervention(
+  intervention:
+    | Extract<RoleOperationSupervisionEntry, { stage: "intervened" }>
+    | RoleOperationSupervisionInterventionRecord,
+  effect: OperationSupervisionInterventionEffect,
+): boolean {
+  return (
+    intervention.interventionCount === effect.interventionCount &&
+    intervention.interventionCallId === effect.callId &&
+    intervention.interventionInvocationAttempt === effect.invocationAttempt
+  );
 }
 
 function validateSettledExecution(

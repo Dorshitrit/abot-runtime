@@ -8,7 +8,10 @@ import {
   resetDebugLoggerConfig,
 } from "../observability/debug-logger.js";
 import { deriveRegisteredToolStagedPayloadPlan } from "../adapters/registered-tool-payload-plan.js";
+import { createRegisteredToolActionFingerprint } from "../adapters/registered-tool-normal-invocations/shared/action-fingerprint.js";
 import { createRegisteredToolWorkerCapabilityProvider } from "../adapters/registered-tool-worker-capabilities.js";
+import { createRegisteredToolWorkerFailureOutcomeFingerprint } from "../adapters/registered-tool-worker-capabilities/failure-outcome-fingerprint.js";
+import type { CapabilityAdapterResult } from "../orchestration/capability-adapters/index.js";
 import {
   createRoleCallLedger,
   ROLE_CAPABILITY_REFERENCE_DATA_MAX_LENGTH,
@@ -353,7 +356,7 @@ describe("registered ordinary tool Worker capability provider", () => {
     ]);
   });
 
-  test("projects only manifest-owned operation targets into selection controls", () => {
+  test("projects only declarative operation targets into selection controls", () => {
     const provider = createRegisteredToolWorkerCapabilityProvider<TestContext>({
       getRequestToolRegistry: () =>
         createRegistry({
@@ -373,6 +376,16 @@ describe("registered ordinary tool Worker capability provider", () => {
               "write_unclassified_target",
               undefined,
             ),
+            registration("declarative_reader", [
+              operation({
+                operationId: "inspect_declarative_target",
+                properties: {
+                  path: { type: "string", minLength: 1, maxLength: 4_096 },
+                },
+                required: ["path"],
+                selectionControlIds: ["path"],
+              }),
+            ]),
           ],
           execute: vi.fn(),
         }),
@@ -390,14 +403,30 @@ describe("registered ordinary tool Worker capability provider", () => {
     });
 
     const descriptors = provider.getDescriptors();
-    expect(descriptors).toHaveLength(3);
+    expect(descriptors).toHaveLength(4);
     expect(descriptors[0]).toMatchObject({
       capabilityId: "write_operation_target",
+      requiresPayloadAuthoringObjective: true,
       selectionControlIds: ["path"],
     });
     expect(Object.isFrozen(descriptors[0]?.selectionControlIds)).toBe(true);
+    expect(descriptors[1]).toMatchObject({
+      capabilityId: "write_payload_body",
+      requiresPayloadAuthoringObjective: true,
+    });
     expect(descriptors[1]).not.toHaveProperty("selectionControlIds");
+    expect(descriptors[2]).toMatchObject({
+      capabilityId: "write_unclassified_target",
+      requiresPayloadAuthoringObjective: true,
+    });
     expect(descriptors[2]).not.toHaveProperty("selectionControlIds");
+    expect(descriptors[3]).toMatchObject({
+      capabilityId: "inspect_declarative_target",
+      selectionControlIds: ["path"],
+    });
+    expect(descriptors[3]).not.toHaveProperty(
+      "requiresPayloadAuthoringObjective",
+    );
   });
 
   test("projects mechanical controls refinement into the Worker descriptor", () => {
@@ -476,6 +505,7 @@ describe("registered ordinary tool Worker capability provider", () => {
         }),
         executionId: "capability-execution-payload-body",
         intent: "Write the supplied body.",
+        authoringObjective: "Write the complete HTML document for index.html.",
         controls: { path: "index.html" },
         settledCapabilityResults: [],
       }),
@@ -497,7 +527,9 @@ describe("registered ordinary tool Worker capability provider", () => {
     const agentWorkDir = await mkdtemp(join(tmpdir(), "runtime-path-binding-"));
     try {
       await mkdir(join(agentWorkDir, "Project"), { recursive: true });
-      const execute = vi.fn(async () => executionResult());
+      const execute = vi.fn<ToolRegistry["execute"]>(async () =>
+        executionResult(),
+      );
       const registrations = [
         runtimePathRegistration(
           "project_orientation",
@@ -836,6 +868,7 @@ describe("registered ordinary tool Worker capability provider", () => {
         }),
         executionId: "capability-execution-traversal",
         intent: "Write outside the project.",
+        authoringObjective: "Write the complete requested artifact.",
         controls: { path: "../outside-secret.txt" },
         settledCapabilityResults: [],
       }),
@@ -1128,6 +1161,8 @@ describe("registered ordinary tool Worker capability provider", () => {
         }),
       }),
     ]);
+    const authoringObjective =
+      "Write the complete plain-text artifact requested for project/result.txt.";
     const author = vi.fn<WorkerCapabilityPayloadAuthor["author"]>(
       async (input) => {
         expect(input).toMatchObject({
@@ -1138,6 +1173,7 @@ describe("registered ordinary tool Worker capability provider", () => {
             summary: "Write one complete test artifact.",
             effect: "mutation",
           },
+          authoringObjective,
           controls: { path: "project/result.txt" },
           settledCapabilityResults,
           contract: {
@@ -1209,6 +1245,7 @@ describe("registered ordinary tool Worker capability provider", () => {
         call: resumedCall,
         executionId: "capability-execution-2",
         intent: "Create the requested test artifact.",
+        authoringObjective,
         controls: { path: "project/result.txt" },
         settledCapabilityResults,
       }),
@@ -1240,6 +1277,9 @@ describe("registered ordinary tool Worker capability provider", () => {
       "tool.started",
       "tool.completed",
     ]);
+    expect(JSON.stringify(onEvent.mock.calls)).not.toContain(
+      authoringObjective,
+    );
     expect(
       onEvent.mock.calls.find(([name]) => name === "tool.started")?.[1],
     ).toMatchObject({
@@ -1356,6 +1396,7 @@ describe("registered ordinary tool Worker capability provider", () => {
         call: WORKER_CALL,
         executionId: "capability-execution-1",
         intent: "Create the stylesheet.",
+        authoringObjective: "Write the complete CSS stylesheet.",
         controls: { path: "project/style.css" },
         settledCapabilityResults: [],
       }),
@@ -1421,6 +1462,7 @@ describe("registered ordinary tool Worker capability provider", () => {
           call: WORKER_CALL,
           executionId: "capability-execution-1",
           intent: `Apply the selected ${placement} edit.`,
+          authoringObjective: `Author the complete ${placement} edit payload.`,
           controls: { instruction: `Apply the ${placement} edit.` },
           settledCapabilityResults: [],
         }),
@@ -1447,6 +1489,58 @@ describe("registered ordinary tool Worker capability provider", () => {
       );
     },
   );
+
+  test("discards provisional payload lifecycle when payload authoring aborts", async () => {
+    const abortError = Object.assign(new Error("Payload authoring aborted."), {
+      name: "AbortError",
+    });
+    const author = vi.fn<WorkerCapabilityPayloadAuthor["author"]>(async () => {
+      throw abortError;
+    });
+    const execute = vi.fn();
+    const onEvent = vi.fn();
+    const provider = createRegisteredToolWorkerCapabilityProvider<TestContext>({
+      getRequestToolRegistry: () =>
+        createRegistry({
+          registrations: [
+            registration("document_reader", [
+              operation({
+                operationId: "read_authored_document",
+                payload: {
+                  kind: "raw_text",
+                  param: "query",
+                  instructions: "Return the bounded document query.",
+                  maxBytes: 1_024,
+                },
+              }),
+            ]),
+          ],
+          execute,
+        }),
+      requestId: "request-payload-author-abort",
+      sessionId: "session-payload-author-abort",
+      abortSignal: new AbortController().signal,
+      toolPermissionMode: "full_access",
+      payloadAuthor: { author },
+      nextApprovalId: () => "approval-unused",
+      onEvent,
+    });
+
+    await expect(
+      provider.getAdapters()[0]!.execute({
+        context: { marker: "context-1" },
+        call: WORKER_CALL,
+        executionId: "capability-execution-aborted",
+        intent: "Read the authored document query.",
+        authoringObjective: "Author the bounded document query.",
+        controls: {},
+        settledCapabilityResults: [],
+      }),
+    ).rejects.toBe(abortError);
+    expect(author).toHaveBeenCalledOnce();
+    expect(execute).not.toHaveBeenCalled();
+    expect(onEvent).not.toHaveBeenCalled();
+  });
 
   test("materializes an empty delete literal without a second author call and preserves the full lifecycle", async () => {
     configureDebugLogger({ enabled: true });
@@ -1485,6 +1579,7 @@ describe("registered ordinary tool Worker capability provider", () => {
         call: WORKER_CALL,
         executionId: "capability-execution-1",
         intent: "Delete the selected material.",
+        authoringObjective: "Author the exact staged deletion payload.",
         controls: { instruction: "Delete the selected material." },
         settledCapabilityResults: [],
       }),
@@ -1585,6 +1680,7 @@ describe("registered ordinary tool Worker capability provider", () => {
         call: WORKER_CALL,
         executionId: "capability-execution-1",
         intent: "Replace the selected material.",
+        authoringObjective: "Author the exact staged replacement payload.",
         controls: { instruction: "Replace the selected material." },
         settledCapabilityResults: [],
       }),
@@ -1638,6 +1734,7 @@ describe("registered ordinary tool Worker capability provider", () => {
         call: WORKER_CALL,
         executionId: "capability-execution-1",
         intent: "Delete the selected material.",
+        authoringObjective: "Author the exact staged deletion payload.",
         controls: { instruction: "Delete the selected material." },
         settledCapabilityResults: [],
       }),
@@ -1698,6 +1795,7 @@ describe("registered ordinary tool Worker capability provider", () => {
           call: WORKER_CALL,
           executionId: "capability-execution-1",
           intent: "Apply one staged edit.",
+          authoringObjective: "Author the complete staged edit payload.",
           controls: { instruction: "Apply one staged edit." },
           settledCapabilityResults: [],
         }),
@@ -1836,6 +1934,108 @@ describe("registered ordinary tool Worker capability provider", () => {
     expect(projectedLiteral?.when.property).toBe("placement");
   });
 
+  test("executes a staged registered edit through the shared binding with its materialized selection", async () => {
+    const requestId = "request-staged-edit-shared-binding";
+    const instruction = "Replace the selected material.";
+    const authoringObjective =
+      "Author the exact selection and replacement content for this edit.";
+    const selection = JSON.stringify({ placement: "replace" });
+    const author = vi.fn<WorkerCapabilityPayloadAuthor["author"]>(
+      async (input) => ({
+        status: "authored" as const,
+        body: input.stage?.index === 1 ? selection : "replacement",
+      }),
+    );
+    const execute = vi.fn(async () =>
+      executionResult({
+        tool: "conditional_editor",
+        output: "Edited the selected material.",
+        data: { mutationEvidence: true },
+      }),
+    );
+    const provider = createRegisteredToolWorkerCapabilityProvider<TestContext>({
+      getRequestToolRegistry: () =>
+        createRegistry({
+          registrations: [conditionalStagedPayloadRegistration()],
+          execute,
+        }),
+      requestId,
+      sessionId: "session-staged-edit-shared-binding",
+      abortSignal: new AbortController().signal,
+      toolPermissionMode: "full_access",
+      payloadAuthor: { author },
+      nextApprovalId: () => "approval-unused",
+    });
+    const ledger = createRoleCallLedger({
+      requestId,
+      policy: {
+        limits: {
+          maxDepth: 4,
+          maxCalls: 8,
+          maxCapabilityExecutions: 8,
+          maxObjectiveChars: ROLE_CALL_OBJECTIVE_MAX_LENGTH,
+          maxResultChars: ROLE_CALL_RESULT_MAX_LENGTH,
+          maxResponseChars: ROLE_CALL_RESPONSE_MAX_LENGTH,
+        },
+      },
+    });
+    for (const command of [
+      { authority: "runtime" as const, type: "create_root" as const },
+      {
+        authority: "active_role" as const,
+        type: "open_child" as const,
+        callerCallId: "call-1",
+        roleId: "worker" as const,
+        objective: "Apply one staged edit.",
+      },
+    ]) {
+      const result = await ledger.apply({
+        expectedHead: ledger.current(),
+        command,
+      });
+      if (!result.ok) throw new Error(result.code);
+    }
+    const head = ledger.current();
+    const call = head.state.calls.find(
+      (candidate) => candidate.callId === head.state.activeCallId,
+    );
+    if (!call) throw new Error("active Worker call missing");
+    const binding = createWorkerCapabilityBinding({
+      requestId,
+      context: { marker: "staged-edit-shared-binding" },
+      call,
+      ledger,
+      adapters: provider.getAdapters(),
+    });
+
+    await expect(
+      binding.execute({
+        capabilityId: "edit_conditional_content",
+        intent: instruction,
+        authoringObjective,
+        controls: { instruction },
+      }),
+    ).resolves.toEqual({ executionId: "capability-execution-1" });
+
+    expect(author).toHaveBeenCalledTimes(2);
+    expect(
+      author.mock.calls.map(([input]) => input.authoringObjective),
+    ).toEqual([authoringObjective, authoringObjective]);
+    expect(execute).toHaveBeenCalledExactlyOnceWith(
+      {
+        tool: "conditional_editor",
+        params: { instruction, selection, content: "replacement" },
+      },
+      expect.any(Object),
+    );
+    expect(ledger.current().state.capabilityExecutions).toEqual([
+      expect.objectContaining({
+        outcome: "succeeded",
+        controlsJson: JSON.stringify({ instruction, selection }),
+      }),
+    ]);
+  });
+
   test("authors registered structured and raw edit stages before validating and executing one complete call", async () => {
     const agentWorkDir = await mkdtemp(join(tmpdir(), "runtime-staged-edit-"));
     try {
@@ -1888,9 +2088,12 @@ describe("registered ordinary tool Worker capability provider", () => {
           ]),
         }),
       ]);
+      const authoringObjective =
+        "Author the exact selection and replacement content for target.txt.";
       let selectedLine = 1;
       const author = vi.fn<WorkerCapabilityPayloadAuthor["author"]>(
         async (input) => {
+          expect(input.authoringObjective).toBe(authoringObjective);
           if (input.stage?.index === 1) {
             expect(input.contextScope).toBe("target_only");
             expect(Object.isFrozen(input.controls)).toBe(true);
@@ -2110,6 +2313,7 @@ describe("registered ordinary tool Worker capability provider", () => {
           call: resumedWorkerCall,
           executionId: "capability-execution-1",
           intent: "Replace the first line.",
+          authoringObjective,
           controls: originalControls,
           settledCapabilityResults,
         }),
@@ -2177,6 +2381,7 @@ describe("registered ordinary tool Worker capability provider", () => {
           call: resumedWorkerCall,
           executionId: "capability-execution-2",
           intent: "Replace the first line.",
+          authoringObjective,
           controls: {
             path: "target.txt",
             instruction: "Replace the first line.",
@@ -2208,6 +2413,383 @@ describe("registered ordinary tool Worker capability provider", () => {
     } finally {
       await rm(agentWorkDir, { recursive: true, force: true });
     }
+  });
+
+  test("publishes payload lifecycle only for the admitted invocation before single-operation intervention", async () => {
+    const operationId = "read_payload_range";
+    const toolName = "payload_range_reader";
+    const authoredPayload = "Read this exact bounded range.\n";
+    const controls = Object.freeze({
+      path: "notes.txt",
+      start_line: 1,
+      end_line: 20,
+    });
+    const author = vi.fn<WorkerCapabilityPayloadAuthor["author"]>(async () => ({
+      status: "authored" as const,
+      body: authoredPayload,
+    }));
+    const onEvent = vi.fn();
+    const execute = vi.fn(async () =>
+      executionResult({ tool: toolName, output: "Observed the exact range." }),
+    );
+    const rangeOperation = operation({
+      operationId,
+      summary: "Read one exact file range with an authored query.",
+      properties: {
+        path: { type: "string", minLength: 1, maxLength: 4_096 },
+        start_line: { type: "integer", minimum: 1, maximum: 1_000_000 },
+        end_line: { type: "integer", minimum: 1, maximum: 1_000_000 },
+      },
+      required: ["path", "start_line", "end_line"],
+      payload: {
+        kind: "raw_text",
+        param: "query",
+        instructions: "Return the exact bounded read query.",
+        maxBytes: 1_024,
+      },
+    });
+    const requestId = "request-registered-single-intervention-lifecycle";
+    const provider = createRegisteredToolWorkerCapabilityProvider<TestContext>({
+      getRequestToolRegistry: () =>
+        createRegistry({
+          registrations: [registration(toolName, [rangeOperation])],
+          execute,
+        }),
+      requestId,
+      sessionId: "session-registered-single-intervention-lifecycle",
+      abortSignal: new AbortController().signal,
+      toolPermissionMode: "full_access",
+      payloadAuthor: { author },
+      nextApprovalId: () => "approval-unused",
+      onEvent,
+    });
+    const ledger = createRoleCallLedger({
+      requestId,
+      policy: {
+        limits: {
+          maxDepth: 4,
+          maxCalls: 8,
+          maxCapabilityExecutions: 8,
+          maxObjectiveChars: ROLE_CALL_OBJECTIVE_MAX_LENGTH,
+          maxResultChars: ROLE_CALL_RESULT_MAX_LENGTH,
+          maxResponseChars: ROLE_CALL_RESPONSE_MAX_LENGTH,
+        },
+      },
+    });
+    const commit = async (
+      command: Parameters<RoleCallLedger["apply"]>[0]["command"],
+    ) => {
+      const result = await ledger.apply({
+        expectedHead: ledger.current(),
+        command,
+      });
+      if (!result.ok) throw new Error(result.code);
+      return result;
+    };
+    await commit({ authority: "runtime", type: "create_root" });
+    await commit({
+      authority: "active_role",
+      type: "open_child",
+      callerCallId: "call-1",
+      roleId: "worker",
+      objective: "Read the same exact range safely.",
+    });
+    const currentWorkerCall = () => {
+      const head = ledger.current();
+      const call = head.state.calls.find(
+        (candidate) => candidate.callId === head.state.activeCallId,
+      );
+      if (!call) throw new Error("active Worker call missing");
+      return call;
+    };
+    const actionFingerprint = createRegisteredToolActionFingerprint({
+      contractVersion: 1,
+      operationId,
+      call: {
+        tool: toolName,
+        params: { ...controls, query: authoredPayload },
+      },
+    });
+    const seededCall = currentWorkerCall();
+    const seeded = await commit({
+      authority: "active_role",
+      type: "begin_capability_execution",
+      callId: seededCall.callId,
+      invocationAttempt: seededCall.activationCount,
+      capabilityId: operationId,
+      declaredEffect: "observation",
+      intent: "Seed one prior canonical success.",
+      controlsJson: JSON.stringify(controls),
+      actionFingerprint,
+    });
+    if (seeded.effect.type !== "capability_execution_begun") {
+      throw new Error("seeded capability execution missing");
+    }
+    await commit({
+      authority: "runtime",
+      type: "settle_capability_execution",
+      callId: seededCall.callId,
+      executionId: seeded.effect.executionId,
+      outcome: "succeeded",
+      outcomeFingerprint: "succeeded",
+      observedEffect: "observation",
+      summary: "Seeded the prior bounded observation.",
+      exactResult: {
+        kind: "generic_capability_result_v1",
+        authority: "capability_adapter",
+        status: "executed",
+        ok: true,
+        payload: { seeded: true },
+      },
+    });
+    const executeRange = () =>
+      createWorkerCapabilityBinding({
+        requestId,
+        context: { marker: "registered-single-intervention" },
+        call: currentWorkerCall(),
+        ledger,
+        adapters: provider.getAdapters(),
+      }).execute({
+        capabilityId: operationId,
+        intent: "Read the exact bounded range.",
+        authoringObjective: "Author the exact query for this bounded range.",
+        controls,
+      });
+
+    await expect(executeRange()).resolves.toEqual({
+      executionId: "capability-execution-2",
+    });
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(author).toHaveBeenCalledTimes(1);
+    expect(onEvent.mock.calls.map(([name]) => name)).toEqual([
+      "tool.payload.started",
+      "tool.payload.completed",
+      "tool.started",
+      "tool.completed",
+    ]);
+
+    await expect(executeRange()).resolves.toMatchObject({
+      kind: "operation_supervision_intervened",
+    });
+    expect(author).toHaveBeenCalledTimes(2);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(onEvent.mock.calls.map(([name]) => name)).toEqual([
+      "tool.payload.started",
+      "tool.payload.completed",
+      "tool.started",
+      "tool.completed",
+    ]);
+    expect(ledger.current().state.capabilityExecutions).toHaveLength(2);
+  });
+
+  test("binds authoring objectives per batch slot before coalescing the exact materialized call", async () => {
+    const authoredPayload = "Read the exact bounded range.\n";
+    const author = vi.fn<WorkerCapabilityPayloadAuthor["author"]>(async () => ({
+      status: "authored" as const,
+      body: authoredPayload,
+    }));
+    const onEvent = vi.fn();
+    const execute = vi.fn(
+      async (call: { tool: string; params: Record<string, unknown> }) =>
+        executionResult({
+          tool: call.tool,
+          output: JSON.stringify(call.params),
+        }),
+    );
+    const rangeOperation = operation({
+      operationId: "read_exact_range",
+      summary: "Read one exact file range.",
+      properties: {
+        path: { type: "string", minLength: 1, maxLength: 4_096 },
+        start_line: { type: "integer", minimum: 1, maximum: 1_000_000 },
+        end_line: { type: "integer", minimum: 1, maximum: 1_000_000 },
+      },
+      required: ["path", "start_line", "end_line"],
+      payload: {
+        kind: "raw_text",
+        param: "query",
+        instructions: "Return the exact bounded read query.",
+        maxBytes: 1_024,
+      },
+    });
+    const requestId = "request-registered-batch-coalescing";
+    const provider = createRegisteredToolWorkerCapabilityProvider<TestContext>({
+      getRequestToolRegistry: () =>
+        createRegistry({
+          registrations: [registration("range_reader", [rangeOperation])],
+          execute,
+        }),
+      requestId,
+      sessionId: "session-registered-batch-coalescing",
+      abortSignal: new AbortController().signal,
+      toolPermissionMode: "full_access",
+      payloadAuthor: { author },
+      nextApprovalId: () => "approval-unused",
+      onEvent,
+    });
+    const ledger = createRoleCallLedger({
+      requestId,
+      policy: {
+        limits: {
+          maxDepth: 4,
+          maxCalls: 8,
+          maxCapabilityExecutions: 8,
+          maxObjectiveChars: ROLE_CALL_OBJECTIVE_MAX_LENGTH,
+          maxResultChars: ROLE_CALL_RESULT_MAX_LENGTH,
+          maxResponseChars: ROLE_CALL_RESPONSE_MAX_LENGTH,
+        },
+      },
+    });
+    const commit = async (
+      command: Parameters<RoleCallLedger["apply"]>[0]["command"],
+    ) => {
+      const result = await ledger.apply({
+        expectedHead: ledger.current(),
+        command,
+      });
+      if (!result.ok) throw new Error(result.code);
+    };
+    await commit({ authority: "runtime", type: "create_root" });
+    await commit({
+      authority: "active_role",
+      type: "open_child",
+      callerCallId: "call-1",
+      roleId: "worker",
+      objective: "Read the requested exact file ranges.",
+    });
+    const currentWorkerCall = () => {
+      const head = ledger.current();
+      const call = head.state.calls.find(
+        (candidate) => candidate.callId === head.state.activeCallId,
+      );
+      if (!call) throw new Error("active Worker call missing");
+      return call;
+    };
+    const createBinding = () =>
+      createWorkerCapabilityBinding({
+        requestId,
+        context: { marker: "registered-batch" },
+        call: currentWorkerCall(),
+        ledger,
+        adapters: provider.getAdapters(),
+      });
+
+    await expect(
+      createBinding().executeBatch({
+        invocations: [
+          {
+            capabilityId: "read_exact_range",
+            intent: "Read the first exact range.",
+            authoringObjective: "Author the query for range slot one.",
+            controls: {
+              path: "notes.txt",
+              start_line: 1,
+              end_line: 20,
+            },
+          },
+          {
+            capabilityId: "read_exact_range",
+            intent: "Use different presentation text.",
+            authoringObjective: "Author the query for range slot two.",
+            controls: {
+              end_line: 20,
+              path: "notes.txt",
+              start_line: 1,
+            },
+          },
+        ],
+      }),
+    ).resolves.toEqual({ executionIds: ["capability-execution-1"] });
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(author).toHaveBeenCalledTimes(2);
+    expect(
+      author.mock.calls.map(([input]) => input.authoringObjective),
+    ).toEqual([
+      "Author the query for range slot one.",
+      "Author the query for range slot two.",
+    ]);
+    expect(onEvent.mock.calls.map(([name]) => name)).toEqual([
+      "tool.payload.started",
+      "tool.payload.completed",
+      "tool.started",
+      "tool.completed",
+    ]);
+    expect(JSON.stringify(onEvent.mock.calls)).not.toContain(
+      "Author the query for range slot",
+    );
+    expect(ledger.current().state.capabilityExecutions).toHaveLength(1);
+
+    onEvent.mockClear();
+
+    await expect(
+      createBinding().executeBatch({
+        invocations: [
+          {
+            capabilityId: "read_exact_range",
+            intent: "Read the second exact range.",
+            authoringObjective: "Author the query for range slot three.",
+            controls: {
+              path: "notes.txt",
+              start_line: 21,
+              end_line: 40,
+            },
+          },
+          {
+            capabilityId: "read_exact_range",
+            intent: "Read the third exact range.",
+            authoringObjective: "Author the query for range slot four.",
+            controls: {
+              path: "notes.txt",
+              start_line: 41,
+              end_line: 60,
+            },
+          },
+        ],
+      }),
+    ).resolves.toEqual({
+      executionIds: ["capability-execution-2", "capability-execution-3"],
+    });
+    expect(execute).toHaveBeenCalledTimes(3);
+    expect(execute.mock.calls.map(([call]) => call.params)).toEqual([
+      {
+        path: "notes.txt",
+        start_line: 1,
+        end_line: 20,
+        query: authoredPayload,
+      },
+      {
+        path: "notes.txt",
+        start_line: 21,
+        end_line: 40,
+        query: authoredPayload,
+      },
+      {
+        path: "notes.txt",
+        start_line: 41,
+        end_line: 60,
+        query: authoredPayload,
+      },
+    ]);
+    expect(author).toHaveBeenCalledTimes(4);
+    expect(
+      author.mock.calls.map(([input]) => input.authoringObjective),
+    ).toEqual([
+      "Author the query for range slot one.",
+      "Author the query for range slot two.",
+      "Author the query for range slot three.",
+      "Author the query for range slot four.",
+    ]);
+    expect(
+      ledger
+        .current()
+        .state.capabilityExecutions.map(
+          ({ actionFingerprint }) => actionFingerprint,
+        ),
+    ).toEqual([
+      expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+    ]);
   });
 
   test("carries one canonical observation from ledger through binding and adapter into payload author", async () => {
@@ -2330,13 +2912,20 @@ describe("registered ordinary tool Worker capability provider", () => {
     await secondBinding.execute({
       capabilityId: "write_test_artifact",
       intent: "Write the observed values into the report.",
+      authoringObjective:
+        "Write the complete grounded report from the settled observation.",
       controls: { path: "project/report.md" },
     });
 
     expect(author).toHaveBeenCalledOnce();
     const payloadInput = author.mock.calls[0]![0];
-    expect(payloadInput.executionId).toBe("capability-execution-2");
+    expect(payloadInput.executionId).toBe(
+      `capability-preparation:${firstCall.callId}:2:1`,
+    );
     expect(payloadInput).not.toHaveProperty("requestSteering");
+    expect(payloadInput.authoringObjective).toBe(
+      "Write the complete grounded report from the settled observation.",
+    );
     expect(payloadInput.settledCapabilityResults).toEqual([
       {
         executionId: "capability-execution-1",
@@ -2418,6 +3007,7 @@ describe("registered ordinary tool Worker capability provider", () => {
         call: WORKER_CALL,
         executionId: "capability-execution-1",
         intent: "Create the requested test artifact.",
+        authoringObjective: "Write the complete requested test artifact.",
         controls: {},
         settledCapabilityResults: [],
       }),
@@ -2506,6 +3096,8 @@ describe("registered ordinary tool Worker capability provider", () => {
           call: WORKER_CALL,
           executionId: "capability-execution-1",
           intent: "Create the requested non-empty artifact.",
+          authoringObjective:
+            "Write the complete non-empty requested artifact.",
           controls: {},
           settledCapabilityResults: [],
         }),
@@ -3023,6 +3615,76 @@ describe("registered ordinary tool Worker capability provider", () => {
     );
   });
 
+  test("keeps the Worker-only authoring assignment out of a direct-root payload path", async () => {
+    const authoredQuery = "Return the exact current system view.\n";
+    const author = vi.fn<WorkerCapabilityPayloadAuthor["author"]>(
+      async (input) => {
+        expect(input.call).toBe(ROOT_CALL);
+        expect(input).not.toHaveProperty("authoringObjective");
+        return { status: "authored" as const, body: authoredQuery };
+      },
+    );
+    const execute = vi.fn(async () =>
+      executionResult({ output: "Exact current system view." }),
+    );
+    const onEvent = vi.fn();
+    const provider = createRegisteredToolWorkerCapabilityProvider<TestContext>({
+      getRequestToolRegistry: () =>
+        createRegistry({
+          registrations: [
+            registration("system_probe", [
+              operation({
+                operationId: "inspect_authored_system_view",
+                payload: {
+                  kind: "raw_text",
+                  param: "query",
+                  instructions: "Return the exact bounded system query.",
+                  maxBytes: 1_024,
+                },
+              }),
+            ]),
+          ],
+          execute,
+        }),
+      requestId: "request-direct-root-payload",
+      sessionId: "session-direct-root-payload",
+      abortSignal: new AbortController().signal,
+      toolPermissionMode: "full_access",
+      payloadAuthor: { author },
+      nextApprovalId: () => "approval-unused",
+      onEvent,
+    });
+
+    expect(provider.getDescriptors()[0]).toMatchObject({
+      capabilityId: "inspect_authored_system_view",
+      requiresPayloadAuthoringObjective: true,
+    });
+    await expect(
+      provider.getAdapters()[0]!.execute({
+        context: { marker: "direct-root-payload" },
+        call: ROOT_CALL,
+        executionId: "capability-execution-direct-root-payload",
+        intent: "Inspect the exact current system view.",
+        controls: {},
+        settledCapabilityResults: [],
+      }),
+    ).resolves.toMatchObject({
+      outcome: "succeeded",
+      observedEffect: "observation",
+    });
+    expect(author).toHaveBeenCalledOnce();
+    expect(execute).toHaveBeenCalledExactlyOnceWith(
+      {
+        tool: "system_probe",
+        params: { query: authoredQuery },
+      },
+      expect.any(Object),
+    );
+    expect(JSON.stringify(onEvent.mock.calls)).not.toContain(
+      "authoringObjective",
+    );
+  });
+
   test("preserves direct-root plugin output beyond the legacy reference-data limit", async () => {
     const exactOutput = `  ${"x".repeat(
       ROLE_CAPABILITY_REFERENCE_DATA_MAX_LENGTH + 1,
@@ -3093,17 +3755,16 @@ describe("registered ordinary tool Worker capability provider", () => {
         controls: {},
         settledCapabilityResults: [],
       }),
-    ).resolves.toEqual({
-      outcome: "failed",
-      observedEffect: "none",
-      summary: "exact plugin failure",
-      exactResult: {
-        kind: "registered_tool_execution_result_v1",
-        authority: "registered_plugin",
-        status: "executed",
-        result: toolResult,
-      },
-    });
+    ).resolves.toEqual(
+      withRegisteredExactResult(
+        {
+          outcome: "failed",
+          observedEffect: "none",
+          summary: "exact plugin failure",
+        },
+        toolResult,
+      ),
+    );
   });
 
   test("preserves observation output beyond the legacy reference-data limit in the exact result", async () => {
@@ -3512,15 +4173,24 @@ function withRegisteredExactResult<T extends Record<string, unknown>>(
   toolResult: ToolExecutionResult,
   references?: readonly Readonly<{ kind: "tool_target"; target: string }>[],
 ) {
+  const exactResult = {
+    kind: "registered_tool_execution_result_v1" as const,
+    authority: "registered_plugin" as const,
+    status: "executed" as const,
+    result: toolResult,
+    ...(references ? { references } : {}),
+  };
   return {
     ...result,
-    exactResult: {
-      kind: "registered_tool_execution_result_v1" as const,
-      authority: "registered_plugin" as const,
-      status: "executed" as const,
-      result: toolResult,
-      ...(references ? { references } : {}),
-    },
+    ...(result.outcome === "failed"
+      ? {
+          failureOutcomeFingerprint:
+            createRegisteredToolWorkerFailureOutcomeFingerprint(
+              exactResult as CapabilityAdapterResult,
+            ),
+        }
+      : {}),
+    exactResult,
   };
 }
 
@@ -3530,16 +4200,27 @@ function withRuntimeRejectionExactResult<T extends Record<string, unknown>>(
   message: string,
   references?: readonly Readonly<{ kind: "tool_target"; target: string }>[],
 ) {
+  const exactResult = {
+    kind: "runtime_capability_rejection_v1" as const,
+    authority: "runtime" as const,
+    status: "rejected" as const,
+    stage: "before_external_execution" as const,
+    code,
+    message,
+    ...(references ? { references } : {}),
+  };
   return {
     ...result,
-    exactResult: {
-      kind: "runtime_capability_rejection_v1" as const,
-      authority: "runtime" as const,
-      status: "rejected" as const,
-      stage: "before_external_execution" as const,
-      code,
-      message,
-      ...(references ? { references } : {}),
-    },
+    ...(result.outcome === "failed"
+      ? {
+          failureOutcomeFingerprint:
+            code === "steering_superseded_before_external_execution"
+              ? null
+              : createRegisteredToolWorkerFailureOutcomeFingerprint(
+                  exactResult,
+                ),
+        }
+      : {}),
+    exactResult,
   };
 }

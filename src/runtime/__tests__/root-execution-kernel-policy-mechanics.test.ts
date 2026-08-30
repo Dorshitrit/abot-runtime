@@ -11,6 +11,7 @@ import {
   ROLE_CALL_RESPONSE_MAX_LENGTH,
   ROLE_CALL_RESULT_MAX_LENGTH,
   type RoleCallLedger,
+  type RoleCallLedgerHead,
 } from "../orchestration/role-calls/index.js";
 import { createRoleExecutorRegistry } from "../orchestration/role-executors/index.js";
 import type { ModelGatewayClient } from "../ports.js";
@@ -65,7 +66,7 @@ describe("root execution kernel policy mechanics", () => {
         decisionModelStep: "execution.decision",
         responseModelStep: "execution.response",
         deferRespondPresentation: true,
-        projectCallIdentity(head) {
+        projectCallIdentity(head: RoleCallLedgerHead) {
           const root = head.state.calls[0]!;
           return Object.freeze({
             rootCallId: root.callId,
@@ -136,6 +137,213 @@ describe("root execution kernel policy mechanics", () => {
       "workerCapabilityScope",
     );
   });
+
+  test("drops memory candidates from a response superseded during authoring", async () => {
+    const requestSteering = createRequestSteeringInbox({
+      requestId: "stale-memory-response-request",
+    });
+    const ledger = createExactRootLedger("stale-memory-response-request");
+    await createRoot(ledger);
+    let authorCount = 0;
+    const policy: CompiledRequestExecutionPolicy = Object.freeze({
+      authority: ledger.current().policy.authority,
+      roleExecutors: createRoleExecutorRegistry<
+        RequestExecutionScope,
+        RequestRoleExecutionHandoff
+      >([]),
+      rootContract: Object.freeze({
+        contractId: "stale_memory_response_test",
+        decisionModelStep: "execution.decision",
+        responseModelStep: "execution.response",
+        deferRespondPresentation: true,
+        projectCallIdentity(head: RoleCallLedgerHead) {
+          const root = head.state.calls[0]!;
+          return Object.freeze({
+            rootCallId: root.callId,
+            callId: root.callId,
+            parentCallId: root.parentCallId,
+            depth: root.depth,
+            invocationAttempt: root.activationCount,
+          });
+        },
+        projectResume() {
+          throw new Error("unexpected child resume");
+        },
+        async decide() {
+          return Object.freeze({
+            steeringVersion: requestSteering.snapshot().version,
+            decision: Object.freeze({ action: "respond" as const }),
+          });
+        },
+        async authorResponse() {
+          authorCount += 1;
+          if (authorCount === 1) {
+            requestSteering.append({
+              steerId: "new-direction",
+              text: "Use the fresh direction.",
+            });
+            return Object.freeze({
+              finalResponse: "Stale response",
+              memoryCandidates: Object.freeze([
+                Object.freeze({ content: "Stale memory", tags: [] }),
+              ]),
+            });
+          }
+          return Object.freeze({
+            finalResponse: "Fresh response",
+            memoryCandidates: Object.freeze([
+              Object.freeze({ content: "Fresh memory", tags: [] }),
+            ]),
+          });
+        },
+      }),
+    });
+
+    const result = await runRootExecutionKernel({
+      request: createRequest(
+        {
+          requestSteering,
+          onSessionTitle: vi.fn(async () => undefined),
+          onAcknowledgement: vi.fn(),
+        },
+        policy,
+      ),
+      ledger,
+    });
+
+    expect(authorCount).toBe(2);
+    expect(result).toMatchObject({
+      output: "Fresh response",
+      memoryCandidates: [{ content: "Fresh memory", tags: [] }],
+    });
+    expect(JSON.stringify(result)).not.toContain("Stale memory");
+  });
+
+  test("publishes a deferred title without a stale acknowledgement", async () => {
+    const requestSteering = createRequestSteeringInbox({
+      requestId: "deferred-title-request",
+    });
+    const ledger = createExactRootLedger("deferred-title-request");
+    await createRoot(ledger);
+    const onSessionTitle = vi.fn(async () => undefined);
+    const onAcknowledgement = vi.fn();
+    const policy: CompiledRequestExecutionPolicy = Object.freeze({
+      authority: ledger.current().policy.authority,
+      roleExecutors: createRoleExecutorRegistry<
+        RequestExecutionScope,
+        RequestRoleExecutionHandoff
+      >([]),
+      rootContract: Object.freeze({
+        contractId: "deferred_title_test",
+        decisionModelStep: "execution.decision",
+        responseModelStep: "execution.response",
+        deferRespondPresentation: true,
+        projectCallIdentity(head: RoleCallLedgerHead) {
+          const root = head.state.calls[0]!;
+          return Object.freeze({
+            rootCallId: root.callId,
+            callId: root.callId,
+            parentCallId: root.parentCallId,
+            depth: root.depth,
+            invocationAttempt: root.activationCount,
+          });
+        },
+        projectResume() {
+          throw new Error("unexpected child resume");
+        },
+        async decide() {
+          return Object.freeze({
+            steeringVersion: requestSteering.snapshot().version,
+            decision: Object.freeze({
+              action: "respond" as const,
+              title: "Useful title",
+              acknowledgement: "Stale preliminary answer",
+            }),
+          });
+        },
+        async authorResponse() {
+          return Object.freeze({
+            finalResponse: "Fresh final answer",
+            memoryCandidates: Object.freeze([]),
+          });
+        },
+      }),
+    });
+
+    const result = await runRootExecutionKernel({
+      request: createRequest(
+        { requestSteering, onSessionTitle, onAcknowledgement },
+        policy,
+      ),
+      ledger,
+    });
+
+    expect(result.output).toBe("Fresh final answer");
+    expect(onSessionTitle).toHaveBeenCalledExactlyOnceWith("Useful title");
+    expect(onAcknowledgement).not.toHaveBeenCalled();
+  });
+
+  test("never publishes an acknowledgement for a blocked terminal decision", async () => {
+    const requestSteering = createRequestSteeringInbox({
+      requestId: "terminal-acknowledgement-request",
+    });
+    const ledger = createExactRootLedger("terminal-acknowledgement-request");
+    await createRoot(ledger);
+    const onAcknowledgement = vi.fn();
+    const policy: CompiledRequestExecutionPolicy = Object.freeze({
+      authority: ledger.current().policy.authority,
+      roleExecutors: createRoleExecutorRegistry<
+        RequestExecutionScope,
+        RequestRoleExecutionHandoff
+      >([]),
+      rootContract: Object.freeze({
+        contractId: "terminal_acknowledgement_test",
+        decisionModelStep: "supervisor.decision",
+        responseModelStep: "supervisor.response",
+        projectCallIdentity(head: RoleCallLedgerHead) {
+          const root = head.state.calls[0]!;
+          return Object.freeze({
+            rootCallId: root.callId,
+            callId: root.callId,
+            parentCallId: root.parentCallId,
+            depth: root.depth,
+            invocationAttempt: root.activationCount,
+          });
+        },
+        projectResume() {
+          throw new Error("unexpected child resume");
+        },
+        async decide() {
+          return Object.freeze({
+            steeringVersion: requestSteering.snapshot().version,
+            decision: Object.freeze({
+              action: "blocked" as const,
+              response: "Publish only the blocked response.",
+              acknowledgement: "Do not publish this preliminary response.",
+            }),
+          });
+        },
+        async authorResponse() {
+          throw new Error("unexpected response authoring");
+        },
+      }),
+    });
+
+    const result = await runRootExecutionKernel({
+      request: createRequest(
+        {
+          requestSteering,
+          onSessionTitle: vi.fn(async () => undefined),
+          onAcknowledgement,
+        },
+        policy,
+      ),
+      ledger,
+    });
+
+    expect(result.output).toBe("Publish only the blocked response.");
+    expect(onAcknowledgement).not.toHaveBeenCalled();
+  });
 });
 
 function createExactRootLedger(requestId: string): RoleCallLedger {
@@ -173,7 +381,7 @@ async function createRoot(ledger: RoleCallLedger): Promise<void> {
 
 function createRequest(
   overrides: {
-    requestSteering: ReturnType<typeof createRequestSteeringInbox>;
+    requestSteering: RequestExecutionSeed["requestSteering"];
     onSessionTitle: RequestExecutionSeed["onSessionTitle"];
     onAcknowledgement: RequestExecutionSeed["onAcknowledgement"];
   },
@@ -182,30 +390,33 @@ function createRequest(
   const unexpectedGateway = async () => {
     throw new Error("unexpected model invocation");
   };
-  return createTestRequestExecutionScope({
-    requestId: "fresh-presentation-request",
-    sessionId: "fresh-presentation-session",
-    prompt: "Original request",
-    historyMessages: [],
-    shouldGenerateSessionTitle: true,
-    runnerConfig,
-    agentMode: "reasoning",
-    modelGatewayClient: {
-      invoke: unexpectedGateway as ModelGatewayClient["invoke"],
-      invokeRaw: unexpectedGateway as ModelGatewayClient["invokeRaw"],
+  return createTestRequestExecutionScope(
+    {
+      requestId: "fresh-presentation-request",
+      sessionId: "fresh-presentation-session",
+      prompt: "Original request",
+      historyMessages: [],
+      shouldGenerateSessionTitle: true,
+      runnerConfig,
+      agentMode: "reasoning",
+      modelGatewayClient: {
+        invoke: unexpectedGateway as ModelGatewayClient["invoke"],
+        invokeRaw: unexpectedGateway as ModelGatewayClient["invokeRaw"],
+      },
+      requestSteering: overrides.requestSteering,
+      workerCapabilityProvider: {
+        getDescriptors: () => Object.freeze([]),
+        getAdapters: () => Object.freeze([]),
+      },
+      toolPermissionMode: "full_access",
+      abortSignal: new AbortController().signal,
+      onAcknowledgement: overrides.onAcknowledgement,
+      onSessionTitle: overrides.onSessionTitle,
+      onThinkingDelta: vi.fn(),
+      onThinkingTrace: vi.fn(),
+      onAnswerToken: vi.fn(),
+      onEvent: vi.fn(),
     },
-    requestSteering: overrides.requestSteering,
-    workerCapabilityProvider: {
-      getDescriptors: () => Object.freeze([]),
-      getAdapters: () => Object.freeze([]),
-    },
-    toolPermissionMode: "full_access",
-    abortSignal: new AbortController().signal,
-    onAcknowledgement: overrides.onAcknowledgement,
-    onSessionTitle: overrides.onSessionTitle,
-    onThinkingDelta: vi.fn(),
-    onThinkingTrace: vi.fn(),
-    onAnswerToken: vi.fn(),
-    onEvent: vi.fn(),
-  }, { executionPolicy });
+    { executionPolicy },
+  );
 }

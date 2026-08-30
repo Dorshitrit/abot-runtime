@@ -4,6 +4,8 @@ import type {
   RoleCallLedgerHead,
   RoleCapabilityExecution,
 } from "../../orchestration/role-calls/index.js";
+import { projectImmediateRoleOperationSupervisionNotices } from "../../orchestration/role-calls/index.js";
+import { projectImmediateCapabilityReconsideration } from "./reconsideration-context.js";
 import type {
   CapabilityCatalogGroup,
   CapabilityDescriptor,
@@ -19,21 +21,78 @@ export const EXECUTION_AGENT_ACTION_MESSAGE_KIND =
   "runtime_execution_agent_action_v1" as const;
 export const EXECUTION_CAPABILITY_RESULT_MESSAGE_KIND =
   "runtime_execution_capability_result_v1" as const;
-export const EXECUTION_CAPABILITY_RECONSIDERATION_MESSAGE_KIND =
-  "runtime_execution_capability_reconsideration_v1" as const;
+export { EXECUTION_CAPABILITY_RECONSIDERATION_MESSAGE_KIND } from "./reconsideration-context.js";
 export const EXECUTION_CAPABILITY_TOOL_NAME = "runtime_capability" as const;
+
+type ExecutionStateNoticeProjection = Readonly<{
+  includeCapabilitySelectionReconsideration: boolean;
+  includeOperationSupervision: boolean;
+}>;
+
+const NON_DECISION_NOTICE_PROJECTION: ExecutionStateNoticeProjection =
+  Object.freeze({
+    includeCapabilitySelectionReconsideration: false,
+    includeOperationSupervision: false,
+  });
+
+const DECISION_NOTICE_PROJECTION: ExecutionStateNoticeProjection =
+  Object.freeze({
+    includeCapabilitySelectionReconsideration: true,
+    includeOperationSupervision: true,
+  });
 
 export function buildExecutionStateMessage(
   head: RoleCallLedgerHead,
   call: RoleCallFrame = requireActiveRootCall(head),
 ): ChatMessage {
+  return buildExecutionStateMessageForConsumer(
+    head,
+    call,
+    NON_DECISION_NOTICE_PROJECTION,
+  );
+}
+
+export function buildExecutionDecisionStateMessage(
+  head: RoleCallLedgerHead,
+  call: RoleCallFrame = requireActiveRootCall(head),
+  steeringVersion?: number,
+): ChatMessage {
+  return buildExecutionStateMessageForConsumer(
+    head,
+    call,
+    DECISION_NOTICE_PROJECTION,
+    steeringVersion,
+  );
+}
+
+export function buildExecutionRefinementStateMessage(
+  head: RoleCallLedgerHead,
+  call: RoleCallFrame = requireActiveRootCall(head),
+): ChatMessage {
+  return buildExecutionStateMessage(head, call);
+}
+
+export function buildExecutionResponseStateMessage(
+  head: RoleCallLedgerHead,
+  call: RoleCallFrame = requireActiveRootCall(head),
+): ChatMessage {
+  return buildExecutionStateMessage(head, call);
+}
+
+function buildExecutionStateMessageForConsumer(
+  head: RoleCallLedgerHead,
+  call: RoleCallFrame,
+  projection: ExecutionStateNoticeProjection,
+  steeringVersion?: number,
+): ChatMessage {
   assertExecutionRoot(head, call);
-  const reconsideration = call.lastCapabilitySelectionReconsideration;
   const immediateReconsideration =
-    reconsideration &&
-    call.activationCount === reconsideration.invocationAttempt + 1
-      ? reconsideration
+    projection.includeCapabilitySelectionReconsideration
+      ? projectImmediateCapabilityReconsideration(head, call, steeringVersion)
       : undefined;
+  const operationSupervision = projection.includeOperationSupervision
+    ? projectImmediateRoleOperationSupervisionNotices(head, call)
+    : Object.freeze([]);
   return Object.freeze({
     role: "user" as const,
     content: JSON.stringify({
@@ -63,36 +122,27 @@ export function buildExecutionStateMessage(
         })),
       ...(immediateReconsideration
         ? {
-            capabilitySelectionReconsideration: {
-              kind: EXECUTION_CAPABILITY_RECONSIDERATION_MESSAGE_KIND,
-              authority: "canonical_role_call_ledger",
-              presenceEffect: "passive_continuity_not_next_action",
-              outcome: "reconsidered_before_execution",
-              executionOccurred: false,
-              invocationAttempt: immediateReconsideration.invocationAttempt,
-              steeringVersion: immediateReconsideration.steeringVersion,
-              fingerprint: immediateReconsideration.fingerprint,
-              selection: {
-                ...immediateReconsideration.selection,
-                invocations: immediateReconsideration.selection.invocations.map(
-                  (invocation) => ({
-                    capabilityId: invocation.capabilityId,
-                    selectionControls: JSON.parse(
-                      invocation.selectionControlsJson,
-                    ) as unknown,
-                  }),
-                ),
-              },
-            },
+            capabilitySelectionReconsideration: immediateReconsideration,
           }
         : {}),
+      ...(operationSupervision.length > 0 ? { operationSupervision } : {}),
       omissionSemantics: {
         capabilityResults:
           "Accepted capability actions and exact canonical adapter results are supplied only in the chronological native tool lane after the current request.",
         subordinateResults:
           "A listed subordinate result is passive evidence and never selects the next action.",
-        capabilitySelectionReconsideration:
-          "When present, it records only that the exact prior selection was reconsidered before execution; it neither selects a replacement nor establishes any result.",
+        ...(projection.includeCapabilitySelectionReconsideration
+          ? {
+              capabilitySelectionReconsideration:
+                "When present, it records only that controls refinement for the exact prior selection exhausted structured-output validation before execution. Its optional supervision field is passive mechanical repetition metadata, not a semantic judgment or requirement to execute; the receipt selects no replacement and establishes no result.",
+            }
+          : {}),
+        ...(projection.includeOperationSupervision
+          ? {
+              operationSupervision:
+                "When present, it reports bounded mechanical repetition notices created for this activation only. A notice is neither user intent nor a capability result and does not select the next action.",
+            }
+          : {}),
       },
     }),
   });

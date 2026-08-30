@@ -3,6 +3,7 @@ import type {
   RoleCallFrame,
   RoleCallLedger,
   RoleCallLedgerHead,
+  RoleCallOperationSupervisionInterventionCommit,
   RoleCallPlanBinding,
   RoleCallWorkerCapabilityScope,
 } from "../role-calls/index.js";
@@ -32,6 +33,11 @@ export type RoleCapabilityBatchExecutionContinuationReference = Readonly<{
   executionIds: readonly string[];
 }>;
 
+export type RoleOperationSupervisionInterventionContinuation = Readonly<{
+  kind: "operation_supervision_intervention";
+  commit: RoleCallOperationSupervisionInterventionCommit;
+}>;
+
 export type RoleChildContinuationReference = Readonly<{
   kind: "role_child";
   commit: RoleCallChildReturnCommit;
@@ -40,13 +46,15 @@ export type RoleChildContinuationReference = Readonly<{
 export type RoleExecutionContinuationReference =
   | RoleCapabilityExecutionContinuationReference
   | RoleCapabilityBatchExecutionContinuationReference
+  | RoleOperationSupervisionInterventionContinuation
   | RoleChildContinuationReference;
 
 export type RoleExecutionContinuation = Readonly<{
   kind: "continue";
   continuation:
     | RoleCapabilityExecutionContinuationReference
-    | RoleCapabilityBatchExecutionContinuationReference;
+    | RoleCapabilityBatchExecutionContinuationReference
+    | RoleOperationSupervisionInterventionContinuation;
 }>;
 
 export type RoleExecutionChildInvocation = Readonly<{

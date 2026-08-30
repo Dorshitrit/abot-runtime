@@ -76,6 +76,7 @@ export type ToolNormalInvocationOperation = Readonly<{
   operationId: string;
   summary: string;
   input: ToolNormalInvocationInput;
+  selectionControlIds?: readonly string[];
   fixedParams?: Readonly<Record<string, ToolNormalInvocationFixedValue>>;
   payload?: ToolNormalInvocationPayload;
   effect: ToolNormalInvocationEffect;

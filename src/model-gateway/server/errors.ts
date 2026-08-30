@@ -1,4 +1,6 @@
 import { ModelInvocationResolutionError } from "../policy/invocation-policy.js";
+import { EmbeddingProviderRequestError } from "../embeddings/execution.js";
+import { EmbeddingProfileResolutionError } from "../embeddings/profile.js";
 import {
   ModelProviderContextWindowExceededError,
   ModelProviderEnvelopeInspectionError,
@@ -29,6 +31,43 @@ function handleProviderAdapterResolutionError(
   return true;
 }
 
+function handleEmbeddingProfileResolutionError(
+  error: unknown,
+  response: GatewayResponse,
+): boolean {
+  if (!(error instanceof EmbeddingProfileResolutionError)) {
+    return false;
+  }
+  sendText(response, error.statusCode, error.message);
+  return true;
+}
+
+function handleBadRequestError(
+  error: unknown,
+  response: GatewayResponse,
+): boolean {
+  if (
+    !(error instanceof Error) ||
+    !("statusCode" in error) ||
+    error.statusCode !== 400
+  ) {
+    return false;
+  }
+  sendText(response, 400, error.message);
+  return true;
+}
+
+function handleEmbeddingProviderRequestError(
+  error: unknown,
+  response: GatewayResponse,
+): boolean {
+  if (!(error instanceof EmbeddingProviderRequestError)) {
+    return false;
+  }
+  sendText(response, error.statusCode, error.message);
+  return true;
+}
+
 function handleProviderContextWindowError(
   error: unknown,
   response: GatewayResponse,
@@ -52,6 +91,15 @@ export function handleKnownGatewayError(params: {
     return true;
   }
   if (handleProviderAdapterResolutionError(params.error, params.response)) {
+    return true;
+  }
+  if (handleEmbeddingProfileResolutionError(params.error, params.response)) {
+    return true;
+  }
+  if (handleEmbeddingProviderRequestError(params.error, params.response)) {
+    return true;
+  }
+  if (handleBadRequestError(params.error, params.response)) {
     return true;
   }
   return (

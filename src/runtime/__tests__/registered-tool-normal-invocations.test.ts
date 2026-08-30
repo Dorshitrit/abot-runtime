@@ -10,6 +10,153 @@ import type {
 import type { ToolApprovalController, ToolRegistry } from "../ports.js";
 
 describe("registered ordinary tool invocation executor", () => {
+  test("prepares an exact normalized action identity without starting the tool", async () => {
+    const execute = vi.fn(async () => ({
+      ok: true,
+      tool: "inspect_target",
+      output: "selected lines",
+      producedNewInformation: true,
+    }));
+    const onEvent = vi.fn();
+    const inspectOperation: ToolNormalInvocationOperation = {
+      operationId: "inspect_target",
+      summary: "Read one exact file range.",
+      input: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          path: { type: "string", minLength: 1, maxLength: 4_096 },
+          start_line: { type: "integer", minimum: 1, maximum: 1_000_000 },
+          end_line: { type: "integer", minimum: 1, maximum: 1_000_000 },
+        },
+        required: ["path", "start_line", "end_line"],
+      },
+      effect: "read_only",
+      approval: "request_policy",
+    };
+    const executor = createExecutor({
+      registrations: [
+        {
+          toolName: "inspect_target",
+          definition: {
+            name: "inspect_target",
+            routingCapability: "semantic_lookup",
+            executionEffect: "read_only",
+            params: {
+              path: "string",
+              start_line: "number",
+              end_line: "number",
+            },
+          },
+          contract: { version: 1, operations: [inspectOperation] },
+        },
+      ],
+      execute,
+      onEvent,
+    });
+    const handle = executor.operations[0]!.handle;
+
+    const first = executor.prepare({
+      handle,
+      controls: { path: "notes.txt", start_line: 1, end_line: 20 },
+      intent: "Read the first range.",
+    });
+    const sameActionDifferentIntent = executor.prepare({
+      handle,
+      controls: { end_line: 20, path: "notes.txt", start_line: 1 },
+      intent: "Use different presentation text.",
+    });
+    const differentRange = executor.prepare({
+      handle,
+      controls: { path: "notes.txt", start_line: 21, end_line: 40 },
+    });
+
+    expect(first.status).toBe("prepared");
+    expect(sameActionDifferentIntent.status).toBe("prepared");
+    expect(differentRange.status).toBe("prepared");
+    if (
+      first.status !== "prepared" ||
+      sameActionDifferentIntent.status !== "prepared" ||
+      differentRange.status !== "prepared"
+    ) {
+      throw new Error("expected prepared normal invocations");
+    }
+    expect(first.actionFingerprint).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(first.acceptedControls).toEqual({
+      path: "notes.txt",
+      start_line: 1,
+      end_line: 20,
+    });
+    expect(Object.isFrozen(first.acceptedControls)).toBe(true);
+    expect(sameActionDifferentIntent.actionFingerprint).toBe(
+      first.actionFingerprint,
+    );
+    expect(sameActionDifferentIntent.acceptedControls).toEqual(
+      first.acceptedControls,
+    );
+    expect(differentRange.acceptedControls).toEqual({
+      path: "notes.txt",
+      start_line: 21,
+      end_line: 40,
+    });
+    expect(differentRange.actionFingerprint).not.toBe(first.actionFingerprint);
+    expect(execute).not.toHaveBeenCalled();
+    expect(onEvent).not.toHaveBeenCalled();
+
+    await expect(first.execute()).resolves.toMatchObject({
+      status: "executed",
+      effect: "read_only",
+    });
+    expect(execute).toHaveBeenCalledOnce();
+    expect(onEvent.mock.calls.map(([name]) => name)).toEqual([
+      "tool.started",
+      "tool.completed",
+    ]);
+  });
+
+  test("keeps distinct web-query values as distinct normalized actions", () => {
+    const execute = vi.fn(async () => ({
+      ok: true,
+      tool: "web_search",
+      output: "current sources",
+      producedNewInformation: true,
+    }));
+    const executor = createExecutor({
+      registrations: [registration("web_search", operation())],
+      execute,
+    });
+    const handle = executor.operations[0]!.handle;
+    const first = executor.prepare({
+      handle,
+      controls: { query: "runtime supervision" },
+      intent: "Search for the first topic.",
+    });
+    const sameQuery = executor.prepare({
+      handle,
+      controls: { query: "runtime supervision" },
+      intent: "Use different presentation text.",
+    });
+    const differentQuery = executor.prepare({
+      handle,
+      controls: { query: "batch execution contracts" },
+      intent: "Search for the second topic.",
+    });
+
+    expect(first.status).toBe("prepared");
+    expect(sameQuery.status).toBe("prepared");
+    expect(differentQuery.status).toBe("prepared");
+    if (
+      first.status !== "prepared" ||
+      sameQuery.status !== "prepared" ||
+      differentQuery.status !== "prepared"
+    ) {
+      throw new Error("expected prepared web-search invocations");
+    }
+    expect(sameQuery.actionFingerprint).toBe(first.actionFingerprint);
+    expect(differentQuery.actionFingerprint).not.toBe(first.actionFingerprint);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   test("executes one opaque captured operation and forwards neutral result and events", async () => {
     const executionResult = {
       ok: true,
@@ -630,14 +777,18 @@ describe("registered ordinary tool invocation executor", () => {
     expect(projection).not.toHaveProperty("toolName");
     expect(projection).not.toHaveProperty("eventIdentity");
     expect(JSON.stringify(projection)).not.toContain("document");
-    expect(
-      executor.emitPayloadLifecycle({
-        handle: projection.handle,
-        controls: { query: "Roadmap" },
-        intent,
-        phase: "started",
-      }),
-    ).toEqual({ status: "emitted" });
+    const preparedStarted = executor.preparePayloadLifecycle({
+      handle: projection.handle,
+      controls: { query: "Roadmap" },
+      intent,
+      phase: "started",
+    });
+    expect(preparedStarted).toMatchObject({ status: "prepared" });
+    expect(onEvent).not.toHaveBeenCalled();
+    if (preparedStarted.status !== "prepared") {
+      throw new Error("payload lifecycle preparation missing");
+    }
+    expect(preparedStarted.emit()).toEqual({ status: "emitted" });
     expect(
       executor.emitPayloadLifecycle({
         handle: projection.handle,

@@ -1,4 +1,8 @@
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
+import type {
+  ChatMessage,
+  ModelGatewayJsonSchemaFormat,
+} from "../../../model-gateway/types.js";
 import { projectRequestContext } from "../../context/request-context.js";
 import { projectRootSessionMemory } from "../../context/session-memory/root-projection.js";
 import {
@@ -15,7 +19,11 @@ import {
   type SupervisorResponseResumeContext,
 } from "./contracts.js";
 import { traceSupervisorResponseContextProjected } from "./diagnostics.js";
-import { buildSupervisorResponseInstructions } from "./prompt.js";
+import { createSupervisorMemoryCandidatesFormat } from "./memory-authoring.js";
+import {
+  buildSupervisorMemoryAuthoringInstructions,
+  buildSupervisorResponseInstructions,
+} from "./prompt.js";
 
 export type SupervisorResponseInputRequest = Pick<
   RequestExecutionSeed,
@@ -32,10 +40,48 @@ export type SupervisorResponseInputRequest = Pick<
 
 export function buildSupervisorResponseInput(
   request: SupervisorResponseInputRequest,
-  options: Readonly<{
-    call: SupervisorResponseCallIdentity;
-    toolResults: RequestToolResultsView;
-    resume?: SupervisorResponseResumeContext;
+  options: SupervisorResponseInputOptions,
+): {
+  context: RequestContextProjection;
+  modelStep: typeof SUPERVISOR_RESPONSE_MODEL_STEP;
+} {
+  return buildSupervisorInput(request, options, {
+    instructions: buildSupervisorResponseInstructions({
+      hasCompletedChildResult: options.resume !== undefined,
+      hasRequestToolResults: options.toolResults.results.length > 0,
+    }),
+  });
+}
+
+export function buildSupervisorMemoryAuthoringInput(
+  request: SupervisorResponseInputRequest,
+  options: SupervisorResponseInputOptions,
+): {
+  context: RequestContextProjection;
+  modelStep: typeof SUPERVISOR_RESPONSE_MODEL_STEP;
+} {
+  return buildSupervisorInput(request, options, {
+    instructions: buildSupervisorMemoryAuthoringInstructions({
+      hasCompletedChildResult: options.resume !== undefined,
+      hasRequestToolResults: options.toolResults.results.length > 0,
+    }),
+    format: createSupervisorMemoryCandidatesFormat(),
+  });
+}
+
+type SupervisorResponseInputOptions = Readonly<{
+  call: SupervisorResponseCallIdentity;
+  toolResults: RequestToolResultsView;
+  resume?: SupervisorResponseResumeContext;
+  longTermMemoryMessage?: ChatMessage;
+}>;
+
+function buildSupervisorInput(
+  request: SupervisorResponseInputRequest,
+  options: SupervisorResponseInputOptions,
+  contract: Readonly<{
+    instructions: string;
+    format?: ModelGatewayJsonSchemaFormat;
   }>,
 ): {
   context: RequestContextProjection;
@@ -63,10 +109,12 @@ export function buildSupervisorResponseInput(
           messages: decisionContinuationPart.compactMessages,
         })
       : undefined;
-  const referenceMessages =
-    options.toolResults.results.length > 0
+  const referenceMessages = [
+    ...(options.toolResults.results.length > 0
       ? [buildRequestToolResultsMessage(options.toolResults)]
-      : [];
+      : []),
+    ...(options.longTermMemoryMessage ? [options.longTermMemoryMessage] : []),
+  ];
   const budget = resolveModelContextBudget({
     runnerConfig: request.runnerConfig,
     agentMode: request.agentMode,
@@ -78,11 +126,9 @@ export function buildSupervisorResponseInput(
   });
   const sessionMemory = projectRootSessionMemory(request);
   const context = projectRequestContext({
-    instructions: buildSupervisorResponseInstructions({
-      hasCompletedChildResult: options.resume !== undefined,
-      hasRequestToolResults: options.toolResults.results.length > 0,
-    }),
+    instructions: contract.instructions,
     ...sessionMemory,
+    ...(contract.format ? { format: contract.format } : {}),
     prompt: request.prompt,
     currentMessagePlacement: "after_continuation",
     ...(request.attachments ? { attachments: request.attachments } : {}),

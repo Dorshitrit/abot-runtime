@@ -8,6 +8,7 @@ import type {
   RoleCallLedgerHead,
   RoleCallWorkerCapabilityScope,
   RoleCapabilitySelectionProjection,
+  RoleCapabilitySelectionReconsiderationCause,
   RoleChildReturnContext,
 } from "../orchestration/role-calls/index.js";
 import type { RuntimeDelegateRoleId } from "../orchestration/roles.js";
@@ -17,6 +18,7 @@ import type {
   WorkerCapabilityControls,
 } from "../orchestration/worker-capabilities/index.js";
 import type { RequestRoleExecutionHandoff } from "./result.js";
+import type { RootAuthoredResponse } from "../long-term-memory/contracts.js";
 
 export type RootContractCallIdentity = Readonly<{
   rootCallId: string;
@@ -77,6 +79,7 @@ export type RootContractDecision =
   | Readonly<{
       action: "reconsider_capability_selection";
       selection: RoleCapabilitySelectionProjection;
+      cause: RoleCapabilitySelectionReconsiderationCause;
       acknowledgement?: undefined;
       title?: undefined;
     }>;
@@ -121,7 +124,7 @@ export type RootContractAdapter<TRequest> = Readonly<{
       toolResults: RequestToolResultsView;
       resume?: RoleChildReturnContext;
     }>,
-  ): Promise<string>;
+  ): Promise<RootAuthoredResponse>;
 }>;
 
 export type CompiledExecutionPolicy<TRequest> = Readonly<{

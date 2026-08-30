@@ -107,6 +107,27 @@ describe("normal tool invocation contract", () => {
     });
   });
 
+  test("preserves declarative selection controls as frozen operation authority", () => {
+    const base = createNormalModule();
+    const operation = base.normalInvocation.operations[0]!;
+    const [registered] = createToolRegistry({
+      modules: [
+        {
+          ...base,
+          normalInvocation: {
+            version: 1,
+            operations: [
+              { ...operation, selectionControlIds: Object.freeze(["title"]) },
+            ],
+          },
+        },
+      ],
+    }).getNormalInvocations()[0]!.contract.operations;
+
+    expect(registered?.selectionControlIds).toEqual(["title"]);
+    expect(Object.isFrozen(registered?.selectionControlIds)).toBe(true);
+  });
+
   test("accepts an explicitly unbounded string beyond the bounded-string ceiling", () => {
     const base = createNormalModule();
     const operation = base.normalInvocation?.operations[0];
@@ -155,13 +176,22 @@ describe("normal tool invocation contract", () => {
     const contract = structuredClone(module.normalInvocation);
     const operation = contract.operations[0];
     if (!operation?.payload) throw new Error("missing test payload");
-    operation.payload.minBytes = 1;
+    const contractWithMinimumPayload = {
+      ...contract,
+      operations: [
+        {
+          ...operation,
+          payload: { ...operation.payload, minBytes: 1 },
+        },
+        ...contract.operations.slice(1),
+      ],
+    } satisfies ToolNormalInvocationContract;
 
     const [registration] = createToolRegistry({
       modules: [
         {
           ...module,
-          normalInvocation: contract,
+          normalInvocation: contractWithMinimumPayload,
         },
       ],
     }).getNormalInvocations();
@@ -233,6 +263,32 @@ describe("normal tool invocation contract", () => {
         };
       },
       issue: "parameter title cannot be both input and fixed",
+    },
+    {
+      label: "unknown selection control",
+      mutate: (contract: Record<string, unknown>) => {
+        const operations = contract.operations as Array<
+          Record<string, unknown>
+        >;
+        operations[0] = {
+          ...(operations[0] ?? {}),
+          selectionControlIds: ["unknown"],
+        };
+      },
+      issue: "unknown input control unknown",
+    },
+    {
+      label: "optional selection control",
+      mutate: (contract: Record<string, unknown>) => {
+        const operations = contract.operations as Array<
+          Record<string, unknown>
+        >;
+        operations[0] = {
+          ...(operations[0] ?? {}),
+          selectionControlIds: ["priority"],
+        };
+      },
+      issue: "selection control priority must be required",
     },
     {
       label: "string without a minimum",

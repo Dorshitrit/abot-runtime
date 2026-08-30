@@ -3,24 +3,39 @@ import { describe, expect, test, vi } from "vitest";
 import {
   createConversationSessionController,
   normalizeConversationMessage,
+  type ConversationSessionMessage,
 } from "../../web-ui/app/controllers/conversation-session-controller.js";
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 function createHarness() {
+  let environmentId = "dev";
   const state = {
     currentSessionId: "",
     activeRequestId: "",
     sessionViewVersion: 0,
-    messages: [] as Array<Record<string, any>>,
-    events: [] as Array<Record<string, any>>,
-    taskProgressByRequest: new Map(),
-    contextWindowByRequest: new Map(),
+    messages: [] as ConversationSessionMessage[],
+    events: [] as Array<Record<string, unknown>>,
+    taskProgressByRequest: new Map<string, Record<string, unknown>>(),
+    contextWindowByRequest: new Map<string, Record<string, unknown>>(),
     submittedToolApprovalIds: new Set<string>(),
     requestMessages: new Map<string, string>(),
     lastSeqByRequest: new Map<string, number>(),
+    sessions: [] as Array<Record<string, unknown>>,
   };
   const client = {
     markSessionRead: vi.fn(async () => ({ readState: {} })),
-    listSessions: vi.fn(async () => ({ sessions: [] })),
+    listSessions: vi.fn(
+      async (): Promise<{ sessions: Array<Record<string, unknown>> }> => ({
+        sessions: [],
+      }),
+    ),
     loadSession: vi.fn(async () => ({
       title: "Loaded session",
       readState: { unreadCount: 0 },
@@ -81,8 +96,11 @@ function createHarness() {
     peek: vi.fn(() => null),
   };
   const conversationView = { reset: vi.fn() };
-  const sendRealtime = vi.fn(() => true);
-  const handleRealtimeMessage = vi.fn();
+  const sendRealtime = vi.fn<(message: Record<string, unknown>) => boolean>(
+    () => true,
+  );
+  const handleRealtimeMessage =
+    vi.fn<(message: Record<string, unknown>) => void>();
   const dependencies = {
     state,
     dom: {
@@ -97,7 +115,7 @@ function createHarness() {
     sessions,
     sessionQueue,
     conversationView,
-    selectedEnvironmentId: () => "dev",
+    selectedEnvironmentId: () => environmentId,
     clearPendingAttachments: vi.fn(),
     applyConversationChrome: vi.fn(),
     applyModelSelection: vi.fn(),
@@ -125,7 +143,10 @@ function createHarness() {
     sendRealtime,
     handleRealtimeMessage,
     dependencies,
-    controller: createConversationSessionController(dependencies as never),
+    setEnvironmentId(nextEnvironmentId: string) {
+      environmentId = nextEnvironmentId;
+    },
+    controller: createConversationSessionController(dependencies),
   };
 }
 
@@ -221,5 +242,30 @@ describe("web ui conversation session controller", () => {
       text: "first",
       thinkingText: "reasoning",
     });
+  });
+
+  test("does not restore a stale session list after an environment round trip", async () => {
+    const harness = createHarness();
+    const staleSessions = deferred<{ sessions: Array<{ id: string }> }>();
+    harness.client.listSessions
+      .mockReturnValueOnce(staleSessions.promise)
+      .mockResolvedValueOnce({ sessions: [] });
+
+    harness.controller.invalidateEnvironmentLoads();
+    const staleRestore = harness.controller.restoreLastSession();
+    harness.setEnvironmentId("prod");
+    harness.controller.invalidateEnvironmentLoads();
+    harness.setEnvironmentId("dev");
+    harness.controller.invalidateEnvironmentLoads();
+    await harness.controller.restoreLastSession();
+
+    staleSessions.resolve({ sessions: [{ id: "stale-session" }] });
+    await staleRestore;
+
+    expect(harness.client.loadSession).not.toHaveBeenCalled();
+    expect(harness.state.currentSessionId).toBe("");
+    expect(
+      harness.dependencies.preferences.saveSessionIdForEnvironment,
+    ).not.toHaveBeenCalled();
   });
 });

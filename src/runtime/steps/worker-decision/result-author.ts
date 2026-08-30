@@ -82,6 +82,9 @@ export async function runWorkerResultAuthor(
       ...(options.source.requestToolResultsContextMessage
         ? [options.source.requestToolResultsContextMessage]
         : []),
+      ...(options.source.operationSupervisionEvidenceContextMessage
+        ? [options.source.operationSupervisionEvidenceContextMessage]
+        : []),
     ]);
     const context = projectRequestContext({
       instructions: buildWorkerResultInstructions(),
@@ -114,6 +117,9 @@ export async function runWorkerResultAuthor(
         ),
       requestToolResultsContextLength:
         options.source.requestToolResultsContextMessage?.content.length ?? 0,
+      operationSupervisionEvidenceContextLength:
+        options.source.operationSupervisionEvidenceContextMessage?.content
+          .length ?? 0,
       estimatedInputTokens: context.budget.estimatedInputTokens,
       availableInputTokens: context.budget.availableInputTokens,
     });
@@ -231,7 +237,12 @@ function validateSource(
     (source.requestToolResultsContextMessage !== undefined &&
       (!Object.isFrozen(source.requestToolResultsContextMessage) ||
         source.requestToolResultsContextMessage.role !== "user" ||
-        source.requestToolResultsContextMessage.content.trim().length === 0))
+        source.requestToolResultsContextMessage.content.trim().length === 0)) ||
+    (source.operationSupervisionEvidenceContextMessage !== undefined &&
+      (!Object.isFrozen(source.operationSupervisionEvidenceContextMessage) ||
+        source.operationSupervisionEvidenceContextMessage.role !== "user" ||
+        source.operationSupervisionEvidenceContextMessage.content.trim()
+          .length === 0))
   ) {
     throw new Error("worker_result_source_context_invalid");
   }

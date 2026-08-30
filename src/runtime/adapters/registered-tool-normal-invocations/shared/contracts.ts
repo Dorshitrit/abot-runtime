@@ -53,6 +53,19 @@ export type RegisteredToolNormalInvocationResult =
   | RegisteredToolNormalInvocationExecution
   | RegisteredToolNormalInvocationRejection;
 
+export type RegisteredToolPreparedNormalInvocation = Readonly<{
+  status: "prepared";
+  /** Opaque identity of the exact normalized call that would be executed. */
+  actionFingerprint: string;
+  /** Exact validated non-payload controls accepted for this invocation. */
+  acceptedControls: Readonly<Record<string, unknown>>;
+  execute(): Promise<RegisteredToolNormalInvocationResult>;
+}>;
+
+export type RegisteredToolNormalInvocationPreparation =
+  | RegisteredToolPreparedNormalInvocation
+  | RegisteredToolNormalInvocationRejection;
+
 export type RegisteredToolNormalInvocationPayloadLifecyclePhase =
   | "started"
   | "completed"
@@ -60,6 +73,15 @@ export type RegisteredToolNormalInvocationPayloadLifecyclePhase =
 
 export type RegisteredToolNormalInvocationPayloadLifecycleResult =
   | Readonly<{ status: "emitted" }>
+  | RegisteredToolNormalInvocationRejection;
+
+export type RegisteredToolPreparedNormalInvocationPayloadLifecycle = Readonly<{
+  status: "prepared";
+  emit(): Readonly<{ status: "emitted" }>;
+}>;
+
+export type RegisteredToolNormalInvocationPayloadLifecyclePreparation =
+  | RegisteredToolPreparedNormalInvocationPayloadLifecycle
   | RegisteredToolNormalInvocationRejection;
 
 export type RegisteredToolNormalInvocationExecutor = Readonly<{
@@ -81,6 +103,37 @@ export type RegisteredToolNormalInvocationExecutor = Readonly<{
       outputParam?: string;
     }>,
   ): RegisteredToolNormalInvocationPayloadLifecycleResult;
+  /**
+   * Validates and materializes one payload lifecycle event without publishing
+   * it. The prepared event can be released only after canonical admission.
+   */
+  preparePayloadLifecycle(
+    input: Readonly<{
+      handle: RegisteredToolNormalInvocationHandle;
+      controls: Readonly<Record<string, unknown>>;
+      /** Client-facing lifecycle metadata; never part of tool parameters. */
+      intent?: string;
+      phase: RegisteredToolNormalInvocationPayloadLifecyclePhase;
+      errorCode?: string;
+      payloadStage?: number;
+      payloadStageCount?: number;
+      outputParam?: string;
+    }>,
+  ): RegisteredToolNormalInvocationPayloadLifecyclePreparation;
+  /**
+   * Fully validates and normalizes an invocation without approval or tool
+   * execution. The returned action fingerprint is safe for generic admission.
+   */
+  prepare(
+    input: Readonly<{
+      handle: RegisteredToolNormalInvocationHandle;
+      controls: Readonly<Record<string, unknown>>;
+      payload?: string;
+      materializedParams?: Readonly<Record<string, string>>;
+      /** Client-facing lifecycle metadata; never part of tool parameters. */
+      intent?: string;
+    }>,
+  ): RegisteredToolNormalInvocationPreparation;
   execute(
     input: Readonly<{
       handle: RegisteredToolNormalInvocationHandle;
@@ -122,4 +175,8 @@ export type RegisteredToolNormalInvocationPayloadLifecycleInput = Parameters<
 
 export type RegisteredToolNormalInvocationExecutionInput = Parameters<
   RegisteredToolNormalInvocationExecutor["execute"]
+>[0];
+
+export type RegisteredToolNormalInvocationPreparationInput = Parameters<
+  RegisteredToolNormalInvocationExecutor["prepare"]
 >[0];

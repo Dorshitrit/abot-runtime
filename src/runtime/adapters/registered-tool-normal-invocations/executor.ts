@@ -9,8 +9,12 @@ import type {
 } from "./shared/contracts.js";
 import { captureNormalInvocationRegistrations } from "./catalog/registrations.js";
 import { projectRuntimePathBindings } from "./catalog/runtime-path-bindings.js";
-import { executeNormalInvocation } from "./execution/run.js";
+import {
+  executeNormalInvocation,
+  prepareNormalInvocation,
+} from "./execution/run.js";
 import { emitNormalInvocationPayloadLifecycle } from "./payload/lifecycle.js";
+import { prepareNormalInvocationPayloadLifecycle } from "./payload/lifecycle.js";
 
 /**
  * Captures one selected ToolRegistry snapshot and executes its ordinary
@@ -47,9 +51,7 @@ export function createRegisteredToolNormalInvocationExecutor(
           Object.freeze({
             registration,
             operation,
-            ...(runtimePathBindings.length > 0
-              ? { runtimePathBindings }
-              : {}),
+            ...(runtimePathBindings.length > 0 ? { runtimePathBindings } : {}),
             ...(payloadContextPlan ? { payloadContextPlan } : {}),
             ...(stagedPayloadPlan ? { stagedPayloadPlan } : {}),
           }),
@@ -72,6 +74,21 @@ export function createRegisteredToolNormalInvocationExecutor(
         operationByHandle,
         input,
         ...(params.onEvent ? { onEvent: params.onEvent } : {}),
+      });
+    },
+    preparePayloadLifecycle(input) {
+      return prepareNormalInvocationPayloadLifecycle({
+        operationByHandle,
+        input,
+        ...(params.onEvent ? { onEvent: params.onEvent } : {}),
+      });
+    },
+    prepare(input) {
+      return prepareNormalInvocation({
+        executor: params,
+        registrations,
+        operationByHandle,
+        input,
       });
     },
     execute(input) {

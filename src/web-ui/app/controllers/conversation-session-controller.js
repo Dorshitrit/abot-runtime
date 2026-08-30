@@ -49,6 +49,18 @@ export function createConversationSessionController({
   scheduleTask = (callback) => window.setTimeout(callback, 0),
   createSessionId = createWebSessionId,
 }) {
+  let environmentLoadRevision = 0;
+  let sessionListRevision = 0;
+  let sessionRestoreRevision = 0;
+
+  function invalidateEnvironmentLoads() {
+    environmentLoadRevision += 1;
+    sessionListRevision += 1;
+    sessionRestoreRevision += 1;
+    state.sessions = [];
+    renderSessions();
+  }
+
   function normalizeMessage(raw) {
     return normalizeConversationMessage(raw, state.messages.length);
   }
@@ -338,12 +350,29 @@ export function createConversationSessionController({
   }
 
   async function loadSessions() {
+    const environmentRevision = environmentLoadRevision;
+    const requestRevision = ++sessionListRevision;
+    const environmentId = selectedEnvironmentId();
     try {
-      const payload = await client.listSessions(selectedEnvironmentId());
+      const payload = await client.listSessions(environmentId);
+      if (
+        environmentRevision !== environmentLoadRevision ||
+        requestRevision !== sessionListRevision ||
+        environmentId !== selectedEnvironmentId()
+      ) {
+        return [];
+      }
       state.sessions = Array.isArray(payload.sessions) ? payload.sessions : [];
       renderSessions();
       return state.sessions;
     } catch (error) {
+      if (
+        environmentRevision !== environmentLoadRevision ||
+        requestRevision !== sessionListRevision ||
+        environmentId !== selectedEnvironmentId()
+      ) {
+        return [];
+      }
       dom.sessionsList.innerHTML = `<div class="empty-state error-text">${escapeHtml(
         error instanceof Error ? error.message : String(error),
       )}</div>`;
@@ -352,9 +381,19 @@ export function createConversationSessionController({
   }
 
   async function restoreLastSession() {
-    const availableSessions = await loadSessions();
-    if (availableSessions.length === 0 || state.currentSessionId) return;
+    const environmentRevision = environmentLoadRevision;
+    const restoreRevision = ++sessionRestoreRevision;
     const environmentId = selectedEnvironmentId();
+    const availableSessions = await loadSessions();
+    if (
+      environmentRevision !== environmentLoadRevision ||
+      restoreRevision !== sessionRestoreRevision ||
+      environmentId !== selectedEnvironmentId() ||
+      availableSessions.length === 0 ||
+      state.currentSessionId
+    ) {
+      return;
+    }
     const savedSessionId = preferences.sessionIdForEnvironment(environmentId);
     const targetSession =
       availableSessions.find((session) => session.id === savedSessionId) ||
@@ -543,6 +582,7 @@ export function createConversationSessionController({
     clearSessionMessagesView,
     ensureSession,
     insertSteerMessage,
+    invalidateEnvironmentLoads,
     loadSessions,
     markCurrentSessionReadSoon,
     normalizeMessage,

@@ -61,6 +61,17 @@ plugin entrypoints are not currently supported.
 Plugin behavior belongs inside the plugin. Runtime orchestration should only
 see the generic selected catalog and execution results.
 
+## Passive Long-Term Memory
+
+Passive long-term memory is disabled by default and requires an embedding model
+selected and operated by the consumer. ABot provides OpenAI and Ollama adapter
+contracts, but it does not install, download, or choose that model.
+
+Ollama exposes installed-model discovery. OpenAI does not expose equivalent
+discovery through this integration, so its embedding model id is entered
+manually. If an enabled embedding provider becomes unavailable, memory
+retrieval or saving is skipped while the completed user response is preserved.
+
 ## Web UI
 
 The packaged Web UI is the primary local GUI. Its default backend talks directly

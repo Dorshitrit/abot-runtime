@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   configureModelIoTrace,
@@ -172,12 +172,11 @@ describe("model I/O trace", () => {
     };
     const invocation = resolveModelInvocation(requestBody);
     let cloneCalled = false;
-    const response = {
-      clone() {
-        cloneCalled = true;
-        throw new Error("response must not be cloned");
-      },
-    } as Response;
+    const response = new Response();
+    vi.spyOn(response, "clone").mockImplementation(() => {
+      cloneCalled = true;
+      throw new Error("response must not be cloned");
+    });
 
     const result = await fetchProviderWithTrace({
       endpoint: "chat",

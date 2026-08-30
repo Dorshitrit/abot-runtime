@@ -4,11 +4,9 @@ import {
   projectRequestSource,
 } from "../../../context/request-source.js";
 import { buildRequestToolResultsMessage } from "../../../context/request-tool-results.js";
+import { buildImmediateOperationSupervisionEvidenceMessage } from "../../../context/operation-supervision-evidence.js";
 import { buildRoleCallAssignmentScopeMessage } from "../../../orchestration/role-calls/index.js";
-import {
-  WORKER_DECISION_MODEL_STEP,
-  type WorkerResultAuthorSource,
-} from "../contracts.js";
+import type { WorkerResultAuthorSource } from "../contracts.js";
 import type {
   PreparedWorkerDecisionSession,
   PreparedWorkerReferenceContext,
@@ -18,11 +16,12 @@ export function prepareWorkerReferenceContext(
   session: PreparedWorkerDecisionSession,
 ): PreparedWorkerReferenceContext {
   const { request, options, callIdentity, objective, canonicalState } = session;
-  const { assignmentScope, dependencyResults, resume } = canonicalState;
+  const { assignmentScope, dependencyResults, operationSupervision, resume } =
+    canonicalState;
   const requestSource = projectRequestSource({
     requestId: request.requestId,
     prompt: request.prompt,
-    modelStep: WORKER_DECISION_MODEL_STEP,
+    modelStep: session.diagnostic.modelStep,
     callId: callIdentity.callId,
     historyMessages: request.historyMessages,
   });
@@ -31,6 +30,19 @@ export function prepareWorkerReferenceContext(
       ? (options.requestToolResultsContextMessage ??
         buildRequestToolResultsMessage(options.requestToolResults))
       : undefined;
+  if (operationSupervision && !canonicalState.canonicalSource) {
+    throw new Error("worker_operation_supervision_source_missing");
+  }
+  const operationSupervisionEvidenceMessage =
+    operationSupervision && canonicalState.canonicalSource
+      ? buildImmediateOperationSupervisionEvidenceMessage(
+          canonicalState.canonicalSource.head,
+          options.call,
+        )
+      : undefined;
+  if (operationSupervision && !operationSupervisionEvidenceMessage) {
+    throw new Error("worker_operation_supervision_evidence_missing");
+  }
   const resultAuthorSource: WorkerResultAuthorSource = Object.freeze({
     ...callIdentity,
     objective,
@@ -38,6 +50,12 @@ export function prepareWorkerReferenceContext(
     requestToolResults: options.requestToolResults,
     ...(requestToolResultsMessage
       ? { requestToolResultsContextMessage: requestToolResultsMessage }
+      : {}),
+    ...(operationSupervisionEvidenceMessage
+      ? {
+          operationSupervisionEvidenceContextMessage:
+            operationSupervisionEvidenceMessage,
+        }
       : {}),
   });
   const baseReferenceMessages = Object.freeze([
@@ -51,6 +69,9 @@ export function prepareWorkerReferenceContext(
     ...(!resume && requestToolResultsMessage
       ? [requestToolResultsMessage]
       : []),
+    ...(operationSupervisionEvidenceMessage
+      ? [operationSupervisionEvidenceMessage]
+      : []),
   ]);
   const continuationMessages = Object.freeze([
     ...(resume && requestToolResultsMessage ? [requestToolResultsMessage] : []),
@@ -58,6 +79,7 @@ export function prepareWorkerReferenceContext(
 
   return Object.freeze({
     requestToolResultsMessage,
+    operationSupervisionEvidenceMessage,
     resultAuthorSource,
     baseReferenceMessages,
     continuationMessages,

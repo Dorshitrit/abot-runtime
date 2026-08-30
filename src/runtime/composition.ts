@@ -5,6 +5,7 @@ import {
   createDefaultAttachmentStore,
   createDefaultEventSinkFactory,
   createDefaultModelGatewayClient,
+  createDefaultLongTermMemoryService,
   createDefaultRuntimeHost,
   createDefaultSessionStore,
   createDefaultToolRegistry,
@@ -27,6 +28,7 @@ import {
   createModelSessionMemoryCompactor,
   type SessionMemoryCompactor,
 } from "./context/session-memory/index.js";
+import type { LongTermMemoryService } from "./long-term-memory/contracts.js";
 
 export type RuntimeEnvironmentServices = Readonly<{
   config: RuntimeConfig;
@@ -36,6 +38,7 @@ export type RuntimeEnvironmentServices = Readonly<{
   models: ModelGatewayClient;
   events: EventSinkFactory;
   sessionMemoryCompactor: SessionMemoryCompactor;
+  longTermMemory: LongTermMemoryService;
 }>;
 
 export type RuntimeRequestOptions = Pick<
@@ -66,6 +69,7 @@ export type RuntimeDependencies = {
   models: ModelGatewayClient;
   events: EventSinkFactory;
   sessionMemoryCompactor: SessionMemoryCompactor;
+  longTermMemory: LongTermMemoryService;
 };
 
 export type RuntimeDependencyOverrides = Partial<
@@ -79,15 +83,19 @@ export function createRuntimeApplication(
   overrides: RuntimeApplicationOverrides = {},
 ): RuntimeApplication {
   const tools = overrides.tools ?? createDefaultToolRegistry(config);
+  const models = overrides.models ?? createDefaultModelGatewayClient(config);
   const services: RuntimeEnvironmentServices = Object.freeze({
     config,
     sessions: overrides.sessions ?? createDefaultSessionStore(config),
     attachments: overrides.attachments ?? createDefaultAttachmentStore(config),
     tools,
-    models: overrides.models ?? createDefaultModelGatewayClient(config),
+    models,
     events: overrides.events ?? createDefaultEventSinkFactory(config),
     sessionMemoryCompactor:
       overrides.sessionMemoryCompactor ?? createModelSessionMemoryCompactor(),
+    longTermMemory:
+      overrides.longTermMemory ??
+      createDefaultLongTermMemoryService(config, models),
   });
   const requests = createRuntimeRequestHandler(services);
   const host =

@@ -16,8 +16,9 @@ import {
   deleteSessionAttachmentsIfSupported,
   LocalAttachmentRoutes,
 } from "./attachment-routes.js";
+import { createLocalLongTermMemoryOnboardingService } from "../../runtime/adapters/long-term-memory/onboarding-service.js";
 import type {
-  LocalRuntimeBackendOptions,
+  ResolvedLocalRuntimeBackendOptions,
   RuntimeSetupRequirement,
 } from "./contracts.js";
 import { RuntimeEnvironmentRegistry } from "./environment-registry.js";
@@ -31,6 +32,8 @@ import {
   sendJson,
 } from "./http.js";
 import { LocalRequestExecution } from "./request-execution.js";
+import { LongTermMemoryManagementRoutes } from "./memory-management-routes.js";
+import { LongTermMemoryOnboardingRoutes } from "./memory-onboarding-routes.js";
 
 function sendRuntimeSetupRequired(
   res: ServerResponse,
@@ -46,12 +49,26 @@ function sendRuntimeSetupRequired(
 
 export class LocalRuntimeApiRouter {
   private readonly attachments = new LocalAttachmentRoutes();
+  private readonly memoryManagement: LongTermMemoryManagementRoutes;
+  private readonly memoryOnboarding: LongTermMemoryOnboardingRoutes;
 
   constructor(
-    private readonly options: LocalRuntimeBackendOptions,
+    private readonly options: ResolvedLocalRuntimeBackendOptions,
     private readonly environments: RuntimeEnvironmentRegistry,
     private readonly requests: LocalRequestExecution,
-  ) {}
+  ) {
+    this.memoryOnboarding = new LongTermMemoryOnboardingRoutes(
+      createLocalLongTermMemoryOnboardingService({
+        rootDir: options.rootDir ?? process.cwd(),
+        providerAdapters: options.providerAdapters,
+        ...(options.configPath ? { configPath: options.configPath } : {}),
+      }),
+    );
+    this.memoryManagement = new LongTermMemoryManagementRoutes(
+      (environmentId) =>
+        this.environments.get(environmentId).services.longTermMemory,
+    );
+  }
 
   async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url || "/", "http://localhost");
@@ -96,6 +113,34 @@ export class LocalRuntimeApiRouter {
       body,
       this.options.defaultEnvironmentId,
     );
+
+    if (
+      await this.memoryOnboarding.handle({
+        method,
+        route,
+        url,
+        body,
+        request: req,
+        response: res,
+      })
+    ) {
+      return;
+    }
+
+    if (
+      await this.memoryManagement.handle({
+        method,
+        route,
+        segments,
+        url,
+        body,
+        environmentId,
+        request: req,
+        response: res,
+      })
+    ) {
+      return;
+    }
 
     if (method === "GET" && route === "runtime/config/dashboard") {
       sendJson(res, 200, {

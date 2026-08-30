@@ -167,6 +167,21 @@ complete turns. The runtime invokes the shared `context.compact` model step at
 the physical context threshold, persists the checkpoint with compare-and-swap,
 and keeps the latest ten complete turns raw. There is no profile-level message
 cap and no plugin or model-selected history checkout.
+
+### Passive Long-Term Memory
+
+Long-term memory is a separate core service for relevant cross-session facts;
+it is not the current-session history checkpoint and does not depend on a
+plugin. It is disabled by default and receives a dedicated embedding profile.
+
+`createRuntimeApplication(config)` exposes management through
+`runtime.services.longTermMemory`; `createDefaultRuntimeDependencies(config)`
+exposes the same service as `runtime.longTermMemory`. Hosts may call
+`status()`, `list()`, `delete({ id })`, and `clear()` without accessing vector
+data.
+The normal request path alone owns passive retrieval and candidate persistence.
+
+See [Passive Long-Term Memory](long-term-memory.md) for setup and contracts.
 For Ollama, `models.providers.<id>.keepAlive` owns model residency and a model
 profile may use `options.num_ctx` for a lower stable provider allocation. The
 gateway admits against the lower of that allocation and the declared
@@ -207,7 +222,7 @@ provider-profile and model-gateway payloads.
 Model profiles can expose independent calibration slots for
 `supervisor.decision`, `supervisor.response`, `planner.decision`,
 `planner.graph`, `worker.decision`, `worker.result`, `reviewer.decision`,
-`execution.decision`, `execution.response`, `auditor.decision`,
+`capability.controls`, `execution.decision`, `execution.response`, `auditor.decision`,
 `degraded.finalization`, and utility tool steps. `planner.decision` is the
 delegated Planner contract; `planner.graph` is the distinct passive advisory
 contract for `execution-agent-v1`. A raw step such as `worker.result` may also

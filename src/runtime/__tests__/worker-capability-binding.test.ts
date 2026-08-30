@@ -27,6 +27,9 @@ import {
 
 type TestContext = Readonly<{ marker: string }>;
 
+const AUTHORING_OBJECTIVE =
+  "Create the complete text document for the accepted target path.";
+
 async function openWorkerLedger(
   requestId = "request-1",
   workerCapabilityCatalogGroupIds?: readonly string[],
@@ -176,10 +179,11 @@ function createObservationAdapter(
       summary: "  Observation captured.  ",
     }),
   ),
+  capabilityId = "example.observe",
 ): WorkerCapabilityAdapter<TestContext> {
   return {
     descriptor: {
-      capabilityId: "example.observe",
+      capabilityId,
       summary: "Read one example value.",
       effect: "observation",
       controls: EMPTY_WORKER_CAPABILITY_CONTROLS_SCHEMA,
@@ -288,6 +292,142 @@ describe("call-scoped Worker capability binding", () => {
           status: "settled",
         },
       ],
+    });
+  });
+
+  test("binds authoring objectives only for Worker payload capabilities", async () => {
+    const workerPayloadAuthority = await openWorkerLedger(
+      "request-worker-payload-objective",
+    );
+    const workerPayloadExecute = vi.fn(async () => ({
+      outcome: "succeeded" as const,
+      observedEffect: "observation" as const,
+      summary: "Worker payload capability completed.",
+    }));
+    const payloadAdapter: WorkerCapabilityAdapter<TestContext> = {
+      descriptor: {
+        capabilityId: "example.payload",
+        summary: "Author one payload-backed observation.",
+        effect: "observation",
+        requiresPayloadAuthoringObjective: true,
+        controls: EMPTY_WORKER_CAPABILITY_CONTROLS_SCHEMA,
+      },
+      execute: workerPayloadExecute,
+    };
+    const workerPayloadBinding = createWorkerCapabilityBinding({
+      requestId: "request-worker-payload-objective",
+      context: { marker: "worker-payload-context" },
+      call: workerPayloadAuthority.call,
+      ledger: workerPayloadAuthority.ledger,
+      adapters: [payloadAdapter],
+    });
+
+    expect(workerPayloadBinding.capabilities[0]).toMatchObject({
+      capabilityId: "example.payload",
+      requiresPayloadAuthoringObjective: true,
+    });
+    await expect(
+      workerPayloadBinding.execute({
+        capabilityId: "example.payload",
+        intent: "Author the accepted payload.",
+        controls: {},
+      }),
+    ).rejects.toThrow(
+      "worker_capability_rejected:authoring_objective_required",
+    );
+    await expect(
+      workerPayloadBinding.execute({
+        capabilityId: "example.payload",
+        intent: "Author the accepted payload.",
+        authoringObjective: "   ",
+        controls: {},
+      }),
+    ).rejects.toThrow("worker_capability_rejected:authoring_objective_invalid");
+    await expect(
+      workerPayloadBinding.execute({
+        capabilityId: "example.payload",
+        intent: "Author the accepted payload.",
+        authoringObjective: AUTHORING_OBJECTIVE,
+        controls: {},
+      }),
+    ).resolves.toEqual({ executionId: "capability-execution-1" });
+    expect(workerPayloadExecute).toHaveBeenCalledExactlyOnceWith({
+      context: { marker: "worker-payload-context" },
+      call: workerPayloadAuthority.call,
+      executionId: "capability-execution-1",
+      intent: "Author the accepted payload.",
+      authoringObjective: AUTHORING_OBJECTIVE,
+      controls: {},
+      settledCapabilityResults: [],
+    });
+
+    const workerNonPayloadAuthority = await openWorkerLedger(
+      "request-worker-non-payload-objective",
+    );
+    const workerNonPayloadExecute = vi.fn();
+    const workerNonPayloadBinding = createWorkerCapabilityBinding({
+      requestId: "request-worker-non-payload-objective",
+      context: { marker: "worker-non-payload-context" },
+      call: workerNonPayloadAuthority.call,
+      ledger: workerNonPayloadAuthority.ledger,
+      adapters: [
+        createObservationAdapter(
+          workerNonPayloadExecute,
+          "example.non-payload",
+        ),
+      ],
+    });
+    await expect(
+      workerNonPayloadBinding.execute({
+        capabilityId: "example.non-payload",
+        intent: "Observe without payload authoring.",
+        authoringObjective: AUTHORING_OBJECTIVE,
+        controls: {},
+      }),
+    ).rejects.toThrow(
+      "worker_capability_rejected:authoring_objective_forbidden",
+    );
+    expect(workerNonPayloadExecute).not.toHaveBeenCalled();
+
+    const rootPayloadAuthority = await openRootCapabilityLedger(
+      "request-root-payload-objective",
+    );
+    const rootPayloadExecute = vi.fn(async () => ({
+      outcome: "succeeded" as const,
+      observedEffect: "observation" as const,
+      summary: "Root payload capability completed.",
+    }));
+    const rootPayloadBinding = createRoleCapabilityBinding({
+      requestId: "request-root-payload-objective",
+      context: { marker: "root-payload-context" },
+      call: rootPayloadAuthority.call,
+      ledger: rootPayloadAuthority.ledger,
+      adapters: [{ ...payloadAdapter, execute: rootPayloadExecute }],
+    });
+    await expect(
+      rootPayloadBinding.execute({
+        capabilityId: "example.payload",
+        intent: "Author the direct root payload.",
+        authoringObjective: AUTHORING_OBJECTIVE,
+        controls: {},
+      }),
+    ).rejects.toThrow(
+      "worker_capability_rejected:authoring_objective_forbidden",
+    );
+    await expect(
+      rootPayloadBinding.execute({
+        capabilityId: "example.payload",
+        intent: "Author the direct root payload.",
+        controls: {},
+      }),
+    ).resolves.toEqual({ executionId: "capability-execution-1" });
+    expect(rootPayloadExecute).toHaveBeenCalledExactlyOnceWith({
+      context: { marker: "root-payload-context" },
+      call: rootPayloadAuthority.call,
+      executionId: "capability-execution-1",
+      intent: "Author the direct root payload.",
+      controls: {},
+      settledCapabilityResults: [],
     });
   });
 
@@ -561,7 +701,9 @@ describe("call-scoped Worker capability binding", () => {
       .current()
       .state.calls.find((candidate) => candidate.callId === call.callId);
     if (!resumedCall) throw new Error("resumed Worker call missing");
-    const secondExecute = vi.fn(async () => ({
+    const secondExecute = vi.fn<
+      WorkerCapabilityAdapter<TestContext>["execute"]
+    >(async () => ({
       outcome: "succeeded" as const,
       observedEffect: "observation" as const,
       summary: "Second observation captured.",
@@ -714,28 +856,33 @@ describe("call-scoped Worker capability binding", () => {
     const released = new Promise<void>((resolve) => {
       releaseExecutions = resolve;
     });
-    const execute = vi.fn(async () => {
-      startedCount += 1;
-      if (startedCount === 2) resolveBothStarted();
-      await released;
-      return {
-        outcome: "succeeded" as const,
-        observedEffect: "observation" as const,
-        summary: `Observation ${startedCount}.`,
-      };
-    });
+    const execute = vi.fn<WorkerCapabilityAdapter<TestContext>["execute"]>(
+      async () => {
+        startedCount += 1;
+        if (startedCount === 2) resolveBothStarted();
+        await released;
+        return {
+          outcome: "succeeded" as const,
+          observedEffect: "observation" as const,
+          summary: `Observation ${startedCount}.`,
+        };
+      },
+    );
     const binding = createWorkerCapabilityBinding({
       requestId: "request-1",
       context: { marker: "context-1" },
       call,
       ledger,
-      adapters: [createObservationAdapter(execute)],
+      adapters: [
+        createObservationAdapter(execute),
+        createObservationAdapter(execute, "example.observe_second"),
+      ],
     });
 
     const execution = binding.executeBatch({
       invocations: [
         {
-          capabilityId: "example.observe",
+          capabilityId: "example.observe_second",
           intent: "Read the first independent source.",
           controls: {},
         },
@@ -1356,6 +1503,7 @@ describe("call-scoped Worker capability binding", () => {
             outcome: "failed" as const,
             observedEffect: "observation" as const,
             summary: "The observation occurred before the operation failed.",
+            failureOutcomeFingerprint: `sha256:${"f".repeat(64)}`,
           })),
         ),
       ],

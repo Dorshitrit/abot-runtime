@@ -360,6 +360,15 @@ describe("canonical role-call ledger", () => {
       workingDirectory: "project",
       activeCapabilityCatalogGroupIds: ["read"],
     };
+    const cause = {
+      kind: "refinement_declined" as const,
+      entries: [
+        {
+          invocationIndex: 0,
+          reason: "The capability guidance does not match the request.",
+        },
+      ],
+    };
 
     const reconsidered = await ledger.apply({
       expectedHead: before,
@@ -370,6 +379,7 @@ describe("canonical role-call ledger", () => {
         invocationAttempt: 2,
         steeringVersion: 0,
         selection,
+        cause,
       },
     });
 
@@ -392,6 +402,7 @@ describe("canonical role-call ledger", () => {
                 steeringVersion: 0,
                 fingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
                 selection,
+                cause,
               },
             },
           ],
@@ -423,6 +434,7 @@ describe("canonical role-call ledger", () => {
           invocationAttempt: 2,
           steeringVersion: 0,
           selection,
+          cause,
         },
       }),
     ).toMatchObject({
@@ -442,6 +454,7 @@ describe("canonical role-call ledger", () => {
           invocationAttempt: 1,
           steeringVersion: 0,
           selection,
+          cause,
         },
       }),
     ).toMatchObject({
@@ -554,7 +567,10 @@ describe("canonical role-call ledger", () => {
     });
 
     const candidate = structuredClone(established.head.state);
-    candidate.calls[0]!.workingDirectory = "project && invalid";
+    const mutableCandidateCalls = candidate.calls as unknown as Array<{
+      workingDirectory?: string;
+    }>;
+    mutableCandidateCalls[0]!.workingDirectory = "project && invalid";
     expect(
       validateRoleCallCandidate({
         state: candidate,
@@ -801,13 +817,14 @@ describe("canonical role-call ledger", () => {
       objective: "Review the bounded result.",
     });
     const childHead = childLedger.current();
-    const unauthorizedChildState = structuredClone(childHead.state) as {
-      calls: Array<{ roleId: string }>;
-    };
-    unauthorizedChildState.calls[1]!.roleId = "researcher";
+    const unauthorizedChildState = structuredClone(childHead.state);
+    const mutableChildCalls = unauthorizedChildState.calls as unknown as Array<{
+      roleId: string;
+    }>;
+    mutableChildCalls[1]!.roleId = "researcher";
     expect(
       validateRoleCallCandidate({
-        state: unauthorizedChildState as unknown as RoleCallState,
+        state: unauthorizedChildState,
         policy: childHead.policy,
       }),
     ).toContainEqual({
@@ -838,13 +855,15 @@ describe("canonical role-call ledger", () => {
       controlsJson: '{"path":"project/a.txt","depth":2}',
     });
     const capabilityHead = capabilityLedger.current();
-    const unauthorizedCapabilityState = structuredClone(
-      capabilityHead.state,
-    ) as { calls: Array<{ roleId: string }> };
-    unauthorizedCapabilityState.calls[1]!.roleId = "reviewer";
+    const unauthorizedCapabilityState = structuredClone(capabilityHead.state);
+    const mutableCapabilityCalls =
+      unauthorizedCapabilityState.calls as unknown as Array<{
+        roleId: string;
+      }>;
+    mutableCapabilityCalls[1]!.roleId = "reviewer";
     expect(
       validateRoleCallCandidate({
-        state: unauthorizedCapabilityState as unknown as RoleCallState,
+        state: unauthorizedCapabilityState,
         policy: capabilityHead.policy,
       }),
     ).toContainEqual({
@@ -1412,7 +1431,7 @@ describe("canonical role-call ledger", () => {
     });
     const openedWorker = opened.state.calls[1]!;
 
-    expect(opened.state.contractVersion).toBe(11);
+    expect(opened.state.contractVersion).toBe(15);
     expect(openedWorker.workerCapabilityScope).toEqual({
       catalogGroupIds: ["read", "system"],
     });
@@ -2286,6 +2305,11 @@ describe("canonical role-call ledger", () => {
     const objective = "OBJECTIVE_SECRET_SHOULD_NOT_BE_LOGGED";
     const summary = "SUMMARY_SECRET_SHOULD_NOT_BE_LOGGED";
     const capabilitySummary = "CAPABILITY_SUMMARY_SECRET_SHOULD_NOT_BE_LOGGED";
+    const capabilityIntent = "CAPABILITY_INTENT_SECRET_SHOULD_NOT_BE_LOGGED";
+    const capabilityControls =
+      '{"path":"CAPABILITY_PATH_SECRET_SHOULD_NOT_BE_LOGGED"}';
+    const actionFingerprint = `sha256:${"f".repeat(64)}`;
+    const mutationFingerprint = `sha256:${"e".repeat(64)}`;
     const response = "RESPONSE_SECRET_SHOULD_NOT_BE_LOGGED";
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
     let logs: Record<string, unknown>[] = [];
@@ -2306,6 +2330,9 @@ describe("canonical role-call ledger", () => {
         invocationAttempt: 1,
         capabilityId: "example.observe",
         declaredEffect: "observation",
+        intent: capabilityIntent,
+        controlsJson: capabilityControls,
+        actionFingerprint,
       });
       await ledger.apply({
         expectedHead: ledger.current(),
@@ -2325,7 +2352,96 @@ describe("canonical role-call ledger", () => {
         callId: "call-2",
         executionId: "capability-execution-1",
         outcome: "succeeded",
+        outcomeFingerprint: "succeeded",
         observedEffect: "observation",
+        summary: capabilitySummary,
+      });
+      await commit(ledger, {
+        authority: "active_role",
+        type: "begin_capability_execution",
+        callId: "call-2",
+        invocationAttempt: 2,
+        capabilityId: "example.observe",
+        declaredEffect: "observation",
+        intent: capabilityIntent,
+        controlsJson: capabilityControls,
+        actionFingerprint,
+      });
+      await commit(ledger, {
+        authority: "runtime",
+        type: "settle_capability_execution",
+        callId: "call-2",
+        executionId: "capability-execution-2",
+        outcome: "succeeded",
+        outcomeFingerprint: "succeeded",
+        observedEffect: "observation",
+        summary: capabilitySummary,
+      });
+      await commit(ledger, {
+        authority: "active_role",
+        type: "begin_capability_execution",
+        callId: "call-2",
+        invocationAttempt: 3,
+        capabilityId: "example.observe",
+        declaredEffect: "observation",
+        intent: capabilityIntent,
+        controlsJson: capabilityControls,
+        actionFingerprint,
+      });
+      await ledger.apply({
+        expectedHead: ledger.current(),
+        command: {
+          authority: "active_role",
+          type: "begin_capability_execution",
+          callId: "call-2",
+          invocationAttempt: 4,
+          capabilityId: "example.observe",
+          declaredEffect: "observation",
+          intent: capabilityIntent,
+          controlsJson: capabilityControls,
+          actionFingerprint,
+        },
+      });
+      await commit(ledger, {
+        authority: "active_role",
+        type: "begin_capability_execution",
+        callId: "call-2",
+        invocationAttempt: 4,
+        capabilityId: "example.mutate",
+        declaredEffect: "mutation",
+        intent: capabilityIntent,
+        controlsJson: capabilityControls,
+        actionFingerprint: mutationFingerprint,
+      });
+      await commit(ledger, {
+        authority: "runtime",
+        type: "settle_capability_execution",
+        callId: "call-2",
+        executionId: "capability-execution-3",
+        outcome: "succeeded",
+        outcomeFingerprint: "succeeded",
+        observedEffect: "mutation",
+        summary: capabilitySummary,
+      });
+      await commit(ledger, {
+        authority: "active_role",
+        type: "begin_capability_execution",
+        callId: "call-2",
+        invocationAttempt: 5,
+        capabilityId: "example.mutate",
+        declaredEffect: "mutation",
+        intent: capabilityIntent,
+        controlsJson: capabilityControls,
+        actionFingerprint: mutationFingerprint,
+      });
+      await commit(ledger, {
+        authority: "runtime",
+        type: "settle_capability_execution",
+        callId: "call-2",
+        executionId: "capability-execution-4",
+        outcome: "succeeded",
+        outcomeFingerprint: "succeeded",
+        observedEffect: "mutation",
         summary: capabilitySummary,
       });
       await commit(ledger, {
@@ -2391,15 +2507,40 @@ describe("canonical role-call ledger", () => {
           invocationAttempt: 1,
           capabilityId: "example.observe",
           declaredEffect: "observation",
+          actionFingerprint,
         }),
         expect.objectContaining({
           scope: "runtime.role_calls",
           event: "capability.execution_settled",
           callId: "call-2",
           executionId: "capability-execution-1",
+          actionFingerprint,
           outcome: "succeeded",
           observedEffect: "observation",
           summaryLength: capabilitySummary.length,
+        }),
+        expect.objectContaining({
+          scope: "runtime.role_calls",
+          event: "operation.supervision_reset",
+          callId: "call-2",
+          executionId: "capability-execution-3",
+          invocationAttempt: 4,
+          capabilityId: "example.mutate",
+          actionFingerprint: mutationFingerprint,
+          cause: "successful_observed_mutation",
+          clearedEntryCount: 1,
+          clearedInterventionCount: 1,
+        }),
+        expect.objectContaining({
+          scope: "runtime.role_calls",
+          event: "transition.rejected",
+          commandType: "begin_capability_execution",
+          rejectionCode: "operation_supervision_limit_exceeded",
+          attemptedCallId: "call-2",
+          attemptedInvocationAttempt: 4,
+          attemptedCapabilityId: "example.observe",
+          attemptedActionFingerprint: actionFingerprint,
+          attemptedDeclaredEffect: "observation",
         }),
         expect.objectContaining({
           scope: "runtime.role_calls",
@@ -2427,10 +2568,18 @@ describe("canonical role-call ledger", () => {
         }),
       ]),
     );
+    expect(
+      logs.filter((entry) => entry.event === "operation.supervision_reset"),
+    ).toHaveLength(1);
     const serialized = JSON.stringify(logs);
     expect(serialized).not.toContain(objective);
     expect(serialized).not.toContain(summary);
     expect(serialized).not.toContain(capabilitySummary);
+    expect(serialized).not.toContain(capabilityIntent);
+    expect(serialized).not.toContain(capabilityControls);
+    expect(serialized).not.toContain(
+      "CAPABILITY_PATH_SECRET_SHOULD_NOT_BE_LOGGED",
+    );
     expect(serialized).not.toContain(response);
   });
 });

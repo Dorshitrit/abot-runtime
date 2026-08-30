@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -68,6 +68,8 @@ describe("add-runtime-model", () => {
       "default.config.json",
     );
     const existingModel = await readFile(existingModelPath, "utf-8");
+    const runnerPath = join(targetRoot, "local", "request-runner.config.json");
+    const existingRunner = await readFile(runnerPath, "utf-8");
 
     const added = runAdd(targetRoot, [
       "--profile",
@@ -95,12 +97,11 @@ describe("add-runtime-model", () => {
     });
     expect(await readFile(existingModelPath, "utf-8")).toBe(existingModel);
 
-    const runner = await readJson(
-      join(targetRoot, "local", "request-runner.config.json"),
-    );
+    const runner = await readJson(runnerPath);
     expect(asRecord(asRecord(runner.models).defaults).profileId).toBe(
       "default",
     );
+    expect(await readFile(runnerPath, "utf-8")).toBe(existingRunner);
     const luna = await readJson(
       join(targetRoot, "local", "models", "luna.config.json"),
     );
@@ -116,6 +117,8 @@ describe("add-runtime-model", () => {
   it("changes only the selected default when --default is explicit", async () => {
     const targetRoot = await createTargetRoot();
     expect(runInit(targetRoot).status).toBe(0);
+    const runnerPath = join(targetRoot, "local", "request-runner.config.json");
+    const runnerBefore = await readJson(runnerPath);
 
     const added = runAdd(targetRoot, [
       "--profile",
@@ -128,10 +131,26 @@ describe("add-runtime-model", () => {
     ]);
 
     expect(added.status, added.stderr).toBe(0);
-    const runner = await readJson(
-      join(targetRoot, "local", "request-runner.config.json"),
-    );
+    const runner = await readJson(runnerPath);
+    expect(runner).toEqual({
+      ...runnerBefore,
+      models: {
+        ...asRecord(runnerBefore.models),
+        defaults: {
+          ...asRecord(asRecord(runnerBefore.models).defaults),
+          profileId: "luna",
+        },
+      },
+    });
     expect(asRecord(asRecord(runner.models).defaults).profileId).toBe("luna");
+    expect(runner.schemaVersion).toBe(2);
+    expect(asRecord(runner.stepDefaults)).toEqual({ timeoutMs: 90_000 });
+    expect(asRecord(asRecord(runner.models).defaults).steps).toEqual({
+      "supervisor.response": "default",
+      "worker.result": "default",
+      "execution.response": "default",
+      "tool_payload.raw": "toolPayload.raw",
+    });
     const runtime = await readJson(
       join(targetRoot, "local", "runtime.config.json"),
     );
@@ -139,6 +158,53 @@ describe("add-runtime-model", () => {
       "default",
       "luna",
     ]);
+  });
+
+  it("updates a legacy v1 default without adding schema or step declarations", async () => {
+    const targetRoot = await createTargetRoot();
+    expect(runInit(targetRoot).status).toBe(0);
+    const runnerPath = join(targetRoot, "local", "request-runner.config.json");
+    const publishedV1 = await readFile(
+      join(
+        rootDir,
+        "src",
+        "runtime",
+        "__tests__",
+        "fixtures",
+        "public-v1.0.0",
+        "request-runner.config.example.json",
+      ),
+      "utf-8",
+    );
+    await writeFile(runnerPath, publishedV1, "utf-8");
+    const before = await readJson(runnerPath);
+
+    const added = runAdd(targetRoot, [
+      "--profile",
+      "luna",
+      "--provider",
+      "openai",
+      "--model",
+      "gpt-5.6-luna",
+      "--default",
+    ]);
+
+    expect(added.status, added.stderr).toBe(0);
+    const runner = await readJson(runnerPath);
+    expect(runner).toEqual({
+      ...before,
+      models: {
+        ...asRecord(before.models),
+        defaults: {
+          ...asRecord(asRecord(before.models).defaults),
+          profileId: "luna",
+        },
+      },
+    });
+    expect(runner).not.toHaveProperty("schemaVersion");
+    expect(asRecord(asRecord(runner.models).defaults).steps).not.toHaveProperty(
+      "capability.controls",
+    );
   });
 
   it("fails closed on a profile collision without changing any config", async () => {
@@ -179,6 +245,81 @@ describe("add-runtime-model", () => {
     await expect(
       Promise.all(paths.map((path) => readFile(path, "utf-8"))),
     ).resolves.toEqual(before);
+  });
+
+  it("rejects an unsupported runner version before --default changes files", async () => {
+    const targetRoot = await createTargetRoot();
+    expect(runInit(targetRoot).status).toBe(0);
+    const runtimePath = join(targetRoot, "local", "runtime.config.json");
+    const runnerPath = join(targetRoot, "local", "request-runner.config.json");
+    const runner = await readJson(runnerPath);
+    await writeFile(
+      runnerPath,
+      `${JSON.stringify({ ...runner, schemaVersion: 3 }, null, 2)}\n`,
+      "utf-8",
+    );
+    const before = await Promise.all([
+      readFile(runtimePath, "utf-8"),
+      readFile(runnerPath, "utf-8"),
+    ]);
+
+    const result = runAdd(targetRoot, [
+      "--profile",
+      "luna",
+      "--provider",
+      "openai",
+      "--model",
+      "gpt-5.6-luna",
+      "--default",
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "schemaVersion must be 2 or omitted for the legacy v1 format",
+    );
+    await expect(
+      Promise.all([
+        readFile(runtimePath, "utf-8"),
+        readFile(runnerPath, "utf-8"),
+      ]),
+    ).resolves.toEqual(before);
+    await expect(
+      readFile(join(targetRoot, "local", "models", "luna.config.json")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("rejects a malformed supported runner config before --default changes files", async () => {
+    const targetRoot = await createTargetRoot();
+    expect(runInit(targetRoot).status).toBe(0);
+    const runtimePath = join(targetRoot, "local", "runtime.config.json");
+    const runnerPath = join(targetRoot, "local", "request-runner.config.json");
+    await writeFile(runnerPath, '{"schemaVersion":2}\n', "utf-8");
+    const before = await Promise.all([
+      readFile(runtimePath, "utf-8"),
+      readFile(runnerPath, "utf-8"),
+    ]);
+
+    const result = runAdd(targetRoot, [
+      "--profile",
+      "luna",
+      "--provider",
+      "openai",
+      "--model",
+      "gpt-5.6-luna",
+      "--default",
+    ]);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("context must be an object");
+    await expect(
+      Promise.all([
+        readFile(runtimePath, "utf-8"),
+        readFile(runnerPath, "utf-8"),
+      ]),
+    ).resolves.toEqual(before);
+    await expect(
+      readFile(join(targetRoot, "local", "models", "luna.config.json")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("reuses an existing provider without replacing its configuration", async () => {

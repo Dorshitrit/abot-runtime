@@ -19,6 +19,7 @@ export const ABOT_RUNTIME_EXTENSION_VERSION = 1 as const;
 export type AgentPluginOperationManifest = Readonly<{
   summary: string;
   input: ToolNormalInvocationInput;
+  selectionControlIds?: readonly string[];
   effect: ToolNormalInvocationEffect;
   approval: ToolNormalInvocationApproval;
   fixedParams?: Readonly<Record<string, ToolNormalInvocationFixedValue>>;

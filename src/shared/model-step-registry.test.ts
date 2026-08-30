@@ -36,6 +36,7 @@ describe("model invocation step registry", () => {
         MODEL_STEPS.SUPERVISOR_RESPONSE,
         MODEL_STEPS.WORKER_DECISION,
         MODEL_STEPS.WORKER_RESULT,
+        MODEL_STEPS.CAPABILITY_CONTROLS,
         MODEL_STEPS.PLANNER_DECISION,
         MODEL_STEPS.PLANNER_GRAPH,
         MODEL_STEPS.REVIEWER_DECISION,
@@ -62,7 +63,9 @@ describe("model invocation step registry", () => {
     expect(
       Object.values(MODEL_INVOCATION_STEP_REGISTRY)
         .filter(
-          (definition) => definition.outputTokenPolicy === "core_decision",
+          (definition) =>
+            "outputTokenPolicy" in definition &&
+            definition.outputTokenPolicy === "core_decision",
         )
         .map((definition) => definition.id),
     ).toEqual(coreDecisionSteps);
@@ -77,6 +80,7 @@ describe("model invocation step registry", () => {
     for (const modelStep of [
       MODEL_STEPS.SUPERVISOR_RESPONSE,
       MODEL_STEPS.WORKER_RESULT,
+      MODEL_STEPS.CAPABILITY_CONTROLS,
       MODEL_STEPS.PLANNER_GRAPH,
       MODEL_STEPS.DEGRADED_FINALIZATION,
       MODEL_STEPS.EXECUTION_RESPONSE,
@@ -119,6 +123,13 @@ describe("model invocation step registry", () => {
     ],
     [MODEL_STEPS.WORKER_DECISION, "worker", "json", "worker_decision", "none"],
     [MODEL_STEPS.WORKER_RESULT, "worker", "raw", "worker_result", "none"],
+    [
+      MODEL_STEPS.CAPABILITY_CONTROLS,
+      "utility",
+      "json",
+      "capability_controls",
+      "conversation",
+    ],
     [
       MODEL_STEPS.REVIEWER_DECISION,
       "reviewer",
@@ -212,6 +223,7 @@ describe("model invocation role policy", () => {
     [MODEL_STEPS.PLANNER_GRAPH, "planner"],
     [MODEL_STEPS.WORKER_DECISION, "worker"],
     [MODEL_STEPS.WORKER_RESULT, "worker"],
+    [MODEL_STEPS.CAPABILITY_CONTROLS, "utility"],
     [MODEL_STEPS.REVIEWER_DECISION, "reviewer"],
     [MODEL_STEPS.DEGRADED_FINALIZATION, "chatFinalization"],
     [MODEL_STEPS.EXECUTION_DECISION, "executor"],

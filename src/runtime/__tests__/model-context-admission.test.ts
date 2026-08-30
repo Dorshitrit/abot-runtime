@@ -226,6 +226,7 @@ describe("final model context admission", () => {
       }),
     );
     const controller: ModelStepContextCompactionController = Object.freeze({
+      compactionScope: "active_request",
       project: (messages: readonly ChatMessage[]) => [...messages],
       prepare,
     });
@@ -398,8 +399,7 @@ function createController(params: {
   compactedMessages: ChatMessage[];
   commit: () => void;
   compactionScope?: ModelStepContextCompactionController["compactionScope"];
-  resolveCompactionScope?: () =>
-    ModelStepContextCompactionController["compactionScope"];
+  resolveCompactionScope?: () => ModelStepContextCompactionController["compactionScope"];
 }): ModelStepContextCompactionController & {
   prepare: ReturnType<typeof vi.fn>;
 } {
@@ -512,12 +512,14 @@ function createHarness(
   const invoker = new RequestModelStepInvoker(request, (name, extra) => {
     events.push([name, extra]);
   });
-  const boundRequest = {
+  const boundRequest: BoundRequestModelInvocationContext = {
     ...request,
     modelSteps: invoker,
-  } as BoundRequestModelInvocationContext;
+    [BOUND_REQUEST_MODEL_INVOCATION]: true,
+  };
   Object.defineProperty(boundRequest, BOUND_REQUEST_MODEL_INVOCATION, {
     value: true,
+    enumerable: false,
   });
   return {
     invoke,

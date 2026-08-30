@@ -150,6 +150,7 @@ describe("request-bound tool model", () => {
             name: "sample_tool",
             routingCapability: "semantic_lookup" as const,
             catalogGroups: ["sample"],
+            params: {},
           },
           contract: {
             version: 1 as const,

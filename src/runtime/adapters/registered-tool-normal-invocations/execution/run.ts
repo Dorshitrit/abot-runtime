@@ -18,8 +18,11 @@ import type {
   BoundOperation,
   RegisteredToolNormalInvocationExecutionInput,
   RegisteredToolNormalInvocationExecutorParams,
+  RegisteredToolNormalInvocationPreparation,
+  RegisteredToolNormalInvocationPreparationInput,
   RegisteredToolNormalInvocationResult,
 } from "../shared/contracts.js";
+import { createRegisteredToolActionFingerprint } from "../shared/action-fingerprint.js";
 import { buildToolIntentEventMetadata } from "../shared/event-metadata.js";
 import { prepareCompleteInvocationInput } from "../payload/input-preparation.js";
 import { rejectNormalInvocation } from "../shared/rejection.js";
@@ -30,6 +33,18 @@ export async function executeNormalInvocation(params: {
   operationByHandle: WeakMap<object, BoundOperation>;
   input: RegisteredToolNormalInvocationExecutionInput;
 }): Promise<RegisteredToolNormalInvocationResult> {
+  const prepared = prepareNormalInvocation(params);
+  return prepared.status === "prepared"
+    ? prepared.execute()
+    : Promise.resolve(prepared);
+}
+
+export function prepareNormalInvocation(params: {
+  executor: RegisteredToolNormalInvocationExecutorParams;
+  registrations: readonly RegisteredToolNormalInvocation[];
+  operationByHandle: WeakMap<object, BoundOperation>;
+  input: RegisteredToolNormalInvocationPreparationInput;
+}): RegisteredToolNormalInvocationPreparation {
   const executor = params.executor;
   executor.abortSignal.throwIfAborted();
   const source = params.operationByHandle.get(params.input.handle);
@@ -87,58 +102,89 @@ export async function executeNormalInvocation(params: {
     params.input.intent,
     target.binding.registration.definition,
   );
-  const approval = await requestNormalInvocationApproval({
-    requestId: executor.requestId,
-    abortSignal: executor.abortSignal,
-    toolPermissionMode: executor.toolPermissionMode,
-    ...(executor.toolApprovalController
-      ? { toolApprovalController: executor.toolApprovalController }
-      : {}),
-    nextApprovalId: executor.nextApprovalId,
-    ...(executor.onEvent ? { onEvent: executor.onEvent } : {}),
+  const actionFingerprint = createRegisteredToolActionFingerprint({
+    contractVersion: target.binding.registration.contract.version,
+    operationId: target.binding.operation.operationId,
     call: normalizedCall.call,
-    ...(eventMeta ? { eventMeta } : {}),
+  });
+  return Object.freeze({
+    status: "prepared" as const,
+    actionFingerprint,
+    acceptedControls: preparedInput.controls,
+    execute: () =>
+      executePreparedNormalInvocation({
+        executor,
+        source,
+        target: target.binding,
+        call: normalizedCall.call,
+        eventMeta,
+        input: params.input,
+      }),
+  });
+}
+
+async function executePreparedNormalInvocation(params: {
+  executor: RegisteredToolNormalInvocationExecutorParams;
+  source: BoundOperation;
+  target: BoundOperation;
+  call: ToolCall;
+  eventMeta: ReturnType<typeof buildToolIntentEventMetadata>;
+  input: RegisteredToolNormalInvocationPreparationInput;
+}): Promise<RegisteredToolNormalInvocationResult> {
+  const approval = await requestNormalInvocationApproval({
+    requestId: params.executor.requestId,
+    abortSignal: params.executor.abortSignal,
+    toolPermissionMode: params.executor.toolPermissionMode,
+    ...(params.executor.toolApprovalController
+      ? { toolApprovalController: params.executor.toolApprovalController }
+      : {}),
+    nextApprovalId: params.executor.nextApprovalId,
+    ...(params.executor.onEvent ? { onEvent: params.executor.onEvent } : {}),
+    call: params.call,
+    ...(params.eventMeta ? { eventMeta: params.eventMeta } : {}),
     force:
-      source.operation.approval === "always" ||
-      target.binding.operation.approval === "always",
+      params.source.operation.approval === "always" ||
+      params.target.operation.approval === "always",
   });
   if (!approval.ok) return approval.rejection;
-  executor.abortSignal.throwIfAborted();
+  params.executor.abortSignal.throwIfAborted();
 
   const startedCopy = buildToolLifecycleEventCopy(
-    target.binding.registration.definition,
+    params.target.registration.definition,
     "started",
   );
-  executor.onEvent?.("tool.started", {
-    tool: normalizedCall.call.tool,
+  params.executor.onEvent?.("tool.started", {
+    tool: params.call.tool,
     ...(params.input.intent
       ? { intent: params.input.intent, intentSource: "model" }
       : {}),
-    ...(eventMeta ? { meta: eventMeta } : {}),
+    ...(params.eventMeta ? { meta: params.eventMeta } : {}),
     ...(startedCopy ?? {}),
   });
-  const result = await executor.toolRegistry.execute(normalizedCall.call, {
-    abortSignal: executor.abortSignal,
-    ...(executor.sharedState ? { sharedState: executor.sharedState } : {}),
+  const result = await params.executor.toolRegistry.execute(params.call, {
+    abortSignal: params.executor.abortSignal,
+    ...(params.executor.sharedState
+      ? { sharedState: params.executor.sharedState }
+      : {}),
   });
   const completionActions = Object.freeze(
     buildToolCompletedEventActions(
-      normalizedCall.call,
+      params.call,
       result,
-      target.binding.registration.definition,
+      params.target.registration.definition,
     ).map((action) => Object.freeze({ ...action })),
   );
   const completedMeta = buildToolCompletedEventMetadata(
-    normalizedCall.call,
+    params.call,
     result,
-    target.binding.registration.definition,
+    params.target.registration.definition,
   );
   const completedCopy = buildToolLifecycleEventCopy(
-    target.binding.registration.definition,
+    params.target.registration.definition,
     result.ok ? "completed" : "failed",
   );
-  executor.onEvent?.("tool.completed", {
-    tool: source.registration.toolName,
+  params.executor.onEvent?.("tool.completed", {
+    tool: params.source.registration.toolName,
     ok: result.ok,
     actions: completionActions,
     ...(completedMeta ? { meta: completedMeta } : {}),
@@ -146,7 +192,7 @@ export async function executeNormalInvocation(params: {
   });
   return Object.freeze({
     status: "executed" as const,
-    effect: target.binding.operation.effect,
+    effect: params.target.operation.effect,
     result,
     completionActions,
   });

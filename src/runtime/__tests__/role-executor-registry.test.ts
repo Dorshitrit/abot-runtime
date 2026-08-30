@@ -419,21 +419,27 @@ describe("mechanical role executor registry", () => {
     });
     await commit(ledger, { authority: "runtime", type: "create_root" });
 
-    const executeWorker = vi.fn(async () => ({
-      kind: "terminal" as const,
-      outcome: "completed" as const,
-      summary: "First sibling completed.",
-    }));
-    const executeReviewer = vi.fn(async () => ({
-      kind: "terminal" as const,
-      outcome: "failed" as const,
-      summary: "Second sibling reported a gap.",
-    }));
-    const executePlanner = vi.fn(async () => ({
-      kind: "terminal" as const,
-      outcome: "completed" as const,
-      summary: "Third sibling consumed prior results.",
-    }));
+    const executeWorker = vi.fn<RoleExecutor<TestContext>["execute"]>(
+      async () => ({
+        kind: "terminal" as const,
+        outcome: "completed" as const,
+        summary: "First sibling completed.",
+      }),
+    );
+    const executeReviewer = vi.fn<RoleExecutor<TestContext>["execute"]>(
+      async () => ({
+        kind: "terminal" as const,
+        outcome: "failed" as const,
+        summary: "Second sibling reported a gap.",
+      }),
+    );
+    const executePlanner = vi.fn<RoleExecutor<TestContext>["execute"]>(
+      async () => ({
+        kind: "terminal" as const,
+        outcome: "completed" as const,
+        summary: "Third sibling consumed prior results.",
+      }),
+    );
     const registry = createRoleExecutorRegistry<TestContext>([
       { roleId: "worker", execute: executeWorker },
       { roleId: "reviewer", execute: executeReviewer },
@@ -1015,8 +1021,12 @@ describe("mechanical role executor registry", () => {
         kind: "capability_batch_execution",
         executionIds: ["capability-execution-1", "capability-execution-2"],
       });
-      expect(Object.isFrozen(input.continuation)).toBe(true);
-      expect(Object.isFrozen(input.continuation?.executionIds)).toBe(true);
+      const continuation = input.continuation;
+      if (continuation?.kind !== "capability_batch_execution") {
+        throw new Error("Expected capability batch continuation");
+      }
+      expect(Object.isFrozen(continuation)).toBe(true);
+      expect(Object.isFrozen(continuation.executionIds)).toBe(true);
       return {
         kind: "terminal" as const,
         outcome: "completed" as const,

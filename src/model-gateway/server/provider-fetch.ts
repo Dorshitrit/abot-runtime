@@ -2,17 +2,24 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { traceDebug } from "../../runtime/observability/debug-logger.js";
 import { createContextWindowGuardedProviderFetch } from "../model-io-trace.js";
-import type { ModelGatewayRequest } from "../types.js";
+import type {
+  ModelGatewayEmbeddingRequest,
+  ModelGatewayRequest,
+} from "../types.js";
 import type { ProviderFetchParams } from "./contracts.js";
 
-function readDebugRequestId(requestBody: ModelGatewayRequest): string {
+type DiagnosticRequestBody = ModelGatewayRequest | ModelGatewayEmbeddingRequest;
+
+function readDebugRequestId(requestBody: DiagnosticRequestBody): string {
   return typeof requestBody.debugRequestId === "string"
     ? requestBody.debugRequestId
     : "";
 }
 
-function readModelStep(requestBody: ModelGatewayRequest): string {
-  return typeof requestBody.modelStep === "string" ? requestBody.modelStep : "";
+function readModelStep(requestBody: DiagnosticRequestBody): string {
+  return "modelStep" in requestBody && typeof requestBody.modelStep === "string"
+    ? requestBody.modelStep
+    : "";
 }
 
 function serializeAbortReason(reason: unknown): {
@@ -98,8 +105,8 @@ export function createContextGuardedProviderFetch(
 export function createProviderRequestAbortScope(params: {
   req: IncomingMessage;
   res: ServerResponse;
-  endpoint: "chat" | "raw" | "input_tokens";
-  requestBody: ModelGatewayRequest;
+  endpoint: "chat" | "raw" | "input_tokens" | "embeddings";
+  requestBody: DiagnosticRequestBody;
 }): Readonly<{
   signal: AbortSignal;
   dispose(): void;

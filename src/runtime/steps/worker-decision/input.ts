@@ -3,6 +3,7 @@ import type { RequestContextProjection } from "../../context/request-context-con
 import type { RoleCallDependencyResult } from "../../orchestration/role-calls/index.js";
 import type { WorkerCapabilityDescriptor } from "../../orchestration/worker-capabilities/index.js";
 import {
+  CAPABILITY_CONTROLS_MODEL_STEP,
   WORKER_DECISION_MODEL_STEP,
   type WorkerDecision,
   type WorkerDecisionDiagnosticContext,
@@ -38,7 +39,9 @@ export function buildWorkerDecisionInput(
 ): {
   context: RequestContextProjection;
   format: ModelGatewayJsonSchemaFormat;
-  modelStep: typeof WORKER_DECISION_MODEL_STEP;
+  modelStep:
+    | typeof WORKER_DECISION_MODEL_STEP
+    | typeof CAPABILITY_CONTROLS_MODEL_STEP;
   diagnostic: WorkerDecisionDiagnosticContext;
   allowedActions: readonly WorkerDecision["action"][];
   availableCapabilities: readonly WorkerCapabilityDescriptor[];
@@ -75,7 +78,7 @@ function projectBuiltWorkerDecisionInput(
   return {
     context: assembly.projection.context,
     format,
-    modelStep: WORKER_DECISION_MODEL_STEP,
+    modelStep: diagnostic.modelStep,
     diagnostic,
     allowedActions,
     availableCapabilities: capabilities,

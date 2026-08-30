@@ -85,8 +85,9 @@ code.
 
 Long procedures are split by lifetime and responsibility:
 
-- `RootExecutionSession` owns the single root activation loop.
-- `RoleActivationLoop` and `ChildInvocationTransaction` own subordinate calls.
+- `RootExecutionSession` owns the single root activation procedure.
+- `RoleActivationLoop` and `ChildInvocationTransaction` run subordinate calls;
+  they do not own independent continuation counters.
 - `RoleCallTransactions` is the typed command/effect facade over the sole
   reducer and ledger writer.
 - `BoundCapabilitySession` owns one call-bound capability facade while
@@ -150,6 +151,12 @@ scope. A Planner's Worker children inherit it mechanically and cannot replace
 it.
 A result returns only to that exact caller.
 
+The same reducer enforces one mechanical per-call activation ceiling for every
+root and delegated call. The ceiling is derived from the existing request-wide
+call and capability-execution limits; model steps, role loops, providers, and
+tools do not maintain separate counters or retry policy. An over-budget
+transition is rejected before commit as `role_activation_limit_exceeded`.
+
 `orchestration/worker-capabilities/` is the shared capability engine retained
 for compatibility; its policy-neutral binding attaches offered descriptors and
 executions to the exact authorized call and activation, including a root call
@@ -166,12 +173,34 @@ presentation metadata and is never projected as payload authority or execution
 evidence. There is no second payload or adapter pipeline for
 `execution-agent-v1`.
 
-When direct capability refinement declines an already selected invocation, the
-kernel commits the canonical `reconsider_capability_selection` RoleCall
-transition. It records the exact selection and fingerprint, advances the same
-root activation, and executes no adapter. The projection is passive continuity
-only; it neither chooses a replacement, suppresses a later model selection,
-nor establishes evidence.
+When direct capability controls refinement exhausts structured-output
+validation, the kernel commits the canonical
+`reconsider_capability_selection` RoleCall transition. It records the exact
+selection and fingerprint, advances the same root activation, and executes no
+adapter. Its bounded mechanical cause contains validation metadata but never
+raw model output and is projected only to the immediately following Execution
+Agent activation. This projection is passive continuity only; it neither
+judges the selected capability, chooses a replacement, suppresses a later
+model selection, nor establishes evidence.
+
+The role-call ledger separately supervises pre-execution reconsideration. Its
+stable identity is derived from steering version, single/batch shape,
+capability IDs, canonical selection controls, and the effective working
+directory; presentation intent, cause wording, and catalog scope are excluded.
+The first matching selection is tracked, the second carries a passive warning,
+the third carries a passive intervention notice, and the fourth is atomically
+rejected. A separate total budget warns at six, intervenes at seven, and
+rejects at eight so changing or alternating selections cannot evade the bound.
+Only the immediately following Execution Agent decision sees warning metadata;
+capability refinement and response composition do not. New steering or an
+accepted mechanical progress transition resets this pre-execution epoch and
+hands materialized attempts to operation supervision. A terminal selection
+limit executes no adapter and is committed through canonical degraded
+finalization rather than surfacing a raw activation-budget failure.
+The independent activation budget is not enlarged: if a smaller legal policy
+preempts these local thresholds during reconsideration, that exact root path
+also finalizes degraded, while activation-limit failures for other actions
+retain their existing error semantics.
 
 Events are projections of committed state, never another state store.
 
@@ -232,27 +261,19 @@ overrides. The root config points to one request-runner config:
 }
 ```
 
-The referenced file owns model-step selection, request context budgets, and
-per-step timeouts:
+The referenced file owns model-step routing overrides, request context budgets,
+and timeout defaults and overrides. Fresh configurations use schema version 2:
 
 ```json
 {
+  "schemaVersion": 2,
   "models": {
     "defaults": {
-      "profileId": "model-profile-id",
+      "profileId": "default",
       "steps": {
-        "supervisor.decision": "supervisor.decision",
-        "supervisor.response": "model-profile-id",
-        "planner.decision": "planner.decision",
-        "planner.graph": "planner.graph",
-        "worker.decision": "worker.decision",
-        "worker.result": "model-profile-id",
-        "reviewer.decision": "reviewer.decision",
-        "degraded.finalization": "degraded.finalization",
-        "execution.decision": "execution.decision",
-        "execution.response": "model-profile-id",
-        "auditor.decision": "auditor.decision",
-        "context.compact": "context.compact",
+        "supervisor.response": "default",
+        "worker.result": "default",
+        "execution.response": "default",
         "tool_payload.raw": "toolPayload.raw"
       }
     }
@@ -262,23 +283,39 @@ per-step timeouts:
     "safetyReserveTokens": 1200,
     "attachmentReserveTokens": 1024
   },
+  "stepDefaults": {
+    "timeoutMs": 90000
+  },
   "steps": {
-    "supervisor.decision": { "timeoutMs": 90000 },
-    "supervisor.response": { "timeoutMs": 90000 },
-    "planner.decision": { "timeoutMs": 90000 },
-    "planner.graph": { "timeoutMs": 90000 },
-    "worker.decision": { "timeoutMs": 90000 },
-    "worker.result": { "timeoutMs": 90000 },
-    "reviewer.decision": { "timeoutMs": 90000 },
-    "degraded.finalization": { "timeoutMs": 90000 },
-    "execution.decision": { "timeoutMs": 90000 },
-    "execution.response": { "timeoutMs": 90000 },
-    "auditor.decision": { "timeoutMs": 90000 },
-    "context.compact": { "timeoutMs": 90000 },
-    "tool_payload.raw": { "timeoutMs": 90000 }
+    "supervisor.response": {
+      "instructionRefs": [
+        "../methodologies/response-ux.md",
+        "../methodologies/memory-informed-response.md"
+      ]
+    },
+    "execution.response": {
+      "instructionRefs": [
+        "../methodologies/response-ux.md",
+        "../methodologies/memory-informed-response.md"
+      ]
+    }
   }
 }
 ```
+
+Both maps are sparse external configuration. A missing
+`models.defaults.steps` entry resolves to the same id as the model step; only
+the four canonical non-identity overrides shown above need declarations. A
+missing root `steps` entry uses `stepDefaults.timeoutMs` and no additional
+instructions. Explicit timeout or `instructionRefs` values override only the
+named step.
+
+A file with no `schemaVersion` is legacy v1 and remains supported. The loader
+normalizes either external format to the same exhaustive, frozen internal
+request-runner policy without rewriting the source file. `schemaVersion: 2` is
+the only explicit supported version; any other explicit value fails before use
+or write. Fresh init creates v2, while init without `--force` and ordinary
+package upgrades preserve an existing v1 or v2 file unchanged.
 
 Every materialized model profile declares its physical context capacity with
 top-level `contextWindowTokens`. The selected profile supplies that capacity to
@@ -342,6 +379,7 @@ The shared request kernel registers this union of policy and utility steps:
 - `planner.graph`
 - `worker.decision`
 - `worker.result`
+- `capability.controls`
 - `reviewer.decision`
 - `degraded.finalization`
 - `execution.decision`
@@ -350,8 +388,9 @@ The shared request kernel registers this union of policy and utility steps:
 - `context.compact`
 - `tool_payload.raw`
 
-Every invoked step requires model policy and timeout configuration. The request
-runner timeout is the default; a model profile calibration slot may override
+Every invoked step receives model policy and timeout configuration after the
+versioned file is normalized. External v2 files need not repeat identity
+mappings or the default timeout. A model profile calibration slot may override
 `timeoutMs` for that model and semantic step when provider latency requires it.
 Call sites use the shared model-step registry rather than inferring behavior
 from step-name prefixes.

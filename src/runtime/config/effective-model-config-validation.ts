@@ -123,15 +123,30 @@ function validateInvocationTarget(params: {
   }
 }
 
+function isImplicitRunnerStepTarget(params: {
+  acceptsIdentityDefault?: boolean;
+  stepId: string;
+  targetId: string;
+}): boolean {
+  return (
+    params.acceptsIdentityDefault === true && params.targetId === params.stepId
+  );
+}
+
 function validateStepTarget(params: {
   issues: string[];
   field: string;
+  stepId: string;
   targetId: string;
   profiles: NonNullable<ModelGatewayPolicyConfig["profiles"]>;
   invocationProfiles: NonNullable<
     ModelGatewayPolicyConfig["invocationProfiles"]
   >;
+  acceptsIdentityDefault?: boolean;
 }): void {
+  if (isImplicitRunnerStepTarget(params)) {
+    return;
+  }
   if (
     hasConfiguredProfile(params.profiles, params.targetId) ||
     hasConfiguredInvocationProfile(
@@ -246,6 +261,7 @@ export function validateEffectiveRuntimeModelConfig(params: {
     validateStepTarget({
       issues,
       field: `models.defaults.steps.${stepId}`,
+      stepId,
       targetId,
       profiles,
       invocationProfiles,
@@ -264,9 +280,11 @@ export function validateEffectiveRuntimeModelConfig(params: {
     validateStepTarget({
       issues,
       field: `requestRunner.models.defaults.steps.${stepId}`,
+      stepId,
       targetId,
       profiles,
       invocationProfiles,
+      acceptsIdentityDefault: true,
     });
   }
 

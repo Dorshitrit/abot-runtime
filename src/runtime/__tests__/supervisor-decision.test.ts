@@ -601,10 +601,16 @@ describe("Supervisor decision feasibility contract", () => {
       { workingDirectory: "../outside" },
       { workingDirectory: "/absolute" },
       { workingDirectory: "C:\\absolute" },
-      { workingDirectory: "x".repeat(ROLE_CALL_WORKING_DIRECTORY_MAX_LENGTH + 1) },
+      {
+        workingDirectory: "x".repeat(
+          ROLE_CALL_WORKING_DIRECTORY_MAX_LENGTH + 1,
+        ),
+      },
       { workingDirectory: WORKING_DIRECTORY, roleId: "reviewer" },
     ]) {
-      expect(parseSupervisorWorkingDirectoryOutput(JSON.stringify(invalid))).toMatchObject({
+      expect(
+        parseSupervisorWorkingDirectoryOutput(JSON.stringify(invalid)),
+      ).toMatchObject({
         ok: false,
       });
     }
@@ -630,7 +636,8 @@ describe("Supervisor decision feasibility contract", () => {
       "Update the existing project at projects/supervisor-owned and keep its connected artifacts intact.";
     const source = buildSupervisorDecisionInput(
       createRequest({
-        prompt: "Update the existing project and preserve its current behavior.",
+        prompt:
+          "Update the existing project and preserve its current behavior.",
         historyMessages: [
           {
             id: "history-1",
@@ -710,8 +717,16 @@ describe("Supervisor decision feasibility contract", () => {
     expect(JSON.stringify(scope.format.schema)).not.toContain(
       "workerCapabilityScope",
     );
-    expect(scope.messages.some((message) => message.content.includes("runtime_child_result"))).toBe(true);
-    expect(scope.messages.some((message) => message.content.includes("runtime_request_tool_results_v1"))).toBe(true);
+    expect(
+      scope.messages.some((message) =>
+        message.content.includes("runtime_child_result"),
+      ),
+    ).toBe(true);
+    expect(
+      scope.messages.some((message) =>
+        message.content.includes("runtime_request_tool_results_v1"),
+      ),
+    ).toBe(true);
   });
 
   test("projects only mechanically available child roles and supports a respond-only boundary", () => {
@@ -2488,7 +2503,11 @@ describe("Supervisor decision feasibility contract", () => {
   test("keeps Supervisor inputs at baseline when stored artifact paths exist", async () => {
     const run = async (sessionArtifactPaths?: readonly string[]) => {
       const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-        if (input.format.name === "supervisor_decision") {
+        if (
+          typeof input.format === "object" &&
+          input.format !== null &&
+          input.format.name === "supervisor_decision"
+        ) {
           return {
             text: decisionText({
               action: "invoke_role",
@@ -2645,7 +2664,9 @@ describe("Supervisor decision feasibility contract", () => {
     }[];
     expect(repairMessages.at(-1)).toMatchObject({
       role: "system",
-      content: expect.stringContaining("supervisor_working_directory_shape_invalid"),
+      content: expect.stringContaining(
+        "supervisor_working_directory_shape_invalid",
+      ),
     });
     expect(JSON.stringify(invoke.mock.calls[1]?.[0].format)).not.toContain(
       "roleId",
@@ -2663,56 +2684,59 @@ describe("Supervisor decision feasibility contract", () => {
     const staleObjective = "Update the stale project target.";
     const currentObjective = "Update the steered project target.";
     let invocationCount = 0;
-    const invoke = vi.fn(async (input: Parameters<ModelGatewayClient["invoke"]>[0]) => {
-      invocationCount += 1;
-      if (invocationCount === 1) {
-        return {
-          text: decisionText({
-            action: "invoke_role",
-            roleId: "planner",
-            objective: staleObjective,
-          }),
-          meta: {},
-        };
-      }
-      if (invocationCount === 2) {
-        expect(input.format).toMatchObject({ name: "supervisor_decision" });
-        expect(
-          (input.messages as readonly { content: string }[]).some((message) =>
-            message.content.includes("runtime_active_request_updates_v1"),
-          ),
-        ).toBe(true);
-        return {
-          text: decisionText({
-            action: "invoke_role",
-            roleId: "planner",
-            objective: currentObjective,
-          }),
-          meta: {},
-        };
-      }
-      const frozenCapsule = (
-        input.messages as readonly { content: string }[]
-      ).find((message) => {
-        try {
-          return (
-            JSON.parse(message.content) as { kind?: unknown }
-          ).kind === SUPERVISOR_FROZEN_INVOCATION_KIND;
-        } catch {
-          return false;
+    const invoke = vi.fn(
+      async (input: Parameters<ModelGatewayClient["invoke"]>[0]) => {
+        invocationCount += 1;
+        if (invocationCount === 1) {
+          return {
+            text: decisionText({
+              action: "invoke_role",
+              roleId: "planner",
+              objective: staleObjective,
+            }),
+            meta: {},
+          };
         }
-      });
-      expect(frozenCapsule).toBeDefined();
-      expect(JSON.parse(frozenCapsule!.content)).toMatchObject({
-        roleId: "planner",
-        objective: currentObjective,
-      });
-      expect(frozenCapsule!.content).not.toContain(staleObjective);
-      return {
-        text: JSON.stringify({ workingDirectory: WORKING_DIRECTORY }),
-        meta: {},
-      };
-    });
+        if (invocationCount === 2) {
+          expect(input.format).toMatchObject({ name: "supervisor_decision" });
+          expect(
+            (input.messages as readonly { content: string }[]).some((message) =>
+              message.content.includes("runtime_active_request_updates_v1"),
+            ),
+          ).toBe(true);
+          return {
+            text: decisionText({
+              action: "invoke_role",
+              roleId: "planner",
+              objective: currentObjective,
+            }),
+            meta: {},
+          };
+        }
+        const frozenCapsule = (
+          input.messages as readonly { content: string }[]
+        ).find((message) => {
+          try {
+            return (
+              (JSON.parse(message.content) as { kind?: unknown }).kind ===
+              SUPERVISOR_FROZEN_INVOCATION_KIND
+            );
+          } catch {
+            return false;
+          }
+        });
+        expect(frozenCapsule).toBeDefined();
+        expect(JSON.parse(frozenCapsule!.content)).toMatchObject({
+          roleId: "planner",
+          objective: currentObjective,
+        });
+        expect(frozenCapsule!.content).not.toContain(staleObjective);
+        return {
+          text: JSON.stringify({ workingDirectory: WORKING_DIRECTORY }),
+          meta: {},
+        };
+      },
+    );
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
     const request = createRequest({
       requestId: "supervisor-steering-between-phases",

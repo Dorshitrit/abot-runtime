@@ -95,6 +95,14 @@ export type ModelGatewayProfileConfig = {
   calibration?: Record<string, ModelStepCalibrationConfig>;
 };
 
+/** Provider/model binding for non-generative embedding requests. */
+export type ModelGatewayEmbeddingProfileConfig = {
+  label?: string;
+  provider: string;
+  model: string;
+  options?: Record<string, unknown>;
+};
+
 export type ModelModality = "text" | "image" | "audio";
 
 export type ModelGatewayProfileCapabilities = {
@@ -160,9 +168,44 @@ export type ModelStepCalibrationConfig = {
 export type ModelGatewayPolicyConfig = {
   providers?: Record<string, ModelGatewayProviderConfig>;
   profiles?: Record<string, ModelGatewayProfileConfig>;
+  embeddingProfiles?: Record<string, ModelGatewayEmbeddingProfileConfig>;
   invocationProfiles?: Record<string, ModelInvocationProfileConfig>;
   defaults?: ModelGatewayPolicyDefaults;
 };
+
+export type ModelGatewayEmbeddingRequest = {
+  profileId?: unknown;
+  texts?: unknown;
+  debugRequestId?: unknown;
+  modelPolicy?: ModelGatewayPolicyConfig;
+};
+
+export type ModelGatewayEmbeddingParams = Readonly<{
+  profileId: string;
+  texts: readonly string[];
+  modelPolicy?: ModelGatewayPolicyConfig;
+  abortSignal: AbortSignal;
+  debugRequestId?: string;
+}>;
+
+export type ModelGatewayEmbeddingResult = Readonly<{
+  profileId: string;
+  provider: ModelProvider;
+  model: string;
+  modelFingerprint: string;
+  dimensions: number;
+  vectors: readonly (readonly number[])[];
+}>;
+
+export type ResolvedEmbeddingProfile = Readonly<{
+  id: string;
+  label: string;
+  providerId: string;
+  provider: ModelProvider;
+  providerConfig: ModelGatewayProviderConfig;
+  model: string;
+  options: Readonly<Record<string, unknown>>;
+}>;
 
 export type ModelGatewayRequest = {
   text?: string;
@@ -224,6 +267,7 @@ export type ModelProfile = {
 export type ResolvedModelInvocation = {
   profile: ModelProfile;
   model: string;
+  /** `none` is an explicit disable; only `undefined` permits adapter omission. */
   think?: ModelReasoningLevel;
   format?: ModelGatewayFormat;
   instructions?: string[];

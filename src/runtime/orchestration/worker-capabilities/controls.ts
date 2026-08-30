@@ -108,6 +108,37 @@ export function validateWorkerCapabilityControls(
   return { ok: true, value: Object.freeze(controls) };
 }
 
+/**
+ * Captures the complete non-payload action already accepted by a preparing
+ * adapter. These controls may include staged values that are deliberately
+ * absent from the model-facing descriptor, so only the shared flat controls
+ * envelope is enforced here.
+ */
+export function validateWorkerCapabilityAcceptedControls(
+  input: unknown,
+): WorkerCapabilityControlsValidation {
+  if (!isPlainRecord(input)) {
+    return failure("accepted_controls_not_object");
+  }
+  const entries = Object.entries(input);
+  if (entries.length > WORKER_CAPABILITY_CONTROL_COUNT_MAX) {
+    return failure("accepted_controls_count_invalid");
+  }
+
+  const controls: Record<string, unknown> = {};
+  for (const [controlId, inputValue] of entries) {
+    if (!isControlId(controlId)) {
+      return failure("accepted_controls_id_invalid", controlId);
+    }
+    const value = normalizeAcceptedControlValue(inputValue);
+    if (!value.ok) {
+      return failure(value.issueCode, controlId);
+    }
+    controls[controlId] = value.value;
+  }
+  return { ok: true, value: Object.freeze(controls) };
+}
+
 function normalizeControl(
   input: unknown,
 ):
@@ -280,6 +311,39 @@ function normalizeControlValue(
     return { ok: true, value: Object.freeze(values) };
   }
   return normalizeScalarValue(control, input);
+}
+
+function normalizeAcceptedControlValue(
+  input: unknown,
+):
+  | Readonly<{ ok: true; value: unknown }>
+  | Readonly<{ ok: false; issueCode: string }> {
+  if (!Array.isArray(input)) return normalizeAcceptedScalarValue(input);
+  if (input.length > WORKER_CAPABILITY_CONTROL_ARRAY_MAX_ITEMS) {
+    return failure("accepted_controls_array_invalid");
+  }
+  const values: unknown[] = [];
+  for (const item of input) {
+    const value = normalizeAcceptedScalarValue(item);
+    if (!value.ok) return value;
+    values.push(value.value);
+  }
+  return { ok: true, value: Object.freeze(values) };
+}
+
+function normalizeAcceptedScalarValue(
+  input: unknown,
+):
+  | Readonly<{ ok: true; value: string | number | boolean }>
+  | Readonly<{ ok: false; issueCode: string }> {
+  if (
+    typeof input === "string" ||
+    typeof input === "boolean" ||
+    (typeof input === "number" && Number.isFinite(input))
+  ) {
+    return { ok: true, value: input };
+  }
+  return failure("accepted_controls_value_invalid");
 }
 
 function normalizeScalarValue(

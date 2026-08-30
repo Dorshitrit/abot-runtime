@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
 
-import type { RuntimePluginEntrypoint } from "../plugin.js";
+import type { RuntimePluginEntrypoint } from "../../plugin-sdk/index.js";
 import { createRuntimeToolPathResolver } from "../capabilities/runtime-target-path.js";
 import { loadBundledPluginEntrypoint } from "./public-plugin-test-support.js";
 

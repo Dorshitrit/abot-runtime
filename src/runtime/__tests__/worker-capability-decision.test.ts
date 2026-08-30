@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { ModelGatewayClient } from "../ports.js";
+import type { ChatMessage } from "../../model-gateway/types.js";
 import type { RequestRunnerConfig } from "../config/runner/contracts.js";
 import {
   buildCompactedRequestToolResultsMessage,
@@ -8,6 +9,7 @@ import {
   projectRequestToolResults,
   type RequestToolResultsView,
 } from "../context/request-tool-results.js";
+import { OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND } from "../context/operation-supervision-evidence.js";
 import {
   SEMANTIC_COMPACTION_CONTEXT_LANE,
   assertValidSemanticCompactionCheckpoint,
@@ -31,6 +33,7 @@ import {
   createWorkerCapabilityBinding,
   EMPTY_WORKER_CAPABILITY_CONTROLS_SCHEMA,
   projectWorkerSettledCapabilityResults,
+  WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS,
   type WorkerCapabilityAdapter,
   type WorkerCapabilityDescriptor,
 } from "../orchestration/worker-capabilities/index.js";
@@ -39,10 +42,12 @@ import { createTestRequestExecutionScope } from "./support/request-execution-sco
 import { projectWorkerCapabilitySelectionCatalog } from "../steps/worker-decision/capability-catalog.js";
 import {
   buildWorkerDecisionInput,
+  CAPABILITY_CONTROLS_MODEL_STEP,
   createWorkerDecisionFormat,
   parseWorkerDecisionOutput,
   projectWorkerCapabilityResumeContext,
   runWorkerDecision,
+  WORKER_CAPABILITY_AUTHORING_OBJECTIVE_MAX_LENGTH,
   WORKER_CAPABILITY_INTENT_MAX_LENGTH,
   WORKER_DECISION_MODEL_STEP,
   WORKER_RESULT_MODEL_STEP,
@@ -62,6 +67,7 @@ const runnerConfig: RequestRunnerConfig = {
       steps: {
         [WORKER_DECISION_MODEL_STEP]: "worker.decision",
         [WORKER_RESULT_MODEL_STEP]: "supervisor.response",
+        [CAPABILITY_CONTROLS_MODEL_STEP]: "capability.controls",
       },
     },
   },
@@ -73,6 +79,7 @@ const runnerConfig: RequestRunnerConfig = {
   steps: {
     [WORKER_DECISION_MODEL_STEP]: { timeoutMs: 20_000 },
     [WORKER_RESULT_MODEL_STEP]: { timeoutMs: 20_000 },
+    [CAPABILITY_CONTROLS_MODEL_STEP]: { timeoutMs: 20_000 },
   } as RequestRunnerConfig["steps"],
 };
 
@@ -85,8 +92,8 @@ const modelPolicy = {
       contextWindowTokens: 8_000,
       supportsThinking: true,
       calibration: {
-        "worker.decision": {
-        },
+        "worker.decision": {},
+        "capability.controls": {},
       },
     },
   },
@@ -95,6 +102,7 @@ const modelPolicy = {
     steps: {
       [WORKER_DECISION_MODEL_STEP]: "worker.decision",
       [WORKER_RESULT_MODEL_STEP]: "supervisor.response",
+      [CAPABILITY_CONTROLS_MODEL_STEP]: "capability.controls",
     },
   },
 };
@@ -109,6 +117,7 @@ function createRequest(
     }),
     meta: {},
   })),
+  options: Readonly<{ contextWindowTokens?: number }> = {},
 ): RequestExecutionScope {
   return createTestRequestExecutionScope({
     requestId: "worker-capability-request",
@@ -119,7 +128,18 @@ function createRequest(
     runnerConfig,
     attachments: [],
     agentMode: "reasoning",
-    modelPolicy,
+    modelPolicy: options.contextWindowTokens
+      ? {
+          ...modelPolicy,
+          profiles: {
+            ...modelPolicy.profiles,
+            "runtime-default": {
+              ...modelPolicy.profiles["runtime-default"],
+              contextWindowTokens: options.contextWindowTokens,
+            },
+          },
+        }
+      : modelPolicy,
     modelGatewayClient: { invoke, invokeRaw: vi.fn() },
     workerCapabilityProvider: {
       getDescriptors: () => Object.freeze([]),
@@ -297,6 +317,17 @@ function capabilitySource(
   return Object.freeze({ binding, ledger, head });
 }
 
+function requireActiveWorkerCall(ledger: RoleCallLedger): RoleCallFrame {
+  const head = ledger.current();
+  const call = head.state.calls.find(
+    ({ callId }) => callId === head.state.activeCallId,
+  );
+  if (!call || call.roleId !== "worker") {
+    throw new Error("active Worker call missing");
+  }
+  return call;
+}
+
 function requestToolResults(
   ledger: RoleCallLedger,
   head: RoleCallLedgerHead,
@@ -307,6 +338,46 @@ function requestToolResults(
     head,
     modelStep: WORKER_DECISION_MODEL_STEP,
     callId: call.callId,
+  });
+}
+
+async function settleWorkerObservationEvidence(
+  ledger: RoleCallLedger,
+  call: RoleCallFrame,
+  summary: string,
+): Promise<
+  Readonly<{
+    head: RoleCallLedgerHead;
+    call: RoleCallFrame;
+    requestToolResults: RequestToolResultsView;
+  }>
+> {
+  await commit(ledger, {
+    authority: "active_role",
+    type: "begin_capability_execution",
+    callId: call.callId,
+    invocationAttempt: call.activationCount,
+    capabilityId: "example.prior",
+    declaredEffect: "observation",
+  });
+  const head = await commit(ledger, {
+    authority: "runtime",
+    type: "settle_capability_execution",
+    callId: call.callId,
+    executionId: "capability-execution-1",
+    outcome: "succeeded",
+    observedEffect: "observation",
+    summary,
+  });
+  const resumedCall = head.state.calls.find(
+    (candidate) => candidate.callId === call.callId,
+  );
+  if (!resumedCall) throw new Error("resumed Worker call missing");
+
+  return Object.freeze({
+    head,
+    call: resumedCall,
+    requestToolResults: requestToolResults(ledger, head, resumedCall),
   });
 }
 
@@ -323,10 +394,16 @@ function workerDecisionText(decision: unknown): string {
   return JSON.stringify({ decision });
 }
 
+function asChatMessages(input: unknown): readonly ChatMessage[] {
+  if (!Array.isArray(input)) throw new Error("expected model messages");
+  return input as readonly ChatMessage[];
+}
+
 function runtimeMessageByKind(
-  messages: readonly Readonly<{ content: string }>[],
+  input: unknown,
   kind: string,
 ): Record<string, unknown> {
+  const messages = asChatMessages(input);
   const decoded = messages.flatMap(({ content }) => {
     try {
       return [JSON.parse(content) as Record<string, unknown>];
@@ -339,10 +416,8 @@ function runtimeMessageByKind(
   return message;
 }
 
-function hasRuntimeMessageKind(
-  messages: readonly Readonly<{ content: string }>[],
-  kind: string,
-): boolean {
+function hasRuntimeMessageKind(input: unknown, kind: string): boolean {
+  const messages = asChatMessages(input);
   return messages.some(({ content }) => content.includes(`"kind":"${kind}"`));
 }
 
@@ -398,6 +473,13 @@ describe("generic Worker capability decision boundary", () => {
         guidance: "",
       },
     });
+    expect(executionInput.allowedActions).toEqual([
+      "return_failure",
+      "invoke_capability",
+    ]);
+    expect(JSON.stringify(executionInput.format.schema)).not.toContain(
+      "return_result",
+    );
     expect(
       runtimeMessageByKind(
         executionInput.context.messages,
@@ -416,8 +498,13 @@ describe("generic Worker capability decision boundary", () => {
 
   test("bounds the client intent identically for single and batch selection", () => {
     expect(WORKER_CAPABILITY_INTENT_MAX_LENGTH).toBe(500);
+    const primaryObservation = observationAdapter().descriptor;
+    const secondaryObservation = {
+      ...primaryObservation,
+      capabilityId: "example.observe.secondary",
+    } satisfies WorkerCapabilityDescriptor;
     const format = createWorkerDecisionFormat({
-      capabilities: [observationAdapter().descriptor],
+      capabilities: [primaryObservation, secondaryObservation],
       maxBatchCapabilityExecutions: 4,
     });
     const variants = (
@@ -457,6 +544,86 @@ describe("generic Worker capability decision boundary", () => {
       });
     }
     expect(batchIntent.description).toBe(singleIntent.description);
+  });
+
+  test("separates payload authoring assignments for identical single and batch selection schemas", () => {
+    const sharedControls = {
+      type: "object" as const,
+      additionalProperties: false as const,
+      properties: {
+        source: {
+          type: "string" as const,
+          minLength: 1,
+          maxLength: 64,
+        },
+      },
+      required: ["source"],
+    };
+    const plainObservation = {
+      capabilityId: "example.observe.plain",
+      summary: "Observe one plain source.",
+      effect: "observation" as const,
+      controls: sharedControls,
+      selectionControlIds: ["source"],
+    } satisfies WorkerCapabilityDescriptor;
+    const payloadObservation = {
+      ...plainObservation,
+      capabilityId: "example.observe.payload",
+      summary: "Observe one source through an authored payload.",
+      requiresPayloadAuthoringObjective: true,
+    } satisfies WorkerCapabilityDescriptor;
+    const format = createWorkerDecisionFormat({
+      capabilities: [plainObservation, payloadObservation],
+      maxBatchCapabilityExecutions: 2,
+    });
+    type CapabilityVariant = Readonly<{
+      properties: Readonly<{
+        capabilityId?: Readonly<{ enum?: readonly string[] }>;
+        authoringObjective?: unknown;
+        invocations?: Readonly<{
+          items?: Readonly<{ anyOf?: readonly CapabilityVariant[] }>;
+        }>;
+      }>;
+      required?: readonly string[];
+    }>;
+    const decisionVariants = (
+      format.schema as {
+        properties: { decision: { anyOf: readonly CapabilityVariant[] } };
+      }
+    ).properties.decision.anyOf;
+    const variantFor = (
+      variants: readonly CapabilityVariant[],
+      capabilityId: string,
+    ) =>
+      variants.find((variant) =>
+        variant.properties.capabilityId?.enum?.includes(capabilityId),
+      );
+    const plainSingle = variantFor(
+      decisionVariants,
+      plainObservation.capabilityId,
+    );
+    const payloadSingle = variantFor(
+      decisionVariants,
+      payloadObservation.capabilityId,
+    );
+    const batchItems = decisionVariants.find(
+      (variant) => variant.properties.invocations,
+    )?.properties.invocations?.items?.anyOf;
+
+    expect(plainSingle?.properties).not.toHaveProperty("authoringObjective");
+    expect(plainSingle?.required).not.toContain("authoringObjective");
+    expect(payloadSingle?.properties).toHaveProperty("authoringObjective");
+    expect(payloadSingle?.required).toContain("authoringObjective");
+    expect(batchItems).toHaveLength(2);
+    expect(
+      variantFor(batchItems ?? [], plainObservation.capabilityId)?.properties,
+    ).not.toHaveProperty("authoringObjective");
+    const payloadBatch = variantFor(
+      batchItems ?? [],
+      payloadObservation.capabilityId,
+    );
+    expect(payloadBatch?.properties).toHaveProperty("authoringObjective");
+    expect(payloadBatch?.required).toContain("authoringObjective");
   });
 
   test("projects an unbounded remaining control without weakening its bounded sibling", () => {
@@ -657,6 +824,7 @@ describe("generic Worker capability decision boundary", () => {
       },
     });
     expect(JSON.stringify(format.schema)).not.toContain("declaredEffect");
+    expect(JSON.stringify(format.schema)).not.toContain('"authoringObjective"');
     expect(() =>
       createWorkerDecisionFormat({
         capabilities: [offeredCapability, offeredCapability],
@@ -711,6 +879,16 @@ describe("generic Worker capability decision boundary", () => {
         },
         "worker_capability_intent_invalid",
         "decision.intent",
+      ],
+      [
+        {
+          action: "invoke_capability",
+          capabilityId: "example.observe",
+          intent: "Read.",
+          authoringObjective: "Author payload content.",
+        },
+        "worker_decision_shape_invalid",
+        "decision",
       ],
       [
         {
@@ -813,7 +991,7 @@ describe("generic Worker capability decision boundary", () => {
     expect(executionSchema).toContain("deferred_path");
   });
 
-  test("offers and parses batches only for independent observation capabilities", () => {
+  test("defers repeated observation batch identity until full materialization", () => {
     const observation = {
       ...observationAdapter().descriptor,
       controls: {
@@ -834,8 +1012,12 @@ describe("generic Worker capability decision boundary", () => {
       capabilityId: "example.write",
       effect: "mutation" as const,
     };
+    const secondObservation = {
+      ...observation,
+      capabilityId: "example.observe.secondary",
+    };
     const format = createWorkerDecisionFormat({
-      capabilities: [observation, mutation],
+      capabilities: [observation, secondObservation, mutation],
       maxBatchCapabilityExecutions: 4,
     });
     expect(format.schema).toMatchObject({
@@ -849,7 +1031,11 @@ describe("generic Worker capability decision boundary", () => {
               properties: {
                 action: { enum: ["invoke_capability"] },
                 capabilityId: {
-                  enum: ["example.observe", "example.write"],
+                  enum: [
+                    "example.observe",
+                    "example.observe.secondary",
+                    "example.write",
+                  ],
                 },
               },
             },
@@ -861,7 +1047,9 @@ describe("generic Worker capability decision boundary", () => {
                   maxItems: 4,
                   items: {
                     properties: {
-                      capabilityId: { enum: ["example.observe"] },
+                      capabilityId: {
+                        enum: ["example.observe", "example.observe.secondary"],
+                      },
                     },
                   },
                 },
@@ -879,6 +1067,14 @@ describe("generic Worker capability decision boundary", () => {
     });
     expect(JSON.stringify(format.schema)).not.toContain('"controls"');
 
+    const parameterlessObservationFormat = createWorkerDecisionFormat({
+      capabilities: [observation],
+      maxBatchCapabilityExecutions: 4,
+    });
+    expect(JSON.stringify(parameterlessObservationFormat.schema)).toContain(
+      '"invoke_capabilities"',
+    );
+
     const accepted = parseWorkerDecisionOutput(
       workerDecisionText({
         action: "invoke_capabilities",
@@ -888,18 +1084,60 @@ describe("generic Worker capability decision boundary", () => {
             intent: "Read source A.",
           },
           {
-            capabilityId: "example.observe",
+            capabilityId: "example.observe.secondary",
             intent: "Read source B.",
           },
         ],
       }),
       undefined,
       {
-        availableCapabilities: [observation, mutation],
+        availableCapabilities: [observation, secondObservation, mutation],
         maxBatchCapabilityExecutions: 4,
       },
     );
     expect(accepted).toEqual({
+      ok: true,
+      decision: {
+        action: "invoke_capabilities",
+        invocations: [
+          {
+            capabilityId: "example.observe",
+            intent: "Read source A.",
+          },
+          {
+            capabilityId: "example.observe.secondary",
+            intent: "Read source B.",
+          },
+        ],
+      },
+    });
+    if (accepted.ok && accepted.decision.action === "invoke_capabilities") {
+      expect(Object.isFrozen(accepted.decision.invocations)).toBe(true);
+      expect(accepted.decision.invocations.every(Object.isFrozen)).toBe(true);
+    }
+
+    expect(
+      parseWorkerDecisionOutput(
+        workerDecisionText({
+          action: "invoke_capabilities",
+          invocations: [
+            {
+              capabilityId: "example.observe",
+              intent: "Read source A.",
+            },
+            {
+              capabilityId: "example.observe",
+              intent: "Read source B.",
+            },
+          ],
+        }),
+        undefined,
+        {
+          availableCapabilities: [observation],
+          maxBatchCapabilityExecutions: 4,
+        },
+      ),
+    ).toEqual({
       ok: true,
       decision: {
         action: "invoke_capabilities",
@@ -915,10 +1153,52 @@ describe("generic Worker capability decision boundary", () => {
         ],
       },
     });
-    if (accepted.ok && accepted.decision.action === "invoke_capabilities") {
-      expect(Object.isFrozen(accepted.decision.invocations)).toBe(true);
-      expect(accepted.decision.invocations.every(Object.isFrozen)).toBe(true);
-    }
+
+    const boundObservation = {
+      ...observation,
+      selectionControlIds: ["source"],
+    } as const satisfies WorkerCapabilityDescriptor;
+    expect(
+      parseWorkerDecisionOutput(
+        workerDecisionText({
+          action: "invoke_capabilities",
+          invocations: [
+            {
+              capabilityId: "example.observe",
+              intent: "Read source A first.",
+              selectionControls: { source: "A" },
+            },
+            {
+              capabilityId: "example.observe",
+              intent: "Read source A again.",
+              selectionControls: { source: "A" },
+            },
+          ],
+        }),
+        undefined,
+        {
+          availableCapabilities: [boundObservation],
+          maxBatchCapabilityExecutions: 4,
+        },
+      ),
+    ).toEqual({
+      ok: true,
+      decision: {
+        action: "invoke_capabilities",
+        invocations: [
+          {
+            capabilityId: "example.observe",
+            intent: "Read source A first.",
+            selectionControls: { source: "A" },
+          },
+          {
+            capabilityId: "example.observe",
+            intent: "Read source A again.",
+            selectionControls: { source: "A" },
+          },
+        ],
+      },
+    });
 
     expect(
       parseWorkerDecisionOutput(
@@ -978,30 +1258,38 @@ describe("generic Worker capability decision boundary", () => {
     });
   });
 
-  test("keeps frozen batch selections out of the controls-only execution schema", () => {
+  test("keeps frozen batch selections out of the no-evidence controls schema", () => {
     const observation = {
       ...observationAdapter().descriptor,
       controls: {
         type: "object" as const,
         additionalProperties: false as const,
         properties: {
+          source: {
+            type: "string" as const,
+            minLength: 1,
+            maxLength: 64,
+          },
           query: {
             type: "string" as const,
             minLength: 1,
             maxLength: 64,
           },
         },
-        required: ["query"],
+        required: ["source", "query"],
       },
-    };
+      selectionControlIds: ["source"],
+    } satisfies WorkerCapabilityDescriptor;
     const intents = ['Read source "A".', 'Read source "B".'] as const;
     const format = createWorkerDecisionFormat({
       capabilities: [observation],
       maxBatchCapabilityExecutions: 2,
       allowSingleCapabilityInvocation: false,
-      pendingCapabilityBatchSelection: intents.map((intent) => ({
+      allowReturnResult: false,
+      pendingCapabilityBatchSelection: intents.map((intent, index) => ({
         capabilityId: observation.capabilityId,
         intent,
+        selectionControls: { source: index === 0 ? "A" : "B" },
       })),
     });
 
@@ -1009,7 +1297,6 @@ describe("generic Worker capability decision boundary", () => {
       properties: {
         decision: {
           anyOf: [
-            {},
             {},
             {
               properties: {
@@ -1059,6 +1346,7 @@ describe("generic Worker capability decision boundary", () => {
       },
     });
     const serializedSchema = JSON.stringify(format.schema);
+    expect(serializedSchema).not.toContain("return_result");
     intents.forEach((intent) => {
       expect(serializedSchema).not.toContain(JSON.stringify(intent));
     });
@@ -1066,12 +1354,527 @@ describe("generic Worker capability decision boundary", () => {
     expect(serializedSchema).not.toContain('"intent"');
     expect(format.postValidatedSchemaConstraints).toContainEqual({
       keyword: "maxLength",
-      path: "/properties/decision/anyOf/2/properties/invocations/properties/invocation_1/properties/controls/properties/query/maxLength",
+      path: "/properties/decision/anyOf/1/properties/invocations/properties/invocation_1/properties/controls/properties/query/maxLength",
     });
     expect(format.postValidatedSchemaConstraints).toContainEqual({
       keyword: "maxLength",
-      path: "/properties/decision/anyOf/2/properties/invocations/properties/invocation_2/properties/controls/properties/query/maxLength",
+      path: "/properties/decision/anyOf/1/properties/invocations/properties/invocation_2/properties/controls/properties/query/maxLength",
     });
+  });
+
+  test("restores each frozen payload authoring objective to its exact batch slot after refinement", () => {
+    const observation = {
+      capabilityId: "example.observe.payload",
+      summary: "Observe one source through an authored payload.",
+      effect: "observation" as const,
+      requiresPayloadAuthoringObjective: true,
+      controls: {
+        type: "object" as const,
+        additionalProperties: false as const,
+        properties: {
+          source: {
+            type: "string" as const,
+            minLength: 1,
+            maxLength: 64,
+          },
+          query: {
+            type: "string" as const,
+            minLength: 1,
+            maxLength: 64,
+          },
+        },
+        required: ["source", "query"],
+      },
+      selectionControlIds: ["source"],
+    } satisfies WorkerCapabilityDescriptor;
+    const pendingCapabilityBatchSelection = [
+      {
+        capabilityId: observation.capabilityId,
+        intent: "Read source A.",
+        authoringObjective: "Author the exact query for source A.",
+        selectionControls: { source: "A" },
+      },
+      {
+        capabilityId: observation.capabilityId,
+        intent: "Read source B.",
+        authoringObjective: "Author the exact query for source B.",
+        selectionControls: { source: "B" },
+      },
+    ] as const;
+    const format = createWorkerDecisionFormat({
+      capabilities: [observation],
+      maxBatchCapabilityExecutions: 2,
+      allowSingleCapabilityInvocation: false,
+      allowReturnResult: false,
+      pendingCapabilityBatchSelection,
+    });
+
+    expect(JSON.stringify(format.schema)).not.toContain("authoringObjective");
+    expect(
+      parseWorkerDecisionOutput(
+        workerDecisionText({
+          action: "invoke_capabilities",
+          invocations: {
+            invocation_1: { controls: { query: "query A" } },
+            invocation_2: { controls: { query: "query B" } },
+          },
+        }),
+        undefined,
+        {
+          availableCapabilities: [observation],
+          decisionPhase: "capability_execution",
+          pendingCapabilityBatchSelection,
+          maxBatchCapabilityExecutions: 2,
+        },
+      ),
+    ).toEqual({
+      ok: true,
+      decision: {
+        action: "invoke_capabilities",
+        invocations: [
+          {
+            capabilityId: observation.capabilityId,
+            intent: "Read source A.",
+            authoringObjective: "Author the exact query for source A.",
+            controls: { source: "A", query: "query A" },
+          },
+          {
+            capabilityId: observation.capabilityId,
+            intent: "Read source B.",
+            authoringObjective: "Author the exact query for source B.",
+            controls: { source: "B", query: "query B" },
+          },
+        ],
+      },
+    });
+    expect(
+      parseWorkerDecisionOutput(
+        workerDecisionText({
+          action: "invoke_capabilities",
+          invocations: {
+            invocation_1: {
+              authoringObjective: "Replace the frozen first assignment.",
+              controls: { query: "query A" },
+            },
+            invocation_2: { controls: { query: "query B" } },
+          },
+        }),
+        undefined,
+        {
+          availableCapabilities: [observation],
+          decisionPhase: "capability_execution",
+          pendingCapabilityBatchSelection,
+          maxBatchCapabilityExecutions: 2,
+        },
+      ),
+    ).toMatchObject({
+      ok: false,
+      stage: "domain_parser",
+      issues: [
+        expect.objectContaining({
+          code: "worker_decision_shape_invalid",
+          path: "decision.invocations.invocation_1",
+        }),
+      ],
+    });
+  });
+
+  test("keeps an evidence-backed frozen batch pending until execution materialization", async () => {
+    const { ledger, call: initialCall } = await openWorkerLedger();
+    const evidence = await settleWorkerObservationEvidence(
+      ledger,
+      initialCall,
+      "An unrelated observation is already established.",
+    );
+    const { call } = evidence;
+    const binding = createBinding(ledger, call, observationAdapter());
+
+    const input = buildWorkerDecisionInput(createRequest(), {
+      call,
+      requestToolResults: evidence.requestToolResults,
+      capabilitySource: capabilitySource(ledger, binding, evidence.head),
+      selectedCapabilityBatchExecution: {
+        invocations: [
+          {
+            capabilityId: "example.observe",
+            intent: "Observe the first target.",
+            guidance: "",
+          },
+          {
+            capabilityId: "example.observe",
+            intent: "Observe the second target.",
+            guidance: "",
+          },
+        ],
+      },
+    });
+
+    expect(input.allowedActions).toEqual([
+      "return_failure",
+      "invoke_capabilities",
+    ]);
+    expect(JSON.stringify(input.format.schema)).not.toContain("return_result");
+    expect(
+      runtimeMessageByKind(
+        input.context.messages,
+        "runtime_worker_capability_execution_assignment",
+      ),
+    ).toMatchObject({
+      pendingCapabilityBatchSelection: [
+        { capabilityId: "example.observe" },
+        { capabilityId: "example.observe" },
+      ],
+    });
+  });
+
+  test("projects supervision only in selection and not into pending controls refinement", async () => {
+    const { ledger, call: firstCall } = await openWorkerLedger();
+    const preparedExecute = vi.fn(async () => ({
+      outcome: "succeeded" as const,
+      observedEffect: "observation" as const,
+      summary: "Observed one exact current value.",
+    }));
+    const adapter: WorkerCapabilityAdapter<TestContext> = {
+      ...observationAdapter(),
+      prepare: vi.fn(async ({ controls }) =>
+        Object.freeze({
+          actionFingerprint: `sha256:${"d".repeat(64)}`,
+          acceptedControls: controls,
+          execute: preparedExecute,
+        }),
+      ),
+    };
+    const firstBinding = createBinding(ledger, firstCall, adapter);
+    const unrelatedInput = buildWorkerDecisionInput(createRequest(), {
+      call: firstCall,
+      requestToolResults: EMPTY_REQUEST_TOOL_RESULTS,
+      capabilitySource: capabilitySource(ledger, firstBinding),
+    });
+    expect(JSON.stringify(unrelatedInput.context.messages)).not.toContain(
+      OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND,
+    );
+    await firstBinding.execute({
+      capabilityId: adapter.descriptor.capabilityId,
+      intent: "Observe once.",
+      controls: {},
+    });
+    const secondCall = ledger
+      .current()
+      .state.calls.find((candidate) => candidate.callId === firstCall.callId);
+    if (!secondCall) throw new Error("resumed Worker call missing");
+    const secondBinding = createBinding(ledger, secondCall, adapter);
+    await secondBinding.execute({
+      capabilityId: adapter.descriptor.capabilityId,
+      intent: "Observe again.",
+      controls: {},
+    });
+    const warningHead = ledger.current();
+    const warningCall = warningHead.state.calls.find(
+      (candidate) => candidate.callId === firstCall.callId,
+    );
+    if (!warningCall) throw new Error("warning Worker call missing");
+    const warningBinding = createBinding(ledger, warningCall, adapter);
+    const requestResults = requestToolResults(ledger, warningHead, warningCall);
+
+    const selectionInput = buildWorkerDecisionInput(createRequest(), {
+      call: warningCall,
+      requestToolResults: requestResults,
+      capabilitySource: capabilitySource(ledger, warningBinding, warningHead),
+    });
+    expect(
+      runtimeMessageByKind(
+        selectionInput.context.messages,
+        "runtime_worker_assignment",
+      ).operationSupervision,
+    ).toEqual([
+      expect.objectContaining({
+        kind: "runtime_operation_supervision_v1",
+        stage: "warning",
+        originExecutionId: "capability-execution-2",
+      }),
+    ]);
+    const supervisionEvidence = runtimeMessageByKind(
+      selectionInput.context.messages,
+      OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND,
+    );
+    expect(supervisionEvidence).toMatchObject({
+      authority: "canonical_role_call_ledger",
+      presenceEffect:
+        "passive_evidence_not_user_intent_action_authority_or_new_execution",
+      binding: {
+        callId: warningCall.callId,
+        invocationAttempt: warningCall.activationCount,
+        consumers: ["activation_decision", "immediate_presentation_handoff"],
+      },
+      entries: [
+        {
+          originExecutionId: "capability-execution-2",
+          notice: {
+            stage: "warning",
+            originExecutionId: "capability-execution-2",
+          },
+          evidence: {
+            kind: "existing_exact_capability_result_lane",
+            executionId: "capability-execution-2",
+          },
+        },
+      ],
+    });
+    expect(JSON.stringify(supervisionEvidence)).not.toContain(
+      "generic_capability_result_v1",
+    );
+    expect(JSON.stringify(supervisionEvidence)).not.toContain(
+      '"acceptedAction"',
+    );
+    expect(
+      requestResults.results.find(
+        ({ executionId }) => executionId === "capability-execution-2",
+      ),
+    ).toMatchObject({
+      adapterResult: {
+        kind: "generic_capability_result_v1",
+        ok: true,
+      },
+    });
+
+    const refinementInput = buildWorkerDecisionInput(createRequest(), {
+      call: warningCall,
+      requestToolResults: requestResults,
+      capabilitySource: capabilitySource(ledger, warningBinding, warningHead),
+      selectedCapabilityExecution: {
+        capabilityId: adapter.descriptor.capabilityId,
+        intent: "Observe a third time.",
+        guidance: "",
+      },
+    });
+    expect(
+      runtimeMessageByKind(
+        refinementInput.context.messages,
+        "runtime_worker_capability_execution_assignment",
+      ),
+    ).not.toHaveProperty("operationSupervision");
+    expect(JSON.stringify(refinementInput.context.messages)).not.toContain(
+      OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND,
+    );
+  });
+
+  test("carries exact cross-call intervention evidence outside compacted results into Worker result authoring", async () => {
+    const { ledger, call: firstCall } = await openWorkerLedger(
+      undefined,
+      "project",
+    );
+    const actionFingerprint = `sha256:${"e".repeat(64)}`;
+    const exactReferenceData = "EXACT_CROSS_CALL_RESULT_MUST_SURVIVE";
+    const adapter: WorkerCapabilityAdapter<TestContext> = {
+      ...observationAdapter(),
+      prepare: vi.fn(async ({ controls }) =>
+        Object.freeze({
+          actionFingerprint,
+          acceptedControls: controls,
+          execute: async () => ({
+            outcome: "succeeded" as const,
+            observedEffect: "observation" as const,
+            summary: "Observed the exact cross-call value.",
+            referenceData: exactReferenceData,
+          }),
+        }),
+      ),
+    };
+
+    const firstBinding = createBinding(ledger, firstCall, adapter);
+    await firstBinding.execute({
+      capabilityId: adapter.descriptor.capabilityId,
+      intent: "Observe the bounded value once.",
+      controls: {},
+    });
+    const firstCallSecondActivation = requireActiveWorkerCall(ledger);
+    await createBinding(ledger, firstCallSecondActivation, adapter).execute({
+      capabilityId: adapter.descriptor.capabilityId,
+      intent: "Observe the bounded value again.",
+      controls: {},
+    });
+    const warnedFirstCall = requireActiveWorkerCall(ledger);
+    await commit(ledger, {
+      authority: "runtime",
+      type: "return_child",
+      callerCallId: warnedFirstCall.parentCallId,
+      childCallId: warnedFirstCall.callId,
+      outcome: "completed",
+      summary: "The first Worker returned after observing the value.",
+    });
+    await commit(ledger, {
+      authority: "active_role",
+      type: "open_child",
+      callerCallId: "call-1",
+      roleId: "worker",
+      objective: "Return the exact current value supplied by prior evidence.",
+      workingDirectory: "project",
+    });
+
+    const secondCallBeforeIntervention = requireActiveWorkerCall(ledger);
+    const intervention = await createBinding(
+      ledger,
+      secondCallBeforeIntervention,
+      adapter,
+    ).execute({
+      capabilityId: adapter.descriptor.capabilityId,
+      intent: "Observe the unchanged bounded value.",
+      controls: {},
+    });
+    expect(intervention).toMatchObject({
+      kind: "operation_supervision_intervened",
+    });
+
+    const interventionHead = ledger.current();
+    const intervenedCall = requireActiveWorkerCall(ledger);
+    const results = requestToolResults(
+      ledger,
+      interventionHead,
+      intervenedCall,
+    );
+    const originResult = results.results.find(
+      ({ executionId }) => executionId === "capability-execution-2",
+    );
+    if (!originResult) throw new Error("supervision origin summary missing");
+    expect(originResult).not.toHaveProperty("adapterResult");
+    expect(originResult).not.toHaveProperty("referenceData");
+
+    const uncompactedMessage = buildRequestToolResultsMessage(results);
+    const uncompactedProjection = JSON.parse(uncompactedMessage.content) as {
+      results: readonly Record<string, unknown>[];
+    };
+    const compactedSource = uncompactedProjection.results.find(
+      ({ executionId }) => executionId === "capability-execution-2",
+    );
+    if (!compactedSource) throw new Error("supervision origin result missing");
+    const checkpoint = Object.freeze({
+      kind: "runtime_semantic_compaction_checkpoint_v2" as const,
+      scopeId: `worker:${intervenedCall.callId}:request-tool-results`,
+      requestId: "worker-capability-request",
+      currentRequestFingerprint: createSemanticCompactionSha256Fingerprint(
+        "ORIGINAL_USER_PROMPT_MUST_NOT_REACH_WORKER",
+      ),
+      roleId: "worker",
+      callId: intervenedCall.callId,
+      objectiveFingerprint: createSemanticCompactionSha256Fingerprint(
+        intervenedCall.objective!,
+      ),
+      contextLane: SEMANTIC_COMPACTION_CONTEXT_LANE,
+      allowedConsumers: WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS,
+      sourceRevision: results.sourceRevision,
+      sourceDigests: Object.freeze([
+        Object.freeze({
+          sourceRef: "capability-execution-2",
+          sourceFingerprint: createSemanticCompactionSha256Fingerprint(
+            JSON.stringify(compactedSource),
+          ),
+          digest: "The prior Worker observed the exact requested value.",
+        }),
+      ]),
+      continuation: Object.freeze({
+        completed: Object.freeze(["Observed the exact requested value."]),
+        currentState: "The exact requested value is established.",
+        findings: Object.freeze(["The prior observation succeeded."]),
+        evidenceRefs: Object.freeze(["capability-execution-2"]),
+        artifacts: Object.freeze([]),
+        decisions: Object.freeze([]),
+        failedApproaches: Object.freeze([]),
+        openWork: Object.freeze(["Return the established value."]),
+        blockers: Object.freeze([]),
+        nextStep: "Return the established value without rereading it.",
+      }),
+    }) satisfies SemanticCompactionCheckpoint;
+    const compactedMessage = buildCompactedRequestToolResultsMessage(
+      results,
+      checkpoint,
+    );
+
+    const seenEvidence: Record<string, unknown>[] = [];
+    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      const messages = input.messages as readonly ChatMessage[];
+      seenEvidence.push(
+        runtimeMessageByKind(
+          messages,
+          OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND,
+        ),
+      );
+      return input.modelStep === WORKER_DECISION_MODEL_STEP
+        ? {
+            text: workerDecisionText({ action: "return_result" }),
+            meta: {},
+          }
+        : {
+            text: "Returned the exact value established by capability-execution-2.",
+            meta: {},
+          };
+    });
+    const request = createRequest(invoke, { contextWindowTokens: 32_000 });
+    request.contextCompactionStore?.commit(checkpoint);
+    const decision = await runWorkerDecision(request, {
+      call: intervenedCall,
+      requestToolResults: results,
+      capabilitySource: capabilitySource(
+        ledger,
+        createBinding(ledger, intervenedCall, adapter),
+        interventionHead,
+      ),
+    });
+
+    expect(decision).toEqual({
+      action: "return_result",
+      result: "Returned the exact value established by capability-execution-2.",
+    });
+    expect(seenEvidence).toHaveLength(2);
+    for (const evidence of seenEvidence) {
+      expect(evidence).toMatchObject({
+        kind: OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND,
+        sourceRevision: interventionHead.revision,
+        binding: {
+          callId: intervenedCall.callId,
+          invocationAttempt: intervenedCall.activationCount,
+          consumers: ["activation_decision", "immediate_presentation_handoff"],
+        },
+        entries: [
+          {
+            originExecutionId: "capability-execution-2",
+            notice: {
+              stage: "intervention",
+              originExecutionId: "capability-execution-2",
+            },
+            evidence: {
+              kind: "embedded_cross_call_exact_result",
+              acceptedAction: {
+                executionId: "capability-execution-2",
+                capabilityId: adapter.descriptor.capabilityId,
+                controls: {},
+                declaredEffect: "observation",
+                workingDirectory: "project",
+              },
+              receipt: {
+                executionId: "capability-execution-2",
+                callId: firstCall.callId,
+                referenceData: exactReferenceData,
+              },
+              adapterResult: {
+                kind: "generic_capability_result_v1",
+                payload: { referenceData: exactReferenceData },
+              },
+            },
+          },
+        ],
+      });
+      expect(JSON.stringify(evidence)).not.toContain('"intent":');
+      expect(JSON.stringify(evidence)).not.toContain(
+        "Observe the bounded value again.",
+      );
+    }
+    const compactedProjection = runtimeMessageByKind(
+      [compactedMessage],
+      "runtime_request_tool_results_v1",
+    );
+    expect(JSON.stringify(compactedProjection)).not.toContain(
+      exactReferenceData,
+    );
   });
 
   test("binds heterogeneous frozen batch controls to the exact Luna invocation order", () => {
@@ -1099,6 +1902,7 @@ describe("generic Worker capability decision boundary", () => {
         },
         required: ["path"],
       },
+      selectionControlIds: ["path"],
     } satisfies WorkerCapabilityDescriptor;
     const inspectJson = {
       capabilityId: "inspect_json",
@@ -1136,9 +1940,21 @@ describe("generic Worker capability decision boundary", () => {
     ] as const;
     const pendingCapabilityBatchSelection = [
       { capabilityId: "inspect_project", intent: "Inspect the project tree." },
-      { capabilityId: "inspect_target", intent: "Inspect index.html." },
-      { capabilityId: "inspect_target", intent: "Inspect styles.css." },
-      { capabilityId: "inspect_target", intent: "Inspect script.js." },
+      {
+        capabilityId: "inspect_target",
+        intent: "Inspect index.html.",
+        selectionControls: { path: "AbotMarket/index.html" },
+      },
+      {
+        capabilityId: "inspect_target",
+        intent: "Inspect styles.css.",
+        selectionControls: { path: "AbotMarket/styles.css" },
+      },
+      {
+        capabilityId: "inspect_target",
+        intent: "Inspect script.js.",
+        selectionControls: { path: "AbotMarket/script.js" },
+      },
       { capabilityId: "inspect_json", intent: "Inspect products.json." },
     ] as const;
     const format = createWorkerDecisionFormat({
@@ -1176,7 +1992,6 @@ describe("generic Worker capability decision boundary", () => {
                       properties: {
                         controls: {
                           properties: {
-                            path: {},
                             start_line: {},
                             end_line: {},
                             locator: {},
@@ -1247,7 +2062,6 @@ describe("generic Worker capability decision boundary", () => {
             },
             invocation_2: {
               controls: {
-                path: "AbotMarket/index.html",
                 start_line: null,
                 end_line: null,
                 locator: null,
@@ -1256,7 +2070,6 @@ describe("generic Worker capability decision boundary", () => {
             },
             invocation_3: {
               controls: {
-                path: "AbotMarket/styles.css",
                 start_line: null,
                 end_line: null,
                 locator: null,
@@ -1265,7 +2078,6 @@ describe("generic Worker capability decision boundary", () => {
             },
             invocation_4: {
               controls: {
-                path: "AbotMarket/script.js",
                 start_line: null,
                 end_line: null,
                 locator: null,
@@ -1323,7 +2135,6 @@ describe("generic Worker capability decision boundary", () => {
           },
           invocation_2: {
             controls: {
-              path: "AbotMarket/index.html",
               start_line: null,
               end_line: null,
               locator: null,
@@ -1332,7 +2143,6 @@ describe("generic Worker capability decision boundary", () => {
           },
           invocation_3: {
             controls: {
-              path: "AbotMarket/styles.css",
               start_line: null,
               end_line: null,
               locator: null,
@@ -1341,7 +2151,6 @@ describe("generic Worker capability decision boundary", () => {
           },
           invocation_4: {
             controls: {
-              path: "AbotMarket/script.js",
               start_line: null,
               end_line: null,
               locator: null,
@@ -1572,7 +2381,7 @@ describe("generic Worker capability decision boundary", () => {
     }
   });
 
-  test("exposes and parses only controls after one capability is selected", () => {
+  test("withholds completion while parsing selected capability controls", () => {
     const quotedIntent = 'Observe the "selected" path.';
     const controlledCapability = {
       ...observationAdapter().descriptor,
@@ -1589,6 +2398,8 @@ describe("generic Worker capability decision boundary", () => {
     };
     const format = createWorkerDecisionFormat({
       capabilities: [controlledCapability],
+      allowReturnResult: false,
+      allowReturnFailure: false,
       pendingCapabilitySelection: {
         capabilityId: "example.path",
         intent: quotedIntent,
@@ -1597,6 +2408,7 @@ describe("generic Worker capability decision boundary", () => {
     const executionParseOptions = {
       availableCapabilities: [controlledCapability],
       decisionPhase: "capability_execution",
+      allowedActions: ["invoke_capability"],
       pendingCapabilitySelection: {
         capabilityId: "example.path",
         intent: quotedIntent,
@@ -1606,28 +2418,22 @@ describe("generic Worker capability decision boundary", () => {
       type: "object",
       properties: {
         decision: {
-          anyOf: [
-            {},
-            {},
-            {
+          properties: {
+            action: { enum: ["invoke_capability"] },
+            controls: {
               properties: {
-                action: { enum: ["invoke_capability"] },
-                controls: {
-                  properties: {
-                    path: { type: "string", minLength: 1, maxLength: 8 },
-                    locator: {
-                      anyOf: [
-                        { type: "string", minLength: 1, maxLength: 8 },
-                        { type: "null" },
-                      ],
-                    },
-                  },
-                  required: ["path", "locator"],
-                  additionalProperties: false,
+                path: { type: "string", minLength: 1, maxLength: 8 },
+                locator: {
+                  anyOf: [
+                    { type: "string", minLength: 1, maxLength: 8 },
+                    { type: "null" },
+                  ],
                 },
               },
+              required: ["path", "locator"],
+              additionalProperties: false,
             },
-          ],
+          },
         },
       },
       required: ["decision"],
@@ -1637,14 +2443,35 @@ describe("generic Worker capability decision boundary", () => {
       JSON.stringify(quotedIntent),
     );
     expect(JSON.stringify(format.schema)).not.toContain("example.path");
+    expect(JSON.stringify(format.schema)).not.toContain("return_result");
+    expect(JSON.stringify(format.schema)).not.toContain("return_failure");
     expect(format.postValidatedSchemaConstraints).toContainEqual({
       keyword: "maxLength",
-      path: "/properties/decision/anyOf/2/properties/controls/properties/path/maxLength",
+      path: "/properties/decision/properties/controls/properties/path/maxLength",
     });
     expect(format.postValidatedSchemaConstraints).toContainEqual({
       keyword: "maxLength",
-      path: "/properties/decision/anyOf/2/properties/controls/properties/locator/anyOf/0/maxLength",
+      path: "/properties/decision/properties/controls/properties/locator/anyOf/0/maxLength",
     });
+
+    for (const action of ["return_result", "return_failure"] as const) {
+      expect(
+        parseWorkerDecisionOutput(
+          workerDecisionText({ action }),
+          undefined,
+          executionParseOptions,
+        ),
+      ).toMatchObject({
+        ok: false,
+        stage: "domain_parser",
+        issues: [
+          expect.objectContaining({
+            code: "worker_terminal_action_unavailable",
+            path: "decision.action",
+          }),
+        ],
+      });
+    }
 
     expect(
       parseWorkerDecisionOutput(
@@ -1740,8 +2567,11 @@ describe("generic Worker capability decision boundary", () => {
         required: ["path"],
       },
       selectionControlIds: ["path"],
+      requiresPayloadAuthoringObjective: true,
     } satisfies WorkerCapabilityDescriptor;
     const intent = "Create the requested product data file.";
+    const authoringObjective =
+      "Create the complete product data JSON document requested by the Worker.";
     const selectionFormat = createWorkerDecisionFormat({
       capabilities: [writeCapability],
     });
@@ -1755,6 +2585,11 @@ describe("generic Worker capability decision boundary", () => {
             {
               properties: {
                 capabilityId: { enum: ["write_complete_file"] },
+                authoringObjective: {
+                  type: "string",
+                  minLength: 1,
+                  maxLength: WORKER_CAPABILITY_AUTHORING_OBJECTIVE_MAX_LENGTH,
+                },
                 selectionControls: {
                   properties: {
                     path: {
@@ -1771,6 +2606,7 @@ describe("generic Worker capability decision boundary", () => {
                 "action",
                 "capabilityId",
                 "intent",
+                "authoringObjective",
                 "selectionControls",
               ],
             },
@@ -1789,6 +2625,7 @@ describe("generic Worker capability decision boundary", () => {
         action: "invoke_capability",
         capabilityId: "write_complete_file",
         intent,
+        authoringObjective,
         selectionControls: { path: "products.json" },
       }),
       undefined,
@@ -1800,13 +2637,36 @@ describe("generic Worker capability decision boundary", () => {
         action: "invoke_capability",
         capabilityId: "write_complete_file",
         intent,
+        authoringObjective,
         selectionControls: { path: "products.json" },
       },
+    });
+    expect(
+      parseWorkerDecisionOutput(
+        workerDecisionText({
+          action: "invoke_capability",
+          capabilityId: "write_complete_file",
+          intent,
+          selectionControls: { path: "products.json" },
+        }),
+        undefined,
+        { availableCapabilities: [writeCapability] },
+      ),
+    ).toMatchObject({
+      ok: false,
+      stage: "domain_parser",
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "worker_capability_authoring_objective_invalid",
+          path: "decision.authoringObjective",
+        }),
+      ]),
     });
 
     const pendingCapabilitySelection = {
       capabilityId: "write_complete_file",
       intent,
+      authoringObjective,
       selectionControls: { path: "products.json" },
     } as const;
     const executionFormat = createWorkerDecisionFormat({
@@ -1836,6 +2696,7 @@ describe("generic Worker capability decision boundary", () => {
     const executionSchema = JSON.stringify(executionFormat.schema);
     expect(executionSchema).not.toContain("products.json");
     expect(executionSchema).not.toContain('"path"');
+    expect(executionSchema).not.toContain('"authoringObjective"');
     expect(
       parseWorkerDecisionOutput(
         workerDecisionText({
@@ -1855,8 +2716,34 @@ describe("generic Worker capability decision boundary", () => {
         action: "invoke_capability",
         capabilityId: "write_complete_file",
         intent,
+        authoringObjective,
         controls: { path: "products.json" },
       },
+    });
+
+    expect(
+      parseWorkerDecisionOutput(
+        workerDecisionText({
+          action: "invoke_capability",
+          authoringObjective: "Replace the frozen assignment.",
+          controls: {},
+        }),
+        undefined,
+        {
+          availableCapabilities: [writeCapability],
+          decisionPhase: "capability_execution",
+          pendingCapabilitySelection,
+        },
+      ),
+    ).toMatchObject({
+      ok: false,
+      stage: "domain_parser",
+      issues: [
+        expect.objectContaining({
+          code: "worker_decision_shape_invalid",
+          path: "decision",
+        }),
+      ],
     });
 
     const drifted = parseWorkerDecisionOutput(
@@ -2098,6 +2985,13 @@ describe("generic Worker capability decision boundary", () => {
       createRequest(),
       executionOptions,
     );
+    expect(executionInput.allowedActions).toEqual([
+      "return_failure",
+      "invoke_capability",
+    ]);
+    expect(JSON.stringify(executionInput.format.schema)).not.toContain(
+      "return_result",
+    );
     const executionCapsule = runtimeMessageByKind(
       executionInput.context.messages,
       "runtime_worker_capability_execution_assignment",
@@ -2142,6 +3036,10 @@ describe("generic Worker capability decision boundary", () => {
         results: readonly Record<string, unknown>[];
       }
     ).results[0]!;
+    const compactedSourceRef = compactedSource.executionId;
+    if (typeof compactedSourceRef !== "string") {
+      throw new Error("compacted source execution id missing");
+    }
     const checkpoint = Object.freeze({
       kind: "runtime_semantic_compaction_checkpoint_v2" as const,
       scopeId: `worker:${call.callId}:request-tool-results`,
@@ -2162,7 +3060,7 @@ describe("generic Worker capability decision boundary", () => {
       sourceRevision: toolResults.sourceRevision,
       sourceDigests: Object.freeze([
         Object.freeze({
-          sourceRef: compactedSource.executionId,
+          sourceRef: compactedSourceRef,
           sourceFingerprint: createSemanticCompactionSha256Fingerprint(
             JSON.stringify(compactedSource),
           ),
@@ -2173,7 +3071,7 @@ describe("generic Worker capability decision boundary", () => {
         completed: Object.freeze(["Observed the exact current value."]),
         currentState: "The current value is established.",
         findings: Object.freeze(["The current value is established."]),
-        evidenceRefs: Object.freeze([compactedSource.executionId]),
+        evidenceRefs: Object.freeze([compactedSourceRef]),
         artifacts: Object.freeze([]),
         decisions: Object.freeze([]),
         failedApproaches: Object.freeze([]),
@@ -2315,6 +3213,25 @@ describe("generic Worker capability decision boundary", () => {
     );
     expect(input.context.messages[0]!.content).toContain(
       "including any capability invoked earlier; prior use does not exhaust it",
+    );
+    const reconsiderationInput = buildWorkerDecisionInput(createRequest(), {
+      call: currentCall,
+      requestToolResults: requestToolResults(ledger, settledHead, currentCall),
+      capabilitySource: capabilitySource(ledger, binding, settledHead),
+      capabilityResume: {
+        ledger,
+        head: settledHead,
+        executionId: "capability-execution-1",
+      },
+      capabilitySelectionRejection: {
+        rejectedSelectionKind: "single",
+        rejectedCapabilityIds: ["example.observe"],
+        rejectedInvocationCount: 1,
+      },
+    });
+    expect(reconsiderationInput.allowedActions).not.toContain("return_result");
+    expect(reconsiderationInput.context.messages[0]!.content).not.toContain(
+      "choose return_result when no distinct required outcome remains",
     );
     expect(JSON.parse(input.context.messages[2]!.content)).toMatchObject({
       kind: "runtime_worker_assignment",
@@ -2821,27 +3738,16 @@ describe("generic Worker capability decision boundary", () => {
     expect(ledger.current().state.capabilityExecutions).toEqual([]);
   });
 
-  test("keeps guided refinement and return-result semantics in the lean execution phase", async () => {
-    const intent = "Create the selected file.";
-    const { ledger, call } = await openWorkerLedger();
-    const adapter: WorkerCapabilityAdapter<TestContext> = {
-      descriptor: {
-        capabilityId: "example.write",
-        summary: "Create one complete file.",
-        effect: "mutation",
-        controlsRefinement: "mechanical_when_complete",
-        controls: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            path: { type: "string", minLength: 1, maxLength: 4_096 },
-          },
-          required: ["path"],
-        },
-        selectionControlIds: ["path"],
-      },
-      execute: vi.fn(),
-    };
+  test("repairs evidence-backed completion before pending controls execute", async () => {
+    const intent = "Observe the selected value.";
+    const { ledger, call: initialCall } = await openWorkerLedger();
+    const evidence = await settleWorkerObservationEvidence(
+      ledger,
+      initialCall,
+      "An unrelated observation is already established.",
+    );
+    const { call } = evidence;
+    const adapter = observationAdapter();
     const binding = createBinding(ledger, call, adapter);
     let invocation = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
@@ -2850,50 +3756,34 @@ describe("generic Worker capability decision boundary", () => {
         return {
           text: workerDecisionText({
             action: "invoke_capability",
-            capabilityId: "example.write",
+            capabilityId: "example.observe",
             intent,
-            selectionControls: { path: "products.json" },
           }),
           meta: {},
         };
       }
+      expect(input.modelStep).toBe(CAPABILITY_CONTROLS_MODEL_STEP);
+      expect(JSON.stringify(input.format)).not.toContain("return_result");
       if (invocation === 2) {
-        expect(input.messages[0]!.content).toContain(
-          "Review the selected invocation before execution.",
-        );
-        const capsule = runtimeMessageByKind(
-          input.messages,
-          "runtime_worker_capability_execution_assignment",
-        );
-        expect(capsule).toMatchObject({
-          selectedCapabilityAffordances: [
-            {
-              capabilityId: "example.write",
-              summary: "Create one complete file.",
-              effect: "mutation",
-            },
-          ],
-          pendingCapabilitySelection: {
-            capabilityId: "example.write",
-            selectionControls: { path: "products.json" },
-          },
-        });
-        expect(JSON.stringify(capsule)).not.toContain(intent);
-        expect(capsule).not.toHaveProperty("capabilitiesAvailable");
-        expect(capsule).not.toHaveProperty("availableChildRoleIds");
         return {
           text: workerDecisionText({ action: "return_result" }),
           meta: {},
         };
       }
-      expect(input.modelStep).toBe(WORKER_RESULT_MODEL_STEP);
+      expect(asChatMessages(input.messages).at(-1)).toMatchObject({
+        role: "system",
+        content: expect.stringContaining("worker_terminal_action_unavailable"),
+      });
       return {
-        text: "The existing evidence already establishes the result.",
+        text: workerDecisionText({
+          action: "invoke_capability",
+          controls: {},
+        }),
         meta: {},
       };
     });
     const getExecutionGuidance = vi.fn(
-      async () => "Review the selected invocation before execution.",
+      async () => "Execute the selected observation.",
     );
     const baseRequest = createRequest(invoke);
     const request = createTestRequestExecutionScope({
@@ -2907,22 +3797,23 @@ describe("generic Worker capability decision boundary", () => {
     await expect(
       runWorkerDecision(request, {
         call,
-        requestToolResults: EMPTY_REQUEST_TOOL_RESULTS,
-        capabilitySource: capabilitySource(ledger, binding),
+        requestToolResults: evidence.requestToolResults,
+        capabilitySource: capabilitySource(ledger, binding, evidence.head),
       }),
     ).resolves.toEqual({
-      action: "return_result",
-      result: "The existing evidence already establishes the result.",
+      action: "invoke_capability",
+      capabilityId: "example.observe",
+      intent,
+      controls: {},
     });
     expect(invoke).toHaveBeenCalledTimes(3);
     expect(getExecutionGuidance).toHaveBeenCalledExactlyOnceWith(
-      "example.write",
+      "example.observe",
     );
     expect(adapter.execute).not.toHaveBeenCalled();
-    expect(ledger.current().state.capabilityExecutions).toEqual([]);
   });
 
-  test("keeps the controls refinement step when one optional control remains", async () => {
+  test("repairs no-evidence completion before optional controls execute", async () => {
     const intent = "Inspect the bounded project with its default controls.";
     const { ledger, call } = await openWorkerLedger();
     const adapter: WorkerCapabilityAdapter<TestContext> = {
@@ -2944,24 +3835,38 @@ describe("generic Worker capability decision boundary", () => {
     };
     const binding = createBinding(ledger, call, adapter);
     let invocation = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async () => {
+    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
       invocation += 1;
-      return invocation === 1
-        ? {
-            text: workerDecisionText({
-              action: "invoke_capability",
-              capabilityId: "example.optional",
-              intent,
-            }),
-            meta: {},
-          }
-        : {
-            text: workerDecisionText({
-              action: "invoke_capability",
-              controls: {},
-            }),
-            meta: {},
-          };
+      if (invocation === 1) {
+        return {
+          text: workerDecisionText({
+            action: "invoke_capability",
+            capabilityId: "example.optional",
+            intent,
+          }),
+          meta: {},
+        };
+      }
+      if (invocation === 2) {
+        expect(input.modelStep).toBe(CAPABILITY_CONTROLS_MODEL_STEP);
+        expect(JSON.stringify(input.format)).not.toContain("return_result");
+        return {
+          text: workerDecisionText({ action: "return_result" }),
+          meta: {},
+        };
+      }
+      expect(input.modelStep).toBe(CAPABILITY_CONTROLS_MODEL_STEP);
+      expect(asChatMessages(input.messages).at(-1)).toMatchObject({
+        role: "system",
+        content: expect.stringContaining("worker_terminal_action_unavailable"),
+      });
+      return {
+        text: workerDecisionText({
+          action: "invoke_capability",
+          controls: {},
+        }),
+        meta: {},
+      };
     });
 
     await expect(
@@ -2976,7 +3881,7 @@ describe("generic Worker capability decision boundary", () => {
       intent,
       controls: {},
     });
-    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke).toHaveBeenCalledTimes(3);
     expect(adapter.execute).not.toHaveBeenCalled();
     expect(ledger.current().state.capabilityExecutions).toEqual([]);
   });
@@ -3018,7 +3923,7 @@ describe("generic Worker capability decision boundary", () => {
         };
       }
       if (invocation === 2) {
-        executionMessages = input.messages;
+        executionMessages = asChatMessages(input.messages);
         expect(JSON.stringify(input.format)).not.toContain('"capabilityId"');
         expect(JSON.stringify(input.format)).not.toContain('"intent"');
         expect(
@@ -3048,8 +3953,9 @@ describe("generic Worker capability decision boundary", () => {
         };
       }
       expect(executionMessages).toBeDefined();
-      expect(input.messages.slice(0, -1)).toEqual(executionMessages);
-      expect(input.messages.at(-1)).toMatchObject({
+      const messages = asChatMessages(input.messages);
+      expect(messages.slice(0, -1)).toEqual(executionMessages);
+      expect(messages.at(-1)).toMatchObject({
         role: "system",
         content: expect.stringContaining(
           "worker_capability_controls_required_missing",
@@ -3128,7 +4034,9 @@ describe("generic Worker capability decision boundary", () => {
     let invocation = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
       invocation += 1;
-      const messages = input.messages.map(({ content }) => content).join("\n");
+      const messages = asChatMessages(input.messages)
+        .map(({ content }) => content)
+        .join("\n");
       const format = JSON.stringify(input.format);
       if (invocation === 1) {
         expect(format).toContain("example.observe");
@@ -3177,6 +4085,8 @@ describe("generic Worker capability decision boundary", () => {
         expect(format).not.toContain('"controls"');
         expect(format).toContain("example.observe");
         expect(format).toContain("example.mutate");
+        expect(format).not.toContain("return_result");
+        expect(format).toContain("return_failure");
         expect(messages).toContain("capabilitySelectionRejection");
         expect(messages).not.toContain(secretReason);
         expect(messages).not.toContain(guidanceBlocker);
@@ -3208,6 +4118,8 @@ describe("generic Worker capability decision boundary", () => {
       expect(format).not.toContain('"capabilityId"');
       expect(format).not.toContain('"intent"');
       expect(format).not.toContain("example.observe");
+      expect(format).not.toContain("return_result");
+      expect(format).not.toContain("return_failure");
       expect(messages).not.toContain("capabilitySelectionRejection");
       expect(
         runtimeMessageByKind(
@@ -3228,6 +4140,16 @@ describe("generic Worker capability decision boundary", () => {
           "runtime_worker_capability_execution_assignment",
         ).pendingCapabilitySelection,
       ).not.toHaveProperty("intent");
+      if (invocation === 4) {
+        return {
+          text: workerDecisionText({
+            action: "return_failure",
+            reason: "Attempt to veto the reaffirmed selection.",
+          }),
+          meta: {},
+        };
+      }
+      expect(messages).toContain("worker_terminal_action_unavailable");
       return {
         text: workerDecisionText({
           action: "invoke_capability",
@@ -3262,7 +4184,7 @@ describe("generic Worker capability decision boundary", () => {
       intent: "Create the required artifact.",
       controls: {},
     });
-    expect(invoke).toHaveBeenCalledTimes(4);
+    expect(invoke).toHaveBeenCalledTimes(5);
     expect(getExecutionGuidance).toHaveBeenNthCalledWith(1, "example.observe");
     expect(getExecutionGuidance).toHaveBeenNthCalledWith(2, "example.mutate");
     expect(rejectedExecute).not.toHaveBeenCalled();
@@ -3284,7 +4206,7 @@ describe("generic Worker capability decision boundary", () => {
     expect(JSON.stringify(reopened)).not.toContain(secretReason);
   });
 
-  test("discards a rejected observation batch atomically before selecting a mutation", async () => {
+  test("binds a reaffirmed observation batch to execution", async () => {
     const { ledger, call } = await openWorkerLedger();
     const rejectedExecute = vi.fn();
     const selectedExecute = vi.fn();
@@ -3298,6 +4220,16 @@ describe("generic Worker capability decision boundary", () => {
           descriptor: {
             capabilityId: "example.wait",
             summary: "Wait for one existing process.",
+            effect: "observation",
+            controlsRefinement: "mechanical_when_complete",
+            controls: EMPTY_WORKER_CAPABILITY_CONTROLS_SCHEMA,
+          },
+          execute: rejectedExecute,
+        },
+        {
+          descriptor: {
+            capabilityId: "example.wait.secondary",
+            summary: "Wait for another existing process.",
             effect: "observation",
             controlsRefinement: "mechanical_when_complete",
             controls: EMPTY_WORKER_CAPABILITY_CONTROLS_SCHEMA,
@@ -3328,7 +4260,7 @@ describe("generic Worker capability decision boundary", () => {
                 intent: "Create the stylesheet.",
               },
               {
-                capabilityId: "example.wait",
+                capabilityId: "example.wait.secondary",
                 intent: "Create the script.",
               },
             ],
@@ -3346,26 +4278,43 @@ describe("generic Worker capability decision boundary", () => {
         };
       }
       if (invocation === 3) {
-        expect(JSON.parse(input.messages.at(-1)!.content)).toMatchObject({
+        expect(
+          JSON.parse(asChatMessages(input.messages).at(-1)!.content),
+        ).toMatchObject({
           capabilitySelectionRejection: {
             rejectedSelectionKind: "batch",
-            rejectedCapabilityIds: ["example.wait"],
+            rejectedCapabilityIds: ["example.wait", "example.wait.secondary"],
             rejectedInvocationCount: 2,
           },
         });
         return {
           text: workerDecisionText({
-            action: "invoke_capability",
-            capabilityId: "example.mutate",
-            intent: "Create the required files through a valid mutation.",
+            action: "invoke_capabilities",
+            invocations: [
+              {
+                capabilityId: "example.wait",
+                intent: "Wait for the required process.",
+              },
+              {
+                capabilityId: "example.wait.secondary",
+                intent: "Wait for the other required process.",
+              },
+            ],
           }),
           meta: {},
         };
       }
+      const format = JSON.stringify(input.format);
+      expect(format).toContain("invoke_capabilities");
+      expect(format).not.toContain("return_result");
+      expect(format).not.toContain("return_failure");
       return {
         text: workerDecisionText({
-          action: "invoke_capability",
-          controls: {},
+          action: "invoke_capabilities",
+          invocations: {
+            invocation_1: { controls: {} },
+            invocation_2: { controls: {} },
+          },
         }),
         meta: {},
       };
@@ -3382,58 +4331,15 @@ describe("generic Worker capability decision boundary", () => {
         }),
       }),
     ).resolves.toMatchObject({
-      action: "invoke_capability",
-      capabilityId: "example.mutate",
-      controls: {},
+      action: "invoke_capabilities",
+      invocations: [
+        { capabilityId: "example.wait", controls: {} },
+        { capabilityId: "example.wait.secondary", controls: {} },
+      ],
     });
     expect(invoke).toHaveBeenCalledTimes(4);
     expect(rejectedExecute).not.toHaveBeenCalled();
     expect(selectedExecute).not.toHaveBeenCalled();
-    expect(ledger.current().state.capabilityExecutions).toEqual([]);
-  });
-
-  test("reopens capability selection at most once per Worker activation", async () => {
-    const { ledger, call } = await openWorkerLedger();
-    const binding = createBinding(ledger, call);
-    let invocation = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async () => {
-      invocation += 1;
-      if (invocation === 1 || invocation === 3) {
-        return {
-          text: workerDecisionText({
-            action: "invoke_capability",
-            capabilityId: "example.observe",
-            intent:
-              invocation === 1
-                ? "Attempt the unavailable effect."
-                : "Attempt the unavailable effect again.",
-          }),
-          meta: {},
-        };
-      }
-      return {
-        text: workerDecisionText({
-          action: "return_failure",
-          reason:
-            invocation === 2
-              ? "The first pending selection cannot establish the effect."
-              : "No available capability can establish the effect.",
-        }),
-        meta: {},
-      };
-    });
-
-    await expect(
-      runWorkerDecision(createRequest(invoke), {
-        call,
-        requestToolResults: EMPTY_REQUEST_TOOL_RESULTS,
-        capabilitySource: capabilitySource(ledger, binding),
-      }),
-    ).resolves.toEqual({
-      action: "return_failure",
-      reason: "No available capability can establish the effect.",
-    });
-    expect(invoke).toHaveBeenCalledTimes(4);
     expect(ledger.current().state.capabilityExecutions).toEqual([]);
   });
 
@@ -3475,7 +4381,9 @@ describe("generic Worker capability decision boundary", () => {
     let invocation = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
       invocation += 1;
-      const messages = input.messages.map(({ content }) => content).join("\n");
+      const messages = asChatMessages(input.messages)
+        .map(({ content }) => content)
+        .join("\n");
       const format = JSON.stringify(input.format);
       if (invocation === 1) {
         expect(input.format).toMatchObject({ name: "worker_decision" });
@@ -3676,7 +4584,9 @@ describe("generic Worker capability decision boundary", () => {
     let invocation = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
       invocation += 1;
-      const messages = input.messages.map(({ content }) => content).join("\n");
+      const messages = asChatMessages(input.messages)
+        .map(({ content }) => content)
+        .join("\n");
       expect(input.format).toMatchObject({ name: "worker_decision" });
       expect(JSON.stringify(input.format)).not.toContain(
         "select_capability_group",
@@ -3771,6 +4681,9 @@ describe("generic Worker capability decision boundary", () => {
           meta: {},
         };
       }
+      if (!secondCall) {
+        throw new Error("resumed Worker call missing");
+      }
       if (input.modelStep === WORKER_RESULT_MODEL_STEP) {
         expect(input).not.toHaveProperty("format");
         expect(messages).toHaveLength(4);
@@ -3857,6 +4770,9 @@ describe("generic Worker capability decision boundary", () => {
     expect(executionReference).toEqual({
       executionId: "capability-execution-1",
     });
+    if ("commit" in executionReference) {
+      throw new Error("unexpected operation supervision intervention");
+    }
 
     const settledHead = ledger.current();
     const execution = settledHead.state.capabilityExecutions.find(

@@ -2,11 +2,13 @@ import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
 import { projectRequestContext } from "../../context/request-context.js";
 import { projectRootSessionMemory } from "../../context/session-memory/root-projection.js";
+import { buildImmediateOperationSupervisionEvidenceMessage } from "../../context/operation-supervision-evidence.js";
 import { resolveModelContextBudget } from "../../model/model-context-budget.js";
 import type {
   RoleCallFrame,
   RoleCallLedgerHead,
 } from "../../orchestration/role-calls/index.js";
+import { createRootAuthoredResponseFormat } from "../../orchestration/final-response/format.js";
 import type { RequestExecutionSeed } from "../../request/contracts.js";
 import { appendRequestSteeringContext } from "../../request/request-steering-context.js";
 import type { RequestSteeringSnapshot } from "../../request/request-steering.js";
@@ -14,7 +16,7 @@ import { EXECUTION_AGENT_RESPONSE_MODEL_STEP } from "./contracts.js";
 import { buildExecutionAgentResponseInstructions } from "./response-prompt.js";
 import {
   buildExecutionContinuationMessages,
-  buildExecutionStateMessage,
+  buildExecutionResponseStateMessage,
 } from "./state-context.js";
 
 export const EXECUTION_RESPONSE_ASSIGNMENT_MESSAGE_KIND =
@@ -26,6 +28,8 @@ export function buildExecutionAgentResponseInput(
     head: RoleCallLedgerHead;
     call: RoleCallFrame;
     steeringSnapshot: RequestSteeringSnapshot;
+    memoryAuthoringMaxResponseChars?: number;
+    longTermMemoryMessage?: ChatMessage;
   }>,
 ): Readonly<{
   context: RequestContextProjection;
@@ -54,10 +58,24 @@ export function buildExecutionAgentResponseInput(
     options.head,
     options.call,
   );
+  const operationSupervisionEvidenceMessage =
+    buildImmediateOperationSupervisionEvidenceMessage(
+      options.head,
+      options.call,
+    );
   const sessionMemory = projectRootSessionMemory(request);
   const context = projectRequestContext({
-    instructions: buildExecutionAgentResponseInstructions(),
+    instructions: buildExecutionAgentResponseInstructions(
+      options.memoryAuthoringMaxResponseChars !== undefined,
+    ),
     ...sessionMemory,
+    ...(options.memoryAuthoringMaxResponseChars !== undefined
+      ? {
+          format: createRootAuthoredResponseFormat(
+            options.memoryAuthoringMaxResponseChars,
+          ),
+        }
+      : {}),
     prompt: request.prompt,
     ...(request.attachments ? { attachments: request.attachments } : {}),
     referenceMessages: [
@@ -65,8 +83,15 @@ export function buildExecutionAgentResponseInput(
         options.head,
         options.call,
         options.steeringSnapshot,
+        options.memoryAuthoringMaxResponseChars !== undefined,
       ),
-      buildExecutionStateMessage(options.head, options.call),
+      buildExecutionResponseStateMessage(options.head, options.call),
+      ...(operationSupervisionEvidenceMessage
+        ? [operationSupervisionEvidenceMessage]
+        : []),
+      ...(options.longTermMemoryMessage
+        ? [options.longTermMemoryMessage]
+        : []),
     ],
     ...(continuationMessages.length > 0 ? { continuationMessages } : {}),
     deferCompactionFailure: true,
@@ -92,6 +117,7 @@ function buildExecutionResponseAssignmentMessage(
   head: RoleCallLedgerHead,
   call: RoleCallFrame,
   steeringSnapshot: RequestSteeringSnapshot,
+  longTermMemoryEnabled: boolean,
 ): ChatMessage {
   return Object.freeze({
     role: "user" as const,
@@ -105,7 +131,9 @@ function buildExecutionResponseAssignmentMessage(
       activationCount: call.activationCount,
       steeringVersion: steeringSnapshot.version,
       completionKind: "respond",
-      outputContract: "raw_user_facing_text_only",
+      outputContract: longTermMemoryEnabled
+        ? "structured_root_authored_response"
+        : "raw_user_facing_text_only",
       presenceEffect:
         "presentation_scope_only_not_user_intent_or_action_authority",
     }),

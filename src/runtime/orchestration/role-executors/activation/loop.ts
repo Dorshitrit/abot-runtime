@@ -12,8 +12,6 @@ import type {
 } from "../contracts.js";
 import {
   traceRoleExecutorCompleted,
-  traceRoleExecutorContinued,
-  traceRoleExecutorContinuationRejected,
   traceRoleExecutorFailed,
   traceRoleExecutorInitialStateRejected,
   traceRoleExecutorResolved,
@@ -29,15 +27,12 @@ import {
   type RoleExecutorDiagnosticContext,
 } from "../shared/diagnostic-context.js";
 import {
-  continuationError,
   readLedgerOrReject,
   stateError,
 } from "../shared/runtime-invariants.js";
+import { continueRoleThroughCapability } from "./capability-continuation.js";
 import { normalizeRoleExecutorActivationResult } from "./result-normalization.js";
-import {
-  resolveCurrentCall,
-  validateCapabilityContinuation,
-} from "./state-validation.js";
+import { resolveCurrentCall } from "./state-validation.js";
 
 type RoleExecutionInput<TContext, TValue> = Parameters<
   RoleExecutorRegistry<TContext, TValue>["execute"]
@@ -68,14 +63,10 @@ export class RoleActivationLoop<TContext, TValue> {
   }
 
   async run(): Promise<RoleExecutionResult<TValue>> {
-    const { executor, initialHead, call } = this.resolveInitialActivation();
+    const { executor, call } = this.resolveInitialActivation();
     this.expectedCall = call;
 
-    const maximumTurns =
-      initialHead.policy.limits.maxCalls +
-      initialHead.policy.limits.maxCapabilityExecutions +
-      1;
-    for (let turnCount = 1; turnCount <= maximumTurns; turnCount += 1) {
+    for (let turnCount = 1; ; turnCount += 1) {
       const activation = this.requireCurrentActivation(turnCount);
       const terminal = await this.runActivation(
         executor,
@@ -84,23 +75,10 @@ export class RoleActivationLoop<TContext, TValue> {
       );
       if (terminal) return terminal;
     }
-
-    const exhaustedDiagnostic = createDiagnostic({
-      requestId: this.params.input.requestId,
-      call: this.expectedCall,
-      registeredRoleIds: this.params.registeredRoleIds,
-    });
-    traceRoleExecutorStateRejected(
-      exhaustedDiagnostic,
-      "continuation_limit_exceeded",
-      maximumTurns,
-    );
-    throw stateError("continuation_limit_exceeded");
   }
 
   private resolveInitialActivation(): Readonly<{
     executor: RoleExecutor<TContext, TValue>;
-    initialHead: RoleCallLedgerHead;
     call: RoleCallFrame;
   }> {
     const { input, registeredRoleIds, executorByRoleId } = this.params;
@@ -154,7 +132,6 @@ export class RoleActivationLoop<TContext, TValue> {
     traceRoleExecutorResolved(initialDiagnostic);
     return Object.freeze({
       executor,
-      initialHead,
       call: initialAuthority.call,
     });
   }
@@ -250,7 +227,16 @@ export class RoleActivationLoop<TContext, TValue> {
         await this.continueThroughChild(activation, result.value, turnCount);
         return undefined;
       }
-      this.continueThroughCapability(activation, result.value, turnCount);
+      const continued = continueRoleThroughCapability({
+        ledger: input.ledger,
+        before: activation.before,
+        currentCall: activation.call,
+        diagnostic: activation.diagnostic,
+        continuation: result.value.continuation,
+        turnCount,
+      });
+      this.expectedCall = continued.call;
+      this.continuationReference = continued.continuationReference;
       return undefined;
     } catch (error: unknown) {
       traceRoleExecutorFailed(activation.diagnostic, error);
@@ -323,49 +309,6 @@ export class RoleActivationLoop<TContext, TValue> {
       activation.call,
     );
     this.continuationReference = continuationReference;
-  }
-
-  private continueThroughCapability(
-    activation: CurrentRoleActivation,
-    result: Extract<RoleExecutorActivationResult<TValue>, { kind: "continue" }>,
-    turnCount: number,
-  ): void {
-    const after = readLedgerOrReject({
-      ledger: this.params.input.ledger,
-      diagnostic: activation.diagnostic,
-      turnCount,
-    });
-    const executionIds =
-      result.continuation.kind === "capability_batch_execution"
-        ? result.continuation.executionIds
-        : [result.continuation.executionId];
-    const continuation = validateCapabilityContinuation({
-      before: activation.before,
-      after,
-      currentCall: activation.call,
-      executionIds,
-    });
-    if (!continuation.ok) {
-      traceRoleExecutorContinuationRejected(activation.diagnostic, {
-        issueCode: continuation.issueCode,
-        ...(result.continuation.kind === "capability_batch_execution"
-          ? { executionIds }
-          : { executionId: executionIds[0] }),
-        fromActivation: activation.call.activationCount,
-        turnCount,
-      });
-      throw continuationError(activation.call.roleId, continuation.issueCode);
-    }
-    traceRoleExecutorContinued(activation.diagnostic, {
-      ...(result.continuation.kind === "capability_batch_execution"
-        ? { executionIds }
-        : { executionId: executionIds[0] }),
-      fromActivation: activation.call.activationCount,
-      toActivation: continuation.call.activationCount,
-      turnCount,
-    });
-    this.expectedCall = continuation.call;
-    this.continuationReference = result.continuation;
   }
 }
 

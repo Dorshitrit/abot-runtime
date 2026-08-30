@@ -9,4 +9,5 @@ export * from "./adapters/in-memory-session-store.js";
 export * from "./adapters/multi-workspace-provider.js";
 export * from "./adapters/source-workspace-provider.js";
 export * from "./attachments/store.js";
+export * from "./long-term-memory/index.js";
 export * from "./observability/debug-logger.js";

@@ -6,10 +6,13 @@ import {
   EXECUTION_AGENT_DECISION_MODEL_STEP,
   EXECUTION_AGENT_RESPONSE_MODEL_STEP,
   runExecutionAgentDecision,
-  runExecutionAgentResponse,
+  runExecutionAgentAuthoredResponse,
 } from "../steps/execution-agent/index.js";
 import { encodeExecutionAgentAuditObjective } from "../steps/auditor-decision/index.js";
-import { resolveRequestSteeringInbox } from "./request-steering.js";
+import {
+  projectRequestSteeringSnapshot,
+  resolveRequestSteeringInbox,
+} from "./request-steering.js";
 import type {
   RequestRootContractAdapter,
   RootContractDecision,
@@ -48,10 +51,13 @@ export const EXECUTION_AGENT_ROOT_CONTRACT: RequestRootContractAdapter =
       const requestSteering = resolveRequestSteeringInbox(
         request.requestSteering,
       );
-      return runExecutionAgentResponse(request, {
+      return runExecutionAgentAuthoredResponse(request, {
         head: options.head,
         call: options.callFrame,
-        steeringSnapshot: requestSteering.snapshot(),
+        steeringSnapshot: projectRequestSteeringSnapshot(
+          requestSteering,
+          options.steeringVersion,
+        ),
       });
     },
   });
@@ -71,6 +77,7 @@ function projectKernelDecision(
       return Object.freeze({
         action: "reconsider_capability_selection" as const,
         selection: decision.selection,
+        cause: decision.cause,
       });
     case "open_capability_scope":
       return Object.freeze({

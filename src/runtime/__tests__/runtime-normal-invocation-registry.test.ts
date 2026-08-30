@@ -38,6 +38,7 @@ describe("manifest-derived ordinary invocation registry", () => {
         (tool.normalInvocation?.operations ?? []).map((operation) => ({
           toolName: tool.definition.name,
           operationId: operation.operationId,
+          selectionControlIds: operation.selectionControlIds,
           effect: operation.effect,
           approval: operation.approval,
         })),
@@ -49,15 +50,46 @@ describe("manifest-derived ordinary invocation registry", () => {
         registration.contract.operations.map((operation) => ({
           toolName: registration.toolName,
           operationId: operation.operationId,
+          selectionControlIds: operation.selectionControlIds,
           effect: operation.effect,
           approval: operation.approval,
         })),
       )
       .sort(compareOperation);
+    const provider = createRegisteredToolWorkerCapabilityProvider<
+      Record<string, never>
+    >({
+      getRequestToolRegistry: () => registry,
+      requestId: "request-filesystem-selection-controls",
+      sessionId: "session-filesystem-selection-controls",
+      abortSignal: new AbortController().signal,
+      toolPermissionMode: "full_access",
+      payloadAuthor: {
+        author: async () => ({
+          status: "failed",
+          code: "payload_model_unavailable",
+        }),
+      },
+      nextApprovalId: () => "approval-unused",
+      onEvent: () => {},
+    });
 
     expect(plugins.length).toBeGreaterThan(0);
     expect(manifestOperations.length).toBeGreaterThan(0);
     expect(registeredOperations).toEqual(manifestOperations);
+    expect(
+      registeredOperations.find(
+        ({ operationId }) => operationId === "inspect_target",
+      ),
+    ).toMatchObject({ selectionControlIds: ["path"] });
+    expect(
+      provider
+        .getDescriptors()
+        .find(({ capabilityId }) => capabilityId === "inspect_target"),
+    ).toMatchObject({
+      selectionControlIds: ["path"],
+      runtimePathControlIds: ["path"],
+    });
     expect(
       registry
         .listDefinitions()

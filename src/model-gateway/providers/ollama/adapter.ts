@@ -26,6 +26,8 @@ import {
   forwardOllamaStream,
   type OllamaProviderTiming,
 } from "./stream-normalizer.js";
+import { embedWithOllama } from "./embeddings.js";
+import { listOllamaEmbeddingModels } from "./embedding-models.js";
 
 function readRequestId(params: ModelProviderInvocationParams): string {
   return typeof params.requestBody.debugRequestId === "string"
@@ -53,6 +55,9 @@ export function createOllamaProviderAdapter(options: {
   return Object.freeze({
     type: "ollama",
     supportsImageInput: true,
+    embed: (params) => embedWithOllama(params, options.fallbackUrl),
+    listEmbeddingModels: (params) =>
+      listOllamaEmbeddingModels(params, options.fallbackUrl),
     async invoke(params) {
       const requestId = readRequestId(params);
       let removedConstraintCount = 0;

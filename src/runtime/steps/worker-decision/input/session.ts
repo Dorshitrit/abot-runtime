@@ -59,12 +59,15 @@ export function prepareWorkerDecisionSession(
     request,
     options,
     callIdentity,
+    diagnostic.modelStep,
+    capabilitySelection.executionPending,
   );
   const contract = prepareWorkerDecisionContract({
     options,
     projectedCapabilities,
     eligibleSessionArtifactPaths,
     canonicalSource: canonicalState.canonicalSource,
+    dependencyResultCount: canonicalState.dependencyResults.length,
     capabilitySelection,
   });
 

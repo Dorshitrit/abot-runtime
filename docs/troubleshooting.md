@@ -62,6 +62,27 @@ Provider config should contain only the env var name:
 }
 ```
 
+## Long-Term Memory Cannot Be Enabled
+
+First confirm that the provider already exists in `models.providers` and that
+the embedding model is available from the same provider endpoint used by the
+Runtime. Then run:
+
+```bash
+npx abot memory status
+npx abot memory models --provider <provider-id>
+npx abot memory enable --provider <provider-id> --model <embedding-model-id>
+```
+
+The provider may report that model discovery is unsupported; this is expected
+for OpenAI and means the model id must be entered manually. Enablement writes no
+configuration unless the real embedding probe and full config validation pass.
+
+After enabling or disabling memory, restart ABot. If memory later becomes
+unavailable, inspect the Runtime trace for `runtime.long_term_memory` diagnostics.
+The normal final response should still complete because memory failures are
+isolated from response delivery.
+
 ## Runtime Connects But App Requests Do Not Arrive
 
 The runtime bridge client connects outbound to `agentBridgeUrl`. Make sure the

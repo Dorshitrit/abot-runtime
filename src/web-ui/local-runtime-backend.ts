@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type WebSocket from "ws";
 
+import { resolveProviderAdapters } from "../model-gateway/server/index.js";
 import { LocalRuntimeApiRouter } from "./local-runtime/api-router.js";
 import { LocalRuntimeControlRoutes } from "./local-runtime/control-routes.js";
 import type { LocalRuntimeBackendOptions } from "./local-runtime/contracts.js";
@@ -20,12 +21,22 @@ export class LocalRuntimeWebBackend {
   private readonly controls: LocalRuntimeControlRoutes;
 
   constructor(options: LocalRuntimeBackendOptions) {
-    this.environments = new RuntimeEnvironmentRegistry(options);
+    const resolvedOptions = {
+      ...options,
+      providerAdapters: resolveProviderAdapters({
+        providerAdapters: options.providerAdapters,
+      }),
+    };
+    this.environments = new RuntimeEnvironmentRegistry(resolvedOptions);
     const clients = new RealtimeClientHub();
     const requests = new LocalRequestExecution(clients);
-    this.api = new LocalRuntimeApiRouter(options, this.environments, requests);
+    this.api = new LocalRuntimeApiRouter(
+      resolvedOptions,
+      this.environments,
+      requests,
+    );
     this.realtime = new LocalRealtimeController(
-      options,
+      resolvedOptions,
       this.environments,
       requests,
       clients,

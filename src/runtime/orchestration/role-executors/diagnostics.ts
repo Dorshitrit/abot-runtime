@@ -80,6 +80,10 @@ export function traceRoleExecutorCompleted(
 export function traceRoleExecutorContinued(
   context: RoleExecutorDiagnosticContext,
   params: Readonly<{
+    continuationKind:
+      | "capability_execution"
+      | "capability_batch_execution"
+      | "operation_supervision_intervention";
     executionId?: string;
     executionIds?: readonly string[];
     fromActivation: number;
@@ -89,9 +93,6 @@ export function traceRoleExecutorContinued(
 ): void {
   traceDebug(ROLE_EXECUTOR_LOG_SCOPE, "executor.continued", {
     ...projectCall(context),
-    continuationKind: params.executionIds
-      ? "capability_batch_execution"
-      : "capability_execution",
     ...params,
   });
 }
@@ -203,6 +204,10 @@ export function traceRoleExecutorChildRejected(
 export function traceRoleExecutorContinuationRejected(
   context: RoleExecutorDiagnosticContext,
   params: Readonly<{
+    continuationKind:
+      | "capability_execution"
+      | "capability_batch_execution"
+      | "operation_supervision_intervention";
     issueCode: string;
     executionId?: string;
     executionIds?: readonly string[];
@@ -212,9 +217,7 @@ export function traceRoleExecutorContinuationRejected(
 ): void {
   traceDebug(ROLE_EXECUTOR_LOG_SCOPE, "continuation.rejected", {
     ...projectCall(context),
-    continuationKind: params.executionIds
-      ? "capability_batch_execution"
-      : "capability_execution",
+    continuationKind: params.continuationKind,
     issueCode: params.issueCode,
     ...(params.executionId ? { executionId: params.executionId } : {}),
     ...(params.executionIds ? { executionIds: params.executionIds } : {}),

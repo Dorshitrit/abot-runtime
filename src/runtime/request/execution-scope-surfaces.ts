@@ -108,6 +108,13 @@ export function createScopeSurface(
           sessionMemory: enumerableGetter(() => facets.session.sessionMemory!),
         }
       : {}),
+    ...(facets.memory.longTermMemory !== undefined
+      ? {
+          longTermMemory: enumerableGetter(
+            () => facets.memory.longTermMemory!,
+          ),
+        }
+      : {}),
     executionPolicy: enumerableGetter(() => policy.executionPolicy),
     modelSteps: enumerableGetter(() => modelSteps),
     workerCapabilities: enumerableGetter(() => capabilities),
@@ -115,6 +122,7 @@ export function createScopeSurface(
     input: hiddenValue(facets.input),
     session: hiddenValue(facets.session),
     model: hiddenValue(facets.model),
+    memory: hiddenValue(facets.memory),
     lifecycle: hiddenValue(facets.lifecycle),
     presentation: hiddenValue(facets.presentation),
     policy: hiddenValue(policy),

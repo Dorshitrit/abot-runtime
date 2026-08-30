@@ -7,7 +7,10 @@ import {
 import { createComposerAttachmentsController } from "../../web-ui/app/controllers/composer-attachments-controller.js";
 import { createComposerSubmitController } from "../../web-ui/app/controllers/composer-submit-controller.js";
 import { createRuntimeOnboardingController } from "../../web-ui/app/controllers/runtime-onboarding-controller.js";
-import { createRuntimeSelectionController } from "../../web-ui/app/controllers/runtime-selection-controller.js";
+import {
+  createRuntimeSelectionController,
+  type AgentMode,
+} from "../../web-ui/app/controllers/runtime-selection-controller.js";
 import { createRuntimeWebClient } from "../../web-ui/app/services/runtime-web-client.js";
 
 function createGuideHarness(copyText = vi.fn(async () => {})) {
@@ -580,6 +583,7 @@ describe("web ui runtime onboarding", () => {
         isCurrentDraining: vi.fn(() => false),
         queuedCount: vi.fn(() => 0),
         enqueue,
+        restoreText: vi.fn(),
       },
       steer,
       chatRequests: { sendMessage },
@@ -638,7 +642,11 @@ describe("web ui runtime onboarding", () => {
         attachmentPreview: fakeElement(),
       },
       shell: { showToast: vi.fn() },
-      client: { uploadAttachment },
+      client: {
+        attachmentPreviewUrl: vi.fn(() => ""),
+        deleteAttachment: vi.fn(async () => {}),
+        uploadAttachment,
+      },
       selectedEnvironmentId: () => "prod",
       selectedModelSupportsImageInput: () => false,
       ensureSession: vi.fn(),
@@ -651,7 +659,11 @@ describe("web ui runtime onboarding", () => {
     expect(attachmentButton.disabled).toBe(true);
     expect(attachmentButton.title).toContain("provider and model");
     await expect(
-      controller.upload({ name: "notes.txt", type: "text/plain" }),
+      controller.upload(
+        Object.assign(new Blob(["notes"], { type: "text/plain" }), {
+          name: "notes.txt",
+        }),
+      ),
     ).rejects.toThrow("provider and model");
     expect(uploadAttachment).not.toHaveBeenCalled();
   });
@@ -674,8 +686,15 @@ describe("web ui runtime onboarding", () => {
       },
       modelProfiles: [{ id: "old-model" }],
       defaultModelProfileId: "old-model",
+      pinnedSessionIds: [] as string[],
+      sessionModes: {},
       sessionModels: {},
       lastModelByEnvironment: {},
+      agentMode: "reasoning" as AgentMode,
+      supportedAgentModes: ["fast", "reasoning", "deep"] as AgentMode[],
+      agentModeMenuOpen: false,
+      permissionModeMenuOpen: false,
+      agentPickerOpen: false,
       currentSessionId: "",
     };
     const onboarding = createRuntimeOnboardingController({
@@ -687,18 +706,39 @@ describe("web ui runtime onboarding", () => {
     const selection = createRuntimeSelectionController({
       state,
       dom: {
-        environmentSelect: fakeElement({
+        environmentSelect: {
+          ...fakeElement(),
           value: "dev",
           options: [{ value: "dev", textContent: "Development" }],
-        }),
-        modelSelect: fakeElement({
+        },
+        modelSelect: {
+          ...fakeElement(),
           value: "old-model",
           options: [{ value: "old-model", textContent: "Old Model" }],
-        }),
+        },
+        agentPickerButton: fakeElement(),
+        agentPickerMenu: fakeElement(),
+        permissionModeButton: fakeElement(),
+        permissionModeMenu: fakeElement(),
+        agentModeButton: fakeElement(),
+        agentModeMenu: fakeElement(),
       },
-      preferences: {},
+      preferences: {
+        loadPinnedSessions: vi.fn(() => []),
+        loadSessionModes: vi.fn(() => ({})),
+        saveSessionModes: vi.fn(),
+        loadModelPreferences: vi.fn(() => ({
+          sessionModels: {},
+          lastModelByEnvironment: {},
+        })),
+        saveModelPreferences: vi.fn(),
+      },
       modelSelector: { sync: vi.fn() },
-      client: { listModels: vi.fn(() => catalog.promise) },
+      client: {
+        getAgentMode: vi.fn(async () => ({ mode: "reasoning" })),
+        setAgentMode: vi.fn(async () => ({ mode: "reasoning" })),
+        listModels: vi.fn(() => catalog.promise),
+      },
       recordControlEvent: vi.fn(),
       onAttachmentPolicyChange: vi.fn(),
       onModelCatalogLoading: onboarding.beginCatalogLoad,

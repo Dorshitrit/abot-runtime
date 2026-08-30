@@ -3,10 +3,12 @@
 This checklist covers the repo state expected before opening `abot` as a
 public Git repository or publishing a package artifact.
 
-The private development checkout is not a release source: its `package.json`
-sets `private: true`, so direct `npm publish` is blocked. Every public Git
-repository and npm release must be created from a freshly built and verified
-public snapshot. Never copy or publish the private checkout directly.
+The private development checkout is the canonical product source. Its
+`package.json` sets `private: true`, so direct `npm publish` is blocked. Every
+public Git and npm release must be created from a freshly built and verified
+public snapshot of one exact private commit. Never copy or publish the private
+checkout directly, and never develop or hotfix product changes in the public
+repository.
 
 ## 1. Public Metadata
 
@@ -78,11 +80,14 @@ Inside the verified public snapshot, run:
 ```bash
 npm run check:runtime-package
 npm run check:publication
+npm run check:public-snapshot
 ```
 
 `check:runtime-package` validates the packed artifact. `check:publication`
-validates public repo hygiene. For a public package, the packed-artifact check
-also rejects any plugin set other than the exact public allowlist.
+validates public repo hygiene. `check:public-snapshot` verifies every payload
+file against `PUBLIC-SNAPSHOT.json`; the public `npm run validate` chain runs
+all three checks. For a public package, the packed-artifact check also rejects
+any plugin set other than the exact public allowlist.
 
 ## 5. Examples And Docs
 
@@ -97,17 +102,19 @@ Keep these public onboarding files in sync:
 - `docs/known-limitations.md`
 - `docs/plugins.md`
 - `docs/troubleshooting.md`
+- `src/runtime/README.md`
 - `examples/minimal-runtime-composition.ts`
 - `examples/runtime.config.example.json`
+- `examples/request-runner.config.example.json`
 - `plugins/`
 
 Example config must stay sanitized and must not include host-specific URLs
 except local development defaults.
 
-## 6. Initial Public Repository Export
+## 6. Build A Fresh Snapshot For Every Release
 
-From a clean, fully tracked private checkout, build a new snapshot into an
-empty directory:
+Select one clean, synchronized, fully tracked private commit. Validate it, then
+build a new snapshot into a fresh empty directory:
 
 ```bash
 npm run validate
@@ -115,26 +122,46 @@ npm run build:public-snapshot -- --output /absolute/path/to/empty/public-snapsho
 ```
 
 `build:public-snapshot` is a private-source export command. It is intentionally
-absent from the exported public package and must not become part of the public
-repository's normal development workflow.
+absent from the exported public package. Run it again for every release; do not
+reuse or edit an older snapshot.
 
-Use the snapshot once to seed the public Git repository. The generated
-`PUBLIC-SNAPSHOT.json` records that export; ordinary public changes do not
-rewrite or verify its frozen file hashes.
-
-## 7. Public Repository Releases
-
-After the initial export, maintain and release directly from the public Git
-repository:
+The generated `PUBLIC-SNAPSHOT.json` records the exact exported tree. Validate
+the snapshot itself before producing a package artifact:
 
 ```bash
-npm ci
+cd /absolute/path/to/empty/public-snapshot
+npm ci --ignore-scripts
 npm run validate
-npm pack --dry-run
+npm pack
 ```
 
-The public package explicitly sets `private: false`; the private development
-checkout explicitly sets `private: true`. Public `check:publication` validates
-the current repository rather than the initial export receipt. Tag or run
-`npm publish` only after current-tree validation and artifact review succeed on
-the real release machine.
+If validation finds a defect or an incomplete dependency closure, stop and fix
+it in the private canonical repository. Validate that change there and generate
+a completely new snapshot. Do not patch the generated snapshot in place.
+
+## 7. Validate And Promote The Frozen Artifacts
+
+Install the exact tarball from the verified snapshot into a fresh consumer
+project. Exercise the installed binary, not a source-tree fallback:
+
+```bash
+npm install /absolute/path/to/abot-ai-runtime-<version>.tgz
+npx --no-install abot --help
+```
+
+Also verify empty-config Web UI onboarding, non-destructive provider/profile
+addition, default-profile selection, and the packaged Web UI. For an upgrade,
+install the candidate tarball over a real prior-version consumer without
+rerunning init and confirm that its local config remains unchanged.
+
+The public repository is a generated distribution projection, not an
+independent maintenance branch. Promote only the contents of the verified
+snapshot. Any proposed public-repository fix must first return to the private
+canonical repository and pass the complete flow again.
+
+Publishing the frozen snapshot, running `npm publish`, pushing a public tag, and
+creating a GitHub Release are separate external mutations. Perform them only
+after explicit authorization names the exact private commit, snapshot tree,
+tarball, and version. Never overwrite a version already published to npm; a
+post-release defect ships from a new private commit under a new semantic
+version.

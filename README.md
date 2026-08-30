@@ -12,6 +12,7 @@ hardcoded defaults.
 
 - Configurable local and hosted model providers
 - Persistent conversations, request events, and replay
+- Optional passive long-term memory across sessions
 - Planning, execution, and review workflows
 - Manifest-based tools and plugins with explicit runtime boundaries
 - Workspace, file, skill, and memory capabilities
@@ -32,6 +33,7 @@ The Web UI supports:
 - streaming messages, current activity, tool progress, and failures
 - steering an active request or queuing the next message
 - editing runtime configuration
+- configuring passive long-term memory with a consumer-selected embedding model
 - inspecting runtime status, logs, and health
 
 The UI is a client of the runtime; persisted sessions, events, and request state
@@ -80,6 +82,16 @@ npx abot init --provider openai --model <model-id>
 OpenAI profiles created by `abot init` or `abot add-model` use the recommended
 `execution-agent-v1` execution policy. Existing profiles are preserved unless
 the user explicitly requests replacement.
+
+Passive long-term memory is disabled by default. After configuring a provider,
+choose and probe an embedding model from the Config workspace or CLI:
+
+```bash
+npx abot memory enable --provider <provider-id> --model <embedding-model-id>
+```
+
+See [Passive Long-Term Memory](docs/long-term-memory.md) for its privacy,
+storage, retrieval, and management contracts.
 
 ## Quick Start From Source
 
@@ -199,9 +211,10 @@ Step](docs/configuration.md#calibrating-a-model-by-step).
 
 The distribution includes a curated public plugin catalog for development and
 agent workflows: filesystem operations, command execution, document reading,
-local search, memory, project inspection, JSON inspection, system probing, and
-Web access. Hosts can add plugins under their own runtime root; duplicate plugin
-IDs fail closed.
+local search, explicit memory operations, project inspection, JSON inspection,
+system probing, and Web access. Hosts can add plugins under their own runtime
+root; duplicate plugin IDs fail closed. The explicit memory plugin is separate
+from core-owned passive long-term memory.
 
 The Web plugin exposes two distinct capabilities:
 
@@ -231,6 +244,7 @@ For a deeper view, see [Architecture](docs/architecture.md).
 - [Running Locally](docs/running-locally.md)
 - [Configuration](docs/configuration.md)
 - [Runtime Library](docs/runtime-library.md)
+- [Passive Long-Term Memory](docs/long-term-memory.md)
 - [Plugins](docs/plugins.md)
 - [Troubleshooting](docs/troubleshooting.md)
 

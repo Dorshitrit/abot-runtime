@@ -14,6 +14,7 @@ import {
   type RoleCallFrame,
   type RoleCallLedger,
   type RoleCallLedgerHead,
+  type RoleOperationSupervisionNotice,
 } from "../../../orchestration/role-calls/index.js";
 import {
   type WorkerCapabilityBinding,
@@ -76,6 +77,7 @@ export type WorkerDecisionCapabilityResumeSource =
 export type WorkerSelectedCapabilityExecution = Readonly<{
   capabilityId: string;
   intent: string;
+  authoringObjective?: string;
   selectionControls?: WorkerCapabilityControls;
   guidance: string;
 }>;
@@ -84,6 +86,7 @@ export type WorkerSelectedCapabilityBatchExecution = Readonly<{
   invocations: readonly Readonly<{
     capabilityId: string;
     intent: string;
+    authoringObjective?: string;
     selectionControls?: WorkerCapabilityControls;
     guidance: string;
   }>[];
@@ -92,6 +95,7 @@ export type WorkerSelectedCapabilityBatchExecution = Readonly<{
 export type WorkerPendingCapabilitySelection = Readonly<{
   capabilityId: string;
   intent: string;
+  authoringObjective?: string;
   selectionControls?: WorkerCapabilityControls;
 }>;
 
@@ -129,6 +133,7 @@ export type PreparedWorkerCanonicalState = Readonly<{
     | undefined;
   dependencyResults: readonly RoleCallDependencyResult[];
   resume: ReturnType<typeof projectWorkerCapabilityResumeContext> | undefined;
+  operationSupervision: readonly RoleOperationSupervisionNotice[] | undefined;
 }>;
 
 export type PreparedWorkerDecisionContract = Readonly<{
@@ -160,6 +165,7 @@ export type PreparedWorkerDecisionSession = Readonly<{
 
 export type PreparedWorkerReferenceContext = Readonly<{
   requestToolResultsMessage: ChatMessage | undefined;
+  operationSupervisionEvidenceMessage: ChatMessage | undefined;
   resultAuthorSource: WorkerResultAuthorSource;
   baseReferenceMessages: readonly ChatMessage[];
   continuationMessages: readonly ChatMessage[];

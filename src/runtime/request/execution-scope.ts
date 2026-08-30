@@ -11,6 +11,7 @@ import type {
   RequestLifecycleRuntime,
   RequestModelInvocationView,
   RequestModelRuntime,
+  RequestMemoryRuntime,
   RequestPresentation,
 } from "./contracts.js";
 import {
@@ -46,7 +47,10 @@ export type RequestCapabilityCompositionView =
  * Passive session artifact paths and request containers are excluded.
  */
 export type RequestCapabilityExecutionView = Readonly<
-  Omit<RequestExecutionSeed, "sessionArtifactPaths" | "sessionMemory">
+  Omit<
+    RequestExecutionSeed,
+    "sessionArtifactPaths" | "sessionMemory" | "longTermMemory"
+  >
 > &
   BoundRequestModelInvocationContext;
 
@@ -68,6 +72,7 @@ export type RequestExecutionScope = RequestExecutionSeed &
     input: AcceptedRequestInput;
     session: RequestSessionSnapshot;
     model: RequestModelRuntime;
+    memory: RequestMemoryRuntime;
     lifecycle: RequestLifecycleRuntime;
     presentation: RequestPresentation;
     policy: RequestExecutionPolicyFacet;

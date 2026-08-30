@@ -14,6 +14,9 @@ export function createRequestModelPolicy(params: {
     ...(params.platformPolicy?.profiles
       ? { profiles: params.platformPolicy.profiles }
       : {}),
+    ...(params.platformPolicy?.embeddingProfiles
+      ? { embeddingProfiles: params.platformPolicy.embeddingProfiles }
+      : {}),
     ...(params.platformPolicy?.invocationProfiles
       ? { invocationProfiles: params.platformPolicy.invocationProfiles }
       : {}),

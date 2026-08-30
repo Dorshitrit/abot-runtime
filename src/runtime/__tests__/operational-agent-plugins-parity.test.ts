@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import type { ToolImplementationOutput } from "../../plugin-sdk/index.js";
 import { createRuntimeToolPathResolver } from "../capabilities/runtime-target-path.js";
 import { ABOT_RUNTIME_EXTENSION } from "../../plugin-contract/manifest.js";
 import { parseAgentPluginManifest } from "../plugins/manifest-validator.js";
@@ -16,7 +17,7 @@ const temporaryRoots: string[] = [];
 type Handler = (
   params: Record<string, unknown>,
   executionContext?: Readonly<{ abortSignal?: AbortSignal }>,
-) => Promise<Record<string, unknown>>;
+) => Promise<ToolImplementationOutput>;
 
 function loadManifest(pluginName: string) {
   const raw = JSON.parse(

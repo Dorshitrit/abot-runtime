@@ -65,17 +65,31 @@
     padding: 20px 24px 48px;
   }
 
-  .config-dashboard-grid,
-  .config-loop-grid,
-  .config-steps-section .config-step-list,
-  .config-model-layout,
-  .config-field-grid,
-  .config-calibration-card .config-field-grid {
+  .config-category-panel {
+    padding: 22px;
+  }
+
+  .config-model-layout {
     grid-template-columns: 1fr;
+    gap: 20px;
   }
 
   .config-model-list {
-    max-height: 280px;
+    position: static;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: none;
+    border-right: 0;
+    border-bottom: 1px solid var(--config-line);
+  }
+
+  .config-model-list-title {
+    grid-column: 1 / -1;
+  }
+
+  .config-field-grid,
+  .config-field-grid.model-basics,
+  .config-calibration-card .config-field-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -366,33 +380,27 @@
     padding: 16px 14px 42px;
   }
 
-  .config-dashboard-header h3 {
-    font-size: 24px;
+  .config-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .config-hero,
-  .config-field-grid,
-  .config-calibration-meta,
-  .config-add-row,
-  .config-add-row.compact {
-    grid-template-columns: 1fr;
+  .config-summary-item:nth-child(2n) {
+    border-right: 0;
   }
 
-  .config-section,
-  .config-model-editor,
-  .config-model-list,
-  .config-calibration-card,
-  .config-raw-panel {
-    border-radius: 12px;
+  .config-summary-item:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--config-line);
   }
 
-  .config-section-header,
-  .config-subheader,
-  .config-calibration-title {
-    align-items: flex-start;
+  .config-category-panel {
+    padding: 20px;
   }
 
-  .config-raw-toolbar {
+  .config-section-header p {
+    white-space: normal;
+  }
+
+  .config-calibration-meta {
     grid-template-columns: 1fr;
   }
 
@@ -400,6 +408,130 @@
     right: 12px;
     bottom: calc(var(--mobile-rail-height) + 12px);
     max-width: calc(100vw - 24px);
+  }
+}
+
+@media (max-width: 620px) {
+  .config-workspace-body {
+    padding: 12px 10px 34px;
+  }
+
+  .config-dashboard {
+    border-radius: 8px;
+  }
+
+  .config-summary-item {
+    padding: 10px 12px;
+  }
+
+  .config-category-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-inline: 8px;
+  }
+
+  .config-category-tab:nth-child(-n + 2) {
+    border-bottom-color: var(--config-line);
+  }
+
+  .config-category-tab.active,
+  .config-category-tab[aria-selected="true"] {
+    border-bottom-color: var(--accent);
+  }
+
+  .config-category-panel {
+    padding: 16px 14px 20px;
+  }
+
+  .config-section-header,
+  .config-subheader,
+  .memory-setup-heading,
+  .memory-management-heading,
+  .memory-management-toolbar,
+  .memory-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .config-file-actions,
+  .config-section-actions {
+    justify-content: flex-start;
+  }
+
+  .config-step-header {
+    display: none;
+  }
+
+  .config-step-row,
+  .config-file-row,
+  .config-files-section .config-file-row,
+  .config-add-row,
+  .config-add-row.compact,
+  .config-field-grid,
+  .config-field-grid.model-basics,
+  .config-execution-route,
+  .config-calibration-card .config-field-grid,
+  .config-raw-toolbar,
+  .memory-setup-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .config-step-row,
+  .config-file-row {
+    align-items: stretch;
+    gap: 7px;
+  }
+
+  .config-profile-select-cell small {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .config-add-row.compact {
+    width: 100%;
+  }
+
+  .config-model-list {
+    grid-template-columns: 1fr;
+  }
+
+  .config-calibration-title {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .config-calibration-title code {
+    max-width: 110px;
+  }
+
+  .config-raw-status {
+    grid-column: 1;
+  }
+
+  .memory-setup-actions,
+  .memory-management-primary-actions,
+  .memory-editor-actions,
+  .memory-pagination > div,
+  .memory-search,
+  .memory-search-shell {
+    width: 100%;
+  }
+
+  .memory-management-primary-actions {
+    flex-wrap: wrap;
+  }
+
+  .memory-setup-heading .memory-status,
+  .memory-management-heading .memory-status {
+    align-self: flex-start;
+  }
+
+  .memory-record {
+    padding-inline: 4px;
+  }
+
+  .memory-record-actions {
+    opacity: 1;
   }
 }
 
@@ -430,6 +562,35 @@
     min-width: 0;
     height: 36px;
     min-height: 36px;
+  }
+
+  .config-workspace-heading h2 {
+    font-size: 17px;
+  }
+
+  .config-workspace-heading > p:last-child {
+    display: none;
+  }
+
+  .config-workspace-back {
+    height: 32px;
+    min-height: 32px;
+    padding-inline: 8px;
+  }
+
+  .config-summary-item {
+    padding: 9px 10px;
+  }
+
+  .config-category-tab {
+    min-height: 38px;
+    padding-inline: 6px;
+    font-size: 11px;
+  }
+
+  .config-dashboard #configRawEditor,
+  .config-dashboard .config-view {
+    min-height: 300px;
   }
 }
 

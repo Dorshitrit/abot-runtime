@@ -13,15 +13,36 @@ import {
 } from "../context/semantic-compaction/index.js";
 import type { RequestToolResultsView } from "../context/request-tool-results.js";
 import type { RoleCallFrame } from "../orchestration/role-calls/index.js";
-import {
-  WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS,
-} from "../orchestration/worker-capabilities/index.js";
+import { WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS } from "../orchestration/worker-capabilities/index.js";
 import { createTestRequestExecutionScope } from "./support/request-execution-scope.js";
 import {
   runWorkerDecision,
   WORKER_DECISION_MODEL_STEP,
   WORKER_RESULT_MODEL_STEP,
 } from "../steps/worker-decision/index.js";
+
+type TestModelMessage = Readonly<{ role: string; content: string }>;
+
+function readModelMessages(value: unknown): readonly TestModelMessage[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError("Expected model messages to be an array.");
+  }
+  const messages = value.filter(
+    (message): message is TestModelMessage =>
+      typeof message === "object" &&
+      message !== null &&
+      "role" in message &&
+      typeof message.role === "string" &&
+      "content" in message &&
+      typeof message.content === "string",
+  );
+  if (messages.length !== value.length) {
+    throw new TypeError(
+      "Expected every model message to contain text content.",
+    );
+  }
+  return messages;
+}
 
 function createContinuation(
   overrides: Partial<SemanticCompactionContinuation> = {},
@@ -53,9 +74,7 @@ function createCumulativeContinuation(
     currentState: `Covered through ${sourceRefs.at(-1) ?? "the prior source"}.`,
     findings: Object.freeze([
       ...(previous?.findings ?? []),
-      ...sourceRefs.map(
-        (sourceRef) => `Task-relevant ${sourceRef} facts.`,
-      ),
+      ...sourceRefs.map((sourceRef) => `Task-relevant ${sourceRef} facts.`),
     ]),
     evidenceRefs: Object.freeze([
       ...(previous?.evidenceRefs ?? []),
@@ -63,12 +82,11 @@ function createCumulativeContinuation(
     ]),
     artifacts: Object.freeze([...(previous?.artifacts ?? [])]),
     decisions: Object.freeze([...(previous?.decisions ?? [])]),
-    failedApproaches: Object.freeze([
-      ...(previous?.failedApproaches ?? []),
-    ]),
+    failedApproaches: Object.freeze([...(previous?.failedApproaches ?? [])]),
     openWork: Object.freeze(["Continue the active Worker objective."]),
     blockers: Object.freeze([...(previous?.blockers ?? [])]),
-    nextStep: "Continue the active Worker objective without rereading evidence.",
+    nextStep:
+      "Continue the active Worker objective without rereading evidence.",
   });
 }
 
@@ -283,12 +301,9 @@ describe("semantic request-context compaction", () => {
             },
           },
           calibration: {
-            "worker.decision": {
-            },
-            "worker.result": {
-            },
-            "context.compact": {
-            },
+            "worker.decision": {},
+            "worker.result": {},
+            "context.compact": {},
           },
         },
       },
@@ -307,7 +322,7 @@ describe("semantic request-context compaction", () => {
       modelInputs.push(input);
       const compactionInput =
         input.modelStep === CONTEXT_COMPACTION_MODEL_STEP
-          ? (JSON.parse(input.messages.at(-1)!.content) as {
+          ? (JSON.parse(readModelMessages(input.messages).at(-1)!.content) as {
               newSources?: readonly { sourceRef: string }[];
               previousContinuation?: SemanticCompactionContinuation;
               previousCheckpoint?: Readonly<{
@@ -427,7 +442,9 @@ describe("semantic request-context compaction", () => {
     expect(firstCompactionInputs).toHaveLength(3);
     expect(
       firstCompactionInputs.flatMap(({ messages }) => {
-        const payload = JSON.parse(messages.at(-1)!.content) as {
+        const payload = JSON.parse(
+          readModelMessages(messages).at(-1)!.content,
+        ) as {
           newSources: readonly { sourceRef: string }[];
         };
         expect(payload.newSources).toHaveLength(1);
@@ -601,7 +618,10 @@ describe("semantic request-context compaction", () => {
     );
     expect(handoffCompactionInputs).toHaveLength(5);
     expect(
-      JSON.parse(handoffCompactionInputs.at(-1)!.messages.at(-1)!.content),
+      JSON.parse(
+        readModelMessages(handoffCompactionInputs.at(-1)!.messages).at(-1)!
+          .content,
+      ),
     ).toMatchObject({
       newSources: [expect.objectContaining({ sourceRef: "execution-5" })],
     });
@@ -719,12 +739,12 @@ describe("semantic request-context compaction", () => {
     ).toHaveLength(7);
     expect(
       modelInputs
-        .filter(
-          ({ modelStep }) => modelStep === CONTEXT_COMPACTION_MODEL_STEP,
-        )
+        .filter(({ modelStep }) => modelStep === CONTEXT_COMPACTION_MODEL_STEP)
         .slice(-2)
         .flatMap(({ messages }) => {
-          const payload = JSON.parse(messages.at(-1)!.content) as {
+          const payload = JSON.parse(
+            readModelMessages(messages).at(-1)!.content,
+          ) as {
             newSources: readonly { sourceRef: string }[];
           };
           expect(payload.newSources).toHaveLength(1);

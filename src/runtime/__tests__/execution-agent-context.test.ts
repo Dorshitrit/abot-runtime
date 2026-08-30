@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { validateModelGatewayMessages } from "../../model-gateway/message-contract.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { RequestRunnerConfig } from "../config/runner/contracts.js";
+import { OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND } from "../context/operation-supervision-evidence.js";
+import { LONG_TERM_MEMORY_MESSAGE_KIND } from "../long-term-memory/projection.js";
 import {
   configureDebugLogger,
   resetDebugLoggerConfig,
@@ -12,6 +14,7 @@ import {
   ROLE_CALL_OBJECTIVE_MAX_LENGTH,
   ROLE_CALL_RESPONSE_MAX_LENGTH,
   ROLE_CALL_RESULT_MAX_LENGTH,
+  type ExecutionPolicyAuthoritySnapshot,
   type RoleCallFrame,
   type RoleCallLedger,
   type RoleCallLedgerHead,
@@ -33,7 +36,9 @@ import { EXECUTION_AGENT_V1_EXECUTION_POLICY } from "../request/role-executor-co
 import { createRequestSteeringInbox } from "../request/request-steering.js";
 import {
   buildExecutionAgentInput,
+  buildExecutionAgentResponseInput,
   buildExecutionContinuationMessages,
+  buildExecutionDecisionStateMessage,
   EXECUTION_AGENT_ACTION_MESSAGE_KIND,
   EXECUTION_AGENT_DECISION_MODEL_STEP,
   EXECUTION_CAPABILITY_CATALOG_MESSAGE_KIND,
@@ -188,11 +193,12 @@ function createRequest(
 
 async function createRootLedger(
   catalogGroupIds?: readonly string[],
+  authority: ExecutionPolicyAuthoritySnapshot = EXECUTION_AGENT_V1_EXECUTION_POLICY.authority,
 ): Promise<RoleCallLedger> {
   const ledger = createRoleCallLedger({
     requestId: REQUEST_ID,
     policy: {
-      authority: EXECUTION_AGENT_V1_EXECUTION_POLICY.authority,
+      authority,
       limits: {
         maxDepth: 12,
         maxCalls: 48,
@@ -292,7 +298,9 @@ function expectOneCurrentRequest(messages: readonly ChatMessage[]): number {
 function createAdapter(
   descriptor: WorkerCapabilityDescriptor,
   result: Awaited<
-    ReturnType<WorkerCapabilityAdapter<RequestCapabilityExecutionView>["execute"]>
+    ReturnType<
+      WorkerCapabilityAdapter<RequestCapabilityExecutionView>["execute"]
+    >
   >,
 ): WorkerCapabilityAdapter<RequestCapabilityExecutionView> {
   return Object.freeze({
@@ -311,7 +319,7 @@ afterEach(() => {
 });
 
 describe("Execution Agent bounded context", () => {
-  test("projects a reconsideration as passive continuity without choosing the next action", async () => {
+  test("projects exhausted controls validation as passive continuity without choosing the next action", async () => {
     const { request } = createRequest([observePrimary]);
     const ledger = await createRootLedger([FILE_GROUP]);
     const before = ledger.current();
@@ -333,6 +341,13 @@ describe("Execution Agent bounded context", () => {
         ],
         workingDirectory: ".",
         activeCapabilityCatalogGroupIds: [FILE_GROUP],
+      },
+      cause: {
+        kind: "refinement_invalid_output",
+        validationStage: "domain_parser",
+        issues: [{ code: "refinement_slot_invalid", path: "decision" }],
+        repairAttempts: 2,
+        repeatedInvalidOutput: true,
       },
     });
 
@@ -356,6 +371,13 @@ describe("Execution Agent bounded context", () => {
       fingerprint:
         activeRootCall(reconsidered).lastCapabilitySelectionReconsideration
           ?.fingerprint,
+      cause: {
+        kind: "refinement_invalid_output",
+        validationStage: "domain_parser",
+        issues: [{ code: "refinement_slot_invalid", path: "decision" }],
+        repairAttempts: 2,
+        repeatedInvalidOutput: true,
+      },
       selection: {
         action: "invoke_capability",
         invocations: [
@@ -369,10 +391,18 @@ describe("Execution Agent bounded context", () => {
       },
     });
     expect(JSON.stringify(state)).not.toContain("Observe the requested file.");
-    expect(input.messages[0]?.content).toContain(
-      "passively records that the listed selection was reconsidered before execution",
-    );
     expectOneCurrentRequest(input.messages);
+
+    const expiredCall = Object.freeze({
+      ...activeRootCall(reconsidered),
+      activationCount: call.activationCount + 2,
+    });
+    const expiredState = JSON.parse(
+      buildExecutionDecisionStateMessage(reconsidered, expiredCall).content,
+    ) as Record<string, unknown>;
+    expect(expiredState).not.toHaveProperty(
+      "capabilitySelectionReconsideration",
+    );
   });
 
   test("keeps audit available after a prior review when canonical evidence exists", async () => {
@@ -520,6 +550,26 @@ describe("Execution Agent bounded context", () => {
     expectOneCurrentRequest(scoped.messages);
   });
 
+  test("keeps root selection controls authoritative when session paths are available", async () => {
+    const runtimeBoundObservation: WorkerCapabilityDescriptor = Object.freeze({
+      ...observePrimary,
+      runtimePathControlIds: Object.freeze(["path"]),
+    });
+    const { request } = createRequest([runtimeBoundObservation], {
+      sessionArtifactPaths: Object.freeze(["prior.txt"]),
+    });
+    const ledger = await createRootLedger([FILE_GROUP]);
+
+    const input = buildInput(request, ledger);
+    const schema = JSON.stringify(input.format.schema);
+
+    expect(input.eligibleSessionArtifactPaths).toEqual(["prior.txt"]);
+    expect(input.capabilities[0]?.selectionControlIds).toEqual(["path"]);
+    expect(schema).toContain('"selectionControls"');
+    expect(schema).toContain('"invoke_capability"');
+    expect(schema).toContain('"invoke_capabilities"');
+  });
+
   test.each([
     {
       label: "success",
@@ -537,6 +587,7 @@ describe("Execution Agent bounded context", () => {
         observedEffect: "none" as const,
         summary: "\nPrimary file was unavailable.  ",
         referenceData: "  exact-primary-failure\t",
+        failureOutcomeFingerprint: `sha256:${"f".repeat(64)}`,
       },
     },
   ])(
@@ -618,6 +669,15 @@ describe("Execution Agent bounded context", () => {
         toolCallId: "capability-execution-1",
         toolName: EXECUTION_CAPABILITY_TOOL_NAME,
       });
+      const expectedAdapterEvidence =
+        adapterResult.outcome === "failed"
+          ? {
+              outcome: adapterResult.outcome,
+              observedEffect: adapterResult.observedEffect,
+              summary: adapterResult.summary,
+              referenceData: adapterResult.referenceData,
+            }
+          : adapterResult;
       expect(JSON.parse(resultMessage.content)).toEqual({
         kind: EXECUTION_CAPABILITY_RESULT_MESSAGE_KIND,
         authority: "capability_adapter_result",
@@ -631,7 +691,7 @@ describe("Execution Agent bounded context", () => {
             authority: "capability_adapter",
             status: "executed",
             ok: adapterResult.outcome === "succeeded",
-            payload: adapterResult,
+            payload: expectedAdapterEvidence,
           },
         },
       });
@@ -645,11 +705,15 @@ describe("Execution Agent bounded context", () => {
       summary: "Primary observed.",
       referenceData: "primary-data",
     };
-    const secondaryResult = {
+    const secondaryEvidence = {
       outcome: "failed" as const,
       observedEffect: "indeterminate" as const,
       summary: "Secondary observation failed.",
       referenceData: "secondary-failure",
+    };
+    const secondaryResult = {
+      ...secondaryEvidence,
+      failureOutcomeFingerprint: `sha256:${"f".repeat(64)}`,
     };
     const adapters = [
       createAdapter(observePrimary, primaryResult),
@@ -756,7 +820,7 @@ describe("Execution Agent bounded context", () => {
             authority: "capability_adapter",
             status: "executed",
             ok: false,
-            payload: secondaryResult,
+            payload: secondaryEvidence,
           },
         },
       }),
@@ -822,6 +886,233 @@ describe("Execution Agent bounded context", () => {
     expect(decoded.result.adapterResult.result.output).toHaveLength(
       exactOutput.length,
     );
+  });
+
+  test("keeps exact prior-Worker intervention evidence and passive memory in their scoped Execution Agent inputs", async () => {
+    const { request } = createRequest([]);
+    const ledger = await createRootLedger(
+      undefined,
+      Object.freeze({
+        id: "execution-agent-v1",
+        version: 1,
+        definitionHash: `sha256:${"f".repeat(64)}`,
+        rootContractId: "execution_agent",
+        availableSubordinateContractIds: Object.freeze(["worker"] as const),
+        capabilityAuthorities: Object.freeze(["root", "worker"] as const),
+      }),
+    );
+    const rootBeforeWorker = activeRootCall(ledger.current());
+    await commit(ledger, {
+      authority: "active_role",
+      type: "open_child",
+      callerCallId: rootBeforeWorker.callId,
+      roleId: "worker",
+      objective: "Observe one exact bounded value.",
+      workingDirectory: "project",
+    });
+    const worker = activeRootCall(ledger.current());
+    const actionFingerprint = `sha256:${"f".repeat(64)}`;
+    const exactReferenceData = "EXACT_PRIOR_WORKER_EVIDENCE";
+    const exactControls = Object.freeze({ path: "primary.txt" });
+    const originIntent = "Observe the exact bounded value.";
+    const longTermMemoryMessage: ChatMessage = Object.freeze({
+      role: "system" as const,
+      content: JSON.stringify({
+        kind: LONG_TERM_MEMORY_MESSAGE_KIND,
+        authority: "passive_reference",
+        purpose: "support_personalized_terminal_response_authoring",
+        memories: [
+          {
+            content: "Prefer concise terminal responses.",
+            tags: ["preference"],
+          },
+        ],
+        presenceEffect:
+          "reference_only_not_current_user_intent_assignment_action_authority_or_completion_evidence",
+      }),
+    });
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const activeWorker = activeRootCall(ledger.current());
+      const begun = await commit(ledger, {
+        authority: "active_role",
+        type: "begin_capability_execution",
+        callId: activeWorker.callId,
+        invocationAttempt: activeWorker.activationCount,
+        capabilityId: observePrimary.capabilityId,
+        declaredEffect: "observation",
+        intent: originIntent,
+        controlsJson: JSON.stringify(exactControls),
+        actionFingerprint,
+      });
+      const execution = begun.state.capabilityExecutions.at(-1);
+      if (!execution) throw new Error("Worker execution missing");
+      await commit(ledger, {
+        authority: "runtime",
+        type: "settle_capability_execution",
+        callId: activeWorker.callId,
+        executionId: execution.executionId,
+        outcome: "succeeded",
+        outcomeFingerprint: "succeeded",
+        observedEffect: "observation",
+        summary: "Observed the exact prior Worker value.",
+        referenceData: exactReferenceData,
+        exactResult: {
+          kind: "generic_capability_result_v1",
+          authority: "capability_adapter",
+          status: "executed",
+          ok: true,
+          payload: {
+            marker: exactReferenceData,
+            attempt,
+          },
+        },
+      });
+    }
+    const warnedWorker = activeRootCall(ledger.current());
+    expect(warnedWorker.callId).toBe(worker.callId);
+    await commit(ledger, {
+      authority: "runtime",
+      type: "return_child",
+      callerCallId: rootBeforeWorker.callId,
+      childCallId: warnedWorker.callId,
+      outcome: "completed",
+      summary: "The Worker established the exact bounded value.",
+    });
+
+    const rootBeforeIntervention = activeRootCall(ledger.current());
+    const executionCountBeforeIntervention =
+      ledger.current().state.capabilityExecutions.length;
+    await commit(ledger, {
+      authority: "active_role",
+      type: "begin_capability_execution",
+      callId: rootBeforeIntervention.callId,
+      invocationAttempt: rootBeforeIntervention.activationCount,
+      capabilityId: observePrimary.capabilityId,
+      declaredEffect: "observation",
+      intent: "Repeat the exact bounded observation.",
+      controlsJson: JSON.stringify(exactControls),
+      actionFingerprint,
+    });
+
+    const head = ledger.current();
+    const root = activeRootCall(head);
+    expect(head.state.capabilityExecutions).toHaveLength(
+      executionCountBeforeIntervention,
+    );
+    expect(buildExecutionContinuationMessages(head, root)).toEqual([]);
+    const steeringSnapshot = createRequestSteeringInbox({
+      requestId: request.requestId,
+    }).snapshot();
+    const decisionInput = buildExecutionAgentInput(request, {
+      head,
+      call: root,
+      steeringSnapshot,
+      includeAcknowledgement: false,
+      includeTitle: false,
+      allowPlanner: true,
+      allowAuditor: true,
+    });
+    const responseInput = buildExecutionAgentResponseInput(request, {
+      head,
+      call: root,
+      steeringSnapshot,
+      longTermMemoryMessage,
+    });
+
+    expect(
+      parseRuntimeMessage(decisionInput.messages, "runtime_execution_state_v1"),
+    ).toMatchObject({
+      operationSupervision: [
+        {
+          stage: "intervention",
+          originExecutionId: "capability-execution-2",
+        },
+      ],
+    });
+    for (const messages of [decisionInput.messages, responseInput.messages]) {
+      const supervisionEvidence = parseRuntimeMessage(
+        messages,
+        OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND,
+      );
+      if (!supervisionEvidence) {
+        throw new Error("operation supervision evidence missing");
+      }
+      expect(supervisionEvidence).toMatchObject({
+        kind: OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND,
+        sourceRevision: head.revision,
+        binding: {
+          callId: root.callId,
+          invocationAttempt: root.activationCount,
+          consumers: ["activation_decision", "immediate_presentation_handoff"],
+        },
+        entries: [
+          {
+            originExecutionId: "capability-execution-2",
+            notice: {
+              stage: "intervention",
+              originExecutionId: "capability-execution-2",
+            },
+            evidence: {
+              kind: "embedded_cross_call_exact_result",
+              acceptedAction: {
+                executionId: "capability-execution-2",
+                capabilityId: observePrimary.capabilityId,
+                controls: exactControls,
+                declaredEffect: "observation",
+                workingDirectory: "project",
+              },
+              receipt: {
+                executionId: "capability-execution-2",
+                callId: warnedWorker.callId,
+                referenceData: exactReferenceData,
+              },
+              adapterResult: {
+                kind: "generic_capability_result_v1",
+                payload: {
+                  marker: exactReferenceData,
+                  attempt: 1,
+                },
+              },
+            },
+          },
+        ],
+      });
+      expect(JSON.stringify(supervisionEvidence)).not.toContain('"intent":');
+      expect(JSON.stringify(supervisionEvidence)).not.toContain(originIntent);
+    }
+    expect(
+      parseRuntimeMessage(responseInput.messages, "runtime_execution_state_v1"),
+    ).not.toHaveProperty("operationSupervision");
+    expect(
+      parseRuntimeMessage(
+        decisionInput.messages,
+        LONG_TERM_MEMORY_MESSAGE_KIND,
+      ),
+    ).toBeUndefined();
+    expect(
+      parseRuntimeMessage(
+        responseInput.messages,
+        LONG_TERM_MEMORY_MESSAGE_KIND,
+      ),
+    ).toMatchObject({
+      authority: "passive_reference",
+      memories: [{ content: "Prefer concise terminal responses." }],
+    });
+    const supervisionMessageIndex = responseInput.messages.findIndex(
+      (message) =>
+        message.role !== "tool" &&
+        message.content.includes(
+          `"kind":"${OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND}"`,
+        ),
+    );
+    const memoryMessageIndex = responseInput.messages.findIndex(
+      (message) =>
+        message.role !== "tool" &&
+        message.content.includes(`"kind":"${LONG_TERM_MEMORY_MESSAGE_KIND}"`),
+    );
+    expect(supervisionMessageIndex).toBeGreaterThan(-1);
+    expect(memoryMessageIndex).toBe(supervisionMessageIndex + 1);
   });
 
   test("defers an explicitly over-budget pinned execution context to model-step compaction", async () => {

@@ -9,6 +9,7 @@ import {
   type RoleCallLedgerCommitResult,
   type RoleCallLedgerHead,
   type RoleCallLedgerRejectionCode,
+  type RoleCallCapabilityExecutionAdmission,
   type RoleCallPolicy,
   type RoleCallPolicyInput,
   type RoleCallState,
@@ -21,6 +22,19 @@ import {
   traceRoleCallRejection,
   type RoleCallRejectedCommandDiagnostic,
 } from "./diagnostics.js";
+import { issueCanonicalRoleOperationSupervisionTransition } from "./operation-supervision-issuance.js";
+import { isRoleOperationFingerprint } from "./operation-supervision.js";
+import {
+  createRoleCapabilitySelectionFingerprint,
+  normalizeRoleCapabilitySelectionProjection,
+} from "./capability-selection-reconsideration.js";
+import { createRoleCapabilitySelectionSupervisionFingerprint } from "./capability-selection-supervision.js";
+import {
+  isIssuedRoleCapabilitySelectionSupervisionState,
+  issueCanonicalRoleCapabilitySelectionSupervisionTransition,
+  resolveRoleCapabilitySelectionSupervisionIssuanceAuthority,
+  type RoleCapabilitySelectionSupervisionIssuanceAuthority,
+} from "./capability-selection-supervision-issuance.js";
 import {
   applyRoleCallCommand,
   createInitialRoleCallState,
@@ -30,23 +44,23 @@ import {
 import { createRoleCallTransactions } from "./transactions.js";
 import { ROLE_CALL_WORKING_DIRECTORY_MAX_LENGTH } from "./working-directory.js";
 
-const createRoleCallStateHead = createCanonicalStateHeadFactory<
-  typeof ROLE_CALL_LEDGER_HEAD_KIND,
-  RoleCallState,
-  RoleCallPolicy,
-  RoleCallValidationIssue
->({
-  compatibilityHeadKind: ROLE_CALL_LEDGER_HEAD_KIND,
-  validationLabel: "role-call ledger head",
-  validateCandidate: validateRoleCallCandidate,
-});
-
 export function createRoleCallLedger(params: {
   requestId: string;
   policy: RoleCallPolicyInput;
 }): RoleCallLedger {
+  const initialState = createInitialRoleCallState(params.requestId);
+  const capabilitySelectionSupervisionIssuanceAuthority =
+    resolveRoleCapabilitySelectionSupervisionIssuanceAuthority(initialState);
+  if (!capabilitySelectionSupervisionIssuanceAuthority) {
+    throw new Error(
+      "role_call_capability_selection_supervision_issuance_authority_missing",
+    );
+  }
+  const createRoleCallStateHead = createRoleCallStateHeadFactory(
+    capabilitySelectionSupervisionIssuanceAuthority,
+  );
   const channel = createRoleCallStateHead({
-    state: createInitialRoleCallState(params.requestId),
+    state: initialState,
     policy: sealRoleCallPolicy(params.policy),
   });
   const commitObservers = new Set<RoleCallLedgerCommitObserver>();
@@ -66,6 +80,7 @@ export function createRoleCallLedger(params: {
     const commandType = classifyCommandType(input.command);
     const capturedCommand = captureCommand(input.command);
     const commandDiagnostic = projectRejectedCommand(capturedCommand);
+    const capabilityExecutionAdmission = input.capabilityExecutionAdmission;
     const result = await channel.writer.transaction<
       | Readonly<{
           kind: "transition_rejected";
@@ -79,9 +94,14 @@ export function createRoleCallLedger(params: {
     >({
       expectedHead: input.expectedHead,
       run(transaction) {
+        const admittedCommand = projectAdmittedCapabilityExecutionCommand(
+          commandType,
+          capturedCommand,
+          capabilityExecutionAdmission,
+        );
         const transition = applyRoleCallCommand(
           transaction.head.state,
-          capturedCommand,
+          admittedCommand,
           transaction.head.policy,
         );
         if (!transition.ok) {
@@ -90,6 +110,26 @@ export function createRoleCallLedger(params: {
             code: transition.code,
             ...(transition.issues ? { issues: transition.issues } : {}),
           };
+        }
+        if (
+          !issueCanonicalRoleOperationSupervisionTransition({
+            before: transaction.head.state,
+            after: transition.state,
+            effect: transition.effect,
+          })
+        ) {
+          throw new Error("role_call_operation_supervision_transition_invalid");
+        }
+        if (
+          !issueCanonicalRoleCapabilitySelectionSupervisionTransition({
+            before: transaction.head.state,
+            after: transition.state,
+            effect: transition.effect,
+          })
+        ) {
+          throw new Error(
+            "role_call_capability_selection_supervision_transition_invalid",
+          );
         }
         attemptedCommitEffect = transition.effect;
         const commit = transaction.commit(
@@ -188,6 +228,99 @@ export function createRoleCallLedger(params: {
     transactions,
     apply,
   });
+}
+
+function createRoleCallStateHeadFactory(
+  capabilitySelectionSupervisionIssuanceAuthority: RoleCapabilitySelectionSupervisionIssuanceAuthority,
+) {
+  return createCanonicalStateHeadFactory<
+    typeof ROLE_CALL_LEDGER_HEAD_KIND,
+    RoleCallState,
+    RoleCallPolicy,
+    RoleCallValidationIssue
+  >({
+    compatibilityHeadKind: ROLE_CALL_LEDGER_HEAD_KIND,
+    validationLabel: "role-call ledger head",
+    validateCandidate(candidate) {
+      const issues = validateRoleCallCandidate(candidate);
+      if (
+        isIssuedRoleCapabilitySelectionSupervisionState({
+          state: candidate.state,
+          authority: capabilitySelectionSupervisionIssuanceAuthority,
+        }) ||
+        issues.some(
+          (issue) =>
+            issue.code === "invalid_role_capability_selection_supervision" &&
+            issue.path === "state.capabilitySelectionSupervision",
+        )
+      ) {
+        return issues;
+      }
+      return Object.freeze([
+        ...issues,
+        Object.freeze({
+          code: "invalid_role_capability_selection_supervision",
+          path: "state.capabilitySelectionSupervision",
+        }),
+      ]);
+    },
+  });
+}
+
+function projectAdmittedCapabilityExecutionCommand(
+  commandType: string,
+  command: unknown,
+  admission: RoleCallCapabilityExecutionAdmission | undefined,
+): unknown {
+  if (admission === undefined || !isCapabilityExecutionBegin(commandType)) {
+    return command;
+  }
+  return isCapabilityExecutionCurrent(admission)
+    ? command
+    : withoutTrackedActionFingerprints(commandType, command);
+}
+
+function isCapabilityExecutionBegin(commandType: string): boolean {
+  return (
+    commandType === "begin_capability_execution" ||
+    commandType === "begin_capability_batch"
+  );
+}
+
+function isCapabilityExecutionCurrent(
+  admission: RoleCallCapabilityExecutionAdmission,
+): boolean {
+  try {
+    const result = admission.isCurrent();
+    if (consumeUnexpectedThenable(result)) return false;
+    return result === true;
+  } catch {
+    return false;
+  }
+}
+
+function withoutTrackedActionFingerprints(
+  commandType: string,
+  command: unknown,
+): unknown {
+  if (
+    typeof command !== "object" ||
+    command === null ||
+    Array.isArray(command)
+  ) {
+    return command;
+  }
+  const untrackedCommand = { ...(command as Record<string, unknown>) };
+  delete untrackedCommand.actionFingerprint;
+  if (
+    commandType === "begin_capability_batch" &&
+    Array.isArray(untrackedCommand.entries)
+  ) {
+    untrackedCommand.entries = untrackedCommand.entries.map((entry) =>
+      withoutTrackedActionFingerprints("begin_capability_execution", entry),
+    );
+  }
+  return untrackedCommand;
 }
 
 function notifyCommitObservers(
@@ -366,8 +499,51 @@ function projectRejectedCommand(
       ...(safeIdentifier(command.capabilityId)
         ? { attemptedCapabilityId: command.capabilityId }
         : {}),
+      ...(isRoleOperationFingerprint(command.actionFingerprint)
+        ? { attemptedActionFingerprint: command.actionFingerprint }
+        : {}),
       ...(isCapabilityEffect(command.declaredEffect)
         ? { attemptedDeclaredEffect: command.declaredEffect }
+        : {}),
+    });
+  }
+  if (command.type === "reconsider_capability_selection") {
+    const selection = normalizeRoleCapabilitySelectionProjection(
+      command.selection,
+    );
+    const steeringVersion = Number.isSafeInteger(command.steeringVersion)
+      ? (command.steeringVersion as number)
+      : undefined;
+    let receiptFingerprint: string | undefined;
+    let supervisionFingerprint: string | undefined;
+    if (selection && steeringVersion !== undefined && steeringVersion >= 0) {
+      receiptFingerprint = createRoleCapabilitySelectionFingerprint({
+        steeringVersion,
+        selection,
+      });
+      supervisionFingerprint =
+        createRoleCapabilitySelectionSupervisionFingerprint({
+          steeringVersion,
+          selection,
+        });
+    }
+    return Object.freeze({
+      ...(safeIdentifier(command.callId)
+        ? { attemptedCallId: command.callId }
+        : {}),
+      ...(Number.isInteger(command.invocationAttempt)
+        ? { attemptedInvocationAttempt: command.invocationAttempt as number }
+        : {}),
+      ...(steeringVersion !== undefined
+        ? { attemptedSteeringVersion: steeringVersion }
+        : {}),
+      ...(receiptFingerprint
+        ? { attemptedSelectionReceiptFingerprint: receiptFingerprint }
+        : {}),
+      ...(supervisionFingerprint
+        ? {
+            attemptedSelectionSupervisionFingerprint: supervisionFingerprint,
+          }
         : {}),
     });
   }

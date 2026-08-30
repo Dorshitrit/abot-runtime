@@ -3,6 +3,8 @@ import { access, mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { parseRequestRunnerConfig } from "../src/runtime/config/runner/versioned-config.js";
+
 import {
   buildModelConfig,
   buildProviderConfig,
@@ -289,6 +291,9 @@ export async function runAddRuntimeModel(
       join(resolveRuntimePackageRoot(import.meta.dirname), MODEL_TEMPLATE_FILE),
     ),
   ]);
+  if (options.setDefault) {
+    parseRequestRunnerConfig(runnerConfig, runnerConfigPath);
+  }
   const merged = mergeRuntimeConfig(runtimeConfig, options);
   const nextRunnerConfig = options.setDefault
     ? selectDefaultProfile(runnerConfig, options.profile)

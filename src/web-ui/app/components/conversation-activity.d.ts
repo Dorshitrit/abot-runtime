@@ -6,6 +6,12 @@ export type ConversationActivityInput = {
   streaming?: boolean;
 };
 
+export type ConversationActivityEvent = Record<string, unknown> & {
+  eventName: string;
+  name: string;
+  tone: string;
+};
+
 export type ConversationContextWindowModel = {
   invocationId: string;
   modelStep: string;
@@ -39,7 +45,7 @@ export declare function buildConversationActivityModel(
   input?: ConversationActivityInput,
 ): {
   requestId: string;
-  events: unknown[];
+  events: ConversationActivityEvent[];
   progress: unknown;
   contextWindow: ConversationContextWindowModel | null;
   eventCount: number;

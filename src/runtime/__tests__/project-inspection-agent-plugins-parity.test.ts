@@ -8,7 +8,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { createRuntimeToolPathResolver } from "../capabilities/runtime-target-path.js";
 import { ABOT_RUNTIME_EXTENSION } from "../../plugin-contract/manifest.js";
 import { parseAgentPluginManifest } from "../plugins/manifest-validator.js";
-import type { ToolImplementationOutput } from "../plugin.js";
+import type { ToolImplementationOutput } from "../../plugin-sdk/index.js";
 import { loadBundledPluginEntrypoint } from "./public-plugin-test-support.js";
 
 type RuntimePaths = Readonly<{

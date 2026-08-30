@@ -16,6 +16,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 
 import { PUBLIC_PLUGIN_CAPABILITY_IDS } from "./public-snapshot/contracts.js";
+import {
+  DEFAULT_ROOT_RESPONSE_METHODOLOGY_FILES,
+} from "./runtime-setup-files.js";
 
 type PackResult = {
   filename: string;
@@ -100,7 +103,11 @@ async function prepareConsumerConfig(
 ): Promise<void> {
   const localDir = join(consumerDir, "local");
   const modelsDir = join(localDir, "models");
-  await mkdir(modelsDir, { recursive: true });
+  const methodologiesDir = join(consumerDir, "methodologies");
+  await Promise.all([
+    mkdir(modelsDir, { recursive: true }),
+    mkdir(methodologiesDir, { recursive: true }),
+  ]);
   await Promise.all([
     copyFile(
       join(packageDir, "examples", "runtime.config.example.json"),
@@ -113,6 +120,12 @@ async function prepareConsumerConfig(
     copyFile(
       join(packageDir, "examples", "models", "default.config.json"),
       join(modelsDir, "default.config.json"),
+    ),
+    ...DEFAULT_ROOT_RESPONSE_METHODOLOGY_FILES.map((relativePath) =>
+      copyFile(
+        join(packageDir, relativePath),
+        join(consumerDir, relativePath),
+      ),
     ),
   ]);
 }
@@ -274,6 +287,11 @@ try {
     ],
     { cwd: cliConsumerDir, encoding: "utf-8", stdio: "pipe" },
   );
+  const memoryStatusOutput = execFileSync(
+    process.execPath,
+    [cliPath, "memory", "status"],
+    { cwd: cliConsumerDir, encoding: "utf-8", stdio: "pipe" },
+  );
   if (
     !initOutput.includes("Start ABot with npx abot start") ||
     /npm run (?:model-gateway|dev|web-ui)/u.test(initOutput) ||
@@ -301,7 +319,14 @@ try {
       join(cliConsumerDir, "local", "request-runner.config.json"),
       "utf-8",
     ),
-  ) as { models?: { defaults?: { profileId?: string } } };
+  ) as {
+    schemaVersion?: unknown;
+    models?: {
+      defaults?: { profileId?: string; steps?: Record<string, unknown> };
+    };
+    stepDefaults?: { timeoutMs?: unknown };
+    steps?: Record<string, unknown>;
+  };
   const hostedModelConfig = JSON.parse(
     await readFile(
       join(cliConsumerDir, "local", "models", "hosted.config.json"),
@@ -316,13 +341,35 @@ try {
   ) {
     throw new Error("packed abot CLI did not preserve and extend model setup");
   }
-  if (cliRunnerConfig.models?.defaults?.profileId !== "hosted") {
-    throw new Error("packed abot CLI did not select the requested default");
+  const packedRunnerConfigViolatesV2 =
+    cliRunnerConfig.schemaVersion !== 2 ||
+    cliRunnerConfig.models?.defaults?.profileId !== "hosted" ||
+    cliRunnerConfig.stepDefaults?.timeoutMs !== 90_000 ||
+    JSON.stringify(cliRunnerConfig.models.defaults.steps) !==
+      JSON.stringify({
+        "supervisor.response": "default",
+        "worker.result": "default",
+        "execution.response": "default",
+        "tool_payload.raw": "toolPayload.raw",
+      }) ||
+    Object.keys(cliRunnerConfig.steps ?? {}).join(",") !==
+      "supervisor.response,execution.response";
+  if (packedRunnerConfigViolatesV2) {
+    throw new Error(
+      "packed abot CLI did not preserve the sparse Config v2 contract while selecting the requested default",
+    );
   }
   if (hostedModelConfig.execution?.policy !== "execution-agent-v1") {
     throw new Error(
       "packed abot CLI did not configure the OpenAI execution policy",
     );
+  }
+  const memoryStatus = JSON.parse(memoryStatusOutput) as {
+    enabled?: unknown;
+    providers?: unknown;
+  };
+  if (memoryStatus.enabled !== false || !Array.isArray(memoryStatus.providers)) {
+    throw new Error("packed abot memory status did not read consumer config");
   }
 
   const emptyConsumerDir = join(tempDir, "empty-cli-consumer");

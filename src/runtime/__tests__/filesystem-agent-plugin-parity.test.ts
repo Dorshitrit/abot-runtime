@@ -21,7 +21,7 @@ import type {
 import { ABOT_RUNTIME_EXTENSION } from "../../plugin-contract/manifest.js";
 import { loadConfiguredRuntimePlugins } from "../plugins/loader.js";
 import { parseAgentPluginManifest } from "../plugins/manifest-validator.js";
-import type { RuntimePluginLoadContext } from "../plugin.js";
+import type { RuntimePluginLoadContext } from "../../plugin-sdk/index.js";
 import { createRuntimeToolPathResolver } from "../capabilities/runtime-target-path.js";
 import { loadPublicRuntimeConfig } from "./public-runtime-config-fixture.js";
 

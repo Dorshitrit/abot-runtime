@@ -24,6 +24,7 @@ import { createSessionMemoryAwareCompactionController } from "../../context/sess
 import { buildExecutionAgentInput } from "./input.js";
 import { parseExecutionAgentDecisionOutput } from "./parser.js";
 import { refineExecutionCapabilityInvocations } from "./refinement.js";
+import { createRefinementInvalidOutputCause } from "./refinement-reconsideration.js";
 
 type RunExecutionAgentDecisionOptions = Readonly<{
   head: RoleCallLedgerHead;
@@ -117,14 +118,18 @@ async function refineDecision(
     });
   } catch (error: unknown) {
     if (!(error instanceof StructuredModelInvalidOutputError)) throw error;
-    return reconsiderCapabilitySelection(options, decision, invocations);
-  }
-  if (refined.disposition === "reconsider") {
-    return reconsiderCapabilitySelection(options, decision, invocations);
+    return reconsiderCapabilitySelection(
+      options,
+      decision,
+      invocations,
+      createRefinementInvalidOutputCause(error),
+    );
   }
   if (decision.action === "invoke_capability") {
+    const { operationObjective: _operationObjective, ...resolvedDecision } =
+      decision;
     return Object.freeze({
-      ...decision,
+      ...resolvedDecision,
       controls: refined.invocations[0]!.controls,
     });
   }
@@ -143,6 +148,10 @@ function reconsiderCapabilitySelection(
     { action: "invoke_capability" | "invoke_capabilities" }
   >,
   invocations: readonly ExecutionAgentCapabilityInvocation[],
+  cause: Extract<
+    ExecutionAgentResolvedDecision,
+    { action: "reconsider_capability_selection" }
+  >["cause"],
 ): ExecutionAgentResolvedDecision {
   const activeCapabilityCatalogGroupIds =
     options.call.workerCapabilityScope?.catalogGroupIds;
@@ -158,5 +167,6 @@ function reconsiderCapabilitySelection(
         options.call.workingDirectory ?? decision.workingDirectory ?? null,
       activeCapabilityCatalogGroupIds,
     }),
+    cause,
   });
 }

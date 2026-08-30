@@ -1,0 +1,992 @@
+/* Configuration workspace ------------------------------------------------- */
+
+.config-workspace-panel {
+  --config-surface: #0a1827;
+  --config-surface-subtle: #0c1b2b;
+  --config-control: #0d1e30;
+  --config-control-hover: #11253a;
+  --config-line: rgba(119, 158, 198, 0.17);
+  --config-line-strong: rgba(127, 171, 214, 0.3);
+  --config-copy: #d8e4ef;
+  --config-muted: #8fa3b7;
+  --config-faint: #70869b;
+}
+
+.app-shell.config-workspace {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.config-workspace-panel {
+  min-width: 0;
+  background: #071421;
+}
+
+.config-workspace-panel .config-workspace-header {
+  min-height: 70px;
+  border-color: var(--config-line);
+  background: #081725;
+  backdrop-filter: none;
+}
+
+.config-workspace-heading h2 {
+  font-size: 19px;
+  font-weight: 520;
+  letter-spacing: -0.015em;
+}
+
+.config-workspace-heading > p:last-child {
+  margin-top: 4px;
+  color: var(--config-muted);
+}
+
+.config-workspace-header .toolbar-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 7px;
+}
+
+.config-workspace-header .toolbar-actions button {
+  height: 32px;
+  min-height: 32px;
+  padding-inline: 10px;
+  border-color: var(--config-line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--config-muted);
+  font-size: 12px;
+  font-weight: 450;
+  box-shadow: none;
+}
+
+.config-workspace-header .toolbar-actions button:hover {
+  border-color: var(--config-line-strong);
+  background: var(--config-control-hover);
+  color: var(--config-copy);
+}
+
+.config-workspace-back {
+  height: 32px;
+  min-height: 32px;
+  padding-inline: 10px;
+  border-color: var(--config-line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--config-muted);
+  font-size: 12px;
+  font-weight: 450;
+  box-shadow: none;
+}
+
+.config-workspace-back:hover {
+  border-color: var(--config-line-strong);
+  background: var(--config-control-hover);
+  color: var(--config-copy);
+}
+
+.config-workspace-body {
+  padding: 24px clamp(22px, 4vw, 52px) 52px;
+  overflow-x: hidden;
+}
+
+.config-workspace-body > * {
+  width: min(1180px, 100%);
+}
+
+.config-workspace-body #configStatus {
+  min-height: 0;
+  margin: 0 auto 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--config-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: none;
+}
+
+.config-workspace-body #configStatus:empty {
+  display: none;
+}
+
+.config-dashboard {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--config-line);
+  border-radius: 10px;
+  background: var(--config-surface);
+  color: var(--config-copy);
+  box-shadow: none;
+}
+
+.config-dashboard[aria-busy="true"] {
+  pointer-events: none;
+}
+
+.config-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-width: 0;
+  margin: 0;
+  border-bottom: 1px solid var(--config-line);
+  background: #091725;
+}
+
+.config-summary-item {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 13px 16px;
+  border-right: 1px solid var(--config-line);
+  color: var(--config-faint);
+  font-size: 10.5px;
+  font-weight: 450;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.config-summary-item:last-child {
+  border-right: 0;
+}
+
+.config-summary-item dt,
+.config-summary-item dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.config-summary-value {
+  overflow: hidden;
+  color: var(--config-copy);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 480;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.config-summary-value.dirty {
+  color: var(--amber);
+}
+
+.config-category-nav {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-width: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--config-line);
+  background: #091725;
+}
+
+.config-category-tab {
+  position: relative;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px;
+  overflow: hidden;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--config-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 450;
+  box-shadow: none;
+}
+
+.config-category-tab:hover {
+  border-color: transparent;
+  border-bottom-color: var(--config-line-strong);
+  background: transparent;
+  color: var(--config-copy);
+}
+
+.config-category-tab.active,
+.config-category-tab[aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  background: transparent;
+  color: var(--accent-strong);
+}
+
+.config-category-panels,
+.config-category-panel {
+  min-width: 0;
+}
+
+.config-category-panel {
+  padding: 24px 26px 28px;
+}
+
+.config-category-panel [data-long-term-memory-management] {
+  margin-top: 26px;
+  padding-top: 24px;
+  border-top: 1px solid var(--config-line);
+}
+
+.config-memory-layout {
+  display: grid;
+  min-width: 0;
+}
+
+.config-category-panel[hidden] {
+  display: none;
+}
+
+.config-section {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.config-section + .config-section {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--config-line);
+}
+
+.config-section-header,
+.config-subheader,
+.config-calibration-title,
+.config-file-meta,
+.config-file-actions,
+.config-section-actions {
+  min-width: 0;
+}
+
+.config-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--config-line);
+}
+
+.config-section-header > div,
+.config-file-meta {
+  min-width: 0;
+}
+
+.config-section-header h3,
+.config-section-header h4 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 520;
+  line-height: 1.3;
+}
+
+.config-section-header p {
+  max-width: 620px;
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: var(--config-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.config-file-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.config-file-meta code,
+.config-section-header > code {
+  display: block;
+  max-width: 520px;
+  overflow: hidden;
+  color: var(--config-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+}
+
+.config-file-actions,
+.config-section-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.config-file-status,
+.config-raw-status,
+.config-section-actions > span,
+.config-section-kicker {
+  color: var(--config-faint);
+  font-size: 10.5px;
+  font-weight: 450;
+}
+
+.config-file-status:empty,
+.config-raw-status:empty {
+  display: none;
+}
+
+.config-file-status.dirty,
+.config-file-status[data-state="dirty"],
+.config-raw-status.dirty,
+.config-raw-status[data-state="dirty"] {
+  color: var(--amber);
+}
+
+.config-dashboard
+  :where(button:not(.config-category-tab, .config-model-button)) {
+  min-height: 30px;
+  padding: 0 10px;
+  border-color: var(--config-line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--config-muted);
+  font-size: 12px;
+  font-weight: 450;
+  box-shadow: none;
+}
+
+.config-dashboard
+  :where(button:not(.config-category-tab, .config-model-button)):hover {
+  border-color: var(--config-line-strong);
+  background: var(--config-control-hover);
+  color: var(--config-copy);
+}
+
+.config-dashboard
+  :where(button:not(.config-category-tab, .config-model-button)):disabled {
+  border-color: var(--config-line);
+  background: transparent;
+  color: var(--config-faint);
+  opacity: 0.42;
+}
+
+.config-dashboard [data-config-action="save-file"]:not(:disabled),
+.config-dashboard #configSaveRawButton:not(:disabled),
+.config-dashboard
+  .memory-setup-actions
+  [data-memory-action="enable"]:not(:disabled),
+.config-dashboard .primary-button:not(:disabled) {
+  border-color: rgba(107, 155, 218, 0.52);
+  background: rgba(66, 111, 170, 0.16);
+  color: #a9c7ed;
+}
+
+.config-dashboard [data-config-action="save-file"]:not(:disabled):hover,
+.config-dashboard #configSaveRawButton:not(:disabled):hover,
+.config-dashboard
+  .memory-setup-actions
+  [data-memory-action="enable"]:not(:disabled):hover,
+.config-dashboard .primary-button:not(:disabled):hover {
+  border-color: rgba(126, 170, 226, 0.7);
+  background: rgba(74, 124, 187, 0.24);
+  color: #d0e1f6;
+}
+
+.config-dashboard input,
+.config-dashboard select,
+.config-dashboard textarea {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid var(--config-line);
+  border-radius: 7px;
+  background-color: var(--config-control);
+  background-image: none;
+  color: var(--config-copy);
+  font-size: 12.5px;
+  font-weight: 400;
+  box-shadow: none;
+}
+
+.config-dashboard input,
+.config-dashboard select {
+  min-height: 32px;
+  padding: 0 9px;
+}
+
+.config-dashboard select {
+  padding-right: 8px;
+  appearance: auto;
+}
+
+.config-dashboard textarea {
+  min-height: 72px;
+  padding: 8px 9px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.config-dashboard input:hover,
+.config-dashboard select:hover,
+.config-dashboard textarea:hover {
+  border-color: var(--config-line-strong);
+}
+
+.config-dashboard input:focus,
+.config-dashboard select:focus,
+.config-dashboard textarea:focus {
+  border-color: rgba(87, 148, 255, 0.72);
+  outline: 2px solid rgba(87, 148, 255, 0.2);
+  outline-offset: 1px;
+  background-color: var(--config-control);
+  box-shadow: none;
+}
+
+.config-dashboard label {
+  min-width: 0;
+}
+
+.config-dashboard label > span,
+.config-add-row label,
+.config-field-grid label,
+.config-calibration-meta label {
+  color: var(--config-muted);
+  font-size: 10.5px;
+  font-weight: 450;
+}
+
+.config-step-list,
+.config-file-list,
+.config-calibration-grid,
+.config-model-list {
+  display: grid;
+  min-width: 0;
+}
+
+.config-step-list,
+.config-file-list {
+  border-top: 1px solid var(--config-line);
+}
+
+.config-step-header,
+.config-step-row,
+.config-file-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.55fr) minmax(220px, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.config-step-header {
+  min-height: 30px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--config-line);
+  color: var(--config-faint);
+  font-size: 9.5px;
+  font-weight: 450;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.config-step-row,
+.config-file-row {
+  min-height: 48px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--config-line);
+  background: transparent;
+}
+
+.config-step-row:hover,
+.config-file-row:hover {
+  background: rgba(111, 151, 191, 0.045);
+}
+
+.config-step-key,
+.config-profile-select-cell {
+  min-width: 0;
+}
+
+.config-step-key span,
+.config-file-row span,
+.config-file-row code,
+.config-step-row code,
+.config-profile-select-cell small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-step-key span,
+.config-step-row code,
+.config-file-row code {
+  color: var(--config-copy);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.config-profile-select-cell {
+  display: grid;
+  gap: 3px;
+}
+
+.config-profile-select-cell small {
+  color: var(--config-faint);
+  font-size: 10px;
+}
+
+.config-files-section .config-file-row {
+  grid-template-columns: minmax(120px, 0.28fr) minmax(0, 1fr) auto;
+}
+
+.config-files-section .config-file-row small {
+  overflow: hidden;
+  color: var(--config-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+}
+
+.config-add-row {
+  display: grid;
+  grid-template-columns:
+    minmax(160px, 0.7fr) minmax(160px, 1fr) minmax(160px, 1fr)
+    auto;
+  gap: 10px;
+  align-items: end;
+  min-width: 0;
+  padding-top: 15px;
+  border-top: 1px solid var(--config-line);
+}
+
+.config-add-row.compact {
+  grid-template-columns: minmax(220px, 1fr) auto;
+  width: min(430px, 100%);
+  padding-top: 0;
+  border-top: 0;
+}
+
+.config-add-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.config-add-copy strong {
+  color: var(--config-copy);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.config-add-copy span {
+  color: var(--config-faint);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.config-icon-button {
+  width: auto;
+  min-width: 0;
+  justify-self: start;
+  color: var(--config-faint);
+}
+
+.config-icon-button:hover {
+  color: var(--danger);
+}
+
+.config-model-layout {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 24px;
+  min-width: 0;
+  align-items: start;
+}
+
+.config-model-list {
+  position: sticky;
+  top: 0;
+  align-content: start;
+  max-height: calc(100dvh - 230px);
+  overflow: auto;
+  border-right: 1px solid var(--config-line);
+}
+
+.config-model-list-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 0 12px 0 8px;
+  border-bottom: 1px solid var(--config-line);
+  color: var(--config-faint);
+  font-size: 10px;
+  font-weight: 450;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.config-model-list-title small {
+  color: inherit;
+  font-size: inherit;
+}
+
+.config-model-button {
+  display: grid;
+  justify-items: start;
+  gap: 3px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--config-line);
+  border-left: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.config-model-button:hover {
+  border-color: var(--config-line);
+  border-left-color: var(--config-line-strong);
+  background: rgba(111, 151, 191, 0.05);
+}
+
+.config-model-button.active,
+.config-model-button[aria-pressed="true"] {
+  border-left-color: var(--accent);
+  background: rgba(87, 148, 255, 0.09);
+  color: var(--accent-strong);
+}
+
+.config-model-button > span,
+.config-model-button small,
+.config-model-button small span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-model-button > span {
+  color: var(--config-copy);
+  font-size: 12px;
+  font-weight: 480;
+}
+
+.config-model-button small {
+  display: flex;
+  gap: 7px;
+  color: var(--config-faint);
+  font-size: 10px;
+}
+
+.config-model-editor {
+  min-width: 0;
+}
+
+.config-model-editor > .config-section-header {
+  margin-bottom: 18px;
+}
+
+.config-form-panel {
+  display: grid;
+  gap: 13px;
+  min-width: 0;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--config-line);
+}
+
+.config-execution-route {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.38fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: end;
+  min-width: 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--config-line);
+}
+
+.config-execution-route > label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.config-execution-route > label > span {
+  color: var(--config-muted);
+  font-size: 10.5px;
+  font-weight: 450;
+}
+
+.config-execution-route-copy {
+  display: grid;
+  gap: 2px;
+  align-content: center;
+  min-width: 0;
+  min-height: 32px;
+}
+
+.config-execution-route-copy strong,
+.config-execution-route-copy p {
+  margin: 0;
+}
+
+.config-execution-route-copy strong {
+  color: var(--config-copy);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.config-execution-route-copy p {
+  max-width: 680px;
+  color: var(--config-faint);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.config-form-panel-title,
+.config-subheader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.config-form-panel-title strong,
+.config-subheader > div:first-child > span {
+  color: var(--config-copy);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.config-form-panel-title span,
+.config-subheader small {
+  overflow: hidden;
+  color: var(--config-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+}
+
+.config-field-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.config-field-grid.model-basics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.config-field-grid label,
+.config-calibration-meta label {
+  display: grid;
+  gap: 5px;
+}
+
+.config-toggle {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--config-line);
+  border-radius: 7px;
+  background: var(--config-control);
+}
+
+.config-toggle input {
+  width: 15px;
+  min-width: 15px;
+  min-height: 15px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.config-subheader {
+  padding: 18px 0 10px;
+}
+
+.config-calibration-grid {
+  border-top: 1px solid var(--config-line);
+}
+
+.config-calibration-card {
+  min-width: 0;
+  border: 0;
+  border-bottom: 1px solid var(--config-line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.config-calibration-title {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 50px;
+  padding: 8px 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.config-calibration-title::-webkit-details-marker {
+  display: none;
+}
+
+.config-calibration-title:hover {
+  background: rgba(111, 151, 191, 0.045);
+}
+
+.config-calibration-title > div,
+.config-calibration-title > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.config-calibration-title strong,
+.config-calibration-title span,
+.config-calibration-title small,
+.config-calibration-title code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-calibration-title strong {
+  color: var(--config-copy);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.config-calibration-title span,
+.config-calibration-title small,
+.config-calibration-title code {
+  color: var(--config-faint);
+  font-size: 10px;
+}
+
+.config-calibration-title code {
+  max-width: 160px;
+}
+
+.config-calibration-body {
+  display: grid;
+  gap: 14px;
+  padding: 4px 10px 16px;
+}
+
+.config-calibration-remove {
+  justify-self: start;
+}
+
+.config-calibration-meta {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.42fr) minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+}
+
+.config-calibration-card .config-field-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.config-readonly-field {
+  display: grid;
+  align-content: center;
+  gap: 1px;
+  min-height: 32px;
+  padding: 4px 9px;
+  border-bottom: 1px solid var(--config-line);
+}
+
+.config-readonly-field strong {
+  color: var(--config-copy);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.config-readonly-field small {
+  color: var(--config-faint);
+  font-size: 9.5px;
+}
+
+.config-files-section .config-file-list {
+  max-height: 300px;
+  overflow: auto;
+}
+
+.config-raw-panel {
+  min-width: 0;
+  margin-top: 26px;
+  padding-top: 18px;
+  border: 0;
+  border-top: 1px solid var(--config-line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.config-raw-panel > summary {
+  cursor: pointer;
+  color: var(--config-muted);
+  font-size: 12px;
+  font-weight: 480;
+  list-style-position: inside;
+}
+
+.config-raw-panel[open] > summary {
+  margin-bottom: 14px;
+  color: var(--config-copy);
+}
+
+.config-raw-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.5fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 9px;
+}
+
+.config-raw-file-select {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.config-raw-file-select > span {
+  color: var(--config-muted);
+  font-size: 10.5px;
+  font-weight: 450;
+}
+
+.config-dashboard #configRawEditor,
+.config-dashboard .config-view {
+  min-height: 380px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  resize: vertical;
+  white-space: pre;
+}
+
+.config-dashboard .empty-state {
+  padding: 22px 0;
+  color: var(--config-muted);
+  font-size: 12px;
+}
+
+.config-dashboard .error-text {
+  color: var(--danger);
+}

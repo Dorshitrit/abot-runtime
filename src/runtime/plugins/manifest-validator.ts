@@ -80,6 +80,26 @@ function parseSkills(value: unknown, path: string): string[] {
   return skills;
 }
 
+function parseSelectionControlIds(
+  value: unknown,
+  path: string,
+): readonly string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length === 0 || value.length > 16) {
+    throw new Error(`${path} must be a non-empty array of at most 16 controls`);
+  }
+  const controlIds = value.map((controlId, index) => {
+    if (!nonEmptyString(controlId)) {
+      throw new Error(`${path}.${index} must be a non-empty string`);
+    }
+    return controlId.trim();
+  });
+  if (new Set(controlIds).size !== controlIds.length) {
+    throw new Error(`${path} must not contain duplicates`);
+  }
+  return Object.freeze(controlIds);
+}
+
 function parseFixedParams(
   value: unknown,
   path: string,
@@ -350,6 +370,7 @@ function parseOperation(value: unknown, path: string): ParsedOperation {
     [
       "summary",
       "input",
+      "selectionControlIds",
       "effect",
       "approval",
       "skills",
@@ -362,6 +383,10 @@ function parseOperation(value: unknown, path: string): ParsedOperation {
     throw new Error(`${path}.summary must be a non-empty string`);
   }
   const input = expectRecord(operation.input, `${path}.input`);
+  const selectionControlIds = parseSelectionControlIds(
+    operation.selectionControlIds,
+    `${path}.selectionControlIds`,
+  );
   if (!["read_only", "mutating", "mixed"].includes(String(operation.effect))) {
     throw new Error(`${path}.effect must be read_only, mutating, or mixed`);
   }
@@ -384,6 +409,7 @@ function parseOperation(value: unknown, path: string): ParsedOperation {
     manifest: {
       summary: operation.summary.trim(),
       input: input as AgentPluginOperationManifest["input"],
+      ...(selectionControlIds ? { selectionControlIds } : {}),
       effect: operation.effect as AgentPluginOperationManifest["effect"],
       approval: operation.approval as AgentPluginOperationManifest["approval"],
       ...(fixedParams ? { fixedParams } : {}),

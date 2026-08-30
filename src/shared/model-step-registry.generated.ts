@@ -41,6 +41,15 @@ export const GENERATED_MODEL_INVOCATION_STEP_REGISTRY = {
     outputContract: "worker_result",
     attachmentPolicy: "none",
   },
+  CAPABILITY_CONTROLS: {
+    id: "capability.controls",
+    owner: "runtime-core",
+    role: "utility",
+    lane: "main",
+    defaultFormat: "json",
+    outputContract: "capability_controls",
+    attachmentPolicy: "conversation",
+  },
   PLANNER_DECISION: {
     id: "planner.decision",
     owner: "runtime-core",

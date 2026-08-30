@@ -171,12 +171,20 @@ function projectWorkerDescriptor(
       operation.operationId,
     );
   }
-  const selectionControlIds =
+  const payloadTargetControlId =
     definition.payloadChannelSpec?.targetRole === "operation_target"
       ? definition.payloadChannelSpec.targetParam
-        ? [definition.payloadChannelSpec.targetParam]
-        : undefined
-      : [];
+      : undefined;
+  const selectionControlIds =
+    definition.payloadChannelSpec?.targetRole === "operation_target" &&
+    !payloadTargetControlId
+      ? undefined
+      : Object.freeze([
+          ...new Set([
+            ...(operation.selectionControlIds ?? []),
+            ...(payloadTargetControlId ? [payloadTargetControlId] : []),
+          ]),
+        ]);
   const controlsPartition = partitionWorkerCapabilityControlsSchema(
     controls.value,
     selectionControlIds,
@@ -212,6 +220,9 @@ function projectWorkerDescriptor(
       : {}),
     ...(definition.controlsRefinement
       ? { controlsRefinement: definition.controlsRefinement }
+      : {}),
+    ...(operation.payload
+      ? { requiresPayloadAuthoringObjective: true as const }
       : {}),
     catalogGroups,
   });

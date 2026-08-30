@@ -11,6 +11,7 @@ import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
 
 import { inspectRuntimeConfigFileWithMeta } from "../runtime/config/loader.js";
+import type { ModelProviderAdapterRegistry } from "../model-gateway/index.js";
 import { loadDotEnvFile } from "../shared/load-dotenv.js";
 import { ExternalBridgeWebBackend } from "./external-bridge-backend.js";
 import { LocalRuntimeWebBackend } from "./local-runtime-backend.js";
@@ -49,6 +50,7 @@ type WebUiServerOptions = {
   rootDir?: string;
   configPath?: string;
   setupCommandMode?: WebUiSetupCommandMode;
+  providerAdapters?: ModelProviderAdapterRegistry;
 };
 
 type WebUiServerHandle = {
@@ -56,11 +58,15 @@ type WebUiServerHandle = {
 };
 
 type ResolvedWebUiServerOptions = Required<
-  Omit<WebUiServerOptions, "appDir" | "rootDir" | "configPath">
+  Omit<
+    WebUiServerOptions,
+    "appDir" | "rootDir" | "configPath" | "providerAdapters"
+  >
 > & {
   appDir: string;
   rootDir?: string;
   configPath?: string;
+  providerAdapters?: ModelProviderAdapterRegistry;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -305,6 +311,9 @@ export function startWebUiServer(
           rootDir: options.rootDir,
           configPath: options.configPath,
           defaultEnvironmentId: options.defaultEnvironmentId,
+          ...(options.providerAdapters
+            ? { providerAdapters: options.providerAdapters }
+            : {}),
         })
       : null;
   const externalBridgeBackend =

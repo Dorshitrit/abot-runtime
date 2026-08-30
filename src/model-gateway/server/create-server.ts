@@ -5,7 +5,11 @@ import {
 } from "node:http";
 
 import { listModelProfiles } from "../policy/model-registry.js";
-import type { ModelGatewayRequest } from "../types.js";
+import type {
+  ModelGatewayEmbeddingRequest,
+  ModelGatewayRequest,
+} from "../types.js";
+import { createEmbeddingHandler } from "../embeddings/server-handler.js";
 import {
   getModelGatewayStatus,
   isLoopbackRequest,
@@ -26,19 +30,19 @@ import { resolveProviderAdapters } from "./provider-registry.js";
 import { createRawHandler } from "./raw-handler.js";
 import { readJsonBody } from "./request-body.js";
 
-type GatewayInvocationHandler = (
-  requestBody: ModelGatewayRequest,
+type GatewayInvocationHandler<TRequest extends object> = (
+  requestBody: TRequest,
   response: GatewayResponse,
   context?: ModelGatewayInvocationContext,
 ) => Promise<void>;
 
-async function handleProviderRequest(params: {
+async function handleProviderRequest<TRequest extends object>(params: {
   request: IncomingMessage;
   response: ServerResponse;
-  endpoint: "chat" | "raw" | "input_tokens";
-  handler: GatewayInvocationHandler;
+  endpoint: "chat" | "raw" | "input_tokens" | "embeddings";
+  handler: GatewayInvocationHandler<TRequest>;
 }): Promise<void> {
-  const requestBody = await readJsonBody(params.request);
+  const requestBody = await readJsonBody<TRequest>(params.request);
   const abortScope = createProviderRequestAbortScope({
     req: params.request,
     res: params.response,
@@ -70,6 +74,7 @@ export function createModelGatewayServer(
     inputTokenMeasurements,
   );
   const rawHandler = createRawHandler(handlerOptions);
+  const embeddingHandler = createEmbeddingHandler(handlerOptions);
 
   return createServer(async (request, response) => {
     try {
@@ -115,6 +120,14 @@ export function createModelGatewayServer(
             response,
             endpoint: "raw",
             handler: rawHandler,
+          });
+
+        case "POST /embeddings":
+          return await handleProviderRequest<ModelGatewayEmbeddingRequest>({
+            request,
+            response,
+            endpoint: "embeddings",
+            handler: embeddingHandler,
           });
 
         case "POST /admin/restart":

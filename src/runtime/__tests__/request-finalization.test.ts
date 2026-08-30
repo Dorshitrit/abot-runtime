@@ -172,6 +172,113 @@ describe("runtime request finalization", () => {
       expect.objectContaining({ reason: "empty_final_output" }),
     );
   });
+
+  test("persists and completes the response after scheduling memory work", async () => {
+    const order: string[] = [];
+    const appendMessage = vi.fn<SessionStore["appendMessage"]>(async () => {
+      order.push("response-persisted");
+      return {} as SessionRecord;
+    });
+    const scheduleCandidates = vi.fn(() => {
+      order.push("memory-scheduled");
+    });
+    const events = createEventSink();
+    const lifecycle = new RequestLifecycle({
+      requestId: "request-memory-isolation",
+      requestTimeoutMs: 0,
+      inactivityTimeoutMs: 0,
+    });
+    try {
+      await expect(
+        finalizeRequest({
+          rawOutput: "The answer remains valid.",
+          events,
+          lifecycle,
+          sessionStore: { appendMessage },
+          sessionId: "session-memory-isolation",
+          requestId: "request-memory-isolation",
+          agentMode: "reasoning",
+          memoryCandidates: [
+            { content: "User prefers concise answers.", tags: ["preference"] },
+          ],
+          longTermMemory: {
+            enabled: true,
+            retrieve: vi.fn(),
+            processCandidates: vi.fn(),
+            scheduleCandidates,
+            status: vi.fn(),
+            list: vi.fn(),
+            search: vi.fn(),
+            create: vi.fn(),
+            update: vi.fn(),
+            delete: vi.fn(),
+            clear: vi.fn(),
+          },
+        }),
+      ).resolves.toEqual({
+        status: "completed",
+        output: "The answer remains valid.",
+      });
+    } finally {
+      lifecycle.dispose();
+    }
+
+    expect(order).toEqual(["response-persisted", "memory-scheduled"]);
+    expect(scheduleCandidates).toHaveBeenCalledOnce();
+    expect(events.completed).toHaveBeenCalledExactlyOnceWith(
+      "The answer remains valid.",
+    );
+    expect(events.failed).not.toHaveBeenCalled();
+  });
+
+  test("isolates a synchronous memory scheduling failure from completion", async () => {
+    const events = createEventSink();
+    const lifecycle = new RequestLifecycle({
+      requestId: "request-memory-scheduling-failure",
+      requestTimeoutMs: 0,
+      inactivityTimeoutMs: 0,
+    });
+    try {
+      await expect(
+        finalizeRequest({
+          rawOutput: "The answer is already complete.",
+          events,
+          lifecycle,
+          sessionStore: {
+            appendMessage: vi.fn(async () => ({}) as SessionRecord),
+          },
+          sessionId: "session-memory-scheduling-failure",
+          requestId: "request-memory-scheduling-failure",
+          agentMode: "reasoning",
+          memoryCandidates: [{ content: "Durable fact.", tags: ["fact"] }],
+          longTermMemory: {
+            enabled: true,
+            retrieve: vi.fn(),
+            processCandidates: vi.fn(),
+            scheduleCandidates: vi.fn(() => {
+              throw new Error("queue_unavailable");
+            }),
+            status: vi.fn(),
+            list: vi.fn(),
+            search: vi.fn(),
+            create: vi.fn(),
+            update: vi.fn(),
+            delete: vi.fn(),
+            clear: vi.fn(),
+          },
+        }),
+      ).resolves.toEqual({
+        status: "completed",
+        output: "The answer is already complete.",
+      });
+    } finally {
+      lifecycle.dispose();
+    }
+    expect(events.completed).toHaveBeenCalledExactlyOnceWith(
+      "The answer is already complete.",
+    );
+    expect(events.failed).not.toHaveBeenCalled();
+  });
 });
 
 function createEventSink(): EventSink {

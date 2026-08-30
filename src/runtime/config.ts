@@ -12,6 +12,7 @@ import {
   buildPluginConfig,
   compactTimeouts,
 } from "./config/builders.js";
+import { buildLongTermMemoryConfig } from "./config/long-term-memory.js";
 import {
   DEFAULT_RUNTIME_AGENT_BRIDGE_URL,
   DEFAULT_RUNTIME_CONFIG_FILE,
@@ -187,6 +188,7 @@ export function loadRuntimeConfig(
     }),
   });
   const loggingConfig = buildLoggingConfig(fileConfig, env);
+  const longTermMemory = buildLongTermMemoryConfig(fileConfig);
   const agentBridgeToken =
     readFirstString(env, ["AGENT_BRIDGE_TOKEN"]) ??
     readConfigString(fileConfig, "agentBridgeToken");
@@ -247,6 +249,7 @@ export function loadRuntimeConfig(
     logging: loggingConfig,
     ...(timeouts ? { timeouts } : {}),
     ...(pluginConfig ? { plugins: pluginConfig } : {}),
+    longTermMemory,
     ...(modelConfiguration.modelPolicy
       ? { models: modelConfiguration.modelPolicy }
       : {}),

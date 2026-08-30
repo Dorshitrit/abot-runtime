@@ -463,7 +463,13 @@
             <p>Review and edit runtime configuration with explicit saves.</p>
           </div>
           <div class="toolbar-actions">
-            <button id="refreshConfigButton" type="button">Refresh</button>
+            <button
+              id="refreshConfigButton"
+              type="button"
+              aria-label="Refresh configuration"
+            >
+              Refresh
+            </button>
             <button
               id="closeConfigWorkspaceButton"
               class="workspace-page-back config-workspace-back"
@@ -475,21 +481,13 @@
           </div>
         </header>
         <div class="workspace-page-body config-workspace-body">
-          <div id="configStatus" class="runtime-card"></div>
+          <div
+            id="configStatus"
+            class="config-workspace-status"
+            role="status"
+            aria-live="polite"
+          ></div>
           <div id="configDashboard" class="config-dashboard"></div>
-          <details class="config-raw-panel">
-            <summary>Raw JSON</summary>
-            <div class="config-raw-toolbar">
-              <select id="configRawFileSelect" title="Config file"></select
-              ><button id="configApplyRawButton" type="button">Apply</button
-              ><button id="configSaveRawButton" type="button">Save</button>
-            </div>
-            <textarea
-              id="configRawEditor"
-              class="config-view"
-              spellcheck="false"
-            ></textarea>
-          </details>
         </div>
       </section>
 

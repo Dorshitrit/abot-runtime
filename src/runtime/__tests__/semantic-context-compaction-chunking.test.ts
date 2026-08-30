@@ -2,6 +2,8 @@ import { describe, expect, test, vi } from "vitest";
 
 import type { RequestStepInstructionBlock } from "../config/runner/contracts.js";
 import type { ModelGatewayClient } from "../ports.js";
+import { createModelStepCompactionController } from "../context/model-step-compaction.js";
+import { OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND } from "../context/operation-supervision-evidence.js";
 import {
   CONTEXT_COMPACTION_MODEL_STEP,
   SEMANTIC_COMPACTION_CONTEXT_LANE,
@@ -18,6 +20,29 @@ import {
 } from "../context/semantic-compaction/chunking.js";
 import { WORKER_DECISION_MODEL_STEP } from "../steps/worker-decision/index.js";
 import { createTestRequestExecutionScope } from "./support/request-execution-scope.js";
+
+type TestModelMessage = Readonly<{ role: string; content: string }>;
+
+function readModelMessages(value: unknown): readonly TestModelMessage[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError("Expected model messages to be an array.");
+  }
+  const messages = value.filter(
+    (message): message is TestModelMessage =>
+      typeof message === "object" &&
+      message !== null &&
+      "role" in message &&
+      typeof message.role === "string" &&
+      "content" in message &&
+      typeof message.content === "string",
+  );
+  if (messages.length !== value.length) {
+    throw new TypeError(
+      "Expected every model message to contain text content.",
+    );
+  }
+  return messages;
+}
 
 function createContinuation(
   evidenceRefs: readonly string[],
@@ -143,6 +168,127 @@ function createCompactionRequest(
 }
 
 describe("semantic context compaction chunking", () => {
+  test("slices and digests an oversized operation-supervision evidence capsule", async () => {
+    const requestId = "oversized-operation-supervision-evidence";
+    const prompt = "Use the exact supervised operation evidence.";
+    const objective = "Present the exact already-established operation result.";
+    const marker = `OVERSIZED_SUPERVISION_EVIDENCE:${"x".repeat(20_000)}`;
+    const invokedSlices: Array<{ sourceRef: string; content: string }> = [];
+    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      const messages = input.messages as readonly { content: string }[];
+      const payload = JSON.parse(messages.at(-1)!.content) as {
+        sourceSlice?: { sourceRef: string; content: string };
+        newSources?: readonly { sourceRef: string }[];
+      };
+      const sourceRef =
+        payload.sourceSlice?.sourceRef ?? payload.newSources?.[0]?.sourceRef;
+      if (!sourceRef) throw new Error("compaction source missing");
+      if (payload.sourceSlice) invokedSlices.push(payload.sourceSlice);
+      return {
+        text: JSON.stringify({
+          continuation: createContinuation([sourceRef]),
+          sourceDigests: ["Preserved exact supervised operation evidence."],
+        }),
+        meta: {},
+      };
+    });
+    const countInputTokens = vi.fn<
+      NonNullable<ModelGatewayClient["countInputTokens"]>
+    >(async (input) => {
+      const payload = JSON.parse(
+        (input.messages as readonly { content: string }[]).at(-1)!.content,
+      ) as { kind: string };
+      return {
+        inputTokens:
+          payload.kind === "runtime_semantic_compaction_slice_input_v1"
+            ? 10_000
+            : 14_000,
+        profileId: "compact-test-profile",
+        provider: "ollama",
+        model: "compact-test-model",
+        contextWindowTokens: 16_000,
+        source: "provider_input_token_count",
+      };
+    });
+    const request = createCompactionRequest({
+      requestId,
+      prompt,
+      invoke,
+      countInputTokens,
+    });
+    const capsule = Object.freeze({
+      role: "user" as const,
+      content: JSON.stringify({
+        kind: OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND,
+        binding: {
+          callId: "call-supervised",
+          invocationAttempt: 3,
+          consumers: ["activation_decision", "immediate_presentation_handoff"],
+        },
+        entries: [
+          {
+            originExecutionId: "capability-execution-2",
+            notice: { stage: "intervention" },
+            evidence: {
+              kind: "embedded_cross_call_exact_result",
+              acceptedAction: {
+                executionId: "capability-execution-2",
+                capabilityId: "example.lookup",
+                controls: { query: "exact bounded query" },
+                declaredEffect: "observation",
+                workingDirectory: null,
+              },
+              receipt: { executionId: "capability-execution-2" },
+              adapterResult: { marker },
+            },
+          },
+        ],
+      }),
+    });
+    const controller = createModelStepCompactionController(request, {
+      call: {
+        roleId: "worker",
+        callId: "call-supervised",
+        objective,
+      },
+      sourceRevision: 7,
+      allowedConsumers: Object.freeze([WORKER_DECISION_MODEL_STEP]),
+      scopeId: "worker:call-supervised:request-tool-results",
+    });
+
+    const prepared = await controller.prepare([capsule]);
+
+    expect(invokedSlices.length).toBeGreaterThan(0);
+    expect(invokedSlices.map(({ content }) => content).join("")).toContain(
+      marker,
+    );
+    expect(invokedSlices[0]!.sourceRef).toMatch(
+      /^operation-supervision-evidence:[a-f0-9]{64}$/u,
+    );
+    expect(JSON.stringify(prepared.messages)).not.toContain(marker);
+    expect(JSON.stringify(prepared.messages)).toContain(
+      "runtime_semantic_compaction_checkpoint_v2",
+    );
+    expect(JSON.stringify(prepared.messages)).toContain(
+      "Preserved exact supervised operation evidence.",
+    );
+    prepared.commit();
+    expect(
+      request.contextCompactionStore?.get(
+        "worker:call-supervised:request-tool-results",
+      ),
+    ).toMatchObject({
+      sourceRevision: 7,
+      sourceDigests: [
+        expect.objectContaining({
+          sourceRef: expect.stringMatching(
+            /^operation-supervision-evidence:[a-f0-9]{64}$/u,
+          ),
+        }),
+      ],
+    });
+  });
+
   test("projects contiguous exact UTF-8 ranges without splitting Unicode code points", () => {
     const source = createSource("unicode-source", "A😀אבג\né𐍈Z");
     const boundaries = projectSemanticCompactionUtf8Boundaries(source.content);
@@ -198,7 +344,9 @@ describe("semantic context compaction chunking", () => {
       createSource("source-c", "Exact evidence C with marker C-303."),
     ]);
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      const payload = JSON.parse(input.messages.at(-1)!.content) as {
+      const payload = JSON.parse(
+        readModelMessages(input.messages).at(-1)!.content,
+      ) as {
         newSources: readonly { sourceRef: string }[];
       };
       const sourceRefs = payload.newSources.map(({ sourceRef }) => sourceRef);
@@ -254,7 +402,9 @@ describe("semantic context compaction chunking", () => {
     ]);
     const invocationBatches: string[][] = [];
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      const payload = JSON.parse(input.messages.at(-1)!.content) as {
+      const payload = JSON.parse(
+        readModelMessages(input.messages).at(-1)!.content,
+      ) as {
         previousContinuation?: SemanticCompactionContinuation;
         newSources: readonly { sourceRef: string }[];
       };
@@ -353,9 +503,8 @@ describe("semantic context compaction chunking", () => {
     const invocationBatches: string[][] = [];
     let rejectedFirstBatch = false;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      const userMessage = input.messages.find(
-        (message) => message.role === "user",
-      );
+      const messages = readModelMessages(input.messages);
+      const userMessage = messages.find((message) => message.role === "user");
       const payload = JSON.parse(userMessage!.content) as {
         previousContinuation?: SemanticCompactionContinuation;
         newSources: readonly { sourceRef: string }[];
@@ -382,14 +531,13 @@ describe("semantic context compaction chunking", () => {
     const countInputTokens = vi.fn<
       NonNullable<ModelGatewayClient["countInputTokens"]>
     >(async (input) => {
-      const repairAttempt = input.messages.some(
+      const messages = readModelMessages(input.messages);
+      const repairAttempt = messages.some(
         (message) =>
           message.role === "system" &&
           message.content.includes("Repair attempt:"),
       );
-      const userMessage = input.messages.find(
-        (message) => message.role === "user",
-      );
+      const userMessage = messages.find((message) => message.role === "user");
       const payload = JSON.parse(userMessage!.content) as {
         newSources?: readonly unknown[];
       };
@@ -442,7 +590,7 @@ describe("semantic context compaction chunking", () => {
     ]);
     expect(
       countInputTokens.mock.calls.some(([input]) =>
-        input.messages.some(
+        readModelMessages(input.messages).some(
           (message) =>
             message.role === "system" &&
             message.content.includes("Repair attempt:"),
@@ -463,7 +611,9 @@ describe("semantic context compaction chunking", () => {
     const source = createSource("source-a", "x".repeat(128));
     const invokedSliceContents: string[] = [];
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      const payload = JSON.parse(input.messages.at(-1)!.content) as {
+      const payload = JSON.parse(
+        readModelMessages(input.messages).at(-1)!.content,
+      ) as {
         sourceSlice: { sourceRef: string; content: string };
       };
       invokedSliceContents.push(payload.sourceSlice.content);
@@ -549,7 +699,9 @@ describe("semantic context compaction chunking", () => {
       coveredThroughByte?: number;
     }> = [];
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      const payload = JSON.parse(input.messages.at(-1)!.content) as {
+      const payload = JSON.parse(
+        readModelMessages(input.messages).at(-1)!.content,
+      ) as {
         partialSourceFold?: { coveredThroughByte: number };
         sourceSlice: {
           sourceRef: string;
@@ -660,7 +812,9 @@ describe("semantic context compaction chunking", () => {
     const source = createSource("source-a", "x".repeat(128));
     const invokedSliceLengths: number[] = [];
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      const payload = JSON.parse(input.messages.at(-1)!.content) as {
+      const payload = JSON.parse(
+        readModelMessages(input.messages).at(-1)!.content,
+      ) as {
         sourceSlice: { content: string };
       };
       invokedSliceLengths.push(payload.sourceSlice.content.length);
@@ -757,7 +911,9 @@ describe("semantic context compaction chunking", () => {
     const invoke = vi
       .fn<ModelGatewayClient["invoke"]>()
       .mockImplementationOnce(async (input) => {
-        const payload = JSON.parse(input.messages.at(-1)!.content) as {
+        const payload = JSON.parse(
+          readModelMessages(input.messages).at(-1)!.content,
+        ) as {
           newSources: readonly { sourceRef: string }[];
         };
         expect(payload.newSources).toHaveLength(1);

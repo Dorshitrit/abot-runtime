@@ -85,6 +85,57 @@ and write it automatically to the generated model config:
 Use the same block when configuring an OpenAI model profile manually. Other
 providers are not implicitly assigned this policy by the initializer.
 
+## Passive Long-Term Memory
+
+Passive cross-session memory is opt-in. The default is equivalent to:
+
+```json
+{
+  "longTermMemory": {
+    "enabled": false,
+    "emitClientEvents": false
+  }
+}
+```
+
+Enable it through the shared Web UI or CLI onboarding flow whenever possible:
+
+```bash
+npm run memory -- enable --provider <provider-id> --model <embedding-model-id>
+```
+
+The flow creates a dedicated `models.embeddingProfiles` entry, performs a real
+embedding probe, validates the full config, and then atomically enables
+`longTermMemory`. A manual equivalent is:
+
+```json
+{
+  "models": {
+    "embeddingProfiles": {
+      "memory-embedding": {
+        "provider": "ollama",
+        "model": "<embedding-model-id>"
+      }
+    }
+  },
+  "longTermMemory": {
+    "enabled": true,
+    "emitClientEvents": false,
+    "embeddingProfileId": "memory-embedding"
+  }
+}
+```
+
+The referenced provider must already exist under `models.providers`. Embedding
+profiles accept `provider`, `model`, optional `label`, and optional JSON-safe
+`options`. Generation, reasoning, context-window, and output-budget fields are
+rejected because embedding and response-generation profiles have different
+contracts.
+
+`emitClientEvents` exposes bounded lifecycle status and counts, never memory
+content or vectors. See [Passive Long-Term Memory](long-term-memory.md) for
+storage, privacy, retrieval, and management behavior.
+
 ## Paths
 
 `environment.paths.runtimeDir` is environment-local generated runtime state.
@@ -180,27 +231,20 @@ request-runner config:
 ```
 
 `requestRunner.configRef` is resolved relative to the runtime config file, not
-the process working directory. The referenced file owns the complete set of
-runtime model-step mappings and timeouts plus the request context budget:
+the process working directory. The referenced file owns model-step routing
+overrides, timeout defaults and overrides, and the request context budget.
+Fresh configurations use request-runner schema version 2:
 
 ```json
 {
+  "schemaVersion": 2,
   "models": {
     "defaults": {
       "profileId": "default",
       "steps": {
-        "supervisor.decision": "supervisor.decision",
-        "supervisor.response": "supervisor.response",
-        "planner.decision": "planner.decision",
-        "planner.graph": "planner.graph",
-        "worker.decision": "worker.decision",
-        "worker.result": "supervisor.response",
-        "reviewer.decision": "reviewer.decision",
-        "degraded.finalization": "degraded.finalization",
-        "execution.decision": "execution.decision",
-        "execution.response": "execution.response",
-        "auditor.decision": "auditor.decision",
-        "context.compact": "context.compact",
+        "supervisor.response": "default",
+        "worker.result": "default",
+        "execution.response": "default",
         "tool_payload.raw": "toolPayload.raw"
       }
     }
@@ -210,23 +254,53 @@ runtime model-step mappings and timeouts plus the request context budget:
     "safetyReserveTokens": 1200,
     "attachmentReserveTokens": 1024
   },
+  "stepDefaults": {
+    "timeoutMs": 90000
+  },
   "steps": {
-    "supervisor.decision": { "timeoutMs": 90000 },
-    "supervisor.response": { "timeoutMs": 90000 },
-    "planner.decision": { "timeoutMs": 90000 },
-    "planner.graph": { "timeoutMs": 90000 },
-    "worker.decision": { "timeoutMs": 90000 },
-    "worker.result": { "timeoutMs": 90000 },
-    "reviewer.decision": { "timeoutMs": 90000 },
-    "degraded.finalization": { "timeoutMs": 90000 },
-    "execution.decision": { "timeoutMs": 90000 },
-    "execution.response": { "timeoutMs": 90000 },
-    "auditor.decision": { "timeoutMs": 90000 },
-    "context.compact": { "timeoutMs": 90000 },
-    "tool_payload.raw": { "timeoutMs": 90000 }
+    "supervisor.response": {
+      "instructionRefs": [
+        "../methodologies/response-ux.md",
+        "../methodologies/memory-informed-response.md"
+      ]
+    },
+    "execution.response": {
+      "instructionRefs": [
+        "../methodologies/response-ux.md",
+        "../methodologies/memory-informed-response.md"
+      ]
+    }
   }
 }
 ```
+
+In schema version 2, `models.defaults.steps` is a sparse override map. A
+missing model-step mapping resolves to the same id as the step, so an identity
+entry such as `"capability.controls": "capability.controls"` is unnecessary.
+The four entries above are the canonical non-identity overrides: three raw
+response steps use the base `default` profile, while `tool_payload.raw` uses
+the existing `toolPayload.raw` calibration slot. An explicit target may still
+select a model profile, invocation profile, or calibration slot; an unknown
+explicit target is rejected rather than replaced with a default.
+
+`stepDefaults.timeoutMs` supplies the timeout for every step. The root `steps`
+object is also sparse: add `timeoutMs` only when a step differs from the
+default, and add `instructionRefs` only when that step needs additional
+instructions. A missing step entry therefore uses the default timeout and has
+no additional instruction references.
+
+A request-runner config with no `schemaVersion` is the legacy v1 format
+published with ABot 1.0.0. It remains supported and is normalized in memory;
+the loader does not rewrite it, and adding a runtime model step does not require
+the user to add a new identity mapping. `schemaVersion: 2` is the only explicit
+supported version. Any other explicit value is rejected before the config is
+used or written.
+
+A fresh `abot init` creates schema version 2. Running init against an existing
+project without `--force` preserves its request-runner config byte for byte,
+including a legacy v1 file. Package upgrades never run a config migration or
+rewrite automatically; `--force` remains an explicit request to replace the
+local starter files.
 
 Every materialized model profile declares its physical context capacity with
 top-level `contextWindowTokens`. The selected profile supplies that capacity;
@@ -241,16 +315,23 @@ The Ollama adapter still sends a finite provider-native `num_predict`, derived
 mechanically from the final provider input, the physical context remainder,
 and a strict bounded output schema when one applies.
 
-All three root fields and every invoked step are required. Unknown fields,
-missing steps, and extra step ids are rejected during configuration loading.
-`worker.result` is a raw-text authoring step. It may reuse a model profile's
-existing raw-response calibration slot, as shown above, without changing its
-distinct runtime identity.
+The required context fields remain explicit. Unknown fields, unknown step ids,
+and invalid explicit overrides are rejected during configuration loading;
+omitting a mapping or step entry uses the schema version 2 defaults described
+above. `instructionRefs` are resolved relative to the request-runner config.
+The `abot init` command installs the two default root-response methodologies
+beside the local configuration, and the same references are applied to
+`supervisor.response` and `execution.response`. They are presentation guidance
+only and cannot alter the available actions, output contract, or runtime
+authority.
+`worker.result` is a raw-text authoring step. The canonical override selects the
+base `default` profile without changing the step's distinct runtime identity;
+an installation may still configure a more specific explicit target.
 `planner.decision` remains the delegated MAIN Planner contract and keeps its
 configured methodology references. `planner.graph` is the separate structured
 graph proposal/decline contract used by the Execution Agent advisory Planner;
-it has its own mapping, timeout, output contract, and model calibration and does
-not inherit `planner.decision` instruction references.
+it receives its own normalized mapping, timeout, output contract, and model
+calibration and does not inherit `planner.decision` instruction references.
 The request runner has no configurable role hierarchy or fixed sequence. A
 model profile may select one code-owned execution policy; omission uses the
 current Supervisor/Worker behavior:
@@ -374,15 +455,15 @@ loss before a checkpoint covers those turns.
 supported. Tool observations and artifact context are projected by their
 owning runtime contracts; model profiles cannot override those boundaries.
 
-The request-runner config maps internal `modelStep` ids to semantic calibration
-slot ids:
+The request-runner config maps internal `modelStep` ids only when a target
+differs from the schema version 2 identity default:
 
 ```json
 {
   "models": {
     "defaults": {
       "steps": {
-        "supervisor.decision": "supervisor.decision"
+        "tool_payload.raw": "toolPayload.raw"
       }
     }
   }
@@ -428,12 +509,13 @@ Use this bounded workflow:
 
 The common slots and their first tuning targets are:
 
-| Step family                     | Slots                                                                                                                                                                 | Tune first                                                                                                                                                                 |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Step family                     | Slots                                                                                                                                                                 | Tune first                                                                                                                                                                              |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Routing and decisions           | `supervisor.decision`, `worker.decision`, `planner.decision`, `planner.graph`, `reviewer.decision`, `execution.decision`, `auditor.decision`, `degraded.finalization` | Keep the required structured `format`, then verify complete structured output and deterministic sampling. Add short model-specific instructions only when measured behavior needs them. |
-| User-facing or delegated output | `supervisor.response`, `worker.result`, `execution.response`                                                                                                          | Sampling and any intentional provider-native output controls. Do not force JSON unless that step's contract requires it.                                                    |
-| Context compaction              | `context.compact`                                                                                                                                                     | Structured format and preservation of facts that later steps still require; physical capacity remains profile-owned.                                                       |
-| Literal tool payloads           | `toolPayload.raw`                                                                                                                                                     | Literal-payload instructions and any intentional provider-native output controls. Verify the produced payload or artifact directly, not the model's description of it.     |
+| Capability control authoring    | `capability.controls`                                                                                                                                                 | Preserve the structured controls contract without applying the short decision-output ceiling.                                                                                           |
+| User-facing or delegated output | `supervisor.response`, `worker.result`, `execution.response`                                                                                                          | Sampling and any intentional provider-native output controls. Do not force JSON unless that step's contract requires it.                                                                |
+| Context compaction              | `context.compact`                                                                                                                                                     | Structured format and preservation of facts that later steps still require; physical capacity remains profile-owned.                                                                    |
+| Literal tool payloads           | `toolPayload.raw`                                                                                                                                                     | Literal-payload instructions and any intentional provider-native output controls. Verify the produced payload or artifact directly, not the model's description of it.                  |
 
 `timeoutMs` addresses provider latency only; raising it does not improve model
 reasoning. Top-level `contextWindowTokens` declares the concrete model
@@ -443,9 +525,10 @@ but a provider may intentionally omit unsupported sampling fields, such as
 temperature for an enabled OpenAI reasoning mode.
 
 An omitted slot inherits the model profile's base generation and context. The
-packaged request-runner example already maps each semantic step to its matching
-calibration slot, so most users only need to edit the profile file for the
-model they are tuning.
+packaged schema version 2 request-runner example lists only the four canonical
+non-identity overrides; all other steps resolve to their matching calibration
+slot automatically. Most users therefore only need to edit the profile file
+for the model they are tuning.
 
 ## Schema
 

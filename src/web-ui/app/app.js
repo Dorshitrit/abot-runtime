@@ -3,6 +3,8 @@ import { createConfigWorkspace } from "./components/config-workspace.js";
 import { createComposerActions } from "./components/composer-actions.js";
 import { createModelSelector } from "./components/model-selector.js";
 import { createRuntimeSetupGuide } from "./components/runtime-setup-guide.js";
+import { createLongTermMemorySetup } from "./components/long-term-memory-setup.js";
+import { createLongTermMemoryManager } from "./components/long-term-memory/manager.js";
 import { createSessionActionsMenu } from "./components/session-actions-menu.js";
 import { createToolApprovalCard } from "./components/tool-approval-card.js";
 import { textOf } from "./lib/text-format.js";
@@ -24,6 +26,7 @@ import { createConversationSessionController } from "./controllers/conversation-
 import { createChatRequestController } from "./controllers/chat-request-controller.js";
 import { createToolApprovalController } from "./controllers/tool-approval-controller.js";
 import { createComposerSubmitController } from "./controllers/composer-submit-controller.js";
+import { createLongTermMemoryController } from "./controllers/long-term-memory/controller.js";
 
 const state = {
   config: null,
@@ -123,10 +126,6 @@ const dom = {
   refreshConfigButton: document.getElementById("refreshConfigButton"),
   configStatus: document.getElementById("configStatus"),
   configDashboard: document.getElementById("configDashboard"),
-  configRawFileSelect: document.getElementById("configRawFileSelect"),
-  configApplyRawButton: document.getElementById("configApplyRawButton"),
-  configSaveRawButton: document.getElementById("configSaveRawButton"),
-  configRawEditor: document.getElementById("configRawEditor"),
   panelBackdrop: document.getElementById("panelBackdrop"),
   toastRegion: document.getElementById("toastRegion"),
   operationsTabButtons: [
@@ -146,6 +145,7 @@ let composerQueueController;
 let composerSubmitController;
 let realtimeEvents;
 let conversationView;
+let configWorkspace;
 const operationsController = createOperationsController({
   dom,
   client: runtimeClient,
@@ -190,6 +190,11 @@ const steerController = createSteerController({
 
 const shell = createWorkspaceShell({
   dom,
+  beforeWorkspaceChange: ({ from, to }) => {
+    if (from !== "config" || to === "config") return true;
+    if (!configWorkspace) return true;
+    return configWorkspace.prepareDiscardChanges("leave configuration");
+  },
 });
 const runtimeSetupGuide = createRuntimeSetupGuide({
   container: dom.runtimeSetupGuide,
@@ -422,6 +427,7 @@ const appEventBindings = createAppEventBindings({
     saveSessionId: saveSessionIdForEnvironment,
     selectedEnvironmentId,
     rememberModelSelection: rememberCurrentModelSelection,
+    invalidateSessionLoads: conversationSession.invalidateEnvironmentLoads,
     clearAttachments: clearPendingAttachments,
     resetLiveRequestView: conversationSession.resetLiveRequestView,
     setCurrentSessionTitle,
@@ -429,10 +435,13 @@ const appEventBindings = createAppEventBindings({
     subscribeSession,
     renderMessages,
     renderAgentPicker,
+    savedEnvironmentId,
+    beforeEnvironmentChange: () =>
+      configWorkspace.prepareDiscardChanges("change environment"),
     saveEnvironmentId,
     loadModels,
     loadAgentMode,
-    loadRuntimeConfig: () => loadRuntimeConfig(),
+    loadRuntimeConfig: (options) => loadRuntimeConfig(options),
     restoreLastSession,
     configuredEnvironmentOptions,
     removeUnsupportedImages: removeUnsupportedPendingImages,
@@ -449,15 +458,46 @@ const appEventBindings = createAppEventBindings({
   },
 });
 
-const configWorkspace = createConfigWorkspace({
+const longTermMemorySetup = createLongTermMemorySetup({
+  getEnvironmentId: selectedEnvironmentId,
+  loadStatus: (environmentId) =>
+    runtimeClient.loadLongTermMemoryStatus(environmentId),
+  discoverModels: (providerId, environmentId) =>
+    runtimeClient.discoverLongTermMemoryModels({
+      environmentId,
+      providerId,
+    }),
+  enableMemory: (input, environmentId) =>
+    runtimeClient.enableLongTermMemory({
+      environmentId,
+      ...input,
+    }),
+  disableMemory: (environmentId) =>
+    runtimeClient.disableLongTermMemory(environmentId),
+  recordControlEvent,
+  beginRuntimeMutation: () =>
+    configWorkspace?.beginExternalRuntimeMutation() ?? false,
+  refreshRuntimeConfig: () =>
+    configWorkspace?.refreshAfterExternalRuntimeMutation() ??
+    Promise.resolve(false),
+  endRuntimeMutation: () => configWorkspace?.endExternalRuntimeMutation(),
+});
+
+let longTermMemoryManager;
+const longTermMemoryController = createLongTermMemoryController({
+  client: runtimeClient,
+  getEnvironmentId: selectedEnvironmentId,
+  render: (snapshot) => longTermMemoryManager?.render(snapshot),
+});
+longTermMemoryManager = createLongTermMemoryManager({
+  actions: longTermMemoryController,
+});
+
+configWorkspace = createConfigWorkspace({
   dom: {
     refreshConfigButton: dom.refreshConfigButton,
     configStatus: dom.configStatus,
     configDashboard: dom.configDashboard,
-    configRawFileSelect: dom.configRawFileSelect,
-    configApplyRawButton: dom.configApplyRawButton,
-    configSaveRawButton: dom.configSaveRawButton,
-    configRawEditor: dom.configRawEditor,
   },
   loadDashboard: () =>
     runtimeClient.loadConfigDashboard(selectedEnvironmentId()),
@@ -468,10 +508,15 @@ const configWorkspace = createConfigWorkspace({
       id,
       config,
     }),
+  memorySetup: longTermMemorySetup,
+  memoryManagement: {
+    load: () => longTermMemoryController.load(),
+    mount: (root) => longTermMemoryManager.mount(root),
+  },
   recordControlEvent,
 });
 
-const loadRuntimeConfig = () => configWorkspace.load();
+const loadRuntimeConfig = (options) => configWorkspace.load(options);
 
 function setConnectionLabel(text, isError = false) {
   dom.connectionLabel.textContent = text;

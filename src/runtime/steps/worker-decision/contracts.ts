@@ -11,10 +11,13 @@ import type {
   WorkerCapabilityInvocation,
   WorkerSettledCapabilityResult,
 } from "../../orchestration/worker-capabilities/index.js";
+import { CAPABILITY_CONTROLS_MODEL_STEP } from "../../orchestration/worker-capabilities/index.js";
 export { WORKER_CAPABILITY_INTENT_MAX_LENGTH } from "../../orchestration/worker-capabilities/index.js";
+export { WORKER_CAPABILITY_AUTHORING_OBJECTIVE_MAX_LENGTH } from "../../orchestration/worker-capabilities/index.js";
 
 export const WORKER_DECISION_MODEL_STEP = MODEL_STEPS.WORKER_DECISION;
 export const WORKER_RESULT_MODEL_STEP = MODEL_STEPS.WORKER_RESULT;
+export { CAPABILITY_CONTROLS_MODEL_STEP };
 export const WORKER_ROLE_ID = "worker" as const;
 export const WORKER_RESULT_MAX_LENGTH = ROLE_CALL_RESULT_MAX_LENGTH;
 export const WORKER_DECISION_ACTIONS = Object.freeze([
@@ -47,6 +50,7 @@ export type WorkerInvokeCapabilityDecision = Readonly<{
   action: "invoke_capability";
   capabilityId: string;
   intent: string;
+  authoringObjective?: string;
   controls: WorkerCapabilityControls;
 }>;
 
@@ -54,6 +58,7 @@ export type WorkerInvokeCapabilitySelection = Readonly<{
   action: "invoke_capability";
   capabilityId: string;
   intent: string;
+  authoringObjective?: string;
   selectionControls?: WorkerCapabilityControls;
 }>;
 
@@ -67,6 +72,7 @@ export type WorkerInvokeCapabilitiesSelection = Readonly<{
   invocations: readonly Readonly<{
     capabilityId: string;
     intent: string;
+    authoringObjective?: string;
     selectionControls?: WorkerCapabilityControls;
   }>[];
 }>;
@@ -133,11 +139,14 @@ export type WorkerResultAuthorSource = WorkerDecisionCallIdentity &
     dependencyResults: readonly RoleCallDependencyResult[];
     requestToolResults: RequestToolResultsView;
     requestToolResultsContextMessage?: ChatMessage;
+    operationSupervisionEvidenceContextMessage?: ChatMessage;
   }>;
 
 export type WorkerDecisionDiagnosticContext = Readonly<{
   requestId: string;
-  modelStep: typeof WORKER_DECISION_MODEL_STEP;
+  modelStep:
+    | typeof WORKER_DECISION_MODEL_STEP
+    | typeof CAPABILITY_CONTROLS_MODEL_STEP;
   decisionPhase: WorkerDecisionPhase;
 }> &
   WorkerDecisionCallIdentity;

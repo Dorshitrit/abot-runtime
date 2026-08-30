@@ -21,6 +21,7 @@ import type {
   RoleCallLedgerHead,
 } from "../../orchestration/role-calls/index.js";
 import {
+  CAPABILITY_CONTROLS_MODEL_STEP,
   materializeCapabilityControlsIfComplete,
   mergeCapabilityControls,
   partitionCapabilityControlsSchema,
@@ -36,14 +37,12 @@ import {
 } from "../../request/execution-scope.js";
 import { appendRequestSteeringContext } from "../../request/request-steering-context.js";
 import type { RequestSteeringSnapshot } from "../../request/request-steering.js";
-import {
-  EXECUTION_AGENT_DECISION_MODEL_STEP,
-  type ExecutionAgentCapabilityInvocation,
-} from "./contracts.js";
+import { requiresExecutionOperationObjective } from "./capability-invocation-contract.js";
+import { type ExecutionAgentCapabilityInvocation } from "./contracts.js";
 import { buildExecutionControlsRefinementInstructions } from "./refinement-prompt.js";
 import {
   buildExecutionContinuationMessages,
-  buildExecutionStateMessage,
+  buildExecutionRefinementStateMessage,
 } from "./state-context.js";
 
 type PendingRefinement = Readonly<{
@@ -56,17 +55,18 @@ type PendingRefinement = Readonly<{
 }>;
 
 export type RefinedExecutionCapabilityInvocation = Readonly<
-  Omit<ExecutionAgentCapabilityInvocation, "controls"> & {
+  Omit<
+    ExecutionAgentCapabilityInvocation,
+    "controls" | "operationObjective"
+  > & {
     controls: CapabilityControls;
   }
 >;
 
-export type ExecutionCapabilityRefinementOutcome =
-  | Readonly<{
-      disposition: "execute";
-      invocations: readonly RefinedExecutionCapabilityInvocation[];
-    }>
-  | Readonly<{ disposition: "reconsider" }>;
+export type ExecutionCapabilityRefinementOutcome = Readonly<{
+  disposition: "execute";
+  invocations: readonly RefinedExecutionCapabilityInvocation[];
+}>;
 
 type RefineExecutionCapabilityInvocationsOptions = Readonly<{
   head: RoleCallLedgerHead;
@@ -77,20 +77,17 @@ type RefineExecutionCapabilityInvocationsOptions = Readonly<{
   steeringSnapshot: RequestSteeringSnapshot;
 }>;
 
-type ParsedRefinementEntry =
-  | Readonly<{
-      index: number;
-      disposition: "execute";
-      controls: CapabilityControls;
-    }>
-  | Readonly<{ index: number; disposition: "reconsider" }>;
+type ParsedRefinementEntry = Readonly<{
+  index: number;
+  disposition: "execute";
+  controls: CapabilityControls;
+}>;
 
 /**
  * Loads guidance for every selected capability, then asks the same Execution
- * Agent to confirm applicability or reconsider and to complete any remaining
- * controls. Capability identity, selection controls, and ordering remain
- * immutable. Client intent is retained separately for lifecycle presentation.
- * This is not a child-role call.
+ * Agent to complete only the remaining controls. Capability identity,
+ * selection controls, and ordering remain immutable. Client intent is retained
+ * separately for lifecycle presentation. This is not a child-role call.
  */
 export async function refineExecutionCapabilityInvocations(
   request: RequestExecutionScope,
@@ -128,6 +125,12 @@ export async function refineExecutionCapabilityInvocations(
     );
     if (materialized && !materialized.ok) {
       throw new Error("execution_capability_selection_controls_invalid");
+    }
+    if (
+      requiresExecutionOperationObjective(partition.value) &&
+      !invocation.operationObjective
+    ) {
+      throw new Error("execution_capability_operation_objective_missing");
     }
     return Object.freeze({
       index,
@@ -190,7 +193,7 @@ export async function refineExecutionCapabilityInvocations(
   const budget = resolveModelContextBudget({
     runnerConfig: request.runnerConfig,
     agentMode: request.agentMode,
-    modelStep: EXECUTION_AGENT_DECISION_MODEL_STEP,
+    modelStep: CAPABILITY_CONTROLS_MODEL_STEP,
     ...(request.modelPreference
       ? { modelPreference: request.modelPreference }
       : {}),
@@ -200,7 +203,7 @@ export async function refineExecutionCapabilityInvocations(
   const requestSource = projectRequestSource({
     requestId: request.requestId,
     prompt: request.prompt,
-    modelStep: EXECUTION_AGENT_DECISION_MODEL_STEP,
+    modelStep: CAPABILITY_CONTROLS_MODEL_STEP,
     callId,
     historyMessages: request.historyMessages,
   });
@@ -214,6 +217,9 @@ export async function refineExecutionCapabilityInvocations(
       ({ index, invocation, descriptor, partition }) => ({
         slot: slotId(index),
         capabilityId: descriptor.capabilityId,
+        ...(invocation.operationObjective
+          ? { operationObjective: invocation.operationObjective }
+          : {}),
         selectionControls: invocation.selectionControls ?? {},
         remainingControls: partition.remainingSchema,
       }),
@@ -228,7 +234,7 @@ export async function refineExecutionCapabilityInvocations(
       ? [buildRequestTemporalContextMessage(request.temporalContext)]
       : []),
     buildRequestSourceMessage(requestSource),
-    buildExecutionStateMessage(options.head, options.call),
+    buildExecutionRefinementStateMessage(options.head, options.call),
     ...appendRequestSteeringContext([], options.steeringSnapshot),
   ]);
   const currentMessage = {
@@ -274,7 +280,7 @@ export async function refineExecutionCapabilityInvocations(
     budget,
     diagnostic: {
       requestId: request.requestId,
-      modelStep: EXECUTION_AGENT_DECISION_MODEL_STEP,
+      modelStep: CAPABILITY_CONTROLS_MODEL_STEP,
       callId,
     },
     onEvent: request.onEvent,
@@ -282,27 +288,22 @@ export async function refineExecutionCapabilityInvocations(
   });
   const refined = await invokeStructuredModelStep({
     request,
-    modelStep: EXECUTION_AGENT_DECISION_MODEL_STEP,
+    modelStep: CAPABILITY_CONTROLS_MODEL_STEP,
     format,
     messages: context.messages,
     contextCompaction: createExecutionAgentCompactionController(request, {
       call: options.call,
       sourceRevision: options.head.revision,
-      allowedConsumers: Object.freeze([EXECUTION_AGENT_DECISION_MODEL_STEP]),
+      allowedConsumers: Object.freeze([CAPABILITY_CONTROLS_MODEL_STEP]),
       scopeSuffix: "controls-refinement",
     }),
     timeoutReason: "execution_capability_refinement_timeout",
     invalidOutputReason: "invalid_execution_capability_refinement",
     parse: (text) => parseControlsRefinement(text, pending),
   });
-  if (refined.some(({ disposition }) => disposition === "reconsider")) {
-    return Object.freeze({ disposition: "reconsider" as const });
-  }
   const byIndex = new Map<number, CapabilityControls>();
   for (const entry of refined) {
-    if (entry.disposition === "execute") {
-      byIndex.set(entry.index, entry.controls);
-    }
+    byIndex.set(entry.index, entry.controls);
   }
   return executeOutcome(
     prepared.map(({ index, invocation, controls }) =>
@@ -319,15 +320,10 @@ function createControlsRefinementFormat(
       Object.fromEntries(
         pending.map(({ index, partition }) => [
           slotId(index),
-          {
-            anyOf: [
-              exactObject({
-                disposition: literal("execute"),
-                controls: projectControlsSchema(partition.remainingSchema),
-              }),
-              exactObject({ disposition: literal("reconsider") }),
-            ],
-          },
+          exactObject({
+            disposition: literal("execute"),
+            controls: projectControlsSchema(partition.remainingSchema),
+          }),
         ]),
       ),
     ),
@@ -388,15 +384,6 @@ function parseControlsRefinement(
     if (!slot || typeof slot.disposition !== "string") {
       issues.push(
         refinementIssue("refinement_slot_invalid", slotId(entry.index)),
-      );
-      continue;
-    }
-    if (slot.disposition === "reconsider" && Object.keys(slot).length === 1) {
-      accepted.push(
-        Object.freeze({
-          index: entry.index,
-          disposition: "reconsider" as const,
-        }),
       );
       continue;
     }

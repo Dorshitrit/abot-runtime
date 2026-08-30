@@ -1,4 +1,11 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -12,12 +19,11 @@ import { REQUEST_INVOKED_STEP_IDS } from "../config/runner/contracts.js";
 
 function createRunnerConfig(timeoutMs = 20_000) {
   return {
+    schemaVersion: 2,
     models: {
       defaults: {
         profileId: "gemma-e4b",
-        steps: Object.fromEntries(
-          REQUEST_INVOKED_STEP_IDS.map((stepId) => [stepId, stepId]),
-        ),
+        steps: { "tool_payload.raw": "toolPayload.raw" },
       },
     },
     context: {
@@ -25,9 +31,8 @@ function createRunnerConfig(timeoutMs = 20_000) {
       safetyReserveTokens: 1_200,
       attachmentReserveTokens: 1_024,
     },
-    steps: Object.fromEntries(
-      REQUEST_INVOKED_STEP_IDS.map((stepId) => [stepId, { timeoutMs }]),
-    ),
+    stepDefaults: { timeoutMs },
+    steps: {},
   };
 }
 
@@ -178,5 +183,102 @@ describe("config dashboard backend", () => {
         await readFile(join(rootDir, "local", "runner.config.json"), "utf-8"),
       ),
     ).toEqual(updatedRunnerConfig);
+  });
+
+  test("rejects an unsupported runner version before creating a backup", async () => {
+    rootDir = await mkdtemp(join(tmpdir(), "abot-config-dashboard-version-"));
+    await mkdir(join(rootDir, "local"), { recursive: true });
+    await writeFile(
+      join(rootDir, "local", "runtime.config.json"),
+      `${JSON.stringify({ requestRunner: { configRef: "./runner.json" } })}\n`,
+      "utf-8",
+    );
+    const runnerPath = join(rootDir, "local", "runner.json");
+    const original = `${JSON.stringify(createRunnerConfig(), null, 2)}\n`;
+    await writeFile(runnerPath, original, "utf-8");
+
+    await expect(
+      saveConfigDashboardFile({
+        rootDir,
+        configPath: "local/runtime.config.json",
+        kind: "requestRunner",
+        config: { ...createRunnerConfig(), schemaVersion: 3 },
+      }),
+    ).rejects.toThrow(
+      "schemaVersion must be 2 or omitted for the legacy v1 format",
+    );
+    await expect(readFile(runnerPath, "utf-8")).resolves.toBe(original);
+    expect(await readdir(join(rootDir, "local"))).toEqual([
+      "runner.json",
+      "runtime.config.json",
+    ]);
+  });
+
+  test("does not overwrite an existing future runner config with an older payload", async () => {
+    rootDir = await mkdtemp(join(tmpdir(), "abot-config-dashboard-existing-"));
+    await mkdir(join(rootDir, "local"), { recursive: true });
+    await writeFile(
+      join(rootDir, "local", "runtime.config.json"),
+      `${JSON.stringify({ requestRunner: { configRef: "./runner.json" } })}\n`,
+      "utf-8",
+    );
+    const runnerPath = join(rootDir, "local", "runner.json");
+    const original = `${JSON.stringify(
+      { ...createRunnerConfig(), schemaVersion: 3 },
+      null,
+      2,
+    )}\n`;
+    await writeFile(runnerPath, original, "utf-8");
+
+    await expect(
+      saveConfigDashboardFile({
+        rootDir,
+        configPath: "local/runtime.config.json",
+        kind: "requestRunner",
+        config: createRunnerConfig(),
+      }),
+    ).rejects.toThrow(
+      "schemaVersion must be 2 or omitted for the legacy v1 format",
+    );
+    await expect(readFile(runnerPath, "utf-8")).resolves.toBe(original);
+    expect(await readdir(join(rootDir, "local"))).toHaveLength(2);
+  });
+
+  test("validates a complete legacy candidate before writing it", async () => {
+    rootDir = await mkdtemp(join(tmpdir(), "abot-config-dashboard-legacy-"));
+    await mkdir(join(rootDir, "local"), { recursive: true });
+    await writeFile(
+      join(rootDir, "local", "runtime.config.json"),
+      `${JSON.stringify({ requestRunner: { configRef: "./runner.json" } })}\n`,
+      "utf-8",
+    );
+    const runnerPath = join(rootDir, "local", "runner.json");
+    const original = await readFile(
+      join(
+        import.meta.dirname,
+        "fixtures",
+        "public-v1.0.0",
+        "request-runner.config.example.json",
+      ),
+      "utf-8",
+    );
+    await writeFile(runnerPath, original, "utf-8");
+    const candidate = JSON.parse(original) as {
+      models: { defaults: { steps: Record<string, string> } };
+    };
+    delete candidate.models.defaults.steps["supervisor.decision"];
+
+    await expect(
+      saveConfigDashboardFile({
+        rootDir,
+        configPath: "local/runtime.config.json",
+        kind: "requestRunner",
+        config: candidate,
+      }),
+    ).rejects.toThrow(
+      "models.defaults.steps.supervisor.decision is required by the legacy v1 format",
+    );
+    await expect(readFile(runnerPath, "utf-8")).resolves.toBe(original);
+    expect(await readdir(join(rootDir, "local"))).toHaveLength(2);
   });
 });

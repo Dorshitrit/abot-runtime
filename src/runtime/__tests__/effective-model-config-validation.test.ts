@@ -100,6 +100,31 @@ describe("effective runtime model config validation", () => {
       );
   });
 
+  test("accepts an implicit identity step target without configured calibration", () => {
+    expect(() =>
+      validate(
+        {
+          providers: {
+            local: { type: "ollama" },
+          },
+          profiles: {
+            primary: {
+              provider: "local",
+              model: "primary:model",
+              contextWindowTokens: 32_768,
+            },
+          },
+        },
+        runnerConfig({
+          profileId: "primary",
+          steps: {
+            "capability.controls": "capability.controls",
+          },
+        }),
+      ),
+    ).not.toThrow();
+  });
+
   test("rejects every unresolved provider and model-profile reference", () => {
     let thrown: unknown;
     try {

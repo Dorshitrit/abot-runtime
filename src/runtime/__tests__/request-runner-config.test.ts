@@ -18,8 +18,13 @@ import {
 } from "../config/runner/contracts.js";
 import { loadRequestRunnerConfig as loadRequestRunnerConfigAtPath } from "../config/runner/loader.js";
 import { createRequestModelPolicy } from "../config/runner/model-policy.js";
+import { LEGACY_REQUEST_INVOKED_STEP_IDS } from "../config/runner/schema-version.js";
 
 const temporaryRoots: string[] = [];
+const ROOT_RESPONSE_METHODOLOGY_REFS = [
+  "../methodologies/response-ux.md",
+  "../methodologies/memory-informed-response.md",
+] as const;
 
 type RunnerConfigFixture = {
   models: {
@@ -157,6 +162,24 @@ describe("request runner config", () => {
       ...REQUEST_INVOKED_STEP_IDS,
     ]);
     expect(Object.keys(loaded.steps)).toEqual([...REQUEST_INVOKED_STEP_IDS]);
+    for (const stepId of [
+      "supervisor.response",
+      "execution.response",
+    ] as const) {
+      expect(
+        loaded.steps[stepId]?.instructionBlocks?.map((block) => block.ref),
+      ).toEqual(ROOT_RESPONSE_METHODOLOGY_REFS);
+    }
+    for (const stepId of REQUEST_INVOKED_STEP_IDS.filter(
+      (stepId) => !stepId.endsWith(".response"),
+    )) {
+      const refs =
+        loaded.steps[stepId]?.instructionBlocks?.map((block) => block.ref) ??
+        [];
+      for (const responseMethodologyRef of ROOT_RESPONSE_METHODOLOGY_REFS) {
+        expect(refs).not.toContain(responseMethodologyRef);
+      }
+    }
   });
 
   test("deep-freezes the cached runner configuration", () => {
@@ -303,7 +326,7 @@ describe("request runner config", () => {
           "development.planner": "development.planner",
         });
       },
-      expected: `models.defaults.steps must contain exactly: ${REQUEST_INVOKED_STEP_IDS.join(", ")}`,
+      expected: "unregistered model step development.planner",
     },
     {
       label: "shared context",
@@ -320,14 +343,14 @@ describe("request runner config", () => {
           "general.worker": { timeoutMs: 20_000 },
         });
       },
-      expected: `steps must contain exactly: ${REQUEST_INVOKED_STEP_IDS.join(", ")}`,
+      expected: "steps contains unregistered model step general.worker",
     },
     {
       label: "step entry",
       mutate: (config: RunnerConfigFixture) => {
         Object.assign(config.steps["worker.decision"]!, { retries: 1 });
       },
-      expected: "steps.worker.decision must contain exactly: timeoutMs",
+      expected: "may contain only: timeoutMs, instructionRefs",
     },
   ])(
     "rejects unknown nested runner fields in $label",
@@ -341,7 +364,7 @@ describe("request runner config", () => {
     },
   );
 
-  test.each(REQUEST_INVOKED_STEP_IDS)(
+  test.each(LEGACY_REQUEST_INVOKED_STEP_IDS)(
     "rejects model step %s without its own mapping",
     (stepId) => {
       const modelSteps = withoutKey(createStepMappings(), stepId);
@@ -350,13 +373,11 @@ describe("request runner config", () => {
         loadRequestRunnerConfig({
           rootDir: createConfigRoot(createConfig({ modelSteps })),
         }),
-      ).toThrow(
-        `models.defaults.steps.${stepId} must select a model profile or calibration slot`,
-      );
+      ).toThrow(`${stepId} is required by the legacy v1 format`);
     },
   );
 
-  test.each(REQUEST_INVOKED_STEP_IDS)(
+  test.each(LEGACY_REQUEST_INVOKED_STEP_IDS)(
     "rejects a config without required step %s",
     (stepId) => {
       const steps = withoutKey(createStepConfigs(), stepId);
@@ -365,7 +386,7 @@ describe("request runner config", () => {
         loadRequestRunnerConfig({
           rootDir: createConfigRoot(createConfig({ steps })),
         }),
-      ).toThrow(`steps.${stepId} is required`);
+      ).toThrow(`steps.${stepId} is required by the legacy v1 format`);
     },
   );
 
@@ -440,6 +461,12 @@ describe("request runner config", () => {
             },
           },
         },
+        embeddingProfiles: {
+          "memory-embedding": {
+            provider: "local",
+            model: "embedding-model:latest",
+          },
+        },
         defaults: {
           profileId: "platform-model",
           overrideClientPreference: true,
@@ -453,6 +480,12 @@ describe("request runner config", () => {
 
     expect(modelPolicy.providers).toEqual({
       local: { type: "ollama", baseUrl: "http://configured:11434" },
+    });
+    expect(modelPolicy.embeddingProfiles).toEqual({
+      "memory-embedding": {
+        provider: "local",
+        model: "embedding-model:latest",
+      },
     });
     expect(modelPolicy.defaults).toEqual({
       profileId: "runtime-model",

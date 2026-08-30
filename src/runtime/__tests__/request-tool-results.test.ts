@@ -484,7 +484,11 @@ describe("request tool results", () => {
       objective: "Inspect complementary regions of one artifact.",
     });
 
-    const settleObservation = async (summary: string) => {
+    const settleObservation = async (
+      controls: Readonly<Record<string, unknown>>,
+      actionFingerprint: string,
+    ) => {
+      const summary = "Read one bounded file window.";
       const begun = await commit(ledger, {
         authority: "active_role",
         type: "begin_capability_execution",
@@ -493,8 +497,9 @@ describe("request tool results", () => {
           ledger.current().state.capabilityExecutions.length + 1,
         capabilityId: "inspect_target",
         declaredEffect: "observation",
-        intent: summary,
-        controlsJson: "{}",
+        intent: "Inspect one bounded file window.",
+        controlsJson: JSON.stringify(controls),
+        actionFingerprint,
       });
       const execution = begun.state.capabilityExecutions.at(-1)!;
       await commit(ledger, {
@@ -510,10 +515,26 @@ describe("request tool results", () => {
       return execution.executionId;
     };
 
-    const firstRegion = "Range: lines 1-120 of 124\nfirst region";
-    const secondRegion = "Range: lines 121-124 of 124\nsecond region";
-    const firstExecution = await settleObservation(firstRegion);
-    const secondExecution = await settleObservation(secondRegion);
+    const firstRegion = Object.freeze({
+      path: "project/index.html",
+      startLine: 1,
+      endLine: 120,
+    });
+    const secondRegion = Object.freeze({
+      path: "project/index.html",
+      startLine: 121,
+      endLine: 124,
+    });
+    const firstFingerprint = `sha256:${"a".repeat(64)}`;
+    const secondFingerprint = `sha256:${"b".repeat(64)}`;
+    const firstExecution = await settleObservation(
+      firstRegion,
+      firstFingerprint,
+    );
+    const secondExecution = await settleObservation(
+      secondRegion,
+      secondFingerprint,
+    );
 
     const complementaryView = projectRequestToolResults({
       ledger,
@@ -522,8 +543,22 @@ describe("request tool results", () => {
       callId: "call-2",
     });
     expect(complementaryView.results).toMatchObject([
-      { executionId: firstExecution, summary: firstRegion },
-      { executionId: secondExecution, summary: secondRegion },
+      {
+        executionId: firstExecution,
+        acceptedAction: {
+          capabilityId: "inspect_target",
+          controls: firstRegion,
+          workingDirectory: null,
+        },
+      },
+      {
+        executionId: secondExecution,
+        acceptedAction: {
+          capabilityId: "inspect_target",
+          controls: secondRegion,
+          workingDirectory: null,
+        },
+      },
     ]);
     expect(
       complementaryView.results.some(({ summaryProjection }) =>
@@ -531,7 +566,10 @@ describe("request tool results", () => {
       ),
     ).toBe(false);
 
-    const duplicateExecution = await settleObservation(firstRegion);
+    const duplicateExecution = await settleObservation(
+      firstRegion,
+      firstFingerprint,
+    );
     const duplicateView = projectRequestToolResults({
       ledger,
       head: ledger.current(),
@@ -545,13 +583,16 @@ describe("request tool results", () => {
     });
     expect(duplicateView.results[1]).toMatchObject({
       executionId: secondExecution,
-      summary: secondRegion,
+      acceptedAction: { controls: secondRegion },
     });
     expect(duplicateView.results[2]).toMatchObject({
       executionId: duplicateExecution,
-      summary: firstRegion,
+      acceptedAction: { controls: firstRegion },
     });
     expect(duplicateView.results[2]!.summaryProjection).toBeUndefined();
+    expect(
+      JSON.stringify(buildRequestToolResultsMessage(duplicateView)),
+    ).not.toContain("Inspect one bounded file window.");
   });
 
   test("rejects a stale ledger head", async () => {

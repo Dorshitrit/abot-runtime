@@ -27,11 +27,14 @@ import {
 
 const REQUEST_ID = "request-semantic-dependency-continuity";
 const PROMPT = "Create the final artifact from the collected source evidence.";
+const AUTHORING_OBJECTIVE =
+  "Author the final grounded artifact body from the supplied evidence.";
 const DESCRIPTOR: WorkerCapabilityDescriptor = Object.freeze({
   capabilityId: "write_grounded_artifact",
   summary: "Writes the final artifact from supplied evidence.",
   effect: "observation" as const,
   controls: EMPTY_WORKER_CAPABILITY_CONTROLS_SCHEMA,
+  requiresPayloadAuthoringObjective: true,
 });
 
 describe("semantic compaction dependency continuity", () => {
@@ -131,11 +134,13 @@ describe("semantic compaction dependency continuity", () => {
       model: { invoke: payloadModel },
     });
     const adapterExecute = vi.fn(async (input) => {
+      expect(input.authoringObjective).toBe(AUTHORING_OBJECTIVE);
       await expect(
         payloadAuthor.author({
           call: input.call,
           executionId: input.executionId,
           descriptor: DESCRIPTOR,
+          authoringObjective: input.authoringObjective,
           controls: input.controls,
           dependencyResults: input.dependencyResults,
           settledCapabilityResults: input.settledCapabilityResults,
@@ -170,6 +175,7 @@ describe("semantic compaction dependency continuity", () => {
       binding.execute({
         capabilityId: DESCRIPTOR.capabilityId,
         intent: "Author the final grounded artifact body.",
+        authoringObjective: AUTHORING_OBJECTIVE,
         controls: {},
       }),
     ).resolves.toEqual({ executionId: "capability-execution-1" });

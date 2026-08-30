@@ -18,6 +18,9 @@ import {
   type RoleCapabilityObservedEffect,
   type RoleCapabilityResultReference,
 } from "./contracts.js";
+import { exactKeys, isRecord } from "../../validation/strict-record.js";
+
+export { exactKeys, isRecord } from "../../validation/strict-record.js";
 
 export function commit(
   candidate: RoleCallState,
@@ -50,22 +53,6 @@ export function findCall(
   callId: string,
 ): RoleCallFrame | undefined {
   return state.calls.find((call) => call.callId === callId);
-}
-
-export function exactKeys(
-  value: Record<string, unknown>,
-  requiredKeys: readonly string[],
-  optionalKeys: readonly string[] = [],
-): boolean {
-  const required = new Set(requiredKeys);
-  const allowed = new Set([...requiredKeys, ...optionalKeys]);
-  const actual = Object.keys(value);
-  return (
-    requiredKeys.every((key) => actual.includes(key)) &&
-    actual.every((key) => allowed.has(key)) &&
-    actual.length >= required.size &&
-    actual.length <= allowed.size
-  );
 }
 
 export function isExactJsonObjectString(value: unknown): value is string {
@@ -131,10 +118,6 @@ export function areOwnedDependencyResults(
       producer.roleId === result.roleId
     );
   });
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 export function parseOptionalCapabilityAdapterResult(

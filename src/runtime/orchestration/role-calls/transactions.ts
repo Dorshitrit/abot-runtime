@@ -1,4 +1,6 @@
 import type {
+  BeginRoleCapabilityBatchTransactionInput,
+  BeginRoleCapabilityExecutionTransactionInput,
   OpenChildRoleCallCommand,
   RoleCallCommitEffect,
   RoleCallLedger,
@@ -82,9 +84,12 @@ export function createRoleCallTransactions(
     },
 
     async beginCapabilityExecution(input) {
-      return requireEffect(
+      return requireCapabilityExecutionAttemptEffect(
         await apply({
           expectedHead: input.expectedHead,
+          ...(input.admission
+            ? { capabilityExecutionAdmission: input.admission }
+            : {}),
           command: {
             authority: "active_role",
             type: "begin_capability_execution",
@@ -94,11 +99,12 @@ export function createRoleCallTransactions(
             declaredEffect: input.declaredEffect,
             intent: input.intent,
             controlsJson: input.controlsJson,
+            ...(input.actionFingerprint
+              ? { actionFingerprint: input.actionFingerprint }
+              : {}),
           },
         }),
-        "capability_execution_begun",
-        "commit_effect_invalid",
-        (effect) => effect.callId === input.callId,
+        input,
       );
     },
 
@@ -117,9 +123,12 @@ export function createRoleCallTransactions(
     },
 
     async beginCapabilityBatch(input) {
-      return requireEffect(
+      return requireCapabilityBatchAttemptEffect(
         await apply({
           expectedHead: input.expectedHead,
+          ...(input.admission
+            ? { capabilityExecutionAdmission: input.admission }
+            : {}),
           command: {
             authority: "active_role",
             type: "begin_capability_batch",
@@ -128,11 +137,7 @@ export function createRoleCallTransactions(
             entries: input.entries,
           },
         }),
-        "capability_batch_begun",
-        "commit_effect_invalid",
-        (effect) =>
-          effect.callId === input.callId &&
-          effect.executionIds.length === input.entries.length,
+        input,
       );
     },
 
@@ -206,6 +211,7 @@ export function createRoleCallTransactions(
             invocationAttempt: input.invocationAttempt,
             steeringVersion: input.steeringVersion,
             selection: input.selection,
+            cause: input.cause,
           },
         }),
         "capability_selection_reconsidered",
@@ -216,6 +222,90 @@ export function createRoleCallTransactions(
       );
     },
   });
+}
+
+function requireCapabilityExecutionAttemptEffect(
+  commit: RoleCallLedgerCommitResult,
+  input: BeginRoleCapabilityExecutionTransactionInput,
+): RoleCallTransactionResult<
+  "capability_execution_begun" | "operation_supervision_intervened",
+  "commit_effect_invalid"
+> {
+  if (!commit.ok) {
+    return Object.freeze({
+      ok: false,
+      issueCode: commit.code,
+      commit,
+    });
+  }
+  const effect = commit.effect;
+  const isExpectedExecution =
+    effect.type === "capability_execution_begun" &&
+    effect.callId === input.callId;
+  const isExpectedIntervention =
+    effect.type === "operation_supervision_intervened" &&
+    effect.callId === input.callId &&
+    effect.invocationAttempt === input.invocationAttempt &&
+    effect.capabilityId === input.capabilityId &&
+    effect.actionFingerprint === input.actionFingerprint;
+  if (!isExpectedExecution && !isExpectedIntervention) {
+    return invalidEffect(commit, "commit_effect_invalid");
+  }
+  const typedCommit = commit as RoleCallLedgerCommit &
+    Readonly<{
+      effect: Extract<
+        RoleCallCommitEffect,
+        {
+          type:
+            | "capability_execution_begun"
+            | "operation_supervision_intervened";
+        }
+      >;
+    }>;
+  return Object.freeze({ ok: true, commit: typedCommit });
+}
+
+function requireCapabilityBatchAttemptEffect(
+  commit: RoleCallLedgerCommitResult,
+  input: BeginRoleCapabilityBatchTransactionInput,
+): RoleCallTransactionResult<
+  "capability_batch_begun" | "operation_supervision_intervened",
+  "commit_effect_invalid"
+> {
+  if (!commit.ok) {
+    return Object.freeze({
+      ok: false,
+      issueCode: commit.code,
+      commit,
+    });
+  }
+  const effect = commit.effect;
+  const isExpectedBatch =
+    effect.type === "capability_batch_begun" &&
+    effect.callId === input.callId &&
+    effect.executionIds.length === input.entries.length;
+  const isExpectedIntervention =
+    effect.type === "operation_supervision_intervened" &&
+    effect.callId === input.callId &&
+    effect.invocationAttempt === input.invocationAttempt &&
+    input.entries.some(
+      (entry) =>
+        entry.capabilityId === effect.capabilityId &&
+        entry.actionFingerprint === effect.actionFingerprint,
+    );
+  if (!isExpectedBatch && !isExpectedIntervention) {
+    return invalidEffect(commit, "commit_effect_invalid");
+  }
+  const typedCommit = commit as RoleCallLedgerCommit &
+    Readonly<{
+      effect: Extract<
+        RoleCallCommitEffect,
+        {
+          type: "capability_batch_begun" | "operation_supervision_intervened";
+        }
+      >;
+    }>;
+  return Object.freeze({ ok: true, commit: typedCommit });
 }
 
 export function resolveRoleCallTransactions(
@@ -256,6 +346,9 @@ function createSettleCapabilityExecutionCommand(
     callId: input.callId,
     executionId: input.executionId,
     outcome: input.outcome,
+    ...(input.outcomeFingerprint
+      ? { outcomeFingerprint: input.outcomeFingerprint }
+      : {}),
     observedEffect: input.observedEffect,
     summary: input.summary,
     exactResult: input.exactResult,

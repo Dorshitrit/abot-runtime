@@ -3,8 +3,10 @@ import { join, resolve } from "node:path";
 
 import { runAddRuntimeModel } from "../../scripts/add-runtime-model.js";
 import { runInitRuntime } from "../../scripts/init-runtime.js";
+import { runConfigureLongTermMemory } from "../../scripts/configure-long-term-memory.js";
 import {
   createModelGatewayServer,
+  resolveProviderAdapters,
   resolveModelGatewayPort,
 } from "../model-gateway/server.js";
 import { loadDotEnvFile } from "../shared/load-dotenv.js";
@@ -19,11 +21,13 @@ function printHelp(): void {
       "Usage:",
       "  abot init --provider <provider> --model <model-id> [options]",
       "  abot add-model --profile <profile-id> --provider <provider> --model <model-id> [options]",
+      "  abot memory <status|models|enable|disable> [options]",
       "  abot start",
       "",
       "Commands:",
       "  init       Create the first machine-local runtime configuration.",
       "  add-model  Add a provider/model profile without replacing existing ones.",
+      "  memory     Configure passive long-term memory embeddings.",
       "  start      Start the local model gateway and Web UI.",
     ].join("\n"),
   );
@@ -51,10 +55,11 @@ async function runStart(args: string[]): Promise<void> {
   loadDotEnvFile(join(rootDir, ".env"));
   const webAddress = resolveWebUiAddress(process.env);
   const appDir = resolve(import.meta.dirname, "../web-ui/app");
+  const providerAdapters = resolveProviderAdapters({});
   let gateway: Server | undefined;
 
   try {
-    gateway = createModelGatewayServer();
+    gateway = createModelGatewayServer({ providerAdapters });
     const gatewayPort = resolveModelGatewayPort();
     gateway.listen(gatewayPort, "127.0.0.1", () => {
       console.log(`model gateway listening on http://127.0.0.1:${gatewayPort}`);
@@ -72,6 +77,7 @@ async function runStart(args: string[]): Promise<void> {
     host: webAddress.listenHost,
     port: webAddress.port,
     setupCommandMode: "package",
+    providerAdapters,
   });
   console.log(`Open ${webAddress.browserUrl}`);
 
@@ -109,6 +115,10 @@ export async function runAbotCli(
   }
   if (command === "add-model") {
     await runAddRuntimeModel(args, { commandMode: "package" });
+    return;
+  }
+  if (command === "memory") {
+    await runConfigureLongTermMemory(args, { commandMode: "package" });
     return;
   }
   if (command === "start") {

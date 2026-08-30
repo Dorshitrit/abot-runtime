@@ -16,7 +16,10 @@ import type {
   WorkerCapabilityAdapter,
   WorkerCapabilityDescriptor,
 } from "../orchestration/worker-capabilities/index.js";
-import { WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP } from "../orchestration/worker-capabilities/index.js";
+import {
+  CAPABILITY_CONTROLS_MODEL_STEP,
+  WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP,
+} from "../orchestration/worker-capabilities/index.js";
 import type { ModelGatewayClient, ToolRegistry } from "../ports.js";
 import type { RequestExecutionSeed } from "../request/contracts.js";
 import type { RequestCapabilityExecutionView } from "../request/execution-scope.js";
@@ -47,6 +50,10 @@ const EXACT_RESPONSE = [
   "```",
   "Final line.\t",
 ].join("\n");
+const MEMORY_CANDIDATE = Object.freeze({
+  content: "The user asked to inspect exact.txt.",
+  tags: Object.freeze(["request-preference"]),
+});
 const DIRECT_WRITE_PROMPT =
   "Create project/direct.txt with the exact content `green` followed by one newline.";
 const DIRECT_WRITE_INTENT =
@@ -81,6 +88,7 @@ const runnerConfig: RequestRunnerConfig = Object.freeze({
       steps: Object.freeze({
         [EXECUTION_AGENT_DECISION_MODEL_STEP]: "execution.decision",
         [EXECUTION_AGENT_RESPONSE_MODEL_STEP]: "execution.response",
+        [CAPABILITY_CONTROLS_MODEL_STEP]: "capability.controls",
         [WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP]: "toolPayload.raw",
       }),
     }),
@@ -95,6 +103,9 @@ const runnerConfig: RequestRunnerConfig = Object.freeze({
       timeoutMs: 20_000,
     }),
     [EXECUTION_AGENT_RESPONSE_MODEL_STEP]: Object.freeze({
+      timeoutMs: 20_000,
+    }),
+    [CAPABILITY_CONTROLS_MODEL_STEP]: Object.freeze({
       timeoutMs: 20_000,
     }),
     [WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP]: Object.freeze({
@@ -119,6 +130,7 @@ const modelPolicy = Object.freeze({
     steps: Object.freeze({
       [EXECUTION_AGENT_DECISION_MODEL_STEP]: "execution.decision",
       [EXECUTION_AGENT_RESPONSE_MODEL_STEP]: "execution.response",
+      [CAPABILITY_CONTROLS_MODEL_STEP]: "capability.controls",
       [WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP]: "toolPayload.raw",
     }),
   }),
@@ -220,7 +232,7 @@ afterEach(() => {
 });
 
 describe("Execution Agent request runner", () => {
-  test("runs scope selection, one exact capability receipt, and a raw response through the shared kernel", async () => {
+  test("runs scope selection, one exact capability receipt, and one structured memory-aware response through the shared kernel", async () => {
     const timeline: string[] = [];
     const execute = vi.fn<
       WorkerCapabilityAdapter<RequestCapabilityExecutionView>["execute"]
@@ -251,9 +263,8 @@ describe("Execution Agent request runner", () => {
         ]),
       };
     });
-    const adapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> = Object.freeze(
-      { descriptor: observeDescriptor, execute },
-    );
+    const adapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> =
+      Object.freeze({ descriptor: observeDescriptor, execute });
     const getDescriptors = vi.fn(() => Object.freeze([observeDescriptor]));
     const getAdapters = vi.fn(() => Object.freeze([adapter]));
     const invokeRaw = vi.fn<ModelGatewayClient["invokeRaw"]>();
@@ -349,7 +360,10 @@ describe("Execution Agent request runner", () => {
         }
         case 4: {
           expect(input.modelStep).toBe(EXECUTION_AGENT_RESPONSE_MODEL_STEP);
-          expect(input).not.toHaveProperty("format");
+          expect(input.format).toMatchObject({
+            type: "json_schema",
+            name: "root_authored_response",
+          });
           const lane = readToolLane(messages);
           expect(lane.result).toMatchObject({
             result: {
@@ -372,7 +386,10 @@ describe("Execution Agent request runner", () => {
             `model:${EXECUTION_AGENT_DECISION_MODEL_STEP}:3`,
             `model:${EXECUTION_AGENT_RESPONSE_MODEL_STEP}:4`,
           ]);
-          return { text: EXACT_RESPONSE, meta: {} };
+          return {
+            text: buildMemoryAuthoredResponse(),
+            meta: {},
+          };
         }
         default:
           throw new Error(`unexpected model invocation: ${invocationIndex}`);
@@ -405,6 +422,19 @@ describe("Execution Agent request runner", () => {
       agentMode: "reasoning",
       modelPolicy,
       modelGatewayClient: { invoke, invokeRaw },
+      longTermMemory: {
+        enabled: true,
+        retrieve: vi.fn(async () => ({ available: true, records: [] })),
+        processCandidates: vi.fn(),
+        scheduleCandidates: vi.fn(),
+        status: vi.fn(),
+        list: vi.fn(),
+        search: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+        clear: vi.fn(),
+      },
       workerCapabilityProvider: {
         getDescriptors,
         getAdapters,
@@ -422,6 +452,7 @@ describe("Execution Agent request runner", () => {
     await expect(runRequestRunner(request)).resolves.toEqual({
       output: EXACT_RESPONSE,
       outputTextMode: "exact",
+      memoryCandidates: [MEMORY_CANDIDATE],
     });
 
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
@@ -450,14 +481,11 @@ describe("Execution Agent request runner", () => {
     expect(timeline.at(-1)).toBe("answer");
   });
 
-  test("preserves prior continuation in deferred-control refinement", async () => {
+  test("preserves a selection-bound target and prior continuation in control refinement", async () => {
     const firstIntent = "Apply the requested update to exact.txt.";
     const secondIntent = "Verify the completed update to exact.txt.";
-    const longCommand = [
-      "cat <<'EOF' > exact.txt",
-      "x".repeat(4_096),
-      "EOF",
-    ].join("\n");
+    const operationObjective = "Apply only the bounded edit to exact.txt.";
+    const longCommand = `cat <<'EOF' > exact.txt\n${"x".repeat(4_096)}\nEOF`;
     expect(longCommand.length).toBeGreaterThan(4_096);
     const descriptor: WorkerCapabilityDescriptor = Object.freeze({
       capabilityId: "files.edit_exact",
@@ -503,9 +531,8 @@ describe("Execution Agent request runner", () => {
         referenceData: "exact-refinement-evidence",
       };
     });
-    const adapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> = Object.freeze(
-      { descriptor, execute },
-    );
+    const adapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> =
+      Object.freeze({ descriptor, execute });
     let invocationIndex = 0;
     const invokeRaw = vi.fn<ModelGatewayClient["invokeRaw"]>();
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
@@ -513,6 +540,7 @@ describe("Execution Agent request runner", () => {
       const messages = asMessages(input.messages);
       switch (invocationIndex) {
         case 1:
+          expect(input.modelStep).toBe(EXECUTION_AGENT_DECISION_MODEL_STEP);
           return {
             text: encodeDecision({
               action: "open_capability_scope",
@@ -522,19 +550,21 @@ describe("Execution Agent request runner", () => {
             meta: {},
           };
         case 2:
-          expect(JSON.stringify(input.format)).not.toContain(
-            "selectionControls",
-          );
+          expect(input.modelStep).toBe(EXECUTION_AGENT_DECISION_MODEL_STEP);
+          expect(JSON.stringify(input.format)).toContain("selectionControls");
           return {
             text: encodeDecision({
               action: "invoke_capability",
               capabilityId: descriptor.capabilityId,
               intent: firstIntent,
+              operationObjective,
+              selectionControls: { path: "exact.txt" },
               workingDirectory: null,
             }),
             meta: {},
           };
         case 3: {
+          expect(input.modelStep).toBe(CAPABILITY_CONTROLS_MODEL_STEP);
           expect(messages.filter(({ role }) => role === "tool")).toHaveLength(
             0,
           );
@@ -554,15 +584,10 @@ describe("Execution Agent request runner", () => {
             invocations: [
               {
                 capabilityId: descriptor.capabilityId,
-                selectionControls: {},
+                selectionControls: { path: "exact.txt" },
                 remainingControls: {
-                  required: ["path", "instruction", "command"],
+                  required: ["instruction", "command"],
                   properties: {
-                    path: {
-                      type: "string",
-                      minLength: 1,
-                      maxLength: 4_096,
-                    },
                     instruction: {
                       type: "string",
                       minLength: 1,
@@ -574,7 +599,7 @@ describe("Execution Agent request runner", () => {
               },
             ],
           });
-          expect(JSON.stringify(input.format)).toContain('"path"');
+          expect(collectPropertySchemas(input.format, "path")).toHaveLength(0);
           expect(JSON.stringify(input.format)).toContain('"instruction"');
           const commandSchemas = collectPropertySchemas(
             input.format,
@@ -584,22 +609,12 @@ describe("Execution Agent request runner", () => {
           expect(commandSchemas).toEqual(
             commandSchemas.map(() => ({ type: "string", minLength: 1 })),
           );
-          const pathSchemas = collectPropertySchemas(input.format, "path");
-          expect(pathSchemas.length).toBeGreaterThan(0);
-          expect(pathSchemas).toEqual(
-            pathSchemas.map(() => ({
-              type: "string",
-              minLength: 1,
-              maxLength: 4_096,
-            })),
-          );
           return {
             text: encodeDecision({
               invocations: {
                 invocation_1: {
                   disposition: "execute",
                   controls: {
-                    path: "exact.txt",
                     instruction:
                       "Preserve the exact file while applying the request.",
                     command: longCommand,
@@ -611,15 +626,19 @@ describe("Execution Agent request runner", () => {
           };
         }
         case 4:
+          expect(input.modelStep).toBe(EXECUTION_AGENT_DECISION_MODEL_STEP);
           return {
             text: encodeDecision({
               action: "invoke_capability",
               capabilityId: descriptor.capabilityId,
               intent: secondIntent,
+              operationObjective,
+              selectionControls: { path: "exact.txt" },
             }),
             meta: {},
           };
         case 5: {
+          expect(input.modelStep).toBe(CAPABILITY_CONTROLS_MODEL_STEP);
           const resultMessages = messages.filter(
             (message) => message.role === "tool",
           );
@@ -641,13 +660,13 @@ describe("Execution Agent request runner", () => {
           });
           expect(JSON.stringify(messages)).not.toContain(firstIntent);
           expect(JSON.stringify(messages)).not.toContain(secondIntent);
+          expect(JSON.stringify(messages)).toContain(operationObjective);
           return {
             text: encodeDecision({
               invocations: {
                 invocation_1: {
                   disposition: "execute",
                   controls: {
-                    path: "exact.txt",
                     instruction:
                       "Preserve the exact file while applying the request.",
                     command: longCommand,
@@ -659,11 +678,13 @@ describe("Execution Agent request runner", () => {
           };
         }
         case 6:
+          expect(input.modelStep).toBe(EXECUTION_AGENT_DECISION_MODEL_STEP);
           expect(messages.filter(({ role }) => role === "tool")).toHaveLength(
             2,
           );
           return { text: encodeDecision({ action: "respond" }), meta: {} };
         case 7:
+          expect(input.modelStep).toBe(EXECUTION_AGENT_RESPONSE_MODEL_STEP);
           return { text: "Updated exact.txt.", meta: {} };
         default:
           throw new Error(`unexpected model invocation: ${invocationIndex}`);
@@ -699,9 +720,7 @@ describe("Execution Agent request runner", () => {
       onEvent: vi.fn(),
     });
 
-    await expect(
-      runRequestRunner(request),
-    ).resolves.toEqual({
+    await expect(runRequestRunner(request)).resolves.toEqual({
       output: "Updated exact.txt.",
       outputTextMode: "exact",
     });
@@ -709,9 +728,9 @@ describe("Execution Agent request runner", () => {
     expect(invokeRaw).not.toHaveBeenCalled();
   });
 
-  test("commits refinement reconsideration passively without suppressing a later model selection", async () => {
+  test("executes a frozen capability selection without a semantic refinement veto", async () => {
     const requestSteering = createRequestSteeringInbox({
-      requestId: "execution-agent-reconsideration-request",
+      requestId: "execution-agent-frozen-refinement-request",
     });
     expect(
       requestSteering.append({
@@ -720,18 +739,19 @@ describe("Execution Agent request runner", () => {
       }),
     ).toMatchObject({ ok: true, duplicate: false });
     const execute =
-      vi.fn<WorkerCapabilityAdapter<RequestCapabilityExecutionView>["execute"]>();
-    const adapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> = Object.freeze(
-      {
+      vi.fn<
+        WorkerCapabilityAdapter<RequestCapabilityExecutionView>["execute"]
+      >();
+    const adapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> =
+      Object.freeze({
         descriptor: observeDescriptor,
         execute,
-      },
-    );
+      });
     const getDescriptors = vi.fn(() => Object.freeze([observeDescriptor]));
     const getAdapters = vi.fn(() => Object.freeze([adapter]));
     const getExecutionGuidance = vi.fn(
       async () =>
-        "Use this capability only when its exact applicability is confirmed.",
+        "This capability performs one observation and does not decide whether the request later needs another action.",
     );
     const invokeRaw = vi.fn<ModelGatewayClient["invokeRaw"]>();
     let invocationIndex = 0;
@@ -760,6 +780,9 @@ describe("Execution Agent request runner", () => {
             meta: {},
           };
         case 3: {
+          const serializedFormat = JSON.stringify(input.format);
+          expect(serializedFormat).not.toContain('"reconsider"');
+          expect(serializedFormat).not.toContain('"reason"');
           const assignment = messages.find(({ content }) => {
             try {
               return (
@@ -794,13 +817,17 @@ describe("Execution Agent request runner", () => {
           return {
             text: encodeDecision({
               invocations: {
-                invocation_1: { disposition: "reconsider" },
+                invocation_1: {
+                  disposition: "execute",
+                  controls: {},
+                },
               },
             }),
             meta: {},
           };
         }
         case 4: {
+          expect(messages.some(({ role }) => role === "tool")).toBe(true);
           const state = messages
             .filter(({ role }) => role === "user")
             .map(({ content }) => {
@@ -811,74 +838,21 @@ describe("Execution Agent request runner", () => {
               }
             })
             .find((value) => value?.kind === "runtime_execution_state_v1");
-          expect(state).toMatchObject({
-            activationCount: 3,
-            capabilitySelectionReconsideration: {
-              authority: "canonical_role_call_ledger",
-              outcome: "reconsidered_before_execution",
-              executionOccurred: false,
-              invocationAttempt: 2,
-              selection: {
-                action: "invoke_capability",
-                invocations: [
-                  {
-                    capabilityId: observeDescriptor.capabilityId,
-                    selectionControls: EXACT_CONTROLS,
-                  },
-                ],
-                workingDirectory: ".",
-              },
-            },
-          });
-          expect(JSON.stringify(state)).not.toContain(EXACT_INTENT);
-          expect(messages.some(({ role }) => role === "tool")).toBe(false);
-          return {
-            text: encodeDecision({
-              action: "invoke_capability",
-              capabilityId: observeDescriptor.capabilityId,
-              intent: EXACT_INTENT,
-              selectionControls: EXACT_CONTROLS,
-              workingDirectory: null,
-            }),
-            meta: {},
-          };
-        }
-        case 5: {
-          const assignment = messages.find(({ content }) => {
-            try {
-              return (
-                (JSON.parse(content) as Record<string, unknown>).kind ===
-                "runtime_execution_capability_refinement_v1"
-              );
-            } catch {
-              return false;
-            }
-          });
-          expect(assignment).toBeDefined();
-          return {
-            text: encodeDecision({
-              invocations: {
-                invocation_1: {
-                  disposition: "execute",
-                  controls: {},
-                },
-              },
-            }),
-            meta: {},
-          };
-        }
-        case 6:
-          expect(messages.some(({ role }) => role === "tool")).toBe(true);
+          expect(state).toBeDefined();
+          expect(state).not.toHaveProperty(
+            "capabilitySelectionReconsideration",
+          );
           return { text: encodeDecision({ action: "respond" }), meta: {} };
-        case 7:
+        }
+        case 5:
           return { text: "The requested file was observed.", meta: {} };
         default:
           throw new Error(`unexpected model invocation: ${invocationIndex}`);
       }
     });
     const request = createTestRequestExecutionScope({
-      requestId: "execution-agent-reconsideration-request",
-      sessionId: "execution-agent-reconsideration-session",
+      requestId: "execution-agent-frozen-refinement-request",
+      sessionId: "execution-agent-frozen-refinement-session",
       prompt: REQUEST_PROMPT,
       historyMessages: [],
       shouldGenerateSessionTitle: false,
@@ -911,27 +885,24 @@ describe("Execution Agent request runner", () => {
       output: "The requested file was observed.",
       outputTextMode: "exact",
     });
-    expect(invoke).toHaveBeenCalledTimes(7);
-    expect(getExecutionGuidance).toHaveBeenCalledTimes(2);
-    expect(getExecutionGuidance).toHaveBeenNthCalledWith(
-      1,
-      observeDescriptor.capabilityId,
-    );
-    expect(getExecutionGuidance).toHaveBeenNthCalledWith(
-      2,
+    expect(invoke).toHaveBeenCalledTimes(5);
+    expect(getExecutionGuidance).toHaveBeenCalledOnce();
+    expect(getExecutionGuidance).toHaveBeenCalledWith(
       observeDescriptor.capabilityId,
     );
     expect(getAdapters).toHaveBeenCalledOnce();
     expect(execute).toHaveBeenCalledOnce();
+    expect(execute.mock.calls[0]?.[0].controls).toEqual(EXACT_CONTROLS);
     expect(invokeRaw).not.toHaveBeenCalled();
   });
 
   test("settles exhausted refinement validation as reconsideration instead of failing the request", async () => {
     const execute =
-      vi.fn<WorkerCapabilityAdapter<RequestCapabilityExecutionView>["execute"]>();
-    const adapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> = Object.freeze(
-      { descriptor: observeDescriptor, execute },
-    );
+      vi.fn<
+        WorkerCapabilityAdapter<RequestCapabilityExecutionView>["execute"]
+      >();
+    const adapter: WorkerCapabilityAdapter<RequestCapabilityExecutionView> =
+      Object.freeze({ descriptor: observeDescriptor, execute });
     let invocationIndex = 0;
     const invokeRaw = vi.fn<ModelGatewayClient["invokeRaw"]>();
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
@@ -969,8 +940,8 @@ describe("Execution Agent request runner", () => {
           text: encodeDecision({
             invocations: {
               invocation_1: {
-                disposition: "execute",
-                controls: { path: "unexpected-repeat.txt" },
+                disposition: "reconsider",
+                reason: "legacy-semantic-veto-must-be-rejected",
               },
             },
           }),
@@ -992,6 +963,18 @@ describe("Execution Agent request runner", () => {
             authority: "canonical_role_call_ledger",
             outcome: "reconsidered_before_execution",
             executionOccurred: false,
+            cause: {
+              kind: "refinement_invalid_output",
+              validationStage: "domain_parser",
+              issues: expect.arrayContaining([
+                expect.objectContaining({
+                  code: expect.any(String),
+                  path: expect.any(String),
+                }),
+              ]),
+              repairAttempts: expect.any(Number),
+              repeatedInvalidOutput: true,
+            },
             selection: {
               action: "invoke_capability",
               invocations: [
@@ -1003,6 +986,9 @@ describe("Execution Agent request runner", () => {
             },
           },
         });
+        expect(JSON.stringify(state)).not.toContain(
+          "legacy-semantic-veto-must-be-rejected",
+        );
         return { text: encodeDecision({ action: "respond" }), meta: {} };
       }
       if (invocationIndex === 7) {
@@ -1044,9 +1030,7 @@ describe("Execution Agent request runner", () => {
       onEvent: vi.fn(),
     });
 
-    await expect(
-      runRequestRunner(request),
-    ).resolves.toEqual({
+    await expect(runRequestRunner(request)).resolves.toEqual({
       output: "The invalid selection was reconsidered safely.",
       outputTextMode: "exact",
     });
@@ -1231,17 +1215,17 @@ describe("Execution Agent request runner", () => {
     } satisfies RequestExecutionSeed;
     const request = createTestRequestExecutionScopeWithCapabilities(
       requestBase,
-      (request) => createRequestWorkerCapabilityProvider({
-        request,
-        executionPolicyAuthority: EXECUTION_AGENT_V1_EXECUTION_POLICY.authority,
-        toolRegistryOverride: toolRegistry,
-      }),
+      (request) =>
+        createRequestWorkerCapabilityProvider({
+          request,
+          executionPolicyAuthority:
+            EXECUTION_AGENT_V1_EXECUTION_POLICY.authority,
+          toolRegistryOverride: toolRegistry,
+        }),
       { executionPolicy: EXECUTION_AGENT_V1_EXECUTION_POLICY },
     );
 
-    await expect(
-      runRequestRunner(request),
-    ).resolves.toEqual({
+    await expect(runRequestRunner(request)).resolves.toEqual({
       output: "Created project/direct.txt.",
       outputTextMode: "exact",
     });
@@ -1486,17 +1470,17 @@ describe("Execution Agent request runner", () => {
     } satisfies RequestExecutionSeed;
     const request = createTestRequestExecutionScopeWithCapabilities(
       requestBase,
-      (request) => createRequestWorkerCapabilityProvider({
-        request,
-        executionPolicyAuthority: EXECUTION_AGENT_V1_EXECUTION_POLICY.authority,
-        toolRegistryOverride: toolRegistry,
-      }),
+      (request) =>
+        createRequestWorkerCapabilityProvider({
+          request,
+          executionPolicyAuthority:
+            EXECUTION_AGENT_V1_EXECUTION_POLICY.authority,
+          toolRegistryOverride: toolRegistry,
+        }),
       { executionPolicy: EXECUTION_AGENT_V1_EXECUTION_POLICY },
     );
 
-    await expect(
-      runRequestRunner(request),
-    ).resolves.toEqual({
+    await expect(runRequestRunner(request)).resolves.toEqual({
       output: "Created project/direct.txt.",
       outputTextMode: "exact",
     });
@@ -1513,6 +1497,13 @@ describe("Execution Agent request runner", () => {
     expect(invokeRaw).not.toHaveBeenCalled();
   });
 });
+
+function buildMemoryAuthoredResponse(): string {
+  return JSON.stringify({
+    finalResponse: EXACT_RESPONSE,
+    memoryCandidates: [MEMORY_CANDIDATE],
+  });
+}
 
 function directWriteRegistration(): RegisteredToolNormalInvocation {
   const operation: ToolNormalInvocationOperation = {

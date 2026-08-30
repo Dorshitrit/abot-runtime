@@ -228,6 +228,59 @@ describe("Agent Plugins manifest loader", () => {
     );
   });
 
+  test("rejects staged model outputs as manifest decision selection controls", async () => {
+    const { config, rootDir } = await createRuntimeConfig();
+    const pluginName = "staged-selection-control-plugin";
+    const capabilityId = "staged_selection_control";
+    const operationId = "apply_staged_selection";
+    await writeManifestPlugin(rootDir, {
+      pluginName,
+      capabilityId,
+      operationId,
+    });
+    const manifestPath = join(rootDir, "plugins", pluginName, "plugin.json");
+    const raw = JSON.parse(readFileSync(manifestPath, "utf8")) as any;
+    const capability =
+      raw.extensions[ABOT_RUNTIME_EXTENSION].capabilities[capabilityId];
+    capability.routingCapability = "filesystem_mutation";
+    capability.payloadChannelSpec = {
+      params: ["selection", "content"],
+      outputParam: "content",
+      generationMode: "raw_text",
+      stages: [
+        {
+          outputParam: "selection",
+          promptHint: "Choose the bounded edit selection.",
+        },
+        {
+          outputParam: "content",
+          promptHint: "Return the complete replacement content.",
+        },
+      ],
+    };
+    const operation = capability.operations[operationId];
+    operation.input.properties.selection = {
+      type: "string",
+      minLength: 1,
+      maxLength: 4_096,
+    };
+    operation.input.required.push("selection");
+    operation.selectionControlIds = ["selection"];
+    operation.effect = "mutating";
+    operation.payload = {
+      kind: "raw_text",
+      param: "content",
+      instructions: "Return the complete replacement content.",
+      maxBytes: 4_096,
+    };
+    await writeFile(manifestPath, JSON.stringify(raw, null, 2), "utf8");
+    config.plugins = { allow: [pluginName] };
+
+    expect(() => loadConfiguredRuntimePlugins(config)).toThrow(
+      "selection control selection must remain in the effective public input",
+    );
+  });
+
   test("rejects an entrypoint that escapes its plugin root", async () => {
     const { config, rootDir } = await createRuntimeConfig();
     await writeManifestPlugin(rootDir, {

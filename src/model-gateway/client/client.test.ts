@@ -46,6 +46,7 @@ describe("classifyEmptyResponse", () => {
         invalidJsonLines: 0,
         unknownTypeCounts: {},
         outputLength: 0,
+        terminalEventCount: 0,
       }),
     ).toBe("thinking_only_response");
   });
@@ -62,6 +63,7 @@ describe("classifyEmptyResponse", () => {
         invalidJsonLines: 3,
         unknownTypeCounts: {},
         outputLength: 0,
+        terminalEventCount: 0,
       }),
     ).toBe("parser_or_stream_assembly_failure");
   });
@@ -78,6 +80,7 @@ describe("classifyEmptyResponse", () => {
         invalidJsonLines: 0,
         unknownTypeCounts: { final: 5 },
         outputLength: 0,
+        terminalEventCount: 0,
       }),
     ).toBe("unrecognized_stream_event_shape");
   });

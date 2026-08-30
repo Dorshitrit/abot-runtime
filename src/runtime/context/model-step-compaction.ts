@@ -1,6 +1,7 @@
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { ModelStep } from "../../shared/model-steps.js";
 import type { ModelStepContextCompactionController } from "../model/model-step-port.js";
+import { OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND } from "./operation-supervision-evidence.js";
 import {
   SEMANTIC_COMPACTION_CONTEXT_LANE,
   assertValidSemanticCompactionCheckpoint,
@@ -291,6 +292,17 @@ function resolveMessageSources(
     );
   }
   const record = parseJsonRecord(message.content);
+  if (record?.kind === OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND) {
+    return Object.freeze([
+      createMessageSource(
+        hashedMessageSourceRef(
+          "operation-supervision-evidence",
+          message.content,
+        ),
+        message,
+      ),
+    ]);
+  }
   if (record?.kind === "runtime_request_tool_results_v1") {
     return Object.freeze(
       readRecordArray(record.results).flatMap((result) => {
@@ -311,9 +323,7 @@ function resolveMessageSources(
         ])
       : Object.freeze([]);
   }
-  if (
-    record?.kind === "runtime_execution_agent_auditor_evidence_v1"
-  ) {
+  if (record?.kind === "runtime_execution_agent_auditor_evidence_v1") {
     return Object.freeze([
       createMessageSource(
         hashedMessageSourceRef("role-evidence", message.content),
