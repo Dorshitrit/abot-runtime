@@ -18,9 +18,9 @@ describe("request execution policy composition", () => {
     expect(SUPERVISOR_WORKER_V1_EXECUTION_POLICY).toMatchObject({
       authority: {
         id: "supervisor-worker-v1",
-        version: 1,
+        version: 2,
         definitionHash:
-          "sha256:40cf0e04cbf5cf2f0ae5ce6d0e1c7aa87c21247416a7771441083ec0c73db62f",
+          "sha256:2ee79cee6dbb27ffaeb59f84c4c838cf9d16a965ca4f07e7d638e8589868e036",
         rootContractId: "supervisor",
         availableSubordinateContractIds: ["planner", "worker", "reviewer"],
         capabilityAuthorities: ["worker"],

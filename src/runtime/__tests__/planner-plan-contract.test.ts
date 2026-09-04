@@ -9,7 +9,6 @@ import {
   ROLE_CALL_WORKING_DIRECTORY_MAX_LENGTH,
 } from "../orchestration/role-calls/index.js";
 import {
-  buildPlannerDecisionInstructions,
   createPlannerDecisionFormat,
   parsePlannerDecisionOutput,
   PLANNER_DECISION_MODEL_STEP,
@@ -41,24 +40,6 @@ const SELECT_CONTEXT: PlannerDecisionPlanContext = Object.freeze({
     }),
   ]),
 });
-
-const DECLARED_MULTI_ITEM_OBJECTIVE = [
-  "Complete these bound plan outcomes as one atomic delegated outcome:",
-  "1. Inspect target\nInspect the current target state.",
-  "2. Apply update\nApply the requested bounded update.",
-].join("\n\n");
-
-const SELECTED_MULTI_ITEM_OBJECTIVE = [
-  "Complete these bound plan outcomes as one atomic delegated outcome:",
-  "1. Apply target update\nApply the requested bounded target update.",
-  "2. Review completed work\nAudit whether the requested target work is complete.",
-].join("\n\n");
-
-const EXTENDED_MULTI_ITEM_OBJECTIVE = [
-  "Complete these bound plan outcomes as one atomic delegated outcome:",
-  "1. Resolve completion gap\nResolve only the newly established completion gap.",
-  "2. Verify gap closure\nVerify the same bounded gap is closed in the delivered outcome.",
-].join("\n\n");
 
 const EXTEND_CONTEXT: PlannerDecisionPlanContext = Object.freeze({
   mode: "extend",
@@ -169,7 +150,7 @@ describe("Planner-authored canonical plan decision contract", () => {
         selectedItemIndexes: {
           type: "array",
           minItems: 1,
-          maxItems: 3,
+          maxItems: 1,
           items: { type: "integer", minimum: 0, maximum: 2 },
         },
       },
@@ -204,7 +185,7 @@ describe("Planner-authored canonical plan decision contract", () => {
             },
           ],
         },
-        selectedItemIndexes: [1, 0],
+        selectedItemIndexes: [0],
       }),
       {
         availableChildRoleIds: ["worker", "reviewer"],
@@ -219,7 +200,7 @@ describe("Planner-authored canonical plan decision contract", () => {
         action: "invoke_role",
         roleId: "worker",
         workingDirectory: WORKING_DIRECTORY,
-        objective: DECLARED_MULTI_ITEM_OBJECTIVE,
+        objective: "Inspect the current target state.",
         workerCapabilityScope: WORKER_CAPABILITY_SCOPE,
         plannerPlan: {
           mode: "declare",
@@ -236,7 +217,7 @@ describe("Planner-authored canonical plan decision contract", () => {
               },
             ],
           },
-          selectedItemIndexes: [0, 1],
+          selectedItemIndexes: [0],
         },
       },
     });
@@ -246,7 +227,7 @@ describe("Planner-authored canonical plan decision contract", () => {
     }
   });
 
-  test("selects canonical pending items and derives one ordered child objective", () => {
+  test("selects one canonical pending item and derives its child objective", () => {
     const format = createPlannerDecisionFormat({
       availableChildRoleIds: ["worker"],
       availableWorkerCapabilityCatalog: AVAILABLE_WORKER_CAPABILITY_CATALOG,
@@ -264,7 +245,7 @@ describe("Planner-authored canonical plan decision contract", () => {
         planItemIds: {
           type: "array",
           minItems: 1,
-          maxItems: 2,
+          maxItems: 1,
           items: {
             enum: ["plan-call-2-item-2", "plan-call-2-item-3"],
           },
@@ -287,7 +268,7 @@ describe("Planner-authored canonical plan decision contract", () => {
           roleId: "worker",
           workingDirectory: WORKING_DIRECTORY,
           workerCapabilityScope: WORKER_CAPABILITY_SCOPE,
-          planItemIds: ["plan-call-2-item-3", "plan-call-2-item-2"],
+          planItemIds: ["plan-call-2-item-2"],
         }),
         {
           availableChildRoleIds: ["worker"],
@@ -301,11 +282,11 @@ describe("Planner-authored canonical plan decision contract", () => {
         action: "invoke_role",
         roleId: "worker",
         workingDirectory: WORKING_DIRECTORY,
-        objective: SELECTED_MULTI_ITEM_OBJECTIVE,
+        objective: "Apply the requested bounded target update.",
         workerCapabilityScope: WORKER_CAPABILITY_SCOPE,
         plannerPlan: {
           mode: "select",
-          itemIds: ["plan-call-2-item-2", "plan-call-2-item-3"],
+          itemIds: ["plan-call-2-item-2"],
         },
       },
     });
@@ -377,9 +358,10 @@ describe("Planner-authored canonical plan decision contract", () => {
     });
   });
 
-  test("rejects empty, duplicate, and foreign pending-item selections", () => {
+  test("rejects empty, multiple, duplicate, and foreign pending-item selections", () => {
     for (const planItemIds of [
       [],
+      ["plan-call-2-item-2", "plan-call-2-item-3"],
       ["plan-call-2-item-2", "plan-call-2-item-2"],
       ["plan-call-2-item-999"],
     ]) {
@@ -433,7 +415,7 @@ describe("Planner-authored canonical plan decision contract", () => {
         selectedItemIndexes: {
           type: "array",
           minItems: 1,
-          maxItems: 2,
+          maxItems: 1,
           items: { type: "integer", minimum: 0, maximum: 1 },
         },
       },
@@ -468,7 +450,7 @@ describe("Planner-authored canonical plan decision contract", () => {
               },
             ],
           },
-          selectedItemIndexes: [1, 0],
+          selectedItemIndexes: [0],
         }),
         {
           availableChildRoleIds: ["worker"],
@@ -482,7 +464,7 @@ describe("Planner-authored canonical plan decision contract", () => {
         action: "invoke_role",
         roleId: "worker",
         workingDirectory: WORKING_DIRECTORY,
-        objective: EXTENDED_MULTI_ITEM_OBJECTIVE,
+        objective: "Resolve only the newly established completion gap.",
         workerCapabilityScope: WORKER_CAPABILITY_SCOPE,
         plannerPlan: {
           mode: "extend",
@@ -499,16 +481,10 @@ describe("Planner-authored canonical plan decision contract", () => {
               },
             ],
           },
-          selectedItemIndexes: [0, 1],
+          selectedItemIndexes: [0],
         },
       },
     });
-    expect(
-      buildPlannerDecisionInstructions({
-        childRolesAvailable: true,
-        planContext: EXTEND_CONTEXT,
-      }),
-    ).toContain("append only that newly established work");
   });
 
   test("rejects malformed declarations and unavailable selections", () => {
@@ -621,16 +597,7 @@ describe("Planner-authored canonical plan decision contract", () => {
     });
   });
 
-  test("explains the plan boundary and logs only bounded plan metadata", () => {
-    const instructions = buildPlannerDecisionInstructions({
-      childRolesAvailable: true,
-      planContext: DECLARE_CONTEXT,
-    });
-    expect(instructions).toContain("declare the complete bounded plan");
-    expect(instructions).toContain(
-      "Select one or more zero-based item indexes in selectedItemIndexes",
-    );
-
+  test("logs only bounded plan metadata", () => {
     configureDebugLogger({ enabled: true });
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
     const secret = "PLAN_CONTENT_MUST_NOT_REACH_DIAGNOSTICS";

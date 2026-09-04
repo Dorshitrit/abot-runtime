@@ -1,10 +1,5 @@
 import { matchesSessionQuery } from "../ui-behavior.js";
-import {
-  escapeAttribute,
-  escapeHtml,
-  formatTime,
-  textOf,
-} from "../lib/text-format.js";
+import { escapeAttribute, escapeHtml, textOf } from "../lib/text-format.js";
 import { getNumber } from "../lib/event-presentation.js";
 
 export function createSessionController({
@@ -22,6 +17,7 @@ export function createSessionController({
   onReload,
   onControlEvent,
   confirmAction = window.confirm.bind(window),
+  copyText = (value) => navigator.clipboard.writeText(value),
 }) {
   const titleOf = (session) =>
     textOf(session?.displayName || session?.title || session?.id);
@@ -93,7 +89,7 @@ export function createSessionController({
         hasUnread ? "unread" : ""
       }`;
       item.innerHTML = `
-        <button class="session-open-button" type="button">
+        <button class="session-open-button" type="button" title="${escapeAttribute(titleOf(session))}">
           <div class="session-title-row">
             <div class="session-title" dir="auto">${escapeHtml(titleOf(session))}</div>
             ${
@@ -104,16 +100,12 @@ export function createSessionController({
                 : ""
             }
           </div>
-          <div class="session-preview" dir="auto">${escapeHtml(
-            session.lastMessagePreview ||
-              formatTime(session.updatedAt) ||
-              session.id,
-          )}</div>
         </button>
         <div class="session-actions" aria-label="Session actions">
           <button class="session-menu-button" type="button" title="Session actions" aria-label="Session actions" aria-haspopup="menu" aria-expanded="false" aria-controls="session-menu-${sessionIndex}">•••</button>
           <div id="session-menu-${sessionIndex}" class="session-menu" role="menu" hidden>
             <button class="session-action pin-action" type="button" role="menuitem" tabindex="-1" title="${pinned ? "Unpin session" : "Pin session"}">${pinned ? "Unpin" : "Pin"}</button>
+            <button class="session-action copy-filename-action" type="button" role="menuitem" tabindex="-1" title="Copy session filename">Copy filename</button>
             <button class="session-action clear-action" type="button" role="menuitem" tabindex="-1" title="Reset messages">Reset</button>
             <button class="session-action delete-action" type="button" role="menuitem" tabindex="-1" title="Delete session">Delete</button>
           </div>
@@ -128,6 +120,9 @@ export function createSessionController({
       item
         .querySelector(".pin-action")
         ?.addEventListener("click", () => togglePinned(sessionId));
+      item
+        .querySelector(".copy-filename-action")
+        ?.addEventListener("click", () => void copyFilename(sessionId));
       item
         .querySelector(".clear-action")
         ?.addEventListener("click", () => void clearMessages(sessionId));
@@ -227,6 +222,16 @@ export function createSessionController({
       : [sessionId, ...state.pinnedSessionIds];
     preferences.savePinnedSessions(state.pinnedSessionIds);
     render();
+  }
+
+  async function copyFilename(sessionId) {
+    sessionActionsMenu.close({ restoreFocus: true });
+    try {
+      await copyText(`${sessionId}.json`);
+      shell.showToast("Session filename copied");
+    } catch {
+      shell.showToast("Could not copy session filename", "failed");
+    }
   }
 
   async function clearMessages(sessionId) {

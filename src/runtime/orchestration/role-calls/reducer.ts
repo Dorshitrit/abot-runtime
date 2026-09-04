@@ -52,6 +52,7 @@ export function applyRoleCallCommand(
   state: RoleCallState,
   commandInput: unknown,
   policy: RoleCallPolicy,
+  admittedHeadRevision?: number,
 ): RoleCallTransitionResult {
   const policyIssues = validateRoleCallPolicy(policy);
   if (policyIssues.length > 0) {
@@ -65,7 +66,12 @@ export function applyRoleCallCommand(
   if (!command.ok) {
     return reject(state, command.code);
   }
-  const transition = dispatchRoleCallCommand(state, command.value, policy);
+  const transition = dispatchRoleCallCommand(
+    state,
+    command.value,
+    policy,
+    admittedHeadRevision,
+  );
   if (!transition.ok) return transition;
   const reservationIssue = findRoleActivationReservationIssue(
     state,

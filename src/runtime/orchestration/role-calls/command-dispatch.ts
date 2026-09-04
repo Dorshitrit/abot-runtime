@@ -30,6 +30,7 @@ export function dispatchRoleCallCommand(
   state: RoleCallState,
   command: RoleCallLedgerCommand,
   policy: RoleCallPolicy,
+  admittedHeadRevision?: number,
 ): RoleCallTransitionResult {
   switch (command.type) {
     case "create_root":
@@ -39,7 +40,7 @@ export function dispatchRoleCallCommand(
     case "open_child":
       return openChild(state, command, policy);
     case "return_child":
-      return returnChild(state, command, policy);
+      return returnChild(state, command, policy, admittedHeadRevision);
     case "begin_capability_execution":
       return beginCapabilityExecution(state, command, policy);
     case "settle_capability_execution":

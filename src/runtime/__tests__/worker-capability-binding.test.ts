@@ -186,13 +186,14 @@ function createObservationAdapter(
       capabilityId,
       summary: "Read one example value.",
       effect: "observation",
+      routingCapability: "filesystem_inspection",
+      developmentRoles: ["inspect", "verify"],
       controls: EMPTY_WORKER_CAPABILITY_CONTROLS_SCHEMA,
       catalogGroups: ["read", "other"],
     },
     execute,
   };
 }
-
 beforeEach(() => {
   configureDebugLogger({ enabled: false });
 });
@@ -354,13 +355,15 @@ describe("call-scoped Worker capability binding", () => {
     expect(workerPayloadExecute).toHaveBeenCalledExactlyOnceWith({
       context: { marker: "worker-payload-context" },
       call: workerPayloadAuthority.call,
+      assignmentProvenance: expect.objectContaining({
+        kind: "request_scoped_worker_v1",
+      }),
       executionId: "capability-execution-1",
       intent: "Author the accepted payload.",
       authoringObjective: AUTHORING_OBJECTIVE,
       controls: {},
       settledCapabilityResults: [],
     });
-
     const workerNonPayloadAuthority = await openWorkerLedger(
       "request-worker-non-payload-objective",
     );
@@ -576,7 +579,6 @@ describe("call-scoped Worker capability binding", () => {
       }),
     ).toThrow("worker_capability_scope_rejected:scope_invalid");
   });
-
   test("publishes a frozen descriptor and executes the exact observation adapter", async () => {
     const { ledger, call } = await openWorkerLedger();
     const execute = vi.fn(async () => {
@@ -618,13 +620,14 @@ describe("call-scoped Worker capability binding", () => {
       ledger,
       adapters: [sourceAdapter],
     });
+    expect(binding.capabilities[0]).not.toHaveProperty("routingCapability");
+    expect(binding.capabilities[0]).not.toHaveProperty("developmentRoles");
     Object.assign(sourceAdapter.descriptor, {
       capabilityId: "example.mutated",
       summary: "Mutated after binding.",
       effect: "mutation",
       catalogGroups: ["write"],
     });
-
     expect(binding).toMatchObject({
       requestId: "request-1",
       ledger,
@@ -644,7 +647,6 @@ describe("call-scoped Worker capability binding", () => {
     expect(Object.isFrozen(binding.capabilities)).toBe(true);
     expect(Object.isFrozen(binding.capabilities[0])).toBe(true);
     expect(Object.isFrozen(binding.capabilities[0]?.catalogGroups)).toBe(true);
-
     await expect(
       binding.execute({
         capabilityId: "example.observe",
@@ -696,7 +698,6 @@ describe("call-scoped Worker capability binding", () => {
       }),
     ).rejects.toThrow("worker_capability_rejected:invocation_attempt_mismatch");
     expect(execute).toHaveBeenCalledTimes(1);
-
     const resumedCall = ledger
       .current()
       .state.calls.find((candidate) => candidate.callId === call.callId);
@@ -750,7 +751,6 @@ describe("call-scoped Worker capability binding", () => {
       true,
     );
   });
-
   test("normalizes and freezes selection control ownership with the descriptor", async () => {
     const { ledger, call } = await openWorkerLedger();
     const selectionControlIds = ["path"];

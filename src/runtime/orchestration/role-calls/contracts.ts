@@ -15,10 +15,11 @@ import type {
   RoleCapabilitySelectionSupervisionTrigger,
 } from "./capability-selection-supervision.js";
 import type { RoleCapabilitySelectionReconsiderationCause } from "./reconsideration-cause.js";
+import type { RoleCallResultReceipt } from "./result-receipt.js";
 
-export const ROLE_CALL_LEDGER_CONTRACT_VERSION = 15;
+export const ROLE_CALL_LEDGER_CONTRACT_VERSION = 17;
 export const ROLE_CALL_LEDGER_HEAD_KIND =
-  "runtime_role_call_ledger_v15" as const;
+  "runtime_role_call_ledger_v17" as const;
 export const ROLE_CALL_OBJECTIVE_MAX_LENGTH = 8_192;
 export const ROLE_CALL_RESULT_MAX_LENGTH = 8_192;
 export const ROLE_CALL_RESPONSE_MAX_LENGTH = 65_536;
@@ -64,9 +65,9 @@ export type ExecutionPolicyAuthoritySnapshot = Readonly<{
 export const SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT: ExecutionPolicyAuthoritySnapshot =
   Object.freeze({
     id: "supervisor-worker-v1",
-    version: 1,
+    version: 2,
     definitionHash:
-      "sha256:40cf0e04cbf5cf2f0ae5ce6d0e1c7aa87c21247416a7771441083ec0c73db62f",
+      "sha256:2ee79cee6dbb27ffaeb59f84c4c838cf9d16a965ca4f07e7d638e8589868e036",
     rootContractId: "supervisor",
     availableSubordinateContractIds: Object.freeze([
       "planner",
@@ -146,6 +147,7 @@ export type RoleCallResult = Readonly<{
   roleId: RuntimeDelegateRoleId;
   outcome: "completed" | "failed";
   summary: string;
+  receipt?: RoleCallResultReceipt;
 }>;
 
 export type RoleCallPlanItemStatus =
@@ -296,6 +298,7 @@ export type ReturnChildRoleCallCommand = Readonly<{
   childCallId: string;
   outcome: "completed" | "failed";
   summary: string;
+  receipt?: RoleCallResultReceipt;
 }>;
 
 export type BeginRoleCapabilityExecutionCommand = Readonly<{

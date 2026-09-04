@@ -8,6 +8,7 @@ import {
 } from "../../orchestration/role-calls/index.js";
 import type {
   WorkerCapabilityControls,
+  WorkerCapabilityAssignmentProvenance,
   WorkerCapabilityInvocation,
   WorkerSettledCapabilityResult,
 } from "../../orchestration/worker-capabilities/index.js";
@@ -136,6 +137,7 @@ export type WorkerDecisionCallIdentity = Readonly<{
 export type WorkerResultAuthorSource = WorkerDecisionCallIdentity &
   Readonly<{
     objective: string;
+    assignmentProvenance?: WorkerCapabilityAssignmentProvenance;
     dependencyResults: readonly RoleCallDependencyResult[];
     requestToolResults: RequestToolResultsView;
     requestToolResultsContextMessage?: ChatMessage;

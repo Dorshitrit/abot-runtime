@@ -3,8 +3,14 @@ import {
   ROLE_CALL_OBJECTIVE_MAX_LENGTH,
   ROLE_CAPABILITY_REFERENCE_DATA_MAX_LENGTH,
   ROLE_CALL_RESULT_MAX_LENGTH,
+  ROLE_CALL_REVIEWER_VERDICT_GAP_SUMMARY_MAX_LENGTH,
+  ROLE_CALL_REVIEWER_VERDICT_KIND_MAX_LENGTH,
+  ROLE_CALL_REVIEWER_VERDICT_MAX_GAPS,
+  ROLE_CALL_REVIEWER_VERDICT_MAX_REFS_PER_GAP,
+  ROLE_CALL_REVIEWER_VERDICT_REFERENCE_MAX_LENGTH,
   type RoleCapabilityResultReference,
   type RoleCallFrame,
+  type RoleCallReviewerVerdictGap,
 } from "../../orchestration/role-calls/index.js";
 
 export const REVIEWER_DECISION_MODEL_STEP = MODEL_STEPS.REVIEWER_DECISION;
@@ -16,20 +22,32 @@ export const REVIEWER_DECISION_ACTIONS = Object.freeze([
 export const REVIEWER_MAX_SUBJECTS = 64;
 export const REVIEWER_MAX_FACTS = 64;
 export const REVIEWER_MAX_EVIDENCE = 64;
-export const REVIEWER_MAX_GAPS = 5;
+export const REVIEWER_MAX_GAPS = ROLE_CALL_REVIEWER_VERDICT_MAX_GAPS;
 export const REVIEWER_MAX_GAP_KINDS = 64;
-export const REVIEWER_MAX_REFS_PER_GAP = 1;
+export const REVIEWER_MAX_REFS_PER_GAP =
+  ROLE_CALL_REVIEWER_VERDICT_MAX_REFS_PER_GAP;
 export const REVIEWER_MAX_SNAPSHOT_LINK_REFS = 64;
-export const REVIEWER_REFERENCE_MAX_LENGTH = 256;
-export const REVIEWER_KIND_MAX_LENGTH = 160;
+export const REVIEWER_REFERENCE_MAX_LENGTH =
+  ROLE_CALL_REVIEWER_VERDICT_REFERENCE_MAX_LENGTH;
+export const REVIEWER_KIND_MAX_LENGTH =
+  ROLE_CALL_REVIEWER_VERDICT_KIND_MAX_LENGTH;
 export const REVIEWER_ITEM_SUMMARY_MAX_LENGTH = 2_048;
 export const REVIEWER_COMPLETION_TARGET_MAX_LENGTH =
   ROLE_CALL_OBJECTIVE_MAX_LENGTH;
 export const REVIEWER_EVIDENCE_REFERENCE_DATA_MAX_LENGTH =
   ROLE_CAPABILITY_REFERENCE_DATA_MAX_LENGTH;
 export const REVIEWER_DECISION_SUMMARY_MAX_LENGTH = 256;
-export const REVIEWER_GAP_SUMMARY_MAX_LENGTH = 224;
+export const REVIEWER_GAP_SUMMARY_MAX_LENGTH =
+  ROLE_CALL_REVIEWER_VERDICT_GAP_SUMMARY_MAX_LENGTH;
 export const REVIEWER_DECISION_RESULT_MAX_LENGTH = ROLE_CALL_RESULT_MAX_LENGTH;
+
+export function resolveCanonicalReviewerCompletionTargetText(
+  source: string,
+): string {
+  const normalized = source.trim();
+  if (!normalized) throw new Error("reviewer_completion_target_missing");
+  return normalized.slice(0, REVIEWER_COMPLETION_TARGET_MAX_LENGTH);
+}
 
 export type ReviewerFactStatus =
   | "satisfied"
@@ -89,13 +107,7 @@ export type ReviewerReviewSnapshot = Readonly<{
   evidence: readonly ReviewerEvidence[];
 }>;
 
-export type ReviewerGap = Readonly<{
-  kind: string;
-  subjectRefs: readonly string[];
-  factRefs: readonly string[];
-  evidenceRefs: readonly string[];
-  summary: string;
-}>;
+export type ReviewerGap = RoleCallReviewerVerdictGap;
 
 export type ReviewerPassDecision = Readonly<{
   action: "pass";

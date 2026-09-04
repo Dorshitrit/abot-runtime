@@ -1,7 +1,6 @@
 import { RequestModelStepInvoker } from "../model/invoke-step.js";
-import type {
-  WorkerCapabilityAdapterProvider,
-} from "../orchestration/worker-capabilities/index.js";
+import type { ToolAvailabilitySource } from "../capabilities/tool-availability.js";
+import type { WorkerCapabilityAdapterProvider } from "../orchestration/worker-capabilities/index.js";
 import type {
   AcceptedRequestInput,
   BoundRequestModelInvocationContext,
@@ -55,7 +54,8 @@ export type RequestCapabilityExecutionView = Readonly<
   BoundRequestModelInvocationContext;
 
 export type RequestWorkerCapabilities = Readonly<{
-  provider: WorkerCapabilityAdapterProvider<RequestCapabilityExecutionView>;
+  provider: WorkerCapabilityAdapterProvider<RequestCapabilityExecutionView> &
+    Partial<ToolAvailabilitySource>;
   executionContext: RequestCapabilityExecutionView;
 }>;
 

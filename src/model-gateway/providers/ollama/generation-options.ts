@@ -1,8 +1,4 @@
-import type {
-  ModelGatewayFormat,
-  ResolvedModelInvocation,
-} from "../../types.js";
-import { estimateStrictStructuredOutputTokenCeiling } from "../../structured-output/budget.js";
+import type { ResolvedModelInvocation } from "../../types.js";
 import { estimateProviderEnvelopeInputTokens } from "../envelope-budget.js";
 
 const DEFAULT_OLLAMA_KEEP_ALIVE = "3m";
@@ -61,8 +57,6 @@ export function buildOllamaOptions(params: {
 export function deriveOllamaNumPredict(params: {
   payload: Readonly<Record<string, unknown>>;
   invocation: ResolvedModelInvocation;
-  effectiveFormat?: ModelGatewayFormat;
-  useStructuredOutputCeiling: boolean;
   outputTokenLimit?: number;
 }): number {
   const estimatedInputTokens = estimateProviderEnvelopeInputTokens(
@@ -73,17 +67,10 @@ export function deriveOllamaNumPredict(params: {
     1,
     params.invocation.profile.contextWindowTokens - estimatedInputTokens,
   );
-  const structuredOutputCeiling = params.useStructuredOutputCeiling
-    ? estimateStrictStructuredOutputTokenCeiling(
-        params.effectiveFormat,
-        params.invocation.profile.context.tokenEstimation,
-      )
-    : undefined;
   return Math.max(
     1,
     Math.min(
       physicalRemainingTokens,
-      structuredOutputCeiling ?? physicalRemainingTokens,
       params.outputTokenLimit ?? physicalRemainingTokens,
     ),
   );

@@ -6,6 +6,7 @@ import type {
   ToolRequestAttachment,
 } from "../../capabilities/tool-types.js";
 import type { ToolRegistry } from "../ports.js";
+import { projectAvailableTools } from "./tool-availability.js";
 
 /**
  * Adds trusted request services to an already config-filtered Tool Registry.
@@ -19,9 +20,7 @@ export function bindRequestToolRegistry(
   }>,
 ): ToolRegistry {
   const registry = params.registry;
-  let normalInvocations:
-    | readonly RegisteredToolNormalInvocation[]
-    | undefined;
+  let normalInvocations: readonly RegisteredToolNormalInvocation[] | undefined;
   let normalInvocationsResolved = false;
   let availableTools: readonly ToolAvailabilityEntry[] | undefined;
   let availableToolsResolved = false;
@@ -36,7 +35,9 @@ export function bindRequestToolRegistry(
     return normalInvocations;
   }
 
-  function resolveAvailableTools(): readonly ToolAvailabilityEntry[] | undefined {
+  function resolveAvailableTools():
+    | readonly ToolAvailabilityEntry[]
+    | undefined {
     if (!availableToolsResolved) {
       availableTools = projectAvailableTools(resolveNormalInvocations());
       availableToolsResolved = true;
@@ -76,40 +77,4 @@ export function bindRequestToolRegistry(
         modelInvoker: params.modelInvoker,
       }),
   });
-}
-
-function projectAvailableTools(
-  registrations: readonly RegisteredToolNormalInvocation[] | undefined,
-): readonly ToolAvailabilityEntry[] | undefined {
-  if (registrations === undefined) return undefined;
-
-  const entries = registrations.flatMap((registration) =>
-    registration.contract.operations.map((operation) =>
-      Object.freeze({
-        toolName: registration.toolName,
-        operationId: operation.operationId,
-        summary: operation.summary,
-        catalogGroups: Object.freeze([
-          ...(registration.definition.catalogGroups ?? ["other"]),
-        ]),
-        effect: operation.effect,
-      }),
-    ),
-  );
-  entries.sort(compareAvailableTools);
-  return Object.freeze(entries);
-}
-
-function compareAvailableTools(
-  left: ToolAvailabilityEntry,
-  right: ToolAvailabilityEntry,
-): number {
-  const byOperation = compareAscii(left.operationId, right.operationId);
-  return byOperation !== 0
-    ? byOperation
-    : compareAscii(left.toolName, right.toolName);
-}
-
-function compareAscii(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
 }

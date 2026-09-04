@@ -13,6 +13,7 @@ import {
   type RoleCapabilityObservedEffect,
   type RoleCapabilityResultReference,
 } from "../orchestration/role-calls/index.js";
+import { projectWorkerCapabilityPlannerItemBinding } from "../orchestration/worker-capabilities/assignment-provenance.js";
 import { traceDebug } from "../observability/debug-logger.js";
 import {
   normalizeCapabilityAdapterResult,
@@ -20,6 +21,7 @@ import {
   type CapabilityJsonObject,
   type CapabilityJsonValue,
 } from "../orchestration/capability-adapters/result.js";
+import { bindRequestToolResultsMessage } from "./request-tool-results-message-binding.js";
 import {
   createSemanticCompactionSha256Fingerprint,
   type SemanticCompactionCheckpoint,
@@ -56,13 +58,14 @@ export type RequestToolResult = Readonly<{
 export type RequestToolResultsView = Readonly<{
   sourceRevision: number;
   results: readonly RequestToolResult[];
+  scope?: Readonly<{ kind: "call"; callId: string }>;
 }>;
 
 /**
- * Projects every settled capability result in canonical ledger order.
- * Summaries remain request-wide. Complete reference data is projected only
- * back to the exact call that produced it; callers consume the settled child
- * result instead of receiving a second copy of the capability payload.
+ * Projects settled capability results in canonical ledger order. Direct
+ * Planner-owned Workers receive only their exact call lane; other roles keep
+ * request-wide summaries. Complete reference data is projected only back to
+ * the exact call that produced it.
  */
 export function projectRequestToolResults(
   params: Readonly<{
@@ -80,11 +83,15 @@ export function projectRequestToolResults(
     if (params.ledger.current() !== params.head) {
       throw new Error("request_tool_results_head_stale");
     }
-    if (
-      !params.head.state.calls.some(({ callId }) => callId === params.callId)
-    ) {
+    const call = params.head.state.calls.find(
+      ({ callId }) => callId === params.callId,
+    );
+    if (!call) {
       throw new Error("request_tool_results_call_invalid");
     }
+    const plannerItemScoped =
+      projectWorkerCapabilityPlannerItemBinding(params.head, call) !==
+      undefined;
 
     for (const execution of params.head.state.capabilityExecutions) {
       if (execution.status === "running") {
@@ -139,6 +146,7 @@ export function projectRequestToolResults(
         adapterResult: exactResult.value,
       });
       sourceProjected.push(sourceResult);
+      if (plannerItemScoped && execution.callId !== params.callId) continue;
       if (execution.callId !== params.callId) {
         const {
           referenceData: _referenceData,
@@ -156,6 +164,14 @@ export function projectRequestToolResults(
     const view = Object.freeze({
       sourceRevision: params.head.revision,
       results: Object.freeze(currentResults),
+      ...(plannerItemScoped
+        ? {
+            scope: Object.freeze({
+              kind: "call" as const,
+              callId: params.callId,
+            }),
+          }
+        : {}),
     });
     traceProjection(
       "projected",
@@ -182,15 +198,16 @@ export function buildRequestToolResultsMessage(
   view: RequestToolResultsView,
 ): ChatMessage {
   const results = projectModelVisibleRequestToolResults(view.results);
-  return Object.freeze({
-    role: "user" as const,
-    content: JSON.stringify({
+  return bindRequestToolResultsMessage(
+    view,
+    JSON.stringify({
       kind: REQUEST_TOOL_RESULTS_MESSAGE_KIND,
       authority: "reference_data",
       sourceRevision: view.sourceRevision,
+      ...(view.scope ? { coverage: view.scope } : {}),
       results,
     }),
-  });
+  );
 }
 
 export function buildCompactedRequestToolResultsMessage(
@@ -242,12 +259,13 @@ export function buildCompactedRequestToolResultsMessage(
   ) {
     throw new Error("request_tool_results_compaction_fingerprint_mismatch");
   }
-  return Object.freeze({
-    role: "user" as const,
-    content: JSON.stringify({
+  return bindRequestToolResultsMessage(
+    view,
+    JSON.stringify({
       kind: REQUEST_TOOL_RESULTS_MESSAGE_KIND,
       authority: "reference_data",
       sourceRevision: view.sourceRevision,
+      ...(view.scope ? { coverage: view.scope } : {}),
       semanticCheckpoint: {
         kind: checkpoint.kind,
         scopeId: checkpoint.scopeId,
@@ -270,7 +288,7 @@ export function buildCompactedRequestToolResultsMessage(
         ({ executionId }) => !coveredExecutionIds.has(executionId),
       ),
     }),
-  });
+  );
 }
 
 /**

@@ -25,7 +25,8 @@ export function traceWorkerDecisionInputProjection(
 ): void {
   const { options, diagnostic, objective, sessionArtifactPathAvailableCount } =
     session;
-  const { assignmentScope, dependencyResults, resume } = session.canonicalState;
+  const { assignmentScope, assignmentProvenance, dependencyResults, resume } =
+    session.canonicalState;
   const {
     capabilities,
     selectedCapabilityExecution,
@@ -96,7 +97,7 @@ export function traceWorkerDecisionInputProjection(
       (total, result) => total + result.summary.length,
       0,
     ),
-    assignmentScope,
+    assignmentScope: assignmentProvenance ? undefined : assignmentScope,
     allowedActions,
     selectedCapabilityId: selectedCapabilityExecution?.capabilityId,
     selectedCapabilityIds: selectedCapabilityBatchExecution?.invocations.map(

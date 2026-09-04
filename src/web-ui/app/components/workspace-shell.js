@@ -2,9 +2,13 @@ import {
   createInitialWorkspaceShellState,
   normalizeWorkspaceDestination,
   toggleWorkspaceSheet,
-  wrappedIndex,
 } from "../ui-behavior.js";
 import { textOf } from "../lib/text-format.js";
+import {
+  CONVERSATION_SIDEBAR_MEDIA_QUERY,
+  resolveConversationSidebarLayout,
+} from "./conversation-sidebar-layout.js";
+import { createOperationsSection } from "./operations-section.js";
 
 export function createWorkspaceShell({
   dom,
@@ -14,37 +18,45 @@ export function createWorkspaceShell({
 }) {
   const shellState = {
     ...createInitialWorkspaceShellState(),
-    activeOperationsTab: "runtime",
     toastTimer: 0,
     bound: false,
   };
+  const sidebarViewport = viewport.matchMedia?.(
+    CONVERSATION_SIDEBAR_MEDIA_QUERY,
+  );
+  const operationsSection = createOperationsSection({
+    buttons: dom.operationsTabButtons,
+    pages: dom.operationsTabPages,
+  });
+
+  function sidebarLayout() {
+    return resolveConversationSidebarLayout(
+      shellState.workspace,
+      shellState.activeSheet,
+      sidebarViewport?.matches === true,
+    );
+  }
 
   function setCurrentPage(button, active) {
     if (active) {
       button.setAttribute("aria-current", "page");
-    } else {
-      button.removeAttribute("aria-current");
+      return;
     }
+    button.removeAttribute("aria-current");
   }
 
   function syncShell() {
     const chatWorkspace = shellState.workspace === "chat";
-    const operationsWorkspace = shellState.workspace === "operations";
     const configWorkspace = shellState.workspace === "config";
-    const sessionsOpen = chatWorkspace && shellState.activeSheet === "sessions";
+    const sessions = sidebarLayout();
+    const showSessionsToggle = chatWorkspace && !sessions.docked;
 
-    dom.app.classList.toggle("operations-workspace", operationsWorkspace);
     dom.app.classList.toggle("config-workspace", configWorkspace);
-    dom.app.classList.toggle("sessions-open", sessionsOpen);
+    dom.app.classList.toggle("sessions-open", sessions.drawerOpen);
+    dom.app.classList.toggle("sessions-docked", sessions.docked);
 
     dom.chatPanel.hidden = !chatWorkspace;
-    dom.chatPanel.inert = !chatWorkspace || sessionsOpen;
-    dom.operationsWorkspacePanel.hidden = !operationsWorkspace;
-    dom.operationsWorkspacePanel.inert = !operationsWorkspace;
-    dom.operationsWorkspacePanel.setAttribute(
-      "aria-hidden",
-      operationsWorkspace ? "false" : "true",
-    );
+    dom.chatPanel.inert = !chatWorkspace || sessions.drawerOpen;
     dom.configWorkspacePanel.hidden = !configWorkspace;
     dom.configWorkspacePanel.inert = !configWorkspace;
     dom.configWorkspacePanel.setAttribute(
@@ -52,37 +64,72 @@ export function createWorkspaceShell({
       configWorkspace ? "false" : "true",
     );
 
-    dom.sessionsPanel.hidden = !sessionsOpen;
-    dom.sessionsPanel.inert = !sessionsOpen;
+    dom.sessionsPanel.hidden = !sessions.visible;
+    dom.sessionsPanel.inert = !sessions.visible;
     dom.sessionsPanel.setAttribute(
       "aria-hidden",
-      sessionsOpen ? "false" : "true",
+      sessions.visible ? "false" : "true",
     );
     dom.sessionsToggleButton.setAttribute(
       "aria-expanded",
-      sessionsOpen ? "true" : "false",
+      sessions.visible ? "true" : "false",
     );
     dom.sessionsToggleButton.setAttribute(
       "aria-label",
-      sessionsOpen ? "Close conversations" : "Open conversations",
+      sessions.drawerOpen ? "Close conversations" : "Open conversations",
     );
+    dom.sessionsToggleButton.hidden = !showSessionsToggle;
+    dom.closeSessionsButton.hidden = sessions.docked;
 
     setCurrentPage(dom.chatWorkspaceButton, chatWorkspace);
-    setCurrentPage(dom.operationsWorkspaceButton, operationsWorkspace);
     setCurrentPage(dom.configWorkspaceButton, configWorkspace);
 
-    dom.panelBackdrop.classList.toggle("visible", sessionsOpen);
-    dom.panelBackdrop.tabIndex = sessionsOpen ? 0 : -1;
+    dom.panelBackdrop.classList.toggle("visible", sessions.drawerOpen);
+    dom.panelBackdrop.tabIndex = sessions.drawerOpen ? 0 : -1;
     dom.panelBackdrop.setAttribute(
       "aria-hidden",
-      sessionsOpen ? "false" : "true",
+      sessions.drawerOpen ? "false" : "true",
     );
   }
 
-  function workspaceBackButton(destination) {
-    return destination === "operations"
-      ? dom.closeOperationsWorkspaceButton
-      : dom.closeConfigWorkspaceButton;
+  function focusVisibleSessionsControl() {
+    const sessions = sidebarLayout();
+    if (!sessions.visible) return;
+    if (sessions.drawerOpen) {
+      dom.closeSessionsButton.focus();
+      return;
+    }
+    const sidebarControl = dom.sessionSearchInput ?? dom.refreshSessionsButton;
+    (sidebarControl ?? dom.chatWorkspaceButton).focus();
+  }
+
+  function sidebarFocusNeedsRestoration(activeElement, sessions) {
+    if (!activeElement) return false;
+    if (activeElement === dom.sessionsToggleButton) {
+      return dom.sessionsToggleButton.hidden;
+    }
+    if (activeElement === dom.closeSessionsButton) {
+      return dom.closeSessionsButton.hidden;
+    }
+    if (activeElement === dom.panelBackdrop) return !sessions.drawerOpen;
+    if (sessions.visible) return false;
+    return Boolean(activeElement.closest?.(".sessions-panel"));
+  }
+
+  function syncSidebarViewport() {
+    const activeElement = documentRoot.activeElement;
+    shellState.activeSheet = "";
+    syncShell();
+    const sessions = sidebarLayout();
+    if (!sidebarFocusNeedsRestoration(activeElement, sessions)) return;
+    if (sessions.docked) {
+      focusVisibleSessionsControl();
+      return;
+    }
+    const visibleNavigationButton = dom.sessionsToggleButton.hidden
+      ? dom.chatWorkspaceButton
+      : dom.sessionsToggleButton;
+    visibleNavigationButton.focus();
   }
 
   function prepareWorkspaceTransition(destination) {
@@ -113,9 +160,10 @@ export function createWorkspaceShell({
 
     if (options.focus === false) return true;
     if (nextWorkspace !== "chat") {
-      viewport.requestAnimationFrame(() =>
-        workspaceBackButton(nextWorkspace)?.focus(),
-      );
+      viewport.requestAnimationFrame(() => {
+        if (shellState.workspace !== nextWorkspace) return;
+        dom.closeConfigWorkspaceButton.focus();
+      });
       return true;
     }
     if (previousWorkspace !== "chat" || previousSheet) {
@@ -147,12 +195,13 @@ export function createWorkspaceShell({
     preparedTransition.commitBeforeChange();
     const wasOpen = shellState.activeSheet === "sessions";
     shellState.workspace = "chat";
-    shellState.activeSheet = open ? "sessions" : "";
+    const useDrawer = open && sidebarViewport?.matches !== true;
+    shellState.activeSheet = useDrawer ? "sessions" : "";
     syncShell();
 
     if (options.focus === false) return true;
     if (open) {
-      viewport.requestAnimationFrame(() => dom.closeSessionsButton?.focus());
+      viewport.requestAnimationFrame(focusVisibleSessionsControl);
       return true;
     }
     if (
@@ -170,26 +219,6 @@ export function createWorkspaceShell({
     setSessionsDrawerOpen(next === "sessions", {
       restoreFocus: next !== "sessions",
     });
-  }
-
-  function activateOperationsTab(tabName) {
-    const availableTabs = new Set(
-      dom.operationsTabButtons.map((button) => textOf(button.dataset.tab)),
-    );
-    const normalized = textOf(tabName, "runtime") || "runtime";
-    const nextTab = availableTabs.has(normalized) ? normalized : "runtime";
-    shellState.activeOperationsTab = nextTab;
-    for (const button of dom.operationsTabButtons) {
-      const active = button.dataset.tab === nextTab;
-      button.classList.toggle("active", active);
-      button.setAttribute("aria-selected", active ? "true" : "false");
-      button.tabIndex = active ? 0 : -1;
-    }
-    for (const page of dom.operationsTabPages) {
-      const active = page.id === `${nextTab}Tab`;
-      page.classList.toggle("active", active);
-      page.hidden = !active;
-    }
   }
 
   function showToast(message, tone = "") {
@@ -218,14 +247,8 @@ export function createWorkspaceShell({
     dom.chatWorkspaceButton.addEventListener("click", () => {
       activateWorkspace("chat");
     });
-    dom.operationsWorkspaceButton.addEventListener("click", () => {
-      activateWorkspace("operations");
-    });
     dom.configWorkspaceButton.addEventListener("click", () => {
       activateWorkspace("config");
-    });
-    dom.closeOperationsWorkspaceButton.addEventListener("click", () => {
-      activateWorkspace("chat");
     });
     dom.closeConfigWorkspaceButton.addEventListener("click", () => {
       activateWorkspace("chat");
@@ -239,33 +262,18 @@ export function createWorkspaceShell({
         setSessionsDrawerOpen(false, { restoreFocus: true });
       }
     });
-    for (const button of dom.operationsTabButtons) {
-      button.addEventListener("click", () => {
-        activateOperationsTab(button.dataset.tab);
-      });
-      button.addEventListener("keydown", (event) => {
-        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-        event.preventDefault();
-        const currentIndex = dom.operationsTabButtons.indexOf(button);
-        const delta = event.key === "ArrowRight" ? 1 : -1;
-        const next =
-          dom.operationsTabButtons[
-            wrappedIndex(currentIndex, delta, dom.operationsTabButtons.length)
-          ];
-        next?.focus();
-        activateOperationsTab(next?.dataset.tab);
-      });
-    }
+    sidebarViewport?.addEventListener("change", syncSidebarViewport);
+    operationsSection.bind();
   }
 
   function load() {
     Object.assign(shellState, createInitialWorkspaceShellState());
-    activateOperationsTab("runtime");
+    operationsSection.activateTab("runtime");
     syncShell();
   }
 
   return {
-    activateOperationsTab,
+    activateOperationsTab: operationsSection.activateTab,
     activateWorkspace,
     bind,
     closeOverlaysOnEscape,

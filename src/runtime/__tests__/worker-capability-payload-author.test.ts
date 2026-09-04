@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-
 import type { ChatMessage } from "../../model-gateway/types.js";
-
 import type { ModelGatewayClient } from "../ports.js";
 import {
   SEMANTIC_COMPACTION_CONTEXT_LANE,
@@ -16,14 +14,16 @@ import {
 } from "../observability/debug-logger.js";
 import type { RoleCallFrame } from "../orchestration/role-calls/index.js";
 import type { RequestExecutionSeed } from "../request/contracts.js";
-import { createRequestWorkerCapabilityPayloadAuthor } from "../request/worker-capability-payload.js";
 import {
-  createWorkerCapabilityPayloadAuthor,
   workerCapabilityContextCompactionScopeId,
   WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS,
   WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP,
   type WorkerCapabilityPayloadModelPort,
 } from "../orchestration/worker-capabilities/index.js";
+import {
+  createTestRequestWorkerCapabilityPayloadAuthor as createRequestWorkerCapabilityPayloadAuthor,
+  createTestWorkerCapabilityPayloadAuthor as createWorkerCapabilityPayloadAuthor,
+} from "./support/worker-payload-author.js";
 import {
   createTestRequestExecutionScope,
   deriveTestRequestExecutionScope,

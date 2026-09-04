@@ -1,5 +1,6 @@
 import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
+import type { CapabilityBriefProjection } from "../../context/capability-brief.js";
 import { traceDebug } from "../../observability/debug-logger.js";
 import type { RoleChildReturnContext } from "../../orchestration/role-calls/index.js";
 import type { WorkerCapabilityCatalogGroup } from "../../orchestration/worker-capabilities/index.js";
@@ -30,6 +31,7 @@ export function traceSupervisorContextProjected(params: {
   allowedRoleIds: readonly SupervisorDelegateRoleId[];
   workerCapabilityAffordances: readonly SupervisorWorkerCapabilityAffordance[];
   availableWorkerCapabilityCatalog: readonly WorkerCapabilityCatalogGroup[];
+  capabilityBrief: CapabilityBriefProjection;
   configuredInstructionBlockCount: number;
   configuredInstructionCharacterCount: number;
   configuredInstructionRefs: readonly string[];
@@ -64,7 +66,11 @@ export function traceSupervisorContextProjected(params: {
     capabilityContextIncluded: false,
     delegationContextPolicy: "explicit_role_context_exact_dependency_v1",
     workerCapabilityCatalogContextIncluded:
-      params.availableWorkerCapabilityCatalog.length > 0,
+      params.capabilityBrief.level !== "none",
+    capabilityBriefLevel: params.capabilityBrief.level,
+    capabilityBriefEstimatedTokens: params.capabilityBrief.estimatedTokens,
+    capabilityBriefBudgetTokens: params.capabilityBrief.budgetTokens,
+    capabilityBriefReason: params.capabilityBrief.reason,
     availableWorkerCapabilityCatalogGroupCount:
       params.availableWorkerCapabilityCatalog.length,
     availableWorkerCapabilityCatalogGroupIds:
@@ -200,7 +206,9 @@ export function traceSupervisorDecisionAccepted(params: {
     ...(params.decision.action === "invoke_role"
       ? {
           selectedRoleId: params.decision.roleId,
-          objectiveLength: params.decision.objective.length,
+          ...("objective" in params.decision
+            ? { objectiveLength: params.decision.objective.length }
+            : { objectiveLength: 0 }),
           ...(params.decision.roleId === "worker" &&
           params.decision.workerCapabilityScope
             ? {

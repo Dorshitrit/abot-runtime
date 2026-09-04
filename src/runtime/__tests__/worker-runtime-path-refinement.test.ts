@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import type { RequestToolResultsView } from "../context/request-tool-results.js";
+import { buildWorkerAssignmentPrompt } from "../steps/worker-decision/input/prompt-context.js";
 import {
   projectEffectiveWorkerSelectionControlIds,
   projectEligibleWorkerSessionArtifactPaths,
@@ -79,5 +80,41 @@ describe("Worker runtime path refinement", () => {
     expect(baseline).toBe(selectionControlIds);
     expect(deferred).toEqual(["mode"]);
     expect(Object.isFrozen(deferred)).toBe(true);
+  });
+
+  test("preserves the pending payload objective in runtime path refinement", () => {
+    const authoringObjective =
+      "Update the selected artifact while preserving unrelated content.";
+    const assignment = JSON.parse(
+      buildWorkerAssignmentPrompt({
+        callIdentity: {
+          callId: "call-2",
+          parentCallId: "call-1",
+          depth: 1,
+          invocationAttempt: 2,
+        },
+        objective: "Update the previously established artifact.",
+        options: { call: {} },
+        canonicalState: { dependencyResults: [] },
+        capabilitySelection: {
+          pendingCapabilitySelection: {
+            capabilityId: "write_complete_file",
+            intent: "Update the previously established artifact.",
+            authoringObjective,
+          },
+          executionPending: true,
+        },
+        contract: { availableCapabilityAffordances: [] },
+      } as unknown as Parameters<typeof buildWorkerAssignmentPrompt>[0]),
+    ) as Record<string, unknown>;
+
+    expect(assignment).toMatchObject({
+      kind: "runtime_worker_capability_execution_assignment",
+      pendingCapabilitySelection: {
+        capabilityId: "write_complete_file",
+        authoringObjective,
+      },
+    });
+    expect(assignment.pendingCapabilitySelection).not.toHaveProperty("intent");
   });
 });

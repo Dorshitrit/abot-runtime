@@ -6,7 +6,7 @@ import type {
   WorkerCapabilityPayloadAuthor,
 } from "../../orchestration/worker-capabilities/index.js";
 import type { RegisteredToolNormalInvocationProjection } from "../registered-tool-normal-invocations.js";
-import { resolveRegisteredToolPayloadRelatedArtifactContexts } from "../registered-tool-payload-plan.js";
+import { resolveRegisteredToolPayloadRelatedArtifactContexts } from "../registered-tool-payload-related-artifacts.js";
 import { normalizePayloadAuthoringResult } from "./payload-authoring-result.js";
 import {
   executionFreshnessRejection,
@@ -28,6 +28,9 @@ export async function prepareOperationPayload(
     sharedState: ToolExecutionSharedState;
     payloadAuthor?: WorkerCapabilityPayloadAuthor;
     call: Parameters<WorkerCapabilityPayloadAuthor["author"]>[0]["call"];
+    assignmentProvenance?: Parameters<
+      WorkerCapabilityPayloadAuthor["author"]
+    >[0]["assignmentProvenance"];
     executionId: string;
     descriptor: Parameters<
       WorkerCapabilityPayloadAuthor["author"]
@@ -67,6 +70,9 @@ export async function prepareOperationPayload(
       sharedState: params.sharedState,
       ...(params.payloadAuthor ? { payloadAuthor: params.payloadAuthor } : {}),
       call: params.call,
+      ...(params.assignmentProvenance
+        ? { assignmentProvenance: params.assignmentProvenance }
+        : {}),
       executionId: params.executionId,
       descriptor: params.descriptor,
       intent: params.intent,
@@ -119,10 +125,17 @@ export async function prepareOperationPayload(
         targetParam: params.projection.payloadContextPlan?.targetParam,
         controls: params.controls,
         sharedState: params.sharedState,
+        call: params.call,
+        ...(params.assignmentProvenance
+          ? { assignmentProvenance: params.assignmentProvenance }
+          : {}),
         settledCapabilityResults: params.settledCapabilityResults,
       });
     rawAuthored = await params.payloadAuthor.author({
       call: params.call,
+      ...(params.assignmentProvenance
+        ? { assignmentProvenance: params.assignmentProvenance }
+        : {}),
       executionId: params.executionId,
       descriptor: params.descriptor,
       ...(params.authoringObjective

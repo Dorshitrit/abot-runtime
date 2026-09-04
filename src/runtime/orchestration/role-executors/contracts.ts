@@ -5,6 +5,7 @@ import type {
   RoleCallLedgerHead,
   RoleCallOperationSupervisionInterventionCommit,
   RoleCallPlanBinding,
+  RoleCallResultReceipt,
   RoleCallWorkerCapabilityScope,
 } from "../role-calls/index.js";
 import type { RuntimeDelegateRoleId } from "../roles.js";
@@ -15,6 +16,7 @@ export type RoleExecutionResult<TValue = unknown> = Readonly<{
   kind: "terminal";
   outcome: RoleExecutionOutcome;
   summary: string;
+  receipt?: RoleCallResultReceipt;
   value?: TValue;
 }>;
 

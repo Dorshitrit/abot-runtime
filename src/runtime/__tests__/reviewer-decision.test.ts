@@ -1,13 +1,10 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-
 const mocks = vi.hoisted(() => ({
   traceDebug: vi.fn(),
 }));
-
 vi.mock("../observability/debug-logger.js", () => ({
   traceDebug: mocks.traceDebug,
 }));
-
 import { projectOllamaFormat } from "../../model-gateway/structured-output.js";
 import type { ModelGatewayClient } from "../ports.js";
 import type { RequestRunnerConfig } from "../config/runner/contracts.js";
@@ -63,7 +60,6 @@ import {
   type ReviewerEvidenceCandidate,
   type ReviewerReferenceDataBudget,
 } from "../steps/reviewer-decision/final-evidence.js";
-
 const OBJECTIVE_SECRET = "REVIEWER_OBJECTIVE_SECRET_MUST_NOT_REACH_LOGS";
 const FACT_SECRET = "REVIEWER_FACT_SECRET_MUST_NOT_REACH_LOGS";
 const EVIDENCE_SECRET = "REVIEWER_EVIDENCE_SECRET_MUST_NOT_REACH_LOGS";
@@ -92,8 +88,39 @@ const reviewerReferenceDataBudget: ReviewerReferenceDataBudget = Object.freeze({
   maxTokens: 100_000,
   tokenEstimation: { asciiCharactersPerToken: 4 },
 });
-function encodeReviewerDecision(decision: unknown): string {
-  return JSON.stringify({ decision });
+function encodeReviewerDecision(
+  decision: unknown,
+  snapshot: ReviewerReviewSnapshot = reviewSnapshot,
+): string {
+  if (!decision || typeof decision !== "object" || Array.isArray(decision)) {
+    return JSON.stringify({ decision });
+  }
+  const record = decision as Record<string, unknown>;
+  const reportsGaps = record.action === "report_gaps";
+  const audit = {
+    evidenceAssessments: snapshot.evidence.map(({ evidenceRef }) => ({
+      evidenceRef,
+      status: reportsGaps ? "does_not_establish" : "supports",
+      finding: reportsGaps
+        ? "This evidence does not establish the missing requirement."
+        : "This evidence supports the reviewed completion target.",
+    })),
+    completionAssessment: {
+      status: reportsGaps ? "gap" : "satisfied",
+      evidenceRefs: snapshot.evidence
+        .slice(0, reportsGaps ? 0 : Math.min(2, snapshot.evidence.length))
+        .map(({ evidenceRef }) => evidenceRef),
+      finding: reportsGaps
+        ? "The supplied evidence leaves a completion gap."
+        : "The supplied evidence establishes the completion target and its integration edges.",
+    },
+  };
+  return JSON.stringify({
+    decision: {
+      ...record,
+      audit: record.audit ?? audit,
+    },
+  });
 }
 
 function reviewerTargetCandidate(
@@ -120,7 +147,7 @@ const reviewerCall: RoleCallFrame = Object.freeze({
   parentCallId: "call-2",
   roleId: "reviewer",
   depth: 2,
-  objective: `Review high-level completion only. ${OBJECTIVE_SECRET}`,
+  objective: "Create both requested landing-page artifacts.",
   dependencyResultRefs: [],
   status: "active",
   childCallIds: Object.freeze([]),
@@ -257,7 +284,14 @@ function createReviewerRequest(
 }
 
 type ReviewerAuditCapsule = Readonly<{
-  kind: "runtime_reviewer_audit_v2";
+  kind: "runtime_reviewer_audit_v4";
+  dependencySubjects: readonly Readonly<{
+    producerCallId: string;
+    roleId: string;
+    resultRef: string;
+    presenceEffect: string;
+    [key: string]: unknown;
+  }>[];
   candidateSupportPolicy: Readonly<{
     authority: "runtime_projection";
     sourceClaimsAndEffectsMaySupportTarget: true;
@@ -292,7 +326,7 @@ function readReviewerAuditCapsule(
   for (const message of messages) {
     try {
       const parsed = JSON.parse(message.content) as Record<string, unknown>;
-      if (parsed.kind === "runtime_reviewer_audit_v2") {
+      if (parsed.kind === "runtime_reviewer_audit_v4") {
         return parsed as unknown as ReviewerAuditCapsule;
       }
     } catch {
@@ -360,7 +394,7 @@ async function createReviewerExecutionLedger(
           },
           {
             title: "Review completion",
-            objective: "Check high-level completion and evidence only.",
+            objective: callerObjective,
           },
         ],
       },
@@ -417,7 +451,8 @@ async function createReviewerExecutionLedger(
     type: "open_child",
     callerCallId: "call-2",
     roleId: "reviewer",
-    objective: "Check high-level completion and evidence only.",
+    objective: callerObjective,
+    dependencyResultRefs: ledger.current().state.results.slice(-1).map(({ resultRef }) => resultRef),
     plannerPlan: {
       mode: "select",
       itemIds: ["plan-call-2-item-2"],
@@ -611,7 +646,8 @@ async function createRootReviewerObservationOnlyLedger(): Promise<{
     callerCallId: "call-1",
     roleId: "reviewer",
     objective:
-      "Review completion; the Planner reports that news.txt was updated.",
+      "Compare current GPT research with news.txt and add missing information to the file.",
+    dependencyResultRefs: ledger.current().state.results.slice(-1).map(({ resultRef }) => resultRef),
   });
   const call = ledger
     .current()
@@ -661,7 +697,8 @@ async function createRootReviewerAfterPriorReviewLedger(): Promise<{
     type: "open_child",
     callerCallId: "call-1",
     roleId: "reviewer",
-    objective: "Review the first contribution for completion gaps.",
+    objective: "Complete the root request from the Planner contribution and the later Worker repair.",
+    dependencyResultRefs: ledger.current().state.results.map(({ resultRef }) => resultRef),
   });
   await commitReviewerLedger(ledger, {
     authority: "runtime",
@@ -694,7 +731,8 @@ async function createRootReviewerAfterPriorReviewLedger(): Promise<{
     type: "open_child",
     callerCallId: "call-1",
     roleId: "reviewer",
-    objective: "Review the completed production contributions only.",
+    objective: "Complete the root request from the Planner contribution and the later Worker repair.",
+    dependencyResultRefs: ledger.current().state.results.map(({ resultRef }) => resultRef),
   });
   const call = ledger
     .current()
@@ -790,7 +828,7 @@ describe("generic Reviewer decision boundary", () => {
     });
     expect(JSON.stringify(format.schema)).not.toContain('"pattern"');
     expect(JSON.stringify(format.schema)).not.toContain('"uniqueItems"');
-    expect(projectOllamaFormat(format).diagnostics).toHaveLength(3);
+    expect(projectOllamaFormat(format).diagnostics).toHaveLength(7);
   });
 
   test.each([
@@ -815,7 +853,7 @@ describe("generic Reviewer decision boundary", () => {
 
     expect(decisionSchema.anyOf).toBeUndefined();
     expect(decisionSchema.properties.action.enum).toEqual(["report_gaps"]);
-    expect(projectOllamaFormat(format).diagnostics).toHaveLength(2);
+    expect(projectOllamaFormat(format).diagnostics).toHaveLength(4);
     expect(
       parseReviewerDecisionOutput(
         encodeReviewerDecision({
@@ -1208,18 +1246,21 @@ describe("generic Reviewer decision boundary", () => {
       ],
     };
     const parsed = parseReviewerDecisionOutput(
-      encodeReviewerDecision({
-        action: "report_gaps",
-        reviewScopeId: maximumSnapshot.reviewScopeId,
-        summary: "\\".repeat(REVIEWER_DECISION_SUMMARY_MAX_LENGTH),
-        gaps: Array.from({ length: 5 }, () => ({
-          kind: maximumSnapshot.allowedGapKinds[0],
-          subjectRefs: [maximumSnapshot.subjects[0]!.subjectRef],
-          factRefs: [maximumSnapshot.facts[0]!.factRef],
-          evidenceRefs: [maximumSnapshot.evidence[0]!.evidenceRef],
-          summary: "\\".repeat(REVIEWER_GAP_SUMMARY_MAX_LENGTH),
-        })),
-      }),
+      encodeReviewerDecision(
+        {
+          action: "report_gaps",
+          reviewScopeId: maximumSnapshot.reviewScopeId,
+          summary: "\\".repeat(REVIEWER_DECISION_SUMMARY_MAX_LENGTH),
+          gaps: Array.from({ length: 5 }, () => ({
+            kind: maximumSnapshot.allowedGapKinds[0],
+            subjectRefs: [maximumSnapshot.subjects[0]!.subjectRef],
+            factRefs: [maximumSnapshot.facts[0]!.factRef],
+            evidenceRefs: [maximumSnapshot.evidence[0]!.evidenceRef],
+            summary: "\\".repeat(REVIEWER_GAP_SUMMARY_MAX_LENGTH),
+          })),
+        },
+        maximumSnapshot,
+      ),
       { snapshot: maximumSnapshot },
     );
 
@@ -1412,7 +1453,7 @@ describe("generic Reviewer decision boundary", () => {
       ({ kind }) => kind === "runtime_reviewer_evidence_v1",
     );
     const auditIndex = parsedMessages.findIndex(
-      ({ kind }) => kind === "runtime_reviewer_audit_v2",
+      ({ kind }) => kind === "runtime_reviewer_audit_v4",
     );
     const evidenceAppendix = parsedMessages[evidenceAppendixIndex]!;
     const evidenceAppendixMessage = input.context.messages.find(({ content }) =>
@@ -1654,7 +1695,7 @@ describe("generic Reviewer decision boundary", () => {
         relation: "candidate_support",
       },
     ]);
-    expect(audit.claims[0]?.subjectRefs).toEqual(["call:call-3"]);
+    expect(audit.claims).toEqual([]);
     expect(audit.effects[0]?.subjectRefs).toEqual(["call:call-3"]);
     expect(Object.isFrozen(snapshot)).toBe(true);
     expect(Object.isFrozen(snapshot.evidence)).toBe(true);
@@ -1710,7 +1751,7 @@ describe("generic Reviewer decision boundary", () => {
           return [];
         }
       })
-      .find(({ kind }) => kind === "runtime_reviewer_audit_v2") as {
+      .find(({ kind }) => kind === "runtime_reviewer_audit_v4") as {
       completionTarget: { text: string };
     };
 
@@ -1817,7 +1858,7 @@ describe("generic Reviewer decision boundary", () => {
         relation: "candidate_support",
       },
     ]);
-    expect(audit.claims[0]?.subjectRefs).toEqual(["call:call-2"]);
+    expect(audit.claims).toEqual([]);
     expect(audit.effects[0]?.subjectRefs).toEqual(["call:call-2"]);
     expect(mocks.traceDebug).toHaveBeenCalledWith(
       "runtime.reviewer",
@@ -1834,7 +1875,7 @@ describe("generic Reviewer decision boundary", () => {
     );
   });
 
-  test("excludes a prior Reviewer result while retaining ordered production support edges for a repeated root review", async () => {
+  test("keeps a prior Reviewer dependency passive while retaining only production support edges", async () => {
     const requestObjective =
       "Complete the root request from the Planner contribution and the later Worker repair.";
     const { ledger, call } = await createRootReviewerAfterPriorReviewLedger();
@@ -1864,6 +1905,10 @@ describe("generic Reviewer decision boundary", () => {
         kind: "planner_result",
       }),
       expect.objectContaining({
+        subjectRef: "call:call-3",
+        kind: "reviewer_result",
+      }),
+      expect.objectContaining({
         subjectRef: "call:call-4",
         kind: "worker_result",
       }),
@@ -1876,14 +1921,29 @@ describe("generic Reviewer decision boundary", () => {
         subjectRefs: ["call:call-2"],
       }),
       expect.objectContaining({
+        factRef: "result-2",
+        kind: "role_result",
+        status: "informational",
+        subjectRefs: ["call:call-3"],
+      }),
+      expect.objectContaining({
         factRef: "result-3",
         kind: "role_result",
         status: "informational",
         subjectRefs: ["call:call-4"],
       }),
     ]);
-    expect(JSON.stringify(snapshot)).not.toContain("call:call-3");
-    expect(JSON.stringify(snapshot)).not.toContain("One repair remains.");
+    expect(audit.dependencySubjects).toContainEqual(
+      expect.objectContaining({
+        producerCallId: "call-3",
+        roleId: "reviewer",
+        resultRef: "result-2",
+        summary: '{"action":"report_gaps","summary":"One repair remains."}',
+        presenceEffect:
+          "passive_support_not_user_intent_pending_work_completion_or_verdict",
+      }),
+    );
+    expect(JSON.stringify(snapshot)).toContain("One repair remains.");
     expect(audit.candidateSupportEdges).toEqual([
       {
         sourceSubjectRef: "call:call-2",
@@ -1896,10 +1956,7 @@ describe("generic Reviewer decision boundary", () => {
         relation: "candidate_support",
       },
     ]);
-    expect(audit.claims.map(({ subjectRefs }) => subjectRefs)).toEqual([
-      ["call:call-2"],
-      ["call:call-4"],
-    ]);
+    expect(audit.claims).toEqual([]);
     expect(audit.effects).toEqual([]);
   });
 
@@ -2293,12 +2350,15 @@ describe("generic Reviewer decision boundary", () => {
     ).toEqual([["pass"], ["report_gaps"]]);
     expect(
       parseReviewerDecisionOutput(
-        encodeReviewerDecision({
-          action: "pass",
-          reviewScopeId: snapshot.reviewScopeId,
-          summary: "The truncated execution summary was sufficient.",
-          gaps: [],
-        }),
+        encodeReviewerDecision(
+          {
+            action: "pass",
+            reviewScopeId: snapshot.reviewScopeId,
+            summary: "The truncated execution summary was sufficient.",
+            gaps: [],
+          },
+          snapshot,
+        ),
         { snapshot },
       ),
     ).toMatchObject({ ok: true, decision: { action: "pass" } });
@@ -2561,6 +2621,7 @@ describe("generic Reviewer decision boundary", () => {
     const { ledger, call } = await createReviewerExecutionLedger({
       referenceData: rawEvidence,
     });
+    let responseSnapshot = reviewSnapshot;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
       const serializedMessages = JSON.stringify(input.messages);
       expect(serializedMessages).toContain(
@@ -2568,12 +2629,15 @@ describe("generic Reviewer decision boundary", () => {
       );
       expect(serializedMessages).not.toContain(rawEvidence);
       return {
-        text: encodeReviewerDecision({
-          action: "pass",
-          reviewScopeId: `review:${call.callId}:r${ledger.current().revision}`,
-          summary: "The compacted evidence establishes completion.",
-          gaps: [],
-        }),
+        text: encodeReviewerDecision(
+          {
+            action: "pass",
+            reviewScopeId: `review:${call.callId}:r${ledger.current().revision}`,
+            summary: "The compacted evidence establishes completion.",
+            gaps: [],
+          },
+          responseSnapshot,
+        ),
         meta: {},
       };
     });
@@ -2583,6 +2647,14 @@ describe("generic Reviewer decision boundary", () => {
       ledger,
       workerCallId: "call-3",
       digest: "The exact bounded artifact was created successfully.",
+    });
+    responseSnapshot = projectReviewerReviewSnapshot({
+      requestId: request.requestId,
+      requestObjective: request.prompt,
+      ledger,
+      call,
+      referenceDataBudget: reviewerReferenceDataBudget,
+      contextCompactionStore: request.contextCompactionStore,
     });
 
     await expect(
@@ -2654,7 +2726,7 @@ describe("generic Reviewer decision boundary", () => {
         );
         expect(toolResultBlocks).toEqual([]);
         const audit = parsedMessages.find(
-          ({ kind }) => kind === "runtime_reviewer_audit_v2",
+          ({ kind }) => kind === "runtime_reviewer_audit_v4",
         );
         expect(audit).toMatchObject({
           auditScope: {
@@ -2669,7 +2741,7 @@ describe("generic Reviewer decision boundary", () => {
           },
         });
         return {
-          text: encodeReviewerDecision(decision),
+          text: encodeReviewerDecision(decision, snapshot),
           meta: {},
         };
       });
@@ -2690,7 +2762,16 @@ describe("generic Reviewer decision boundary", () => {
       ).resolves.toEqual({
         kind: "terminal",
         outcome: "completed",
-        summary: JSON.stringify(decision),
+        summary: decision.summary,
+        receipt: {
+          kind: "reviewer_verdict_v1",
+          reviewerCallId: call.callId,
+          callerCallId: snapshot.callerCallId,
+          reviewScopeId: snapshot.reviewScopeId,
+          sourceRevision: snapshot.sourceRevision,
+          verdict: decision.action,
+          gaps: decision.gaps,
+        },
       });
       expect(ledger.current().state.activeCallId).toBe(call.callId);
       expect(

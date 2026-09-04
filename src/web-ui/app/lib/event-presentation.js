@@ -1,5 +1,15 @@
 import { textOf } from "./text-format.js";
 
+function canMergeEventTimelineEntries(previous, event, name, summary) {
+  if (!previous) return false;
+  if (previous.name !== name) return false;
+  if (previous.summary !== summary) return false;
+  if (previous.tone !== event.tone) return false;
+  if (textOf(previous.requestId) !== textOf(event.requestId)) return false;
+  if (textOf(previous.stage) !== textOf(event.stage)) return false;
+  return textOf(previous.phase) === textOf(event.phase);
+}
+
 export function buildEventTimelineEntries(events) {
   const entries = [];
   for (const event of events) {
@@ -7,13 +17,15 @@ export function buildEventTimelineEntries(events) {
     if (!name) continue;
     const summary = textOf(event.summary);
     const previous = entries[entries.length - 1];
-    if (
-      previous &&
-      previous.name === name &&
-      previous.summary === summary &&
-      previous.tone === event.tone
-    ) {
+    if (canMergeEventTimelineEntries(previous, event, name, summary)) {
       previous.count = (previous.count || 1) + (event.count || 1);
+      if (typeof event.eventSequence === "number")
+        previous.eventSequence = Math.max(
+          previous.eventSequence ?? 0,
+          event.eventSequence,
+        );
+      if (typeof event.lastSeqNo === "number")
+        previous.lastSeqNo = event.lastSeqNo;
       continue;
     }
     entries.push({
@@ -241,8 +253,17 @@ export function eventKeyFor(message, label, tone) {
   const tool = textOf(message.tool);
   const approvalId = textOf(message.approvalId);
   const status = textOf(message.status);
+  const stage = textOf(message.stage);
   const phase = textOf(message.phase);
-  return [requestId, name, label, tone, tool, approvalId, status, phase]
-    .filter(Boolean)
-    .join("|");
+  return JSON.stringify([
+    requestId,
+    name,
+    label,
+    tone,
+    tool,
+    approvalId,
+    status,
+    stage,
+    phase,
+  ]);
 }

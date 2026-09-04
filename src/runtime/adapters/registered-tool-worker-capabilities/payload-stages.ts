@@ -6,9 +6,9 @@ import type {
   WorkerCapabilityPayloadAuthor,
 } from "../../orchestration/worker-capabilities/index.js";
 import type { RegisteredToolNormalInvocationProjection } from "../registered-tool-normal-invocations.js";
+import { resolveRegisteredToolPayloadRelatedArtifactContexts } from "../registered-tool-payload-related-artifacts.js";
 import {
   materializeRegisteredToolPayloadStageResponseFormat,
-  resolveRegisteredToolPayloadRelatedArtifactContexts,
   resolveRegisteredToolPayloadStageLiteralOutput,
   resolveRegisteredToolPayloadStageMinBytes,
   resolveRegisteredToolPayloadTargetContext,
@@ -37,6 +37,9 @@ export type StagedOperationPayloadParams = Readonly<{
   sharedState: ToolExecutionSharedState;
   payloadAuthor?: WorkerCapabilityPayloadAuthor;
   call: Parameters<WorkerCapabilityPayloadAuthor["author"]>[0]["call"];
+  assignmentProvenance?: Parameters<
+    WorkerCapabilityPayloadAuthor["author"]
+  >[0]["assignmentProvenance"];
   executionId: string;
   descriptor: Parameters<
     WorkerCapabilityPayloadAuthor["author"]
@@ -316,10 +319,17 @@ class PayloadStageRunner {
             targetParam: this.params.plan.targetParam,
             controls: this.params.controls,
             sharedState: this.params.sharedState,
+            call: this.params.call,
+            ...(this.params.assignmentProvenance
+              ? { assignmentProvenance: this.params.assignmentProvenance }
+              : {}),
             settledCapabilityResults: this.params.settledCapabilityResults,
           });
         rawAuthored = await payloadAuthor.author({
           call: this.params.call,
+          ...(this.params.assignmentProvenance
+            ? { assignmentProvenance: this.params.assignmentProvenance }
+            : {}),
           executionId: this.params.executionId,
           descriptor: this.params.descriptor,
           ...(this.params.authoringObjective

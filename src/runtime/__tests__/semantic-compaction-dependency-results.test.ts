@@ -24,6 +24,7 @@ import {
   type WorkerCapabilityDescriptor,
   type WorkerCapabilityPayloadModelRequest,
 } from "../orchestration/worker-capabilities/index.js";
+import { projectWorkerPayloadDependencyResults } from "../steps/worker-decision/payload-dependency-results.js";
 
 const REQUEST_ID = "request-semantic-dependency-continuity";
 const PROMPT = "Create the final artifact from the collected source evidence.";
@@ -118,13 +119,17 @@ describe("semantic compaction dependency continuity", () => {
     expect(JSON.stringify(dependencyResults)).not.toContain(
       irrelevantResultRef,
     );
+    const payloadDependencyResults =
+      projectWorkerPayloadDependencyResults(dependencyResults);
 
     const payloadModel = vi.fn(
       async (request: WorkerCapabilityPayloadModelRequest) => {
         expect(request.modelStep).toBe(
           WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP,
         );
-        expect(request.context.dependencyResults).toEqual(dependencyResults);
+        expect(request.context.dependencyResults).toEqual(
+          payloadDependencyResults,
+        );
         return "grounded artifact body";
       },
     );
@@ -138,6 +143,7 @@ describe("semantic compaction dependency continuity", () => {
       await expect(
         payloadAuthor.author({
           call: input.call,
+          assignmentProvenance: input.assignmentProvenance,
           executionId: input.executionId,
           descriptor: DESCRIPTOR,
           authoringObjective: input.authoringObjective,
@@ -168,7 +174,7 @@ describe("semantic compaction dependency continuity", () => {
       adapters: Object.freeze([
         Object.freeze({ descriptor: DESCRIPTOR, execute: adapterExecute }),
       ]),
-      dependencyResults,
+      dependencyResults: payloadDependencyResults,
     });
 
     await expect(

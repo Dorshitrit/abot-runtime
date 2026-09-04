@@ -40,7 +40,7 @@ export function traceReviewerContextProjected(params: {
     historyMessageCount: 0,
     attachmentCount: 0,
     referenceMessageCount: params.referenceMessageCount,
-    modelContextContract: "runtime_reviewer_audit_v2",
+    modelContextContract: "runtime_reviewer_audit_v4",
     auditCapsuleCharacterCount: params.auditCapsuleCharacterCount,
     evidenceAppendixCharacterCount: params.evidenceAppendixCharacterCount,
     continuationMessageCount: 0,

@@ -37,7 +37,7 @@ export function normalizeWorkspaceDestination(value) {
   const destination = String(value ?? "")
     .trim()
     .toLowerCase();
-  return ["operations", "config"].includes(destination) ? destination : "chat";
+  return destination === "config" ? "config" : "chat";
 }
 
 export function createInitialWorkspaceShellState() {

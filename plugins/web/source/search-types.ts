@@ -1,5 +1,7 @@
 import type { FetchedPage } from "./content.js";
 import type { WebPluginErrorCode } from "./errors.js";
+import type { LightSearchMetadata } from "./light/search-metadata.js";
+import type { WebSourcesReceipt } from "./source-receipt-contract.js";
 
 export type SearchHit = Readonly<{
   query: string;
@@ -38,6 +40,8 @@ export type SearchCoverage = Readonly<{
 }>;
 
 export type SearchExecution = Readonly<{
+  webSources: WebSourcesReceipt;
+  lightSearch?: LightSearchMetadata;
   queries: readonly string[];
   results: readonly QueryResult[];
   sourceFetches: readonly SourceFetch[];

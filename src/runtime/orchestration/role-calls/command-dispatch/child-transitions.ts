@@ -23,6 +23,7 @@ import {
   reject,
 } from "../reducer-primitives.js";
 import { isRoleCallWorkingDirectoryRoleId } from "../working-directory.js";
+import { resolveCanonicalResultReceiptForReturn } from "../return-result-receipt.js";
 import { nextCallId, replaceCall } from "./call-frame-state.js";
 
 export function openChild(
@@ -133,8 +134,9 @@ export function returnChild(
   state: RoleCallState,
   command: ReturnChildRoleCallCommand,
   policy: RoleCallPolicy,
+  admittedHeadRevision?: number,
 ): RoleCallTransitionResult {
-  const { callerCallId, childCallId, outcome, summary } = command;
+  const { callerCallId, childCallId, outcome, summary, receipt } = command;
   if (state.phase === "empty") {
     return reject(state, "root_missing");
   }
@@ -151,12 +153,25 @@ export function returnChild(
     return reject(state, "invalid_command");
   }
   const resultRef = nextResultRef(state);
+  const receiptResolution = resolveCanonicalResultReceiptForReturn({
+    state,
+    caller,
+    child,
+    resultRef,
+    outcome,
+    policy,
+    admittedHeadRevision,
+    ...(receipt ? { suppliedReceipt: receipt } : {}),
+  });
+  if (!receiptResolution.ok) return reject(state, "invalid_command");
   const result: RoleCallResult = {
     resultRef,
     producerCallId: childCallId,
     roleId: child.roleId,
     outcome,
     summary: summary.trim(),
+    ...(receiptResolution.receipt
+      ? { receipt: receiptResolution.receipt } : {}),
   };
   if (hasIncompleteCompletedPlannerPlan(state, child, outcome)) {
     return reject(state, "planner_plan_incomplete");

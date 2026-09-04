@@ -1,0 +1,205 @@
+.conversation-role-view,
+.conversation-role-panel,
+.conversation-role-content {
+  min-width: 0;
+}
+
+.conversation-role-view {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
+.conversation-role-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.conversation-role-label {
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+}
+
+.conversation-role-toggle {
+  min-height: 32px;
+  padding: 4px 8px;
+  border-color: transparent;
+  background: transparent;
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.conversation-role-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation-role-card,
+.conversation-role-summary-item {
+  --role-accent: #58b9a8;
+}
+
+.conversation-role-card {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 2px;
+  color: var(--text);
+}
+
+.conversation-role-card:not(:last-child) {
+  border-block-end: 1px solid var(--line);
+}
+
+.conversation-role-card[data-role="planner"],
+.conversation-role-summary-item[data-role="planner"] {
+  --role-accent: #a99af2;
+}
+
+.conversation-role-card[data-role="worker"],
+.conversation-role-summary-item[data-role="worker"] {
+  --role-accent: #55a7e8;
+}
+
+.conversation-role-card[data-role="reviewer"],
+.conversation-role-summary-item[data-role="reviewer"] {
+  --role-accent: #e0ac4f;
+}
+
+.conversation-role-card.is-failed,
+.conversation-role-summary-item.is-failed {
+  --role-accent: #ffb4ab;
+}
+
+.conversation-role-avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-block-start: 2px;
+  border: 1px solid color-mix(in srgb, var(--role-accent) 22%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--role-accent) 8%, transparent);
+  color: var(--role-accent);
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+}
+
+.conversation-role-summary-strip {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.conversation-role-summary-strip .conversation-role-avatar {
+  margin-block-start: 0;
+}
+
+.conversation-activity[open] .conversation-role-summary-strip,
+.conversation-activity.has-role-summary:not([open])
+  .conversation-activity-current {
+  display: none;
+}
+
+.conversation-activity.has-role-summary:not([open])
+  > .conversation-activity-summary {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 6px 10px;
+}
+
+.conversation-activity.has-role-summary:not([open])
+  .conversation-activity-heading {
+  max-width: 100%;
+}
+
+.conversation-activity.has-role-summary:not([open])
+  .conversation-activity-facts {
+  max-width: 100%;
+  margin-inline-start: auto;
+  overflow-wrap: anywhere;
+}
+
+.conversation-role-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  line-height: 1.4;
+}
+
+.conversation-role-title {
+  color: var(--text-strong);
+  font-size: var(--font-size-md);
+  font-weight: 650;
+}
+
+.conversation-role-responsibility {
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.conversation-role-active {
+  align-self: center;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text);
+  animation: conversation-role-pulse 1600ms ease-in-out infinite;
+}
+
+.conversation-role-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  margin: 2px 0 0;
+  font-size: var(--font-size-md);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.conversation-role-action-label,
+.conversation-role-error {
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+}
+
+.conversation-role-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  margin: 0;
+  padding: 0;
+  color: var(--muted-2);
+  font-size: var(--font-size-xs);
+  list-style: none;
+}
+
+.conversation-role-fact {
+  overflow-wrap: anywhere;
+}
+
+@keyframes conversation-role-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-role-active {
+    animation: none;
+  }
+}

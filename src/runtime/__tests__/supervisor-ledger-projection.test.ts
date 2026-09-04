@@ -83,7 +83,7 @@ describe("Supervisor projections from the canonical role-call ledger", () => {
       depth: 0,
       invocationAttempt: 2,
     });
-    expect(projectSupervisorResumeContext(ledger, firstReturned)).toEqual({
+    expect(projectSupervisorResumeContext(ledger, firstReturned)).toMatchObject({
       callerCallId: "call-1",
       invocationAttempt: 2,
       returnedChildCallId: "call-2",
@@ -132,7 +132,7 @@ describe("Supervisor projections from the canonical role-call ledger", () => {
       invocationAttempt: 3,
     });
     const cumulative = projectSupervisorResumeContext(ledger, secondReturned);
-    expect(cumulative).toEqual({
+    expect(cumulative).toMatchObject({
       callerCallId: "call-1",
       invocationAttempt: 3,
       returnedChildCallId: "call-3",

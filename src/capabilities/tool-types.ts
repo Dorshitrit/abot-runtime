@@ -178,7 +178,7 @@ export type ToolRequestAttachment = Readonly<{
   size?: number;
 }>;
 
-/** Minimal config-filtered tool fact projected to plugin execution only. */
+/** Minimal config-filtered tool fact; consumers project it for their own context. */
 export type ToolAvailabilityEntry = Readonly<{
   toolName: string;
   operationId: string;

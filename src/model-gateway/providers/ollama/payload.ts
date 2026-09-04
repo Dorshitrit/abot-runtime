@@ -63,8 +63,6 @@ function applyFormatProjection(params: {
 function applyGenerationOptions(params: {
   payload: Record<string, unknown>;
   invocation: ResolvedModelInvocation;
-  effectiveFormat?: ModelGatewayFormat;
-  useStructuredOutputCeiling: boolean;
   outputTokenLimit?: number;
 }): void {
   params.payload.options = buildOllamaOptions({
@@ -75,10 +73,6 @@ function applyGenerationOptions(params: {
     derivedNumPredict: deriveOllamaNumPredict({
       payload: params.payload,
       invocation: params.invocation,
-      ...(params.effectiveFormat
-        ? { effectiveFormat: params.effectiveFormat }
-        : {}),
-      useStructuredOutputCeiling: params.useStructuredOutputCeiling,
       ...(params.outputTokenLimit !== undefined
         ? { outputTokenLimit: params.outputTokenLimit }
         : {}),
@@ -128,9 +122,6 @@ export function buildOllamaPayload(
   applyGenerationOptions({
     payload,
     invocation,
-    ...(effectiveFormat ? { effectiveFormat } : {}),
-    useStructuredOutputCeiling:
-      !invocation.profile.supportsThinking || invocation.think === "none",
     ...(outputTokenLimit !== undefined ? { outputTokenLimit } : {}),
   });
   return payload;
@@ -170,8 +161,6 @@ export function buildOllamaRawPayload(
   applyGenerationOptions({
     payload,
     invocation,
-    ...(effectiveFormat ? { effectiveFormat } : {}),
-    useStructuredOutputCeiling: false,
     ...(outputTokenLimit !== undefined ? { outputTokenLimit } : {}),
   });
   return payload;

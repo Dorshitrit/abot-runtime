@@ -1,6 +1,7 @@
 import {
   isRoleCallWorkingDirectoryRoleId,
   normalizeRoleCallWorkingDirectory,
+  normalizeRoleCallResultReceipt,
   parseRoleCallPlanBinding,
   parseRoleCallWorkerCapabilityScope,
 } from "../../role-calls/index.js";
@@ -25,9 +26,15 @@ export function normalizeRoleExecutorActivationResult<TValue>(
     return { ok: false, issueCode: "result_not_object" };
   }
   if (input.kind === "terminal") {
+    const receipt = normalizeRoleCallResultReceipt(input.receipt);
     if (
-      !hasExactKeys(input, ["kind", "outcome", "summary"], ["value"]) ||
-      (input.outcome !== "completed" && input.outcome !== "failed")
+      !hasExactKeys(
+        input,
+        ["kind", "outcome", "summary"],
+        ["receipt", "value"],
+      ) ||
+      (input.outcome !== "completed" && input.outcome !== "failed") ||
+      receipt === null
     ) {
       return { ok: false, issueCode: "terminal_shape_invalid" };
     }
@@ -44,6 +51,7 @@ export function normalizeRoleExecutorActivationResult<TValue>(
         kind: "terminal",
         outcome: input.outcome,
         summary: input.summary.trim(),
+        ...(receipt ? { receipt } : {}),
         ...(input.value !== undefined ? { value: input.value } : {}),
       }) as RoleExecutionResult<TValue>,
     };

@@ -41,6 +41,7 @@ import {
   type RoleCapabilityExecution,
 } from "./contracts.js";
 import { validateRoleCallPlans } from "./plan.js";
+import { isRoleCallResultReceiptValidForStoredResult } from "./result-receipt.js";
 import { findRoleActivationBudgetIssue } from "./activation-budget.js";
 import { isRoleCallWorkerCapabilityScope } from "./worker-capability-scope.js";
 import {
@@ -271,7 +272,13 @@ export function validateRoleCallState(
       producer.status !== "completed" ||
       producer.roleId !== result.roleId ||
       (result.outcome !== "completed" && result.outcome !== "failed") ||
-      !isBoundedText(result.summary, policy.limits.maxResultChars)
+      !isBoundedText(result.summary, policy.limits.maxResultChars) ||
+      !isRoleCallResultReceiptValidForStoredResult({
+        receipt: result.receipt,
+        producer,
+        result,
+        policy, state,
+      })
     ) {
       issues.push(
         issue(

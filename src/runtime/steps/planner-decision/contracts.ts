@@ -7,17 +7,12 @@ import {
   type RoleCallPlanBinding,
   type RoleCallWorkerCapabilityScope,
 } from "../../orchestration/role-calls/index.js";
-import {
-  isRuntimeDelegateRoleId,
-  RUNTIME_DELEGATE_ROLE_IDS,
-  type RuntimeDelegateRoleId,
-} from "../../orchestration/roles.js";
-
 export const PLANNER_DECISION_MODEL_STEP = MODEL_STEPS.PLANNER_DECISION;
 export const PLANNER_ROLE_ID = "planner" as const;
-export const PLANNER_CHILD_ROLE_IDS = RUNTIME_DELEGATE_ROLE_IDS;
+export const PLANNER_CHILD_ROLE_IDS = Object.freeze(["worker"] as const);
 export const PLANNER_OBJECTIVE_MAX_LENGTH = ROLE_CALL_OBJECTIVE_MAX_LENGTH;
 export const PLANNER_RESULT_MAX_LENGTH = ROLE_CALL_RESULT_MAX_LENGTH;
+export const PLANNER_DISPATCH_ITEM_COUNT = 1;
 export const PLANNER_DECISION_ACTIONS = Object.freeze([
   "return_result",
   "return_failure",
@@ -26,7 +21,7 @@ export const PLANNER_DECISION_ACTIONS = Object.freeze([
 export type PlannerDecisionAction = (typeof PLANNER_DECISION_ACTIONS)[number];
 export type PlannerDecisionSelectionKind = PlannerDecisionAction;
 
-export type PlannerChildRoleId = RuntimeDelegateRoleId;
+export type PlannerChildRoleId = (typeof PLANNER_CHILD_ROLE_IDS)[number];
 
 export type PlannerReturnResultDecision = Readonly<{
   action: "return_result";
@@ -44,19 +39,13 @@ type PlannerInvokeRoleDecisionBase = Readonly<{
   plannerPlan?: RoleCallPlanBinding;
 }>;
 
-export type PlannerInvokeRoleDecision =
-  | Readonly<
-      PlannerInvokeRoleDecisionBase & {
-        roleId: "worker";
-        workingDirectory: string;
-        workerCapabilityScope?: RoleCallWorkerCapabilityScope;
-      }
-    >
-  | Readonly<
-      PlannerInvokeRoleDecisionBase & {
-        roleId: Exclude<PlannerChildRoleId, "worker">;
-      }
-    >;
+export type PlannerInvokeRoleDecision = Readonly<
+  PlannerInvokeRoleDecisionBase & {
+    roleId: "worker";
+    workingDirectory: string;
+    workerCapabilityScope?: RoleCallWorkerCapabilityScope;
+  }
+>;
 
 export type PlannerDecisionPlanContext =
   | Readonly<{
@@ -119,7 +108,7 @@ export type PlannerDecisionDiagnosticContext = Readonly<{
 export function isPlannerChildRoleId(
   value: unknown,
 ): value is PlannerChildRoleId {
-  return isRuntimeDelegateRoleId(value);
+  return value === "worker";
 }
 
 export function projectPlannerDecisionCallIdentity(

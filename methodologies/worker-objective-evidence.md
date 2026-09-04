@@ -36,3 +36,15 @@ targets against the frozen directory. Only when no narrower canonical working
 directory is supplied should a target include the project-root prefix itself.
 `workingDirectory: "."` is the configured agent work root, not a named project
 root, so a target under a named project retains that project-directory segment.
+
+For an existing-project mutation, target identity and current target content
+are separate inputs. If the exact operation target is not established by the
+assignment or canonical supplied evidence, use an offered bounded observation
+within `workingDirectory` before selecting the mutation. Never infer target
+identity from conversation history or a name. Choose `return_failure` only when
+no listed capability can establish the missing identity.
+
+Once the exact target is established, do not inspect it again solely to recover
+its content when the selected mutation capability mechanically supplies current
+target context to authoring or execution. That context cannot discover, select,
+or validate target identity.

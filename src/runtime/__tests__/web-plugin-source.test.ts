@@ -108,20 +108,6 @@ describe("web plugin entrypoint", () => {
     ]);
   });
 
-  test("fails web_search clearly and safely when the API key is absent", async () => {
-    const get = vi.fn();
-    const plugin = createWebPlugin(context(), { httpClient: { get } });
-
-    const result = await plugin.handlers.web_search!({ query: "current info" });
-
-    expect(result).toMatchObject({
-      ok: false,
-      errorCode: "web_search_api_key_missing",
-      error: expect.stringContaining("BRAVE_SEARCH_API_KEY"),
-    });
-    expect(get).not.toHaveBeenCalled();
-  });
-
   test("registers both capabilities when a non-empty API key exists", () => {
     const plugin = createWebPlugin(context("test-secret"), {
       httpClient: { get: vi.fn() },

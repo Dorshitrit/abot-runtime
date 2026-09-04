@@ -2,13 +2,13 @@ import {
   failureFromError,
   failureResult,
   readBoundedInteger,
-  successResult,
   type RuntimePluginEntrypoint,
   type RuntimePluginLoadContext,
 } from "../../../src/plugin-sdk/index.js";
 
 import { isWebPluginError } from "./errors.js";
-import { createWebFetchService, formatFetchedPages } from "./fetch-service.js";
+import { createWebFetchService } from "./fetch-service.js";
+import { buildFetchPresentation } from "./fetch-presentation.js";
 import { WEB_LIMITS } from "./limits.js";
 import {
   parseFetchParams,
@@ -20,13 +20,18 @@ import {
   createPublicHttpClient,
   type PublicHttpClient,
 } from "./public-http.js";
-import { createBraveSearchService } from "./search-service.js";
+import { selectWebSearchService } from "./search-service-selector.js";
+import { projectLightSearchEventMeta } from "./light/search-metadata.js";
+import { lightSearchFailureResult } from "./light/search-unavailable.js";
+import { successWithSourceReceipts } from "./source-receipt-budget.js";
 
 export type WebPluginDependencies = Readonly<{
   httpClient?: PublicHttpClient;
 }>;
 
 function failure(error: unknown, operation: string) {
+  const lightFailure = lightSearchFailureResult(error);
+  if (lightFailure) return lightFailure;
   if (isWebPluginError(error)) {
     return failureResult({
       errorCode: error.code,
@@ -54,11 +59,12 @@ export function createWebPlugin(
     maximum: 10_000,
     defaultValue: WEB_LIMITS.retryBaseMs,
   });
-  const searchService = createBraveSearchService({
+  const searchService = selectWebSearchService({
     apiKey: braveApiKey,
     retryBaseMs,
     httpClient,
     fetchService,
+    lightConfig: context.config?.light,
   });
 
   const handlers: RuntimePluginEntrypoint["handlers"] = {
@@ -69,25 +75,29 @@ export function createWebPlugin(
           urls,
           executionContext?.abortSignal,
         );
-        return successResult({
-          output: formatFetchedPages(pages),
-          progress: true,
-          producedNewInformation: true,
-          data: {
-            hasData: true,
-            itemCount: pages.length,
-            eventMeta: {
-              urls: pages.map(({ finalUrl }) => finalUrl),
-              partialUrls: pages
-                .filter(({ partialContent }) => partialContent)
-                .map(({ finalUrl }) => finalUrl),
-            },
-            observationMeta: {
-              kind: "volatile_external",
-              carryPolicy: "never",
+        const presentation = buildFetchPresentation(pages);
+        return successWithSourceReceipts(
+          {
+            output: presentation.output,
+            progress: true,
+            producedNewInformation: true,
+            data: {
+              hasData: true,
+              itemCount: pages.length,
+              eventMeta: {
+                urls: pages.map(({ finalUrl }) => finalUrl),
+                partialUrls: pages
+                  .filter(({ partialContent }) => partialContent)
+                  .map(({ finalUrl }) => finalUrl),
+              },
+              observationMeta: {
+                kind: "volatile_external",
+                carryPolicy: "never",
+              },
             },
           },
-        });
+          { version: 1, operation: "fetch", sources: presentation.sources },
+        );
       } catch (error) {
         return failure(error, "web_fetch");
       }
@@ -99,43 +109,47 @@ export function createWebPlugin(
           queries,
           executionContext?.abortSignal,
         );
-        return successResult({
-          output: search.output,
-          progress: search.hits.length > 0,
-          producedNewInformation: search.hits.length > 0,
-          data: {
-            hasData: search.hits.length > 0,
-            itemCount: search.hits.length,
-            eventMeta: {
-              query: queries[0],
-              queries,
-              urls: search.hits.map(({ url }) => url),
-              fetchedUrls: search.sourceFetches.flatMap(({ page }) =>
-                page ? [page.finalUrl] : [],
-              ),
-              partialFetchedUrls: search.sourceFetches.flatMap(({ page }) =>
-                page?.partialContent ? [page.finalUrl] : [],
-              ),
-              sourceFetchErrors: search.sourceFetches.flatMap(
-                ({ hit, errorCode, error }) =>
-                  error
-                    ? [
-                        {
-                          url: hit.url,
-                          errorCode,
-                          error,
-                        },
-                      ]
-                    : [],
-              ),
-              coverage: search.coverage,
-            },
-            observationMeta: {
-              kind: "volatile_external",
-              carryPolicy: "never",
+        return successWithSourceReceipts(
+          {
+            output: search.output,
+            progress: search.hits.length > 0,
+            producedNewInformation: search.hits.length > 0,
+            data: {
+              hasData: search.hits.length > 0,
+              itemCount: search.hits.length,
+              eventMeta: {
+                query: queries[0],
+                queries,
+                urls: search.hits.map(({ url }) => url),
+                fetchedUrls: search.sourceFetches.flatMap(({ page }) =>
+                  page ? [page.finalUrl] : [],
+                ),
+                partialFetchedUrls: search.sourceFetches.flatMap(({ page }) =>
+                  page?.partialContent ? [page.finalUrl] : [],
+                ),
+                sourceFetchErrors: search.sourceFetches.flatMap(
+                  ({ hit, errorCode, error }) =>
+                    error
+                      ? [
+                          {
+                            url: hit.url,
+                            errorCode,
+                            error,
+                          },
+                        ]
+                      : [],
+                ),
+                coverage: search.coverage,
+                ...projectLightSearchEventMeta(search.lightSearch),
+              },
+              observationMeta: {
+                kind: "volatile_external",
+                carryPolicy: "never",
+              },
             },
           },
-        });
+          search.webSources,
+        );
       } catch (error) {
         return failure(error, "web_search");
       }

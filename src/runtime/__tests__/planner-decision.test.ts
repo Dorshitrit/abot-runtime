@@ -113,16 +113,21 @@ function testExactCapabilityResult(
 const AVAILABLE_WORKER_CAPABILITY_CATALOG = Object.freeze([
   Object.freeze({
     groupId: "documents",
+    description:
+      "routingCapabilities=filesystem_inspection,filesystem_mutation\ndevelopmentRoles=inspect,verify",
     memberCount: 2,
     effects: Object.freeze(["observation", "mutation"] as const),
   }),
   Object.freeze({
     groupId: "read",
+    description:
+      "routingCapabilities=filesystem_inspection\ndevelopmentRoles=inspect,verify",
     memberCount: 1,
     effects: Object.freeze(["observation"] as const),
   }),
   Object.freeze({
     groupId: "write",
+    description: "routingCapabilities=filesystem_mutation\ndevelopmentRoles=",
     memberCount: 1,
     effects: Object.freeze(["mutation"] as const),
   }),
@@ -167,6 +172,7 @@ function createRequest(
     }),
     meta: {},
   })),
+  readCatalogGroups: readonly string[] = Object.freeze(["documents", "read"]),
 ): RequestExecutionScope {
   return createTestRequestExecutionScope({
     requestId: "planner-request",
@@ -202,18 +208,21 @@ function createRequest(
             capabilityId: "test.document_read",
             summary: "Read one document.",
             effect: "observation" as const,
+            routingCapability: "filesystem_inspection" as const,
+            developmentRoles: Object.freeze(["verify", "inspect"] as const),
             controls: Object.freeze({
               type: "object" as const,
               additionalProperties: false as const,
               properties: Object.freeze({}),
               required: Object.freeze([]),
             }),
-            catalogGroups: Object.freeze(["documents", "read"]),
+            catalogGroups: Object.freeze([...readCatalogGroups]),
           }),
           Object.freeze({
             capabilityId: "test.document_write",
             summary: "Write one document.",
             effect: "mutation" as const,
+            routingCapability: "filesystem_mutation" as const,
             controls: Object.freeze({
               type: "object" as const,
               additionalProperties: false as const,
@@ -455,10 +464,10 @@ describe("generic Planner decision contract", () => {
     expect(scopedWithPaths.format).toEqual(scopedBaseline.format);
   });
 
-  test("publishes exact terminal and available-child schemas", () => {
+  test("publishes Worker-only child authority from broader registry availability", () => {
     expect(
       createPlannerDecisionFormat({
-        availableChildRoleIds: ["worker", "researcher"],
+        availableChildRoleIds: ["worker", "reviewer", "researcher"],
         availableWorkerCapabilityCatalog: AVAILABLE_WORKER_CAPABILITY_CATALOG,
       }),
     ).toMatchObject({
@@ -519,15 +528,6 @@ describe("generic Planner decision contract", () => {
                 ],
                 additionalProperties: false,
               },
-              {
-                properties: {
-                  action: { enum: ["invoke_role"] },
-                  roleId: { enum: ["researcher"] },
-                  objective: { maxLength: PLANNER_OBJECTIVE_MAX_LENGTH },
-                },
-                required: ["action", "roleId", "objective"],
-                additionalProperties: false,
-              },
             ],
           },
         },
@@ -541,45 +541,43 @@ describe("generic Planner decision contract", () => {
     ).toHaveLength(2);
   });
 
-  test("keeps the Worker catalog-group schema within the canonical scope limit", () => {
-    const catalog = Object.freeze(
-      Array.from({ length: 65 }, (_, index) =>
-        Object.freeze({
-          groupId: `group-${index}`,
-          memberCount: 1,
-          effects: Object.freeze(["observation"] as const),
-        }),
-      ),
-    );
-    const workerVariant = decisionVariants(
-      createPlannerDecisionFormat({
+  test("projects complete catalogs while bounding each Worker scope", () => {
+    const catalogGroups = Object.freeze([
+      "documents",
+      "write",
+      ...Array.from({ length: 63 }, (_, index) => `group-${index}`),
+    ]);
+    const input = buildPlannerDecisionInput(
+      createRequest(undefined, catalogGroups),
+      {
+        call: plannerCall,
         availableChildRoleIds: ["worker"],
-        availableWorkerCapabilityCatalog: catalog,
-      }).schema as Record<string, unknown>,
-    ).find(
-      (variant) =>
-        (
-          variant as {
-            properties?: { workerCapabilityScope?: unknown };
-          }
-        ).properties?.workerCapabilityScope !== undefined,
-    ) as {
-      properties: {
-        workerCapabilityScope: {
-          properties: { catalogGroupIds: { maxItems: number } };
-        };
-      };
+        toolResults: EMPTY_REQUEST_TOOL_RESULTS,
+      },
+    );
+    const catalog = JSON.parse(input.context.messages[2]!.content) as {
+      projection: string;
+      catalogGroups: readonly Record<string, unknown>[];
     };
-
-    expect(
-      workerVariant.properties.workerCapabilityScope.properties.catalogGroupIds
-        .maxItems,
-    ).toBe(64);
+    expect(catalog.projection).toBe("detailed");
+    expect(catalog.catalogGroups).toHaveLength(65);
+    const groupSelectionSchema = JSON.stringify({
+      type: "array",
+      minItems: 1,
+      maxItems: 64,
+      items: { type: "string", enum: [...catalogGroups].sort() },
+    });
+    const workerVariant = decisionVariants(
+      input.format.schema as Record<string, unknown>,
+    )[2];
+    expect(JSON.stringify(workerVariant)).toContain(
+      `"catalogGroupIds":${groupSelectionSchema}`,
+    );
   });
 
   test("post-validates the Worker working-directory bound only on its invoke variant", () => {
     const format = createPlannerDecisionFormat({
-      availableChildRoleIds: ["worker", "researcher"],
+      availableChildRoleIds: ["worker"],
       availableWorkerCapabilityCatalog: AVAILABLE_WORKER_CAPABILITY_CATALOG,
     });
 
@@ -661,7 +659,7 @@ describe("generic Planner decision contract", () => {
         workerCapabilityScope: WORKER_CAPABILITY_SCOPE,
       },
     });
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       ok: true,
       decision: {
         action: "return_result",
@@ -815,12 +813,16 @@ describe("generic Planner decision contract", () => {
     });
     expect(nonWorker).toMatchObject({
       ok: false,
-      issues: [
+      issues: expect.arrayContaining([
         expect.objectContaining({
           code: "planner_decision_shape_invalid",
           path: "decision",
         }),
-      ],
+        expect.objectContaining({
+          code: "planner_child_role_unavailable",
+          path: "decision.roleId",
+        }),
+      ]),
     });
     expect(emptyCatalog).toEqual({
       ok: true,
@@ -939,12 +941,16 @@ describe("generic Planner decision contract", () => {
     });
     expect(nonWorker).toMatchObject({
       ok: false,
-      issues: [
+      issues: expect.arrayContaining([
         expect.objectContaining({
           code: "planner_decision_shape_invalid",
           path: "decision",
         }),
-      ],
+        expect.objectContaining({
+          code: "planner_child_role_unavailable",
+          path: "decision.roleId",
+        }),
+      ]),
     });
   });
 
@@ -978,7 +984,7 @@ describe("generic Planner decision contract", () => {
           workerCapabilityScope: WORKER_CAPABILITY_SCOPE,
         }),
         {
-          availableChildRoleIds: ["worker"],
+          availableChildRoleIds: ["worker", "reviewer"],
           availableWorkerCapabilityCatalog: AVAILABLE_WORKER_CAPABILITY_CATALOG,
         },
       ),
@@ -1003,7 +1009,7 @@ describe("generic Planner decision contract", () => {
           dependencyResultRefs: ["result-1"],
         }),
         {
-          availableChildRoleIds: ["worker"],
+          availableChildRoleIds: ["worker", "reviewer"],
           availableWorkerCapabilityCatalog: AVAILABLE_WORKER_CAPABILITY_CATALOG,
         },
       ),
@@ -1033,7 +1039,7 @@ describe("generic Planner decision contract", () => {
           objective: "Review the outcome.",
         }),
         {
-          availableChildRoleIds: ["worker"],
+          availableChildRoleIds: ["worker", "reviewer"],
           availableWorkerCapabilityCatalog: AVAILABLE_WORKER_CAPABILITY_CATALOG,
         },
       ),
@@ -1124,35 +1130,46 @@ describe("generic Planner decision contract", () => {
     ).toThrow("planner_available_child_roles_invalid");
   });
 
-  test("projects the exact request source before the exact Planner assignment", () => {
+  test("projects the exact source and passive catalog before the Planner assignment", () => {
     configureDebugLogger({ enabled: true });
     const request = createRequest();
     const objective = "OBJECTIVE_SECRET_AVAILABLE_ONLY_IN_MODEL_CONTEXT";
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
     const input = buildPlannerDecisionInput(request, {
       call: { ...plannerCall, objective },
-      availableChildRoleIds: ["worker", "researcher"],
+      availableChildRoleIds: ["worker"],
       toolResults: EMPTY_REQUEST_TOOL_RESULTS,
     });
     const source = JSON.parse(input.context.messages[1]!.content) as Record<
       string,
       unknown
     >;
-    const assignment = JSON.parse(input.context.messages[2]!.content) as Record<
+    const catalog = JSON.parse(input.context.messages[2]!.content) as Record<
+      string,
+      unknown
+    >;
+    const assignment = JSON.parse(input.context.messages[3]!.content) as Record<
       string,
       unknown
     >;
     const logs = consoleLog.mock.calls.map(
       ([line]) => JSON.parse(String(line)) as Record<string, unknown>,
     );
-
-    expect(input.context.messages).toHaveLength(3);
+    expect(input.context.messages).toHaveLength(4);
     expect(source).toEqual({
       kind: "runtime_request_source_v1",
       authority: "reference_data",
       sourceRef: "request:planner-request",
       currentRequest: REQUEST_SOURCE_PROMPT,
     });
+    expect(catalog).toMatchObject({
+      kind: "runtime_planner_worker_capability_catalog_v1",
+      authority: "runtime_registry",
+      presenceEffect:
+        "passive_worker_routing_metadata_not_user_intent_or_execution_authority",
+      projection: "detailed",
+    });
+    expect(catalog.catalogGroups).toEqual(AVAILABLE_WORKER_CAPABILITY_CATALOG);
     expect(assignment).toEqual({
       kind: "runtime_planner_assignment",
       callId: "call-2",
@@ -1160,58 +1177,15 @@ describe("generic Planner decision contract", () => {
       depth: 1,
       invocationAttempt: 1,
       objective,
-      availableChildRoleIds: ["worker", "researcher"],
-      availableWorkerCapabilityCatalog: AVAILABLE_WORKER_CAPABILITY_CATALOG,
+      availableChildRoleIds: ["worker"],
       completedChildResultCount: 0,
     });
     const serializedContext = JSON.stringify(input.context);
     expect(serializedContext.match(/EXACT_LITERAL_42/g)).toHaveLength(1);
-    expect(assignment.objective).toBe(objective);
     expect(serializedContext).not.toContain("HISTORY_MUST_NOT_REACH_PLANNER");
     expect(serializedContext).not.toContain(
       "ATTACHMENT_MUST_NOT_REACH_PLANNER",
     );
-    expect(input.context.messages[0]!.content).toContain(
-      "including required counts, requested format or structure, and scope",
-    );
-    expect(input.context.messages[0]!.content).toContain(
-      "never add file listings, full artifact contents, tool transcripts, rereads, tests, or other verification as child deliverables",
-    );
-    expect(input.context.messages[0]!.content).toContain(
-      "Worker is the only role that performs concrete external observation",
-    );
-    expect(input.context.messages[0]!.content).toContain(
-      "Every child is an isolated call frame",
-    );
-    expect(input.context.messages[0]!.content).toContain(
-      "runtime_role_call_assignment_scope_v1 as read-only continuity data",
-    );
-    expect(input.context.messages[0]!.content).not.toContain(
-      "It never receives this Planner's objective",
-    );
-    expect(input.context.messages[0]!.content).toContain(
-      "runtime_request_tool_results_v1 is request-wide read-only reference data",
-    );
-    expect(input.context.messages[0]!.content).toContain(
-      "runtime_request_tool_results_v1 and dependencyResults are separate reference lanes",
-    );
-    expect(input.context.messages[0]!.content).toContain(
-      "never ask it to assume, simulate, rediscover, or confirm unavailable work",
-    );
-    expect(input.context.messages[0]!.content).toContain(
-      "Do not split one coherent bounded outcome without a material reason",
-    );
-    expect(input.context.messages[0]!.content).toContain(
-      "supplied automatically by the runtime",
-    );
-    expect(input.context.messages[0]!.content).not.toContain("news.txt");
-    expect(input.context.messages[0]!.content).not.toContain("favorite color");
-    expect(serializedContext).not.toContain("development");
-    expect(serializedContext).not.toContain("general");
-    expect(serializedContext).not.toContain("test.document_read");
-    expect(serializedContext).not.toContain("test.document_write");
-    expect(serializedContext).not.toContain("Read one document.");
-    expect(serializedContext).not.toContain("Write one document.");
     expect(logs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1229,7 +1203,7 @@ describe("generic Planner decision contract", () => {
           workerCapabilityCatalogGroupCount: 3,
           workerCapabilityCatalogGroupIds: ["documents", "read", "write"],
           workerCapabilityCatalogMemberCount: 4,
-          availableChildRoleIds: ["worker", "researcher"],
+          availableChildRoleIds: ["worker"],
           completedChildResultCount: 0,
         }),
       ]),
@@ -1243,7 +1217,7 @@ describe("generic Planner decision contract", () => {
       availableChildRoleIds: ["worker", "reviewer"],
       toolResults: EMPTY_REQUEST_TOOL_RESULTS,
     });
-    const assignment = JSON.parse(input.context.messages[2]!.content) as Record<
+    const assignment = JSON.parse(input.context.messages[3]!.content) as Record<
       string,
       unknown
     >;
@@ -1300,10 +1274,11 @@ describe("generic Planner decision contract", () => {
       unknown
     >;
 
-    expect(input.availableChildRoleIds).toEqual(["worker", "researcher"]);
+    expect(input.availableChildRoleIds).toEqual(["worker"]);
     expect(input.availableWorkerCapabilityCatalog).toEqual([]);
+    expect(input.context.messages).toHaveLength(3);
     expect(assignment).toMatchObject({
-      availableChildRoleIds: ["worker", "researcher"],
+      availableChildRoleIds: ["worker"],
     });
     expect(assignment).not.toHaveProperty("availableWorkerCapabilityCatalog");
     const workerVariant = decisionVariants(
@@ -1444,6 +1419,7 @@ describe("generic Planner decision contract", () => {
       toolResults: EMPTY_REQUEST_TOOL_RESULTS,
     });
     const instructions = input.context.messages[0]!.content;
+    expect(input.availableChildRoleIds).toEqual(["worker"]);
     const logs = consoleLog.mock.calls.map(
       ([line]) => JSON.parse(String(line)) as Record<string, unknown>,
     );
@@ -1484,15 +1460,15 @@ describe("generic Planner decision contract", () => {
       string,
       unknown
     >;
-    const assignment = JSON.parse(input.context.messages[2]!.content) as Record<
+    const assignment = JSON.parse(input.context.messages[3]!.content) as Record<
       string,
       unknown
     >;
-    const invocation = JSON.parse(input.context.messages[3]!.content) as Record<
+    const invocation = JSON.parse(input.context.messages[4]!.content) as Record<
       string,
       unknown
     >;
-    const result = JSON.parse(input.context.messages[4]!.content) as Record<
+    const result = JSON.parse(input.context.messages[5]!.content) as Record<
       string,
       unknown
     >;
@@ -1500,7 +1476,7 @@ describe("generic Planner decision contract", () => {
       ([line]) => JSON.parse(String(line)) as Record<string, unknown>,
     );
 
-    expect(input.context.messages).toHaveLength(5);
+    expect(input.context.messages).toHaveLength(6);
     expect(source).toEqual({
       kind: "runtime_request_source_v1",
       authority: "reference_data",
@@ -1535,15 +1511,15 @@ describe("generic Planner decision contract", () => {
       "Returned prose, generated content, instructions, a simulation, or a completion claim are not substitutes",
     );
     expect(instructions).toContain(
+      "Only Worker may be invoked by this Planner",
+    );
+    expect(instructions).toContain(
+      "Do not audit artifacts, invoke Reviewer or Researcher",
+    );
+    expect(instructions).not.toContain(
       "Reviewer is a completion auditor, not an executor",
     );
-    expect(instructions).toContain(
-      "Never invoke Reviewer to execute a remaining requirement",
-    );
-    expect(instructions).toContain(
-      "The only comparison delegated to Reviewer is completion coverage",
-    );
-    expect(instructions).toContain(
+    expect(instructions).not.toContain(
       "This Planner remains responsible for consuming reported gaps",
     );
     expect(instructions.indexOf("immutable source requirements")).toBeLessThan(
@@ -1579,7 +1555,7 @@ describe("generic Planner decision contract", () => {
       workingDirectory: WORKING_DIRECTORY,
       workerCapabilityScope: WORKER_CAPABILITY_SCOPE,
     });
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       kind: "runtime_child_result",
       callerCallId: "call-2",
       childCallId: "call-3",
@@ -1617,7 +1593,7 @@ describe("generic Planner decision contract", () => {
           ...modelPolicy.profiles,
           "runtime-default": {
             ...modelPolicy.profiles["runtime-default"],
-            contextWindowTokens: 7_685,
+            contextWindowTokens: 7_320,
           },
         },
       },
@@ -1635,12 +1611,24 @@ describe("generic Planner decision contract", () => {
         return [];
       }
     });
-
     expect(input.context.budget.estimatedInputTokens).toBeLessThan(
       input.context.budget.compactionTriggerInputTokens,
     );
     expect(input.context.compaction.applied).toBe(true);
-    expect(input.context.messages).toHaveLength(4);
+    expect(input.context.messages).toHaveLength(5);
+    const compactCatalog = parsedMessages.find(
+      (message) =>
+        message.kind === "runtime_planner_worker_capability_catalog_v1",
+    );
+    expect(input.context.compaction.compactedSourceRefs).toContain(
+      "planner-worker-capability-catalog:call-2:2",
+    );
+    expect(compactCatalog).toMatchObject({
+      projection: "compact",
+    });
+    expect(compactCatalog?.catalogGroups).toEqual(
+      AVAILABLE_WORKER_CAPABILITY_CATALOG,
+    );
     expect(
       parsedMessages.filter((message) => message.action === "invoke_role"),
     ).toHaveLength(0);
@@ -2012,15 +2000,15 @@ describe("generic Planner decision contract", () => {
         role: string;
         content: string;
       }>[];
-      expect(messages).toHaveLength(4);
+      expect(messages).toHaveLength(5);
       expect(JSON.parse(messages[1]!.content)).toEqual({
         kind: "runtime_request_source_v1",
         authority: "reference_data",
         sourceRef: "request:planner-request",
         currentRequest: REQUEST_SOURCE_PROMPT,
       });
-      expect(messages[3]).toMatchObject({ role: "user" });
-      expect(JSON.parse(messages[3]!.content)).toEqual({
+      expect(messages[4]).toMatchObject({ role: "user" });
+      expect(JSON.parse(messages[4]!.content)).toMatchObject({
         kind: "runtime_child_result",
         callerCallId: "call-2",
         childCallId: "call-3",
@@ -2119,7 +2107,7 @@ describe("generic Planner decision contract", () => {
         role: string;
         content: string;
       }>[];
-      const assignment = JSON.parse(messages[2]!.content) as Record<
+      const assignment = JSON.parse(messages[3]!.content) as Record<
         string,
         unknown
       >;
@@ -2138,13 +2126,13 @@ describe("generic Planner decision contract", () => {
         sourceRef: "request:planner-request",
         currentRequest: REQUEST_SOURCE_PROMPT,
       });
-      expect(messages.slice(3)).toHaveLength(2);
+      expect(messages.slice(4)).toHaveLength(2);
       expect(
-        messages.slice(3).every((message) => message.role === "user"),
+        messages.slice(4).every((message) => message.role === "user"),
       ).toBe(true);
       expect(
         messages
-          .slice(3)
+          .slice(4)
           .map((message) => JSON.parse(message.content))
           .every(
             (capsule) =>

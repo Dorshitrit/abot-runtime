@@ -22,10 +22,7 @@ import {
   type RoleCallLedgerHead,
   type RoleChildReturnContext,
 } from "../../orchestration/role-calls/index.js";
-import {
-  projectWorkerCapabilityCatalogGroups,
-  type WorkerCapabilityCatalogGroup,
-} from "../../orchestration/worker-capabilities/index.js";
+import type { RuntimeDelegateRoleId } from "../../orchestration/roles.js";
 import {
   resolveRequestWorkerCapabilityCatalog,
   type RequestWorkerCapabilityProviderSource,
@@ -49,6 +46,11 @@ import {
   createPlannerDecisionFormat,
   normalizeAvailableChildRoleIds,
 } from "./format.js";
+import {
+  buildPlannerReferenceParts,
+  projectPlannerWorkerCapabilityCatalogGroups,
+  type PlannerWorkerCapabilityCatalogGroup,
+} from "./capability-catalog-context.js";
 import {
   normalizePlannerDecisionPlanContext,
   plannerPlanAllowsInvocation,
@@ -79,7 +81,7 @@ export function buildPlannerDecisionInput(
   request: PlannerDecisionInputRequest,
   options: Readonly<{
     call: RoleCallFrame;
-    availableChildRoleIds: readonly PlannerChildRoleId[];
+    availableChildRoleIds: readonly RuntimeDelegateRoleId[];
     toolResults: RequestToolResultsView;
     dependencyHead?: RoleCallLedgerHead;
     progress?: PlannerDecisionProgressSource;
@@ -94,7 +96,7 @@ export function buildPlannerDecisionInput(
   allowedActions: readonly PlannerDecisionSelectionKind[];
   availableChildRoleIds: readonly PlannerChildRoleId[];
   dependencyResults: readonly RoleCallDependencyResult[];
-  availableWorkerCapabilityCatalog: readonly WorkerCapabilityCatalogGroup[];
+  availableWorkerCapabilityCatalog: readonly PlannerWorkerCapabilityCatalogGroup[];
   inheritedWorkingDirectory?: string;
   planContext?: PlannerDecisionPlanContext;
   childResume?: RoleChildReturnContext;
@@ -113,7 +115,7 @@ export function buildPlannerDecisionInput(
   const availableWorkerCapabilityCatalog = configuredChildRoleIds.includes(
     "worker",
   )
-    ? projectWorkerCapabilityCatalogGroups(
+    ? projectPlannerWorkerCapabilityCatalogGroups(
         resolveRequestWorkerCapabilityCatalog(request).getDescriptors(),
       )
     : Object.freeze([]);
@@ -179,6 +181,12 @@ export function buildPlannerDecisionInput(
       ? [buildRequestToolResultsMessage(toolResultsProjection.view)]
       : []),
   ]);
+  const referenceParts = buildPlannerReferenceParts({
+    callId: callIdentity.callId,
+    invocationAttempt: callIdentity.invocationAttempt,
+    exactMessages: referenceMessages,
+    catalogGroups: availableWorkerCapabilityCatalog,
+  });
   const budget = resolveModelContextBudget({
     runnerConfig: request.runnerConfig,
     agentMode: request.agentMode,
@@ -218,14 +226,11 @@ export function buildPlannerDecisionInput(
         ? { workingDirectory: inheritedWorkingDirectory }
         : {}),
       availableChildRoleIds,
-      ...(availableWorkerCapabilityCatalog.length > 0
-        ? { availableWorkerCapabilityCatalog }
-        : {}),
       ...(dependencyResults.length > 0 ? { dependencyResults } : {}),
       ...(planContext ? { planContext } : {}),
       completedChildResultCount: childResume?.completedChildren.length ?? 0,
     }),
-    referenceMessages,
+    referenceParts,
     ...(childContinuationPart
       ? { continuationParts: [childContinuationPart] }
       : {}),
@@ -250,7 +255,10 @@ export function buildPlannerDecisionInput(
       (total, group) => total + group.memberCount,
       0,
     ),
-    referenceMessageCount: referenceMessages.length,
+    referenceMessageCount: referenceParts.reduce(
+      (total, part) => total + part.messages.length,
+      0,
+    ),
     continuationMessageCount: childContinuationPart?.messages.length ?? 0,
     completedChildResultCount: childResume?.completedChildren.length ?? 0,
     completedChildSummaryLength:

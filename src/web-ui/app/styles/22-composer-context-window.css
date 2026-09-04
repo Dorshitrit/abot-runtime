@@ -1,0 +1,90 @@
+/* Compact context usage; details do not take space in the conversation. */
+
+.composer-context-window {
+  --context-accent: #80b7ff;
+  flex: none;
+  margin-inline-start: auto;
+}
+
+.composer-context-window.rejected {
+  --context-accent: #ef9a9a;
+}
+
+.composer-context-window-button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  min-height: 32px;
+  padding: 0;
+  border-color: transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--context-accent);
+  box-shadow: none;
+}
+
+.composer-context-window-button:hover,
+.composer-context-window-button:focus-visible {
+  border-color: transparent;
+  background: rgba(95, 139, 182, 0.08);
+}
+
+.composer-context-window-ring {
+  display: block;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--context-accent) var(--context-used, 0%),
+    rgba(118, 157, 198, 0.2) 0
+  );
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 0);
+}
+
+.composer-context-window-tooltip {
+  /* Anchor to the composer controls so the bubble stays inside narrow screens. */
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 90;
+  display: grid;
+  gap: 7px;
+  width: min(320px, 100%);
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #132438;
+  color: var(--muted-2);
+  box-shadow: 0 12px 32px rgba(0, 6, 16, 0.3);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.composer-context-window-tooltip::after {
+  position: absolute;
+  right: 0;
+  bottom: -9px;
+  left: 0;
+  height: 9px;
+  content: "";
+}
+
+.composer-context-window-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text);
+  font-size: var(--font-size-md);
+}
+
+.composer-context-window-percentage {
+  color: var(--context-accent);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.composer-context-window-compaction {
+  color: #8dd7b6;
+}

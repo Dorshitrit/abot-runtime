@@ -8,11 +8,16 @@ import {
   ROLE_CALL_PLAN_ITEM_TITLE_MAX_LENGTH,
   ROLE_CALL_WORKING_DIRECTORY_MAX_LENGTH,
 } from "../../orchestration/role-calls/index.js";
+import {
+  isRuntimeDelegateRoleId,
+  type RuntimeDelegateRoleId,
+} from "../../orchestration/roles.js";
 import type { WorkerCapabilityCatalogGroup } from "../../orchestration/worker-capabilities/index.js";
 import { createWorkerCapabilityScopeDecisionContract } from "../worker-capability-scope-decision.js";
 import {
   isPlannerChildRoleId,
   PLANNER_CHILD_ROLE_IDS,
+  PLANNER_DISPATCH_ITEM_COUNT,
   PLANNER_OBJECTIVE_MAX_LENGTH,
   PLANNER_RESULT_MAX_LENGTH,
   type PlannerChildRoleId,
@@ -25,7 +30,7 @@ import {
 
 export function createPlannerDecisionFormat(
   options: Readonly<{
-    availableChildRoleIds?: readonly PlannerChildRoleId[];
+    availableChildRoleIds?: readonly RuntimeDelegateRoleId[];
     availableWorkerCapabilityCatalog?: readonly WorkerCapabilityCatalogGroup[];
     inheritedWorkingDirectory?: string;
     planContext?: PlannerDecisionPlanContext;
@@ -53,45 +58,25 @@ export function createPlannerDecisionFormat(
   const workerAvailable = availableChildRoleIds.includes("worker");
   const workingDirectoryRequired =
     options.inheritedWorkingDirectory === undefined;
-  const availableNonWorkerRoleIds = availableChildRoleIds.filter(
-    (roleId): roleId is Exclude<PlannerChildRoleId, "worker"> =>
-      roleId !== "worker",
-  );
   const canInvoke =
-    (workerAvailable || availableNonWorkerRoleIds.length > 0) &&
-    plannerPlanAllowsInvocation(planContext);
+    workerAvailable && plannerPlanAllowsInvocation(planContext);
   const selectingPlan = planContext?.mode === "select";
   const invokeVariantDefinitions = canInvoke
     ? [
-        ...(workerAvailable
-          ? [
-              Object.freeze({
-                worker: true,
-                schema: invokeRoleSchema({
-                  availableChildRoleIds: ["worker"],
-                  workingDirectoryRequired,
-                  ...(workerCapabilityScopeContract.schema
-                    ? {
-                        workerCapabilityScopeSchema:
-                          workerCapabilityScopeContract.schema,
-                      }
-                    : {}),
-                  planContext,
-                }),
-              }),
-            ]
-          : []),
-        ...(availableNonWorkerRoleIds.length > 0
-          ? [
-              Object.freeze({
-                worker: false,
-                schema: invokeRoleSchema({
-                  availableChildRoleIds: availableNonWorkerRoleIds,
-                  planContext,
-                }),
-              }),
-            ]
-          : []),
+        Object.freeze({
+          worker: true,
+          schema: invokeRoleSchema({
+            availableChildRoleIds: ["worker"],
+            workingDirectoryRequired,
+            ...(workerCapabilityScopeContract.schema
+              ? {
+                  workerCapabilityScopeSchema:
+                    workerCapabilityScopeContract.schema,
+                }
+              : {}),
+            planContext,
+          }),
+        }),
       ]
     : [];
   const variants = [
@@ -148,6 +133,9 @@ function invokeRoleSchema(params: {
   workerCapabilityScopeSchema?: Record<string, unknown>;
   planContext?: PlannerDecisionPlanContext;
 }): Record<string, unknown> {
+  const dispatchItemCount = resolveWorkerDispatchItemCount(
+    params.availableChildRoleIds,
+  );
   return exactObject({
     action: literal("invoke_role"),
     roleId: {
@@ -164,64 +152,86 @@ function invokeRoleSchema(params: {
           workerCapabilityScope: params.workerCapabilityScopeSchema,
         }
       : {}),
-    ...(params.planContext?.mode === "declare"
-      ? {
-          plan: exactObject({
-            summary: boundedText(PLANNER_OBJECTIVE_MAX_LENGTH),
-            items: {
-              type: "array",
-              minItems: 1,
-              maxItems: params.planContext.maxItems,
-              items: exactObject({
-                title: boundedText(ROLE_CALL_PLAN_ITEM_TITLE_MAX_LENGTH),
-                objective: boundedText(PLANNER_OBJECTIVE_MAX_LENGTH),
-              }),
-            },
-          }),
-          selectedItemIndexes: selectedItemIndexesSchema(
-            params.planContext.maxItems,
-          ),
-        }
-      : params.planContext?.mode === "extend"
-        ? {
-            extension: exactObject({
-              items: {
-                type: "array",
-                minItems: 1,
-                maxItems: params.planContext.maxItems,
-                items: exactObject({
-                  title: boundedText(ROLE_CALL_PLAN_ITEM_TITLE_MAX_LENGTH),
-                  objective: boundedText(PLANNER_OBJECTIVE_MAX_LENGTH),
-                }),
-              },
-            }),
-            selectedItemIndexes: selectedItemIndexesSchema(
-              params.planContext.maxItems,
-            ),
-          }
-        : params.planContext?.mode === "select"
-          ? {
-              planItemIds: {
-                type: "array",
-                minItems: 1,
-                maxItems: params.planContext.pendingItems.length,
-                items: {
-                  type: "string",
-                  enum: params.planContext.pendingItems.map(
-                    (item) => item.itemId,
-                  ),
-                },
-              },
-            }
-          : { objective: boundedText(PLANNER_OBJECTIVE_MAX_LENGTH) }),
+    ...planInvocationFields(params.planContext, dispatchItemCount),
   });
 }
 
-function selectedItemIndexesSchema(maxItems: number): Record<string, unknown> {
+function resolveWorkerDispatchItemCount(
+  availableChildRoleIds: readonly PlannerChildRoleId[],
+): number | undefined {
+  if (
+    availableChildRoleIds.length === 1 &&
+    availableChildRoleIds[0] === "worker"
+  ) {
+    return PLANNER_DISPATCH_ITEM_COUNT;
+  }
+  return undefined;
+}
+
+function planInvocationFields(
+  planContext: PlannerDecisionPlanContext | undefined,
+  dispatchItemCount: number | undefined,
+): Record<string, unknown> {
+  if (!planContext) {
+    return { objective: boundedText(PLANNER_OBJECTIVE_MAX_LENGTH) };
+  }
+  switch (planContext.mode) {
+    case "declare":
+      return {
+        plan: exactObject({
+          summary: boundedText(PLANNER_OBJECTIVE_MAX_LENGTH),
+          items: planItemsSchema(planContext.maxItems),
+        }),
+        selectedItemIndexes: selectedItemIndexesSchema(
+          planContext.maxItems,
+          dispatchItemCount,
+        ),
+      };
+    case "extend":
+      return {
+        extension: exactObject({
+          items: planItemsSchema(planContext.maxItems),
+        }),
+        selectedItemIndexes: selectedItemIndexesSchema(
+          planContext.maxItems,
+          dispatchItemCount,
+        ),
+      };
+    case "select":
+      return {
+        planItemIds: {
+          type: "array",
+          minItems: dispatchItemCount ?? 1,
+          maxItems: dispatchItemCount ?? planContext.pendingItems.length,
+          items: {
+            type: "string",
+            enum: planContext.pendingItems.map((item) => item.itemId),
+          },
+        },
+      };
+  }
+}
+
+function planItemsSchema(maxItems: number): Record<string, unknown> {
   return {
     type: "array",
     minItems: 1,
     maxItems,
+    items: exactObject({
+      title: boundedText(ROLE_CALL_PLAN_ITEM_TITLE_MAX_LENGTH),
+      objective: boundedText(PLANNER_OBJECTIVE_MAX_LENGTH),
+    }),
+  };
+}
+
+function selectedItemIndexesSchema(
+  maxItems: number,
+  dispatchItemCount: number | undefined,
+): Record<string, unknown> {
+  return {
+    type: "array",
+    minItems: dispatchItemCount ?? 1,
+    maxItems: dispatchItemCount ?? maxItems,
     items: {
       type: "integer",
       minimum: 0,
@@ -291,19 +301,21 @@ function invokeRoleMaxLengthConstraints(
 }
 
 export function normalizeAvailableChildRoleIds(
-  values: readonly PlannerChildRoleId[],
+  values: readonly RuntimeDelegateRoleId[],
 ): readonly PlannerChildRoleId[] {
   if (!Array.isArray(values)) {
     throw new Error("planner_available_child_roles_invalid");
   }
-  const unique = new Set<PlannerChildRoleId>();
+  const unique = new Set<RuntimeDelegateRoleId>();
+  const available: PlannerChildRoleId[] = [];
   for (const value of values) {
-    if (!isPlannerChildRoleId(value) || unique.has(value)) {
+    if (!isRuntimeDelegateRoleId(value) || unique.has(value)) {
       throw new Error("planner_available_child_roles_invalid");
     }
     unique.add(value);
+    if (isPlannerChildRoleId(value)) available.push(value);
   }
-  return Object.freeze([...unique]);
+  return Object.freeze(available);
 }
 
 function exactObject(

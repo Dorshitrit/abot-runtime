@@ -27,7 +27,19 @@
   --font-display:
     "Segoe UI Variable Display", "Segoe UI", Inter, system-ui, sans-serif;
   --font-mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
-  --sessions-panel-width: 282px;
+  /* Readable typography shared by every workspace, including mobile. */
+  --font-size-xs: 0.875rem;
+  --font-size-sm: 0.9375rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.0625rem;
+  --font-size-xl: 1.125rem;
+  --font-size-2xl: 1.25rem;
+  --font-size-3xl: 1.375rem;
+  --font-size-4xl: 1.5rem;
+  --font-size-5xl: 1.625rem;
+  --font-size-6xl: 1.875rem;
+  --font-size-7xl: 2.25rem;
+  --sessions-panel-width: 320px;
   --chat-content-width: 900px;
   --scrollbar-thumb: rgba(95, 127, 158, 0.34);
   --scrollbar-thumb-active: rgba(118, 157, 194, 0.54);
@@ -56,7 +68,7 @@ body {
     var(--bg);
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 14px;
+  font-size: var(--font-size-xl);
 }
 
 button,
@@ -72,7 +84,7 @@ textarea {
 
 button {
   min-height: 36px;
-  font-size: 13px;
+  font-size: var(--font-size-lg);
   font-weight: 620;
   transition:
     border-color 150ms ease,

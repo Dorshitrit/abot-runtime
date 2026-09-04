@@ -15,6 +15,7 @@ import {
   type RoleCapabilityObservationBatchEntry,
 } from "./contracts.js";
 import { parseRoleCallPlanBinding } from "./plan.js";
+import { normalizeRoleCallResultReceipt } from "./result-receipt.js";
 import { parseRoleCallWorkerCapabilityScope } from "./worker-capability-scope.js";
 import {
   isRoleCallWorkingDirectoryRoleId,
@@ -131,20 +132,26 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
           }
         : { ok: false, code: "invalid_command" };
     }
-    case "return_child":
-      return exactKeys(input, [
-        "authority",
-        "type",
-        "callerCallId",
-        "childCallId",
-        "outcome",
-        "summary",
-      ]) &&
+    case "return_child": {
+      const receipt = normalizeRoleCallResultReceipt(input.receipt);
+      return exactKeys(
+        input,
+        [
+          "authority",
+          "type",
+          "callerCallId",
+          "childCallId",
+          "outcome",
+          "summary",
+        ],
+        ["receipt"],
+      ) &&
         input.authority === "runtime" &&
         typeof input.callerCallId === "string" &&
         typeof input.childCallId === "string" &&
         (input.outcome === "completed" || input.outcome === "failed") &&
-        typeof input.summary === "string"
+        typeof input.summary === "string" &&
+        receipt !== null
         ? {
             ok: true,
             value: {
@@ -154,9 +161,11 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
               childCallId: input.childCallId,
               outcome: input.outcome,
               summary: input.summary,
+              ...(receipt ? { receipt } : {}),
             },
           }
         : { ok: false, code: "invalid_command" };
+    }
     case "begin_capability_execution":
       return exactKeys(
         input,

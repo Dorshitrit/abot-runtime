@@ -43,12 +43,15 @@ export type SupervisorRespondDecision = Readonly<{
 export type SupervisorDecisionPhase =
   (typeof SUPERVISOR_DECISION_PHASES)[number];
 
-type SupervisorInvokeRoleDecisionBase = Readonly<{
+type SupervisorInvokeRoleDecisionMetadata = Readonly<{
   action: "invoke_role";
-  objective: string;
   acknowledgement?: string;
   title?: string;
 }>;
+
+type SupervisorInvokeRoleDecisionBase = Readonly<
+  SupervisorInvokeRoleDecisionMetadata & { objective: string }
+>;
 
 export type SupervisorInvokeRoleDecision =
   | Readonly<
@@ -93,7 +96,15 @@ export type SupervisorRoutingInvokeRoleDecision =
     >
   | Readonly<
       SupervisorInvokeRoleDecisionBase & {
-        roleId: Exclude<SupervisorDelegateRoleId, "planner" | "worker">;
+        roleId: Exclude<
+          SupervisorDelegateRoleId,
+          "planner" | "reviewer" | "worker"
+        >;
+      }
+    >
+  | Readonly<
+      SupervisorInvokeRoleDecisionMetadata & {
+        roleId: "reviewer";
       }
     >;
 

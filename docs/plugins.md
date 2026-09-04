@@ -127,19 +127,34 @@ must be unique bounded lowercase ids matching
 built-in conventions, not a closed enum. Manifests that omit both levels remain
 compatible and use the plugin name as their single catalog group.
 
-The delegated Supervisor and Planner receive only an aggregate catalog of these
-group ids, membership counts, descriptions, and declared effects. When either
-invokes a Worker against a non-empty catalog, it supplies one or more group
-ids; the runtime stores that scope on the Worker call and exposes the OR-union
-of matching capabilities. The Worker still selects the concrete capability and
-controls.
+The delegated Supervisor and Planner select group ids when invoking a Worker
+against a non-empty catalog. The runtime stores that scope on the Worker call
+and exposes the OR-union of matching capabilities. The Worker still selects
+the concrete capability and controls.
 
-Each group description is generated from every member capability's manifest
-id and summary in stable order. There is no second category-description JSON or
-manually maintained routing registry.
+Supervisor routing receives one optional, passive text brief from the same
+request-filtered registry used by `capability-brief`. It chooses the richest
+complete representation that fits: tool names with operation ids and groups,
+tool names by group, group counts and effects, or no brief. The brief replaces
+the previous aggregate catalog text; group ids remain in the response schema
+in every mode. It includes no tool descriptions, inputs, or operating
+instructions. Its 512-token estimate ceiling is further reduced by existing
+context headroom, including history and instruction reserves. No subset of
+tools is selected to fit, and no model call summarizes the catalog.
+This admission uses the context estimate at projection time. A later provider
+token count, steering update, or structured-output repair can still trigger
+the existing context-compaction path; the brief is not reselected there.
 
-Under `execution-agent-v1`, the canonical root receives the same aggregate
-group projection and may mechanically open or extend its own RoleCall scope.
+The SDK exports `buildToolAvailabilityBrief` for the unchanged on-demand plugin
+output and `buildToolAvailabilityOverview` for informational representations.
+The runtime context helper owns token admission and the passive reference
+message; another step can explicitly attach it using the existing context
+reference API. Supervisor's working-directory and response phases do not
+receive it. Planner retains its existing group-routing projection.
+
+Under `execution-agent-v1`, the canonical root receives group descriptions
+generated from member capability ids and summaries, and may mechanically open
+or extend its own RoleCall scope.
 It then selects a concrete capability only from that active scope. Scope
 updates, capability binding, payload authoring, adapter execution, and
 settlement use the same ledger and capability engine as delegated Worker

@@ -1,5 +1,7 @@
 import { projectRequestContext } from "../../context/request-context.js";
 import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
+import { isRequestToolResultsMessageBoundToView } from "../../context/request-tool-results-message-binding.js";
+import { isRequestToolResultsViewValidForCallScope } from "../../context/request-tool-results-scope.js";
 import {
   buildRequestSourceMessage,
   projectRequestSource,
@@ -14,6 +16,8 @@ import { traceDebug } from "../../observability/debug-logger.js";
 import { classifyRuntimeErrorType } from "../../observability/error-type.js";
 import type { RequestExecutionScope } from "../../request/execution-scope.js";
 import {
+  isWorkerCapabilityAssignmentProvenanceValid,
+  projectWorkerRequestSourceProjection,
   workerCapabilityContextCompactionScopeId,
   WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS,
 } from "../../orchestration/worker-capabilities/index.js";
@@ -50,7 +54,7 @@ export async function runWorkerResultAuthor(
   const startedAt = Date.now();
   let modelStarted = false;
   try {
-    validateSource(options.source, options.diagnostic);
+    validateSource(options.source, options.diagnostic, request.requestId);
     const budget = resolveModelContextBudget({
       runnerConfig: request.runnerConfig,
       agentMode: request.agentMode,
@@ -71,14 +75,21 @@ export async function runWorkerResultAuthor(
         ? { dependencyResults: options.source.dependencyResults }
         : {}),
     });
-    const requestSource = projectRequestSource({
-      requestId: request.requestId,
-      prompt: request.prompt,
-      modelStep: WORKER_RESULT_MODEL_STEP,
-      callId: options.source.callId,
-    });
+    const requestSource =
+      projectWorkerRequestSourceProjection(
+        options.source.assignmentProvenance,
+        options.source,
+        request.requestId,
+      ) === "assignment_only"
+        ? undefined
+        : projectRequestSource({
+            requestId: request.requestId,
+            prompt: request.prompt,
+            modelStep: WORKER_RESULT_MODEL_STEP,
+            callId: options.source.callId,
+          });
     const referenceMessages = Object.freeze([
-      buildRequestSourceMessage(requestSource),
+      ...(requestSource ? [buildRequestSourceMessage(requestSource)] : []),
       ...(options.source.requestToolResultsContextMessage
         ? [options.source.requestToolResultsContextMessage]
         : []),
@@ -218,6 +229,7 @@ function validateCompleteWorkerResult(
 function validateSource(
   source: WorkerResultAuthorSource,
   diagnostic: WorkerDecisionDiagnosticContext,
+  requestId: string,
 ): void {
   if (
     !Object.isFrozen(source) ||
@@ -226,6 +238,16 @@ function validateSource(
     source.depth !== diagnostic.depth ||
     source.invocationAttempt !== diagnostic.invocationAttempt ||
     source.objective.trim().length === 0 ||
+    !isWorkerCapabilityAssignmentProvenanceValid(
+      source.assignmentProvenance,
+      source,
+      requestId,
+    ) ||
+    !isRequestToolResultsViewValidForCallScope(
+      source.requestToolResults,
+      source.callId,
+      source.assignmentProvenance !== undefined,
+    ) ||
     !Array.isArray(source.dependencyResults) ||
     !Object.isFrozen(source.requestToolResults) ||
     !Number.isSafeInteger(source.requestToolResults.sourceRevision) ||
@@ -237,7 +259,11 @@ function validateSource(
     (source.requestToolResultsContextMessage !== undefined &&
       (!Object.isFrozen(source.requestToolResultsContextMessage) ||
         source.requestToolResultsContextMessage.role !== "user" ||
-        source.requestToolResultsContextMessage.content.trim().length === 0)) ||
+        source.requestToolResultsContextMessage.content.trim().length === 0 ||
+        !isRequestToolResultsMessageBoundToView(
+          source.requestToolResultsContextMessage,
+          source.requestToolResults,
+        ))) ||
     (source.operationSupervisionEvidenceContextMessage !== undefined &&
       (!Object.isFrozen(source.operationSupervisionEvidenceContextMessage) ||
         source.operationSupervisionEvidenceContextMessage.role !== "user" ||

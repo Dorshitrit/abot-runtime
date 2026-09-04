@@ -219,9 +219,12 @@ from core-owned passive long-term memory.
 The Web plugin exposes two distinct capabilities:
 
 - `web_fetch` retrieves a specific public HTTP(S) page without a search API key.
-- `web_search` uses the Brave Search API and requires
-  `BRAVE_SEARCH_API_KEY`. Without it, the capability returns a clear local
-  configuration error before making a search request.
+- `web_search` uses Brave Search when `BRAVE_SEARCH_API_KEY` is configured.
+  Without a key, it uses Light search: bounded discovery and ranking within a
+  catalog of public Hebrew and English sources, without an external search
+  engine. Light has limited coverage; an empty result does not mean the
+  information is absent from the web. A configured Brave key that fails does
+  not trigger an automatic switch to Light.
 
 Some plugins have platform-specific requirements. See [Plugins](docs/plugins.md)
 for their contracts, limits, and configuration.

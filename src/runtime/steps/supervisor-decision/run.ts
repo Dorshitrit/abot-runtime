@@ -34,6 +34,7 @@ import {
   traceSupervisorWorkingDirectoryModelStarted,
 } from "./diagnostics.js";
 import { buildSupervisorDecisionInput } from "./input.js";
+import { buildSupervisorCapabilityBriefOptions } from "./capability-brief.js";
 import { parseSupervisorDecisionOutput } from "./parser.js";
 import {
   buildSupervisorWorkingDirectoryInput,
@@ -41,6 +42,7 @@ import {
   parseSupervisorWorkingDirectoryOutput,
 } from "./working-directory.js";
 import { SUPERVISOR_RESPONSE_MODEL_STEP } from "../supervisor-response/contracts.js";
+import { resolveCanonicalReviewerCompletionTargetText } from "../reviewer-decision/contracts.js";
 
 type AcceptedSupervisorPhase<T> = Readonly<{
   decision: T;
@@ -75,6 +77,7 @@ export async function runSupervisorDecision(
       decisionPhase: "working_directory",
     });
   const input = buildSupervisorDecisionInput(request, {
+    ...buildSupervisorCapabilityBriefOptions(request, options),
     toolResults: options.toolResults,
     ...(options.includeAcknowledgement === undefined
       ? {}
@@ -124,6 +127,20 @@ export async function runSupervisorDecision(
       diagnostic: routingDiagnostic,
       contextCompaction,
     });
+    if (
+      routing.decision.action === "invoke_role" &&
+      routing.decision.roleId === "reviewer"
+    ) {
+      return createDecisionOutcome(
+        Object.freeze({
+          ...routing.decision,
+          objective: resolveCanonicalReviewerCompletionTargetText(
+            request.prompt,
+          ),
+        }),
+        routing.steeringVersion,
+      );
+    }
     if (!requiresWorkingDirectory(routing.decision)) {
       return createDecisionOutcome(routing.decision, routing.steeringVersion);
     }

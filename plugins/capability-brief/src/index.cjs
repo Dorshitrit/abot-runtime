@@ -133,9 +133,50 @@ function failureResult(input) {
   });
 }
 
-// plugins/capability-brief/source/index.ts
+// src/plugin-sdk/tool-availability-brief.ts
 var TOOL_COUNT_MAX = 64;
 var OUTPUT_CHARACTER_MAX = 16e3;
+function buildToolAvailabilityBrief(entries) {
+  const orderedTools = [...entries].sort(compareAvailableTools);
+  const boundedTools = boundCollection(orderedTools, {
+    maxItems: TOOL_COUNT_MAX
+  });
+  const rawOutput = [
+    `Available tool operations: ${entries.length}`,
+    ...boundedTools.items.map(formatAvailableTool),
+    ...boundedTools.metadata.truncated ? [
+      `[${boundedTools.metadata.omittedItems} additional tool operations omitted]`
+    ] : []
+  ].join("\n");
+  const boundedOutput = boundText(rawOutput, {
+    maxChars: OUTPUT_CHARACTER_MAX,
+    marker: "\n[available tool brief truncated]"
+  });
+  return Object.freeze({
+    text: boundedOutput.text,
+    collection: boundedTools.metadata,
+    output: boundedOutput.metadata
+  });
+}
+function formatAvailableTool(tool) {
+  return [
+    `- ${tool.operationId}`,
+    `(tool=${tool.toolName}; effect=${tool.effect}; groups=${tool.catalogGroups.join(",")})`,
+    tool.summary
+  ].join(" ");
+}
+function compareAvailableTools(left, right) {
+  const byOperation = compareAscii(left.operationId, right.operationId);
+  if (byOperation !== 0) return byOperation;
+  return compareAscii(left.toolName, right.toolName);
+}
+function compareAscii(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+// plugins/capability-brief/source/index.ts
 var index_default = defineRuntimePlugin(() => ({
   handlers: {
     async capability_brief(_params, executionContext) {
@@ -146,29 +187,15 @@ var index_default = defineRuntimePlugin(() => ({
           message: "The request-effective tool catalog is unavailable."
         });
       }
-      const orderedTools = [...availableTools].sort(compareAvailableTools);
-      const boundedTools = boundCollection(orderedTools, {
-        maxItems: TOOL_COUNT_MAX
-      });
-      const rawOutput = [
-        `Available tool operations: ${availableTools.length}`,
-        ...boundedTools.items.map(formatAvailableTool),
-        ...boundedTools.metadata.truncated ? [
-          `[${boundedTools.metadata.omittedItems} additional tool operations omitted]`
-        ] : []
-      ].join("\n");
-      const boundedOutput = boundText(rawOutput, {
-        maxChars: OUTPUT_CHARACTER_MAX,
-        marker: "\n[available tool brief truncated]"
-      });
+      const brief = buildToolAvailabilityBrief(availableTools);
       return successResult({
-        output: boundedOutput.text,
+        output: brief.text,
         producedNewInformation: true,
         data: {
           source: "request_effective_tool_registry",
           toolOperationCount: availableTools.length,
-          collection: boundedTools.metadata,
-          output: boundedOutput.metadata,
+          collection: brief.collection,
+          output: brief.output,
           observationMeta: {
             kind: "stable_fact",
             carryPolicy: "never"
@@ -178,17 +205,3 @@ var index_default = defineRuntimePlugin(() => ({
     }
   }
 }));
-function formatAvailableTool(tool) {
-  return [
-    `- ${tool.operationId}`,
-    `(tool=${tool.toolName}; effect=${tool.effect}; groups=${tool.catalogGroups.join(",")})`,
-    tool.summary
-  ].join(" ");
-}
-function compareAvailableTools(left, right) {
-  const byOperation = compareAscii(left.operationId, right.operationId);
-  return byOperation !== 0 ? byOperation : compareAscii(left.toolName, right.toolName);
-}
-function compareAscii(left, right) {
-  return left < right ? -1 : left > right ? 1 : 0;
-}

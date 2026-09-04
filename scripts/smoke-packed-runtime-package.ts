@@ -16,9 +16,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 
 import { PUBLIC_PLUGIN_CAPABILITY_IDS } from "./public-snapshot/contracts.js";
-import {
-  DEFAULT_ROOT_RESPONSE_METHODOLOGY_FILES,
-} from "./runtime-setup-files.js";
+import { createPackedWebSearchProbe } from "./packed-web-search-probe.js";
+import { DEFAULT_ROOT_RESPONSE_METHODOLOGY_FILES } from "./runtime-setup-files.js";
 
 type PackResult = {
   filename: string;
@@ -122,10 +121,7 @@ async function prepareConsumerConfig(
       join(modelsDir, "default.config.json"),
     ),
     ...DEFAULT_ROOT_RESPONSE_METHODOLOGY_FILES.map((relativePath) =>
-      copyFile(
-        join(packageDir, relativePath),
-        join(consumerDir, relativePath),
-      ),
+      copyFile(join(packageDir, relativePath), join(consumerDir, relativePath)),
     ),
   ]);
 }
@@ -368,7 +364,10 @@ try {
     enabled?: unknown;
     providers?: unknown;
   };
-  if (memoryStatus.enabled !== false || !Array.isArray(memoryStatus.providers)) {
+  if (
+    memoryStatus.enabled !== false ||
+    !Array.isArray(memoryStatus.providers)
+  ) {
     throw new Error("packed abot memory status did not read consumer config");
   }
 
@@ -525,21 +524,7 @@ if (!loadedCapabilities.includes("web_search")) {
   throw new Error("packed configured tool registry did not expose web_search without a Brave key");
 }
 
-const searchWithoutKey = await toolRegistry.execute({
-  tool: "web_search",
-  params: { query: "packed runtime smoke" },
-});
-if (
-  searchWithoutKey.ok !== false ||
-  searchWithoutKey.errorCode !== "web_search_api_key_missing" ||
-  searchWithoutKey.producedNewInformation !== false ||
-  !searchWithoutKey.error?.includes("BRAVE_SEARCH_API_KEY")
-) {
-  throw new Error(
-    "packed web_search did not fail safely without a Brave key; received=" +
-      JSON.stringify(searchWithoutKey),
-  );
-}
+${createPackedWebSearchProbe()}
 
 const duplicateConfig = config.loadRuntimeConfig({
   rootDir: duplicateConsumerRoot,

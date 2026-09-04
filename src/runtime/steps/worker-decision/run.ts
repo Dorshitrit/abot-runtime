@@ -56,6 +56,7 @@ import {
 } from "./diagnostics.js";
 import {
   buildWorkerDecisionInput,
+  projectWorkerPayloadDependencyInput,
   type WorkerDecisionCapabilityResumeSource,
   type WorkerDecisionCapabilitySource,
   type WorkerSelectedCapabilityBatchExecution,
@@ -478,7 +479,6 @@ function assertWorkerCheckpointApplicable(
     throw new Error("context_compaction_checkpoint_not_applicable");
   }
 }
-
 export const GENERIC_WORKER_EXECUTOR: RoleExecutor<
   RequestExecutionScope,
   RequestRoleExecutionHandoff
@@ -517,7 +517,7 @@ export const GENERIC_WORKER_EXECUTOR: RoleExecutor<
       call,
       ledger,
       adapters: workerCapabilities.provider.getAdapters(),
-      ...(dependencyResults.length > 0 ? { dependencyResults } : {}),
+      ...projectWorkerPayloadDependencyInput(dependencyResults),
     });
     const capabilitySource = {
       binding,

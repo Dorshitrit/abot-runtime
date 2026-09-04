@@ -122,6 +122,12 @@ export function createBraveSearchService(params: {
           hits,
           coverage: presentation.coverage,
           output: presentation.output,
+          webSources: Object.freeze({
+            version: 1,
+            operation: "search",
+            provider: "brave",
+            sources: presentation.sources,
+          }),
         });
       } catch (error) {
         if (deadline.expired()) {

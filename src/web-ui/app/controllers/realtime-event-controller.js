@@ -4,25 +4,33 @@ import {
   eventTone,
   formatEventDetail,
   formatEventLabel,
-  getPlanItemPayload,
-  getPlanPayload,
-  getRecord,
   isLowValueActivityEvent,
 } from "../lib/event-presentation.js";
 import { textOf } from "../lib/text-format.js";
 import { normalizeRealtimeMessage } from "../lib/realtime-message.js";
+import { reduceTaskProgress } from "../lib/task-progress.js";
+import { projectWebSourceEvent } from "../lib/web-source-event.js";
 
 export { normalizeRealtimeMessage } from "../lib/realtime-message.js";
+export { taskStatusClass } from "../lib/task-progress.js";
 
-export function taskStatusClass(status) {
-  const normalized = textOf(status).trim().toLowerCase();
-  if (normalized === "done" || normalized === "completed") return "done";
-  if (normalized === "in_progress" || normalized === "active") {
-    return "active";
-  }
-  if (normalized === "blocked" || normalized === "failed") return "failed";
-  if (normalized === "superseded") return "muted";
-  return "pending";
+function hasOriginalEventSequence(value) {
+  return Number.isSafeInteger(value) && value > 0;
+}
+
+function hasRecordedOriginalEvent(events, requestId, eventSequence) {
+  if (eventSequence === undefined) return false;
+  return events.some(
+    (event) =>
+      event.requestId === requestId && event.eventSequence === eventSequence,
+  );
+}
+
+function canMergeUnsequencedActivity(previous, key, eventSequence, webSources) {
+  if (eventSequence !== undefined) return false;
+  if (webSources || previous?.webSources) return false;
+  if (!previous?.key || previous.key !== key) return false;
+  return !hasOriginalEventSequence(previous.eventSequence);
 }
 
 export function createRealtimeEventController({
@@ -36,6 +44,7 @@ export function createRealtimeEventController({
   addOrMergeMessage,
   normalizeChatMessage,
   renderMessages,
+  renderContextWindow = () => {},
   scheduleMessageRender,
   scheduleThinkingRender,
   cancelScheduledMessageRender,
@@ -54,76 +63,12 @@ export function createRealtimeEventController({
     }
   }
 
-  function mergeTaskProgressItem(items, nextItem) {
-    const normalizedTitle = nextItem.title.trim().toLowerCase();
-    const normalizedId = nextItem.id.trim();
-    const existingIndex = items.findIndex((item) => {
-      if (normalizedId && item.id === normalizedId) return true;
-      return item.title.trim().toLowerCase() === normalizedTitle;
-    });
-    if (existingIndex < 0) {
-      items.push(nextItem);
-      return;
-    }
-    items[existingIndex] = {
-      ...items[existingIndex],
-      ...nextItem,
-      id: nextItem.id || items[existingIndex].id,
-      title: nextItem.title || items[existingIndex].title,
-      status: nextItem.status || items[existingIndex].status,
-    };
-  }
-
   function updateTaskProgress(message) {
-    const plan = getPlanPayload(message);
-    const item = getPlanItemPayload(message);
-    const snapshot = getRecord(message.progressSnapshot);
-    const planningSignal =
-      Boolean(plan || item || snapshot) ||
-      textOf(message.name).startsWith("Planner ") ||
-      textOf(message.name).startsWith("Development progress:");
-    if (!planningSignal) return;
-    const requestId = textOf(message.requestId) || state.activeRequestId;
-    if (!requestId) return;
-    const current = state.taskProgressByRequest.get(requestId) || {
-      requestId,
-      summary: "",
-      total: 0,
-      completed: 0,
-      requestSatisfaction: "",
-      items: [],
-      hasSignal: false,
-    };
-    const next = {
-      ...current,
-      requestId,
-      summary:
-        plan?.summary || textOf(snapshot?.summary) || current.summary || "",
-      total: plan?.total ?? current.total,
-      completed: plan?.completed ?? current.completed,
-      requestSatisfaction:
-        textOf(snapshot?.requestSatisfaction) || current.requestSatisfaction,
-      items: [...current.items],
-      hasSignal: true,
-    };
-    for (const planItem of plan?.items || [])
-      mergeTaskProgressItem(next.items, planItem);
-    if (item) mergeTaskProgressItem(next.items, item);
-    if (!next.summary && Array.isArray(snapshot?.requestedWork)) {
-      next.summary =
-        snapshot.requestedWork.map(textOf).filter(Boolean)[0] || "";
-    }
-    if (!next.total && next.items.length > 0) next.total = next.items.length;
-    if (next.items.length > 0) {
-      next.completed = Math.max(
-        next.completed,
-        next.items.filter((entry) => entry.status === "done").length,
-      );
-    }
-    next.activeItem =
-      next.items.find((entry) => taskStatusClass(entry.status) === "active")
-        ?.title || "";
-    state.taskProgressByRequest.set(requestId, next);
+    const requestId = textOf(message.requestId);
+    const current = state.taskProgressByRequest.get(requestId);
+    const next = reduceTaskProgress(current, message);
+    if (next && next !== current)
+      state.taskProgressByRequest.set(requestId, next);
   }
 
   function updateContextWindow(message) {
@@ -195,7 +140,7 @@ export function createRealtimeEventController({
         lastCompaction,
         pendingCompaction: lastCompaction ? null : current.pendingCompaction,
       });
-      return;
+      return true;
     }
     if (eventName === "context.window.provider_usage") {
       state.contextWindowByRequest.set(requestId, {
@@ -211,19 +156,21 @@ export function createRealtimeEventController({
           totalTokens: Number(message.totalTokens),
         },
       });
-      return;
+      return true;
     }
     if (eventName === "context.compaction.started") {
       state.contextWindowByRequest.set(requestId, {
         ...current,
         requestId,
         pendingCompaction: {
-          beforePercent: Number.isFinite(Number(message.beforeUsedContextPercent))
+          beforePercent: Number.isFinite(
+            Number(message.beforeUsedContextPercent),
+          )
             ? Number(message.beforeUsedContextPercent)
             : current.snapshot?.usedContextPercent,
         },
       });
-      return;
+      return true;
     }
     if (eventName === "context.compaction.completed") {
       const beforePercent = Number(message.beforeUsedContextPercent);
@@ -237,7 +184,7 @@ export function createRealtimeEventController({
             ? { beforePercent, afterPercent }
             : current.lastCompaction,
       });
-      return;
+      return true;
     }
     if (eventName === "context.compaction.failed") {
       state.contextWindowByRequest.set(requestId, {
@@ -245,12 +192,22 @@ export function createRealtimeEventController({
         requestId,
         pendingCompaction: null,
       });
+      return true;
     }
   }
 
   function recordEvent(message) {
+    const requestId = textOf(message.requestId) || state.activeRequestId;
+    const eventSequence = hasOriginalEventSequence(message.eventSequence)
+      ? message.eventSequence
+      : undefined;
+    if (hasRecordedOriginalEvent(state.events, requestId, eventSequence)) {
+      trackSeq(message);
+      return;
+    }
     updateTaskProgress(message);
-    updateContextWindow(message);
+    const contextWindowUpdated = updateContextWindow(message);
+    if (contextWindowUpdated) renderContextWindow();
     const eventName = textOf(message.name || message.rawType || message.type);
     if (isLowValueActivityEvent(message)) {
       trackSeq(message);
@@ -259,10 +216,14 @@ export function createRealtimeEventController({
     const name = formatEventLabel(message);
     const summary = formatEventDetail(message);
     const tone = eventTone(message);
-    const key = eventKeyFor(message, name, tone);
-    const requestId = textOf(message.requestId) || state.activeRequestId;
+    const stage = textOf(message.stage);
+    const phase = textOf(message.phase);
+    const key = eventKeyFor({ ...message, requestId }, name, tone);
+    const webSources = projectWebSourceEvent(message);
     const lastEvent = state.events[state.events.length - 1];
-    if (lastEvent?.key && lastEvent.key === key) {
+    if (
+      canMergeUnsequencedActivity(lastEvent, key, eventSequence, webSources)
+    ) {
       lastEvent.count = (lastEvent.count || 1) + 1;
       lastEvent.summary = summary;
       lastEvent.updatedAt = Date.now();
@@ -278,15 +239,19 @@ export function createRealtimeEventController({
         count: 1,
         lastSeqNo:
           typeof message.seqNo === "number" ? message.seqNo : undefined,
+        eventSequence,
         updatedAt: Date.now(),
         type: message.type,
         rawType: message.rawType,
         eventName,
+        stage,
+        phase,
         name,
         summary,
         tone,
         tool: textOf(message.tool),
         approvalId: textOf(message.approvalId),
+        ...(webSources ? { webSources } : {}),
         payload: {
           plan: message.plan,
           item: message.item,

@@ -27,6 +27,7 @@ import {
   beginAndSettlePreparedSingle,
 } from "./execution/ledger-transaction.js";
 import type { WorkerCapabilityScopeProjection } from "./scope.js";
+import { projectWorkerCapabilityPayloadSourceProvenance } from "./payload-source-provenance.js";
 
 type PreparedInvocationBatchSettlement<TContext> = Readonly<{
   currentHead: RoleCallLedgerHead;
@@ -63,9 +64,11 @@ export async function executeBoundWorkerCapability<TContext>(params: {
     descriptors: [params.adapter.descriptor],
     diagnostic: params.diagnostic,
   });
+  const assignmentProvenance = projectPayloadSourceProvenance(params);
   const prepared = await prepareBoundInvocation({
     context: params.context,
     call: params.call,
+    ...(assignmentProvenance ? { assignmentProvenance } : {}),
     adapter: params.adapter,
     intent: params.intent,
     ...(params.authoringObjective
@@ -135,12 +138,19 @@ export async function executeBoundWorkerCapabilityBatch<TContext>(params: {
     diagnostic: params.diagnostic,
   });
   const preparedInvocations = await Promise.all(
-    params.invocations.map(async (invocation, index) =>
-      Object.freeze({
+    params.invocations.map(async (invocation, index) => {
+      const assignmentProvenance = projectPayloadSourceProvenance({
+        ledger: params.ledger,
+        currentHead: params.currentHead,
+        call: params.call,
+        adapter: invocation.adapter,
+      });
+      return Object.freeze({
         ...invocation,
         prepared: await prepareBoundInvocation({
           context: params.context,
           call: params.call,
+          ...(assignmentProvenance ? { assignmentProvenance } : {}),
           adapter: invocation.adapter,
           intent: invocation.intent,
           ...(invocation.authoringObjective
@@ -156,8 +166,8 @@ export async function executeBoundWorkerCapabilityBatch<TContext>(params: {
             ? { executionFreshness: params.executionFreshness }
             : {}),
         }),
-      }),
-    ),
+      });
+    }),
   );
   const uniqueInvocations = deduplicatePreparedInvocations(preparedInvocations);
   return settlePreparedInvocationBatch({
@@ -169,6 +179,27 @@ export async function executeBoundWorkerCapabilityBatch<TContext>(params: {
     ...(params.executionFreshness
       ? { executionFreshness: params.executionFreshness }
       : {}),
+  });
+}
+
+function projectPayloadSourceProvenance<TContext>(
+  params: Readonly<{
+    ledger: RoleCallLedger;
+    currentHead: RoleCallLedgerHead;
+    call: RoleCallFrame;
+    adapter: WorkerCapabilityAdapter<TContext> | undefined;
+  }>,
+) {
+  if (
+    params.call.roleId !== "worker" ||
+    params.adapter?.descriptor.requiresPayloadAuthoringObjective !== true
+  ) {
+    return undefined;
+  }
+  return projectWorkerCapabilityPayloadSourceProvenance({
+    ledger: params.ledger,
+    head: params.currentHead,
+    call: params.call,
   });
 }
 

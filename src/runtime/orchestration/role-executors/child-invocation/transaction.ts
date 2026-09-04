@@ -265,6 +265,7 @@ export class ChildInvocationTransaction<TContext, TValue> {
       childCallId: openedChild.call.callId,
       outcome: execution.outcome,
       summary: execution.summary,
+      ...(execution.receipt ? { receipt: execution.receipt } : {}),
     });
     if (!returnedResult.ok) {
       this.rejectChild({

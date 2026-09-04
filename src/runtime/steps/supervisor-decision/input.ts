@@ -1,4 +1,9 @@
-import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
+import type {
+  ChatMessage,
+  ModelGatewayJsonSchemaFormat,
+} from "../../../model-gateway/types.js";
+import type { ToolAvailabilityEntry } from "../../../capabilities/tool-types.js";
+import { projectCapabilityBrief } from "../../context/capability-brief.js";
 import { resolveConfiguredStepInstructionMetadata } from "../../config/runner/step-instructions.js";
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
 import { projectRequestContext } from "../../context/request-context.js";
@@ -63,6 +68,8 @@ export function buildSupervisorDecisionInput(
     resume?: SupervisorResumeContext;
     workerCapabilityAffordances?: readonly SupervisorWorkerCapabilityAffordance[];
     availableWorkerCapabilityCatalog?: readonly WorkerCapabilityCatalogGroup[];
+    capabilityBriefEntries?: readonly ToolAvailabilityEntry[];
+    capabilityBriefBudgetMessages?: readonly ChatMessage[];
   }>,
 ): {
   context: RequestContextProjection;
@@ -152,7 +159,7 @@ export function buildSupervisorDecisionInput(
     availableWorkerCapabilityCatalog,
   });
   const sessionMemory = projectRootSessionMemory(request);
-  const context = projectRequestContext({
+  const contextInput: Parameters<typeof projectRequestContext>[0] = {
     instructions,
     format,
     ...sessionMemory,
@@ -166,6 +173,21 @@ export function buildSupervisorDecisionInput(
     diagnostic,
     ...(request.onEvent ? { onEvent: request.onEvent } : {}),
     deferCompactionFailure: true,
+  };
+  const capabilityBrief = projectCapabilityBrief({
+    groups: availableWorkerCapabilityCatalog,
+    context: contextInput,
+    ...(options.capabilityBriefEntries === undefined
+      ? {}
+      : { entries: options.capabilityBriefEntries }),
+    ...(options.capabilityBriefBudgetMessages === undefined
+      ? {}
+      : { additionalBudgetMessages: options.capabilityBriefBudgetMessages }),
+  });
+  if (capabilityBrief.message) referenceMessages.push(capabilityBrief.message);
+  const context = projectRequestContext({
+    ...contextInput,
+    ...(referenceMessages.length > 0 ? { referenceMessages } : {}),
   });
 
   traceSupervisorContextProjected({
@@ -185,6 +207,7 @@ export function buildSupervisorDecisionInput(
     allowedRoleIds,
     workerCapabilityAffordances,
     availableWorkerCapabilityCatalog,
+    capabilityBrief,
     configuredInstructionBlockCount: configuredInstructionMetadata.blockCount,
     configuredInstructionCharacterCount:
       configuredInstructionMetadata.characterCount,

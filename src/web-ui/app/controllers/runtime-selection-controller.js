@@ -285,6 +285,8 @@ export function createRuntimeSelectionController({
 
   function renderAgentMode() {
     const meta = agentModeMeta(state.agentMode);
+    dom.agentModeButton.title = `Reasoning depth: ${meta.label}`;
+    dom.agentModeButton.setAttribute("aria-label", `Reasoning depth: ${meta.label}`);
     dom.agentModeButton.disabled = agentModeMutationInFlight;
     dom.agentModeButton.innerHTML = `
       <span class="agent-mode-icon">${escapeHtml(meta.icon)}</span>

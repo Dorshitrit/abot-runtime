@@ -112,10 +112,14 @@ isolation boundaries.
   directly and consumes their mechanically linked continuation before choosing
   its next action. It does not create a second root or state machine.
 - **Delegated Planner contract** coordinates one bounded delegated objective.
-  It may invoke legal child roles and represents the completed sub-process to
-  its caller. For a Worker child, it selects only the smallest complete set of
-  offered catalog groups; the Worker still owns capability and control
-  selection.
+  It declares every currently known execution outcome before its first child
+  dispatch. Each Worker invocation binds exactly one independently completable
+  production item; after consuming that bound result, a later activation may
+  select the next pending production item. Planner invokes only Worker and
+  represents the completed sub-process to Supervisor, which separately owns
+  Reviewer delegation and audit decisions. For a Worker child, Planner selects
+  only the smallest complete set of offered catalog groups; the Worker still
+  owns capability and control selection.
 - **Planner Graph advisory contract** may propose or decline one bounded
   dependency graph for the Execution Agent. It is a terminal passive child
   result: it cannot execute graph nodes, write canonical plan state, or commit
@@ -125,8 +129,9 @@ isolation boundaries.
   observation or effect is required. Its structured decision selects the
   action; substantive completion text is authored separately as raw text.
 - **Reviewer** independently assesses bounded supplied work in the delegated
-  policy and returns a pass or gaps to its exact caller. It does not choose
-  remediation or finalization.
+  policy and returns a human-readable summary plus a bounded, revision-bound
+  `reviewer_verdict_v1` receipt to its exact caller. The receipt is passive
+  canonical evidence; it does not choose remediation or finalization.
 - **Auditor** receives typed criteria and whole canonical evidence entries in
   the direct policy. It returns a passive pass/gaps advisory; omitted evidence
   makes pass unavailable and the root still owns the next action.
@@ -135,6 +140,14 @@ A Planner Graph or Auditor structured-output validation failure settles as a
 failed passive child result and returns to the root; it does not write plan
 state, authorize execution, or commit request failure by itself.
 
+Under `supervisor-worker-v1`, every terminal Planner or Worker result receives a
+runtime-owned `work_result_v1` receipt. Supervisor and Planner continuations
+receive that compact receipt together with a verified `work_result_lineage_v1`
+projection; an explicitly dependent Worker receives only the compact receipt.
+These structures prove canonical provenance, not semantic correctness, and do
+not grant response, remediation, or capability authority. Model-supplied work
+receipts are rejected. `execution-agent-v1` does not issue them.
+
 Role choice belongs to the active role model. Runtime code validates the strict
 action envelope, exact caller, role availability, current ledger head, and
 global bounds; it does not infer work type from prompt text, paths, tool names,
@@ -142,14 +155,19 @@ or model prose.
 
 ## Canonical State
 
-`orchestration/role-calls/` is the sole writer of the request-local call tree
+`orchestration/role-calls/` ledger v17 is the sole writer of the request-local call tree
 and role results. Each call frame records its caller, role, bounded objective,
 depth, status, result reference, and any canonical capability catalog-group
 scope. An authorized root, Planner, or Worker may also record one normalized
 working directory; the role-call reducer is the sole writer of that immutable
 scope. A Planner's Worker children inherit it mechanically and cannot replace
 it.
-A result returns only to that exact caller.
+A result returns only to that exact caller. The ledger mechanically binds each
+Supervisor-policy Planner or Worker result to its producer, caller, admitted
+revision, and a lineage fingerprint. Full lineage is derived on demand from the
+same ledger and verified against that fingerprint; it is not a second state
+store and the compact receipt does not copy dependency, execution, or plan-item
+lists.
 
 The same reducer enforces one mechanical per-call activation ceiling for every
 root and delegated call. The ceiling is derived from the existing request-wide
@@ -170,7 +188,10 @@ policy authority. The delegated Worker keeps its established assignment
 capsule; a direct root payload binds the exact request source, ordered steering,
 and immutable controls. Capability `intent` is bounded client-facing
 presentation metadata and is never projected as payload authority or execution
-evidence. There is no second payload or adapter pipeline for
+evidence. Before Worker payload or result authoring, dependency results are
+narrowed to their existing result fields and optional `semanticCheckpoints`;
+work receipts and derived lineage do not cross either raw authoring boundary.
+There is no second payload or adapter pipeline for
 `execution-agent-v1`.
 
 When direct capability controls refinement exhausts structured-output

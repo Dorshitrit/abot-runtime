@@ -68,16 +68,9 @@ const state = {
 const dom = {
   app: document.getElementById("app"),
   chatWorkspaceButton: document.getElementById("chatWorkspaceButton"),
-  operationsWorkspaceButton: document.getElementById(
-    "operationsWorkspaceButton",
-  ),
   configWorkspaceButton: document.getElementById("configWorkspaceButton"),
   chatPanel: document.querySelector(".chat-panel"),
   sessionsPanel: document.querySelector(".sessions-panel"),
-  operationsWorkspacePanel: document.getElementById("operationsWorkspacePanel"),
-  closeOperationsWorkspaceButton: document.getElementById(
-    "closeOperationsWorkspaceButton",
-  ),
   configWorkspacePanel: document.getElementById("configWorkspacePanel"),
   closeConfigWorkspaceButton: document.getElementById(
     "closeConfigWorkspaceButton",
@@ -111,6 +104,8 @@ const dom = {
   attachmentInput: document.getElementById("attachmentInput"),
   attachmentPreview: document.getElementById("attachmentPreview"),
   composerInput: document.getElementById("composerInput"),
+  composerContextWindow: document.getElementById("composerContextWindow"),
+  composerPlan: document.getElementById("composerPlan"),
   composerSubmitControl: document.getElementById("composerSubmitControl"),
   sendButton: document.getElementById("sendButton"),
   sendButtonLabel: document.getElementById("sendButtonLabel"),
@@ -268,8 +263,11 @@ conversationView = createConversationView({
   dom: {
     messagesList: dom.messagesList,
     jumpToLatestButton: dom.jumpToLatestButton,
+    composerContextWindow: dom.composerContextWindow,
+    composerPlan: dom.composerPlan,
   },
   getMessages: () => state.messages,
+  getActiveRequestId: () => state.activeRequestId,
   getActivityForMessage: (message) => ({
     events: state.events,
     taskProgress:
@@ -375,6 +373,7 @@ realtimeEvents = createRealtimeEventController({
   activeAssistantForRequest: conversationSession.activeAssistantForRequest,
   addOrMergeMessage: conversationSession.addOrMergeMessage,
   normalizeChatMessage: conversationSession.normalizeMessage,
+  renderContextWindow: () => conversationView.renderContextWindow(),
   renderMessages,
   scheduleMessageRender,
   scheduleThinkingRender,

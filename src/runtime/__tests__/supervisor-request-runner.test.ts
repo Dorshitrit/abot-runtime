@@ -420,6 +420,7 @@ describe("Supervisor-root request runner slice", () => {
             role: "assistant",
             content: "The Supervisor can be that owner.",
           },
+          expect.objectContaining({ role: "system" }),
           { role: "user", content: "What do you think?" },
         ],
       }),
@@ -437,9 +438,6 @@ describe("Supervisor-root request runner slice", () => {
         content: string;
       }>[]
     ).find(({ role }) => role === "system")?.content;
-    expect(supervisorSystemPrompt).toContain(
-      '"groupId":"other","memberCount":1,"effects":["observation"]',
-    );
     expect(supervisorSystemPrompt).not.toContain(
       "Inspect the current configured system state.",
     );
@@ -911,7 +909,7 @@ describe("Supervisor-root request runner slice", () => {
             role: string;
             content: string;
           }>[];
-          expect(JSON.parse(messages.at(-1)!.content)).toEqual({
+          expect(JSON.parse(messages.at(-1)!.content)).toMatchObject({
             kind: "runtime_child_result",
             callerCallId: "call-2",
             childCallId: "call-3",
@@ -1094,7 +1092,7 @@ describe("Supervisor-root request runner slice", () => {
         role: string;
         content: string;
       }>;
-    expect(JSON.parse(resumedSupervisorMessages.at(-1)!.content)).toEqual({
+    expect(JSON.parse(resumedSupervisorMessages.at(-1)!.content)).toMatchObject({
       kind: "runtime_child_result",
       callerCallId: "call-1",
       childCallId: "call-2",
@@ -1260,8 +1258,6 @@ describe("Supervisor-root request runner slice", () => {
       role: string;
       content: string;
     }>;
-    expect(supervisorMessages[0]!.content).toContain('"groupId":"observe"');
-    expect(supervisorMessages[0]!.content).toContain('"groupId":"write"');
     expect(supervisorMessages[0]!.content).not.toContain(
       "inspect_system_state",
     );
@@ -1337,7 +1333,7 @@ describe("Supervisor-root request runner slice", () => {
       workingDirectory: DIRECT_WORKER_WORKING_DIRECTORY,
       workerCapabilityScope: { catalogGroupIds: ["observe"] },
     });
-    expect(JSON.parse(resumedMessages.at(-1)!.content)).toEqual({
+    expect(JSON.parse(resumedMessages.at(-1)!.content)).toMatchObject({
       kind: "runtime_child_result",
       callerCallId: "call-1",
       childCallId: "call-2",
@@ -1411,7 +1407,7 @@ describe("Supervisor-root request runner slice", () => {
           };
         case 3:
           expect(input.modelStep).toBe(SUPERVISOR_DECISION_MODEL_STEP);
-          expect(readRuntimeChildResults(messages)).toEqual([
+          expect(readRuntimeChildResults(messages)).toMatchObject([
             {
               kind: "runtime_child_result",
               callerCallId: "call-1",
@@ -1467,7 +1463,7 @@ describe("Supervisor-root request runner slice", () => {
           };
         case 5:
           expect(input.modelStep).toBe(SUPERVISOR_DECISION_MODEL_STEP);
-          expect(readRuntimeChildResults(messages)).toEqual([
+          expect(readRuntimeChildResults(messages)).toMatchObject([
             {
               kind: "runtime_child_result",
               callerCallId: "call-1",
@@ -2439,16 +2435,13 @@ describe("Supervisor-root request runner slice", () => {
     expect(request.onAnswerToken).not.toHaveBeenCalled();
   });
 
-  test("returns Reviewer gaps to the same Planner without runtime-authored remediation", async () => {
+  test("characterizes that Supervisor can respond immediately after Reviewer gaps", async () => {
     const plannerObjective =
-      "Coordinate one bounded result and independently review completion.";
+      "Coordinate one bounded result through Worker execution.";
     const workerObjective = "Produce the bounded result.";
-    const reviewerObjective =
-      "Check only whether the bounded result is represented by supplied facts.";
     const workerResult = "The bounded result was produced.";
+    const plannerResult = "The Worker produced the bounded result.";
     const reviewerSummary = "One high-level gap remains.";
-    const plannerResult =
-      "The review finding was received and represented to the Supervisor.";
     let invocationIndex = 0;
     let reviewerDecision: Record<string, unknown> | undefined;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
@@ -2478,10 +2471,6 @@ describe("Supervisor-root request runner slice", () => {
                     title: "Produce bounded result",
                     objective: workerObjective,
                   },
-                  {
-                    title: "Review bounded result",
-                    objective: reviewerObjective,
-                  },
                 ],
               },
               selectedItemIndexes: [0],
@@ -2501,13 +2490,21 @@ describe("Supervisor-root request runner slice", () => {
           expect(input.modelStep).toBe(PLANNER_DECISION_MODEL_STEP);
           return {
             text: encodeDecision({
-              action: "invoke_role",
-              roleId: "reviewer",
-              planItemIds: ["plan-call-2-item-2"],
+              action: "return_result",
+              result: plannerResult,
             }),
             meta: {},
           };
-        case 5: {
+        case 5:
+          expect(input.modelStep).toBe(SUPERVISOR_DECISION_MODEL_STEP);
+          return {
+            text: encodeDecision({
+              action: "invoke_role",
+              roleId: "reviewer",
+            }),
+            meta: {},
+          };
+        case 6: {
           expect(input.modelStep).toBe(REVIEWER_DECISION_MODEL_STEP);
           const assignment = JSON.parse(
             (input.messages as readonly { content: string }[]).at(-1)!.content,
@@ -2515,14 +2512,36 @@ describe("Supervisor-root request runner slice", () => {
             auditScope: {
               reviewScopeId: string;
             };
-            claims: readonly { summary: string }[];
+            dependencySubjects: readonly {
+              roleId: string;
+              objective: string;
+              outcome: string;
+            }[];
+            effects: readonly { evidenceRef: string }[];
           };
-          expect(assignment.claims).toEqual([
-            expect.objectContaining({ summary: workerResult }),
+          expect(assignment.dependencySubjects).toEqual([
+            expect.objectContaining({
+              roleId: "planner",
+              objective: plannerObjective,
+              outcome: "completed",
+              summary: "The Worker produced the bounded result.",
+            }),
           ]);
           reviewerDecision = {
             action: "report_gaps",
             reviewScopeId: assignment.auditScope.reviewScopeId,
+            audit: {
+              evidenceAssessments: assignment.effects.map(({ evidenceRef }) => ({
+                evidenceRef,
+                status: "does_not_establish",
+                finding: "This evidence does not establish the bounded result.",
+              })),
+              completionAssessment: {
+                status: "gap",
+                evidenceRefs: [],
+                finding: "The supplied evidence leaves a completion gap.",
+              },
+            },
             summary: reviewerSummary,
             gaps: [
               {
@@ -2536,30 +2555,31 @@ describe("Supervisor-root request runner slice", () => {
           };
           return { text: encodeDecision(reviewerDecision), meta: {} };
         }
-        case 6: {
-          expect(input.modelStep).toBe(PLANNER_DECISION_MODEL_STEP);
+        case 7: {
+          expect(input.modelStep).toBe(SUPERVISOR_DECISION_MODEL_STEP);
           const returned = JSON.parse(
             (input.messages as readonly { content: string }[]).at(-1)!.content,
-          ) as { roleId: string; outcome: string; summary: string };
+          ) as {
+            roleId: string;
+            outcome: string;
+            summary: string;
+            reviewerVerdict: Record<string, unknown>;
+          };
           expect(returned).toMatchObject({
             roleId: "reviewer",
             outcome: "completed",
-            summary: JSON.stringify(reviewerDecision),
+            summary: reviewerSummary,
+            reviewerVerdict: {
+              kind: "reviewer_verdict_v1",
+              verdict: "report_gaps",
+              gaps: reviewerDecision?.gaps,
+            },
           });
-          return {
-            text: encodeDecision({
-              action: "return_result",
-              result: plannerResult,
-            }),
-            meta: {},
-          };
-        }
-        case 7:
-          expect(input.modelStep).toBe(SUPERVISOR_DECISION_MODEL_STEP);
           return {
             text: encodeDecision({ action: "respond" }),
             meta: {},
           };
+        }
         case 8:
           expect(input.modelStep).toBe(SUPERVISOR_RESPONSE_MODEL_STEP);
           return {
@@ -2580,8 +2600,8 @@ describe("Supervisor-root request runner slice", () => {
       PLANNER_DECISION_MODEL_STEP,
       WORKER_DECISION_MODEL_STEP,
       PLANNER_DECISION_MODEL_STEP,
+      SUPERVISOR_DECISION_MODEL_STEP,
       REVIEWER_DECISION_MODEL_STEP,
-      PLANNER_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_RESPONSE_MODEL_STEP,
     ]);

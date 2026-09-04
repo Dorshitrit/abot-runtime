@@ -133,6 +133,7 @@ export const PUBLIC_SCRIPT_FILES = Object.freeze([
   "scripts/runtime-setup-presentation.ts",
   "scripts/runtime-service-web-ui.ts",
   "scripts/smoke-packed-runtime-package.ts",
+  "scripts/packed-web-search-probe.ts",
   "scripts/smoke-runtime-package-import.ts",
   "scripts/write-model-step-registry.ts",
   "scripts/write-runtime-config-schema.ts",

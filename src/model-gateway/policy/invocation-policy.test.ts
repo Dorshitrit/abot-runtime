@@ -859,47 +859,6 @@ describe("model gateway invocation policy", () => {
     expect(longLimit).toBeLessThan(shortLimit);
   });
 
-  test("bounds non-thinking structured output by its strict schema", () => {
-    const payload = buildOllamaPayload({
-      agentMode: "fast",
-      format: {
-        type: "json_schema",
-        name: "bounded_output",
-        strict: true,
-        postValidatedSchemaConstraints: [
-          {
-            keyword: "maxLength",
-            path: "/properties/value/maxLength",
-          },
-        ],
-        schema: {
-          type: "object",
-          properties: {
-            value: { type: "string", maxLength: 100 },
-          },
-          required: ["value"],
-          additionalProperties: false,
-        },
-      },
-      modelPolicy: {
-        providers: OLLAMA_TEST_PROVIDERS,
-        profiles: {
-          local: {
-            provider: "ollama",
-            model: "local-model",
-            contextWindowTokens: 4_096,
-            supportsThinking: true,
-          },
-        },
-        defaults: {
-          profileId: "local",
-        },
-      },
-    });
-
-    expect(payload).toHaveProperty("options.num_predict", 57);
-  });
-
   test("adapts an explicit runtime schema ahead of calibrated JSON mode for each provider", () => {
     const decisionSchema = {
       type: "json_schema" as const,

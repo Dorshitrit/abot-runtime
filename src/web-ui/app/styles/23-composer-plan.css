@@ -1,0 +1,171 @@
+.composer-plan {
+  flex: none;
+  width: min(100%, 860px);
+  min-width: 0;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.composer-plan-details {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface, #132438);
+}
+
+.composer-plan-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.composer-plan-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.composer-plan-toggle:focus-visible {
+  outline: 2px solid #80b7ff;
+  outline-offset: -3px;
+  border-radius: 11px;
+}
+
+.composer-plan-label {
+  flex: none;
+  color: var(--muted-2);
+  font-size: var(--font-size-sm);
+  font-weight: 650;
+}
+
+.composer-plan-preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--font-size-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-plan-chevron {
+  flex: none;
+  color: var(--muted-2);
+  transition: transform 120ms ease;
+}
+
+.composer-plan-details[open] .composer-plan-chevron {
+  transform: rotate(180deg);
+}
+
+.composer-plan-body {
+  max-height: min(34vh, 280px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 12px 12px;
+  scrollbar-gutter: stable;
+}
+
+.composer-plan-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.composer-plan-title {
+  min-width: 0;
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.composer-plan-counter {
+  flex: none;
+  color: var(--muted-2);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.composer-plan-items {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.composer-plan-item {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+}
+
+.composer-plan-status {
+  flex: none;
+  width: 14px;
+  color: var(--muted-2);
+  text-align: center;
+}
+
+.composer-plan-item-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.composer-plan-item-status,
+.composer-plan-placeholder {
+  margin: 0;
+  color: var(--muted-2);
+  font-size: var(--font-size-xs);
+}
+
+.composer-plan-item.is-active .composer-plan-status,
+.composer-plan-status.is-active {
+  color: #80b7ff;
+}
+
+.composer-plan-item.is-done .composer-plan-status,
+.composer-plan-status.is-done {
+  color: #8dd7b6;
+}
+
+.composer-plan-item.is-blocked .composer-plan-status,
+.composer-plan-item.is-blocked .composer-plan-item-status {
+  color: #ef9a9a;
+}
+
+.composer-plan-item.is-superseded {
+  color: var(--muted-2);
+}
+
+@media (max-width: 520px) {
+  .composer-plan-header {
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .composer-plan-body {
+    max-height: min(30vh, 220px);
+  }
+
+  .composer-plan-item-status {
+    max-width: 65px;
+    text-align: end;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-plan-chevron {
+    transition: none;
+  }
+}

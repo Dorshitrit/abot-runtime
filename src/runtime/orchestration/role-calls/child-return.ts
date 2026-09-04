@@ -5,6 +5,7 @@ import {
   type RoleCallLedger,
   type RoleCallLedgerCommitResult,
   type RoleCallLedgerHead,
+  type RoleCallPolicy,
   type RoleCallState,
   type RoleCallWorkerCapabilityScope,
 } from "./contracts.js";
@@ -12,6 +13,14 @@ import {
   isRuntimeDelegateRoleId,
   type RuntimeDelegateRoleId,
 } from "../roles.js";
+import {
+  isRoleCallResultReceiptValidForStoredResult,
+  type RoleCallResultReceipt,
+} from "./result-receipt.js";
+import {
+  projectRoleCallWorkResultLineage,
+  type RoleCallWorkResultLineage,
+} from "./work-result-lineage.js";
 
 export type CompletedRoleChildResult = Readonly<{
   callerCallId: string;
@@ -24,6 +33,8 @@ export type CompletedRoleChildResult = Readonly<{
   dependencyResultRefs: readonly string[];
   outcome: "completed" | "failed";
   summary: string;
+  receipt?: RoleCallResultReceipt;
+  workLineage?: RoleCallWorkResultLineage;
 }>;
 
 export type RoleChildReturnContext = Readonly<{
@@ -88,6 +99,7 @@ export function projectRoleChildReturnContext(
   const completedChildren = projectCompletedChildren(
     returned.head.state,
     caller,
+    returned.head.policy,
   );
   const returnedChild = completedChildren.find(
     (child) =>
@@ -112,13 +124,18 @@ export function projectRoleChildReturnContext(
 function projectCompletedChildren(
   state: RoleCallState,
   caller: Readonly<{ callId: string; childCallIds: readonly string[] }>,
+  policy: RoleCallPolicy,
 ): readonly CompletedRoleChildResult[] {
   return Object.freeze(
     caller.childCallIds.map((completedChildCallId) =>
-      projectCompletedChild(state, {
-        callerCallId: caller.callId,
-        childCallId: completedChildCallId,
-      }),
+      projectCompletedChild(
+        state,
+        {
+          callerCallId: caller.callId,
+          childCallId: completedChildCallId,
+        },
+        policy,
+      ),
     ),
   );
 }
@@ -129,6 +146,7 @@ function projectCompletedChild(
     callerCallId: string;
     childCallId: string;
   }>,
+  policy: RoleCallPolicy,
 ): CompletedRoleChildResult {
   const child = state.calls.find((call) => call.callId === refs.childCallId);
   const result = state.results.find(
@@ -143,10 +161,21 @@ function projectCompletedChild(
     result?.producerCallId !== child.callId ||
     result.roleId !== child.roleId ||
     (result.outcome !== "completed" && result.outcome !== "failed") ||
-    !isBoundedText(result.summary, ROLE_CALL_RESULT_MAX_LENGTH)
+    !isBoundedText(result.summary, ROLE_CALL_RESULT_MAX_LENGTH) ||
+    !isRoleCallResultReceiptValidForStoredResult({
+      receipt: result.receipt,
+      producer: child,
+      result,
+      policy,
+      state,
+    })
   ) {
     throw new Error("role_completed_child_projection_invalid");
   }
+  const workLineage = projectCompletedChildWorkLineage(
+    state,
+    result.receipt,
+  );
   return Object.freeze({
     callerCallId: refs.callerCallId,
     childCallId: child.callId,
@@ -162,7 +191,19 @@ function projectCompletedChild(
     dependencyResultRefs: child.dependencyResultRefs,
     outcome: result.outcome,
     summary: result.summary,
+    ...(result.receipt ? { receipt: result.receipt } : {}),
+    ...(workLineage ? { workLineage } : {}),
   });
+}
+
+function projectCompletedChildWorkLineage(
+  state: RoleCallState,
+  receipt: RoleCallResultReceipt | undefined,
+): RoleCallWorkResultLineage | undefined {
+  if (receipt?.kind !== "work_result_v1") return undefined;
+  const lineage = projectRoleCallWorkResultLineage({ state, receipt });
+  if (!lineage) throw new Error("role_completed_child_projection_invalid");
+  return lineage;
 }
 
 function isBoundedText(value: unknown, maximumLength: number): value is string {

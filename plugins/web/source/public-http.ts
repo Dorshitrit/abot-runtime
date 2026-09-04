@@ -27,6 +27,7 @@ export type PublicHttpRequest = Readonly<{
   headers?: Readonly<Record<string, string>>;
   maxBytes?: number;
   maxRedirects?: number;
+  followRedirects?: boolean;
   timeoutMs?: number;
   abortSignal?: AbortSignal;
 }>;
@@ -36,6 +37,14 @@ export type PublicHttpClient = Readonly<{
 }>;
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+function canFollowHttpRedirect(
+  request: PublicHttpRequest,
+  status: number,
+): boolean {
+  if (request.followRedirects === false) return false;
+  return REDIRECT_STATUSES.has(status);
+}
 
 function redirectLocation(response: HopResponse): string | undefined {
   const raw = response.headers.location;
@@ -107,7 +116,7 @@ export function createPublicHttpClient(
           deadline,
           request.abortSignal,
         );
-        if (!REDIRECT_STATUSES.has(response.status)) {
+        if (!canFollowHttpRedirect(request, response.status)) {
           return Object.freeze({
             requestedUrl: requested.toString(),
             finalUrl: current.toString(),

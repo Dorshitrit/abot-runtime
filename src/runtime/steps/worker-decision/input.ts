@@ -32,6 +32,7 @@ export type {
   WorkerSelectedCapabilityBatchExecution,
   WorkerSelectedCapabilityExecution,
 } from "./input/types.js";
+export { projectWorkerPayloadDependencyInput } from "./payload-dependency-results.js";
 
 export function buildWorkerDecisionInput(
   request: WorkerDecisionInputRequest,

@@ -14,7 +14,11 @@ export type WebPluginErrorCode =
   | "web_search_authentication_failed"
   | "web_search_rate_limited"
   | "web_search_upstream_failed"
-  | "web_search_response_invalid";
+  | "web_search_response_invalid"
+  | "web_search_budget_exhausted"
+  | "web_search_source_blocked"
+  | "web_search_sources_unavailable"
+  | "web_search_configuration_invalid";
 
 export class WebPluginError extends Error {
   readonly code: WebPluginErrorCode;

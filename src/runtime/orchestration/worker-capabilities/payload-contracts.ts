@@ -7,6 +7,7 @@ import type {
   WorkerCapabilityControls,
   WorkerCapabilityDescriptor,
   WorkerCapabilityExecutionFreshness,
+  WorkerCapabilityPayloadSourceProvenance,
   WorkerSettledCapabilityResult,
 } from "./contracts.js";
 
@@ -38,6 +39,10 @@ export type WorkerCapabilityPayloadContextScope =
   | "standard"
   | "target_only"
   | "target_with_artifacts";
+
+export type WorkerCapabilityPayloadRequestSourceProjection =
+  | "full_request"
+  | "assignment_only";
 
 export type WorkerCapabilityPayloadContract = Readonly<{
   instructions: string;
@@ -122,6 +127,8 @@ export type WorkerCapabilityPayloadContext =
 export type WorkerCapabilityPayloadModelRequest = Readonly<{
   /** Runtime-only binding; it is not projected into the model payload. */
   executionId: string;
+  /** Runtime-only selection of reference context for this assignment. */
+  requestSourceProjection: WorkerCapabilityPayloadRequestSourceProjection;
   modelStep: typeof WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP;
   instructions: string;
   context: WorkerCapabilityPayloadContext;
@@ -155,6 +162,7 @@ export type WorkerCapabilityPayloadAuthor = Readonly<{
   author(
     input: Readonly<{
       call: RoleCallFrame;
+      assignmentProvenance?: WorkerCapabilityPayloadSourceProvenance;
       executionId: string;
       descriptor: WorkerCapabilityDescriptor;
       /** Required for Worker payloads and forbidden for direct-root payloads. */

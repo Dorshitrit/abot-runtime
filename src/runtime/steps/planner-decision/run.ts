@@ -14,11 +14,11 @@ import type {
   RoleCallLedgerHead,
 } from "../../orchestration/role-calls/index.js";
 import type { RoleExecutor } from "../../orchestration/role-executors/index.js";
+import type { RuntimeDelegateRoleId } from "../../orchestration/roles.js";
 import type { RequestExecutionScope } from "../../request/execution-scope.js";
 import type { RequestRoleExecutionHandoff } from "../../request/result.js";
 import {
   PLANNER_DECISION_MODEL_STEP,
-  type PlannerChildRoleId,
   type PlannerDecision,
   type PlannerDecisionDiagnosticContext,
   type PlannerDecisionPlanContext,
@@ -38,7 +38,7 @@ import { PLANNER_GRAPH_MODEL_STEP } from "../planner-graph/contracts.js";
 
 type RunPlannerDecisionOptions = Readonly<{
   call: RoleCallFrame;
-  availableChildRoleIds: readonly PlannerChildRoleId[];
+  availableChildRoleIds: readonly RuntimeDelegateRoleId[];
   toolResults: RequestToolResultsView;
   dependencyHead?: RoleCallLedgerHead;
   progress?: PlannerDecisionProgressSource;

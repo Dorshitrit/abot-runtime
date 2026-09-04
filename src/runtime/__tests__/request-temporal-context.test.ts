@@ -25,7 +25,8 @@ describe("request temporal context", () => {
       label: "UTC",
       observedAt: "2026-08-17T12:34:56.789Z",
       timeZone: "UTC",
-      expected: "2026-08-17 12:34:56 GMT+00:00",
+      // ICU versions differ in how they spell a zero GMT offset.
+      expected: expect.stringMatching(/^2026-08-17 12:34:56 GMT(?:\+00:00)?$/),
     },
   ])(
     "formats a frozen instant in $label",

@@ -12,9 +12,9 @@ import {
 import {
   REVIEWER_COMPLETION_TARGET_MAX_LENGTH,
   REVIEWER_DECISION_MODEL_STEP,
-  REVIEWER_ITEM_SUMMARY_MAX_LENGTH,
   REVIEWER_MAX_FACTS,
   REVIEWER_MAX_SUBJECTS,
+  resolveCanonicalReviewerCompletionTargetText,
   type ReviewerEvidence,
   type ReviewerFact,
   type ReviewerReviewSnapshot,
@@ -24,6 +24,7 @@ import {
   traceReviewerSnapshotProjected,
   traceReviewerSnapshotRejected,
 } from "./diagnostics.js";
+import { projectReviewerDelegatedContext } from "./delegated-context.js";
 import {
   projectReviewerFinalEvidence,
   type ReviewerEvidenceCandidate,
@@ -119,16 +120,6 @@ function projectReviewerReviewSnapshotUnchecked(
   const evidence: ReviewerEvidence[] = [];
   const evidenceCandidates: ReviewerEvidenceCandidate[] = [];
   const subjectRefByTopLevelCallId = new Map<string, string>();
-  const excludedReviewerCallIds = new Set<string>();
-  const compactedReferenceDataByExecutionId =
-    projectReviewerCompactedReferenceData({
-      requestId: params.requestId,
-      requestObjective: params.requestObjective,
-      head,
-      callerCallId: caller.callId,
-      reviewerCallId: reviewer.callId,
-      store: params.contextCompactionStore,
-    });
 
   const callerObjective = caller.objective ?? params.requestObjective.trim();
   if (!callerObjective) {
@@ -139,9 +130,17 @@ function projectReviewerReviewSnapshotUnchecked(
     : "request_source";
   {
     const callerSubjectRef = `call:${caller.callId}`;
-    const completionTarget = callerObjective.trim();
-    if (completionTarget.length > REVIEWER_COMPLETION_TARGET_MAX_LENGTH) {
+    const unboundedCompletionTarget = callerObjective.trim();
+    const completionTarget = resolveCanonicalReviewerCompletionTargetText(
+      unboundedCompletionTarget,
+    );
+    if (
+      unboundedCompletionTarget.length > REVIEWER_COMPLETION_TARGET_MAX_LENGTH
+    ) {
       projectionComplete = false;
+    }
+    if (reviewer.objective.trim() !== completionTarget) {
+      throw new Error("reviewer_snapshot_completion_target_binding_invalid");
     }
     projectionComplete =
       pushBounded(
@@ -149,10 +148,7 @@ function projectReviewerReviewSnapshotUnchecked(
         {
           subjectRef: callerSubjectRef,
           kind: "caller_objective",
-          summary: completionTarget.slice(
-            0,
-            REVIEWER_COMPLETION_TARGET_MAX_LENGTH,
-          ),
+          summary: completionTarget,
         },
         REVIEWER_MAX_SUBJECTS,
       ) && projectionComplete;
@@ -161,64 +157,36 @@ function projectReviewerReviewSnapshotUnchecked(
     }
   }
 
-  const earlierChildren = caller.childCallIds
-    .filter((childCallId) => childCallId !== reviewer.callId)
-    .map((childCallId) =>
-      head.state.calls.find((candidate) => candidate.callId === childCallId),
-    );
-  for (const child of earlierChildren) {
-    if (
-      !child ||
-      child.parentCallId !== caller.callId ||
-      child.status !== "completed" ||
-      !child.resultRef
-    ) {
-      projectionComplete = false;
-      continue;
-    }
-    const result = head.state.results.find(
-      (candidate) =>
-        candidate.resultRef === child.resultRef &&
-        candidate.producerCallId === child.callId,
-    );
-    if (!result) {
-      projectionComplete = false;
-      continue;
-    }
-    if (child.roleId === "reviewer") {
-      excludedReviewerCallIds.add(child.callId);
-      continue;
-    }
-    const subjectRef = `call:${child.callId}`;
-    const childObjective = child.objective ?? `${child.roleId} work`;
-    if (isSummaryTruncated(childObjective)) projectionComplete = false;
-    const subjectAdded = pushBounded(
-      subjects,
-      {
-        subjectRef,
-        kind: `${child.roleId}_result`,
-        summary: boundedSummary(childObjective),
-      },
-      REVIEWER_MAX_SUBJECTS,
-    );
-    projectionComplete = subjectAdded && projectionComplete;
-    if (!subjectAdded) continue;
-    subjectRefByTopLevelCallId.set(child.callId, subjectRef);
-    if (isSummaryTruncated(result.summary)) projectionComplete = false;
-    projectionComplete =
-      pushBounded(
-        facts,
-        {
-          factRef: result.resultRef,
-          kind: "role_result",
-          status: result.outcome === "completed" ? "informational" : "missing",
-          subjectRefs: Object.freeze([subjectRef]),
-          evidenceRefs: Object.freeze([]),
-          summary: boundedSummary(result.summary),
-        },
-        REVIEWER_MAX_FACTS,
-      ) && projectionComplete;
+  const delegatedContext = projectReviewerDelegatedContext({
+    head,
+    reviewer,
+    subjectCapacity: REVIEWER_MAX_SUBJECTS - subjects.length,
+    factCapacity: REVIEWER_MAX_FACTS - facts.length,
+  });
+  subjects.push(...delegatedContext.subjects);
+  facts.push(...delegatedContext.facts);
+  projectionComplete =
+    delegatedContext.projectionComplete && projectionComplete;
+  for (const { callId, subjectRef } of delegatedContext.subjectBindings) {
+    subjectRefByTopLevelCallId.set(callId, subjectRef);
   }
+  const scopedTopLevelCallIds = new Set([
+    caller.callId,
+    ...delegatedContext.scopedTopLevelCallIds,
+  ]);
+  const excludedReviewerCallIds = new Set(
+    delegatedContext.excludedReviewerCallIds,
+  );
+  const compactedReferenceDataByExecutionId =
+    projectReviewerCompactedReferenceData({
+      requestId: params.requestId,
+      requestObjective: params.requestObjective,
+      head,
+      callerCallId: caller.callId,
+      reviewerCallId: reviewer.callId,
+      scopedTopLevelCallIds,
+      store: params.contextCompactionStore,
+    });
 
   for (const execution of head.state.capabilityExecutions) {
     const topLevelCallId = resolveTopLevelScopeCallId(
@@ -228,6 +196,7 @@ function projectReviewerReviewSnapshotUnchecked(
       execution.callId,
     );
     if (!topLevelCallId) continue;
+    if (!scopedTopLevelCallIds.has(topLevelCallId)) continue;
     if (excludedReviewerCallIds.has(topLevelCallId)) continue;
     if (
       execution.status !== "settled" ||
@@ -294,6 +263,7 @@ function projectReviewerCompactedReferenceData(
     head: RoleCallLedgerHead;
     callerCallId: string;
     reviewerCallId: string;
+    scopedTopLevelCallIds: ReadonlySet<string>;
     store?: RequestContextCompactionStore;
   }>,
 ): ReadonlyMap<string, string> {
@@ -309,15 +279,18 @@ function projectReviewerCompactedReferenceData(
     ...new Set(
       params.head.state.capabilityExecutions.map(({ callId }) => callId),
     ),
-  ].filter(
-    (callId) =>
-      resolveTopLevelScopeCallId(
-        params.head,
-        params.callerCallId,
-        params.reviewerCallId,
-        callId,
-      ) !== undefined,
-  );
+  ].filter((callId) => {
+    const topLevelCallId = resolveTopLevelScopeCallId(
+      params.head,
+      params.callerCallId,
+      params.reviewerCallId,
+      callId,
+    );
+    return (
+      topLevelCallId !== undefined &&
+      params.scopedTopLevelCallIds.has(topLevelCallId)
+    );
+  });
   const projected = new Map<string, string>();
   for (const checkpoint of store.findByCallIds(callIds)) {
     const call = callsById.get(checkpoint.callId);
@@ -422,17 +395,6 @@ function pushBounded<T>(target: T[], value: T, maximum: number): boolean {
   if (target.length >= maximum) return false;
   target.push(value);
   return true;
-}
-
-function boundedSummary(value: string): string {
-  const normalized = value.trim();
-  return normalized.length <= REVIEWER_ITEM_SUMMARY_MAX_LENGTH
-    ? normalized
-    : normalized.slice(0, REVIEWER_ITEM_SUMMARY_MAX_LENGTH);
-}
-
-function isSummaryTruncated(value: string): boolean {
-  return value.trim().length > REVIEWER_ITEM_SUMMARY_MAX_LENGTH;
 }
 
 function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {

@@ -40,14 +40,39 @@ describe("web ui shell presentation", () => {
     expect(statusComponent).toContain('aria-live="polite"');
   });
 
-  test("keeps all five mobile destinations visible", () => {
+  test("keeps all four mobile navigation actions visible", () => {
     expect(responsiveStyles).toMatch(
-      /\.workspace-rail\s*\{[\s\S]*?grid-template-columns:\s*repeat\(5,/,
+      /\.workspace-rail\s*\{[\s\S]*?grid-template-columns:\s*repeat\(4,/,
     );
     expect(responsiveStyles).toMatch(
       /\.rail-actions\s*\{\s*display:\s*contents;/,
     );
     expect(responsiveStyles).toContain(".rail-history-button");
+  });
+
+  test("uses three mobile rail slots when Configuration hides conversation history", () => {
+    expect(responsiveStyles).toMatch(
+      /\.app-shell\.config-workspace\s+\.workspace-rail\s*\{\s*grid-template-columns:\s*repeat\(3,/,
+    );
+  });
+
+  test("keeps Operations inside Configuration and outside dashboard rerenders", () => {
+    expect(markup).not.toContain('id="operationsWorkspaceButton"');
+    expect(markup).not.toContain('id="operationsWorkspacePanel"');
+    expect(markup).not.toContain('id="closeOperationsWorkspaceButton"');
+    const configuration = markup.slice(
+      markup.indexOf('id="configWorkspacePanel"'),
+      markup.indexOf('id="panelBackdrop"'),
+    );
+    expect(configuration).toContain(
+      'id="configDashboard" class="config-dashboard"></div>',
+    );
+    expect(configuration).toContain('id="configOperationsSection"');
+    for (const view of ["runtime", "logs", "health"]) {
+      expect(configuration).toContain(`id="${view}Tab"`);
+      expect(configuration).toContain(`id="${view}TabButton"`);
+      expect(markup.match(new RegExp(`id="${view}Tab"`, "g"))).toHaveLength(1);
+    }
   });
 
   test("owns discoverable Firefox and WebKit scrollbars centrally", () => {

@@ -163,7 +163,7 @@ export function projectWorkerDecisionContext(
   });
 }
 
-function buildWorkerAssignmentPrompt(
+export function buildWorkerAssignmentPrompt(
   session: PreparedWorkerDecisionSession,
 ): string {
   const { callIdentity, objective, options } = session;
@@ -230,10 +230,14 @@ function projectPendingCapabilityExecutionAssignment(
   pending: WorkerPendingCapabilitySelection,
 ): Readonly<{
   capabilityId: string;
+  authoringObjective?: string;
   selectionControls?: WorkerPendingCapabilitySelection["selectionControls"];
 }> {
   return Object.freeze({
     capabilityId: pending.capabilityId,
+    ...(pending.authoringObjective
+      ? { authoringObjective: pending.authoringObjective }
+      : {}),
     ...(pending.selectionControls
       ? { selectionControls: pending.selectionControls }
       : {}),

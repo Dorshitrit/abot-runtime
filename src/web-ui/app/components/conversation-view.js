@@ -1,15 +1,19 @@
 import { isNearScrollEnd, pinScrollToEnd } from "../ui-behavior.js";
 import { applyTextDirection, renderMarkdown } from "../lib/text-format.js";
+import { createConversationActivity } from "./conversation-activity.js";
+import { createComposerPlan } from "./composer-plan.js";
+import { buildComposerPlanModel } from "../lib/composer-plan-model.js";
 import {
-  createConversationActivity,
-  createConversationContextWindow,
-} from "./conversation-activity.js";
+  buildComposerContextWindowModel,
+  createComposerContextWindow,
+} from "./composer-context-window.js";
 import { createMessageAttachments } from "./message-attachments.js";
 import { createMessageTimestamp } from "./message-timestamp.js";
 
 export function createConversationView({
   dom,
   getMessages,
+  getActiveRequestId = () => "",
   getActivityForMessage,
   getPendingApproval,
   createApprovalCard,
@@ -20,7 +24,12 @@ export function createConversationView({
   viewport = window,
 }) {
   const conversationActivity = createConversationActivity({ documentRoot });
-  const conversationContextWindow = createConversationContextWindow({
+  const composerContextWindow = createComposerContextWindow({
+    container: dom.composerContextWindow,
+    documentRoot,
+  });
+  const composerPlan = createComposerPlan({
+    container: dom.composerPlan,
     documentRoot,
   });
   const messageAttachments = createMessageAttachments({
@@ -132,8 +141,6 @@ export function createConversationView({
         streaming: Boolean(message.streaming),
         ...getActivityForMessage(message),
       };
-      const contextWindow = conversationContextWindow.createNode(activityInput);
-      if (contextWindow) bubble.appendChild(contextWindow);
       const activity = conversationActivity.createNode(activityInput);
       if (activity) bubble.appendChild(activity);
     }
@@ -185,7 +192,25 @@ export function createConversationView({
     return row;
   }
 
+  function renderContextWindow() {
+    composerContextWindow.render(
+      buildComposerContextWindowModel({
+        messages: getMessages(),
+        activeRequestId: getActiveRequestId(),
+        getActivityForMessage,
+      }),
+    );
+  }
+
   function render() {
+    renderContextWindow();
+    composerPlan.render(
+      buildComposerPlanModel({
+        messages: getMessages(),
+        activeRequestId: getActiveRequestId(),
+        getActivityForMessage,
+      }),
+    );
     const previousScrollTop = dom.messagesList.scrollTop;
     const shouldFollow =
       viewState.followMessages || isNearScrollEnd(dom.messagesList);
@@ -248,6 +273,8 @@ export function createConversationView({
     cancelScheduledMessageRender();
     cancelScheduledThinkingRender();
     conversationActivity.reset();
+    composerContextWindow.reset();
+    composerPlan.reset();
   }
 
   function forgetThinkingDisclosure(messageId) {
@@ -271,6 +298,7 @@ export function createConversationView({
     cancelScheduledThinkingRender,
     forgetThinkingDisclosure,
     render,
+    renderContextWindow,
     reset,
     scheduleMessageRender,
     scheduleThinkingRender,

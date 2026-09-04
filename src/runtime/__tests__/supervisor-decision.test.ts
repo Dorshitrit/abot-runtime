@@ -208,7 +208,7 @@ describe("Supervisor decision feasibility contract", () => {
         path: "/properties/decision/anyOf/1/properties/objective/maxLength",
       },
     ]);
-    expect(variants).toHaveLength(2);
+    expect(variants).toHaveLength(3);
     expect(variants[0]).toMatchObject({
       required: ["action"],
       additionalProperties: false,
@@ -223,7 +223,9 @@ describe("Supervisor decision feasibility contract", () => {
         action: { type: "string", enum: ["invoke_role"] },
         roleId: {
           type: "string",
-          enum: [...SUPERVISOR_DELEGATE_ROLE_IDS],
+          enum: SUPERVISOR_DELEGATE_ROLE_IDS.filter(
+            (roleId) => roleId !== "reviewer",
+          ),
         },
         objective: {
           type: "string",
@@ -248,28 +250,25 @@ describe("Supervisor decision feasibility contract", () => {
         reason: "ollama_grammar_unsupported_post_validated_constraint",
       },
     ]);
-    expect(ollama.format).toMatchObject({
-      type: "object",
-      required: ["decision"],
-      additionalProperties: false,
+    const projectedVariants = decisionVariants(
+      ollama.format as Record<string, unknown>,
+    );
+    expect(projectedVariants).toHaveLength(3);
+    expect(projectedVariants[0]).toMatchObject({
+      properties: { action: { enum: ["respond"] } },
+    });
+    expect(projectedVariants[1]).toMatchObject({
       properties: {
-        decision: {
-          anyOf: [
-            {
-              properties: {
-                action: { enum: ["respond"] },
-              },
-            },
-            {
-              properties: {
-                roleId: {
-                  enum: [...SUPERVISOR_DELEGATE_ROLE_IDS],
-                },
-              },
-            },
-          ],
+        roleId: {
+          enum: SUPERVISOR_DELEGATE_ROLE_IDS.filter(
+            (roleId) => roleId !== "reviewer",
+          ),
         },
       },
+    });
+    expect(projectedVariants[2]).toMatchObject({
+      required: ["action", "roleId"],
+      properties: { roleId: { enum: ["reviewer"] } },
     });
     expect(openai).toEqual({
       type: "json_schema",
@@ -330,10 +329,11 @@ describe("Supervisor decision feasibility contract", () => {
         },
       },
     });
+    expect(reviewerVariant.properties).not.toHaveProperty("objective");
     expect(reviewerVariant.properties).not.toHaveProperty(
       "workerCapabilityScope",
     );
-    expect(reviewerVariant.required).toEqual(["action", "roleId", "objective"]);
+    expect(reviewerVariant.required).toEqual(["action", "roleId"]);
 
     const accepted = parseSupervisorDecisionOutput(
       decisionText({
@@ -1038,10 +1038,10 @@ describe("Supervisor decision feasibility contract", () => {
       "When the requested result is understanding, comparison, analysis, or research synthesis",
     );
     expect(instructions).toContain(
-      "Every invoked role is an isolated call frame: it does not implicitly inherit the conversation or this Supervisor's objective",
+      "Roles with an objective run in isolated call frames and do not inherit the conversation or this Supervisor's objective",
     );
     expect(instructions).toContain(
-      "automatically supplies the bounded canonical results of every previously settled direct sibling",
+      "automatically supplies bounded canonical results from settled direct siblings",
     );
     expect(instructions).toContain(
       "When a completed sibling already established information",
@@ -1201,6 +1201,21 @@ describe("Supervisor decision feasibility contract", () => {
       "A completed Planner result is its aggregate claim about the bounded process that Planner owned",
     );
     expect(resumedInstructions).toContain(
+      "Runtime-owned workReceipt/workLineage are provenance",
+    );
+    expect(resumedInstructions).toContain(
+      "not correctness, completion, or effect proof",
+    );
+    expect(resumedInstructions).toContain(
+      "Join workLineage.capabilityExecutionIds mechanically to equal executionId values in runtime_request_tool_results_v1",
+    );
+    expect(resumedInstructions).toContain(
+      "Planner snapshots are provenance, not correctness proof",
+    );
+    expect(resumedInstructions).not.toContain(
+      "not visibility into its internal process",
+    );
+    expect(resumedInstructions).toContain(
       "is not completed production work eligible for a completion audit",
     );
     expect(resumedInstructions).toContain(
@@ -1213,11 +1228,11 @@ describe("Supervisor decision feasibility contract", () => {
       "A required external effect that is not established by supplied exact settled evidence is remaining production work",
     );
     expect(resumedInstructions).toContain(
-      "Never let a summary override missing or contrary effect evidence",
+      "Never let claims or lineage override missing or contrary effect evidence",
     );
     expect(resumedInstructions).toContain("Never review unchanged work again");
     expect(resumedInstructions).toContain(
-      "automatically supplies the bounded canonical results of every previously settled direct sibling",
+      "automatically supplies bounded canonical results from settled direct siblings",
     );
   });
 
@@ -1280,7 +1295,7 @@ describe("Supervisor decision feasibility contract", () => {
       AVAILABLE_WORKER_CAPABILITY_CATALOG,
     );
     expect(withCatalog.workerCapabilityAffordances).toEqual([]);
-    expect(withCatalog.context.messages[0]!.content).toContain(
+    expect(withCatalog.context.messages[0]!.content).not.toContain(
       JSON.stringify(AVAILABLE_WORKER_CAPABILITY_CATALOG),
     );
     expect(withCatalog.context.messages[0]!.content).not.toContain(
@@ -1690,21 +1705,14 @@ describe("Supervisor decision feasibility contract", () => {
     });
 
     for (const roleId of SUPERVISOR_DELEGATE_ROLE_IDS) {
-      expect(
-        parseSupervisorDecisionOutput(
-          decisionText({
-            action: "invoke_role",
-            roleId,
-            objective: `Return the bounded ${roleId} result.`,
-          }),
-        ),
-      ).toEqual({
+      const objective = `Return the bounded ${roleId} result.`;
+      const decision =
+        roleId === "reviewer"
+          ? { action: "invoke_role", roleId }
+          : { action: "invoke_role", roleId, objective };
+      expect(parseSupervisorDecisionOutput(decisionText(decision))).toEqual({
         ok: true,
-        decision: {
-          action: "invoke_role",
-          roleId,
-          objective: `Return the bounded ${roleId} result.`,
-        },
+        decision,
       });
     }
   });
@@ -2464,7 +2472,6 @@ describe("Supervisor decision feasibility contract", () => {
         decision: {
           action: "invoke_role" as const,
           roleId: "reviewer" as const,
-          objective: "Review the supplied bounded work.",
         },
       },
     ];
@@ -2477,6 +2484,11 @@ describe("Supervisor decision feasibility contract", () => {
       const request = createRequest({
         modelGatewayClient: { invoke, invokeRaw: vi.fn() },
       });
+      const expectedDecision =
+        scenario.decision.action === "invoke_role" &&
+        scenario.decision.roleId === "reviewer"
+          ? { ...scenario.decision, objective: request.prompt }
+          : scenario.decision;
       await expect(
         runSupervisorDecision(request, {
           call: {
@@ -2490,7 +2502,7 @@ describe("Supervisor decision feasibility contract", () => {
           allowedRoleIds: scenario.allowedRoleIds,
         }),
       ).resolves.toEqual({
-        decision: scenario.decision,
+        decision: expectedDecision,
         steeringVersion: 0,
       });
       expect(invoke).toHaveBeenCalledOnce();

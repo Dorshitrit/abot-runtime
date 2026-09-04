@@ -28,6 +28,7 @@ import {
   projectWorkerSettledCapabilityResults,
   type WorkerCapabilityPayloadModelRequest,
 } from "../orchestration/worker-capabilities/index.js";
+import { projectWorkerCapabilityPayloadSourceProvenance } from "../orchestration/worker-capabilities/payload-source-provenance.js";
 import type { ToolRegistry } from "../ports.js";
 
 const REQUEST_ID = "request-delegated-tool-evidence";
@@ -181,6 +182,11 @@ describe("delegated registered-tool evidence flow", () => {
     await expect(
       payloadAuthor.author({
         call: resumedWorker,
+        assignmentProvenance: projectWorkerCapabilityPayloadSourceProvenance({
+          ledger,
+          head: resumedHead,
+          call: resumedWorker,
+        }),
         executionId: "capability-execution-2",
         descriptor: payloadDescriptor,
         authoringObjective:

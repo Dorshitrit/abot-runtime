@@ -225,6 +225,10 @@ function projectWorkerDescriptor(
       ? { requiresPayloadAuthoringObjective: true as const }
       : {}),
     catalogGroups,
+    routingCapability: definition.routingCapability,
+    ...(definition.developmentRoles
+      ? { developmentRoles: Object.freeze([...definition.developmentRoles]) }
+      : {}),
   });
 }
 

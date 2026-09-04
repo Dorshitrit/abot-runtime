@@ -40,7 +40,7 @@
   border-radius: 12px;
   background: #2c6ee8;
   color: #fff;
-  font-size: 18px;
+  font-size: var(--font-size-4xl);
   font-weight: 700;
   box-shadow: none;
 }
@@ -125,7 +125,7 @@
   border-radius: 7px;
   background: #142234;
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--font-size-md);
   font-weight: 500;
   white-space: nowrap;
   opacity: 0;
@@ -200,7 +200,7 @@
   color: var(--muted);
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 550;
 }
 
@@ -322,7 +322,7 @@
   border-radius: 9px;
   background: #2c6ee8;
   color: #fff;
-  font-size: 14px;
+  font-size: var(--font-size-xl);
   font-weight: 700;
   box-shadow: none;
 }
@@ -334,7 +334,7 @@
 #sessionsHeading {
   margin: 0;
   color: var(--text-strong);
-  font-size: 18px;
+  font-size: var(--font-size-4xl);
   font-weight: 400;
   letter-spacing: -0.02em;
 }
@@ -342,7 +342,7 @@
 .brand-row h1 {
   margin: 0;
   color: var(--text-strong);
-  font-size: 15px;
+  font-size: var(--font-size-2xl);
   font-weight: 650;
   letter-spacing: -0.01em;
 }
@@ -350,7 +350,7 @@
 .brand-row p {
   margin: 2px 0 0;
   color: var(--muted-2);
-  font-size: 12px;
+  font-size: var(--font-size-md);
 }
 
 .icon-button,
@@ -393,7 +393,7 @@
   border-radius: 10px;
   background: #2869dc;
   color: #f8fbff;
-  font-size: 13px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
   box-shadow: none;
 }
@@ -420,13 +420,13 @@
 .sessions-heading-row h2 {
   margin: 0;
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
 }
 
 .sessions-list-label {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-md);
   font-weight: 400;
 }
 
@@ -437,7 +437,7 @@
   background: rgba(105, 147, 188, 0.1);
   color: var(--muted);
   text-align: center;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 400;
 }
 
@@ -465,7 +465,7 @@
   border-radius: 9px;
   background: rgba(92, 132, 172, 0.08);
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--font-size-lg);
   box-shadow: none;
 }
 
@@ -496,12 +496,12 @@
 
 .sidebar-empty-state strong {
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
 }
 
 .sidebar-empty-state span {
-  font-size: 12px;
+  font-size: var(--font-size-md);
   line-height: 1.5;
 }
 
@@ -556,7 +556,7 @@
   padding: 0 30px 0 0;
   border: 0;
   background: transparent;
-  text-align: left;
+  text-align: start;
   box-shadow: none;
 }
 
@@ -577,30 +577,20 @@
   color: var(--text);
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: var(--font-size-lg);
   font-weight: 400;
-}
-
-.session-preview {
-  display: -webkit-box;
-  overflow: hidden;
-  color: var(--muted-2);
-  font-size: 12px;
-  line-height: 1.4;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 
 .session-unread-badge {
   display: inline-grid;
   place-items: center;
-  min-width: 18px;
-  height: 18px;
+  min-width: 1.5rem;
+  height: 1.5rem;
   padding: 0 5px;
   border-radius: 999px;
   background: rgba(87, 148, 255, 0.18);
   color: #cfe0ff;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: 650;
 }
 
@@ -630,7 +620,7 @@
   border-radius: 7px;
   background: rgba(10, 23, 37, 0.9);
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   letter-spacing: -1px;
   box-shadow: none;
 }
@@ -662,7 +652,7 @@
   background: transparent;
   color: var(--text);
   text-align: left;
-  font-size: 12px;
+  font-size: var(--font-size-md);
   box-shadow: none;
 }
 
@@ -700,7 +690,7 @@
   align-items: center;
   gap: 7px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-md);
   font-weight: 500;
 }
 
@@ -723,7 +713,7 @@
 .field-label,
 .control-label {
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
 }
 
@@ -801,7 +791,7 @@
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-size-md);
   font-weight: 550;
   text-align: center;
   text-transform: capitalize;

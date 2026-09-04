@@ -6,6 +6,71 @@ This project follows semantic versioning after the first public release.
 
 ## Unreleased
 
+## 1.2.0 - 2026-09-04
+
+ABot 1.2.0 focuses on stronger delegated-work handoffs, bounded web search,
+and clearer execution visibility in the Web UI.
+
+### Added
+
+- Light web search works without a Brave API key, using a bounded catalog of
+  public sources and local relevance ranking. Coverage is limited to those
+  sources; a configured Brave search does not fall back to Light on failure.
+- Supervisor routing receives a budgeted, passive capability overview derived
+  from the same available-capability registry used by the capability brief.
+- A current-turn Planning drawer in the Web UI shows plan items and progress
+  above the composer.
+- Compact role activity and role avatars make active delegated work visible
+  without expanding the full Activity view.
+- Web-source receipts and compact source links in Activity distinguish returned
+  content, snippets, references, omitted output, and failed fetches. They describe
+  bounded tool output, not proof that the model read or cited a source.
+- Conversation history can copy a session's exact filename for support and
+  troubleshooting.
+
+### Changed
+
+- Model selection and reasoning-depth controls now sit in the Web UI composer,
+  with an updated responsive layout and accessible control labels.
+- Conversation history stays docked on wide screens, while Runtime, Logs, and
+  Health tools are grouped under Configuration's Operations view.
+- Web UI typography and responsive spacing improve conversation readability;
+  history rows use compact titles instead of expanded metadata.
+- Context usage is presented as a compact indicator in the Web UI composer.
+- Planned Work assigns exactly one production plan item per Worker invocation;
+  Supervisor owns subsequent review delegation.
+- Delegated Planner and Worker results carry runtime-owned provenance receipts
+  that preserve their producing call and work lineage across continuations.
+- Development tooling is updated, with additional regression coverage for
+  blocked Planner handoffs.
+
+### Fixed
+
+- Planner-owned Workers retain their exact assignment, working directory, and
+  relevant dependency artifacts across decision, payload, and result authoring.
+- Planner-led changes to existing projects keep bounded target discovery within
+  the implementation task, preserving canonical project paths and avoiding
+  redundant inspection when current target context is already supplied.
+- Planner receives the complete available capability-group catalog, including
+  descriptions and declared effects, when scoping delegated work.
+- Reviewer receives the canonical completion target and exact delegated results;
+  structured verdicts preserve reported gaps across role handoffs.
+- Reviewer audits require coverage of supplied evidence and multi-target mutation
+  verification, and reject pass verdicts that contradict their own findings.
+- Ollama structured output no longer receives an artificially low token ceiling
+  derived from JSON schema size. Physical-context and core-decision limits remain
+  in effect.
+- Complete system-probe requests avoid an unnecessary controls-refinement step.
+- Gateway request decoding preserves UTF-8 characters split across incoming
+  chunks, keeping token measurements bound to the exact request content.
+- Web UI tool counters count actual invocations, and context usage from the
+  previous request stays hidden while a new request is pending.
+- Planning drawer state survives failed-session restoration, steering, and
+  overlapping live and replayed progress updates.
+- Execution guidance preserves existing resources during creation and calls for
+  clarification when a mutation target or scope remains ambiguous after required
+  read-only discovery.
+
 ## 1.1.0 - 2026-08-30
 
 ABot 1.1.0 focuses on upgrade-safe configuration, optional cross-session

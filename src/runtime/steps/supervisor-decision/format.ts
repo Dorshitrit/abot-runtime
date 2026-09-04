@@ -33,12 +33,20 @@ export function createSupervisorDecisionFormat(
       availableWorkerCapabilityCatalog,
     );
   const workerAvailable = allowedRoleIds.includes("worker");
-  const availableNonWorkerRoleIds = allowedRoleIds.filter(
-    (roleId): roleId is Exclude<SupervisorDelegateRoleId, "worker"> =>
-      roleId !== "worker",
+  const reviewerAvailable = allowedRoleIds.includes("reviewer");
+  const objectiveRoleIds = allowedRoleIds.filter(
+    (
+      roleId,
+    ): roleId is Exclude<SupervisorDelegateRoleId, "reviewer"> =>
+      roleId !== "reviewer",
   );
-  const invokeVariants =
-    workerAvailable && workerCapabilityScopeContract.required
+  const scopedWorkerRequired =
+    workerAvailable && workerCapabilityScopeContract.required;
+  const unscopedObjectiveRoleIds = objectiveRoleIds.filter(
+    (roleId) => roleId !== "worker" || !scopedWorkerRequired,
+  );
+  const objectiveInvokeVariants = [
+    ...(scopedWorkerRequired
       ? [
           invokeRoleSchema(
             includeAcknowledgement,
@@ -46,25 +54,32 @@ export function createSupervisorDecisionFormat(
             ["worker"],
             workerCapabilityScopeContract.schema,
           ),
-          ...(availableNonWorkerRoleIds.length > 0
-            ? [
-                invokeRoleSchema(
-                  includeAcknowledgement,
-                  includeTitle,
-                  availableNonWorkerRoleIds,
-                ),
-              ]
-            : []),
         ]
-      : allowedRoleIds.length > 0
-        ? [
-            invokeRoleSchema(
-              includeAcknowledgement,
-              includeTitle,
-              allowedRoleIds,
-            ),
-          ]
-        : [];
+      : []),
+    ...(unscopedObjectiveRoleIds.length > 0
+      ? [
+          invokeRoleSchema(
+            includeAcknowledgement,
+            includeTitle,
+            unscopedObjectiveRoleIds,
+          ),
+        ]
+      : []),
+  ];
+  const invokeVariants = [
+    ...objectiveInvokeVariants,
+    ...(reviewerAvailable
+      ? [
+          invokeRoleSchema(
+            includeAcknowledgement,
+            includeTitle,
+            ["reviewer"],
+            undefined,
+            false,
+          ),
+        ]
+      : []),
+  ];
   const variants = [
     respondSchema(includeAcknowledgement, includeTitle),
     ...invokeVariants,
@@ -78,6 +93,7 @@ export function createSupervisorDecisionFormat(
       includeTitle,
       variantCount: variants.length,
       invokeVariantCount: invokeVariants.length,
+      objectiveInvokeVariantCount: objectiveInvokeVariants.length,
     }),
     schema: createStructuredDecisionEnvelopeSchema(variants),
   };
@@ -115,6 +131,7 @@ function invokeRoleSchema(
   includeTitle: boolean,
   allowedRoleIds: readonly SupervisorDelegateRoleId[],
   workerCapabilityScopeSchema?: Record<string, unknown>,
+  includeObjective = true,
 ): Record<string, unknown> {
   return exactObject(
     {
@@ -123,7 +140,9 @@ function invokeRoleSchema(
         type: "string",
         enum: [...allowedRoleIds],
       },
-      objective: boundedText(SUPERVISOR_OBJECTIVE_MAX_LENGTH),
+      ...(includeObjective
+        ? { objective: boundedText(SUPERVISOR_OBJECTIVE_MAX_LENGTH) }
+        : {}),
       ...(workerCapabilityScopeSchema
         ? { workerCapabilityScope: workerCapabilityScopeSchema }
         : {}),
@@ -142,7 +161,7 @@ function invokeRoleSchema(
     [
       "action",
       "roleId",
-      "objective",
+      ...(includeObjective ? ["objective"] : []),
       ...(workerCapabilityScopeSchema ? ["workerCapabilityScope"] : []),
       ...(includeAcknowledgement ? ["acknowledgement"] : []),
       ...(includeTitle ? ["title"] : []),
@@ -155,6 +174,7 @@ function createPostValidatedConstraints(params: {
   includeTitle: boolean;
   variantCount: number;
   invokeVariantCount: number;
+  objectiveInvokeVariantCount: number;
 }): Array<{ keyword: "maxLength"; path: string }> {
   const base = (index: number) =>
     structuredDecisionVariantSchemaPath(index, params.variantCount);
@@ -176,13 +196,16 @@ function createPostValidatedConstraints(params: {
         ]
       : []),
     ...Array.from(
+      { length: params.objectiveInvokeVariantCount },
+      (_, index) => index + 1,
+    ).map((index) => ({
+      keyword: "maxLength" as const,
+      path: `${base(index)}/properties/objective/maxLength`,
+    })),
+    ...Array.from(
       { length: params.invokeVariantCount },
       (_, index) => index + 1,
     ).flatMap((index) => [
-      {
-        keyword: "maxLength" as const,
-        path: `${base(index)}/properties/objective/maxLength`,
-      },
       ...(params.includeAcknowledgement
         ? [
             {

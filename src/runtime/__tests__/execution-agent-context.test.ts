@@ -66,7 +66,6 @@ const pathControls = Object.freeze({
   }),
   required: Object.freeze(["path"]),
 });
-
 const observePrimary: WorkerCapabilityDescriptor = Object.freeze({
   capabilityId: "files.observe_primary",
   summary: "Observe the primary file.",
@@ -75,8 +74,9 @@ const observePrimary: WorkerCapabilityDescriptor = Object.freeze({
   selectionControlIds: Object.freeze(["path"]),
   controlsRefinement: "mechanical_when_complete" as const,
   catalogGroups: Object.freeze([FILE_GROUP]),
+  routingCapability: "filesystem_inspection",
+  developmentRoles: Object.freeze(["inspect", "verify"] as const),
 });
-
 const observeSecondary: WorkerCapabilityDescriptor = Object.freeze({
   capabilityId: "files.observe_secondary",
   summary: "Observe the secondary file.",

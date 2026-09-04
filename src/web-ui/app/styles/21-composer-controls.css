@@ -1,0 +1,368 @@
+/* Composer controls and the menus anchored to them. */
+
+.composer-controls {
+  position: relative;
+  container-type: inline-size;
+  grid-column: 1 / -1;
+  grid-row: 3;
+  display: grid;
+  grid-template-columns: 34px auto minmax(0, 1fr) auto;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+}
+
+.composer-controls > * {
+  min-width: 0;
+}
+
+.composer-model-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding-inline: 6px;
+}
+
+.control-cluster,
+.permission-mode-control {
+  position: relative;
+  min-width: 0;
+}
+
+.model-control {
+  flex: 0 1 auto;
+  min-width: 120px;
+  max-width: 220px;
+}
+
+.agent-mode-control {
+  flex: none;
+}
+
+.agent-mode-button,
+.model-select-button,
+.permission-mode-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 8px;
+  border-color: transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--font-size-md);
+  font-weight: 400;
+  box-shadow: none;
+}
+
+.agent-mode-button:hover,
+.agent-mode-button.open,
+.model-select-button:hover,
+.model-select-button.open,
+.permission-mode-button:hover,
+.permission-mode-button.open {
+  border-color: transparent;
+  background: rgba(95, 139, 182, 0.08);
+  color: var(--text);
+}
+
+.agent-mode-button,
+.model-select-button {
+  width: 100%;
+  text-align: left;
+}
+
+.agent-mode-button > span:last-child,
+.model-select-button > span,
+.permission-mode-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-mode-icon,
+.model-select-icon {
+  display: none;
+}
+
+.agent-mode-option-icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: rgba(93, 133, 173, 0.1);
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+}
+
+.model-select-button {
+  justify-content: space-between;
+}
+
+.model-select-button > svg:not(.model-select-icon) {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+  opacity: 0.75;
+  transition: transform 120ms ease;
+}
+
+.model-select-button.open > svg:not(.model-select-icon) {
+  transform: rotate(180deg);
+}
+
+.agent-mode-button::after,
+.permission-mode-button::after {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  content: "";
+  opacity: 0.65;
+  transform: translateY(-1px) rotate(45deg);
+}
+
+.permission-mode-button {
+  width: auto;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+
+.permission-mode-button.full {
+  background: transparent;
+  color: #d3b875;
+}
+
+.agent-mode-menu,
+.model-select-menu,
+.permission-mode-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  z-index: 80;
+  display: grid;
+  gap: 3px;
+  max-height: min(360px, max(120px, calc(100dvh - 300px)));
+  padding: 5px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #132438;
+  box-shadow: 0 18px 42px rgba(0, 6, 16, 0.34);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.agent-mode-menu {
+  right: 0;
+  width: 260px;
+}
+
+.model-select-menu {
+  left: 0;
+  width: max(100%, 240px);
+}
+
+.permission-mode-menu {
+  left: 0;
+  min-width: 180px;
+}
+
+.agent-mode-menu.open,
+.model-select-menu.open,
+.permission-mode-menu.open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+.agent-mode-option,
+.model-select-option,
+.permission-mode-option {
+  border-color: transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  box-shadow: none;
+}
+
+.agent-mode-option:hover,
+.agent-mode-option.selected,
+.model-select-option:hover,
+.model-select-option.selected,
+.permission-mode-option:hover,
+.permission-mode-option.selected {
+  border-color: transparent;
+  background: rgba(91, 138, 183, 0.11);
+}
+
+.model-select-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  gap: 10px;
+  align-items: center;
+  min-height: 38px;
+  padding: 7px 9px;
+  font-size: var(--font-size-lg);
+  font-weight: 400;
+}
+
+.model-select-option-label {
+  overflow-wrap: anywhere;
+}
+
+.model-select-check {
+  color: #8eb7ec;
+  text-align: center;
+}
+
+.agent-mode-option {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 48px;
+  padding: 7px 9px;
+}
+
+.agent-mode-option strong,
+.agent-mode-option small,
+.permission-mode-option strong,
+.permission-mode-option small {
+  display: block;
+}
+
+.agent-mode-option strong,
+.permission-mode-option strong {
+  color: var(--text);
+  font-size: var(--font-size-md);
+  font-weight: 400;
+}
+
+.agent-mode-option small,
+.permission-mode-option small {
+  margin-top: 2px;
+  color: var(--muted-2);
+  font-size: var(--font-size-sm);
+  font-weight: 450;
+}
+
+.permission-mode-option {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 43px;
+  padding: 6px 8px;
+}
+
+.composer-submit-control {
+  position: relative;
+  display: inline-flex;
+  justify-self: end;
+  overflow: visible;
+  border-radius: 8px;
+}
+
+@container (max-width: 400px) {
+  .control-cluster {
+    position: static;
+  }
+
+  .agent-mode-control,
+  .agent-mode-button {
+    width: 32px;
+  }
+
+  .agent-mode-button {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .agent-mode-button > span:last-child {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .agent-mode-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    color: var(--muted);
+    font-size: var(--font-size-md);
+    font-weight: 500;
+  }
+
+  .agent-mode-button::after {
+    display: none;
+  }
+
+  .agent-mode-menu,
+  .model-select-menu {
+    right: auto;
+    left: 0;
+    width: min(280px, 100%);
+  }
+}
+
+@container (max-width: 320px) {
+  .model-control {
+    flex: none;
+    width: 32px;
+    min-width: 32px;
+    max-width: 32px;
+  }
+
+  .model-select-button {
+    justify-content: center;
+    width: 32px;
+    padding: 0;
+  }
+
+  .model-select-button > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .model-select-button .model-select-icon {
+    display: block;
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.7;
+    opacity: 1;
+  }
+
+  .model-select-button > svg:not(.model-select-icon) {
+    display: none;
+  }
+}

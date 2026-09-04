@@ -9,6 +9,7 @@ import type {
   WorkerCapabilityAdapterExecutionInput,
   WorkerCapabilityControls,
   WorkerCapabilityExecutionFreshness,
+  WorkerCapabilityPayloadSourceProvenance,
   WorkerCapabilityPreparedExecution,
   WorkerSettledCapabilityResult,
 } from "../contracts.js";
@@ -26,6 +27,7 @@ export type PreparedBoundInvocation<TContext> = Readonly<{
 type BoundInvocationPreparationParams<TContext> = Readonly<{
   context: TContext;
   call: RoleCallFrame;
+  assignmentProvenance?: WorkerCapabilityPayloadSourceProvenance;
   adapter: WorkerCapabilityAdapter<TContext>;
   intent: string;
   authoringObjective?: string;
@@ -46,6 +48,9 @@ export async function prepareBoundInvocation<TContext>(
   const common = Object.freeze({
     context: params.context,
     call: params.call,
+    ...(params.assignmentProvenance
+      ? { assignmentProvenance: params.assignmentProvenance }
+      : {}),
     intent: params.intent,
     ...(params.authoringObjective
       ? { authoringObjective: params.authoringObjective }

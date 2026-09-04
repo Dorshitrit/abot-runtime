@@ -220,6 +220,9 @@ async function prepareRegisteredToolWorkerCapability<TContext>(
     sharedState: params.sharedState,
     ...(params.payloadAuthor ? { payloadAuthor: params.payloadAuthor } : {}),
     call: input.call,
+    ...(input.assignmentProvenance
+      ? { assignmentProvenance: input.assignmentProvenance }
+      : {}),
     // The payload contract still names this correlation executionId. During
     // prepare it is deliberately non-canonical and never enters the ledger.
     executionId: input.preparationId,

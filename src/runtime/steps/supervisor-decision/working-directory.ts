@@ -3,6 +3,7 @@ import type {
   ModelGatewayJsonSchemaFormat,
 } from "../../../model-gateway/types.js";
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
+import { isCapabilityBriefMessage } from "../../context/capability-brief.js";
 import {
   normalizeRoleCallWorkingDirectory,
   ROLE_CALL_WORKING_DIRECTORY_MAX_LENGTH,
@@ -81,7 +82,7 @@ export function buildSupervisorWorkingDirectoryInput(
       role: "system" as const,
       content: buildSupervisorWorkingDirectoryInstructions(),
     }),
-    ...sourceMessages,
+    ...sourceMessages.filter((message) => !isCapabilityBriefMessage(message)),
     Object.freeze({
       role: "user" as const,
       content: JSON.stringify({

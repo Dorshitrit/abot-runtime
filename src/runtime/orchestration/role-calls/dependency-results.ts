@@ -10,7 +10,12 @@ const ROLE_DEPENDENCY_LOG_SCOPE = "runtime.role_dependencies";
 export type RoleCallDependencyResult = Readonly<
   Pick<
     RoleCallResult,
-    "resultRef" | "producerCallId" | "roleId" | "outcome" | "summary"
+    | "resultRef"
+    | "producerCallId"
+    | "roleId"
+    | "outcome"
+    | "summary"
+    | "receipt"
   >
 >;
 
@@ -108,6 +113,7 @@ function projectRoleCallDependencyResultsUnchecked(
       roleId: result.roleId,
       outcome: result.outcome,
       summary: result.summary,
+      ...(result.receipt ? { receipt: result.receipt } : {}),
     });
   });
   return Object.freeze(results);

@@ -593,13 +593,20 @@ describe("mechanical role executor registry", () => {
         expect(input.call.dependencyResultRefs).toEqual(["result-2"]);
         expect(
           projectRoleCallDependencyResults(ledger.current(), input.call),
-        ).toEqual([
+        ).toMatchObject([
           {
             resultRef: "result-2",
             producerCallId: "call-2",
             roleId: "planner",
             outcome: "completed",
             summary: "Planner aggregate result.",
+            receipt: {
+              kind: "work_result_v1",
+              plannerPlanRef: {
+                planId: "plan-call-2",
+                planVersion: 1,
+              },
+            },
           },
         ]);
         if (input.call.activationCount === 1) {

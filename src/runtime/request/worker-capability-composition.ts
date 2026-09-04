@@ -15,6 +15,10 @@ import type {
 import type { ToolRequestAttachment } from "../../capabilities/tool-types.js";
 import type { WorkerCapabilityAdapterProvider } from "../orchestration/worker-capabilities/index.js";
 import { createRequestRuntimeToolRegistry } from "../capabilities/request-runtime-tool-registry.js";
+import {
+  projectAvailableTools,
+  type ToolAvailabilitySource,
+} from "../capabilities/tool-availability.js";
 import { createRequestWorkerCapabilityPayloadAuthor } from "./worker-capability-payload.js";
 import type { ExecutionPolicyAuthoritySnapshot } from "../orchestration/role-calls/index.js";
 import type {
@@ -36,7 +40,8 @@ type RequestWorkerCapabilityProviderParams<TRequest> = Readonly<{
  */
 export function createRequestWorkerCapabilityProvider(
   params: RequestWorkerCapabilityProviderParams<RequestCapabilityCompositionView>,
-): WorkerCapabilityAdapterProvider<RequestCapabilityExecutionView> {
+): WorkerCapabilityAdapterProvider<RequestCapabilityExecutionView> &
+  ToolAvailabilitySource {
   let requestToolRegistry: ToolRegistry | undefined;
   let requestSkillProvider: SkillProvider | undefined;
 
@@ -68,31 +73,39 @@ export function createRequestWorkerCapabilityProvider(
     return requestSkillProvider;
   }
 
-  return createRegisteredToolWorkerCapabilityProvider<RequestCapabilityExecutionView>({
-    getRequestToolRegistry,
-    requestId: params.request.requestId,
-    sessionId: params.request.sessionId,
-    requestContext: Object.freeze({
-      agentMode: params.request.agentMode,
-      toolPermissionMode: params.request.toolPermissionMode,
-      ...(params.request.modelPreference
-        ? { modelPreference: params.request.modelPreference }
-        : {}),
-    }),
-    abortSignal: params.request.abortSignal,
-    toolPermissionMode: params.request.toolPermissionMode,
-    ...(params.request.toolApprovalController
-      ? {
-          toolApprovalController: params.request.toolApprovalController,
-        }
-      : {}),
-    payloadAuthor: createRequestWorkerCapabilityPayloadAuthor(
-      params.request,
-      params.executionPolicyAuthority?.capabilityAuthorities,
-    ),
-    loadActionSkillContext: (toolName) =>
-      getRequestSkillProvider().getActionContext(toolName),
-    nextApprovalId: () => `approval:${randomUUID()}`,
-    onEvent: params.request.onEvent,
+  const provider =
+    createRegisteredToolWorkerCapabilityProvider<RequestCapabilityExecutionView>(
+      {
+        getRequestToolRegistry,
+        requestId: params.request.requestId,
+        sessionId: params.request.sessionId,
+        requestContext: Object.freeze({
+          agentMode: params.request.agentMode,
+          toolPermissionMode: params.request.toolPermissionMode,
+          ...(params.request.modelPreference
+            ? { modelPreference: params.request.modelPreference }
+            : {}),
+        }),
+        abortSignal: params.request.abortSignal,
+        toolPermissionMode: params.request.toolPermissionMode,
+        ...(params.request.toolApprovalController
+          ? {
+              toolApprovalController: params.request.toolApprovalController,
+            }
+          : {}),
+        payloadAuthor: createRequestWorkerCapabilityPayloadAuthor(
+          params.request,
+          params.executionPolicyAuthority?.capabilityAuthorities,
+        ),
+        loadActionSkillContext: (toolName) =>
+          getRequestSkillProvider().getActionContext(toolName),
+        nextApprovalId: () => `approval:${randomUUID()}`,
+        onEvent: params.request.onEvent,
+      },
+    );
+  return Object.freeze({
+    ...provider,
+    getAvailableTools: () =>
+      projectAvailableTools(getRequestToolRegistry().listNormalInvocations?.()),
   });
 }

@@ -50,7 +50,10 @@ export function createModelSelector({
     button.disabled = select.disabled || options.length === 0;
     button.setAttribute("aria-expanded", open ? "true" : "false");
     button.classList.toggle("open", open);
-    valueLabel.textContent = selected?.label || "No models configured";
+    const label = selected?.label || "No models configured";
+    valueLabel.textContent = label;
+    button.title = `Model: ${label}`;
+    button.setAttribute("aria-label", `Model: ${label}`);
     menu.hidden = !open;
     menu.classList.toggle("open", open);
     menu.setAttribute("role", "menu");

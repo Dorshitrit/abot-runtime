@@ -1,3 +1,6 @@
+import type { buildConversationRoleCards } from "../lib/conversation-role-model.js";
+import type { ConversationSourcesGroup } from "../lib/web-sources.js";
+
 export type ConversationActivityInput = {
   requestId?: unknown;
   events?: unknown[];
@@ -46,6 +49,8 @@ export declare function buildConversationActivityModel(
 ): {
   requestId: string;
   events: ConversationActivityEvent[];
+  roleCards: ReturnType<typeof buildConversationRoleCards>;
+  sources: ConversationSourcesGroup[];
   progress: unknown;
   contextWindow: ConversationContextWindowModel | null;
   eventCount: number;
@@ -69,10 +74,4 @@ export declare function createConversationActivity(options?: {
   createNode(input?: ConversationActivityInput): HTMLElement | null;
   forget(requestId: unknown): void;
   reset(): void;
-};
-
-export declare function createConversationContextWindow(options?: {
-  documentRoot?: Document;
-}): {
-  createNode(input?: ConversationActivityInput): HTMLElement | null;
 };

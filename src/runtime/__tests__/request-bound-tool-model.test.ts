@@ -4,6 +4,7 @@ import type { ToolModelInvoker } from "../../capabilities/tool-types.js";
 import { createRequestToolModelInvoker } from "../adapters/request-tool-model-invoker.js";
 import type { ModelGatewayClient, ToolRegistry } from "../ports.js";
 import { bindRequestToolRegistry } from "../capabilities/request-bound-tool-registry.js";
+import { createRequestWorkerCapabilityProvider } from "../request/worker-capability-composition.js";
 import { createTestRequestExecutionScope } from "./support/request-execution-scope.js";
 
 describe("request-bound tool model", () => {
@@ -207,6 +208,94 @@ describe("request-bound tool model", () => {
     );
     expect(JSON.stringify(state?.availableTools)).not.toContain("secret");
     expect(JSON.stringify(state?.availableTools)).not.toContain("approval");
+  });
+
+  test("reads passive availability lazily from the same snapshot as Worker descriptors", () => {
+    const listNormalInvocations = vi
+      .fn()
+      .mockReturnValueOnce([
+        {
+          toolName: "configured_sample",
+          definition: {
+            name: "configured_sample",
+            routingCapability: "semantic_lookup",
+            catalogGroups: ["custom_group"],
+            params: {},
+          },
+          contract: {
+            version: 1,
+            operations: [
+              {
+                operationId: "inspect_sample",
+                summary: "Inspect the configured sample.",
+                input: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {},
+                  required: [],
+                },
+                effect: "read_only",
+                approval: "request_policy",
+              },
+            ],
+          },
+        },
+      ])
+      .mockReturnValue([]);
+    const prepareSharedState = vi.fn((state = {}) => state);
+    const execute = vi.fn();
+    const invoke = vi.fn();
+    const provider = createRequestWorkerCapabilityProvider({
+      request: createToolModelRequest("request-passive-availability", invoke),
+      toolRegistryOverride: {
+        listDefinitions: () => [],
+        listNormalInvocations,
+        getDefinition: () => undefined,
+        hasToolsAvailable: () => true,
+        getImplementations: () => ({}),
+        prepareSharedState,
+        execute,
+      },
+    });
+
+    expect(listNormalInvocations).not.toHaveBeenCalled();
+    const availability = provider.getAvailableTools();
+    expect(availability).toEqual([
+      {
+        toolName: "configured_sample",
+        operationId: "inspect_sample",
+        summary: "Inspect the configured sample.",
+        catalogGroups: ["custom_group"],
+        effect: "read_only",
+      },
+    ]);
+    expect(
+      provider.getDescriptors().map(({ capabilityId }) => capabilityId),
+    ).toEqual(["inspect_sample"]);
+    expect(provider.getAvailableTools()).toEqual(availability);
+    expect(listNormalInvocations).toHaveBeenCalledTimes(1);
+    expect(prepareSharedState).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
+    expect(Object.isFrozen(provider)).toBe(true);
+    expect(Object.isFrozen(availability)).toBe(true);
+    expect(Object.isFrozen(availability?.[0])).toBe(true);
+    expect(Object.isFrozen(availability?.[0]?.catalogGroups)).toBe(true);
+  });
+
+  test("keeps unavailable registry metadata distinct from an empty tool catalog", () => {
+    const provider = createRequestWorkerCapabilityProvider({
+      request: createToolModelRequest("request-unavailable-catalog", vi.fn()),
+      toolRegistryOverride: {
+        listDefinitions: () => [],
+        getDefinition: () => undefined,
+        hasToolsAvailable: () => false,
+        getImplementations: () => ({}),
+        execute: vi.fn(),
+      },
+    });
+
+    expect(provider.getAvailableTools()).toBeUndefined();
   });
 });
 

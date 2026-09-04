@@ -8,7 +8,8 @@ roles and the role-call ledger.
 - `activation/` owns one role's activation loop, result normalization, and
   capability-continuation validation.
 - `child-invocation/` owns the open-execute-return transaction for delegated
-  child roles and validates its ledger projections.
+  child roles, transports optional policy-bound result receipts, and validates
+  their ledger projections.
 - `shared/` contains invariants and diagnostic-context construction used by
   both lifecycles.
 - `contracts.ts` and `diagnostics.ts` remain the stable contracts and
@@ -16,4 +17,4 @@ roles and the role-call ledger.
 
 These modules must not choose semantic workflow. They enforce the ledger,
 continuation, and registration contracts around decisions made by role
-executors.
+executors. Transporting a receipt does not grant it completion authority.

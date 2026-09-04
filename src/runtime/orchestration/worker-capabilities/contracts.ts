@@ -11,7 +11,11 @@ import {
   type RoleCapabilityObservedEffect,
   type RoleCapabilityResultReference,
 } from "../role-calls/index.js";
-import type { ToolCatalogGroup } from "../../../capabilities/tool-types.js";
+import type {
+  ToolCatalogGroup,
+  ToolDevelopmentRole,
+  ToolRoutingCapability,
+} from "../../../capabilities/tool-types.js";
 import type { CapabilityAdapterResult } from "../capability-adapters/result.js";
 
 export const WORKER_CAPABILITY_ID_MAX_LENGTH = ROLE_CAPABILITY_ID_MAX_LENGTH;
@@ -31,6 +35,34 @@ export const WORKER_CAPABILITY_CONTROL_ARRAY_MAX_ITEMS = 64;
 
 export type WorkerCapabilityEffect = RoleCapabilityDeclaredEffect;
 export type WorkerCapabilityObservedEffect = RoleCapabilityObservedEffect;
+declare const WORKER_CAPABILITY_ASSIGNMENT_PROVENANCE_BRAND: unique symbol;
+export type WorkerCapabilityAssignmentProvenance = Readonly<{
+  kind: "planner_plan_item_v1";
+  requestId: string;
+  sourceRevision: number;
+  plannerCallId: string;
+  planId: string;
+  itemId: string;
+  workerCallId: string;
+  invocationAttempt: number;
+  readonly [WORKER_CAPABILITY_ASSIGNMENT_PROVENANCE_BRAND]: true;
+}>;
+
+declare const WORKER_CAPABILITY_REQUEST_PROVENANCE_BRAND: unique symbol;
+export type WorkerCapabilityRequestScopedProvenance = Readonly<{
+  kind: "request_scoped_worker_v1";
+  requestId: string;
+  sourceRevision: number;
+  callerCallId: string;
+  workerCallId: string;
+  invocationAttempt: number;
+  readonly [WORKER_CAPABILITY_REQUEST_PROVENANCE_BRAND]: true;
+}>;
+
+/** Runtime-issued request-source authority for one Worker payload. */
+export type WorkerCapabilityPayloadSourceProvenance =
+  | WorkerCapabilityAssignmentProvenance
+  | WorkerCapabilityRequestScopedProvenance;
 
 export type WorkerCapabilityBoundedStringControl = Readonly<{
   type: "string";
@@ -104,6 +136,10 @@ export type WorkerCapabilityDescriptor = Readonly<{
   controlsRefinement?: "mechanical_when_complete";
   /** Manifest-owned routing metadata projected only in capability selection. */
   catalogGroups?: readonly ToolCatalogGroup[];
+  /** Manifest-owned semantic routing class for this capability. */
+  routingCapability?: ToolRoutingCapability;
+  /** Manifest-owned development phases served by this capability. */
+  developmentRoles?: readonly ToolDevelopmentRole[];
   /** Canonical payload contract requires a Worker authoring receipt. */
   requiresPayloadAuthoringObjective?: true;
 }>;
@@ -155,6 +191,8 @@ export type WorkerCapabilityAdapterResult =
 export type WorkerCapabilityAdapterExecutionInput<TContext> = Readonly<{
   context: TContext;
   call: RoleCallFrame;
+  /** Runtime-only proof of the exact request source allowed for this payload. */
+  assignmentProvenance?: WorkerCapabilityPayloadSourceProvenance;
   executionId: string;
   /** Client-facing presentation metadata for lifecycle events only. */
   intent: string;

@@ -81,6 +81,17 @@ const requiredPaths = [
   "dist/src/plugin-contract/index.d.ts",
   "dist/src/plugin-sdk/index.js",
   "dist/src/plugin-sdk/index.d.ts",
+  ...[
+    "plugin-sdk/tool-availability-brief",
+    "plugin-sdk/tool-availability-overview",
+    "runtime/capabilities/tool-availability",
+    "runtime/context/capability-brief",
+    "runtime/request/capability-brief",
+    "runtime/steps/supervisor-decision/capability-brief",
+  ].flatMap((modulePath) => [
+    `dist/src/${modulePath}.js`,
+    `dist/src/${modulePath}.d.ts`,
+  ]),
   "dist/src/model-gateway/index.js",
   "dist/src/model-gateway/index.d.ts",
   "dist/src/model-gateway/provider-adapter.js",
@@ -104,6 +115,27 @@ const requiredPaths = [
   "dist/src/web-ui/server.js",
   "dist/src/web-ui/app/index.html",
   "dist/src/web-ui/app/app.js",
+  "dist/src/web-ui/app/components/composer-plan.js",
+  "dist/src/web-ui/app/components/composer-plan.d.ts",
+  "dist/src/web-ui/app/lib/composer-plan-model.js",
+  "dist/src/web-ui/app/lib/composer-plan-model.d.ts",
+  "dist/src/web-ui/app/lib/task-progress.js",
+  "dist/src/web-ui/app/lib/task-progress.d.ts",
+  "dist/src/web-ui/app/styles/23-composer-plan.css",
+  "dist/src/web-ui/app/components/conversation-role-cards.js",
+  "dist/src/web-ui/app/components/conversation-role-cards.d.ts",
+  "dist/src/web-ui/app/lib/conversation-role-model.js",
+  "dist/src/web-ui/app/lib/conversation-role-model.d.ts",
+  "dist/src/web-ui/app/styles/24-conversation-role-cards.css",
+  "dist/src/web-ui/app/components/conversation-sources.js",
+  "dist/src/web-ui/app/components/conversation-sources.d.ts",
+  "dist/src/web-ui/app/lib/web-sources.js",
+  "dist/src/web-ui/app/lib/web-sources.d.ts",
+  "dist/src/web-ui/app/lib/source-url-policy.js",
+  "dist/src/web-ui/app/lib/source-url-policy.d.ts",
+  "dist/src/web-ui/app/lib/web-source-event.js",
+  "dist/src/web-ui/app/lib/web-source-event.d.ts",
+  "dist/src/web-ui/app/styles/25-conversation-sources.css",
   "dist/src/shared/model-step-registry-data.json",
   "README.md",
   "LICENSE",
@@ -174,10 +206,40 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // responsibility-owned modules, or 30 exact emitted artifacts.
 // Request Runner Config v2 keeps the loader facade and adds three focused
 // modules, or six exact JavaScript and declaration artifacts.
-const maxFileCount = 1472;
-// Config v2 raises the measured baseline to 4,688,652 unpacked bytes. Keep
-// roughly 9 KiB of headroom instead of weakening the package boundary broadly.
-const maxUnpackedSizeBytes = 4_698_000;
+// Planner and Reviewer stabilization adds nine focused production modules,
+// or 18 exact JavaScript and declaration artifacts. Worker payload source
+// provenance adds one focused module, or two exact emitted artifacts. Planner
+// capability-catalog context adds one focused module, or two emitted artifacts.
+// PR1 work-result provenance adds four focused modules, or eight emitted
+// artifacts, and raises the measured baseline to 1,502 files and 4,798,102
+// unpacked bytes. Keep roughly 8 KiB of headroom instead of weakening either
+// publication boundary broadly.
+// Compact composer context usage and tool invocation counting add two browser
+// modules with declarations plus one stylesheet: five intentional assets.
+// The shared capability brief adds six production modules (12 emitted files).
+// Account for both additions while preserving the one-file margin. The brief
+// adds 10,000 bytes to the size ceiling; the composer change adds no size reserve.
+// The Planner drawer adds seven browser assets (three modules with declarations
+// and one stylesheet). Its net browser delta is 16,223 bytes. Account only for
+// that measured growth, retaining the existing size and one-file margins.
+// Review fixes add 2,827 measured browser bytes for replay reconciliation and
+// request-bound restoration, with no additional packaged files.
+// Readable typography, history separators and RTL add 3,182 CSS bytes.
+// Preserve the existing package margins; no packaged files are added.
+// Independent Light search adds 29 source files, one selector, and its README:
+// 31 package files. The approved sources, bundle, docs, and metadata add exactly
+// 193,248 unpacked bytes to the 1,525-file / 4,838,543-byte measured baseline.
+// Preserve the existing one-file and 689-byte margins.
+// Light review fixes add three source modules for robots directives, charsets,
+// and HTTP freshness. The measured package has 1,559 files; retain the same
+// one-file and 689-byte margins after including this guard's annotation.
+// Compact role activity adds five browser assets. Include only their measured
+// net browser growth, preserving the one-file and 689-byte package margins.
+// Collapsed role avatars add 2,002 browser bytes with no additional assets.
+// Web source receipts add five plugin source modules and nine browser assets.
+// Include their measured package growth, retaining one file and 689 bytes of headroom.
+const maxFileCount = 1579;
+const maxUnpackedSizeBytes = 5_108_916;
 
 if (paths.length > maxFileCount) {
   fail(`package includes too many files: ${paths.length} > ${maxFileCount}`);

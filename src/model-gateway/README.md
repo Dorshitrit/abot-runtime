@@ -135,9 +135,11 @@ omission. The shared `generation` contract has no output-cap field, so
 there is no configurable or calibrated per-step output cap. Ollama maps
 `temperature` and `topP` to `options`, and supplies a finite `num_predict`
 from the physical context remaining after the final projected provider input.
-For a strict bounded JSON schema with thinking disabled, the smaller
-schema-derived ceiling is used. Raw and unbounded outputs receive the physical
-remainder. Provider-native `options.num_predict` remains available, and
+Registered core-decision steps also apply their shared output-token limit.
+A strict JSON schema never lowers this allowance: schema shape does not bound
+legal JSON whitespace or serialized escaping and therefore cannot establish a
+safe provider token ceiling. Schema projection and validation remain unchanged.
+Provider-native `options.num_predict` remains available, and
 `OLLAMA_NUM_PREDICT` remains its explicit environment override. Ollama maps the
 profile's effective `contextWindowTokens` to `options.num_ctx` on every chat
 and raw request. A configured
@@ -256,8 +258,7 @@ facades. Implementation ownership is grouped by topic:
 - `providers/`: the provider contract and registry plus isolated `ollama/` and
   `openai/` protocol implementations.
 - `protocol/`: provider-neutral message and usage contracts.
-- `structured-output/`: format validation, provider projections, and schema
-  budget estimation.
+- `structured-output/`: format validation and provider projections.
 - `observability/`: model I/O tracing, provider traces, and context-window
   guards.
 

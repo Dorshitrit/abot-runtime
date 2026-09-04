@@ -155,10 +155,13 @@ a bundled plugin: duplicate plugin ids fail closed.
 The passive long-term memory service belongs to the Runtime core and does not
 depend on the bundled `memory` plugin.
 
-Web URL fetching is available through the bundled Web plugin without a search
-credential. Set `BRAVE_SEARCH_API_KEY` to make `web_search` operational. With
-no key, `web_fetch` remains operational and a `web_search` invocation fails
-locally with a configuration error before any search request is made.
+The bundled Web plugin supports URL fetching and Light search without a search
+credential. Light searches a limited catalog of public Hebrew and English
+sources directly; it does not query an external search engine or provide
+whole-web coverage. Set `BRAVE_SEARCH_API_KEY` to use Brave Search instead.
+A configured Brave key that fails remains a Brave error. See
+[Known Limitations](known-limitations.md#web-search) for Light's discovery and
+cache boundaries.
 
 ## Run From Source
 

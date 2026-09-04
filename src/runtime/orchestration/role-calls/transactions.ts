@@ -73,6 +73,7 @@ export function createRoleCallTransactions(
             childCallId: input.childCallId,
             outcome: input.outcome,
             summary: input.summary,
+            ...(input.receipt ? { receipt: input.receipt } : {}),
           },
         }),
         "child_returned",

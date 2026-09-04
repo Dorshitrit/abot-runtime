@@ -20,6 +20,8 @@ import {
   traceReviewerEnvelopeRejected,
 } from "./diagnostics.js";
 import { readStructuredDecisionEnvelope } from "../../model/structured-decision-envelope.js";
+import { parseReviewerAuditCoverage } from "./audit-coverage.js";
+import { projectReviewerVerificationCoverage } from "./verification-coverage.js";
 
 export function parseReviewerDecisionOutput(
   text: string,
@@ -65,7 +67,7 @@ export function parseReviewerDecisionOutput(
   const textNormalizations: ReviewerTextNormalization[] = [];
   exactKeys(
     record,
-    ["action", "reviewScopeId", "summary", "gaps"],
+    ["action", "reviewScopeId", "audit", "summary", "gaps"],
     "decision",
     issues,
   );
@@ -87,6 +89,14 @@ export function parseReviewerDecisionOutput(
     issues,
     textNormalizations,
   );
+  const audit = parseReviewerAuditCoverage(
+    record.audit,
+    options.snapshot,
+    issues,
+  );
+  const verificationCoverage = projectReviewerVerificationCoverage(
+    options.snapshot,
+  );
   const parsedGaps = parseGaps(
     record.gaps,
     options.snapshot,
@@ -107,12 +117,35 @@ export function parseReviewerDecisionOutput(
   ) {
     issues.push(issue("reviewer_pass_evidence_incomplete", "decision.action"));
   }
+  if (action === "pass" && !verificationCoverage.complete) {
+    issues.push(
+      issue("reviewer_pass_verification_incomplete", "decision.action"),
+    );
+  }
+  if (action === "pass" && audit?.requiresGapVerdict) {
+    issues.push(issue("reviewer_pass_audit_gap", "decision.audit"));
+  }
+  if (
+    action === "pass" &&
+    audit &&
+    audit.completionEvidenceRefCount < Math.min(2, options.snapshot.evidence.length)
+  ) {
+    issues.push(
+      issue(
+        "reviewer_pass_completion_evidence_insufficient",
+        "decision.audit.completionAssessment.evidenceRefs",
+      ),
+    );
+  }
   if (
     action === "report_gaps" &&
     parsedGaps.cardinalityValid &&
     parsedGaps.inputCount === 0
   ) {
     issues.push(issue("reviewer_gaps_required", "decision.gaps"));
+  }
+  if (action === "report_gaps" && audit && !audit.requiresGapVerdict) {
+    issues.push(issue("reviewer_gap_verdict_audit_satisfied", "decision.audit"));
   }
 
   if (issues.length > 0 || !action || !summary) {

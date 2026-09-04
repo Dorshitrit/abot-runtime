@@ -110,8 +110,8 @@ describe("web ui client behavior", () => {
     expect(wrappedIndex(0, 1, 0)).toBe(-1);
   });
 
-  test("keeps chat, operations, and config as explicit destinations", () => {
-    expect(normalizeWorkspaceDestination("operations")).toBe("operations");
+  test("keeps chat and config as the only workspace destinations", () => {
+    expect(normalizeWorkspaceDestination("operations")).toBe("chat");
     expect(normalizeWorkspaceDestination("config")).toBe("config");
     expect(normalizeWorkspaceDestination("CHAT")).toBe("chat");
     expect(normalizeWorkspaceDestination("unknown")).toBe("chat");

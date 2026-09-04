@@ -81,11 +81,11 @@ button,
 input,
 select {
   min-height: 32px;
-  font-size: 13px;
+  font-size: var(--font-size-lg);
 }
 
 textarea {
-  font-size: 14px;
+  font-size: var(--font-size-xl);
 }
 
 button {

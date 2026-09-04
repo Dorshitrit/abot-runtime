@@ -654,7 +654,7 @@ describe("generic Worker no-tool decision contract", () => {
     expect(JSON.stringify(logs)).not.toContain(priorAssistant);
   });
 
-  test("resolves selected role results into the dependent Worker assignment", async () => {
+  test("resolves role results without exposing the broader Planner assignment", async () => {
     configureDebugLogger({ enabled: true });
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
     const { ledger, head, call, dependencySummary } =
@@ -680,9 +680,13 @@ describe("generic Worker no-tool decision contract", () => {
         },
       },
     };
+    const scopedToolResults = Object.freeze({
+      ...EMPTY_REQUEST_TOOL_RESULTS,
+      scope: Object.freeze({ kind: "call" as const, callId: call.callId }),
+    });
     const input = buildWorkerDecisionInput(request, {
       call,
-      requestToolResults: EMPTY_REQUEST_TOOL_RESULTS,
+      requestToolResults: scopedToolResults,
       capabilitySource: {
         ledger,
         head,
@@ -695,25 +699,31 @@ describe("generic Worker no-tool decision contract", () => {
         }),
       },
     });
-    const assignmentScope = JSON.parse(
-      input.context.messages[2]!.content,
-    ) as Record<string, unknown>;
-    const assignment = JSON.parse(input.context.messages[3]!.content) as {
+    const assignment = JSON.parse(input.context.messages[1]!.content) as {
       dependencyResults: unknown[];
     };
     const logs = consoleLog.mock.calls.map(
       ([line]) => JSON.parse(String(line)) as Record<string, unknown>,
     );
 
-    expect(assignmentScope).toEqual({
-      kind: "runtime_role_call_assignment_scope_v1",
-      authority: "reference_data",
-      sourceRevision: head.revision,
-      scopeCallId: "call-2",
-      scopeRoleId: "planner",
-      scopeObjective: "Coordinate one observation followed by one mutation.",
-    });
+    expect(input.context.messages).toHaveLength(2);
     expect(assignment.dependencyResults).toEqual([
+      {
+        resultRef: "result-1",
+        producerCallId: "call-3",
+        roleId: "worker",
+        outcome: "completed",
+        summary: dependencySummary,
+        receipt: {
+          kind: "work_result_v1",
+          producerCallId: "call-3",
+          callerCallId: "call-2",
+          sourceRevision: expect.any(Number),
+          lineageFingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+        },
+      },
+    ]);
+    expect(input.resultAuthorSource.dependencyResults).toEqual([
       {
         resultRef: "result-1",
         producerCallId: "call-3",
@@ -722,6 +732,9 @@ describe("generic Worker no-tool decision contract", () => {
         summary: dependencySummary,
       },
     ]);
+    expect(
+      JSON.stringify(input.resultAuthorSource.dependencyResults),
+    ).not.toContain("work_result_v1");
     expect(input.context.messages[0]!.content).toContain(
       "do not repeat that observation merely to rediscover it",
     );
@@ -737,9 +750,7 @@ describe("generic Worker no-tool decision contract", () => {
           dependencyResultCount: 1,
           dependencyResultRefs: ["result-1"],
           dependencyResultSummaryLength: dependencySummary.length,
-          roleAssignmentScopeIncluded: true,
-          roleAssignmentScopeCallId: "call-2",
-          roleAssignmentScopeRoleId: "planner",
+          roleAssignmentScopeIncluded: false,
         }),
       ]),
     );
@@ -747,7 +758,7 @@ describe("generic Worker no-tool decision contract", () => {
 
     const executionInput = buildWorkerDecisionInput(request, {
       call,
-      requestToolResults: EMPTY_REQUEST_TOOL_RESULTS,
+      requestToolResults: scopedToolResults,
       capabilitySource: {
         ledger,
         head,
@@ -787,11 +798,11 @@ describe("generic Worker no-tool decision contract", () => {
       "return_result",
     );
     expect(
-      runtimeMessageByKind(
+      hasRuntimeMessageKind(
         executionInput.context.messages,
         "runtime_role_call_assignment_scope_v1",
       ),
-    ).toEqual(assignmentScope);
+    ).toBe(false);
     expect(
       runtimeMessageByKind(
         executionInput.context.messages,

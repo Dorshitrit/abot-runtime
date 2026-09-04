@@ -192,7 +192,7 @@ function createReviewerDecisionInputParts(
   }>,
 ) {
   const format = createReviewerDecisionFormat(options.snapshot);
-  const modelContext = projectReviewerModelContext(options.snapshot);
+  const modelContext = projectReviewerModelContext(options.snapshot, options.call);
   const configuredInstructionMetadata =
     resolveConfiguredStepInstructionMetadata({
       runnerConfig: request.runnerConfig,

@@ -3,6 +3,7 @@ import {
   type RoleCallPlanBinding,
   type RoleCallWorkerCapabilityScope,
 } from "../../orchestration/role-calls/index.js";
+import type { RuntimeDelegateRoleId } from "../../orchestration/roles.js";
 import type { WorkerCapabilityCatalogGroup } from "../../orchestration/worker-capabilities/index.js";
 import {
   createWorkerCapabilityScopeDecisionContract,
@@ -38,7 +39,7 @@ import { readStructuredDecisionEnvelope } from "../../model/structured-decision-
 export function parsePlannerDecisionOutput(
   text: string,
   options: Readonly<{
-    availableChildRoleIds?: readonly PlannerChildRoleId[];
+    availableChildRoleIds?: readonly RuntimeDelegateRoleId[];
     availableWorkerCapabilityCatalog?: readonly WorkerCapabilityCatalogGroup[];
     inheritedWorkingDirectory?: string;
     planContext?: PlannerDecisionPlanContext;
@@ -235,25 +236,16 @@ export function parsePlannerDecisionOutput(
             action: "return_failure",
             reason: (record.reason as string).trim(),
           }
-        : record.roleId === "worker"
-          ? {
-              action: "invoke_role",
-              roleId: "worker",
-              objective: invocation!.objective,
-              workingDirectory: workingDirectory!,
-              ...(workerCapabilityScope ? { workerCapabilityScope } : {}),
-              ...(invocation!.plannerPlan
-                ? { plannerPlan: invocation!.plannerPlan }
-                : {}),
-            }
-          : {
-              action: "invoke_role",
-              roleId: record.roleId as Exclude<PlannerChildRoleId, "worker">,
-              objective: invocation!.objective,
-              ...(invocation!.plannerPlan
-                ? { plannerPlan: invocation!.plannerPlan }
-                : {}),
-            };
+        : {
+            action: "invoke_role",
+            roleId: "worker",
+            objective: invocation!.objective,
+            workingDirectory: workingDirectory!,
+            ...(workerCapabilityScope ? { workerCapabilityScope } : {}),
+            ...(invocation!.plannerPlan
+              ? { plannerPlan: invocation!.plannerPlan }
+              : {}),
+          };
   const accepted = deepFreeze(structuredClone(decision));
   if (diagnostic) {
     tracePlannerDecisionAccepted({

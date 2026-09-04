@@ -15,6 +15,7 @@ import {
   WORKER_CAPABILITY_SUMMARY_MAX_LENGTH,
   normalizeWorkerCapabilityControlsSchema,
   partitionWorkerCapabilityControlsSchema,
+  projectWorkerCapabilityAssignmentProvenance,
   type WorkerCapabilityDescriptor,
 } from "../../../orchestration/worker-capabilities/index.js";
 import { projectSemanticCompactionDependencyResults } from "../../../context/semantic-compaction/index.js";
@@ -47,6 +48,12 @@ export function prepareWorkerCanonicalState(
         head: canonicalSource.head,
         call: options.call,
         modelStep,
+      })
+    : undefined;
+  const assignmentProvenance = canonicalSource
+    ? projectWorkerCapabilityAssignmentProvenance({
+        head: canonicalSource.head,
+        call: options.call,
       })
     : undefined;
   const dependencyResults = canonicalSource
@@ -89,6 +96,7 @@ export function prepareWorkerCanonicalState(
   return Object.freeze({
     canonicalSource,
     assignmentScope,
+    ...(assignmentProvenance ? { assignmentProvenance } : {}),
     dependencyResults,
     resume,
     operationSupervision:

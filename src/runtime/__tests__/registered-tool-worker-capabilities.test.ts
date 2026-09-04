@@ -247,8 +247,10 @@ describe("registered ordinary tool Worker capability provider", () => {
       ...state,
       adapterMarker: "prepared",
     }));
+    const probe = registration("system_probe", [selected, unselected]);
+    probe.definition.developmentRoles = ["inspect", "verify"];
     const registry = createRegistry({
-      registrations: [registration("system_probe", [selected, unselected])],
+      registrations: [probe],
       execute,
       prepareSharedState,
     });
@@ -268,7 +270,6 @@ describe("registered ordinary tool Worker capability provider", () => {
       nextApprovalId: () => "approval-unused",
       onEvent,
     });
-
     const descriptors = provider.getDescriptors();
     expect(provider.getDescriptors()).toBe(descriptors);
     expect(getRequestToolRegistry).toHaveBeenCalledOnce();
@@ -278,7 +279,6 @@ describe("registered ordinary tool Worker capability provider", () => {
       "inspect_disk_state_for_path",
     ]);
     expect(Object.isFrozen(descriptors)).toBe(true);
-
     const adapters = provider.getAdapters();
     expect(provider.getAdapters()).toBe(adapters);
     expect(getRequestToolRegistry).toHaveBeenCalledOnce();
@@ -294,6 +294,8 @@ describe("registered ordinary tool Worker capability provider", () => {
           summary: "Inspect current system state.",
           effect: "observation",
           catalogGroups: ["other"],
+          routingCapability: "filesystem_inspection",
+          developmentRoles: ["inspect", "verify"],
           controls: {
             type: "object",
             additionalProperties: false,
@@ -307,7 +309,6 @@ describe("registered ordinary tool Worker capability provider", () => {
     expect(Object.isFrozen(adapters[0]?.descriptor)).toBe(true);
     expect(Object.isFrozen(adapters[0]?.descriptor.catalogGroups)).toBe(true);
     expect(adapters[0]?.descriptor).toBe(descriptors[0]);
-
     await expect(
       adapters[0]!.execute({
         context: { marker: "context-1" },
@@ -355,7 +356,6 @@ describe("registered ordinary tool Worker capability provider", () => {
       "tool.completed",
     ]);
   });
-
   test("projects only declarative operation targets into selection controls", () => {
     const provider = createRegisteredToolWorkerCapabilityProvider<TestContext>({
       getRequestToolRegistry: () =>
@@ -1028,13 +1028,13 @@ describe("registered ordinary tool Worker capability provider", () => {
           toolPermissionMode: "full_access",
           nextApprovalId: () => "approval-unused",
         });
-
       const adapter = provider.getAdapters()[0]!;
       expect(adapter.descriptor).toEqual({
         capabilityId: "mutate_one_value",
         summary: "Mutate one exact selected value.",
         effect: "mutation",
         catalogGroups: ["other"],
+        routingCapability: "filesystem_inspection",
         controls: {
           type: "object",
           additionalProperties: false,

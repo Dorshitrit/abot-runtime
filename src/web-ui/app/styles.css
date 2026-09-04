@@ -1,9 +1,16 @@
 @import url("./styles/foundation.css");
 @import url("./styles/00-tokens-base.css");
 @import url("./styles/10-shell-sessions.css");
+@import url("./styles/12-conversation-sidebar.css");
 @import url("./styles/20-chat-composer.css");
+@import url("./styles/21-composer-controls.css");
+@import url("./styles/22-composer-context-window.css");
+@import url("./styles/23-composer-plan.css");
+@import url("./styles/24-conversation-role-cards.css");
+@import url("./styles/25-conversation-sources.css");
 @import url("./styles/30-inspector-config.css");
 @import url("./styles/40-config-workspace.css");
 @import url("./styles/35-memory-onboarding.css");
 @import url("./styles/36-memory-management.css");
+@import url("./styles/37-config-operations.css");
 @import url("./styles/90-responsive.css");

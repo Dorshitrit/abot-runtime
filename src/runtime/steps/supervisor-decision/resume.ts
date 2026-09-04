@@ -8,6 +8,8 @@ import {
 import {
   ROLE_CALL_RESULT_MAX_LENGTH,
   normalizeRoleCallWorkingDirectory,
+  isRoleCallReviewerVerdictReceiptBoundToChild,
+  normalizeRoleCallWorkResultReceipt,
   type CompletedRoleChildResult,
 } from "../../orchestration/role-calls/index.js";
 
@@ -107,6 +109,10 @@ function buildCompletedChildMessages(
         roleId: child.roleId,
         outcome: child.outcome,
         summary: child.summary,
+        ...(child.workLineage
+          ? { dependencyResultRefs: child.dependencyResultRefs }
+          : {}),
+        ...projectCompletedChildReceipt(child),
       }),
     }),
   ]);
@@ -135,6 +141,7 @@ function buildCompactCompletedChildMessage(
       dependencyResultRefs: child.dependencyResultRefs,
       outcome: child.outcome,
       summary: child.summary,
+      ...projectCompletedChildReceipt(child),
     }),
   });
 }
@@ -157,6 +164,9 @@ function validateCompletedChild(
   ) {
     throw new Error("supervisor_resume_child_invalid");
   }
+  if (!hasValidCompletedChildReceiptProjection(child)) {
+    throw new Error("supervisor_resume_child_invalid");
+  }
   const workingDirectory = normalizeRoleCallWorkingDirectory(
     child.workingDirectory,
   );
@@ -170,6 +180,42 @@ function validateCompletedChild(
   ) {
     throw new Error("supervisor_resume_child_invalid");
   }
+}
+
+function projectCompletedChildReceipt(
+  child: CompletedRoleChildResult,
+): Readonly<Record<string, unknown>> {
+  if (!child.receipt) return Object.freeze({});
+  if (child.receipt.kind === "work_result_v1") {
+    return Object.freeze({
+      workReceipt: child.receipt,
+      workLineage: child.workLineage,
+    });
+  }
+  return Object.freeze({ reviewerVerdict: child.receipt });
+}
+
+function hasValidCompletedChildReceiptProjection(
+  child: CompletedRoleChildResult,
+): boolean {
+  if (!child.receipt) return child.workLineage === undefined;
+  if (child.receipt.kind !== "work_result_v1") {
+    if (child.workLineage !== undefined) return false;
+    return isRoleCallReviewerVerdictReceiptBoundToChild({
+      receipt: child.receipt,
+      callerCallId: child.callerCallId,
+      childCallId: child.childCallId,
+      childRoleId: child.roleId,
+      outcome: child.outcome,
+    });
+  }
+  const receipt = normalizeRoleCallWorkResultReceipt(child.receipt);
+  if (!receipt) return false;
+  if (child.roleId !== "planner" && child.roleId !== "worker") return false;
+  if (receipt.producerCallId !== child.childCallId) return false;
+  if (receipt.callerCallId !== child.callerCallId) return false;
+  if (child.workLineage?.kind !== "work_result_lineage_v1") return false;
+  return child.workLineage.lineageFingerprint === receipt.lineageFingerprint;
 }
 
 function boundedText(value: string, maximumLength: number): boolean {

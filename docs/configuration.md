@@ -31,11 +31,16 @@ AGENT_BRIDGE_TOKEN=
 LLM_RUNTIME_CONFIG_FILE=local/runtime.config.json
 ```
 
-`BRAVE_SEARCH_API_KEY` is optional for startup and URL fetching. The bundled
-Web plugin always exposes `web_fetch` and `web_search`; invoking `web_search`
-without a non-empty key returns a clear plugin configuration error without
-making a search request. The key never belongs in runtime JSON or a plugin
-manifest.
+`BRAVE_SEARCH_API_KEY` is optional. The bundled Web plugin always exposes
+`web_fetch` and `web_search`. A non-empty key selects Brave Search; without one,
+`web_search` uses Light search over a limited catalog of public Hebrew and
+English sources. Light reads those sources directly without an external search
+engine. A failing configured key does not silently switch providers. The key
+never belongs in runtime JSON or a plugin manifest.
+
+Light uses the Web plugin's defaults and an in-memory cache; no background
+crawler or separate service is installed. See
+[Known Limitations](known-limitations.md#web-search) for its coverage and limits.
 
 Provider configs should reference env var names:
 
@@ -310,10 +315,12 @@ the request-runner context block supplies only admission headroom.
 subtracted while projecting messages so the prompt does not consume the whole
 context window; it is never forwarded to a provider as an output limit. Model
 steps may vary their prompt contract, timeout, format, or other generation
-controls, but they do not receive a shared per-step output-token cap.
+controls, but configuration does not define a shared per-step output-token cap.
 The Ollama adapter still sends a finite provider-native `num_predict`, derived
-mechanically from the final provider input, the physical context remainder,
-and a strict bounded output schema when one applies.
+mechanically from the final provider input and the physical context remainder.
+Registered core-decision steps additionally retain their internal output-token
+limit. Output schema size does not impose another generation limit; schema
+projection, validation, input estimation, and compaction remain unchanged.
 
 The required context fields remain explicit. Unknown fields, unknown step ids,
 and invalid explicit overrides are rejected during configuration loading;

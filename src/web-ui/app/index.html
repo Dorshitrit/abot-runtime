@@ -53,19 +53,6 @@
             <span class="rail-button-label">New</span>
           </button>
           <button
-            id="operationsWorkspaceButton"
-            class="rail-button"
-            type="button"
-            aria-label="Open operations workspace"
-            aria-controls="operationsWorkspacePanel"
-            title="Operations"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 6h16M4 12h10M4 18h13" />
-            </svg>
-            <span class="rail-button-label">Operations</span>
-          </button>
-          <button
             id="configWorkspaceButton"
             class="rail-button"
             type="button"
@@ -186,49 +173,6 @@
               <h2 id="sessionTitle">New conversation</h2>
             </div>
           </div>
-
-          <div class="header-controls">
-            <div class="control-cluster agent-mode-control">
-              <span class="control-label">Depth</span>
-              <button
-                id="agentModeButton"
-                class="agent-mode-button"
-                type="button"
-                title="Reasoning depth"
-                aria-haspopup="menu"
-                aria-expanded="false"
-              >
-                Reasoning
-              </button>
-              <div id="agentModeMenu" class="agent-mode-menu"></div>
-            </div>
-            <div class="control-cluster model-control">
-              <span class="control-label">Model</span>
-              <button
-                id="modelSelectButton"
-                class="model-select-button"
-                type="button"
-                title="Model"
-                aria-label="Model"
-                aria-haspopup="menu"
-                aria-expanded="false"
-              >
-                <span id="modelSelectValue">Model</span>
-                <svg viewBox="0 0 20 20" aria-hidden="true">
-                  <path d="m6 8 4 4 4-4" />
-                </svg>
-              </button>
-              <div id="modelSelectMenu" class="model-select-menu"></div>
-              <select
-                id="modelSelect"
-                title="Model"
-                aria-label="Model"
-                aria-hidden="true"
-                tabindex="-1"
-                hidden
-              ></select>
-            </div>
-          </div>
         </header>
 
         <section
@@ -265,20 +209,8 @@
             </svg>
             <span>Jump to latest</span>
           </button>
+          <div id="composerPlan" class="composer-plan" hidden></div>
           <form id="composerForm" class="composer">
-            <button
-              id="attachmentButton"
-              class="attachment-button"
-              type="button"
-              title="Attach file or image"
-              aria-label="Attach file or image"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="m9 12 6.8-6.8a3 3 0 0 1 4.2 4.2L10.7 18.7a5 5 0 0 1-7.1-7.1l9-9"
-                />
-              </svg>
-            </button>
             <input
               id="attachmentInput"
               class="attachment-input"
@@ -293,50 +225,131 @@
               placeholder="Ask ABot anything…"
             ></textarea>
             <div id="attachmentPreview" class="attachment-preview"></div>
-            <div class="permission-mode-control">
+            <div
+              class="composer-controls"
+              role="group"
+              aria-label="Message controls"
+            >
               <button
-                id="permissionModeButton"
-                class="permission-mode-button"
+                id="attachmentButton"
+                class="attachment-button"
                 type="button"
-                title="Tool permissions"
-                aria-haspopup="menu"
-                aria-expanded="false"
-              >
-                Full
-              </button>
-              <div id="permissionModeMenu" class="permission-mode-menu"></div>
-            </div>
-            <div id="composerSubmitControl" class="composer-submit-control">
-              <button
-                id="sendButton"
-                class="send-button"
-                type="submit"
-                disabled
+                title="Attach file or image"
+                aria-label="Attach file or image"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" />
-                </svg>
-                <span id="sendButtonLabel" class="sr-only">Send</span>
-              </button>
-              <button
-                id="sendNextMenuButton"
-                class="send-next-menu-button"
-                type="button"
-                title="More send options"
-                aria-label="More send options"
-                aria-haspopup="menu"
-                aria-controls="sendNextMenu"
-                aria-expanded="false"
-                hidden
-              >
-                <svg viewBox="0 0 16 16" aria-hidden="true">
-                  <path d="m4 6 4 4 4-4" />
+                  <path
+                    d="m9 12 6.8-6.8a3 3 0 0 1 4.2 4.2L10.7 18.7a5 5 0 0 1-7.1-7.1l9-9"
+                  />
                 </svg>
               </button>
-              <div id="sendNextMenu" class="send-next-menu" role="menu" hidden>
-                <button id="sendNextButton" type="button" role="menuitem">
-                  Send next
+              <div class="permission-mode-control">
+                <button
+                  id="permissionModeButton"
+                  class="permission-mode-button"
+                  type="button"
+                  title="Tool permissions"
+                  aria-haspopup="menu"
+                  aria-expanded="false"
+                >
+                  Full
                 </button>
+                <div id="permissionModeMenu" class="permission-mode-menu"></div>
+              </div>
+              <div class="composer-model-controls">
+                <div class="control-cluster model-control">
+                  <span class="control-label">Model</span>
+                  <button
+                    id="modelSelectButton"
+                    aria-controls="modelSelectMenu"
+                    class="model-select-button"
+                    type="button"
+                    title="Model"
+                    aria-label="Model"
+                    aria-haspopup="menu"
+                    aria-expanded="false"
+                  >
+                    <svg
+                      class="model-select-icon"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path d="m12 3 9 5-9 5-9-5 9-5Z" />
+                      <path d="m3 12 9 5 9-5M3 16l9 5 9-5" />
+                    </svg>
+                    <span id="modelSelectValue">Model</span>
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="m6 8 4 4 4-4" />
+                    </svg>
+                  </button>
+                  <div id="modelSelectMenu" class="model-select-menu"></div>
+                  <select
+                    id="modelSelect"
+                    title="Model"
+                    aria-label="Model"
+                    aria-hidden="true"
+                    tabindex="-1"
+                    hidden
+                  ></select>
+                </div>
+                <div class="control-cluster agent-mode-control">
+                  <span class="control-label">Depth</span>
+                  <button
+                    id="agentModeButton"
+                    aria-controls="agentModeMenu"
+                    class="agent-mode-button"
+                    type="button"
+                    title="Reasoning depth"
+                    aria-haspopup="menu"
+                    aria-expanded="false"
+                  >
+                    Reasoning
+                  </button>
+                  <div id="agentModeMenu" class="agent-mode-menu"></div>
+                </div>
+                <div
+                  id="composerContextWindow"
+                  class="composer-context-window"
+                  hidden
+                ></div>
+              </div>
+              <div id="composerSubmitControl" class="composer-submit-control">
+                <button
+                  id="sendButton"
+                  class="send-button"
+                  type="submit"
+                  disabled
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" />
+                  </svg>
+                  <span id="sendButtonLabel" class="sr-only">Send</span>
+                </button>
+                <button
+                  id="sendNextMenuButton"
+                  class="send-next-menu-button"
+                  type="button"
+                  title="More send options"
+                  aria-label="More send options"
+                  aria-haspopup="menu"
+                  aria-controls="sendNextMenu"
+                  aria-expanded="false"
+                  hidden
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="m4 6 4 4 4-4" />
+                  </svg>
+                </button>
+                <div
+                  id="sendNextMenu"
+                  class="send-next-menu"
+                  role="menu"
+                  hidden
+                >
+                  <button id="sendNextButton" type="button" role="menuitem">
+                    Send next
+                  </button>
+                </div>
               </div>
             </div>
           </form>
@@ -345,110 +358,6 @@
           </p>
         </div>
       </main>
-
-      <section
-        id="operationsWorkspacePanel"
-        class="workspace-page-panel operations-workspace-panel"
-        aria-labelledby="operationsWorkspaceTitle"
-        hidden
-      >
-        <header class="workspace-page-header">
-          <div class="workspace-page-heading">
-            <p class="eyebrow">Runtime workspace</p>
-            <h2 id="operationsWorkspaceTitle">Operations</h2>
-            <p>Inspect runtime state, recent logs, and system health.</p>
-          </div>
-          <button
-            id="closeOperationsWorkspaceButton"
-            class="workspace-page-back"
-            type="button"
-            aria-label="Return to conversation"
-          >
-            Back to chat
-          </button>
-        </header>
-
-        <div class="workspace-page-body operations-workspace-body">
-          <div
-            class="operations-tabs"
-            role="tablist"
-            aria-label="Operations views"
-          >
-            <button
-              id="runtimeTabButton"
-              class="tab-button operations-tab-button active"
-              data-tab="runtime"
-              type="button"
-              role="tab"
-              aria-controls="runtimeTab"
-              aria-selected="true"
-            >
-              Runtime
-            </button>
-            <button
-              id="logsTabButton"
-              class="tab-button operations-tab-button"
-              data-tab="logs"
-              type="button"
-              role="tab"
-              aria-controls="logsTab"
-              aria-selected="false"
-            >
-              Logs
-            </button>
-            <button
-              id="healthTabButton"
-              class="tab-button operations-tab-button"
-              data-tab="health"
-              type="button"
-              role="tab"
-              aria-controls="healthTab"
-              aria-selected="false"
-            >
-              Health
-            </button>
-          </div>
-
-          <section
-            id="runtimeTab"
-            class="tab-page operations-tab-page active"
-            role="tabpanel"
-            aria-labelledby="runtimeTabButton"
-          >
-            <div class="panel-toolbar">
-              <span>Runtime status</span
-              ><button id="refreshRuntimeButton" type="button">Refresh</button>
-            </div>
-            <div id="runtimeStatus" class="runtime-card"></div>
-          </section>
-
-          <section
-            id="logsTab"
-            class="tab-page operations-tab-page"
-            role="tabpanel"
-            aria-labelledby="logsTabButton"
-          >
-            <div class="panel-toolbar">
-              <span>Recent logs</span
-              ><button id="refreshLogsButton" type="button">Refresh</button>
-            </div>
-            <pre id="runtimeLogs" class="logs-view"></pre>
-          </section>
-
-          <section
-            id="healthTab"
-            class="tab-page operations-tab-page"
-            role="tabpanel"
-            aria-labelledby="healthTabButton"
-          >
-            <div class="panel-toolbar">
-              <span>System health</span
-              ><button id="refreshHealthButton" type="button">Refresh</button>
-            </div>
-            <div id="healthStatus" class="runtime-card"></div>
-          </section>
-        </div>
-      </section>
 
       <section
         id="configWorkspacePanel"
@@ -488,6 +397,96 @@
             aria-live="polite"
           ></div>
           <div id="configDashboard" class="config-dashboard"></div>
+          <section
+            id="configOperationsSection"
+            class="config-operations-section"
+            aria-labelledby="configOperationsTitle"
+          >
+            <header class="config-operations-heading">
+              <h3 id="configOperationsTitle">Operations</h3>
+              <p>Inspect runtime state, recent logs, and system health.</p>
+            </header>
+            <div
+              class="operations-tabs"
+              role="tablist"
+              aria-label="Operations views"
+            >
+              <button
+                id="runtimeTabButton"
+                class="tab-button operations-tab-button active"
+                data-tab="runtime"
+                type="button"
+                role="tab"
+                aria-controls="runtimeTab"
+                aria-selected="true"
+              >
+                Runtime
+              </button>
+              <button
+                id="logsTabButton"
+                class="tab-button operations-tab-button"
+                data-tab="logs"
+                type="button"
+                role="tab"
+                aria-controls="logsTab"
+                aria-selected="false"
+              >
+                Logs
+              </button>
+              <button
+                id="healthTabButton"
+                class="tab-button operations-tab-button"
+                data-tab="health"
+                type="button"
+                role="tab"
+                aria-controls="healthTab"
+                aria-selected="false"
+              >
+                Health
+              </button>
+            </div>
+
+            <section
+              id="runtimeTab"
+              class="tab-page operations-tab-page active"
+              role="tabpanel"
+              aria-labelledby="runtimeTabButton"
+            >
+              <div class="panel-toolbar">
+                <span>Runtime status</span
+                ><button id="refreshRuntimeButton" type="button">
+                  Refresh
+                </button>
+              </div>
+              <div id="runtimeStatus" class="runtime-card"></div>
+            </section>
+
+            <section
+              id="logsTab"
+              class="tab-page operations-tab-page"
+              role="tabpanel"
+              aria-labelledby="logsTabButton"
+            >
+              <div class="panel-toolbar">
+                <span>Recent logs</span
+                ><button id="refreshLogsButton" type="button">Refresh</button>
+              </div>
+              <pre id="runtimeLogs" class="logs-view"></pre>
+            </section>
+
+            <section
+              id="healthTab"
+              class="tab-page operations-tab-page"
+              role="tabpanel"
+              aria-labelledby="healthTabButton"
+            >
+              <div class="panel-toolbar">
+                <span>System health</span
+                ><button id="refreshHealthButton" type="button">Refresh</button>
+              </div>
+              <div id="healthStatus" class="runtime-card"></div>
+            </section>
+          </section>
         </div>
       </section>
 

@@ -4,6 +4,7 @@ import {
   type RoleCallPlanBinding,
 } from "../../orchestration/role-calls/index.js";
 import {
+  PLANNER_DISPATCH_ITEM_COUNT,
   PLANNER_OBJECTIVE_MAX_LENGTH,
   type PlannerDecisionPlanContext,
   type PlannerDecisionValidationIssue,
@@ -19,15 +20,28 @@ export function parsePlannerPlanInvocation(
   planContext: PlannerDecisionPlanContext,
   issues: PlannerDecisionValidationIssue[],
 ): PlannerPlanInvocation | undefined {
+  const dispatchItemCount =
+    record.roleId === "worker" ? PLANNER_DISPATCH_ITEM_COUNT : undefined;
   if (planContext.mode === "declare") {
-    return parseDeclaration(record, planContext.maxItems, issues);
+    return parseDeclaration(
+      record,
+      planContext.maxItems,
+      dispatchItemCount,
+      issues,
+    );
   }
   if (planContext.mode === "extend") {
-    return parseExtension(record, planContext.maxItems, issues);
+    return parseExtension(
+      record,
+      planContext.maxItems,
+      dispatchItemCount,
+      issues,
+    );
   }
   const selectedItems = parseSelectedPlanItems(
     record.planItemIds,
     planContext.pendingItems,
+    dispatchItemCount,
   );
   const objective = selectedItems
     ? composeRoleCallPlanChildObjective(
@@ -51,6 +65,7 @@ export function parsePlannerPlanInvocation(
 function parseDeclaration(
   record: Record<string, unknown>,
   maxItems: number,
+  dispatchItemCount: number | undefined,
   issues: PlannerDecisionValidationIssue[],
 ): PlannerPlanInvocation | undefined {
   const plan = asRecord(record.plan);
@@ -68,7 +83,11 @@ function parseDeclaration(
   );
   const items = parseItems(plan.items, maxItems, "decision.plan.items", issues);
   const selectedItemIndexes = items
-    ? parseSelectedItemIndexes(record.selectedItemIndexes, items.length)
+    ? parseSelectedItemIndexes(
+        record.selectedItemIndexes,
+        items.length,
+        dispatchItemCount,
+      )
     : undefined;
   const selectedItems =
     items && selectedItemIndexes
@@ -110,6 +129,7 @@ function parseDeclaration(
 function parseExtension(
   record: Record<string, unknown>,
   maxItems: number,
+  dispatchItemCount: number | undefined,
   issues: PlannerDecisionValidationIssue[],
 ): PlannerPlanInvocation | undefined {
   const extension = asRecord(record.extension);
@@ -125,7 +145,11 @@ function parseExtension(
     issues,
   );
   const selectedItemIndexes = items
-    ? parseSelectedItemIndexes(record.selectedItemIndexes, items.length)
+    ? parseSelectedItemIndexes(
+        record.selectedItemIndexes,
+        items.length,
+        dispatchItemCount,
+      )
     : undefined;
   const selectedItems =
     items && selectedItemIndexes
@@ -158,10 +182,11 @@ function parseExtension(
 function parseSelectedItemIndexes(
   input: unknown,
   itemCount: number,
+  dispatchItemCount: number | undefined,
 ): readonly number[] | undefined {
   if (
     !Array.isArray(input) ||
-    input.length === 0 ||
+    !hasValidSelectionCount(input.length, dispatchItemCount) ||
     input.some(
       (value) =>
         !Number.isSafeInteger(value) || value < 0 || value >= itemCount,
@@ -181,10 +206,11 @@ function parseSelectedItemIndexes(
 function parseSelectedPlanItems<TItem extends Readonly<{ itemId: string }>>(
   input: unknown,
   items: readonly TItem[],
+  dispatchItemCount: number | undefined,
 ): readonly TItem[] | undefined {
   if (
     !Array.isArray(input) ||
-    input.length === 0 ||
+    !hasValidSelectionCount(input.length, dispatchItemCount) ||
     input.some((value) => typeof value !== "string") ||
     new Set(input).size !== input.length
   ) {
@@ -193,6 +219,15 @@ function parseSelectedPlanItems<TItem extends Readonly<{ itemId: string }>>(
   const selected = new Set(input as string[]);
   const result = items.filter((item) => selected.has(item.itemId));
   return result.length === selected.size ? Object.freeze(result) : undefined;
+}
+
+function hasValidSelectionCount(
+  selectedItemCount: number,
+  dispatchItemCount: number | undefined,
+): boolean {
+  return dispatchItemCount === undefined
+    ? selectedItemCount > 0
+    : selectedItemCount === dispatchItemCount;
 }
 
 function parseItems(

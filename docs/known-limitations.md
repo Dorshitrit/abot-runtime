@@ -61,6 +61,27 @@ plugin entrypoints are not currently supported.
 Plugin behavior belongs inside the plugin. Runtime orchestration should only
 see the generic selected catalog and execution results.
 
+## Web Search
+
+With a configured `BRAVE_SEARCH_API_KEY`, `web_search` uses Brave Search and
+preserves its authentication and rate-limit errors. Without a key, Light search
+discovers and ranks pages within a catalog of public Hebrew and English
+sources. It contacts content sources directly, without another search engine.
+
+Light does not maintain a whole-web index. Its source selection, crawl depth,
+candidate count, response sizes, and request deadline are bounded. Results may
+be partial because a source is unavailable, disallows crawling, or exceeds a
+budget. Zero matches mean no matches in the inspected sources, not that the
+information is absent from the web. Source coverage accompanies the results.
+
+The document cache exists only in the plugin instance's memory, bounded to
+16 MiB of serialized content and 500 documents. Feed entries expire within
+five minutes and page entries within 30 minutes; origin directives can shorten
+these lifetimes. Restarting the runtime clears the cache. There is no background
+crawl, browser rendering, or persistent search database. Content that requires
+JavaScript may therefore be unavailable. Exact public URL fetching remains a
+separate `web_fetch` capability with its existing public-network restrictions.
+
 ## Passive Long-Term Memory
 
 Passive long-term memory is disabled by default and requires an embedding model

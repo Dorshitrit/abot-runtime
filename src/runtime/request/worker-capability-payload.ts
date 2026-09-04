@@ -241,13 +241,16 @@ function payloadMessages(
       : {}),
     ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),
   });
-  const requestSource = projectRequestSource({
-    requestId: request.requestId,
-    prompt: request.prompt,
-    modelStep: input.modelStep,
-    callId,
-    historyMessages: request.historyMessages,
-  });
+  const requestSource =
+    input.requestSourceProjection === "full_request"
+      ? projectRequestSource({
+          requestId: request.requestId,
+          prompt: request.prompt,
+          modelStep: input.modelStep,
+          callId,
+          historyMessages: request.historyMessages,
+        })
+      : undefined;
   const projectedContext = projectPayloadContext(input.context);
   traceDebug("runtime.worker_capability_payload_context", "projected", {
     requestId: request.requestId,
@@ -261,6 +264,7 @@ function payloadMessages(
     sourceRelatedArtifactContextCount:
       input.context.relatedArtifactContexts?.length ?? 0,
     hasTargetContext: input.context.targetContext !== undefined,
+    requestSourceProjection: input.requestSourceProjection,
   });
   try {
     return projectRequestContext({
@@ -268,7 +272,7 @@ function payloadMessages(
       historyMessages: [],
       prompt: `Canonical runtime context:\n${JSON.stringify(projectedContext.metadata)}`,
       referenceMessages: [
-        buildRequestSourceMessage(requestSource),
+        ...(requestSource ? [buildRequestSourceMessage(requestSource)] : []),
         ...projectedContext.relatedArtifactMessages,
       ],
       ...(projectedContext.targetContentMessage

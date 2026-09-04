@@ -17,22 +17,35 @@ Dependencies flow in one direction:
 
 Controllers and components communicate through injected callbacks or values. They must not reach back into `app.js`; services must not depend on controllers or presentation code.
 
-`workspace-shell.js` is the single owner of workspace navigation. It owns the active Chat, Operations, or Config workspace, Conversations sheet visibility, Operations tab navigation, focus restoration, Escape handling, backdrop state, and related ARIA attributes. It must not own session data, request state, or Runtime transport.
+`workspace-shell.js` is the single owner of workspace navigation. It owns the active Chat or Config workspace, responsive Conversations visibility, focus restoration, Escape handling, backdrop state, and related ARIA attributes. `conversation-sidebar-layout.js` resolves the sidebar presentation policy; `operations-section.js` owns the internal Runtime, Logs, and Health tabs within Configuration. These components must not own session data, request state, or Runtime transport.
 
 `conversation-activity.js` owns only request-scoped activity presentation. `realtime-event-controller.js` preserves sequence authority, associates events and progress with their exact `requestId`, and injects those values into the conversation view. `realtime-transport.js` only parses and transports frames; it does not reduce application state.
+
+`composer-context-window.js` presents the existing context estimate as one compact composer indicator. It selects the active assistant request, or the newest conversation message only when it is a request-linked assistant message while idle. A pending user turn, an assistant message without a request ID, or missing metrics hides the indicator instead of falling back to an earlier request. Context metric updates refresh it independently of message tokens; session-view resets clear it. Estimated usage, provider-reported usage, and compaction remain distinct, and provider usage stays bound to the matching model invocation.
+
+`composer-plan.js` presents the current user turn's Planner plan in a collapsed-by-default drawer above the composer. `composer-plan-model.js` selects request-linked progress from the current turn, including restored failed requests that have only a persisted user message; a new user turn hides earlier plans. Disclosure identity follows the selected request, so steering preserves expansion and list scroll; session resets clear the drawer. `task-progress.js` reduces structured plan events by request: full snapshots replace the baseline, later item changes are retained across overlapping replay, and completion counters never imply request or Reviewer success. Live events and stored replay use this same projection. Historical per-response progress remains available in Activity.
+
+Activity counts tool invocations from `tool.started` entries and their recorded multiplicities before timeline display grouping. Completion, payload, and approval events remain visible but do not add tool invocations; terminal-only history does not invent missing starts. Failure-event counts retain their existing meaning.
+
+Web sources appear in a separate Activity section alongside role cards and the event timeline. `web-source-event.js` projects only successful `web_search` and `web_fetch` completions; `web-sources.js` validates bounded plugin receipts and groups them by recorded call. `conversation-sources.js` renders links and retrieval/presentation states without interpreting answer text. Source-bearing events retain their own identity before display grouping, and stored session events use the same projection as live events. Session switching clears them with the existing Activity state.
+
+The optional `meta.webSources` version 1 receipt describes the final bounded **tool output**, not whether a later model invocation consumed or cited it. Older events can show found/fetched URLs with unknown output visibility; absent or unsupported receipts never imply full content. Favicons are best-effort browser requests to the source origin's `/favicon.ico`, loaded lazily with no referrer and a local fallback. No third-party icon service or server proxy is used. Source URL policy rejects unsafe schemes and credentials, and prevents automatic image loads for local/private IP literals; origin DNS, redirects, cookies, and browser image policy remain browser concerns. Icons carry no evidence and never block tool execution.
 
 `conversation-session-controller.js` is the single owner of the active conversation view lifecycle: normalized message identity, session switching, stored-message hydration, request-event replay, read state, active assistant placeholders, and session/request realtime subscriptions. `chat-request-controller.js` owns starting one chat request, while `composer-submit-controller.js` owns the composer's selected action and busy/error lifecycle. `tool-approval-controller.js` owns approval state and transport; `tool-approval-card.js` owns its DOM presentation.
 
 The primary information architecture is chat-first:
 
 - the navigation rail is persistent;
-- Chat, Operations, and Config are mutually exclusive workspaces;
-- Conversations is the only transient sheet and never reduces the chat canvas;
+- Chat and Config are mutually exclusive workspaces;
+- Conversations is docked beside Chat from 1260 CSS pixels upward, with its own column and no modal backdrop;
+- below that width, Conversations is the only transient sheet and overlays the chat canvas;
+- Configuration always hides Conversations and uses the full content canvas;
 - request tools, progress, and failures remain attached to the corresponding assistant response;
-- Operations owns Runtime, Logs, and Health as full-canvas views;
-- Config remains a separate full-canvas destination.
+- Configuration contains one Operations section with the existing Runtime, Logs, and Health views;
+- the Operations section is a static sibling of the generated configuration dashboard, so dashboard rerenders cannot detach its controls or status nodes;
+- internal Operations tab changes preserve configuration drafts; leaving Configuration remains guarded by the explicit discard check.
 
-Panel resizing and persisted panel widths are intentionally not part of this architecture. Only conversation discovery is an overlay; operational surfaces receive enough space to remain readable.
+Panel resizing and persisted panel widths are intentionally not part of this architecture. Crossing the sidebar breakpoint closes transient drawer state and restores focus when its previous target becomes hidden.
 
 ## Styles
 

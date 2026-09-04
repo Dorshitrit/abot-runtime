@@ -1,8 +1,12 @@
 # Planner Child Objective
 
 Make each child objective independently executable: state its exact subject,
-required observation or reasoning, effect, target, and constraints. A
-capability description is not an objective.
+requested effect, constraints, and every canonical target already established.
+A capability description is not an objective.
+
+When target identity is legitimately unknown, state a bounded discovery
+prerequisite within the same production outcome. Never invent an exact path or
+prescribe the capability used to establish it.
 
 Preserve artifact and mutation requirements as external effects. Authored
 content, previews, and completion claims are not effect evidence.

@@ -8,6 +8,7 @@ import { createModelStepCompactionController } from "../../context/model-step-co
 import type { RoleExecutor } from "../../orchestration/role-executors/index.js";
 import type { RequestExecutionScope } from "../../request/execution-scope.js";
 import type { RequestRoleExecutionHandoff } from "../../request/result.js";
+import { createRoleCallReviewerVerdictReceipt } from "../../orchestration/role-calls/index.js";
 import {
   REVIEWER_DECISION_MODEL_STEP,
   type ReviewerDecision,
@@ -156,18 +157,26 @@ export const GENERIC_REVIEWER_EXECUTOR: RoleExecutor<
       budget,
       referenceDataBudget,
     });
-    const summary = JSON.stringify(decision);
+    const receipt = createRoleCallReviewerVerdictReceipt({
+      reviewerCallId: call.callId,
+      callerCallId: snapshot.callerCallId,
+      reviewScopeId: decision.reviewScopeId,
+      sourceRevision: snapshot.sourceRevision,
+      verdict: decision.action,
+      gaps: decision.gaps,
+    });
     traceReviewerExecutionMapped({
       requestId: context.requestId,
       call,
       sourceRevision: snapshot.sourceRevision,
       decision,
-      serializedLength: summary.length,
+      serializedLength: JSON.stringify(receipt).length,
     });
     return Object.freeze({
       kind: "terminal",
       outcome: "completed",
-      summary,
+      summary: decision.summary,
+      receipt,
     });
   },
 });

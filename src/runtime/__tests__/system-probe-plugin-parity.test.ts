@@ -18,6 +18,7 @@ describe("system-probe plugin parity", () => {
     expect(registry.getDefinition("system_probe")).toMatchObject({
       routingCapability: "filesystem_inspection",
       developmentRoles: ["inspect", "verify"],
+      controlsRefinement: "mechanical_when_complete",
       eventPresentation: {
         metadata: {
           path: { param: "path", kind: "string", default: "/" },

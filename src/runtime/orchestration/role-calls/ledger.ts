@@ -44,6 +44,11 @@ import {
 import { createRoleCallTransactions } from "./transactions.js";
 import { ROLE_CALL_WORKING_DIRECTORY_MAX_LENGTH } from "./working-directory.js";
 
+const issuedRoleCallLedgerHeads = new WeakMap<
+  RoleCallLedger,
+  () => RoleCallLedgerHead
+>();
+
 export function createRoleCallLedger(params: {
   requestId: string;
   policy: RoleCallPolicyInput;
@@ -103,6 +108,7 @@ export function createRoleCallLedger(params: {
           transaction.head.state,
           admittedCommand,
           transaction.head.policy,
+          transaction.head.revision,
         );
         if (!transition.ok) {
           return {
@@ -220,7 +226,7 @@ export function createRoleCallLedger(params: {
   };
   const transactions = createRoleCallTransactions(apply);
 
-  return Object.freeze({
+  const ledger: RoleCallLedger = Object.freeze({
     current() {
       return channel.reader.current();
     },
@@ -228,6 +234,16 @@ export function createRoleCallLedger(params: {
     transactions,
     apply,
   });
+  issuedRoleCallLedgerHeads.set(ledger, () => channel.reader.current());
+  return ledger;
+}
+
+/** Confirms exact current-head ownership without trusting structural ledgers. */
+export function isCurrentRoleCallLedgerHead(
+  ledger: RoleCallLedger,
+  head: RoleCallLedgerHead,
+): boolean {
+  return issuedRoleCallLedgerHeads.get(ledger)?.() === head;
 }
 
 function createRoleCallStateHeadFactory(

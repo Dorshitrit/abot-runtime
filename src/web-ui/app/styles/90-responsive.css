@@ -5,24 +5,6 @@
     padding-inline: 18px;
   }
 
-  .header-controls {
-    max-width: 64%;
-  }
-
-  .control-label {
-    display: none;
-  }
-
-  .agent-mode-control {
-    width: 116px;
-    min-width: 116px;
-  }
-
-  .model-control {
-    width: 170px;
-    min-width: 0;
-  }
-
   .workspace-page-body {
     padding-inline: 28px;
   }
@@ -36,25 +18,6 @@
     align-items: start;
     min-height: 0;
     padding-block: 12px;
-  }
-
-  .header-controls {
-    display: grid;
-    grid-template-columns: minmax(112px, 0.8fr) minmax(150px, 1.2fr);
-    width: 100%;
-    max-width: 520px;
-  }
-
-  .agent-mode-control,
-  .model-control,
-  .agent-mode-button,
-  #modelSelect {
-    width: 100%;
-    min-width: 0;
-  }
-
-  .chat-header h2 {
-    max-width: min(72vw, 620px);
   }
 
   .workspace-page-header {
@@ -99,7 +62,6 @@
   }
 
   .app-shell,
-  .app-shell.operations-workspace,
   .app-shell.config-workspace {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -115,7 +77,7 @@
     inset: auto;
     z-index: 80;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 4px;
     grid-column: 1;
     grid-row: 2;
@@ -129,6 +91,10 @@
     background: rgba(7, 20, 33, 0.96);
     box-shadow: 0 -14px 34px rgba(0, 7, 18, 0.22);
     backdrop-filter: blur(20px);
+  }
+
+  .app-shell.config-workspace .workspace-rail {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .rail-spacer,
@@ -153,17 +119,13 @@
     order: 2;
   }
 
-  #operationsWorkspaceButton {
-    order: 4;
-  }
-
   #configWorkspaceButton {
-    order: 5;
+    order: 4;
   }
 
   .workspace-rail button.rail-button {
     display: grid;
-    grid-template-rows: 22px 14px;
+    grid-template-rows: 22px minmax(1.125rem, auto);
     gap: 1px;
     place-items: center;
     width: 100%;
@@ -191,8 +153,8 @@
     color: currentColor;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 9.5px;
-    line-height: 1;
+    font-size: var(--font-size-xs);
+    line-height: 1.2;
     opacity: 1;
     pointer-events: none;
     transform: none;
@@ -259,15 +221,7 @@
   }
 
   .chat-header h2 {
-    max-width: calc(100vw - 44px);
-    font-size: 15px;
-  }
-
-  .header-controls {
-    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-    gap: 6px;
-    width: 100%;
-    max-width: none;
+    font-size: var(--font-size-2xl);
   }
 
   .messages-list {
@@ -316,14 +270,8 @@
   }
 
   .composer {
-    grid-template-columns: 34px auto minmax(0, 1fr) 36px;
-    grid-template-rows: auto auto auto;
     padding: 10px;
     border-radius: 15px;
-  }
-
-  .composer.composer-has-split-action {
-    grid-template-columns: 34px auto minmax(0, 1fr) auto;
   }
 
   .composer-submit-control.split .send-button {
@@ -339,17 +287,6 @@
     min-width: 36px;
     height: 36px;
     min-height: 36px;
-  }
-
-  .permission-mode-control {
-    grid-column: 2;
-    grid-row: 3;
-  }
-
-  .permission-mode-button {
-    width: auto;
-    height: 31px;
-    min-height: 31px;
   }
 
   .attachment-preview {
@@ -373,7 +310,7 @@
   }
 
   .workspace-page-heading h2 {
-    font-size: 18px;
+    font-size: var(--font-size-4xl);
   }
 
   .workspace-page-body {
@@ -546,7 +483,7 @@
   }
 
   .mode-empty-title {
-    font-size: 24px;
+    font-size: var(--font-size-6xl);
   }
 
   .workspace-page-heading .eyebrow {
@@ -565,7 +502,7 @@
   }
 
   .config-workspace-heading h2 {
-    font-size: 17px;
+    font-size: var(--font-size-3xl);
   }
 
   .config-workspace-heading > p:last-child {
@@ -585,7 +522,7 @@
   .config-category-tab {
     min-height: 38px;
     padding-inline: 6px;
-    font-size: 11px;
+    font-size: var(--font-size-sm);
   }
 
   .config-dashboard #configRawEditor,

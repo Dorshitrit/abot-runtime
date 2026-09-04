@@ -18,6 +18,7 @@ import {
 } from "../../../orchestration/role-calls/index.js";
 import {
   type WorkerCapabilityBinding,
+  type WorkerCapabilityAssignmentProvenance,
   type WorkerCapabilityControls,
   type WorkerCapabilityDescriptor,
 } from "../../../orchestration/worker-capabilities/index.js";
@@ -131,6 +132,7 @@ export type PreparedWorkerCanonicalState = Readonly<{
   assignmentScope:
     | ReturnType<typeof projectRoleCallAssignmentScope>
     | undefined;
+  assignmentProvenance?: WorkerCapabilityAssignmentProvenance;
   dependencyResults: readonly RoleCallDependencyResult[];
   resume: ReturnType<typeof projectWorkerCapabilityResumeContext> | undefined;
   operationSupervision: readonly RoleOperationSupervisionNotice[] | undefined;

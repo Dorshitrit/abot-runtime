@@ -37,11 +37,9 @@ import {
 } from "./payload-instructions.js";
 import { validateJsonSchemaValue } from "../../model/json-schema-value.js";
 import { isRuntimeDelegateRoleId } from "../roles.js";
-import { WORKER_CAPABILITY_AUTHORING_OBJECTIVE_MAX_LENGTH } from "./contracts.js";
-
-type PayloadAuthorInput = Parameters<
-  WorkerCapabilityPayloadAuthor["author"]
->[0];
+import { projectWorkerPayloadRequestSourceProjection } from "./payload-source-provenance.js";
+import { isWorkerCapabilityPayloadAssignmentValid } from "./payload-assignment-validation.js";
+type PayloadAuthorInput = Parameters<WorkerCapabilityPayloadAuthor["author"]>[0];
 
 type PayloadPrincipal =
   | Readonly<{
@@ -143,7 +141,11 @@ export function createWorkerCapabilityPayloadAuthor(params: {
               }
             : {}),
         });
-      const context = capturePayloadContext(input, capabilityAuthorities);
+      const context = capturePayloadContext(
+        input,
+        capabilityAuthorities,
+        params.requestId,
+      );
       if (!context) {
         return failure(baseDiagnostic, "payload_context_invalid");
       }
@@ -172,6 +174,14 @@ export function createWorkerCapabilityPayloadAuthor(params: {
       try {
         output = await params.model.invoke({
           executionId: input.executionId,
+          requestSourceProjection:
+            "root" in context
+              ? "full_request"
+              : projectWorkerPayloadRequestSourceProjection(
+                  input.assignmentProvenance,
+                  input.call,
+                  params.requestId,
+                ),
           modelStep: WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP,
           instructions: payloadInstructions(input, context),
           context,
@@ -214,6 +224,7 @@ export function createWorkerCapabilityPayloadAuthor(params: {
 function capturePayloadContext(
   input: PayloadAuthorInput,
   capabilityAuthorities: readonly ExecutionPolicyCapabilityAuthority[],
+  requestId: string,
 ): WorkerCapabilityPayloadContext | null {
   const contextScope = normalizePayloadContextScope(
     input.contextScope ?? input.stage?.contextScope,
@@ -227,7 +238,11 @@ function capturePayloadContext(
       input.requestSteering,
       requestSteering,
     ) ||
-    !validPayloadAssignment(input, principal) ||
+    !isWorkerCapabilityPayloadAssignmentValid(
+      input,
+      principal.kind,
+      requestId,
+    ) ||
     !validPayloadContract(input.contract) ||
     !validPayloadStageContract(input, contextScope) ||
     !validPayloadEvidenceContext(input, contextScope) ||
@@ -303,26 +318,6 @@ function payloadPrincipalMatchesSteering(
   return principal.kind === "root"
     ? normalized !== undefined
     : input === undefined;
-}
-
-function validPayloadAssignment(
-  input: PayloadAuthorInput,
-  principal: PayloadPrincipal,
-): boolean {
-  if (typeof input.executionId !== "string" || input.executionId.length === 0) {
-    return false;
-  }
-  const supplied = Object.hasOwn(input, "authoringObjective");
-  if (principal.kind === "root") return !supplied;
-  return (
-    input.descriptor.requiresPayloadAuthoringObjective === true &&
-    supplied &&
-    typeof input.authoringObjective === "string" &&
-    input.authoringObjective.trim() === input.authoringObjective &&
-    input.authoringObjective.length > 0 &&
-    input.authoringObjective.length <=
-      WORKER_CAPABILITY_AUTHORING_OBJECTIVE_MAX_LENGTH
-  );
 }
 
 function validPayloadContract(input: PayloadAuthorInput["contract"]): boolean {

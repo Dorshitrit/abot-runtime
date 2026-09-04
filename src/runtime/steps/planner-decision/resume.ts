@@ -1,8 +1,9 @@
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { RequestContextPinnedPart } from "../../context/request-context-contracts.js";
-import type {
-  CompletedRoleChildResult,
-  RoleChildReturnContext,
+import {
+  normalizeRoleCallWorkResultReceipt,
+  type CompletedRoleChildResult,
+  type RoleChildReturnContext,
 } from "../../orchestration/role-calls/index.js";
 import type { PlannerDecisionPlanContext } from "./contracts.js";
 
@@ -76,6 +77,7 @@ function buildCompletedChildMessages(
   if (child.callerCallId !== currentCallId) {
     throw new Error("planner_child_resume_caller_mismatch");
   }
+  const workProjection = projectCompletedWorkerReceipt(child);
   const resultMessage = Object.freeze({
     role: "user" as const,
     content: JSON.stringify({
@@ -93,11 +95,14 @@ function buildCompletedChildMessages(
             ...(child.workerCapabilityScope
               ? { workerCapabilityScope: child.workerCapabilityScope }
               : {}),
-            dependencyResultRefs: child.dependencyResultRefs,
           }
+        : {}),
+      ...(hasCanonicalPlanContext || workProjection
+        ? { dependencyResultRefs: child.dependencyResultRefs }
         : {}),
       outcome: child.outcome,
       summary: child.summary,
+      ...(workProjection ?? {}),
     }),
   });
   if (hasCanonicalPlanContext) {
@@ -120,4 +125,37 @@ function buildCompletedChildMessages(
     }),
     resultMessage,
   ]);
+}
+
+function projectCompletedWorkerReceipt(
+  child: CompletedRoleChildResult,
+): Readonly<{ workReceipt: unknown; workLineage: unknown }> | undefined {
+  if (!child.receipt && !child.workLineage) return undefined;
+  if (!child.receipt || !child.workLineage) {
+    throw new Error("planner_child_resume_result_mismatch");
+  }
+  if (child.receipt.kind !== "work_result_v1") {
+    throw new Error("planner_child_resume_result_mismatch");
+  }
+  const receipt = normalizeRoleCallWorkResultReceipt(child.receipt);
+  if (!receipt) throw new Error("planner_child_resume_result_mismatch");
+  if (child.roleId !== "worker") {
+    throw new Error("planner_child_resume_result_mismatch");
+  }
+  if (receipt.producerCallId !== child.childCallId) {
+    throw new Error("planner_child_resume_result_mismatch");
+  }
+  if (receipt.callerCallId !== child.callerCallId) {
+    throw new Error("planner_child_resume_result_mismatch");
+  }
+  if (child.workLineage.kind !== "work_result_lineage_v1") {
+    throw new Error("planner_child_resume_result_mismatch");
+  }
+  if (child.workLineage.lineageFingerprint !== receipt.lineageFingerprint) {
+    throw new Error("planner_child_resume_result_mismatch");
+  }
+  return Object.freeze({
+    workReceipt: receipt,
+    workLineage: child.workLineage,
+  });
 }

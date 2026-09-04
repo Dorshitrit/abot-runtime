@@ -127,12 +127,13 @@ export function parseSupervisorDecisionOutput(
       issues,
     );
   } else {
+    const reviewerInvocationSelected = record.roleId === "reviewer";
     exactKeys(
       record,
       [
         "action",
         "roleId",
-        "objective",
+        ...(reviewerInvocationSelected ? [] : ["objective"]),
         ...(record.roleId === "worker" && workerCapabilityScopeContract.required
           ? ["workerCapabilityScope"]
           : []),
@@ -153,14 +154,16 @@ export function parseSupervisorDecisionOutput(
         ),
       );
     }
-    validateBoundedText({
-      value: record.objective,
-      maximumLength: SUPERVISOR_OBJECTIVE_MAX_LENGTH,
-      code: "supervisor_objective_invalid",
-      path: "decision.objective",
-      label: "Objective",
-      issues,
-    });
+    if (!reviewerInvocationSelected) {
+      validateBoundedText({
+        value: record.objective,
+        maximumLength: SUPERVISOR_OBJECTIVE_MAX_LENGTH,
+        code: "supervisor_objective_invalid",
+        path: "decision.objective",
+        label: "Objective",
+        issues,
+      });
+    }
     if (record.roleId === "worker" && workerCapabilityScopeContract.required) {
       workerCapabilityScope = parseSupervisorWorkerCapabilityScope(
         record.workerCapabilityScope,
@@ -204,60 +207,14 @@ export function parseSupervisorDecisionOutput(
     };
   }
 
-  const decision: SupervisorRoutingDecision =
-    selectedAction === "respond"
-      ? {
-          action: "respond",
-          ...(includeAcknowledgement
-            ? {
-                acknowledgement: normalizedAcknowledgement as string,
-              }
-            : {}),
-          ...(includeTitle ? { title: (record.title as string).trim() } : {}),
-        }
-      : record.roleId === "worker"
-        ? {
-            action: "invoke_role",
-            roleId: "worker",
-            objective: (record.objective as string).trim(),
-            ...(workerCapabilityScope ? { workerCapabilityScope } : {}),
-            ...(includeAcknowledgement
-              ? {
-                  acknowledgement: normalizedAcknowledgement as string,
-                }
-              : {}),
-            ...(includeTitle ? { title: (record.title as string).trim() } : {}),
-          }
-        : record.roleId === "planner"
-          ? {
-              action: "invoke_role",
-              roleId: "planner",
-              objective: (record.objective as string).trim(),
-              ...(includeAcknowledgement
-                ? {
-                    acknowledgement: normalizedAcknowledgement as string,
-                  }
-                : {}),
-              ...(includeTitle
-                ? { title: (record.title as string).trim() }
-                : {}),
-            }
-          : {
-              action: "invoke_role",
-              roleId: record.roleId as Exclude<
-                SupervisorDelegateRoleId,
-                "planner" | "worker"
-              >,
-              objective: (record.objective as string).trim(),
-              ...(includeAcknowledgement
-                ? {
-                    acknowledgement: normalizedAcknowledgement as string,
-                  }
-                : {}),
-              ...(includeTitle
-                ? { title: (record.title as string).trim() }
-                : {}),
-            };
+  const decision = buildAcceptedSupervisorRoutingDecision({
+    record,
+    selectedAction,
+    includeAcknowledgement,
+    includeTitle,
+    normalizedAcknowledgement,
+    workerCapabilityScope,
+  });
   const accepted = deepFreeze(structuredClone(decision));
   if (diagnostic) {
     if (acknowledgementOriginalLength !== undefined) {
@@ -271,6 +228,59 @@ export function parseSupervisorDecisionOutput(
     traceSupervisorDecisionAccepted({ diagnostic, decision: accepted });
   }
   return { ok: true, decision: accepted };
+}
+
+function buildAcceptedSupervisorRoutingDecision(params: {
+  record: Record<string, unknown>;
+  selectedAction: "invoke_role" | "respond";
+  includeAcknowledgement: boolean;
+  includeTitle: boolean;
+  normalizedAcknowledgement?: string;
+  workerCapabilityScope?: RoleCallWorkerCapabilityScope;
+}): SupervisorRoutingDecision {
+  const presentation = {
+    ...(params.includeAcknowledgement
+      ? { acknowledgement: params.normalizedAcknowledgement as string }
+      : {}),
+    ...(params.includeTitle
+      ? { title: (params.record.title as string).trim() }
+      : {}),
+  };
+  if (params.selectedAction === "respond") {
+    return { action: "respond", ...presentation };
+  }
+  const objective = (params.record.objective as string | undefined)?.trim();
+  if (params.record.roleId === "worker") {
+    return {
+      action: "invoke_role",
+      roleId: "worker",
+      objective: objective as string,
+      ...(params.workerCapabilityScope
+        ? { workerCapabilityScope: params.workerCapabilityScope }
+        : {}),
+      ...presentation,
+    };
+  }
+  if (params.record.roleId === "planner") {
+    return {
+      action: "invoke_role",
+      roleId: "planner",
+      objective: objective as string,
+      ...presentation,
+    };
+  }
+  if (params.record.roleId === "reviewer") {
+    return { action: "invoke_role", roleId: "reviewer", ...presentation };
+  }
+  return {
+    action: "invoke_role",
+    roleId: params.record.roleId as Exclude<
+      SupervisorDelegateRoleId,
+      "planner" | "reviewer" | "worker"
+    >,
+    objective: objective as string,
+    ...presentation,
+  };
 }
 
 function parseSupervisorWorkerCapabilityScope(

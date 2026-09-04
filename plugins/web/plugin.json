@@ -21,7 +21,7 @@
       },
       "capabilities": {
         "web_search": {
-          "description": "Search real public Internet domains through Brave Search and return ranked snippets, URLs, and bounded readable source content. This capability requires BRAVE_SEARCH_API_KEY and cannot inspect local files, configured work paths, project state, or file URLs. Provide query for one search, or queries for up to five distinct searches that should run in parallel.",
+          "description": "Search public Internet sources and return ranked snippets, URLs, and bounded readable source content. Uses Brave Search when BRAVE_SEARCH_API_KEY is configured; otherwise uses Light search over a limited catalog of public Hebrew and English sources. Light coverage is limited and cannot establish that information does not exist elsewhere. Cannot inspect local files, configured work paths, project state, or file URLs. Provide query for one search, or queries for up to five distinct searches.",
           "routingCapability": "web_lookup",
           "developmentRoles": ["auxiliary"],
           "eventPresentation": {

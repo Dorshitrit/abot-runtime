@@ -25,6 +25,12 @@ describe("web ui conversation activity", () => {
         },
         {
           type: "event",
+          name: "tool.started",
+          requestId: "req-current",
+          tool: "read_file",
+        },
+        {
+          type: "event",
           name: "tool.failed",
           requestId: "req-current",
           tool: "read_file",
@@ -42,13 +48,14 @@ describe("web ui conversation activity", () => {
     expect(activity.events.map((event) => event.eventName)).toEqual([
       "tool.started",
       "tool.completed",
+      "tool.started",
       "tool.failed",
     ]);
     expect(activity.events.at(-1)).toMatchObject({
       name: "file reader failed",
       tone: "failed",
     });
-    expect(activity.toolCount).toBe(3);
+    expect(activity.toolCount).toBe(2);
     expect(activity.failureCount).toBe(1);
     expect(activity.openByDefault).toBe(true);
     expect(activity.currentLabel).toBe("file reader failed");
@@ -92,6 +99,14 @@ describe("web ui conversation activity", () => {
       requestId: "req-current",
       events: [
         {
+          key: "req-current|tool.started",
+          requestId: "req-current",
+          eventName: "tool.started",
+          name: "Using web search",
+          tone: "active",
+          count: 2,
+        },
+        {
           key: "req-current|tool.completed",
           requestId: "req-current",
           eventName: "tool.completed",
@@ -110,7 +125,7 @@ describe("web ui conversation activity", () => {
       ],
     });
 
-    expect(activity.eventCount).toBe(3);
+    expect(activity.eventCount).toBe(5);
     expect(activity.toolCount).toBe(2);
     expect(activity.failureCount).toBe(1);
     expect(activity.latestLabel).toBe("Response failed");

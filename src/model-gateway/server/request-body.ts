@@ -7,6 +7,7 @@ export async function readJsonBody<
 >(
   request: IncomingMessage,
 ): Promise<T> {
+  request.setEncoding("utf8");
   let raw = "";
   for await (const chunk of request) {
     raw += chunk;
