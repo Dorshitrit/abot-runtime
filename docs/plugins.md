@@ -300,13 +300,19 @@ Node filesystem APIs do not provide inode compare-and-swap, so a completely
 independent writer that ignores this coordination can still race in the final
 existing-file commit window. Consumers that require stronger multi-process
 coordination must place the work root behind a versioned or transactional store.
-Mutation path traversal requires Linux procfs and no-follow file-descriptor
-support. The plugin fails closed when either safety primitive is unavailable.
+Mutation path traversal requires no-follow directory handles. On Linux the
+plugin anchors operations through procfs. On macOS an isolated Node child
+inherits the held directory handle, verifies its current directory against
+that handle, and performs basename-relative operations from the pinned current
+directory. Each descendant transition is verified before mutation. The parent
+Runtime never changes its current directory, and unavailable authority fails
+closed. Directory inspection uses the same platform-specific authority.
 
-The bundled `local-search` plugin also requires Linux procfs and no-follow
-file-descriptor support. It holds the selected file or directory through a
-stable descriptor for the complete ripgrep invocation and fails closed when
-that authority cannot be established.
+The bundled `local-search` plugin holds the selected file or directory through
+a stable descriptor for the complete ripgrep invocation. Linux directory
+searches use procfs; macOS searches inherit the verified current directory of
+an isolated Node child. File content searches use the held input descriptor on
+both platforms. A search fails closed when its authority cannot be established.
 
 All output and structured data must be bounded at the producer. The shared SDK
 reserves wrapper headroom by rejecting plugin results above 128 KiB before they
@@ -316,8 +322,8 @@ and rendered text. A truncated success reports machine-readable truncation
 metadata; an operation that cannot produce a truthful bounded result fails
 explicitly.
 
-The bundled `exec` plugin is intentionally a Linux-only integration with
-non-interactive `/bin/bash`. Its configured working directory is constrained to
+The bundled `exec` plugin supports Linux and macOS with non-interactive
+`/bin/bash`. Commands must use utilities available on the host. Its configured working directory is constrained to
 agent-work or workspace roots, but the shell runs with the Runtime process
 permissions and is not an operating-system sandbox.
 

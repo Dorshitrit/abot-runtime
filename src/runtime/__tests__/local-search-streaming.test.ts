@@ -9,7 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import createLocalSearchSource from "../../../plugins/local-search/source/index.js";
 import { resolveSearchRoot } from "../../../plugins/local-search/source/paths.js";
@@ -21,6 +21,7 @@ const temporaryRoots: string[] = [];
 const inheritedRipgrepConfigPath = process.env.RIPGREP_CONFIG_PATH;
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
   if (inheritedRipgrepConfigPath === undefined) {
     delete process.env.RIPGREP_CONFIG_PATH;
   } else {
@@ -199,7 +200,7 @@ describe("local-search streaming ripgrep boundary", () => {
   });
 
   test.each(["directory", "file"] as const)(
-    "keeps a verified %s authority after its pathname is replaced by an outside symlink",
+    "does not search outside a verified %s authority after pathname replacement",
     async (kind) => {
       const root = await createRoot(`local-search-authority-${kind}`);
       const outside = await createRoot(`local-search-outside-${kind}`);
@@ -233,7 +234,7 @@ describe("local-search streaming ripgrep boundary", () => {
       try {
         await rename(target, moved);
         await symlink(attacker, target, kind === "directory" ? "dir" : "file");
-        const result = await runRipgrepContentSearch(
+        const search = runRipgrepContentSearch(
           [
             "--json",
             "--with-filename",
@@ -250,8 +251,17 @@ describe("local-search streaming ripgrep boundary", () => {
           10,
           undefined,
           authority.stdinFd,
+          authority.directoryAuthority,
         );
-
+        const rejectsReplacedDirectory =
+          kind === "directory" && process.platform === "darwin";
+        if (rejectsReplacedDirectory) {
+          await expect(search).rejects.toMatchObject({
+            code: "local_search_failed",
+          });
+          return;
+        }
+        const result = await search;
         expect(result.items.map(({ text }) => text)).toEqual([
           "authority-swap-token safe",
         ]);
@@ -295,4 +305,31 @@ describe("local-search streaming ripgrep boundary", () => {
       data: { itemCount: 0 },
     });
   });
+
+  test.each(["names", "content"] as const)(
+    "searches %s through a real directory helper with macOS authority selection",
+    async (mode) => {
+      const root = await createRoot("local-search-directory-helper");
+      await mkdir(join(root, "workspace"));
+      await writeFile(join(root, "needle.txt"), "needle bridge content\n");
+      vi.stubGlobal(
+        "process",
+        new Proxy(process, {
+          get(target, property, receiver) {
+            if (property === "platform") return "darwin";
+            return Reflect.get(target, property, receiver);
+          },
+        }),
+      );
+      const result = await handlerFor(root)(
+        { query: "needle", mode },
+        undefined,
+      );
+      expect(result).toMatchObject({
+        ok: true,
+        data: { itemCount: 1, hasData: true },
+      });
+      expect(result.output).toContain("needle.txt");
+    },
+  );
 });

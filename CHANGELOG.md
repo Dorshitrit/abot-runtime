@@ -4,6 +4,16 @@ All notable changes to this project should be documented in this file.
 
 This project follows semantic versioning after the first public release.
 
+## 1.3.1 - 2026-09-07
+
+### Fixed
+
+- Initialization creates the configured working and storage directories for
+  each environment and preserves existing configuration and custom paths.
+- File creation, editing, directory inspection, local search, and shell
+  commands now work on macOS while retaining path containment, atomic writes,
+  and process cancellation safeguards.
+
 ## 1.3.0 - 2026-09-07
 
 ABot 1.3.0 adds native scheduled Jobs, explicit memory recall, and richer

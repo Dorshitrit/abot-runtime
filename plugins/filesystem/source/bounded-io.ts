@@ -1,12 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants, type BigIntStats } from "node:fs";
-import {
-  opendir,
-  open,
-  realpath,
-  stat,
-  type FileHandle,
-} from "node:fs/promises";
+import { open, realpath, stat, type FileHandle } from "node:fs/promises";
 import { relative, sep } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { TextDecoder } from "node:util";
@@ -19,7 +13,10 @@ export const MAX_MUTATION_BYTES = 1_048_576;
 export const READ_HEAD_BYTES = 24_576;
 export const READ_TAIL_BYTES = 12_288;
 export const DEV_SCAN_BYTES = 1_048_576;
-export const DIRECTORY_ENTRY_LIMIT = 160;
+export {
+  readDirectorySample,
+  DIRECTORY_ENTRY_LIMIT,
+} from "./directory-sample.js";
 
 export type BoundedText = Readonly<{
   text: string;
@@ -348,97 +345,6 @@ export function assertMutationContentSize(content: string): number {
     );
   }
   return byteCount;
-}
-
-export async function readDirectorySample(
-  target: ResolvedRuntimeToolPath,
-): Promise<Readonly<{ entries: readonly string[]; truncated: boolean }>> {
-  const entries: string[] = [];
-  let handle: FileHandle | undefined;
-  try {
-    if (
-      typeof constants.O_DIRECTORY !== "number" ||
-      typeof constants.O_NOFOLLOW !== "number"
-    ) {
-      fail(
-        "filesystem_safe_io_unsupported",
-        "This platform does not provide the no-follow directory operation required for a safe read.",
-      );
-    }
-    handle = await open(
-      target.absolutePath,
-      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
-    );
-    const before = await handle.stat({ bigint: true });
-    if (!before.isDirectory()) {
-      fail("not_a_directory", `Expected a directory: ${target.logicalPath}`);
-    }
-    const [canonicalRoot, canonicalTarget] = await Promise.all([
-      realpath(target.rootPath),
-      realpath(target.absolutePath),
-    ]);
-    const rootRelative = relative(canonicalRoot, canonicalTarget);
-    if (
-      rootRelative === ".." ||
-      rootRelative.startsWith(`..${sep}`) ||
-      rootRelative.startsWith(sep)
-    ) {
-      fail(
-        "filesystem_path_changed",
-        `Directory changed outside its configured root: ${target.logicalPath}`,
-      );
-    }
-    const pathIdentity = await stat(canonicalTarget, { bigint: true });
-    if (
-      !pathIdentity.isDirectory() ||
-      pathIdentity.dev !== before.dev ||
-      pathIdentity.ino !== before.ino
-    ) {
-      fail(
-        "filesystem_path_changed",
-        `Directory changed while it was being opened: ${target.logicalPath}`,
-      );
-    }
-    const directory = await opendir(`/proc/self/fd/${handle.fd}`);
-    for await (const entry of directory) {
-      if (entries.length >= DIRECTORY_ENTRY_LIMIT) {
-        await assertDirectoryStable(handle, before, target.logicalPath);
-        entries.sort((left, right) => left.localeCompare(right));
-        return Object.freeze({
-          entries: Object.freeze(entries),
-          truncated: true,
-        });
-      }
-      entries.push(`${entry.name}${entry.isDirectory() ? "/" : ""}`);
-    }
-    await assertDirectoryStable(handle, before, target.logicalPath);
-    entries.sort((left, right) => left.localeCompare(right));
-    return Object.freeze({ entries: Object.freeze(entries), truncated: false });
-  } catch (error: unknown) {
-    return rethrowFilesystemError(error, "inspect", target.logicalPath);
-  } finally {
-    await handle?.close().catch(() => undefined);
-  }
-}
-
-async function assertDirectoryStable(
-  handle: FileHandle,
-  before: BigIntStats,
-  logicalPath: string,
-): Promise<void> {
-  const after = await handle.stat({ bigint: true });
-  if (
-    !after.isDirectory() ||
-    after.dev !== before.dev ||
-    after.ino !== before.ino ||
-    after.mtimeNs !== before.mtimeNs ||
-    after.ctimeNs !== before.ctimeNs
-  ) {
-    fail(
-      "filesystem_read_changed",
-      `Directory changed while it was being read: ${logicalPath}`,
-    );
-  }
 }
 
 function rejectBinary(buffer: Buffer, logicalPath: string): void {

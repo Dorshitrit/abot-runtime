@@ -1,8 +1,9 @@
 import { constants } from "node:fs";
 import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { initializeConfiguredRuntimeDirectories } from "./runtime-setup-directories.js";
 import {
   buildModelConfig,
   buildProviderConfig,
@@ -49,16 +50,6 @@ const MODEL_CONFIG_EXAMPLE_FILE = join(
   "default.config.json",
 );
 const REQUIRED_ENV_LINE = "LLM_RUNTIME_CONFIG_FILE=local/runtime.config.json";
-const RUNTIME_DIRS = [
-  join(".runtime", "compiled"),
-  join(".runtime", "shared", "logs"),
-  join(".runtime", "prod"),
-  join(".runtime", "prod", "sandbox"),
-  join(".runtime", "prod", "sessions"),
-  join(".runtime", "dev"),
-  join(".runtime", "dev", "sandbox"),
-  join(".runtime", "dev", "sessions"),
-];
 
 function requireValue(argv: string[], index: number, flag: string): string {
   const value = argv[index + 1]?.trim();
@@ -328,10 +319,9 @@ export async function runInitRuntime(
     );
   }
 
-  await Promise.all(
-    RUNTIME_DIRS.map((runtimeDir) =>
-      mkdir(join(options.rootDir, runtimeDir), { recursive: true }),
-    ),
+  const runtimeDirectories = await initializeConfiguredRuntimeDirectories(
+    options.rootDir,
+    configPath,
   );
 
   console.log(
@@ -348,7 +338,7 @@ export async function runInitRuntime(
       ...methodologyStatuses.map(
         ({ relativePath, status }) => `${relativePath}: ${status}`,
       ),
-      "created runtime directories: .runtime/compiled, .runtime/shared/logs, .runtime/prod, .runtime/dev",
+      `initialized runtime directories: ${runtimeDirectories.map((directory) => relative(options.rootDir, directory) || ".").join(", ")}`,
       "",
       ...getInitNextSteps(commandMode),
     ].join("\n"),

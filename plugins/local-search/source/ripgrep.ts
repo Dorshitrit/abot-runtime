@@ -1,10 +1,10 @@
-import { spawn, type ChildProcessByStdio } from "node:child_process";
-import type { Readable } from "node:stream";
 import { TextDecoder } from "node:util";
 
-import { rgPath } from "@vscode/ripgrep";
-
 import { LocalSearchError } from "./errors.js";
+import {
+  spawnRipgrepProcess,
+  type SearchDirectoryAuthority,
+} from "./ripgrep-process.js";
 
 const SEARCH_TIMEOUT_MS = 10_000;
 const MAX_PATH_RECORD_BYTES = 64 * 1024;
@@ -43,16 +43,6 @@ export function escapeRgGlobLiteral(value: string): string {
       "\\*?[]{}!".includes(character) ? `\\${character}` : character,
     )
     .join("");
-}
-
-function controlledRipgrepEnvironment(): NodeJS.ProcessEnv {
-  const environment = { ...process.env };
-  for (const name of Object.keys(environment)) {
-    if (name.toUpperCase() === "RIPGREP_CONFIG_PATH") {
-      delete environment[name];
-    }
-  }
-  return environment;
 }
 
 function decodeUtf8Record(bytes: Buffer, kind: "path" | "result"): string {
@@ -129,6 +119,7 @@ async function runRipgrepBounded<T>(
   parser: RipgrepStreamParser<T>,
   signal?: AbortSignal,
   stdinFd?: number,
+  directoryAuthority?: SearchDirectoryAuthority,
 ): Promise<BoundedRipgrepResult<T>> {
   if (signal?.aborted) {
     throw new LocalSearchError(
@@ -143,12 +134,12 @@ async function runRipgrepBounded<T>(
     let timedOut = false;
     let aborted = false;
     let parserError: unknown;
-    const child = spawn(rgPath, ["--no-config", ...args], {
+    const { child, terminate } = spawnRipgrepProcess(
+      args,
       cwd,
-      env: controlledRipgrepEnvironment(),
-      stdio: [stdinFd ?? "ignore", "pipe", "pipe"],
-      windowsHide: true,
-    }) as ChildProcessByStdio<null, Readable, Readable>;
+      stdinFd,
+      directoryAuthority,
+    );
 
     const cleanup = (): void => {
       clearTimeout(timeout);
@@ -177,17 +168,17 @@ async function runRipgrepBounded<T>(
       stoppedAfterExtraResult = true;
       if (mayStopProcess) {
         child.stdout.pause();
-        child.kill("SIGKILL");
+        terminate();
       }
       return false;
     };
     const abortListener = (): void => {
       aborted = true;
-      child.kill("SIGKILL");
+      terminate();
     };
     const timeout = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGKILL");
+      terminate();
     }, SEARCH_TIMEOUT_MS);
     timeout.unref?.();
 
@@ -198,7 +189,7 @@ async function runRipgrepBounded<T>(
       } catch (error) {
         parserError = error;
         child.stdout.pause();
-        child.kill("SIGKILL");
+        terminate();
       }
     });
     // Always drain stderr so the child cannot block on its diagnostic pipe.
@@ -313,6 +304,7 @@ export function runRipgrepPathSearch(
   cwd: string,
   maxResults: number,
   signal?: AbortSignal,
+  directoryAuthority?: SearchDirectoryAuthority,
 ): Promise<BoundedRipgrepResult<string>> {
   return runRipgrepBounded(
     args,
@@ -324,6 +316,8 @@ export function runRipgrepPathSearch(
       parse: (record) => decodeUtf8Record(record, "path"),
     }),
     signal,
+    undefined,
+    directoryAuthority,
   );
 }
 
@@ -333,6 +327,7 @@ export function runRipgrepContentSearch(
   maxResults: number,
   signal?: AbortSignal,
   stdinFd?: number,
+  directoryAuthority?: SearchDirectoryAuthority,
 ): Promise<BoundedRipgrepResult<ContentMatch>> {
   return runRipgrepBounded(
     args,
@@ -349,5 +344,6 @@ export function runRipgrepContentSearch(
     }),
     signal,
     stdinFd,
+    directoryAuthority,
   );
 }

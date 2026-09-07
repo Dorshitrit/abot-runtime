@@ -11,6 +11,7 @@ import {
 } from "./bounded-io.js";
 import { fail, isNodeErrorCode, rethrowFilesystemError } from "./errors.js";
 import { openMutationParent } from "./mutation-parent.js";
+import { writeWithDirectoryAuthority } from "./directory-authority-write.js";
 
 export async function atomicWriteText(
   input: Readonly<{
@@ -20,6 +21,10 @@ export async function atomicWriteText(
   }>,
 ): Promise<void> {
   assertMutationContentSize(input.content);
+  if (requiresIsolatedDirectoryAuthority()) {
+    await writeWithDirectoryAuthority(input);
+    return;
+  }
   const parent = await openMutationParent(input.target);
   const targetPath = `${parent.procPath}/${parent.targetName}`;
   const anchoredTarget = Object.freeze({
@@ -112,4 +117,8 @@ async function syncDirectoryBestEffort(
     // Some supported filesystems do not expose directory fsync through Node.
     // The prepared file itself is always synced before the atomic install.
   }
+}
+
+function requiresIsolatedDirectoryAuthority(): boolean {
+  return process.platform === "darwin";
 }

@@ -98,6 +98,7 @@ export default defineRuntimePlugin((context) => ({
                 root.commandDirectory,
                 maxResults,
                 executionContext?.abortSignal,
+                root.directoryAuthority,
               );
           sourceTruncated ||= names.truncated;
           for (const rawPath of names.items) {
@@ -132,6 +133,7 @@ export default defineRuntimePlugin((context) => ({
             remaining,
             executionContext?.abortSignal,
             root.stdinFd,
+            root.directoryAuthority,
           );
           sourceTruncated ||= content.truncated;
           for (const match of content.items) {

@@ -1,6 +1,4 @@
 import { spawn, type ChildProcessByStdio } from "node:child_process";
-import { constants } from "node:fs";
-import { access } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
@@ -8,13 +6,13 @@ import { StringDecoder } from "node:string_decoder";
 import { sanitizeJsonText } from "../../../src/plugin-sdk/index.js";
 
 import { ExecPluginError } from "./errors.js";
+import { assertSupportedShell, EXEC_SHELL } from "./shell-platform.js";
 import type {
   ExecProcessSnapshot,
   ExecStreamSnapshot,
   ExecTerminationReason,
 } from "./types.js";
 
-const EXEC_SHELL = "/bin/bash";
 const COMPLETED_PROCESS_RETENTION_MS = 5 * 60_000;
 const MAX_ACTIVE_PROCESSES_PER_SCOPE = 4;
 
@@ -114,23 +112,6 @@ export type ExecProcessManager = Readonly<{
   ): Promise<ExecProcessSnapshot>;
   release(processId: string, scope: string): Promise<void>;
 }>;
-
-async function assertSupportedShell(): Promise<void> {
-  if (process.platform !== "linux") {
-    throw new ExecPluginError(
-      "exec_platform_unsupported",
-      "The exec plugin v1 requires Linux and /bin/bash.",
-    );
-  }
-  try {
-    await access(EXEC_SHELL, constants.X_OK);
-  } catch {
-    throw new ExecPluginError(
-      "exec_shell_unavailable",
-      "The exec plugin cannot start because executable /bin/bash is unavailable.",
-    );
-  }
-}
 
 export function createExecProcessManager(): ExecProcessManager {
   const processes = new Map<string, ManagedExecProcess>();

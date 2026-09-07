@@ -66,6 +66,7 @@ async function openDirectory(
         `Directory changed while it was being opened: ${logicalPath}`,
       );
     }
+    if (usesIsolatedDirectoryAuthority()) return handle;
     const procPath = `/proc/self/fd/${handle.fd}`;
     const procIdentity = await stat(procPath, { bigint: true });
     if (!procIdentity.isDirectory() || !sameIdentity(opened, procIdentity)) {
@@ -161,4 +162,14 @@ export async function openMutationParent(
     await current.close().catch(() => undefined);
     throw error;
   }
+}
+
+function usesIsolatedDirectoryAuthority(): boolean {
+  return process.platform === "darwin";
+}
+
+export function openMutationRoot(
+  target: ResolvedRuntimeToolPath,
+): Promise<FileHandle> {
+  return openDirectory(target.rootPath, target.rootPath, target.logicalPath);
 }

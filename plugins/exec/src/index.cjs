@@ -558,11 +558,34 @@ function resolveExecScopedPath(pluginContext, executionContext, rawPath, cwd) {
 
 // plugins/exec/source/process-manager.ts
 var import_node_child_process = require("node:child_process");
-var import_node_fs2 = require("node:fs");
-var import_promises3 = require("node:fs/promises");
 var import_node_crypto2 = require("node:crypto");
 var import_node_string_decoder = require("node:string_decoder");
+
+// plugins/exec/source/shell-platform.ts
+var import_node_fs2 = require("node:fs");
+var import_promises3 = require("node:fs/promises");
 var EXEC_SHELL = "/bin/bash";
+function isSupportedExecPlatform(platform) {
+  return platform === "linux" || platform === "darwin";
+}
+async function assertSupportedShell(platform = process.platform) {
+  if (!isSupportedExecPlatform(platform)) {
+    throw new ExecPluginError(
+      "exec_platform_unsupported",
+      "The exec plugin requires Linux or macOS and executable /bin/bash."
+    );
+  }
+  try {
+    await (0, import_promises3.access)(EXEC_SHELL, import_node_fs2.constants.X_OK);
+  } catch {
+    throw new ExecPluginError(
+      "exec_shell_unavailable",
+      "The exec plugin cannot start because executable /bin/bash is unavailable."
+    );
+  }
+}
+
+// plugins/exec/source/process-manager.ts
 var COMPLETED_PROCESS_RETENTION_MS = 5 * 6e4;
 var MAX_ACTIVE_PROCESSES_PER_SCOPE = 4;
 var CappedTextBuffer = class {
@@ -602,22 +625,6 @@ var CappedTextBuffer = class {
     });
   }
 };
-async function assertSupportedShell() {
-  if (process.platform !== "linux") {
-    throw new ExecPluginError(
-      "exec_platform_unsupported",
-      "The exec plugin v1 requires Linux and /bin/bash."
-    );
-  }
-  try {
-    await (0, import_promises3.access)(EXEC_SHELL, import_node_fs2.constants.X_OK);
-  } catch {
-    throw new ExecPluginError(
-      "exec_shell_unavailable",
-      "The exec plugin cannot start because executable /bin/bash is unavailable."
-    );
-  }
-}
 function createExecProcessManager() {
   const processes = /* @__PURE__ */ new Map();
   const unknownProcess = () => new ExecPluginError(

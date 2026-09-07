@@ -253,13 +253,13 @@ var writeFileAdapter = Object.freeze({
 });
 
 // plugins/filesystem/source/dev-view.ts
-var import_promises2 = require("node:fs/promises");
+var import_promises3 = require("node:fs/promises");
 
 // plugins/filesystem/source/bounded-io.ts
 var import_node_crypto = require("node:crypto");
-var import_node_fs = require("node:fs");
-var import_promises = require("node:fs/promises");
-var import_node_path = require("node:path");
+var import_node_fs2 = require("node:fs");
+var import_promises2 = require("node:fs/promises");
+var import_node_path3 = require("node:path");
 var import_node_string_decoder = require("node:string_decoder");
 var import_node_util = require("node:util");
 
@@ -302,12 +302,462 @@ function rethrowFilesystemError(error, operation, logicalPath) {
   );
 }
 
+// plugins/filesystem/source/directory-sample.ts
+var import_node_fs = require("node:fs");
+var import_promises = require("node:fs/promises");
+var import_node_path2 = require("node:path");
+
+// src/shared/directory-authority/bootstrap.ts
+function directoryAuthorityBootstrap(mode, messageLimit, task) {
+  const fs = require("node:fs");
+  function fail2(code, message) {
+    throw Object.assign(new Error(message), { code });
+  }
+  function verifyDirectoryAuthority() {
+    const expected = fs.fstatSync(3, { bigint: true });
+    const actual = fs.statSync(".", { bigint: true });
+    const matchesHeldDirectory = expected.isDirectory() && actual.isDirectory() && expected.dev === actual.dev && expected.ino === actual.ino;
+    if (matchesHeldDirectory) return;
+    fail2(
+      "directory_authority_changed",
+      "The directory changed before the operation could establish its authority."
+    );
+  }
+  function readRequest() {
+    const fd = mode === "task" ? 0 : 4;
+    const chunk = Buffer.alloc(64 * 1024);
+    const chunks = [];
+    let total = 0;
+    for (; ; ) {
+      const length = fs.readSync(fd, chunk, 0, chunk.length, null);
+      if (length === 0) break;
+      total += length;
+      if (total > messageLimit) {
+        fail2(
+          "directory_authority_request_too_large",
+          "The directory operation input exceeds the bridge byte limit."
+        );
+      }
+      chunks.push(Buffer.from(chunk.subarray(0, length)));
+    }
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  }
+  function reportFailure(error) {
+    const detail = error;
+    const code = typeof detail?.code === "string" ? detail.code.slice(0, 256) : "directory_authority_failed";
+    const message = typeof detail?.message === "string" ? detail.message.slice(0, 4096) : "The directory operation failed.";
+    let encoded;
+    try {
+      encoded = JSON.stringify({
+        ok: false,
+        error: { code, message, data: detail?.data }
+      });
+      if (Buffer.byteLength(encoded) > messageLimit) throw new Error();
+    } catch {
+      encoded = JSON.stringify({ ok: false, error: { code, message } });
+    }
+    writeResponse(mode === "task" ? 1 : 2, encoded);
+    process.exitCode = mode === "task" ? 0 : 125;
+  }
+  function writeResponse(fd, encoded) {
+    const bytes = Buffer.from(encoded);
+    let offset = 0;
+    while (offset < bytes.length) {
+      offset += fs.writeSync(fd, bytes, offset, bytes.length - offset);
+    }
+  }
+  async function runTask(input) {
+    if (!task)
+      fail2("directory_authority_failed", "The directory task is missing.");
+    const result = await task(input);
+    const encoded = JSON.stringify({ ok: true, result });
+    if (Buffer.byteLength(encoded) > messageLimit) {
+      fail2(
+        "directory_authority_result_too_large",
+        "The directory operation result exceeds the bridge byte limit."
+      );
+    }
+    writeResponse(1, encoded);
+  }
+  function runCommand(input) {
+    const { spawn: spawn2 } = require("node:child_process");
+    const command = input;
+    const child = spawn2(command.command, command.args, {
+      stdio: ["ignore", "inherit", "inherit"],
+      env: process.env
+    });
+    child.once("error", reportFailure);
+    child.once("exit", (code, signal) => {
+      if (signal) {
+        process.kill(process.pid, signal);
+        return;
+      }
+      if (typeof code === "number") process.exitCode = code;
+    });
+  }
+  try {
+    verifyDirectoryAuthority();
+    const input = readRequest();
+    if (mode === "command") {
+      runCommand(input);
+      return;
+    }
+    void runTask(input).catch(reportFailure);
+  } catch (error) {
+    reportFailure(error);
+  }
+}
+function directoryAuthorityScript(mode, messageLimit, task) {
+  const taskSource = task ? `(${task.toString()})` : "undefined";
+  const preserveFunctionName = "const __name=(target,value)=>Object.defineProperty(target,'name',{value,configurable:true});";
+  return `${preserveFunctionName}(${directoryAuthorityBootstrap.toString()})(${JSON.stringify(mode)},${messageLimit},${taskSource});`;
+}
+
+// src/shared/directory-authority/protocol.ts
+var import_node_path = require("node:path");
+
+// src/shared/directory-authority/errors.ts
+var DirectoryAuthorityError = class extends Error {
+  constructor(code, message, data) {
+    super(message);
+    this.code = code;
+    this.data = data;
+    this.name = "DirectoryAuthorityError";
+  }
+  code;
+  data;
+};
+
+// src/shared/directory-authority/protocol.ts
+var AUTHORITY_MESSAGE_LIMIT = 8 * 1024 * 1024;
+var AUTHORITY_STDERR_LIMIT = 16 * 1024;
+var AUTHORITY_TASK_TIMEOUT_MS = 3e4;
+function assertDirectoryAuthorityLocation(location) {
+  if (!(0, import_node_path.isAbsolute)(location.directoryPath)) {
+    throw new DirectoryAuthorityError(
+      "directory_authority_invalid_path",
+      "The directory authority requires an absolute starting path."
+    );
+  }
+  const hasOpenDescriptorNumber = Number.isInteger(location.directoryFd) && location.directoryFd >= 0;
+  if (hasOpenDescriptorNumber) return;
+  throw new DirectoryAuthorityError(
+    "directory_authority_invalid_fd",
+    "The directory authority requires an open directory descriptor."
+  );
+}
+function authorityEnvironment(environment = process.env) {
+  const sanitized = { ...environment };
+  delete sanitized.NODE_OPTIONS;
+  delete sanitized.NODE_PATH;
+  return sanitized;
+}
+function encodeAuthorityRequest(input) {
+  let encoded;
+  try {
+    encoded = JSON.stringify(input);
+  } catch {
+    throw new DirectoryAuthorityError(
+      "directory_authority_invalid_request",
+      "The directory operation input must be JSON serializable."
+    );
+  }
+  if (encoded === void 0) {
+    throw new DirectoryAuthorityError(
+      "directory_authority_invalid_request",
+      "The directory operation input must be JSON serializable."
+    );
+  }
+  if (Buffer.byteLength(encoded) <= AUTHORITY_MESSAGE_LIMIT) return encoded;
+  throw new DirectoryAuthorityError(
+    "directory_authority_request_too_large",
+    "The directory operation input exceeds the bridge byte limit."
+  );
+}
+function isAuthorityMessageObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function decodeAuthorityResult(output) {
+  let message;
+  try {
+    message = JSON.parse(output);
+  } catch {
+    throw new DirectoryAuthorityError(
+      "directory_authority_protocol_error",
+      "The directory operation returned an invalid response."
+    );
+  }
+  if (!isAuthorityMessageObject(message)) {
+    throw new DirectoryAuthorityError(
+      "directory_authority_protocol_error",
+      "The directory operation returned an invalid response."
+    );
+  }
+  if (message.ok === true) return message.result;
+  const hasAuthorityError = message.ok === false && isAuthorityMessageObject(message.error);
+  if (!hasAuthorityError) {
+    throw new DirectoryAuthorityError(
+      "directory_authority_protocol_error",
+      "The directory operation returned an invalid response."
+    );
+  }
+  const {
+    code,
+    message: explanation,
+    data
+  } = message.error;
+  const hasErrorDescription = typeof code === "string" && typeof explanation === "string";
+  if (!hasErrorDescription) {
+    throw new DirectoryAuthorityError(
+      "directory_authority_protocol_error",
+      "The directory operation returned an invalid error response."
+    );
+  }
+  throw new DirectoryAuthorityError(
+    code,
+    explanation,
+    isAuthorityMessageObject(data) ? data : void 0
+  );
+}
+
+// src/shared/directory-authority/task.ts
+var import_node_child_process = require("node:child_process");
+async function runDirectoryAuthorityTask(input) {
+  assertDirectoryAuthorityLocation(input);
+  const request = encodeAuthorityRequest(input.input);
+  const timeoutMs = input.timeoutMs ?? AUTHORITY_TASK_TIMEOUT_MS;
+  const hasPositiveDeadline = Number.isFinite(timeoutMs) && timeoutMs > 0;
+  if (!hasPositiveDeadline) {
+    throw new DirectoryAuthorityError(
+      "directory_authority_invalid_timeout",
+      "The directory operation deadline must be a positive finite duration."
+    );
+  }
+  if (input.signal?.aborted) {
+    throw new DirectoryAuthorityError(
+      "directory_authority_aborted",
+      "The directory operation was cancelled before it started."
+    );
+  }
+  const child = (0, import_node_child_process.spawn)(
+    process.execPath,
+    [
+      "--input-type=commonjs",
+      "-e",
+      directoryAuthorityScript("task", AUTHORITY_MESSAGE_LIMIT, input.task)
+    ],
+    {
+      cwd: input.directoryPath,
+      env: authorityEnvironment(),
+      detached: true,
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "pipe", input.directoryFd]
+    }
+  );
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    const stderrChunks = [];
+    let bytes = 0;
+    let stderrBytes = 0;
+    let failure;
+    const stop = (error) => {
+      if (failure) return;
+      failure = error;
+      if (typeof child.pid === "number") {
+        try {
+          process.kill(-child.pid, "SIGKILL");
+          return;
+        } catch {
+        }
+      }
+      child.kill("SIGKILL");
+    };
+    const onAbort = () => stop(
+      new DirectoryAuthorityError(
+        "directory_authority_aborted",
+        "The directory operation was cancelled."
+      )
+    );
+    const timer = setTimeout(
+      () => stop(
+        new DirectoryAuthorityError(
+          "directory_authority_timeout",
+          "The directory operation exceeded its deadline."
+        )
+      ),
+      timeoutMs
+    );
+    timer.unref();
+    input.signal?.addEventListener("abort", onAbort, { once: true });
+    if (input.signal?.aborted) onAbort();
+    child.stdout.on("data", (chunk) => {
+      bytes += chunk.length;
+      if (bytes > AUTHORITY_MESSAGE_LIMIT) {
+        stop(
+          new DirectoryAuthorityError(
+            "directory_authority_result_too_large",
+            "The directory operation result exceeds the bridge byte limit."
+          )
+        );
+        return;
+      }
+      chunks.push(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      const remaining = Math.max(AUTHORITY_STDERR_LIMIT - stderrBytes, 0);
+      if (remaining === 0) return;
+      stderrChunks.push(chunk.subarray(0, remaining));
+      stderrBytes += Math.min(chunk.length, remaining);
+    });
+    child.stdin.on("error", () => void 0);
+    child.once("error", (error) => {
+      failure ??= new DirectoryAuthorityError(
+        "directory_authority_unavailable",
+        `The directory operation could not start: ${error.message}`
+      );
+    });
+    child.once("close", (code, signal) => {
+      clearTimeout(timer);
+      input.signal?.removeEventListener("abort", onAbort);
+      if (failure) {
+        reject(failure);
+        return;
+      }
+      if (code !== 0) {
+        reject(
+          new DirectoryAuthorityError(
+            "directory_authority_failed",
+            "The directory operation process did not complete successfully.",
+            {
+              exitCode: code,
+              signal,
+              stderr: Buffer.concat(stderrChunks).toString("utf8")
+            }
+          )
+        );
+        return;
+      }
+      try {
+        resolve(
+          decodeAuthorityResult(Buffer.concat(chunks).toString("utf8"))
+        );
+      } catch (error) {
+        reject(error);
+      }
+    });
+    child.stdin.end(request);
+  });
+}
+
+// plugins/filesystem/source/directory-sample-task.ts
+async function sampleDirectoryTask(input) {
+  const { opendir: opendir2 } = require("node:fs/promises");
+  const entries = [];
+  const directory = await opendir2(".");
+  for await (const entry of directory) {
+    if (entries.length >= input.maxEntries) {
+      entries.sort((left, right) => left.localeCompare(right));
+      return { entries, truncated: true };
+    }
+    entries.push(`${entry.name}${entry.isDirectory() ? "/" : ""}`);
+  }
+  entries.sort((left, right) => left.localeCompare(right));
+  return { entries, truncated: false };
+}
+
+// plugins/filesystem/source/directory-sample.ts
+var DIRECTORY_ENTRY_LIMIT = 160;
+async function readDirectorySample(target) {
+  const entries = [];
+  let handle;
+  try {
+    if (typeof import_node_fs.constants.O_DIRECTORY !== "number" || typeof import_node_fs.constants.O_NOFOLLOW !== "number") {
+      fail(
+        "filesystem_safe_io_unsupported",
+        "This platform does not provide the no-follow directory operation required for a safe read."
+      );
+    }
+    handle = await (0, import_promises.open)(
+      target.absolutePath,
+      import_node_fs.constants.O_RDONLY | import_node_fs.constants.O_DIRECTORY | import_node_fs.constants.O_NOFOLLOW
+    );
+    const before = await handle.stat({ bigint: true });
+    if (!before.isDirectory()) {
+      fail("not_a_directory", `Expected a directory: ${target.logicalPath}`);
+    }
+    const [canonicalRoot, canonicalTarget] = await Promise.all([
+      (0, import_promises.realpath)(target.rootPath),
+      (0, import_promises.realpath)(target.absolutePath)
+    ]);
+    const rootRelative = (0, import_node_path2.relative)(canonicalRoot, canonicalTarget);
+    if (rootRelative === ".." || rootRelative.startsWith(`..${import_node_path2.sep}`) || rootRelative.startsWith(import_node_path2.sep)) {
+      fail(
+        "filesystem_path_changed",
+        `Directory changed outside its configured root: ${target.logicalPath}`
+      );
+    }
+    const pathIdentity = await (0, import_promises.stat)(canonicalTarget, { bigint: true });
+    if (!pathIdentity.isDirectory() || pathIdentity.dev !== before.dev || pathIdentity.ino !== before.ino) {
+      fail(
+        "filesystem_path_changed",
+        `Directory changed while it was being opened: ${target.logicalPath}`
+      );
+    }
+    if (requiresIsolatedDirectorySample()) {
+      const sample = await runDirectoryAuthorityTask({
+        directoryPath: target.absolutePath,
+        directoryFd: handle.fd,
+        input: { maxEntries: DIRECTORY_ENTRY_LIMIT },
+        task: sampleDirectoryTask
+      });
+      await assertDirectoryStable(handle, before, target.logicalPath);
+      return sample;
+    }
+    const directory = await (0, import_promises.opendir)(`/proc/self/fd/${handle.fd}`);
+    for await (const entry of directory) {
+      if (entries.length >= DIRECTORY_ENTRY_LIMIT) {
+        await assertDirectoryStable(handle, before, target.logicalPath);
+        entries.sort((left, right) => left.localeCompare(right));
+        return Object.freeze({
+          entries: Object.freeze(entries),
+          truncated: true
+        });
+      }
+      entries.push(`${entry.name}${entry.isDirectory() ? "/" : ""}`);
+    }
+    await assertDirectoryStable(handle, before, target.logicalPath);
+    entries.sort((left, right) => left.localeCompare(right));
+    return Object.freeze({ entries: Object.freeze(entries), truncated: false });
+  } catch (error) {
+    if (error instanceof DirectoryAuthorityError && error.code.startsWith("directory_authority_")) {
+      fail(
+        "filesystem_path_changed",
+        `Directory authority was lost: ${target.logicalPath}`
+      );
+    }
+    return rethrowFilesystemError(error, "inspect", target.logicalPath);
+  } finally {
+    await handle?.close().catch(() => void 0);
+  }
+}
+async function assertDirectoryStable(handle, before, logicalPath) {
+  const after = await handle.stat({ bigint: true });
+  if (!after.isDirectory() || after.dev !== before.dev || after.ino !== before.ino || after.mtimeNs !== before.mtimeNs || after.ctimeNs !== before.ctimeNs) {
+    fail(
+      "filesystem_read_changed",
+      `Directory changed while it was being read: ${logicalPath}`
+    );
+  }
+}
+function requiresIsolatedDirectorySample() {
+  return process.platform === "darwin";
+}
+
 // plugins/filesystem/source/bounded-io.ts
 var MAX_MUTATION_BYTES = 1048576;
 var READ_HEAD_BYTES = 24576;
 var READ_TAIL_BYTES = 12288;
 var DEV_SCAN_BYTES = 1048576;
-var DIRECTORY_ENTRY_LIMIT = 160;
 async function readExactBytes(reader, buffer, position, logicalPath) {
   let offset = 0;
   while (offset < buffer.length) {
@@ -349,15 +799,15 @@ function decodeMutationText(buffer, logicalPath) {
 async function openRegularFile(target) {
   let handle;
   try {
-    if (typeof import_node_fs.constants.O_NOFOLLOW !== "number") {
+    if (typeof import_node_fs2.constants.O_NOFOLLOW !== "number") {
       fail(
         "filesystem_safe_io_unsupported",
         "This platform does not provide the no-follow operation required for a safe read."
       );
     }
-    handle = await (0, import_promises.open)(
+    handle = await (0, import_promises2.open)(
       target.absolutePath,
-      import_node_fs.constants.O_RDONLY | import_node_fs.constants.O_NOFOLLOW
+      import_node_fs2.constants.O_RDONLY | import_node_fs2.constants.O_NOFOLLOW
     );
     const info = await handle.stat({ bigint: true });
     if (!info.isFile()) {
@@ -365,17 +815,17 @@ async function openRegularFile(target) {
     }
     const metadata = metadataFromStat(info, target.logicalPath);
     const [canonicalRoot, canonicalTarget] = await Promise.all([
-      (0, import_promises.realpath)(target.rootPath),
-      (0, import_promises.realpath)(target.absolutePath)
+      (0, import_promises2.realpath)(target.rootPath),
+      (0, import_promises2.realpath)(target.absolutePath)
     ]);
-    const rootRelative = (0, import_node_path.relative)(canonicalRoot, canonicalTarget);
-    if (rootRelative === ".." || rootRelative.startsWith(`..${import_node_path.sep}`) || rootRelative.startsWith(import_node_path.sep)) {
+    const rootRelative = (0, import_node_path3.relative)(canonicalRoot, canonicalTarget);
+    if (rootRelative === ".." || rootRelative.startsWith(`..${import_node_path3.sep}`) || rootRelative.startsWith(import_node_path3.sep)) {
       fail(
         "filesystem_path_changed",
         `File changed outside its configured root: ${target.logicalPath}`
       );
     }
-    const pathIdentity = await (0, import_promises.stat)(canonicalTarget, { bigint: true });
+    const pathIdentity = await (0, import_promises2.stat)(canonicalTarget, { bigint: true });
     if (!pathIdentity.isFile() || pathIdentity.dev !== info.dev || pathIdentity.ino !== info.ino) {
       fail(
         "filesystem_path_changed",
@@ -546,72 +996,6 @@ function assertMutationContentSize(content) {
   }
   return byteCount;
 }
-async function readDirectorySample(target) {
-  const entries = [];
-  let handle;
-  try {
-    if (typeof import_node_fs.constants.O_DIRECTORY !== "number" || typeof import_node_fs.constants.O_NOFOLLOW !== "number") {
-      fail(
-        "filesystem_safe_io_unsupported",
-        "This platform does not provide the no-follow directory operation required for a safe read."
-      );
-    }
-    handle = await (0, import_promises.open)(
-      target.absolutePath,
-      import_node_fs.constants.O_RDONLY | import_node_fs.constants.O_DIRECTORY | import_node_fs.constants.O_NOFOLLOW
-    );
-    const before = await handle.stat({ bigint: true });
-    if (!before.isDirectory()) {
-      fail("not_a_directory", `Expected a directory: ${target.logicalPath}`);
-    }
-    const [canonicalRoot, canonicalTarget] = await Promise.all([
-      (0, import_promises.realpath)(target.rootPath),
-      (0, import_promises.realpath)(target.absolutePath)
-    ]);
-    const rootRelative = (0, import_node_path.relative)(canonicalRoot, canonicalTarget);
-    if (rootRelative === ".." || rootRelative.startsWith(`..${import_node_path.sep}`) || rootRelative.startsWith(import_node_path.sep)) {
-      fail(
-        "filesystem_path_changed",
-        `Directory changed outside its configured root: ${target.logicalPath}`
-      );
-    }
-    const pathIdentity = await (0, import_promises.stat)(canonicalTarget, { bigint: true });
-    if (!pathIdentity.isDirectory() || pathIdentity.dev !== before.dev || pathIdentity.ino !== before.ino) {
-      fail(
-        "filesystem_path_changed",
-        `Directory changed while it was being opened: ${target.logicalPath}`
-      );
-    }
-    const directory = await (0, import_promises.opendir)(`/proc/self/fd/${handle.fd}`);
-    for await (const entry of directory) {
-      if (entries.length >= DIRECTORY_ENTRY_LIMIT) {
-        await assertDirectoryStable(handle, before, target.logicalPath);
-        entries.sort((left, right) => left.localeCompare(right));
-        return Object.freeze({
-          entries: Object.freeze(entries),
-          truncated: true
-        });
-      }
-      entries.push(`${entry.name}${entry.isDirectory() ? "/" : ""}`);
-    }
-    await assertDirectoryStable(handle, before, target.logicalPath);
-    entries.sort((left, right) => left.localeCompare(right));
-    return Object.freeze({ entries: Object.freeze(entries), truncated: false });
-  } catch (error) {
-    return rethrowFilesystemError(error, "inspect", target.logicalPath);
-  } finally {
-    await handle?.close().catch(() => void 0);
-  }
-}
-async function assertDirectoryStable(handle, before, logicalPath) {
-  const after = await handle.stat({ bigint: true });
-  if (!after.isDirectory() || after.dev !== before.dev || after.ino !== before.ino || after.mtimeNs !== before.mtimeNs || after.ctimeNs !== before.ctimeNs) {
-    fail(
-      "filesystem_read_changed",
-      `Directory changed while it was being read: ${logicalPath}`
-    );
-  }
-}
 function rejectBinary(buffer, logicalPath) {
   if (buffer.includes(0)) {
     fail(
@@ -725,7 +1109,7 @@ function createDevViewHandler(paths) {
     const target = paths.resolve(pathRange.path, context);
     let info;
     try {
-      info = await (0, import_promises2.stat)(target.absolutePath);
+      info = await (0, import_promises3.stat)(target.absolutePath);
     } catch (error) {
       rethrowFilesystemError(error, "inspect", target.logicalPath);
     }
@@ -924,22 +1308,22 @@ async function viewFile(input) {
 
 // plugins/filesystem/source/atomic-write.ts
 var import_node_crypto2 = require("node:crypto");
-var import_promises4 = require("node:fs/promises");
-var import_node_path3 = require("node:path");
+var import_promises5 = require("node:fs/promises");
+var import_node_path5 = require("node:path");
 
 // plugins/filesystem/source/mutation-parent.ts
-var import_node_fs2 = require("node:fs");
-var import_promises3 = require("node:fs/promises");
-var import_node_path2 = require("node:path");
+var import_node_fs3 = require("node:fs");
+var import_promises4 = require("node:fs/promises");
+var import_node_path4 = require("node:path");
 function isWithinRoot(target, root) {
-  const rel = (0, import_node_path2.relative)(root, target);
-  return rel === "" || rel !== ".." && !rel.startsWith(`..${import_node_path2.sep}`);
+  const rel = (0, import_node_path4.relative)(root, target);
+  return rel === "" || rel !== ".." && !rel.startsWith(`..${import_node_path4.sep}`);
 }
 function sameIdentity(left, right) {
   return left.dev === right.dev && left.ino === right.ino;
 }
 async function openDirectory(path, rootPath, logicalPath, allowMissing = false) {
-  if (typeof import_node_fs2.constants.O_DIRECTORY !== "number" || typeof import_node_fs2.constants.O_NOFOLLOW !== "number") {
+  if (typeof import_node_fs3.constants.O_DIRECTORY !== "number" || typeof import_node_fs3.constants.O_NOFOLLOW !== "number") {
     fail(
       "filesystem_safe_io_unsupported",
       "This platform does not provide the no-follow directory operations required for a safe write."
@@ -947,17 +1331,17 @@ async function openDirectory(path, rootPath, logicalPath, allowMissing = false) 
   }
   let handle;
   try {
-    handle = await (0, import_promises3.open)(
+    handle = await (0, import_promises4.open)(
       path,
-      import_node_fs2.constants.O_RDONLY | import_node_fs2.constants.O_DIRECTORY | import_node_fs2.constants.O_NOFOLLOW
+      import_node_fs3.constants.O_RDONLY | import_node_fs3.constants.O_DIRECTORY | import_node_fs3.constants.O_NOFOLLOW
     );
     const opened = await handle.stat({ bigint: true });
     if (!opened.isDirectory()) {
       fail("not_a_directory", `Expected a directory: ${logicalPath}`);
     }
     const [canonicalRoot, canonicalDirectory] = await Promise.all([
-      (0, import_promises3.realpath)(rootPath),
-      (0, import_promises3.realpath)(path)
+      (0, import_promises4.realpath)(rootPath),
+      (0, import_promises4.realpath)(path)
     ]);
     if (!isWithinRoot(canonicalDirectory, canonicalRoot)) {
       fail(
@@ -965,15 +1349,16 @@ async function openDirectory(path, rootPath, logicalPath, allowMissing = false) 
         `Directory changed outside its configured root: ${logicalPath}`
       );
     }
-    const pathIdentity = await (0, import_promises3.stat)(canonicalDirectory, { bigint: true });
+    const pathIdentity = await (0, import_promises4.stat)(canonicalDirectory, { bigint: true });
     if (!pathIdentity.isDirectory() || !sameIdentity(opened, pathIdentity)) {
       fail(
         "filesystem_path_changed",
         `Directory changed while it was being opened: ${logicalPath}`
       );
     }
+    if (usesIsolatedDirectoryAuthority()) return handle;
     const procPath = `/proc/self/fd/${handle.fd}`;
-    const procIdentity = await (0, import_promises3.stat)(procPath, { bigint: true });
+    const procIdentity = await (0, import_promises4.stat)(procPath, { bigint: true });
     if (!procIdentity.isDirectory() || !sameIdentity(opened, procIdentity)) {
       fail(
         "filesystem_safe_io_unsupported",
@@ -1000,7 +1385,7 @@ async function openChildDirectory(parent, name, logicalPath) {
     if (!isNodeErrorCode(error, "ENOENT")) throw error;
   }
   try {
-    await (0, import_promises3.mkdir)(anchoredPath);
+    await (0, import_promises4.mkdir)(anchoredPath);
   } catch (error) {
     if (!isNodeErrorCode(error, "EEXIST")) {
       rethrowFilesystemError(error, "write", logicalPath);
@@ -1047,10 +1432,197 @@ async function openMutationParent(target) {
     throw error;
   }
 }
+function usesIsolatedDirectoryAuthority() {
+  return process.platform === "darwin";
+}
+function openMutationRoot(target) {
+  return openDirectory(target.rootPath, target.rootPath, target.logicalPath);
+}
+
+// plugins/filesystem/source/directory-write-task.ts
+async function commitDirectoryWrite(input) {
+  const fs = require("node:fs/promises");
+  const { constants: constants4 } = require("node:fs");
+  const { createHash: createHash3, randomUUID: randomUUID2 } = require("node:crypto");
+  const expected = input.expectedVersion;
+  function failWrite(code) {
+    throw Object.assign(new Error(code), { code });
+  }
+  function hasNodeCode(error, code) {
+    return error instanceof Error && "code" in error && error.code === code;
+  }
+  function isSingleComponent(value) {
+    if (!value || value === "." || value === "..") return false;
+    if (value.includes("/") || value.includes("\\")) return false;
+    return !value.includes("\0");
+  }
+  const segments = input.relativePath.split("/");
+  if (!segments.every(isSingleComponent)) failWrite("filesystem_path_changed");
+  const targetName = segments.pop();
+  if (Buffer.byteLength(input.content, "utf8") > 1048576) {
+    failWrite("filesystem_file_too_large");
+  }
+  async function enterChildDirectory(name) {
+    let handle;
+    const flags = constants4.O_RDONLY | constants4.O_DIRECTORY | constants4.O_NOFOLLOW;
+    try {
+      handle = await fs.open(name, flags);
+    } catch (error) {
+      if (!hasNodeCode(error, "ENOENT")) throw error;
+      try {
+        await fs.mkdir(name);
+      } catch (creationError) {
+        if (!hasNodeCode(creationError, "EEXIST")) throw creationError;
+      }
+      handle = await fs.open(name, flags);
+    }
+    try {
+      const held = await handle.stat({ bigint: true });
+      if (!held.isDirectory()) failWrite("filesystem_path_changed");
+      process.chdir(name);
+      const entered = await fs.stat(".", { bigint: true });
+      if (held.dev !== entered.dev || held.ino !== entered.ino) {
+        failWrite("filesystem_path_changed");
+      }
+    } finally {
+      await handle.close();
+    }
+  }
+  for (const segment of segments) await enterChildDirectory(segment);
+  function hasExpectedMetadata(info) {
+    if (expected.kind !== "file" || !info.isFile()) return false;
+    if (String(info.dev) !== expected.device) return false;
+    if (String(info.ino) !== expected.inode) return false;
+    if (Number(info.size) !== expected.size) return false;
+    if ((Number(info.mode) & 4095) !== expected.mode) return false;
+    if (String(info.mtimeNs) !== expected.modifiedNs) return false;
+    return String(info.ctimeNs) === expected.changedNs;
+  }
+  async function assertExpectedTarget() {
+    let target;
+    try {
+      target = await fs.open(
+        targetName,
+        constants4.O_RDONLY | constants4.O_NOFOLLOW | constants4.O_NONBLOCK
+      );
+    } catch (error) {
+      if (hasNodeCode(error, "ENOENT") && expected.kind === "absent") return;
+      failWrite("filesystem_target_changed");
+    }
+    try {
+      const before = await target.stat({ bigint: true });
+      if (!hasExpectedMetadata(before)) failWrite("filesystem_target_changed");
+      if (expected.kind !== "file") failWrite("filesystem_target_changed");
+      const bytes = Buffer.alloc(expected.size);
+      let offset = 0;
+      while (offset < bytes.length) {
+        const { bytesRead } = await target.read(
+          bytes,
+          offset,
+          bytes.length - offset,
+          offset
+        );
+        if (bytesRead <= 0) failWrite("filesystem_target_changed");
+        offset += bytesRead;
+      }
+      const after = await target.stat({ bigint: true });
+      if (!hasExpectedMetadata(after)) failWrite("filesystem_target_changed");
+      const digest2 = createHash3("sha256").update(bytes).digest("hex");
+      if (digest2 !== expected.digest) failWrite("filesystem_target_changed");
+    } finally {
+      await target.close();
+    }
+  }
+  const parent = await fs.open(
+    ".",
+    constants4.O_RDONLY | constants4.O_DIRECTORY | constants4.O_NOFOLLOW
+  );
+  const temporaryName = `.abot-${targetName}-${randomUUID2()}.tmp`;
+  let temporaryCreated = false;
+  try {
+    const temporary = await fs.open(temporaryName, "wx");
+    temporaryCreated = true;
+    try {
+      await temporary.writeFile(input.content, "utf8");
+      if (expected.kind === "file") await temporary.chmod(expected.mode);
+      await temporary.sync();
+    } finally {
+      await temporary.close();
+    }
+    await assertExpectedTarget();
+    if (expected.kind === "file") {
+      await fs.rename(temporaryName, targetName);
+      temporaryCreated = false;
+    } else {
+      try {
+        await fs.link(temporaryName, targetName);
+      } catch (error) {
+        if (hasNodeCode(error, "EEXIST"))
+          failWrite("filesystem_target_changed");
+        throw error;
+      }
+      const removed = await fs.rm(temporaryName, { force: true }).then(() => true).catch(() => false);
+      temporaryCreated = !removed;
+    }
+    await parent.sync().catch(() => void 0);
+  } finally {
+    if (temporaryCreated)
+      await fs.rm(temporaryName, { force: true }).catch(() => void 0);
+    await parent.close().catch(() => void 0);
+  }
+}
+
+// plugins/filesystem/source/directory-authority-write.ts
+async function writeWithDirectoryAuthority(input) {
+  const root = await openMutationRoot(input.target);
+  const expected = input.expectedVersion;
+  const expectedVersion = expected.kind === "absent" ? { kind: "absent" } : {
+    ...expected,
+    device: String(expected.device),
+    inode: String(expected.inode),
+    modifiedNs: String(expected.modifiedNs),
+    changedNs: String(expected.changedNs)
+  };
+  try {
+    await runDirectoryAuthorityTask({
+      directoryPath: input.target.rootPath,
+      directoryFd: root.fd,
+      input: {
+        relativePath: input.target.relativePath,
+        content: input.content,
+        expectedVersion
+      },
+      task: commitDirectoryWrite
+    });
+  } catch (error) {
+    if (error instanceof DirectoryAuthorityError) {
+      if (error.code.startsWith("filesystem_")) {
+        fail(
+          error.code,
+          `Safe write failed: ${input.target.logicalPath}`,
+          error.data
+        );
+      }
+      if (error.code.startsWith("directory_authority_")) {
+        fail(
+          "filesystem_path_changed",
+          `Directory authority was lost: ${input.target.logicalPath}`
+        );
+      }
+    }
+    rethrowFilesystemError(error, "write", input.target.logicalPath);
+  } finally {
+    await root.close().catch(() => void 0);
+  }
+}
 
 // plugins/filesystem/source/atomic-write.ts
 async function atomicWriteText(input) {
   assertMutationContentSize(input.content);
+  if (requiresIsolatedDirectoryAuthority()) {
+    await writeWithDirectoryAuthority(input);
+    return;
+  }
   const parent = await openMutationParent(input.target);
   const targetPath = `${parent.procPath}/${parent.targetName}`;
   const anchoredTarget = Object.freeze({
@@ -1059,12 +1631,12 @@ async function atomicWriteText(input) {
     absolutePath: targetPath,
     relativePath: parent.targetName
   });
-  const temporaryName = `.abot-${import_node_path3.posix.basename(parent.targetName)}-${(0, import_node_crypto2.randomUUID)()}.tmp`;
+  const temporaryName = `.abot-${import_node_path5.posix.basename(parent.targetName)}-${(0, import_node_crypto2.randomUUID)()}.tmp`;
   const temporaryPath = `${parent.procPath}/${temporaryName}`;
   const existingMode = input.expectedVersion.kind === "file" ? input.expectedVersion.mode : void 0;
   let temporaryCreated = false;
   try {
-    const temporaryHandle = await (0, import_promises4.open)(temporaryPath, "wx");
+    const temporaryHandle = await (0, import_promises5.open)(temporaryPath, "wx");
     temporaryCreated = true;
     try {
       await temporaryHandle.writeFile(input.content, "utf8");
@@ -1086,7 +1658,7 @@ async function atomicWriteText(input) {
     if (input.expectedVersion.kind === "file") {
       temporaryCreated = false;
     } else {
-      const removed = await (0, import_promises4.rm)(temporaryPath, { force: true }).then(() => true).catch(() => false);
+      const removed = await (0, import_promises5.rm)(temporaryPath, { force: true }).then(() => true).catch(() => false);
       temporaryCreated = !removed;
     }
     await syncDirectoryBestEffort(parent.handle);
@@ -1094,7 +1666,7 @@ async function atomicWriteText(input) {
     rethrowFilesystemError(error, "write", input.target.logicalPath);
   } finally {
     if (temporaryCreated) {
-      await (0, import_promises4.rm)(temporaryPath, { force: true }).catch(() => void 0);
+      await (0, import_promises5.rm)(temporaryPath, { force: true }).catch(() => void 0);
     }
     await parent.handle.close().catch(() => void 0);
   }
@@ -1103,11 +1675,11 @@ async function installPreparedFile(input) {
   const temporaryPath = `${input.parentProcPath}/${input.temporaryName}`;
   const targetPath = `${input.parentProcPath}/${input.targetName}`;
   if (input.expectedKind === "file") {
-    await (0, import_promises4.rename)(temporaryPath, targetPath);
+    await (0, import_promises5.rename)(temporaryPath, targetPath);
     return;
   }
   try {
-    await (0, import_promises4.link)(temporaryPath, targetPath);
+    await (0, import_promises5.link)(temporaryPath, targetPath);
   } catch (error) {
     if (isNodeErrorCode(error, "EEXIST")) {
       fail(
@@ -1124,10 +1696,13 @@ async function syncDirectoryBestEffort(handle) {
   } catch {
   }
 }
+function requiresIsolatedDirectoryAuthority() {
+  return process.platform === "darwin";
+}
 
 // plugins/filesystem/source/draft/grounding.ts
 var import_node_crypto3 = require("node:crypto");
-var import_node_path4 = require("node:path");
+var import_node_path6 = require("node:path");
 var GROUNDING_MAX_CHARS = 32768;
 var SNAPSHOT_MAX_CHARS = 3e4;
 var SNAPSHOT_SEGMENT_CHARS = Math.floor(SNAPSHOT_MAX_CHARS / 2);
@@ -1136,7 +1711,7 @@ function buildMutationGrounding(input) {
   const byteCount = Buffer.byteLength(input.content, "utf8");
   const lineCount = input.content.length ? input.content.split(/\r?\n/u).length : 0;
   const sha256 = (0, import_node_crypto3.createHash)("sha256").update(input.content).digest("hex");
-  const extension = (0, import_node_path4.extname)(input.logicalPath).toLowerCase() || "none";
+  const extension = (0, import_node_path6.extname)(input.logicalPath).toLowerCase() || "none";
   const snapshot = projectSnapshot(input.content, input.previousContent);
   const summary = bound(
     [
@@ -1380,7 +1955,7 @@ function scopeError(message) {
 // plugins/filesystem/source/draft/validators.ts
 var import_parser = require("@babel/parser");
 var import_postcss = require("postcss");
-var import_node_path5 = require("node:path");
+var import_node_path7 = require("node:path");
 var SCRIPT_EXTENSIONS = /* @__PURE__ */ new Set([
   ".js",
   ".jsx",
@@ -1420,7 +1995,7 @@ function lineColumnAt(content, offset) {
   });
 }
 function scriptOptions(targetPath) {
-  const extension = (0, import_node_path5.extname)(targetPath).toLowerCase();
+  const extension = (0, import_node_path7.extname)(targetPath).toLowerCase();
   const plugins = [];
   if ([".js", ".jsx", ".mjs", ".cjs", ".tsx"].includes(extension)) {
     plugins.push("jsx");
@@ -1483,7 +2058,7 @@ function foreignScriptWrapper(content, targetPath, originalError) {
     return parseScript(projected.join("\n"), targetPath) === void 0;
   };
   if (opening && closing && first < last && parsesWithout(first, last)) {
-    const extension = (0, import_node_path5.extname)(targetPath).toLowerCase();
+    const extension = (0, import_node_path7.extname)(targetPath).toLowerCase();
     if (!originalError && [".jsx", ".tsx"].includes(extension))
       return void 0;
     return wrapperDiagnostic(lines[first], first, "opening", 2);
@@ -1501,14 +2076,14 @@ var validators = Object.freeze([
     id: "json",
     label: "strict JSON",
     authoritativeStructure: true,
-    matchesTarget: (targetPath) => (0, import_node_path5.extname)(targetPath).toLowerCase() === ".json",
+    matchesTarget: (targetPath) => (0, import_node_path7.extname)(targetPath).toLowerCase() === ".json",
     validate: (content) => validateJson(content)
   }),
   Object.freeze({
     id: "css",
     label: "CSS",
     authoritativeStructure: true,
-    matchesTarget: (targetPath) => (0, import_node_path5.extname)(targetPath).toLowerCase() === ".css",
+    matchesTarget: (targetPath) => (0, import_node_path7.extname)(targetPath).toLowerCase() === ".css",
     validate(content, targetPath) {
       try {
         (0, import_postcss.parse)(content, { from: targetPath });
@@ -1528,7 +2103,7 @@ var validators = Object.freeze([
     id: "script",
     label: "JavaScript/TypeScript",
     authoritativeStructure: true,
-    matchesTarget: (targetPath) => SCRIPT_EXTENSIONS.has((0, import_node_path5.extname)(targetPath).toLowerCase()),
+    matchesTarget: (targetPath) => SCRIPT_EXTENSIONS.has((0, import_node_path7.extname)(targetPath).toLowerCase()),
     validate(content, targetPath) {
       const error = parseScript(content, targetPath);
       return foreignScriptWrapper(content, targetPath, error) ?? (error ? scriptDiagnostic(error) : void 0);
@@ -1877,17 +2452,17 @@ function delimiterRegressions(previous, updated) {
     ["square", "[", "]"],
     ["paren", "(", ")"]
   ];
-  return delimiters.flatMap(([name, open4, close]) => {
-    if (!previous.includes(open4) || !previous.includes(close)) return [];
-    const before = balance(previous, open4, close);
-    const after = balance(updated, open4, close);
+  return delimiters.flatMap(([name, open5, close]) => {
+    if (!previous.includes(open5) || !previous.includes(close)) return [];
+    const before = balance(previous, open5, close);
+    const after = balance(updated, open5, close);
     return before === 0 && after !== 0 ? [`${name} delimiter balance changed from 0 to ${after}`] : [];
   });
 }
-function balance(content, open4, close) {
+function balance(content, open5, close) {
   let count = 0;
   for (const character of content) {
-    if (character === open4) count += 1;
+    if (character === open5) count += 1;
     else if (character === close) count -= 1;
   }
   return count;
@@ -1933,7 +2508,7 @@ function getProcessFilesystemMutationCoordinator() {
 }
 
 // plugins/filesystem/source/path-service.ts
-var import_node_path6 = require("node:path");
+var import_node_path8 = require("node:path");
 var FILESYSTEM_LOCATIONS = Object.freeze([
   "agent_work",
   "workspace"
@@ -1951,7 +2526,7 @@ function logicalParent(logicalPath) {
   if (logicalPath === "." || logicalPath === "workspace") {
     return logicalPath;
   }
-  return import_node_path6.posix.dirname(logicalPath);
+  return import_node_path8.posix.dirname(logicalPath);
 }
 function createFilesystemPathService(fallbackResolver) {
   return Object.freeze({
@@ -1966,7 +2541,7 @@ function createFilesystemPathService(fallbackResolver) {
     },
     sibling(target, name, context) {
       const parent = logicalParent(target.logicalPath);
-      const logicalPath = parent === "." ? name : import_node_path6.posix.join(parent, name);
+      const logicalPath = parent === "." ? name : import_node_path8.posix.join(parent, name);
       return resolveWith(resolverFor(fallbackResolver, context), logicalPath);
     }
   });

@@ -9,6 +9,7 @@ import type {
 import { resolvePluginPath } from "../../../src/plugin-sdk/index.js";
 
 import { LocalSearchError } from "./errors.js";
+import type { SearchDirectoryAuthority } from "./ripgrep-process.js";
 
 export type SearchRoot = Readonly<{
   target: ResolvedRuntimeToolPath;
@@ -16,6 +17,7 @@ export type SearchRoot = Readonly<{
   commandDirectory: string;
   commandTarget: string;
   stdinFd?: number;
+  directoryAuthority?: SearchDirectoryAuthority;
   close(): Promise<void>;
 }>;
 
@@ -54,11 +56,14 @@ function authorityUnavailable(): LocalSearchError {
 async function openSearchAuthority(
   target: ResolvedRuntimeToolPath,
 ): Promise<SearchRoot> {
-  if (
-    process.platform !== "linux" ||
-    !Number.isInteger(constants.O_NOFOLLOW) ||
-    !Number.isInteger(constants.O_NONBLOCK)
-  ) {
+  const supportsSearchAuthority = ["linux", "darwin"].includes(
+    process.platform,
+  );
+  if (!supportsSearchAuthority) throw authorityUnavailable();
+  const supportsAuthorityOpenFlags =
+    Number.isInteger(constants.O_NOFOLLOW) &&
+    Number.isInteger(constants.O_NONBLOCK);
+  if (!supportsAuthorityOpenFlags) {
     throw authorityUnavailable();
   }
 
@@ -92,7 +97,9 @@ async function openSearchAuthority(
 
     const [pathIdentity, descriptorIdentity] = await Promise.all([
       stat(canonicalTarget, { bigint: true }),
-      stat(`/proc/self/fd/${handle.fd}`, { bigint: true }),
+      process.platform === "linux"
+        ? stat(`/proc/self/fd/${handle.fd}`, { bigint: true })
+        : handle.stat({ bigint: true }),
     ]);
     if (
       !sameIdentity(observed, pathIdentity) ||
@@ -103,14 +110,30 @@ async function openSearchAuthority(
 
     const authority = handle;
     const isFile = observed.isFile();
+    const needsDirectoryBridge = !isFile && process.platform === "darwin";
+    let commandDirectory = "/";
+    if (!isFile) {
+      commandDirectory =
+        process.platform === "linux"
+          ? `/proc/self/fd/${authority.fd}`
+          : canonicalTarget;
+    }
     let closed = false;
     handle = undefined;
     return Object.freeze({
       target,
       isFile,
-      commandDirectory: isFile ? "/" : `/proc/self/fd/${authority.fd}`,
+      commandDirectory,
       commandTarget: isFile ? "-" : ".",
       ...(isFile ? { stdinFd: authority.fd } : {}),
+      ...(needsDirectoryBridge
+        ? {
+            directoryAuthority: {
+              directoryPath: canonicalTarget,
+              directoryFd: authority.fd,
+            },
+          }
+        : {}),
       close: async () => {
         if (closed) return;
         closed = true;

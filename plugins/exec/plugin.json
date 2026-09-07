@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "exec",
   "version": "1.0.0",
-  "description": "Execute, observe, and cancel bounded non-interactive Linux /bin/bash processes.",
+  "description": "Execute, observe, and cancel bounded non-interactive /bin/bash processes on Linux and macOS.",
   "extensions": {
     "ai.abot.runtime": {
       "version": 1,
@@ -19,7 +19,7 @@
       "capabilities": {
         "exec": {
           "catalogGroups": ["read", "write", "exec"],
-          "description": "Execute one bounded non-interactive Linux /bin/bash command. The explicit cwd must resolve inside agent work or the configured workspace; `.` means the agent-work root and `workspace/...` selects the workspace. The shell itself runs with the runtime process permissions and is not an operating-system sandbox. A command still running after the foreground window yields a process ID and cursor that exec_wait can resume without restarting it. Prefer dedicated inspection and file-mutation capabilities when they can express the task.",
+          "description": "Execute one bounded non-interactive /bin/bash command on Linux or macOS. The explicit cwd must resolve inside agent work or the configured workspace; `.` means the agent-work root and `workspace/...` selects the workspace. The shell itself runs with the runtime process permissions and is not an operating-system sandbox. A command still running after the foreground window yields a process ID and cursor that exec_wait can resume without restarting it. Prefer dedicated inspection and file-mutation capabilities when they can express the task.",
           "routingCapability": "filesystem_inspection",
           "developmentRoles": ["inspect", "establish", "verify", "auxiliary"],
           "eventPresentation": {
@@ -31,7 +31,7 @@
           "skills": ["exec_skill"],
           "operations": {
             "execute_command": {
-              "summary": "Execute one bounded non-interactive Linux /bin/bash command in an explicit existing agent-work or workspace directory. The cwd boundary is not an OS sandbox. Full-access availability does not authorize servers, GUI automation, installs, service changes, background work, or other sensitive effects.",
+              "summary": "Execute one bounded non-interactive /bin/bash command on Linux or macOS in an explicit existing agent-work or workspace directory. The cwd boundary is not an OS sandbox. Full-access availability does not authorize servers, GUI automation, installs, service changes, background work, or other sensitive effects.",
               "input": {
                 "type": "object",
                 "additionalProperties": false,

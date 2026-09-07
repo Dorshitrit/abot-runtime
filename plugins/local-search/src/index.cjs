@@ -36,7 +36,7 @@ __export(index_exports, {
   default: () => index_default
 });
 module.exports = __toCommonJS(index_exports);
-var import_node_path2 = require("node:path");
+var import_node_path3 = require("node:path");
 
 // src/plugin-sdk/bounds.ts
 function sanitizeJsonText(value) {
@@ -312,7 +312,12 @@ function authorityUnavailable() {
   );
 }
 async function openSearchAuthority(target) {
-  if (process.platform !== "linux" || !Number.isInteger(import_node_fs.constants.O_NOFOLLOW) || !Number.isInteger(import_node_fs.constants.O_NONBLOCK)) {
+  const supportsSearchAuthority = ["linux", "darwin"].includes(
+    process.platform
+  );
+  if (!supportsSearchAuthority) throw authorityUnavailable();
+  const supportsAuthorityOpenFlags = Number.isInteger(import_node_fs.constants.O_NOFOLLOW) && Number.isInteger(import_node_fs.constants.O_NONBLOCK);
+  if (!supportsAuthorityOpenFlags) {
     throw authorityUnavailable();
   }
   let handle;
@@ -339,21 +344,32 @@ async function openSearchAuthority(target) {
     }
     const [pathIdentity, descriptorIdentity] = await Promise.all([
       (0, import_promises.stat)(canonicalTarget, { bigint: true }),
-      (0, import_promises.stat)(`/proc/self/fd/${handle.fd}`, { bigint: true })
+      process.platform === "linux" ? (0, import_promises.stat)(`/proc/self/fd/${handle.fd}`, { bigint: true }) : handle.stat({ bigint: true })
     ]);
     if (!sameIdentity(observed, pathIdentity) || !sameIdentity(observed, descriptorIdentity)) {
       throw authorityUnavailable();
     }
     const authority = handle;
     const isFile = observed.isFile();
+    const needsDirectoryBridge = !isFile && process.platform === "darwin";
+    let commandDirectory = "/";
+    if (!isFile) {
+      commandDirectory = process.platform === "linux" ? `/proc/self/fd/${authority.fd}` : canonicalTarget;
+    }
     let closed = false;
     handle = void 0;
     return Object.freeze({
       target,
       isFile,
-      commandDirectory: isFile ? "/" : `/proc/self/fd/${authority.fd}`,
+      commandDirectory,
       commandTarget: isFile ? "-" : ".",
       ...isFile ? { stdinFd: authority.fd } : {},
+      ...needsDirectoryBridge ? {
+        directoryAuthority: {
+          directoryPath: canonicalTarget,
+          directoryFd: authority.fd
+        }
+      } : {},
       close: async () => {
         if (closed) return;
         closed = true;
@@ -411,9 +427,260 @@ function qualifyMatchPath(context, root, rawPath) {
 }
 
 // plugins/local-search/source/ripgrep.ts
-var import_node_child_process = require("node:child_process");
 var import_node_util = require("node:util");
+
+// plugins/local-search/source/ripgrep-process.ts
+var import_node_child_process2 = require("node:child_process");
 var import_ripgrep = require("@vscode/ripgrep");
+
+// src/shared/directory-authority/command.ts
+var import_node_child_process = require("node:child_process");
+
+// src/shared/directory-authority/bootstrap.ts
+function directoryAuthorityBootstrap(mode, messageLimit, task) {
+  const fs = require("node:fs");
+  function fail(code, message) {
+    throw Object.assign(new Error(message), { code });
+  }
+  function verifyDirectoryAuthority() {
+    const expected = fs.fstatSync(3, { bigint: true });
+    const actual = fs.statSync(".", { bigint: true });
+    const matchesHeldDirectory = expected.isDirectory() && actual.isDirectory() && expected.dev === actual.dev && expected.ino === actual.ino;
+    if (matchesHeldDirectory) return;
+    fail(
+      "directory_authority_changed",
+      "The directory changed before the operation could establish its authority."
+    );
+  }
+  function readRequest() {
+    const fd = mode === "task" ? 0 : 4;
+    const chunk = Buffer.alloc(64 * 1024);
+    const chunks = [];
+    let total = 0;
+    for (; ; ) {
+      const length = fs.readSync(fd, chunk, 0, chunk.length, null);
+      if (length === 0) break;
+      total += length;
+      if (total > messageLimit) {
+        fail(
+          "directory_authority_request_too_large",
+          "The directory operation input exceeds the bridge byte limit."
+        );
+      }
+      chunks.push(Buffer.from(chunk.subarray(0, length)));
+    }
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  }
+  function reportFailure(error) {
+    const detail = error;
+    const code = typeof detail?.code === "string" ? detail.code.slice(0, 256) : "directory_authority_failed";
+    const message = typeof detail?.message === "string" ? detail.message.slice(0, 4096) : "The directory operation failed.";
+    let encoded;
+    try {
+      encoded = JSON.stringify({
+        ok: false,
+        error: { code, message, data: detail?.data }
+      });
+      if (Buffer.byteLength(encoded) > messageLimit) throw new Error();
+    } catch {
+      encoded = JSON.stringify({ ok: false, error: { code, message } });
+    }
+    writeResponse(mode === "task" ? 1 : 2, encoded);
+    process.exitCode = mode === "task" ? 0 : 125;
+  }
+  function writeResponse(fd, encoded) {
+    const bytes = Buffer.from(encoded);
+    let offset = 0;
+    while (offset < bytes.length) {
+      offset += fs.writeSync(fd, bytes, offset, bytes.length - offset);
+    }
+  }
+  async function runTask(input) {
+    if (!task)
+      fail("directory_authority_failed", "The directory task is missing.");
+    const result = await task(input);
+    const encoded = JSON.stringify({ ok: true, result });
+    if (Buffer.byteLength(encoded) > messageLimit) {
+      fail(
+        "directory_authority_result_too_large",
+        "The directory operation result exceeds the bridge byte limit."
+      );
+    }
+    writeResponse(1, encoded);
+  }
+  function runCommand(input) {
+    const { spawn: spawn3 } = require("node:child_process");
+    const command = input;
+    const child = spawn3(command.command, command.args, {
+      stdio: ["ignore", "inherit", "inherit"],
+      env: process.env
+    });
+    child.once("error", reportFailure);
+    child.once("exit", (code, signal) => {
+      if (signal) {
+        process.kill(process.pid, signal);
+        return;
+      }
+      if (typeof code === "number") process.exitCode = code;
+    });
+  }
+  try {
+    verifyDirectoryAuthority();
+    const input = readRequest();
+    if (mode === "command") {
+      runCommand(input);
+      return;
+    }
+    void runTask(input).catch(reportFailure);
+  } catch (error) {
+    reportFailure(error);
+  }
+}
+function directoryAuthorityScript(mode, messageLimit, task) {
+  const taskSource = task ? `(${task.toString()})` : "undefined";
+  const preserveFunctionName = "const __name=(target,value)=>Object.defineProperty(target,'name',{value,configurable:true});";
+  return `${preserveFunctionName}(${directoryAuthorityBootstrap.toString()})(${JSON.stringify(mode)},${messageLimit},${taskSource});`;
+}
+
+// src/shared/directory-authority/protocol.ts
+var import_node_path2 = require("node:path");
+
+// src/shared/directory-authority/errors.ts
+var DirectoryAuthorityError = class extends Error {
+  constructor(code, message, data) {
+    super(message);
+    this.code = code;
+    this.data = data;
+    this.name = "DirectoryAuthorityError";
+  }
+  code;
+  data;
+};
+
+// src/shared/directory-authority/protocol.ts
+var AUTHORITY_MESSAGE_LIMIT = 8 * 1024 * 1024;
+var AUTHORITY_STDERR_LIMIT = 16 * 1024;
+function assertDirectoryAuthorityLocation(location) {
+  if (!(0, import_node_path2.isAbsolute)(location.directoryPath)) {
+    throw new DirectoryAuthorityError(
+      "directory_authority_invalid_path",
+      "The directory authority requires an absolute starting path."
+    );
+  }
+  const hasOpenDescriptorNumber = Number.isInteger(location.directoryFd) && location.directoryFd >= 0;
+  if (hasOpenDescriptorNumber) return;
+  throw new DirectoryAuthorityError(
+    "directory_authority_invalid_fd",
+    "The directory authority requires an open directory descriptor."
+  );
+}
+function authorityEnvironment(environment = process.env) {
+  const sanitized = { ...environment };
+  delete sanitized.NODE_OPTIONS;
+  delete sanitized.NODE_PATH;
+  return sanitized;
+}
+function encodeAuthorityRequest(input) {
+  let encoded;
+  try {
+    encoded = JSON.stringify(input);
+  } catch {
+    throw new DirectoryAuthorityError(
+      "directory_authority_invalid_request",
+      "The directory operation input must be JSON serializable."
+    );
+  }
+  if (encoded === void 0) {
+    throw new DirectoryAuthorityError(
+      "directory_authority_invalid_request",
+      "The directory operation input must be JSON serializable."
+    );
+  }
+  if (Buffer.byteLength(encoded) <= AUTHORITY_MESSAGE_LIMIT) return encoded;
+  throw new DirectoryAuthorityError(
+    "directory_authority_request_too_large",
+    "The directory operation input exceeds the bridge byte limit."
+  );
+}
+
+// src/shared/directory-authority/command.ts
+function spawnDirectoryAuthorityCommand(input) {
+  assertDirectoryAuthorityLocation(input);
+  const request = encodeAuthorityRequest({
+    command: input.command,
+    args: input.args
+  });
+  const child = (0, import_node_child_process.spawn)(
+    process.execPath,
+    [
+      "--input-type=commonjs",
+      "-e",
+      directoryAuthorityScript("command", AUTHORITY_MESSAGE_LIMIT)
+    ],
+    {
+      cwd: input.directoryPath,
+      env: authorityEnvironment(input.env),
+      detached: true,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe", input.directoryFd, "pipe"]
+    }
+  );
+  const requestPipe = child.stdio[4];
+  requestPipe?.on("error", () => void 0);
+  requestPipe?.end(request);
+  return child;
+}
+
+// plugins/local-search/source/ripgrep-process.ts
+function controlledRipgrepEnvironment() {
+  const environment = { ...process.env };
+  for (const name of Object.keys(environment)) {
+    if (name.toUpperCase() === "RIPGREP_CONFIG_PATH") {
+      delete environment[name];
+    }
+  }
+  return environment;
+}
+function terminateAuthorityGroup(child) {
+  if (!child.pid) {
+    child.kill("SIGKILL");
+    return;
+  }
+  try {
+    process.kill(-child.pid, "SIGKILL");
+  } catch (error) {
+    const groupAlreadyExited = error.code === "ESRCH";
+    if (groupAlreadyExited) return;
+    throw error;
+  }
+}
+function spawnRipgrepProcess(args, cwd, stdinFd, directoryAuthority) {
+  const commandArgs = ["--no-config", ...args];
+  const env = controlledRipgrepEnvironment();
+  if (directoryAuthority) {
+    const child2 = spawnDirectoryAuthorityCommand({
+      ...directoryAuthority,
+      command: import_ripgrep.rgPath,
+      args: commandArgs,
+      env
+    });
+    return { child: child2, terminate: () => terminateAuthorityGroup(child2) };
+  }
+  const child = (0, import_node_child_process2.spawn)(import_ripgrep.rgPath, commandArgs, {
+    cwd,
+    env,
+    stdio: [stdinFd ?? "ignore", "pipe", "pipe"],
+    windowsHide: true
+  });
+  return {
+    child,
+    terminate: () => {
+      child.kill("SIGKILL");
+    }
+  };
+}
+
+// plugins/local-search/source/ripgrep.ts
 var SEARCH_TIMEOUT_MS = 1e4;
 var MAX_PATH_RECORD_BYTES = 64 * 1024;
 var MAX_JSON_RECORD_BYTES = 512 * 1024;
@@ -431,15 +698,6 @@ function escapeRgGlobLiteral(value) {
   return [...value].map(
     (character) => "\\*?[]{}!".includes(character) ? `\\${character}` : character
   ).join("");
-}
-function controlledRipgrepEnvironment() {
-  const environment = { ...process.env };
-  for (const name of Object.keys(environment)) {
-    if (name.toUpperCase() === "RIPGREP_CONFIG_PATH") {
-      delete environment[name];
-    }
-  }
-  return environment;
 }
 function decodeUtf8Record(bytes, kind) {
   let value;
@@ -493,7 +751,7 @@ function createDelimitedParser(params) {
     finish: (accept) => parseAvailable(Buffer.alloc(0), true, accept)
   });
 }
-async function runRipgrepBounded(args, cwd, maxResults, parser, signal, stdinFd) {
+async function runRipgrepBounded(args, cwd, maxResults, parser, signal, stdinFd, directoryAuthority) {
   if (signal?.aborted) {
     throw new LocalSearchError(
       "local_search_failed",
@@ -507,12 +765,12 @@ async function runRipgrepBounded(args, cwd, maxResults, parser, signal, stdinFd)
     let timedOut = false;
     let aborted = false;
     let parserError;
-    const child = (0, import_node_child_process.spawn)(import_ripgrep.rgPath, ["--no-config", ...args], {
+    const { child, terminate } = spawnRipgrepProcess(
+      args,
       cwd,
-      env: controlledRipgrepEnvironment(),
-      stdio: [stdinFd ?? "ignore", "pipe", "pipe"],
-      windowsHide: true
-    });
+      stdinFd,
+      directoryAuthority
+    );
     const cleanup = () => {
       clearTimeout(timeout);
       if (signal && abortListener) {
@@ -538,17 +796,17 @@ async function runRipgrepBounded(args, cwd, maxResults, parser, signal, stdinFd)
       stoppedAfterExtraResult = true;
       if (mayStopProcess) {
         child.stdout.pause();
-        child.kill("SIGKILL");
+        terminate();
       }
       return false;
     };
     const abortListener = () => {
       aborted = true;
-      child.kill("SIGKILL");
+      terminate();
     };
     const timeout = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGKILL");
+      terminate();
     }, SEARCH_TIMEOUT_MS);
     timeout.unref?.();
     child.stdout.on("data", (chunk) => {
@@ -558,7 +816,7 @@ async function runRipgrepBounded(args, cwd, maxResults, parser, signal, stdinFd)
       } catch (error) {
         parserError = error;
         child.stdout.pause();
-        child.kill("SIGKILL");
+        terminate();
       }
     });
     child.stderr.on("data", () => void 0);
@@ -657,7 +915,7 @@ function parseJsonContentEvent(line) {
     text: text.endsWith("\r\n") ? text.slice(0, -2) : text.endsWith("\n") ? text.slice(0, -1) : text
   });
 }
-function runRipgrepPathSearch(args, cwd, maxResults, signal) {
+function runRipgrepPathSearch(args, cwd, maxResults, signal, directoryAuthority) {
   return runRipgrepBounded(
     args,
     cwd,
@@ -667,10 +925,12 @@ function runRipgrepPathSearch(args, cwd, maxResults, signal) {
       maxRecordBytes: MAX_PATH_RECORD_BYTES,
       parse: (record) => decodeUtf8Record(record, "path")
     }),
-    signal
+    signal,
+    void 0,
+    directoryAuthority
   );
 }
-function runRipgrepContentSearch(args, cwd, maxResults, signal, stdinFd) {
+function runRipgrepContentSearch(args, cwd, maxResults, signal, stdinFd, directoryAuthority) {
   return runRipgrepBounded(
     args,
     cwd,
@@ -684,7 +944,8 @@ function runRipgrepContentSearch(args, cwd, maxResults, signal, stdinFd) {
       }
     }),
     signal,
-    stdinFd
+    stdinFd,
+    directoryAuthority
   );
 }
 
@@ -692,7 +953,7 @@ function runRipgrepContentSearch(args, cwd, maxResults, signal, stdinFd) {
 var DEFAULT_MAX_RESULTS = 40;
 var MAX_RESULTS = 200;
 function fileNameMatches(logicalPath, query, caseSensitive) {
-  const filename = import_node_path2.posix.basename(logicalPath);
+  const filename = import_node_path3.posix.basename(logicalPath);
   return caseSensitive ? filename.includes(query) : filename.toLowerCase().includes(query.toLowerCase());
 }
 var index_default = defineRuntimePlugin((context) => ({
@@ -727,7 +988,7 @@ var index_default = defineRuntimePlugin((context) => ({
         if (mode === "names" || mode === "both") {
           const names = root.isFile ? Object.freeze({
             items: Object.freeze(
-              fileNameMatches(root.target.logicalPath, query, caseSensitive) ? [import_node_path2.posix.basename(root.target.logicalPath)] : []
+              fileNameMatches(root.target.logicalPath, query, caseSensitive) ? [import_node_path3.posix.basename(root.target.logicalPath)] : []
             ),
             truncated: false
           }) : await runRipgrepPathSearch(
@@ -743,7 +1004,8 @@ var index_default = defineRuntimePlugin((context) => ({
             ],
             root.commandDirectory,
             maxResults,
-            executionContext?.abortSignal
+            executionContext?.abortSignal,
+            root.directoryAuthority
           );
           sourceTruncated ||= names.truncated;
           for (const rawPath of names.items) {
@@ -777,7 +1039,8 @@ var index_default = defineRuntimePlugin((context) => ({
             root.commandDirectory,
             remaining,
             executionContext?.abortSignal,
-            root.stdinFd
+            root.stdinFd,
+            root.directoryAuthority
           );
           sourceTruncated ||= content.truncated;
           for (const match of content.items) {
