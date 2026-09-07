@@ -218,6 +218,7 @@ export function toSnapshotMessage(
     createdAt: toEpochMs(message.createdAt),
     requestId: message.requestId ?? inferMessageRequestId(message, requests),
     cronJobId: message.cronJobId ?? null,
+    ...(message.schedule ? { schedule: message.schedule } : {}),
     cronTitle: message.cronTitle ?? null,
     triggerType: message.triggerType ?? null,
     ...(message.attachments && message.attachments.length > 0

@@ -146,6 +146,7 @@ export interface RuntimeSelectionControllerDependencies {
     summary: string;
   }) => void;
   readonly onAttachmentPolicyChange: () => void;
+  readonly getComposerSessionId?: () => string;
   readonly onModelCatalogLoading?: () => void;
   readonly onModelCatalogLoaded?: (payload: Record<string, unknown>) => void;
   readonly onModelCatalogUnavailable?: (error: unknown) => void;
@@ -171,7 +172,7 @@ export declare function createRuntimeSelectionController(
   saveModelPreferences(): void;
   selectedEnvironmentId(): string;
   selectedModelPreference(): Record<string, unknown> | null;
-  selectedModelSupportsImageInput(): boolean;
+  selectedModelSupportsImageInput(profileId?: string): boolean;
   setAgentMode(mode: AgentMode): Promise<boolean>;
   setToolPermissionMode(mode: ToolPermissionMode): void;
 };

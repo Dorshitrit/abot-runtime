@@ -119,7 +119,7 @@ describe("web ui client behavior", () => {
 
   test("boots into chat with both workspace sheets closed", () => {
     expect(createInitialWorkspaceShellState()).toEqual({
-      workspace: "chat",
+      workspace: "home",
       activeSheet: "",
     });
   });

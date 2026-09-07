@@ -115,6 +115,7 @@ export type SessionListResult = {
 };
 
 export type SessionSnapshotMessage = {
+  schedule?: import("./schedule-metadata.js").ScheduleMessageReference;
   id: string | number;
   sessionId: string;
   role: SessionMessageRole;
@@ -172,6 +173,7 @@ export type SessionMessageDeleteResult = {
 };
 
 export type SessionMessage = {
+  schedule?: import("./schedule-metadata.js").ScheduleMessageReference;
   id: string;
   role: SessionMessageRole;
   content: string;

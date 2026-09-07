@@ -339,6 +339,13 @@
       "properties": {
         "enabled": { "type": "boolean", "default": false },
         "emitClientEvents": { "type": "boolean", "default": false },
+        "maxRecallCallsPerRequest": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "default": 5,
+          "description": "Maximum explicit memory recall calls offered per request."
+        },
         "embeddingProfileId": {
           "type": "string",
           "minLength": 1,

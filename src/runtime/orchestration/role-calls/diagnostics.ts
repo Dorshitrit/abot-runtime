@@ -7,6 +7,7 @@ import type {
 } from "./contracts.js";
 import { resolveRoleActivationBudget } from "./activation-budget.js";
 import { isSuccessfulObservedMutation } from "./operation-supervision.js";
+import { traceMemoryRecallCommit } from "./memory-recall-diagnostics.js";
 
 const ROLE_CALL_LOG_SCOPE = "runtime.role_calls";
 
@@ -68,6 +69,7 @@ export function traceRoleCallCommit(params: {
     effectType: params.effect.type,
   });
   traceCapabilitySelectionSupervisionReset(params, common);
+  if (traceMemoryRecallCommit(params, common)) return;
 
   switch (params.effect.type) {
     case "root_created": {

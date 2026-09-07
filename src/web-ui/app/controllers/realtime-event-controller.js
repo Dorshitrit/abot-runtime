@@ -1,3 +1,4 @@
+import { createScheduleRealtimeController } from "./schedule-realtime.js";
 import { isMatchingActiveRequest } from "../ui-behavior.js";
 import {
   eventKeyFor,
@@ -10,6 +11,8 @@ import { textOf } from "../lib/text-format.js";
 import { normalizeRealtimeMessage } from "../lib/realtime-message.js";
 import { reduceTaskProgress } from "../lib/task-progress.js";
 import { projectWebSourceEvent } from "../lib/web-source-event.js";
+import { projectToolActivityEvent } from "../lib/tool-activity-event.js";
+import { canReplaceContextWindowEvidence } from "../lib/context-window-snapshot-order.js";
 
 export { normalizeRealtimeMessage } from "../lib/realtime-message.js";
 export { taskStatusClass } from "../lib/task-progress.js";
@@ -26,9 +29,16 @@ function hasRecordedOriginalEvent(events, requestId, eventSequence) {
   );
 }
 
-function canMergeUnsequencedActivity(previous, key, eventSequence, webSources) {
+function canMergeUnsequencedActivity(
+  previous,
+  key,
+  eventSequence,
+  webSources,
+  toolActivity,
+) {
   if (eventSequence !== undefined) return false;
   if (webSources || previous?.webSources) return false;
+  if (toolActivity || previous?.toolActivity) return false;
   if (!previous?.key || previous.key !== key) return false;
   return !hasOriginalEventSequence(previous.eventSequence);
 }
@@ -45,6 +55,7 @@ export function createRealtimeEventController({
   normalizeChatMessage,
   renderMessages,
   renderContextWindow = () => {},
+  renderActivityStatus = () => {},
   scheduleMessageRender,
   scheduleThinkingRender,
   cancelScheduledMessageRender,
@@ -57,6 +68,19 @@ export function createRealtimeEventController({
   drainQueuedComposerMessage,
   loadSessions,
 }) {
+  const scheduleRealtime = createScheduleRealtimeController({
+    state,
+    selectedEnvironmentId,
+    addOrMergeMessage,
+    normalizeChatMessage,
+    activeAssistantForRequest,
+    renderMessages,
+    updateComposerSendState,
+    setMessageActivityStatus,
+    trackSeq,
+    loadSessions,
+  });
+
   function trackSeq(message) {
     if (message.requestId && typeof message.seqNo === "number") {
       state.lastSeqByRequest.set(message.requestId, message.seqNo);
@@ -81,6 +105,7 @@ export function createRealtimeEventController({
       providerUsage: null,
       pendingCompaction: null,
       lastCompaction: null,
+      lastCompactionEvent: null,
     };
     if (eventName === "context.window.snapshot") {
       const contextWindowTokens = Number(message.contextWindowTokens);
@@ -97,8 +122,11 @@ export function createRealtimeEventController({
         return;
       }
       const previous = current.snapshot;
+      if (!canReplaceContextWindowEvidence(previous, message)) return;
       const snapshot = {
         requestId,
+        eventSequence: message.eventSequence,
+        seqNo: message.seqNo,
         invocationId: textOf(message.invocationId),
         modelStep: textOf(message.modelStep),
         profileId: textOf(message.profileId),
@@ -143,10 +171,14 @@ export function createRealtimeEventController({
       return true;
     }
     if (eventName === "context.window.provider_usage") {
+      if (!canReplaceContextWindowEvidence(current.providerUsage, message))
+        return;
       state.contextWindowByRequest.set(requestId, {
         ...current,
         requestId,
         providerUsage: {
+          eventSequence: message.eventSequence,
+          seqNo: message.seqNo,
           invocationId: textOf(message.invocationId),
           modelStep: textOf(message.modelStep),
           profileId: textOf(message.profileId),
@@ -159,9 +191,18 @@ export function createRealtimeEventController({
       return true;
     }
     if (eventName === "context.compaction.started") {
+      if (
+        !canReplaceContextWindowEvidence(current.lastCompactionEvent, message)
+      )
+        return;
+      if (!canReplaceContextWindowEvidence(current.snapshot, message)) return;
       state.contextWindowByRequest.set(requestId, {
         ...current,
         requestId,
+        lastCompactionEvent: {
+          eventSequence: message.eventSequence,
+          seqNo: message.seqNo,
+        },
         pendingCompaction: {
           beforePercent: Number.isFinite(
             Number(message.beforeUsedContextPercent),
@@ -173,11 +214,19 @@ export function createRealtimeEventController({
       return true;
     }
     if (eventName === "context.compaction.completed") {
+      if (
+        !canReplaceContextWindowEvidence(current.lastCompactionEvent, message)
+      )
+        return;
       const beforePercent = Number(message.beforeUsedContextPercent);
       const afterPercent = Number(message.afterUsedContextPercent);
       state.contextWindowByRequest.set(requestId, {
         ...current,
         requestId,
+        lastCompactionEvent: {
+          eventSequence: message.eventSequence,
+          seqNo: message.seqNo,
+        },
         pendingCompaction: null,
         lastCompaction:
           Number.isFinite(beforePercent) && Number.isFinite(afterPercent)
@@ -187,9 +236,17 @@ export function createRealtimeEventController({
       return true;
     }
     if (eventName === "context.compaction.failed") {
+      if (
+        !canReplaceContextWindowEvidence(current.lastCompactionEvent, message)
+      )
+        return;
       state.contextWindowByRequest.set(requestId, {
         ...current,
         requestId,
+        lastCompactionEvent: {
+          eventSequence: message.eventSequence,
+          seqNo: message.seqNo,
+        },
         pendingCompaction: null,
       });
       return true;
@@ -207,7 +264,10 @@ export function createRealtimeEventController({
     }
     updateTaskProgress(message);
     const contextWindowUpdated = updateContextWindow(message);
-    if (contextWindowUpdated) renderContextWindow();
+    if (contextWindowUpdated) {
+      renderContextWindow();
+      renderActivityStatus();
+    }
     const eventName = textOf(message.name || message.rawType || message.type);
     if (isLowValueActivityEvent(message)) {
       trackSeq(message);
@@ -220,9 +280,16 @@ export function createRealtimeEventController({
     const phase = textOf(message.phase);
     const key = eventKeyFor({ ...message, requestId }, name, tone);
     const webSources = projectWebSourceEvent(message);
+    const toolActivity = projectToolActivityEvent(message);
     const lastEvent = state.events[state.events.length - 1];
     if (
-      canMergeUnsequencedActivity(lastEvent, key, eventSequence, webSources)
+      canMergeUnsequencedActivity(
+        lastEvent,
+        key,
+        eventSequence,
+        webSources,
+        toolActivity,
+      )
     ) {
       lastEvent.count = (lastEvent.count || 1) + 1;
       lastEvent.summary = summary;
@@ -252,6 +319,7 @@ export function createRealtimeEventController({
         tool: textOf(message.tool),
         approvalId: textOf(message.approvalId),
         ...(webSources ? { webSources } : {}),
+        ...(toolActivity ? { toolActivity } : {}),
         payload: {
           plan: message.plan,
           item: message.item,
@@ -263,6 +331,7 @@ export function createRealtimeEventController({
       state.events.splice(0, state.events.length - 1_200);
     }
     trackSeq(message);
+    renderActivityStatus();
     scheduleMessageRender();
     if (eventName.startsWith("tool.approval.")) renderMessages();
   }
@@ -316,6 +385,7 @@ export function createRealtimeEventController({
     const message = normalizeRealtimeMessage(rawMessage);
     if (message.type === "steer_ack" && handleSteerAcknowledgement(message))
       return;
+    if (scheduleRealtime.handle(message)) return;
     if (!shouldAcceptMessage(message)) return;
     if (message.type === "chat_read_state") {
       applySessionReadState(message.sessionId, message.readState || message);
@@ -377,6 +447,7 @@ export function createRealtimeEventController({
       }
       cancelScheduledMessageRender();
       recordEvent(message);
+      renderActivityStatus();
       cancelScheduledThinkingRender();
       renderMessages();
       setMessageActivityStatus("ABot response completed.");

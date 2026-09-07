@@ -278,6 +278,11 @@ async function prepareRegisteredToolWorkerCapability<TContext>(
       selectedTargetReferences,
       rejectedExecution: canonicalRejection,
       payloadObservability,
+      emitRejection: params.executor.prepareRejectionEvent({
+        handle: params.projection.handle,
+        controls: effectiveControls,
+        intent: input.intent,
+      }),
       ...(preparedPayload.body === undefined
         ? {}
         : { payload: preparedPayload.body }),
@@ -298,6 +303,11 @@ async function prepareRegisteredToolWorkerCapability<TContext>(
           input.executionFreshness,
         );
         if (rejectedExecution) {
+          normalPreparation.emitRejection({
+            executionId,
+            executorIdentity: input.call,
+            errorCode: rejectedExecution.sourceIssueCode,
+          });
           return completeRuntimeRejection({
             params,
             input,
@@ -307,7 +317,7 @@ async function prepareRegisteredToolWorkerCapability<TContext>(
             rejectedExecution,
           });
         }
-        const externalResult = await normalPreparation.execute();
+        const externalResult = await normalPreparation.execute(executionId, input.call);
         const observed = observeExternalResult(
           externalResult,
           params.projection.operation.effect,
@@ -365,6 +375,9 @@ function preparedRuntimeRejection<TContext>(input: {
   selectedTargetReferences: ReturnType<typeof projectSelectedTargetReferences>;
   rejectedExecution: ReturnType<typeof payloadRejection>;
   payloadObservability: ReturnType<typeof createDeferredPayloadObservability>;
+  emitRejection?: ReturnType<
+    RegisteredToolNormalInvocationExecutor["prepareRejectionEvent"]
+  >;
   payload?: string;
   materializedParams?: Readonly<Record<string, string>>;
 }): WorkerCapabilityPreparedExecution {
@@ -388,6 +401,11 @@ function preparedRuntimeRejection<TContext>(input: {
           input.operationId,
           executionId,
         );
+        input.emitRejection?.({
+          executionId,
+          executorIdentity: input.input.call,
+          errorCode: input.rejectedExecution.sourceIssueCode,
+        });
         return completeRuntimeRejection({ ...input, executionId });
       } catch (error: unknown) {
         tracePreparedExecutionFailed(

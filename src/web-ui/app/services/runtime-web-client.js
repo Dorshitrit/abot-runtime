@@ -1,3 +1,4 @@
+import { createScheduleRequests } from "./runtime-web-client/schedules.js";
 import { createLongTermMemoryRequests } from "./runtime-web-client/memory.js";
 
 export function parseJsonResponseText(text, context) {
@@ -176,24 +177,27 @@ export function createRuntimeWebClient({
       sessionId,
       environmentId = getEnvironmentId(),
       readThroughMessageId = null,
+      readThroughRequestId = "",
     }) {
       const numericReadThrough =
         typeof readThroughMessageId === "number" &&
         Number.isFinite(readThroughMessageId)
           ? Math.max(0, Math.floor(readThroughMessageId))
           : null;
+      const requestReadBoundary = numericReadThrough === null
+        ? String(readThroughRequestId || "").trim()
+        : "";
+      const body = {
+        readThroughMessageId: numericReadThrough,
+        lastReadMessageId:
+          numericReadThrough === null ? null : String(numericReadThrough),
+      };
+      if (requestReadBoundary) body.readThroughRequestId = requestReadBoundary;
       return requestApi(
         `/chat/sessions/${encodeURIComponent(
           sessionId,
         )}/read?environment=${environmentQuery(environmentId)}`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            readThroughMessageId: numericReadThrough,
-            lastReadMessageId:
-              numericReadThrough === null ? null : String(numericReadThrough),
-          }),
-        },
+        { method: "POST", body: JSON.stringify(body) },
       );
     },
 
@@ -292,5 +296,6 @@ export function createRuntimeWebClient({
     },
 
     ...longTermMemoryRequests,
+    ...createScheduleRequests({ requestApi, getEnvironmentId, getConfig }),
   };
 }

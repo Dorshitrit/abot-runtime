@@ -7,6 +7,7 @@ import type {
   AbotRuntimePluginExtension,
 } from "../../plugin-contract/manifest.js";
 import { isToolCatalogGroupId } from "../../capabilities/tool-types.js";
+import { parseEventResultMetadata } from "../../capabilities/tool-definition-validator/event-result-metadata.js";
 import {
   ABOT_RUNTIME_EXTENSION,
   ABOT_RUNTIME_EXTENSION_VERSION,
@@ -239,7 +240,15 @@ function parseEventPresentation(
 ): AgentPluginCapabilityManifest["eventPresentation"] | undefined {
   if (value === undefined) return undefined;
   const presentation = expectRecord(value, path);
-  rejectUnknownKeys(presentation, ["metadata", "lifecycle"], path);
+  rejectUnknownKeys(
+    presentation,
+    ["metadata", "lifecycle", "resultMetadata"],
+    path,
+  );
+  const resultMetadata = parseEventResultMetadata(
+    presentation.resultMetadata,
+    `${path}.resultMetadata`,
+  );
   const metadata = expectRecord(presentation.metadata, `${path}.metadata`);
   const lifecycle = presentation.lifecycle;
   if (lifecycle !== undefined && !isRecord(lifecycle)) {
@@ -316,6 +325,7 @@ function parseEventPresentation(
         ];
       }),
     ),
+    ...(resultMetadata ? { resultMetadata } : {}),
     ...(parsedLifecycle && Object.keys(parsedLifecycle).length > 0
       ? { lifecycle: parsedLifecycle }
       : {}),

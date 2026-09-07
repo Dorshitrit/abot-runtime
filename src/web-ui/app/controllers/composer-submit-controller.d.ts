@@ -10,6 +10,7 @@ export interface ComposerSubmitState {
   pendingAttachments: readonly unknown[];
   composerSending: boolean;
   currentSessionId: string;
+  sessionViewVersion?: number;
 }
 
 export interface ComposerSubmitDom {
@@ -64,6 +65,7 @@ export interface ComposerSubmitControllerOptions {
   setMessageStatus: (message: string, busy?: boolean) => void;
   getSubmissionBlock?: () => ComposerSubmissionBlock | null;
   onSubmissionBlocked?: (block: ComposerSubmissionBlock) => void;
+  isComposerVisible?: () => boolean;
 }
 
 export interface ComposerSubmitController {

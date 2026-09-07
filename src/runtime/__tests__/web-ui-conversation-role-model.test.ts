@@ -49,7 +49,7 @@ describe("conversation role cards", () => {
     expect(cards.find((card) => card.role === "worker")).toMatchObject({
       phaseLabel: "Working",
       summary: "Read project notes",
-      facts: ["2 tool calls"],
+      facts: ["2 reads"],
       tone: "recorded",
     });
     expect(cards.at(-1)).toMatchObject({

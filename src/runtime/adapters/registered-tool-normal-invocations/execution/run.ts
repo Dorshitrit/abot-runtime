@@ -8,6 +8,7 @@ import type {
   ToolCall,
 } from "../../../../capabilities/tool-types.js";
 import { requestNormalInvocationApproval } from "./approval.js";
+import { createPreparedInvocationRejectionEmitter } from "./rejection-event.js";
 import {
   captureToolCall,
   materializeCall,
@@ -23,7 +24,11 @@ import type {
   RegisteredToolNormalInvocationResult,
 } from "../shared/contracts.js";
 import { createRegisteredToolActionFingerprint } from "../shared/action-fingerprint.js";
-import { buildToolIntentEventMetadata } from "../shared/event-metadata.js";
+import {
+  buildToolExecutorEventMetadata,
+  buildToolIntentEventMetadata,
+  type ToolEventExecutorIdentity,
+} from "../shared/event-metadata.js";
 import { prepareCompleteInvocationInput } from "../payload/input-preparation.js";
 import { rejectNormalInvocation } from "../shared/rejection.js";
 
@@ -111,8 +116,18 @@ export function prepareNormalInvocation(params: {
     status: "prepared" as const,
     actionFingerprint,
     acceptedControls: preparedInput.controls,
-    execute: () =>
+    emitRejection: createPreparedInvocationRejectionEmitter({
+      tool: source.registration.toolName,
+      eventMeta,
+      onEvent: executor.onEvent,
+    }),
+    execute: (
+      executionId?: string,
+      executorIdentity?: ToolEventExecutorIdentity,
+    ) =>
       executePreparedNormalInvocation({
+        ...(executionId ? { executionId } : {}),
+        ...(executorIdentity ? { executorIdentity } : {}),
         executor,
         source,
         target: target.binding,
@@ -124,6 +139,8 @@ export function prepareNormalInvocation(params: {
 }
 
 async function executePreparedNormalInvocation(params: {
+  executionId?: string;
+  executorIdentity?: ToolEventExecutorIdentity;
   executor: RegisteredToolNormalInvocationExecutorParams;
   source: BoundOperation;
   target: BoundOperation;
@@ -132,6 +149,10 @@ async function executePreparedNormalInvocation(params: {
   input: RegisteredToolNormalInvocationPreparationInput;
 }): Promise<RegisteredToolNormalInvocationResult> {
   const approval = await requestNormalInvocationApproval({
+    ...(params.executorIdentity
+      ? { executorIdentity: params.executorIdentity }
+      : {}),
+    ...(params.executionId ? { executionId: params.executionId } : {}),
     requestId: params.executor.requestId,
     abortSignal: params.executor.abortSignal,
     toolPermissionMode: params.executor.toolPermissionMode,
@@ -154,6 +175,8 @@ async function executePreparedNormalInvocation(params: {
     "started",
   );
   params.executor.onEvent?.("tool.started", {
+    ...buildToolExecutorEventMetadata(params.executorIdentity),
+    ...(params.executionId ? { executionId: params.executionId } : {}),
     tool: params.call.tool,
     ...(params.input.intent
       ? { intent: params.input.intent, intentSource: "model" }
@@ -184,6 +207,8 @@ async function executePreparedNormalInvocation(params: {
     result.ok ? "completed" : "failed",
   );
   params.executor.onEvent?.("tool.completed", {
+    ...buildToolExecutorEventMetadata(params.executorIdentity),
+    ...(params.executionId ? { executionId: params.executionId } : {}),
     tool: params.source.registration.toolName,
     ok: result.ok,
     actions: completionActions,

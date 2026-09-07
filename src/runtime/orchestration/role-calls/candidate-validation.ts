@@ -8,10 +8,10 @@ import {
   normalizeRoleCapabilitySelectionProjection,
 } from "./capability-selection-reconsideration.js";
 import {
-  createRoleCapabilitySelectionSupervisionFingerprint,
   isRoleCapabilitySelectionSupervisionState,
 } from "./capability-selection-supervision.js";
-import { isIssuedRoleCapabilitySelectionSupervisionState } from "./capability-selection-supervision-issuance.js";
+import { isValidRoleCapabilitySelectionSupervision } from "./capability-selection-supervision-validation.js";
+import { validateRoleMemoryRecalls } from "./memory-recall-state-validation.js";
 import {
   isRoleOperationFingerprint,
   isRoleOperationOutcomeFingerprintForOutcome,
@@ -104,6 +104,7 @@ export function validateRoleCallState(
     !Array.isArray(state?.results) ||
     !Array.isArray(state?.plans) ||
     !Array.isArray(state?.capabilityExecutions) ||
+    !Array.isArray(state?.memoryRecalls) ||
     !isRoleOperationSupervisionState(state?.operationSupervision) ||
     !isRoleCapabilitySelectionSupervisionState(
       state?.capabilitySelectionSupervision,
@@ -139,7 +140,7 @@ export function validateRoleCallState(
     : undefined;
   const turnOwnerCalls = state.calls.filter(
     (call) =>
-      call.status === "active" || call.status === "waiting_for_capability",
+      call.status === "active" || call.status === "waiting_for_capability" || call.status === "waiting_for_memory",
   );
   if (state.phase === "empty") {
     if (
@@ -149,6 +150,7 @@ export function validateRoleCallState(
       state.results.length > 0 ||
       state.plans.length > 0 ||
       state.capabilityExecutions.length > 0 ||
+      state.memoryRecalls.length > 0 ||
       state.operationSupervision.entries.length > 0 ||
       state.operationSupervision.interventions.length > 0 ||
       state.capabilitySelectionSupervision.epoch !== null ||
@@ -203,6 +205,7 @@ export function validateRoleCallState(
         "active",
         "waiting_for_child",
         "waiting_for_capability",
+        "waiting_for_memory",
         "completed",
       ].includes(call.status) ||
       !Number.isInteger(call.depth) ||
@@ -290,12 +293,13 @@ export function validateRoleCallState(
   }
   issues.push(...validateRoleCallPlans(state, policy));
   validateCapabilityExecutions(state, policy, issues);
+  issues.push(...validateRoleMemoryRecalls(state));
   if (!isValidRoleOperationSupervision(state, policy)) {
     issues.push(
       issue("invalid_role_operation_supervision", "state.operationSupervision"),
     );
   }
-  if (!isValidRoleCapabilitySelectionSupervision(state, policy)) {
+  if (!isValidRoleCapabilitySelectionSupervision(state, policy, hasCapabilityAuthority)) {
     issues.push(
       issue(
         "invalid_role_capability_selection_supervision",
@@ -306,55 +310,6 @@ export function validateRoleCallState(
   const activationBudgetIssue = findRoleActivationBudgetIssue(state, policy);
   if (activationBudgetIssue) issues.push(activationBudgetIssue);
   return issues;
-}
-
-function isValidRoleCapabilitySelectionSupervision(
-  state: RoleCallState,
-  policy: RoleCallPolicy,
-): boolean {
-  const supervision = state.capabilitySelectionSupervision;
-  if (!isRoleCapabilitySelectionSupervisionState(supervision)) return false;
-  if (supervision.epoch === null) return supervision.records.length === 0;
-  if (!isIssuedRoleCapabilitySelectionSupervisionState({ state })) return false;
-  if (state.phase !== "running" || supervision.records.length < 1) {
-    return false;
-  }
-  const call = findCall(state, supervision.epoch.callId);
-  const lastRecord = supervision.records.at(-1);
-  const reconsideration = call?.lastCapabilitySelectionReconsideration;
-  let expectedSupervisionFingerprint: string | undefined;
-  if (reconsideration) {
-    try {
-      expectedSupervisionFingerprint =
-        createRoleCapabilitySelectionSupervisionFingerprint({
-          steeringVersion: reconsideration.steeringVersion,
-          selection: reconsideration.selection,
-        });
-    } catch {
-      return false;
-    }
-  }
-  if (
-    !hasCapabilityAuthority(policy.authority, state, call) ||
-    state.activeCallId !== call.callId ||
-    call.status !== "active" ||
-    !lastRecord ||
-    !reconsideration ||
-    supervision.epoch.steeringVersion !== reconsideration.steeringVersion ||
-    lastRecord.invocationAttempt !== reconsideration.invocationAttempt ||
-    lastRecord.receiptFingerprint !== reconsideration.fingerprint ||
-    lastRecord.supervisionFingerprint !== expectedSupervisionFingerprint ||
-    call.activationCount !== lastRecord.invocationAttempt + 1
-  ) {
-    return false;
-  }
-  return supervision.records.every((record, index, records) => {
-    const previous = records[index - 1];
-    return (
-      record.invocationAttempt < call.activationCount &&
-      (!previous || record.invocationAttempt === previous.invocationAttempt + 1)
-    );
-  });
 }
 
 function isValidCapabilitySelectionReconsideration(

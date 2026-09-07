@@ -13,6 +13,23 @@
           "description": "Extract bounded text from an attached or configured-root PDF, DOCX, XLSX, PPTX, TXT, CSV, Markdown, JSON, or RTF document. Use source for an attachment id/name or configured-root path. Use source_mode=working_path with path for a runtime/session artifact beneath the current execution working directory. Document bytes remain outside model context, and results expose only attachment identities or logical runtime paths.",
           "routingCapability": "filesystem_inspection",
           "developmentRoles": ["inspect", "verify"],
+          "eventPresentation": {
+            "metadata": {
+              "source": { "param": "source", "kind": "string" },
+              "displayTarget": { "param": "path", "kind": "string" },
+              "sourceMode": { "param": "source_mode", "kind": "string" },
+              "startChar": { "param": "start_char", "kind": "number" },
+              "maxChars": { "param": "max_chars", "kind": "number" }
+            },
+            "resultMetadata": {
+              "outputPreview": { "path": "output", "kind": "preview" },
+              "startChar": { "path": "data.startChar", "kind": "number" },
+              "endChar": { "path": "data.endChar", "kind": "number" },
+              "totalCharacters": { "path": "data.totalCharacters", "kind": "number" },
+              "inputBytes": { "path": "data.inputBytes", "kind": "number" },
+              "sourceTruncated": { "path": "data.truncated", "kind": "boolean" }
+            }
+          },
           "runtimePathBindings": [
             {
               "operationId": "read_document",

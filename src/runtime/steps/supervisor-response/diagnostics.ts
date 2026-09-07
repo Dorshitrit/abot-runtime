@@ -10,6 +10,7 @@ export function traceSupervisorResponseContextProjected(params: {
   historyMessageCount: number;
   attachmentCount: number;
   referenceMessageCount: number;
+  responseRecommendationLength: number;
   continuationMessageCount: number;
   completedChildResultCount: number;
   completedChildSummaryLength: number;
@@ -27,6 +28,7 @@ export function traceSupervisorResponseContextProjected(params: {
     ),
     attachmentCount: params.attachmentCount,
     referenceMessageCount: params.referenceMessageCount,
+    responseRecommendationLength: params.responseRecommendationLength,
     continuationMessageCount: params.continuationMessageCount,
     completedChildResultCount: params.completedChildResultCount,
     completedChildSummaryLength: params.completedChildSummaryLength,

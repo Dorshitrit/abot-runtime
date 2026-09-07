@@ -56,6 +56,20 @@
   }
 }
 
+/* Keep editable fields above the mobile focus-zoom threshold. */
+@media (max-width: 760px), (hover: none) and (pointer: coarse) {
+  .config-dashboard input,
+  .config-dashboard select,
+  .config-dashboard textarea,
+  .config-dashboard #configRawEditor,
+  .memory-setup-fields input,
+  .memory-setup-fields select,
+  .memory-management-card input,
+  .memory-management-card textarea {
+    font-size: max(16px, 1rem);
+  }
+}
+
 @media (max-width: 760px) {
   :root {
     --mobile-rail-height: 68px;

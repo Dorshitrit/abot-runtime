@@ -34,8 +34,8 @@ export function createDeferredPayloadObservability(params: {
     ) {
       const prepared = params.executor.preparePayloadLifecycle(input);
       if (prepared.status === "rejected") return prepared;
-      deferred.push(() => {
-        prepared.emit();
+      deferred.push((executionId) => {
+        prepared.emit(executionId, params.call);
       });
       return Object.freeze({ status: "emitted" as const });
     },

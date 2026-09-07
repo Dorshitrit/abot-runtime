@@ -4,6 +4,7 @@ import type {
 } from "../../../model-gateway/types.js";
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
 import { isCapabilityBriefMessage } from "../../context/capability-brief.js";
+import { isScheduledExecutionContextMessage } from "../../context/scheduled-execution-context.js";
 import {
   normalizeRoleCallWorkingDirectory,
   ROLE_CALL_WORKING_DIRECTORY_MAX_LENGTH,
@@ -82,7 +83,7 @@ export function buildSupervisorWorkingDirectoryInput(
       role: "system" as const,
       content: buildSupervisorWorkingDirectoryInstructions(),
     }),
-    ...sourceMessages.filter((message) => !isCapabilityBriefMessage(message)),
+    ...sourceMessages.filter(belongsToSupervisorWorkingDirectoryContext),
     Object.freeze({
       role: "user" as const,
       content: JSON.stringify({
@@ -109,6 +110,13 @@ export function buildSupervisorWorkingDirectoryInput(
     format,
     modelStep: SUPERVISOR_DECISION_MODEL_STEP,
   });
+}
+
+function belongsToSupervisorWorkingDirectoryContext(
+  message: ChatMessage,
+): boolean {
+  if (isCapabilityBriefMessage(message)) return false;
+  return !isScheduledExecutionContextMessage(message);
 }
 
 export function parseSupervisorWorkingDirectoryOutput(

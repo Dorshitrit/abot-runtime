@@ -17,6 +17,7 @@ import { pathToFileURL } from "node:url";
 
 import { PUBLIC_PLUGIN_CAPABILITY_IDS } from "./public-snapshot/contracts.js";
 import { createPackedWebSearchProbe } from "./packed-web-search-probe.js";
+import { runPackedLocalRuntimeProbe } from "./packed-local-runtime-probe.js";
 import { DEFAULT_ROOT_RESPONSE_METHODOLOGY_FILES } from "./runtime-setup-files.js";
 
 type PackResult = {
@@ -548,7 +549,17 @@ if (!duplicateRejected) {
     stdio: "pipe",
   });
 
-  console.log("packed runtime package, CLI, and Web UI ok");
+  await runPackedLocalRuntimeProbe({
+    consumerDir,
+    cliPath,
+    reserveLoopbackPort,
+    waitForHttp,
+    stopChild,
+  });
+
+  console.log(
+    "packed runtime package, CLI, Web UI, and shared local Runtime ok",
+  );
 } finally {
   await rm(tempDir, { force: true, recursive: true });
 }

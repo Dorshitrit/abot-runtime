@@ -89,6 +89,7 @@ export async function invokeRepairableRawModelStep(params: {
   modelStep: ModelStep;
   messages: ChatMessage[];
   timeoutReason: string;
+  boundSteeringVersion?: number;
   format?: "json" | Record<string, unknown>;
   maxRepairAttempts: number;
   contextCompaction?: ModelStepContextCompactionController;
@@ -112,6 +113,7 @@ export async function invokeRepairableRawModelStep(params: {
       modelStep: params.modelStep,
       messages,
       timeoutReason: params.timeoutReason,
+      boundSteeringVersion: params.boundSteeringVersion,
       ...(params.format ? { format: params.format } : {}),
       ...(params.contextCompaction
         ? { contextCompaction: params.contextCompaction }

@@ -1,10 +1,11 @@
+import { hasSettledMemoryRecallActivationRange } from "../../orchestration/role-calls/memory-recall-state-validation.js";
 import type {
   RoleCallFrame,
   RoleCallLedgerHead,
   RoleCapabilitySelectionReconsideration,
 } from "../../orchestration/role-calls/index.js";
 import {
-  isImmediateRoleCapabilitySelectionReconsideration,
+  isRoleCapabilityReconsiderationBoundToScope,
   ROLE_CAPABILITY_SELECTION_SUPERVISION_REPEAT_INTERVENTION_COUNT,
   ROLE_CAPABILITY_SELECTION_SUPERVISION_REPEAT_LIMIT,
   ROLE_CAPABILITY_SELECTION_SUPERVISION_REPEAT_WARNING_COUNT,
@@ -25,14 +26,21 @@ export function projectImmediateCapabilityReconsideration(
   if (!reconsideration) return undefined;
   if (
     currentSteeringVersion !== undefined &&
-    !isImmediateRoleCapabilitySelectionReconsideration({
+    !isRoleCapabilityReconsiderationBoundToScope({
       call,
       steeringVersion: currentSteeringVersion,
     })
   ) {
     return undefined;
   }
-  if (call.activationCount !== reconsideration.invocationAttempt + 1) {
+  if (
+    !hasSettledMemoryRecallActivationRange(
+      head.state,
+      call.callId,
+      reconsideration.invocationAttempt + 1,
+      call.activationCount,
+    )
+  ) {
     return undefined;
   }
   return projectCapabilityReconsideration(

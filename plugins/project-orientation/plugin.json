@@ -18,6 +18,20 @@
         "inspect_project": {
           "description": "Inspect a bounded project tree. Path `.` and relative paths resolve inside the configured agent work directory; `workspace/...` targets configured workspace sources.",
           "routingCapability": "semantic_lookup",
+          "eventPresentation": {
+            "metadata": {
+              "displayTarget": { "param": "path", "kind": "string" },
+              "depth": { "param": "depth", "kind": "number" },
+              "maxEntries": { "param": "maxEntries", "kind": "number" }
+            },
+            "resultMetadata": {
+              "outputPreview": { "path": "output", "kind": "preview" },
+              "depth": { "path": "data.depth", "kind": "number" },
+              "maxEntries": { "path": "data.maxEntries", "kind": "number" },
+              "sourceTruncated": { "path": "data.truncation.tree", "kind": "boolean" },
+              "outputTruncated": { "path": "data.truncation.output.truncated", "kind": "boolean" }
+            }
+          },
           "runtimePathBindings": [
             {
               "operationId": "inspect_project",

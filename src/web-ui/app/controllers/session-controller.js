@@ -1,3 +1,8 @@
+import {
+  isOlderSessionReadState,
+  isSessionReadStateUnavailable,
+  mergeSessionReadStateUpdate,
+} from "../lib/session-read-state.js";
 import { matchesSessionQuery } from "../ui-behavior.js";
 import { escapeAttribute, escapeHtml, textOf } from "../lib/text-format.js";
 import { getNumber } from "../lib/event-presentation.js";
@@ -81,7 +86,10 @@ export function createSessionController({
       const pinned = isPinned(sessionId);
       const busy = state.busySessionIds.has(sessionId);
       const unreadCount = getNumber(session.unreadCount, 0);
-      const hasUnread = session.hasUnread === true || unreadCount > 0;
+      const unreadUnavailable = isSessionReadStateUnavailable(session);
+      const hasUnread = unreadUnavailable
+        ? false
+        : session.hasUnread === true || unreadCount > 0;
       const item = document.createElement("div");
       item.className = `session-item ${
         session.id === state.currentSessionId ? "active" : ""
@@ -92,6 +100,7 @@ export function createSessionController({
         <button class="session-open-button" type="button" title="${escapeAttribute(titleOf(session))}">
           <div class="session-title-row">
             <div class="session-title" dir="auto">${escapeHtml(titleOf(session))}</div>
+            ${unreadUnavailable ? '<span class="session-unread-badge" title="Unread status unavailable" aria-label="Unread status unavailable">?</span>' : ""}
             ${
               hasUnread
                 ? `<span class="session-unread-badge" title="${escapeAttribute(
@@ -175,12 +184,20 @@ export function createSessionController({
   }
 
   function applyReadState(sessionId, readState) {
-    const value = readState && typeof readState === "object" ? readState : {};
-    const normalizedSessionId = textOf(value.sessionId || sessionId);
+    const incoming =
+      readState && typeof readState === "object" ? readState : {};
+    const normalizedSessionId = textOf(incoming.sessionId || sessionId);
     if (!normalizedSessionId) return false;
+    const known = byId(normalizedSessionId);
+    if (isOlderSessionReadState(incoming, known)) return false;
+    const value = mergeSessionReadStateUpdate(incoming, known);
+    const unreadUnavailable = isSessionReadStateUnavailable(value);
     const unreadCount = getNumber(value.unreadCount, 0);
     const normalized = {
       sessionId: normalizedSessionId,
+      readStateStatus: unreadUnavailable
+        ? "unavailable"
+        : value.readStateStatus,
       lastReadMessageId: textOf(value.lastReadMessageId),
       lastReadAt: value.lastReadAt || null,
       unreadCount,
@@ -188,6 +205,15 @@ export function createSessionController({
       latestMessageId: textOf(value.latestMessageId),
       latestAssistantMessageId: textOf(value.latestAssistantMessageId),
     };
+    if (unreadUnavailable) {
+      for (const field of [
+        "lastReadMessageId",
+        "lastReadAt",
+        "unreadCount",
+        "hasUnread",
+      ])
+        normalized[field] = value[field] ?? null;
+    }
     let changed = false;
     state.sessions = state.sessions.map((session) => {
       if (textOf(session.id) !== normalized.sessionId) return session;
@@ -195,6 +221,7 @@ export function createSessionController({
       return {
         ...session,
         readState: normalized,
+        readStateStatus: normalized.readStateStatus,
         unreadCount: normalized.unreadCount,
         hasUnread: normalized.hasUnread,
         lastReadMessageId: normalized.lastReadMessageId,

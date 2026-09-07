@@ -83,6 +83,8 @@
     "dist/src/web-ui/",
     "runtime.config.schema.json",
     "src/runtime/README.md",
+    "src/runtime/scheduler/README.md",
+    "src/runtime/local-host/README.md",
     "LICENSE",
     "docs/architecture.md",
     "docs/bridge-compatibility.md",
@@ -172,5 +174,5 @@
   },
   "type": "module",
   "types": "./dist/src/runtime/index.d.ts",
-  "version": "1.2.0"
+  "version": "1.3.0"
 }

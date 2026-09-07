@@ -38,6 +38,9 @@ export const EXECUTION_AGENT_ROOT_CONTRACT: RequestRootContractAdapter =
         includeTitle: options.includeTitle,
         allowPlanner: options.allowedRoleIds.includes("planner"),
         allowAuditor: options.allowedRoleIds.includes("reviewer"),
+        ...(options.memoryRecallMessage
+          ? { memoryRecallMessage: options.memoryRecallMessage }
+          : {}),
       });
       return Object.freeze({
         decision: projectKernelDecision(
@@ -58,6 +61,9 @@ export const EXECUTION_AGENT_ROOT_CONTRACT: RequestRootContractAdapter =
           requestSteering,
           options.steeringVersion,
         ),
+        ...(options.memoryRecallMessage
+          ? { memoryRecallMessage: options.memoryRecallMessage }
+          : {}),
       });
     },
   });
@@ -73,6 +79,12 @@ function projectKernelDecision(
     ...(decision.title !== undefined ? { title: decision.title } : {}),
   };
   switch (decision.action) {
+    case "recall_memory":
+      return Object.freeze({
+        action: "recall_memory",
+        query: decision.query,
+        ...presentation,
+      });
     case "reconsider_capability_selection":
       return Object.freeze({
         action: "reconsider_capability_selection" as const,

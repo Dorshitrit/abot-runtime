@@ -1,3 +1,4 @@
+import { DEFAULT_MEMORY_RECALL_CALL_LIMIT } from "../long-term-memory/recall-policy.js";
 import {
   PATH_CONFIG_FIELDS,
   STRING_CONFIG_FIELDS,
@@ -212,6 +213,14 @@ function longTermMemorySchema(): Record<string, unknown> {
     properties: {
       enabled: { type: "boolean", default: false },
       emitClientEvents: { type: "boolean", default: false },
+      maxRecallCallsPerRequest: {
+        type: "integer",
+        minimum: 1,
+        maximum: Number.MAX_SAFE_INTEGER,
+        default: DEFAULT_MEMORY_RECALL_CALL_LIMIT,
+        description:
+          "Maximum explicit memory recall calls offered per request.",
+      },
       embeddingProfileId: {
         type: "string",
         minLength: 1,

@@ -1,3 +1,5 @@
+import { resolveMemoryRecallSteeringVersion } from "../../long-term-memory/recall-binding.js";
+import type { ChatMessage } from "../../../model-gateway/types.js";
 import {
   invokeRepairableRawModelStep,
   type RawModelValidationResult,
@@ -27,6 +29,7 @@ const EXECUTION_AGENT_RESPONSE_MAX_REPAIR_ATTEMPTS = 2;
 export async function runExecutionAgentResponse(
   request: RequestExecutionScope,
   options: Readonly<{
+    memoryRecallMessage?: ChatMessage;
     head: RoleCallLedgerHead;
     call: RoleCallFrame;
     steeringSnapshot: RequestSteeringSnapshot;
@@ -39,15 +42,23 @@ export async function runExecutionAgentResponse(
 export async function runExecutionAgentAuthoredResponse(
   request: RequestExecutionScope,
   options: Readonly<{
+    memoryRecallMessage?: ChatMessage;
     head: RoleCallLedgerHead;
     call: RoleCallFrame;
     steeringSnapshot: RequestSteeringSnapshot;
   }>,
 ): Promise<RootAuthoredResponse> {
+  const boundSteeringVersion = resolveMemoryRecallSteeringVersion(
+    options.memoryRecallMessage,
+    request.requestId,
+    options.call.callId,
+  );
   const memoryEnabled = request.longTermMemory?.enabled === true;
-  const memoryMessage = memoryEnabled
-    ? await retrieveResponseLongTermMemory(request, options.steeringSnapshot)
-    : undefined;
+  const memoryMessage =
+    options.memoryRecallMessage ??
+    (memoryEnabled
+      ? await retrieveResponseLongTermMemory(request, options.steeringSnapshot)
+      : undefined);
   const maxResponseChars = Math.min(
     EXECUTION_AGENT_RESPONSE_MAX_LENGTH,
     options.head.policy.limits.maxResponseChars,
@@ -73,6 +84,7 @@ export async function runExecutionAgentAuthoredResponse(
   if (memoryEnabled) {
     return invokeRootAuthoredResponse({
       request,
+      boundSteeringVersion,
       modelStep: input.modelStep,
       messages: input.messages,
       contextCompaction,

@@ -1,0 +1,52 @@
+.conversation-status {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px 0 8px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.conversation-status[hidden] {
+  display: none;
+}
+
+@supports ((background-clip: text) or (-webkit-background-clip: text)) {
+  .conversation-status.is-animated {
+    background-image: linear-gradient(
+      105deg,
+      var(--muted) 38%,
+      var(--text) 48%,
+      #fff 50%,
+      var(--text) 52%,
+      var(--muted) 62%
+    );
+    background-size: 240% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    animation: conversation-status-shimmer var(--status-shimmer-duration)
+      ease-in-out infinite;
+    animation-delay: var(--status-shimmer-delay);
+  }
+}
+
+@keyframes conversation-status-shimmer {
+  0% {
+    background-position: 150% 0;
+  }
+  65%,
+  100% {
+    background-position: -150% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce), (forced-colors: active) {
+  .conversation-status.is-animated {
+    animation: none;
+    background: none;
+    color: var(--muted);
+  }
+}

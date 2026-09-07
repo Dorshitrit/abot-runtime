@@ -8,9 +8,17 @@
 @import url("./styles/23-composer-plan.css");
 @import url("./styles/24-conversation-role-cards.css");
 @import url("./styles/25-conversation-sources.css");
+@import url("./styles/26-message-content.css");
+@import url("./styles/27-conversation-tools.css");
+@import url("./styles/28-conversation-status.css");
 @import url("./styles/30-inspector-config.css");
 @import url("./styles/40-config-workspace.css");
 @import url("./styles/35-memory-onboarding.css");
 @import url("./styles/36-memory-management.css");
 @import url("./styles/37-config-operations.css");
+@import url("./styles/38-schedules.css");
+@import url("./styles/38-schedule-workspace.css");
 @import url("./styles/90-responsive.css");
+@import url("./styles/91-schedules-responsive.css");
+@import url("./styles/18-dashboard.css");
+@import url("./styles/92-dashboard-responsive.css");

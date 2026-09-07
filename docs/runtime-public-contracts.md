@@ -131,7 +131,9 @@ not create `planner.plan.*` state or events.
 Runtime capabilities use the stable tool event envelope. Adapter-owned
 presentation metadata supplies the tool, operation and action type; target
 metadata contains only resolved logical paths. Physical
-roots, opaque subject identities and authored payload bodies are never exposed.
+roots and opaque subject identities are never exposed. A plugin may opt into
+bounded input or result excerpts through its declared event presentation.
+These excerpts are display data, not additional model instructions or evidence.
 These events describe capability execution only. Only `planner.plan.*` events
 report canonical item-status changes or semantic progress.
 
@@ -145,6 +147,31 @@ Tool events use the current tool execution boundary:
 
 A `tool.completed` event with `ok: true` proves only that the tool step
 succeeded. It does not prove the user request is complete.
+
+Registered-tool events may include an optional `executionId` shared by their
+payload, approval and execution stages. Clients correlate with
+`(requestId, executionId)` rather than matching tool names or arrival order.
+Payload publication still occurs after canonical admission. Older events without
+this field do not establish a lifecycle pairing.
+
+The same adapter boundary may include `executorRole` and `roleCallId` from the
+canonical role call. Clients can place the action under its executor even when
+the active role has changed before completion. These fields are display identity;
+they do not change runtime stages, tool parameters, approval inputs or evidence.
+The root role identifier remains `supervisor` regardless of its selected contract.
+
+`eventPresentation.resultMetadata` maps optional display keys to existing tool
+result fields through `{path, kind}` descriptors. Paths select `output` or an
+own-property path under `data` (at most four segments). Kinds are `preview`,
+`number` and `boolean`, with at most 16 mappings. A preview is limited to 1,200
+characters and 20 lines, with a 2,400-character total preview budget per event;
+its companion `<key>Truncated` flag describes preview clipping, independently
+of source-result truncation. Missing or mismatched fields are omitted. Valid
+declared values take precedence over generic metadata; omitted fields retain
+the existing fallback metadata. Projection
+does not mutate tool results, canonical evidence, action references or model
+context. The client renders excerpts as inert text and never reconstructs an
+old result by re-reading the current file or memory store.
 
 ## ToolRegistry
 
@@ -176,6 +203,10 @@ not in parser or runtime orchestration code.
 retained for compatibility. They must not select a request path or role.
 Model-facing availability and controls come from the registered
 `normalInvocation` contract.
+
+A normal-invocation contract accepts at most 32 operations. This bounds the
+registered operation catalog; it does not limit invocation frequency or the
+number of user-created scheduled Jobs.
 
 Every plugin-handler return is normalized by `ToolRegistry` into one complete
 `ToolExecutionResult`, whether the operation succeeds or fails. The selected

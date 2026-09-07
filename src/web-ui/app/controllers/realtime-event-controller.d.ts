@@ -27,6 +27,7 @@ export interface RealtimeEventControllerOptions {
   ): ConversationSessionMessage;
   renderMessages(): void;
   renderContextWindow?(): void;
+  renderActivityStatus?(): void;
   scheduleMessageRender(): void;
   scheduleThinkingRender(): void;
   cancelScheduledMessageRender(): void;

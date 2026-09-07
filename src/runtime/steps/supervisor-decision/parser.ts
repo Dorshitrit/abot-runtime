@@ -26,12 +26,22 @@ import {
   traceSupervisorEnvelopeRejected,
 } from "./diagnostics.js";
 import { readStructuredDecisionEnvelope } from "../../model/structured-decision-envelope.js";
+import {
+  isMemoryRecallDecisionRecord,
+  parseMemoryRecallDecision,
+} from "../memory-recall-decision.js";
+import {
+  projectSupervisorResponseRecommendation,
+  supervisorResponseRecommendationKeys,
+} from "./response-recommendation.js";
 
 export function parseSupervisorDecisionOutput(
   text: string,
   options: Readonly<{
     includeAcknowledgement?: boolean;
     includeTitle?: boolean;
+    includeResponseRecommendation?: boolean;
+    allowMemoryRecall?: boolean;
     allowedRoleIds?: readonly SupervisorDelegateRoleId[];
     availableWorkerCapabilityCatalog?: readonly WorkerCapabilityCatalogGroup[];
     diagnostic?: SupervisorDecisionDiagnosticContext;
@@ -39,6 +49,8 @@ export function parseSupervisorDecisionOutput(
 ): SupervisorRoutingDecisionParseResult {
   const includeAcknowledgement = options.includeAcknowledgement === true;
   const includeTitle = options.includeTitle === true;
+  const includeResponseRecommendation =
+    options.includeResponseRecommendation === true;
   const allowedRoleIds = [
     ...new Set(options.allowedRoleIds ?? SUPERVISOR_DELEGATE_ROLE_IDS),
   ];
@@ -100,6 +112,29 @@ export function parseSupervisorDecisionOutput(
   }
 
   const issues: SupervisorDecisionValidationIssue[] = [];
+  if (isMemoryRecallDecisionRecord(record)) {
+    const recalled = parseMemoryRecallDecision(record, {
+      allowMemoryRecall: options.allowMemoryRecall,
+      includeAcknowledgement,
+      includeTitle,
+      acknowledgementMaxLength: SUPERVISOR_ACKNOWLEDGEMENT_MAX_LENGTH,
+      titleMaxLength: SUPERVISOR_TITLE_MAX_LENGTH,
+    });
+    if (!diagnostic) return recalled;
+    if (!recalled.ok) {
+      traceSupervisorDecisionRejected({
+        diagnostic,
+        selectedAction: "recall_memory",
+        issues: recalled.issues,
+      });
+      return recalled;
+    }
+    traceSupervisorDecisionAccepted({
+      diagnostic,
+      decision: recalled.decision,
+    });
+    return recalled;
+  }
   let normalizedAcknowledgement: string | undefined;
   let acknowledgementOriginalLength: number | undefined;
   let workerCapabilityScope: RoleCallWorkerCapabilityScope | undefined;
@@ -121,6 +156,10 @@ export function parseSupervisorDecisionOutput(
       record,
       [
         "action",
+        ...supervisorResponseRecommendationKeys(
+          record,
+          includeResponseRecommendation,
+        ),
         ...(includeAcknowledgement ? ["acknowledgement"] : []),
         ...(includeTitle ? ["title"] : []),
       ],
@@ -212,6 +251,7 @@ export function parseSupervisorDecisionOutput(
     selectedAction,
     includeAcknowledgement,
     includeTitle,
+    includeResponseRecommendation,
     normalizedAcknowledgement,
     workerCapabilityScope,
   });
@@ -235,6 +275,7 @@ function buildAcceptedSupervisorRoutingDecision(params: {
   selectedAction: "invoke_role" | "respond";
   includeAcknowledgement: boolean;
   includeTitle: boolean;
+  includeResponseRecommendation: boolean;
   normalizedAcknowledgement?: string;
   workerCapabilityScope?: RoleCallWorkerCapabilityScope;
 }): SupervisorRoutingDecision {
@@ -247,7 +288,15 @@ function buildAcceptedSupervisorRoutingDecision(params: {
       : {}),
   };
   if (params.selectedAction === "respond") {
-    return { action: "respond", ...presentation };
+    return {
+      action: "respond",
+      ...presentation,
+      ...(params.includeResponseRecommendation
+        ? projectSupervisorResponseRecommendation(
+            params.record.responseRecommendation,
+          )
+        : {}),
+    };
   }
   const objective = (params.record.objective as string | undefined)?.trim();
   if (params.record.roleId === "worker") {

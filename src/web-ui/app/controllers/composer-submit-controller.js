@@ -1,3 +1,4 @@
+import { captureComposerSubmissionScope, isCurrentComposerSubmissionScope } from "../lib/composer-submission-scope.js";
 import { resolveComposerPrimaryAction } from "../ui-behavior.js";
 
 export function createComposerSubmitController({
@@ -13,8 +14,10 @@ export function createComposerSubmitController({
   setMessageStatus,
   getSubmissionBlock = () => null,
   onSubmissionBlocked = () => {},
+  isComposerVisible = () => true,
 }) {
   function resize() {
+    if (!isComposerVisible()) return;
     dom.composerInput.style.height = "auto";
     dom.composerInput.style.height = `${Math.min(
       dom.composerInput.scrollHeight,
@@ -23,6 +26,7 @@ export function createComposerSubmitController({
   }
 
   function updateSendState() {
+    if (!isComposerVisible()) return;
     const queueDraining = queue.isCurrentDraining();
     const submissionBlock = getSubmissionBlock();
     composerActions.render({
@@ -40,6 +44,7 @@ export function createComposerSubmitController({
   }
 
   function dispatch(requestedAction = "") {
+    if (!isComposerVisible()) return;
     const text = dom.composerInput.value.trim();
     const submissionBlock = getSubmissionBlock();
     if (text && submissionBlock) {
@@ -84,8 +89,15 @@ export function createComposerSubmitController({
         : action === "send_next"
           ? queue.enqueue(text)
           : chatRequests.sendMessage(text);
+    const completionScope = captureComposerSubmissionScope(
+      state, selectedEnvironmentId(),
+    );
+    const isSubmissionForCurrentComposerView = () => isCurrentComposerSubmissionScope(
+      completionScope, state, selectedEnvironmentId(),
+    );
     void operation
       .then(() => {
+        if (!isSubmissionForCurrentComposerView()) return;
         if (action === "steer") {
           setMessageStatus("Update accepted. ABot is working.", true);
         } else if (action === "send_next") {
@@ -93,14 +105,16 @@ export function createComposerSubmitController({
         }
       })
       .catch((error) => {
+        if (!isSubmissionForCurrentComposerView()) return;
         if (action !== "send") queue.restoreText(text, submissionScope);
         conversationSession.appendRequestError(error);
         setMessageStatus("ABot request failed.");
       })
       .finally(() => {
+        if (!isSubmissionForCurrentComposerView()) return;
         state.composerSending = false;
         updateSendState();
-        dom.composerInput.focus();
+        if (isComposerVisible()) dom.composerInput.focus();
       });
   }
 

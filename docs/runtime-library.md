@@ -41,11 +41,34 @@ const handle = runtime.host.start({
   toolRegistry: runtime.tools,
 });
 
+await handle.ready;
+
 process.on("SIGINT", async () => {
   await handle.stop();
   process.exit(0);
 });
 ```
+
+The default host starts the scheduler automatically, including persisted Jobs.
+Overlapping handles for the same scheduler share its lifetime: `stop()` closes
+that handle's Bridge, and only the last handle stops the scheduler. `start()` remains
+synchronous for compatibility; the optional `ready` promise exposes asynchronous
+startup errors and requests wait for readiness. A failed startup releases its own
+resources even when a consumer does not read `ready`. Custom injected hosts may
+keep the existing `{ stop }` handle.
+
+Supply adapter overrides before starting a host. A different session store,
+configuration, model client, attachment store, tool registry or memory service
+rebuilds the scheduler's request graph as well as ordinary requests. Session
+storage remains backed by the injected store, through the composed deletion
+guard. Use the host's effective graph consistently; do not start the original
+graph alongside its replacement against the same scheduler directory. An event
+observer override alone keeps the existing admission and scheduler lifetime.
+
+Session deletion finishes attachment cleanup before acknowledging the deletion
+receipt. An explicit repeat retries only failed cleanup, through the same owner
+for Web, Bridge and local clients. Web shutdown closes HTTP/WebSocket intake and
+prevents new environment initialization before awaiting pending startup work.
 
 ## Runtime Config
 

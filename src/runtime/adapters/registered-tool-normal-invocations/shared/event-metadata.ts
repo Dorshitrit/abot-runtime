@@ -16,3 +16,19 @@ export function buildToolIntentEventMetadata(
     intent,
   };
 }
+
+/** Canonical caller identity used only to attribute client lifecycle events. */
+export type ToolEventExecutorIdentity = Readonly<{
+  callId: string;
+  roleId: string;
+}>;
+
+export function buildToolExecutorEventMetadata(
+  identity: ToolEventExecutorIdentity | undefined,
+) {
+  if (!identity) return undefined;
+  return {
+    roleCallId: identity.callId,
+    executorRole: identity.roleId,
+  };
+}

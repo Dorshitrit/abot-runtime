@@ -2,6 +2,8 @@ import type { ServerResponse } from "node:http";
 import type WebSocket from "ws";
 
 import type { RunRequestMessage } from "../../runtime/request/contracts.js";
+import type { SchedulerRun } from "../../runtime/scheduler/contracts.js";
+import type { RuntimeRequestOptions } from "../../runtime/composition.js";
 import {
   createRequestSteeringInbox,
   type RequestSteeringInbox,
@@ -36,6 +38,39 @@ export class LocalRequestExecution {
   >();
 
   constructor(private readonly realtime: RealtimeClientHub) {}
+
+  scheduledRequestOptions(run: SchedulerRun): RuntimeRequestOptions {
+    const requestSteering = createRequestSteeringInbox({
+      requestId: run.requestId,
+    });
+    this.activeRequests.set(run.requestId, {
+      requestId: run.requestId,
+      sessionId: run.sessionId,
+      environmentId: run.environmentId,
+      startedAt: Date.now(),
+      lastEventAt: Date.now(),
+      lastEventName: "request.started",
+      events: [],
+      finalState: null,
+      requestSteering,
+    });
+    return {
+      toolApprovalController: this.createToolApprovalController(),
+      requestSteering,
+    };
+  }
+
+  publishScheduled(payload: JsonObject): void {
+    const isTerminal =
+      payload.type === "completed" || payload.type === "failed";
+    const outbound = isTerminal
+      ? { ...payload, requestOrigin: "schedule" }
+      : payload;
+    if (payload.sessionDeleted !== true) this.publish(outbound);
+    if (isTerminal) {
+      this.activeRequests.delete(getString(payload.requestId));
+    }
+  }
 
   async start(
     res: ServerResponse,
@@ -120,13 +155,21 @@ export class LocalRequestExecution {
     }));
   }
 
-  handleSteer(message: JsonObject): JsonObject {
+  async handleSteer(
+    message: JsonObject,
+    resolveEnvironment: (id: string) => RuntimeEnvironment,
+  ): Promise<JsonObject> {
     const requestId = getString(message.requestId).trim();
     const steerId = getString(message.steerId).trim();
     const text = getString(message.text).trim();
     const active = requestId ? this.activeRequests.get(requestId) : undefined;
+    const steer = active
+      ? resolveEnvironment(active.environmentId).requests.steer
+      : undefined;
     const result =
-      active?.requestSteering.append({ steerId, text }) ??
+      (steer
+        ? await steer(requestId, { steerId, text })
+        : active?.requestSteering.append({ steerId, text })) ??
       ({ ok: false, reason: "request_not_active" } as const);
     return result.ok
       ? {

@@ -65,8 +65,14 @@ export type ToolEventLifecycleCopy = Readonly<{
   message: string;
 }>;
 
+export type ToolEventResultMetadataProjection = Readonly<{
+  path: string;
+  kind: "preview" | "number" | "boolean";
+}>;
+
 export type ToolEventPresentation = Readonly<{
   metadata: Readonly<Record<string, ToolEventMetadataProjection>>;
+  resultMetadata?: Readonly<Record<string, ToolEventResultMetadataProjection>>;
   lifecycle?: Readonly<{
     started?: ToolEventLifecycleCopy;
     completed?: ToolEventLifecycleCopy;

@@ -52,6 +52,7 @@ export function createRuntimeSelectionController({
   client,
   recordControlEvent,
   onAttachmentPolicyChange,
+  getComposerSessionId = () => state.currentSessionId,
   onModelCatalogLoading = () => {},
   onModelCatalogLoaded = () => {},
   onModelCatalogUnavailable = () => {},
@@ -144,12 +145,12 @@ export function createRuntimeSelectionController({
 
   const selectedModelPreference = () =>
     dom.modelSelect.value ? { profileId: dom.modelSelect.value } : null;
-  const selectedModelProfile = () =>
+  const selectedModelProfile = (profileId = dom.modelSelect.value) =>
     state.modelProfiles.find(
-      (profile) => profile.id === textOf(dom.modelSelect.value),
+      (profile) => profile.id === textOf(profileId),
     ) || null;
-  function selectedModelSupportsImageInput() {
-    const profile = selectedModelProfile();
+  function selectedModelSupportsImageInput(profileId = dom.modelSelect.value) {
+    const profile = selectedModelProfile(profileId);
     if (typeof profile?.supportsImageInput === "boolean")
       return profile.supportsImageInput;
     const inputModalities = profile?.capabilities?.inputModalities;
@@ -176,7 +177,7 @@ export function createRuntimeSelectionController({
       state.lastModelByEnvironment,
     );
   const preferredModel = () =>
-    textOf(state.sessionModels[state.currentSessionId]) ||
+    textOf(state.sessionModels[getComposerSessionId()]) ||
     textOf(state.lastModelByEnvironment[selectedEnvironmentId()]);
 
   function applyModelSelection() {
@@ -201,8 +202,8 @@ export function createRuntimeSelectionController({
     const profileId = textOf(dom.modelSelect.value);
     if (!profileId) return;
     state.lastModelByEnvironment[selectedEnvironmentId()] = profileId;
-    if (state.currentSessionId)
-      state.sessionModels[state.currentSessionId] = profileId;
+    if (getComposerSessionId())
+      state.sessionModels[getComposerSessionId()] = profileId;
     saveModelPreferences();
   }
 
@@ -212,8 +213,8 @@ export function createRuntimeSelectionController({
   };
   const currentToolPermissionMode = () =>
     normalizeToolPermissionMode(
-      state.currentSessionId
-        ? sessionModeFor(state.currentSessionId).toolPermissionMode
+      getComposerSessionId()
+        ? sessionModeFor(getComposerSessionId()).toolPermissionMode
         : undefined,
     );
 
@@ -224,13 +225,13 @@ export function createRuntimeSelectionController({
   }
 
   function setToolPermissionMode(mode) {
-    if (!state.currentSessionId) return;
+    if (!getComposerSessionId()) return;
     const normalized = normalizeToolPermissionMode(mode);
     if (normalized === "full_access")
-      delete state.sessionModes[state.currentSessionId];
+      delete state.sessionModes[getComposerSessionId()];
     else {
-      state.sessionModes[state.currentSessionId] = {
-        ...sessionModeFor(state.currentSessionId),
+      state.sessionModes[getComposerSessionId()] = {
+        ...sessionModeFor(getComposerSessionId()),
         toolPermissionMode: normalized,
         savedAt: Date.now(),
       };
@@ -246,7 +247,7 @@ export function createRuntimeSelectionController({
     const meta = permissionMeta(mode);
     dom.permissionModeButton.innerHTML = `<span class="permission-mode-label">${escapeHtml(meta.label)}</span>`;
     dom.permissionModeButton.title = meta.title;
-    dom.permissionModeButton.disabled = !state.currentSessionId;
+    dom.permissionModeButton.disabled = !getComposerSessionId();
     dom.permissionModeButton.classList.toggle("full", mode === "full_access");
     dom.permissionModeButton.classList.toggle(
       "open",

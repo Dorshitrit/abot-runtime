@@ -4,7 +4,57 @@ All notable changes to this project should be documented in this file.
 
 This project follows semantic versioning after the first public release.
 
-## Unreleased
+## 1.3.0 - 2026-09-07
+
+ABot 1.3.0 adds native scheduled Jobs, explicit memory recall, and richer
+Web UI feedback.
+
+### Added
+
+- The Web UI opens on a Home dashboard with recent Job activity, recent
+  conversations including unread messages, and shortcuts for attachments,
+  Jobs, conversations, and configuration. Its shared composer starts a new
+  conversation while keeping the existing Chat draft separate. Empty activity
+  offers editable Job templates that create dedicated conversations on Save.
+- Native one-time and recurring Jobs persist their task, model, and mode, with
+  a built-in schedules capability and Web UI management and run history.
+  Jobs run while the local runtime host is active; missed offline occurrences
+  are recorded without being backfilled.
+- Supervisor and Execution Agent can request focused long-term memory recall
+  and continue the same root decision when memory is enabled.
+- Chat messages render Markdown tables, nested lists, quotes, code, and clickable
+  links, with bounded, cached rich link previews.
+
+### Changed
+
+- Local runtime applications share scheduler ownership, with isolated storage
+  for named environments and durable scheduling history.
+- Tool Activity uses compact evolving rows with executor attribution, expandable
+  recorded input/output, and distinct partial, empty, unchanged, and failed
+  outcomes.
+- Live activity text describes the current phase below assistant content;
+  animation respects reduced-motion preferences and stays static during approval
+  waits or disconnections.
+- The Jobs workspace uses compact rows, defaults to active and paused Jobs,
+  opens the first visible editor, and refreshes lists without replacing drafts
+  or losing matching selections.
+- Web UI typography is slightly smaller while mobile and touch form controls
+  retain readable sizing.
+- Explicit memory recall has a configurable per-request limit through
+  `longTermMemory.maxRecallCallsPerRequest` (default: 5). Reaching the limit
+  preserves retrieved context and allows normal request continuation.
+
+### Fixed
+
+- Direct Supervisor responses retain a bounded recommendation from the accepted
+  routing decision and discard superseded response preparation after steering.
+- Scheduled requests carry their Job and run origin into root decisions and
+  response authoring. Scheduling descriptions distinguish reminders from tasks
+  the runtime should perform.
+- Memory recall continuations preserve the accepted lookup, linked result, and
+  ordering relative to completed child calls, including after compaction.
+- Activity summaries highlight only the failure count, and rejected tool
+  preparations or executions settle their correlated lifecycle.
 
 ## 1.2.0 - 2026-09-04
 

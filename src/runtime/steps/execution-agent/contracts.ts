@@ -1,4 +1,5 @@
 import { MODEL_STEPS } from "../../../shared/model-steps.js";
+import type { MemoryRecallDecision } from "../memory-recall-decision.js";
 import type {
   RoleCapabilitySelectionProjection,
   RoleCapabilitySelectionReconsiderationCause,
@@ -113,6 +114,7 @@ export type ExecutionAgentInvokeAuditorDecision = Readonly<
 >;
 
 export type ExecutionAgentDecision =
+  | MemoryRecallDecision
   | ExecutionAgentOpenCapabilityScopeDecision
   | ExecutionAgentExtendCapabilityScopeDecision
   | ExecutionAgentRespondDecision
@@ -166,6 +168,7 @@ export type ExecutionAgentDecisionContractOptions = Readonly<{
   includeAcknowledgement?: boolean;
   includeTitle?: boolean;
   allowRespond?: boolean;
+  allowMemoryRecall?: boolean;
   allowPlanner?: boolean;
   allowAuditor?: boolean;
   availableAuditCriterionIds?: readonly string[];

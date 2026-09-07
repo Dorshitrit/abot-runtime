@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { ModelGatewayAttachment } from "../../model-gateway/types.js";
+import { directRespondDecision } from "./support/supervisor-direct-respond.js";
 import {
   projectOllamaFormat,
   toOpenAIResponsesTextFormat,
@@ -1016,53 +1017,6 @@ describe("Supervisor decision feasibility contract", () => {
     }
   });
 
-  test("keeps the Supervisor as the dispatcher without giving it tools or project context", () => {
-    const instructions = buildSupervisorDecisionInstructions();
-
-    expect(instructions).toContain(
-      "fixed dispatcher and terminal response owner",
-    );
-    expect(instructions).toContain("Choose respond only when");
-    expect(instructions).toContain("Otherwise choose invoke_role");
-    expect(instructions).toContain("You have no capabilities");
-    expect(instructions).toContain(
-      "perform exactly one independently completable external observation or mutation",
-    );
-    expect(instructions).toContain(
-      "Choose Worker only when the complete remaining outcome is one independently completable external observation or mutation",
-    );
-    expect(instructions).toContain(
-      "Do not turn a multi-component requested final state into one Worker task",
-    );
-    expect(instructions).toContain(
-      "When the requested result is understanding, comparison, analysis, or research synthesis",
-    );
-    expect(instructions).toContain(
-      "Roles with an objective run in isolated call frames and do not inherit the conversation or this Supervisor's objective",
-    );
-    expect(instructions).toContain(
-      "automatically supplies bounded canonical results from settled direct siblings",
-    );
-    expect(instructions).toContain(
-      "When a completed sibling already established information",
-    );
-    expect(instructions).not.toContain(
-      "Do not split one coherent bounded outcome without a material reason",
-    );
-    expect(instructions).toContain(
-      "Persisted artifacts stay at their targets; never request their contents, listings, transcripts, or separate proof",
-    );
-    expect(instructions).toContain(
-      "Do not prescribe decomposition, reasoning approach, capability choice",
-    );
-    expect(instructions).not.toContain("matching one supplied schema variant");
-    expect(instructions).toContain("The called role returns to you");
-    expect(instructions).not.toContain("profileId");
-    expect(instructions).not.toContain("development");
-    expect(instructions).not.toContain("general");
-    expect(instructions).not.toContain("sandbox");
-  });
-
   test("defers configured Markdown methodology to shared invocation with bounded diagnostics", () => {
     configureDebugLogger({ enabled: true });
     const methodology =
@@ -1259,16 +1213,6 @@ describe("Supervisor decision feasibility contract", () => {
     expect(instructions).toContain(
       'Request-scoped Worker capability affordances: [{"purpose":"Observe one configured external state source.","effect":"observation"}]',
     );
-    expect(instructions).toContain("You cannot select or invoke a capability");
-    expect(instructions).toContain(
-      "let Worker choose whether and how to use its configured capabilities",
-    );
-    expect(instructions).toContain(
-      "absence from the conversation is not evidence that the state is absent",
-    );
-    expect(instructions).toContain(
-      "Invoke Worker for that observation instead of responding with an unverified negative",
-    );
     expect(instructions).not.toContain("HIDDEN_CAPABILITY_ID");
     expect(instructions).not.toContain("HIDDEN_CONTROL");
     expect(instructions).not.toContain('"capabilityId"');
@@ -1281,9 +1225,6 @@ describe("Supervisor decision feasibility contract", () => {
     expect(withoutWorker.workerCapabilityAffordances).toEqual([]);
     expect(withoutWorker.context.messages[0]!.content).not.toContain(
       sourceAffordance.purpose,
-    );
-    expect(withoutWorker.context.messages[0]!.content).not.toContain(
-      "absence from the conversation is not evidence that the state is absent",
     );
 
     const withCatalog = buildSupervisorDecisionInput(createRequest(), {
@@ -1580,7 +1521,7 @@ describe("Supervisor decision feasibility contract", () => {
           ...baseRequest.modelPolicy!.profiles,
           "supervisor-test-profile": {
             ...baseProfile,
-            contextWindowTokens: 3_240,
+            contextWindowTokens: 3_180,
           },
         },
       },
@@ -2346,10 +2287,9 @@ describe("Supervisor decision feasibility contract", () => {
 
   test("invokes the dedicated Supervisor step with call-scoped diagnostics", async () => {
     configureDebugLogger({ enabled: true });
-    const modelDecisionText = decisionText({
-      action: "respond",
-      title: "Bounded discussion",
-    });
+    const modelDecisionText = decisionText(
+      directRespondDecision({ title: "Bounded discussion" }),
+    );
     const invoke = vi.fn(async () => ({
       text: modelDecisionText,
       meta: {},
@@ -2391,10 +2331,7 @@ describe("Supervisor decision feasibility contract", () => {
     }
 
     expect(decision).toEqual({
-      decision: {
-        action: "respond",
-        title: "Bounded discussion",
-      },
+      decision: directRespondDecision({ title: "Bounded discussion" }),
       steeringVersion: 0,
     });
     expect(invoke).toHaveBeenCalledOnce();
@@ -2458,7 +2395,7 @@ describe("Supervisor decision feasibility contract", () => {
 
   test("skips the working-directory phase for respond, Researcher, and Reviewer", async () => {
     const cases = [
-      { allowedRoleIds: [] as const, decision: { action: "respond" as const } },
+      { allowedRoleIds: [] as const, decision: directRespondDecision() },
       {
         allowedRoleIds: ["researcher"] as const,
         decision: {

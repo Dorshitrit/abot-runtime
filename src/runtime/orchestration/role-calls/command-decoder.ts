@@ -16,6 +16,7 @@ import {
 } from "./contracts.js";
 import { parseRoleCallPlanBinding } from "./plan.js";
 import { normalizeRoleCallResultReceipt } from "./result-receipt.js";
+import { decodeMemoryRecallCommand } from "./memory-recall-decoder.js";
 import { parseRoleCallWorkerCapabilityScope } from "./worker-capability-scope.js";
 import {
   isRoleCallWorkingDirectoryRoleId,
@@ -44,6 +45,9 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
     return { ok: false, code: "invalid_command" };
   }
   switch (input.type) {
+    case "begin_memory_recall":
+    case "settle_memory_recall":
+      return decodeMemoryRecallCommand(input);
     case "create_root":
       return exactKeys(input, ["authority", "type"]) &&
         input.authority === "runtime"

@@ -1,4 +1,6 @@
 import type { ModelStep } from "../../shared/model-steps.js";
+import type { ChatMessage } from "../../model-gateway/types.js";
+import type { MemoryRecallDecision } from "../steps/memory-recall-decision.js";
 import type { RequestToolResultsView } from "../context/request-tool-results.js";
 import type {
   ExecutionPolicyAuthoritySnapshot,
@@ -29,8 +31,10 @@ export type RootContractCallIdentity = Readonly<{
 }>;
 
 export type RootContractDecision =
+  | MemoryRecallDecision
   | Readonly<{
       action: "respond";
+      responseRecommendation?: string;
       acknowledgement?: string;
       title?: string;
     }>
@@ -111,6 +115,7 @@ export type RootContractAdapter<TRequest> = Readonly<{
       includeTitle: boolean;
       allowedRoleIds: readonly RuntimeDelegateRoleId[];
       availableWorkerCapabilityCatalog: readonly WorkerCapabilityCatalogGroup[];
+      memoryRecallMessage?: ChatMessage;
       resume?: RoleChildReturnContext;
     }>,
   ): Promise<RootContractDecisionOutcome>;
@@ -120,9 +125,11 @@ export type RootContractAdapter<TRequest> = Readonly<{
       head: RoleCallLedgerHead;
       callFrame: RoleCallFrame;
       steeringVersion: number;
+      responseRecommendation?: string;
       call: RootContractCallIdentity;
       toolResults: RequestToolResultsView;
       resume?: RoleChildReturnContext;
+      memoryRecallMessage?: ChatMessage;
     }>,
   ): Promise<RootAuthoredResponse>;
 }>;

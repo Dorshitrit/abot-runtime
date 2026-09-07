@@ -119,6 +119,7 @@ describe("Supervisor capability brief input boundaries", () => {
     expect(detailed.format).toEqual(omitted.format);
     expect(detailed.format).toEqual(
       createSupervisorDecisionFormat({
+        includeResponseRecommendation: true,
         availableWorkerCapabilityCatalog: catalog,
       }),
     );

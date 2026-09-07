@@ -34,6 +34,9 @@ export function buildEnabledMemoryConfig(params: {
   emitClientEvents: boolean;
 }): RuntimeConfigFile {
   const models = isRecord(params.config.models) ? params.config.models : {};
+  const memory = isRecord(params.config.longTermMemory)
+    ? params.config.longTermMemory
+    : {};
   const profiles = readEmbeddingProfiles(params.config);
   const existingProfile = profiles[params.profileId];
   const existingOptions = readMatchingProfileOptions({
@@ -59,6 +62,9 @@ export function buildEnabledMemoryConfig(params: {
       enabled: true,
       emitClientEvents: params.emitClientEvents,
       embeddingProfileId: params.profileId,
+      ...(memory.maxRecallCallsPerRequest === undefined
+        ? {}
+        : { maxRecallCallsPerRequest: memory.maxRecallCallsPerRequest }),
     },
   };
 }

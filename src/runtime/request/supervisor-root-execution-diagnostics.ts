@@ -13,6 +13,7 @@ export type SupervisorRootFailureStage =
   | "project_activation"
   | "project_worker_catalog"
   | "decide"
+  | "recall_memory"
   | "publish_title"
   | "publish_acknowledgement"
   | "apply_root_transition"

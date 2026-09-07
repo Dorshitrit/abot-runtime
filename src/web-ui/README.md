@@ -11,6 +11,56 @@ It is intentionally a client/transport layer only:
 - Runtime core orchestration is not changed for the web UI.
 - Existing external bridge clients remain unchanged.
 
+Native schedules are available only with the local Runtime backend. The browser
+uses the existing `/web-config` backend identity to expose the Schedules
+workspace after bootstrap. Bridge mode hides its navigation and blocks schedule
+requests locally; historical schedule cards still show their saved content,
+with the Job navigation disabled. There is no scheduling adapter for the
+external bridge.
+
+Run history shows one newest-first page at a time, with Newest, Newer and Older
+navigation. Refresh and five-second polling keep the current page; selecting a
+different Job or environment starts at the newest page. The HTTP endpoint
+defaults to 50 runs and accepts a maximum page size of 100, with a Job-scoped
+cursor for older records. The owner query is bounded before local RPC transfer;
+each returned record retains its complete prompt, result and execution details.
+
+The local backend starts configured environments independently, so a slow or
+unavailable owner cannot delay another environment's schedules. Shutdown awaits
+the startup aggregate before stopping every created environment.
+
+When a scheduled request finishes outside the displayed conversation, its
+correlated terminal event refreshes the session list from the backend. The
+sidebar receives the saved preview and unread state without selecting that
+conversation, changing the active request, or marking its answer as read.
+Environment checks and the existing session-list read guards discard stale
+updates; event payloads never recreate deleted conversations.
+The local scheduled-event publisher marks terminal events with
+`requestOrigin: "schedule"`. A browser that connects after the run starts can
+therefore refresh from its explicit environment, session and request identity,
+even without the earlier trigger. This marker carries no activation prompt and
+does not synthesize a chat message or replay an action.
+
+## Message content
+
+User and assistant messages render CommonMark Markdown with tables, nested
+lists, emphasis, quotes, code blocks, and automatic clickable URLs. HTML in
+messages stays literal. Code stays literal and is not collected for previews.
+The browser parser is bundled locally under `app/vendor/`.
+
+Completed messages show up to three unique compact link cards. Visible cards
+load public-page title, description, and thumbnail metadata through the Web UI
+server; full details are available in the card tooltip. Streaming messages wait
+until completion. The preview caches are bounded, temporary, and deduplicate
+repeated renders. Sites without available metadata retain a clickable title and
+domain. Remote Markdown image URLs use the same preview path.
+
+Preview fetching is independent of Runtime requests and tool-source receipts.
+The shared public HTTP transport validates DNS and redirects, pins the resolved
+public address, and limits response sizes and time. Thumbnail images use an
+opaque same-origin proxy with raster validation. The preview endpoint works
+with both the local Runtime backend and the external bridge backend.
+
 ## Run
 
 ```bash

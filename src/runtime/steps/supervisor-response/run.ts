@@ -1,3 +1,5 @@
+import { resolveMemoryRecallSteeringVersion } from "../../long-term-memory/recall-binding.js";
+import type { ChatMessage } from "../../../model-gateway/types.js";
 import {
   invokeRepairableRawModelStep,
   type RawModelValidationResult,
@@ -23,16 +25,25 @@ import {
 } from "./input.js";
 import { buildSupervisorResponseRepairHint } from "./prompt.js";
 import { SUPERVISOR_DECISION_MODEL_STEP } from "../supervisor-decision/contracts.js";
-import type { RequestSteeringSnapshot } from "../../request/request-steering.js";
+import {
+  resolveRequestSteeringInbox,
+  type RequestSteeringSnapshot,
+} from "../../request/request-steering.js";
 import { retrieveResponseLongTermMemory } from "../../long-term-memory/response-context.js";
 import type { RootAuthoredResponse } from "../../long-term-memory/contracts.js";
 import { authorSupervisorMemoryCandidates } from "./memory-authoring.js";
+import {
+  assertBoundModelStepSteeringCurrent,
+  isModelStepSteeringSuperseded,
+} from "../../model/model-step-steering.js";
 
 const SUPERVISOR_RESPONSE_MAX_REPAIR_ATTEMPTS = 1;
 
 export async function runSupervisorResponse(
   request: RequestExecutionScope,
   options: Readonly<{
+    responseRecommendation?: string;
+    memoryRecallMessage?: ChatMessage;
     call: SupervisorResponseCallIdentity;
     toolResults: RequestToolResultsView;
     resume?: SupervisorResponseResumeContext;
@@ -45,17 +56,32 @@ export async function runSupervisorResponse(
 export async function runSupervisorAuthoredResponse(
   request: RequestExecutionScope,
   options: Readonly<{
+    responseRecommendation?: string;
+    memoryRecallMessage?: ChatMessage;
     call: SupervisorResponseCallIdentity;
     toolResults: RequestToolResultsView;
     resume?: SupervisorResponseResumeContext;
     steeringSnapshot?: RequestSteeringSnapshot;
   }>,
 ): Promise<RootAuthoredResponse> {
+  const hasResponseRecommendation =
+    options.responseRecommendation !== undefined;
+  const boundSteeringVersion =
+    resolveMemoryRecallSteeringVersion(
+      options.memoryRecallMessage,
+      request.requestId,
+      options.call.callId,
+    ) ??
+    (hasResponseRecommendation ? options.steeringSnapshot?.version : undefined);
+  const requestSteering = resolveRequestSteeringInbox(request.requestSteering);
+  assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
   const memoryEnabled = request.longTermMemory?.enabled === true;
   const memoryMessage =
-    memoryEnabled && options.steeringSnapshot
+    options.memoryRecallMessage ??
+    (memoryEnabled && options.steeringSnapshot
       ? await retrieveResponseLongTermMemory(request, options.steeringSnapshot)
-      : undefined;
+      : undefined);
+  assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
   const inputOptions = {
     ...options,
     ...(memoryMessage ? { longTermMemoryMessage: memoryMessage } : {}),
@@ -63,6 +89,7 @@ export async function runSupervisorAuthoredResponse(
   const memoryCandidates = memoryEnabled
     ? await authorSupervisorMemoryCandidates({
         request,
+        boundSteeringVersion,
         messages: buildSupervisorMemoryAuthoringInput(request, inputOptions)
           .context.messages,
         contextCompaction: createSupervisorResponseCompaction(request, options),
@@ -92,6 +119,7 @@ export async function runSupervisorAuthoredResponse(
       messages: input.context.messages,
       contextCompaction: createSupervisorResponseCompaction(request, options),
       timeoutReason: "supervisor_response_timeout",
+      boundSteeringVersion,
       maxRepairAttempts: SUPERVISOR_RESPONSE_MAX_REPAIR_ATTEMPTS,
       validate: validateSupervisorResponse,
       buildRepairHint: buildSupervisorResponseRepairHint,
@@ -107,6 +135,7 @@ export async function runSupervisorAuthoredResponse(
     });
     return authored;
   } catch (error: unknown) {
+    if (isModelStepSteeringSuperseded(error)) throw error;
     traceSupervisorResponseModelFailed({
       diagnostic,
       durationMs: Date.now() - startedAt,
@@ -185,10 +214,9 @@ function isInternalSupervisorEnvelope(text: string): boolean {
     !Array.isArray(nestedDecision)
       ? (nestedDecision as Record<string, unknown>)
       : record;
-  return (
-    decision.action === "respond" ||
-    (decision.action === "invoke_role" &&
-      typeof decision.roleId === "string" &&
-      typeof decision.objective === "string")
-  );
+  if (decision.action === "respond") return true;
+  if (decision.action === "recall_memory") return true;
+  if (decision.action !== "invoke_role") return false;
+  if (typeof decision.roleId !== "string") return false;
+  return typeof decision.objective === "string";
 }

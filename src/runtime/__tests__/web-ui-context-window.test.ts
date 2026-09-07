@@ -1,54 +1,7 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { buildConversationActivityModel } from "../../web-ui/app/components/conversation-activity.js";
-import { createRealtimeEventController } from "../../web-ui/app/controllers/realtime-event-controller.js";
-
-function createRealtimeContextHarness() {
-  const state = {
-    activeRequestId: "request-1",
-    currentSessionId: "session-1",
-    contextWindowByRequest: new Map<string, Record<string, unknown>>(),
-    taskProgressByRequest: new Map(),
-    lastSeqByRequest: new Map(),
-    events: [],
-  };
-  const renderContextWindow = vi.fn(() =>
-    state.contextWindowByRequest.get("request-1"),
-  );
-  const scheduleMessageRender = vi.fn();
-  const shouldAcceptMessage = vi.fn(() => true);
-  const controller = createRealtimeEventController({
-    state,
-    shell: { showToast: vi.fn() },
-    selectedEnvironmentId: () => "environment-1",
-    handleSteerAcknowledgement: () => false,
-    shouldAcceptMessage,
-    applySessionReadState: vi.fn(),
-    activeAssistantForRequest: vi.fn(),
-    addOrMergeMessage: vi.fn(),
-    normalizeChatMessage: vi.fn(),
-    renderMessages: vi.fn(),
-    renderContextWindow,
-    scheduleMessageRender,
-    scheduleThinkingRender: vi.fn(),
-    cancelScheduledMessageRender: vi.fn(),
-    cancelScheduledThinkingRender: vi.fn(),
-    forgetThinkingDisclosure: vi.fn(),
-    markCurrentSessionReadSoon: vi.fn(),
-    applySessionTitleUpdate: vi.fn(),
-    setMessageActivityStatus: vi.fn(),
-    updateComposerSendState: vi.fn(),
-    drainQueuedComposerMessage: vi.fn(),
-    loadSessions: vi.fn(),
-  });
-  return {
-    state,
-    controller,
-    renderContextWindow,
-    scheduleMessageRender,
-    shouldAcceptMessage,
-  };
-}
+import { createRealtimeContextHarness } from "./support/realtime-context-harness.js";
 
 describe("web ui context window projection", () => {
   test("replays the last invocation estimate, provider usage, and compaction delta", () => {
@@ -155,9 +108,15 @@ describe("web ui context window projection", () => {
     expect(model.contextWindow?.providerUsage).toBeNull();
   });
 
-  test("refreshes composer metrics after low-value events without needing message rendering", () => {
-    const { state, controller, renderContextWindow, scheduleMessageRender } =
-      createRealtimeContextHarness();
+  test("refreshes metrics and activity after low-value events without message rendering", () => {
+    const {
+      state,
+      controller,
+      renderContextWindow,
+      renderActivityStatus,
+      renderMessages,
+      scheduleMessageRender,
+    } = createRealtimeContextHarness();
     controller.recordEvent({
       type: "event",
       name: "context.window.snapshot",
@@ -171,6 +130,13 @@ describe("web ui context window projection", () => {
     expect(renderContextWindow.mock.results[0]?.value).toMatchObject({
       snapshot: { estimatedInputTokens: 100, usedContextPercent: 10 },
     });
+    expect(renderActivityStatus).toHaveBeenCalledOnce();
+    expect(
+      renderActivityStatus.mock.results[0]?.value.contextWindow,
+    ).toMatchObject({
+      snapshot: { estimatedInputTokens: 100, usedContextPercent: 10 },
+    });
+    expect(renderMessages).not.toHaveBeenCalled();
     expect(scheduleMessageRender).not.toHaveBeenCalled();
     expect(state.events).toEqual([]);
 
@@ -186,12 +152,24 @@ describe("web ui context window projection", () => {
     expect(renderContextWindow.mock.results[1]?.value).toMatchObject({
       providerUsage: { inputTokens: 98, outputTokens: 12 },
     });
+    expect(renderActivityStatus).toHaveBeenCalledTimes(2);
+    expect(
+      renderActivityStatus.mock.results[1]?.value.contextWindow,
+    ).toMatchObject({
+      providerUsage: { inputTokens: 98, outputTokens: 12 },
+    });
+    expect(renderMessages).not.toHaveBeenCalled();
     expect(scheduleMessageRender).not.toHaveBeenCalled();
   });
 
-  test("does not refresh from invalid snapshots, unrelated events, or rejected session messages", () => {
-    const { state, controller, renderContextWindow, shouldAcceptMessage } =
-      createRealtimeContextHarness();
+  test("does not refresh from invalid snapshots or rejected session messages", () => {
+    const {
+      state,
+      controller,
+      renderContextWindow,
+      renderActivityStatus,
+      shouldAcceptMessage,
+    } = createRealtimeContextHarness();
     const snapshot = {
       type: "event",
       name: "context.window.snapshot",
@@ -201,15 +179,125 @@ describe("web ui context window projection", () => {
       usedContextPercent: 10,
     };
     controller.recordEvent({ ...snapshot, contextWindowTokens: 0 });
-    controller.recordEvent({
-      type: "event",
-      name: "tool.started",
-      requestId: "request-1",
-    });
     shouldAcceptMessage.mockReturnValue(false);
     controller.handle({ ...snapshot, sessionId: "old-session" });
 
     expect(renderContextWindow).not.toHaveBeenCalled();
+    expect(renderActivityStatus).not.toHaveBeenCalled();
     expect(state.contextWindowByRequest.size).toBe(0);
   });
+
+  test("refreshes activity after ordinary events are appended or merged", () => {
+    const { controller, renderActivityStatus, renderContextWindow } =
+      createRealtimeContextHarness();
+    const event = {
+      type: "event",
+      name: "runtime.state",
+      requestId: "request-1",
+      status: "working",
+    };
+    controller.recordEvent(event);
+    controller.recordEvent(event);
+
+    expect(renderActivityStatus).toHaveBeenCalledTimes(2);
+    expect(renderActivityStatus.mock.results[0]?.value.event).toMatchObject({
+      eventName: "runtime.state",
+      count: 1,
+    });
+    expect(renderActivityStatus.mock.results[1]?.value.event).toMatchObject({
+      eventName: "runtime.state",
+      count: 2,
+    });
+    expect(renderContextWindow).not.toHaveBeenCalled();
+  });
+
+  test.each(["eventSequence", "seqNo"] as const)(
+    "retains the latest phase when older or duplicate %s snapshots replay",
+    (sequenceField) => {
+      const { controller, state, renderActivityStatus, renderContextWindow } =
+        createRealtimeContextHarness();
+      const snapshot = {
+        type: "event",
+        name: "context.window.snapshot",
+        requestId: "request-1",
+        modelStep: "worker.decision",
+        admissionOutcome: "accepted",
+        contextWindowTokens: 1_000,
+        estimatedInputTokens: 100,
+        usedContextPercent: 10,
+      };
+      controller.recordEvent({ ...snapshot, [sequenceField]: 10 });
+      controller.recordEvent({
+        ...snapshot,
+        modelStep: "tool_payload.raw",
+        [sequenceField]: 9,
+      });
+      controller.recordEvent({
+        ...snapshot,
+        modelStep: "tool_payload.raw",
+        [sequenceField]: 10,
+      });
+
+      expect(
+        state.contextWindowByRequest.get("request-1")?.snapshot,
+      ).toMatchObject({
+        modelStep: "worker.decision",
+        [sequenceField]: 10,
+      });
+      expect(renderActivityStatus).toHaveBeenCalledOnce();
+      expect(renderContextWindow).toHaveBeenCalledOnce();
+
+      controller.recordEvent({
+        ...snapshot,
+        modelStep: "supervisor.response",
+        [sequenceField]: 11,
+      });
+      expect(
+        state.contextWindowByRequest.get("request-1")?.snapshot,
+      ).toMatchObject({
+        modelStep: "supervisor.response",
+        [sequenceField]: 11,
+      });
+      expect(renderActivityStatus).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  test("preserves both sequence domains and rejected admission metrics", () => {
+    const { controller, state, renderActivityStatus } =
+      createRealtimeContextHarness();
+    controller.recordEvent({
+      type: "event",
+      name: "context.window.snapshot",
+      requestId: "request-1",
+      eventSequence: 30,
+      seqNo: 45,
+      modelStep: "worker.decision",
+      admissionOutcome: "rejected",
+      contextWindowTokens: 1_000,
+      estimatedInputTokens: 1_100,
+      usedContextPercent: 110,
+    });
+
+    expect(
+      state.contextWindowByRequest.get("request-1")?.snapshot,
+    ).toMatchObject({
+      eventSequence: 30,
+      seqNo: 45,
+      admissionOutcome: "rejected",
+      estimatedInputTokens: 1_100,
+    });
+    expect(renderActivityStatus).toHaveBeenCalledOnce();
+  });
+
+  test.each(["completed", "failed"])(
+    "settles streaming before refreshing activity for %s requests",
+    (type) => {
+      const { controller, renderActivityStatus } =
+        createRealtimeContextHarness();
+      controller.handle({ type, requestId: "request-1" });
+
+      expect(renderActivityStatus).toHaveBeenCalledOnce();
+      expect(renderActivityStatus.mock.results[0]?.value.streaming).toBe(false);
+    },
+  );
 });

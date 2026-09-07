@@ -313,6 +313,7 @@ export class SessionService {
       taskType?: SessionMessageTaskType;
       requestId?: string;
       cronJobId?: string;
+      schedule?: import("./schedule-metadata.js").ScheduleMessageReference;
       cronTitle?: string;
       triggerType?: string;
       attachments?: SessionMessage["attachments"];
@@ -332,6 +333,7 @@ export class SessionService {
         taskType: options.taskType,
         requestId: options.requestId,
         cronJobId: options.cronJobId,
+        ...(options.schedule ? { schedule: options.schedule } : {}),
         cronTitle: options.cronTitle,
         triggerType: options.triggerType,
         attachments: options.attachments,

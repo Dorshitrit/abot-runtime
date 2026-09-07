@@ -16,6 +16,7 @@ import {
 import { resolveModelSelection } from "../model/model-selection.js";
 import { resolveRequestDependencies } from "./dependencies.js";
 import { parseRequestInput } from "./input.js";
+import { resolveScheduledExecution } from "./scheduled-execution.js";
 import { runRequestRunner } from "./runner.js";
 import { createRequestWorkerCapabilityProvider } from "./worker-capability-composition.js";
 import { resolveRequestExecutionPolicy } from "./role-executor-composition.js";
@@ -92,6 +93,7 @@ class RequestHandlingSession {
   }
 
   private async execute(): Promise<void> {
+    const schedule = resolveScheduledExecution(this.options, this.input);
     const {
       requestId,
       sessionId,
@@ -167,6 +169,7 @@ class RequestHandlingSession {
       sessionStore,
       attachmentStore,
       events: this.events,
+      ...(schedule ? { schedule } : {}),
     });
     this.bindSteeringPersistence();
     this.enterModelStage();
@@ -174,11 +177,14 @@ class RequestHandlingSession {
     const sessionArtifactPaths = snapshotSessionArtifactPathTargets(
       openedSession.session.artifactPaths,
     );
+    const memoryRecallLimit =
+      this.options.runtimeConfig?.longTermMemory?.maxRecallCallsPerRequest;
     const runnerRequestSeed = {
       requestId,
       sessionId,
       prompt: initializedRequest.prompt,
       temporalContext: this.temporalContext,
+      ...(schedule ? { scheduledExecution: schedule } : {}),
       historyMessages,
       shouldGenerateSessionTitle: generateSessionTitle,
       runnerConfig,
@@ -197,6 +203,7 @@ class RequestHandlingSession {
       contextCompactionStore: createRequestContextCompactionStore(),
       sessionMemory,
       longTermMemory,
+      ...(memoryRecallLimit !== undefined ? { memoryRecallLimit } : {}),
       requestSteering: this.requestSteering,
       toolPermissionMode,
       ...(toolApprovalController ? { toolApprovalController } : {}),

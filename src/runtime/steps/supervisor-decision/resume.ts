@@ -56,6 +56,26 @@ export function buildSupervisorContinuationPart(
   });
 }
 
+/** Keep each child's full and compact views at the same continuation position. */
+export function buildSupervisorChildContinuationParts(
+  params: SupervisorContinuationParams,
+): readonly RequestContextPinnedPart[] {
+  validateSupervisorContinuation(params);
+  return Object.freeze(
+    params.resume.completedChildren.map((child) =>
+      Object.freeze({
+        sourceRef: `supervisor-child:${params.currentCallId}:${child.resultRef}`,
+        category: "role_continuation" as const,
+        retention: "compactable" as const,
+        messages: buildCompletedChildMessages(child, params.currentCallId),
+        compactMessages: Object.freeze([
+          buildCompactCompletedChildMessage(child, params.currentCallId),
+        ]),
+      }),
+    ),
+  );
+}
+
 function validateSupervisorContinuation(
   params: SupervisorContinuationParams,
 ): void {

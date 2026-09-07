@@ -1,3 +1,10 @@
+import type {
+  UpdateSchedulerJobInput,
+  SchedulerJob,
+  SchedulerRun,
+} from "../../../runtime/scheduler/contracts.js";
+import type { CreateWebScheduleJobInput } from "../../schedule-creation-contract.js";
+
 export declare function parseJsonResponseText(
   text: string,
   context: string,
@@ -61,6 +68,35 @@ export declare function createRuntimeWebClient(options: {
   fetchImpl?: typeof fetch;
   origin?: string;
 }): {
+  supportsSchedules(): boolean;
+  listSchedules(environmentId?: string): Promise<{ jobs: SchedulerJob[] }>;
+  getSchedule(
+    jobId: string,
+    environmentId?: string,
+  ): Promise<{ job: SchedulerJob }>;
+  listScheduleRuns(
+    jobId: string,
+    environmentId?: string,
+    page?: { cursor?: string; limit?: number },
+  ): Promise<{ runs: SchedulerRun[]; nextCursor: string | null }>;
+  listRecentScheduleRuns(
+    environmentId?: string,
+    page?: { cursor?: string; limit?: number },
+  ): Promise<{ runs: SchedulerRun[]; nextCursor: string | null }>;
+  createSchedule(
+    input: CreateWebScheduleJobInput,
+    environmentId?: string,
+  ): Promise<{ job: SchedulerJob }>;
+  updateSchedule(
+    jobId: string,
+    input: UpdateSchedulerJobInput,
+    environmentId?: string,
+  ): Promise<{ job: SchedulerJob }>;
+  scheduleAction(
+    jobId: string,
+    action: "pause" | "resume" | "cancel" | "run-now",
+    environmentId?: string,
+  ): Promise<Record<string, unknown>>;
   getRuntimeStatus(): Promise<Record<string, unknown>>;
   getRuntimeLogs(lines?: number): Promise<Record<string, unknown>>;
   getSystemHealth(): Promise<Record<string, unknown>>;
@@ -101,6 +137,7 @@ export declare function createRuntimeWebClient(options: {
     sessionId: string;
     environmentId?: string;
     readThroughMessageId?: number | null;
+    readThroughRequestId?: string;
   }): Promise<Record<string, unknown>>;
   clearSessionMessages(
     sessionId: string,

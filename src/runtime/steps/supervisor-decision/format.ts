@@ -1,9 +1,11 @@
 import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
+import { createMemoryRecallDecisionSchema } from "../memory-recall-decision.js";
 import {
   createStructuredDecisionEnvelopeSchema,
   structuredDecisionVariantSchemaPath,
 } from "../../model/structured-decision-envelope.js";
 import type { WorkerCapabilityCatalogGroup } from "../../orchestration/worker-capabilities/index.js";
+import { SUPERVISOR_RESPONSE_RECOMMENDATION_MAX_LENGTH } from "./response-recommendation.js";
 import { createWorkerCapabilityScopeDecisionContract } from "../worker-capability-scope-decision.js";
 import {
   SUPERVISOR_ACKNOWLEDGEMENT_MAX_LENGTH,
@@ -17,6 +19,8 @@ export function createSupervisorDecisionFormat(
   params: Readonly<{
     includeAcknowledgement?: boolean;
     includeTitle?: boolean;
+    includeResponseRecommendation?: boolean;
+    allowMemoryRecall?: boolean;
     allowedRoleIds?: readonly SupervisorDelegateRoleId[];
     availableWorkerCapabilityCatalog?: readonly WorkerCapabilityCatalogGroup[];
   }> = {},
@@ -26,6 +30,8 @@ export function createSupervisorDecisionFormat(
   );
   const includeAcknowledgement = params.includeAcknowledgement === true;
   const includeTitle = params.includeTitle === true;
+  const includeResponseRecommendation =
+    params.includeResponseRecommendation === true;
   const availableWorkerCapabilityCatalog =
     params.availableWorkerCapabilityCatalog ?? [];
   const workerCapabilityScopeContract =
@@ -35,9 +41,7 @@ export function createSupervisorDecisionFormat(
   const workerAvailable = allowedRoleIds.includes("worker");
   const reviewerAvailable = allowedRoleIds.includes("reviewer");
   const objectiveRoleIds = allowedRoleIds.filter(
-    (
-      roleId,
-    ): roleId is Exclude<SupervisorDelegateRoleId, "reviewer"> =>
+    (roleId): roleId is Exclude<SupervisorDelegateRoleId, "reviewer"> =>
       roleId !== "reviewer",
   );
   const scopedWorkerRequired =
@@ -81,8 +85,22 @@ export function createSupervisorDecisionFormat(
       : []),
   ];
   const variants = [
-    respondSchema(includeAcknowledgement, includeTitle),
+    respondSchema(
+      includeAcknowledgement,
+      includeTitle,
+      includeResponseRecommendation,
+    ),
     ...invokeVariants,
+    ...(params.allowMemoryRecall
+      ? [
+          createMemoryRecallDecisionSchema({
+            includeAcknowledgement,
+            includeTitle,
+            acknowledgementMaxLength: SUPERVISOR_ACKNOWLEDGEMENT_MAX_LENGTH,
+            titleMaxLength: SUPERVISOR_TITLE_MAX_LENGTH,
+          }),
+        ]
+      : []),
   ];
   return {
     type: "json_schema",
@@ -91,9 +109,11 @@ export function createSupervisorDecisionFormat(
     postValidatedSchemaConstraints: createPostValidatedConstraints({
       includeAcknowledgement,
       includeTitle,
+      includeResponseRecommendation,
       variantCount: variants.length,
       invokeVariantCount: invokeVariants.length,
       objectiveInvokeVariantCount: objectiveInvokeVariants.length,
+      allowMemoryRecall: params.allowMemoryRecall === true,
     }),
     schema: createStructuredDecisionEnvelopeSchema(variants),
   };
@@ -102,10 +122,18 @@ export function createSupervisorDecisionFormat(
 function respondSchema(
   includeAcknowledgement: boolean,
   includeTitle: boolean,
+  includeResponseRecommendation: boolean,
 ): Record<string, unknown> {
   return exactObject(
     {
       action: literal("respond"),
+      ...(includeResponseRecommendation
+        ? {
+            responseRecommendation: boundedText(
+              SUPERVISOR_RESPONSE_RECOMMENDATION_MAX_LENGTH,
+            ),
+          }
+        : {}),
       ...(includeAcknowledgement
         ? {
             acknowledgement: boundedText(
@@ -120,6 +148,7 @@ function respondSchema(
     },
     [
       "action",
+      ...(includeResponseRecommendation ? ["responseRecommendation"] : []),
       ...(includeAcknowledgement ? ["acknowledgement"] : []),
       ...(includeTitle ? ["title"] : []),
     ],
@@ -172,13 +201,33 @@ function invokeRoleSchema(
 function createPostValidatedConstraints(params: {
   includeAcknowledgement: boolean;
   includeTitle: boolean;
+  includeResponseRecommendation: boolean;
   variantCount: number;
   invokeVariantCount: number;
   objectiveInvokeVariantCount: number;
+  allowMemoryRecall: boolean;
 }): Array<{ keyword: "maxLength"; path: string }> {
   const base = (index: number) =>
     structuredDecisionVariantSchemaPath(index, params.variantCount);
   return [
+    ...(params.allowMemoryRecall
+      ? [
+          "query",
+          ...(params.includeAcknowledgement ? ["acknowledgement"] : []),
+          ...(params.includeTitle ? ["title"] : []),
+        ].map((field) => ({
+          keyword: "maxLength" as const,
+          path: `${base(params.variantCount - 1)}/properties/${field}/maxLength`,
+        }))
+      : []),
+    ...(params.includeResponseRecommendation
+      ? [
+          {
+            keyword: "maxLength" as const,
+            path: `${base(0)}/properties/responseRecommendation/maxLength`,
+          },
+        ]
+      : []),
     ...(params.includeAcknowledgement
       ? [
           {

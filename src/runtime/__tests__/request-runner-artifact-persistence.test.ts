@@ -9,6 +9,7 @@ import {
 import type { RequestExecutionScope } from "../request/execution-scope.js";
 import { createRequestContextCompactionStore } from "../context/semantic-compaction/index.js";
 import { createTestRequestExecutionScope } from "./support/request-execution-scope.js";
+import { directRespondDecision } from "./support/supervisor-direct-respond.js";
 
 const mocks = vi.hoisted(() => ({
   persistSettledSessionArtifactPaths: vi.fn(),
@@ -123,10 +124,9 @@ describe("request runner artifact-path persistence sequencing", () => {
       modelStep === "supervisor.decision"
         ? {
             text: JSON.stringify({
-              decision: {
-                action: "respond",
+              decision: directRespondDecision({
                 acknowledgement: "I understand and will answer directly.",
-              },
+              }),
             }),
             meta: {},
           }

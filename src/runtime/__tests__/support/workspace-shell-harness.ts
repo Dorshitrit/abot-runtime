@@ -129,9 +129,15 @@ export function createWorkspaceShellHarness(
   );
   const dom = {
     app: element("app"),
+    homeWorkspacePanel: element("homeWorkspacePanel"),
+    homeWorkspaceButton: element("homeWorkspaceButton"),
+    composerInput: element("composerInput"),
     chatPanel: element("chatPanel"),
     sessionsPanel: element("sessionsPanel"),
     configWorkspacePanel: element("configWorkspacePanel"),
+    schedulesWorkspacePanel: element("schedulesWorkspacePanel"),
+    schedulesWorkspaceButton: element("schedulesWorkspaceButton"),
+    closeSchedulesWorkspaceButton: element("closeSchedulesWorkspaceButton"),
     chatWorkspaceButton: element("chatWorkspaceButton"),
     configWorkspaceButton: element("configWorkspaceButton"),
     sessionsToggleButton: element("sessionsToggleButton"),
@@ -150,6 +156,7 @@ export function createWorkspaceShellHarness(
   dom.sessionSearchInput.parentElement = dom.sessionsPanel;
   dom.refreshSessionsButton.parentElement = dom.sessionsPanel;
   dom.closeConfigWorkspaceButton.parentElement = dom.configWorkspacePanel;
+  dom.closeSchedulesWorkspaceButton.parentElement = dom.schedulesWorkspacePanel;
   for (const child of [...operationsTabButtons, ...operationsTabPages]) {
     child.parentElement = dom.configWorkspacePanel;
   }

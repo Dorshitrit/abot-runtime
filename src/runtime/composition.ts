@@ -2,14 +2,9 @@ import type WebSocket from "ws";
 
 import {
   createBoundRuntimeRequestHandler,
-  createDefaultAttachmentStore,
-  createDefaultEventSinkFactory,
-  createDefaultModelGatewayClient,
-  createDefaultLongTermMemoryService,
   createDefaultRuntimeHost,
-  createDefaultSessionStore,
-  createDefaultToolRegistry,
 } from "./default-adapters.js";
+import { createRuntimeEnvironment } from "./runtime-environment.js";
 import { loadRuntimeConfig } from "./config.js";
 import type {
   EventSinkFactory,
@@ -24,11 +19,11 @@ import type {
   RequestHandlerOptions,
   RunRequestMessage,
 } from "./request/contracts.js";
-import {
-  createModelSessionMemoryCompactor,
-  type SessionMemoryCompactor,
-} from "./context/session-memory/index.js";
+import type { SessionMemoryCompactor } from "./context/session-memory/index.js";
 import type { LongTermMemoryService } from "./long-term-memory/contracts.js";
+import type { SchedulerRun, SchedulerService } from "./scheduler/contracts.js";
+import { SessionRequestAdmission } from "./request/session-admission.js";
+import type { RequestSteeringAppendResult } from "./request/request-steering.js";
 
 export type RuntimeEnvironmentServices = Readonly<{
   config: RuntimeConfig;
@@ -39,6 +34,10 @@ export type RuntimeEnvironmentServices = Readonly<{
   events: EventSinkFactory;
   sessionMemoryCompactor: SessionMemoryCompactor;
   longTermMemory: LongTermMemoryService;
+  scheduler?: SchedulerService;
+  startScheduler?: () => Promise<void>;
+  stopScheduler?: () => Promise<void>;
+  requestAdmission?: SessionRequestAdmission;
 }>;
 
 export type RuntimeRequestOptions = Pick<
@@ -47,6 +46,10 @@ export type RuntimeRequestOptions = Pick<
 >;
 
 export type RuntimeRequestHandler = Readonly<{
+  steer?: (
+    requestId: string,
+    input: Readonly<{ steerId: string; text: string }>,
+  ) => Promise<RequestSteeringAppendResult>;
   handle: (
     ws: WebSocket,
     message: RunRequestMessage,
@@ -58,6 +61,11 @@ export type RuntimeApplication = Readonly<{
   services: RuntimeEnvironmentServices;
   host: RuntimeHost;
   requests: RuntimeRequestHandler;
+  start: () => Promise<void>;
+  stop: () => Promise<void>;
+  subscribeScheduledEvents: (
+    listener: (event: Record<string, unknown>) => void,
+  ) => () => void;
 }>;
 
 export type RuntimeDependencies = {
@@ -70,34 +78,33 @@ export type RuntimeDependencies = {
   events: EventSinkFactory;
   sessionMemoryCompactor: SessionMemoryCompactor;
   longTermMemory: LongTermMemoryService;
+  scheduler?: SchedulerService;
+  startScheduler?: () => Promise<void>;
+  stopScheduler?: () => Promise<void>;
+  requestAdmission?: SessionRequestAdmission;
 };
 
 export type RuntimeDependencyOverrides = Partial<
-  Omit<RuntimeDependencies, "config">
+  Omit<
+    RuntimeDependencies,
+    | "config"
+    | "scheduler"
+    | "startScheduler"
+    | "stopScheduler"
+    | "requestAdmission"
+  >
 >;
 
-export type RuntimeApplicationOverrides = RuntimeDependencyOverrides;
+export type RuntimeApplicationOverrides = RuntimeDependencyOverrides & {
+  scheduledRequestOptions?: (run: SchedulerRun) => RuntimeRequestOptions;
+};
 
 export function createRuntimeApplication(
   config: RuntimeConfig = loadRuntimeConfig(),
   overrides: RuntimeApplicationOverrides = {},
 ): RuntimeApplication {
-  const tools = overrides.tools ?? createDefaultToolRegistry(config);
-  const models = overrides.models ?? createDefaultModelGatewayClient(config);
-  const services: RuntimeEnvironmentServices = Object.freeze({
-    config,
-    sessions: overrides.sessions ?? createDefaultSessionStore(config),
-    attachments: overrides.attachments ?? createDefaultAttachmentStore(config),
-    tools,
-    models,
-    events: overrides.events ?? createDefaultEventSinkFactory(config),
-    sessionMemoryCompactor:
-      overrides.sessionMemoryCompactor ?? createModelSessionMemoryCompactor(),
-    longTermMemory:
-      overrides.longTermMemory ??
-      createDefaultLongTermMemoryService(config, models),
-  });
-  const requests = createRuntimeRequestHandler(services);
+  const environment = createRuntimeEnvironment(config, overrides);
+  const { services, requests } = environment;
   const host =
     overrides.host ??
     createDefaultRuntimeHost(config, {
@@ -108,7 +115,14 @@ export function createRuntimeApplication(
       requestHandler: requests,
       requestHandlerFactory: createRuntimeRequestHandler,
     });
-  return Object.freeze({ services, host, requests });
+  return Object.freeze({
+    services,
+    host,
+    requests,
+    start: environment.start,
+    stop: environment.stop,
+    subscribeScheduledEvents: environment.subscribeScheduledEvents,
+  });
 }
 
 export function createRuntimeRequestHandler(

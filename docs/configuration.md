@@ -143,7 +143,21 @@ storage, privacy, retrieval, and management behavior.
 
 ## Paths
 
-`environment.paths.runtimeDir` is environment-local generated runtime state.
+`environment.paths.runtimeDir` is the generated runtime state base. A named
+environment profile without its own `paths.runtimeDir` uses
+`<base>/environments/<sha256(profileId)>`. The stable profile ID determines that
+directory; changing models or adding another profile does not move its state.
+`LLM_RUNTIME_DIR` takes precedence over profile paths and acts as the shared base
+when a profile is selected. Without a selected profile, the existing runtime
+directory layout is unchanged.
+
+An explicit `environment.profiles.<id>.paths.runtimeDir` is already a final
+environment directory and is preserved when there is no `LLM_RUNTIME_DIR`
+override. Explicit session, attachment and trace path overrides also remain
+final paths. Use distinct final paths for different environments. The resolved
+runtime directory owns local hosting, scheduling, passive memory, plugin state,
+and the default session, attachment and log paths. Shared, compiled, workspace
+and agent-work directories retain their configured sharing behavior.
 `environment.paths.attachmentsDir` stores runtime-managed attachment files
 referenced by session/request metadata. Images and supported document files
 share this store; document contents are read on demand by a request-bound tool
@@ -219,6 +233,32 @@ LLM_RUNTIME_PROFILE=dev npm run dev
 ```
 
 The active profile id becomes the runtime id used by the bridge.
+
+Existing populated state in an inherited base is never automatically moved or
+silently replaced by an empty environment. Loading stops with
+`runtime_environment_storage_assignment_required` until that state is explicitly
+assigned. For example, to retain an existing `prod` environment at `.runtime`
+and add an isolated `dev` environment:
+
+```json
+{
+  "environment": {
+    "default": "prod",
+    "paths": { "runtimeDir": ".runtime" },
+    "profiles": {
+      "prod": { "paths": { "runtimeDir": ".runtime" } },
+      "dev": {}
+    }
+  }
+}
+```
+
+This leaves existing Jobs and conversations in place and gives `dev` its own
+namespace. Preserve any previous explicit session, attachment and trace paths
+on the assigned profile too. Remove a shared `LLM_RUNTIME_DIR` override before
+making this assignment because environment variables keep their precedence.
+The stored Jobs must retain their original environment ID. Empty state folders
+and intentionally shared or compiled artifacts do not require assignment.
 
 ## Request Runner
 

@@ -100,6 +100,7 @@ export type RuntimeLongTermMemoryConfig = {
   enabled: boolean;
   emitClientEvents: boolean;
   embeddingProfileId?: string;
+  maxRecallCallsPerRequest?: number;
 };
 
 export type RuntimeConfig = {
@@ -133,6 +134,8 @@ export type RuntimeHostStartOptions = {
 };
 
 export type RuntimeHostHandle = {
+  /** Optional for custom hosts; default hosts expose scheduler startup readiness. */
+  ready?: Promise<void>;
   stop: () => Promise<void>;
 };
 
@@ -141,6 +144,7 @@ export type RuntimeHost = {
 };
 
 export type AppendSessionMessageOptions = {
+  schedule?: import("../sessions/schedule-metadata.js").ScheduleMessageReference;
   lastAgentMode?: AgentMode;
   grounding?: SessionMessageGrounding;
   observationMeta?: SessionMessageObservationMeta;

@@ -1,5 +1,6 @@
 import type { ToolEventPresentation } from "../tool-types.js";
 import { isToolDefinitionRecordValue } from "./definition-shape.js";
+import { parseEventResultMetadata } from "./event-result-metadata.js";
 
 const EVENT_PROJECTION_KINDS = [
   "string",
@@ -25,8 +26,13 @@ export function parseEventPresentation(
     ),
   );
   const lifecycle = parseEventLifecycle(toolName, raw.lifecycle);
+  const resultMetadata = parseEventResultMetadata(
+    raw.resultMetadata,
+    `eventPresentation.resultMetadata (${toolName})`,
+  );
   return {
     metadata,
+    ...(resultMetadata ? { resultMetadata } : {}),
     ...(lifecycle ? { lifecycle } : {}),
   };
 }

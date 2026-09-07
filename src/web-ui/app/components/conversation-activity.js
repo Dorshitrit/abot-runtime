@@ -9,6 +9,11 @@ import { buildConversationRoleCards } from "../lib/conversation-role-model.js";
 import { createConversationRoleCards } from "./conversation-role-cards.js";
 import { buildConversationSources } from "../lib/web-sources.js";
 import { createConversationSources } from "./conversation-sources.js";
+import {
+  buildConversationToolActions,
+  summarizeConversationTools,
+} from "../lib/tool-activity-model.js";
+import { isNonToolTimelineEvent } from "../lib/tool-timeline.js";
 
 function textOf(value, fallback = "") {
   return typeof value === "string" ? value : fallback;
@@ -154,6 +159,7 @@ export function buildConversationActivityModel({
       events: [],
       roleCards: [],
       sources: [],
+      toolActions: [],
       progress: null,
       contextWindow: null,
       eventCount: 0,
@@ -199,6 +205,11 @@ export function buildConversationActivityModel({
       streaming,
     }),
     sources: buildConversationSources(scopedEvents),
+    toolActions: buildConversationToolActions({
+      requestId: normalizedRequestId,
+      events: scopedEvents,
+      streaming,
+    }),
     progress,
     contextWindow: contextWindowModel,
     eventCount,
@@ -288,6 +299,7 @@ export function createConversationActivity({ documentRoot = document } = {}) {
   function createNode(input = {}) {
     const model = buildConversationActivityModel(input);
     if (!model.hasContent) return null;
+    const hasFailures = model.failureCount > 0;
 
     const details = documentRoot.createElement("details");
     details.className = "conversation-activity";
@@ -305,7 +317,7 @@ export function createConversationActivity({ documentRoot = document } = {}) {
       documentRoot,
       heading,
       "conversation-activity-title",
-      model.failureCount > 0 ? "Activity needs attention" : "Activity",
+      hasFailures ? "Activity needs attention" : "Activity",
     );
     summary.appendChild(heading);
     const roleSummary = roleCards.createSummaryNode(model.roleCards);
@@ -329,7 +341,10 @@ export function createConversationActivity({ documentRoot = document } = {}) {
         `${Math.min(model.progress.completed, model.progress.total)}/${model.progress.total} steps`,
       );
     }
-    if (model.toolCount > 0) {
+    const toolSummary = summarizeConversationTools(model.toolActions);
+    if (toolSummary) details.classList.add("has-tool-summary");
+    if (toolSummary) facts.push(toolSummary);
+    if (!toolSummary && model.toolCount > 0) {
       facts.push(`${model.toolCount} tool${model.toolCount === 1 ? "" : "s"}`);
     }
     const sourceCount = model.sources.reduce(
@@ -339,16 +354,26 @@ export function createConversationActivity({ documentRoot = document } = {}) {
     );
     if (sourceCount > 0)
       facts.push(`${sourceCount} source${sourceCount === 1 ? "" : "s"}`);
-    if (model.failureCount > 0) facts.push(`${model.failureCount} failed`);
-    if (facts.length === 0 && model.eventCount > 0) {
+    const showEventCount =
+      facts.length === 0 && !hasFailures && model.eventCount > 0;
+    if (showEventCount) {
       facts.push(`${model.eventCount} events`);
     }
-    appendTextNode(
+    const factsNode = appendTextNode(
       documentRoot,
       summary,
-      `conversation-activity-facts${model.failureCount > 0 ? " failed" : ""}`,
+      "conversation-activity-facts",
       facts.join(" · "),
     );
+    if (hasFailures) {
+      factsNode.textContent += facts.length > 0 ? " · " : "";
+      appendTextNode(
+        documentRoot,
+        factsNode,
+        "failed",
+        `${model.failureCount} failed`,
+      );
+    }
     details.appendChild(summary);
 
     const body = documentRoot.createElement("div");
@@ -358,11 +383,13 @@ export function createConversationActivity({ documentRoot = document } = {}) {
       ? roleCards.bindScroll({ requestId: model.requestId, body, details })
       : () => false;
     if (model.events.length > 0) {
+      const timelineEvents = model.events.filter(isNonToolTimelineEvent);
       body.appendChild(
         roleCards.createNode({
           requestId: model.requestId,
           cards: model.roleCards,
-          timeline: renderTimeline(documentRoot, model.events),
+          timeline: renderTimeline(documentRoot, timelineEvents),
+          hasTimeline: timelineEvents.length > 0,
           onViewChange() {
             body.scrollTop = 0;
             schedulePinToLatest();

@@ -146,20 +146,37 @@ export function isImmediateRoleCapabilitySelectionReconsideration(input: {
   };
   steeringVersion: number;
 } {
-  const reconsideration = input.call.lastCapabilitySelectionReconsideration;
-  const activeScope = input.call.workerCapabilityScope?.catalogGroupIds;
+  if (!isRoleCapabilityReconsiderationBoundToScope(input)) return false;
   return (
-    reconsideration !== undefined &&
-    input.call.activationCount === reconsideration.invocationAttempt + 1 &&
-    input.steeringVersion === reconsideration.steeringVersion &&
-    activeScope !== undefined &&
-    sameStringArray(
+    input.call.activationCount ===
+    input.call.lastCapabilitySelectionReconsideration.invocationAttempt + 1
+  );
+}
+
+export function isRoleCapabilityReconsiderationBoundToScope(input: {
+  call: RoleCallFrame;
+  steeringVersion: number;
+}): input is {
+  call: RoleCallFrame & {
+    lastCapabilitySelectionReconsideration: RoleCapabilitySelectionReconsideration;
+  };
+  steeringVersion: number;
+} {
+  const reconsideration = input.call.lastCapabilitySelectionReconsideration;
+  if (!reconsideration) return false;
+  if (input.steeringVersion !== reconsideration.steeringVersion) return false;
+  const activeScope = input.call.workerCapabilityScope?.catalogGroupIds;
+  if (activeScope === undefined) return false;
+  if (
+    !sameStringArray(
       activeScope,
       reconsideration.selection.activeCapabilityCatalogGroupIds,
-    ) &&
-    (input.call.workingDirectory === undefined ||
-      input.call.workingDirectory ===
-        reconsideration.selection.workingDirectory)
+    )
+  )
+    return false;
+  if (input.call.workingDirectory === undefined) return true;
+  return (
+    input.call.workingDirectory === reconsideration.selection.workingDirectory
   );
 }
 

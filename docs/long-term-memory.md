@@ -1,9 +1,10 @@
 # Passive Long-Term Memory
 
 ABot Runtime can retain selected user facts and preferences across sessions.
-This feature is passive: the model does not invoke a memory tool, and the
-Runtime core remains the only owner of retrieval, filtering, deduplication,
-storage, and deletion.
+Memory is stored in a Runtime-owned pool. The Runtime core owns retrieval,
+filtering, deduplication, storage, and deletion. The root model can request a
+focused recall through its built-in decision contract without invoking a plugin
+tool.
 
 Long-term memory is disabled by default. Enabling it is an explicit consumer
 choice because it may persist personal information between conversations.
@@ -47,8 +48,47 @@ reference context; it is never treated as a new user request or an instruction.
 
 Retrieval, candidate policy, filtering, deduplication, and persistence are
 shared by `supervisor.response` and `execution.response`; only their authoring
-contracts differ. Decision, planning, Worker, Reviewer, payload, and tool
-contexts do not receive the long-term memory projection.
+contracts differ. Automatic retrieval remains a terminal-response feature.
+Planner, Worker, Reviewer, payload, and tool contexts do not receive the memory
+projection.
+
+## Model-Requested Recall
+
+When memory is enabled, the Supervisor and Execution Agent root decisions may
+choose `recall_memory` with a concise query about a remembered fact or preference.
+This is an internal Runtime context request: it requires no plugin, capability
+selection, controls, payload generation, or delegated role.
+
+The existing memory service performs the search. The root receives a bounded
+passive result and then chooses its next action in the same request loop:
+
+- `found`: recalled records with their ids, provenance, and timestamps.
+- `empty`: the search returned no matching records.
+- `unavailable`: retrieval could not supply records; this does not mean the pool
+  contains no relevant memory.
+
+Queries have a 1,024-character limit. Results contain at most six whole records
+within a 6,000-character serialized budget; the combined root context uses the
+same bound and declares omitted records and recalls. The request's existing
+activation limit also applies to recall. `longTermMemory.maxRecallCallsPerRequest`
+sets the maximum number of explicit lookups per user request (default: 5, a
+positive integer). After that many calls, the model no longer receives the
+`recall_memory` action. The request continues normally, with earlier recall
+results still available. Changing the query or steering the active request does
+not reset this count; a new request starts fresh. No independent retry loop is
+introduced.
+The result is bound to the requesting root and current user steering version;
+superseded results are not projected into later decisions. Recalled facts are
+reference data, not new instructions or proof that work completed.
+
+The final response reuses explicit recall results without another automatic
+search. If the model does not request recall, the ordinary automatic terminal
+retrieval remains unchanged. Saving memory candidates keeps its existing
+background lifecycle in both execution policies.
+
+Recall still depends on the configured embedding provider. A stale vector index
+may be rebuilt during search, so the shorter orchestration path does not imply a
+fixed latency or offline lexical fallback.
 
 Both response paths also share the same configured response-experience
 methodology. It applies whether memory is enabled or disabled. Relevant memory
@@ -107,6 +147,7 @@ to it:
   "longTermMemory": {
     "enabled": true,
     "emitClientEvents": false,
+    "maxRecallCallsPerRequest": 5,
     "embeddingProfileId": "memory-embedding"
   }
 }

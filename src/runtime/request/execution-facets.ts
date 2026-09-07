@@ -33,6 +33,9 @@ export function createRequestSeedFacets(
     ...(seed.temporalContext !== undefined
       ? { temporalContext: seed.temporalContext }
       : {}),
+    ...(seed.scheduledExecution !== undefined
+      ? { scheduledExecution: seed.scheduledExecution }
+      : {}),
     ...(seed.attachments !== undefined
       ? { attachments: seed.attachments }
       : {}),
@@ -62,6 +65,9 @@ export function createRequestSeedFacets(
     modelGatewayClient: seed.modelGatewayClient,
   });
   const memory = Object.freeze({
+    ...(seed.memoryRecallLimit !== undefined
+      ? { memoryRecallLimit: seed.memoryRecallLimit }
+      : {}),
     ...(seed.longTermMemory !== undefined
       ? { longTermMemory: seed.longTermMemory }
       : {}),

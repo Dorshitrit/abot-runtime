@@ -56,6 +56,7 @@ export async function initializeRequestSession(params: {
   sessionStore: RequestSessionStore;
   attachmentStore?: RuntimeAttachmentStore;
   events: EventSink;
+  schedule?: import("../../sessions/schedule-metadata.js").ScheduleMessageReference;
 }): Promise<
   Readonly<{
     prompt: string;
@@ -65,18 +66,34 @@ export async function initializeRequestSession(params: {
 > {
   params.events.event("thinking.started");
 
-  await params.sessionStore.appendMessage(
+  const persisted = await params.sessionStore.appendMessage(
     params.sessionId,
     "user",
     params.prompt,
     {
       lastAgentMode: params.agentMode,
       requestId: params.requestId,
+      ...(params.schedule
+        ? { source: "cron" as const, schedule: params.schedule }
+        : {}),
       ...(params.opened.attachments.length > 0
         ? { attachments: params.opened.attachments }
         : {}),
     },
   );
+
+  if (params.schedule) {
+    const message = persisted.messages.find(
+      (entry) => entry.requestId === params.requestId && entry.role === "user",
+    );
+    params.events.event("schedule.triggered", {
+      sessionId: params.sessionId,
+      schedule: params.schedule,
+      messageId: message?.id,
+      text: params.prompt,
+      createdAt: message?.createdAt,
+    });
+  }
 
   const [modelAttachments, toolAttachments] = await Promise.all([
     resolveModelGatewayAttachments({

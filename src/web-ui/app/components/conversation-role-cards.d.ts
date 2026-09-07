@@ -10,6 +10,7 @@ export declare function createConversationRoleCards(options?: {
     requestId: string;
     cards: ReturnType<typeof buildConversationRoleCards>;
     timeline: HTMLElement;
+    hasTimeline: boolean;
     onViewChange?: () => void;
   }): HTMLElement;
   isTimeline(requestId: string): boolean;

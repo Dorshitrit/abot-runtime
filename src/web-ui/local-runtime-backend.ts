@@ -27,9 +27,12 @@ export class LocalRuntimeWebBackend {
         providerAdapters: options.providerAdapters,
       }),
     };
-    this.environments = new RuntimeEnvironmentRegistry(resolvedOptions);
     const clients = new RealtimeClientHub();
     const requests = new LocalRequestExecution(clients);
+    this.environments = new RuntimeEnvironmentRegistry(resolvedOptions, {
+      requestOptions: (run) => requests.scheduledRequestOptions(run),
+      publish: (event) => requests.publishScheduled(event),
+    });
     this.api = new LocalRuntimeApiRouter(
       resolvedOptions,
       this.environments,
@@ -89,5 +92,14 @@ export class LocalRuntimeWebBackend {
 
   handleRealtimeConnection(client: WebSocket): void {
     this.realtime.connect(client);
+  }
+
+  async start(environmentIds: readonly string[]): Promise<void> {
+    await this.api.initializeSessionReadState(environmentIds);
+    await this.environments.start(environmentIds);
+  }
+
+  stop(): Promise<void> {
+    return this.environments.stop();
   }
 }

@@ -1,4 +1,8 @@
 import type { ToolCall } from "../../../../capabilities/tool-types.js";
+import {
+  buildToolExecutorEventMetadata,
+  type ToolEventExecutorIdentity,
+} from "../shared/event-metadata.js";
 import type {
   ToolApprovalController,
   ToolPermissionMode,
@@ -7,6 +11,8 @@ import type { RegisteredToolNormalInvocationRejection } from "../shared/contract
 import { rejectNormalInvocation } from "../shared/rejection.js";
 
 export async function requestNormalInvocationApproval(params: {
+  executionId?: string;
+  executorIdentity?: ToolEventExecutorIdentity;
   requestId: string;
   abortSignal: AbortSignal;
   toolPermissionMode: ToolPermissionMode;
@@ -25,6 +31,8 @@ export async function requestNormalInvocationApproval(params: {
   }
   const approvalId = params.nextApprovalId();
   params.onEvent?.("tool.approval.required", {
+    ...buildToolExecutorEventMetadata(params.executorIdentity),
+    ...(params.executionId ? { executionId: params.executionId } : {}),
     approvalId,
     tool: params.call.tool,
     ...(params.eventMeta ? { meta: params.eventMeta } : {}),
@@ -33,6 +41,8 @@ export async function requestNormalInvocationApproval(params: {
     const message =
       "Tool approval is required, but no approval controller is configured.";
     params.onEvent?.("tool.approval.rejected", {
+      ...buildToolExecutorEventMetadata(params.executorIdentity),
+      ...(params.executionId ? { executionId: params.executionId } : {}),
       approvalId,
       tool: params.call.tool,
       reason: message,
@@ -53,6 +63,8 @@ export async function requestNormalInvocationApproval(params: {
   );
   if (decision.approved) {
     params.onEvent?.("tool.approval.granted", {
+      ...buildToolExecutorEventMetadata(params.executorIdentity),
+      ...(params.executionId ? { executionId: params.executionId } : {}),
       approvalId,
       tool: params.call.tool,
     });
@@ -60,6 +72,8 @@ export async function requestNormalInvocationApproval(params: {
   }
   const message = decision.reason?.trim() || "Tool execution was rejected.";
   params.onEvent?.("tool.approval.rejected", {
+    ...buildToolExecutorEventMetadata(params.executorIdentity),
+    ...(params.executionId ? { executionId: params.executionId } : {}),
     approvalId,
     tool: params.call.tool,
     reason: message,

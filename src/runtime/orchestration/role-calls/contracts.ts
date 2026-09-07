@@ -16,10 +16,11 @@ import type {
 } from "./capability-selection-supervision.js";
 import type { RoleCapabilitySelectionReconsiderationCause } from "./reconsideration-cause.js";
 import type { RoleCallResultReceipt } from "./result-receipt.js";
+import type { RoleMemoryRecall, RoleMemoryRecallCommand, RoleMemoryRecallCommitEffect, RoleMemoryRecallTransactions } from "./memory-recall-contract.js";
 
-export const ROLE_CALL_LEDGER_CONTRACT_VERSION = 17;
+export const ROLE_CALL_LEDGER_CONTRACT_VERSION = 18;
 export const ROLE_CALL_LEDGER_HEAD_KIND =
-  "runtime_role_call_ledger_v17" as const;
+  "runtime_role_call_ledger_v18" as const;
 export const ROLE_CALL_OBJECTIVE_MAX_LENGTH = 8_192;
 export const ROLE_CALL_RESULT_MAX_LENGTH = 8_192;
 export const ROLE_CALL_RESPONSE_MAX_LENGTH = 65_536;
@@ -99,6 +100,7 @@ export type RoleCallFrameStatus =
   | "active"
   | "waiting_for_child"
   | "waiting_for_capability"
+  | "waiting_for_memory"
   | "completed";
 
 export type RoleCallWorkerCapabilityScope = Readonly<{
@@ -256,6 +258,7 @@ export type RoleCallState = Readonly<{
   results: readonly RoleCallResult[];
   plans: readonly RoleCallPlanState[];
   capabilityExecutions: readonly RoleCapabilityExecution[];
+  memoryRecalls: readonly RoleMemoryRecall[];
   operationSupervision: RoleOperationSupervisionState;
   capabilitySelectionSupervision: RoleCapabilitySelectionSupervisionState;
   rootResponse: string | null;
@@ -389,6 +392,7 @@ export type ReconsiderRoleCapabilitySelectionCommand = Readonly<{
 }>;
 
 export type RoleCallLedgerCommand =
+  | RoleMemoryRecallCommand
   | CreateRootRoleCallCommand
   | CompleteRootResponseCommand
   | OpenChildRoleCallCommand
@@ -402,6 +406,7 @@ export type RoleCallLedgerCommand =
   | ReconsiderRoleCapabilitySelectionCommand;
 
 export type RoleCallCommitEffect =
+  | RoleMemoryRecallCommitEffect
   | Readonly<{ type: "root_created"; callId: string }>
   | Readonly<{
       type: "root_response_committed";
@@ -507,6 +512,9 @@ export type RoleCallTransitionRejectionCode =
   | "capability_selection_reconsideration_invalid"
   | "capability_selection_supervision_limit_exceeded"
   | "operation_supervision_limit_exceeded"
+  | "memory_recall_caller_invalid"
+  | "memory_recall_invocation_mismatch"
+  | "memory_recall_settlement_mismatch"
   | "role_activation_limit_exceeded";
 
 export type RoleCallTransitionResult =
@@ -614,7 +622,7 @@ export type RoleCallTransactionResult<
   | RoleCallTransactionSuccess<TEffectType>
   | RoleCallTransactionFailure<TTransitionIssueCode>;
 
-export type RoleCallTransactions = Readonly<{
+export type RoleCallTransactions = RoleMemoryRecallTransactions & Readonly<{
   createRoot(
     input: Readonly<{ expectedHead: unknown }>,
   ): Promise<

@@ -1,0 +1,263 @@
+/* Schedule page layout, list navigation and page-level states. */
+.schedules-workspace-body {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+.schedules-workspace-body > * {
+  width: 100%;
+  margin-inline: 0;
+}
+.schedules-workspace-body [hidden] {
+  display: none !important;
+}
+.schedules-workspace-body
+  :is(.schedules-toolbar, .schedule-action-row, .schedule-state-copy)
+  > button {
+  border: 1px solid rgba(197, 212, 224, 0.2);
+  border-radius: 10px;
+  padding: 9px 15px;
+  background: linear-gradient(
+    180deg,
+    rgba(216, 227, 235, 0.075),
+    rgba(216, 227, 235, 0.035)
+  );
+  color: #dce5e9;
+  font-weight: 600;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.035);
+}
+.schedules-workspace-body
+  :is(.schedules-toolbar, .schedule-action-row, .schedule-state-copy)
+  > button:hover:not(:disabled) {
+  border-color: rgba(212, 226, 234, 0.38);
+  background: rgba(216, 227, 235, 0.12);
+  color: #f3f6f5;
+}
+.schedules-workspace-body
+  :is(.schedules-toolbar, .schedule-action-row, .schedule-state-copy)
+  > .primary-button {
+  border-color: #d6e0dd;
+  background: linear-gradient(180deg, #e6ede9, #d2ded9);
+  color: #172c29;
+  box-shadow:
+    0 2px 7px rgba(0, 0, 0, 0.14),
+    inset 0 1px rgba(255, 255, 255, 0.6);
+}
+.schedules-workspace-body
+  :is(.schedules-toolbar, .schedule-action-row, .schedule-state-copy)
+  > .primary-button:hover:not(:disabled) {
+  border-color: #f1f5f2;
+  background: #eff4f0;
+  color: #132722;
+}
+.schedules-workspace-body button:focus-visible {
+  border-color: #b4ccc1;
+  outline: 2px solid #b4ccc1;
+  outline-offset: 3px;
+  box-shadow: none;
+}
+.schedules-workspace-body button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
+.schedules-workspace-body .schedule-action-row > [data-job-action="cancel"] {
+  color: #d6a6ae;
+}
+.schedules-workspace-body
+  .schedule-action-row
+  > [data-job-action="cancel"]:hover:not(:disabled) {
+  border-color: rgba(228, 161, 173, 0.35);
+  background: rgba(228, 161, 173, 0.08);
+  color: #f0bec7;
+}
+.schedules-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.schedule-search {
+  display: flex;
+  align-items: center;
+  position: relative;
+  flex: 1;
+  min-width: 140px;
+  margin: 0;
+}
+.schedule-search svg {
+  position: absolute;
+  inset-inline-start: 12px;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.schedule-search input {
+  width: 100%;
+  padding-inline: 38px 12px;
+}
+.schedules-toolbar input,
+.schedules-toolbar select,
+.schedules-toolbar button {
+  height: 40px;
+  border-radius: 9px;
+  font-size: var(--font-size-md);
+}
+.schedules-toolbar select {
+  width: auto;
+  min-width: 132px;
+  padding-inline: 12px 26px;
+}
+.schedules-toolbar > button {
+  width: auto;
+  flex: none;
+  padding-inline: 15px;
+}
+.schedules-feedback {
+  min-height: 1.5em;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  margin: 0 0 12px;
+}
+.schedules-feedback.schedule-error {
+  border: 1px solid rgba(245, 148, 153, 0.2);
+  border-radius: 9px;
+  background: rgba(245, 148, 153, 0.055);
+  padding: 12px 15px;
+  line-height: 1.6;
+}
+.schedules-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+}
+.schedules-layout.schedule-editor-only {
+  grid-template-columns: minmax(0, 860px);
+  justify-content: center;
+}
+.schedules-list {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.schedule-list-item {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: start;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(16, 32, 49, 0.45);
+  box-shadow: none;
+}
+.schedule-list-item:hover {
+  border-color: rgba(187, 206, 210, 0.35);
+  background: rgba(189, 211, 208, 0.055);
+}
+.schedule-list-item.selected {
+  border-color: rgba(181, 210, 198, 0.46);
+  background: rgba(168, 203, 187, 0.07);
+  box-shadow: inset 3px 0 #a9c6b8;
+}
+.schedule-list-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.schedule-list-top strong {
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.schedule-list-top .schedule-badge {
+  padding: 2px 6px;
+}
+.schedule-list-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.schedule-list-meta > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-xs);
+}
+.schedule-list-meta .schedule-next-run {
+  flex-shrink: 0;
+  max-width: 65%;
+}
+.schedule-list-description {
+  color: var(--text);
+  font-weight: 400;
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+.schedule-list-empty {
+  color: var(--muted);
+  padding: 24px 10px;
+  font-size: var(--font-size-sm);
+  line-height: 1.7;
+}
+.schedule-workspace-state {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  width: min(680px, 100%);
+  margin: clamp(30px, 9vh, 90px) auto;
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(15, 32, 50, 0.5);
+}
+.schedule-state-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border: 1px solid rgba(108, 163, 232, 0.2);
+  border-radius: 14px;
+  color: #a3c9ff;
+  background: rgba(71, 126, 196, 0.08);
+}
+.schedule-state-icon svg {
+  width: 28px;
+  height: 28px;
+}
+.schedule-workspace-state[data-state="error"] .schedule-state-icon {
+  color: #e5bc86;
+  border-color: rgba(229, 188, 134, 0.2);
+  background: rgba(229, 188, 134, 0.06);
+}
+.schedule-state-copy {
+  min-width: 0;
+}
+.schedule-state-copy h3 {
+  margin: 1px 0 10px;
+  color: var(--text-strong);
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.schedule-state-copy p {
+  margin: 0 0 22px;
+  color: var(--muted);
+  font-size: var(--font-size-md);
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+.schedule-state-copy button {
+  width: auto;
+  min-height: 38px;
+  padding-inline: 15px;
+}

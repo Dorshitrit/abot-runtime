@@ -37,11 +37,13 @@ export function normalizeWorkspaceDestination(value) {
   const destination = String(value ?? "")
     .trim()
     .toLowerCase();
+  if (destination === "schedules") return "schedules";
+  if (destination === "home") return "home";
   return destination === "config" ? "config" : "chat";
 }
 
 export function createInitialWorkspaceShellState() {
-  return { workspace: "chat", activeSheet: "" };
+  return { workspace: "home", activeSheet: "" };
 }
 
 export function toggleWorkspaceSheet(currentSheet, requestedSheet) {

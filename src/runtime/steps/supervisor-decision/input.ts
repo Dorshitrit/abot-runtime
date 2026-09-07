@@ -9,6 +9,7 @@ import type { RequestContextProjection } from "../../context/request-context-con
 import { projectRequestContext } from "../../context/request-context.js";
 import { projectRootSessionMemory } from "../../context/session-memory/root-projection.js";
 import { buildRequestTemporalContextMessage } from "../../context/request-temporal-context.js";
+import { projectScheduledExecutionContext } from "../../context/scheduled-execution-context.js";
 import {
   buildRequestToolResultsMessage,
   type RequestToolResultsView,
@@ -35,6 +36,8 @@ import {
 import { createSupervisorDecisionFormat } from "./format.js";
 import { buildSupervisorDecisionInstructions } from "./prompt.js";
 import { buildSupervisorContinuationPart } from "./resume.js";
+import { buildSupervisorMemoryRecallContinuationParts } from "./memory-recall-continuation.js";
+import { canRecommendDirectSupervisorResponse } from "./response-recommendation.js";
 
 export type SupervisorDecisionInputRequest = Pick<
   RequestExecutionSeed,
@@ -53,6 +56,7 @@ export type SupervisorDecisionInputRequest = Pick<
       | "shouldGenerateSessionTitle"
       | "onEvent"
       | "temporalContext"
+      | "scheduledExecution"
       | "sessionMemory"
     >
   >;
@@ -63,6 +67,8 @@ export function buildSupervisorDecisionInput(
     toolResults: RequestToolResultsView;
     includeAcknowledgement?: boolean;
     includeTitle?: boolean;
+    allowMemoryRecall?: boolean;
+    memoryRecallMessage?: ChatMessage;
     allowedRoleIds?: readonly SupervisorDelegateRoleId[];
     diagnostic?: SupervisorDecisionDiagnosticContext;
     resume?: SupervisorResumeContext;
@@ -77,6 +83,8 @@ export function buildSupervisorDecisionInput(
   modelStep: typeof SUPERVISOR_DECISION_MODEL_STEP;
   includeAcknowledgement: boolean;
   includeTitle: boolean;
+  includeResponseRecommendation: boolean;
+  allowMemoryRecall: boolean;
   allowedRoleIds: readonly SupervisorDelegateRoleId[];
   workerCapabilityAffordances: readonly SupervisorWorkerCapabilityAffordance[];
   availableWorkerCapabilityCatalog: readonly WorkerCapabilityCatalogGroup[];
@@ -93,6 +101,8 @@ export function buildSupervisorDecisionInput(
   const includeTitle = options.resume
     ? false
     : (options.includeTitle ?? request.shouldGenerateSessionTitle ?? false);
+  const includeResponseRecommendation =
+    canRecommendDirectSupervisorResponse(options);
   const allowedRoleIds = [
     ...new Set(options.allowedRoleIds ?? SUPERVISOR_DELEGATE_ROLE_IDS),
   ];
@@ -108,8 +118,10 @@ export function buildSupervisorDecisionInput(
         )
       : EMPTY_WORKER_CAPABILITY_AFFORDANCES;
   const format = createSupervisorDecisionFormat({
+    allowMemoryRecall: options.allowMemoryRecall === true,
     includeAcknowledgement,
     includeTitle,
+    includeResponseRecommendation,
     allowedRoleIds,
     availableWorkerCapabilityCatalog,
   });
@@ -127,6 +139,7 @@ export function buildSupervisorDecisionInput(
           requireSupervisorInvocationAttempt(diagnostic),
       })
     : undefined;
+  const roleContinuationParts = roleContinuationPart ? [roleContinuationPart] : [];
   const referenceMessages = [
     ...(request.temporalContext
       ? [buildRequestTemporalContextMessage(request.temporalContext)]
@@ -150,25 +163,39 @@ export function buildSupervisorDecisionInput(
       modelStep: SUPERVISOR_DECISION_MODEL_STEP,
     });
   const instructions = buildSupervisorDecisionInstructions({
+    allowMemoryRecall: options.allowMemoryRecall === true,
+    hasMemoryRecallContext: options.memoryRecallMessage !== undefined,
     includeAcknowledgement,
     includeTitle,
+    includeResponseRecommendation,
     allowedRoleIds,
     hasCompletedChildResult: options.resume !== undefined,
     hasRequestToolResults: options.toolResults.results.length > 0,
     workerCapabilityAffordances,
     availableWorkerCapabilityCatalog,
   });
+  const scheduledExecution = projectScheduledExecutionContext(
+    request,
+    instructions,
+    "decision",
+  );
+  referenceMessages.unshift(...scheduledExecution.referenceMessages);
   const sessionMemory = projectRootSessionMemory(request);
   const contextInput: Parameters<typeof projectRequestContext>[0] = {
-    instructions,
+    instructions: scheduledExecution.instructions,
     format,
     ...sessionMemory,
     prompt: request.prompt,
     ...(request.attachments ? { attachments: request.attachments } : {}),
     ...(referenceMessages.length > 0 ? { referenceMessages } : {}),
-    ...(roleContinuationPart
-      ? { continuationParts: [roleContinuationPart] }
-      : {}),
+    continuationParts: options.memoryRecallMessage
+      ? buildSupervisorMemoryRecallContinuationParts({
+          memoryRecallMessage: options.memoryRecallMessage,
+          ...(options.resume ? { resume: options.resume } : {}),
+          currentCallId: requireSupervisorCallId(diagnostic),
+          currentInvocationAttempt: requireSupervisorInvocationAttempt(diagnostic),
+        })
+      : roleContinuationParts,
     budget,
     diagnostic,
     ...(request.onEvent ? { onEvent: request.onEvent } : {}),
@@ -192,12 +219,16 @@ export function buildSupervisorDecisionInput(
 
   traceSupervisorContextProjected({
     diagnostic,
+    allowMemoryRecall: options.allowMemoryRecall === true,
     context,
     format,
     historyMessageCount: sessionMemory.historyMessages.length,
     attachmentCount: request.attachments?.length ?? 0,
     referenceMessageCount: referenceMessages.length,
-    continuationMessageCount: roleContinuationPart?.messages.length ?? 0,
+    continuationMessageCount: contextInput.continuationParts?.reduce(
+      (count, part) => count + part.messages.length,
+      0,
+    ) ?? 0,
     completedChildResultCount: options.resume?.completedChildren.length ?? 0,
     completedChildSummaryLength:
       options.resume?.completedChildren.reduce(
@@ -229,6 +260,8 @@ export function buildSupervisorDecisionInput(
     modelStep: SUPERVISOR_DECISION_MODEL_STEP,
     includeAcknowledgement,
     includeTitle,
+    includeResponseRecommendation,
+    allowMemoryRecall: options.allowMemoryRecall === true,
     allowedRoleIds,
     workerCapabilityAffordances,
     availableWorkerCapabilityCatalog,

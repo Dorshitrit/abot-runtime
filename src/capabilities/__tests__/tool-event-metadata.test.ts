@@ -7,7 +7,84 @@ import {
 } from "../tool-event-metadata.js";
 import type { ToolDefinition, ToolExecutionResult } from "../tool-types.js";
 
+const RESULT_COLLISION_PROJECTIONS = {
+  itemCount: { path: "data.display.itemCount", kind: "number" },
+  hasData: { path: "data.display.hasData", kind: "boolean" },
+  errorCode: { path: "data.display.errorCode", kind: "preview" },
+} as const;
+
 describe("tool event metadata", () => {
+  test("keeps explicit result mappings ahead of generic evidence, including zero and false", () => {
+    const definition = createDefinition(
+      {
+        itemCount: { param: "limit", kind: "number" },
+      },
+      RESULT_COLLISION_PROJECTIONS,
+    );
+    const result = createCollisionResult({
+      itemCount: 0,
+      hasData: false,
+      errorCode: "display_error",
+    });
+    const original = structuredClone(result);
+
+    expect(
+      buildToolCompletedEventMetadata(
+        { tool: "manifest_capability", params: { limit: 20 } },
+        result,
+        definition,
+      ),
+    ).toEqual({
+      sourceCount: 2,
+      itemCount: 0,
+      hasData: false,
+      errorCode: "display_error",
+      errorCodeTruncated: false,
+      exitCode: 3,
+      currentStateEvidence: true,
+    });
+    expect(result).toEqual(original);
+  });
+
+  test.each([
+    {
+      name: "no declaration",
+      declared: false,
+      display: { itemCount: 0, hasData: false, errorCode: "display_error" },
+    },
+    { name: "missing declared fields", declared: true, display: {} },
+    {
+      name: "incorrectly typed declared fields",
+      declared: true,
+      display: { itemCount: "0", hasData: "false", errorCode: 3 },
+    },
+  ])("preserves generic precedence with $name", ({ declared, display }) => {
+    const definition = createDefinition(
+      {
+        itemCount: { param: "limit", kind: "number" },
+      },
+      declared ? RESULT_COLLISION_PROJECTIONS : undefined,
+    );
+    const result = createCollisionResult(display);
+    const original = structuredClone(result);
+
+    expect(
+      buildToolCompletedEventMetadata(
+        { tool: "manifest_capability", params: { limit: 20 } },
+        result,
+        definition,
+      ),
+    ).toEqual({
+      sourceCount: 2,
+      itemCount: 8,
+      hasData: true,
+      errorCode: "canonical_error",
+      exitCode: 3,
+      currentStateEvidence: true,
+    });
+    expect(result).toEqual(original);
+  });
+
   test("projects only manifest-declared metadata without a tool-name branch", () => {
     const definition = createDefinition({
       path: { param: "target", kind: "string" },
@@ -157,12 +234,43 @@ describe("tool event metadata", () => {
 
 function createDefinition(
   metadata: NonNullable<ToolDefinition["eventPresentation"]>["metadata"],
+  resultMetadata?: NonNullable<
+    ToolDefinition["eventPresentation"]
+  >["resultMetadata"],
 ): ToolDefinition {
   return {
     name: "manifest_capability",
     routingCapability: "semantic_lookup",
     executionEffect: "read_only",
     params: {},
-    eventPresentation: { metadata },
+    eventPresentation: {
+      metadata,
+      ...(resultMetadata ? { resultMetadata } : {}),
+    },
+  };
+}
+
+function createCollisionResult(
+  display: Record<string, unknown>,
+): ToolExecutionResult {
+  return {
+    ok: false,
+    tool: "manifest_capability",
+    output: "Original tool output.",
+    errorCode: "canonical_error",
+    exitCode: 3,
+    producedNewInformation: false,
+    data: {
+      itemCount: 8,
+      hasData: true,
+      currentStateEvidence: true,
+      eventMeta: {
+        itemCount: 99,
+        hasData: true,
+        errorCode: "event_meta_error",
+        sourceCount: 2,
+      },
+      display,
+    },
   };
 }

@@ -1,13 +1,18 @@
+import { createConversationTools } from "./conversation-tools.js";
+
 const ROLE_INITIALS = {
   supervisor: "S",
   planner: "P",
   worker: "W",
+  researcher: "Rs",
   reviewer: "R",
 };
 
 export function createConversationRoleCards({ documentRoot = document } = {}) {
   const timelineRequests = new Set();
+  const timelineToggles = new Map();
   const cardsScroll = new Map();
+  const toolsByRequest = new Map();
   let panelSequence = 0;
 
   function element(tag, className, text = "") {
@@ -27,7 +32,7 @@ export function createConversationRoleCards({ documentRoot = document } = {}) {
     const avatar = element(
       "span",
       "conversation-role-avatar",
-      ROLE_INITIALS[role],
+      ROLE_INITIALS[role] || "•",
     );
     avatar.setAttribute("aria-hidden", "true");
     return avatar;
@@ -51,7 +56,28 @@ export function createConversationRoleCards({ documentRoot = document } = {}) {
     return strip;
   }
 
-  function renderCard(card) {
+  function toolsForCard(requestId, cardId) {
+    const cards = toolsByRequest.get(requestId) || new Map();
+    toolsByRequest.set(requestId, cards);
+    const existing = cards.get(cardId);
+    if (existing) return existing;
+    const tools = createConversationTools({ documentRoot });
+    cards.set(cardId, tools);
+    return tools;
+  }
+
+  function discardMissingCardTools(requestId, cards) {
+    const renderers = toolsByRequest.get(requestId);
+    if (!renderers) return;
+    const cardIds = new Set(cards.map((card) => card.id));
+    for (const [cardId, tools] of renderers) {
+      if (cardIds.has(cardId)) continue;
+      tools.reset();
+      renderers.delete(cardId);
+    }
+  }
+
+  function renderCard(requestId, card) {
     const row = element("li", `conversation-role-card is-${card.tone}`);
     row.dataset.role = card.role;
     row.dataset.cardId = card.id;
@@ -96,6 +122,15 @@ export function createConversationRoleCards({ documentRoot = document } = {}) {
       );
       content.appendChild(summary);
     }
+    const tools = toolsForCard(requestId, card.id).createNode({
+      requestId,
+      actions: card.toolActions || [],
+      embedded: true,
+    });
+    if (tools) {
+      tools.setAttribute("aria-label", `${card.title} tool activity`);
+      content.appendChild(tools);
+    }
     row.appendChild(content);
     return row;
   }
@@ -123,20 +158,30 @@ export function createConversationRoleCards({ documentRoot = document } = {}) {
     };
   }
 
-  function createNode({ requestId, cards, timeline, onViewChange = () => {} }) {
+  function createNode({
+    requestId,
+    cards,
+    timeline,
+    hasTimeline,
+    onViewChange = () => {},
+  }) {
+    discardMissingCardTools(requestId, cards);
+    timelineToggles.delete(requestId);
+    if (!hasTimeline) timelineRequests.delete(requestId);
     if (cards.length === 0) return timeline;
     const section = element("div", "conversation-role-view");
     const toolbar = element("div", "conversation-role-toolbar");
     toolbar.appendChild(element("span", "conversation-role-label", "Agents"));
     const toggle = element("button", "conversation-role-toggle");
     toggle.type = "button";
-    toolbar.appendChild(toggle);
+    timelineToggles.set(requestId, toggle);
+    if (hasTimeline) toolbar.appendChild(toggle);
     const panel = element("div", "conversation-role-panel");
     panel.id = `conversation-role-panel-${++panelSequence}`;
     toggle.setAttribute("aria-controls", panel.id);
     const list = element("ol", "conversation-role-list");
     list.setAttribute("aria-label", "Request agents");
-    for (const card of cards) list.appendChild(renderCard(card));
+    for (const card of cards) list.appendChild(renderCard(requestId, card));
     panel.append(list, timeline);
     section.append(toolbar, panel);
 
@@ -149,6 +194,8 @@ export function createConversationRoleCards({ documentRoot = document } = {}) {
     }
 
     toggle.addEventListener("click", () => {
+      if (timelineToggles.get(requestId) !== toggle) return;
+      if (!hasTimeline) return;
       if (isTimeline(requestId)) timelineRequests.delete(requestId);
       else timelineRequests.add(requestId);
       const position = cardsScroll.get(requestId);
@@ -162,12 +209,21 @@ export function createConversationRoleCards({ documentRoot = document } = {}) {
 
   function forget(requestId) {
     timelineRequests.delete(requestId);
+    timelineToggles.delete(requestId);
     cardsScroll.delete(requestId);
+    const tools = toolsByRequest.get(requestId);
+    tools?.forEach((renderer) => renderer.reset());
+    toolsByRequest.delete(requestId);
   }
 
   function reset() {
     timelineRequests.clear();
+    timelineToggles.clear();
     cardsScroll.clear();
+    for (const tools of toolsByRequest.values()) {
+      tools.forEach((renderer) => renderer.reset());
+    }
+    toolsByRequest.clear();
   }
 
   return {

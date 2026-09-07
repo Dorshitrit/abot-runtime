@@ -1,3 +1,5 @@
+import { resolveMemoryRecallSteeringVersion } from "../../long-term-memory/recall-binding.js";
+import { canOfferMemoryRecall } from "../../long-term-memory/recall-policy.js";
 import {
   invokeStructuredModelStep,
   StructuredModelInvalidOutputError,
@@ -43,6 +45,7 @@ import {
 } from "./working-directory.js";
 import { SUPERVISOR_RESPONSE_MODEL_STEP } from "../supervisor-response/contracts.js";
 import { resolveCanonicalReviewerCompletionTargetText } from "../reviewer-decision/contracts.js";
+import type { ChatMessage } from "../../../model-gateway/types.js";
 
 type AcceptedSupervisorPhase<T> = Readonly<{
   decision: T;
@@ -60,8 +63,15 @@ export async function runSupervisorDecision(
     resume?: SupervisorResumeContext;
     workerCapabilityAffordances?: readonly SupervisorWorkerCapabilityAffordance[];
     availableWorkerCapabilityCatalog?: readonly WorkerCapabilityCatalogGroup[];
+    memoryRecallMessage?: ChatMessage;
+    memoryRecallCount?: number;
   }>,
 ): Promise<SupervisorDecisionOutcome> {
+  const boundSteeringVersion = resolveMemoryRecallSteeringVersion(
+    options.memoryRecallMessage,
+    request.requestId,
+    options.call.callId,
+  );
   const baseDiagnostic: SupervisorDecisionDiagnosticContext = {
     requestId: request.requestId,
     modelStep: SUPERVISOR_DECISION_MODEL_STEP,
@@ -76,7 +86,16 @@ export async function runSupervisorDecision(
       ...baseDiagnostic,
       decisionPhase: "working_directory",
     });
+  const memoryRecallMessage = request.longTermMemory?.enabled
+    ? options.memoryRecallMessage
+    : undefined;
   const input = buildSupervisorDecisionInput(request, {
+    allowMemoryRecall: canOfferMemoryRecall({
+      enabled: request.longTermMemory?.enabled === true,
+      recallCount: options.memoryRecallCount ?? 0,
+      maxRecallCallsPerRequest: request.memoryRecallLimit,
+    }),
+    ...(memoryRecallMessage ? { memoryRecallMessage } : {}),
     ...buildSupervisorCapabilityBriefOptions(request, options),
     toolResults: options.toolResults,
     ...(options.includeAcknowledgement === undefined
@@ -123,6 +142,7 @@ export async function runSupervisorDecision(
     const routing = await runRoutingPhase({
       request,
       requestSteering,
+      boundSteeringVersion,
       input,
       diagnostic: routingDiagnostic,
       contextCompaction,
@@ -166,6 +186,7 @@ export async function runSupervisorDecision(
       request,
       requestSteering,
       input: workingDirectoryInput,
+      boundSteeringVersion,
       frozenDecision: routing.decision,
       diagnostic: workingDirectoryDiagnostic,
       contextCompaction,
@@ -203,6 +224,7 @@ function createDecisionOutcome(
 async function runRoutingPhase(params: {
   request: RequestExecutionScope;
   requestSteering: RequestSteeringInbox;
+  boundSteeringVersion?: number;
   input: ReturnType<typeof buildSupervisorDecisionInput>;
   diagnostic: SupervisorDecisionDiagnosticContext;
   contextCompaction: ModelStepContextCompactionController;
@@ -210,6 +232,7 @@ async function runRoutingPhase(params: {
   const startedAt = Date.now();
   traceSupervisorModelStarted({
     diagnostic: params.diagnostic,
+    allowMemoryRecall: params.input.allowMemoryRecall,
     messageCount: params.input.context.messages.length,
     messageCharacterCount: params.input.context.messages.reduce(
       (total, message) => total + message.content.length,
@@ -225,6 +248,7 @@ async function runRoutingPhase(params: {
   try {
     const accepted = await invokeStructuredModelStep({
       request: params.request,
+      boundSteeringVersion: params.boundSteeringVersion,
       modelStep: params.input.modelStep,
       format: params.input.format,
       messages: params.input.context.messages,
@@ -236,6 +260,9 @@ async function runRoutingPhase(params: {
           parseSupervisorDecisionOutput(text, {
             includeAcknowledgement: params.input.includeAcknowledgement,
             includeTitle: params.input.includeTitle,
+            includeResponseRecommendation:
+              params.input.includeResponseRecommendation,
+            allowMemoryRecall: params.input.allowMemoryRecall,
             allowedRoleIds: params.input.allowedRoleIds,
             availableWorkerCapabilityCatalog:
               params.input.availableWorkerCapabilityCatalog,
@@ -259,6 +286,7 @@ async function runRoutingPhase(params: {
 async function runWorkingDirectoryPhase(params: {
   request: RequestExecutionScope;
   requestSteering: RequestSteeringInbox;
+  boundSteeringVersion?: number;
   input: ReturnType<typeof buildSupervisorWorkingDirectoryInput>;
   frozenDecision: SupervisorWorkingDirectoryRoutingDecision;
   diagnostic: SupervisorDecisionDiagnosticContext;
@@ -278,6 +306,7 @@ async function runWorkingDirectoryPhase(params: {
   try {
     const accepted = await invokeStructuredModelStep({
       request: params.request,
+      boundSteeringVersion: params.boundSteeringVersion,
       modelStep: params.input.modelStep,
       format: params.input.format,
       messages: params.input.messages,

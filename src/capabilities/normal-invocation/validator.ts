@@ -12,7 +12,7 @@ import {
   type ToolNormalInvocationScalarInput,
 } from "./contracts.js";
 
-const MAX_OPERATIONS = 16;
+const MAX_OPERATIONS = 32;
 const MAX_SUMMARY_LENGTH = 512;
 const MAX_INSTRUCTIONS_LENGTH = 1_024;
 const MAX_PROPERTIES = 16;

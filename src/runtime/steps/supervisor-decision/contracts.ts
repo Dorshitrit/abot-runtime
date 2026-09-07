@@ -1,4 +1,5 @@
 import { MODEL_STEPS } from "../../../shared/model-steps.js";
+import type { MemoryRecallDecision } from "../memory-recall-decision.js";
 import {
   isRuntimeDelegateRoleId,
   RUNTIME_DELEGATE_ROLE_IDS,
@@ -36,6 +37,7 @@ export type SupervisorWorkerCapabilityAffordance = Readonly<{
 
 export type SupervisorRespondDecision = Readonly<{
   action: "respond";
+  responseRecommendation?: string;
   acknowledgement?: string;
   title?: string;
 }>;
@@ -74,6 +76,7 @@ export type SupervisorInvokeRoleDecision =
     >;
 
 export type SupervisorDecision =
+  | MemoryRecallDecision
   | SupervisorRespondDecision
   | SupervisorInvokeRoleDecision;
 
@@ -109,6 +112,7 @@ export type SupervisorRoutingInvokeRoleDecision =
     >;
 
 export type SupervisorRoutingDecision =
+  | MemoryRecallDecision
   | SupervisorRespondDecision
   | SupervisorRoutingInvokeRoleDecision;
 

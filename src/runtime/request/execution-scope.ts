@@ -48,7 +48,11 @@ export type RequestCapabilityCompositionView =
 export type RequestCapabilityExecutionView = Readonly<
   Omit<
     RequestExecutionSeed,
-    "sessionArtifactPaths" | "sessionMemory" | "longTermMemory"
+    | "sessionArtifactPaths"
+    | "sessionMemory"
+    | "longTermMemory"
+    | "memoryRecallLimit"
+    | "scheduledExecution"
   >
 > &
   BoundRequestModelInvocationContext;

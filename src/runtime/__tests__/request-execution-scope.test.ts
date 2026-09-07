@@ -257,6 +257,36 @@ describe("request execution scope", () => {
   test("does not treat an unbound structural lookalike as a request scope", () => {
     expect(isRequestExecutionScope(createSeed())).toBe(false);
   });
+
+  test("keeps scheduled provenance on the root scope and outside capability or invocation views", () => {
+    const scheduledExecution = Object.freeze({
+      jobId: "scheduled-job",
+      runId: "scheduled-run",
+      title: "Scheduled task",
+      scheduledAt: "2026-09-06T13:00:00.000Z",
+      triggerType: "schedule" as const,
+    });
+    let composition: RequestCapabilityCompositionView | undefined;
+    const scope = createRequestExecutionScope({
+      seed: { ...createSeed(), scheduledExecution },
+      executionPolicy: EXECUTION_AGENT_V1_EXECUTION_POLICY,
+      createWorkerCapabilities(view) {
+        composition = view;
+        return emptyProvider<RequestCapabilityExecutionView>();
+      },
+    });
+    expect(scope.scheduledExecution).toEqual(scheduledExecution);
+    expect(scope.input.scheduledExecution).toBe(scope.scheduledExecution);
+    expect(Object.isFrozen(scope.input.scheduledExecution)).toBe(true);
+    for (const view of [
+      composition,
+      scope.capabilities.executionContext,
+      scope.modelInvocation,
+    ]) {
+      expect(view).not.toHaveProperty("scheduledExecution");
+      expect(JSON.stringify(view)).not.toContain(scheduledExecution.jobId);
+    }
+  });
 });
 
 function createSeed(suffix = "scope"): RequestExecutionSeed {

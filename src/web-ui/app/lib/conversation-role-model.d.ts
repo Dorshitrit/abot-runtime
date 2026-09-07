@@ -1,4 +1,12 @@
-export type ConversationRole = "supervisor" | "planner" | "worker" | "reviewer";
+import type { ConversationToolAction } from "./tool-activity-model.js";
+
+export type ConversationRole =
+  | "supervisor"
+  | "planner"
+  | "worker"
+  | "researcher"
+  | "reviewer"
+  | "unknown";
 
 export interface ConversationRoleCard {
   id: string;
@@ -8,6 +16,7 @@ export interface ConversationRoleCard {
   phaseLabel: string;
   summary: string;
   facts: string[];
+  toolActions?: ConversationToolAction[];
   active: boolean;
   tone: "active" | "failed" | "recorded";
 }

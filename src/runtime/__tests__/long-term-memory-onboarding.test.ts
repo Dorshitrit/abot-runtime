@@ -68,6 +68,51 @@ describe("long-term memory onboarding", () => {
     });
   });
 
+  test.each([
+    { providerId: "local", model: "embedding-model", limit: 2 },
+    { providerId: "other", model: "embedding-model", limit: 7 },
+    { providerId: "local", model: "replacement-model", limit: 7 },
+  ])(
+    "preserves recall limit $limit when enabling $providerId/$model",
+    async ({ providerId, model, limit }) => {
+      const harness = createRepositoryHarness({
+        ...BASE_CONFIG,
+        models: {
+          ...BASE_MODELS,
+          providers: {
+            ...BASE_MODELS.providers,
+            other: { type: "ollama", baseUrl: "http://other.test" },
+          },
+          embeddingProfiles: {
+            "memory-embedding": { provider: "local", model: "embedding-model" },
+          },
+        },
+        longTermMemory: {
+          enabled: true,
+          embeddingProfileId: "memory-embedding",
+          maxRecallCallsPerRequest: limit,
+        },
+      });
+      const service = createLongTermMemoryOnboardingService({
+        repository: harness.repository,
+        probe: vi.fn(async () => ({
+          modelFingerprint: "embedding",
+          dimensions: 512,
+        })),
+        discover: vi.fn(),
+      });
+
+      await service.enable({ providerId, model });
+
+      expect(harness.current().longTermMemory).toEqual({
+        enabled: true,
+        emitClientEvents: false,
+        embeddingProfileId: "memory-embedding",
+        maxRecallCallsPerRequest: limit,
+      });
+    },
+  );
+
   test("does not modify configuration when the embedding probe fails", async () => {
     const harness = createRepositoryHarness(BASE_CONFIG);
     const service = createLongTermMemoryOnboardingService({
@@ -218,6 +263,7 @@ describe("long-term memory onboarding", () => {
         enabled: true,
         emitClientEvents: false,
         embeddingProfileId: "memory",
+        maxRecallCallsPerRequest: 7,
       },
     };
     const harness = createRepositoryHarness(enabledConfig);
@@ -246,7 +292,10 @@ describe("long-term memory onboarding", () => {
       restartRequired: true,
       status: { enabled: false, profileId: "memory" },
     });
-    expect(harness.current().longTermMemory).toMatchObject({ enabled: false });
+    expect(harness.current().longTermMemory).toMatchObject({
+      enabled: false,
+      maxRecallCallsPerRequest: 7,
+    });
   });
 
   test("rejects an unconfigured provider before probing", async () => {

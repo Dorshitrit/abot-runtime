@@ -4,6 +4,7 @@ import type {
   ModelPreference,
 } from "../../model-gateway/types.js";
 import type { AgentMode } from "../../shared/types.js";
+import type { ScheduleMessageReference } from "../../sessions/schedule-metadata.js";
 import type { RuntimeAttachmentStore } from "../attachments/store.js";
 import type { RuntimeThinkingTrace } from "../model/thinking-trace.js";
 import type {
@@ -59,6 +60,7 @@ export type RequestExecutionSeed = Readonly<{
   sessionId: string;
   prompt: string;
   temporalContext?: RequestTemporalContext;
+  scheduledExecution?: ScheduleMessageReference;
   historyMessages: readonly RequestHistoryMessage[];
   sessionArtifactPaths?: readonly string[];
   shouldGenerateSessionTitle: boolean;
@@ -76,6 +78,8 @@ export type RequestExecutionSeed = Readonly<{
   contextCompactionStore?: RequestContextCompactionStore;
   sessionMemory?: RequestSessionMemory;
   longTermMemory?: LongTermMemoryService;
+  /** Frozen request-local availability limit for explicit memory recall. */
+  memoryRecallLimit?: number;
   requestSteering?: RequestSteeringInbox;
   toolPermissionMode: ToolPermissionMode;
   toolApprovalController?: ToolApprovalController;
@@ -98,6 +102,7 @@ export type RequestIdentity = Readonly<{
 export type AcceptedRequestInput = Readonly<{
   prompt: RequestExecutionSeed["prompt"];
   temporalContext?: RequestExecutionSeed["temporalContext"];
+  scheduledExecution?: RequestExecutionSeed["scheduledExecution"];
   attachments?: RequestExecutionSeed["attachments"];
   agentMode: RequestExecutionSeed["agentMode"];
 }>;
@@ -122,6 +127,7 @@ export type RequestModelRuntime = Readonly<{
 /** Core-owned passive memory service; never part of capability execution. */
 export type RequestMemoryRuntime = Readonly<{
   longTermMemory?: RequestExecutionSeed["longTermMemory"];
+  memoryRecallLimit?: RequestExecutionSeed["memoryRecallLimit"];
 }>;
 
 /** Request-local cancellation, steering, capability controls, and events. */

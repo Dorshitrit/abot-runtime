@@ -1,3 +1,4 @@
+import { resolveMemoryRecallSteeringVersion } from "../../long-term-memory/recall-binding.js";
 import {
   invokeStructuredModelStep,
   StructuredModelInvalidOutputError,
@@ -25,6 +26,7 @@ import { buildExecutionAgentInput } from "./input.js";
 import { parseExecutionAgentDecisionOutput } from "./parser.js";
 import { refineExecutionCapabilityInvocations } from "./refinement.js";
 import { createRefinementInvalidOutputCause } from "./refinement-reconsideration.js";
+import type { ChatMessage } from "../../../model-gateway/types.js";
 
 type RunExecutionAgentDecisionOptions = Readonly<{
   head: RoleCallLedgerHead;
@@ -34,6 +36,7 @@ type RunExecutionAgentDecisionOptions = Readonly<{
   includeTitle: boolean;
   allowPlanner: boolean;
   allowAuditor: boolean;
+  memoryRecallMessage?: ChatMessage;
 }>;
 
 export async function runExecutionAgentDecision(
@@ -43,6 +46,11 @@ export async function runExecutionAgentDecision(
   const input = buildExecutionAgentInput(request, options);
   const accepted = await invokeStructuredModelStep({
     request,
+    boundSteeringVersion: resolveMemoryRecallSteeringVersion(
+      options.memoryRecallMessage,
+      request.requestId,
+      options.call.callId,
+    ),
     modelStep: input.modelStep,
     format: input.format,
     messages: input.messages,

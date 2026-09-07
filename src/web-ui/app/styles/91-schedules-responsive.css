@@ -1,0 +1,72 @@
+@media (max-width: 1000px) {
+  .schedules-layout {
+    grid-template-columns: minmax(230px, 0.8fr) minmax(300px, 1.2fr);
+    gap: 14px;
+  }
+  .schedule-details {
+    padding: 18px;
+  }
+}
+@media (max-width: 760px) {
+  .app-shell .workspace-rail {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .app-shell.config-workspace .workspace-rail,
+  .app-shell.schedules-workspace .workspace-rail {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  #schedulesWorkspaceButton {
+    order: 4;
+  }
+  #configWorkspaceButton {
+    order: 5;
+  }
+  .schedules-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+  .schedules-toolbar > button,
+  .schedules-toolbar select {
+    flex: 1;
+    min-width: 0;
+    padding-inline: 8px;
+    white-space: nowrap;
+    font-size: var(--font-size-sm);
+  }
+  .schedule-search {
+    grid-column: 1 / -1;
+  }
+  .schedules-layout {
+    grid-template-columns: 1fr;
+  }
+  .schedules-list {
+    max-height: 230px;
+    overflow: auto;
+  }
+  .schedules-workspace-body {
+    padding: 16px 14px 32px;
+  }
+  .schedule-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .schedules-workspace-body input,
+  .schedules-workspace-body select,
+  .schedules-workspace-body textarea {
+    font-size: max(16px, 1rem);
+  }
+  .schedule-message-row {
+    padding-inline: 0;
+  }
+  .schedule-run-heading {
+    align-items: start;
+  }
+  .schedule-workspace-state {
+    flex-direction: column;
+    gap: 18px;
+    padding: 24px;
+    margin-block: 14px;
+  }
+  .schedule-state-copy h3 {
+    font-size: 1.15rem;
+  }
+}

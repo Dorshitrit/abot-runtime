@@ -1,6 +1,7 @@
 import type WebSocket from "ws";
 
 import { traceDebug } from "../runtime/observability/debug-logger.js";
+import type { RuntimeRequestHandler } from "../runtime/composition.js";
 import {
   createRequestSteeringInbox,
   type RequestSteeringInbox,
@@ -22,7 +23,9 @@ export type BridgeRequestSteeringRegistry = Readonly<{
 
 const LOG_SCOPE = "agent-bridge.request_steering";
 
-export function createBridgeRequestSteeringRegistry(): BridgeRequestSteeringRegistry {
+export function createBridgeRequestSteeringRegistry(
+  steer?: RuntimeRequestHandler["steer"],
+): BridgeRequestSteeringRegistry {
   const active = new Map<string, ActiveSteeringRequest>();
 
   return Object.freeze({
@@ -46,7 +49,9 @@ export function createBridgeRequestSteeringRegistry(): BridgeRequestSteeringRegi
       const text = readString(message.text).trim();
       const current = active.get(requestId);
       const result =
-        current?.inbox.append({ steerId, text }) ??
+        (steer && current
+          ? await steer(requestId, { steerId, text })
+          : current?.inbox.append({ steerId, text })) ??
         Object.freeze({
           ok: false as const,
           reason: "request_not_active" as const,

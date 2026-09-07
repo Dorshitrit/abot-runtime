@@ -267,7 +267,7 @@ describe("Web UI role event projection", () => {
     ]);
     expect(liveCards.find((card) => card.role === "worker")).toMatchObject({
       summary: "file reader | Inspect requested files",
-      facts: ["1 tool call"],
+      facts: ["1 read"],
     });
     expect(
       liveCards.filter((card) => card.active).map((card) => card.role),

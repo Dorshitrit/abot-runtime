@@ -1,4 +1,7 @@
+import { PUBLIC_HTTP_LIMITS } from "../../../src/shared/public-http/limits.js";
+
 export const WEB_LIMITS = Object.freeze({
+  ...PUBLIC_HTTP_LIMITS,
   queryMaxChars: 400,
   queryMaxWords: 50,
   searchQueries: 5,
@@ -9,14 +12,9 @@ export const WEB_LIMITS = Object.freeze({
   targetReadableSources: 3,
   fetchUrls: 3,
   fetchConcurrency: 3,
-  httpConcurrency: 6,
-  httpQueueLimit: 64,
-  redirects: 3,
-  responseBytes: 512 * 1024,
   outputChars: 16_000,
   pageOutputChars: 12_000,
   sourceOutputChars: 3_000,
-  requestTimeoutMs: 10_000,
   searchTotalTimeoutMs: 30_000,
   outputBytes: 48 * 1024,
   upstreamUrlChars: 4_096,
@@ -25,5 +23,4 @@ export const WEB_LIMITS = Object.freeze({
   upstreamSnippetChars: 800,
   retryAttempts: 2,
   retryBaseMs: 750,
-  responseHeaderBytes: 32 * 1024,
 } as const);

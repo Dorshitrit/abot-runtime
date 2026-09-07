@@ -10,6 +10,7 @@ import {
   resolveModelGatewayPort,
 } from "../model-gateway/server.js";
 import { loadDotEnvFile } from "../shared/load-dotenv.js";
+import { closeHttpServerImmediately } from "../shared/http-server-shutdown.js";
 import { startWebUiServer } from "../web-ui/server.js";
 import { resolveWebUiAddress } from "../web-ui/web-ui-address.js";
 
@@ -31,15 +32,6 @@ function printHelp(): void {
       "  start      Start the local model gateway and Web UI.",
     ].join("\n"),
   );
-}
-
-function closeServer(server: Server): Promise<void> {
-  return new Promise((resolveClose, reject) => {
-    server.close((error) => {
-      if (error) reject(error);
-      else resolveClose();
-    });
-  });
 }
 
 async function runStart(args: string[]): Promise<void> {
@@ -88,7 +80,7 @@ async function runStart(args: string[]): Promise<void> {
       closing = true;
       void Promise.all([
         webUi.close(),
-        ...(gateway ? [closeServer(gateway)] : []),
+        ...(gateway ? [closeHttpServerImmediately(gateway)] : []),
       ]).then(() => resolveExit(), rejectExit);
     };
     process.once("SIGINT", shutdown);

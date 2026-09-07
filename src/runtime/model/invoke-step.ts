@@ -29,6 +29,10 @@ import type {
   ModelStepOutputDiagnostics,
   RequestModelStepPort,
 } from "./model-step-port.js";
+import {
+  assertBoundModelStepSteeringCurrent,
+  isModelStepSteeringSuperseded,
+} from "./model-step-steering.js";
 
 export type {
   ModelStepInvocationInput,
@@ -123,16 +127,28 @@ class ModelStepInvocation<T> {
 
   async run(): Promise<T> {
     for (;;) {
+      assertBoundModelStepSteeringCurrent(
+        this.input.requestSteering,
+        this.input.params.boundSteeringVersion,
+      );
       const attempt = await this.beginAttempt();
       let outputDiagnostics: ModelStepOutputDiagnostics | undefined;
 
       try {
+        assertBoundModelStepSteeringCurrent(
+          this.input.requestSteering,
+          this.input.params.boundSteeringVersion,
+        );
         const response = await attempt.invokeProvider();
         outputDiagnostics = projectOutputDiagnostics(
           response.text,
           response.meta,
         );
         attempt.recordOutputReceived(outputDiagnostics);
+        assertBoundModelStepSteeringCurrent(
+          this.input.requestSteering,
+          this.input.params.boundSteeringVersion,
+        );
         if (
           this.resolveOutputDisposition(
             attempt.steeringSnapshot,
@@ -148,6 +164,7 @@ class ModelStepInvocation<T> {
         this.recordCompletion(attempt.steeringSnapshot, outputDiagnostics);
         return accepted;
       } catch (error: unknown) {
+        if (isModelStepSteeringSuperseded(error)) throw error;
         this.recordFailure(attempt, error, outputDiagnostics);
         throw error;
       } finally {

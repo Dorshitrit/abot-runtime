@@ -13,9 +13,11 @@ import { WebSocketServer } from "ws";
 import { inspectRuntimeConfigFileWithMeta } from "../runtime/config/loader.js";
 import type { ModelProviderAdapterRegistry } from "../model-gateway/index.js";
 import { loadDotEnvFile } from "../shared/load-dotenv.js";
+import { createWebUiShutdown } from "./server-shutdown.js";
 import { ExternalBridgeWebBackend } from "./external-bridge-backend.js";
 import { LocalRuntimeWebBackend } from "./local-runtime-backend.js";
 import { resolveWebUiAddress } from "./web-ui-address.js";
+import { createLinkPreviewRouteHandler } from "./link-preview/routes.js";
 
 const DEFAULT_WEB_BACKEND = "runtime";
 const DEFAULT_BRIDGE_API_BASE = "http://127.0.0.1:8787/abot/api";
@@ -337,8 +339,10 @@ export function startWebUiServer(
     });
   }
 
+  const handleLinkPreview = createLinkPreviewRouteHandler();
   const server = createServer((req, res) => {
     void (async () => {
+      if (await handleLinkPreview(req, res)) return;
       const pathname = new URL(req.url || "/", "http://localhost").pathname;
       if (pathname === "/web-config") {
         sendJson(res, 200, {
@@ -418,27 +422,38 @@ export function startWebUiServer(
     });
   });
 
-  server.listen(options.port, options.host, () => {
-    console.log(
-      `abot web UI listening on http://${options.host}:${options.port}`,
-    );
-    if (localRuntimeBackend) {
-      console.log("using local abot backend");
-    } else if (externalBridgeBackend) {
-      console.log(`using external bridge HTTP ${options.apiBaseUrl}`);
-      console.log(`using external bridge realtime ${options.realtimeUrl}`);
-    }
-  });
+  const listenAbort = new AbortController();
+  server.listen(
+    {
+      port: options.port,
+      host: options.host,
+      signal: listenAbort.signal,
+    },
+    () => {
+      console.log(
+        `abot web UI listening on http://${options.host}:${options.port}`,
+      );
+      if (localRuntimeBackend) {
+        console.log("using local abot backend");
+      } else if (externalBridgeBackend) {
+        console.log(`using external bridge HTTP ${options.apiBaseUrl}`);
+        console.log(`using external bridge realtime ${options.realtimeUrl}`);
+      }
+    },
+  );
+
+  const schedulerStartup = localRuntimeBackend?.start(
+    options.environments.map(({ id }) => id),
+  );
 
   return {
-    close: () =>
-      new Promise((resolveClose, reject) => {
-        wss.close();
-        server.close((error) => {
-          if (error) reject(error);
-          else resolveClose();
-        });
-      }),
+    close: createWebUiShutdown(
+      server,
+      wss,
+      schedulerStartup,
+      () => localRuntimeBackend?.stop(),
+      listenAbort,
+    ),
   };
 }
 

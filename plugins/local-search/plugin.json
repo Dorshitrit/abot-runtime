@@ -13,6 +13,18 @@
           "description": "Search filenames and/or textual file contents beneath the configured agent work directory or explicit workspace sources. The result is bounded and read-only; it never searches outside configured agent data roots.",
           "routingCapability": "filesystem_inspection",
           "developmentRoles": ["inspect"],
+          "eventPresentation": {
+            "metadata": {
+              "query": { "param": "query", "kind": "string" },
+              "searchRoot": { "param": "path", "kind": "string" },
+              "searchMode": { "param": "mode", "kind": "string" }
+            },
+            "resultMetadata": {
+              "outputPreview": { "path": "output", "kind": "preview" },
+              "returnedItemCount": { "path": "data.itemCount", "kind": "number" },
+              "sourceTruncated": { "path": "data.truncation.truncated", "kind": "boolean" }
+            }
+          },
           "runtimePathBindings": [
             {
               "operationId": "search_local_files",

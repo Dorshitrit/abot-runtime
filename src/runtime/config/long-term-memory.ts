@@ -1,3 +1,7 @@
+import {
+  DEFAULT_MEMORY_RECALL_CALL_LIMIT,
+  isMemoryRecallCallLimit,
+} from "../long-term-memory/recall-policy.js";
 import type { RuntimeLongTermMemoryConfig } from "../ports.js";
 import type { RuntimeConfigFile } from "./types.js";
 import { isRecord } from "./utils.js";
@@ -6,6 +10,7 @@ export const DEFAULT_LONG_TERM_MEMORY_CONFIG: RuntimeLongTermMemoryConfig =
   Object.freeze({
     enabled: false,
     emitClientEvents: false,
+    maxRecallCallsPerRequest: DEFAULT_MEMORY_RECALL_CALL_LIMIT,
   });
 
 export function buildLongTermMemoryConfig(
@@ -20,6 +25,11 @@ export function buildLongTermMemoryConfig(
   return Object.freeze({
     enabled: config.longTermMemory.enabled === true,
     emitClientEvents: config.longTermMemory.emitClientEvents === true,
+    maxRecallCallsPerRequest: isMemoryRecallCallLimit(
+      config.longTermMemory.maxRecallCallsPerRequest,
+    )
+      ? config.longTermMemory.maxRecallCallsPerRequest
+      : DEFAULT_MEMORY_RECALL_CALL_LIMIT,
     ...(embeddingProfileId ? { embeddingProfileId } : {}),
   });
 }
@@ -40,6 +50,7 @@ export function validateLongTermMemoryConfig(params: {
   validateOptionalBoolean(params.issues, params.value, "enabled");
   validateOptionalBoolean(params.issues, params.value, "emitClientEvents");
   validateOptionalProfileId(params.issues, params.value);
+  validateOptionalMemoryRecallLimit(params.issues, params.value);
   validateEnabledProfileBinding(params);
 }
 
@@ -51,6 +62,7 @@ function rejectUnsupportedKeys(
     "enabled",
     "emitClientEvents",
     "embeddingProfileId",
+    "maxRecallCallsPerRequest",
   ]);
   for (const key of Object.keys(config)) {
     if (!supported.has(key)) {
@@ -59,6 +71,18 @@ function rejectUnsupportedKeys(
       );
     }
   }
+}
+
+function validateOptionalMemoryRecallLimit(
+  issues: string[],
+  config: Record<string, unknown>,
+): void {
+  const value = config.maxRecallCallsPerRequest;
+  if (value === undefined) return;
+  if (isMemoryRecallCallLimit(value)) return;
+  issues.push(
+    "longTermMemory.maxRecallCallsPerRequest must be a positive safe integer",
+  );
 }
 
 function validateOptionalBoolean(

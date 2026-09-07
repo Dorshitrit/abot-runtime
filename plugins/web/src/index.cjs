@@ -246,17 +246,37 @@ function failureFromError(error, options) {
   });
 }
 
-// plugins/web/source/errors.ts
-var WebPluginError = class extends Error {
+// src/shared/public-http/errors.ts
+var PublicHttpError = class extends Error {
   code;
   constructor(code, message) {
     super(message);
+    this.name = "PublicHttpError";
+    this.code = code;
+  }
+};
+function isPublicHttpError(error) {
+  return error instanceof PublicHttpError;
+}
+
+// plugins/web/source/errors.ts
+var WebPluginError = class extends PublicHttpError {
+  code;
+  constructor(code, message) {
+    super(code, message);
     this.name = "WebPluginError";
     this.code = code;
   }
 };
 function isWebPluginError(error) {
   return error instanceof WebPluginError;
+}
+function rethrowWebPluginError(error) {
+  if (error instanceof WebPluginError) throw error;
+  if (isPublicHttpError(error)) {
+    throw new WebPluginError(error.code, error.message);
+  }
+  throw error;
 }
 
 // plugins/web/source/concurrency.ts
@@ -280,8 +300,19 @@ async function mapWithConcurrency(values, concurrency, operation) {
   return Object.freeze(results);
 }
 
+// src/shared/public-http/limits.ts
+var PUBLIC_HTTP_LIMITS = Object.freeze({
+  httpConcurrency: 6,
+  httpQueueLimit: 64,
+  redirects: 3,
+  responseBytes: 512 * 1024,
+  requestTimeoutMs: 1e4,
+  responseHeaderBytes: 32 * 1024
+});
+
 // plugins/web/source/limits.ts
 var WEB_LIMITS = Object.freeze({
+  ...PUBLIC_HTTP_LIMITS,
   queryMaxChars: 400,
   queryMaxWords: 50,
   searchQueries: 5,
@@ -292,14 +323,9 @@ var WEB_LIMITS = Object.freeze({
   targetReadableSources: 3,
   fetchUrls: 3,
   fetchConcurrency: 3,
-  httpConcurrency: 6,
-  httpQueueLimit: 64,
-  redirects: 3,
-  responseBytes: 512 * 1024,
   outputChars: 16e3,
   pageOutputChars: 12e3,
   sourceOutputChars: 3e3,
-  requestTimeoutMs: 1e4,
   searchTotalTimeoutMs: 3e4,
   outputBytes: 48 * 1024,
   upstreamUrlChars: 4096,
@@ -307,8 +333,7 @@ var WEB_LIMITS = Object.freeze({
   upstreamTitleChars: 180,
   upstreamSnippetChars: 800,
   retryAttempts: 2,
-  retryBaseMs: 750,
-  responseHeaderBytes: 32 * 1024
+  retryBaseMs: 750
 });
 
 // plugins/web/source/content.ts
@@ -832,7 +857,7 @@ function createWebFetchService(httpClient) {
   });
 }
 
-// plugins/web/source/network-policy.ts
+// src/shared/public-http/network-policy.ts
 var import_promises = require("node:dns/promises");
 var import_node_net = require("node:net");
 function ipv4Value(address) {
@@ -935,33 +960,33 @@ function parsePublicHttpUrl(rawUrl) {
   try {
     parsed = new URL(rawUrl);
   } catch {
-    throw new WebPluginError(
+    throw new PublicHttpError(
       "web_target_invalid",
       "A valid absolute URL is required."
     );
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new WebPluginError(
+    throw new PublicHttpError(
       "web_target_invalid",
       "Only http and https URLs are supported."
     );
   }
   if (parsed.username || parsed.password) {
-    throw new WebPluginError(
+    throw new PublicHttpError(
       "web_target_invalid",
       "URLs containing credentials are not supported."
     );
   }
   const hostname = normalizeHostname(parsed.hostname);
   if (!hostname || isBlockedHostname(hostname)) {
-    throw new WebPluginError(
+    throw new PublicHttpError(
       "web_target_not_public",
       "Only public Internet targets are allowed."
     );
   }
   const family = (0, import_node_net.isIP)(hostname);
   if (family === 4 && !isPublicIpv4(hostname) || family === 6 && !isPublicIpv6(hostname)) {
-    throw new WebPluginError(
+    throw new PublicHttpError(
       "web_target_not_public",
       "Only public Internet targets are allowed."
     );
@@ -980,7 +1005,7 @@ var resolveHostAddresses = async (hostname) => {
   try {
     resolved = await (0, import_promises.lookup)(normalized, { all: true, verbatim: true });
   } catch {
-    throw new WebPluginError(
+    throw new PublicHttpError(
       "web_target_unresolvable",
       "The public target hostname could not be resolved."
     );
@@ -991,7 +1016,7 @@ var resolveHostAddresses = async (hostname) => {
     (entry) => Object.freeze({ address: entry.address, family: entry.family })
   );
   if (addresses.length === 0) {
-    throw new WebPluginError(
+    throw new PublicHttpError(
       "web_target_unresolvable",
       "The public target hostname could not be resolved."
     );
@@ -1002,12 +1027,21 @@ async function resolvePublicTarget(url, resolver = resolveHostAddresses) {
   const hostname = normalizeHostname(url.hostname);
   const addresses = await resolver(hostname);
   if (addresses.length === 0 || addresses.some((entry) => !isPublicAddress(entry))) {
-    throw new WebPluginError(
+    throw new PublicHttpError(
       "web_target_not_public",
       "Only public Internet targets are allowed."
     );
   }
   return addresses[0];
+}
+
+// plugins/web/source/network-policy.ts
+function parsePublicHttpUrl2(rawUrl) {
+  try {
+    return parsePublicHttpUrl(rawUrl);
+  } catch (error) {
+    return rethrowWebPluginError(error);
+  }
 }
 
 // plugins/web/source/parameters.ts
@@ -1069,7 +1103,7 @@ function parseFetchParams(params) {
     maxItems: WEB_LIMITS.fetchUrls,
     maxItemLength: WEB_LIMITS.upstreamUrlChars
   });
-  for (const url of urls) parsePublicHttpUrl(url);
+  for (const url of urls) parsePublicHttpUrl2(url);
   return urls;
 }
 function validate(parse, error, repairHint) {
@@ -1106,11 +1140,11 @@ var webFetchCallAdapter = Object.freeze({
   validateCall: ({ params }) => adapterValidation(validateFetchParams(params))
 });
 
-// plugins/web/source/deadline.ts
+// src/shared/public-http/deadline.ts
 function remainingTime(deadline) {
   const remaining = deadline - Date.now();
   if (remaining <= 0) {
-    throw new WebPluginError(
+    throw new PublicHttpError(
       "web_request_timed_out",
       "The upstream web request timed out."
     );
@@ -1120,7 +1154,10 @@ function remainingTime(deadline) {
 function withinDeadline(promise, deadline, abortSignal) {
   if (abortSignal?.aborted) {
     return Promise.reject(
-      new WebPluginError("web_request_aborted", "The web request was aborted.")
+      new PublicHttpError(
+        "web_request_aborted",
+        "The web request was aborted."
+      )
     );
   }
   return new Promise((resolve, reject) => {
@@ -1134,7 +1171,7 @@ function withinDeadline(promise, deadline, abortSignal) {
     };
     const onAbort = () => finish(
       () => reject(
-        new WebPluginError(
+        new PublicHttpError(
           "web_request_aborted",
           "The web request was aborted."
         )
@@ -1143,7 +1180,7 @@ function withinDeadline(promise, deadline, abortSignal) {
     const timeout = setTimeout(
       () => finish(
         () => reject(
-          new WebPluginError(
+          new PublicHttpError(
             "web_request_timed_out",
             "The upstream web request timed out."
           )
@@ -1160,7 +1197,7 @@ function withinDeadline(promise, deadline, abortSignal) {
   });
 }
 
-// plugins/web/source/aggregate-gate.ts
+// src/shared/public-http/aggregate-gate.ts
 function createAggregateGate(maxActive, maxQueued) {
   let active = 0;
   const queue = [];
@@ -1173,7 +1210,7 @@ function createAggregateGate(maxActive, maxQueued) {
       }
       if (waiter.abortSignal?.aborted) {
         waiter.reject(
-          new WebPluginError(
+          new PublicHttpError(
             "web_request_aborted",
             "The web request was aborted."
           )
@@ -1182,7 +1219,7 @@ function createAggregateGate(maxActive, maxQueued) {
       }
       if (waiter.deadline <= Date.now()) {
         waiter.reject(
-          new WebPluginError(
+          new PublicHttpError(
             "web_request_timed_out",
             "The upstream web request timed out."
           )
@@ -1202,7 +1239,7 @@ function createAggregateGate(maxActive, maxQueued) {
   const acquire = (deadline, abortSignal) => {
     if (abortSignal?.aborted) {
       return Promise.reject(
-        new WebPluginError(
+        new PublicHttpError(
           "web_request_aborted",
           "The web request was aborted."
         )
@@ -1220,7 +1257,7 @@ function createAggregateGate(maxActive, maxQueued) {
     }
     if (queue.length >= maxQueued) {
       return Promise.reject(
-        new WebPluginError(
+        new PublicHttpError(
           "web_request_capacity_exceeded",
           "The web client is at its bounded request capacity."
         )
@@ -1246,14 +1283,14 @@ function createAggregateGate(maxActive, maxQueued) {
         reject(error);
       };
       waiter.onAbort = () => fail(
-        new WebPluginError(
+        new PublicHttpError(
           "web_request_aborted",
           "The web request was aborted."
         )
       );
       waiter.timeout = setTimeout(
         () => fail(
-          new WebPluginError(
+          new PublicHttpError(
             "web_request_timed_out",
             "The upstream web request timed out."
           )
@@ -1275,7 +1312,7 @@ function createAggregateGate(maxActive, maxQueued) {
   });
 }
 
-// plugins/web/source/request-hop.ts
+// src/shared/public-http/request-hop.ts
 var import_node_http = require("node:http");
 var import_node_https = require("node:https");
 function buildPinnedLookup(address) {
@@ -1335,7 +1372,7 @@ function readBoundedBody(response, maxBytes) {
       if (settled) return;
       settled = true;
       reject(
-        new WebPluginError(
+        new PublicHttpError(
           "web_response_invalid",
           "The upstream response ended before completion."
         )
@@ -1345,7 +1382,7 @@ function readBoundedBody(response, maxBytes) {
 }
 var requestPinnedHop = async (params) => {
   if (params.abortSignal?.aborted) {
-    throw new WebPluginError(
+    throw new PublicHttpError(
       "web_request_aborted",
       "The web request was aborted."
     );
@@ -1362,7 +1399,7 @@ var requestPinnedHop = async (params) => {
       headers: params.headers,
       lookup: buildPinnedLookup(params.address),
       agent: false,
-      maxHeaderSize: WEB_LIMITS.responseHeaderBytes
+      maxHeaderSize: PUBLIC_HTTP_LIMITS.responseHeaderBytes
     };
     const requestFunction = params.url.protocol === "https:" ? import_node_https.request : import_node_http.request;
     const request = requestFunction(requestOptions, async (response) => {
@@ -1389,7 +1426,7 @@ var requestPinnedHop = async (params) => {
     const timeout = setTimeout(() => {
       timedOut = true;
       request.destroy(
-        new WebPluginError(
+        new PublicHttpError(
           "web_request_timed_out",
           "The upstream web request timed out."
         )
@@ -1397,7 +1434,7 @@ var requestPinnedHop = async (params) => {
     }, params.timeoutMs);
     timeout.unref?.();
     const onAbort = () => request.destroy(
-      new WebPluginError(
+      new PublicHttpError(
         "web_request_aborted",
         "The web request was aborted."
       )
@@ -1406,18 +1443,18 @@ var requestPinnedHop = async (params) => {
     request.once("error", (error) => {
       if (settled) return;
       settled = true;
-      if (isWebPluginError(error)) {
+      if (isPublicHttpError(error)) {
         reject(error);
       } else if (timedOut) {
         reject(
-          new WebPluginError(
+          new PublicHttpError(
             "web_request_timed_out",
             "The upstream web request timed out."
           )
         );
       } else {
         reject(
-          new WebPluginError(
+          new PublicHttpError(
             "web_response_invalid",
             "The upstream web request failed."
           )
@@ -1432,7 +1469,7 @@ var requestPinnedHop = async (params) => {
   });
 };
 
-// plugins/web/source/public-http.ts
+// src/shared/public-http/public-http.ts
 var REDIRECT_STATUSES = /* @__PURE__ */ new Set([301, 302, 303, 307, 308]);
 function canFollowHttpRedirect(request, status) {
   if (request.followRedirects === false) return false;
@@ -1443,9 +1480,9 @@ function redirectLocation(response) {
   return Array.isArray(raw) ? raw[0] : raw;
 }
 function validateBounds(request) {
-  const maxBytes = request.maxBytes ?? WEB_LIMITS.responseBytes;
-  const maxRedirects = request.maxRedirects ?? WEB_LIMITS.redirects;
-  const timeoutMs = request.timeoutMs ?? WEB_LIMITS.requestTimeoutMs;
+  const maxBytes = request.maxBytes ?? PUBLIC_HTTP_LIMITS.responseBytes;
+  const maxRedirects = request.maxRedirects ?? PUBLIC_HTTP_LIMITS.redirects;
+  const timeoutMs = request.timeoutMs ?? PUBLIC_HTTP_LIMITS.requestTimeoutMs;
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
     throw new RangeError("maxBytes must be a positive safe integer");
   }
@@ -1461,8 +1498,8 @@ function createPublicHttpClient(dependencies = {}) {
   const resolveHost = dependencies.resolveHost;
   const requestHop = dependencies.requestHop ?? requestPinnedHop;
   const gate = createAggregateGate(
-    WEB_LIMITS.httpConcurrency,
-    WEB_LIMITS.httpQueueLimit
+    PUBLIC_HTTP_LIMITS.httpConcurrency,
+    PUBLIC_HTTP_LIMITS.httpQueueLimit
   );
   return Object.freeze({
     async get(request) {
@@ -1502,13 +1539,13 @@ function createPublicHttpClient(dependencies = {}) {
         }
         const location = redirectLocation(response);
         if (!location) {
-          throw new WebPluginError(
+          throw new PublicHttpError(
             "web_redirect_invalid",
             "The upstream redirect did not provide a valid destination."
           );
         }
         if (redirectCount >= bounds.maxRedirects) {
-          throw new WebPluginError(
+          throw new PublicHttpError(
             "web_redirect_limit_exceeded",
             "The web request exceeded the redirect limit."
           );
@@ -1516,12 +1553,26 @@ function createPublicHttpClient(dependencies = {}) {
         try {
           current = parsePublicHttpUrl(new URL(location, current).toString());
         } catch (error) {
-          if (isWebPluginError(error)) throw error;
-          throw new WebPluginError(
+          if (isPublicHttpError(error)) throw error;
+          throw new PublicHttpError(
             "web_redirect_invalid",
             "The upstream redirect did not provide a valid destination."
           );
         }
+      }
+    }
+  });
+}
+
+// plugins/web/source/public-http.ts
+function createPublicHttpClient2(dependencies = {}) {
+  const client = createPublicHttpClient(dependencies);
+  return Object.freeze({
+    async get(request) {
+      try {
+        return await client.get(request);
+      } catch (error) {
+        return rethrowWebPluginError(error);
       }
     }
   });
@@ -2141,9 +2192,9 @@ function readSource(value) {
     value.allowedOrigins,
     "allowedOrigins",
     8
-  ).map((origin) => parsePublicHttpUrl(origin).origin);
+  ).map((origin) => parsePublicHttpUrl2(origin).origin);
   const entryUrls = readSourceStrings(value.entryUrls, "entryUrls", 8).map(
-    (url) => parsePublicHttpUrl(url).toString()
+    (url) => parsePublicHttpUrl2(url).toString()
   );
   for (const url of entryUrls) {
     if (url.length > 1024)
@@ -2218,6 +2269,15 @@ function readLightConfig(value) {
     sourceSetId,
     sourceSetVersion: LIGHT_SOURCE_SET_VERSION
   });
+}
+
+// plugins/web/source/deadline.ts
+async function withinDeadline2(promise, deadline, abortSignal) {
+  try {
+    return await withinDeadline(promise, deadline, abortSignal);
+  } catch (error) {
+    return rethrowWebPluginError(error);
+  }
 }
 
 // plugins/web/source/light/crawl/origin-gate.ts
@@ -2321,7 +2381,7 @@ function createOriginGate(maxActive, maxPerOrigin) {
       const release = await acquire(origin, deadline, signal);
       const work = Promise.resolve().then(operation);
       void work.then(release, release);
-      return await withinDeadline(work, deadline, signal);
+      return await withinDeadline2(work, deadline, signal);
     }
   });
 }
@@ -2726,7 +2786,7 @@ function createRobotsPolicy(config, admittedOrigins) {
             document.sitemaps.filter((rawUrl) => {
               if (rawUrl.length > WEB_LIMITS.upstreamUrlChars) return false;
               try {
-                return admittedOrigins.has(parsePublicHttpUrl(rawUrl).origin);
+                return admittedOrigins.has(parsePublicHttpUrl2(rawUrl).origin);
               } catch {
                 return false;
               }
@@ -2864,7 +2924,7 @@ function parseLightUrl(raw) {
       "The Light source URL exceeds its length limit."
     );
   }
-  return parsePublicHttpUrl(raw);
+  return parsePublicHttpUrl2(raw);
 }
 function redirectTarget(response, current) {
   const raw = response.headers.location;
@@ -3260,7 +3320,7 @@ function boundedDiscoveryText(value, maxChars = 800) {
 function resolveDiscoveryUrl(value, base) {
   if (!value || value.length > 4096) return void 0;
   try {
-    const parsed = parsePublicHttpUrl(new URL(value.trim(), base).toString());
+    const parsed = parsePublicHttpUrl2(new URL(value.trim(), base).toString());
     parsed.hash = "";
     return parsed.toString();
   } catch {
@@ -3898,7 +3958,7 @@ async function readLightDocument(params) {
 // plugins/web/source/light/search-frontier.ts
 function admittedCandidateUrl(url, source) {
   try {
-    const parsed = parsePublicHttpUrl(url);
+    const parsed = parsePublicHttpUrl2(url);
     if (!source.allowedOrigins.includes(parsed.origin)) return void 0;
     parsed.hash = "";
     if (parsed.toString().length > 1024) return void 0;
@@ -4413,7 +4473,7 @@ function parseBraveHits(body, query) {
     if (!title || !rawUrl) continue;
     let parsed;
     try {
-      parsed = parsePublicHttpUrl(rawUrl);
+      parsed = parsePublicHttpUrl2(rawUrl);
     } catch {
       continue;
     }
@@ -4722,7 +4782,7 @@ function failure(error, operation) {
   });
 }
 function createWebPlugin(context, dependencies = {}) {
-  const httpClient = dependencies.httpClient ?? createPublicHttpClient();
+  const httpClient = dependencies.httpClient ?? createPublicHttpClient2();
   const fetchService = createWebFetchService(httpClient);
   const braveApiKey = context.secrets?.get("braveSearchApiKey")?.trim() ?? "";
   const retryBaseMs = readBoundedInteger(context.config?.retryBaseMs, {

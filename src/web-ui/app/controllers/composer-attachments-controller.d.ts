@@ -72,6 +72,7 @@ export interface ComposerAttachmentsControllerOptions {
   onSendStateChange: () => void;
   onControlEvent: (event: ComposerAttachmentControlEvent) => void;
   isComposerAvailable?: () => boolean;
+  isComposerVisible?: () => boolean;
 }
 
 export interface ComposerAttachmentsController {

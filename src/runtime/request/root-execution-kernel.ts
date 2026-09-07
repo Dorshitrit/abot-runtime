@@ -1,8 +1,8 @@
 import { projectRequestToolResults } from "../context/request-tool-results.js";
 import { emitRuntimeStatus } from "../events/runtime-status.js";
+import { isModelStepSteeringSuperseded } from "../model/model-step-steering.js";
 import {
   resolveRoleCallTransactions,
-  type RoleCallChildReturnCommit,
   type RoleCallFrame,
   type RoleCallLedger,
   type RoleCallLedgerHead,
@@ -38,10 +38,16 @@ import {
   traceSupervisorRootAcknowledgementPublished,
   traceSupervisorRootActivationFailed,
   traceSupervisorRootActivationStarted,
-  traceSupervisorRootObservationHandoffBound,
   traceSupervisorRootInvocationSuperseded,
   traceSupervisorRootResponseSuperseded,
 } from "./supervisor-root-execution-diagnostics.js";
+import {
+  bindSupervisorObservationHandoff,
+  projectSupervisorFinalObservation,
+  type RootObservationHandoff,
+} from "./root-observation-handoff.js";
+import { performRootMemoryRecall } from "./root-memory-recall.js";
+import { projectRootMemoryRecallMessage } from "../long-term-memory/recall-context.js";
 import { createPlainRootAuthoredResponse } from "../orchestration/final-response/authoring-contract.js";
 
 export type {
@@ -53,13 +59,6 @@ export type { CompiledRequestExecutionPolicy } from "./execution-scope.js";
 
 export type RequestRootContractAdapter =
   RootContractAdapter<RequestExecutionScope>;
-
-type RootObservationHandoff = Readonly<{
-  callerCallId: string;
-  childCallId: string;
-  resultRef: string;
-  finalObservation: RequestObservation;
-}>;
 
 type RootActivation = Readonly<{
   head: RoleCallLedgerHead;
@@ -135,7 +134,7 @@ class RootExecutionSession {
   }
 
   async run(): Promise<RequestRunnerResult> {
-    // Every non-terminal decision consumes a ledger-bounded child call.
+    // Every accepted continuation reserves its next activation in the ledger.
     for (;;) {
       const control = await this.runActivation();
       if (control.kind === "complete") {
@@ -158,6 +157,13 @@ class RootExecutionSession {
       }
       return await this.executeDecision(decisionActivation, attempt);
     } catch (error: unknown) {
+      if (isModelStepSteeringSuperseded(error)) {
+        this.traceResponseSuperseded(
+          error.boundSteeringVersion,
+          "after_response",
+        );
+        return CONTINUE_ROOT_EXECUTION;
+      }
       traceSupervisorRootActivationFailed({
         diagnostic: this.diagnostic,
         failureStage: attempt.failureStage,
@@ -213,6 +219,11 @@ class RootExecutionSession {
       {
         head: activation.head,
         callFrame: activation.call,
+        memoryRecallMessage: projectRootMemoryRecallMessage({
+          head: activation.head,
+          callId: activation.call.callId,
+          steeringVersion: this.requestSteering.snapshot().version,
+        }),
         call: activation.callIdentity,
         toolResults: decisionToolResults,
         includeAcknowledgement:
@@ -285,6 +296,18 @@ class RootExecutionSession {
     attempt: RootActivationAttempt,
   ): Promise<RootLoopControl> {
     const { decision } = activation;
+    if (decision.action === "recall_memory") {
+      attempt.failureStage = "recall_memory";
+      await performRootMemoryRecall({
+        request: this.request,
+        ledger: this.ledger,
+        head: activation.head,
+        call: activation.call,
+        steeringVersion: activation.decisionSteeringVersion,
+        query: decision.query,
+      });
+      return CONTINUE_ROOT_EXECUTION;
+    }
     if (decision.action === "invoke_role") {
       return this.invokeRole(activation, decision, attempt);
     }
@@ -563,6 +586,12 @@ class RootExecutionSession {
       decision.action === "blocked"
         ? createPlainRootAuthoredResponse(decision.response)
         : await this.policy.rootContract.authorResponse(this.request, {
+            responseRecommendation: decision.responseRecommendation,
+            memoryRecallMessage: projectRootMemoryRecallMessage({
+              head: activation.head,
+              callId: activation.call.callId,
+              steeringVersion: activation.decisionSteeringVersion,
+            }),
             head: activation.head,
             callFrame: activation.call,
             steeringVersion: activation.decisionSteeringVersion,
@@ -682,62 +711,6 @@ function createRootExecutionFreshness(params: {
     }),
     isCurrent: () => params.requestSteering.isCurrent(snapshot.version),
   });
-}
-
-function bindSupervisorObservationHandoff(params: {
-  diagnostic: SupervisorRootDiagnosticContext;
-  returnCommit: RoleCallChildReturnCommit;
-  resume: RoleChildReturnContext;
-  finalObservation: RequestObservation;
-  replaced: boolean;
-}): RootObservationHandoff {
-  const { callerCallId, childCallId, resultRef } = params.returnCommit.effect;
-  if (
-    params.resume.callerCallId !== callerCallId ||
-    params.resume.returnedChildCallId !== childCallId ||
-    params.resume.returnedResultRef !== resultRef ||
-    !params.resume.completedChildren.some(
-      (child) =>
-        child.callerCallId === callerCallId &&
-        child.childCallId === childCallId &&
-        child.resultRef === resultRef,
-    )
-  ) {
-    throw new Error("supervisor_observation_handoff_source_invalid");
-  }
-  const handoff = Object.freeze({
-    callerCallId,
-    childCallId,
-    resultRef,
-    finalObservation: params.finalObservation,
-  });
-  traceSupervisorRootObservationHandoffBound({
-    diagnostic: params.diagnostic,
-    callerCallId,
-    childCallId,
-    resultRef,
-    replaced: params.replaced,
-    observationContentLength: params.finalObservation.observationContent.length,
-  });
-  return handoff;
-}
-
-function projectSupervisorFinalObservation(
-  handoff: RootObservationHandoff,
-  resume: RoleChildReturnContext | undefined,
-): RequestObservation {
-  if (
-    resume?.callerCallId !== handoff.callerCallId ||
-    !resume.completedChildren.some(
-      (child) =>
-        child.callerCallId === handoff.callerCallId &&
-        child.childCallId === handoff.childCallId &&
-        child.resultRef === handoff.resultRef,
-    )
-  ) {
-    throw new Error("supervisor_observation_handoff_source_invalid");
-  }
-  return handoff.finalObservation;
 }
 
 function emitSupervisorResumeStatus(request: RequestExecutionScope): void {

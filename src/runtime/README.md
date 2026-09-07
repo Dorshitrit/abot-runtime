@@ -46,6 +46,12 @@ The production path is:
    kernel establishes one immutable normalized working directory on the root
    call from the accepted Execution Agent decision; an explicit `null`
    selection resolves to `.`.
+   When long-term memory is enabled, either root contract may instead select
+   `recall_memory`. The kernel invokes the Runtime memory service directly,
+   commits a root-bound passive receipt, and resumes the same root under the
+   existing activation ceiling. Recall neither creates a child nor consumes a
+   capability execution. The bounded projection belongs only to the current
+   root steering version and is reused during terminal response authoring.
 6. Only the canonical root commits the root response. The selected contract
    may use its own presentation step, but the request finalizer, persistence,
    terminal observation, and completion path are shared.
@@ -155,7 +161,7 @@ or model prose.
 
 ## Canonical State
 
-`orchestration/role-calls/` ledger v17 is the sole writer of the request-local call tree
+`orchestration/role-calls/` ledger v18 is the sole writer of the request-local call tree
 and role results. Each call frame records its caller, role, bounded objective,
 depth, status, result reference, and any canonical capability catalog-group
 scope. An authorized root, Planner, or Worker may also record one normalized
@@ -449,6 +455,104 @@ Omitted/default `supervisor-worker-v1` keeps the legacy normalized
 terminal-text behavior.
 
 ## Public Package Boundary
+
+### Scheduler lifecycle
+
+For installed clients, use `createLocalRuntimeApplication(config)` from
+`@abot-ai/runtime/runtime`. It automatically attaches to or creates one local
+environment owner. Web and Bridge use the same managed facade, so requests,
+session deletion and scheduling share admission across processes. Start with
+`await application.start()` and close with `await application.stop()`; closing
+an attached client leaves the owner running. See
+[local ownership and client lifecycle](local-host/README.md).
+
+`createRuntimeApplication` composes one local scheduler and its management
+capability. Call `await application.start()` to load persisted Jobs and begin
+the clock, and `await application.stop()` when shutting down. The local Web
+backend starts all configured environments without waiting for a browser visit.
+Scheduling can also start lazily when its built-in capability is first invoked.
+After shutdown, explicit application or compatibility-host startup can restart
+the same scheduler. Lazy management cannot revive a stopped scheduler. New
+subscribers belong to the restarted lifecycle; old run events cannot cross into
+it, and interrupted work is never retried.
+
+The compatibility `createDefaultRuntimeDependencies(config).host.start()` and
+standalone default host also start their composed scheduler automatically. The
+synchronous handle exposes optional `ready` for asynchronous startup and `stop`
+for both scheduler and Bridge; host requests and optional steering await
+readiness and reject after shutdown. Host adapter overrides that change execution
+or storage rebuild the scheduling graph. An event-only override rebinds future
+scheduled requests while preserving the existing scheduler, admission, session
+guard and subscriptions; running requests keep their captured sink. Starting the
+default host again restores its sink for future schedules. The default-adapters
+facade delegates these
+responsibilities to `runtime-environment`, `runtime-host-environment` and
+`runtime-host-lifecycle`; caller-supplied stores and registries remain injected.
+
+`application.services.scheduler` provides create/list/get/update/pause/resume/
+cancel/runNow and run history. Model calls bind the current conversation and
+model mechanically; the Web page selects an existing conversation and model.
+Each scheduled run enters the ordinary request handler with FULL permissions,
+its saved model, current canonical history, and one persisted trigger message.
+The trigger's immutable `schedule` reference identifies the Job and Run; its
+message content is the exact historical prompt. Provenance comes from an internal
+scheduler option bound to the exact request and session, never from public
+`run_request` fields. Supplied `schedule` fields do not mark ordinary requests as
+scheduled. Scheduled events can be observed
+through `application.subscribeScheduledEvents`. Consumers may supply
+`scheduledRequestOptions` for the existing approval and steering controllers.
+Scheduled terminal events are published once after the handler settles. Success
+requires the correlated assistant reply in canonical session storage; missing or
+failed persistence is published as failure instead of an earlier completion.
+
+Session admission defers scheduled work while ordinary requests are active;
+subsequent ordinary requests wait for a running scheduled reservation. Existing
+ordinary-request concurrency is unchanged when no scheduled reservation exists.
+The composed SessionStore facade serializes mutations and marks deletion intent
+synchronously. It uses the injected backing store but intentionally does not
+preserve that object's identity: all callers must use the composed facade for
+deletion and request persistence to share the lifetime guard.
+
+Session deletion keeps its tombstone even if backing deletion or cleanup fails.
+A later explicit delete retries only failed listeners from the original deletion;
+successful cleanup is not repeated and newly registered listeners are not
+retroactive. Concurrent deletes share the cleanup attempt until all listeners
+settle. Successful physical deletion retains its original result until cleanup
+succeeds, so an explicit retry can finish consumer attachment cleanup. Both
+delete APIs use the backing store's statistics operation; the boolean API projects
+its `deleted` result. The receipt is delivered once, including across API variants.
+Cleanup never revives the session or reruns scheduled work.
+
+See [scheduler ownership and time rules](scheduler/README.md) for persistence,
+offline behavior, cancellation, and local ownership locking. Stopping does not
+drain active model requests or retry interrupted work. This lifecycle does not
+start a separate model loop or alter the Supervisor/Worker/Execution Agent roles.
+
+The conversation-scoped `schedules.list` tool returns at most 100 Jobs per page,
+newest first, without their stored prompts. Pass `nextCursor` as `cursor` to
+continue until it is null; `omittedCount` describes the entries after that page.
+A stale cursor fails explicitly and requires listing from the beginning. This
+passive listing never schedules or executes work; `get` resolves an exact Job ID.
+`get` requests the latest 20 runs from storage before loading their payloads and
+returns that bounded history in chronological order, without pruning older runs.
+
+Creation is projected as six flat operations (`create_timer`, `create_once`,
+`create_interval`, `create_daily`, `create_weekly`, `create_monthly`). Each fixes
+the adapter's `action=create` and schedule kind mechanically and requires only
+its relevant timing fields. Calendar variants require an explicit IANA time zone.
+Missing required timing is rejected before dispatch; model and conversation
+binding remain owned by the active request. Recurrence changes use six matching
+`update_*` operations with complete required timing and fixed action/kind.
+The plain `update` operation edits metadata while retaining the recurrence;
+omitted time zone, model and mode retain their saved values. The scheduling tool
+has 19 operations under the shared 32-operation contract limit. Other management
+operations and the underlying scheduler service keep their existing contracts.
+
+`SchedulerService.listRuns` preserves complete chronological results when no
+query is supplied. Optional cursor/limit queries return bounded newest-first
+records with an exact Job-scoped run cursor. The Web requests one lookahead
+record before owner RPC serialization, returns 50 runs by default (maximum 100),
+and preserves access to older full records.
 
 Stable public subpath exports are:
 

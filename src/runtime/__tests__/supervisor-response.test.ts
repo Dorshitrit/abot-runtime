@@ -294,67 +294,72 @@ describe("Supervisor terminal response", () => {
     expect(instructions).not.toContain("Return exactly one JSON object");
   });
 
-  test("invokes raw Supervisor response mode and logs only bounded metadata", async () => {
-    configureDebugLogger({ enabled: true });
-    const secretOutput = "FINAL_RESPONSE_SECRET";
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async () => ({
-      text: `  ${secretOutput}  `,
-      meta: {},
-    }));
-    const request = createRequest(invoke);
-    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-    let logs: Record<string, unknown>[] = [];
-    try {
-      await expect(
-        runSupervisorResponse(request, {
-          call,
-          toolResults: EMPTY_REQUEST_TOOL_RESULTS,
-          resume,
-        }),
-      ).resolves.toBe(secretOutput);
-      logs = consoleLog.mock.calls.map(
-        ([line]) => JSON.parse(String(line)) as Record<string, unknown>,
-      );
-    } finally {
-      consoleLog.mockRestore();
-    }
+  test.each([
+    "FINAL_RESPONSE_SECRET",
+    JSON.stringify({ result: "recall_memory" }),
+  ])(
+    "invokes raw Supervisor response mode and logs only bounded metadata %s",
+    async (secretOutput) => {
+      configureDebugLogger({ enabled: true });
+      const invoke = vi.fn<ModelGatewayClient["invoke"]>(async () => ({
+        text: `  ${secretOutput}  `,
+        meta: {},
+      }));
+      const request = createRequest(invoke);
+      const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+      let logs: Record<string, unknown>[] = [];
+      try {
+        await expect(
+          runSupervisorResponse(request, {
+            call,
+            toolResults: EMPTY_REQUEST_TOOL_RESULTS,
+            resume,
+          }),
+        ).resolves.toBe(secretOutput);
+        logs = consoleLog.mock.calls.map(
+          ([line]) => JSON.parse(String(line)) as Record<string, unknown>,
+        );
+      } finally {
+        consoleLog.mockRestore();
+      }
 
-    expect(invoke).toHaveBeenCalledOnce();
-    expect(invoke.mock.calls[0]![0]).toMatchObject({
-      modelStep: SUPERVISOR_RESPONSE_MODEL_STEP,
-      debugRequestId: request.requestId,
-    });
-    expect(invoke.mock.calls[0]![0]).not.toHaveProperty("format");
-    expect(request.onThinkingTrace).toHaveBeenCalledWith({
-      step: SUPERVISOR_RESPONSE_MODEL_STEP,
-      status: "completed",
-      text: "",
-    });
-    expect(logs).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          scope: "runtime.supervisor",
-          event: "response.context.projected",
-          callId: "call-1",
-          continuationMessageCount: 2,
-          completedChildResultCount: 2,
-          completedChildSummaryLength:
-            "The first bounded outcome was completed.".length +
-            "The requested artifacts were not created.".length,
-          projectContextIncluded: false,
-          plannedWorkContextIncluded: false,
-          capabilityContextIncluded: false,
-        }),
-        expect.objectContaining({
-          scope: "runtime.supervisor",
-          event: "response.model.completed",
-          callId: "call-1",
-          outputLength: secretOutput.length,
-        }),
-      ]),
-    );
-    expect(JSON.stringify(logs)).not.toContain(secretOutput);
-  });
+      expect(invoke).toHaveBeenCalledOnce();
+      expect(invoke.mock.calls[0]![0]).toMatchObject({
+        modelStep: SUPERVISOR_RESPONSE_MODEL_STEP,
+        debugRequestId: request.requestId,
+      });
+      expect(invoke.mock.calls[0]![0]).not.toHaveProperty("format");
+      expect(request.onThinkingTrace).toHaveBeenCalledWith({
+        step: SUPERVISOR_RESPONSE_MODEL_STEP,
+        status: "completed",
+        text: "",
+      });
+      expect(logs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            scope: "runtime.supervisor",
+            event: "response.context.projected",
+            callId: "call-1",
+            continuationMessageCount: 2,
+            completedChildResultCount: 2,
+            completedChildSummaryLength:
+              "The first bounded outcome was completed.".length +
+              "The requested artifacts were not created.".length,
+            projectContextIncluded: false,
+            plannedWorkContextIncluded: false,
+            capabilityContextIncluded: false,
+          }),
+          expect.objectContaining({
+            scope: "runtime.supervisor",
+            event: "response.model.completed",
+            callId: "call-1",
+            outputLength: secretOutput.length,
+          }),
+        ]),
+      );
+      expect(JSON.stringify(logs)).not.toContain(secretOutput);
+    },
+  );
 
   test("authors memory candidates before returning a raw Supervisor response", async () => {
     const retrieve = vi.fn(async () => ({
@@ -548,34 +553,38 @@ describe("Supervisor terminal response", () => {
     );
   });
 
-  test("rejects and repairs an internal Supervisor routing envelope", async () => {
-    const repairedResponse = "The requested artifacts were created.";
-    const invoke = vi
-      .fn<ModelGatewayClient["invoke"]>()
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          action: "invoke_role",
-          roleId: "planner",
-          objective: "Repeat the completed work.",
+  test.each([
+    { action: "invoke_role", roleId: "planner", objective: "Repeat the work." },
+    { action: "respond" },
+    { action: "recall_memory", query: "saved preference" },
+    { decision: { action: "recall_memory", query: "saved preference" } },
+  ])(
+    "rejects and repairs an internal Supervisor routing envelope %j",
+    async (envelope) => {
+      const repairedResponse = "The requested artifacts were created.";
+      const invoke = vi
+        .fn<ModelGatewayClient["invoke"]>()
+        .mockResolvedValueOnce({
+          text: JSON.stringify(envelope),
+          meta: {},
+        })
+        .mockResolvedValueOnce({ text: repairedResponse, meta: {} });
+      const request = createRequest(invoke);
+
+      await expect(
+        runSupervisorResponse(request, {
+          call,
+          toolResults: EMPTY_REQUEST_TOOL_RESULTS,
+          resume,
         }),
-        meta: {},
-      })
-      .mockResolvedValueOnce({ text: repairedResponse, meta: {} });
-    const request = createRequest(invoke);
+      ).resolves.toBe(repairedResponse);
 
-    await expect(
-      runSupervisorResponse(request, {
-        call,
-        toolResults: EMPTY_REQUEST_TOOL_RESULTS,
-        resume,
-      }),
-    ).resolves.toBe(repairedResponse);
-
-    expect(invoke).toHaveBeenCalledTimes(2);
-    expect(
-      readModelMessages(invoke.mock.calls[1]![0].messages).at(-1)?.content,
-    ).toContain("supervisor_response_internal_envelope");
-  });
+      expect(invoke).toHaveBeenCalledTimes(2);
+      expect(
+        readModelMessages(invoke.mock.calls[1]![0].messages).at(-1)?.content,
+      ).toContain("supervisor_response_internal_envelope");
+    },
+  );
 
   test("surfaces an output-limited terminal response without repair", async () => {
     const invoke = vi.fn<ModelGatewayClient["invoke"]>().mockResolvedValueOnce({

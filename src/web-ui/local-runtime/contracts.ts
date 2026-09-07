@@ -1,4 +1,4 @@
-import type { RuntimeApplication } from "../../runtime/composition.js";
+import type { LocalRuntimeApplication } from "../../runtime/local-application.js";
 import type { RequestSteeringInbox } from "../../runtime/request/request-steering.js";
 import type { ModelProviderAdapterRegistry } from "../../model-gateway/index.js";
 
@@ -18,7 +18,7 @@ export type ResolvedLocalRuntimeBackendOptions = Omit<
   providerAdapters: ModelProviderAdapterRegistry;
 };
 
-export type RuntimeEnvironment = RuntimeApplication;
+export type RuntimeEnvironment = LocalRuntimeApplication;
 
 export type RuntimeSetupRequirement = {
   status: "setup_required";

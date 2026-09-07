@@ -1,8 +1,14 @@
-import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
+import type {
+  ChatMessage,
+  ModelGatewayJsonSchemaFormat,
+} from "../../../model-gateway/types.js";
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
 import { projectRequestContext } from "../../context/request-context.js";
 import { projectRootSessionMemory } from "../../context/session-memory/root-projection.js";
+import { canOfferMemoryRecall } from "../../long-term-memory/recall-policy.js";
+import { projectMemoryRecallContinuations } from "../../long-term-memory/recall-continuation.js";
 import { buildRequestTemporalContextMessage } from "../../context/request-temporal-context.js";
+import { projectScheduledExecutionContext } from "../../context/scheduled-execution-context.js";
 import { buildImmediateOperationSupervisionEvidenceMessage } from "../../context/operation-supervision-evidence.js";
 import { resolveModelContextBudget } from "../../model/model-context-budget.js";
 import type {
@@ -55,6 +61,7 @@ type BuildExecutionAgentInputOptions = Readonly<{
   includeTitle: boolean;
   allowPlanner: boolean;
   allowAuditor: boolean;
+  memoryRecallMessage?: ChatMessage;
 }>;
 
 export function buildExecutionAgentInput(
@@ -117,7 +124,15 @@ export function buildExecutionAgentInput(
     options.allowAuditor && hasCurrentEvidence
       ? Object.freeze([EXECUTION_AGENT_ROOT_AUDIT_CRITERION_ID])
       : Object.freeze([]);
+  const memoryRecallMessage = request.longTermMemory?.enabled
+    ? options.memoryRecallMessage
+    : undefined;
   const contract = Object.freeze({
+    allowMemoryRecall: canOfferMemoryRecall({
+      enabled: request.longTermMemory?.enabled === true,
+      recallCount: options.head.state.memoryRecalls.length,
+      maxRecallCallsPerRequest: request.memoryRecallLimit,
+    }),
     capabilities,
     capabilityCatalogGroupIds: knownGroupIds,
     activeCapabilityCatalogGroupIds,
@@ -135,6 +150,8 @@ export function buildExecutionAgentInput(
   } satisfies ExecutionAgentDecisionContractOptions);
   const format = createExecutionAgentDecisionFormat(contract);
   const instructions = buildExecutionAgentInstructions({
+    allowMemoryRecall: contract.allowMemoryRecall,
+    hasMemoryRecallContext: memoryRecallMessage !== undefined,
     hasCapabilities: capabilities.length > 0,
     hasCapabilityCatalogGroups: capabilityCatalogGroups.length > 0,
     capabilityScopeAction,
@@ -145,6 +162,11 @@ export function buildExecutionAgentInput(
     includeTitle: options.includeTitle,
     includeWorkingDirectory: options.call.workingDirectory === undefined,
   });
+  const scheduledExecution = projectScheduledExecutionContext(
+    request,
+    instructions,
+    "decision",
+  );
   const budget = resolveModelContextBudget({
     runnerConfig: request.runnerConfig,
     agentMode: request.agentMode,
@@ -160,6 +182,7 @@ export function buildExecutionAgentInput(
       options.call,
     );
   const referenceMessages = [
+    ...scheduledExecution.referenceMessages,
     ...(request.temporalContext
       ? [buildRequestTemporalContextMessage(request.temporalContext)]
       : []),
@@ -179,10 +202,11 @@ export function buildExecutionAgentInput(
   const continuationMessages = buildExecutionContinuationMessages(
     options.head,
     options.call,
+    projectMemoryRecallContinuations(memoryRecallMessage),
   );
   const sessionMemory = projectRootSessionMemory(request);
   const context = projectRequestContext({
-    instructions,
+    instructions: scheduledExecution.instructions,
     format,
     ...sessionMemory,
     prompt: request.prompt,

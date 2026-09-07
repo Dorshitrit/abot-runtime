@@ -10,9 +10,7 @@ import {
   SUPERVISOR_RESPONSE_MODEL_STEP,
 } from "../steps/supervisor-response/index.js";
 import type { RequestExecutionScope } from "./execution-scope.js";
-import type {
-  RequestRunnerResult,
-} from "./result.js";
+import type { RequestRunnerResult } from "./result.js";
 import {
   runRootExecutionKernel,
   type RequestRootContractAdapter,
@@ -29,19 +27,27 @@ export const SUPERVISOR_ROOT_CONTRACT: RequestRootContractAdapter =
     async decide(request, options) {
       return runSupervisorDecision(request, {
         call: options.call,
+        memoryRecallCount: options.head.state.memoryRecalls.length,
         toolResults: options.toolResults,
         includeAcknowledgement: options.includeAcknowledgement,
         includeTitle: options.includeTitle,
         allowedRoleIds: options.allowedRoleIds,
         availableWorkerCapabilityCatalog:
           options.availableWorkerCapabilityCatalog,
+        ...(options.memoryRecallMessage
+          ? { memoryRecallMessage: options.memoryRecallMessage }
+          : {}),
         ...(options.resume ? { resume: options.resume } : {}),
       });
     },
     async authorResponse(request, options) {
       return runSupervisorAuthoredResponse(request, {
+        responseRecommendation: options.responseRecommendation,
         call: options.call,
         toolResults: options.toolResults,
+        ...(options.memoryRecallMessage
+          ? { memoryRecallMessage: options.memoryRecallMessage }
+          : {}),
         steeringSnapshot: projectRequestSteeringSnapshot(
           request.requestSteering,
           options.steeringVersion,

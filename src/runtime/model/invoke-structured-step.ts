@@ -61,6 +61,7 @@ export async function invokeStructuredModelStep<T>(params: {
   format: ModelGatewayJsonSchemaFormat;
   messages: ChatMessage[];
   timeoutReason: string;
+  boundSteeringVersion?: number;
   invalidOutputReason: string;
   contextCompaction?: ModelStepContextCompactionController;
   parse: (text: string) => StructuredModelParseResult<T>;
@@ -79,6 +80,7 @@ export async function invokeStructuredModelStep<T>(params: {
       modelStep: params.modelStep,
       messages,
       timeoutReason: params.timeoutReason,
+      boundSteeringVersion: params.boundSteeringVersion,
       format: params.format,
       ...(params.contextCompaction
         ? { contextCompaction: params.contextCompaction }

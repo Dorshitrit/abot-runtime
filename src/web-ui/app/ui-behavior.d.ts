@@ -28,7 +28,7 @@ export declare function wrappedIndex(
 
 export declare function normalizeWorkspaceDestination(
   value: unknown,
-): "chat" | "config";
+): "chat" | "config" | "schedules";
 
 export declare function createInitialWorkspaceShellState(): {
   workspace: "chat";

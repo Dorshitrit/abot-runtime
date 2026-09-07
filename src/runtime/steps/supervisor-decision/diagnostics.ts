@@ -4,6 +4,7 @@ import type { CapabilityBriefProjection } from "../../context/capability-brief.j
 import { traceDebug } from "../../observability/debug-logger.js";
 import type { RoleChildReturnContext } from "../../orchestration/role-calls/index.js";
 import type { WorkerCapabilityCatalogGroup } from "../../orchestration/worker-capabilities/index.js";
+import { supervisorResponseRecommendationLength } from "./response-recommendation.js";
 import {
   SUPERVISOR_DECISION_ACTIONS,
   SUPERVISOR_ROLE_ID,
@@ -29,6 +30,7 @@ export function traceSupervisorContextProjected(params: {
   completedChildResultCount: number;
   completedChildSummaryLength: number;
   allowedRoleIds: readonly SupervisorDelegateRoleId[];
+  allowMemoryRecall: boolean;
   workerCapabilityAffordances: readonly SupervisorWorkerCapabilityAffordance[];
   availableWorkerCapabilityCatalog: readonly WorkerCapabilityCatalogGroup[];
   capabilityBrief: CapabilityBriefProjection;
@@ -100,10 +102,7 @@ export function traceSupervisorContextProjected(params: {
       params.configuredInstructionContentHashes,
     estimatedInputTokens: params.context.budget.estimatedInputTokens,
     availableInputTokens: params.context.budget.availableInputTokens,
-    allowedActions:
-      params.allowedRoleIds.length > 0
-        ? [...SUPERVISOR_DECISION_ACTIONS]
-        : ["respond"],
+    allowedActions: projectSupervisorAllowedActions(params),
     allowedRoleIds: [...params.allowedRoleIds],
   });
 }
@@ -196,6 +195,9 @@ export function traceSupervisorDecisionAccepted(params: {
     ...baseFields(params.diagnostic),
     validationStage: "domain_parser",
     selectedAction: params.decision.action,
+    responseRecommendationLength: supervisorResponseRecommendationLength(
+      params.decision,
+    ),
     ...workingDirectoryDiagnosticFields(params.decision),
     ...(params.decision.title
       ? { titleLength: params.decision.title.length }
@@ -259,6 +261,7 @@ export function traceSupervisorModelStarted(params: {
   includeAcknowledgement: boolean;
   includeTitle: boolean;
   allowedRoleIds: readonly SupervisorDelegateRoleId[];
+  allowMemoryRecall: boolean;
   availableWorkerCapabilityCatalog: readonly WorkerCapabilityCatalogGroup[];
 }): void {
   traceDebug(SUPERVISOR_LOG_SCOPE, "model.started", {
@@ -267,10 +270,7 @@ export function traceSupervisorModelStarted(params: {
     messageCharacterCount: params.messageCharacterCount,
     includeAcknowledgement: params.includeAcknowledgement,
     includeTitle: params.includeTitle,
-    allowedActions:
-      params.allowedRoleIds.length > 0
-        ? [...SUPERVISOR_DECISION_ACTIONS]
-        : ["respond"],
+    allowedActions: projectSupervisorAllowedActions(params),
     allowedRoleIds: [...params.allowedRoleIds],
     availableWorkerCapabilityCatalogGroupCount:
       params.availableWorkerCapabilityCatalog.length,
@@ -471,4 +471,16 @@ function workingDirectoryDiagnosticFields(
     workingDirectoryIncluded: workingDirectory !== undefined,
     workingDirectoryLength: workingDirectory?.length ?? 0,
   };
+}
+
+function projectSupervisorAllowedActions(params: {
+  allowedRoleIds: readonly SupervisorDelegateRoleId[];
+  allowMemoryRecall: boolean;
+}): SupervisorDecision["action"][] {
+  const canInvokeRole = params.allowedRoleIds.length > 0;
+  const actions: SupervisorDecision["action"][] = canInvokeRole
+    ? [...SUPERVISOR_DECISION_ACTIONS]
+    : ["respond"];
+  if (params.allowMemoryRecall) actions.push("recall_memory");
+  return actions;
 }

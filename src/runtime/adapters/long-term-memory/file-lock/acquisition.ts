@@ -11,6 +11,7 @@ import {
 } from "./contracts.js";
 import { installLockDirectory } from "./install.js";
 import { readLockSnapshot } from "./snapshot.js";
+import { removeObservedOwnerSynchronously } from "./synchronous-release.js";
 
 export async function acquireFileLock(
   lockPath: string,
@@ -25,7 +26,7 @@ export async function acquireFileLock(
     const token = randomUUID();
     try {
       await installLockDirectory(lockPath, token);
-      return createRelease(lockPath, token);
+      return createRelease(lockPath, token, options.releaseMode);
     } catch (error) {
       if (!isLockContention(error)) throw error;
       const removed = await removeAbandonedLock(lockPath, processIsAlive);
@@ -38,13 +39,28 @@ export async function acquireFileLock(
   }
 }
 
-function createRelease(lockPath: string, token: string): () => Promise<void> {
+function createRelease(
+  lockPath: string,
+  token: string,
+  releaseMode: FileLockOptions["releaseMode"],
+): () => Promise<void> {
   let released = false;
   return async () => {
     if (released) return;
+    if (requiresSynchronousRelease(releaseMode)) {
+      removeObservedOwnerSynchronously(lockPath, ownerFileName(token));
+      released = true;
+      return;
+    }
     await removeObservedOwner(lockPath, ownerFileName(token));
     released = true;
   };
+}
+
+function requiresSynchronousRelease(
+  mode: FileLockOptions["releaseMode"],
+): boolean {
+  return mode === "synchronous";
 }
 
 async function removeAbandonedLock(

@@ -10,6 +10,8 @@ export type FileLockOptions = Readonly<{
   waitMs?: number;
   retryDelayMs?: number;
   processIsAlive?: (pid: number) => boolean;
+  /** Long-lived host leases must finish physical cleanup before process.exit. */
+  releaseMode?: "asynchronous" | "synchronous";
 }>;
 
 export type LockRecord = Readonly<{

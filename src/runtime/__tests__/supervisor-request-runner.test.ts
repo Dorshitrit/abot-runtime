@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { createDefaultToolRegistry } from "../default-adapters.js";
+import { directRespondText } from "./support/supervisor-direct-respond.js";
 import type {
   ModelGatewayClient,
   RuntimeConfig,
@@ -309,10 +310,7 @@ describe("Supervisor-root request runner slice", () => {
         text:
           params.modelStep === SUPERVISOR_RESPONSE_MODEL_STEP
             ? "One unchanged Supervisor response."
-            : encodeDecision({
-                action: "respond",
-                acknowledgement: REQUEST_ACKNOWLEDGEMENT,
-              }),
+            : directRespondText(REQUEST_ACKNOWLEDGEMENT),
         meta: {},
       }));
       const request = createRequest(invoke, {
@@ -362,11 +360,7 @@ describe("Supervisor-root request runner slice", () => {
         };
       }
       return {
-        text: encodeDecision({
-          action: "respond",
-          acknowledgement: REQUEST_ACKNOWLEDGEMENT,
-          title: "Supervisor ownership",
-        }),
+        text: directRespondText(REQUEST_ACKNOWLEDGEMENT, "Supervisor ownership"),
         meta: {},
       };
     });
@@ -480,10 +474,7 @@ describe("Supervisor-root request runner slice", () => {
         return { text: "Updated final response.", meta: {} };
       }
       return {
-        text: encodeDecision({
-          action: "respond",
-          acknowledgement: REQUEST_ACKNOWLEDGEMENT,
-        }),
+        text: directRespondText(REQUEST_ACKNOWLEDGEMENT),
         meta: {},
       };
     });
@@ -500,12 +491,11 @@ describe("Supervisor-root request runner slice", () => {
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_RESPONSE_MODEL_STEP,
-      SUPERVISOR_RESPONSE_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_RESPONSE_MODEL_STEP,
     ]);
     expect(onAcknowledgement).not.toHaveBeenCalled();
-    const secondDecisionMessages = invoke.mock.calls[3]?.[0]?.messages as
+    const secondDecisionMessages = invoke.mock.calls[2]?.[0]?.messages as
       | readonly Readonly<{ role: string; content: string }>[]
       | undefined;
     const steeringMessage = secondDecisionMessages?.find((message) => {
@@ -771,7 +761,7 @@ describe("Supervisor-root request runner slice", () => {
               | undefined,
           ),
         ).toBeDefined();
-        return { text: encodeDecision({ action: "respond" }), meta: {} };
+        return { text: directRespondText(), meta: {} };
       }
       if (input.modelStep === SUPERVISOR_RESPONSE_MODEL_STEP) {
         return { text: "The steered request was reconsidered.", meta: {} };

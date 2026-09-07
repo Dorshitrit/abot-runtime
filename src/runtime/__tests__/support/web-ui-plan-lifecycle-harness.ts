@@ -13,6 +13,7 @@ import {
 export function createPlanLifecycleHarness(
   sessionPayload: Record<string, unknown> = {},
   replayEvents: unknown[] = [],
+  selectedEnvironmentId = () => "dev",
 ) {
   const state: ConversationSessionState = {
     currentSessionId: "session-1",
@@ -55,11 +56,14 @@ export function createPlanLifecycleHarness(
   });
   const client = {
     markSessionRead: vi.fn(async () => ({ readState: {} })),
-    listSessions: vi.fn(async () => ({ sessions: [] })),
+    listSessions: vi.fn(
+      async (): Promise<{ sessions: Record<string, unknown>[] }> => ({
+        sessions: [],
+      }),
+    ),
     loadSession: vi.fn(async () => sessionPayload),
     fetchRequestEvents: vi.fn(async () => replayEvents),
   };
-  const selectedEnvironmentId = () => "dev";
   const sendRealtime = vi.fn(() => true);
   const conversationSession = createConversationSessionController({
     state,
@@ -104,6 +108,9 @@ export function createPlanLifecycleHarness(
     isCurrentComposerScope: () => true,
     scheduleTask: vi.fn(),
   });
+  const loadSessions = vi.fn(conversationSession.loadSessions);
+  const markCurrentSessionReadSoon = vi.fn();
+  const drainQueuedComposerMessage = vi.fn();
   const realtime = createRealtimeEventController({
     state,
     shell: { showToast: vi.fn() },
@@ -120,12 +127,12 @@ export function createPlanLifecycleHarness(
     cancelScheduledMessageRender: vi.fn(),
     cancelScheduledThinkingRender: vi.fn(),
     forgetThinkingDisclosure: vi.fn(),
-    markCurrentSessionReadSoon: vi.fn(),
+    markCurrentSessionReadSoon,
     applySessionTitleUpdate: vi.fn(),
     setMessageActivityStatus: vi.fn(),
     updateComposerSendState: vi.fn(),
-    drainQueuedComposerMessage: vi.fn(),
-    loadSessions: vi.fn(),
+    drainQueuedComposerMessage,
+    loadSessions,
   });
   return {
     state,
@@ -134,6 +141,9 @@ export function createPlanLifecycleHarness(
     realtime,
     renderMessages,
     sendRealtime,
+    loadSessions,
+    markCurrentSessionReadSoon,
+    drainQueuedComposerMessage,
     plan: () => renderedPlan,
   };
 }

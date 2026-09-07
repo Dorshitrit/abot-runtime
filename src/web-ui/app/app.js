@@ -1,10 +1,17 @@
+import { captureComposerSubmissionScope, isCurrentComposerSubmissionScope } from "./lib/composer-submission-scope.js";
+import { createComposerSurfaceController } from "./controllers/composer-surface-controller.js";
+import { bootstrapWebApp } from "./app-bootstrap.js";
+import { createConfigurationFeature } from "./configuration-feature.js";
+import { createDashboardFeature } from "./dashboard-feature.js";
+import { createComposerWorkspaceController } from "./controllers/composer-workspace-controller.js";
+import { createHomeComposerFeature } from "./controllers/home-composer-feature.js";
+import { createHomeConversationActivation } from "./controllers/home-conversation-activation.js";
+import { findAppDom } from "./app-dom.js";
+import { createSchedulesFeature } from "./schedules-feature.js";
 import { createWorkspaceShell } from "./components/workspace-shell.js";
-import { createConfigWorkspace } from "./components/config-workspace.js";
 import { createComposerActions } from "./components/composer-actions.js";
 import { createModelSelector } from "./components/model-selector.js";
 import { createRuntimeSetupGuide } from "./components/runtime-setup-guide.js";
-import { createLongTermMemorySetup } from "./components/long-term-memory-setup.js";
-import { createLongTermMemoryManager } from "./components/long-term-memory/manager.js";
 import { createSessionActionsMenu } from "./components/session-actions-menu.js";
 import { createToolApprovalCard } from "./components/tool-approval-card.js";
 import { textOf } from "./lib/text-format.js";
@@ -26,7 +33,6 @@ import { createConversationSessionController } from "./controllers/conversation-
 import { createChatRequestController } from "./controllers/chat-request-controller.js";
 import { createToolApprovalController } from "./controllers/tool-approval-controller.js";
 import { createComposerSubmitController } from "./controllers/composer-submit-controller.js";
-import { createLongTermMemoryController } from "./controllers/long-term-memory/controller.js";
 
 const state = {
   config: null,
@@ -65,69 +71,7 @@ const state = {
   sessionQuery: "",
 };
 
-const dom = {
-  app: document.getElementById("app"),
-  chatWorkspaceButton: document.getElementById("chatWorkspaceButton"),
-  configWorkspaceButton: document.getElementById("configWorkspaceButton"),
-  chatPanel: document.querySelector(".chat-panel"),
-  sessionsPanel: document.querySelector(".sessions-panel"),
-  configWorkspacePanel: document.getElementById("configWorkspacePanel"),
-  closeConfigWorkspaceButton: document.getElementById(
-    "closeConfigWorkspaceButton",
-  ),
-  connectionLabel: document.getElementById("connectionLabel"),
-  environmentSelect: document.getElementById("environmentSelect"),
-  agentPickerButton: document.getElementById("agentPickerButton"),
-  agentPickerMenu: document.getElementById("agentPickerMenu"),
-  newSessionButton: document.getElementById("newSessionButton"),
-  refreshSessionsButton: document.getElementById("refreshSessionsButton"),
-  closeSessionsButton: document.getElementById("closeSessionsButton"),
-  sessionsToggleButton: document.getElementById("sessionsToggleButton"),
-  sessionSearchInput: document.getElementById("sessionSearchInput"),
-  sessionsCount: document.getElementById("sessionsCount"),
-  sessionsList: document.getElementById("sessionsList"),
-  sessionTitle: document.getElementById("sessionTitle"),
-  agentModeButton: document.getElementById("agentModeButton"),
-  agentModeMenu: document.getElementById("agentModeMenu"),
-  permissionModeButton: document.getElementById("permissionModeButton"),
-  permissionModeMenu: document.getElementById("permissionModeMenu"),
-  modelSelect: document.getElementById("modelSelect"),
-  modelSelectButton: document.getElementById("modelSelectButton"),
-  modelSelectValue: document.getElementById("modelSelectValue"),
-  modelSelectMenu: document.getElementById("modelSelectMenu"),
-  messagesList: document.getElementById("messagesList"),
-  runtimeSetupGuide: document.getElementById("runtimeSetupGuide"),
-  messageStatusRegion: document.getElementById("messageStatusRegion"),
-  jumpToLatestButton: document.getElementById("jumpToLatestButton"),
-  composerForm: document.getElementById("composerForm"),
-  attachmentButton: document.getElementById("attachmentButton"),
-  attachmentInput: document.getElementById("attachmentInput"),
-  attachmentPreview: document.getElementById("attachmentPreview"),
-  composerInput: document.getElementById("composerInput"),
-  composerContextWindow: document.getElementById("composerContextWindow"),
-  composerPlan: document.getElementById("composerPlan"),
-  composerSubmitControl: document.getElementById("composerSubmitControl"),
-  sendButton: document.getElementById("sendButton"),
-  sendButtonLabel: document.getElementById("sendButtonLabel"),
-  sendNextMenuButton: document.getElementById("sendNextMenuButton"),
-  sendNextMenu: document.getElementById("sendNextMenu"),
-  sendNextButton: document.getElementById("sendNextButton"),
-  refreshRuntimeButton: document.getElementById("refreshRuntimeButton"),
-  runtimeStatus: document.getElementById("runtimeStatus"),
-  refreshLogsButton: document.getElementById("refreshLogsButton"),
-  runtimeLogs: document.getElementById("runtimeLogs"),
-  refreshHealthButton: document.getElementById("refreshHealthButton"),
-  healthStatus: document.getElementById("healthStatus"),
-  refreshConfigButton: document.getElementById("refreshConfigButton"),
-  configStatus: document.getElementById("configStatus"),
-  configDashboard: document.getElementById("configDashboard"),
-  panelBackdrop: document.getElementById("panelBackdrop"),
-  toastRegion: document.getElementById("toastRegion"),
-  operationsTabButtons: [
-    ...document.querySelectorAll(".operations-tab-button"),
-  ],
-  operationsTabPages: [...document.querySelectorAll(".operations-tab-page")],
-};
+const dom = findAppDom();
 
 const preferences = createClientPreferences(localStorage);
 const runtimeClient = createRuntimeWebClient({
@@ -141,6 +85,10 @@ let composerSubmitController;
 let realtimeEvents;
 let conversationView;
 let configWorkspace;
+let schedulesFeature;
+let dashboardFeature;
+let homeComposer;
+let runtimeSelection;
 const operationsController = createOperationsController({
   dom,
   client: runtimeClient,
@@ -160,7 +108,10 @@ const realtimeTransport = createRealtimeTransport({
     );
     setConnectionLabel("Reconnecting", true);
   },
-  onError: () => setConnectionLabel("Connection issue", true),
+  onError: () => {
+    state.connected = false;
+    setConnectionLabel("Connection issue", true);
+  },
   onParseError: (error, preview) => {
     recordControlEvent({
       type: "control",
@@ -185,7 +136,22 @@ const steerController = createSteerController({
 
 const shell = createWorkspaceShell({
   dom,
+  isWorkspaceAvailable: (destination) =>
+    schedulesFeature?.isWorkspaceAvailable(destination) ?? false,
+  onWorkspaceChange: (workspace) => {
+    runtimeSelection?.rememberModelSelection();
+    homeComposer?.setWorkspace(workspace);
+    schedulesFeature?.setActive(workspace === "schedules");
+    dashboardFeature?.setActive(workspace === "home");
+    runtimeSelection?.applyModelSelection();
+    runtimeSelection?.renderPermissionMode();
+    renderAttachmentComposer();
+    updateComposerSendState();
+    conversationSession?.markCurrentSessionReadSoon();
+  },
   beforeWorkspaceChange: ({ from, to }) => {
+    if (from === "schedules" && to !== "schedules")
+      return schedulesFeature?.prepareLeave() ?? true;
     if (from !== "config" || to === "config") return true;
     if (!configWorkspace) return true;
     return configWorkspace.prepareDiscardChanges("leave configuration");
@@ -205,12 +171,55 @@ const runtimeOnboarding = createRuntimeOnboardingController({
   onStateChange: () => {
     updateComposerSendState();
     renderAttachmentComposer();
+    dashboardFeature?.publish();
   },
 });
 
 const composerActions = createComposerActions({
   dom,
   onSendNext: () => dispatchComposerMessage("send_next"),
+});
+schedulesFeature = createSchedulesFeature({
+  dom,
+  client: runtimeClient,
+  shell,
+  selectedEnvironmentId,
+  getCurrentSessionId: () => state.currentSessionId,
+  getAgentModes: () => state.supportedAgentModes,
+  openSession: (sessionId) => conversationSession.openSession(sessionId),
+});
+dashboardFeature = createDashboardFeature({
+  dom,
+  state,
+  client: runtimeClient,
+  shell,
+  schedules: schedulesFeature,
+  selectedEnvironmentId,
+  loadSessions,
+  openSession: (sessionId) => conversationSession.openSession(sessionId),
+  isComposerAvailable: runtimeOnboarding.isReady,
+});
+const composerWorkspace = createComposerWorkspaceController({
+  state,
+  dom,
+  homeComposerHost: dashboardFeature.composerHost,
+  selectedEnvironmentId,
+  homeSetupHost: dashboardFeature.setupHost,
+});
+const {
+  renderAttachmentComposer,
+  removeUnsupportedPendingImages,
+  updateComposerSendState,
+  uploadComposerAttachment,
+  resizeComposerInput,
+  dispatchComposerMessage,
+} = createComposerSurfaceController({
+  workspace: composerWorkspace,
+  getHomeComposer: () => homeComposer,
+  getChatAttachments: () => composerAttachments,
+  getChatSubmit: () => composerSubmitController,
+  rememberModelSelection: rememberCurrentModelSelection,
+  showToast: shell.showToast,
 });
 const sessionComposerQueue = createSessionComposerQueue({
   storage: localStorage,
@@ -245,11 +254,18 @@ const composerAttachments = createComposerAttachmentsController({
   shell,
   client: runtimeClient,
   selectedEnvironmentId,
-  selectedModelSupportsImageInput,
+  selectedModelSupportsImageInput: () =>
+    runtimeSelection.selectedModelSupportsImageInput(
+      composerWorkspace.isChatVisible()
+        ? dom.modelSelect.value
+        : state.sessionModels[state.currentSessionId] ||
+            state.defaultModelProfileId,
+    ),
   ensureSession: () => conversationSession.ensureSession(),
   onSendStateChange: updateComposerSendState,
   onControlEvent: recordControlEvent,
   isComposerAvailable: runtimeOnboarding.isReady,
+  isComposerVisible: composerWorkspace.isChatVisible,
 });
 const toolApprovalController = createToolApprovalController({
   state,
@@ -268,6 +284,7 @@ conversationView = createConversationView({
   },
   getMessages: () => state.messages,
   getActiveRequestId: () => state.activeRequestId,
+  isConnected: () => state.connected,
   getActivityForMessage: (message) => ({
     events: state.events,
     taskProgress:
@@ -280,6 +297,8 @@ conversationView = createConversationView({
   copyText: (text) => navigator.clipboard.writeText(text),
   notify: (message, tone) => shell.showToast(message, tone),
   resolveAttachmentUrl: attachmentPreviewUrl,
+  onOpenSchedule: (jobId) => schedulesFeature.openJob(jobId),
+  canOpenSchedule: runtimeClient.supportsSchedules,
 });
 conversationSession = createConversationSessionController({
   state,
@@ -290,6 +309,11 @@ conversationSession = createConversationSessionController({
   sessionQueue: sessionComposerQueue,
   conversationView,
   selectedEnvironmentId,
+  isConversationVisible: () =>
+    shell.activeWorkspace() === "chat" &&
+    !dom.chatPanel.inert &&
+    document.visibilityState === "visible",
+  onSessionListState: dashboardFeature.sessionsChanged,
   clearPendingAttachments,
   applyConversationChrome: applyConversationModeChrome,
   applyModelSelection: applyModelSelectionForCurrentSession,
@@ -333,7 +357,7 @@ chatRequests = createChatRequestController({
 });
 composerQueueController = createComposerQueueController({
   state,
-  dom,
+  dom: composerWorkspace.chatDom,
   queue: sessionComposerQueue,
   selectedEnvironmentId,
   getToolPermissionMode: currentToolPermissionMode,
@@ -351,7 +375,7 @@ composerQueueController = createComposerQueueController({
 });
 composerSubmitController = createComposerSubmitController({
   state,
-  dom,
+  dom: composerWorkspace.chatDom,
   composerActions,
   attachments: composerAttachments,
   queue: composerQueueController,
@@ -362,6 +386,7 @@ composerSubmitController = createComposerSubmitController({
   setMessageStatus: setMessageActivityStatus,
   getSubmissionBlock: runtimeOnboarding.submissionBlock,
   onSubmissionBlocked: runtimeOnboarding.presentSubmissionBlock,
+  isComposerVisible: composerWorkspace.isChatVisible,
 });
 realtimeEvents = createRealtimeEventController({
   state,
@@ -374,6 +399,7 @@ realtimeEvents = createRealtimeEventController({
   addOrMergeMessage: conversationSession.addOrMergeMessage,
   normalizeChatMessage: conversationSession.normalizeMessage,
   renderContextWindow: () => conversationView.renderContextWindow(),
+  renderActivityStatus: () => conversationView.renderActivityStatus(),
   renderMessages,
   scheduleMessageRender,
   scheduleThinkingRender,
@@ -401,7 +427,7 @@ const modelSelector = createModelSelector({
     renderPermissionModeControl();
   },
 });
-const runtimeSelection = createRuntimeSelectionController({
+runtimeSelection = createRuntimeSelectionController({
   state,
   dom,
   preferences,
@@ -412,6 +438,55 @@ const runtimeSelection = createRuntimeSelectionController({
   onModelCatalogLoading: runtimeOnboarding.beginCatalogLoad,
   onModelCatalogLoaded: runtimeOnboarding.applyCatalog,
   onModelCatalogUnavailable: runtimeOnboarding.catalogUnavailable,
+  getComposerSessionId: composerWorkspace.composerSessionId,
+});
+homeComposer = createHomeComposerFeature({
+  workspace: composerWorkspace,
+  shell,
+  client: runtimeClient,
+  composerActions,
+  selectedEnvironmentId,
+  selectedModelSupportsImageInput: () =>
+    runtimeSelection.selectedModelSupportsImageInput(
+      composerWorkspace.isHome()
+        ? dom.modelSelect.value
+        : state.sessionModels[composerWorkspace.homeState.currentSessionId] ||
+            state.defaultModelProfileId,
+    ),
+  isComposerAvailable: runtimeOnboarding.isReady,
+  getSubmissionBlock: runtimeOnboarding.submissionBlock,
+  onSubmissionBlocked: runtimeOnboarding.presentSubmissionBlock,
+  onControlEvent: recordControlEvent,
+  onStateChange: updateComposerSendState,
+  activateHomeSession: createHomeConversationActivation({
+    state,
+    shell,
+    conversationSession,
+    composerQueue: composerQueueController,
+    preferences,
+    selectedEnvironmentId,
+    renderSessions,
+    renderMessages,
+    applyModelSelection: applyModelSelectionForCurrentSession,
+    setCurrentTitle: setCurrentSessionTitle,
+    updateComposerSendState,
+  }),
+  sendMessage: async (text) => {
+    const scope = captureComposerSubmissionScope(state, selectedEnvironmentId());
+    state.composerSending = true;
+    updateComposerSendState();
+    try {
+      await chatRequests.sendMessage(text);
+    } catch (error) {
+      if (!isCurrentComposerSubmissionScope(scope, state, selectedEnvironmentId())) return;
+      conversationSession.appendRequestError(error);
+    } finally {
+      if (isCurrentComposerSubmissionScope(scope, state, selectedEnvironmentId())) {
+        state.composerSending = false;
+        updateComposerSendState();
+      }
+    }
+  },
 });
 const appEventBindings = createAppEventBindings({
   state,
@@ -435,8 +510,10 @@ const appEventBindings = createAppEventBindings({
     renderMessages,
     renderAgentPicker,
     savedEnvironmentId,
-    beforeEnvironmentChange: () =>
-      configWorkspace.prepareDiscardChanges("change environment"),
+    beforeEnvironmentChange: () => {
+      if (!schedulesFeature.prepareLeave()) return false;
+      return configWorkspace.prepareDiscardChanges("change environment");
+    },
     saveEnvironmentId,
     loadModels,
     loadAgentMode,
@@ -457,61 +534,10 @@ const appEventBindings = createAppEventBindings({
   },
 });
 
-const longTermMemorySetup = createLongTermMemorySetup({
-  getEnvironmentId: selectedEnvironmentId,
-  loadStatus: (environmentId) =>
-    runtimeClient.loadLongTermMemoryStatus(environmentId),
-  discoverModels: (providerId, environmentId) =>
-    runtimeClient.discoverLongTermMemoryModels({
-      environmentId,
-      providerId,
-    }),
-  enableMemory: (input, environmentId) =>
-    runtimeClient.enableLongTermMemory({
-      environmentId,
-      ...input,
-    }),
-  disableMemory: (environmentId) =>
-    runtimeClient.disableLongTermMemory(environmentId),
-  recordControlEvent,
-  beginRuntimeMutation: () =>
-    configWorkspace?.beginExternalRuntimeMutation() ?? false,
-  refreshRuntimeConfig: () =>
-    configWorkspace?.refreshAfterExternalRuntimeMutation() ??
-    Promise.resolve(false),
-  endRuntimeMutation: () => configWorkspace?.endExternalRuntimeMutation(),
-});
-
-let longTermMemoryManager;
-const longTermMemoryController = createLongTermMemoryController({
-  client: runtimeClient,
-  getEnvironmentId: selectedEnvironmentId,
-  render: (snapshot) => longTermMemoryManager?.render(snapshot),
-});
-longTermMemoryManager = createLongTermMemoryManager({
-  actions: longTermMemoryController,
-});
-
-configWorkspace = createConfigWorkspace({
-  dom: {
-    refreshConfigButton: dom.refreshConfigButton,
-    configStatus: dom.configStatus,
-    configDashboard: dom.configDashboard,
-  },
-  loadDashboard: () =>
-    runtimeClient.loadConfigDashboard(selectedEnvironmentId()),
-  saveFile: ({ kind, id, config }) =>
-    runtimeClient.saveConfigFile({
-      environmentId: selectedEnvironmentId(),
-      kind,
-      id,
-      config,
-    }),
-  memorySetup: longTermMemorySetup,
-  memoryManagement: {
-    load: () => longTermMemoryController.load(),
-    mount: (root) => longTermMemoryManager.mount(root),
-  },
+configWorkspace = createConfigurationFeature({
+  dom,
+  runtimeClient,
+  selectedEnvironmentId,
   recordControlEvent,
 });
 
@@ -525,22 +551,15 @@ function setConnectionLabel(text, isError = false) {
     "connected",
     state.connected && !isError,
   );
+  conversationView?.renderActivityStatus();
 }
 
 function configuredEnvironmentOptions() {
   return runtimeSelection.configuredEnvironmentOptions();
 }
 
-function renderEnvironmentSelectOptions() {
-  runtimeSelection.renderEnvironmentOptions();
-}
-
 function selectedEnvironmentId() {
-  return runtimeSelection.selectedEnvironmentId();
-}
-
-function environmentOptions() {
-  return runtimeSelection.environmentOptions();
+  return runtimeSelection?.selectedEnvironmentId() ?? "";
 }
 
 function renderAgentPicker() {
@@ -549,14 +568,6 @@ function renderAgentPicker() {
 
 function selectedModelPreference() {
   return runtimeSelection.selectedModelPreference();
-}
-
-function selectedModelSupportsImageInput() {
-  return runtimeSelection.selectedModelSupportsImageInput();
-}
-
-function loadPinnedSessions() {
-  runtimeSelection.loadPreferences();
 }
 
 function saveModelPreferences() {
@@ -610,6 +621,7 @@ function setCurrentSessionTitle(title) {
 
 function renderSessions() {
   sessionController.render();
+  dashboardFeature?.publish();
 }
 
 function renderMessages() {
@@ -632,20 +644,8 @@ function cancelScheduledThinkingRender() {
   conversationView.cancelScheduledThinkingRender();
 }
 
-function renderAttachmentComposer() {
-  composerAttachments.render();
-}
-
-function removeUnsupportedPendingImages() {
-  composerAttachments.removeUnsupportedImages();
-}
-
 function attachmentPreviewUrl(attachment) {
   return composerAttachments.previewUrl(attachment);
-}
-
-function updateComposerSendState() {
-  composerSubmitController.updateSendState();
 }
 
 function clearPendingAttachments(options = {}) {
@@ -680,10 +680,6 @@ function handleRealtimeMessage(message) {
   realtimeEvents.handle(message);
 }
 
-function connectRealtime() {
-  realtimeTransport.connect();
-}
-
 function sendRealtime(payload) {
   return realtimeTransport.send(payload);
 }
@@ -716,10 +712,6 @@ async function drainQueuedComposerMessage({
   });
 }
 
-async function uploadComposerAttachment(file) {
-  await composerAttachments.upload(file);
-}
-
 async function loadRuntimeStatus() {
   await operationsController.loadRuntimeStatus();
 }
@@ -734,58 +726,49 @@ async function loadSystemHealth() {
 
 function bindEvents() {
   appEventBindings.bind();
-}
-
-function resizeComposerInput() {
-  composerSubmitController.resize();
+  document.addEventListener(
+    "visibilitychange",
+    conversationSession.markCurrentSessionReadSoon,
+  );
+  dom.environmentSelect.addEventListener("change", () => {
+    homeComposer.environmentChanged();
+    dashboardFeature.environmentChanged();
+  });
 }
 
 function suspendRecoveredComposerReleaseForNavigation() {
   return composerQueueController.suspendRecoveryForNavigation();
 }
 
-function dispatchComposerMessage(requestedAction = "") {
-  composerSubmitController.dispatch(requestedAction);
-}
-
-async function boot() {
-  loadPinnedSessions();
-  shell.load();
-  shell.bind();
-  sessionActionsMenu.bind();
-  conversationView.bind();
-  configWorkspace.bind();
-  composerActions.bind();
-  modelSelector.bind();
-  runtimeOnboarding.bind();
-  bindEvents();
-  resizeComposerInput();
-  updateComposerSendState();
-  applyConversationModeChrome();
-  renderMessages();
-  state.config = await runtimeClient.loadWebConfig();
-  renderEnvironmentSelectOptions();
-  const options = environmentOptions();
-  const saved = savedEnvironmentId();
-  const fallbackEnvironmentId =
-    textOf(state.config.defaultEnvironmentId).trim() || options[0]?.value || "";
-  dom.environmentSelect.value = options.some((option) => option.value === saved)
-    ? saved
-    : fallbackEnvironmentId;
-  saveEnvironmentId(dom.environmentSelect.value);
-  renderAgentPicker();
-  connectRealtime();
-  await Promise.allSettled([
-    loadModels(),
-    loadAgentMode(),
-    loadRuntimeStatus(),
-    loadSystemHealth(),
-    loadRuntimeConfig(),
-  ]);
-  await restoreLastSession();
-}
-
-void boot().catch((error) => {
+void bootstrapWebApp({
+  state,
+  dom,
+  preferences,
+  shell,
+  homeComposer,
+  dashboard: dashboardFeature,
+  schedules: schedulesFeature,
+  selection: runtimeSelection,
+  client: runtimeClient,
+  bindables: [
+    sessionActionsMenu,
+    conversationView,
+    configWorkspace,
+    composerActions,
+    modelSelector,
+    runtimeOnboarding,
+  ],
+  bindEvents,
+  renderComposer: () => {
+    resizeComposerInput();
+    updateComposerSendState();
+  },
+  renderMessages,
+  operations: operationsController,
+  configuration: configWorkspace,
+  realtime: realtimeTransport,
+  restoreLastSession,
+}).catch((error) => {
   setConnectionLabel(
     error instanceof Error ? error.message : String(error),
     true,

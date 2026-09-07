@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { ChatMessage } from "../../model-gateway/types.js";
 import { isCapabilityBriefMessage } from "../context/capability-brief.js";
+import { SUPERVISOR_RESPONSE_RECOMMENDATION_KIND } from "../steps/supervisor-response/response-recommendation.js";
 import { createDefaultToolRegistry } from "../default-adapters.js";
 import {
   configureDebugLogger,
@@ -287,6 +288,11 @@ describe("Supervisor capability brief handoff", () => {
       const briefMessages = modelMessages(input).filter(
         isCapabilityBriefMessage,
       );
+      expect(
+        modelMessages(input).some(({ content }) =>
+          content.includes(SUPERVISOR_RESPONSE_RECOMMENDATION_KIND),
+        ),
+      ).toBe(false);
       const isSupervisorRouting = current!.format === "supervisor_decision";
       if (isSupervisorRouting) {
         expect(briefMessages).toHaveLength(1);
@@ -326,6 +332,9 @@ describe("Supervisor capability brief handoff", () => {
         output: finalResponse,
       });
       expect(nextCall).toBe(script.length);
+      for (const [input] of invoke.mock.calls.slice(1)) {
+        expect(JSON.stringify(input)).not.toContain("responseRecommendation");
+      }
       await expect(
         readFile(join(config.paths.agentWorkDir, artifactPath), "utf8"),
       ).resolves.toBe(artifactBody);

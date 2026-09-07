@@ -1431,7 +1431,7 @@ describe("canonical role-call ledger", () => {
     });
     const openedWorker = opened.state.calls[1]!;
 
-    expect(opened.state.contractVersion).toBe(17);
+    expect(opened.state.contractVersion).toBe(18);
     expect(openedWorker.workerCapabilityScope).toEqual({
       catalogGroupIds: ["read", "system"],
     });

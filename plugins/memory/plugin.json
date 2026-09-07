@@ -13,6 +13,16 @@
           "description": "Read one bounded page of stored memory entries (deterministic, no inference)",
           "routingCapability": "semantic_lookup",
           "developmentRoles": ["inspect"],
+          "eventPresentation": {
+            "metadata": {},
+            "resultMetadata": {
+              "outputPreview": { "path": "output", "kind": "preview" },
+              "returnedItemCount": { "path": "data.returnedItemCount", "kind": "number" },
+              "totalItemCount": { "path": "data.itemCount", "kind": "number" },
+              "sourceTruncated": { "path": "data.truncated", "kind": "boolean" },
+              "nextOffset": { "path": "data.nextOffset", "kind": "number" }
+            }
+          },
           "skills": ["memory_lookup_skill"],
           "operations": {
             "list_memory": {
@@ -54,6 +64,12 @@
                 "kind": "number",
                 "default": 1
               }
+            },
+            "resultMetadata": {
+              "outputPreview": { "path": "output", "kind": "preview" },
+              "returnedItemCount": { "path": "data.returnedItemCount", "kind": "number" },
+              "totalItemCount": { "path": "data.itemCount", "kind": "number" },
+              "sourceTruncated": { "path": "data.truncated", "kind": "boolean" }
             }
           },
           "skills": ["memory_lookup_skill"],
@@ -86,7 +102,12 @@
               "contentLength": {
                 "param": "content",
                 "kind": "length"
-              }
+              },
+              "inputPreview": { "param": "content", "kind": "string" }
+            },
+            "resultMetadata": {
+              "outputPreview": { "path": "output", "kind": "preview" },
+              "savedId": { "path": "data.id", "kind": "preview" }
             }
           },
           "skills": ["memory_mutation_skill"],
@@ -120,6 +141,10 @@
                 "param": "id",
                 "kind": "string"
               }
+            },
+            "resultMetadata": {
+              "outputPreview": { "path": "output", "kind": "preview" },
+              "deletedCount": { "path": "data.deletedCount", "kind": "number" }
             }
           },
           "skills": ["memory_mutation_skill"],

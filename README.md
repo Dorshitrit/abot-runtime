@@ -13,6 +13,7 @@ hardcoded defaults.
 - Configurable local and hosted model providers
 - Persistent conversations, request events, and replay
 - Optional passive long-term memory across sessions
+- Local scheduled requests bound to their conversations
 - Planning, execution, and review workflows
 - Manifest-based tools and plugins with explicit runtime boundaries
 - Workspace, file, skill, and memory capabilities
@@ -34,10 +35,23 @@ The Web UI supports:
 - steering an active request or queuing the next message
 - editing runtime configuration
 - configuring passive long-term memory with a consumer-selected embedding model
+- managing schedules, their saved models, and run history in the Schedules workspace
 - inspecting runtime status, logs, and health
 
 The UI is a client of the runtime; persisted sessions, events, and request state
 remain owned by the runtime.
+
+Schedules can also be managed through the model's built-in `schedules` capability.
+Every Job belongs to a conversation and runs there with its saved model and FULL
+tool permissions. The chat shows a compact run card; expand it to read the exact
+historical prompt. ABot must be running at the scheduled time. Missed offline
+occurrences and failed runs are not retried. Cancelling a Job or deleting its
+conversation prevents pending starts; an already-started run continues.
+
+Timers, one-time requests, intervals, and daily/weekly/monthly schedules are
+supported. Calendar schedules require an exact time and IANA time zone. Jobs and
+run history are stored locally under the environment's runtime directory.
+Scheduling uses the Runtime directly and requires no plugin or external bridge.
 
 ## Requirements
 

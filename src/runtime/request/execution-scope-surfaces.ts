@@ -103,6 +103,13 @@ export function createScopeSurface(
   const { facets, policy, modelInvocation, modelSteps, capabilities } = input;
   return createFrozenSurface<RequestExecutionScope>({
     ...requestSeedDescriptors(facets, policy.selection, true),
+    ...(facets.input.scheduledExecution !== undefined
+      ? {
+          scheduledExecution: enumerableGetter(
+            () => facets.input.scheduledExecution!,
+          ),
+        }
+      : {}),
     ...(facets.session.sessionMemory !== undefined
       ? {
           sessionMemory: enumerableGetter(() => facets.session.sessionMemory!),
@@ -110,8 +117,13 @@ export function createScopeSurface(
       : {}),
     ...(facets.memory.longTermMemory !== undefined
       ? {
-          longTermMemory: enumerableGetter(
-            () => facets.memory.longTermMemory!,
+          longTermMemory: enumerableGetter(() => facets.memory.longTermMemory!),
+        }
+      : {}),
+    ...(facets.memory.memoryRecallLimit !== undefined
+      ? {
+          memoryRecallLimit: enumerableGetter(
+            () => facets.memory.memoryRecallLimit!,
           ),
         }
       : {}),

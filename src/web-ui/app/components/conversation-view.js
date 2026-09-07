@@ -1,3 +1,5 @@
+import { createConversationSchedule } from "./conversation-schedule.js";
+import { createConversationStatus } from "./conversation-status.js";
 import { isNearScrollEnd, pinScrollToEnd } from "../ui-behavior.js";
 import { applyTextDirection, renderMarkdown } from "../lib/text-format.js";
 import { createConversationActivity } from "./conversation-activity.js";
@@ -9,21 +11,36 @@ import {
 } from "./composer-context-window.js";
 import { createMessageAttachments } from "./message-attachments.js";
 import { createMessageTimestamp } from "./message-timestamp.js";
+import { createMessageLinkPreviews } from "./message-link-previews.js";
 
 export function createConversationView({
   dom,
   getMessages,
   getActiveRequestId = () => "",
+  isConnected = () => true,
   getActivityForMessage,
   getPendingApproval,
   createApprovalCard,
   copyText,
   notify,
   resolveAttachmentUrl = () => "",
+  onOpenSchedule = () => {},
+  canOpenSchedule = () => true,
   documentRoot = document,
   viewport = window,
 }) {
+  const conversationSchedule = createConversationSchedule({
+    documentRoot,
+    onOpenJob: onOpenSchedule,
+    canOpenJob: canOpenSchedule,
+  });
   const conversationActivity = createConversationActivity({ documentRoot });
+  const conversationStatus = createConversationStatus({
+    getActiveRequestId,
+    getActivityForMessage,
+    isConnected,
+    documentRoot,
+  });
   const composerContextWindow = createComposerContextWindow({
     container: dom.composerContextWindow,
     documentRoot,
@@ -35,6 +52,14 @@ export function createConversationView({
   const messageAttachments = createMessageAttachments({
     documentRoot,
     resolveAttachmentUrl,
+  });
+  const messageLinkPreviews = createMessageLinkPreviews({
+    documentRoot,
+    viewport,
+    scrollRoot: dom.messagesList,
+    onLayoutChange: () => {
+      if (viewState.followMessages) scrollToEnd();
+    },
   });
   const viewState = {
     followMessages: true,
@@ -87,7 +112,10 @@ export function createConversationView({
   }
 
   function createMessageNode(message) {
+    const scheduleNode = conversationSchedule.createNode(message);
+    if (scheduleNode) return scheduleNode;
     const row = documentRoot.createElement("article");
+    row.dataset.requestId = message.requestId || "";
     row.className = `message-row ${message.role === "user" ? "user" : "assistant"}`;
     row.setAttribute(
       "aria-label",
@@ -115,21 +143,11 @@ export function createConversationView({
       value: message.createdAt,
     });
     if (timestamp) meta.appendChild(timestamp);
-    if (message.streaming) {
-      const streaming = documentRoot.createElement("span");
-      streaming.className = "streaming-status";
-      streaming.textContent = "Responding";
-      meta.appendChild(streaming);
-    }
 
     const body = documentRoot.createElement("div");
     body.className = "markdown-body";
     applyTextDirection(body, message.text);
-    body.innerHTML = message.text
-      ? renderMarkdown(message.text)
-      : message.streaming
-        ? '<span class="typing-indicator" aria-label="ABot is working"><i></i><i></i><i></i></span>'
-        : "";
+    body.innerHTML = message.text ? renderMarkdown(message.text) : "";
 
     bubble.appendChild(meta);
     const attachments = messageAttachments.createNode(message.attachments);
@@ -172,6 +190,10 @@ export function createConversationView({
     }
 
     bubble.appendChild(body);
+    const status = conversationStatus.createNode(message);
+    if (status) bubble.appendChild(status);
+    const linkPreviews = messageLinkPreviews.createNode(message);
+    if (linkPreviews) bubble.appendChild(linkPreviews);
     if (message.role !== "user" && message.text && !message.streaming) {
       const actions = documentRoot.createElement("div");
       actions.className = "message-actions";
@@ -215,6 +237,8 @@ export function createConversationView({
     const shouldFollow =
       viewState.followMessages || isNearScrollEnd(dom.messagesList);
     const messages = getMessages();
+    messageLinkPreviews.reset();
+    conversationStatus.reset();
     dom.messagesList.innerHTML = "";
     if (messages.length === 0) {
       renderEmptyState();
@@ -273,8 +297,11 @@ export function createConversationView({
     cancelScheduledMessageRender();
     cancelScheduledThinkingRender();
     conversationActivity.reset();
+    conversationStatus.reset();
+    conversationSchedule.reset();
     composerContextWindow.reset();
     composerPlan.reset();
+    messageLinkPreviews.reset();
   }
 
   function forgetThinkingDisclosure(messageId) {
@@ -298,6 +325,7 @@ export function createConversationView({
     cancelScheduledThinkingRender,
     forgetThinkingDisclosure,
     render,
+    renderActivityStatus: conversationStatus.render,
     renderContextWindow,
     reset,
     scheduleMessageRender,

@@ -25,13 +25,18 @@
           <span class="rail-button-label">Chats</span>
         </button>
         <div class="rail-actions">
+          <button id="homeWorkspaceButton" class="rail-button" type="button"
+            aria-label="Open home dashboard" aria-controls="homeWorkspacePanel"
+            aria-current="page" title="Home">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9" /></svg>
+            <span class="rail-button-label">Home</span>
+          </button>
           <button
             id="chatWorkspaceButton"
             class="rail-button"
             type="button"
             aria-label="Open chat workspace"
             aria-controls="chatWorkspace"
-            aria-current="page"
             title="Chat"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -51,6 +56,22 @@
               <path d="M12 5v14M5 12h14" />
             </svg>
             <span class="rail-button-label">New</span>
+          </button>
+          <button
+            id="schedulesWorkspaceButton"
+            hidden
+            disabled
+            class="rail-button"
+            type="button"
+            aria-label="Open schedules workspace"
+            aria-controls="schedulesWorkspacePanel"
+            title="Schedules"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="8" />
+              <path d="M12 7v5l3 2" />
+            </svg>
+            <span class="rail-button-label">Schedules</span>
           </button>
           <button
             id="configWorkspaceButton"
@@ -103,6 +124,11 @@
           >
         </div>
       </nav>
+
+      <section id="homeWorkspacePanel" class="home-workspace-panel" aria-label="Home dashboard">
+        <header class="home-workspace-header"><h1>Home</h1></header>
+        <div id="homeDashboardRoot"></div>
+      </section>
 
       <aside
         id="sessionsPanel"
@@ -358,6 +384,32 @@
           </p>
         </div>
       </main>
+
+      <section
+        id="schedulesWorkspacePanel"
+        class="workspace-page-panel schedules-workspace-panel"
+        aria-labelledby="schedulesWorkspaceTitle"
+        hidden
+      >
+        <header class="workspace-page-header">
+          <div class="workspace-page-heading">
+            <p class="eyebrow">Automations</p>
+            <h2 id="schedulesWorkspaceTitle">Schedules</h2>
+            <p>Tasks that return to the conversation, right on time.</p>
+          </div>
+          <button
+            id="closeSchedulesWorkspaceButton"
+            class="workspace-page-back"
+            type="button"
+          >
+            Back to chat
+          </button>
+        </header>
+        <div
+          id="schedulesRoot"
+          class="workspace-page-body schedules-workspace-body"
+        ></div>
+      </section>
 
       <section
         id="configWorkspacePanel"

@@ -6,22 +6,36 @@ import {
 } from "./event-presentation.js";
 import { textOf } from "./text-format.js";
 import { countToolInvocations } from "./tool-invocation-count.js";
+import { projectToolActivityEvent } from "./tool-activity-event.js";
+import {
+  buildConversationToolActions,
+  summarizeConversationTools,
+} from "./tool-activity-model.js";
 
 const ROLE_TITLES = Object.freeze({
   supervisor: "Supervisor",
   planner: "Planner",
   worker: "Worker",
+  researcher: "Researcher",
   reviewer: "Reviewer",
+  unknown: "Unattributed actions",
 });
 
 const ROLE_RESPONSIBILITIES = Object.freeze({
   supervisor: "Coordinates the request",
   planner: "Plans the work",
   worker: "Performs assigned tasks",
+  researcher: "Investigates assigned questions",
   reviewer: "Reviews the result",
+  unknown: "Executor not recorded",
 });
 
 function latestRoleAction(group) {
+  if (group.toolActions.some((action) => !action.legacy)) {
+    return group.latestRoleEvent
+      ? roleActivitySummary(group.latestRoleEvent)
+      : "";
+  }
   const toolEvent = group.toolEvents.at(-1);
   return roleActivitySummary(toolEvent || group.latestEvent);
 }
@@ -89,6 +103,11 @@ function isToolActivityEvent(event) {
   return activityEventName(event).startsWith("tool.");
 }
 
+function roleActivityStage(event) {
+  if (isToolActivityEvent(event)) return "";
+  return textOf(event.stage).trim();
+}
+
 function hasSupportedRoleStage(stage) {
   return Object.hasOwn(ROLE_TITLES, stage);
 }
@@ -106,7 +125,14 @@ function roleActivitySummary(event) {
 }
 
 function createRoleGroup(role, event) {
-  return { role, phase: "", latestEvent: event, toolEvents: [] };
+  return {
+    role,
+    phase: "",
+    latestEvent: event,
+    latestRoleEvent: null,
+    toolEvents: [],
+    toolActions: [],
+  };
 }
 
 function isActiveRoleActivity(group, activeRole, streaming) {
@@ -124,18 +150,24 @@ function buildRoleCard(group, activeRole, streaming) {
   const failed = isFailedRoleActivity(group.latestEvent);
   const active = isActiveRoleActivity(group, activeRole, streaming);
   const toolCount = countToolInvocations(group.toolEvents);
+  const toolSummary = summarizeConversationTools(group.toolActions);
   let tone = "recorded";
   if (active) tone = "active";
   if (failed) tone = "failed";
   return {
     id: group.role,
     role: group.role,
-    title: ROLE_TITLES[group.role],
+    title:
+      group.role === "supervisor" && !group.latestRoleEvent
+        ? "Root agent"
+        : ROLE_TITLES[group.role],
     responsibility: ROLE_RESPONSIBILITIES[group.role],
     phaseLabel: titleCaseEventValue(group.phase),
     summary: latestRoleAction(group),
-    facts:
-      toolCount > 0
+    toolActions: group.toolActions,
+    facts: toolSummary
+      ? [toolSummary]
+      : toolCount > 0
         ? [`${toolCount} tool call${toolCount === 1 ? "" : "s"}`]
         : [],
     active,
@@ -155,32 +187,56 @@ export function buildConversationRoleCards({
   let activeRole = "";
   let terminalSeen = false;
   const activityEvents = Array.isArray(events) ? events : [];
-  for (const event of orderedRequestActivity(
+  const orderedEvents = orderedRequestActivity(
     activityEvents,
     normalizedRequestId,
-  )) {
+  );
+  const executionOwners = recordedExecutionOwners(orderedEvents);
+  const toolEvents = [];
+  for (const event of orderedEvents) {
     if (isRequestTerminalEvent(event)) {
       terminalSeen = true;
       activeRole = "";
       continue;
     }
 
-    const stage = textOf(event.stage).trim();
+    const stage = roleActivityStage(event);
     if (stage) {
       activeRole = "";
-      if (!hasSupportedRoleStage(stage)) continue;
-      activeRole = stage;
-      const group = groups.get(stage) || createRoleGroup(stage, event);
-      group.phase = textOf(event.phase);
-      group.latestEvent = event;
-      groups.set(stage, group);
+      if (hasSupportedRoleStage(stage)) {
+        activeRole = stage;
+        const group = groups.get(stage) || createRoleGroup(stage, event);
+        group.phase = textOf(event.phase);
+        group.latestEvent = event;
+        group.latestRoleEvent = event;
+        groups.set(stage, group);
+      }
     }
 
-    if (!activeRole) continue;
     if (!isToolActivityEvent(event)) continue;
-    const group = groups.get(activeRole);
+    const evidence = event.toolActivity || projectToolActivityEvent(event);
+    const owner = toolExecutorRole(evidence, executionOwners, activeRole);
+    if (evidence)
+      toolEvents.push({
+        ...event,
+        toolActivity: { ...evidence, executorRole: owner },
+      });
+    if (!owner) continue;
+    const group = groups.get(owner) || createRoleGroup(owner, event);
     group.latestEvent = event;
     group.toolEvents.push({ ...event, eventName: activityEventName(event) });
+    groups.set(owner, group);
+  }
+
+  for (const action of buildConversationToolActions({
+    requestId: normalizedRequestId,
+    events: toolEvents,
+    streaming,
+  })) {
+    const owner = action.executorRole || "unknown";
+    const group = groups.get(owner) || createRoleGroup(owner, {});
+    group.toolActions.push(action);
+    groups.set(owner, group);
   }
 
   return [...groups.values()].map((group) =>
@@ -190,4 +246,30 @@ export function buildConversationRoleCards({
       canShowActiveRoles(streaming, terminalSeen),
     ),
   );
+}
+
+function recordedExecutionOwners(events) {
+  const owners = new Map();
+  for (const event of events) {
+    const evidence = event.toolActivity || projectToolActivityEvent(event);
+    if (!evidence?.executionId || !evidence.executorRole) continue;
+    const role = hasSupportedRoleStage(evidence.executorRole)
+      ? evidence.executorRole
+      : "unknown";
+    owners.set(evidence.executionId, role);
+  }
+  return owners;
+}
+
+function toolExecutorRole(evidence, executionOwners, activeRole) {
+  if (evidence?.executionId && executionOwners.has(evidence.executionId)) {
+    return executionOwners.get(evidence.executionId);
+  }
+  if (evidence?.executorRole) {
+    return hasSupportedRoleStage(evidence.executorRole)
+      ? evidence.executorRole
+      : "unknown";
+  }
+  if (evidence?.executionId) return "unknown";
+  return activeRole;
 }

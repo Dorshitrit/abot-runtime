@@ -1,3 +1,5 @@
+import { WebSessionRoutes } from "./session-routes.js";
+import { WebSessionReadStates } from "../session-read-state/service.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
@@ -12,10 +14,7 @@ import {
   getConfigDashboardSnapshot,
   saveConfigDashboardFile,
 } from "../config-dashboard-backend.js";
-import {
-  deleteSessionAttachmentsIfSupported,
-  LocalAttachmentRoutes,
-} from "./attachment-routes.js";
+import { LocalAttachmentRoutes } from "./attachment-routes.js";
 import { createLocalLongTermMemoryOnboardingService } from "../../runtime/adapters/long-term-memory/onboarding-service.js";
 import type {
   ResolvedLocalRuntimeBackendOptions,
@@ -34,6 +33,7 @@ import {
 import { LocalRequestExecution } from "./request-execution.js";
 import { LongTermMemoryManagementRoutes } from "./memory-management-routes.js";
 import { LongTermMemoryOnboardingRoutes } from "./memory-onboarding-routes.js";
+import { ScheduleManagementRoutes } from "./schedule-management-routes.js";
 
 function sendRuntimeSetupRequired(
   res: ServerResponse,
@@ -51,12 +51,22 @@ export class LocalRuntimeApiRouter {
   private readonly attachments = new LocalAttachmentRoutes();
   private readonly memoryManagement: LongTermMemoryManagementRoutes;
   private readonly memoryOnboarding: LongTermMemoryOnboardingRoutes;
+  private readonly schedules: ScheduleManagementRoutes;
+  private readonly readStates: WebSessionReadStates;
+  private readonly sessions: WebSessionRoutes;
 
   constructor(
     private readonly options: ResolvedLocalRuntimeBackendOptions,
     private readonly environments: RuntimeEnvironmentRegistry,
     private readonly requests: LocalRequestExecution,
   ) {
+    this.readStates = new WebSessionReadStates((id) =>
+      this.environments.get(id),
+    );
+    this.sessions = new WebSessionRoutes(this.readStates);
+    this.schedules = new ScheduleManagementRoutes((id) =>
+      this.environments.get(id),
+    );
     this.memoryOnboarding = new LongTermMemoryOnboardingRoutes(
       createLocalLongTermMemoryOnboardingService({
         rootDir: options.rootDir ?? process.cwd(),
@@ -68,6 +78,22 @@ export class LocalRuntimeApiRouter {
       (environmentId) =>
         this.environments.get(environmentId).services.longTermMemory,
     );
+  }
+
+  async initializeSessionReadState(
+    environmentIds: readonly string[],
+  ): Promise<void> {
+    for (const id of environmentIds) {
+      try {
+        if (this.environments.setupRequirement(id)) continue;
+        await this.readStates.initialize(id);
+      } catch (error) {
+        console.error(
+          `Web UI read state unavailable for environment ${id}:`,
+          error,
+        );
+      }
+    }
   }
 
   async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -113,6 +139,22 @@ export class LocalRuntimeApiRouter {
       body,
       this.options.defaultEnvironmentId,
     );
+
+    if (segments[0] === "schedules")
+      await this.initializeSessionReadState([environmentId]);
+
+    if (
+      await this.schedules.handle({
+        method,
+        segments,
+        url,
+        body,
+        environmentId,
+        response: res,
+      })
+    ) {
+      return;
+    }
 
     if (
       await this.memoryOnboarding.handle({
@@ -201,90 +243,17 @@ export class LocalRuntimeApiRouter {
 
     const environment = this.environments.get(environmentId);
 
-    if (method === "GET" && route === "chat/sessions") {
-      const result = await environment.services.sessions.listSessions();
-      sendJson(res, 200, { ok: true, ...result });
-      return;
-    }
-
     if (
-      method === "GET" &&
-      segments[0] === "chat" &&
-      segments[1] === "sessions" &&
-      segments[2] &&
-      segments[3] === "messages"
-    ) {
-      const snapshot = await environment.services.sessions.getSessionSnapshot(
-        segments[2],
-        { includeRequests: true },
-      );
-      if (!snapshot) {
-        sendJson(res, 404, {
-          ok: false,
-          error: "session_not_found",
-          messages: [],
-          requests: [],
-        });
-        return;
-      }
-      sendJson(res, 200, {
-        ok: true,
-        sessionId: snapshot.sessionId,
-        title: snapshot.title,
-        messages: snapshot.messages,
-        requests: snapshot.requests,
-        nextCursor: snapshot.nextCursor,
-        readState: this.readState(snapshot.sessionId),
-      });
+      await this.sessions.handle({
+        method,
+        segments,
+        body,
+        environmentId,
+        environment,
+        response: res,
+      })
+    )
       return;
-    }
-
-    if (
-      method === "DELETE" &&
-      segments[0] === "chat" &&
-      segments[1] === "sessions" &&
-      segments[2] &&
-      segments[3] === "messages"
-    ) {
-      const result = await environment.services.sessions.clearSessionMessages(
-        segments[2],
-      );
-      if (!result) {
-        sendJson(res, 404, { ok: false, error: "session_not_found" });
-        return;
-      }
-      await deleteSessionAttachmentsIfSupported(environment, segments[2]);
-      sendJson(res, 200, { ok: true, ...result });
-      return;
-    }
-
-    if (
-      method === "DELETE" &&
-      segments[0] === "chat" &&
-      segments[1] === "sessions" &&
-      segments[2] &&
-      segments.length === 3
-    ) {
-      const result = await environment.services.sessions.deleteSessionWithStats(
-        segments[2],
-      );
-      if (result.deleted) {
-        await deleteSessionAttachmentsIfSupported(environment, segments[2]);
-      }
-      sendJson(res, 200, { ok: true, ...result });
-      return;
-    }
-
-    if (
-      method === "POST" &&
-      segments[0] === "chat" &&
-      segments[1] === "sessions" &&
-      segments[2] &&
-      segments[3] === "read"
-    ) {
-      sendJson(res, 200, { ok: true, readState: this.readState(segments[2]) });
-      return;
-    }
 
     if (method === "POST" && route === "chat/messages") {
       await this.requests.start(res, body ?? {}, environmentId, environment);
@@ -373,14 +342,5 @@ export class LocalRuntimeApiRouter {
     }
 
     sendJson(res, 404, { ok: false, error: "not_found" });
-  }
-
-  private readState(sessionId: string): Record<string, unknown> {
-    return {
-      sessionId,
-      unreadCount: 0,
-      hasUnread: false,
-      lastReadAt: Date.now(),
-    };
   }
 }

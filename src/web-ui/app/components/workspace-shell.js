@@ -15,6 +15,8 @@ export function createWorkspaceShell({
   viewport = window,
   documentRoot = document,
   beforeWorkspaceChange = () => true,
+  isWorkspaceAvailable = () => true,
+  onWorkspaceChange = () => {},
 }) {
   const shellState = {
     ...createInitialWorkspaceShellState(),
@@ -38,6 +40,7 @@ export function createWorkspaceShell({
   }
 
   function setCurrentPage(button, active) {
+    if (!button) return;
     if (active) {
       button.setAttribute("aria-current", "page");
       return;
@@ -46,12 +49,21 @@ export function createWorkspaceShell({
   }
 
   function syncShell() {
+    const homeWorkspace = shellState.workspace === "home";
     const chatWorkspace = shellState.workspace === "chat";
     const configWorkspace = shellState.workspace === "config";
+    const schedulesWorkspace = shellState.workspace === "schedules";
     const sessions = sidebarLayout();
     const showSessionsToggle = chatWorkspace && !sessions.docked;
 
     dom.app.classList.toggle("config-workspace", configWorkspace);
+    dom.app.classList.toggle("home-workspace", homeWorkspace);
+    if (dom.homeWorkspacePanel) {
+      dom.homeWorkspacePanel.hidden = !homeWorkspace;
+      dom.homeWorkspacePanel.inert = !homeWorkspace;
+      dom.homeWorkspacePanel.setAttribute("aria-hidden", String(!homeWorkspace));
+    }
+    dom.app.classList.toggle("schedules-workspace", schedulesWorkspace);
     dom.app.classList.toggle("sessions-open", sessions.drawerOpen);
     dom.app.classList.toggle("sessions-docked", sessions.docked);
 
@@ -64,6 +76,14 @@ export function createWorkspaceShell({
       configWorkspace ? "false" : "true",
     );
 
+    if (dom.schedulesWorkspacePanel) {
+      dom.schedulesWorkspacePanel.hidden = !schedulesWorkspace;
+      dom.schedulesWorkspacePanel.inert = !schedulesWorkspace;
+      dom.schedulesWorkspacePanel.setAttribute(
+        "aria-hidden",
+        String(!schedulesWorkspace),
+      );
+    }
     dom.sessionsPanel.hidden = !sessions.visible;
     dom.sessionsPanel.inert = !sessions.visible;
     dom.sessionsPanel.setAttribute(
@@ -82,7 +102,9 @@ export function createWorkspaceShell({
     dom.closeSessionsButton.hidden = sessions.docked;
 
     setCurrentPage(dom.chatWorkspaceButton, chatWorkspace);
+    setCurrentPage(dom.homeWorkspaceButton, homeWorkspace);
     setCurrentPage(dom.configWorkspaceButton, configWorkspace);
+    setCurrentPage(dom.schedulesWorkspaceButton, schedulesWorkspace);
 
     dom.panelBackdrop.classList.toggle("visible", sessions.drawerOpen);
     dom.panelBackdrop.tabIndex = sessions.drawerOpen ? 0 : -1;
@@ -118,8 +140,10 @@ export function createWorkspaceShell({
 
   function syncSidebarViewport() {
     const activeElement = documentRoot.activeElement;
+    const wasSessionsDrawerOpen = shellState.activeSheet === "sessions";
     shellState.activeSheet = "";
     syncShell();
+    if (wasSessionsDrawerOpen) onWorkspaceChange(shellState.workspace);
     const sessions = sidebarLayout();
     if (!sidebarFocusNeedsRestoration(activeElement, sessions)) return;
     if (sessions.docked) {
@@ -134,6 +158,7 @@ export function createWorkspaceShell({
 
   function prepareWorkspaceTransition(destination) {
     const nextWorkspace = normalizeWorkspaceDestination(destination);
+    if (!isWorkspaceAvailable(nextWorkspace)) return null;
     if (nextWorkspace === shellState.workspace) {
       return { nextWorkspace, commitBeforeChange: () => {} };
     }
@@ -150,6 +175,7 @@ export function createWorkspaceShell({
   }
 
   function commitWorkspaceActivation(preparedTransition, options = {}) {
+    if (!isWorkspaceAvailable(preparedTransition.nextWorkspace)) return false;
     preparedTransition.commitBeforeChange();
     const nextWorkspace = preparedTransition.nextWorkspace;
     const previousWorkspace = shellState.workspace;
@@ -157,12 +183,21 @@ export function createWorkspaceShell({
     shellState.workspace = nextWorkspace;
     shellState.activeSheet = "";
     syncShell();
+    onWorkspaceChange(nextWorkspace);
 
     if (options.focus === false) return true;
+    if (nextWorkspace === "home") {
+      dom.composerInput?.focus();
+      return true;
+    }
     if (nextWorkspace !== "chat") {
       viewport.requestAnimationFrame(() => {
         if (shellState.workspace !== nextWorkspace) return;
-        dom.closeConfigWorkspaceButton.focus();
+        const closeButton =
+          nextWorkspace === "schedules"
+            ? dom.closeSchedulesWorkspaceButton
+            : dom.closeConfigWorkspaceButton;
+        closeButton?.focus();
       });
       return true;
     }
@@ -198,6 +233,7 @@ export function createWorkspaceShell({
     const useDrawer = open && sidebarViewport?.matches !== true;
     shellState.activeSheet = useDrawer ? "sessions" : "";
     syncShell();
+    onWorkspaceChange("chat");
 
     if (options.focus === false) return true;
     if (open) {
@@ -235,7 +271,7 @@ export function createWorkspaceShell({
       setSessionsDrawerOpen(false, { restoreFocus: true });
       return true;
     }
-    if (shellState.workspace !== "chat") {
+    if (["config", "schedules"].includes(shellState.workspace)) {
       return activateWorkspace("chat");
     }
     return false;
@@ -244,12 +280,21 @@ export function createWorkspaceShell({
   function bind() {
     if (shellState.bound) return;
     shellState.bound = true;
+    dom.homeWorkspaceButton?.addEventListener("click", () => {
+      activateWorkspace("home");
+    });
     dom.chatWorkspaceButton.addEventListener("click", () => {
       activateWorkspace("chat");
     });
     dom.configWorkspaceButton.addEventListener("click", () => {
       activateWorkspace("config");
     });
+    dom.schedulesWorkspaceButton?.addEventListener("click", () =>
+      activateWorkspace("schedules"),
+    );
+    dom.closeSchedulesWorkspaceButton?.addEventListener("click", () =>
+      activateWorkspace("chat"),
+    );
     dom.closeConfigWorkspaceButton.addEventListener("click", () => {
       activateWorkspace("chat");
     });
@@ -273,6 +318,7 @@ export function createWorkspaceShell({
   }
 
   return {
+    activeWorkspace: () => shellState.workspace,
     activateOperationsTab: operationsSection.activateTab,
     activateWorkspace,
     bind,

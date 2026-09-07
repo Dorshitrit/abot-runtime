@@ -8,6 +8,7 @@ import {
   type StructuredModelParseResult,
 } from "../../model/invoke-structured-step.js";
 import type { ModelStepContextCompactionController } from "../../model/model-step-port.js";
+import { isModelStepSteeringSuperseded } from "../../model/model-step-steering.js";
 import { traceDebug } from "../../observability/debug-logger.js";
 import type { BoundRequestModelInvocationContext } from "../../request/contracts.js";
 import { MAX_ROOT_MEMORY_CANDIDATES } from "../../orchestration/final-response/authoring-contract.js";
@@ -51,6 +52,7 @@ export function createSupervisorMemoryCandidatesFormat(): ModelGatewayJsonSchema
 export async function authorSupervisorMemoryCandidates(params: {
   request: BoundRequestModelInvocationContext;
   messages: ChatMessage[];
+  boundSteeringVersion?: number;
   contextCompaction?: ModelStepContextCompactionController;
 }): Promise<readonly MemoryCandidate[]> {
   try {
@@ -60,6 +62,7 @@ export async function authorSupervisorMemoryCandidates(params: {
       format: createSupervisorMemoryCandidatesFormat(),
       messages: params.messages,
       timeoutReason: "supervisor_memory_authoring_timeout",
+      boundSteeringVersion: params.boundSteeringVersion,
       invalidOutputReason: "invalid_supervisor_memory_candidates",
       ...(params.contextCompaction
         ? { contextCompaction: params.contextCompaction }
@@ -67,6 +70,7 @@ export async function authorSupervisorMemoryCandidates(params: {
       parse: parseSupervisorMemoryCandidates,
     });
   } catch (error: unknown) {
+    if (isModelStepSteeringSuperseded(error)) throw error;
     if (isPrimaryRequestAborted(params.request)) {
       throw error;
     }

@@ -1,11 +1,16 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import {
+  createRuntimeConfig,
+  createEmbeddingModelGatewayClient,
+  startCompositionHost,
+  disposeCompositionFixtures,
+} from "./support/runtime-composition-fixture.js";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import type { AgentBridgeOptions } from "../../bridge/start-agent-bridge.js";
 
 const mocks = vi.hoisted(() => ({
-  startAgentBridge: vi.fn(() => ({
+  startAgentBridge: vi.fn((_options: AgentBridgeOptions) => ({
     stop: vi.fn(async () => {}),
     getStatus: vi.fn(),
   })),
@@ -19,59 +24,16 @@ import {
   createDefaultRuntimeHost,
   createDefaultRuntimeDependencies,
   createRuntimeApplication,
+  createInMemorySessionStore,
   resetDebugLoggerConfig,
 } from "../index.js";
-import type {
-  ModelGatewayClient,
-  RuntimeConfig,
-  RuntimeEnvironmentServices,
-} from "../index.js";
-
-const tempRoots: string[] = [];
+import type { RuntimeConfig, RuntimeEnvironmentServices } from "../index.js";
 
 afterEach(async () => {
+  await disposeCompositionFixtures();
   vi.clearAllMocks();
   resetDebugLoggerConfig();
-  await Promise.all(
-    tempRoots.splice(0).map((root) =>
-      rm(root, {
-        force: true,
-        recursive: true,
-      }),
-    ),
-  );
 });
-
-async function createRuntimeConfig(): Promise<RuntimeConfig> {
-  const rootDir = join(tmpdir(), `llm-runtime-composition-${randomUUID()}`);
-  tempRoots.push(rootDir);
-
-  await mkdir(join(rootDir, "compiled"), { recursive: true });
-  await mkdir(join(rootDir, "sessions"), { recursive: true });
-  await mkdir(join(rootDir, "workspace"), { recursive: true });
-  await mkdir(join(rootDir, "logs"), { recursive: true });
-  await mkdir(join(rootDir, ".runtime"), { recursive: true });
-
-  return {
-    runtimeId: "test",
-    agentBridgeUrl: "ws://test",
-    modelGatewayUrl: "http://model",
-    paths: {
-      rootDir,
-      runtimeDir: join(rootDir, ".runtime"),
-      agentWorkDir: join(rootDir, "sandbox"),
-      sessionsDir: join(rootDir, "sessions"),
-      attachmentsDir: join(rootDir, "attachments"),
-      workspaceDir: join(rootDir, "workspace"),
-      sharedDir: join(rootDir, "shared"),
-      compiledDir: join(rootDir, "compiled"),
-      traceFile: join(rootDir, "logs", "runtime-debug.jsonl"),
-    },
-    requestRunner: {
-      configPath: join(rootDir, "request-runner.config.json"),
-    },
-  };
-}
 
 describe("runtime composition", () => {
   test("builds default runtime dependencies from one config object", async () => {
@@ -143,7 +105,7 @@ describe("runtime composition", () => {
     expect(Object.isFrozen(application.services)).toBe(true);
     expect(Object.isFrozen(application.requests)).toBe(true);
 
-    application.host.start();
+    await startCompositionHost(application.host);
 
     expect(mocks.startAgentBridge).toHaveBeenCalledTimes(1);
     expect(mocks.startAgentBridge).toHaveBeenCalledWith(
@@ -154,12 +116,14 @@ describe("runtime composition", () => {
         sessionStore: application.services.sessions,
         attachmentStore: application.services.attachments,
         toolRegistry: application.services.tools,
-        requestHandler: application.requests,
+        requestHandler: expect.objectContaining({
+          handle: expect.any(Function),
+        }),
       }),
     );
   });
 
-  test("preserves every supplied dependency identity through the compatibility facade", async () => {
+  test("preserves backing session storage and other dependency identities through the compatibility facade", async () => {
     const config = await createRuntimeConfig();
     const defaults = createRuntimeApplication(config);
     const host = {
@@ -169,7 +133,7 @@ describe("runtime composition", () => {
     };
     const overrides = {
       host,
-      sessions: defaults.services.sessions,
+      sessions: createInMemorySessionStore(),
       attachments: defaults.services.attachments,
       tools: defaults.services.tools,
       models: defaults.services.models,
@@ -180,9 +144,41 @@ describe("runtime composition", () => {
 
     const runtime = createDefaultRuntimeDependencies(config, overrides);
 
-    expect(runtime).toEqual({ config, ...overrides });
+    expect(runtime).toEqual({
+      config,
+      ...overrides,
+      sessions: runtime.sessions,
+      scheduler: expect.any(Object),
+      startScheduler: expect.any(Function),
+      stopScheduler: expect.any(Function),
+      requestAdmission: expect.any(Object),
+    });
     expect(runtime.host).toBe(host);
-    expect(runtime.sessions).toBe(overrides.sessions);
+    // Composition guards the injected backing store so late requests cannot
+    // recreate a deleted session; other dependency identities remain unchanged.
+    expect(runtime.sessions).not.toBe(overrides.sessions);
+    await runtime.sessions.appendMessage(
+      "guarded-session",
+      "user",
+      "backing storage",
+    );
+    expect(
+      (await overrides.sessions.getSessionById("guarded-session"))?.messages[0]
+        .content,
+    ).toBe("backing storage");
+    await runtime.sessions.deleteSession("guarded-session");
+    expect(
+      await overrides.sessions.getSessionById("guarded-session"),
+    ).toBeNull();
+    await expect(
+      runtime.sessions.appendMessage(
+        "guarded-session",
+        "assistant",
+        "late result",
+      ),
+    ).rejects.toMatchObject({ code: "session_deleted" });
+    await runtime.stopScheduler?.();
+    await defaults.stop();
     expect(runtime.attachments).toBe(overrides.attachments);
     expect(runtime.tools).toBe(overrides.tools);
     expect(runtime.models).toBe(overrides.models);
@@ -211,15 +207,15 @@ describe("runtime composition", () => {
       requestHandlerFactory,
     });
 
-    host.start({ attachmentStore });
+    await startCompositionHost(host, { attachmentStore });
 
     expect(requestHandlerFactory).toHaveBeenCalledTimes(1);
     expect(requestHandlerFactory).toHaveBeenCalledWith(
       expect.objectContaining({
         config,
-        sessions: application.services.sessions,
+        sessions: expect.any(Object),
         attachments: attachmentStore,
-        tools: application.services.tools,
+        tools: expect.any(Object),
         models: application.services.models,
         events: application.services.events,
       }),
@@ -227,7 +223,9 @@ describe("runtime composition", () => {
     expect(mocks.startAgentBridge).toHaveBeenCalledWith(
       expect.objectContaining({
         attachmentStore,
-        requestHandler: reboundHandler,
+        requestHandler: expect.objectContaining({
+          handle: expect.any(Function),
+        }),
       }),
     );
   });
@@ -261,7 +259,7 @@ describe("runtime composition", () => {
       requestHandlerFactory,
     });
 
-    host.start({
+    await startCompositionHost(host, {
       modelGatewayClient: createEmbeddingModelGatewayClient(
         "override-model",
         overrideEmbeddingCalls,
@@ -311,7 +309,7 @@ describe("runtime composition", () => {
       requestHandlerFactory,
     });
 
-    host.start({ runtimeConfig: configB });
+    await startCompositionHost(host, { runtimeConfig: configB });
 
     expect(requestHandlerFactory).toHaveBeenCalledTimes(1);
     const servicesB = requestHandlerFactory.mock.calls[0]?.[0];
@@ -321,6 +319,7 @@ describe("runtime composition", () => {
     expect(servicesB.sessions).not.toBe(applicationA.services.sessions);
     expect(servicesB.attachments).not.toBe(applicationA.services.attachments);
     expect(servicesB.tools).not.toBe(applicationA.services.tools);
+    expect(servicesB.tools.getDefinition("schedules")?.name).toBe("schedules");
     expect(servicesB.models).not.toBe(applicationA.services.models);
     expect(servicesB.events).not.toBe(applicationA.services.events);
     expect(mocks.startAgentBridge).toHaveBeenCalledWith(
@@ -334,7 +333,9 @@ describe("runtime composition", () => {
         sessionStore: servicesB.sessions,
         attachmentStore: servicesB.attachments,
         toolRegistry: servicesB.tools,
-        requestHandler: reboundHandler,
+        requestHandler: expect.objectContaining({
+          handle: expect.any(Function),
+        }),
       }),
     );
 
@@ -364,7 +365,7 @@ describe("runtime composition", () => {
       requestHandler: application.requests,
     });
 
-    host.start();
+    await startCompositionHost(host);
 
     expect(mocks.startAgentBridge).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -372,7 +373,9 @@ describe("runtime composition", () => {
         runtimeId: "custom-runtime-a",
         url: "ws://custom-bridge-a.test",
         token: "custom-token-a",
-        requestHandler: application.requests,
+        requestHandler: expect.objectContaining({
+          handle: expect.any(Function),
+        }),
       }),
     );
   });
@@ -389,7 +392,7 @@ describe("runtime composition", () => {
       requestHandler: applicationA.requests,
     });
 
-    host.start({
+    await startCompositionHost(host, {
       runtimeConfig: configB,
       runtimeId: "explicit-runtime",
       agentBridgeUrl: "ws://explicit-bridge.test",
@@ -410,7 +413,7 @@ describe("runtime composition", () => {
     const config = await createRuntimeConfig();
     const application = createRuntimeApplication(config);
 
-    application.host.start({
+    await startCompositionHost(application.host, {
       runtimeConfig: config,
       eventSinkFactory: application.services.events,
       modelGatewayClient: application.services.models,
@@ -427,7 +430,9 @@ describe("runtime composition", () => {
         sessionStore: application.services.sessions,
         attachmentStore: application.services.attachments,
         toolRegistry: application.services.tools,
-        requestHandler: application.requests,
+        requestHandler: expect.objectContaining({
+          handle: expect.any(Function),
+        }),
       }),
     );
   });
@@ -436,7 +441,12 @@ describe("runtime composition", () => {
     const config = await createRuntimeConfig();
     const host = createDefaultRuntimeHost(config);
 
-    host.start();
+    await startCompositionHost(host);
+
+    const options = mocks.startAgentBridge.mock.calls.at(-1)?.[0] as
+      | { toolRegistry?: { getDefinition(name: string): unknown } }
+      | undefined;
+    expect(options?.toolRegistry?.getDefinition("schedules")).toBeDefined();
 
     expect(mocks.startAgentBridge).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -453,30 +463,3 @@ describe("runtime composition", () => {
     );
   });
 });
-
-function createEmbeddingModelGatewayClient(
-  modelFingerprint: string,
-  calls: string[],
-): ModelGatewayClient {
-  return Object.freeze({
-    async invoke() {
-      throw new Error("unexpected model invocation");
-    },
-    async invokeRaw() {
-      throw new Error("unexpected raw model invocation");
-    },
-    async embed(input) {
-      calls.push(...input.texts);
-      return Object.freeze({
-        profileId: input.profileId,
-        provider: "ollama" as const,
-        model: "test-embedding-model",
-        modelFingerprint,
-        dimensions: 2,
-        vectors: Object.freeze(
-          input.texts.map(() => Object.freeze([1, 0] as const)),
-        ),
-      });
-    },
-  });
-}

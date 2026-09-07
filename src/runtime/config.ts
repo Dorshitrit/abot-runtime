@@ -19,6 +19,7 @@ import {
 } from "./config/constants.js";
 import { validateEffectiveRuntimeModelConfig } from "./config/effective-model-config-validation.js";
 import { resolveRuntimeEnvironmentProfileSelection } from "./config/environment.js";
+import { resolveEnvironmentRuntimeDirectory } from "./config/environment-paths.js";
 import { RUNTIME_CONFIG_SCHEMA_FIELDS } from "./config/fields.js";
 import { loadRuntimeConfigFileWithMeta } from "./config/loader.js";
 import { resolveRequestRunnerConfigReference } from "./config/request-runner-config.js";
@@ -27,7 +28,6 @@ import {
   DEFAULT_RUNTIME_COMPILED_DIR,
   DEFAULT_RUNTIME_SHARED_DIR,
   DEFAULT_AGENT_WORK_DIR,
-  DEFAULT_RUNTIME_STATE_DIR,
   DEFAULT_WORKSPACE_SOURCE_DIR,
   RUNTIME_ATTACHMENTS_DIR_NAME,
   RUNTIME_LOGS_DIR_NAME,
@@ -121,13 +121,13 @@ export function loadRuntimeConfig(
     profileId: options.profileId,
   });
   const basePaths = profileSelection.basePaths ?? fileConfig.paths;
-  const runtimeDir = resolveRuntimePath(
+  const runtimeDir = resolveEnvironmentRuntimeDirectory({
     rootDir,
-    readFirstString(env, ["LLM_RUNTIME_DIR"]) ??
-      readNestedConfigString(profileSelection.profilePaths, "runtimeDir") ??
-      readNestedConfigString(basePaths, "runtimeDir") ??
-      DEFAULT_RUNTIME_STATE_DIR,
-  );
+    env,
+    config: fileConfig,
+    configPath: loadedConfig.path,
+    selection: profileSelection,
+  });
   const agentWorkDir = resolveRuntimePath(
     rootDir,
     readFirstString(env, ["LLM_RUNTIME_AGENT_WORK_DIR"]) ??

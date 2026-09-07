@@ -6,7 +6,11 @@ import type {
   RegisteredToolNormalInvocationRejection,
 } from "../shared/contracts.js";
 import { materializeCall } from "../execution/call-binding.js";
-import { buildToolIntentEventMetadata } from "../shared/event-metadata.js";
+import {
+  buildToolExecutorEventMetadata,
+  buildToolIntentEventMetadata,
+  type ToolEventExecutorIdentity,
+} from "../shared/event-metadata.js";
 import { rejectNormalInvocation } from "../shared/rejection.js";
 import { validatePublicInput } from "./input-preparation.js";
 
@@ -65,8 +69,15 @@ export function prepareNormalInvocationPayloadLifecycle(params: {
   const event = materializePayloadLifecycleEvent(params.input, base);
   return Object.freeze({
     status: "prepared" as const,
-    emit: () => {
-      params.onEvent?.(event.name, event.payload);
+    emit: (
+      executionId?: string,
+      executorIdentity?: ToolEventExecutorIdentity,
+    ) => {
+      params.onEvent?.(event.name, {
+        ...event.payload,
+        ...buildToolExecutorEventMetadata(executorIdentity),
+        ...(executionId ? { executionId } : {}),
+      });
       return Object.freeze({ status: "emitted" as const });
     },
   });

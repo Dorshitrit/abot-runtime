@@ -39,7 +39,7 @@ export function parseMemorySnapshot(
   return freezeMemorySnapshot({
     schemaVersion: 1,
     revision: root.revision,
-    records: root.records.map(parseRecord),
+    records: root.records.map(parseMemoryRecord),
     vectors: root.vectors.map(parseVectorEntry),
   });
 }
@@ -55,7 +55,7 @@ function freezeMemorySnapshot(
   });
 }
 
-function parseRecord(value: unknown): LongTermMemoryRecord {
+export function parseMemoryRecord(value: unknown): LongTermMemoryRecord {
   const record = readRecord(value, "long_term_memory_record_corrupt");
   const tags = readStringArray(record.tags, "long_term_memory_tags_corrupt");
   return freezeRecord({

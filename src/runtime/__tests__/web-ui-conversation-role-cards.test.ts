@@ -61,6 +61,7 @@ describe("conversation role cards presentation", () => {
         requestId: "request",
         cards: [card],
         timeline: documentRoot.createElement("div"),
+        hasTimeline: true,
       });
 
     const live = render(worker);
@@ -119,6 +120,7 @@ describe("conversation role cards presentation", () => {
       requestId: "request",
       cards: [{ ...worker, summary: "<img src=x onerror=alert(1)>" }],
       timeline: documentRoot.createElement("div"),
+      hasTimeline: true,
     });
     expect(node.querySelector("img")).toBeNull();
     expect(node.textContent).toContain("<img src=x onerror=alert(1)>");

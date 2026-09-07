@@ -19,3 +19,4 @@ export * from "./reducer.js";
 export * from "./transactions.js";
 export * from "./worker-capability-scope.js";
 export * from "./working-directory.js";
+export * from "./memory-recall-contract.js";

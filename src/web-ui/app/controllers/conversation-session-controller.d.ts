@@ -27,6 +27,7 @@ export type ConversationSessionScope = Readonly<{
 export interface ConversationSessionState {
   currentSessionId: string;
   activeRequestId: string;
+  composerSending?: boolean;
   sessionViewVersion: number;
   messages: ConversationSessionMessage[];
   events: Array<Record<string, unknown>>;
@@ -43,6 +44,7 @@ export interface ConversationSessionClient {
     sessionId: string;
     environmentId: string;
     readThroughMessageId: number | null;
+    readThroughRequestId?: string;
   }): Promise<Record<string, unknown>>;
   listSessions(environmentId: string): Promise<Record<string, unknown>>;
   loadSession(
@@ -102,6 +104,12 @@ export interface ConversationSessionControllerOptions {
   suspendQueueRecovery(): boolean;
   recoverBlockedQueue(scope: ConversationSessionScope): unknown;
   isCurrentComposerScope(scope: ConversationSessionScope): boolean;
+  isConversationVisible?(): boolean;
+  onSessionListState?(value: {
+    status: "loading" | "ready" | "error";
+    sessions: ConversationSession[];
+    error?: string;
+  }): void;
   scheduleTask?(callback: () => void): unknown;
   createSessionId?(): string;
 }

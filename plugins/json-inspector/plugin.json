@@ -17,6 +17,18 @@
         "inspect_json": {
           "description": "Validate one JSON file and return a bounded structural summary. Relative paths resolve inside the configured agent work directory; `workspace/...` targets configured workspace sources.",
           "routingCapability": "semantic_lookup",
+          "eventPresentation": {
+            "metadata": {
+              "displayTarget": { "param": "path", "kind": "string" },
+              "maxDepth": { "param": "maxDepth", "kind": "number" }
+            },
+            "resultMetadata": {
+              "outputPreview": { "path": "output", "kind": "preview" },
+              "maxDepth": { "path": "data.maxDepth", "kind": "number" },
+              "syntaxValid": { "path": "data.syntaxValid", "kind": "boolean" },
+              "outputTruncated": { "path": "data.truncation.output.truncated", "kind": "boolean" }
+            }
+          },
           "runtimePathBindings": [
             { "operationId": "inspect_json", "param": "path", "base": "worker_working_directory" }
           ],

@@ -15,6 +15,7 @@ import {
 } from "./execution/run.js";
 import { emitNormalInvocationPayloadLifecycle } from "./payload/lifecycle.js";
 import { prepareNormalInvocationPayloadLifecycle } from "./payload/lifecycle.js";
+import { prepareNormalInvocationRejectionEvent } from "./execution/rejection-event.js";
 
 /**
  * Captures one selected ToolRegistry snapshot and executes its ordinary
@@ -69,6 +70,13 @@ export function createRegisteredToolNormalInvocationExecutor(
 
   return Object.freeze({
     operations,
+    prepareRejectionEvent(input) {
+      return prepareNormalInvocationRejectionEvent({
+        operationByHandle,
+        input,
+        onEvent: params.onEvent,
+      });
+    },
     emitPayloadLifecycle(input) {
       return emitNormalInvocationPayloadLifecycle({
         operationByHandle,

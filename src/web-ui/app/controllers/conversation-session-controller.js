@@ -1,3 +1,6 @@
+import { mergeSessionListReadState } from "../lib/session-read-state.js";
+import { createConversationReadStateController } from "./conversation-read-state-controller.js";
+import { normalizeScheduleReference } from "../lib/schedule-message.js";
 import { createWebSessionId, escapeHtml, textOf } from "../lib/text-format.js";
 import { insertRequestUserMessageBeforeAssistant } from "../ui-behavior.js";
 import { normalizeRealtimeMessage } from "../lib/realtime-message.js";
@@ -12,6 +15,7 @@ export function normalizeConversationMessage(raw, fallbackIndex = 0) {
     createdAt: message?.createdAt || Date.now(),
     requestId: textOf(message?.requestId),
     streaming: false,
+    schedule: normalizeScheduleReference(message?.schedule),
     events: Array.isArray(message?.events)
       ? message.events.map((event) => textOf(event)).filter(Boolean)
       : [],
@@ -46,6 +50,8 @@ export function createConversationSessionController({
   suspendQueueRecovery,
   recoverBlockedQueue,
   isCurrentComposerScope,
+  isConversationVisible = () => true,
+  onSessionListState = () => {},
   scheduleTask = (callback) => window.setTimeout(callback, 0),
   createSessionId = createWebSessionId,
 }) {
@@ -58,6 +64,7 @@ export function createConversationSessionController({
     sessionListRevision += 1;
     sessionRestoreRevision += 1;
     state.sessions = [];
+    onSessionListState({ status: "loading", sessions: [] });
     renderSessions();
   }
 
@@ -65,44 +72,15 @@ export function createConversationSessionController({
     return normalizeConversationMessage(raw, state.messages.length);
   }
 
-  function latestAssistantMessageId() {
-    let latest = 0;
-    for (const message of state.messages) {
-      if (message.role !== "assistant") continue;
-      const numericId = Number(textOf(message.id).replace(/^msg-/, ""));
-      if (Number.isFinite(numericId)) {
-        latest = Math.max(latest, Math.floor(numericId));
-      }
-    }
-    return latest > 0 ? latest : null;
-  }
-
-  async function markSessionRead(sessionId, readThroughMessageId = null) {
-    if (!sessionId) return;
-    const result = await client.markSessionRead({
-      sessionId,
-      environmentId: selectedEnvironmentId(),
-      readThroughMessageId,
-    });
-    sessions.applyReadState(sessionId, result.readState);
-  }
-
-  function markCurrentSessionReadSoon() {
-    const sessionId = state.currentSessionId;
-    if (!sessionId) return;
-    const readThroughMessageId = latestAssistantMessageId();
-    scheduleTask(() => {
-      if (state.currentSessionId !== sessionId) return;
-      void markSessionRead(sessionId, readThroughMessageId).catch((error) => {
-        recordControlEvent({
-          type: "control",
-          name: "Read state update failed",
-          tone: "failed",
-          summary: error instanceof Error ? error.message : String(error),
-        });
-      });
-    });
-  }
+  const { markCurrentSessionReadSoon } = createConversationReadStateController({
+    state,
+    client,
+    selectedEnvironmentId,
+    applyReadState: sessions.applyReadState,
+    recordControlEvent,
+    isConversationVisible,
+    scheduleTask,
+  });
 
   function addOrMergeMessage(message) {
     const id = textOf(message.id);
@@ -158,6 +136,7 @@ export function createConversationSessionController({
     state.taskProgressByRequest.clear();
     state.contextWindowByRequest.clear();
     state.activeRequestId = "";
+    state.composerSending = false;
     conversationView.reset();
     state.submittedToolApprovalIds.clear();
     state.requestMessages.clear();
@@ -353,6 +332,7 @@ export function createConversationSessionController({
     const environmentRevision = environmentLoadRevision;
     const requestRevision = ++sessionListRevision;
     const environmentId = selectedEnvironmentId();
+    onSessionListState({ status: "loading", sessions: state.sessions });
     try {
       const payload = await client.listSessions(environmentId);
       if (
@@ -362,7 +342,11 @@ export function createConversationSessionController({
       ) {
         return [];
       }
-      state.sessions = Array.isArray(payload.sessions) ? payload.sessions : [];
+      state.sessions = mergeSessionListReadState(
+        Array.isArray(payload.sessions) ? payload.sessions : [],
+        state.sessions,
+      );
+      onSessionListState({ status: "ready", sessions: state.sessions });
       renderSessions();
       return state.sessions;
     } catch (error) {
@@ -373,6 +357,11 @@ export function createConversationSessionController({
       ) {
         return [];
       }
+      onSessionListState({
+        status: "error",
+        sessions: state.sessions,
+        error: error instanceof Error ? error.message : String(error),
+      });
       dom.sessionsList.innerHTML = `<div class="empty-state error-text">${escapeHtml(
         error instanceof Error ? error.message : String(error),
       )}</div>`;

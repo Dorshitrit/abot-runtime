@@ -1,3 +1,4 @@
+import type { ToolEventExecutorIdentity } from "./event-metadata.js";
 import type {
   RegisteredToolNormalInvocation,
   ToolActionSummary,
@@ -59,7 +60,17 @@ export type RegisteredToolPreparedNormalInvocation = Readonly<{
   actionFingerprint: string;
   /** Exact validated non-payload controls accepted for this invocation. */
   acceptedControls: Readonly<Record<string, unknown>>;
-  execute(): Promise<RegisteredToolNormalInvocationResult>;
+  /** Client-only terminal event when admission is rejected before execution. */
+  emitRejection(input: Readonly<{
+    executionId: string;
+    executorIdentity: ToolEventExecutorIdentity;
+    errorCode: string;
+  }>): void;
+  /** Canonical execution identity for client lifecycle events only. */
+  execute(
+    executionId?: string,
+    executorIdentity?: ToolEventExecutorIdentity,
+  ): Promise<RegisteredToolNormalInvocationResult>;
 }>;
 
 export type RegisteredToolNormalInvocationPreparation =
@@ -77,7 +88,11 @@ export type RegisteredToolNormalInvocationPayloadLifecycleResult =
 
 export type RegisteredToolPreparedNormalInvocationPayloadLifecycle = Readonly<{
   status: "prepared";
-  emit(): Readonly<{ status: "emitted" }>;
+  /** Canonical execution identity for client lifecycle events only. */
+  emit(
+    executionId?: string,
+    executorIdentity?: ToolEventExecutorIdentity,
+  ): Readonly<{ status: "emitted" }>;
 }>;
 
 export type RegisteredToolNormalInvocationPayloadLifecyclePreparation =
@@ -86,6 +101,12 @@ export type RegisteredToolNormalInvocationPayloadLifecyclePreparation =
 
 export type RegisteredToolNormalInvocationExecutor = Readonly<{
   operations: readonly RegisteredToolNormalInvocationProjection[];
+  /** Prepares client-only rejection reporting for a registered source handle. */
+  prepareRejectionEvent(input: Readonly<{
+    handle: RegisteredToolNormalInvocationHandle;
+    controls: Readonly<Record<string, unknown>>;
+    intent?: string;
+  }>): RegisteredToolPreparedNormalInvocation["emitRejection"] | undefined;
   /**
    * Emits the existing client payload lifecycle without exposing the bound
    * tool name or payload parameter to the profile that owns model context.

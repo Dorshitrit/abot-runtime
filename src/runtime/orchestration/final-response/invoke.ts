@@ -13,6 +13,7 @@ import { createRootAuthoredResponseFormat } from "./format.js";
 export function invokeRootAuthoredResponse(params: {
   request: BoundRequestModelInvocationContext;
   modelStep: ModelStep;
+  boundSteeringVersion?: number;
   messages: ChatMessage[];
   timeoutReason: string;
   invalidOutputReason: string;
@@ -22,6 +23,7 @@ export function invokeRootAuthoredResponse(params: {
 }): Promise<RootAuthoredResponse> {
   return invokeStructuredModelStep({
     request: params.request,
+    boundSteeringVersion: params.boundSteeringVersion,
     modelStep: params.modelStep,
     format: createRootAuthoredResponseFormat(params.maxResponseChars),
     messages: params.messages,

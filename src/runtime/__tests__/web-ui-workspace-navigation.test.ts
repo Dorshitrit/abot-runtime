@@ -20,6 +20,7 @@ function createNavigation(
   const shell = createWorkspaceShell({ ...harness, beforeWorkspaceChange });
   shell.bind();
   shell.load();
+  shell.activateWorkspace("chat", { focus: false });
   return { ...harness, shell };
 }
 
@@ -59,6 +60,53 @@ function expectConfigWithoutSessions(
 }
 
 describe("responsive workspace navigation", () => {
+  test("starts on Home and keeps conversation reading behind explicit Chat navigation", () => {
+    const harness = createWorkspaceShellHarness(1440);
+    const onWorkspaceChange = vi.fn();
+    const shell = createWorkspaceShell({ ...harness, onWorkspaceChange });
+    shell.bind();
+    shell.load();
+    expect(shell.activeWorkspace()).toBe("home");
+    expect(harness.dom.homeWorkspacePanel.hidden).toBe(false);
+    expect(harness.dom.chatPanel.hidden).toBe(true);
+    expect(harness.dom.chatPanel.inert).toBe(true);
+    expect(harness.dom.sessionsPanel.hidden).toBe(true);
+    expect(shell.closeOverlaysOnEscape()).toBe(false);
+    harness.dom.chatWorkspaceButton.dispatch("click");
+    expectDockedChat(harness.dom);
+    harness.dom.homeWorkspaceButton.dispatch("click");
+    expect(shell.activeWorkspace()).toBe("home");
+    expect(harness.documentRoot.activeElement).toBe(harness.dom.composerInput);
+    expect(onWorkspaceChange.mock.calls.map(([workspace]) => workspace)).toEqual(["chat", "home"]);
+  });
+  test("opens Schedules as a full workspace while honoring the configuration discard guard", () => {
+    let mayLeave = false;
+    const guard = vi.fn(
+      ({ from }: WorkspaceChange) => from !== "config" || mayLeave,
+    );
+    const { dom, shell, flushFrames, documentRoot } = createNavigation(
+      1260,
+      guard,
+    );
+    shell.activateWorkspace("config");
+    expect(shell.activateWorkspace("schedules")).toBe(false);
+    expect(dom.schedulesWorkspacePanel.hidden).toBe(true);
+    mayLeave = true;
+    expect(shell.activateWorkspace("schedules")).toBe(true);
+    flushFrames();
+    expect(dom.schedulesWorkspacePanel.hidden).toBe(false);
+    expect(dom.schedulesWorkspacePanel.inert).toBe(false);
+    expect(dom.configWorkspacePanel.hidden).toBe(true);
+    expect(dom.chatPanel.hidden).toBe(true);
+    expect(dom.sessionsPanel.hidden).toBe(true);
+    expect(documentRoot.activeElement).toBe(dom.closeSchedulesWorkspaceButton);
+    expect(dom.schedulesWorkspaceButton.getAttribute("aria-current")).toBe(
+      "page",
+    );
+    expect(shell.closeOverlaysOnEscape()).toBe(true);
+    expectDockedChat(dom);
+  });
+
   test("docks conversations at the exact wide breakpoint without making Chat modal", () => {
     const { dom, shell, mediaQueries } = createNavigation(1260);
 

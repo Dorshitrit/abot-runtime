@@ -1,6 +1,7 @@
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
 import { projectRequestContext } from "../../context/request-context.js";
+import { projectScheduledExecutionContext } from "../../context/scheduled-execution-context.js";
 import { projectRootSessionMemory } from "../../context/session-memory/root-projection.js";
 import { buildImmediateOperationSupervisionEvidenceMessage } from "../../context/operation-supervision-evidence.js";
 import { resolveModelContextBudget } from "../../model/model-context-budget.js";
@@ -64,10 +65,15 @@ export function buildExecutionAgentResponseInput(
       options.call,
     );
   const sessionMemory = projectRootSessionMemory(request);
-  const context = projectRequestContext({
-    instructions: buildExecutionAgentResponseInstructions(
+  const scheduledExecution = projectScheduledExecutionContext(
+    request,
+    buildExecutionAgentResponseInstructions(
       options.memoryAuthoringMaxResponseChars !== undefined,
     ),
+    "response",
+  );
+  const context = projectRequestContext({
+    instructions: scheduledExecution.instructions,
     ...sessionMemory,
     ...(options.memoryAuthoringMaxResponseChars !== undefined
       ? {
@@ -79,6 +85,7 @@ export function buildExecutionAgentResponseInput(
     prompt: request.prompt,
     ...(request.attachments ? { attachments: request.attachments } : {}),
     referenceMessages: [
+      ...scheduledExecution.referenceMessages,
       buildExecutionResponseAssignmentMessage(
         options.head,
         options.call,
@@ -89,9 +96,7 @@ export function buildExecutionAgentResponseInput(
       ...(operationSupervisionEvidenceMessage
         ? [operationSupervisionEvidenceMessage]
         : []),
-      ...(options.longTermMemoryMessage
-        ? [options.longTermMemoryMessage]
-        : []),
+      ...(options.longTermMemoryMessage ? [options.longTermMemoryMessage] : []),
     ],
     ...(continuationMessages.length > 0 ? { continuationMessages } : {}),
     deferCompactionFailure: true,

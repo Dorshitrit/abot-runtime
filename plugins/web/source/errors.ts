@@ -1,14 +1,12 @@
+import {
+  PublicHttpError,
+  isPublicHttpError,
+  type PublicHttpErrorCode,
+} from "../../../src/shared/public-http/errors.js";
+
 export type WebPluginErrorCode =
-  | "web_request_aborted"
-  | "web_request_timed_out"
-  | "web_request_capacity_exceeded"
-  | "web_target_invalid"
-  | "web_target_not_public"
-  | "web_target_unresolvable"
-  | "web_redirect_invalid"
-  | "web_redirect_limit_exceeded"
+  | PublicHttpErrorCode
   | "web_response_unsupported"
-  | "web_response_invalid"
   | "web_fetch_http_error"
   | "web_search_api_key_missing"
   | "web_search_authentication_failed"
@@ -20,11 +18,11 @@ export type WebPluginErrorCode =
   | "web_search_sources_unavailable"
   | "web_search_configuration_invalid";
 
-export class WebPluginError extends Error {
+export class WebPluginError extends PublicHttpError<WebPluginErrorCode> {
   readonly code: WebPluginErrorCode;
 
   constructor(code: WebPluginErrorCode, message: string) {
-    super(message);
+    super(code, message);
     this.name = "WebPluginError";
     this.code = code;
   }
@@ -32,4 +30,12 @@ export class WebPluginError extends Error {
 
 export function isWebPluginError(error: unknown): error is WebPluginError {
   return error instanceof WebPluginError;
+}
+
+export function rethrowWebPluginError(error: unknown): never {
+  if (error instanceof WebPluginError) throw error;
+  if (isPublicHttpError(error)) {
+    throw new WebPluginError(error.code, error.message);
+  }
+  throw error;
 }

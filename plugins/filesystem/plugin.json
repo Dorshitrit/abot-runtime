@@ -26,6 +26,9 @@
               "startLine": { "param": "start_line", "kind": "number" },
               "endLine": { "param": "end_line", "kind": "number" },
               "locator": { "param": "locator", "kind": "string" }
+            },
+            "resultMetadata": {
+              "outputPreview": { "path": "output", "kind": "preview" }
             }
           },
           "skills": [],
@@ -77,7 +80,11 @@
           "developmentRoles": ["mutate"],
           "eventPresentation": {
             "metadata": {
-              "path": { "param": "path", "kind": "string" }
+              "path": { "param": "path", "kind": "string" },
+              "inputPreview": { "param": "instruction", "kind": "string" }
+            },
+            "resultMetadata": {
+              "outputPreview": { "path": "output", "kind": "preview" }
             }
           },
           "payloadChannelSpec": {
@@ -177,6 +184,10 @@
           "eventPresentation": {
             "metadata": {
               "path": { "param": "path", "kind": "string" }
+            },
+            "resultMetadata": {
+              "outputPreview": { "path": "output", "kind": "preview" },
+              "sourceTruncated": { "path": "data.truncation.truncated", "kind": "boolean" }
             }
           },
           "skills": ["read_file_skill"],
@@ -208,7 +219,11 @@
           "developmentRoles": ["establish", "mutate"],
           "eventPresentation": {
             "metadata": {
-              "path": { "param": "path", "kind": "string" }
+              "path": { "param": "path", "kind": "string" },
+              "inputPreview": { "param": "content", "kind": "string" }
+            },
+            "resultMetadata": {
+              "outputPreview": { "path": "output", "kind": "preview" }
             }
           },
           "payloadChannelSpec": {

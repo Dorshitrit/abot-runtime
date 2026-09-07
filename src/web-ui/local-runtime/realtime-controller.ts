@@ -36,7 +36,12 @@ export class LocalRealtimeController {
       return;
     }
     if (message.type === "steer_request") {
-      this.clients.send(client, this.requests.handleSteer(message));
+      this.clients.send(
+        client,
+        await this.requests.handleSteer(message, (id) =>
+          this.environments.get(id),
+        ),
+      );
       return;
     }
     if (message.type !== "resume_request") return;
@@ -63,6 +68,7 @@ export class LocalRealtimeController {
       this.clients.send(client, {
         type: "completed",
         requestId,
+        sessionId: replay.sessionId,
         environment: environmentId,
         output: replay.finalState.output,
       });
@@ -71,6 +77,7 @@ export class LocalRealtimeController {
       this.clients.send(client, {
         type: "failed",
         requestId,
+        sessionId: replay.sessionId,
         environment: environmentId,
         error: replay.finalState.error,
       });

@@ -17,6 +17,21 @@
         "inspect_code_outline": {
           "description": "Extract a bounded outline of symbols, selectors, elements, and imports from one source file beneath the configured agent work directory or configured workspace sources, without returning the full file.",
           "routingCapability": "semantic_lookup",
+          "eventPresentation": {
+            "metadata": {
+              "displayTarget": { "param": "path", "kind": "string" },
+              "maxSymbols": { "param": "maxSymbols", "kind": "number" }
+            },
+            "resultMetadata": {
+              "outputPreview": { "path": "output", "kind": "preview" },
+              "lineCount": { "path": "data.lineCount", "kind": "number" },
+              "returnedItemCount": { "path": "data.truncation.returnedSymbols", "kind": "number" },
+              "totalItemCount": { "path": "data.truncation.totalSymbols", "kind": "number" },
+              "sourceTruncated": { "path": "data.truncation.symbolsTruncated", "kind": "boolean" },
+              "importsTruncated": { "path": "data.truncation.importsTruncated", "kind": "boolean" },
+              "outputTruncated": { "path": "data.truncation.output.truncated", "kind": "boolean" }
+            }
+          },
           "runtimePathBindings": [
             {
               "operationId": "inspect_code_outline",

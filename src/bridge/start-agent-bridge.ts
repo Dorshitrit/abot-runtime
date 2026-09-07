@@ -204,7 +204,9 @@ export function startAgentBridge(
   let lastMessageAt: number | undefined;
   let lastPongAt: number | undefined;
   const pendingToolApprovals = new Map<string, PendingToolApproval>();
-  const requestSteering = createBridgeRequestSteeringRegistry();
+  const requestSteering = createBridgeRequestSteeringRegistry(
+    requestHandler.steer,
+  );
 
   function getStatus(): AgentBridgeConnectionStatus {
     return {

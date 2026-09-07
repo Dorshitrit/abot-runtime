@@ -19,6 +19,7 @@ function createHarness() {
   const state = {
     currentSessionId: "",
     activeRequestId: "",
+    composerSending: false,
     sessionViewVersion: 0,
     messages: [] as ConversationSessionMessage[],
     events: [] as Array<Record<string, unknown>>,
@@ -133,6 +134,8 @@ function createHarness() {
     recoverBlockedQueue: vi.fn(),
     isCurrentComposerScope: vi.fn(() => true),
     scheduleTask: vi.fn(),
+    onSessionListState: vi.fn(),
+    isConversationVisible: vi.fn(() => true),
     createSessionId: () => "session-created",
   };
   return {
@@ -241,6 +244,70 @@ describe("web ui conversation session controller", () => {
       id: "server-message-1",
       text: "first",
       thinkingText: "reasoning",
+    });
+  });
+
+  test("releases the previous view's pending send when a new conversation begins", () => {
+    const harness = createHarness();
+    harness.state.currentSessionId = "old-chat";
+    harness.state.composerSending = true;
+
+    harness.controller.clearCurrentSessionView();
+
+    expect(harness.state.composerSending).toBe(false);
+    expect(harness.state.currentSessionId).toBe("");
+  });
+
+  test("keeps a restored hidden conversation unread", async () => {
+    const harness = createHarness();
+    harness.dependencies.isConversationVisible.mockReturnValue(false);
+
+    await harness.controller.openSession("session-1");
+
+    expect(harness.state.messages).not.toHaveLength(0);
+    expect(harness.dependencies.scheduleTask).not.toHaveBeenCalled();
+    expect(harness.client.markSessionRead).not.toHaveBeenCalled();
+  });
+
+  test("publishes session loading, retained results and read failures for Home", async () => {
+    const harness = createHarness();
+    harness.client.listSessions.mockResolvedValueOnce({
+      sessions: [{ id: "session-1" }],
+    });
+    await harness.controller.loadSessions();
+
+    expect(harness.dependencies.onSessionListState.mock.calls.map(([value]) => value))
+      .toEqual([
+        { status: "loading", sessions: [] },
+        { status: "ready", sessions: [{ id: "session-1" }] },
+      ]);
+
+    harness.client.listSessions.mockRejectedValueOnce(new Error("Offline"));
+    await harness.controller.loadSessions();
+    expect(harness.dependencies.onSessionListState).toHaveBeenLastCalledWith({
+      status: "error", sessions: [{ id: "session-1" }], error: "Offline",
+    });
+  });
+
+  test("keeps a newer read acknowledgement when an older session list finishes later", async () => {
+    const harness = createHarness();
+    const pendingList = deferred<{ sessions: Array<Record<string, unknown>> }>();
+    harness.client.listSessions.mockReturnValueOnce(pendingList.promise);
+    const loading = harness.controller.loadSessions();
+    harness.state.sessions = [{
+      id: "session-1", lastReadAt: 200, lastReadMessageId: "8",
+      unreadCount: 0, hasUnread: false,
+    }];
+    pendingList.resolve({ sessions: [{
+      id: "session-1", title: "Current title", lastReadAt: 100,
+      lastReadMessageId: "4", unreadCount: 2, hasUnread: true,
+    }] });
+
+    await loading;
+
+    expect(harness.state.sessions[0]).toMatchObject({
+      id: "session-1", title: "Current title", lastReadAt: 200,
+      lastReadMessageId: "8", unreadCount: 0, hasUnread: false,
     });
   });
 

@@ -170,23 +170,27 @@ export default defineRuntimePlugin((context) => {
             maxLength: 128,
           });
           const deletedCount = await store.delete(id);
+          const hasDeletedMemoryEntries = deletedCount > 0;
           return successResult({
             output: [
-              `Memory delete: ${deletedCount > 0 ? "success" : "no_match"}`,
+              `Memory delete: ${hasDeletedMemoryEntries ? "success" : "no_match"}`,
               `id: ${id}`,
               `deleted: ${deletedCount}`,
-              ...(deletedCount > 0
+              ...(hasDeletedMemoryEntries
                 ? []
                 : [
                     "No memory entry matched that ID. Retrieve memory before retrying.",
                   ]),
             ].join("\n"),
-            progress: deletedCount > 0,
-            producedNewInformation: deletedCount > 0,
-            ...(deletedCount > 0
+            progress: hasDeletedMemoryEntries,
+            producedNewInformation: hasDeletedMemoryEntries,
+            data: {
+              ...(hasDeletedMemoryEntries ? { mutationEvidence: true } : {}),
+              deletedCount,
+            },
+            ...(hasDeletedMemoryEntries
               ? {
                   actions: [{ type: "memory_delete", target: id }],
-                  data: { mutationEvidence: true, deletedCount },
                 }
               : {}),
           });

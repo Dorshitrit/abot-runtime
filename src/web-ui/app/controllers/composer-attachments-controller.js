@@ -15,6 +15,7 @@ export function createComposerAttachmentsController({
   onSendStateChange,
   onControlEvent,
   isComposerAvailable = () => true,
+  isComposerVisible = () => true,
 }) {
   function attachmentSessionId(attachment) {
     const explicitSessionId = textOf(attachment.sessionId).trim();
@@ -108,6 +109,7 @@ export function createComposerAttachmentsController({
   }
 
   function render() {
+    if (!isComposerVisible()) return;
     const available = isComposerAvailable();
     dom.attachmentButton.disabled = !available;
     dom.attachmentButton.title = !available
@@ -164,6 +166,14 @@ export function createComposerAttachmentsController({
     if (options.cleanup !== false) cleanup(attachments);
   }
 
+  function canRetainUploadedAttachment(scope) {
+    if (state.currentSessionId !== scope.sessionId) return false;
+    if (selectedEnvironmentId() !== scope.environmentId) return false;
+    if (state.composerAttachmentGeneration !== scope.generation) return false;
+    if (!scope.imageAttachment) return true;
+    return selectedModelSupportsImageInput();
+  }
+
   async function upload(file) {
     if (!isComposerAvailable()) {
       throw new Error("Configure a provider and model before attaching files.");
@@ -196,12 +206,13 @@ export function createComposerAttachmentsController({
         sessionId: uploadSessionId,
         environment: uploadEnvironmentId,
       };
-      if (
-        state.currentSessionId !== uploadSessionId ||
-        selectedEnvironmentId() !== uploadEnvironmentId ||
-        state.composerAttachmentGeneration !== uploadGeneration ||
-        (imageAttachment && !selectedModelSupportsImageInput())
-      ) {
+      const uploadScope = {
+        sessionId: uploadSessionId,
+        environmentId: uploadEnvironmentId,
+        generation: uploadGeneration,
+        imageAttachment,
+      };
+      if (!canRetainUploadedAttachment(uploadScope)) {
         void deletePending(attachment);
         return;
       }

@@ -277,6 +277,7 @@ class InMemorySessionStore {
       taskType?: SessionMessageTaskType;
       requestId?: string;
       cronJobId?: string;
+      schedule?: import("../../sessions/schedule-metadata.js").ScheduleMessageReference;
       cronTitle?: string;
       triggerType?: string;
       attachments?: SessionMessage["attachments"];
@@ -296,6 +297,7 @@ class InMemorySessionStore {
         taskType: options.taskType,
         requestId: options.requestId,
         cronJobId: options.cronJobId,
+        ...(options.schedule ? { schedule: options.schedule } : {}),
         cronTitle: options.cronTitle,
         triggerType: options.triggerType,
         attachments: options.attachments,

@@ -1,3 +1,4 @@
+import { DEFAULT_MEMORY_RECALL_CALL_LIMIT } from "../long-term-memory/recall-policy.js";
 import { DEFAULT_MODEL_GATEWAY_URL } from "../../shared/constants.js";
 import {
   DEFAULT_RUNTIME_AGENT_BRIDGE_URL,
@@ -313,6 +314,13 @@ export const RUNTIME_CONFIG_SCHEMA_FIELDS: readonly RuntimeConfigSchemaField[] =
       defaultValue: "false",
       description:
         "Whether bounded memory lifecycle events are visible to clients.",
+    },
+    {
+      path: "longTermMemory.maxRecallCallsPerRequest",
+      type: "positive-number",
+      defaultValue: String(DEFAULT_MEMORY_RECALL_CALL_LIMIT),
+      description:
+        "Maximum explicit memory recall calls offered per request; must be a positive safe integer.",
     },
     {
       path: "longTermMemory.embeddingProfileId",

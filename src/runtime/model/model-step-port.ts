@@ -33,6 +33,8 @@ export type ModelStepInvocationInput<T> = Readonly<{
   modelStep: ModelStep;
   messages: ChatMessage[];
   timeoutReason: string;
+  /** A frozen caller decision; supersession returns control instead of retrying this step. */
+  boundSteeringVersion?: number;
   format?: "json" | Record<string, unknown>;
   contextCompaction?: ModelStepContextCompactionController;
   accept(text: string, diagnostics: ModelStepOutputDiagnostics): T;

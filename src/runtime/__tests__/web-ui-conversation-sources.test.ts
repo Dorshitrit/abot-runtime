@@ -272,7 +272,7 @@ describe("sources composed with activity role cards", () => {
       node.querySelector(".conversation-role-summary-strip"),
     ).not.toBeNull();
     expect(child(node, ".conversation-activity-facts").textContent).toBe(
-      "1 tool · 1 source",
+      "1 web search · 1 source",
     );
     const toggle = child(node, ".conversation-role-toggle");
     toggle.dispatch("click");
@@ -301,7 +301,7 @@ describe("sources composed with activity role cards", () => {
       node.querySelector(".conversation-activity-timeline"),
     ).not.toBeNull();
     expect(child(node, ".conversation-activity-facts").textContent).toBe(
-      "1 events",
+      "1 read",
     );
   });
 
@@ -319,7 +319,7 @@ describe("sources composed with activity role cards", () => {
       ],
     })!;
     expect(child(node, ".conversation-activity-facts").textContent).toBe(
-      "25 sources",
+      "1 web search · 25 sources",
     );
     expect(child(node, ".conversation-sources-omitted").textContent).toContain(
       "25 additional sources",

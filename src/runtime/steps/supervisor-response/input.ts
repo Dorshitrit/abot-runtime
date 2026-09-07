@@ -4,6 +4,7 @@ import type {
   ModelGatewayJsonSchemaFormat,
 } from "../../../model-gateway/types.js";
 import { projectRequestContext } from "../../context/request-context.js";
+import { projectScheduledExecutionContext } from "../../context/scheduled-execution-context.js";
 import { projectRootSessionMemory } from "../../context/session-memory/root-projection.js";
 import {
   buildRequestToolResultsMessage,
@@ -20,6 +21,7 @@ import {
 } from "./contracts.js";
 import { traceSupervisorResponseContextProjected } from "./diagnostics.js";
 import { createSupervisorMemoryCandidatesFormat } from "./memory-authoring.js";
+import { buildSupervisorResponseRecommendationMessage } from "./response-recommendation.js";
 import {
   buildSupervisorMemoryAuthoringInstructions,
   buildSupervisorResponseInstructions,
@@ -35,6 +37,7 @@ export type SupervisorResponseInputRequest = Pick<
   | "agentMode"
   | "modelPreference"
   | "modelPolicy"
+  | "scheduledExecution"
 > &
   Partial<Pick<RequestExecutionSeed, "onEvent" | "sessionMemory">>;
 
@@ -45,11 +48,20 @@ export function buildSupervisorResponseInput(
   context: RequestContextProjection;
   modelStep: typeof SUPERVISOR_RESPONSE_MODEL_STEP;
 } {
-  return buildSupervisorInput(request, options, {
-    instructions: buildSupervisorResponseInstructions({
+  const responseRecommendationMessage =
+    buildSupervisorResponseRecommendationMessage(options);
+  const scheduledExecution = projectScheduledExecutionContext(
+    request,
+    buildSupervisorResponseInstructions({
+      hasResponseRecommendation: responseRecommendationMessage !== undefined,
       hasCompletedChildResult: options.resume !== undefined,
       hasRequestToolResults: options.toolResults.results.length > 0,
     }),
+    "response",
+  );
+  return buildSupervisorInput(request, options, {
+    ...scheduledExecution,
+    responseRecommendationMessage,
   });
 }
 
@@ -70,6 +82,7 @@ export function buildSupervisorMemoryAuthoringInput(
 }
 
 type SupervisorResponseInputOptions = Readonly<{
+  responseRecommendation?: string;
   call: SupervisorResponseCallIdentity;
   toolResults: RequestToolResultsView;
   resume?: SupervisorResponseResumeContext;
@@ -81,7 +94,9 @@ function buildSupervisorInput(
   options: SupervisorResponseInputOptions,
   contract: Readonly<{
     instructions: string;
+    referenceMessages?: readonly ChatMessage[];
     format?: ModelGatewayJsonSchemaFormat;
+    responseRecommendationMessage?: ChatMessage;
   }>,
 ): {
   context: RequestContextProjection;
@@ -110,6 +125,10 @@ function buildSupervisorInput(
         })
       : undefined;
   const referenceMessages = [
+    ...(contract.referenceMessages ?? []),
+    ...(contract.responseRecommendationMessage
+      ? [contract.responseRecommendationMessage]
+      : []),
     ...(options.toolResults.results.length > 0
       ? [buildRequestToolResultsMessage(options.toolResults)]
       : []),
@@ -148,6 +167,9 @@ function buildSupervisorInput(
     historyMessageCount: sessionMemory.historyMessages.length,
     attachmentCount: request.attachments?.length ?? 0,
     referenceMessageCount: referenceMessages.length,
+    responseRecommendationLength: contract.responseRecommendationMessage
+      ? (options.responseRecommendation?.length ?? 0)
+      : 0,
     continuationMessageCount: roleContinuationPart?.messages.length ?? 0,
     completedChildResultCount: options.resume?.completedChildren.length ?? 0,
     completedChildSummaryLength:

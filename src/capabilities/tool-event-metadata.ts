@@ -5,6 +5,7 @@ import type {
   ToolEventMetadata,
   ToolExecutionResult,
 } from "./tool-types.js";
+import { projectToolResultEventMetadata } from "./tool-result-event-projection.js";
 
 function safeTrim(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -246,5 +247,10 @@ export function buildToolCompletedEventMetadata(
     ...(buildCallMeta(call, definition) || {}),
     ...toolResultData,
     ...(buildResultMeta(result, actions) || {}),
+    // Explicit result mappings override generic display fallbacks when present.
+    ...projectToolResultEventMetadata(
+      result,
+      definition?.eventPresentation?.resultMetadata,
+    ),
   });
 }

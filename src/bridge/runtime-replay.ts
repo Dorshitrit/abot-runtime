@@ -15,6 +15,10 @@ import {
   type RuntimeAttachmentStore,
 } from "../runtime/attachments/store.js";
 import type { SessionStore } from "../runtime/ports.js";
+import {
+  deleteSessionWithAttachments,
+  deleteSessionAttachmentsIfSupported,
+} from "../runtime/session/session-attachment-deletion.js";
 import { resolveRuntimeAttachmentMimeType } from "../shared/attachments.js";
 
 type JsonObject = Record<string, unknown>;
@@ -565,10 +569,11 @@ async function handleSessionDeleteRequest(
   }
 
   try {
-    const result = await sessionStore.deleteSessionWithStats(sessionId);
-    if (result.deleted) {
-      await deleteSessionAttachmentsIfSupported(attachmentStore, sessionId);
-    }
+    const result = await deleteSessionWithAttachments(
+      sessionStore,
+      attachmentStore,
+      sessionId,
+    );
     sendRuntimeReplayResponse(ws, {
       type: "session.delete.response",
       correlationId,
@@ -650,26 +655,6 @@ async function handleSessionMessagesClearRequest(
       },
       error instanceof Error ? error.message : String(error),
     );
-  }
-}
-
-async function deleteSessionAttachmentsIfSupported(
-  attachmentStore: RuntimeAttachmentStore | undefined,
-  sessionId: string,
-): Promise<void> {
-  if (!attachmentStore) {
-    return;
-  }
-  try {
-    await attachmentStore.deleteSessionAttachments(sessionId);
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message === "attachment_owner_invalid"
-    ) {
-      return;
-    }
-    throw error;
   }
 }
 

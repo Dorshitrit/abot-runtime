@@ -1,4 +1,5 @@
 import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
+import { createMemoryRecallDecisionSchema } from "../memory-recall-decision.js";
 import { isToolCatalogGroupId } from "../../../capabilities/tool-types.js";
 import { createStructuredDecisionEnvelopeSchema } from "../../model/structured-decision-envelope.js";
 import {
@@ -46,6 +47,7 @@ export type PreparedExecutionAgentDecisionContract = Readonly<{
   includeAcknowledgement: boolean;
   includeTitle: boolean;
   allowRespond: boolean;
+  allowMemoryRecall: boolean;
   allowPlanner: boolean;
   allowAuditor: boolean;
   availableAuditCriterionIds: readonly string[];
@@ -77,6 +79,17 @@ export function createExecutionAgentDecisionFormat(
       })),
     );
   const variants: Record<string, unknown>[] = [
+    ...(contract.allowMemoryRecall
+      ? [
+          createMemoryRecallDecisionSchema({
+            includeAcknowledgement: contract.includeAcknowledgement,
+            includeTitle: contract.includeTitle,
+            acknowledgementMaxLength:
+              EXECUTION_AGENT_ACKNOWLEDGEMENT_MAX_LENGTH,
+            titleMaxLength: EXECUTION_AGENT_TITLE_MAX_LENGTH,
+          }),
+        ]
+      : []),
     ...(contract.activeCapabilityCatalogGroupIds === null &&
     contract.capabilityCatalogGroupIds.length > 0
       ? [
@@ -332,6 +345,7 @@ export function prepareExecutionAgentDecisionContract(
     includeAcknowledgement: options.includeAcknowledgement === true,
     includeTitle: options.includeTitle === true,
     allowRespond: options.allowRespond !== false,
+    allowMemoryRecall: options.allowMemoryRecall === true,
     allowPlanner: options.allowPlanner === true,
     allowAuditor: options.allowAuditor === true,
     availableAuditCriterionIds,

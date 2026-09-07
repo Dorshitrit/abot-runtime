@@ -35,6 +35,7 @@ export function createInitialRoleCallState(requestId: string): RoleCallState {
     results: [],
     plans: [],
     capabilityExecutions: [],
+    memoryRecalls: [],
     operationSupervision: createInitialRoleOperationSupervisionState(),
     capabilitySelectionSupervision:
       createInitialRoleCapabilitySelectionSupervisionState(),

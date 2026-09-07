@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../../../model-gateway/types.js";
+import type { MemoryRecallContinuation } from "../../long-term-memory/recall-continuation.js";
 import type {
   RoleCallFrame,
   RoleCallLedgerHead,
@@ -201,6 +202,7 @@ export function buildExecutionCapabilityCatalogMessage(
 export function buildExecutionContinuationMessages(
   head: RoleCallLedgerHead,
   call: RoleCallFrame = requireActiveRootCall(head),
+  memoryRecalls: readonly MemoryRecallContinuation[] = [],
 ): readonly ChatMessage[] {
   assertExecutionRoot(head, call);
   const executions = head.state.capabilityExecutions.filter(
@@ -218,12 +220,20 @@ export function buildExecutionContinuationMessages(
       groups.push([execution]);
     }
   }
-  return Object.freeze(
-    groups.flatMap((group) => [
-      buildAcceptedActionMessage(group),
-      ...group.map((execution) => buildCapabilityResultMessage(execution)),
-    ]),
+  const continuations = [
+    ...groups.map((group) => ({
+      invocationAttempt: group[0]!.invocationAttempt,
+      messages: [
+        buildAcceptedActionMessage(group),
+        ...group.map((execution) => buildCapabilityResultMessage(execution)),
+      ],
+    })),
+    ...memoryRecalls,
+  ];
+  continuations.sort(
+    (left, right) => left.invocationAttempt - right.invocationAttempt,
   );
+  return Object.freeze(continuations.flatMap(({ messages }) => messages));
 }
 
 function buildAcceptedActionMessage(
