@@ -11,6 +11,30 @@ duplicate manifest `name` across the bundled and consumer catalogs is rejected
 rather than treated as an override. In a source checkout, where both roots are
 the same physical directory, the catalog is discovered only once.
 
+## Manage Plugins In The Web UI
+
+Open **Configuration → Plugins** to see installed manifests, capability counts,
+and enabled, partially enabled or disabled selections. Switches save the selected
+plugin's configuration while preserving capability-specific allow/deny rules.
+Choose **Manage tools** on a plugin to manage its declared tools inside the same card.
+The card keeps its size; the tool list scrolls when needed. Use **Back** or Escape
+to return to the plugin overview. For example, disabling filesystem.read_file
+leaves dev_view, edit_file and write_file unchanged. Tool switches write qualified selectors and preserve
+the selections of every other tool. A plugin can remain enabled with all its
+tools switched off.
+
+Global, parent-plugin and broad tool deny rules remain explicit blockers.
+A child switch does not silently remove those rules or enable sibling tools.
+
+Choose **Apply changes** to activate saved settings. The Web process replaces
+only its own idle environments and preserves session and Job files. If any
+environment is working, or another process owns it, changes remain saved and
+the UI explains why they cannot yet be applied. Saving a switch alone does not
+change tools available to an already running agent.
+
+This screen manages packages already installed on disk; it does not install
+plugins from a marketplace.
+
 ## Package Shape
 
 ```text
@@ -119,6 +143,14 @@ input, effect, and approval. Optional capability metadata such as client event
 presentation, payload authoring, development roles, and selection grounding
 belongs here as well—not in runtime orchestration.
 
+A plugin declares sensitive operations with `approval: "always"` in its
+manifest, as the bundled EXEC and SYSTEM plugins do. Apply that policy to every
+operation when the whole plugin is sensitive. The generic approval boundary
+keeps enabled operations available in all modes: Ask and Full approve each exact
+prepared action; FULL+ skips that extra prompt. A disabled plugin stays absent.
+Sensitivity is declared by the plugin, never inferred from command text or tool
+names. Ordinary `request_policy` operations retain their existing mode behavior.
+
 `catalogGroups` classifies a capability in one or more request-catalog groups.
 A plugin-level non-empty array under `ai.abot.runtime` is inherited by every
 capability; an optional capability-level array overrides that default. Values
@@ -132,25 +164,42 @@ against a non-empty catalog. The runtime stores that scope on the Worker call
 and exposes the OR-union of matching capabilities. The Worker still selects
 the concrete capability and controls.
 
-Supervisor routing receives one optional, passive text brief from the same
-request-filtered registry used by `capability-brief`. It chooses the richest
-complete representation that fits: tool names with operation ids and groups,
-tool names by group, group counts and effects, or no brief. The brief replaces
-the previous aggregate catalog text; group ids remain in the response schema
-in every mode. It includes no tool descriptions, inputs, or operating
-instructions. Its 512-token estimate ceiling is further reduced by existing
-context headroom, including history and instruction reserves. No subset of
-tools is selected to fit, and no model call summarizes the catalog.
-This admission uses the context estimate at projection time. A later provider
-token count, steering update, or structured-output repair can still trigger
-the existing context-compaction path; the brief is not reselected there.
+Supervisor routing and delegated Planner each receive one optional, passive
+text brief through the same shared projection from the
+request-filtered registry used by `capability-brief`. It first includes every
+offered operation's tool name, operation id, summary and catalog groups when
+that complete description set fits the existing context headroom. Request-bound
+facts already present in summaries, such as available execution targets, remain
+intact. Admission reserves each consumer's existing context, configured
+instructions, calibration, output and safety headroom and stays below the
+existing compaction threshold. Root steering is reserved only for Supervisor;
+it does not enter the bounded Planner call.
+
+When complete descriptions cannot fit, the existing compact representations
+remain available under a 512-token ceiling: tool names with operation ids and
+groups, tool names by group, group counts and effects, or no brief. The declared
+level makes omitted detail explicit; it never implies that omitted detail means
+an operation is unavailable. Group ids remain in the response schema in every
+mode. No subset of tools is selected, no summary is truncated, and no model call
+summarizes the catalog. The brief carries no input schemas, execution authority
+or completion evidence. It is confined to delegation decisions; Worker selection,
+Execution Agent context, approval and terminal-response contracts are unchanged.
+Before each Supervisor routing or Planner attempt, including structured-output repairs,
+the optional brief is reselected against the actual projected messages plus
+current consumer-specific calibration and context. It retains its reference position or is
+omitted when no complete level fits; repair instructions and other context stay
+intact. Already inserted methodology is counted once. Provider token counts may
+still differ from these estimates and trigger the existing context-compaction
+path.
 
 The SDK exports `buildToolAvailabilityBrief` for the unchanged on-demand plugin
 output and `buildToolAvailabilityOverview` for informational representations.
 The runtime context helper owns token admission and the passive reference
 message; another step can explicitly attach it using the existing context
 reference API. Supervisor's working-directory and response phases do not
-receive it. Planner retains its existing group-routing projection.
+receive it. Planner uses this same brief instead of a separate aggregate-tag
+catalog. Its existing group-selection schema and Worker scope enforcement stay
+unchanged; descriptions do not select a group or execute an operation.
 
 Under `execution-agent-v1`, the canonical root receives group descriptions
 generated from member capability ids and summaries, and may mechanically open
@@ -230,6 +279,23 @@ Run `npm run typecheck:plugins` while developing. Run
 `npm run build:plugins` to regenerate every public `src/index.cjs`; CI uses
 `npm run check:plugin-build` to reject stale or hand-edited generated output.
 
+Plugins may export an asynchronous `prepareRequest(selectedModules)` hook alongside
+`handlers` and `adapters`. The host invokes it once per plugin for each request,
+after configuration selection and before projecting any model catalog. It receives
+detached frozen contracts and may remove tools or operations, narrow input enums,
+update operation summaries, and bind request-local implementations/adapters.
+Names, definitions, effects, approval policy, fixed parameters, and the remaining
+input contract cannot change. Disabled tools are never passed to the hook and
+cannot be returned. A preparation failure fails the request; it does not silently
+restore the unprepared catalog. Prepared state is not cached across requests.
+
+A call adapter may provide `executionBinding(call)` with an opaque `identity` and
+optional human-facing `metadata`. The identity participates in the normalized
+action fingerprint before approval; it is not a model input or tool result.
+Metadata is for approval and Activity disclosure only. The bound implementation
+must enforce that same captured destination at dispatch and reject stale bindings.
+Both supported execution policies consume this same prepared registry.
+
 The loader rejects missing or unexpected handlers. Plugin settings defaults
 and secret environment-variable names may be declared in `plugin.json`;
 secret values never belong in the manifest. Optional secrets do not alter the
@@ -259,7 +325,7 @@ intent, or proof that the whole request completed. See
 ## Filesystem Roots
 
 `environment.paths.agentWorkDir` is the configured primary work root. Plugins
-must resolve user-controlled filesystem targets through the injected
+with scoped filesystem operations must resolve user-controlled targets through the injected
 `runtimePathResolver`; they must not reproduce normalization, containment, or
 symlink policy. The plugin explicitly declares the configured locations that
 its operation accepts, while the Runtime proves the resulting physical path:
@@ -282,9 +348,35 @@ files. Read-only system inspection may opt into `host_system`; that location
 accepts absolute paths only and is never included implicitly. Plugins must not
 use it for mutation or as a fallback when a configured work root is missing.
 Paths outside declared roots and canonical symlink escapes fail before plugin
-I/O. Plugins must not infer or advertise a physical `sandbox/` alias.
+I/O for these scoped operations. Plugins must not infer or advertise a physical
+`sandbox/` alias. Trusted shell execution follows the explicit exception below.
 Attachment handles are a separate request-owned source and are not converted
 into ordinary filesystem targets.
+
+After a committed file mutation, the optional
+`executionContext.reportFileOutput({ target, operation, rootIdentity })` callback
+can report the exact resolved target for client presentation. `operation` is
+`created` or `updated`; no-op and failed mutations must not report an output.
+`rootIdentity` contains decimal strings for `device`, `inode` and `birthtimeNs`,
+read from the actual mutation root directory handle. Keep that handle open until
+the synchronous callback returns. The host checks this identity against the
+currently configured root before reading or creating a marker. Missing or
+mismatched identities omit the card, including a root replaced between commit
+and reporting. A receipt is published only on a successful mutating completion
+with `mutationEvidence: true`. The callback
+is best-effort: its absence or failure must not change a committed mutation's
+result. Never copy the receipt, physical path or presentation metadata into the
+canonical tool result. The bundled filesystem write/edit tools use this channel;
+it creates neither a file catalog nor a historical snapshot.
+
+The host binds that receipt to the root directory instance using its filesystem
+identity and a random token in `.abot-file-output-root`. Presentation capture
+creates this small marker once, without overwriting an existing file; preview
+only reads it. Symlink, malformed, missing or changed markers cannot authorize
+older receipts. Removing a marker revokes those receipts; a later successful
+mutation can establish a new token. Filesystems without stable directory birth
+identity omit presentation receipts while preserving the tool's mutation result.
+Legacy receipts containing only a path-derived root hash are not upgraded.
 
 Plugin state belongs to the factory instance. Mutable module globals are not
 allowed because one host process may load more than one Runtime. File-backed
@@ -322,10 +414,23 @@ and rendered text. A truncated success reports machine-readable truncation
 metadata; an operation that cannot produce a truthful bounded result fails
 explicitly.
 
-The bundled `exec` plugin supports Linux and macOS with non-interactive
-`/bin/bash`. Commands must use utilities available on the host. Its configured working directory is constrained to
-agent-work or workspace roots, but the shell runs with the Runtime process
-permissions and is not an operating-system sandbox.
+The bundled `exec` plugin provides trusted, non-interactive `/bin/bash` execution
+on Linux and macOS. Execute, wait and cancel each declare `approval="always"`:
+Ask/Full require exact-action approval, and FULL+ skips that extra prompt.
+Commands run as the Runtime OS user without lexical path or command-name checks.
+The explicit cwd must be an accessible existing directory; relative paths and
+`workspace/...` use their configured context bases, while absolute host paths
+are allowed. Trusted shell execution is outside the scoped filesystem contract
+above; project folders do not sandbox code. Dedicated file-tool restrictions
+remain unchanged. Native shell syntax and installed utilities determine command
+behavior; process ownership, cancellation, timeout and output limits still apply.
+
+Dev View locators are literal substrings that must identify a unique occurrence
+in the bounded file scan. An ambiguous locator remains an explicit failure,
+with bounded candidate line ranges and numeric controls for inspecting observed
+locations. The caller must omit `locator` when using those numeric controls.
+Candidate and scan truncation are explicit; neither previews nor candidate
+counts imply full-file coverage.
 
 ## Adding A Plugin
 

@@ -1,3 +1,8 @@
+import {
+  configRepairGuidance,
+  configRequiresRawRepair,
+} from "./raw-config-repair.js";
+import { renderModelSetupEntry } from "./model-setup-entry.js";
 import { escapeHtml, textOf } from "../../lib/text-format.js";
 import { CONFIG_CATEGORIES } from "./config-model.js";
 
@@ -7,6 +12,8 @@ export function createConfigWorkspaceView({
   eventTarget,
   memorySetup,
   memoryManagement,
+  pluginManagement,
+  hostConnection,
   configFileEntries,
   configFileKey,
   countObjectKeys,
@@ -52,6 +59,13 @@ export function createConfigWorkspaceView({
     if (!requestRunner) {
       return '<div class="empty-state compact">No request runner config found</div>';
     }
+    if (
+      configRequiresRawRepair(
+        requestRunner,
+        state.appliedJsonRepairKeys.has(configFileKey(requestRunner)),
+      )
+    )
+      return '<p class="error-text">Repair this linked file in Advanced → Raw JSON before editing pipeline settings.</p>';
     return renderStepsEditor(
       requestRunner,
       "Request pipeline",
@@ -141,6 +155,8 @@ export function createConfigWorkspaceView({
         ${renderCategoryTab("memory", "Memory")}
         ${renderCategoryTab("pipeline", "Pipeline")}
         ${renderCategoryTab("models", "Models")}
+        ${renderCategoryTab("plugins", "Plugins")}
+        ${renderCategoryTab("computer", "Connected computer")}
         ${renderCategoryTab("advanced", "Advanced")}
       </nav>
       <div class="config-category-panels">
@@ -155,12 +171,15 @@ export function createConfigWorkspaceView({
         ${renderCategoryPanel(
           "models",
           `<section class="config-section models-section">
+            ${renderModelSetupEntry(runtime, models)}
             <div class="config-model-layout">
               ${renderModelList(models)}
               ${renderSelectedModelEditor(models)}
             </div>
           </section>`,
         )}
+        ${renderCategoryPanel("plugins", "<div data-plugin-management></div>")}
+        ${renderCategoryPanel("computer", "<div data-system-host-connection></div>")}
         ${renderCategoryPanel("advanced", renderConfigMap())}
       </div>
     `;
@@ -170,6 +189,13 @@ export function createConfigWorkspaceView({
     memoryManagement.mount(
       dom.configDashboard.querySelector("[data-long-term-memory-management]"),
     );
+    pluginManagement?.mount(
+      dom.configDashboard.querySelector("[data-plugin-management]"),
+    );
+    hostConnection?.mount(
+      dom.configDashboard.querySelector("[data-system-host-connection]"),
+    );
+    hostConnection?.setActive(state.activeCategory === "computer");
     syncDirtyPresentation({ syncRawEditor: true });
   }
 
@@ -195,11 +221,32 @@ export function createConfigWorkspaceView({
     if (!CONFIG_CATEGORIES.includes(category)) return;
     state.activeCategory = category;
     syncActiveCategory();
+    hostConnection?.setActive(category === "computer");
     if (options.focus) {
       dom.configDashboard
         .querySelector(`[data-config-category="${category}"]`)
         ?.focus();
     }
+  }
+
+  function selectModel(profileId) {
+    const models = state.configDashboard?.files?.models || [];
+    if (!models.some((model) => model.id === profileId)) return false;
+    state.selectedConfigModelId = profileId;
+    state.activeCategory = "models";
+    renderConfigDashboard();
+    return true;
+  }
+
+  function focusSelectedModel() {
+    const buttons = Array.from(
+      dom.configDashboard.querySelectorAll("[data-model-id]"),
+    );
+    const selected = buttons.find(
+      (button) => button.dataset.modelId === state.selectedConfigModelId,
+    );
+    selected?.focus?.({ preventScroll: true });
+    selected?.scrollIntoView?.({ block: "nearest" });
   }
 
   function syncFileControls() {
@@ -260,6 +307,13 @@ export function createConfigWorkspaceView({
     const status = dom.configDashboard.querySelector(".config-raw-status");
     const file = selectedRawConfigFile();
     if (!file) return;
+    const guidance = dom.configDashboard.querySelector(
+      "#configRawRepairGuidance",
+    );
+    if (guidance) {
+      guidance.textContent = configRepairGuidance(file);
+      guidance.hidden = !guidance.textContent;
+    }
     if (select) select.value = state.selectedRawConfigKey;
     if (shouldSynchronizeRawEditor(editor, options)) {
       editor.value = rawDraftFor(file);
@@ -291,6 +345,8 @@ export function createConfigWorkspaceView({
 
   return {
     activateCategory,
+    selectModel,
+    focusSelectedModel,
     renderConfigDashboard,
     setWorkspaceStatus,
     syncDashboardInteractivity,

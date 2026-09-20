@@ -1,15 +1,14 @@
 import { escapeAttribute, escapeHtml, textOf } from "../lib/text-format.js";
+import { normalizeToolPermissionMode } from "../lib/tool-permission-mode.js";
+import { createToolPermissionModeController } from "./tool-permission-mode-controller.js";
+
+export { normalizeToolPermissionMode } from "../lib/tool-permission-mode.js";
 
 export function normalizeAgentMode(mode) {
   const normalized = textOf(mode).trim().toLowerCase();
   return ["fast", "reasoning", "deep", "auto"].includes(normalized)
     ? normalized
     : "reasoning";
-}
-
-export function normalizeToolPermissionMode(value) {
-  const mode = textOf(value).trim().toLowerCase();
-  return mode === "ask" || mode === "approval_required" ? "ask" : "full_access";
 }
 
 function agentModeMeta(mode) {
@@ -28,20 +27,6 @@ function agentModeMeta(mode) {
     },
   };
   return modes[normalizeAgentMode(mode)] || modes.reasoning;
-}
-
-function permissionMeta(mode) {
-  return normalizeToolPermissionMode(mode) === "ask"
-    ? {
-        label: "Ask",
-        description: "Require approval",
-        title: "Ask before running tools",
-      }
-    : {
-        label: "Full",
-        description: "Run tools directly",
-        title: "Run tools without approval prompts",
-      };
 }
 
 export function createRuntimeSelectionController({
@@ -207,82 +192,12 @@ export function createRuntimeSelectionController({
     saveModelPreferences();
   }
 
-  const sessionModeFor = (sessionId) => {
-    const mode = state.sessionModes[sessionId];
-    return mode && typeof mode === "object" && !Array.isArray(mode) ? mode : {};
-  };
-  const currentToolPermissionMode = () =>
-    normalizeToolPermissionMode(
-      getComposerSessionId()
-        ? sessionModeFor(getComposerSessionId()).toolPermissionMode
-        : undefined,
-    );
-
-  function clearSessionMode(sessionId) {
-    if (!sessionId) return;
-    delete state.sessionModes[sessionId];
-    preferences.saveSessionModes(state.sessionModes);
-  }
-
-  function setToolPermissionMode(mode) {
-    if (!getComposerSessionId()) return;
-    const normalized = normalizeToolPermissionMode(mode);
-    if (normalized === "full_access")
-      delete state.sessionModes[getComposerSessionId()];
-    else {
-      state.sessionModes[getComposerSessionId()] = {
-        ...sessionModeFor(getComposerSessionId()),
-        toolPermissionMode: normalized,
-        savedAt: Date.now(),
-      };
-    }
-    preferences.saveSessionModes(state.sessionModes);
-    state.permissionModeMenuOpen = false;
-    renderPermissionMode();
-    dom.permissionModeButton.focus();
-  }
-
-  function renderPermissionMode() {
-    const mode = currentToolPermissionMode();
-    const meta = permissionMeta(mode);
-    dom.permissionModeButton.innerHTML = `<span class="permission-mode-label">${escapeHtml(meta.label)}</span>`;
-    dom.permissionModeButton.title = meta.title;
-    dom.permissionModeButton.disabled = !getComposerSessionId();
-    dom.permissionModeButton.classList.toggle("full", mode === "full_access");
-    dom.permissionModeButton.classList.toggle(
-      "open",
-      state.permissionModeMenuOpen,
-    );
-    dom.permissionModeButton.setAttribute(
-      "aria-expanded",
-      state.permissionModeMenuOpen ? "true" : "false",
-    );
-    dom.permissionModeMenu.classList.toggle(
-      "open",
-      state.permissionModeMenuOpen,
-    );
-    dom.permissionModeMenu.hidden = !state.permissionModeMenuOpen;
-    dom.permissionModeMenu.setAttribute("role", "menu");
-    dom.permissionModeMenu.innerHTML = ["full_access", "ask"]
-      .map((itemMode) => {
-        const item = permissionMeta(itemMode);
-        const selected = normalizeToolPermissionMode(itemMode) === mode;
-        return `
-          <button class="permission-mode-option ${selected ? "selected" : ""}" type="button"
-            role="menuitemradio" aria-checked="${selected ? "true" : "false"}"
-            tabindex="${selected ? "0" : "-1"}" data-mode="${escapeAttribute(itemMode)}">
-            <strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(item.description)}</small>
-          </button>`;
-      })
-      .join("");
-    dom.permissionModeMenu
-      .querySelectorAll(".permission-mode-option")
-      .forEach((button) => {
-        button.addEventListener("click", () =>
-          setToolPermissionMode(button.dataset.mode),
-        );
-      });
-  }
+  const {
+    clearSessionMode, currentToolPermissionMode, initializeSessionMode,
+    renderPermissionMode, setToolPermissionMode,
+  } = createToolPermissionModeController({
+    state, dom, preferences, recordControlEvent, getComposerSessionId,
+  });
 
   function renderAgentMode() {
     const meta = agentModeMeta(state.agentMode);
@@ -469,6 +384,7 @@ export function createRuntimeSelectionController({
     clearSessionMode,
     configuredEnvironmentOptions,
     currentToolPermissionMode,
+    initializeSessionMode,
     environmentOptions,
     loadAgentMode,
     loadModels,

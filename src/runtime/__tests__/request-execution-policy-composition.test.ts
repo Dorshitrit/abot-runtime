@@ -28,6 +28,9 @@ describe("request execution policy composition", () => {
       rootContract: { contractId: "supervisor" },
       roleExecutors: { roleIds: ["planner", "worker", "reviewer"] },
     });
+    expect(SUPERVISOR_WORKER_V1_EXECUTION_POLICY.authority).not.toHaveProperty(
+      "modelWorkPlanAuthority",
+    );
     expect(Object.isFrozen(SUPERVISOR_WORKER_V1_EXECUTION_POLICY)).toBe(true);
   });
 
@@ -38,12 +41,13 @@ describe("request execution policy composition", () => {
     expect(EXECUTION_AGENT_V1_EXECUTION_POLICY).toMatchObject({
       authority: {
         id: "execution-agent-v1",
-        version: 1,
+        version: 2,
         definitionHash:
-          "sha256:13c15efe75cdc96f225a1034fd5c36461b1a623fe91c78f9023740a4d42f5748",
+          "sha256:6540b2aee97b80e16531cdb9fbdc762dd18db5bb7cd7d76cb0fe73f9a50bdeea",
         rootContractId: "execution_agent",
         availableSubordinateContractIds: ["planner", "reviewer"],
         capabilityAuthorities: ["root"],
+        modelWorkPlanAuthority: "root",
         terminalTextMode: "exact",
       },
       rootContract: {

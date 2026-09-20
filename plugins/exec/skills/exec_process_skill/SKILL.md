@@ -5,3 +5,4 @@
 - Use `exec_cancel` only when the current task no longer needs the active process or the user asks to stop it.
 - Process IDs belong to one loaded plugin instance and session; never reuse one across runtimes or sessions.
 - Do not cancel a process whose result is still required, and do not retry a stale cursor unchanged.
+- These are sensitive actions like command execution: Ask/Full request approval through the runtime; FULL+ proceeds without an extra prompt. Approval never permits a different process or a replay of the original command.

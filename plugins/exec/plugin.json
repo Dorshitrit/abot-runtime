@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "exec",
   "version": "1.0.0",
-  "description": "Execute, observe, and cancel bounded non-interactive /bin/bash processes on Linux and macOS.",
+  "description": "Execute, observe, and cancel trusted non-interactive /bin/bash processes on Linux and macOS with per-action approval in Ask/Full.",
   "extensions": {
     "ai.abot.runtime": {
       "version": 1,
@@ -19,19 +19,29 @@
       "capabilities": {
         "exec": {
           "catalogGroups": ["read", "write", "exec"],
-          "description": "Execute one bounded non-interactive /bin/bash command on Linux or macOS. The explicit cwd must resolve inside agent work or the configured workspace; `.` means the agent-work root and `workspace/...` selects the workspace. The shell itself runs with the runtime process permissions and is not an operating-system sandbox. A command still running after the foreground window yields a process ID and cursor that exec_wait can resume without restarting it. Prefer dedicated inspection and file-mutation capabilities when they can express the task.",
+          "description": "Execute one trusted non-interactive /bin/bash command on Linux or macOS. Use an explicit existing directory: `.` and relative paths start at the agent-work root, `workspace/...` selects the workspace, and absolute host paths are accepted. Commands run with the runtime OS user permissions without parsing their contents for path or sensitivity restrictions. Ask/Full require approval of the exact action; FULL+ executes without that prompt. A command still running after the foreground window yields a process ID and cursor that exec_wait can resume without restarting it.",
           "routingCapability": "filesystem_inspection",
-          "developmentRoles": ["inspect", "establish", "verify", "auxiliary"],
+          "developmentRoles": ["inspect", "establish", "mutate", "verify", "auxiliary"],
           "eventPresentation": {
             "metadata": {
-              "command": { "param": "command", "kind": "string" },
-              "cwd": { "param": "cwd", "kind": "string" }
+              "command": {
+                "param": "command",
+                "kind": "string",
+                "maxLength": 4096,
+                "preserveWhitespace": true
+              },
+              "cwd": {
+                "param": "cwd",
+                "kind": "string",
+                "maxLength": 4096,
+                "preserveWhitespace": true
+              }
             }
           },
           "skills": ["exec_skill"],
           "operations": {
             "execute_command": {
-              "summary": "Execute one bounded non-interactive /bin/bash command on Linux or macOS in an explicit existing agent-work or workspace directory. The cwd boundary is not an OS sandbox. Full-access availability does not authorize servers, GUI automation, installs, service changes, background work, or other sensitive effects.",
+              "summary": "Execute one trusted non-interactive /bin/bash command in an explicit existing directory. This sensitive operation requires exact-action approval in Ask/Full and runs automatically in FULL+. The OS user permissions still apply; the selected folder is not a sandbox.",
               "input": {
                 "type": "object",
                 "additionalProperties": false,
@@ -46,7 +56,7 @@
                 "required": ["command", "cwd"]
               },
               "effect": "mixed",
-              "approval": "request_policy"
+              "approval": "always"
             }
           }
         },
@@ -55,6 +65,12 @@
           "description": "Continue observing the exact running shell process returned by exec. Use only the process ID and next cursor from the latest exec or exec_wait result. This does not start the command again.",
           "routingCapability": "filesystem_inspection",
           "developmentRoles": ["inspect", "verify", "auxiliary"],
+          "eventPresentation": {
+            "metadata": {
+              "processId": { "param": "process_id", "kind": "string" },
+              "cursor": { "param": "cursor", "kind": "number" }
+            }
+          },
           "skills": ["exec_process_skill"],
           "operations": {
             "wait_for_process": {
@@ -77,7 +93,7 @@
                 "required": ["process_id", "cursor"]
               },
               "effect": "read_only",
-              "approval": "request_policy"
+              "approval": "always"
             }
           }
         },
@@ -86,6 +102,11 @@
           "description": "Cancel one running shell process previously returned by exec. Use only when the current task no longer needs that process or the user asks to stop it.",
           "routingCapability": "filesystem_inspection",
           "developmentRoles": ["auxiliary"],
+          "eventPresentation": {
+            "metadata": {
+              "processId": { "param": "process_id", "kind": "string" }
+            }
+          },
           "skills": ["exec_process_skill"],
           "operations": {
             "cancel_process": {
@@ -103,7 +124,7 @@
                 "required": ["process_id"]
               },
               "effect": "mixed",
-              "approval": "request_policy"
+              "approval": "always"
             }
           }
         }

@@ -7,6 +7,7 @@ import {
   createCheckpointFixture,
   readCheckpointManifest,
 } from "./support/scheduler-checkpoint-fixture.js";
+import { seedCheckpointJobRevisions } from "./support/scheduler-checkpoint-suffix-fixture.js";
 
 const faults = vi.hoisted(() => ({ directory: "" }));
 vi.mock("node:fs/promises", async (original) => {
@@ -157,9 +158,17 @@ test.skipIf(process.platform === "win32")(
   { timeout: 20_000 },
   async () => {
     const f = await createCheckpointFixture(cleanups);
+    const initialOwner = await f.own();
+    await initialOwner.close();
+    await seedCheckpointJobRevisions(
+      f.directory,
+      Array.from({ length: 255 }, (_, index) => ({
+        ...f.snapshot.jobs[1],
+        title: `revision-${index}`,
+      })),
+    );
     const owner = await f.own();
-    for (let index = 0; index < 256; index++)
-      await changeTitle(owner.store, `revision-${index}`);
+    await changeTitle(owner.store, "revision-255");
     const before = await readCheckpointManifest(f.directory);
     faults.directory = f.directory;
     const mutate = vi.fn();

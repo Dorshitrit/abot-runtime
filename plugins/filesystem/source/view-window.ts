@@ -1,4 +1,5 @@
-import { fail } from "./errors.js";
+import type { BoundedText } from "./bounded-io.js";
+import { selectViewLocatorWindow } from "./view-locator.js";
 
 export const MAX_VIEW_LINES = 240;
 export const DEFAULT_CONTEXT_LINES = 8;
@@ -19,7 +20,8 @@ export function completeScannedLines(
 
 export function selectWindow(
   input: Readonly<{
-    text: string;
+    path: string;
+    source: BoundedText;
     lines: readonly string[];
     startLine?: number;
     endLine?: number;
@@ -32,21 +34,14 @@ export function selectWindow(
     input.endLine ??
     (input.startLine ? input.startLine + MAX_VIEW_LINES - 1 : MAX_VIEW_LINES);
   if (input.locator) {
-    const first = input.text.indexOf(input.locator);
-    if (first < 0) return null;
-    if (input.text.indexOf(input.locator, first + input.locator.length) >= 0) {
-      fail(
-        "ambiguous_text_locator",
-        "Locator matched multiple locations. Use a more specific locator or numeric range.",
-      );
-    }
-    const locatorStart = lineAtOffset(input.text, first);
-    const locatorEnd = lineAtOffset(
-      input.text,
-      first + Math.max(input.locator.length - 1, 0),
-    );
-    startLine = Math.max(1, locatorStart - input.contextLines);
-    endLine = Math.min(input.lines.length, locatorEnd + input.contextLines);
+    return selectViewLocatorWindow({
+      path: input.path,
+      source: input.source,
+      lineCount: input.lines.length,
+      locator: input.locator,
+      contextLines: input.contextLines,
+      maxWindowLines: MAX_VIEW_LINES,
+    });
   }
   if (endLine < startLine) [startLine, endLine] = [endLine, startLine];
   const rangeTruncated = endLine - startLine + 1 > MAX_VIEW_LINES;
@@ -84,12 +79,4 @@ export function parseTrailingRange(value: string): Readonly<{
     startLine: Number.parseInt(match[2]!, 10),
     endLine: Number.parseInt(match[3] ?? match[2]!, 10),
   });
-}
-
-function lineAtOffset(content: string, offset: number): number {
-  let line = 1;
-  for (let index = 0; index < offset; index += 1) {
-    if (content.charCodeAt(index) === 10) line += 1;
-  }
-  return line;
 }

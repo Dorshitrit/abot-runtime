@@ -1,11 +1,15 @@
-import type { ChatMessage } from "../../model-gateway/types.js";
+import type {
+  ChatMessage,
+  ModelTokenEstimationConfig,
+} from "../../model-gateway/types.js";
 import type { ToolAvailabilityEntry } from "../../capabilities/tool-types.js";
 import {
   buildToolAvailabilityOverview,
   type ToolAvailabilityOverviewGroup,
   type ToolAvailabilityOverviewLevel,
 } from "../../plugin-sdk/tool-availability-overview.js";
-import { assessRequestMessagesBudget } from "./request-context-budget.js";
+import { resolveCapabilityBriefHeadroom } from "./capability-brief-budget.js";
+import { buildCapabilityDescriptions } from "./capability-descriptions.js";
 import type { projectRequestContext } from "./request-context.js";
 import { estimateMessageTokens } from "./token-estimator.js";
 
@@ -13,7 +17,10 @@ export const CAPABILITY_BRIEF_KIND = "runtime_capability_brief_v1";
 export const CAPABILITY_BRIEF_MAX_TOKENS = 512;
 const CAPABILITY_BRIEF_PREFIX = `${CAPABILITY_BRIEF_KIND}\n`;
 
-export type CapabilityBriefLevel = ToolAvailabilityOverviewLevel | "none";
+export type CapabilityBriefLevel =
+  | ToolAvailabilityOverviewLevel
+  | "descriptions"
+  | "none";
 export type CapabilityBriefProjection = Readonly<{
   level: CapabilityBriefLevel;
   message?: ChatMessage;
@@ -33,20 +40,43 @@ export function projectCapabilityBrief(
     additionalBudgetMessages?: readonly ChatMessage[];
   }>,
 ): CapabilityBriefProjection {
-  const budgetTokens = resolveCapabilityBriefBudget(params);
+  return projectCapabilityBriefAtHeadroom({
+    entries: params.entries,
+    groups: params.groups,
+    headroom: resolveCapabilityBriefHeadroom(params),
+    tokenEstimation: params.context.budget.tokenEstimation,
+  });
+}
+
+/** Selects complete availability within the current invocation's input budget. */
+export function projectCapabilityBriefAtHeadroom(
+  params: Readonly<{
+    entries?: readonly ToolAvailabilityEntry[];
+    groups: readonly ToolAvailabilityOverviewGroup[];
+    headroom: number;
+    tokenEstimation?: ModelTokenEstimationConfig;
+  }>,
+): CapabilityBriefProjection {
+  const headroom = Math.max(0, params.headroom);
+  const compactBudgetTokens = Math.min(CAPABILITY_BRIEF_MAX_TOKENS, headroom);
   if (params.groups.length === 0) {
-    return omittedBrief(budgetTokens, "empty_catalog");
+    return omittedBrief(compactBudgetTokens, "empty_catalog");
   }
-  const levels: readonly ToolAvailabilityOverviewLevel[] =
+  const levels: readonly Exclude<CapabilityBriefLevel, "none">[] =
     hasCompleteCapabilityBriefEntries(params.entries, params.groups)
-      ? ["detailed", "titles", "groups"]
+      ? ["descriptions", "detailed", "titles", "groups"]
       : ["groups"];
   for (const level of levels) {
-    const body = buildToolAvailabilityOverview(
-      params.entries ?? [],
-      params.groups,
-      level,
-    );
+    const budgetTokens =
+      level === "descriptions" ? headroom : compactBudgetTokens;
+    const body =
+      level === "descriptions"
+        ? buildCapabilityDescriptions(params.entries ?? [])
+        : buildToolAvailabilityOverview(
+            params.entries ?? [],
+            params.groups,
+            level,
+          );
     const message: ChatMessage = Object.freeze({
       role: "system",
       content: [
@@ -58,7 +88,7 @@ export function projectCapabilityBrief(
     });
     const estimatedTokens = estimateMessageTokens(
       message,
-      params.context.budget.tokenEstimation,
+      params.tokenEstimation,
     );
     if (!fitsCapabilityBriefBudget(estimatedTokens, budgetTokens)) continue;
     return Object.freeze({
@@ -69,61 +99,13 @@ export function projectCapabilityBrief(
       reason: "complete_catalog",
     });
   }
-  return omittedBrief(budgetTokens, "insufficient_budget");
+  return omittedBrief(compactBudgetTokens, "insufficient_budget");
 }
 
 /** Consumers explicitly remove this optional reference at narrower phases. */
 export function isCapabilityBriefMessage(message: ChatMessage): boolean {
   if (message.role !== "system") return false;
   return message.content.startsWith(CAPABILITY_BRIEF_PREFIX);
-}
-
-function resolveCapabilityBriefBudget(
-  params: Readonly<{
-    context: ContextInput;
-    additionalBudgetMessages?: readonly ChatMessage[];
-  }>,
-): number {
-  const { context } = params;
-  const messages: ChatMessage[] = [
-    { role: "system", content: context.instructions },
-    ...(context.priorConversationMessages ?? []),
-    ...context.historyMessages,
-    ...(context.referenceMessages ?? []),
-    ...(context.referenceParts?.flatMap((part) => part.messages) ?? []),
-    ...(context.continuationMessages ?? []),
-    ...(context.continuationParts?.flatMap((part) => part.messages) ?? []),
-    {
-      role: "user",
-      content: context.prompt,
-      ...(context.attachments ? { attachments: context.attachments } : {}),
-    },
-    ...(params.additionalBudgetMessages ?? []),
-  ];
-  const { budget } = assessRequestMessagesBudget({
-    messages,
-    budget: context.budget,
-    ...(context.format ? { format: context.format } : {}),
-  });
-  // Configured methodology is added later; reserve it for the 70% threshold
-  // as well as the input ceiling. Strictly below: admission triggers on >=.
-  const instructionReserve =
-    context.budget.configuredInstructionReserveTokens ?? 0;
-  const compactionHeadroom =
-    budget.compactionTriggerInputTokens -
-    1 -
-    budget.estimatedInputTokens -
-    instructionReserve;
-  const admissionHeadroom =
-    budget.availableInputTokens - budget.estimatedInputTokens;
-  return Math.max(
-    0,
-    Math.min(
-      CAPABILITY_BRIEF_MAX_TOKENS,
-      compactionHeadroom,
-      admissionHeadroom,
-    ),
-  );
 }
 
 function hasCompleteCapabilityBriefEntries(

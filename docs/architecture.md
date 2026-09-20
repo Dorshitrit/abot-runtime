@@ -74,7 +74,12 @@ specific capability identity.
 Planner child-call commits are projected through the existing
 `planner.plan.*` event family. For client compatibility those payloads retain
 `stage=development_plan`, even though the runtime no longer has a Development
-loop. Tool execution keeps the existing `tool.*` event lifecycle.
+loop. Execution Agent may explicitly adopt a returned Planner proposal and
+report item statuses alongside an existing decision; its canonical root
+record projects through that same event family. The model chooses progress,
+and neither the advisory return nor a tool result automatically marks work
+complete. Events remain presentation rather than execution evidence or a
+second state store. Tool execution keeps the existing `tool.*` lifecycle.
 
 ## Configuration
 

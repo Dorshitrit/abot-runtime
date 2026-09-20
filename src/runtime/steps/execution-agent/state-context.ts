@@ -7,6 +7,8 @@ import type {
 } from "../../orchestration/role-calls/index.js";
 import { projectImmediateRoleOperationSupervisionNotices } from "../../orchestration/role-calls/index.js";
 import { projectImmediateCapabilityReconsideration } from "./reconsideration-context.js";
+import { projectAuditorInputState } from "../auditor-decision/audit-input-state.js";
+import { projectExecutionWorkPlanContext } from "./work-plan-sources.js";
 import type {
   CapabilityCatalogGroup,
   CapabilityDescriptor,
@@ -102,8 +104,20 @@ function buildExecutionStateMessageForConsumer(
       stateRevision: head.revision,
       callId: call.callId,
       activationCount: call.activationCount,
+      ...(steeringVersion !== undefined
+        ? { workPlan: projectExecutionWorkPlanContext(head, call) }
+        : {}),
       workingDirectory: call.workingDirectory ?? null,
       activeCapabilityScope: call.workerCapabilityScope ?? null,
+      ...(steeringVersion !== undefined
+        ? {
+            auditAvailability: projectAuditorInputState(
+              head,
+              call.callId,
+              steeringVersion,
+            ),
+          }
+        : {}),
       settledCapabilityExecutionCount: head.state.capabilityExecutions.filter(
         (execution) =>
           execution.callId === call.callId && execution.status === "settled",

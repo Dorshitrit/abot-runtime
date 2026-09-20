@@ -70,7 +70,9 @@ export function createComposerWorkspaceHarness() {
     attachmentPreview: { innerHTML: "", appendChild: vi.fn() },
   };
   const selectedEnvironmentId = () => environmentId;
+  const onSessionCreated = vi.fn();
   const workspace = createComposerWorkspaceController({
+    onSessionCreated,
     state,
     dom,
     homeComposerHost: homeHost as unknown as HTMLElement,
@@ -213,7 +215,7 @@ export function createComposerWorkspaceHarness() {
     workspace, feature, client, composerActions,
     chatAttachments, queue, sessionQueue, activateHomeSession,
     prepareWorkspaceActivation, saveSessionIdForEnvironment,
-    onControlEvent,
+    onControlEvent, onSessionCreated,
     setEnvironmentId(value: string) {
       environmentId = value;
     },

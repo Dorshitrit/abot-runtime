@@ -2,10 +2,7 @@ import {
   createSkillsContextProvider,
   type RuntimeSkillCatalog,
 } from "../context/skills-context.js";
-import {
-  loadBundledRuntimePlugins,
-  loadConfiguredRuntimePlugins,
-} from "../plugins/loader.js";
+import { loadRuntimeCapabilityPlugins } from "../plugins/runtime-capability-plugins.js";
 import type { CompiledRuntimePlugin } from "../plugins/compiled-catalog.js";
 import type { RuntimeConfig, SkillProvider, ToolRegistry } from "../ports.js";
 
@@ -94,7 +91,7 @@ export function createConfiguredSkillProvider(
   options: ConfiguredSkillProviderOptions,
 ): SkillProvider {
   return createProviderFromPlugins({
-    plugins: loadConfiguredRuntimePlugins(options.config),
+    plugins: loadRuntimeCapabilityPlugins(options.config),
     listToolDefinitions: options.listToolDefinitions,
   });
 }
@@ -104,7 +101,7 @@ export function createBundledPluginSkillProvider(
   options: Pick<RuntimePluginSkillProviderOptions, "listToolDefinitions"> = {},
 ): SkillProvider {
   return createProviderFromPlugins({
-    plugins: loadBundledRuntimePlugins(),
+    plugins: loadRuntimeCapabilityPlugins(),
     listToolDefinitions: options.listToolDefinitions,
   });
 }

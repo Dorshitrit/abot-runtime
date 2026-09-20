@@ -84,6 +84,9 @@ export function projectManifestRuntimeContract(
     declarations.push({
       definition: {
         name: capabilityId,
+        ...(capability.requiredPermissionMode
+          ? { requiredPermissionMode: capability.requiredPermissionMode }
+          : {}),
         description: capability.description,
         routingCapability: capability.routingCapability,
         ...(capability.controlsRefinement

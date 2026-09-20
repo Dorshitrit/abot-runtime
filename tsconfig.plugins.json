@@ -16,6 +16,7 @@
     "plugins/local-search/source/**/*.ts",
     "plugins/memory/source/**/*.ts",
     "plugins/project-orientation/source/**/*.ts",
+    "plugins/system/source/**/*.ts",
     "plugins/system-probe/source/**/*.ts",
     "plugins/web/source/**/*.ts"
   ],

@@ -7,6 +7,7 @@ export function createComposerWorkspaceController({
   homeSetupHost,
   selectedEnvironmentId,
   createSessionId = createWebSessionId,
+  onSessionCreated = () => {},
 }) {
   const surfaces = [{
     element: dom.composerForm,
@@ -94,9 +95,9 @@ export function createComposerWorkspaceController({
   }
 
   function ensureHomeSession() {
-    if (!homeState.currentSessionId) {
-      homeState.currentSessionId = createSessionId();
-    }
+    if (homeState.currentSessionId) return homeState.currentSessionId;
+    homeState.currentSessionId = createSessionId();
+    onSessionCreated(homeState.currentSessionId);
     return homeState.currentSessionId;
   }
 

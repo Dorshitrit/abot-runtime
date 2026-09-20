@@ -29,6 +29,18 @@ The local backend starts configured environments independently, so a slow or
 unavailable owner cannot delay another environment's schedules. Shutdown awaits
 the startup aggregate before stopping every created environment.
 
+Apply only replaces Runtime owners while they are idle. If gateway activation
+or replacement startup fails after those owners close, it restores the previous
+owned gateway's in-memory policy and recreates the previous environments from
+their applied configuration. Saved edits remain on disk for a later explicit
+Apply. A failed restoration is reported as unavailable, and shutdown never
+restarts a gateway or environment during rollback.
+
+Configuration saves hold the canonical Runtime-file lock while resolving and
+writing linked model or request-runner files. The linked file keeps its own
+revision check; another cooperating save cannot redirect the reference between
+target resolution and commit.
+
 When a scheduled request finishes outside the displayed conversation, its
 correlated terminal event refreshes the session list from the backend. The
 sidebar receives the saved preview and unread state without selecting that
@@ -61,6 +73,53 @@ public address, and limits response sizes and time. Thumbnail images use an
 opaque same-origin proxy with raster validation. The preview endpoint works
 with both the local Runtime backend and the external bridge backend.
 
+## Files in conversation activity
+
+With the local Runtime backend, successful filesystem writes and edits can make
+the filename inside the tool activity summary clickable. Clicking it opens the
+current file in the conversation viewer; the activity's sent/received fields and
+edit excerpt remain the historical record. Opening or closing the viewer does not invoke a model or tool.
+
+The viewer supports UTF-8 text and code, safe Markdown, and PNG/JPEG/WebP images.
+Text previews stop at 256 KiB; images stop at 10 MiB. HTML and SVG remain source
+text. Other formats show a preview-unavailable state. The desktop viewer sits
+beside the conversation and becomes an overlay on smaller screens. It closes when leaving the conversation.
+
+On macOS, **Open on Mac** opens the original document/image in its default app.
+The button is available only for supported non-executable file types through a
+local Web UI connection. It replaces the overflow menu and invokes no model.
+A same-origin JSON POST carries only conversation identifiers; the server
+revalidates the request generation, completion and opened file before invoking
+`/usr/bin/open` without a shell. The external app resolves the original pathname
+asynchronously, so its read is not covered by the viewer's held-file guarantee.
+An opener error leaves the viewer usable and displays inline feedback. The
+existing bounded download API remains available for client compatibility.
+
+Only a recorded successful mutation with an explicit file origin can expose the
+action. Older events, read operations and unchanged writes do not infer file
+outputs from paths or assistant text. The server resolves the recorded origin
+inside its original configured root. A deleted file, unavailable conversation or
+changed root is reported as unavailable; it is never replaced by a same-name
+file elsewhere. Existing uploaded attachments retain their separate lifecycle.
+
+The mutation reports its actual root directory identity while that directory
+handle is still open. If the configured root has been replaced by the time the
+host receives the report, the completion does not gain a file action.
+
+Each root's first presented mutation creates a small hidden
+`.abot-file-output-root` identity marker without overwriting a colliding file.
+The marker and directory creation identity keep an older action from opening a
+replacement root at the same pathname. Preview never creates or repairs markers.
+Deleting the marker invalidates earlier actions; a later successful mutation can
+establish a new identity. Old path-only receipts and filesystems without stable
+directory birth identity cannot expose file contents through this feature.
+
+File access also requires the original request generation, created only by an
+explicit request start. Clearing or deleting a conversation removes that
+identity; late persisted events and steering cannot restore it. The server
+rechecks the generation and completion after reading, before returning bytes.
+Legacy records remain readable as chat history but do not gain file access.
+
 ## Run
 
 ```bash
@@ -83,6 +142,15 @@ LLM_RUNTIME_WEB_PORT=5177
 LLM_RUNTIME_WEB_BACKEND=runtime
 LLM_RUNTIME_WEB_ENVIRONMENT=<optional default profile id>
 ```
+
+The Web UI accepts requests addressed to its configured hostname or the
+connected local interface IP, using the actual listener port. Loopback
+connections also accept `localhost` and loopback IP aliases. Binding to
+`0.0.0.0` or `::` permits direct LAN IP access; it does not trust arbitrary
+DNS hostnames. Unknown Host headers are rejected before HTTP or WebSocket
+dispatch, including when Origin matches. Forwarded headers do not establish
+trust, and reverse-proxy aliases are not configured by this policy. This is
+a request-authority check, not authentication for clients on an exposed LAN.
 
 The direct runtime backend uses the active runtime config and environment
 profiles. The environment picker is populated from

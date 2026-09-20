@@ -47,6 +47,7 @@ import {
   type RootObservationHandoff,
 } from "./root-observation-handoff.js";
 import { performRootMemoryRecall } from "./root-memory-recall.js";
+import { applyRootModelWorkPlan } from "./root-plan-update.js";
 import { projectRootMemoryRecallMessage } from "../long-term-memory/recall-context.js";
 import { createPlainRootAuthoredResponse } from "../orchestration/final-response/authoring-contract.js";
 
@@ -296,6 +297,21 @@ class RootExecutionSession {
     attempt: RootActivationAttempt,
   ): Promise<RootLoopControl> {
     const { decision } = activation;
+    if (decision.workPlan) {
+      attempt.failureStage = "apply_root_transition";
+      const updated = await applyRootModelWorkPlan({
+        request: this.request,
+        ledger: this.ledger,
+        head: activation.head,
+        call: activation.call,
+        steeringVersion: activation.decisionSteeringVersion,
+        update: decision.workPlan,
+      });
+      if (!updated) return CONTINUE_ROOT_EXECUTION;
+      activation = { ...activation, ...updated };
+      attempt.head = updated.head;
+      attempt.call = updated.call;
+    }
     if (decision.action === "recall_memory") {
       attempt.failureStage = "recall_memory";
       await performRootMemoryRecall({

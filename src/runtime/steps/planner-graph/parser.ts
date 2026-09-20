@@ -295,7 +295,6 @@ function validateTopology(
 
   const remaining = new Set(ids);
   const completed = new Set<string>();
-  let hasParallelFrontier = false;
   while (remaining.size > 0) {
     const frontier = nodes.filter(
       ({ localId, dependsOn }) =>
@@ -311,33 +310,10 @@ function validateTopology(
       );
       return;
     }
-    if (frontier.length >= 2) hasParallelFrontier = true;
     for (const node of frontier) {
       remaining.delete(node.localId);
       completed.add(node.localId);
     }
-  }
-  const dependedOn = new Set(nodes.flatMap(({ dependsOn }) => dependsOn));
-  const terminalCount = nodes.filter(
-    ({ localId }) => !dependedOn.has(localId),
-  ).length;
-  if (terminalCount < 2) {
-    issues.push(
-      issue(
-        "insufficient_terminal_deliverables",
-        "decision.nodes",
-        "The graph must contain at least two independently accepted terminal deliverables.",
-      ),
-    );
-  }
-  if (!hasParallelFrontier) {
-    issues.push(
-      issue(
-        "no_parallel_frontier",
-        "decision.nodes",
-        "The graph must expose at least one frontier with two ready nodes.",
-      ),
-    );
   }
 }
 

@@ -1,3 +1,4 @@
+import { requiresToolActionApproval } from "../../../../capabilities/tool-permission-mode.js";
 import type { ToolCall } from "../../../../capabilities/tool-types.js";
 import {
   buildToolExecutorEventMetadata,
@@ -9,6 +10,14 @@ import type {
 } from "../../../ports.js";
 import type { RegisteredToolNormalInvocationRejection } from "../shared/contracts.js";
 import { rejectNormalInvocation } from "../shared/rejection.js";
+
+function recommendsFullPlusForForcedAction(
+  mode: ToolPermissionMode,
+  force: boolean,
+): boolean {
+  if (mode !== "full_access") return false;
+  return force;
+}
 
 export async function requestNormalInvocationApproval(params: {
   executionId?: string;
@@ -26,7 +35,7 @@ export async function requestNormalInvocationApproval(params: {
   | Readonly<{ ok: true }>
   | Readonly<{ ok: false; rejection: RegisteredToolNormalInvocationRejection }>
 > {
-  if (!params.force && params.toolPermissionMode !== "ask") {
+  if (!requiresToolActionApproval(params.toolPermissionMode, params.force)) {
     return Object.freeze({ ok: true as const });
   }
   const approvalId = params.nextApprovalId();
@@ -35,6 +44,12 @@ export async function requestNormalInvocationApproval(params: {
     ...(params.executionId ? { executionId: params.executionId } : {}),
     approvalId,
     tool: params.call.tool,
+    ...(recommendsFullPlusForForcedAction(
+      params.toolPermissionMode,
+      params.force,
+    )
+      ? { recommendedToolPermissionMode: "full_plus" }
+      : {}),
     ...(params.eventMeta ? { meta: params.eventMeta } : {}),
   });
   if (!params.toolApprovalController) {

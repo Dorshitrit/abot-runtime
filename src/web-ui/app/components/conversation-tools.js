@@ -1,3 +1,6 @@
+import { createConversationFileAction } from "./conversation-file-action.js";
+import { createConversationToolEvidence } from "./conversation-tool-evidence.js";
+
 const STATUS_SYMBOLS = {
   preparing: "◌",
   running: "◌",
@@ -26,37 +29,15 @@ function hasToolActionIdentity(action) {
   return Boolean(text(action?.id));
 }
 
-function hasRecordedFields(fields) {
-  return Array.isArray(fields) && fields.length > 0;
-}
-
-function hasNoDisplayEvidence(fields, blocks) {
-  if (hasRecordedFields(fields)) return false;
-  return blocks.length === 0;
-}
-
-function repeatsActionTarget(field, target) {
-  if (!target || field.value !== target) return false;
-  return ["Path", "Folder", "Memory ID", "Target", "Source", "Query"].includes(
-    field.label,
-  );
-}
-
-function isTextInputField(field) {
-  return field.label === "Content excerpt" || field.label === "Instruction";
-}
-
-function inputBlockLabel(field, executed) {
-  if (field.label === "Instruction") return "Instruction";
-  if (executed) return "Sent content excerpt";
-  return "Prepared content excerpt";
-}
-
 function isRepeatedToolAction(count) {
   return Number.isSafeInteger(count) && count > 1;
 }
 
-export function createConversationTools({ documentRoot = document } = {}) {
+export function createConversationTools({
+  documentRoot = document,
+  onOpenFile,
+  canOpenFile,
+} = {}) {
   const requests = new Map();
 
   function requestState(requestId) {
@@ -81,79 +62,6 @@ export function createConversationTools({ documentRoot = document } = {}) {
     const node = element(tag, className, value);
     node.setAttribute("dir", "auto");
     return node;
-  }
-
-  function evidencePanel(title, fields, blocks = []) {
-    if (hasNoDisplayEvidence(fields, blocks)) return null;
-    const panel = element("section", "conversation-tool-evidence");
-    panel.setAttribute("aria-label", title);
-    if (hasRecordedFields(fields)) {
-      const list = element("dl", "conversation-tool-fields");
-      for (const field of fields) {
-        const row = element("div", "conversation-tool-field");
-        const label = isolatedText(
-          "dt",
-          "conversation-tool-field-label",
-          field.label,
-        );
-        const value = element("dd", "conversation-tool-field-value");
-        value.appendChild(isolatedText("bdi", "", field.value));
-        row.append(label, value);
-        list.appendChild(row);
-      }
-      panel.appendChild(list);
-    }
-    for (const block of blocks) {
-      const content = element("div", "conversation-tool-text-block");
-      content.appendChild(
-        element("p", "conversation-tool-preview-label", block.label),
-      );
-      const preview = isolatedText(
-        "pre",
-        "conversation-tool-preview",
-        block.value,
-      );
-      preview.setAttribute("aria-label", block.label);
-      content.appendChild(preview);
-      panel.appendChild(content);
-    }
-    return panel;
-  }
-
-  function evidenceGroups(action) {
-    const input = (action.sent || []).filter(
-      (field) => !repeatsActionTarget(field, action.target),
-    );
-    const labels = action.executed
-      ? ["Sent", "Received"]
-      : ["Prepared input", "Status"];
-    const preview = text(action.preview);
-    const panels = [
-      evidencePanel(
-        labels[0],
-        input.filter((field) => !isTextInputField(field)),
-        input.filter(isTextInputField).map((field) => ({
-          ...field,
-          label: inputBlockLabel(field, action.executed),
-        })),
-      ),
-      evidencePanel(
-        labels[1],
-        action.received,
-        preview
-          ? [
-              {
-                label: action.executed ? "Returned excerpt" : "Status",
-                value: preview,
-              },
-            ]
-          : [],
-      ),
-    ].filter(Boolean);
-    if (panels.length === 0) return null;
-    const groups = element("div", "conversation-tool-panels");
-    groups.append(...panels);
-    return groups;
   }
 
   function evidenceNotice(action, groups) {
@@ -182,7 +90,7 @@ export function createConversationTools({ documentRoot = document } = {}) {
     return target;
   }
 
-  function actionSummary(action, status) {
+  function actionSummary(action, status, fileAction) {
     const summary = element("summary", "conversation-tool-summary");
     const symbol = element(
       "span",
@@ -194,9 +102,9 @@ export function createConversationTools({ documentRoot = document } = {}) {
     description.appendChild(
       isolatedText("bdi", "conversation-tool-title", action.title),
     );
-    if (action.target) {
+    if (fileAction) description.appendChild(fileAction);
+    if (!fileAction && action.target)
       description.appendChild(actionTarget(action));
-    }
     summary.append(symbol, description);
     if (isRepeatedToolAction(action.count)) {
       summary.appendChild(
@@ -226,14 +134,26 @@ export function createConversationTools({ documentRoot = document } = {}) {
     details.dataset.actionId = action.id;
     details.open = request.expanded.has(action.id);
     request.nodes.set(action.id, details);
-    details.appendChild(actionSummary(action, status));
+    const fileAction = createConversationFileAction({
+      documentRoot,
+      requestId,
+      action,
+      onOpenFile,
+      canOpenFile,
+      isCurrentAction: () =>
+        isCurrentDisclosure(requestId, request, action.id, details),
+    });
+    details.appendChild(actionSummary(action, status, fileAction));
     const body = element("div", "conversation-tool-body");
     if (action.intent) {
       body.appendChild(
         isolatedText("p", "conversation-tool-intent", action.intent),
       );
     }
-    const groups = evidenceGroups(action);
+    const groups = createConversationToolEvidence(action, {
+      documentRoot,
+      hideRepeatedTarget: true,
+    });
     if (groups) body.appendChild(groups);
     const notice = evidenceNotice(action, groups);
     if (notice) body.appendChild(notice);

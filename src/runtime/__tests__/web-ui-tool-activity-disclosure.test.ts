@@ -70,7 +70,9 @@ describe("tool activity timeline availability", () => {
       const initial = render(events, "request-1", streaming);
       expect(initial.querySelector(".conversation-role-toggle")).toBeNull();
       expect(child(initial, ".conversation-role-list").hidden).toBe(false);
-      expect(child(initial, ".conversation-activity-timeline").hidden).toBe(true);
+      expect(child(initial, ".conversation-activity-timeline").hidden).toBe(
+        true,
+      );
       const tool = child(initial, ".conversation-tool");
       tool.open = true;
       tool.dispatch("toggle");
@@ -101,7 +103,10 @@ describe("tool activity timeline availability", () => {
       child(restoredDiagnostics, ".conversation-role-view").dataset.view,
     ).toBe("cards");
     child(restoredDiagnostics, ".conversation-role-toggle").dispatch("click");
-    const timeline = child(restoredDiagnostics, ".conversation-activity-timeline");
+    const timeline = child(
+      restoredDiagnostics,
+      ".conversation-activity-timeline",
+    );
     expect(timeline.hidden).toBe(false);
     expect(timeline.textContent).toContain("Preparing the notes");
   });
@@ -126,14 +131,34 @@ describe("tool activity timeline availability", () => {
       if (operation === "forget") view.forget("request-1");
       if (operation === "reset") view.reset();
       obsoleteToggle.dispatch("click");
-      expect(child(render(events), ".conversation-role-view").dataset.view).toBe(
-        "cards",
-      );
+      expect(
+        child(render(events), ".conversation-role-view").dataset.view,
+      ).toBe("cards");
     },
   );
 });
 
 describe("recorded tool input excerpts", () => {
+  test("discloses the bound computer as plain text without a host UUID", () => {
+    const computerName = "Owner <img src=x onerror=alert(1)> computer";
+    const node = activity().render([
+      {
+        ...toolEvent(),
+        tool: "system_command",
+        meta: {
+          computerName,
+          displayTarget: "windows",
+          command: "Get-Date",
+          commandTruncated: false,
+        },
+      },
+    ]);
+    expect(node.textContent).toContain("Computer");
+    expect(node.textContent).toContain(computerName);
+    expect(node.textContent).not.toContain("Computer ID");
+    expect(node.querySelector("img")).toBeNull();
+  });
+
   test.each([
     ["tool.completed", "write_file", "Sent content excerpt"],
     ["tool.payload.completed", "write_file", "Prepared content excerpt"],
@@ -142,16 +167,18 @@ describe("recorded tool input excerpts", () => {
     "%s for %s keeps the bounded input's meaning in its label",
     (name, tool, label) => {
       const inputPreview = "Recorded input. ".repeat(100);
-      const node = activity().render([{
-        ...toolEvent(),
-        name,
-        tool,
-        meta: {
-          path: "notes.txt",
-          inputPreview,
-          contentLength: inputPreview.length,
+      const node = activity().render([
+        {
+          ...toolEvent(),
+          name,
+          tool,
+          meta: {
+            path: "notes.txt",
+            inputPreview,
+            contentLength: inputPreview.length,
+          },
         },
-      }]);
+      ]);
       const input = child(node, ".conversation-tool-preview");
       expect(input.textContent).toHaveLength(500);
       expect(input.textContent).toBe(`${inputPreview.slice(0, 499)}…`);

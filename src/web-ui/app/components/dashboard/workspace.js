@@ -48,6 +48,8 @@ export function createDashboardWorkspace({ root, actions }) {
       <p class="home-composer-note">Starts a new conversation</p>
     </section>
   </div>`;
+  const overview = root.querySelector(".home-overview");
+  const shortcutRegion = root.querySelector(".home-shortcuts");
   const activity = root.querySelector("[data-dashboard-activity]");
   const conversations = root.querySelector("[data-dashboard-conversations]");
   const composerHost = root.querySelector("[data-dashboard-composer]");
@@ -74,6 +76,23 @@ export function createDashboardWorkspace({ root, actions }) {
   });
 
   function render(snapshot) {
+    const setupRequired = snapshot.composerAvailable === false;
+    root.classList.toggle("home-setup-active", setupRequired);
+    overview.hidden = setupRequired;
+    shortcutRegion.hidden = setupRequired;
+    root.querySelector('[data-dashboard-action="attach"]').disabled =
+      snapshot.composerAvailable === false;
+    root.querySelector('[data-dashboard-action="create-job"]').disabled =
+      snapshot.supportsSchedules === false;
+    composerHost.hidden = snapshot.composerAvailable === false;
+    setupHost.hidden = snapshot.composerAvailable !== false;
+    composerNote.hidden = snapshot.composerAvailable === false;
+    if (setupRequired) {
+      activity.innerHTML = "";
+      conversations.innerHTML = "";
+      return;
+    }
+
     activity.innerHTML = renderDashboardActivity({
       runs: snapshot.runs,
       loading: snapshot.loadingActivity,
@@ -94,13 +113,6 @@ export function createDashboardWorkspace({ root, actions }) {
       "aria-busy",
       String(Boolean(snapshot.loadingSessions)),
     );
-    root.querySelector('[data-dashboard-action="attach"]').disabled =
-      snapshot.composerAvailable === false;
-    root.querySelector('[data-dashboard-action="create-job"]').disabled =
-      snapshot.supportsSchedules === false;
-    composerHost.hidden = snapshot.composerAvailable === false;
-    setupHost.hidden = snapshot.composerAvailable !== false;
-    composerNote.hidden = snapshot.composerAvailable === false;
   }
 
   return { render, composerHost, setupHost };

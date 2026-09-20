@@ -1,6 +1,12 @@
+import type {
+  ToolPermissionMode,
+  ToolRequiredPermissionMode,
+} from "./tool-permission-mode.js";
+
 import type { ModelStep } from "../shared/types.js";
 import type { RuntimeAttachmentKind } from "../shared/attachments.js";
 import type { ToolNormalInvocationContract } from "./normal-invocation/contracts.js";
+import type { ToolFileOutputReporter } from "./file-output-presentation.js";
 
 export type {
   ToolNormalInvocationApproval,
@@ -56,7 +62,9 @@ export type ToolControlsRefinement = "mechanical_when_complete";
 
 export type ToolEventMetadataProjection = Readonly<{
   param: string;
-  kind: "string" | "number" | "string_array" | "length";
+  kind: "string" | "number" | "boolean" | "string_array" | "length";
+  maxLength?: number;
+  preserveWhitespace?: boolean;
   default?: string | number | boolean;
 }>;
 
@@ -142,6 +150,7 @@ export type ToolRuntimePathBinding = Readonly<{
 }>;
 
 export type ToolDefinition = {
+  requiredPermissionMode?: ToolRequiredPermissionMode;
   name: string;
   description?: string;
   routingCapability: ToolRoutingCapability;
@@ -168,7 +177,7 @@ export type ToolDefinitionDeclaration = CanonicalToolDefinitionDeclaration;
 
 export type ToolExecutionRequestContext = Readonly<{
   agentMode: "fast" | "reasoning" | "deep";
-  toolPermissionMode: "ask" | "full_access";
+  toolPermissionMode: ToolPermissionMode;
   modelPreference?: Readonly<{
     profileId: string;
     scope?: "main" | "all";
@@ -270,6 +279,8 @@ export type ToolExecutionContext = {
   sharedState?: ToolExecutionSharedState;
   /** Runtime-owned path interpretation and containment authority. */
   runtimePathResolver?: RuntimeToolPathResolver;
+  /** Optional host presentation channel; never add its data to tool results. */
+  reportFileOutput?: ToolFileOutputReporter;
   /** Trusted request-bound service for tools whose own implementation uses a model. */
   modelInvoker?: ToolModelInvoker;
 };
@@ -289,6 +300,12 @@ export type ToolCallAdapter = {
   validateCall?: (
     input: ToolCallAdapterInput,
   ) => { error: string; repairHint?: string } | null;
+  /** Request-captured execution authority; never projected into model controls. */
+  executionBinding?: (input: ToolCallAdapterInput) => Readonly<{
+    identity: string;
+    /** Human approval/activity disclosure only, never tool-result evidence. */
+    metadata?: Readonly<Record<string, unknown>>;
+  }>;
 };
 
 export type ToolModule = {
@@ -306,7 +323,13 @@ type ToolModuleDeclarationBase = Omit<
 export type ToolModuleDeclaration = ToolModuleDeclarationBase & {
   definition: CanonicalToolDefinitionDeclaration;
   normalInvocation: ToolNormalInvocationContract;
+  /** Shared callback identity groups already selected modules for one request. */
+  prepareRequest?: ToolModuleRequestPreparation;
 };
+
+export type ToolModuleRequestPreparation = (
+  modules: readonly ToolModuleDeclaration[],
+) => Promise<readonly ToolModuleDeclaration[]>;
 
 export type RegisteredToolNormalInvocation = Readonly<{
   toolName: string;

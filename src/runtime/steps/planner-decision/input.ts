@@ -1,4 +1,8 @@
 import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
+import {
+  projectCapabilityBrief,
+  type CapabilityBriefProjection,
+} from "../../context/capability-brief.js";
 import { resolveConfiguredStepInstructionMetadata } from "../../config/runner/step-instructions.js";
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
 import { projectRequestContext } from "../../context/request-context.js";
@@ -24,6 +28,10 @@ import {
 } from "../../orchestration/role-calls/index.js";
 import type { RuntimeDelegateRoleId } from "../../orchestration/roles.js";
 import {
+  projectWorkerCapabilityCatalogGroups,
+  type WorkerCapabilityCatalogGroup,
+} from "../../orchestration/worker-capabilities/index.js";
+import {
   resolveRequestWorkerCapabilityCatalog,
   type RequestWorkerCapabilityProviderSource,
 } from "../../request/execution-scope.js";
@@ -46,11 +54,7 @@ import {
   createPlannerDecisionFormat,
   normalizeAvailableChildRoleIds,
 } from "./format.js";
-import {
-  buildPlannerReferenceParts,
-  projectPlannerWorkerCapabilityCatalogGroups,
-  type PlannerWorkerCapabilityCatalogGroup,
-} from "./capability-catalog-context.js";
+import { buildPlannerCapabilityBriefOptions } from "./capability-brief.js";
 import {
   normalizePlannerDecisionPlanContext,
   plannerPlanAllowsInvocation,
@@ -96,7 +100,8 @@ export function buildPlannerDecisionInput(
   allowedActions: readonly PlannerDecisionSelectionKind[];
   availableChildRoleIds: readonly PlannerChildRoleId[];
   dependencyResults: readonly RoleCallDependencyResult[];
-  availableWorkerCapabilityCatalog: readonly PlannerWorkerCapabilityCatalogGroup[];
+  availableWorkerCapabilityCatalog: readonly WorkerCapabilityCatalogGroup[];
+  capabilityBrief: CapabilityBriefProjection;
   inheritedWorkingDirectory?: string;
   planContext?: PlannerDecisionPlanContext;
   childResume?: RoleChildReturnContext;
@@ -115,7 +120,7 @@ export function buildPlannerDecisionInput(
   const availableWorkerCapabilityCatalog = configuredChildRoleIds.includes(
     "worker",
   )
-    ? projectPlannerWorkerCapabilityCatalogGroups(
+    ? projectWorkerCapabilityCatalogGroups(
         resolveRequestWorkerCapabilityCatalog(request).getDescriptors(),
       )
     : Object.freeze([]);
@@ -172,7 +177,7 @@ export function buildPlannerDecisionInput(
     callId: callIdentity.callId,
   });
   const toolResultsProjection = projectPlannerToolResults(options.toolResults);
-  const referenceMessages = Object.freeze([
+  const referenceMessages = [
     ...(request.temporalContext
       ? [buildRequestTemporalContextMessage(request.temporalContext)]
       : []),
@@ -180,13 +185,7 @@ export function buildPlannerDecisionInput(
     ...(toolResultsProjection.view.results.length > 0
       ? [buildRequestToolResultsMessage(toolResultsProjection.view)]
       : []),
-  ]);
-  const referenceParts = buildPlannerReferenceParts({
-    callId: callIdentity.callId,
-    invocationAttempt: callIdentity.invocationAttempt,
-    exactMessages: referenceMessages,
-    catalogGroups: availableWorkerCapabilityCatalog,
-  });
+  ];
   const budget = resolveModelContextBudget({
     runnerConfig: request.runnerConfig,
     agentMode: request.agentMode,
@@ -211,7 +210,7 @@ export function buildPlannerDecisionInput(
       availableWorkerCapabilityCatalog.length > 0,
     ...(planContext ? { planContext } : {}),
   });
-  const context = projectRequestContext({
+  const contextInput = {
     instructions,
     format,
     historyMessages: [],
@@ -230,7 +229,7 @@ export function buildPlannerDecisionInput(
       ...(planContext ? { planContext } : {}),
       completedChildResultCount: childResume?.completedChildren.length ?? 0,
     }),
-    referenceParts,
+    referenceMessages,
     ...(childContinuationPart
       ? { continuationParts: [childContinuationPart] }
       : {}),
@@ -238,6 +237,21 @@ export function buildPlannerDecisionInput(
     diagnostic,
     ...(request.onEvent ? { onEvent: request.onEvent } : {}),
     deferCompactionFailure: true,
+  };
+  const briefOptions = buildPlannerCapabilityBriefOptions(
+    request,
+    availableWorkerCapabilityCatalog,
+  );
+  const capabilityBrief = projectCapabilityBrief({
+    groups: availableWorkerCapabilityCatalog,
+    context: contextInput,
+    entries: briefOptions.entries,
+    additionalBudgetMessages: briefOptions.additionalBudgetMessages,
+  });
+  if (capabilityBrief.message) referenceMessages.push(capabilityBrief.message);
+  const context = projectRequestContext({
+    ...contextInput,
+    referenceMessages,
   });
 
   tracePlannerContextProjected({
@@ -255,10 +269,7 @@ export function buildPlannerDecisionInput(
       (total, group) => total + group.memberCount,
       0,
     ),
-    referenceMessageCount: referenceParts.reduce(
-      (total, part) => total + part.messages.length,
-      0,
-    ),
+    referenceMessageCount: referenceMessages.length,
     continuationMessageCount: childContinuationPart?.messages.length ?? 0,
     completedChildResultCount: childResume?.completedChildren.length ?? 0,
     completedChildSummaryLength:
@@ -303,6 +314,7 @@ export function buildPlannerDecisionInput(
     availableChildRoleIds,
     dependencyResults,
     availableWorkerCapabilityCatalog,
+    capabilityBrief,
     ...(inheritedWorkingDirectory !== undefined
       ? { inheritedWorkingDirectory }
       : {}),

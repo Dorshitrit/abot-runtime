@@ -1,3 +1,4 @@
+import { configRequiresRawRepair } from "./raw-config-repair.js";
 import { escapeAttribute, escapeHtml, textOf } from "../../lib/text-format.js";
 import { isConfigObject } from "./config-model.js";
 
@@ -152,6 +153,11 @@ export function createConfigModelRendering({
       return '<div class="empty-state compact">No model configs found</div>';
     }
     state.selectedConfigModelId = model.id;
+    if (configRequiresRawRepair(
+      model,
+      state.appliedJsonRepairKeys.has(configFileKey(model)),
+    ))
+      return '<p class="error-text">Repair this linked file in Advanced → Raw JSON before editing model settings.</p>';
     const calibration = isConfigObject(model.config?.calibration)
       ? model.config.calibration
       : {};

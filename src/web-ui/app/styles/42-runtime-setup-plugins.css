@@ -1,0 +1,179 @@
+/* Onboarding keeps every tool visible in naturally sized plugin cards. */
+.runtime-setup-panel--plugins {
+  width: min(100%, 1000px);
+}
+
+.runtime-plugin-list,
+.runtime-plugin-capabilities {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.runtime-plugin-list {
+  column-width: 280px;
+  column-gap: 16px;
+}
+
+.runtime-plugin-card {
+  display: flex;
+  flex-direction: column;
+  break-inside: avoid;
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 16px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+}
+
+.runtime-plugin-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  min-height: 44px;
+  padding-block: 10px;
+  cursor: pointer;
+}
+
+.runtime-plugin-choice > input {
+  appearance: none;
+  display: grid;
+  place-content: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 2px 0 0;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--control-bg);
+  color: var(--text-strong);
+  cursor: inherit;
+}
+
+.runtime-plugin-choice > input:checked {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.runtime-plugin-choice > input:checked::after {
+  width: 5px;
+  height: 9px;
+  margin-top: -2px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  content: "";
+}
+
+.runtime-plugin-choice:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.runtime-plugin-choice > input:focus-visible {
+  outline: none;
+}
+
+.runtime-plugin-choice:has(input:disabled) {
+  cursor: default;
+}
+
+.runtime-plugin-choice > input:disabled {
+  opacity: 0.45;
+}
+
+.runtime-plugin-choice > span {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+}
+
+.runtime-plugin-choice strong {
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.runtime-plugin-master {
+  flex-direction: row-reverse;
+  min-height: 44px;
+  padding: 0;
+}
+
+.runtime-plugin-master strong {
+  color: var(--text-strong);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.runtime-plugin-version,
+.runtime-plugin-tools-heading {
+  color: var(--muted-2);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+}
+
+.runtime-plugin-summary,
+.runtime-plugin-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.runtime-plugin-summary {
+  -webkit-line-clamp: 3;
+  margin: 12px 0 0;
+}
+
+.runtime-plugin-description {
+  -webkit-line-clamp: 2;
+}
+
+.runtime-plugin-tools-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.runtime-plugin-tools-heading > span:first-child {
+  color: var(--text);
+}
+
+.runtime-plugin-capabilities {
+  margin-top: 8px;
+}
+
+.runtime-plugin-capabilities > li + li {
+  border-top: 1px solid var(--line);
+}
+
+.runtime-plugin-block {
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .runtime-plugin-card {
+    padding: 16px;
+  }
+}

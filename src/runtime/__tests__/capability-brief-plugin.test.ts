@@ -1,3 +1,4 @@
+import { expectLegacyAndFullPlusInventories } from "./full-plus-inventory-fixture.js";
 import { describe, expect, test } from "vitest";
 
 import createCapabilityBriefSource from "../../../plugins/capability-brief/source/index.js";
@@ -26,10 +27,12 @@ const AVAILABLE_TOOLS = Object.freeze([
 describe("capability-brief plugin", () => {
   test("declares one on-demand read-only catalog operation", () => {
     const config = loadPublicRuntimeConfig(["capability-brief"]);
-    const registry = createDefaultToolRegistry({
-      ...config,
-      plugins: { enabled: true, allow: ["capability-brief"] },
-    });
+    const registry = expectLegacyAndFullPlusInventories(
+      createDefaultToolRegistry({
+        ...config,
+        plugins: { enabled: true, allow: ["capability-brief"] },
+      }),
+    );
 
     expect(registry.listDefinitions()).toEqual([
       expect.objectContaining({
@@ -62,7 +65,8 @@ describe("capability-brief plugin", () => {
   });
 
   test("returns the request-effective brief only after invocation", async () => {
-    const sourceHandler = createCapabilityBriefSource().handlers.capability_brief;
+    const sourceHandler =
+      createCapabilityBriefSource().handlers.capability_brief;
     const bundledHandler = loadBundledPluginEntrypoint<
       Readonly<Record<string, never>>,
       Readonly<{

@@ -15,9 +15,9 @@ import {
   captureExecFilesystemSnapshot,
   diffExecFilesystemSnapshots,
 } from "./filesystem-observer.js";
-import { resolveExecScopedPath, resolveExecWorkingDirectory } from "./paths.js";
+import { resolveExecWorkingDirectory } from "./paths.js";
 import { createExecProcessManager } from "./process-manager.js";
-import { EXEC_COMMAND_MAX_CHARS, type ExecSettings } from "./settings.js";
+import type { ExecSettings } from "./settings.js";
 import type {
   ExecActionSummary,
   ExecFilesystemDelta,
@@ -25,12 +25,7 @@ import type {
   ExecStreamSnapshot,
   PendingExecExecution,
 } from "./types.js";
-import {
-  isInteractiveCommand,
-  sanitizeExecCommand,
-  scopedPathTokens,
-  stripHereDocBodies,
-} from "./validation.js";
+import { readExecCommand } from "./validation.js";
 
 const COMMAND_PREVIEW_MAX_CHARS = 768;
 
@@ -81,9 +76,6 @@ function runningResult(
   const rendered = renderedOutput(
     [
       `Command: ${execution.commandPreview}`,
-      ...(execution.commandWasNormalized
-        ? ["Command normalization: invalid control characters were removed."]
-        : []),
       `CWD: ${execution.cwd.logicalPath}`,
       "Process status: running",
       `Process ID: ${snapshot.processId}`,
@@ -222,9 +214,6 @@ async function finalizeExecResult(params: {
   const rendered = renderedOutput(
     [
       `Command: ${execution.commandPreview}`,
-      ...(execution.commandWasNormalized
-        ? ["Command normalization: invalid control characters were removed."]
-        : []),
       `CWD: ${execution.cwd.logicalPath}`,
       `Process ID: ${snapshot.processId}`,
       `Process status: ${snapshot.terminationReason ?? "completed"}`,
@@ -332,34 +321,12 @@ export function createExecHandlers(
 
   const exec: ToolImplementation = async (params, context) => {
     try {
-      const rawCommand = readRequiredString(params.command, {
-        name: "command",
-        trim: false,
-        maxLength: EXEC_COMMAND_MAX_CHARS,
-      });
-      const { command, normalized } = sanitizeExecCommand(rawCommand);
-      if (!command) {
-        throw new ExecPluginError(
-          "exec_command_invalid",
-          "The command is empty after invalid control characters are removed.",
-        );
-      }
-      const interactive = isInteractiveCommand(command);
-      if (interactive) {
-        throw new ExecPluginError(
-          "exec_interactive_command_blocked",
-          `Interactive command ${interactive} is not supported by the non-interactive exec plugin.`,
-        );
-      }
+      const command = readExecCommand(params.command);
       const cwd = await resolveExecWorkingDirectory(
         pluginContext,
         context,
         params.cwd,
       );
-      const staticCommand = stripHereDocBodies(command);
-      for (const token of scopedPathTokens(staticCommand)) {
-        resolveExecScopedPath(pluginContext, context, token, cwd);
-      }
       const filesystemStateBefore = await captureExecFilesystemSnapshot(
         cwd.absolutePath,
         cwd.logicalPath,
@@ -370,7 +337,6 @@ export function createExecHandlers(
       }).text;
       const execution: PendingExecExecution = Object.freeze({
         commandPreview,
-        commandWasNormalized: normalized,
         cwd,
         filesystemStateBefore,
         hardTimeoutMs: settings.hardTimeoutMs,

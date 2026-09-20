@@ -8,6 +8,7 @@ import { fail, isNodeErrorCode, rethrowFilesystemError } from "./errors.js";
 
 export type MutationParent = Readonly<{
   handle: FileHandle;
+  rootHandle: FileHandle;
   procPath: string;
   targetName: string;
 }>;
@@ -138,29 +139,37 @@ export async function openMutationParent(
     );
   }
 
-  let current = await openDirectory(
+  const rootHandle = await openDirectory(
     target.rootPath,
     target.rootPath,
     target.logicalPath,
   );
+  let current = rootHandle;
   try {
     for (const segment of segments) {
-      const next = await openChildDirectory(
-        current,
-        segment,
-        target.logicalPath,
-      );
-      await current.close();
-      current = next;
+      const previous = current;
+      current = await openChildDirectory(previous, segment, target.logicalPath);
+      if (previous !== rootHandle) {
+        await previous.close().catch(() => undefined);
+      }
     }
     return Object.freeze({
       handle: current,
+      rootHandle,
       procPath: `/proc/self/fd/${current.fd}`,
       targetName,
     });
   } catch (error: unknown) {
-    await current.close().catch(() => undefined);
+    await closeMutationParent({ handle: current, rootHandle });
     throw error;
+  }
+}
+
+export async function closeMutationParent(
+  parent: Pick<MutationParent, "handle" | "rootHandle">,
+): Promise<void> {
+  for (const handle of new Set([parent.handle, parent.rootHandle])) {
+    await handle.close().catch(() => undefined);
   }
 }
 

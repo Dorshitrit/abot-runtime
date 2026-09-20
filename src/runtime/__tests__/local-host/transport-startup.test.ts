@@ -24,7 +24,7 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-async function startHandshakeOwner(mode: "exit" | "reset" | "reject") {
+async function startHandshakeOwner(mode: "exit" | "reset" | "reject" | "hold") {
   const owner = new TransportProcess(
     directory,
     mode,
@@ -113,5 +113,19 @@ test("invalid endpoint configuration fails before a handshake or replacement own
   expect(
     initialOwner.messages.filter((message) => message.kind === "handshake"),
   ).toHaveLength(0);
+  expect(createOwner).not.toHaveBeenCalled();
+}, 10_000);
+
+test("a held handshake expires with the canonical initial startup deadline error", async () => {
+  await startHandshakeOwner("hold");
+  const createOwner = vi.fn(async () => replacementOwner());
+  await expect(
+    createLocalRuntimeConnection({
+      directory,
+      identity: "test-environment",
+      startupTimeoutMs: 250,
+      createOwner,
+    }),
+  ).rejects.toThrow("local_runtime_owner_start_timeout");
   expect(createOwner).not.toHaveBeenCalled();
 }, 10_000);

@@ -1,3 +1,6 @@
+import type { RuntimeSetupGatewayRestorePoint } from "./runtime-setup-gateway.js";
+import { RuntimeSetupGateway } from "./runtime-setup-gateway.js";
+import type { RuntimeSetupActivation } from "./local-runtime/runtime-setup-input.js";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import {
@@ -10,7 +13,15 @@ import { pathToFileURL } from "node:url";
 import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
 
-import { inspectRuntimeConfigFileWithMeta } from "../runtime/config/loader.js";
+import {
+  resolveWebUiEnvironmentConfig,
+  type WebUiEnvironmentOption,
+} from "./environment-config.js";
+export {
+  resolveWebUiEnvironmentConfig,
+  type WebUiEnvironmentOption,
+} from "./environment-config.js";
+import { closeRuntimeSetupServices } from "./runtime-setup-shutdown.js";
 import type { ModelProviderAdapterRegistry } from "../model-gateway/index.js";
 import { loadDotEnvFile } from "../shared/load-dotenv.js";
 import { createWebUiShutdown } from "./server-shutdown.js";
@@ -18,6 +29,12 @@ import { ExternalBridgeWebBackend } from "./external-bridge-backend.js";
 import { LocalRuntimeWebBackend } from "./local-runtime-backend.js";
 import { resolveWebUiAddress } from "./web-ui-address.js";
 import { createLinkPreviewRouteHandler } from "./link-preview/routes.js";
+import { WebSystemHostService } from "./system-host-service.js";
+import { allowsPublishedLoopbackAuthority } from "./forwarded-loopback-policy.js";
+import {
+  acceptWebUiHttpAuthority,
+  acceptWebUiUpgradeAuthority,
+} from "./request-authority.js";
 
 const DEFAULT_WEB_BACKEND = "runtime";
 const DEFAULT_BRIDGE_API_BASE = "http://127.0.0.1:8787/abot/api";
@@ -25,16 +42,9 @@ const DEFAULT_BRIDGE_REALTIME_URL = "ws://127.0.0.1:8787/abot/realtime";
 const DEFAULT_BRIDGE_HEALTH_URL = "http://127.0.0.1:8787/abot/health";
 const DEFAULT_BRIDGE_AGENT_MODE_URL = "http://127.0.0.1:8787/abot/agent-mode";
 const DEFAULT_ASSISTANT_HOST_URL = "http://127.0.0.1:5188";
-const DEFAULT_ENVIRONMENT_ID = "prod";
 const DEFAULT_SETUP_COMMAND_MODE = "source";
 
 export type WebUiSetupCommandMode = "source" | "package";
-
-export type WebUiEnvironmentOption = {
-  id: string;
-  label: string;
-  isDefault: boolean;
-};
 
 type WebUiServerOptions = {
   host?: string;
@@ -53,6 +63,11 @@ type WebUiServerOptions = {
   configPath?: string;
   setupCommandMode?: WebUiSetupCommandMode;
   providerAdapters?: ModelProviderAdapterRegistry;
+  onRuntimeSetup?: (configPath: string) => Promise<RuntimeSetupActivation>;
+  createRuntimeSetupRestorePoint?: () => RuntimeSetupGatewayRestorePoint;
+  checkRuntimeSetupActivation?: (
+    configPath: string,
+  ) => Promise<RuntimeSetupActivation>;
 };
 
 type WebUiServerHandle = {
@@ -62,7 +77,13 @@ type WebUiServerHandle = {
 type ResolvedWebUiServerOptions = Required<
   Omit<
     WebUiServerOptions,
-    "appDir" | "rootDir" | "configPath" | "providerAdapters"
+    | "appDir"
+    | "rootDir"
+    | "configPath"
+    | "providerAdapters"
+    | "onRuntimeSetup"
+    | "createRuntimeSetupRestorePoint"
+    | "checkRuntimeSetupActivation"
   >
 > & {
   appDir: string;
@@ -71,16 +92,6 @@ type ResolvedWebUiServerOptions = Required<
   providerAdapters?: ModelProviderAdapterRegistry;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-function getConfigString(value: unknown, key: string): string {
-  if (!isRecord(value)) return "";
-  const raw = value[key];
-  return typeof raw === "string" ? raw.trim() : "";
-}
-
 function resolveWebApiToken(): string {
   return (
     process.env.LLM_RUNTIME_WEB_API_TOKEN ||
@@ -88,69 +99,6 @@ function resolveWebApiToken(): string {
     process.env.CHAT_HISTORY_API_TOKEN ||
     ""
   );
-}
-
-export function resolveWebUiEnvironmentConfig(params: {
-  rootDir: string;
-  configPath?: string;
-  defaultEnvironmentId?: string;
-}): {
-  defaultEnvironmentId: string;
-  environments: WebUiEnvironmentOption[];
-} {
-  const overrideDefault = params.defaultEnvironmentId?.trim() ?? "";
-  const fallbackDefault = overrideDefault || DEFAULT_ENVIRONMENT_ID;
-  const fallback = {
-    defaultEnvironmentId: fallbackDefault,
-    environments: [
-      {
-        id: fallbackDefault,
-        label: fallbackDefault,
-        isDefault: true,
-      },
-    ],
-  };
-
-  let config: Record<string, unknown>;
-  try {
-    config = inspectRuntimeConfigFileWithMeta(
-      params.rootDir,
-      params.configPath,
-    ).config;
-  } catch {
-    // Runtime configuration errors belong to the backend catalog response so
-    // the Web UI can start and present the actionable setup error.
-    return fallback;
-  }
-  const environment = isRecord(config.environment)
-    ? config.environment
-    : undefined;
-  const profiles = isRecord(environment?.profiles)
-    ? environment.profiles
-    : undefined;
-  const profileIds = profiles
-    ? Object.keys(profiles).filter((id) => id.trim().length > 0)
-    : [];
-  const configuredDefault = getConfigString(environment, "default");
-  const defaultEnvironmentId =
-    overrideDefault ||
-    configuredDefault ||
-    profileIds[0] ||
-    DEFAULT_ENVIRONMENT_ID;
-  const environmentIds =
-    profileIds.length > 0 ? [...profileIds] : [defaultEnvironmentId];
-  if (!environmentIds.includes(defaultEnvironmentId)) {
-    environmentIds.unshift(defaultEnvironmentId);
-  }
-
-  return {
-    defaultEnvironmentId,
-    environments: environmentIds.map((id) => ({
-      id,
-      label: id,
-      isDefault: id === defaultEnvironmentId,
-    })),
-  };
 }
 
 function getOptionsFromEnv(): {
@@ -306,6 +254,12 @@ export function startWebUiServer(
       overrides.defaultEnvironmentId ?? environmentConfig.defaultEnvironmentId,
     environments: overrides.environments ?? environmentConfig.environments,
   };
+  const setupGateway = new RuntimeSetupGateway({
+    rootDir,
+    providerAdapters: options.providerAdapters,
+  });
+  const activateSetup =
+    overrides.onRuntimeSetup ?? ((path: string) => setupGateway.activate(path));
   const wss = new WebSocketServer({ noServer: true });
   const localRuntimeBackend =
     options.backend === "runtime"
@@ -313,6 +267,30 @@ export function startWebUiServer(
           rootDir: options.rootDir,
           configPath: options.configPath,
           defaultEnvironmentId: options.defaultEnvironmentId,
+          resolveEnvironmentConfig: (activeConfigPath) => {
+            const current = resolveWebUiEnvironmentConfig({
+              rootDir,
+              configPath: activeConfigPath ?? configPath,
+              defaultEnvironmentId:
+                overrides.defaultEnvironmentId ??
+                envOptions.defaultEnvironmentId,
+            });
+            return {
+              ...current,
+              environments: overrides.environments ?? current.environments,
+            };
+          },
+          onRuntimeSetup: activateSetup,
+          createRuntimeSetupRestorePoint:
+            overrides.createRuntimeSetupRestorePoint ??
+            (overrides.onRuntimeSetup
+              ? undefined
+              : () => setupGateway.createRestorePoint()),
+          checkRuntimeSetupActivation:
+            overrides.checkRuntimeSetupActivation ??
+            (overrides.onRuntimeSetup
+              ? undefined
+              : (path) => setupGateway.checkActivation(path)),
           ...(options.providerAdapters
             ? { providerAdapters: options.providerAdapters }
             : {}),
@@ -340,11 +318,19 @@ export function startWebUiServer(
   }
 
   const handleLinkPreview = createLinkPreviewRouteHandler();
+  const systemHost = localRuntimeBackend
+    ? new WebSystemHostService(rootDir)
+    : null;
+  const allowPublishedLoopback = allowsPublishedLoopbackAuthority(options.host);
   const server = createServer((req, res) => {
     void (async () => {
+      if (!acceptWebUiHttpAuthority(req, res, options.host, allowPublishedLoopback)) return;
       if (await handleLinkPreview(req, res)) return;
       const pathname = new URL(req.url || "/", "http://localhost").pathname;
+      if (await systemHost?.handleHttp(req, res, pathname)) return;
       if (pathname === "/web-config") {
+        const currentEnvironments =
+          localRuntimeBackend?.environmentConfig() ?? options;
         sendJson(res, 200, {
           ok: true,
           apiBasePath: "/web-api",
@@ -352,9 +338,13 @@ export function startWebUiServer(
           agentModePath: "/web-agent-mode",
           assistantHostPath: "/assistant-host",
           realtimePath: "/web-realtime",
-          defaultEnvironmentId: options.defaultEnvironmentId,
-          environments: options.environments,
+          defaultEnvironmentId: currentEnvironments.defaultEnvironmentId,
+          environments: currentEnvironments.environments,
           authConfigured: Boolean(options.apiToken),
+          supportsProjects: Boolean(localRuntimeBackend),
+          supportedToolPermissionModes: localRuntimeBackend
+            ? ["ask", "full_access", "full_plus"]
+            : ["ask", "full_access"],
           backend: options.backend,
           setupCommandMode: options.setupCommandMode,
         });
@@ -412,6 +402,8 @@ export function startWebUiServer(
   });
 
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    if (systemHost?.handleUpgrade(req, socket, head, options.host)) return;
+    if (!acceptWebUiUpgradeAuthority(req, socket, options.host, allowPublishedLoopback)) return;
     const pathname = new URL(req.url || "/", "http://localhost").pathname;
     if (pathname !== "/web-realtime") {
       socket.destroy();
@@ -451,7 +443,12 @@ export function startWebUiServer(
       server,
       wss,
       schedulerStartup,
-      () => localRuntimeBackend?.stop(),
+      () =>
+        closeRuntimeSetupServices(
+          async () => localRuntimeBackend?.stop(),
+          () => setupGateway.close(),
+          async () => systemHost?.close(),
+        ),
       listenAbort,
     ),
   };

@@ -875,15 +875,6 @@ describe("generic Worker capability decision boundary", () => {
         {
           action: "invoke_capability",
           capabilityId: "example.observe",
-          intent: "x".repeat(WORKER_CAPABILITY_INTENT_MAX_LENGTH + 1),
-        },
-        "worker_capability_intent_invalid",
-        "decision.intent",
-      ],
-      [
-        {
-          action: "invoke_capability",
-          capabilityId: "example.observe",
           intent: "Read.",
           authoringObjective: "Author payload content.",
         },

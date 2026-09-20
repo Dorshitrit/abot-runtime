@@ -8,7 +8,11 @@ const ROLE_INITIALS = {
   reviewer: "R",
 };
 
-export function createConversationRoleCards({ documentRoot = document } = {}) {
+export function createConversationRoleCards({
+  documentRoot = document,
+  onOpenFile,
+  canOpenFile,
+} = {}) {
   const timelineRequests = new Set();
   const timelineToggles = new Map();
   const cardsScroll = new Map();
@@ -61,7 +65,11 @@ export function createConversationRoleCards({ documentRoot = document } = {}) {
     toolsByRequest.set(requestId, cards);
     const existing = cards.get(cardId);
     if (existing) return existing;
-    const tools = createConversationTools({ documentRoot });
+    const tools = createConversationTools({
+      documentRoot,
+      onOpenFile,
+      canOpenFile,
+    });
     cards.set(cardId, tools);
     return tools;
   }

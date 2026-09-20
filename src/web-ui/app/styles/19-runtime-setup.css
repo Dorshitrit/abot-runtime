@@ -1,0 +1,411 @@
+/* Model setup owns its form; each workspace has one vertical scroll surface. */
+.runtime-setup-guide {
+  grid-row: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  padding: clamp(24px, 5vh, 52px) 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.runtime-setup-guide:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.runtime-setup-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  width: min(100%, 560px);
+  min-width: 0;
+  margin: 0;
+  padding: 28px 0;
+}
+
+.runtime-setup-progress {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: start;
+  gap: 12px;
+  margin: 0;
+  padding: 0 0 24px;
+  border-bottom: 1px solid var(--line);
+  list-style: none;
+}
+
+.runtime-setup-progress li {
+  min-width: 0;
+  flex-direction: column;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-2);
+  font-size: var(--font-size-sm);
+}
+
+.runtime-setup-progress li[aria-current],
+.runtime-setup-progress li.complete {
+  color: var(--text);
+}
+
+.runtime-setup-progress li > span:first-child {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  font-size: var(--font-size-xs);
+}
+
+.runtime-setup-progress li[aria-current] > span:first-child {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.runtime-setup-heading h3 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: var(--font-size-5xl);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+.runtime-setup-heading p {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+}
+
+.runtime-setup-content {
+  display: grid;
+  gap: 22px;
+  min-width: 0;
+}
+
+.runtime-provider-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.runtime-provider-options {
+  display: grid;
+  gap: 10px;
+}
+
+.runtime-provider-option {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--control-bg);
+  cursor: pointer;
+}
+
+.runtime-provider-option:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.runtime-provider-option:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.runtime-provider-option input {
+  flex: none;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.runtime-provider-option strong,
+.runtime-provider-option small {
+  display: block;
+  font-weight: 400;
+}
+
+.runtime-provider-option strong {
+  color: var(--text);
+  font-size: var(--font-size-lg);
+}
+
+.runtime-provider-option small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+.runtime-setup-field {
+  display: grid;
+  gap: 9px;
+  color: var(--text);
+  font-size: var(--font-size-md);
+}
+
+.runtime-setup-field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.runtime-setup-field input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.runtime-setup-field input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.runtime-setup-field small {
+  color: var(--muted-2);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.runtime-setup-feedback {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.runtime-setup-feedback.error {
+  color: var(--danger);
+}
+
+.runtime-setup-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.runtime-setup-footer button {
+  min-height: 42px;
+  padding: 10px 16px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font: inherit;
+  font-size: var(--font-size-sm);
+}
+
+.runtime-setup-action {
+  border-color: var(--line-strong) !important;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.runtime-setup-secondary {
+  padding-inline: 0 !important;
+  background: transparent;
+  color: var(--muted);
+}
+
+.runtime-setup-footer button:hover:not(:disabled) {
+  color: var(--text-strong);
+}
+
+.runtime-setup-footer button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.runtime-setup-result-mark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--green);
+}
+
+.runtime-setup-result p {
+  margin: 16px 0;
+  color: var(--muted);
+  font-size: var(--font-size-md);
+  line-height: 1.6;
+}
+
+.runtime-setup-result dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+.runtime-setup-result dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.runtime-setup-result dt {
+  color: var(--muted-2);
+}
+
+.runtime-setup-result dd {
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.home-setup-host .runtime-setup-guide {
+  padding: 0;
+  overflow: visible;
+  scrollbar-gutter: auto;
+}
+
+.home-setup-active .home-workspace-start {
+  margin-top: 0;
+}
+
+.home-setup-active .home-workspace-body {
+  padding-top: clamp(24px, 5vh, 52px);
+}
+
+@media (max-width: 520px) {
+  .runtime-setup-guide {
+    padding: 22px 18px;
+  }
+  .runtime-setup-panel {
+    gap: 24px;
+    padding-block: 8px;
+  }
+  .runtime-setup-progress {
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .runtime-setup-progress li {
+    gap: 6px;
+    font-size: var(--font-size-xs);
+  }
+  .runtime-setup-heading h3 {
+    font-size: var(--font-size-4xl);
+  }
+  .runtime-setup-footer {
+    gap: 12px;
+  }
+}
+
+.runtime-setup-mobile-progress {
+  display: none;
+}
+.runtime-setup-progress-label {
+  overflow-wrap: anywhere;
+}
+.runtime-embedding-fields,
+.runtime-setup-plugins {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.runtime-setup-field select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+}
+.runtime-setup-field select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.runtime-setup-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.runtime-setup-inline-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  gap: 8px;
+  min-height: 40px;
+  padding: 9px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  line-height: 1.4;
+}
+.runtime-setup-inline-action:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--control-bg-hover);
+  color: var(--text-strong);
+}
+.runtime-setup-inline-action:active {
+  transform: none;
+}
+.runtime-setup-inline-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.runtime-setup-inline-action svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+@media (max-width: 520px) {
+  .runtime-setup-progress-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .runtime-setup-mobile-progress {
+    display: block;
+    margin: -12px 0 0;
+    color: var(--muted);
+    font-size: var(--font-size-xs);
+  }
+  .runtime-setup-footer-actions {
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .runtime-setup-footer {
+    flex-wrap: wrap;
+  }
+}

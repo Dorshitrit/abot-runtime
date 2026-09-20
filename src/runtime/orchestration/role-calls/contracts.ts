@@ -17,6 +17,7 @@ import type {
 import type { RoleCapabilitySelectionReconsiderationCause } from "./reconsideration-cause.js";
 import type { RoleCallResultReceipt } from "./result-receipt.js";
 import type { RoleMemoryRecall, RoleMemoryRecallCommand, RoleMemoryRecallCommitEffect, RoleMemoryRecallTransactions } from "./memory-recall-contract.js";
+import type { AdoptedModelWorkPlan, UpdateModelWorkPlanCommand, ModelWorkPlanCommitEffect, ModelWorkPlanTransactions } from "./work-plan-contracts.js";
 
 export const ROLE_CALL_LEDGER_CONTRACT_VERSION = 18;
 export const ROLE_CALL_LEDGER_HEAD_KIND =
@@ -61,6 +62,8 @@ export type ExecutionPolicyAuthoritySnapshot = Readonly<{
   capabilityAuthorities: readonly ExecutionPolicyCapabilityAuthority[];
   /** Omission preserves the legacy normalized terminal-text contract. */
   terminalTextMode?: RoleCallTerminalTextMode;
+  /** Omission denies model-reported plan declarations. */
+  modelWorkPlanAuthority?: "root";
 }>;
 
 export const SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT: ExecutionPolicyAuthoritySnapshot =
@@ -141,6 +144,7 @@ export type RoleCallFrame = Readonly<{
   resultRef: string | null;
   /** Omitted unless the immediately preceding activation reconsidered a selection. */
   lastCapabilitySelectionReconsideration?: RoleCapabilitySelectionReconsideration;
+  adoptedWorkPlan?: AdoptedModelWorkPlan;
 }>;
 
 export type RoleCallResult = Readonly<{
@@ -392,6 +396,7 @@ export type ReconsiderRoleCapabilitySelectionCommand = Readonly<{
 }>;
 
 export type RoleCallLedgerCommand =
+  | UpdateModelWorkPlanCommand
   | RoleMemoryRecallCommand
   | CreateRootRoleCallCommand
   | CompleteRootResponseCommand
@@ -406,6 +411,7 @@ export type RoleCallLedgerCommand =
   | ReconsiderRoleCapabilitySelectionCommand;
 
 export type RoleCallCommitEffect =
+  | ModelWorkPlanCommitEffect
   | RoleMemoryRecallCommitEffect
   | Readonly<{ type: "root_created"; callId: string }>
   | Readonly<{
@@ -509,6 +515,7 @@ export type RoleCallTransitionRejectionCode =
   | "capability_execution_mismatch"
   | "capability_scope_update_invalid"
   | "working_directory_establishment_invalid"
+  | "model_work_plan_update_invalid"
   | "capability_selection_reconsideration_invalid"
   | "capability_selection_supervision_limit_exceeded"
   | "operation_supervision_limit_exceeded"
@@ -622,7 +629,7 @@ export type RoleCallTransactionResult<
   | RoleCallTransactionSuccess<TEffectType>
   | RoleCallTransactionFailure<TTransitionIssueCode>;
 
-export type RoleCallTransactions = RoleMemoryRecallTransactions & Readonly<{
+export type RoleCallTransactions = RoleMemoryRecallTransactions & ModelWorkPlanTransactions & Readonly<{
   createRoot(
     input: Readonly<{ expectedHead: unknown }>,
   ): Promise<

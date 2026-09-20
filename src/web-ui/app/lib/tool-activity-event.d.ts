@@ -1,6 +1,8 @@
+import type { ConversationFileReference } from "./conversation-file-reference.js";
 import type { ToolActivityField } from "./tool-activity-model.js";
 
 export interface ToolActivityEvent {
+  fileReference?: ConversationFileReference;
   name: string;
   tool: string;
   executionId: string;

@@ -106,7 +106,9 @@ function reviewerOutput(input: ModelInput): string {
   });
 }
 
-function createScript(): readonly ScriptedCall[] {
+function createScript(
+  intent = "Create the requested file.",
+): readonly ScriptedCall[] {
   return [
     {
       step: "supervisor.decision",
@@ -141,7 +143,7 @@ function createScript(): readonly ScriptedCall[] {
       output: encodeDecision({
         action: "invoke_capability",
         capabilityId: "write_complete_file",
-        intent: "Create the requested file.",
+        intent,
         authoringObjective: `Write exactly ${JSON.stringify(artifactBody)}.`,
         selectionControls: { path: artifactPath },
       }),
@@ -272,100 +274,123 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Supervisor capability brief handoff", () => {
-  test("keeps the request catalog only in routing throughout a real adapter and complete delegated chain", async () => {
-    const hostRoot = await mkdtemp(join(tmpdir(), "supervisor-brief-handoff-"));
-    const config = createRuntimeConfig(hostRoot);
-    await mkdir(config.paths.agentWorkDir);
-    const script = createScript();
-    let nextCall = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      const current = script[nextCall++];
-      expect(current, `unexpected model call ${nextCall}`).toBeDefined();
-      expect(input.modelStep).toBe(current!.step);
-      if (current!.format)
-        expect(input.format).toMatchObject({ name: current!.format });
-      const briefMessages = modelMessages(input).filter(
-        isCapabilityBriefMessage,
+describe("Supervisor and Planner capability brief handoff", () => {
+  test.each([
+    { label: "short intent", intent: "Create the requested file." },
+    { label: "oversized display intent", intent: "x".repeat(510) },
+  ])(
+    "keeps the request catalog only in routing throughout a real adapter and complete delegated chain: $label",
+    async ({ intent }) => {
+      const hostRoot = await mkdtemp(
+        join(tmpdir(), "supervisor-brief-handoff-"),
       );
-      expect(
-        modelMessages(input).some(({ content }) =>
-          content.includes(SUPERVISOR_RESPONSE_RECOMMENDATION_KIND),
-        ),
-      ).toBe(false);
-      const isSupervisorRouting = current!.format === "supervisor_decision";
-      if (isSupervisorRouting) {
-        expect(briefMessages).toHaveLength(1);
-        expect(briefMessages[0]!.role).toBe("system");
-        expect(briefMessages[0]!.content).toContain("write_file");
-        expect(briefMessages[0]!.content).toContain("write_complete_file");
-        expect(briefMessages[0]!.content).not.toContain("read_file");
+      const config = createRuntimeConfig(hostRoot);
+      await mkdir(config.paths.agentWorkDir);
+      const registry = createDefaultToolRegistry(config);
+      const writeSummary = registry.listNormalInvocations!()
+        .flatMap(({ contract }) => contract.operations)
+        .find(
+          ({ operationId }) => operationId === "write_complete_file",
+        )!.summary;
+      const script = createScript(intent);
+      let nextCall = 0;
+      const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+        const current = script[nextCall++];
+        expect(current, `unexpected model call ${nextCall}`).toBeDefined();
+        expect(input.modelStep).toBe(current!.step);
+        if (current!.format)
+          expect(input.format).toMatchObject({ name: current!.format });
+        const briefMessages = modelMessages(input).filter(
+          isCapabilityBriefMessage,
+        );
         expect(
-          modelMessages(input).filter(
-            ({ role, content }) => role === "user" && content === userPrompt,
+          modelMessages(input).some(({ content }) =>
+            content.includes(SUPERVISOR_RESPONSE_RECOMMENDATION_KIND),
           ),
-        ).toHaveLength(1);
-      } else {
-        expect(briefMessages).toEqual([]);
-      }
-      const text =
-        typeof current!.output === "string"
-          ? current!.output
-          : current!.output(input);
-      return { text, meta: {} };
-    });
-    const registry = createDefaultToolRegistry(config);
-    const execute = vi.spyOn(registry, "execute");
-    const request = createTestRequestExecutionScopeWithCapabilities(
-      createSeed(invoke),
-      (request) =>
-        createRequestWorkerCapabilityProvider({
-          request,
-          executionPolicyAuthority: SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT,
-          runtimeConfig: config,
-          toolRegistryOverride: registry,
-        }),
-    );
+        ).toBe(false);
+        const isSupervisorRouting = current!.format === "supervisor_decision";
+        const isDelegationRouting =
+          isSupervisorRouting || current!.step === "planner.decision";
+        if (isDelegationRouting) {
+          expect(briefMessages).toHaveLength(1);
+          expect(briefMessages[0]!.role).toBe("system");
+          expect(briefMessages[0]!.content).toContain("write_file");
+          expect(briefMessages[0]!.content).toContain("write_complete_file");
+          expect(briefMessages[0]!.content).toContain(
+            JSON.stringify(writeSummary),
+          );
+          expect(briefMessages[0]!.content).not.toContain("read_file");
+        } else {
+          expect(briefMessages).toEqual([]);
+        }
+        if (isSupervisorRouting) {
+          expect(
+            modelMessages(input).filter(
+              ({ role, content }) => role === "user" && content === userPrompt,
+            ),
+          ).toHaveLength(1);
+        }
+        const text =
+          typeof current!.output === "string"
+            ? current!.output
+            : current!.output(input);
+        return { text, meta: {} };
+      });
+      const execute = vi.spyOn(registry, "execute");
+      const request = createTestRequestExecutionScopeWithCapabilities(
+        createSeed(invoke),
+        (request) =>
+          createRequestWorkerCapabilityProvider({
+            request,
+            executionPolicyAuthority: SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT,
+            runtimeConfig: config,
+            toolRegistryOverride: registry,
+          }),
+      );
 
-    try {
-      await expect(runRequestRunner(request)).resolves.toEqual({
-        output: finalResponse,
-      });
-      expect(nextCall).toBe(script.length);
-      for (const [input] of invoke.mock.calls.slice(1)) {
-        expect(JSON.stringify(input)).not.toContain("responseRecommendation");
+      try {
+        await expect(runRequestRunner(request)).resolves.toEqual({
+          output: finalResponse,
+        });
+        expect(nextCall).toBe(script.length);
+        for (const [input] of invoke.mock.calls.slice(1)) {
+          expect(JSON.stringify(input)).not.toContain("responseRecommendation");
+        }
+        await expect(
+          readFile(join(config.paths.agentWorkDir, artifactPath), "utf8"),
+        ).resolves.toBe(artifactBody);
+        expect(execute).toHaveBeenCalledExactlyOnceWith(
+          {
+            tool: "write_file",
+            params: { path: artifactPath, content: artifactBody },
+          },
+          expect.anything(),
+        );
+        const workerInput = invoke.mock.calls.find(
+          ([input]) => input.modelStep === "worker.decision",
+        )![0];
+        expect(
+          readCapsule(workerInput, "runtime_worker_assignment"),
+        ).toMatchObject({
+          callId: "call-3",
+          parentCallId: "call-2",
+          objective: workerObjective,
+          workingDirectory: ".",
+          availableCapabilities: [{ capabilityId: "write_complete_file" }],
+        });
+        expect(request.onAnswerToken).toHaveBeenCalledExactlyOnceWith(
+          finalResponse,
+        );
+        expect(request.onThinkingDelta).toHaveBeenCalledWith(
+          `${intent.slice(0, 500)}\n\n`,
+        );
+        expect(request.onEvent).toHaveBeenCalledWith(
+          "tool.completed",
+          expect.objectContaining({ tool: "write_file", ok: true }),
+        );
+      } finally {
+        await rm(hostRoot, { recursive: true, force: true });
       }
-      await expect(
-        readFile(join(config.paths.agentWorkDir, artifactPath), "utf8"),
-      ).resolves.toBe(artifactBody);
-      expect(execute).toHaveBeenCalledExactlyOnceWith(
-        {
-          tool: "write_file",
-          params: { path: artifactPath, content: artifactBody },
-        },
-        expect.anything(),
-      );
-      const workerInput = invoke.mock.calls.find(
-        ([input]) => input.modelStep === "worker.decision",
-      )![0];
-      expect(
-        readCapsule(workerInput, "runtime_worker_assignment"),
-      ).toMatchObject({
-        callId: "call-3",
-        parentCallId: "call-2",
-        objective: workerObjective,
-        workingDirectory: ".",
-        availableCapabilities: [{ capabilityId: "write_complete_file" }],
-      });
-      expect(request.onAnswerToken).toHaveBeenCalledExactlyOnceWith(
-        finalResponse,
-      );
-      expect(request.onEvent).toHaveBeenCalledWith(
-        "tool.completed",
-        expect.objectContaining({ tool: "write_file", ok: true }),
-      );
-    } finally {
-      await rm(hostRoot, { recursive: true, force: true });
-    }
-  });
+    },
+  );
 });

@@ -4,6 +4,93 @@ All notable changes to this project should be documented in this file.
 
 This project follows semantic versioning after the first public release.
 
+## 1.4.0 - 2026-09-20
+
+ABot 1.4.0 adds guided setup, project conversations, FULL+ system access,
+and connections from Docker to applications on the host computer.
+
+### Added
+
+- Guided Web UI setup for OpenAI or Ollama, optional embeddings, and plugin
+  selection. Additional models can reuse saved provider connections while
+  preserving existing profiles and the default model.
+- Configuration controls for installed plugins and individual tools, with
+  saved selections applied to idle Runtime environments.
+- Conversation file previews and downloads from Activity when the filesystem
+  provides a stable working-folder identity. Supported documents can also open in their
+  default application on a locally connected Mac.
+- Projects group conversations above ordinary sessions and use independently
+  selected working folders. Creating a project does not change the configured
+  default workspace or introduce a permissions sandbox.
+- FULL+ mode enables task-relevant application discovery, launching, and system
+  commands without additional ABot approval prompts. Ask and Full request
+  approval for each prepared system action; Full recommends FULL+ for future
+  actions. Operating-system permissions still apply, and disabled tools remain
+  unavailable in every mode.
+- Guided computer access connects a Docker Runtime to its Windows or macOS host
+  through a native companion, with automatic pairing, connection status, and
+  disconnection controls. Chat offers setup guidance when required access is
+  missing; working native access needs no companion installation.
+- A Windows setup script repairs unavailable WSL interop, preserves unrelated
+  settings, and automatically restarts only the selected distribution without
+  a typed restart confirmation. The setup screen explains the interruption
+  before download, and access is verified after the restart.
+- Execution Agent planning can report an explicitly adopted plan and item
+  progress through the existing Web UI plan display, without extra model
+  decision turns for status updates.
+
+### Changed
+
+- New conversations remember the user's last explicit permission-mode selection
+  in the browser, including FULL+. Existing conversations retain their own mode.
+- Activity and approval cards expose recorded system commands, arguments,
+  operating-system target, working directory, and elevation details.
+- Connected-computer capabilities are offered only when available. Connection
+  identities stay internal, and prepared actions remain bound to their target
+  through approval and execution.
+- Execution Agent guidance favors planning and independent review for complex
+  development, including sequential work on a single integrated application.
+  A selected working folder does not authorize overwriting an existing app;
+  new-app requests call for a distinct destination or target clarification.
+
+### Fixed
+
+- Long Worker activity descriptions are bounded without aborting otherwise valid
+  capability actions, preserving complete Unicode characters.
+- System launch guidance clarifies platform-specific argument support and avoids
+  treating an unverified application outcome as a reason to repeat the action.
+- Delegated Planner reuses the same canonical capability descriptions and
+  context-budget admission as Supervisor, including structured-output repairs,
+  replacing its separate aggregate-tag catalog without changing tool scopes.
+- Supervisor routing receives canonical operation descriptions and available
+  execution targets when the complete catalog fits its context, so delegation
+  does not rely only on tool names. Compact fallbacks preserve complete coverage
+  and explicitly identify omitted detail. Routing retries reselect this optional
+  brief so structured-output repairs retain their required input capacity.
+- Setup and configuration edits preserve provider selections, credentials, and
+  model profiles across retries. Configuration saves coordinate concurrent
+  changes and keep recovery available for malformed configuration files.
+- Background computer-status checks preserve the configuration view and avoid
+  repeated rendering when the displayed state has not changed.
+- The Jobs workspace keeps content and feedback within a consistent width.
+- Execution Agent audits select their own whole original evidence from a
+  complete work inventory and can request another evidence bundle. Prior
+  advisory summaries no longer crowd out work evidence, and unchanged
+  completed reviews are not repeatedly offered. Exact duplicate proof is sent
+  once, and evidence admission uses the configured model context budget rather
+  than a fixed character limit. Completion-review guidance avoids routine audits
+  after each edit and keeps unperformed functional tests visible as gaps.
+  Both passing and gap verdicts require the original evidence the auditor marks
+  as needed; replacement bundles must retain all such evidence. Plan adoption
+  schemas bind each task ID to its selected Planner proposal.
+- EXEC uses declared sensitivity instead of parsing shell commands for permission
+  decisions. Execute, wait and cancel ask for exact-action approval in Ask/Full
+  and run automatically in FULL+. Approved commands retain their original text
+  and can use any existing cwd accessible to the OS user. Approval cards show
+  the complete command/cwd or process controls; disabled tools stay unavailable.
+- Ambiguous Dev View locators report bounded candidate line ranges and concrete
+  numeric controls instead of leaving the caller without observed locations.
+
 ## 1.3.1 - 2026-09-07
 
 ### Fixed

@@ -1,4 +1,5 @@
 import type WebSocket from "ws";
+import type { RuntimeProjectService } from "./projects/contracts.js";
 
 import {
   createBoundRuntimeRequestHandler,
@@ -28,6 +29,7 @@ import type { RequestSteeringAppendResult } from "./request/request-steering.js"
 export type RuntimeEnvironmentServices = Readonly<{
   config: RuntimeConfig;
   sessions: SessionStore;
+  projects?: RuntimeProjectService;
   attachments: RuntimeAttachmentStore;
   tools: ToolRegistry;
   models: ModelGatewayClient;

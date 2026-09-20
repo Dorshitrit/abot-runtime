@@ -498,43 +498,57 @@ function diffExecFilesystemSnapshots(before, after) {
 // plugins/exec/source/paths.ts
 var import_promises2 = require("node:fs/promises");
 var import_node_path2 = require("node:path");
-var EXEC_ALLOWED_LOCATIONS = Object.freeze([
-  "agent_work",
-  "workspace"
-]);
-function resolverContext(pluginContext, executionContext) {
-  return {
-    runtimePathResolver: executionContext?.runtimePathResolver ?? pluginContext.runtimePathResolver
-  };
-}
-function resolveExecPath(pluginContext, executionContext, rawPath) {
-  return resolvePluginPath(
-    resolverContext(pluginContext, executionContext),
-    rawPath,
+function resolveContextualDirectory(pluginContext, executionContext, requestedPath) {
+  if ((0, import_node_path2.isAbsolute)(requestedPath)) return { absolutePath: requestedPath };
+  const isWorkspaceAlias = requestedPath === "workspace" || requestedPath.startsWith("workspace/");
+  const base = resolvePluginPath(
     {
-      requirePath: true,
-      allowedLocations: EXEC_ALLOWED_LOCATIONS
-    }
+      runtimePathResolver: executionContext?.runtimePathResolver ?? pluginContext.runtimePathResolver
+    },
+    isWorkspaceAlias ? "workspace" : ".",
+    { allowedLocations: [isWorkspaceAlias ? "workspace" : "agent_work"] }
   );
+  const relativePath = isWorkspaceAlias ? requestedPath.slice("workspace".length + 1) || "." : requestedPath;
+  return { absolutePath: `${base.absolutePath}${import_node_path2.sep}${relativePath}`, base };
+}
+function isOutsideExecContextBase(relativePath) {
+  if (relativePath === "..") return true;
+  if (relativePath.startsWith(`..${import_node_path2.sep}`)) return true;
+  return (0, import_node_path2.isAbsolute)(relativePath);
+}
+function logicalDirectory(absolutePath, base) {
+  if (!base) return absolutePath;
+  const fromBase = (0, import_node_path2.relative)(base.absolutePath, absolutePath);
+  if (isOutsideExecContextBase(fromBase)) return absolutePath;
+  return import_node_path2.posix.join(base.logicalPath, fromBase.split(import_node_path2.sep).join("/") || ".");
 }
 async function resolveExecWorkingDirectory(pluginContext, executionContext, rawPath) {
   const requestedPath = readRequiredString(rawPath, {
     name: "cwd",
+    trim: false,
     maxLength: 4096
   });
-  const target = resolveExecPath(
+  if (requestedPath.includes("\0")) {
+    throw new ExecPluginError(
+      "exec_cwd_invalid",
+      "The selected cwd contains NUL characters."
+    );
+  }
+  const target = resolveContextualDirectory(
     pluginContext,
     executionContext,
     requestedPath
   );
+  let absolutePath;
   let info;
   try {
-    info = await (0, import_promises2.stat)(target.absolutePath);
+    absolutePath = await (0, import_promises2.realpath)(target.absolutePath);
+    info = await (0, import_promises2.stat)(absolutePath);
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       throw new ExecPluginError(
         "exec_cwd_not_found",
-        "The selected cwd does not exist. Select an existing agent-work or workspace directory."
+        "The selected cwd does not exist. Select an existing directory."
       );
     }
     throw new ExecPluginError(
@@ -548,12 +562,10 @@ async function resolveExecWorkingDirectory(pluginContext, executionContext, rawP
       "The selected cwd is not a directory."
     );
   }
-  return target;
-}
-function resolveExecScopedPath(pluginContext, executionContext, rawPath, cwd) {
-  const normalized = rawPath.replaceAll("\\", "/");
-  const requested = (0, import_node_path2.isAbsolute)(rawPath) || normalized === "workspace" || normalized.startsWith("workspace/") ? rawPath : import_node_path2.posix.join(cwd.logicalPath, normalized || ".");
-  return resolveExecPath(pluginContext, executionContext, requested);
+  return Object.freeze({
+    absolutePath,
+    logicalPath: logicalDirectory(absolutePath, target.base)
+  });
 }
 
 // plugins/exec/source/process-manager.ts
@@ -908,169 +920,40 @@ function readExecSettings(config) {
 }
 
 // plugins/exec/source/validation.ts
-var INVALID_COMMAND_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\uFFFD]/gu;
-var INTERACTIVE_COMMANDS = /* @__PURE__ */ new Set([
-  "gio",
-  "gnome-open",
-  "htop",
-  "kde-open",
-  "less",
-  "more",
-  "nano",
-  "open",
-  "screen",
-  "ssh",
-  "start",
-  "tmux",
-  "top",
-  "vi",
-  "vim",
-  "watch",
-  "xdg-open"
-]);
-function sanitizeExecCommand(value) {
-  const raw = value.trim();
-  const command = raw.replace(/\r\n?/gu, "\n").replace(INVALID_COMMAND_CHARS, "").trim();
-  return Object.freeze({ command, normalized: command !== raw });
+function isExecutableCommand(value) {
+  if (value.trim().length === 0) return false;
+  return !value.includes("\0");
 }
-function isInteractiveCommand(command) {
-  const firstToken = command.split(/\s+/u)[0]?.toLowerCase() ?? "";
-  return INTERACTIVE_COMMANDS.has(firstToken) ? firstToken : void 0;
-}
-function isWhitespace(char) {
-  return char === " " || char === "	" || char === "\r";
-}
-function isShellSeparator(char) {
-  return ["\n", ";", "|", "&", "<", ">"].includes(char);
-}
-function isShellTokenBoundary(char) {
-  return isWhitespace(char) || isShellSeparator(char) || char === "(" || char === ")";
-}
-function readShellTokenSpan(command, start) {
-  let index = start;
-  let token = "";
-  let inSingleQuote = false;
-  let inDoubleQuote = false;
-  let substitutionDepth = 0;
-  while (index < command.length) {
-    const char = command[index] ?? "";
-    if (!inSingleQuote && !inDoubleQuote) {
-      if (substitutionDepth === 0 && isShellTokenBoundary(char)) break;
-      if (char === "$" && command[index + 1] === "(") {
-        token += "$(";
-        substitutionDepth += 1;
-        index += 2;
-        continue;
-      }
-      if (char === ")" && substitutionDepth > 0) {
-        token += char;
-        substitutionDepth -= 1;
-        index += 1;
-        continue;
-      }
-      if (char === "\\") {
-        index += 1;
-        if (index < command.length) {
-          token += command[index];
-          index += 1;
-        }
-        continue;
-      }
-      if (char === "'") {
-        inSingleQuote = true;
-        index += 1;
-        continue;
-      }
-      if (char === '"') {
-        inDoubleQuote = true;
-        index += 1;
-        continue;
-      }
-      token += char;
-      index += 1;
-      continue;
-    }
-    index += 1;
-    if (inSingleQuote) {
-      if (char === "'") inSingleQuote = false;
-      else token += char;
-      continue;
-    }
-    if (char === '"') {
-      inDoubleQuote = false;
-      continue;
-    }
-    if (char === "\\" && index < command.length) {
-      token += command[index];
-      index += 1;
-      continue;
-    }
-    token += char;
+function readExecCommand(value) {
+  const command = readRequiredString(value, {
+    name: "command",
+    trim: false,
+    maxLength: EXEC_COMMAND_MAX_CHARS
+  });
+  if (!isExecutableCommand(command)) {
+    throw new ExecPluginError(
+      "exec_command_invalid",
+      "The command must contain nonempty text without NUL characters."
+    );
   }
-  return Object.freeze({ token: token.trim(), nextIndex: index });
+  return command;
 }
-function readShellToken(command, start) {
-  let index = start;
-  while (index < command.length && isWhitespace(command[index] ?? "")) {
-    index += 1;
-  }
-  return readShellTokenSpan(command, index);
-}
-function readHereDocDelimiters(line) {
-  const delimiters = [];
-  const pattern = /<<(-)?\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_./-]+))/gu;
-  for (const match of line.matchAll(pattern)) {
-    const delimiter = match[2] ?? match[3] ?? match[4] ?? "";
-    if (delimiter) {
-      delimiters.push({ delimiter, stripTabs: Boolean(match[1]) });
-    }
-  }
-  return delimiters;
-}
-function stripHereDocBodies(command) {
-  const pending = [];
-  return command.split("\n").map((line) => {
-    const active = pending[0];
-    if (active) {
-      const comparable = active.stripTabs ? line.replace(/^\t+/u, "") : line;
-      if (comparable === active.delimiter) {
-        pending.shift();
-        return line;
-      }
-      return "";
-    }
-    pending.push(...readHereDocDelimiters(line));
-    return line;
-  }).join("\n");
-}
-function scopedPathTokens(command) {
-  const tokens = [];
-  let index = 0;
-  while (index < command.length) {
-    while (index < command.length && isShellTokenBoundary(command[index] ?? "")) {
-      index += 1;
-    }
-    if (index >= command.length) break;
-    const span = readShellToken(command, index);
-    index = Math.max(span.nextIndex, index + 1);
-    const token = span.token;
-    if (token === "." || token === ".." || token.startsWith("./") || token.startsWith("../") || token === "workspace" || token.startsWith("workspace/") || token.startsWith("workspace\\") || token.startsWith("/")) {
-      tokens.push(token);
-    }
-  }
-  return Object.freeze(tokens);
+function isInvalidExecParameter(name, value) {
+  if (typeof value !== "string") return true;
+  if (value.length === 0) return true;
+  if (name === "command") return !isExecutableCommand(value);
+  return value.includes("\0");
 }
 function createExecAdapter() {
   return {
     validateCall(input) {
-      const invalid = ["command", "cwd"].filter((name) => {
-        const value = input.params[name];
-        return typeof value !== "string" || value.trim().length === 0;
-      });
+      const invalid = ["command", "cwd"].filter(
+        (name) => isInvalidExecParameter(name, input.params[name])
+      );
       if (invalid.length === 0) return null;
       return {
         error: `invalid params for exec: invalid ${invalid.join(", ")}`,
-        repairHint: "Provide one non-interactive command and one explicit existing agent-work or workspace cwd."
+        repairHint: "Provide one command without NUL characters and one explicit existing cwd."
       };
     }
   };
@@ -1106,7 +989,6 @@ function runningResult(snapshot, execution) {
   const rendered = renderedOutput(
     [
       `Command: ${execution.commandPreview}`,
-      ...execution.commandWasNormalized ? ["Command normalization: invalid control characters were removed."] : [],
       `CWD: ${execution.cwd.logicalPath}`,
       "Process status: running",
       `Process ID: ${snapshot.processId}`,
@@ -1205,7 +1087,6 @@ async function finalizeExecResult(params) {
   const rendered = renderedOutput(
     [
       `Command: ${execution.commandPreview}`,
-      ...execution.commandWasNormalized ? ["Command normalization: invalid control characters were removed."] : [],
       `CWD: ${execution.cwd.logicalPath}`,
       `Process ID: ${snapshot.processId}`,
       `Process status: ${snapshot.terminationReason ?? "completed"}`,
@@ -1272,34 +1153,12 @@ function createExecHandlers(pluginContext, settings) {
   };
   const exec = async (params, context) => {
     try {
-      const rawCommand = readRequiredString(params.command, {
-        name: "command",
-        trim: false,
-        maxLength: EXEC_COMMAND_MAX_CHARS
-      });
-      const { command, normalized } = sanitizeExecCommand(rawCommand);
-      if (!command) {
-        throw new ExecPluginError(
-          "exec_command_invalid",
-          "The command is empty after invalid control characters are removed."
-        );
-      }
-      const interactive = isInteractiveCommand(command);
-      if (interactive) {
-        throw new ExecPluginError(
-          "exec_interactive_command_blocked",
-          `Interactive command ${interactive} is not supported by the non-interactive exec plugin.`
-        );
-      }
+      const command = readExecCommand(params.command);
       const cwd = await resolveExecWorkingDirectory(
         pluginContext,
         context,
         params.cwd
       );
-      const staticCommand = stripHereDocBodies(command);
-      for (const token of scopedPathTokens(staticCommand)) {
-        resolveExecScopedPath(pluginContext, context, token, cwd);
-      }
       const filesystemStateBefore = await captureExecFilesystemSnapshot(
         cwd.absolutePath,
         cwd.logicalPath
@@ -1310,7 +1169,6 @@ function createExecHandlers(pluginContext, settings) {
       }).text;
       const execution = Object.freeze({
         commandPreview,
-        commandWasNormalized: normalized,
         cwd,
         filesystemStateBefore,
         hardTimeoutMs: settings.hardTimeoutMs,

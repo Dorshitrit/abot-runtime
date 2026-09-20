@@ -80,7 +80,9 @@ function createHarness(overrides: Record<string, unknown> = {}) {
     prepareWorkspaceActivation: vi.fn(() => vi.fn(() => true)),
     setSessionsDrawerOpen: vi.fn(),
   };
+  const onSessionCreated = vi.fn();
   const controller = createAppEventBindings({
+    onSessionCreated,
     state,
     dom,
     shell,
@@ -93,10 +95,24 @@ function createHarness(overrides: Record<string, unknown> = {}) {
     documentRoot: fakeEventElement(),
   });
   controller.bind();
-  return { actions, dom, shell, state };
+  return { actions, dom, shell, state, onSessionCreated };
 }
 
 describe("web ui environment transitions", () => {
+  test("initializes the new ordinary session before permission controls render", () => {
+    const harness = createHarness({
+      saveSessionId: vi.fn(), selectedEnvironmentId: () => "dev",
+      rememberModelSelection: vi.fn(), setCurrentSessionTitle: vi.fn(),
+      subscribeSession: vi.fn(), renderSessions: vi.fn(),
+    });
+    harness.dom.newSessionButton.dispatch("click");
+    expect(harness.state.currentSessionId).not.toBe("session-1");
+    expect(harness.onSessionCreated).toHaveBeenCalledExactlyOnceWith(harness.state.currentSessionId);
+    expect(harness.onSessionCreated.mock.invocationCallOrder[0]).toBeLessThan(
+      harness.actions.applyConversationChrome.mock.invocationCallOrder[0],
+    );
+  });
+
   test("restores the committed environment when config changes veto navigation", () => {
     const harness = createHarness({
       beforeEnvironmentChange: vi.fn(() => false),

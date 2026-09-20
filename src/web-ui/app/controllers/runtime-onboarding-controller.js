@@ -1,18 +1,18 @@
 import { textOf } from "../lib/text-format.js";
 
-const SETUP_MESSAGE =
-  "Configure a provider and model, then restart the local services before starting a chat.";
+const SETUP_MESSAGE = "Connect a provider and model to start chatting.";
 const CHECKING_MESSAGE =
   "Checking model availability. Wait for the catalog refresh to finish.";
 const ERROR_MESSAGE =
-  "ABot could not check the model catalog. Verify the local services, then try again.";
+  "ABot could not check the model catalog. Check your connection, then try again.";
 
-function setupRequired(message = SETUP_MESSAGE) {
+function setupRequired(message = SETUP_MESSAGE, recovery) {
   return {
     status: "setup_required",
     code: "runtime_configuration_required",
     message: textOf(message, SETUP_MESSAGE),
     showGuide: true,
+    ...(recovery === "configuration" ? { recovery } : {}),
   };
 }
 
@@ -58,6 +58,9 @@ export function createRuntimeOnboardingController({
     state.runtimeAvailability = {
       status: "checking",
       showGuide: guideWasVisible(state.runtimeAvailability),
+      ...(state.runtimeAvailability?.recovery === "configuration"
+        ? { recovery: "configuration" }
+        : {}),
     };
     render();
     onStateChange();
@@ -70,7 +73,7 @@ export function createRuntimeOnboardingController({
     const ready = availability?.status === "ready" && profiles.length > 0;
     state.runtimeAvailability = ready
       ? { status: "ready" }
-      : setupRequired(availability?.message);
+      : setupRequired(availability?.message, availability?.recovery);
     render();
     onStateChange();
     if (ready && wasVisible) {
@@ -79,7 +82,11 @@ export function createRuntimeOnboardingController({
   }
 
   function catalogUnavailable(error) {
-    state.runtimeAvailability = catalogError(error);
+    const recovery = state.runtimeAvailability?.recovery;
+    state.runtimeAvailability = {
+      ...catalogError(error),
+      ...(recovery === "configuration" ? { recovery } : {}),
+    };
     render();
     onStateChange();
   }

@@ -1,3 +1,4 @@
+import type { ConversationFileReference } from "../lib/conversation-file-reference.js";
 import type { buildConversationRoleCards } from "../lib/conversation-role-model.js";
 import type { ConversationSourcesGroup } from "../lib/web-sources.js";
 import type { ConversationToolAction } from "../lib/tool-activity-model.js";
@@ -72,6 +73,11 @@ export declare function pinConversationActivityToLatest(input?: {
 
 export declare function createConversationActivity(options?: {
   documentRoot?: Document;
+  canOpenFile?: () => boolean;
+  onOpenFile?: (
+    reference: ConversationFileReference,
+    opener: HTMLElement,
+  ) => unknown;
 }): {
   createNode(input?: ConversationActivityInput): HTMLElement | null;
   forget(requestId: unknown): void;

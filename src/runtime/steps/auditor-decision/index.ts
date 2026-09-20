@@ -5,3 +5,6 @@ export * from "./parser.js";
 export * from "./projection.js";
 export * from "./prompt.js";
 export * from "./run.js";
+export * from "./audit-input-state.js";
+export * from "./evidence-binding.js";
+export * from "./evidence-inventory.js";

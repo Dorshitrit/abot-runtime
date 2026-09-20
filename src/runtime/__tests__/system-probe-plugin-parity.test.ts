@@ -1,3 +1,4 @@
+import { expectLegacyAndFullPlusInventories } from "./full-plus-inventory-fixture.js";
 import { describe, expect, test, vi } from "vitest";
 
 import { createDefaultToolRegistry } from "../default-adapters.js";
@@ -7,10 +8,12 @@ import { loadBundledPluginEntrypoint } from "./public-plugin-test-support.js";
 describe("system-probe plugin parity", () => {
   test("exposes the baseline system_probe contract from one plugin declaration", () => {
     const config = loadPublicRuntimeConfig(["system-probe"]);
-    const registry = createDefaultToolRegistry({
-      ...config,
-      plugins: { enabled: true, allow: ["system-probe"] },
-    });
+    const registry = expectLegacyAndFullPlusInventories(
+      createDefaultToolRegistry({
+        ...config,
+        plugins: { enabled: true, allow: ["system-probe"] },
+      }),
+    );
 
     expect(registry.listDefinitions().map(({ name }) => name)).toEqual([
       "system_probe",

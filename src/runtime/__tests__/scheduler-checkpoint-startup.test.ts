@@ -5,6 +5,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import type { SchedulerJob } from "../scheduler/contracts.js";
 import { createFileSchedulerStore } from "../scheduler/file-store.js";
 import { makeSchedulerRun } from "../scheduler/run-records.js";
+import { seedCheckpointJobRevisions } from "./support/scheduler-checkpoint-suffix-fixture.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
@@ -27,7 +28,7 @@ test("reopening replays only a bounded committed suffix without enumerating or r
   );
   cleanups.push(() => fs.rm(directory, { recursive: true, force: true }));
   const store = createFileSchedulerStore(directory);
-  const release = await store.acquire();
+  let release = await store.acquire();
   cleanups.push(release);
   const job: SchedulerJob = {
     id: "job",
@@ -60,7 +61,27 @@ test("reopening replays only a bounded committed suffix without enumerating or r
     state.jobs.push(job);
     state.runs.push(...history);
   });
-  for (let revision = 2; revision <= 520; revision++) {
+  for (const firstRevision of [2, 258]) {
+    await release();
+    await seedCheckpointJobRevisions(
+      directory,
+      Array.from({ length: 254 }, (_, offset) => ({
+        ...job,
+        revision: firstRevision + offset,
+        title: `Revision ${firstRevision + offset}`,
+      })),
+    );
+    release = await store.acquire();
+    cleanups.push(release);
+    // Cross each rollover through real updates, including publication and retirement.
+    for (const revision of [firstRevision + 254, firstRevision + 255]) {
+      await store.update((state) => {
+        state.jobs[0].revision = revision;
+        state.jobs[0].title = `Revision ${revision}`;
+      }, "active");
+    }
+  }
+  for (let revision = 514; revision <= 520; revision++) {
     await store.update((state) => {
       state.jobs[0].revision = revision;
       state.jobs[0].title = `Revision ${revision}`;
@@ -70,6 +91,8 @@ test("reopening replays only a bounded committed suffix without enumerating or r
   const manifest = JSON.parse(
     await fs.readFile(join(directory, "scheduler-journal.json"), "utf8"),
   );
+  expect(manifest.sequence).toBe(521);
+  expect(manifest.checkpoint.sequence).toBe(513);
   const generation = join(directory, manifest.generation);
   const reads = vi.mocked(fs.readFile).mockClear();
   const listings = vi.mocked(fs.readdir).mockClear();

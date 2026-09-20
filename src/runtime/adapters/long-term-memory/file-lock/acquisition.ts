@@ -7,6 +7,7 @@ import {
   LOCK_ACQUIRE_TIMEOUT_MS,
   LOCK_RETRY_DELAY_MS,
   ownerFileName,
+  type DirectoryLockSnapshot,
   type FileLockOptions,
 } from "./contracts.js";
 import { installLockDirectory } from "./install.js";
@@ -25,7 +26,7 @@ export async function acquireFileLock(
   for (;;) {
     const token = randomUUID();
     try {
-      await installLockDirectory(lockPath, token);
+      await installLockDirectory(lockPath, token, options.ownerIdentity);
       return createRelease(lockPath, token, options.releaseMode);
     } catch (error) {
       if (!isLockContention(error)) throw error;
@@ -65,14 +66,12 @@ function requiresSynchronousRelease(
 
 async function removeAbandonedLock(
   lockPath: string,
-  processIsAlive: (pid: number) => boolean,
+  processIsAlive: NonNullable<FileLockOptions["processIsAlive"]>,
 ): Promise<boolean> {
   const snapshot = await readLockSnapshot(lockPath);
   if (!snapshot) return true;
   if (snapshot.kind === "legacy_file" || !snapshot.reclaimable) return false;
-  if (snapshot.ownerPid !== undefined && processIsAlive(snapshot.ownerPid)) {
-    return false;
-  }
+  if (await hasLiveObservedOwner(snapshot, processIsAlive)) return false;
   if (snapshot.record && snapshot.ownerFileName) {
     return removeObservedOwner(lockPath, snapshot.ownerFileName);
   }
@@ -83,6 +82,14 @@ async function removeAbandonedLock(
     return removeObservedOwner(lockPath, snapshot.ownerFileName);
   }
   return removeEmptyLockTree(lockPath, snapshot.hasLeaseDirectory);
+}
+
+async function hasLiveObservedOwner(
+  snapshot: DirectoryLockSnapshot,
+  processIsAlive: NonNullable<FileLockOptions["processIsAlive"]>,
+): Promise<boolean> {
+  if (snapshot.ownerPid === undefined) return false;
+  return processIsAlive(snapshot.ownerPid, snapshot.record?.ownerIdentity);
 }
 
 function defaultProcessIsAlive(pid: number): boolean {

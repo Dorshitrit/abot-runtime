@@ -1,3 +1,4 @@
+import { expectLegacyAndFullPlusInventories } from "./full-plus-inventory-fixture.js";
 import { randomUUID } from "node:crypto";
 import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -58,7 +59,9 @@ describe("Agent plugin compiled catalog selection", () => {
     });
     config.plugins = { allow: ["dual-plugin.selected_lookup"] };
 
-    const registry = createDefaultToolRegistry(config);
+    const registry = expectLegacyAndFullPlusInventories(
+      createDefaultToolRegistry(config),
+    );
     expect(registry.listDefinitions().map(({ name }) => name)).toEqual([
       "selected_lookup",
     ]);

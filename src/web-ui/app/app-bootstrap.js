@@ -8,6 +8,7 @@ export async function bootstrapWebApp({
   homeComposer,
   dashboard,
   schedules,
+  projects,
   selection,
   client,
   bindables,
@@ -30,6 +31,7 @@ export async function bootstrapWebApp({
   renderMessages();
   state.config = await client.loadWebConfig();
   schedules.refreshAvailability();
+  projects?.refreshAvailability();
   selection.renderEnvironmentOptions();
   const options = selection.environmentOptions();
   const saved = preferences.environmentId();
@@ -42,6 +44,7 @@ export async function bootstrapWebApp({
   selection.renderAgentPicker();
   realtime.connect();
   await Promise.allSettled([
+    projects?.load(),
     selection.loadModels(),
     selection.loadAgentMode(),
     operations.loadRuntimeStatus(),

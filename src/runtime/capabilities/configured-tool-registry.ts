@@ -1,3 +1,4 @@
+import { bindRequestWorkingDirectory } from "./request-working-directory.js";
 import { createToolRegistry as createToolRegistryInstance } from "../../capabilities/registry.js";
 import { executeToolCall } from "../../capabilities/tool-executor.js";
 import type {
@@ -6,6 +7,7 @@ import type {
 } from "../../capabilities/tool-types.js";
 import type { RuntimeConfig, ToolRegistry } from "../ports.js";
 import { createRuntimeToolPathResolver } from "./runtime-target-path.js";
+import { prepareRequestToolModules } from "./request-module-preparation.js";
 
 export function createConfiguredToolRegistry(
   config: RuntimeConfig | undefined,
@@ -33,6 +35,15 @@ export function createConfiguredToolRegistry(
       : { ...sharedState };
 
   return {
+    ...(modules.some((module) => module.prepareRequest)
+      ? {
+          prepareRequest: async () =>
+            createConfiguredToolRegistry(
+              config,
+              await prepareRequestToolModules(modules),
+            ),
+        }
+      : {}),
     listDefinitions: () => baseRegistry.getDefinitions(),
     listNormalInvocations: () => baseRegistry.getNormalInvocations(),
     getDefinition: (name: string) => baseRegistry.getByName(name),
@@ -41,7 +52,11 @@ export function createConfiguredToolRegistry(
     getImplementations,
     prepareSharedState,
     execute: (call, options) => {
-      const sharedState = prepareSharedState(options?.sharedState);
+      const configuredState = prepareSharedState(options?.sharedState);
+      const sharedState = bindRequestWorkingDirectory(
+        configuredState,
+        options?.requestWorkingDirectory,
+      );
       return executeToolCall(call, {
         ...options,
         sharedState,

@@ -1,6 +1,10 @@
 import { MODEL_STEPS } from "../../../shared/model-steps.js";
 import type { MemoryRecallDecision } from "../memory-recall-decision.js";
 import type {
+  ExecutionWorkPlanOptions,
+  ExecutionWorkPlanReport,
+} from "./work-plan-contract.js";
+import type {
   RoleCapabilitySelectionProjection,
   RoleCapabilitySelectionReconsiderationCause,
 } from "../../orchestration/role-calls/index.js";
@@ -34,6 +38,8 @@ export const EXECUTION_AGENT_ACKNOWLEDGEMENT_MAX_LENGTH = 220;
 export const EXECUTION_AGENT_TITLE_MAX_LENGTH = 80;
 export const EXECUTION_AGENT_AUDIT_CRITERION_ID_MAX_LENGTH = 128;
 export const EXECUTION_AGENT_AUDIT_CRITERION_COUNT_MAX = 32;
+// Batch execution stays independently bounded as the available catalog grows.
+export const EXECUTION_AGENT_CAPABILITY_BATCH_COUNT_MAX = 64;
 export const EXECUTION_AGENT_CAPABILITY_SCOPE_GROUP_COUNT_MAX =
   CAPABILITY_CATALOG_GROUP_COUNT_MAX;
 
@@ -113,7 +119,7 @@ export type ExecutionAgentInvokeAuditorDecision = Readonly<
   }
 >;
 
-export type ExecutionAgentDecision =
+type ExecutionAgentAction =
   | MemoryRecallDecision
   | ExecutionAgentOpenCapabilityScopeDecision
   | ExecutionAgentExtendCapabilityScopeDecision
@@ -123,6 +129,9 @@ export type ExecutionAgentDecision =
   | ExecutionAgentInvokeCapabilitiesDecision
   | ExecutionAgentInvokePlannerDecision
   | ExecutionAgentInvokeAuditorDecision;
+
+export type ExecutionAgentDecision = ExecutionAgentAction &
+  Readonly<{ workPlan?: ExecutionWorkPlanReport }>;
 
 /** Runtime-only transition emitted when controls refinement exhausts validation. */
 export type ExecutionAgentReconsiderCapabilitySelectionDecision = Readonly<{
@@ -161,6 +170,7 @@ export type ExecutionAgentDecisionParseResult =
     }>;
 
 export type ExecutionAgentDecisionContractOptions = Readonly<{
+  workPlan?: ExecutionWorkPlanOptions;
   capabilities?: readonly CapabilityDescriptor[];
   capabilityCatalogGroupIds?: readonly string[];
   activeCapabilityCatalogGroupIds?: readonly string[] | null;

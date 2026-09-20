@@ -26,8 +26,7 @@ const entries: readonly ToolAvailabilityEntry[] = [
     operationId: "search_local_files",
     catalogGroups: ["read"],
     effect: "read_only",
-    summary:
-      "Private operational instructions that must not enter a routing brief.",
+    summary: "Search local files for content matching the requested query.",
   },
   {
     toolName: "weather_forecast",
@@ -126,7 +125,7 @@ describe("Supervisor capability brief input boundaries", () => {
     for (const entry of entries) {
       expect(brief[0]!.content).toContain(entry.toolName);
       expect(brief[0]!.content).toContain(entry.operationId);
-      expect(brief[0]!.content).not.toContain(entry.summary);
+      expect(brief[0]!.content).toContain(JSON.stringify(entry.summary));
     }
     expect(detailed.context.messages[0]!.content).not.toContain(
       JSON.stringify(catalog),

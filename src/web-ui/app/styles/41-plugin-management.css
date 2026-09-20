@@ -1,0 +1,351 @@
+.plugin-manager {
+  display: grid;
+  gap: 18px;
+}
+
+.plugin-manager-heading,
+.plugin-card-heading,
+.plugin-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.plugin-manager-heading h2,
+.plugin-card h3 {
+  margin: 0;
+}
+
+.plugin-manager-heading p,
+.plugin-description {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.plugin-application-note,
+.plugin-policy-note {
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--config-line);
+  border-radius: 12px;
+  background: var(--config-surface-subtle);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.plugin-grid {
+  display: grid;
+  align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 16px;
+}
+
+.plugin-card {
+  position: relative;
+  padding: 20px;
+  border: 1px solid var(--config-line);
+  border-radius: 16px;
+  background: var(--config-surface);
+  min-width: 0;
+}
+
+.plugin-card-front {
+  display: flex;
+  flex-direction: column;
+}
+
+.plugin-card-front[inert] {
+  visibility: hidden;
+}
+
+.plugin-card-heading {
+  height: 44px;
+  align-items: flex-start;
+}
+
+.plugin-card-heading > div {
+  min-width: 0;
+}
+
+.plugin-card h3 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.plugin-version,
+.plugin-selection-state,
+.plugin-card-footer span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.plugin-version {
+  display: inline-block;
+  margin-top: 4px;
+}
+
+.plugin-selection-state {
+  white-space: nowrap;
+  padding: 5px 8px;
+  border: 1px solid var(--config-line);
+  border-radius: 999px;
+}
+
+.plugin-description {
+  display: -webkit-box;
+  flex: none;
+  height: 4.8em;
+  margin: 12px 0 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  font-size: 13px;
+}
+
+.plugin-card-footer {
+  flex: none;
+  height: 44px;
+  margin-top: 12px;
+}
+
+.plugin-card-footer > span {
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.plugin-card-footer > button {
+  flex: none;
+}
+
+.plugin-manager-status:empty {
+  display: none;
+}
+
+.plugin-tools-open {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 37px;
+  margin-top: 16px;
+  padding: 14px 0 2px;
+  border: 0;
+  border-top: 1px solid var(--config-line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: start;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+
+.plugin-tools-open svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.plugin-tools-count {
+  margin-inline-start: auto;
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+}
+
+.plugin-tools-open:hover,
+.plugin-tools-open:focus-visible {
+  border-top-color: var(--config-line);
+  background: transparent;
+  color: var(--accent-strong);
+}
+
+.plugin-tools-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.plugin-tools-open:active {
+  transform: none;
+}
+
+.plugin-tools-panel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 20px;
+  overflow: hidden;
+  border-radius: inherit;
+  background: var(--config-surface);
+}
+
+.plugin-tools-heading {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--config-line);
+}
+
+.plugin-tools-heading > div {
+  min-width: 0;
+}
+
+.plugin-tools-heading h4 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+}
+
+.plugin-tools-heading span {
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+}
+
+.plugin-tools-heading button {
+  flex: none;
+  min-height: 36px;
+}
+
+.plugin-capability-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  list-style: none;
+}
+
+.plugin-capability-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--config-line);
+}
+
+.plugin-capability-row:last-child {
+  padding-bottom: 0;
+}
+
+.plugin-capability-copy {
+  min-width: 0;
+}
+
+.plugin-capability-copy code {
+  color: var(--text);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.plugin-capability-copy p,
+.plugin-capability-empty {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.plugin-capability-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.plugin-capability-copy .plugin-capability-policy {
+  color: var(--amber);
+}
+
+.plugin-capability-switch {
+  position: relative;
+  display: flex;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 44px;
+  margin-top: -8px;
+}
+
+.plugin-capability-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.plugin-capability-switch > span {
+  display: block;
+  width: 32px;
+  height: 18px;
+  padding: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--control-bg);
+  pointer-events: none;
+}
+
+.plugin-capability-switch > span::before {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+  content: "";
+}
+
+.plugin-capability-switch input:checked + span {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.plugin-capability-switch input:checked + span::before {
+  transform: translateX(14px);
+  background: var(--accent-strong);
+}
+
+.plugin-capability-switch input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.plugin-capability-switch input:disabled {
+  cursor: not-allowed;
+}
+
+.plugin-capability-switch input:disabled + span {
+  opacity: 0.45;
+}
+
+@media (max-width: 600px) {
+  .plugin-manager-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .plugin-card,
+  .plugin-tools-panel {
+    padding: 16px;
+  }
+
+}

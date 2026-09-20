@@ -1,6 +1,16 @@
-import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { readdir, realpath } from "node:fs/promises";
+import { assignDiscoveredModelIds } from "./config-dashboard-model-identity.js";
+import {
+  canonicalConfigFilePath,
+  readConfigFileSnapshot,
+  type ConfigFileSnapshot,
+  type ConfigFileTransaction,
+} from "../runtime/adapters/config-file-transaction.js";
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
+import {
+  withConfigDashboardRootTransaction,
+  withConfigDashboardTargetTransaction,
+} from "./config-dashboard-save-transaction.js";
 
 import { DEFAULT_RUNTIME_CONFIG_FILE } from "../runtime/config/constants.js";
 import { REQUEST_INVOKED_STEP_IDS } from "../runtime/config/runner/contracts.js";
@@ -18,7 +28,9 @@ type ConfigFileDescriptor = {
   label: string;
   path: string;
   exists: boolean;
+  revision: string;
   config: JsonRecord;
+  invalidJson?: ConfigFileSnapshot["invalidJson"];
   source?: {
     type: "inlineModelProfile";
     runtimeConfigPath: string;
@@ -59,28 +71,6 @@ function ensureInsideRoot(rootDir: string, filePath: string): void {
   if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
     throw new Error("config file is outside the workspace root");
   }
-}
-
-async function readJsonObject(filePath: string): Promise<JsonRecord> {
-  let raw = "";
-  try {
-    raw = await readFile(filePath, "utf-8");
-  } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      (error as { code?: unknown }).code === "ENOENT"
-    ) {
-      return {};
-    }
-    throw error;
-  }
-  const parsed = JSON.parse(raw) as unknown;
-  if (!isRecord(parsed)) {
-    throw new Error(`Invalid JSON object at ${filePath}`);
-  }
-  return parsed;
 }
 
 type ModelConfigRef = {
@@ -173,7 +163,10 @@ async function discoverModelRefs(params: {
 
   return [
     ...configured,
-    ...discovered.sort((left, right) => left.id.localeCompare(right.id)),
+    ...assignDiscoveredModelIds(
+      configured.map(({ id }) => id),
+      discovered,
+    ),
   ];
 }
 
@@ -190,57 +183,28 @@ async function readDescriptor(params: {
   label: string;
   path: string;
   config?: JsonRecord;
+  snapshot?: ConfigFileSnapshot;
   source?: ConfigFileDescriptor["source"];
 }): Promise<ConfigFileDescriptor> {
   ensureInsideRoot(params.rootDir, params.path);
+  const path = await canonicalConfigFilePath(params.path);
+  ensureInsideRoot(await realpath(params.rootDir), path);
+  const snapshot =
+    params.snapshot ??
+    (await readConfigFileSnapshot(path, {
+      allowMalformedJson: params.kind !== "runtime",
+    }));
   return {
     kind: params.kind,
     id: params.id,
     label: params.label,
     path: safeRelativePath(params.rootDir, params.path),
-    exists: existsSync(params.path),
-    config: params.config ?? (await readJsonObject(params.path)),
+    exists: snapshot.exists,
+    revision: snapshot.revision,
+    config: params.config ?? snapshot.config,
+    ...(snapshot.invalidJson ? { invalidJson: snapshot.invalidJson } : {}),
     ...(params.source ? { source: params.source } : {}),
   };
-}
-
-function backupPathFor(filePath: string): string {
-  const stamp = new Date()
-    .toISOString()
-    .replace(/[-:]/g, "")
-    .replace(/\.\d{3}Z$/, "Z");
-  return `${filePath}.${stamp}.bak`;
-}
-
-async function writeJsonObject(
-  filePath: string,
-  config: JsonRecord,
-): Promise<{
-  backupPath?: string;
-}> {
-  await mkdir(dirname(filePath), { recursive: true });
-  let backupPath: string | undefined;
-  try {
-    const current = await readFile(filePath, "utf-8");
-    backupPath = backupPathFor(filePath);
-    await writeFile(backupPath, current, "utf-8");
-  } catch (error) {
-    if (
-      !(
-        error &&
-        typeof error === "object" &&
-        "code" in error &&
-        (error as { code?: unknown }).code === "ENOENT"
-      )
-    ) {
-      throw error;
-    }
-  }
-
-  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  await writeFile(tempPath, `${JSON.stringify(config, null, 2)}\n`, "utf-8");
-  await rename(tempPath, filePath);
-  return backupPath ? { backupPath } : {};
 }
 
 export async function getConfigDashboardSnapshot(params: {
@@ -251,7 +215,8 @@ export async function getConfigDashboardSnapshot(params: {
     params.rootDir,
     params.configPath,
   );
-  const runtimeConfig = await readJsonObject(mainConfigPath);
+  const runtimeSnapshot = await readConfigFileSnapshot(mainConfigPath);
+  const runtimeConfig = runtimeSnapshot.config;
   const configDir = dirname(mainConfigPath);
 
   const requestRunnerRef = configRefFrom(runtimeConfig.requestRunner);
@@ -283,6 +248,7 @@ export async function getConfigDashboardSnapshot(params: {
         id: "runtime",
         label: "Runtime",
         path: mainConfigPath,
+        snapshot: runtimeSnapshot,
       }),
       requestRunner,
       models: await Promise.all(
@@ -293,7 +259,9 @@ export async function getConfigDashboardSnapshot(params: {
             id: model.id,
             label: basename(model.path).replace(/\.json$/u, ""),
             path: resolveRefPath(mainConfigPath, model.path),
-            ...(model.inlineConfig ? { config: model.inlineConfig } : {}),
+            ...(model.inlineConfig
+              ? { config: model.inlineConfig, snapshot: runtimeSnapshot }
+              : {}),
             ...(model.source ? { source: model.source } : {}),
           }),
         ),
@@ -302,12 +270,36 @@ export async function getConfigDashboardSnapshot(params: {
   };
 }
 
+function selectConfigDashboardTarget(
+  snapshot: ConfigDashboardSnapshot,
+  kind: ConfigFileKind,
+  id?: string,
+): ConfigFileDescriptor | null | undefined {
+  if (kind === "runtime") return snapshot.files.runtime;
+  if (kind === "requestRunner") return snapshot.files.requestRunner;
+  return snapshot.files.models.find((model) => model.id === id);
+}
+
+function validateDashboardRequestRunnerCandidate(
+  kind: ConfigFileKind,
+  snapshot: ConfigFileSnapshot,
+  candidate: JsonRecord,
+  filePath: string,
+): void {
+  if (kind !== "requestRunner") return;
+  if (snapshot.exists && !snapshot.invalidJson)
+    assertSupportedRequestRunnerConfigVersion(snapshot.config, filePath);
+  parseRequestRunnerConfig(candidate, filePath);
+}
+
 export async function saveConfigDashboardFile(params: {
   rootDir: string;
   configPath?: string;
   kind: ConfigFileKind;
   id?: string;
   config: unknown;
+  expectedRevision?: string;
+  transaction?: ConfigFileTransaction;
 }): Promise<{
   ok: true;
   file: ConfigFileDescriptor;
@@ -316,72 +308,91 @@ export async function saveConfigDashboardFile(params: {
   if (!isRecord(params.config)) {
     throw new Error("config must be a JSON object");
   }
-  const snapshot = await getConfigDashboardSnapshot({
-    rootDir: params.rootDir,
-    configPath: params.configPath,
-  });
-  const target =
-    params.kind === "runtime"
-      ? snapshot.files.runtime
-      : params.kind === "requestRunner"
-        ? snapshot.files.requestRunner
-        : snapshot.files.models.find((model) => model.id === params.id);
-  if (!target) {
-    throw new Error("config file target was not found");
-  }
-  const filePath = resolve(params.rootDir, target.path);
-  if (target.source?.type === "inlineModelProfile") {
-    const runtimeConfigPath = target.source.runtimeConfigPath;
-    ensureInsideRoot(params.rootDir, runtimeConfigPath);
-    const runtimeConfig = await readJsonObject(runtimeConfigPath);
-    const models = isRecord(runtimeConfig.models) ? runtimeConfig.models : {};
-    const profiles = isRecord(models.profiles) ? models.profiles : {};
-    runtimeConfig.models = {
-      ...models,
-      profiles: {
-        ...profiles,
-        [target.source.profileId]: params.config,
-      },
-    };
-    const result = await writeJsonObject(runtimeConfigPath, runtimeConfig);
-    const nextSnapshot = await getConfigDashboardSnapshot({
-      rootDir: params.rootDir,
-      configPath: params.configPath,
-    });
-    const file = nextSnapshot.files.models.find(
-      (model) => model.id === target.id,
-    );
-    if (!file) {
-      throw new Error("inline model profile was not found after save");
-    }
-    return {
-      ok: true,
-      file,
-      ...(result.backupPath
-        ? { backupPath: safeRelativePath(params.rootDir, result.backupPath) }
-        : {}),
-    };
-  }
-  ensureInsideRoot(params.rootDir, filePath);
-  if (target.kind === "requestRunner") {
-    if (target.exists) {
-      assertSupportedRequestRunnerConfigVersion(target.config, filePath);
-    }
-    parseRequestRunnerConfig(params.config, filePath);
-  }
-  const result = await writeJsonObject(filePath, params.config);
-  const file = await readDescriptor({
-    rootDir: params.rootDir,
-    kind: target.kind,
-    id: target.id,
-    label: target.label,
-    path: filePath,
-  });
-  return {
-    ok: true,
-    file,
-    ...(result.backupPath
-      ? { backupPath: safeRelativePath(params.rootDir, result.backupPath) }
-      : {}),
-  };
+  const mainConfigPath = resolveMainConfigPath(
+    params.rootDir,
+    params.configPath,
+  );
+  ensureInsideRoot(params.rootDir, mainConfigPath);
+  const runtimePath = await canonicalConfigFilePath(mainConfigPath);
+  ensureInsideRoot(await realpath(params.rootDir), runtimePath);
+  return withConfigDashboardRootTransaction(
+    runtimePath,
+    params.transaction,
+    async (rootTransaction) => {
+      const snapshot = await getConfigDashboardSnapshot({
+        rootDir: params.rootDir,
+        configPath: params.configPath,
+      });
+      const target = selectConfigDashboardTarget(
+        snapshot,
+        params.kind,
+        params.id,
+      );
+      if (!target) {
+        throw new Error("config file target was not found");
+      }
+      const filePath = await canonicalConfigFilePath(
+        resolve(params.rootDir, target.path),
+      );
+      ensureInsideRoot(await realpath(params.rootDir), filePath);
+      const save = async (transaction: ConfigFileTransaction) => {
+        if (transaction.path !== filePath)
+          throw new Error("Configuration transaction target does not match.");
+        if (!isRecord(params.config))
+          throw new Error("config must be a JSON object");
+        let candidate = params.config;
+        if (target.source?.type === "inlineModelProfile") {
+          const runtimeConfig = transaction.snapshot.config;
+          const models = isRecord(runtimeConfig.models)
+            ? runtimeConfig.models
+            : {};
+          const profiles = isRecord(models.profiles) ? models.profiles : {};
+          candidate = {
+            ...runtimeConfig,
+            models: {
+              ...models,
+              profiles: {
+                ...profiles,
+                [target.source.profileId]: params.config,
+              },
+            },
+          };
+        }
+        validateDashboardRequestRunnerCandidate(
+          target.kind,
+          transaction.snapshot,
+          candidate,
+          filePath,
+        );
+        const result = await transaction.write(candidate, {
+          expectedRevision: params.expectedRevision,
+        });
+        const file = await readDescriptor({
+          rootDir: params.rootDir,
+          kind: target.kind,
+          id: target.id,
+          label: target.label,
+          path: filePath,
+          snapshot: transaction.snapshot,
+          ...(target.source
+            ? { source: target.source, config: params.config }
+            : {}),
+        });
+        return {
+          ok: true as const,
+          file,
+          ...(result.backupPath
+            ? {
+                backupPath: safeRelativePath(params.rootDir, result.backupPath),
+              }
+            : {}),
+        };
+      };
+      return withConfigDashboardTargetTransaction(
+        rootTransaction,
+        filePath,
+        save,
+      );
+    },
+  );
 }

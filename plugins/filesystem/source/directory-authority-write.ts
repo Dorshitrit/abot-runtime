@@ -1,3 +1,4 @@
+import type { FileHandle } from "node:fs/promises";
 import type { ResolvedRuntimeToolPath } from "../../../src/plugin-sdk/index.js";
 import {
   DirectoryAuthorityError,
@@ -6,6 +7,7 @@ import {
 import type { MutationTargetVersion } from "./bounded-io.js";
 import { fail, rethrowFilesystemError } from "./errors.js";
 import { openMutationRoot } from "./mutation-parent.js";
+import { notifyCommittedFileOutput } from "./file-output-presentation.js";
 import {
   commitDirectoryWrite,
   type DirectoryWriteInput,
@@ -16,6 +18,7 @@ export async function writeWithDirectoryAuthority(
     target: ResolvedRuntimeToolPath;
     content: string;
     expectedVersion: MutationTargetVersion;
+    onCommitted?: (root: FileHandle) => void;
   }>,
 ): Promise<void> {
   const root = await openMutationRoot(input.target);
@@ -41,6 +44,7 @@ export async function writeWithDirectoryAuthority(
       },
       task: commitDirectoryWrite,
     });
+    notifyCommittedFileOutput(root, input.onCommitted);
   } catch (error) {
     if (error instanceof DirectoryAuthorityError) {
       if (error.code.startsWith("filesystem_")) {

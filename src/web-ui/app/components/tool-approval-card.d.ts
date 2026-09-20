@@ -1,9 +1,13 @@
+import type { ToolActivityEvent } from "../lib/tool-activity-event.js";
+
 export type ToolApprovalEvent = Record<string, unknown> & {
   approvalId?: string;
   eventName?: string;
   name?: string;
   tool?: string;
   summary?: string;
+  toolActivity?: ToolActivityEvent;
+  recommendedToolPermissionMode?: string;
 };
 
 export interface ToolApprovalCardOptions {

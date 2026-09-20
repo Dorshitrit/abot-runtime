@@ -7,16 +7,39 @@ import { parseRequestRunnerConfig } from "./versioned-config.js";
 
 const configCache = new Map<string, RequestRunnerConfig>();
 
-export function loadRequestRunnerConfig(params: {
-  configPath: string;
-}): RequestRunnerConfig {
-  const configuredPath = params.configPath.trim();
+function requestRunnerConfigCachePath(value: string): string {
+  const configuredPath = value.trim();
   if (!configuredPath || !isAbsolute(configuredPath)) {
     throw new Error(
       "runtime request runner configPath must be an absolute path resolved from runtime config",
     );
   }
-  const configPath = resolve(configuredPath);
+  return resolve(configuredPath);
+}
+
+/** Explicit configuration application refreshes only its selected runner. */
+export function invalidateRequestRunnerConfig(params: {
+  configPath: string;
+}): () => void {
+  const configPath = requestRunnerConfigCachePath(params.configPath);
+  const previous = configCache.get(configPath);
+  configCache.delete(configPath);
+  let restored = false;
+  return () => {
+    if (restored) return;
+    restored = true;
+    if (previous === undefined) {
+      configCache.delete(configPath);
+      return;
+    }
+    configCache.set(configPath, previous);
+  };
+}
+
+export function loadRequestRunnerConfig(params: {
+  configPath: string;
+}): RequestRunnerConfig {
+  const configPath = requestRunnerConfigCachePath(params.configPath);
   const cached = configCache.get(configPath);
   if (cached) {
     return cached;

@@ -1,0 +1,132 @@
+.system-host-panel {
+  max-width: 760px;
+  padding: 12px 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+
+.system-host-heading,
+.system-host-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.system-host-heading h2 {
+  margin: 0 0 6px;
+  font-size: var(--font-size-3xl);
+  font-weight: 500;
+}
+
+.system-host-heading p,
+.system-host-note {
+  color: var(--config-muted, var(--muted));
+}
+
+.system-host-heading p {
+  margin: 0;
+}
+
+.system-host-heading button {
+  flex-shrink: 0;
+}
+
+.system-host-status {
+  padding-block: 12px;
+  border-block: 1px solid var(--line);
+}
+
+.system-host-identity {
+  display: grid;
+  gap: 6px;
+  margin-block: 20px;
+}
+
+.system-host-identity > div {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 16px;
+}
+
+.system-host-identity dt {
+  color: var(--config-muted, var(--muted));
+}
+
+.system-host-identity dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.system-host-download {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--control-bg);
+  overflow-wrap: anywhere;
+}
+
+.system-host-restart {
+  border-left: 2px solid var(--amber);
+  padding: 8px 12px;
+  color: var(--amber);
+}
+
+.system-host-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+
+.system-host-setup-notice {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  width: min(100%, 860px);
+  margin-bottom: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--control-bg);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.system-host-setup-notice:not([hidden]) {
+  display: flex;
+}
+
+.system-host-setup-notice > span {
+  flex: 1 1 220px;
+}
+
+.system-host-setup-notice button {
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  font-size: inherit;
+  font-weight: 400;
+}
+
+.system-host-setup-link {
+  color: var(--accent);
+}
+
+.system-host-setup-dismiss {
+  color: var(--muted);
+}
+
+.messages-list[hidden] ~ .composer-dock .system-host-setup-notice {
+  display: none;
+}
+
+@media (max-width: 520px) {
+  .system-host-heading {
+    flex-direction: column;
+  }
+  .system-host-identity > div {
+    grid-template-columns: 110px minmax(0, 1fr);
+    gap: 10px;
+  }
+}

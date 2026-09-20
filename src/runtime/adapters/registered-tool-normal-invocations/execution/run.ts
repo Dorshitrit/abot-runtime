@@ -1,3 +1,4 @@
+import { permitsRequiredToolMode } from "../../../../capabilities/tool-permission-mode.js";
 import {
   buildToolCompletedEventActions,
   buildToolCompletedEventMetadata,
@@ -31,6 +32,8 @@ import {
 } from "../shared/event-metadata.js";
 import { prepareCompleteInvocationInput } from "../payload/input-preparation.js";
 import { rejectNormalInvocation } from "../shared/rejection.js";
+import { createFileOutputPresentation } from "./file-output-presentation.js";
+import { captureExecutionBinding } from "./execution-binding.js";
 
 export async function executeNormalInvocation(params: {
   executor: RegisteredToolNormalInvocationExecutorParams;
@@ -60,6 +63,18 @@ export function prepareNormalInvocation(params: {
     );
   }
 
+  if (
+    !permitsRequiredToolMode(
+      executor.toolPermissionMode,
+      source.registration.definition.requiredPermissionMode,
+    )
+  ) {
+    return rejectNormalInvocation(
+      "tool_permission_mode_required",
+      "The source tool requires a different captured request permission mode.",
+    );
+  }
+
   const preparedInput = prepareCompleteInvocationInput(source, params.input);
   if (!preparedInput.ok) return preparedInput.rejection;
 
@@ -86,6 +101,17 @@ export function prepareNormalInvocation(params: {
     normalizedCall.call,
   );
   if (!target.ok) return target.rejection;
+  if (
+    !permitsRequiredToolMode(
+      executor.toolPermissionMode,
+      target.binding.registration.definition.requiredPermissionMode,
+    )
+  ) {
+    return rejectNormalInvocation(
+      "tool_permission_mode_required",
+      "The normalized target tool requires a different captured request permission mode.",
+    );
+  }
   const targetValidation = validateCompleteCall({
     adapter: target.binding.registration.adapter,
     call: normalizedCall.call,
@@ -102,15 +128,26 @@ export function prepareNormalInvocation(params: {
     );
   }
 
-  const eventMeta = buildToolIntentEventMetadata(
+  const executionBinding = captureExecutionBinding(
+    target.binding.registration.adapter,
+    normalizedCall.call,
+  );
+  if (!executionBinding.ok) return executionBinding.rejection;
+  const intentMeta = buildToolIntentEventMetadata(
     normalizedCall.call,
     params.input.intent,
     target.binding.registration.definition,
   );
+  const eventMeta = executionBinding.metadata
+    ? { ...executionBinding.metadata, ...intentMeta }
+    : intentMeta;
   const actionFingerprint = createRegisteredToolActionFingerprint({
     contractVersion: target.binding.registration.contract.version,
     operationId: target.binding.operation.operationId,
     call: normalizedCall.call,
+    ...(executionBinding.identity
+      ? { executionIdentity: executionBinding.identity }
+      : {}),
   });
   return Object.freeze({
     status: "prepared" as const,
@@ -133,6 +170,9 @@ export function prepareNormalInvocation(params: {
         target: target.binding,
         call: normalizedCall.call,
         eventMeta,
+        ...(executionBinding.metadata
+          ? { executionMetadata: executionBinding.metadata }
+          : {}),
         input: params.input,
       }),
   });
@@ -146,6 +186,7 @@ async function executePreparedNormalInvocation(params: {
   target: BoundOperation;
   call: ToolCall;
   eventMeta: ReturnType<typeof buildToolIntentEventMetadata>;
+  executionMetadata?: Readonly<Record<string, unknown>>;
   input: RegisteredToolNormalInvocationPreparationInput;
 }): Promise<RegisteredToolNormalInvocationResult> {
   const approval = await requestNormalInvocationApproval({
@@ -184,8 +225,12 @@ async function executePreparedNormalInvocation(params: {
     ...(params.eventMeta ? { meta: params.eventMeta } : {}),
     ...(startedCopy ?? {}),
   });
+  const fileOutputPresentation = createFileOutputPresentation(
+    params.executor.sharedState?.runtimePaths,
+  );
   const result = await params.executor.toolRegistry.execute(params.call, {
     abortSignal: params.executor.abortSignal,
+    reportFileOutput: fileOutputPresentation.report,
     ...(params.executor.sharedState
       ? { sharedState: params.executor.sharedState }
       : {}),
@@ -197,22 +242,29 @@ async function executePreparedNormalInvocation(params: {
       params.target.registration.definition,
     ).map((action) => Object.freeze({ ...action })),
   );
-  const completedMeta = buildToolCompletedEventMetadata(
-    params.call,
+  const completedMeta = fileOutputPresentation.finish(
     result,
-    params.target.registration.definition,
+    buildToolCompletedEventMetadata(
+      params.call,
+      result,
+      params.target.registration.definition,
+    ),
+    params.target.operation.effect,
   );
   const completedCopy = buildToolLifecycleEventCopy(
     params.target.registration.definition,
     result.ok ? "completed" : "failed",
   );
+  const completedEventMeta = params.executionMetadata
+    ? { ...completedMeta, ...params.executionMetadata }
+    : completedMeta;
   params.executor.onEvent?.("tool.completed", {
     ...buildToolExecutorEventMetadata(params.executorIdentity),
     ...(params.executionId ? { executionId: params.executionId } : {}),
     tool: params.source.registration.toolName,
     ok: result.ok,
     actions: completionActions,
-    ...(completedMeta ? { meta: completedMeta } : {}),
+    ...(completedEventMeta ? { meta: completedEventMeta } : {}),
     ...(completedCopy ?? {}),
   });
   return Object.freeze({

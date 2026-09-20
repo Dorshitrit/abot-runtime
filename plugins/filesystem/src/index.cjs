@@ -1043,6 +1043,107 @@ function failTargetChanged(logicalPath, expectedState, observedState) {
   );
 }
 
+// plugins/filesystem/source/view-locator.ts
+var LOCATOR_CANDIDATE_LIMIT = 8;
+function selectViewLocatorWindow(input) {
+  const offsets = collectLocatorOffsets(input.source.text, input.locator);
+  const first = offsets[0];
+  if (first === void 0) return null;
+  if (hasAmbiguousLocatorMatches(offsets)) {
+    rejectAmbiguousLocator(input, offsets);
+  }
+  const candidate = createLocatorCandidate(input, first);
+  return {
+    startLine: candidate.nextControls.start_line,
+    endLine: candidate.nextControls.end_line,
+    rangeTruncated: candidate.rangeTruncated
+  };
+}
+function collectLocatorOffsets(text, locator) {
+  const offsets = [];
+  let start = 0;
+  for (let count = 0; count <= LOCATOR_CANDIDATE_LIMIT; count += 1) {
+    const offset = text.indexOf(locator, start);
+    if (offset < 0) break;
+    offsets.push(offset);
+    start = offset + 1;
+  }
+  return offsets;
+}
+function hasAmbiguousLocatorMatches(offsets) {
+  return offsets.length > 1;
+}
+function createLocatorCandidate(input, offset) {
+  const matchStartLine = lineAtOffset(input.source.text, offset);
+  const matchEndLine = lineAtOffset(
+    input.source.text,
+    offset + Math.max(input.locator.length - 1, 0)
+  );
+  const startLine = Math.max(1, matchStartLine - input.contextLines);
+  const requestedEndLine = Math.min(
+    input.lineCount,
+    matchEndLine + input.contextLines
+  );
+  const endLine = Math.min(
+    requestedEndLine,
+    startLine + input.maxWindowLines - 1
+  );
+  return {
+    matchStartLine,
+    matchEndLine,
+    rangeTruncated: requestedEndLine > endLine,
+    nextControls: {
+      path: input.path,
+      start_line: startLine,
+      end_line: endLine
+    }
+  };
+}
+function rejectAmbiguousLocator(input, offsets) {
+  const candidates = offsets.slice(0, LOCATOR_CANDIDATE_LIMIT).map((offset) => createLocatorCandidate(input, offset));
+  const candidatesTruncated = offsets.length > LOCATOR_CANDIDATE_LIMIT;
+  const truncation = {
+    candidateLimit: LOCATOR_CANDIDATE_LIMIT,
+    candidatesTruncated,
+    scanTruncated: input.source.truncated,
+    omittedBytes: input.source.omittedBytes
+  };
+  fail(
+    "ambiguous_text_locator",
+    [
+      "Locator matched multiple locations; no file window was selected.",
+      "Choose a unique literal locator or select one candidate's numeric controls with locator omitted.",
+      `Path: ${input.path}`,
+      ...candidates.map(
+        ({ matchStartLine, matchEndLine, nextControls }) => `Match lines ${matchStartLine}-${matchEndLine}: start_line=${nextControls.start_line}, end_line=${nextControls.end_line}`
+      ),
+      `Candidate list truncated: ${candidatesTruncated}`,
+      `Scan truncated: ${input.source.truncated}; bytes scanned: ${input.source.bytesRead}/${input.source.byteCount}`
+    ].join("\n"),
+    {
+      path: input.path,
+      candidates,
+      observedMatchCountLowerBound: offsets.length,
+      truncation,
+      eventMeta: {
+        path: input.path,
+        mode: "file",
+        locatorAmbiguous: true,
+        candidateCount: candidates.length,
+        candidatesTruncated,
+        scanTruncated: input.source.truncated
+      }
+    }
+  );
+}
+function lineAtOffset(content, offset) {
+  let line = 1;
+  for (let index = 0; index < offset; index += 1) {
+    if (content.charCodeAt(index) === 10) line += 1;
+  }
+  return line;
+}
+
 // plugins/filesystem/source/view-window.ts
 var MAX_VIEW_LINES = 240;
 var DEFAULT_CONTEXT_LINES = 8;
@@ -1054,21 +1155,14 @@ function selectWindow(input) {
   let startLine = input.startLine ?? 1;
   let endLine = input.endLine ?? (input.startLine ? input.startLine + MAX_VIEW_LINES - 1 : MAX_VIEW_LINES);
   if (input.locator) {
-    const first = input.text.indexOf(input.locator);
-    if (first < 0) return null;
-    if (input.text.indexOf(input.locator, first + input.locator.length) >= 0) {
-      fail(
-        "ambiguous_text_locator",
-        "Locator matched multiple locations. Use a more specific locator or numeric range."
-      );
-    }
-    const locatorStart = lineAtOffset(input.text, first);
-    const locatorEnd = lineAtOffset(
-      input.text,
-      first + Math.max(input.locator.length - 1, 0)
-    );
-    startLine = Math.max(1, locatorStart - input.contextLines);
-    endLine = Math.min(input.lines.length, locatorEnd + input.contextLines);
+    return selectViewLocatorWindow({
+      path: input.path,
+      source: input.source,
+      lineCount: input.lines.length,
+      locator: input.locator,
+      contextLines: input.contextLines,
+      maxWindowLines: MAX_VIEW_LINES
+    });
   }
   if (endLine < startLine) [startLine, endLine] = [endLine, startLine];
   const rangeTruncated = endLine - startLine + 1 > MAX_VIEW_LINES;
@@ -1092,13 +1186,6 @@ function parseTrailingRange(value) {
     startLine: Number.parseInt(match[2], 10),
     endLine: Number.parseInt(match[3] ?? match[2], 10)
   });
-}
-function lineAtOffset(content, offset) {
-  let line = 1;
-  for (let index = 0; index < offset; index += 1) {
-    if (content.charCodeAt(index) === 10) line += 1;
-  }
-  return line;
 }
 
 // plugins/filesystem/source/dev-view.ts
@@ -1202,7 +1289,8 @@ async function viewFile(input) {
   const lines = completeScannedLines(source.text, source.truncated);
   const availableLineCount = Math.max(lines.length, 1);
   const selection = selectWindow({
-    text: source.text,
+    path: input.target.logicalPath,
+    source,
     lines,
     startLine: input.startLine,
     endLine: input.endLine,
@@ -1407,29 +1495,34 @@ async function openMutationParent(target) {
       `Path changed while preparing the write: ${target.logicalPath}`
     );
   }
-  let current = await openDirectory(
+  const rootHandle = await openDirectory(
     target.rootPath,
     target.rootPath,
     target.logicalPath
   );
+  let current = rootHandle;
   try {
     for (const segment of segments) {
-      const next = await openChildDirectory(
-        current,
-        segment,
-        target.logicalPath
-      );
-      await current.close();
-      current = next;
+      const previous = current;
+      current = await openChildDirectory(previous, segment, target.logicalPath);
+      if (previous !== rootHandle) {
+        await previous.close().catch(() => void 0);
+      }
     }
     return Object.freeze({
       handle: current,
+      rootHandle,
       procPath: `/proc/self/fd/${current.fd}`,
       targetName
     });
   } catch (error) {
-    await current.close().catch(() => void 0);
+    await closeMutationParent({ handle: current, rootHandle });
     throw error;
+  }
+}
+async function closeMutationParent(parent) {
+  for (const handle of /* @__PURE__ */ new Set([parent.handle, parent.rootHandle])) {
+    await handle.close().catch(() => void 0);
   }
 }
 function usesIsolatedDirectoryAuthority() {
@@ -1437,6 +1530,31 @@ function usesIsolatedDirectoryAuthority() {
 }
 function openMutationRoot(target) {
   return openDirectory(target.rootPath, target.rootPath, target.logicalPath);
+}
+
+// plugins/filesystem/source/file-output-presentation.ts
+var import_node_fs4 = require("node:fs");
+function reportCommittedFileOutput(context, target, operation, root) {
+  if (!context?.reportFileOutput) return;
+  try {
+    const identity = (0, import_node_fs4.fstatSync)(root.fd, { bigint: true });
+    context.reportFileOutput({
+      target,
+      operation,
+      rootIdentity: {
+        device: String(identity.dev),
+        inode: String(identity.ino),
+        birthtimeNs: String(identity.birthtimeNs)
+      }
+    });
+  } catch {
+  }
+}
+function notifyCommittedFileOutput(root, onCommitted) {
+  try {
+    onCommitted?.(root);
+  } catch {
+  }
 }
 
 // plugins/filesystem/source/directory-write-task.ts
@@ -1594,6 +1712,7 @@ async function writeWithDirectoryAuthority(input) {
       },
       task: commitDirectoryWrite
     });
+    notifyCommittedFileOutput(root, input.onCommitted);
   } catch (error) {
     if (error instanceof DirectoryAuthorityError) {
       if (error.code.startsWith("filesystem_")) {
@@ -1662,13 +1781,14 @@ async function atomicWriteText(input) {
       temporaryCreated = !removed;
     }
     await syncDirectoryBestEffort(parent.handle);
+    notifyCommittedFileOutput(parent.rootHandle, input.onCommitted);
   } catch (error) {
     rethrowFilesystemError(error, "write", input.target.logicalPath);
   } finally {
     if (temporaryCreated) {
       await (0, import_promises5.rm)(temporaryPath, { force: true }).catch(() => void 0);
     }
-    await parent.handle.close().catch(() => void 0);
+    await closeMutationParent(parent);
   }
 }
 async function installPreparedFile(input) {
@@ -2372,7 +2492,8 @@ function createEditFileHandler(paths, mutations) {
       await atomicWriteText({
         target,
         content: prepared2.content,
-        expectedVersion: snapshot.version
+        expectedVersion: snapshot.version,
+        onCommitted: (root) => reportCommittedFileOutput(context, target, "updated", root)
       });
       return result;
     });
@@ -2691,7 +2812,13 @@ function createWriteFileHandler(paths, mutations) {
       await atomicWriteText({
         target,
         content: prepared2.content,
-        expectedVersion: snapshot.version
+        expectedVersion: snapshot.version,
+        onCommitted: (root) => reportCommittedFileOutput(
+          context,
+          target,
+          previousContent === null ? "created" : "updated",
+          root
+        )
       });
       return result;
     });

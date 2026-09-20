@@ -99,6 +99,10 @@ export class LocalRuntimeWebBackend {
     await this.environments.start(environmentIds);
   }
 
+  environmentConfig() {
+    return this.environments.environmentConfig();
+  }
+
   stop(): Promise<void> {
     return this.environments.stop();
   }

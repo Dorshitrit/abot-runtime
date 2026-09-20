@@ -37,6 +37,7 @@ import {
 } from "./diagnostics.js";
 import { buildSupervisorDecisionInput } from "./input.js";
 import { buildSupervisorCapabilityBriefOptions } from "./capability-brief.js";
+import { createSupervisorCapabilityBriefReadmissionController } from "./capability-brief-readmission.js";
 import { parseSupervisorDecisionOutput } from "./parser.js";
 import {
   buildSupervisorWorkingDirectoryInput,
@@ -145,7 +146,10 @@ export async function runSupervisorDecision(
       boundSteeringVersion,
       input,
       diagnostic: routingDiagnostic,
-      contextCompaction,
+      contextCompaction: createSupervisorCapabilityBriefReadmissionController(
+        request,
+        { input, controller: contextCompaction },
+      ),
     });
     if (
       routing.decision.action === "invoke_role" &&

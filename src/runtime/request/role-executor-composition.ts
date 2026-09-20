@@ -79,11 +79,12 @@ const SUPERVISOR_WORKER_V1_POLICY_DEFINITION = Object.freeze({
 
 const EXECUTION_AGENT_V1_POLICY_DEFINITION = Object.freeze({
   id: "execution-agent-v1" as const,
-  version: 1,
+  version: 2,
   rootContract: EXECUTION_AGENT_ROOT_CONTRACT,
   roleExecutors: EXECUTION_AGENT_ROLE_EXECUTORS,
   capabilityAuthorities: Object.freeze(["root"] as const),
   terminalTextMode: "exact" as const,
+  modelWorkPlanAuthority: "root" as const,
 });
 
 export const SUPERVISOR_WORKER_V1_EXECUTION_POLICY: CompiledRequestExecutionPolicy =
@@ -122,6 +123,7 @@ function compileExecutionPolicy(
     roleExecutors: CompiledRequestExecutionPolicy["roleExecutors"];
     capabilityAuthorities: readonly ("root" | RuntimeDelegateRoleId)[];
     terminalTextMode?: "normalized" | "exact";
+    modelWorkPlanAuthority?: "root";
   }>,
 ): CompiledRequestExecutionPolicy {
   const canonicalAuthorityDefinition = JSON.stringify({
@@ -130,6 +132,9 @@ function compileExecutionPolicy(
     rootContractId: definition.rootContract.contractId,
     availableSubordinateContractIds: definition.roleExecutors.roleIds,
     capabilityAuthorities: definition.capabilityAuthorities,
+    ...(definition.modelWorkPlanAuthority
+      ? { modelWorkPlanAuthority: definition.modelWorkPlanAuthority }
+      : {}),
     ...(definition.terminalTextMode !== undefined
       ? { terminalTextMode: definition.terminalTextMode }
       : {}),
@@ -146,6 +151,9 @@ function compileExecutionPolicy(
       ...definition.roleExecutors.roleIds,
     ]),
     capabilityAuthorities: Object.freeze([...definition.capabilityAuthorities]),
+    ...(definition.modelWorkPlanAuthority
+      ? { modelWorkPlanAuthority: definition.modelWorkPlanAuthority }
+      : {}),
     ...(definition.terminalTextMode !== undefined
       ? { terminalTextMode: definition.terminalTextMode }
       : {}),
@@ -166,6 +174,7 @@ function sameAuthority(
     left.version === right.version &&
     left.definitionHash === right.definitionHash &&
     left.rootContractId === right.rootContractId &&
+    left.modelWorkPlanAuthority === right.modelWorkPlanAuthority &&
     sameOrderedValues(
       left.availableSubordinateContractIds,
       right.availableSubordinateContractIds,

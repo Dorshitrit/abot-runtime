@@ -25,10 +25,18 @@
           <span class="rail-button-label">Chats</span>
         </button>
         <div class="rail-actions">
-          <button id="homeWorkspaceButton" class="rail-button" type="button"
-            aria-label="Open home dashboard" aria-controls="homeWorkspacePanel"
-            aria-current="page" title="Home">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9" /></svg>
+          <button
+            id="homeWorkspaceButton"
+            class="rail-button"
+            type="button"
+            aria-label="Open home dashboard"
+            aria-controls="homeWorkspacePanel"
+            aria-current="page"
+            title="Home"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9" />
+            </svg>
             <span class="rail-button-label">Home</span>
           </button>
           <button
@@ -56,6 +64,20 @@
               <path d="M12 5v14M5 12h14" />
             </svg>
             <span class="rail-button-label">New</span>
+          </button>
+          <button
+            id="newProjectButton"
+            class="rail-button rail-project-button"
+            type="button"
+            disabled
+            aria-label="Create a project"
+            title="Create a project"
+            aria-controls="projectCreationRoot"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 7V5h6l2 2h10v13H3ZM12 10v7M8.5 13.5h7" />
+            </svg>
+            <span class="rail-button-label">Project</span>
           </button>
           <button
             id="schedulesWorkspaceButton"
@@ -125,7 +147,11 @@
         </div>
       </nav>
 
-      <section id="homeWorkspacePanel" class="home-workspace-panel" aria-label="Home dashboard">
+      <section
+        id="homeWorkspacePanel"
+        class="home-workspace-panel"
+        aria-label="Home dashboard"
+      >
         <header class="home-workspace-header"><h1>Home</h1></header>
         <div id="homeDashboardRoot"></div>
       </section>
@@ -197,6 +223,11 @@
           <div class="chat-heading-group">
             <div class="chat-heading-copy">
               <h2 id="sessionTitle">New conversation</h2>
+              <p
+                id="currentProjectContext"
+                class="current-project-context"
+                hidden
+              ></p>
             </div>
           </div>
         </header>
@@ -204,9 +235,15 @@
         <section
           id="runtimeSetupGuide"
           class="runtime-setup-guide"
-          aria-label="Runtime setup guide"
-          aria-live="polite"
+          aria-label="Connect a model"
           tabindex="0"
+          hidden
+        ></section>
+
+        <section
+          id="projectCreationRoot"
+          class="project-creation-root"
+          aria-label="Create a project"
           hidden
         ></section>
 

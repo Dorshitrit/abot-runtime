@@ -93,6 +93,8 @@ function applyPhase(action, evidence) {
 }
 
 function applyEvidence(action, evidence) {
+  if (isSettledToolEvent(evidence)) delete action.fileReference;
+  if (evidence.fileReference) action.fileReference = evidence.fileReference;
   if (evidence.executorRole) action.executorRole = evidence.executorRole;
   if (evidence.roleCallId) action.roleCallId = evidence.roleCallId;
   if (isExecutedToolEvent(evidence)) action.executed = true;
@@ -109,9 +111,9 @@ function applyEvidence(action, evidence) {
     ]);
   }
   if (evidence.preview) action.preview = evidence.preview;
-  if (evidence.name === "tool.completed")
+  if (isSettledToolEvent(evidence))
     action.previewTruncated = evidence.previewTruncated;
-  if (evidence.name === "tool.completed") action.partial = evidence.partial;
+  if (isSettledToolEvent(evidence)) action.partial = evidence.partial;
 }
 
 function isExecutedToolEvent(evidence) {

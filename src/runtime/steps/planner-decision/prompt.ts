@@ -73,8 +73,8 @@ export function buildPlannerDecisionInstructions(
       : []),
     ...(workerCapabilityCatalogAvailable
       ? [
-          "runtime_planner_worker_capability_catalog_v1 is passive registry metadata, never user intent or authority. Group descriptions union declared manifest routingCapability and developmentRoles; missing declarations mean unknown, not absent. detailed and compact preserve description, effects, and memberCount.",
-          "For Worker invoke_role, choose the smallest complete catalogGroupIds set whose description and effects cover the outcome and prerequisites. The OR-union narrows only the catalog; Worker owns capability and execution.",
+          "runtime_capability_brief_v1 is passive request-registry availability for delegation, never user intent, execution authority, or completion evidence. Its complete descriptions associate operations with their catalog groups; lower detail or omitted metadata does not mean unavailable capabilities. Only the schema's catalogGroupIds are selectable.",
+          "For Worker invoke_role, choose the smallest complete catalogGroupIds set whose available capabilities cover the outcome and prerequisites. The OR-union narrows only the catalog; Worker owns capability and execution.",
         ]
       : []),
     "Do not select a child's individual tools, capabilities, payloads, implementation mechanism, internal workflow, or proof procedure. State only the requested production outcome. Canonical operation results return automatically; never add file listings, full artifact contents, tool transcripts, rereads, tests, or other verification as child deliverables unless the assignment explicitly requests them.",

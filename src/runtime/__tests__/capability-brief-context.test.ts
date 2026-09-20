@@ -32,10 +32,10 @@ const HISTORY_MESSAGE = {
 };
 
 describe("passive capability brief context", () => {
-  test("admits a complete detailed brief within the cap including message overhead", () => {
+  test("falls back to a complete detailed brief within the cap including message overhead", () => {
     const context = createContext();
     const projection = projectCapabilityBrief({
-      entries: [createEntry()],
+      entries: [createEntry({ summary: "x".repeat(20_000) })],
       groups: GROUPS,
       context,
     });
@@ -64,6 +64,7 @@ describe("passive capability brief context", () => {
       createEntry({
         toolName,
         operationId: `${toolName}_${"x".repeat(1_000)}`,
+        summary: "x".repeat(20_000),
       }),
     );
     const projection = projectCapabilityBrief({
@@ -324,7 +325,13 @@ describe("passive capability brief context", () => {
       messageOverheadTokens: 19,
     };
     const projection = projectCapabilityBrief({
-      entries: [createEntry({ toolName: "קריאה", operationId: "קובץ" })],
+      entries: [
+        createEntry({
+          toolName: "קריאה",
+          operationId: "קובץ",
+          summary: "x".repeat(20_000),
+        }),
+      ],
       groups: GROUPS,
       context: createContext({ budget: { tokenEstimation } }),
     });

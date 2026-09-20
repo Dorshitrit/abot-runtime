@@ -49,5 +49,6 @@ export declare function createComposerWorkspaceController<T extends ComposerWork
     homeSetupHost?: HTMLElement;
     selectedEnvironmentId(): string;
     createSessionId?(): string;
+    onSessionCreated?(sessionId: string): void;
   },
 ): ComposerWorkspaceController<T>;

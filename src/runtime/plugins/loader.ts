@@ -1,9 +1,8 @@
-import { realpathSync } from "node:fs";
+import { validateManifestEntrypoint } from "./entrypoint-validation.js";
 import { createRequire } from "node:module";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 import type {
-  RuntimePluginEntrypoint,
   RuntimePluginEntrypointFactory,
   RuntimePluginLoadContext,
 } from "../../plugin-contract/entrypoint.js";
@@ -12,12 +11,8 @@ import type {
   CompiledPluginCapability,
   CompiledRuntimePlugin,
 } from "./compiled-catalog.js";
-import type { RuntimeConfig, RuntimePluginConfig } from "../ports.js";
-import type {
-  ToolCallAdapter,
-  ToolImplementation,
-  ToolModuleDeclaration,
-} from "../../capabilities/tool-types.js";
+import type { RuntimeConfig } from "../ports.js";
+import type { ToolModuleDeclaration } from "../../capabilities/tool-types.js";
 import { validateToolModuleDeclarations } from "../../capabilities/tool-definition-validator.js";
 import { traceDebug } from "../observability/debug-logger.js";
 import { ABOT_RUNTIME_EXTENSION } from "../../plugin-contract/manifest.js";
@@ -25,6 +20,13 @@ import type { DiscoveredAgentPluginManifest } from "./discovered-manifest.js";
 import { discoverAgentPluginManifests } from "./manifest-discovery.js";
 import { resolveBundledRuntimeRoot } from "./bundled-root.js";
 import { projectManifestRuntimeContract } from "./manifest-projection.js";
+import { discoverConfiguredRuntimePluginManifests } from "./configured-manifests.js";
+import {
+  isPluginCatalogDisabled,
+  isPluginToolSelected,
+  normalizePluginSelection,
+  pluginSelectionCacheKey,
+} from "./selection.js";
 
 const require = createRequire(import.meta.url);
 const compiledCatalogCache = new WeakMap<
@@ -32,70 +34,6 @@ const compiledCatalogCache = new WeakMap<
   Map<string, readonly CompiledRuntimePlugin[]>
 >();
 const bundledCatalogCache = new Map<string, readonly CompiledRuntimePlugin[]>();
-
-type PluginSelection = Readonly<{
-  enabled: boolean;
-  allow: readonly string[];
-  deny: readonly string[];
-}>;
-
-function uniqueSorted(values: readonly string[] | undefined): string[] {
-  return [
-    ...new Set(
-      (values ?? [])
-        .map((value) => value.trim())
-        .filter((value) => value.length > 0),
-    ),
-  ].sort((left, right) => left.localeCompare(right));
-}
-
-function normalizePluginSelection(
-  config: RuntimePluginConfig | undefined,
-): PluginSelection {
-  return Object.freeze({
-    enabled: config?.enabled !== false,
-    allow: Object.freeze(uniqueSorted(config?.allow)),
-    deny: Object.freeze(uniqueSorted(config?.deny)),
-  });
-}
-
-function pluginSelectionCacheKey(selection: PluginSelection): string {
-  return JSON.stringify([selection.enabled, selection.allow, selection.deny]);
-}
-
-function matchesPluginToolId(
-  pluginId: string,
-  toolName: string,
-  configuredId: string,
-): boolean {
-  return (
-    configuredId === "*" ||
-    configuredId === pluginId ||
-    configuredId === toolName ||
-    configuredId === `${pluginId}.${toolName}`
-  );
-}
-
-function isPluginToolSelected(params: {
-  pluginId: string;
-  toolName: string;
-  selection: PluginSelection;
-}): boolean {
-  if (!params.selection.enabled) {
-    return false;
-  }
-  if (
-    params.selection.allow.length > 0 &&
-    !params.selection.allow.some((entry) =>
-      matchesPluginToolId(params.pluginId, params.toolName, entry),
-    )
-  ) {
-    return false;
-  }
-  return !params.selection.deny.some((entry) =>
-    matchesPluginToolId(params.pluginId, params.toolName, entry),
-  );
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -121,101 +59,10 @@ function compiledCapabilityFromDeclaration(
 ): CompiledPluginCapability {
   return {
     execute: tool.implementation,
+    ...(tool.prepareRequest ? { prepareRequest: tool.prepareRequest } : {}),
     ...(tool.adapter ? { adapter: tool.adapter } : {}),
     definition: tool.definition,
     normalInvocation: tool.normalInvocation,
-  };
-}
-
-function validateManifestEntrypoint(params: {
-  pluginId: string;
-  expectedCapabilityIds: readonly string[];
-  raw: unknown;
-}): RuntimePluginEntrypoint {
-  if (!isRecord(params.raw) || !isRecord(params.raw.handlers)) {
-    throw new Error(
-      `Runtime plugin ${params.pluginId} entrypoint must export handlers`,
-    );
-  }
-  const unexpectedEntrypointKeys = Object.keys(params.raw).filter(
-    (key) => key !== "handlers" && key !== "adapters",
-  );
-  if (unexpectedEntrypointKeys.length > 0) {
-    throw new Error(
-      `Runtime plugin ${params.pluginId} entrypoint contains unsupported field ${unexpectedEntrypointKeys[0]}`,
-    );
-  }
-  const handlers: Record<string, ToolImplementation> = {};
-  for (const [capabilityId, handler] of Object.entries(params.raw.handlers)) {
-    if (typeof handler !== "function") {
-      throw new Error(
-        `Runtime plugin ${params.pluginId} handler ${capabilityId} must be a function`,
-      );
-    }
-    handlers[capabilityId] = handler as ToolImplementation;
-  }
-  const expected = new Set(params.expectedCapabilityIds);
-  const missing = params.expectedCapabilityIds.filter(
-    (capabilityId) => !handlers[capabilityId],
-  );
-  const unexpected = Object.keys(handlers).filter(
-    (capabilityId) => !expected.has(capabilityId),
-  );
-  if (missing.length > 0 || unexpected.length > 0) {
-    throw new Error(
-      `Runtime plugin ${params.pluginId} handler mismatch: missing=${missing.join(",") || "none"}; unexpected=${unexpected.join(",") || "none"}`,
-    );
-  }
-  const adapters: Record<string, ToolCallAdapter> = {};
-  if (params.raw.adapters !== undefined) {
-    if (!isRecord(params.raw.adapters)) {
-      throw new Error(
-        `Runtime plugin ${params.pluginId} entrypoint adapters must be an object`,
-      );
-    }
-    for (const [capabilityId, rawAdapter] of Object.entries(
-      params.raw.adapters,
-    )) {
-      if (!expected.has(capabilityId)) {
-        throw new Error(
-          `Runtime plugin ${params.pluginId} adapter ${capabilityId} has no declared capability`,
-        );
-      }
-      if (!isRecord(rawAdapter)) {
-        throw new Error(
-          `Runtime plugin ${params.pluginId} adapter ${capabilityId} must be an object`,
-        );
-      }
-      const unexpectedAdapterKeys = Object.keys(rawAdapter).filter(
-        (key) => key !== "normalizeCall" && key !== "validateCall",
-      );
-      if (unexpectedAdapterKeys.length > 0) {
-        throw new Error(
-          `Runtime plugin ${params.pluginId} adapter ${capabilityId} contains unsupported field ${unexpectedAdapterKeys[0]}`,
-        );
-      }
-      if (
-        rawAdapter.normalizeCall !== undefined &&
-        typeof rawAdapter.normalizeCall !== "function"
-      ) {
-        throw new Error(
-          `Runtime plugin ${params.pluginId} adapter ${capabilityId}.normalizeCall must be a function`,
-        );
-      }
-      if (
-        rawAdapter.validateCall !== undefined &&
-        typeof rawAdapter.validateCall !== "function"
-      ) {
-        throw new Error(
-          `Runtime plugin ${params.pluginId} adapter ${capabilityId}.validateCall must be a function`,
-        );
-      }
-      adapters[capabilityId] = rawAdapter as ToolCallAdapter;
-    }
-  }
-  return {
-    handlers,
-    ...(Object.keys(adapters).length > 0 ? { adapters } : {}),
   };
 }
 
@@ -308,6 +155,9 @@ function loadManifestRuntimePlugin(
       definition,
       normalInvocation,
       implementation: entrypoint.handlers[definition.name]!,
+      ...(entrypoint.prepareRequest
+        ? { prepareRequest: entrypoint.prepareRequest }
+        : {}),
       ...(entrypoint.adapters?.[definition.name]
         ? { adapter: entrypoint.adapters[definition.name] }
         : {}),
@@ -337,55 +187,11 @@ function loadManifestRuntimePlugin(
   };
 }
 
-function canonicalPluginDiscoveryRoot(rootDir: string): string {
-  const absoluteRoot = resolve(rootDir);
-  try {
-    return realpathSync(absoluteRoot);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      throw error;
-    }
-    return absoluteRoot;
-  }
-}
-
-function assertUniquePluginManifestIds(
-  plugins: readonly DiscoveredAgentPluginManifest[],
-): void {
-  const manifestPathsByPluginId = new Map<string, string>();
-  for (const plugin of plugins) {
-    const pluginId = plugin.manifest.name;
-    const previousManifestPath = manifestPathsByPluginId.get(pluginId);
-    if (previousManifestPath) {
-      throw new Error(
-        `Duplicate runtime plugin id: ${pluginId}; manifests: ${previousManifestPath}, ${plugin.manifestPath}`,
-      );
-    }
-    manifestPathsByPluginId.set(pluginId, plugin.manifestPath);
-  }
-}
-
-function discoverConfiguredRuntimePluginManifests(
-  consumerRoot: string,
-): readonly DiscoveredAgentPluginManifest[] {
-  const bundledRoot = resolveBundledRuntimeRoot();
-  const roots =
-    canonicalPluginDiscoveryRoot(bundledRoot) ===
-    canonicalPluginDiscoveryRoot(consumerRoot)
-      ? [consumerRoot]
-      : [bundledRoot, consumerRoot];
-  const plugins = roots.flatMap((rootDir) =>
-    discoverAgentPluginManifests(rootDir),
-  );
-  assertUniquePluginManifestIds(plugins);
-  return Object.freeze(plugins);
-}
-
 export function loadConfiguredRuntimePlugins(
   config: RuntimeConfig,
 ): readonly CompiledRuntimePlugin[] {
   const selection = normalizePluginSelection(config.plugins);
-  if (!selection.enabled) {
+  if (isPluginCatalogDisabled(selection)) {
     return [];
   }
   const cacheKey = pluginSelectionCacheKey(selection);
@@ -403,6 +209,7 @@ export function loadConfiguredRuntimePlugins(
 
   const manifestPlugins = discoverConfiguredRuntimePluginManifests(
     config.paths.rootDir,
+    { excludedPluginIds: new Set(selection.deny) },
   )
     .map((plugin) => ({
       plugin,
@@ -521,6 +328,7 @@ function toolModuleDeclarationFromRuntimePlugin(
 ): ToolModuleDeclaration {
   return {
     implementation: tool.execute,
+    ...(tool.prepareRequest ? { prepareRequest: tool.prepareRequest } : {}),
     ...(tool.adapter ? { adapter: tool.adapter } : {}),
     definition: tool.definition,
     normalInvocation: tool.normalInvocation,

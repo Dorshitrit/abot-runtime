@@ -1,3 +1,4 @@
+import { parseRequiredToolPermissionMode } from "../../capabilities/tool-permission-mode.js";
 import type {
   AgentPluginCapabilityManifest,
   AgentPluginManifest,
@@ -8,6 +9,7 @@ import type {
 } from "../../plugin-contract/manifest.js";
 import { isToolCatalogGroupId } from "../../capabilities/tool-types.js";
 import { parseEventResultMetadata } from "../../capabilities/tool-definition-validator/event-result-metadata.js";
+import { parseEventInputTextOptions } from "../../capabilities/tool-definition-validator/event-input-text-options.js";
 import {
   ABOT_RUNTIME_EXTENSION,
   ABOT_RUNTIME_EXTENSION_VERSION,
@@ -34,6 +36,7 @@ const DEVELOPMENT_ROLES = [
 const EVENT_PROJECTION_KINDS = [
   "string",
   "number",
+  "boolean",
   "string_array",
   "length",
 ] as const;
@@ -291,7 +294,7 @@ function parseEventPresentation(
         );
         rejectUnknownKeys(
           projection,
-          ["param", "kind", "default"],
+          ["param", "kind", "default", "maxLength", "preserveWhitespace"],
           `${path}.metadata.${key}`,
         );
         if (!nonEmptyString(projection.param)) {
@@ -318,6 +321,7 @@ function parseEventPresentation(
         return [
           key,
           {
+            ...parseEventInputTextOptions(projection, `${path}.metadata.${key}`),
             param: projection.param.trim(),
             kind: projection.kind as (typeof EVENT_PROJECTION_KINDS)[number],
             ...(fallback !== undefined ? { default: fallback } : {}),
@@ -489,6 +493,7 @@ function parseCapabilities(
       rejectUnknownKeys(
         capability,
         [
+          "requiredPermissionMode",
           "description",
           "routingCapability",
           "controlsRefinement",
@@ -574,6 +579,10 @@ function parseCapabilities(
       return [
         capabilityId,
         {
+          requiredPermissionMode: parseRequiredToolPermissionMode(
+            capability.requiredPermissionMode,
+            `${path}.${capabilityId}.requiredPermissionMode`,
+          ),
           description: capability.description.trim(),
           routingCapability:
             capability.routingCapability as AgentPluginCapabilityManifest["routingCapability"],

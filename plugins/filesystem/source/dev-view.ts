@@ -146,7 +146,8 @@ async function viewFile(
   const lines = completeScannedLines(source.text, source.truncated);
   const availableLineCount = Math.max(lines.length, 1);
   const selection = selectWindow({
-    text: source.text,
+    path: input.target.logicalPath,
+    source,
     lines,
     startLine: input.startLine,
     endLine: input.endLine,

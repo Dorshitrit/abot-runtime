@@ -60,20 +60,25 @@ async function establishRuntimeOwner(
       host.endpoint,
       Date.now() + 10_000,
     );
-    return createConnection(peer, "owner", async () => {
-      try {
-        await host!.close();
-      } finally {
+    return createConnection(
+      peer,
+      "owner",
+      async () => {
         try {
-          await removeLocalRuntimeEndpoint(
-            options.directory,
-            host!.endpoint.token,
-          );
+          await host!.close();
         } finally {
-          await releaseRuntimeOwnerWhenIdle(owner, release);
+          try {
+            await removeLocalRuntimeEndpoint(
+              options.directory,
+              host!.endpoint.token,
+            );
+          } finally {
+            await releaseRuntimeOwnerWhenIdle(owner, release);
+          }
         }
-      }
-    });
+      },
+      () => owner?.isIdle?.() === true,
+    );
   } catch (error) {
     try {
       if (host) {
@@ -94,10 +99,20 @@ function createConnection(
   peer: LocalRuntimeRpcPeer,
   ownership: "owner" | "client",
   close: () => Promise<void>,
+  isOwnerIdle: () => boolean = () => false,
 ): LocalRuntimeConnection {
   let shutdown: Promise<void> | undefined;
   return Object.freeze({
     ownership,
+    isOwnerIdle: () => !shutdown && isOwnerIdle(),
+    closeIfIdle: () => {
+      if (ownership !== "owner") return Promise.resolve(false);
+      if (shutdown) return shutdown.then(() => true);
+      if (!isOwnerIdle()) return Promise.resolve(false);
+      // close() synchronously closes host intake before its first await.
+      shutdown = close();
+      return shutdown.then(() => true);
+    },
     call: (method, args) => peer.call(method, args),
     subscribe: (listener) => peer.subscribe(listener),
     setClientHandler: (handler) => peer.setHandler(handler),

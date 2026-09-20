@@ -49,20 +49,33 @@ export async function connectToRuntimeOwner(
           endpoint.identity,
         ),
       },
-      handshakeTimeout: Math.max(1, deadline - Date.now()),
       maxPayload: 64 * 1024 * 1024,
       perMessageDeflate: false,
     });
     const peer = new LocalRuntimeRpcPeer(socket);
-    const failed = (error: Error) => {
-      peer.close();
-      reject(error);
-    };
-    socket.once("error", failed);
-    socket.once("open", () => {
+    const cleanupHandshake = () => {
+      clearTimeout(startupTimer);
       socket.removeListener("error", failed);
+      socket.removeListener("open", opened);
+    };
+    const failed = (error: Error) => {
+      cleanupHandshake();
+      reject(error);
+      peer.close();
+    };
+    const timedOut = () =>
+      failed(new Error("local_runtime_owner_start_timeout"));
+    const opened = () => {
+      if (hasRuntimeOwnerStartupDeadlineExpired(deadline)) {
+        timedOut();
+        return;
+      }
+      cleanupHandshake();
       resolve(peer);
-    });
+    };
+    const startupTimer = setTimeout(timedOut, Math.max(1, deadline - Date.now()));
+    socket.once("error", failed);
+    socket.once("open", opened);
   });
 }
 
@@ -75,8 +88,12 @@ function assertRuntimeOwnerIdentity(
 }
 
 function assertRuntimeOwnerStartupTimeRemaining(deadline: number): void {
-  if (Date.now() >= deadline)
+  if (hasRuntimeOwnerStartupDeadlineExpired(deadline))
     throw new Error("local_runtime_owner_start_timeout");
+}
+
+function hasRuntimeOwnerStartupDeadlineExpired(deadline: number): boolean {
+  return Date.now() >= deadline;
 }
 
 function isTransientRuntimeOwnerHandshakeFailure(error: unknown): boolean {

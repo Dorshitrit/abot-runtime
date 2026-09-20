@@ -4,6 +4,7 @@ import {
   type WorkerDecisionValidationIssue,
 } from "../contracts.js";
 import type { WorkerCapabilityDescriptor } from "../../../orchestration/worker-capabilities/index.js";
+import { normalizeWorkerCapabilityIntent } from "./accepted-decision.js";
 import {
   partitionSelectedCapabilityControls,
   validateCapabilityExecutionControls,
@@ -75,7 +76,7 @@ export function parseCapabilityInvocation(
   );
   if (params.decisionPhase === "capability_selection") {
     validateBoundedWorkerDecisionText(
-      params.record.intent,
+      normalizeWorkerCapabilityIntent(params.record.intent),
       WORKER_CAPABILITY_INTENT_MAX_LENGTH,
       "worker_capability_intent_invalid",
       `${params.path}.intent`,

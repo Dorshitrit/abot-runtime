@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { link, open, rename, rm } from "node:fs/promises";
+import { link, open, rename, rm, type FileHandle } from "node:fs/promises";
 import { posix } from "node:path";
 
 import type { ResolvedRuntimeToolPath } from "../../../src/plugin-sdk/index.js";
@@ -10,7 +10,8 @@ import {
   type MutationTargetVersion,
 } from "./bounded-io.js";
 import { fail, isNodeErrorCode, rethrowFilesystemError } from "./errors.js";
-import { openMutationParent } from "./mutation-parent.js";
+import { closeMutationParent, openMutationParent } from "./mutation-parent.js";
+import { notifyCommittedFileOutput } from "./file-output-presentation.js";
 import { writeWithDirectoryAuthority } from "./directory-authority-write.js";
 
 export async function atomicWriteText(
@@ -18,6 +19,7 @@ export async function atomicWriteText(
     target: ResolvedRuntimeToolPath;
     content: string;
     expectedVersion: MutationTargetVersion;
+    onCommitted?: (root: FileHandle) => void;
   }>,
 ): Promise<void> {
   assertMutationContentSize(input.content);
@@ -70,13 +72,14 @@ export async function atomicWriteText(
       temporaryCreated = !removed;
     }
     await syncDirectoryBestEffort(parent.handle);
+    notifyCommittedFileOutput(parent.rootHandle, input.onCommitted);
   } catch (error: unknown) {
     rethrowFilesystemError(error, "write", input.target.logicalPath);
   } finally {
     if (temporaryCreated) {
       await rm(temporaryPath, { force: true }).catch(() => undefined);
     }
-    await parent.handle.close().catch(() => undefined);
+    await closeMutationParent(parent);
   }
 }
 

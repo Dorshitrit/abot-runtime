@@ -47,9 +47,156 @@ for (const path of paths) {
 }
 
 const requiredPaths = [
+  "dist/src/cli/host-companion.js",
+  "dist/src/cli/host-companion.d.ts",
+  "dist/src/cli/host-companion-bundle.mjs",
+  "dist/src/cli/host-companion-entry.js",
+  "dist/src/web-ui/system-host-setup/installers.js",
+  "dist/src/web-ui/system-host-setup/readiness.js",
+  "dist/src/web-ui/system-host-setup/routes.js",
+  "dist/src/web-ui/system-host-service.js",
+  "dist/plugins/system/source/companion/native-session.js",
+  "dist/plugins/system/source/companion/native-supervisor.js",
+  "dist/plugins/system/source/companion/native-state.js",
+  "dist/plugins/system/source/companion/autostart.js",
+  "dist/plugins/system/source/companion/broker-server.js",
+  "dist/plugins/system/source/companion/pairing-store.js",
+  "dist/plugins/system/source/companion/protocol.js",
+  "dist/src/web-ui/app/components/system-host/manager.js",
+  "dist/src/web-ui/app/components/system-host/rendering.js",
+  "dist/src/web-ui/app/services/runtime-web-client/system-host.js",
+  "dist/src/web-ui/app/styles/46-system-host.css",
+  "dist/src/capabilities/tool-definition-validator/event-input-text-options.d.ts",
+  "dist/src/capabilities/tool-definition-validator/event-input-text-options.js",
+  "dist/src/capabilities/tool-event-input-text.d.ts",
+  "dist/src/capabilities/tool-event-input-text.js",
+  "dist/src/web-ui/app/components/conversation-tool-evidence.d.ts",
+  "dist/src/web-ui/app/components/conversation-tool-evidence.js",
+  "dist/src/web-ui/app/lib/tool-process-activity-fields.js",
+  ...[
+    "capabilities/tool-permission-mode",
+    "runtime/capabilities/request-permission-catalog",
+    "runtime/capabilities/request-permission-tool-registry",
+    "runtime/capabilities/request-working-directory",
+    "runtime/plugins/runtime-capability-plugins",
+    "runtime/projects/contracts",
+    "runtime/projects/folders",
+    "runtime/projects/repository",
+    "runtime/projects/service",
+    "runtime/projects/session-paths",
+    "sessions/project-binding",
+    "web-ui/local-runtime/project-routes",
+  ].flatMap((name) => [
+    "dist/src/" + name + ".js",
+    "dist/src/" + name + ".d.ts",
+  ]),
+  "dist/src/web-ui/app/app-state.js",
+  "dist/src/web-ui/app/components/project-creation.js",
+  "dist/src/web-ui/app/components/project-session-groups.js",
+  "dist/src/web-ui/app/controllers/projects-controller.js",
+  "dist/src/web-ui/app/controllers/projects-controller.d.ts",
+  "dist/src/web-ui/app/controllers/tool-permission-mode-controller.js",
+  "dist/src/web-ui/app/controllers/tool-permission-mode-controller.d.ts",
+  "dist/src/web-ui/app/lib/tool-permission-mode.js",
+  "dist/src/web-ui/app/lib/tool-permission-mode.d.ts",
+  "dist/src/web-ui/app/projects-feature.js",
+  "dist/src/web-ui/app/services/client-preferences.d.ts",
+  "dist/src/web-ui/app/services/runtime-web-client/projects.js",
+  "dist/src/web-ui/app/services/runtime-web-client/projects.d.ts",
+  "dist/src/web-ui/app/styles/13-projects.css",
+  "plugins/system/skills/system_actions/SKILL.md",
+  "docs/projects-and-full-plus.md",
+  "dist/src/capabilities/file-output-presentation.js",
+  "dist/src/capabilities/file-output-presentation.d.ts",
+  "dist/src/runtime/capabilities/file-output-root-identity.js",
+  "dist/src/runtime/capabilities/file-output-root-identity.d.ts",
+  "dist/src/runtime/capabilities/file-output-root-marker-creation.js",
+  "dist/src/runtime/capabilities/file-output-root-marker-creation.d.ts",
+  "dist/src/runtime/adapters/registered-tool-normal-invocations/execution/file-output-presentation.js",
+  "dist/src/web-ui/local-runtime/conversation-file-routes.js",
+  "dist/src/web-ui/local-runtime/conversation-file-access.js",
+  "dist/src/web-ui/local-runtime/conversation-file-target.js",
+  "dist/src/web-ui/local-runtime/conversation-file-native-request.js",
+  "dist/src/web-ui/local-runtime/conversation-file-native-open.js",
+  "dist/src/web-ui/app/components/conversation-file-preview.js",
+  "dist/src/web-ui/app/controllers/conversation-view-feature.js",
+  "dist/src/web-ui/app/styles/29-conversation-file-preview.css",
+  "dist/src/runtime/adapters/config-file-transaction.js",
+  "dist/src/web-ui/environment-config.js",
+  "dist/src/web-ui/config-dashboard-model-identity.js",
+  "dist/src/web-ui/local-runtime/runtime-setup-environment-assignment.js",
+  "dist/src/web-ui/local-runtime/provider-credential-identity.js",
+  "dist/src/web-ui/app/components/runtime-setup/embedding-provider-receipt.js",
+  "dist/src/web-ui/config-dashboard-save-transaction.js",
+  "dist/src/web-ui/local-runtime/configuration-activation-environments.js",
+  "dist/src/web-ui/request-authority.js",
+  "dist/src/web-ui/runtime-setup-gateway-address.js",
+  "dist/src/web-ui/runtime-setup-shutdown.js",
+  "dist/src/web-ui/app/runtime-setup-page-lifecycle.js",
+  "dist/src/web-ui/app/configuration-environment-refresh.js",
+  "dist/src/web-ui/app/components/runtime-setup/context-window.js",
+  "dist/src/web-ui/app/components/runtime-setup/bridge-guide.js",
+  "dist/src/web-ui/app/components/runtime-setup/bridge-rendering.js",
+  "dist/src/web-ui/app/styles/45-bridge-setup.css",
+  ...[
+    "model-setup-input",
+    "model-setup-catalog",
+    "model-setup-provider",
+    "model-setup-validation",
+    "model-setup-service",
+    "model-setup-routes",
+    "runtime-setup-service",
+    "runtime-setup-scaffold",
+    "runtime-setup-credentials",
+    "runtime-setup-validation",
+    "runtime-setup-routes",
+    "setup-embedding-input",
+    "setup-embedding-provider",
+    "setup-embedding-service",
+    "setup-embedding-routes",
+    "configuration-activation",
+    "plugin-management-routes",
+    "config-mutation-request",
+  ].map((name) => "dist/src/web-ui/local-runtime/" + name + ".js"),
+  "dist/src/web-ui/runtime-setup-gateway.js",
+  "dist/src/web-ui/plugin-management-service.js",
+  "dist/src/web-ui/plugin-management-catalog.js",
+  "dist/src/web-ui/plugin-capability-selection.js",
+  "dist/src/runtime/plugins/configured-manifests.js",
+  "dist/src/runtime/plugins/selection.js",
+  ...[
+    "model-setup/wizard",
+    "model-setup/rendering",
+    "model-setup/validation",
+    "model-setup/save-flow",
+    "model-setup/save-outcome",
+    "runtime-setup/connection-form",
+    "runtime-setup/configuration-recovery",
+    "runtime-setup/wizard-shell",
+    "config-workspace/model-setup-entry",
+    "config-workspace/raw-config-repair",
+  ].map((name) => "dist/src/web-ui/app/components/" + name + ".js"),
+  "dist/src/web-ui/app/styles/43-model-setup.css",
+  "dist/src/web-ui/app/styles/44-model-provider-cards.css",
+  "dist/src/web-ui/app/components/runtime-setup/rendering.js",
+  "dist/src/web-ui/app/components/runtime-setup/validation.js",
+  "dist/src/web-ui/app/runtime-onboarding-feature.js",
+  "dist/src/web-ui/app/components/runtime-setup/embedding.js",
+  "dist/src/web-ui/app/components/runtime-setup/embedding-rendering.js",
+  "dist/src/web-ui/app/components/runtime-setup/plugins.js",
+  "dist/src/web-ui/app/components/runtime-setup/view-state.js",
+  "dist/src/web-ui/app/components/runtime-config-activation.js",
+  "dist/src/web-ui/app/components/plugins/manager.js",
+  "dist/src/web-ui/app/components/plugins/view-state.js",
+  "dist/src/web-ui/app/services/runtime-web-client/configuration.js",
+  "dist/src/web-ui/app/styles/19-runtime-setup.css",
+  "dist/src/web-ui/app/styles/37-runtime-activation.css",
+  "dist/src/web-ui/app/styles/41-plugin-management.css",
+  "dist/src/web-ui/app/styles/42-runtime-setup-plugins.css",
   "src/runtime/scheduler/README.md",
   "src/runtime/local-host/README.md",
   "dist/scripts/add-runtime-model.js",
+  "dist/scripts/runtime-model-addition.js",
   "dist/scripts/configure-long-term-memory.js",
   "dist/scripts/init-runtime.js",
   "dist/scripts/runtime-setup-files.js",
@@ -437,8 +584,43 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // Read-state failure isolation adds two emitted availability artifacts and
 // 6,531 net bytes. Measured: 1,908 files / 5,903,092 bytes; retain one file
 // and 342 bytes of headroom.
-const maxFileCount = 1929;
-const maxUnpackedSizeBytes = 5_963_018;
+// Guided onboarding, plugin controls and additive models: 2,011 files / 6,175,878 bytes.
+// Preserve one file and 512 bytes of measured package headroom.
+// Editable onboarding connection: 2,075 files / 6,312,952 bytes.
+// Preserve one file and 512 bytes of measured package headroom.
+// Conversation file preview: 2,102 files / 6,382,231 bytes, including 26 new
+// presentation/API outputs. Preserve one file and 512 bytes of headroom.
+// File-preview review fixes: 2,106 files / 6,395,664 bytes, including root
+// identity and anchored marker creation. Preserve one file and 512 bytes.
+// Mutation-root binding: 2,106 files / 6,400,727 bytes. Preserve the same
+// one-file and 512-byte margins; no additional package files.
+// Mac file opening and inline filename action: 2,114 files / 6,418,156 bytes.
+// Includes four new backend modules; retain one file and 512 bytes of headroom.
+// Projects and FULL+ add 54 audited files: 24 core outputs, 16 Web UI/API
+// assets, 13 bundled system-plugin files and one feature doc. Measured:
+// 2,168 files / 6,570,090 bytes; retain one file and 512 bytes of headroom.
+// System evidence adds two sources; generic selection removes two intrinsic outputs.
+// Measured: 2,168 files / 6,586,770 bytes. Preserve the preceding measured
+// one-file and 189-byte headroom after the catalog-capacity correction.
+// Docker host companion adds the native handler import closure, companion sources,
+// CLI/Web owners and connection UI. Audited: 2,257 files / 6,850,985 bytes.
+// Retain one file and 512 bytes of headroom; no private or test artifacts.
+// GUI computer setup adds the exact-build native bundle, bounded installer and
+// readiness owners, and shared onboarding assets. Audited: 2,287 files /
+// 7,110,430 bytes. Preserve one file and 512 bytes of headroom.
+// Luna audit and model-owned plan progress add 17 runtime modules (34 outputs)
+// plus two exec source modules: 36 audited package files. Measured: 2,341 files /
+// 7,234,011 bytes. Preserve one file and 512 bytes of headroom; all exact-path,
+// public-plugin and forbidden-artifact checks above remain unchanged.
+// Planner binding/Auditor budgeting and Dev View retain their audited outputs.
+// Trusted EXEC removes three lexical-parser sources; exact-action metadata and
+// UI disclosure reuse existing owners. Supervisor semantic availability adds
+// four emitted artifacts; routing readmission adds two. Planner now shares that
+// admission and replaces its old catalog module: two net emitted artifacts.
+// Worker intent and system launch guidance reuse existing files; no added paths.
+// Measured: 2,353 files / 7,248,979 bytes; retain one file/512 bytes of headroom.
+const maxFileCount = 2_354;
+const maxUnpackedSizeBytes = 7_249_491;
 
 if (paths.length > maxFileCount) {
   fail(`package includes too many files: ${paths.length} > ${maxFileCount}`);

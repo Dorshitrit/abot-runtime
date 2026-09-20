@@ -1,13 +1,4 @@
 /* Schedule page layout, list navigation and page-level states. */
-.schedules-workspace-body {
-  width: 100%;
-  max-width: none;
-  margin: 0;
-}
-.schedules-workspace-body > * {
-  width: 100%;
-  margin-inline: 0;
-}
 .schedules-workspace-body [hidden] {
   display: none !important;
 }
@@ -118,7 +109,7 @@
   min-height: 1.5em;
   color: var(--muted);
   font-size: var(--font-size-sm);
-  margin: 0 0 12px;
+  margin-block: 0 12px;
 }
 .schedules-feedback.schedule-error {
   border: 1px solid rgba(245, 148, 153, 0.2);

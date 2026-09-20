@@ -14,6 +14,7 @@ type ToolExecutorOptions = {
   sharedState?: ToolExecutionContext["sharedState"];
   modelInvoker?: ToolExecutionContext["modelInvoker"];
   runtimePathResolver?: ToolExecutionContext["runtimePathResolver"];
+  reportFileOutput?: ToolExecutionContext["reportFileOutput"];
 };
 
 function normalizeImplementationOutput(value: ToolImplementationOutput): {
@@ -152,6 +153,7 @@ export async function executeToolCall(
       sharedState: options.sharedState,
       modelInvoker: options.modelInvoker,
       runtimePathResolver: options.runtimePathResolver,
+      reportFileOutput: options.reportFileOutput,
     });
     const rawOutput = options.abortSignal
       ? await raceWithAbort(execution, options.abortSignal)

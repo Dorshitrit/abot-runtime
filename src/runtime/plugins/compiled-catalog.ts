@@ -2,6 +2,7 @@ import type {
   CanonicalToolDefinitionDeclaration,
   ToolCallAdapter,
   ToolImplementation,
+  ToolModuleRequestPreparation,
 } from "../../capabilities/tool-types.js";
 import type { ToolNormalInvocationContract } from "../../capabilities/normal-invocation/contracts.js";
 
@@ -10,6 +11,7 @@ export type CompiledPluginCapability = Readonly<{
   normalInvocation: ToolNormalInvocationContract;
   execute: ToolImplementation;
   adapter?: ToolCallAdapter;
+  prepareRequest?: ToolModuleRequestPreparation;
 }>;
 
 export type CompiledRuntimePlugin = Readonly<{

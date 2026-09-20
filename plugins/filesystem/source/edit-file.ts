@@ -14,6 +14,7 @@ import {
 import { buildMutationGrounding } from "./draft/grounding.js";
 import { prepareFileDraft } from "./draft/prepare.js";
 import { fail } from "./errors.js";
+import { reportCommittedFileOutput } from "./file-output-presentation.js";
 import type { FilesystemMutationCoordinator } from "./mutation-coordinator.js";
 import type { FilesystemPathService } from "./path-service.js";
 
@@ -139,6 +140,8 @@ export function createEditFileHandler(
         target,
         content: prepared.content,
         expectedVersion: snapshot.version,
+        onCommitted: (root) =>
+          reportCommittedFileOutput(context, target, "updated", root),
       });
       return result;
     });

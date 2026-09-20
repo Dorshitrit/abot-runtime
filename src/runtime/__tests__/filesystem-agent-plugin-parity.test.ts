@@ -150,6 +150,7 @@ describe.each(testBackends)(
         approval: "request_policy",
       });
       expect(plugin.capabilitySkills).toEqual({
+        dev_view: ["dev_view_skill"],
         edit_file: ["follow_up_existing_file_edit_skill", "edit_file_skill"],
         read_file: ["read_file_skill"],
       });

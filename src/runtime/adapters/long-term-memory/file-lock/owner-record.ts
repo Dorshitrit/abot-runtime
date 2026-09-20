@@ -10,6 +10,7 @@ import {
   type DirectoryLockSnapshot,
   type LockRecord,
 } from "./contracts.js";
+import { isLockOwnerIdentity } from "./owner-identity.js";
 
 export async function readOwnerRecord(
   lockPath: string,
@@ -148,6 +149,7 @@ function parseLockRecord(
       pid: ownerPid,
       token: expectedToken,
       createdAt: candidate.createdAt as string,
+      ...(isLockOwnerIdentity(candidate.ownerIdentity) ? { ownerIdentity: candidate.ownerIdentity } : {}),
     }),
   });
 }

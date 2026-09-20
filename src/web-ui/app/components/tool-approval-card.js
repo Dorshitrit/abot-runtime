@@ -1,5 +1,6 @@
 import { formatToolName } from "../lib/event-presentation.js";
 import { textOf } from "../lib/text-format.js";
+import { createConversationToolEvidence } from "./conversation-tool-evidence.js";
 
 export function createToolApprovalCard({
   event,
@@ -34,6 +35,20 @@ export function createToolApprovalCard({
   detail.textContent =
     textOf(event?.summary) || "The runtime is waiting for your decision.";
   bubble.append(header, detail);
+
+  const evidence = createConversationToolEvidence(
+    { ...event?.toolActivity, executed: false },
+    { documentRoot },
+  );
+  if (evidence) bubble.appendChild(evidence);
+
+  if (event?.recommendedToolPermissionMode === "full_plus") {
+    const recommendation = documentRoot.createElement("p");
+    recommendation.className = "approval-message-detail";
+    recommendation.textContent =
+      "For future actions without these approval requests, select FULL+. Approving this action keeps your current mode.";
+    bubble.appendChild(recommendation);
+  }
 
   const actions = documentRoot.createElement("div");
   actions.className = "tool-approval-actions";

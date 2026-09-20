@@ -17,6 +17,7 @@ import {
 import { parseRoleCallPlanBinding } from "./plan.js";
 import { normalizeRoleCallResultReceipt } from "./result-receipt.js";
 import { decodeMemoryRecallCommand } from "./memory-recall-decoder.js";
+import { decodeModelWorkPlanCommand } from "./work-plan-validation.js";
 import { parseRoleCallWorkerCapabilityScope } from "./worker-capability-scope.js";
 import {
   isRoleCallWorkingDirectoryRoleId,
@@ -45,6 +46,8 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
     return { ok: false, code: "invalid_command" };
   }
   switch (input.type) {
+    case "update_model_work_plan":
+      return decodeModelWorkPlanCommand(input);
     case "begin_memory_recall":
     case "settle_memory_recall":
       return decodeMemoryRecallCommand(input);

@@ -1,3 +1,4 @@
+import { configRepairSaveIsConfirmed } from "./raw-config-repair.js";
 import { textOf } from "../../lib/text-format.js";
 import {
   cloneConfig,
@@ -12,6 +13,8 @@ export function createConfigWorkspacePersistence({
   saveFile,
   memorySetup,
   memoryManagement,
+  pluginManagement,
+  hostConnection,
   recordControlEvent,
   applyRawDraft,
   baselineFor,
@@ -39,12 +42,12 @@ export function createConfigWorkspacePersistence({
     syncDashboardInteractivity();
   }
 
-  function externalRuntimeMutationBlockReason() {
+  function externalRuntimeMutationBlockReason(subject) {
     if (hasUnsavedChanges()) {
-      return "Save or reset configuration changes before changing Runtime memory settings.";
+      return `Save or reset configuration changes before changing Runtime ${subject}.`;
     }
     if (dashboardIsBusy() || state.savingKeys.size > 0) {
-      return "Wait for the current configuration operation before changing Runtime memory settings.";
+      return `Wait for the current configuration operation before changing Runtime ${subject}.`;
     }
     return "";
   }
@@ -89,6 +92,8 @@ export function createConfigWorkspacePersistence({
       if (configLoadIsStale(loadGeneration)) return false;
       replaceDashboard(payload);
       const memoryLoads = [memoryManagement.load()];
+      if (pluginManagement) memoryLoads.push(pluginManagement.load());
+      if (hostConnection) memoryLoads.push(hostConnection.load());
       if (options.loadMemorySetup !== false) {
         memoryLoads.unshift(memorySetup.load());
       }
@@ -127,8 +132,8 @@ export function createConfigWorkspacePersistence({
     }
   }
 
-  function beginExternalRuntimeMutation() {
-    const blockReason = externalRuntimeMutationBlockReason();
+  function beginExternalRuntimeMutation(subject = "memory settings") {
+    const blockReason = externalRuntimeMutationBlockReason(subject);
     if (blockReason) {
       setWorkspaceStatus(blockReason, "error-text");
       return false;
@@ -138,13 +143,15 @@ export function createConfigWorkspacePersistence({
     return true;
   }
 
-  async function refreshAfterExternalRuntimeMutation() {
+  async function refreshAfterExternalRuntimeMutation(
+    failurePrefix = "Memory updated; refresh required",
+  ) {
     if (!state.externalRuntimeMutationInFlight) return false;
     return loadRuntimeConfig({
       protectUnsaved: false,
       clearBeforeLoad: true,
       loadMemorySetup: false,
-      failurePrefix: "Memory updated; refresh required",
+      failurePrefix,
     });
   }
 
@@ -194,7 +201,18 @@ export function createConfigWorkspacePersistence({
     syncDashboardInteractivity();
     syncDirtyPresentation();
     try {
-      const result = await saveFile({ kind, id, config: configToSave });
+      const result = await saveFile({
+        kind,
+        id,
+        config: configToSave,
+        expectedRevision: file.revision,
+      });
+      if (typeof result?.file?.revision === "string")
+        file.revision = result.file.revision;
+      if (configRepairSaveIsConfirmed(result)) {
+        delete file.invalidJson;
+        state.appliedJsonRepairKeys?.delete(key);
+      }
       state.baselinesByKey.set(key, cloneConfig(configToSave));
       state.savedKeys.add(key);
       recordControlEvent({

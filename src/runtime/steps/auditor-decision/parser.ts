@@ -1,6 +1,5 @@
 import { readStructuredDecisionEnvelope } from "../../model/structured-decision-envelope.js";
 import {
-  AUDITOR_DECISION_TEXT_MAX_LENGTH,
   projectAuditorEvidenceProjectionStatus,
   type AuditorAssignment,
   type AuditorDecision,
@@ -8,6 +7,12 @@ import {
   type AuditorDecisionValidationIssue,
   type AuditorGap,
 } from "./contracts.js";
+import { getAuditorAdvisoryDescriptionMaxLength } from "./advisory-result-budget.js";
+import {
+  isAuditorAdvisorySummaryAdmissible,
+  serializeAuditorAdvisory,
+} from "./advisory-receipt.js";
+import { validateAuditorEvidenceCoverage } from "./evidence-coverage.js";
 
 export function parseAuditorDecisionOutput(
   text: string,
@@ -34,7 +39,15 @@ export function parseAuditorDecisionOutput(
   const issues: AuditorDecisionValidationIssue[] = [];
   exactKeys(
     envelope,
-    ["auditId", "verdict", "criterionIds", "gaps"],
+    [
+      "auditId",
+      "verdict",
+      "criterionIds",
+      "gaps",
+      "neededEvidenceIds",
+      "notNeededEvidenceIds",
+      "requestedEvidenceIds",
+    ],
     "decision",
     issues,
   );
@@ -48,7 +61,9 @@ export function parseAuditorDecisionOutput(
     );
   }
   const verdict =
-    envelope.verdict === "pass" || envelope.verdict === "gaps"
+    envelope.verdict === "pass" ||
+    envelope.verdict === "gaps" ||
+    envelope.verdict === "needs_evidence"
       ? envelope.verdict
       : undefined;
   if (!verdict) {
@@ -56,7 +71,7 @@ export function parseAuditorDecisionOutput(
       issue(
         "auditor_verdict_invalid",
         "decision.verdict",
-        "verdict must be pass or gaps.",
+        "verdict must be pass, gaps, or needs_evidence.",
       ),
     );
   }
@@ -70,6 +85,7 @@ export function parseAuditorDecisionOutput(
     );
   }
   const gaps = parseGaps(envelope.gaps, assignment, issues);
+  issues.push(...validateAuditorEvidenceCoverage(envelope, assignment));
   if (verdict === "pass" && gaps.inputCount !== 0) {
     issues.push(
       issue(
@@ -91,7 +107,7 @@ export function parseAuditorDecisionOutput(
       ),
     );
   }
-  if (verdict === "gaps" && gaps.inputCount === 0) {
+  if (verdict !== "pass" && gaps.inputCount === 0) {
     issues.push(
       issue(
         "auditor_gaps_required",
@@ -103,20 +119,28 @@ export function parseAuditorDecisionOutput(
   if (issues.length > 0 || !verdict) {
     return rejected("domain_parser", issues);
   }
-  const decision: AuditorDecision =
-    verdict === "pass"
-      ? {
-          auditId: assignment.auditId,
-          verdict,
-          criterionIds: [...assignment.criterionIds],
-          gaps: [],
-        }
-      : {
-          auditId: assignment.auditId,
-          verdict,
-          criterionIds: [...assignment.criterionIds],
-          gaps: gaps.values,
-        };
+  const decision: AuditorDecision = {
+    auditId: assignment.auditId,
+    verdict,
+    criterionIds: [...assignment.criterionIds],
+    gaps: gaps.values,
+    neededEvidenceIds: [...(envelope.neededEvidenceIds as string[])],
+    notNeededEvidenceIds: [...(envelope.notNeededEvidenceIds as string[])],
+    requestedEvidenceIds: [...(envelope.requestedEvidenceIds as string[])],
+  };
+  if (
+    !isAuditorAdvisorySummaryAdmissible(
+      serializeAuditorAdvisory(assignment, decision),
+    )
+  ) {
+    return rejected("domain_parser", [
+      issue(
+        "auditor_result_not_admissible",
+        "decision",
+        "The complete advisory result exceeds its assigned result budget.",
+      ),
+    ]);
+  }
   return Object.freeze({
     ok: true as const,
     decision: deepFreeze(decision),
@@ -138,6 +162,8 @@ function parseGaps(
     );
     return { values: [], inputCount: Array.isArray(value) ? value.length : 0 };
   }
+  const descriptionMaxLength =
+    getAuditorAdvisoryDescriptionMaxLength(assignment);
   const allowed = new Set(assignment.criterionIds);
   const seen = new Set<string>();
   const gaps: AuditorGap[] = [];
@@ -173,13 +199,13 @@ function parseGaps(
     } else {
       seen.add(criterionId);
     }
-    const description = boundedText(entry.description);
+    const description = boundedText(entry.description, descriptionMaxLength);
     if (!description) {
       issues.push(
         issue(
           "auditor_gap_description_invalid",
           `${path}.description`,
-          "Gap description must be bounded non-empty text.",
+          `Gap description must be non-empty text of at most ${descriptionMaxLength} Unicode code points.`,
         ),
       );
     }
@@ -225,11 +251,10 @@ function exactKeys(
   }
 }
 
-function boundedText(value: unknown): string | undefined {
+function boundedText(value: unknown, maxLength: number): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim();
-  return normalized.length > 0 &&
-    normalized.length <= AUDITOR_DECISION_TEXT_MAX_LENGTH
+  return normalized.length > 0 && [...normalized].length <= maxLength
     ? normalized
     : undefined;
 }

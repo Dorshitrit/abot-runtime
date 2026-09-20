@@ -84,3 +84,10 @@ connection can acquire an abandoned PID lock and start a new application.
 The application boundary must carry ordinary execution, session lifecycle and
 scheduler operations together. A scheduler-only proxy cannot protect admission,
 session deletion or canonical conversation persistence across processes.
+
+Managed applications expose an idle-only configuration lifecycle boundary:
+isOwnerIdle observes the owning connection's activity/admission fence, and
+stopIfIdle closes intake in the same JavaScript turn as that check. Busy owners
+and attached clients return false without stopping work. This allows a local
+host to explicitly replace its own idle application after a configuration edit
+without using a browser activity list as shutdown authority.

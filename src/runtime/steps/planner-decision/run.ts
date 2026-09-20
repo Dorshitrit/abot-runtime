@@ -35,6 +35,7 @@ import {
 import { parsePlannerDecisionOutput } from "./parser.js";
 import { projectPlannerDecisionPlanContext } from "./plan.js";
 import { PLANNER_GRAPH_MODEL_STEP } from "../planner-graph/contracts.js";
+import { createPlannerCapabilityBriefReadmissionController } from "./capability-brief.js";
 
 type RunPlannerDecisionOptions = Readonly<{
   call: RoleCallFrame;
@@ -69,14 +70,20 @@ export async function runPlannerDecision(
       modelStep: input.modelStep,
       format: input.format,
       messages: input.context.messages,
-      contextCompaction: createModelStepCompactionController(request, {
-        call: options.call,
-        sourceRevision: options.toolResults.sourceRevision,
-        allowedConsumers: Object.freeze([
-          PLANNER_DECISION_MODEL_STEP,
-          PLANNER_GRAPH_MODEL_STEP,
-        ]),
-      }),
+      contextCompaction: createPlannerCapabilityBriefReadmissionController(
+        request,
+        {
+          input,
+          controller: createModelStepCompactionController(request, {
+            call: options.call,
+            sourceRevision: options.toolResults.sourceRevision,
+            allowedConsumers: Object.freeze([
+              PLANNER_DECISION_MODEL_STEP,
+              PLANNER_GRAPH_MODEL_STEP,
+            ]),
+          }),
+        },
+      ),
       timeoutReason: "planner_decision_timeout",
       invalidOutputReason: "invalid_planner_decision",
       parse: (text) =>

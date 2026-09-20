@@ -420,22 +420,4 @@ describe("exec plugin process lifecycle", () => {
       errorCode: "unknown_exec_process",
     });
   });
-
-  test("returns canonical path failures before the shell starts", async () => {
-    const runtimePaths = await createRuntimePaths();
-    const { handlers } = loadPlugin(runtimePaths, longRunningSettings);
-
-    await expect(
-      handlers.exec?.({ command: "cat /etc/passwd", cwd: "." }),
-    ).resolves.toMatchObject({
-      ok: false,
-      errorCode: "runtime_tool_path_outside_configured_roots",
-    });
-    await expect(
-      handlers.exec?.({ command: "printf ok", cwd: "workspace/../.." }),
-    ).resolves.toMatchObject({
-      ok: false,
-      errorCode: "runtime_tool_path_outside_configured_roots",
-    });
-  });
 });

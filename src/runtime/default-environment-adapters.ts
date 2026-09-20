@@ -1,3 +1,4 @@
+import { loadRuntimeCapabilityPlugins } from "./plugins/runtime-capability-plugins.js";
 import type WebSocket from "ws";
 import { join } from "node:path";
 
@@ -22,11 +23,7 @@ import { createSourceWorkspaceProvider } from "./adapters/source-workspace-provi
 import { createRuntimeEventBus } from "./events/runtime-emitter.js";
 import { configureDebugLogger } from "./observability/debug-logger.js";
 import { createConfiguredToolRegistry } from "./capabilities/configured-tool-registry.js";
-import {
-  loadBundledRuntimePlugins,
-  loadConfiguredRuntimePlugins,
-  runtimePluginsToToolModules,
-} from "./plugins/loader.js";
+import { runtimePluginsToToolModules } from "./plugins/loader.js";
 import type {
   ConversationContextProvider,
   EventSink,
@@ -75,9 +72,7 @@ export function createDefaultToolRegistry(
   config?: RuntimeConfig,
   scheduling?: { service: SchedulerService; ready: () => Promise<void> },
 ): ToolRegistry {
-  const plugins = config
-    ? loadConfiguredRuntimePlugins(config)
-    : loadBundledRuntimePlugins();
+  const plugins = loadRuntimeCapabilityPlugins(config);
   return createConfiguredToolRegistry(config, [
     ...runtimePluginsToToolModules(plugins),
     ...(config && scheduling

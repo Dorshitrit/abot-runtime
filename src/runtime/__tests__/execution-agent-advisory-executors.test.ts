@@ -29,11 +29,7 @@ import {
 import {
   AUDITOR_DECISION_MODEL_STEP,
   EXECUTION_AGENT_ROOT_AUDIT_CRITERION_ID,
-  buildAuditorDecisionInput,
   encodeExecutionAgentAuditObjective,
-  parseAuditorDecisionOutput,
-  projectAuditorAssignment,
-  projectAuditorEvidenceProjectionStatus,
 } from "../steps/auditor-decision/index.js";
 import {
   PLANNER_GRAPH_MODEL_STEP,
@@ -285,25 +281,7 @@ describe("execution-agent advisory Planner", () => {
     });
   });
 
-  test("rejects a serial or cyclic proposal at the advisory contract", () => {
-    const serial = {
-      ...proposal,
-      nodes: [
-        proposal.nodes[0],
-        { ...proposal.nodes[1], dependsOn: ["alpha"] },
-      ],
-    };
-    expect(
-      parsePlannerGraphOutput(JSON.stringify({ decision: serial }), {
-        maxPlanNodes: 16,
-        maxCriteriaPerNode: 8,
-      }),
-    ).toMatchObject({
-      ok: false,
-      issues: expect.arrayContaining([
-        expect.objectContaining({ code: "insufficient_terminal_deliverables" }),
-      ]),
-    });
+  test("rejects a cyclic proposal at the advisory contract", () => {
     const cyclic = {
       ...proposal,
       nodes: [
@@ -369,137 +347,6 @@ describe("execution-agent advisory Planner", () => {
 });
 
 describe("execution-agent advisory Auditor", () => {
-  test("binds criteria mechanically and projects exact caller evidence only", async () => {
-    const ledger = await createLedger("auditor-projection-request");
-    const legacyReferenceData = "LEGACY_AUDITOR_REFERENCE_DATA";
-    const exactReferenceData = "EXACT_ADAPTER_RESULT_SENTINEL";
-    await settleRootCapability(ledger, legacyReferenceData, exactReferenceData);
-    const requestSteering = createRequestSteeringInbox({
-      requestId: "auditor-projection-request",
-    });
-    expect(
-      requestSteering.append({
-        steerId: "auditor-update-1",
-        text: "Preserve the exact updated target.",
-      }),
-    ).toMatchObject({ ok: true, duplicate: false });
-    const call = await openChild(
-      ledger,
-      "reviewer",
-      encodeExecutionAgentAuditObjective(
-        [EXECUTION_AGENT_ROOT_AUDIT_CRITERION_ID],
-        1,
-      ),
-    );
-    const request = deriveTestRequestExecutionScope(
-      createRequest("auditor-projection-request"),
-      { requestSteering },
-    );
-    const assignment = projectAuditorAssignment(
-      request,
-      ledger.current(),
-      call,
-    );
-
-    expect(assignment).toMatchObject({
-      auditId: call.callId,
-      callerCallId: "call-1",
-      criterionIds: [EXECUTION_AGENT_ROOT_AUDIT_CRITERION_ID],
-      availableEvidenceCount: 1,
-      omittedEvidenceCount: 0,
-      evidence: [
-        {
-          kind: "capability_result",
-          executionId: "capability-execution-1",
-          referenceData: legacyReferenceData,
-          adapterResult: {
-            kind: "generic_capability_result_v1",
-            payload: { referenceData: exactReferenceData },
-          },
-        },
-      ],
-    });
-    const evidence = assignment.evidence[0]!;
-    expect(evidence.kind).toBe("capability_result");
-    if (evidence.kind !== "capability_result") {
-      throw new Error("expected capability evidence");
-    }
-    expect(evidence.adapterResult).toBe(
-      ledger.current().state.capabilityExecutions[0]!.exactResult,
-    );
-    expect(JSON.parse(assignment.target)).toEqual({
-      kind: "runtime_active_request_intent_v1",
-      authority: "user",
-      currentRequest: request.prompt,
-      steeringVersion: 1,
-      updates: [{ sequence: 1, text: "Preserve the exact updated target." }],
-    });
-    expect(projectAuditorEvidenceProjectionStatus(assignment).complete).toBe(
-      true,
-    );
-    const input = buildAuditorDecisionInput(request, ledger.current(), call);
-    const serialized = input.context.messages
-      .map(({ content }) => content)
-      .join("\n");
-    expect(serialized).toContain(exactReferenceData);
-    expect(serialized.match(new RegExp(request.prompt, "gu"))).toHaveLength(1);
-  });
-
-  test("admits only whole bounded evidence and mechanically disables pass after omission", async () => {
-    const ledger = await createLedger("auditor-bounded-request");
-    const omittedExactResult = `OMITTED_EXACT_RESULT:${"a".repeat(30_000)}`;
-    const admittedExactResult = `ADMITTED_EXACT_RESULT:${"b".repeat(30_000)}`;
-    await settleRootCapability(
-      ledger,
-      "bounded legacy evidence A",
-      omittedExactResult,
-    );
-    await settleRootCapability(
-      ledger,
-      "bounded legacy evidence B",
-      admittedExactResult,
-    );
-    const call = await openChild(
-      ledger,
-      "reviewer",
-      encodeExecutionAgentAuditObjective([
-        EXECUTION_AGENT_ROOT_AUDIT_CRITERION_ID,
-      ]),
-    );
-    const assignment = projectAuditorAssignment(
-      createRequest("auditor-bounded-request"),
-      ledger.current(),
-      call,
-    );
-    expect(assignment.availableEvidenceCount).toBe(2);
-    expect(assignment.evidence).toHaveLength(1);
-    expect(assignment.omittedEvidenceCount).toBe(1);
-    const serializedEvidence = JSON.stringify(assignment.evidence);
-    expect(serializedEvidence).toContain(admittedExactResult);
-    expect(serializedEvidence).not.toContain("OMITTED_EXACT_RESULT");
-    expect(projectAuditorEvidenceProjectionStatus(assignment).complete).toBe(
-      false,
-    );
-    expect(
-      parseAuditorDecisionOutput(
-        JSON.stringify({
-          decision: {
-            auditId: call.callId,
-            verdict: "pass",
-            criterionIds: [EXECUTION_AGENT_ROOT_AUDIT_CRITERION_ID],
-            gaps: [],
-          },
-        }),
-        assignment,
-      ),
-    ).toMatchObject({
-      ok: false,
-      issues: expect.arrayContaining([
-        expect.objectContaining({ code: "auditor_pass_evidence_incomplete" }),
-      ]),
-    });
-  });
-
   test("settles exhausted invalid model output without child or capability action", async () => {
     const ledger = await createLedger("auditor-invalid-request");
     await settleRootCapability(ledger, "bounded evidence");

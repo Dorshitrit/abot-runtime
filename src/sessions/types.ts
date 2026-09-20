@@ -1,3 +1,4 @@
+import type { SessionProject } from "./project-binding.js";
 import type { AgentMode } from "../shared/types.js";
 
 import type { RuntimeAttachmentReference } from "../shared/attachments.js";
@@ -72,6 +73,8 @@ export type SessionRuntimeEvent = {
 export type SessionRequestRecord = {
   requestId: string;
   sessionId: string;
+  /** Absent for legacy records and records recreated by late event appends. */
+  generation?: string;
   status: SessionRequestStatus;
   createdAt: string;
   updatedAt: string;
@@ -94,11 +97,13 @@ export type SessionRequestFinalState =
 export type SessionRequestReplay = {
   requestId: string;
   sessionId: string;
+  generation?: string;
   events: Record<string, unknown>[];
   finalState: SessionRequestFinalState | null;
 };
 
 export type SessionListItem = {
+  project?: SessionProject;
   id: string;
   title: string;
   createdAt: number;
@@ -141,6 +146,7 @@ export type SessionSnapshotRequest = {
 };
 
 export type SessionSnapshot = {
+  project?: SessionProject;
   sessionId: string;
   title: string;
   messages: SessionSnapshotMessage[];
@@ -192,6 +198,7 @@ export type SessionMessage = {
 };
 
 export type SessionRecord = {
+  project?: SessionProject;
   id: string;
   title: string;
   createdAt: string;

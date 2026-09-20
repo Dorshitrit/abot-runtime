@@ -119,3 +119,17 @@ Generated runtime state remains local and ignored:
 
 Do not publish local runtime state, logs, memory, generated work output, or
 machine-specific config.
+
+## Conversation file viewing
+
+File previews require the local Runtime backend and a filesystem that supplies
+stable directory identity. Missing identity omits only the preview action;
+committed writes and edits retain their normal results. Windows-mounted folders
+in WSL can lack the required directory birth identity. This feature does not
+translate Windows/WSL paths or depend on an editor integration.
+
+Opening a file in its default desktop app is available only on macOS from a
+local Web UI connection, for supported non-executable documents and images.
+The server checks the recorded file authority before the handoff. The external
+app resolves the pathname asynchronously; it does not inherit the preview
+reader's pinned file descriptor. Native opening is never automatic.

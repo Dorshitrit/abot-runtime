@@ -143,6 +143,17 @@ export class LocalRequestExecution {
     };
   }
 
+  activeReplayForSession(
+    requestId: string,
+    sessionId: string,
+    environmentId: string,
+  ): readonly JsonObject[] | undefined {
+    const active = this.activeRequests.get(requestId);
+    if (!active || active.sessionId !== sessionId) return undefined;
+    if (active.environmentId !== environmentId) return undefined;
+    return active.events;
+  }
+
   healthDetails(): JsonObject[] {
     return [...this.activeRequests.values()].map((request) => ({
       requestId: request.requestId,

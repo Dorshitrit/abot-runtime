@@ -1,4 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
+import { createToolPermissionModeController } from "../../web-ui/app/controllers/tool-permission-mode-controller.js";
+import { createClientPreferences } from "../../web-ui/app/services/client-preferences.js";
 
 import {
   createConversationSessionController,
@@ -137,6 +139,7 @@ function createHarness() {
     onSessionListState: vi.fn(),
     isConversationVisible: vi.fn(() => true),
     createSessionId: () => "session-created",
+    onSessionCreated: vi.fn(),
   };
   return {
     state,
@@ -154,12 +157,53 @@ function createHarness() {
 }
 
 describe("web ui conversation session controller", () => {
+  test("empty composer displays the same remembered mode that implicit creation captures", () => {
+    const harness = createHarness();
+    const control = {
+      innerHTML: "", title: "", disabled: false, hidden: false,
+      classList: { toggle: vi.fn() }, setAttribute: vi.fn(), focus: vi.fn(),
+      querySelectorAll: () => [],
+    };
+    const preferences = createClientPreferences({
+      getItem: (key) => key === "abot-web.lastToolPermissionMode" ? "full_plus" : null,
+      setItem: vi.fn(), removeItem: vi.fn(),
+    });
+    const permission = createToolPermissionModeController({
+      state: {
+        config: { backend: "runtime", supportedToolPermissionModes: ["full_plus"] },
+        sessionModes: {}, permissionModeMenuOpen: false,
+      },
+      dom: { permissionModeButton: control, permissionModeMenu: { ...control } },
+      preferences, recordControlEvent: vi.fn(),
+      getComposerSessionId: () => harness.state.currentSessionId,
+    });
+    harness.dependencies.onSessionCreated.mockImplementation(permission.initializeSessionMode);
+    permission.renderPermissionMode();
+    expect(control.innerHTML).toContain("FULL+");
+    expect(permission.currentToolPermissionMode()).toBe("full_plus");
+    harness.controller.ensureSession();
+    expect(permission.currentToolPermissionMode()).toBe("full_plus");
+    harness.state.currentSessionId = "legacy-session";
+    expect(permission.currentToolPermissionMode()).toBe("full_access");
+  });
+
+  test("initializes implicit session creation exactly once", () => {
+    const harness = createHarness();
+    expect(harness.controller.ensureSession()).toBe("session-created");
+    expect(harness.controller.ensureSession()).toBe("session-created");
+    expect(harness.dependencies.onSessionCreated).toHaveBeenCalledExactlyOnceWith("session-created");
+    expect(harness.dependencies.onSessionCreated.mock.invocationCallOrder[0]).toBeLessThan(
+      harness.dependencies.preferences.saveSessionIdForEnvironment.mock.invocationCallOrder[0],
+    );
+  });
+
   test("hydrates one session, replays ordered active events, and resumes it", async () => {
     const harness = createHarness();
     const stateIdentity = harness.state;
 
     await harness.controller.openSession("session-1");
 
+    expect(harness.dependencies.onSessionCreated).not.toHaveBeenCalled();
     expect(harness.state).toBe(stateIdentity);
     expect(harness.state.currentSessionId).toBe("session-1");
     expect(harness.state.activeRequestId).toBe("request-active");

@@ -148,6 +148,13 @@ describe("runtime composition", () => {
       config,
       ...overrides,
       sessions: runtime.sessions,
+      projects: {
+        list: expect.any(Function),
+        get: expect.any(Function),
+        create: expect.any(Function),
+        browseFolders: expect.any(Function),
+        createSession: expect.any(Function),
+      },
       scheduler: expect.any(Object),
       startScheduler: expect.any(Function),
       stopScheduler: expect.any(Function),

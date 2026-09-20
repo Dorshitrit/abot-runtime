@@ -47,9 +47,9 @@ function captureAdapter(
   if (!adapter) return undefined;
   const normalizeCall = adapter.normalizeCall;
   const validateCall = adapter.validateCall;
+  const executionBinding = adapter.executionBinding;
   if (
-    (normalizeCall !== undefined && typeof normalizeCall !== "function") ||
-    (validateCall !== undefined && typeof validateCall !== "function")
+    !hasOnlyAdapterFunctions([normalizeCall, validateCall, executionBinding])
   ) {
     throw new TypeError(
       `Invalid ordinary invocation adapter registration: ${toolName}`,
@@ -58,5 +58,12 @@ function captureAdapter(
   return Object.freeze({
     ...(normalizeCall ? { normalizeCall } : {}),
     ...(validateCall ? { validateCall } : {}),
+    ...(executionBinding ? { executionBinding } : {}),
   });
+}
+
+function hasOnlyAdapterFunctions(values: readonly unknown[]): boolean {
+  return values.every(
+    (value) => value === undefined || typeof value === "function",
+  );
 }

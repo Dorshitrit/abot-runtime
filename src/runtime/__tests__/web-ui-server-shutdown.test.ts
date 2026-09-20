@@ -3,6 +3,7 @@ import type { Server } from "node:http";
 import { tmpdir } from "node:os";
 import WebSocket from "ws";
 import { afterEach, expect, test, vi } from "vitest";
+import { RuntimeSetupGateway } from "../../web-ui/runtime-setup-gateway.js";
 import { startWebUiServer } from "../../web-ui/server.js";
 
 const mock = vi.hoisted(() => ({
@@ -137,4 +138,23 @@ test("bridge transport closes without acquiring or stopping local environments",
   expect(mock.server!.listening).toBe(false);
   expect(mock.start).not.toHaveBeenCalled();
   expect(mock.stop).not.toHaveBeenCalled();
+});
+
+test("backend shutdown failure still closes the owned setup gateway", async () => {
+  const failure = new Error("backend_stop_failed");
+  mock.stop.mockRejectedValueOnce(failure);
+  const closeGateway = vi.spyOn(RuntimeSetupGateway.prototype, "close");
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  const handle = startWebUiServer({
+    host: "127.0.0.1",
+    port: 0,
+    backend: "runtime",
+    rootDir: tmpdir(),
+  });
+  if (!mock.server!.listening) await once(mock.server!, "listening");
+  const first = handle.close();
+  expect(handle.close()).toBe(first);
+  await expect(first).rejects.toBe(failure);
+  expect(closeGateway).toHaveBeenCalledOnce();
+  expect(mock.server!.listening).toBe(false);
 });

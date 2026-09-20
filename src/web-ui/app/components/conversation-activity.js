@@ -290,8 +290,16 @@ export function pinConversationActivityToLatest({
   return true;
 }
 
-export function createConversationActivity({ documentRoot = document } = {}) {
-  const roleCards = createConversationRoleCards({ documentRoot });
+export function createConversationActivity({
+  documentRoot = document,
+  onOpenFile,
+  canOpenFile,
+} = {}) {
+  const roleCards = createConversationRoleCards({
+    documentRoot,
+    onOpenFile,
+    canOpenFile,
+  });
   const sourceCards = createConversationSources({ documentRoot });
   const manuallyCollapsedStreamingRequests = new Set();
   const manuallyExpandedCompletedRequests = new Set();

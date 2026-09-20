@@ -1,10 +1,12 @@
 import type { ToolEventPresentation } from "../tool-types.js";
 import { isToolDefinitionRecordValue } from "./definition-shape.js";
 import { parseEventResultMetadata } from "./event-result-metadata.js";
+import { parseEventInputTextOptions } from "./event-input-text-options.js";
 
 const EVENT_PROJECTION_KINDS = [
   "string",
   "number",
+  "boolean",
   "string_array",
   "length",
 ] as const;
@@ -62,6 +64,10 @@ function parseEventMetadataProjection(
     {
       param: param.trim(),
       kind,
+      ...parseEventInputTextOptions(
+        raw,
+        `eventPresentation.metadata.${key} (${toolName})`,
+      ),
       ...(fallback !== undefined ? { default: fallback } : {}),
     },
   ];

@@ -1,7 +1,13 @@
-import { captureComposerSubmissionScope, isCurrentComposerSubmissionScope } from "./lib/composer-submission-scope.js";
+import { createAppState } from "./app-state.js";
+import { createProjectsFeature } from "./projects-feature.js";
+import {
+  captureComposerSubmissionScope,
+  isCurrentComposerSubmissionScope,
+} from "./lib/composer-submission-scope.js";
 import { createComposerSurfaceController } from "./controllers/composer-surface-controller.js";
 import { bootstrapWebApp } from "./app-bootstrap.js";
-import { createConfigurationFeature } from "./configuration-feature.js";
+import { bindRuntimeSetupPageLifecycle } from "./runtime-setup-page-lifecycle.js";
+import { createConfigurationFeature } from "./configuration-environment-refresh.js";
 import { createDashboardFeature } from "./dashboard-feature.js";
 import { createComposerWorkspaceController } from "./controllers/composer-workspace-controller.js";
 import { createHomeComposerFeature } from "./controllers/home-composer-feature.js";
@@ -11,11 +17,11 @@ import { createSchedulesFeature } from "./schedules-feature.js";
 import { createWorkspaceShell } from "./components/workspace-shell.js";
 import { createComposerActions } from "./components/composer-actions.js";
 import { createModelSelector } from "./components/model-selector.js";
-import { createRuntimeSetupGuide } from "./components/runtime-setup-guide.js";
+import { createRuntimeOnboardingFeature } from "./runtime-onboarding-feature.js";
 import { createSessionActionsMenu } from "./components/session-actions-menu.js";
 import { createToolApprovalCard } from "./components/tool-approval-card.js";
 import { textOf } from "./lib/text-format.js";
-import { createConversationView } from "./components/conversation-view.js";
+import { createConversationViewFeature as createConversationView } from "./controllers/conversation-view-feature.js";
 import { createSessionComposerQueue } from "./lib/session-composer-queue.js";
 import { createRuntimeWebClient } from "./services/runtime-web-client.js";
 import { createClientPreferences } from "./services/client-preferences.js";
@@ -27,49 +33,13 @@ import { createComposerAttachmentsController } from "./controllers/composer-atta
 import { createComposerQueueController } from "./controllers/composer-queue-controller.js";
 import { createRealtimeEventController } from "./controllers/realtime-event-controller.js";
 import { createRuntimeSelectionController } from "./controllers/runtime-selection-controller.js";
-import { createRuntimeOnboardingController } from "./controllers/runtime-onboarding-controller.js";
 import { createAppEventBindings } from "./controllers/app-event-bindings.js";
 import { createConversationSessionController } from "./controllers/conversation-session-controller.js";
 import { createChatRequestController } from "./controllers/chat-request-controller.js";
 import { createToolApprovalController } from "./controllers/tool-approval-controller.js";
 import { createComposerSubmitController } from "./controllers/composer-submit-controller.js";
 
-const state = {
-  config: null,
-  connected: false,
-  sessions: [],
-  pinnedSessionIds: [],
-  sessionModes: {},
-  sessionModels: {},
-  lastModelByEnvironment: {},
-  agentMode: "reasoning",
-  supportedAgentModes: ["fast", "reasoning", "deep", "auto"],
-  agentModeMenuOpen: false,
-  permissionModeMenuOpen: false,
-  agentPickerOpen: false,
-  busySessionIds: new Set(),
-  messages: [],
-  events: [],
-  taskProgressByRequest: new Map(),
-  contextWindowByRequest: new Map(),
-  submittedToolApprovalIds: new Set(),
-  requestMessages: new Map(),
-  currentSessionId: "",
-  activeRequestId: "",
-  sessionViewVersion: 0,
-  lastSeqByRequest: new Map(),
-  modelProfiles: [],
-  defaultModelProfileId: "",
-  runtimeAvailability: { status: "loading" },
-  pendingAttachments: [],
-  pendingAttachmentUploadCounts: new Map(),
-  composerAttachmentGeneration: 0,
-  composerSending: false,
-  composerQueueDrainingScopes: new Set(),
-  composerQueueRecoveredReleaseTokens: new Set(),
-  activeComposerQueueRecovery: null,
-  sessionQuery: "",
-};
+const state = createAppState();
 
 const dom = findAppDom();
 
@@ -89,6 +59,7 @@ let schedulesFeature;
 let dashboardFeature;
 let homeComposer;
 let runtimeSelection;
+let projectsFeature;
 const operationsController = createOperationsController({
   dom,
   client: runtimeClient,
@@ -141,6 +112,9 @@ const shell = createWorkspaceShell({
   onWorkspaceChange: (workspace) => {
     runtimeSelection?.rememberModelSelection();
     homeComposer?.setWorkspace(workspace);
+    conversationView?.setWorkspace(workspace);
+    projectsFeature?.workspaceChanged(workspace);
+    runtimeSetupGuide.clearSecret();
     schedulesFeature?.setActive(workspace === "schedules");
     dashboardFeature?.setActive(workspace === "home");
     runtimeSelection?.applyModelSelection();
@@ -157,23 +131,21 @@ const shell = createWorkspaceShell({
     return configWorkspace.prepareDiscardChanges("leave configuration");
   },
 });
-const runtimeSetupGuide = createRuntimeSetupGuide({
-  container: dom.runtimeSetupGuide,
-  conversationRegion: dom.messagesList,
-  copyText: (value) => navigator.clipboard.writeText(value),
-  getSetupCommandMode: () => state.config?.setupCommandMode,
-});
-const runtimeOnboarding = createRuntimeOnboardingController({
-  state,
-  guide: runtimeSetupGuide,
-  reloadModels: loadModels,
-  setMessageStatus: setMessageActivityStatus,
-  onStateChange: () => {
-    updateComposerSendState();
-    renderAttachmentComposer();
-    dashboardFeature?.publish();
-  },
-});
+const { guide: runtimeSetupGuide, controller: runtimeOnboarding } =
+  createRuntimeOnboardingFeature({
+    dom,
+    runtimeClient,
+    selectedEnvironmentId,
+    state,
+    reloadModels: () => configWorkspace.reloadAppliedEnvironmentModels(),
+    reloadCatalog: loadModels,
+    setMessageStatus: setMessageActivityStatus,
+    onStateChange: () => {
+      updateComposerSendState();
+      renderAttachmentComposer();
+      dashboardFeature?.runtimeAvailabilityChanged();
+    },
+  });
 
 const composerActions = createComposerActions({
   dom,
@@ -200,6 +172,7 @@ dashboardFeature = createDashboardFeature({
   isComposerAvailable: runtimeOnboarding.isReady,
 });
 const composerWorkspace = createComposerWorkspaceController({
+  onSessionCreated: (sessionId) => runtimeSelection.initializeSessionMode(sessionId),
   state,
   dom,
   homeComposerHost: dashboardFeature.composerHost,
@@ -231,6 +204,7 @@ const sessionController = createSessionController({
   state,
   dom,
   sessionActionsMenu,
+  renderGroups: (input) => projectsFeature?.renderSessionGroups(input) ?? false,
   shell,
   preferences,
   client: runtimeClient,
@@ -276,12 +250,10 @@ const toolApprovalController = createToolApprovalController({
   createCard: createToolApprovalCard,
 });
 conversationView = createConversationView({
-  dom: {
-    messagesList: dom.messagesList,
-    jumpToLatestButton: dom.jumpToLatestButton,
-    composerContextWindow: dom.composerContextWindow,
-    composerPlan: dom.composerPlan,
-  },
+  dom,
+  filePreviewClient: runtimeClient,
+  getFileEnvironmentId: selectedEnvironmentId,
+  getFileSessionId: () => state.currentSessionId,
   getMessages: () => state.messages,
   getActiveRequestId: () => state.activeRequestId,
   isConnected: () => state.connected,
@@ -301,6 +273,7 @@ conversationView = createConversationView({
   canOpenSchedule: runtimeClient.supportsSchedules,
 });
 conversationSession = createConversationSessionController({
+  onSessionCreated: (sessionId) => runtimeSelection.initializeSessionMode(sessionId),
   state,
   dom,
   client: runtimeClient,
@@ -334,6 +307,23 @@ conversationSession = createConversationSessionController({
     composerQueueController.recoverForManualSend(scope),
   isCurrentComposerScope: (scope) =>
     composerQueueController.isCurrentScope(scope),
+});
+projectsFeature = createProjectsFeature({
+  onSessionCreated: (sessionId) => runtimeSelection.initializeSessionMode(sessionId),
+  dom,
+  state,
+  client: runtimeClient,
+  shell,
+  selectedEnvironmentId,
+  conversationSession,
+  renderSessions,
+  closeFilePreview: conversationView.closeFilePreview,
+  prepareConversation: () => {
+    const activate = shell.prepareWorkspaceActivation("chat", { focus: false });
+    if (!activate) return false;
+    if (!composerQueueController.suspendRecoveryForNavigation()) return false;
+    return activate() !== false;
+  },
 });
 chatRequests = createChatRequestController({
   state,
@@ -472,16 +462,24 @@ homeComposer = createHomeComposerFeature({
     updateComposerSendState,
   }),
   sendMessage: async (text) => {
-    const scope = captureComposerSubmissionScope(state, selectedEnvironmentId());
+    const scope = captureComposerSubmissionScope(
+      state,
+      selectedEnvironmentId(),
+    );
     state.composerSending = true;
     updateComposerSendState();
     try {
       await chatRequests.sendMessage(text);
     } catch (error) {
-      if (!isCurrentComposerSubmissionScope(scope, state, selectedEnvironmentId())) return;
+      if (
+        !isCurrentComposerSubmissionScope(scope, state, selectedEnvironmentId())
+      )
+        return;
       conversationSession.appendRequestError(error);
     } finally {
-      if (isCurrentComposerSubmissionScope(scope, state, selectedEnvironmentId())) {
+      if (
+        isCurrentComposerSubmissionScope(scope, state, selectedEnvironmentId())
+      ) {
         state.composerSending = false;
         updateComposerSendState();
       }
@@ -489,6 +487,7 @@ homeComposer = createHomeComposerFeature({
   },
 });
 const appEventBindings = createAppEventBindings({
+  onSessionCreated: (sessionId) => runtimeSelection.initializeSessionMode(sessionId),
   state,
   dom,
   shell,
@@ -535,6 +534,9 @@ const appEventBindings = createAppEventBindings({
 });
 
 configWorkspace = createConfigurationFeature({
+  state,
+  selection: runtimeSelection,
+  onConfigurationApplied: loadModels,
   dom,
   runtimeClient,
   selectedEnvironmentId,
@@ -726,6 +728,11 @@ async function loadSystemHealth() {
 
 function bindEvents() {
   appEventBindings.bind();
+  bindRuntimeSetupPageLifecycle({
+    page: window,
+    dispose: runtimeSetupGuide.dispose,
+    reloadModels: loadModels,
+  });
   document.addEventListener(
     "visibilitychange",
     conversationSession.markCurrentSessionReadSoon,
@@ -748,10 +755,12 @@ void bootstrapWebApp({
   homeComposer,
   dashboard: dashboardFeature,
   schedules: schedulesFeature,
+  projects: projectsFeature,
   selection: runtimeSelection,
   client: runtimeClient,
   bindables: [
     sessionActionsMenu,
+    projectsFeature,
     conversationView,
     configWorkspace,
     composerActions,

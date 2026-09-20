@@ -9,7 +9,9 @@ export const OWNER_FILE_PATTERN =
 export type FileLockOptions = Readonly<{
   waitMs?: number;
   retryDelayMs?: number;
-  processIsAlive?: (pid: number) => boolean;
+  /** Optional process incarnation; interpreted only by the caller's liveness probe. */
+  ownerIdentity?: string;
+  processIsAlive?: (pid: number, ownerIdentity?: string) => boolean | Promise<boolean>;
   /** Long-lived host leases must finish physical cleanup before process.exit. */
   releaseMode?: "asynchronous" | "synchronous";
 }>;
@@ -18,6 +20,7 @@ export type LockRecord = Readonly<{
   pid: number;
   token: string;
   createdAt: string;
+  ownerIdentity?: string;
 }>;
 
 export type DirectoryLockSnapshot = Readonly<{

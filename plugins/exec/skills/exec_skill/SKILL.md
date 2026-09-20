@@ -1,12 +1,11 @@
 # Exec Skill
 
-- Use `exec` for narrow shell-native discovery or verification when a dedicated tool is insufficient.
-- `exec` is available on Linux and macOS with executable `/bin/bash`; it does not select a Windows shell or another fallback shell. Commands must use the utilities and options available on the host.
-- Resolve `.` and ordinary relative `cwd` values from the configured agent work directory. They are never rewritten to the active Worker working directory. Use `workspace/...` only when the configured workspace is explicitly intended.
-- Always provide an explicit existing `cwd`. For an existing project, use its project path. To create a new project, use an existing parent `cwd` (normally `.`) and create the project path in the command.
-- The cwd is restricted to configured roots, but the shell runs with the runtime process permissions and is not an operating-system sandbox.
-- Keep commands deterministic, non-interactive, and scoped to the selected configured root.
-- Availability under full-access mode is not user authorization for sensitive effects. Starting a listener or server, launching a browser or GUI automation, installing software, changing services, or creating long-running background work requires explicit authorization in the current user request.
-- For multi-line input, use a single-quoted here-document instead of fragile quoted one-line payloads.
-- Prefer an active file creation or editing capability over shell redirection when it can express the requested change.
-- If a process remains active, continue the same process with `exec_wait`; do not launch it again.
+- Use `exec` for shell work needed by the user's task. Prefer dedicated capabilities when they express that work directly.
+- `exec` uses non-interactive `/bin/bash` on Linux and macOS; it does not select a Windows shell. Use commands available on that target OS.
+- Supply an explicit existing `cwd`. `.` and relative paths start from the configured agent-work directory, not an implicit Worker directory. `workspace/...` selects the configured workspace; absolute host directories are accepted.
+- To create a project, select an existing parent `cwd` and create its directory in the command. A selected project provides working context, not a filesystem sandbox.
+- The whole exec family is sensitive: Ask and Full request approval of each exact action through the normal tool flow; FULL+ executes without an additional ABot prompt. Submit the needed operation instead of declaring it unavailable solely because of the selected mode.
+- Commands run as the runtime OS user. The plugin does not parse command contents to infer sensitivity or restrict referenced paths. OS permissions still apply; FULL+ does not grant root or Administrator rights.
+- Execution has no interactive terminal and retains time, output and process limits. Use non-interactive forms; a terminal prompt cannot be answered through this tool.
+- For multi-line input, use a single-quoted here-document when it preserves the intended shell input.
+- If a process remains active, continue that exact process with `exec_wait`; do not launch the command again.

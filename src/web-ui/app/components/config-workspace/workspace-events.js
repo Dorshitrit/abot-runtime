@@ -8,6 +8,7 @@ export function createConfigWorkspaceEvents({
   state,
   dom,
   eventTarget,
+  onAddModel,
   activateCategory,
   applyRawDraft,
   changeRawFile,
@@ -192,6 +193,10 @@ export function createConfigWorkspaceEvents({
     const id = element.dataset.id;
     if (action === "select-category") {
       activateCategory(element.dataset.configCategory || "memory");
+      return;
+    }
+    if (action === "add-model") {
+      onAddModel?.({ providerId: element.dataset.providerId || undefined });
       return;
     }
     if (action === "select-model") {

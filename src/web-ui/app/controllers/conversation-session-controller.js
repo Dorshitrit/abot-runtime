@@ -54,6 +54,7 @@ export function createConversationSessionController({
   onSessionListState = () => {},
   scheduleTask = (callback) => window.setTimeout(callback, 0),
   createSessionId = createWebSessionId,
+  onSessionCreated = () => {},
 }) {
   let environmentLoadRevision = 0;
   let sessionListRevision = 0;
@@ -502,6 +503,7 @@ export function createConversationSessionController({
   function ensureSession() {
     if (state.currentSessionId) return state.currentSessionId;
     state.currentSessionId = createSessionId();
+    onSessionCreated(state.currentSessionId);
     preferences.saveSessionIdForEnvironment(
       selectedEnvironmentId(),
       state.currentSessionId,

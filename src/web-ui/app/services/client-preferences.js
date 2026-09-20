@@ -3,6 +3,7 @@ const storageKeys = {
   pinnedSessions: "abot-web.pinnedSessions",
   currentSessionByEnvironment: "abot-web.currentSessionByEnvironment",
   sessionModes: "abot-web.sessionModes",
+  lastToolPermissionMode: "abot-web.lastToolPermissionMode",
   sessionModels: "abot-web.sessionModels",
   lastModelByEnvironment: "abot-web.lastModelByEnvironment",
 };
@@ -17,6 +18,18 @@ function parseObject(storage, key) {
   } catch {
     return {};
   }
+}
+
+function restoreSessionMode(value, normalizeToolPermissionMode) {
+  if (!value || typeof value !== "object") return null;
+  if (Array.isArray(value)) return null;
+  const mode = normalizeToolPermissionMode(value.toolPermissionMode);
+  if (mode === "ask") {
+    return { toolPermissionMode: mode, savedAt: value.savedAt || Date.now() };
+  }
+  const hasExplicitFullMode = ["full_access", "full_plus"].includes(value.toolPermissionMode);
+  if (!hasExplicitFullMode) return null;
+  return { toolPermissionMode: mode, savedAt: value.savedAt || Date.now() };
 }
 
 export function createClientPreferences(storage) {
@@ -38,31 +51,31 @@ export function createClientPreferences(storage) {
     },
 
     loadSessionModes(normalizeToolPermissionMode) {
-      const modes = Object.fromEntries(
-        Object.entries(parseObject(storage, storageKeys.sessionModes)).flatMap(
-          ([sessionId, value]) =>
-            value &&
-            typeof value === "object" &&
-            !Array.isArray(value) &&
-            normalizeToolPermissionMode(value.toolPermissionMode) === "ask"
-              ? [
-                  [
-                    sessionId,
-                    {
-                      toolPermissionMode: "ask",
-                      savedAt: value.savedAt || Date.now(),
-                    },
-                  ],
-                ]
-              : [],
-        ),
-      );
+      const stored = parseObject(storage, storageKeys.sessionModes);
+      const modes = Object.fromEntries(Object.entries(stored).flatMap(
+        ([sessionId, value]) => {
+          const restored = restoreSessionMode(value, normalizeToolPermissionMode);
+          return restored ? [[sessionId, restored]] : [];
+        },
+      ));
       storage.setItem(storageKeys.sessionModes, JSON.stringify(modes));
       return modes;
     },
 
     saveSessionModes(modes) {
       storage.setItem(storageKeys.sessionModes, JSON.stringify(modes));
+    },
+
+    loadLastToolPermissionMode(normalizeToolPermissionMode) {
+      try {
+        return normalizeToolPermissionMode(storage.getItem(storageKeys.lastToolPermissionMode));
+      } catch {
+        return "full_access";
+      }
+    },
+
+    saveLastToolPermissionMode(mode) {
+      storage.setItem(storageKeys.lastToolPermissionMode, mode);
     },
 
     loadModelPreferences() {

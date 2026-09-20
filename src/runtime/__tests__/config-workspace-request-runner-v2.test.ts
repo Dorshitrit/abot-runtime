@@ -187,6 +187,7 @@ describe("Config Workspace request-runner v2", () => {
     };
     const state = {
       activeCategory: "pipeline",
+      appliedJsonRepairKeys: new Set(),
       configDashboard: {
         modelSteps: [
           "supervisor.decision",

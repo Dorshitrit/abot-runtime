@@ -11,6 +11,7 @@ import {
   createCheckpointFixture,
   readCheckpointManifest,
 } from "./support/scheduler-checkpoint-fixture.js";
+import { seedCheckpointJobRevisions } from "./support/scheduler-checkpoint-suffix-fixture.js";
 
 const faults = vi.hoisted(() => ({
   renamePath: "",
@@ -72,6 +73,23 @@ async function advanceCheckpointSuffix(store: SchedulerStore, count: number) {
     await changeTitle(store, `revision-${index}`);
 }
 
+async function ownCheckpointAtRollover(
+  fixture: Awaited<ReturnType<typeof createCheckpointFixture>>,
+) {
+  const initialOwner = await fixture.own();
+  await initialOwner.close();
+  await seedCheckpointJobRevisions(
+    fixture.directory,
+    Array.from({ length: 255 }, (_, index) => ({
+      ...fixture.snapshot.jobs[1],
+      title: `revision-${index}`,
+    })),
+  );
+  const owner = await fixture.own();
+  await changeTitle(owner.store, "revision-255");
+  return owner;
+}
+
 test("failed head publication leaves its transaction invisible and reusable by the next explicit mutation", async () => {
   const f = await createCheckpointFixture(cleanups);
   const owner = await f.own();
@@ -128,8 +146,7 @@ test(
   { timeout: 20_000 },
   async () => {
     const f = await createCheckpointFixture(cleanups);
-    const owner = await f.own();
-    await advanceCheckpointSuffix(owner.store, 256);
+    const owner = await ownCheckpointAtRollover(f);
     const old = await readCheckpointManifest(f.directory);
     const oldPath = committedCheckpointPath(f.directory, old);
     const gate = holdCheckpointRead(oldPath);
@@ -160,8 +177,7 @@ test(
   { timeout: 20_000 },
   async () => {
     const f = await createCheckpointFixture(cleanups);
-    const owner = await f.own();
-    await advanceCheckpointSuffix(owner.store, 256);
+    const owner = await ownCheckpointAtRollover(f);
     const before = await owner.store.read();
     const manifest = await readCheckpointManifest(f.directory);
     faults.renamePath = join(f.directory, "scheduler-journal.json");

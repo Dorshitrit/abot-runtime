@@ -26,6 +26,7 @@ export function createConversationView({
   resolveAttachmentUrl = () => "",
   onOpenSchedule = () => {},
   canOpenSchedule = () => true,
+  filePreview = { reset() {}, syncScope() {}, setWorkspace() {} },
   documentRoot = document,
   viewport = window,
 }) {
@@ -34,7 +35,11 @@ export function createConversationView({
     onOpenJob: onOpenSchedule,
     canOpenJob: canOpenSchedule,
   });
-  const conversationActivity = createConversationActivity({ documentRoot });
+  const conversationActivity = createConversationActivity({
+    documentRoot,
+    onOpenFile: filePreview.open,
+    canOpenFile: filePreview.canOpen,
+  });
   const conversationStatus = createConversationStatus({
     getActiveRequestId,
     getActivityForMessage,
@@ -225,6 +230,7 @@ export function createConversationView({
   }
 
   function render() {
+    filePreview.syncScope();
     renderContextWindow();
     composerPlan.render(
       buildComposerPlanModel({
@@ -291,6 +297,7 @@ export function createConversationView({
   }
 
   function reset() {
+    filePreview.reset();
     viewState.followMessages = true;
     viewState.collapsedThinkingMessageIds.clear();
     viewState.scrollSettleVersion += 1;
@@ -320,6 +327,8 @@ export function createConversationView({
   }
 
   return {
+    setWorkspace: filePreview.setWorkspace,
+    closeFilePreview: filePreview.reset,
     bind,
     cancelScheduledMessageRender,
     cancelScheduledThinkingRender,

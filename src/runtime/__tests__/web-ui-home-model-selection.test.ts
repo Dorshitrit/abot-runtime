@@ -48,6 +48,8 @@ function createSelectionHarness() {
       loadPinnedSessions: () => [],
       loadSessionModes: () => ({}),
       saveSessionModes: vi.fn(),
+      loadLastToolPermissionMode: () => "full_access",
+      saveLastToolPermissionMode: vi.fn(),
       loadModelPreferences: () => ({ sessionModels: {}, lastModelByEnvironment: {} }),
       saveModelPreferences: vi.fn(),
     },

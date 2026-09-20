@@ -28,6 +28,7 @@ import type {
 
 type RequestWorkerCapabilityProviderParams<TRequest> = Readonly<{
   request: TRequest;
+  requestWorkingDirectory?: string;
   executionPolicyAuthority?: ExecutionPolicyAuthoritySnapshot;
   requestAttachments?: readonly ToolRequestAttachment[];
   runtimeConfig?: RuntimeConfig;
@@ -48,6 +49,8 @@ export function createRequestWorkerCapabilityProvider(
   function getRequestToolRegistry(): ToolRegistry {
     requestToolRegistry ??= createRequestRuntimeToolRegistry({
       request: params.request,
+      requestWorkingDirectory: params.requestWorkingDirectory,
+      toolPermissionMode: params.request.toolPermissionMode,
       ...(params.requestAttachments
         ? { requestAttachments: params.requestAttachments }
         : {}),

@@ -1,0 +1,374 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "system",
+  "version": "1.0.0",
+  "description": "System commands and generic application discovery/launch on available OS targets with per-action approval in Ask/Full.",
+  "extensions": {
+    "ai.abot.runtime": {
+      "version": 1,
+      "entrypoint": "./src/index.cjs",
+      "catalogGroups": [
+        "system"
+      ],
+      "capabilities": {
+        "system_targets": {
+          "description": "Observe the OS targets available for this request. An execution route does not prove GUI availability.",
+          "routingCapability": "filesystem_inspection",
+          "catalogGroups": [
+            "system"
+          ],
+          "developmentRoles": [
+            "inspect",
+            "establish",
+            "mutate",
+            "verify",
+            "auxiliary"
+          ],
+          "skills": [
+            "system_actions"
+          ],
+          "operations": {
+            "discover_system_targets": {
+              "summary": "Observe the available OS targets and their execution evidence scope. This is a capability invocation, not a shell command. Connection availability does not prove a visible GUI.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {},
+                "required": []
+              },
+              "effect": "read_only",
+              "approval": "always"
+            }
+          },
+          "eventPresentation": {
+            "metadata": {},
+            "resultMetadata": {
+              "transport": {
+                "path": "data.transport",
+                "kind": "preview"
+              },
+              "outputPreview": {
+                "path": "output",
+                "kind": "preview"
+              },
+              "availabilityScope": {
+                "path": "data.availabilityScope",
+                "kind": "preview"
+              }
+            }
+          }
+        },
+        "system_command": {
+          "description": "Run a general system command on an available OS target, including operations outside the project directory. Native OS authorization applies.",
+          "routingCapability": "filesystem_inspection",
+          "catalogGroups": [
+            "system"
+          ],
+          "developmentRoles": [
+            "inspect",
+            "establish",
+            "mutate",
+            "verify",
+            "auxiliary"
+          ],
+          "skills": [
+            "system_actions"
+          ],
+          "operations": {
+            "run_system_command": {
+              "summary": "Run an OS shell command on an available target with an absolute cwd in that target namespace. Capability references are not shell commands. Exit zero alone is not effect evidence.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "target": {
+                    "type": "string",
+                    "enum": [
+                      "linux",
+                      "macos",
+                      "windows"
+                    ]
+                  },
+                  "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "cwd": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "elevated": {
+                    "type": "boolean"
+                  },
+                  "timeout_ms": {
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 600000
+                  }
+                },
+                "required": [
+                  "target",
+                  "command",
+                  "cwd"
+                ]
+              },
+              "effect": "mixed",
+              "approval": "always"
+            }
+          },
+          "eventPresentation": {
+            "metadata": {
+              "displayTarget": {
+                "param": "target",
+                "kind": "string"
+              },
+              "command": {
+                "param": "command",
+                "kind": "string",
+                "maxLength": 4096,
+                "preserveWhitespace": true
+              },
+              "cwd": {
+                "param": "cwd",
+                "kind": "string",
+                "maxLength": 4096
+              },
+              "timeoutMs": {
+                "param": "timeout_ms",
+                "kind": "number"
+              },
+              "elevated": {
+                "param": "elevated",
+                "kind": "boolean",
+                "default": false
+              }
+            },
+            "resultMetadata": {
+              "transport": {
+                "path": "data.transport",
+                "kind": "preview"
+              },
+              "processStatus": {
+                "path": "data.processStatus",
+                "kind": "preview"
+              },
+              "evidenceScope": {
+                "path": "data.evidenceScope",
+                "kind": "preview"
+              },
+              "independentOutcomeCheck": {
+                "path": "data.independentOutcomeCheck",
+                "kind": "preview"
+              },
+              "outputPreview": {
+                "path": "output",
+                "kind": "preview"
+              },
+              "outputTruncated": {
+                "path": "data.outputTruncated",
+                "kind": "boolean"
+              }
+            }
+          }
+        },
+        "system_applications": {
+          "description": "Observe application identities in the selected OS catalog sources. This does not enumerate every executable or another OS target.",
+          "routingCapability": "filesystem_inspection",
+          "catalogGroups": [
+            "system"
+          ],
+          "developmentRoles": [
+            "inspect",
+            "establish",
+            "mutate",
+            "verify",
+            "auxiliary"
+          ],
+          "skills": [
+            "system_actions"
+          ],
+          "operations": {
+            "discover_system_applications": {
+              "summary": "Search the selected OS application catalog. Empty results do not prove absence; continue bounded executable discovery on that target when the catalog is insufficient.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "target": {
+                    "type": "string",
+                    "enum": [
+                      "linux",
+                      "macos",
+                      "windows"
+                    ]
+                  },
+                  "query": {
+                    "type": "string",
+                    "maxLength": 256,
+                    "minLength": 0
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100
+                  }
+                },
+                "required": [
+                  "target"
+                ]
+              },
+              "effect": "read_only",
+              "approval": "always"
+            }
+          },
+          "eventPresentation": {
+            "metadata": {
+              "displayTarget": {
+                "param": "target",
+                "kind": "string"
+              },
+              "query": {
+                "param": "query",
+                "kind": "string"
+              },
+              "limit": {
+                "param": "limit",
+                "kind": "number",
+                "default": 50
+              }
+            },
+            "resultMetadata": {
+              "transport": {
+                "path": "data.transport",
+                "kind": "preview"
+              },
+              "observedMatches": {
+                "path": "data.observedMatches",
+                "kind": "number"
+              },
+              "omittedMatches": {
+                "path": "data.omittedMatches",
+                "kind": "number"
+              },
+              "catalogComplete": {
+                "path": "data.catalogComplete",
+                "kind": "boolean"
+              },
+              "absenceConclusionSupported": {
+                "path": "data.absenceConclusionSupported",
+                "kind": "boolean"
+              },
+              "outputPreview": {
+                "path": "output",
+                "kind": "preview"
+              }
+            }
+          }
+        },
+        "system_launch": {
+          "description": "Dispatch a launch request for an observed OS catalog identity. Raw arguments are supported only on macOS; use system_command for Linux/Windows invocations requiring arguments. Dispatch does not prove GUI visibility.",
+          "routingCapability": "filesystem_inspection",
+          "catalogGroups": [
+            "system"
+          ],
+          "developmentRoles": [
+            "inspect",
+            "establish",
+            "mutate",
+            "verify",
+            "auxiliary"
+          ],
+          "skills": [
+            "system_actions"
+          ],
+          "operations": {
+            "launch_system_application": {
+              "summary": "Dispatch launch for a revalidated catalog identity on its discovery OS target. On Linux/Windows omit arguments or pass an empty array; use system_command when arguments are needed. Helper PID or exit does not prove an application process or visible window.",
+              "input": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "target": {
+                    "type": "string",
+                    "enum": [
+                      "linux",
+                      "macos",
+                      "windows"
+                    ]
+                  },
+                  "application_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "arguments": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 4096,
+                      "minLength": 0
+                    },
+                    "maxItems": 32,
+                    "minItems": 0
+                  }
+                },
+                "required": [
+                  "target",
+                  "application_id"
+                ]
+              },
+              "effect": "mixed",
+              "approval": "always"
+            }
+          },
+          "eventPresentation": {
+            "metadata": {
+              "displayTarget": {
+                "param": "target",
+                "kind": "string"
+              },
+              "applicationId": {
+                "param": "application_id",
+                "kind": "string",
+                "maxLength": 4096
+              },
+              "arguments": {
+                "param": "arguments",
+                "kind": "string_array",
+                "preserveWhitespace": true
+              }
+            },
+            "resultMetadata": {
+              "transport": {
+                "path": "data.transport",
+                "kind": "preview"
+              },
+              "processStatus": {
+                "path": "data.processStatus",
+                "kind": "preview"
+              },
+              "evidenceScope": {
+                "path": "data.evidenceScope",
+                "kind": "preview"
+              },
+              "independentOutcomeCheck": {
+                "path": "data.independentOutcomeCheck",
+                "kind": "preview"
+              },
+              "outputPreview": {
+                "path": "output",
+                "kind": "preview"
+              },
+              "outputTruncated": {
+                "path": "data.outputTruncated",
+                "kind": "boolean"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

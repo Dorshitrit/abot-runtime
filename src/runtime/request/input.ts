@@ -1,3 +1,7 @@
+import {
+  resolveToolPermissionMode,
+  type ToolPermissionMode,
+} from "../../capabilities/tool-permission-mode.js";
 import type { RunRequestMessage } from "./contracts.js";
 
 export function parseRequestInput(msg: RunRequestMessage): {
@@ -7,7 +11,7 @@ export function parseRequestInput(msg: RunRequestMessage): {
   rawAttachments: unknown;
   rawAgentMode: unknown;
   rawModelPreference: unknown;
-  toolPermissionMode: "full_access" | "ask";
+  toolPermissionMode: ToolPermissionMode;
 } {
   return {
     requestId: msg.requestId,
@@ -23,12 +27,4 @@ export function parseRequestInput(msg: RunRequestMessage): {
     rawModelPreference: msg.modelPreference,
     toolPermissionMode: resolveToolPermissionMode(msg.toolPermissionMode),
   };
-}
-
-function resolveToolPermissionMode(value: unknown): "full_access" | "ask" {
-  const normalized =
-    typeof value === "string" ? value.trim().toLowerCase() : "";
-  return normalized === "full_access" || normalized === "full"
-    ? "full_access"
-    : "ask";
 }

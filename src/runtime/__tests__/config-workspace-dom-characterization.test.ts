@@ -6,7 +6,13 @@ import { createConfigWorkspace } from "../../web-ui/app/components/config-worksp
 type Listener = (event: Record<string, unknown>) => void;
 type TestElement = Record<string, any>;
 
-const CONFIG_CATEGORIES = ["memory", "pipeline", "models", "advanced"];
+const CONFIG_CATEGORIES = [
+  "memory",
+  "pipeline",
+  "models",
+  "plugins",
+  "advanced",
+];
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -324,12 +330,10 @@ describe("config workspace DOM characterization", () => {
     });
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(
-      harness.configDashboard
-        .category("advanced")
-        .getAttribute("aria-selected"),
+      harness.configDashboard.category("plugins").getAttribute("aria-selected"),
     ).toBe("true");
     expect(
-      harness.configDashboard.category("advanced").focus,
+      harness.configDashboard.category("plugins").focus,
     ).toHaveBeenCalledOnce();
   });
 

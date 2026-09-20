@@ -1,3 +1,4 @@
+import { parseRequiredToolPermissionMode } from "../tool-permission-mode.js";
 import type { ToolDefinition } from "../tool-types.js";
 import {
   isDevelopmentRole,
@@ -75,6 +76,10 @@ export function parseToolDefinition(raw: unknown): ToolDefinition {
 
   return {
     name,
+    requiredPermissionMode: parseRequiredToolPermissionMode(
+      raw.requiredPermissionMode,
+      `${name}.requiredPermissionMode`,
+    ),
     ...(typeof description === "string" ? { description } : {}),
     routingCapability,
     ...(controlsRefinement === "mechanical_when_complete"

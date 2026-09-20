@@ -1,4 +1,5 @@
 import { readStructuredDecisionEnvelope } from "../../model/structured-decision-envelope.js";
+import { parseDecisionWithWorkPlan } from "./work-plan-decision-parsing.js";
 import {
   isMemoryRecallDecisionRecord,
   parseMemoryRecallDecision,
@@ -42,6 +43,17 @@ import {
 export function parseExecutionAgentDecisionOutput(
   text: string,
   options: ExecutionAgentDecisionContractOptions = {},
+): ExecutionAgentDecisionParseResult {
+  return parseDecisionWithWorkPlan(
+    text,
+    options,
+    parseExecutionAgentActionOutput,
+  );
+}
+
+function parseExecutionAgentActionOutput(
+  text: string,
+  options: ExecutionAgentDecisionContractOptions,
 ): ExecutionAgentDecisionParseResult {
   const contract = prepareExecutionAgentDecisionContract(options);
   let decoded: unknown;

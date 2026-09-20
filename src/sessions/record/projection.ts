@@ -279,6 +279,7 @@ export function toSessionListItem(session: SessionRecord) {
     .find((message) => message.role === "assistant");
   return {
     id: session.id,
+    ...(session.project ? { project: session.project } : {}),
     title: session.title,
     createdAt: toEpochMs(session.createdAt),
     updatedAt: toEpochMs(session.updatedAt),

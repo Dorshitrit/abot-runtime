@@ -1,6 +1,7 @@
 import type { RuntimeEnvironmentServices } from "../composition.js";
 import type { RuntimeAttachmentStore } from "../attachments/store.js";
 import type { SessionStore } from "../ports.js";
+import type { RuntimeProjectService } from "../projects/contracts.js";
 import type { SchedulerService } from "../scheduler/contracts.js";
 
 export const LOCAL_SESSION_METHODS = [
@@ -25,6 +26,14 @@ export const LOCAL_SESSION_METHODS = [
   "deleteMessageWithStats",
   "compareAndSwapSessionMemoryCheckpoint",
 ] as const satisfies readonly (keyof SessionStore)[];
+
+export const LOCAL_PROJECT_METHODS = [
+  "list",
+  "get",
+  "create",
+  "browseFolders",
+  "createSession",
+] as const satisfies readonly (keyof RuntimeProjectService)[];
 
 export const LOCAL_ATTACHMENT_METHODS = [
   "saveAttachment",
@@ -76,6 +85,12 @@ export async function dispatchLocalServiceCall(
       services.sessions,
       operation,
       LOCAL_SESSION_METHODS,
+    )(...args);
+  if (service === "projects")
+    return selectServiceMethod(
+      services.projects,
+      operation,
+      LOCAL_PROJECT_METHODS,
     )(...args);
   if (service === "attachments")
     return selectServiceMethod(

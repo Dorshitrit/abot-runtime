@@ -1,9 +1,11 @@
+import type { ConversationFileReference } from "./conversation-file-reference.js";
 export interface ToolActivityField {
   label: string;
   value: string;
 }
 
 export interface ConversationToolAction {
+  fileReference?: ConversationFileReference;
   id: string;
   tool: string;
   executorRole?: string;

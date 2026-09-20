@@ -18,6 +18,7 @@ server.on("upgrade", (_request, socket) => {
     return;
   }
   process.send?.({ kind: "handshake" });
+  if (mode === "hold") return;
   if (mode === "reject") {
     socket.end("HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n");
     return;

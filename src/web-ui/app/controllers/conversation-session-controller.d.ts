@@ -112,6 +112,7 @@ export interface ConversationSessionControllerOptions {
   }): void;
   scheduleTask?(callback: () => void): unknown;
   createSessionId?(): string;
+  onSessionCreated?(sessionId: string): void;
 }
 
 export declare function normalizeConversationMessage(

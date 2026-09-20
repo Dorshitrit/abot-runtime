@@ -6,6 +6,10 @@ import type {
   ToolExecutionResult,
 } from "./tool-types.js";
 import { projectToolResultEventMetadata } from "./tool-result-event-projection.js";
+import {
+  hasDeclaredInputTextOptions,
+  projectDeclaredInputFields,
+} from "./tool-event-input-text.js";
 
 function safeTrim(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -142,6 +146,13 @@ function buildDeclaredCallMeta(
   if (!projections) return undefined;
   const values = Object.fromEntries(
     Object.entries(projections).flatMap(([key, projection]) => {
+      if (hasDeclaredInputTextOptions(projection)) {
+        return projectDeclaredInputFields(
+          key,
+          call.params[projection.param] ?? projection.default,
+          projection,
+        );
+      }
       let value: unknown;
       switch (projection.kind) {
         case "string":
@@ -149,6 +160,12 @@ function buildDeclaredCallMeta(
           break;
         case "number":
           value = readNumberParam(call.params, projection.param);
+          break;
+        case "boolean":
+          value =
+            typeof call.params[projection.param] === "boolean"
+              ? call.params[projection.param]
+              : undefined;
           break;
         case "string_array":
           value = readStringArrayParam(call.params, projection.param);

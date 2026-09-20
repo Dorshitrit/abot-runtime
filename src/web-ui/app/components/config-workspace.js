@@ -23,6 +23,9 @@ export function createConfigWorkspace({
   saveFile,
   memorySetup,
   memoryManagement,
+  pluginManagement,
+  hostConnection,
+  onAddModel,
   recordControlEvent,
   confirmDiscard = (message) => window.confirm(message),
   eventTarget = window,
@@ -81,6 +84,8 @@ export function createConfigWorkspace({
     eventTarget,
     memorySetup,
     memoryManagement,
+    pluginManagement,
+    hostConnection,
     configFileEntries: workspaceModel.configFileEntries,
     configFileKey: workspaceModel.configFileKey,
     countObjectKeys: fieldRendering.countObjectKeys,
@@ -127,6 +132,8 @@ export function createConfigWorkspace({
     saveFile,
     memorySetup,
     memoryManagement,
+    pluginManagement,
+    hostConnection,
     recordControlEvent,
     applyRawDraft: workspaceMutations.applyRawDraft,
     baselineFor: workspaceModel.baselineFor,
@@ -146,6 +153,7 @@ export function createConfigWorkspace({
   });
 
   const workspaceEvents = createConfigWorkspaceEvents({
+    onAddModel,
     state,
     dom,
     eventTarget,
@@ -174,6 +182,7 @@ export function createConfigWorkspace({
   });
 
   return {
+    activateCategory: workspaceView.activateCategory,
     beginExternalRuntimeMutation:
       workspacePersistence.beginExternalRuntimeMutation,
     bind: workspaceEvents.bind,
@@ -181,6 +190,8 @@ export function createConfigWorkspace({
     endExternalRuntimeMutation: workspacePersistence.endExternalRuntimeMutation,
     hasUnsavedChanges: workspaceModel.hasUnsavedChanges,
     load: workspacePersistence.loadRuntimeConfig,
+    selectModel: workspaceView.selectModel,
+    focusSelectedModel: workspaceView.focusSelectedModel,
     prepareDiscardChanges: workspaceMutations.prepareDiscardChanges,
     refreshAfterExternalRuntimeMutation:
       workspacePersistence.refreshAfterExternalRuntimeMutation,

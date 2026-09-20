@@ -1,8 +1,6 @@
-import {
-  WORKER_CAPABILITY_INTENT_MAX_LENGTH,
-  type WorkerDecisionValidationIssue,
-} from "../contracts.js";
+import type { WorkerDecisionValidationIssue } from "../contracts.js";
 import { workerCapabilityBatchExecutionSlotId } from "../format.js";
+import { normalizeWorkerCapabilityIntent } from "./accepted-decision.js";
 import { parseCapabilityInvocation } from "./capability-invocation-validation.js";
 import {
   readWorkerDecisionRecord,
@@ -157,9 +155,9 @@ function hasValidGeneratedCapabilityIdentity(
   invocation: Record<string, unknown>,
 ): boolean {
   if (typeof invocation.capabilityId !== "string") return false;
-  if (typeof invocation.intent !== "string") return false;
-  if (invocation.intent.trim().length === 0) return false;
-  return invocation.intent.length <= WORKER_CAPABILITY_INTENT_MAX_LENGTH;
+  const intent = normalizeWorkerCapabilityIntent(invocation.intent);
+  if (intent === undefined) return false;
+  return intent.length > 0;
 }
 
 function projectAcceptedCapabilityInvocation(
@@ -172,7 +170,8 @@ function projectAcceptedCapabilityInvocation(
     pendingInvocation?.capabilityId ??
     (invocationRecord.capabilityId as string);
   const intent =
-    pendingInvocation?.intent ?? (invocationRecord.intent as string).trim();
+    pendingInvocation?.intent ??
+    normalizeWorkerCapabilityIntent(invocationRecord.intent)!;
   const authoringObjective =
     pendingInvocation?.authoringObjective ?? invocation.authoringObjective;
   if (context.decisionPhase === "capability_execution") {

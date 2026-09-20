@@ -1,3 +1,4 @@
+import { createRuntimeProjectService } from "./projects/service.js";
 import {
   createDefaultAttachmentStore,
   createDefaultEventSinkFactory,
@@ -68,6 +69,7 @@ export function createRuntimeEnvironment(
   const services: RuntimeEnvironmentServices = Object.freeze({
     config,
     sessions: sessionLifecycle.store,
+    projects: createRuntimeProjectService(config, sessionLifecycle.store),
     attachments,
     tools,
     models,

@@ -9,6 +9,7 @@ import {
   runExecutionAgentAuthoredResponse,
 } from "../steps/execution-agent/index.js";
 import { encodeExecutionAgentAuditObjective } from "../steps/auditor-decision/index.js";
+import { bindExecutionAgentPlanUpdate } from "./execution-agent-plan-update.js";
 import {
   projectRequestSteeringSnapshot,
   resolveRequestSteeringInbox,
@@ -43,10 +44,18 @@ export const EXECUTION_AGENT_ROOT_CONTRACT: RequestRootContractAdapter =
           : {}),
       });
       return Object.freeze({
-        decision: projectKernelDecision(
-          outcome.decision,
-          outcome.steeringVersion,
-        ),
+        decision: {
+          ...projectKernelDecision(outcome.decision, outcome.steeringVersion),
+          ...("workPlan" in outcome.decision && outcome.decision.workPlan
+            ? {
+                workPlan: bindExecutionAgentPlanUpdate(
+                  options.head,
+                  options.callFrame,
+                  outcome.decision.workPlan,
+                ),
+              }
+            : {}),
+        },
         steeringVersion: outcome.steeringVersion,
       });
     },

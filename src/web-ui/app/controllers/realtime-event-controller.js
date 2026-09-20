@@ -318,6 +318,9 @@ export function createRealtimeEventController({
         tone,
         tool: textOf(message.tool),
         approvalId: textOf(message.approvalId),
+        recommendedToolPermissionMode: textOf(
+          message.recommendedToolPermissionMode,
+        ),
         ...(webSources ? { webSources } : {}),
         ...(toolActivity ? { toolActivity } : {}),
         payload: {

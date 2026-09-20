@@ -49,7 +49,10 @@ export function resolveModelGatewayPort(
 export function configureModelGateway(
   options: ModelGatewayHandlerOptions,
 ): ModelGatewayPolicyConfig {
-  const runtimeConfig = loadRuntimeConfig({ rootDir: process.cwd() });
+  const runtimeConfig = loadRuntimeConfig({
+    rootDir: options.rootDir ?? process.cwd(),
+    configPath: options.configPath,
+  });
   const modelPolicy =
     options.modelPolicy ??
     createRequestModelPolicy({

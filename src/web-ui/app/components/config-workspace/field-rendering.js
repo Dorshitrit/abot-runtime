@@ -1,3 +1,4 @@
+import { malformedConfigRaw } from "./raw-config-repair.js";
 import { escapeAttribute, escapeHtml, textOf } from "../../lib/text-format.js";
 import {
   isConfigObject,
@@ -224,6 +225,7 @@ export function createConfigFieldRendering({
     if (hasRawDraftChanges(file)) return "Raw draft not applied";
     if (isFileDirty(file)) return "Unsaved changes";
     if (state.savedKeys.has(key)) return "Saved";
+    if (malformedConfigRaw(file) !== undefined) return "Invalid JSON";
     return "Clean";
   }
 

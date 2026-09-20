@@ -10,6 +10,8 @@ function dashboardHarness() {
     setAttribute: vi.fn(),
   });
   const refs = {
+    overview: element(),
+    shortcuts: element(),
     activity: element(),
     conversations: element(),
     composer: element(),
@@ -19,6 +21,8 @@ function dashboardHarness() {
     create: element(),
   };
   const nodes: Record<string, ReturnType<typeof element>> = {
+    ".home-overview": refs.overview,
+    ".home-shortcuts": refs.shortcuts,
     "[data-dashboard-activity]": refs.activity,
     "[data-dashboard-conversations]": refs.conversations,
     "[data-dashboard-composer]": refs.composer,
@@ -32,7 +36,7 @@ function dashboardHarness() {
   let click = (_event: Click) => {};
   const root = {
     innerHTML: "",
-    classList: { add: vi.fn() },
+    classList: { add: vi.fn(), toggle: vi.fn() },
     querySelector: (selector: string) => nodes[selector],
     contains: () => true,
     addEventListener: (_type: string, listener: typeof click) => {
@@ -138,6 +142,9 @@ describe("dashboard presentation interactions", () => {
     expect(refs.composer.hidden).toBe(true);
     expect(refs.note.hidden).toBe(true);
     expect(refs.setup.hidden).toBe(false);
+    expect(refs.overview.hidden).toBe(true);
+    expect(refs.shortcuts.hidden).toBe(true);
+    expect(refs.activity.innerHTML).toBe("");
     expect(workspace.setupHost).toBe(refs.setup);
     expect(refs.activity.innerHTML).not.toContain("data-template-id");
     workspace.render(loaded);
@@ -145,5 +152,7 @@ describe("dashboard presentation interactions", () => {
     expect(refs.create.disabled).toBe(false);
     expect(refs.composer.hidden).toBe(false);
     expect(refs.setup.hidden).toBe(true);
+    expect(refs.overview.hidden).toBe(false);
+    expect(refs.shortcuts.hidden).toBe(false);
   });
 });

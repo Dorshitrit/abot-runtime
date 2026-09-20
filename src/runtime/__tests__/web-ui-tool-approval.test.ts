@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { createPlanLifecycleHarness } from "./support/web-ui-plan-lifecycle-harness.js";
 
 import {
   createToolApprovalCard,
@@ -7,6 +8,8 @@ import {
 } from "../../web-ui/app/components/tool-approval-card.js";
 import { createToolApprovalController } from "../../web-ui/app/controllers/tool-approval-controller.js";
 import { formatEventDetail } from "../../web-ui/app/lib/event-presentation.js";
+import { projectToolActivityEvent } from "../../web-ui/app/lib/tool-activity-event.js";
+import { ContextElement } from "./support/composer-context-window-dom.js";
 
 class FakeElement {
   readonly children: FakeElement[] = [];
@@ -52,6 +55,36 @@ function fakeDocument(): Document {
 }
 
 describe("web ui tool approval controller", () => {
+  test("approval discloses the bound computer and command before execution", () => {
+    const computerName = "Owner <script>computer</script>";
+    const toolActivity = projectToolActivityEvent({
+      name: "tool.approval.required",
+      tool: "system_command",
+      meta: {
+        computerName,
+        displayTarget: "windows",
+        command: "Get-Date",
+        commandTruncated: false,
+      },
+    })!;
+    const card = createToolApprovalCard({
+      event: {
+        approvalId: "host-action",
+        tool: "system_command",
+        toolActivity,
+      },
+      onDecision: vi.fn(),
+      documentRoot: {
+        createElement: (tag: string) => new ContextElement(tag),
+      } as unknown as Document,
+    });
+    expect(card.textContent).toContain("Computer");
+    expect(card.textContent).toContain(computerName);
+    expect(card.textContent).toContain("Prepared command");
+    expect(card.textContent).toContain("Get-Date");
+    expect(card.querySelector("script")).toBeNull();
+  });
+
   test("renders the latest unresolved approval and submits one exact decision", () => {
     const events: ToolApprovalEvent[] = [
       {
@@ -167,4 +200,76 @@ describe("web ui tool approval controller", () => {
       }),
     );
   });
+});
+
+function descendantElements(root: FakeElement): FakeElement[] {
+  return [root, ...root.children.flatMap(descendantElements)];
+}
+
+test("approval keeps command evidence and recommendation through live projection and replay", async () => {
+  const event = {
+    type: "event",
+    name: "tool.approval.required",
+    requestId: "request-1",
+    sessionId: "session-1",
+    eventSequence: 9,
+    approvalId: "system-approval",
+    tool: "system_command",
+    recommendedToolPermissionMode: "full_plus",
+    meta: {
+      intent: "Run the requested action",
+      command: "  printf '<unsafe>'\nnext",
+      commandTruncated: false,
+      displayTarget: "linux",
+      cwd: "/selected/workspace",
+      elevated: true,
+    },
+  };
+  const live = createPlanLifecycleHarness();
+  live.realtime.recordEvent(event);
+  const replay = createPlanLifecycleHarness({
+    sessionId: "session-1",
+    messages: [],
+    requests: [
+      {
+        requestId: "request-1",
+        status: "running",
+        events: [{ ...event, seqNo: 1, timestamp: 1000 }],
+      },
+    ],
+  });
+  await replay.conversationSession.openSession("session-1");
+  for (const state of [live.state, replay.state]) {
+    const projected = state.events[0]!;
+    expect(projected.recommendedToolPermissionMode).toBe("full_plus");
+    const decision = vi.fn();
+    const card = createToolApprovalCard({
+      event: projected,
+      onDecision: decision,
+      documentRoot: fakeDocument(),
+    }) as unknown as FakeElement;
+    const all = descendantElements(card);
+    expect(all.some((node) => node.textContent === "linux")).toBe(true);
+    expect(all.some((node) => node.textContent === "/selected/workspace")).toBe(
+      true,
+    );
+    expect(all.some((node) => node.textContent === "Elevated")).toBe(true);
+    expect(all.some((node) => node.textContent === "Yes")).toBe(true);
+    expect(all.find((node) => node.tagName === "PRE")?.textContent).toBe(
+      event.meta.command,
+    );
+    expect(all.some((node) => node.textContent.includes("select FULL+"))).toBe(
+      true,
+    );
+    expect(
+      all.some((node) => node.textContent.includes("keeps your current mode")),
+    ).toBe(true);
+    expect(decision).not.toHaveBeenCalled();
+    all
+      .find(
+        (node) => node.tagName === "BUTTON" && node.textContent === "Approve",
+      )!
+      .dispatch("click");
+    expect(decision).toHaveBeenCalledWith("system-approval", true);
+  }
 });

@@ -18,6 +18,7 @@ import { pathToFileURL } from "node:url";
 import { PUBLIC_PLUGIN_CAPABILITY_IDS } from "./public-snapshot/contracts.js";
 import { createPackedWebSearchProbe } from "./packed-web-search-probe.js";
 import { createPackedSystemToolsProbe } from "./packed-system-tools-probe.js";
+import { createPackedFullPlusProbe } from "./packed-full-plus-probe.js";
 import { runPackedLocalRuntimeProbe } from "./packed-local-runtime-probe.js";
 import { DEFAULT_ROOT_RESPONSE_METHODOLOGY_FILES } from "./runtime-setup-files.js";
 
@@ -529,6 +530,7 @@ if (!loadedCapabilities.includes("web_search")) {
 
 ${createPackedWebSearchProbe()}
 ${createPackedSystemToolsProbe()}
+${createPackedFullPlusProbe()}
 
 const duplicateConfig = config.loadRuntimeConfig({
   rootDir: duplicateConsumerRoot,

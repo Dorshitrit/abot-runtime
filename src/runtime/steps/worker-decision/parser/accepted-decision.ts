@@ -1,10 +1,33 @@
-import type { WorkerControlDecision } from "../contracts.js";
+import {
+  WORKER_CAPABILITY_INTENT_MAX_LENGTH,
+  type WorkerControlDecision,
+} from "../contracts.js";
 import type {
   AcceptedCapabilityInvocation,
   ActionValidation,
   DecisionValidationContext,
   WorkerDecisionAction,
 } from "./validation-contract.js";
+
+/** Bounds generated client-facing text without changing execution inputs. */
+export function normalizeWorkerCapabilityIntent(
+  value: unknown,
+): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  const bounded = trimmed.slice(0, WORKER_CAPABILITY_INTENT_MAX_LENGTH);
+  if (hasSplitIntentSurrogatePair(trimmed, bounded.length)) {
+    return bounded.slice(0, -1).trimEnd();
+  }
+  return bounded.trimEnd();
+}
+
+function hasSplitIntentSurrogatePair(value: string, boundary: number): boolean {
+  const before = value.charCodeAt(boundary - 1);
+  if (before < 0xd800 || before > 0xdbff) return false;
+  const after = value.charCodeAt(boundary);
+  return after >= 0xdc00 && after <= 0xdfff;
+}
 
 export function buildAcceptedWorkerDecision(
   action: WorkerDecisionAction,
@@ -37,7 +60,7 @@ function buildAcceptedSingleCapabilityDecision(
     (record.capabilityId as string);
   const intent =
     context.pendingCapabilitySelection?.intent ??
-    (record.intent as string).trim();
+    normalizeWorkerCapabilityIntent(record.intent)!;
   const authoringObjective =
     context.pendingCapabilitySelection?.authoringObjective ??
     validation.acceptedAuthoringObjective;

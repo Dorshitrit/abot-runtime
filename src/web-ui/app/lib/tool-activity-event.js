@@ -1,4 +1,9 @@
 import { getRecord, titleCaseEventValue } from "./event-presentation.js";
+import { projectConversationFileReference } from "./conversation-file-reference.js";
+import {
+  processInputFields,
+  processResultFields,
+} from "./tool-process-activity-fields.js";
 
 const TOOL_EVENTS = new Set([
   "tool.payload.started",
@@ -47,7 +52,7 @@ function lineRange(start, end) {
 }
 
 function inputFields(meta, completed, tool) {
-  const fields = [];
+  const fields = processInputFields(meta);
   addText(fields, "Query", meta.query);
   addText(fields, "Path", meta.path);
   if (!meta.source || meta.displayTarget !== ".")
@@ -87,7 +92,7 @@ function resultCountLabel(tool) {
 }
 
 function resultFields(meta, tool, ok) {
-  const fields = [];
+  const fields = processResultFields(meta);
   if (hasCompletedFileWindow(meta, ok)) {
     addText(fields, "Read lines", lineRange(meta.startLine, meta.endLine));
   }
@@ -182,9 +187,12 @@ export function projectToolActivityEvent(message) {
   if (!tool) return null;
   const meta = effectiveToolMetadata(getRecord(message.meta) || {}, tool);
   const completed = name === "tool.completed";
+  const terminal = isTerminalToolExecutionEvent(name);
   const params = getRecord(meta.params);
   const inputMeta = { ...meta, params };
+  const fileReference = projectConversationFileReference(message);
   return {
+    ...(fileReference ? { fileReference } : {}),
     name,
     tool,
     executionId: boundedText(message.executionId, 200).trim(),
@@ -203,14 +211,18 @@ export function projectToolActivityEvent(message) {
         meta.savedId,
     ),
     sent: inputFields(inputMeta, completed, tool),
-    received: completed ? resultFields(meta, tool, message.ok) : [],
-    preview: completed ? boundedText(meta.outputPreview, 1_200) : "",
-    previewTruncated: completed && hasClippedPreview(meta),
-    partial: completed && hasPartialSource(meta),
+    received: terminal ? resultFields(meta, tool, message.ok) : [],
+    preview: terminal ? boundedText(meta.outputPreview, 1_200) : "",
+    previewTruncated: terminal && hasClippedPreview(meta),
+    partial: terminal && hasPartialSource(meta),
     outcome: completedOutcome(meta),
     ok: typeof message.ok === "boolean" ? message.ok : null,
     error: boundedText(message.error || message.reason || meta.errorCode),
   };
+}
+
+function isTerminalToolExecutionEvent(name) {
+  return name === "tool.completed" || name === "tool.failed";
 }
 
 function effectiveToolMetadata(meta, tool) {

@@ -13,6 +13,7 @@ import type {
 } from "./contracts.js";
 
 import { createMemoryRecallTransactions } from "./memory-recall-transactions.js";
+import { createModelWorkPlanTransactions } from "./work-plan-transactions.js";
 import { requireEffect, invalidEffect } from "./transaction-effect.js";
 
 type RoleCallLedgerApply = RoleCallLedger["apply"];
@@ -21,6 +22,7 @@ export function createRoleCallTransactions(
   apply: RoleCallLedgerApply,
 ): RoleCallTransactions {
   return Object.freeze({
+    ...createModelWorkPlanTransactions(apply),
     ...createMemoryRecallTransactions(apply),
     async createRoot(input) {
       return requireEffect(

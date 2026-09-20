@@ -16,6 +16,7 @@ function fixture() {
   let environmentId = "dev";
   let sessions = [{ id: "dev-session", unreadCount: 2 }];
   let supported = true;
+  let runtimeReady = true;
   const client = {
     supportsSchedules: () => supported,
     listRecentScheduleRuns: vi.fn(
@@ -28,6 +29,7 @@ function fixture() {
     getEnvironmentId: () => environmentId,
     getSessions: () => sessions,
     loadSessions,
+    isRuntimeReady: () => runtimeReady,
     render: vi.fn(),
     isVisible: () => true,
     setTimer: vi.fn(),
@@ -37,6 +39,9 @@ function fixture() {
     controller,
     client,
     loadSessions,
+    setRuntimeReady: (value: boolean) => {
+      runtimeReady = value;
+    },
     setEnvironment: (value: string) => {
       environmentId = value;
     },
@@ -153,5 +158,25 @@ describe("Dashboard read lifecycle", () => {
       runs: [],
       supportsSchedules: false,
     });
+  });
+  it("does not read activity or sessions before setup and resumes after canonical readiness", async () => {
+    const f = fixture();
+    f.setRuntimeReady(false);
+    f.controller.runtimeAvailabilityChanged();
+    f.controller.setReady();
+    f.controller.setActive(true);
+    await f.controller.refresh();
+    expect(f.loadSessions).not.toHaveBeenCalled();
+    expect(f.client.listRecentScheduleRuns).not.toHaveBeenCalled();
+    f.setRuntimeReady(true);
+    f.controller.runtimeAvailabilityChanged();
+    await vi.waitFor(() =>
+      expect(f.client.listRecentScheduleRuns).toHaveBeenCalledOnce(),
+    );
+    expect(f.loadSessions).toHaveBeenCalledOnce();
+    f.setRuntimeReady(false);
+    f.controller.runtimeAvailabilityChanged();
+    await f.controller.refresh();
+    expect(f.client.listRecentScheduleRuns).toHaveBeenCalledOnce();
   });
 });

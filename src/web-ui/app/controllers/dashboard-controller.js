@@ -4,6 +4,7 @@ export function createDashboardController({
   getSessions,
   loadSessions,
   render,
+  isRuntimeReady = () => true,
   isVisible = () => document.visibilityState === "visible",
   setTimer = setTimeout,
   clearTimer = clearTimeout,
@@ -17,6 +18,7 @@ export function createDashboardController({
   };
   let active = false;
   let ready = false;
+  let runtimeReady = isRuntimeReady();
   let environmentId = "";
   let sessionsEnvironmentId = "";
   let revision = 0;
@@ -37,6 +39,7 @@ export function createDashboardController({
     return readEnvironmentId === getEnvironmentId();
   }
   function canRefresh() {
+    if (!isRuntimeReady()) return false;
     if (!ready) return false;
     if (!active) return false;
     return isVisible();
@@ -88,6 +91,20 @@ export function createDashboardController({
     snapshot,
     publish,
     refresh,
+    runtimeAvailabilityChanged() {
+      const available = isRuntimeReady();
+      if (runtimeReady === available) {
+        publish();
+        return;
+      }
+      runtimeReady = available;
+      revision += 1;
+      clearTimer(timer);
+      state.activityError = "";
+      state.sessionsError = "";
+      publish();
+      if (available) void refresh();
+    },
     setReady() {
       ready = true;
       void refresh();

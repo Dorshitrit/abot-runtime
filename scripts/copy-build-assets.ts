@@ -1,5 +1,6 @@
 import { copyFile, cp, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { buildHostCompanionBundle } from "./build-host-companion.js";
 
 const buildAssets = [
   {
@@ -27,3 +28,5 @@ for (const asset of buildAssets) {
 }
 
 console.log(`copied ${buildAssets.length} build asset(s)`);
+const companion = await buildHostCompanionBundle();
+console.log(`built standalone host companion (${companion.bytes} bytes)`);

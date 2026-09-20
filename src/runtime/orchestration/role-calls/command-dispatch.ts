@@ -7,6 +7,7 @@ import {
   settleCapabilityExecution,
 } from "./command-dispatch/capability-execution-transitions.js";
 import { reconsiderCapabilitySelection } from "./command-dispatch/capability-selection-transition.js";
+import { updateModelWorkPlan } from "./command-dispatch/work-plan-transition.js";
 import { beginMemoryRecall, settleMemoryRecall } from "./command-dispatch/memory-recall-transitions.js";
 import {
   establishWorkingDirectory,
@@ -34,6 +35,8 @@ export function dispatchRoleCallCommand(
   admittedHeadRevision?: number,
 ): RoleCallTransitionResult {
   switch (command.type) {
+    case "update_model_work_plan":
+      return updateModelWorkPlan(state, command, policy);
     case "begin_memory_recall":
       return beginMemoryRecall(state, command);
     case "settle_memory_recall":

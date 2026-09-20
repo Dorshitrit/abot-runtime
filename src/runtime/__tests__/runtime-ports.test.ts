@@ -1,3 +1,4 @@
+import { expectLegacyAndFullPlusInventories } from "./full-plus-inventory-fixture.js";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -111,7 +112,9 @@ describe("runtime public ports", () => {
     config.paths.rootDir = process.cwd();
     config.plugins = { enabled: false };
 
-    const registry = createDefaultToolRegistry(config);
+    const registry = expectLegacyAndFullPlusInventories(
+      createDefaultToolRegistry(config),
+    );
 
     expect(registry.hasToolsAvailable()).toBe(false);
     expect(registry.listDefinitions()).toEqual([]);

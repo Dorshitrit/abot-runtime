@@ -1,3 +1,9 @@
+import { randomUUID } from "node:crypto";
+import {
+  assertSessionProjectUnchanged,
+  copySessionProject,
+  type SessionCreationOptions,
+} from "./project-binding.js";
 import { getDefaultSessionsDir } from "../runtime/config/layout.js";
 import {
   assertValidSessionArtifactPathInputs,
@@ -87,17 +93,24 @@ export class SessionService {
     this.createMessageId = options.createMessageId || defaultCreateMessageId;
   }
 
-  async getOrCreateSession(sessionId: string): Promise<SessionRecord> {
+  async getOrCreateSession(
+    sessionId: string,
+    options: SessionCreationOptions = {},
+  ): Promise<SessionRecord> {
     assertValidSessionId(sessionId);
     await ensureSessionsDir(this.sessionsDir);
     const existing = await loadSessionFile(this.sessionsDir, sessionId);
     if (existing) {
+      assertSessionProjectUnchanged(existing, options.project);
       return existing;
     }
 
     const timestamp = toIso(this.now);
     const session: SessionRecord = {
       id: sessionId,
+      ...(options.project
+        ? { project: copySessionProject(options.project) }
+        : {}),
       title: sessionId,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -150,6 +163,7 @@ export class SessionService {
     }
     return {
       sessionId,
+      ...(session.project ? { project: session.project } : {}),
       title: session.title,
       messages: filterMessagesAfter(
         clientVisibleMessages(session.messages),
@@ -181,6 +195,7 @@ export class SessionService {
       return {
         requestId,
         sessionId: request.sessionId,
+        ...(request.generation ? { generation: request.generation } : {}),
         events: request.events
           .filter((event) => event.seqNo > normalizedAfterSeq)
           .map(toClientReplayEvent),
@@ -453,6 +468,8 @@ export class SessionService {
       const request: SessionRequestRecord = {
         requestId,
         sessionId,
+        // Only an explicit new stream establishes a request lifetime.
+        generation: randomUUID(),
         status: "streaming",
         createdAt: timestamp,
         updatedAt: timestamp,

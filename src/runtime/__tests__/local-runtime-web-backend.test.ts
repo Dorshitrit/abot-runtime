@@ -417,7 +417,7 @@ describe("local runtime web backend", () => {
         },
         requestRunner: { configRef: "./request-runner.config.json" },
       },
-      "declared provider",
+      "Open Configuration",
     ],
     [
       "a profile without a concrete model ID",
@@ -433,7 +433,7 @@ describe("local runtime web backend", () => {
         },
         requestRunner: { configRef: "./request-runner.config.json" },
       },
-      "concrete model ID",
+      "Open Configuration",
     ],
     [
       "a usable model without request-runner setup",

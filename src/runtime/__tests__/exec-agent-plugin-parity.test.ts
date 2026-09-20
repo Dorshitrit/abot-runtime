@@ -5,7 +5,6 @@ import {
   mkdtemp,
   readFile,
   rm,
-  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -119,7 +118,7 @@ describe("exec Agent Plugin parity", () => {
     expect(capabilities.exec.runtimePathBindings).toBeUndefined();
     expect(capabilities.exec.operations.execute_command).toMatchObject({
       effect: "mixed",
-      approval: "request_policy",
+      approval: "always",
     });
   });
 
@@ -236,31 +235,6 @@ describe("exec Agent Plugin parity", () => {
     expect(logical?.output).not.toContain(runtimePaths.agentWorkDir);
     expect(logical?.output).not.toContain("Filesystem effects observed:");
     expect(logical?.data).not.toHaveProperty("mutationGrounding");
-    await expect(
-      handlers.exec?.({ command: "pwd", cwd: ".." }),
-    ).resolves.toMatchObject({
-      ok: false,
-      errorCode: "runtime_tool_path_outside_configured_roots",
-    });
-  });
-
-  test("rejects a cwd whose configured-root entry is a symlink escape", async () => {
-    const runtimePaths = await createRuntimePaths();
-    const outsideRoot = join(runtimePaths.rootDir, "outside");
-    await mkdir(outsideRoot, { recursive: true });
-    await symlink(
-      outsideRoot,
-      join(runtimePaths.agentWorkDir, "escape"),
-      "dir",
-    );
-    const { handlers } = loadPlugin(runtimePaths);
-
-    await expect(
-      handlers.exec?.({ command: "pwd", cwd: "escape" }),
-    ).resolves.toMatchObject({
-      ok: false,
-      errorCode: "runtime_tool_path_symlink_escape",
-    });
   });
 
   test("bootstraps a new project from the explicit agent root and rejects a missing cwd", async () => {

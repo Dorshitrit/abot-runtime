@@ -1,0 +1,26 @@
+.runtime-config-activation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 12px 0;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.runtime-config-activation p {
+  margin: 0;
+  color: var(--config-muted, var(--muted));
+  font-size: 13px;
+  line-height: 1.5;
+}
+.runtime-config-activation button {
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .runtime-config-activation {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+}

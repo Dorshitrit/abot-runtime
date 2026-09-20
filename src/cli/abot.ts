@@ -1,18 +1,15 @@
-import type { Server } from "node:http";
 import { join, resolve } from "node:path";
 
 import { runAddRuntimeModel } from "../../scripts/add-runtime-model.js";
 import { runInitRuntime } from "../../scripts/init-runtime.js";
 import { runConfigureLongTermMemory } from "../../scripts/configure-long-term-memory.js";
-import {
-  createModelGatewayServer,
-  resolveProviderAdapters,
-  resolveModelGatewayPort,
-} from "../model-gateway/server.js";
+import { resolveProviderAdapters } from "../model-gateway/server.js";
 import { loadDotEnvFile } from "../shared/load-dotenv.js";
-import { closeHttpServerImmediately } from "../shared/http-server-shutdown.js";
+import { closeRuntimeSetupServices } from "../web-ui/runtime-setup-shutdown.js";
+import { RuntimeSetupGateway } from "../web-ui/runtime-setup-gateway.js";
 import { startWebUiServer } from "../web-ui/server.js";
 import { resolveWebUiAddress } from "../web-ui/web-ui-address.js";
+import { runHostCompanionCli } from "./host-companion.js";
 
 function printHelp(): void {
   console.log(
@@ -24,12 +21,14 @@ function printHelp(): void {
       "  abot add-model --profile <profile-id> --provider <provider> --model <model-id> [options]",
       "  abot memory <status|models|enable|disable> [options]",
       "  abot start",
+      "  abot host <connect|status|disconnect|uninstall|run>",
       "",
       "Commands:",
       "  init       Create the first machine-local runtime configuration.",
       "  add-model  Add a provider/model profile without replacing existing ones.",
       "  memory     Configure passive long-term memory embeddings.",
       "  start      Start the local model gateway and Web UI.",
+      "  host       Pair this computer with a local Docker Runtime.",
     ].join("\n"),
   );
 }
@@ -48,19 +47,13 @@ async function runStart(args: string[]): Promise<void> {
   const webAddress = resolveWebUiAddress(process.env);
   const appDir = resolve(import.meta.dirname, "../web-ui/app");
   const providerAdapters = resolveProviderAdapters({});
-  let gateway: Server | undefined;
-
+  const gateway = new RuntimeSetupGateway({ rootDir, providerAdapters });
   try {
-    gateway = createModelGatewayServer({ providerAdapters });
-    const gatewayPort = resolveModelGatewayPort();
-    gateway.listen(gatewayPort, "127.0.0.1", () => {
-      console.log(`model gateway listening on http://127.0.0.1:${gatewayPort}`);
-    });
-  } catch (error) {
-    console.warn(
-      `model gateway not started: ${error instanceof Error ? error.message : String(error)}`,
+    await gateway.activate(process.env.LLM_RUNTIME_CONFIG_FILE);
+  } catch {
+    console.log(
+      "Complete model setup in the Web UI to start the model gateway.",
     );
-    console.warn("Complete model setup, stop ABot, and run abot start again.");
   }
 
   const webUi = startWebUiServer({
@@ -70,6 +63,10 @@ async function runStart(args: string[]): Promise<void> {
     port: webAddress.port,
     setupCommandMode: "package",
     providerAdapters,
+    onRuntimeSetup: (configPath) => gateway.activate(configPath),
+    createRuntimeSetupRestorePoint: () => gateway.createRestorePoint(),
+    checkRuntimeSetupActivation: (configPath) =>
+      gateway.checkActivation(configPath),
   });
   console.log(`Open ${webAddress.browserUrl}`);
 
@@ -78,10 +75,10 @@ async function runStart(args: string[]): Promise<void> {
     const shutdown = () => {
       if (closing) return;
       closing = true;
-      void Promise.all([
-        webUi.close(),
-        ...(gateway ? [closeHttpServerImmediately(gateway)] : []),
-      ]).then(() => resolveExit(), rejectExit);
+      void closeRuntimeSetupServices(
+        () => webUi.close(),
+        () => gateway.close(),
+      ).then(() => resolveExit(), rejectExit);
     };
     process.once("SIGINT", shutdown);
     process.once("SIGTERM", shutdown);
@@ -115,6 +112,10 @@ export async function runAbotCli(
   }
   if (command === "start") {
     await runStart(args);
+    return;
+  }
+  if (command === "host") {
+    await runHostCompanionCli(args);
     return;
   }
   throw new Error(`unknown command: ${command}`);

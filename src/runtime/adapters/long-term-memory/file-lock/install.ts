@@ -3,11 +3,15 @@ import { join } from "node:path";
 
 import { removeDirectoryIfEmpty, removeStagingLock } from "./cleanup.js";
 import { LEASE_DIRECTORY_NAME, ownerFileName } from "./contracts.js";
+import { hasValidOptionalLockOwnerIdentity } from "./owner-identity.js";
 
 export async function installLockDirectory(
   lockPath: string,
   token: string,
+  ownerIdentity?: string,
 ): Promise<void> {
+  if (!hasValidOptionalLockOwnerIdentity(ownerIdentity))
+    throw new Error("file_lock_owner_identity_invalid");
   const stagingPath = `${lockPath}.${process.pid}.${token}.pending`;
   const stagingOwnerPath = join(stagingPath, ownerFileName(token));
   let handle: FileHandle | undefined;
@@ -21,6 +25,7 @@ export async function installLockDirectory(
         pid: process.pid,
         token,
         createdAt: new Date().toISOString(),
+        ...(ownerIdentity === undefined ? {} : { ownerIdentity }),
       }),
       "utf8",
     );

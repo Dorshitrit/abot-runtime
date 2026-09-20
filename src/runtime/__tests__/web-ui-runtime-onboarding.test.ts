@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import {
-  buildRuntimeSetupCommands,
-  createRuntimeSetupGuide,
-} from "../../web-ui/app/components/runtime-setup-guide.js";
+import { createGuideHarness } from "./support/runtime-setup-guide-harness.js";
 import { createComposerAttachmentsController } from "../../web-ui/app/controllers/composer-attachments-controller.js";
 import { createComposerSubmitController } from "../../web-ui/app/controllers/composer-submit-controller.js";
 import { createRuntimeOnboardingController } from "../../web-ui/app/controllers/runtime-onboarding-controller.js";
@@ -12,144 +9,6 @@ import {
   type AgentMode,
 } from "../../web-ui/app/controllers/runtime-selection-controller.js";
 import { createRuntimeWebClient } from "../../web-ui/app/services/runtime-web-client.js";
-
-function createGuideHarness(copyText = vi.fn(async () => {})) {
-  const listeners = new Map<
-    string,
-    (event: { target: Record<string, unknown> }) => void
-  >();
-  const action = { focus: vi.fn() };
-  const modelInput = {
-    focus: vi.fn(),
-    reportValidity: vi.fn(),
-    setAttribute: vi.fn(),
-    setCustomValidity: vi.fn(),
-  };
-  const modelHelp = {
-    textContent: "",
-    classList: { toggle: vi.fn() },
-  };
-  const baseUrlInput = {
-    focus: vi.fn(),
-    reportValidity: vi.fn(),
-    setAttribute: vi.fn(),
-    setCustomValidity: vi.fn(),
-  };
-  const baseUrlHelp = {
-    textContent: "",
-    classList: { toggle: vi.fn() },
-  };
-  const commandIds = ["ollama-pull", "setup", "model-gateway", "web-ui"];
-  const commandOutputs = Object.fromEntries(
-    commandIds.map((id) => [id, { textContent: "" }]),
-  ) as Record<string, { textContent: string }>;
-  const copyButtons = Object.fromEntries(
-    commandIds.map((id) => [id, { disabled: false }]),
-  ) as Record<string, { disabled: boolean }>;
-  const copyStatuses = Object.fromEntries(
-    commandIds.map((id) => [
-      id,
-      { textContent: "", classList: { toggle: vi.fn() } },
-    ]),
-  ) as Record<
-    string,
-    { textContent: string; classList: { toggle: ReturnType<typeof vi.fn> } }
-  >;
-  const container = {
-    hidden: true,
-    innerHTML: "",
-    addEventListener: vi.fn(
-      (
-        name: string,
-        listener: (event: { target: Record<string, unknown> }) => void,
-      ) => {
-        listeners.set(name, listener);
-      },
-    ),
-    querySelector: vi.fn((selector: string) => {
-      if (selector === '[data-runtime-setup-action="check"]') return action;
-      if (selector === "[data-runtime-setup-model]") return modelInput;
-      if (selector === "[data-runtime-model-help]") return modelHelp;
-      if (selector === "[data-runtime-setup-base-url]") return baseUrlInput;
-      if (selector === "[data-runtime-base-url-help]") return baseUrlHelp;
-      const commandOutput = selector.match(
-        /^\[data-runtime-command-output="([^"]+)"\]$/,
-      )?.[1];
-      if (commandOutput) return commandOutputs[commandOutput] || null;
-      const copyButton = selector.match(
-        /^\[data-runtime-copy-button="([^"]+)"\]$/,
-      )?.[1];
-      if (copyButton) return copyButtons[copyButton] || null;
-      const copyStatus = selector.match(
-        /^\[data-runtime-copy-status="([^"]+)"\]$/,
-      )?.[1];
-      if (copyStatus) return copyStatuses[copyStatus] || null;
-      if (selector.startsWith('[data-runtime-setup-field="provider"]')) {
-        return { focus: vi.fn() };
-      }
-      return null;
-    }),
-    replaceChildren: vi.fn(() => {
-      container.innerHTML = "";
-    }),
-  };
-  const conversationRegion = { hidden: false };
-
-  function dispatch(
-    eventName: string,
-    dataset: Record<string, string>,
-    value = "",
-  ) {
-    const target = {
-      dataset,
-      value,
-      setCustomValidity: vi.fn(),
-      closest: (selector: string) => {
-        if (
-          selector === "[data-runtime-setup-action]" &&
-          dataset.runtimeSetupAction
-        ) {
-          return target;
-        }
-        if (
-          selector === "[data-runtime-setup-field]" &&
-          dataset.runtimeSetupField
-        ) {
-          return target;
-        }
-        return null;
-      },
-    };
-    listeners.get(eventName)?.({ target });
-  }
-
-  return {
-    action,
-    baseUrlHelp,
-    baseUrlInput,
-    changeProvider: (provider: string) =>
-      dispatch("change", { runtimeSetupField: "provider" }, provider),
-    click: (runtimeSetupAction: string, runtimeCommand = "") =>
-      dispatch("click", { runtimeSetupAction, runtimeCommand }),
-    commandOutputs,
-    container,
-    copyButtons,
-    copyStatuses,
-    copyText,
-    conversationRegion,
-    guide: createRuntimeSetupGuide({
-      container: container as never,
-      conversationRegion: conversationRegion as never,
-      copyText,
-    }),
-    inputModel: (value: string) =>
-      dispatch("input", { runtimeSetupField: "model-id" }, value),
-    inputBaseUrl: (value: string) =>
-      dispatch("input", { runtimeSetupField: "ollama-base-url" }, value),
-    modelHelp,
-    modelInput,
-  };
-}
 
 function fakeElement(overrides: Record<string, unknown> = {}) {
   const options: Array<Record<string, unknown>> = [];
@@ -249,189 +108,6 @@ describe("web ui runtime onboarding", () => {
     );
   });
 
-  test("shows provider-specific copyable setup commands without accepting a secret", async () => {
-    const harness = createGuideHarness();
-    const setMessageStatus = vi.fn();
-    const state = { runtimeAvailability: { status: "loading" } };
-    const controller = createRuntimeOnboardingController({
-      state,
-      guide: harness.guide,
-      reloadModels: vi.fn(async () => {}),
-      setMessageStatus,
-    });
-    controller.bind();
-
-    controller.applyCatalog({
-      defaultProfileId: "",
-      profiles: [],
-      availability: {
-        status: "setup_required",
-        code: "runtime_configuration_required",
-        message: "Configure a provider and model before starting a chat.",
-      },
-    });
-
-    expect(harness.container.hidden).toBe(false);
-    expect(harness.conversationRegion.hidden).toBe(true);
-    expect(harness.container.innerHTML).toContain("Connect your first model");
-    expect(harness.container.innerHTML).toContain("Choose a provider");
-    expect(harness.container.innerHTML).toContain("Ollama");
-    expect(harness.container.innerHTML).toContain("OpenAI");
-    expect(harness.container.innerHTML).toContain("required");
-    expect(harness.container.innerHTML).toContain(
-      "cannot run commands or restart services",
-    );
-    expect(harness.container.innerHTML).not.toContain("Open Config");
-    expect(harness.copyButtons.setup.disabled).toBe(true);
-
-    harness.inputModel("gemma3:4b");
-    expect(harness.copyButtons.setup.disabled).toBe(true);
-    harness.changeProvider("ollama");
-    expect(harness.container.innerHTML).toContain("Enter the Ollama address");
-    expect(harness.container.innerHTML).toContain(
-      "http://host.docker.internal:11434",
-    );
-    expect(harness.container.innerHTML).toContain(
-      "These may be the same environment or different ones.",
-    );
-    expect(harness.commandOutputs["ollama-pull"].textContent).toBe(
-      "ollama pull gemma3:4b",
-    );
-    expect(harness.commandOutputs.setup.textContent).toBe(
-      "npm run init -- --provider ollama --model gemma3:4b " +
-        "--base-url http://127.0.0.1:11434",
-    );
-    expect(harness.copyButtons.setup.disabled).toBe(false);
-
-    harness.inputBaseUrl("http://host.docker.internal:11434/");
-    expect(harness.commandOutputs.setup.textContent).toBe(
-      "npm run init -- --provider ollama --model gemma3:4b " +
-        "--base-url http://host.docker.internal:11434",
-    );
-
-    harness.changeProvider("openai");
-    expect(harness.container.innerHTML).toContain("OPENAI_API_KEY");
-    expect(harness.container.innerHTML).toContain(
-      "does not request, display, or store the secret",
-    );
-    expect(harness.container.innerHTML).not.toContain('type="password"');
-    expect(harness.commandOutputs.setup.textContent).toBe(
-      "npm run init -- --provider openai --model gemma3:4b",
-    );
-    harness.click("copy", "setup");
-    await vi.waitFor(() =>
-      expect(harness.copyText).toHaveBeenCalledWith(
-        "npm run init -- --provider openai --model gemma3:4b",
-      ),
-    );
-    expect(harness.copyStatuses.setup.textContent).toBe("Copied");
-
-    controller.applyCatalog({
-      defaultProfileId: "model-1",
-      profiles: [{ id: "model-1" }],
-      availability: { status: "ready" },
-    });
-
-    expect(controller.isReady()).toBe(true);
-    expect(harness.container.hidden).toBe(true);
-    expect(harness.conversationRegion.hidden).toBe(false);
-    expect(harness.container.replaceChildren).toHaveBeenCalled();
-    expect(setMessageStatus).toHaveBeenCalledWith(
-      "Model ready. You can start chatting.",
-    );
-  });
-
-  test.each([
-    ["spaces", "gemma 3"],
-    ["a single quote", "gemma'3"],
-    ["a double quote", 'gemma"3'],
-    ["an ampersand", "gemma&3"],
-    ["a percent sign", "gemma%3"],
-    ["a leading at sign", "@scope/model"],
-    ["a leading comma", ",gemma3"],
-    ["an embedded comma", "gemma,3"],
-    ["a leading double dash", "--help"],
-  ])("rejects model IDs containing %s", (_case, modelId) => {
-    const harness = createGuideHarness();
-    harness.guide.bind();
-    harness.guide.render({ status: "setup_required", showGuide: true });
-    harness.changeProvider("ollama");
-    harness.inputModel(modelId);
-
-    expect(harness.copyButtons.setup.disabled).toBe(true);
-    expect(harness.copyButtons["ollama-pull"].disabled).toBe(true);
-    expect(harness.commandOutputs["ollama-pull"].textContent).toBe(
-      "ollama pull <model-id>",
-    );
-    expect(harness.commandOutputs.setup.textContent).toBe(
-      "npm run init -- --provider ollama --model <model-id> " +
-        "--base-url http://127.0.0.1:11434",
-    );
-    expect(harness.commandOutputs.setup.textContent).not.toContain("'\\''");
-    expect(harness.modelHelp.textContent).not.toBe("");
-    expect(harness.modelInput.setAttribute).toHaveBeenLastCalledWith(
-      "aria-invalid",
-      "true",
-    );
-
-    harness.click("copy", "setup");
-    expect(harness.copyText).not.toHaveBeenCalled();
-    expect(harness.modelInput.setCustomValidity).toHaveBeenLastCalledWith(
-      expect.any(String),
-    );
-    expect(harness.copyStatuses.setup.textContent).not.toBe("");
-  });
-
-  test("rejects an Ollama address that is not a plain HTTP origin", () => {
-    const harness = createGuideHarness();
-    harness.guide.bind();
-    harness.guide.render({ status: "setup_required", showGuide: true });
-    harness.changeProvider("ollama");
-    harness.inputModel("gemma3:4b");
-    harness.inputBaseUrl("http://localhost:11434/api/tags");
-
-    expect(harness.copyButtons.setup.disabled).toBe(true);
-    expect(harness.commandOutputs.setup.textContent).toContain(
-      "--base-url <ollama-base-url>",
-    );
-    expect(harness.baseUrlInput.setAttribute).toHaveBeenLastCalledWith(
-      "aria-invalid",
-      "true",
-    );
-
-    harness.click("copy", "setup");
-    expect(harness.copyText).not.toHaveBeenCalled();
-    expect(harness.baseUrlInput.reportValidity).toHaveBeenCalledOnce();
-    expect(harness.copyStatuses.setup.textContent).toContain(
-      "HTTP or HTTPS origin",
-    );
-  });
-
-  test.each(["gemma3:4b", "gpt-5.6-luna"])(
-    "accepts a real unquoted model ID: %s",
-    (modelId) => {
-      const commands = buildRuntimeSetupCommands("ollama", modelId);
-      expect(commands.setup).toContain(`--model ${modelId}`);
-      expect(commands.setup).not.toContain("<model-id>");
-      expect(commands.setup).not.toContain("'");
-    },
-  );
-
-  test("generates the single packaged CLI flow for npm consumers", () => {
-    expect(
-      buildRuntimeSetupCommands(
-        "openai",
-        "gpt-5.6-luna",
-        "http://127.0.0.1:11434",
-        "package",
-      ),
-    ).toMatchObject({
-      setup: "npx abot init --provider openai --model gpt-5.6-luna",
-      "model-gateway": "npx abot start",
-      "web-ui": "",
-    });
-  });
-
   test.each([
     ["missing", undefined],
     ["unknown", { status: "warming" }],
@@ -482,7 +158,9 @@ describe("web ui runtime onboarding", () => {
       availability: { status: "setup_required" },
     });
 
+    await harness.ready();
     harness.click("check");
+    await harness.ready();
     harness.click("check");
     await vi.waitFor(() => expect(reloadModels).toHaveBeenCalledOnce());
     expect(state.runtimeAvailability).toEqual({
@@ -526,6 +204,7 @@ describe("web ui runtime onboarding", () => {
       availability: { status: "setup_required" },
     });
 
+    await harness.ready();
     harness.click("check");
     await vi.waitFor(() =>
       expect(state.runtimeAvailability).toMatchObject({ status: "error" }),
@@ -727,6 +406,8 @@ describe("web ui runtime onboarding", () => {
         loadPinnedSessions: vi.fn(() => []),
         loadSessionModes: vi.fn(() => ({})),
         saveSessionModes: vi.fn(),
+        loadLastToolPermissionMode: () => "full_access",
+        saveLastToolPermissionMode: vi.fn(),
         loadModelPreferences: vi.fn(() => ({
           sessionModels: {},
           lastModelByEnvironment: {},

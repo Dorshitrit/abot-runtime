@@ -5,6 +5,20 @@ import { createComposerWorkspaceHarness } from "./support/web-ui-composer-worksp
 afterEach(() => vi.unstubAllGlobals());
 
 describe("web ui Home composer lifecycle", () => {
+  test("initializes fresh Home drafts without changing restored drafts or existing Chat", () => {
+    const harness = createComposerWorkspaceHarness();
+    expect(harness.onSessionCreated).not.toHaveBeenCalled();
+    harness.feature.setWorkspace("home");
+    expect(harness.onSessionCreated).toHaveBeenCalledExactlyOnceWith("home-session-1");
+    const draft = harness.workspace.takeHomeDraft("draft");
+    harness.workspace.restoreHomeDraft(draft);
+    expect(harness.workspace.ensureHomeSession()).toBe("home-session-1");
+    expect(harness.onSessionCreated).toHaveBeenCalledOnce();
+    harness.workspace.resetHomeDraft();
+    expect(harness.workspace.ensureHomeSession()).toBe("home-session-2");
+    expect(harness.onSessionCreated).toHaveBeenLastCalledWith("home-session-2");
+  });
+
   test("moves the same composer and keeps the active Chat draft and attachments intact", () => {
     const harness = createComposerWorkspaceHarness();
     const originalAttachments = harness.state.pendingAttachments;

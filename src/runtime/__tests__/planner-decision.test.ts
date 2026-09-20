@@ -113,21 +113,16 @@ function testExactCapabilityResult(
 const AVAILABLE_WORKER_CAPABILITY_CATALOG = Object.freeze([
   Object.freeze({
     groupId: "documents",
-    description:
-      "routingCapabilities=filesystem_inspection,filesystem_mutation\ndevelopmentRoles=inspect,verify",
     memberCount: 2,
     effects: Object.freeze(["observation", "mutation"] as const),
   }),
   Object.freeze({
     groupId: "read",
-    description:
-      "routingCapabilities=filesystem_inspection\ndevelopmentRoles=inspect,verify",
     memberCount: 1,
     effects: Object.freeze(["observation"] as const),
   }),
   Object.freeze({
     groupId: "write",
-    description: "routingCapabilities=filesystem_mutation\ndevelopmentRoles=",
     memberCount: 1,
     effects: Object.freeze(["mutation"] as const),
   }),
@@ -555,12 +550,8 @@ describe("generic Planner decision contract", () => {
         toolResults: EMPTY_REQUEST_TOOL_RESULTS,
       },
     );
-    const catalog = JSON.parse(input.context.messages[2]!.content) as {
-      projection: string;
-      catalogGroups: readonly Record<string, unknown>[];
-    };
-    expect(catalog.projection).toBe("detailed");
-    expect(catalog.catalogGroups).toHaveLength(65);
+    expect(input.capabilityBrief.level).toBe("none");
+    expect(input.availableWorkerCapabilityCatalog).toHaveLength(65);
     const groupSelectionSchema = JSON.stringify({
       type: "array",
       minItems: 1,
@@ -1130,87 +1121,6 @@ describe("generic Planner decision contract", () => {
     ).toThrow("planner_available_child_roles_invalid");
   });
 
-  test("projects the exact source and passive catalog before the Planner assignment", () => {
-    configureDebugLogger({ enabled: true });
-    const request = createRequest();
-    const objective = "OBJECTIVE_SECRET_AVAILABLE_ONLY_IN_MODEL_CONTEXT";
-    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-    const input = buildPlannerDecisionInput(request, {
-      call: { ...plannerCall, objective },
-      availableChildRoleIds: ["worker"],
-      toolResults: EMPTY_REQUEST_TOOL_RESULTS,
-    });
-    const source = JSON.parse(input.context.messages[1]!.content) as Record<
-      string,
-      unknown
-    >;
-    const catalog = JSON.parse(input.context.messages[2]!.content) as Record<
-      string,
-      unknown
-    >;
-    const assignment = JSON.parse(input.context.messages[3]!.content) as Record<
-      string,
-      unknown
-    >;
-    const logs = consoleLog.mock.calls.map(
-      ([line]) => JSON.parse(String(line)) as Record<string, unknown>,
-    );
-    expect(input.context.messages).toHaveLength(4);
-    expect(source).toEqual({
-      kind: "runtime_request_source_v1",
-      authority: "reference_data",
-      sourceRef: "request:planner-request",
-      currentRequest: REQUEST_SOURCE_PROMPT,
-    });
-    expect(catalog).toMatchObject({
-      kind: "runtime_planner_worker_capability_catalog_v1",
-      authority: "runtime_registry",
-      presenceEffect:
-        "passive_worker_routing_metadata_not_user_intent_or_execution_authority",
-      projection: "detailed",
-    });
-    expect(catalog.catalogGroups).toEqual(AVAILABLE_WORKER_CAPABILITY_CATALOG);
-    expect(assignment).toEqual({
-      kind: "runtime_planner_assignment",
-      callId: "call-2",
-      parentCallId: "call-1",
-      depth: 1,
-      invocationAttempt: 1,
-      objective,
-      availableChildRoleIds: ["worker"],
-      completedChildResultCount: 0,
-    });
-    const serializedContext = JSON.stringify(input.context);
-    expect(serializedContext.match(/EXACT_LITERAL_42/g)).toHaveLength(1);
-    expect(serializedContext).not.toContain("HISTORY_MUST_NOT_REACH_PLANNER");
-    expect(serializedContext).not.toContain(
-      "ATTACHMENT_MUST_NOT_REACH_PLANNER",
-    );
-    expect(logs).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          scope: "runtime.planner",
-          event: "context.projected",
-          requestId: request.requestId,
-          role: "planner",
-          modelStep: PLANNER_DECISION_MODEL_STEP,
-          callId: "call-2",
-          parentCallId: "call-1",
-          objectiveLength: objective.length,
-          projectContextIncluded: false,
-          plannedWorkContextIncluded: false,
-          capabilityContextIncluded: true,
-          workerCapabilityCatalogGroupCount: 3,
-          workerCapabilityCatalogGroupIds: ["documents", "read", "write"],
-          workerCapabilityCatalogMemberCount: 4,
-          availableChildRoleIds: ["worker"],
-          completedChildResultCount: 0,
-        }),
-      ]),
-    );
-    expect(JSON.stringify(logs)).not.toContain(objective);
-  });
-
   test("projects inherited Planner scope while keeping it out of Worker output", () => {
     const input = buildPlannerDecisionInput(createRequest(), {
       call: scopedPlannerCall,
@@ -1580,7 +1490,7 @@ describe("generic Planner decision contract", () => {
     expect(JSON.stringify(logs)).not.toContain(childSummary);
   });
 
-  test("compacts a returned child without emitting inner lifecycle events when the model threshold is crossed", async () => {
+  test("keeps returned child evidence within budget without inner lifecycle events", async () => {
     const { ledger, commit, call } = await createReturnedPlannerChild();
     const baseRequest = createRequest();
     const onEvent = vi.fn();
@@ -1614,30 +1524,22 @@ describe("generic Planner decision contract", () => {
     expect(input.context.budget.estimatedInputTokens).toBeLessThan(
       input.context.budget.compactionTriggerInputTokens,
     );
-    expect(input.context.compaction.applied).toBe(true);
-    expect(input.context.messages).toHaveLength(5);
-    const compactCatalog = parsedMessages.find(
-      (message) =>
-        message.kind === "runtime_planner_worker_capability_catalog_v1",
-    );
-    expect(input.context.compaction.compactedSourceRefs).toContain(
-      "planner-worker-capability-catalog:call-2:2",
-    );
-    expect(compactCatalog).toMatchObject({
-      projection: "compact",
-    });
-    expect(compactCatalog?.catalogGroups).toEqual(
+    expect(input.availableWorkerCapabilityCatalog).toEqual(
       AVAILABLE_WORKER_CAPABILITY_CATALOG,
     );
     expect(
       parsedMessages.filter((message) => message.action === "invoke_role"),
-    ).toHaveLength(0);
+    ).toHaveLength(1);
+    expect(
+      parsedMessages.find((message) => message.action === "invoke_role"),
+    ).toMatchObject({
+      objective:
+        "Produce the bounded artifact and report observable completion evidence.",
+    });
     expect(
       parsedMessages.find((message) => message.kind === "runtime_child_result"),
     ).toMatchObject({
       resultRef: "result-1",
-      delegatedObjective:
-        "Produce the bounded artifact and report observable completion evidence.",
       dependencyResultRefs: [],
       outcome: "completed",
     });

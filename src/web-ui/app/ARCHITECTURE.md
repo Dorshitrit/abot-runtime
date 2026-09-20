@@ -48,6 +48,17 @@ the completion-event boundary: tool output, canonical evidence and model context
 are unchanged. The Web UI does not fetch a file or memory record again to recreate
 historical evidence. Passive Runtime memory remains outside tool activity.
 
+`tool-process-activity-fields.js` projects declared process display fields without
+branching on tool identities. Opted-in commands retain up to 4,096 characters and
+whitespace; shared `conversation-tool-evidence.js` renders them as inert
+preformatted text in both activity and approval disclosures. Working
+directory, target, exit code and recorded process evidence remain distinct from
+model-authored intent. Result output stays a bounded excerpt, and completion or
+exit zero does not establish an application window or independent outcome check.
+Terminal failures preserve recorded result fields and clipping flags. Old events
+without declared input/output evidence remain unavailable; the UI never guesses
+commands from rationale or opaque parameter summaries.
+
 Web sources appear in a separate Activity section alongside role cards and the event timeline. `web-source-event.js` projects only successful `web_search` and `web_fetch` completions; `web-sources.js` validates bounded plugin receipts and groups them by recorded call. `conversation-sources.js` renders links and retrieval/presentation states without interpreting answer text. Source-bearing events retain their own identity before display grouping, and stored session events use the same projection as live events. Session switching clears them with the existing Activity state.
 
 The optional `meta.webSources` version 1 receipt describes the final bounded **tool output**, not whether a later model invocation consumed or cited it. Older events can show found/fetched URLs with unknown output visibility; absent or unsupported receipts never imply full content. Favicons are best-effort browser requests to the source origin's `/favicon.ico`, loaded lazily with no referrer and a local fallback. No third-party icon service or server proxy is used. Source URL policy rejects unsafe schemes and credentials, and prevents automatic image loads for local/private IP literals; origin DNS, redirects, cookies, and browser image policy remain browser concerns. Icons carry no evidence and never block tool execution.
@@ -80,6 +91,36 @@ The native conversation list uses the existing `SessionService` disk reader and 
 
 Read-state persistence is an optional Web UI projection. `session-read-state/availability.ts` isolates sidecar failures from listing, loading, clearing and deleting conversations. A failure returns `readStateStatus: "unavailable"` and unknown counts, preserves the sidecar for diagnosis, and leaves read acknowledgements unsuccessful. The browser keeps the last known receipt, labels unavailable tracking explicitly and resumes normal counts after a healthy list refresh. Canonical session and attachment failures remain errors. Workspace visibility is committed before change callbacks attempt to acknowledge visible messages, including drawer closure and responsive layout changes.
 
+## Conversation file preview
+
+`conversation-file-reference.js` projects only explicit successful file-output
+receipts from tool events. Activity keeps this reference separate from the
+historical sent/received fields and excerpt. `conversation-file-action.js` makes
+the existing filename an inline preview control inside the tool summary. Its click suppresses disclosure activation;
+other summary interactions retain the recorded evidence disclosure.
+
+`conversation-file-preview-controller.js` owns scoped loading and stale-response
+rejection. The feature adapter mounts the viewer outside the message subtree and
+preserves conversation scroll while the layout changes. Session resets and
+workspace departure close it; responsive focus and Escape behavior belong to
+`conversation-file-focus.js`. Transport stays in the conversation-files service.
+
+The local backend's `conversation-file-access.ts` admits only a saved or scoped
+active completion belonging to the requested environment, session and request.
+`conversation-file-target.ts` owns the held file and root/containment identity
+checks shared by content reads and native opening. The route revalidates request
+generation and completion before returning bytes or handing off to a Mac app.
+`conversation-file-native-request.ts` limits native opening to same-origin JSON
+POSTs from a local browser on macOS. `conversation-file-native-open.ts` restricts
+file types and invokes the fixed OS opener without a shell. The viewer exposes
+this action only when its preview response includes `nativeOpenAvailable: true`;
+its controller scopes busy/failure feedback to the selected file. The OS app
+resolves the original pathname after handoff; that asynchronous read is outside
+the preview reader's held-descriptor guarantee. The receipt
+is presentation-only: the optional filesystem report callback feeds event
+metadata, never the canonical tool result or model context. No file registry or
+historical content snapshot is created.
+
 ## Styles
 
 `styles.css` is the ordered manifest. The modules under `styles/` own:
@@ -96,7 +137,6 @@ Keep responsive overrides last and avoid moving declarations between modules wit
 ## Contract boundary
 
 Visual components may format or group events, but they never accept transport frames or construct Runtime API payloads. Realtime frame parsing belongs to `realtime-transport.js`; request sequence and terminal-state reduction belong to `realtime-event-controller.js`; endpoint construction and HTTP payload serialization belong to `runtime-web-client.js` and its feature request modules; and feature controllers own when those operations occur. Config remains explicit-save; presentation changes must never introduce autosave.
-
 
 ## Core schedules
 
@@ -125,3 +165,83 @@ run identity before activating the ordinary realtime request lifecycle. Duplicat
 trigger delivery cannot add another user message or reactivate a completed run.
 The scheduler page and chat card are presentation-only consumers; the runtime
 scheduler remains the sole owner of Job state and dispatch decisions.
+
+## Interactive setup and configuration activation
+
+The setup guide composes focused rendering/validation modules and receives
+configuration transport callbacks. Runtime onboarding retains catalog authority
+over chat readiness. Home suppresses its dashboard data and shortcuts while
+setup is required; the guide has one scroll owner in either Home or Chat.
+OpenAI credentials live only in the current password input and one save payload.
+They never enter browser state, HTML attributes, preferences or control logs.
+
+The setup sequence is Provider, Connection, Embedding, Plugins and Ready.
+The onboarding feature assembles transport dependencies outside app.js; focused
+step modules own embedding and plugin card selection. Chat connection writes
+defer activation in the wizard, while ordinary setup API callers retain their
+existing immediate-activation behavior. The pending-activation gate keeps the
+catalog unavailable until the explicit final apply, including browser reload in
+the same Web process. Optional choices are read back from canonical saved files.
+
+Embedding setup prepares only the requested provider and its private credential,
+then delegates to the existing memory probe-before-save service. Probe dimensions
+and fingerprints come from the provider response; the UI never invents them.
+Provider preparation may survive a later probe failure, which is reported without
+exposing credentials. The memory Web router resolves the current configuration
+path per request so first-time setup uses local/runtime.config.json correctly.
+Plugin cards reuse the existing manifest selection API, preserving sibling tools
+and saved policies. Fresh installations start with all plugins and tools selected.
+The onboarding plugin cards display every tool checkbox directly. Their dedicated
+stylesheet widens only this step and keeps the outer workspace as the scroll owner.
+
+Configuration composes a plugin manager using the canonical manifest selection
+projection. The separate activation control explicitly applies saved files.
+The server checks synchronous owner admission, refuses busy or externally owned
+environments, and refreshes its gateway through the owning lifecycle callback.
+Browser reload and saved selection are not evidence of live activation.
+
+### Additive model setup
+
+Configuration composes a separate Provider / Model / Ready dialog in
+components/model-setup/. It shares the wizard shell and connection form with
+first setup, while retaining its own additive save/apply lifecycle. The dialog
+is outside the dashboard so refresh and mutation locking cannot detach it.
+An entered API key remains only in the mounted password field until final save;
+review and back navigation do not copy it into state or markup.
+
+configuration-feature.js guards opening against existing configuration drafts,
+blocks workspace/environment navigation while the dialog is open, and holds the
+external mutation lock during save, Apply and refresh. Saved model identity
+survives Apply failure; successful Apply survives refresh failure. Completion
+refreshes Memory provider choices and chat models, selects the new profile, and
+focuses it only after closing the modal and releasing the lock.
+
+local-runtime/model-setup-\* owns catalog/input/credential/addition behavior.
+It uses the canonical configuration repository and shared CLI merge helper,
+preserving existing profiles, references, defaults and connection settings.
+Only new OpenAI/Ollama connections are created here; existing provider IDs are
+resolved by adapter type. The transport exposes no secret values and requires
+the same-origin JSON mutation guard. This flow does not invoke a model.
+
+## Projects and permission modes
+
+`projects-feature.js` composes project UI; `projects-controller.js` owns project
+and folder loading, creation and stale-response rejection. Presentation modules
+render the creation form and sidebar groups, while `runtime-web-client/projects.js`
+owns transport. The folder form occupies the chat canvas without resetting the
+active conversation or draft. It closes the file viewer through its existing
+presentation lifecycle. Creation calls the owner API; a saved project session is
+opened through the canonical conversation controller without a model request.
+
+The session controller remains the owner of session row actions and read state.
+Its injected group renderer places project groups above ordinary conversations,
+including projects with no sessions. The session's saved project snapshot also
+provides the visible working-folder label. Neither project presentation nor client
+request payloads overwrite global runtime paths.
+
+`tool-permission-mode-controller.js` owns the permission selector and explicit
+per-session preference changes; `lib/tool-permission-mode.js` owns known browser
+values and server compatibility. FULL+ requires advertised server support, and
+transport rejects unsupported requests without a silent downgrade. The existing
+composer queue keeps its captured mode. Project membership never selects FULL+.
+`app-state.js` constructs the same one shared browser state identity for `app.js`.

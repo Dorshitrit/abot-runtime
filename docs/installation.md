@@ -56,33 +56,47 @@ npm init -y
 npm install @abot-ai/runtime
 ```
 
-Initialize a provider and concrete model id:
-
-```bash
-npx abot init --provider ollama --model <model-id>
-```
-
-If Ollama is outside the runtime process's network namespace, add
-`--base-url http://<ollama-host>:11434`. For OpenAI, use:
-
-```bash
-npx abot init --provider openai --model <model-id>
-```
-
-Then place `OPENAI_API_KEY` in the generated `.env`. The generated OpenAI model
-profile uses the recommended `execution-agent-v1` policy.
-
-Start the model gateway and packaged Web UI together:
+Start the packaged Web UI:
 
 ```bash
 npx abot start
 ```
 
 Open [http://127.0.0.1:5177](http://127.0.0.1:5177). The command binds to
-loopback by default. If no usable model is configured, the Web UI still starts
-and presents its setup guide.
+loopback by default. On a fresh installation, the setup wizard lets you select
+OpenAI or Ollama, enter a concrete model ID, and save the connection. OpenAI
+accepts the API key directly in the form and stores it privately in the
+consumer's `.env`. The key is not returned to the browser or stored in runtime
+JSON. Existing OpenAI configurations missing a key open the same completion flow.
 
-Add another model without replacing existing providers or profiles:
+For Ollama, the server must already be running with the selected model available.
+Its address is resolved from the ABot host, even when you use the UI from a phone.
+Continue through the optional **Embedding** step to configure semantic memory,
+or choose to set it up later. **Plugins** starts with all tools selected for a
+fresh installation; turn off any plugin or individual tool you do not want.
+Choose **Finish setup** to apply the selections, then **Start chatting**.
+Saving chat connection details does not make a paid model request. Explicitly
+checking an embedding model sends a small embedding probe to the chosen provider.
+
+Command-line initialization remains available:
+
+```bash
+npx abot init --provider ollama --model <model-id>
+npx abot init --provider openai --model <model-id>
+```
+
+For a remote Ollama server, add `--base-url http://<ollama-host>:11434`.
+OpenAI profiles use the recommended `execution-agent-v1` policy. A gateway
+managed by a separate process remains under that process's lifecycle; the UI
+reports when saved changes require that owner to restart.
+
+In the Web UI, open **Config → Models → Add model** to add another model.
+Choose a saved provider connection or create a new OpenAI/Ollama connection.
+Each provider card also has an **Add model** shortcut. Review the model, then
+choose **Save and apply**. Saved API keys are reused; existing model profiles and
+the default model are preserved. The added model is selected in the Models list.
+
+You can also add a model from the command line:
 
 ```bash
 npx abot add-model --profile <profile-id> --provider openai --model <model-id>
@@ -94,7 +108,8 @@ the profiles that are already configured.
 ### Optional Passive Long-Term Memory
 
 Long-term memory is disabled by default. After a provider is configured, choose
-an embedding model and enable it through the Web UI Config workspace or CLI:
+an embedding model in the onboarding Embedding step, the Web UI Config workspace,
+or the CLI:
 
 ```bash
 npx abot memory status
@@ -108,6 +123,27 @@ must be restarted. OpenAI users enter the embedding model id manually; Ollama
 users can discover model ids installed at the configured Ollama endpoint.
 
 See [Passive Long-Term Memory](long-term-memory.md) before enabling persistence.
+
+### Computer Access During Setup
+
+The optional **Computer** step checks whether direct system access already works.
+Native macOS and working WSL-to-Windows access need no additional configuration.
+You can also open this step later in **Config → Connected computer**.
+
+For Docker, download and open the Windows or Mac setup script on the computer
+running Docker. It installs the matching companion and its private Node runtime,
+pairs automatically and enables user-login startup. No copied code, separate npm
+installation or terminal command is required. Wait for **Ready** in the Web UI.
+
+For WSL with unavailable Windows interop, download and open the Windows repair
+script. Opening it enables Windows interop and automatically restarts only the
+selected distribution, preserving unrelated configuration. Finish active work
+before opening the file: the restart interrupts that distribution's services.
+No typed restart confirmation is required; the script verifies Windows access
+after the restart.
+See [Connecting a Docker Runtime to its computer](projects-and-full-plus.md#connecting-a-docker-runtime-to-its-computer)
+for connection limits and removal. Installing ABot as a library never changes
+host configuration or enables interop.
 
 ## Use As A Library
 

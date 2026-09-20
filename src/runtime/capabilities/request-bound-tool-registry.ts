@@ -1,3 +1,4 @@
+import { bindRequestWorkingDirectory } from "./request-working-directory.js";
 import type {
   RegisteredToolNormalInvocation,
   ToolAvailabilityEntry,
@@ -16,6 +17,7 @@ export function bindRequestToolRegistry(
   params: Readonly<{
     registry: ToolRegistry;
     modelInvoker: ToolModelInvoker;
+    requestWorkingDirectory?: string;
     requestAttachments?: readonly ToolRequestAttachment[];
   }>,
 ): ToolRegistry {
@@ -67,14 +69,21 @@ export function bindRequestToolRegistry(
           ? { requestAttachments: params.requestAttachments }
           : {}),
       };
-      return registry.prepareSharedState
+      const prepared = registry.prepareSharedState
         ? registry.prepareSharedState(requestState)
         : requestState;
+      return bindRequestWorkingDirectory(
+        prepared,
+        params.requestWorkingDirectory,
+      );
     },
     execute: (call, options) =>
       registry.execute(call, {
         ...options,
         modelInvoker: params.modelInvoker,
+        ...(params.requestWorkingDirectory !== undefined
+          ? { requestWorkingDirectory: params.requestWorkingDirectory }
+          : {}),
       }),
   });
 }

@@ -9,8 +9,6 @@ export const EXECUTION_AGENT_AUDIT_OBJECTIVE_KIND =
 export const AUDITOR_DECISION_IDENTIFIER_MAX_LENGTH = 128;
 export const AUDITOR_DECISION_TEXT_MAX_LENGTH = 8_192;
 export const AUDITOR_DECISION_CRITERION_LIMIT = 32;
-export const AUDITOR_DECISION_EVIDENCE_LIMIT = 16;
-export const AUDITOR_DECISION_EVIDENCE_TOTAL_MAX_CHARS = 48_000;
 
 export type ExecutionAgentAuditObjective = Readonly<{
   kind: typeof EXECUTION_AGENT_AUDIT_OBJECTIVE_KIND;
@@ -36,18 +34,29 @@ export type AuditorCapabilityEvidence = Readonly<{
   adapterResult: CapabilityAdapterResult;
 }>;
 
-export type AuditorRoleResultEvidence = Readonly<{
-  kind: "subordinate_result";
-  resultRef: string;
-  producerCallId: string;
-  roleId: "planner" | "worker" | "researcher" | "reviewer";
-  outcome: "completed" | "failed";
-  summary: string;
+export type AuditorEvidence = AuditorCapabilityEvidence;
+
+export type AuditorEvidencePreview = Readonly<{
+  text: string;
+  originalChars: number;
+  truncated: boolean;
 }>;
 
-export type AuditorEvidence =
-  | AuditorCapabilityEvidence
-  | AuditorRoleResultEvidence;
+export type AuditorEvidenceInventoryEntry = Readonly<{
+  executionId: string;
+  callId: string;
+  invocationAttempt: number;
+  capabilityId: string;
+  declaredEffect: AuditorCapabilityEvidence["declaredEffect"];
+  outcome: AuditorCapabilityEvidence["outcome"];
+  observedEffect: AuditorCapabilityEvidence["observedEffect"];
+  summaryPreview: AuditorEvidencePreview;
+  targetPreviews: readonly AuditorEvidencePreview[];
+  referenceCount: number;
+  omittedReferencePreviewCount: number;
+  exactEvidenceChars: number;
+  evidenceFingerprint: string;
+}>;
 
 export type AuditorAssignment = Readonly<{
   auditId: string;
@@ -56,6 +65,12 @@ export type AuditorAssignment = Readonly<{
   sourceRevision: number;
   criterionIds: readonly string[];
   criteria: readonly AuditorCriterion[];
+  workFingerprint: string;
+  inventory: readonly AuditorEvidenceInventoryEntry[];
+  selectedEvidenceIds: readonly string[];
+  reviewedBundleFingerprints: readonly string[];
+  reviewedEvidenceBundles: readonly (readonly string[])[];
+  pendingEvidenceIds: readonly string[] | null;
   evidence: readonly AuditorEvidence[];
   availableEvidenceCount: number;
   omittedEvidenceCount: number;
@@ -65,6 +80,7 @@ export type AuditorEvidenceProjectionStatus = Readonly<{
   complete: boolean;
   evidenceCountConsistent: boolean;
   projectedEvidenceCount: number;
+  selectedEvidenceCount: number;
   availableEvidenceCount: number;
   omittedEvidenceCount: number;
 }>;
@@ -74,19 +90,15 @@ export type AuditorGap = Readonly<{
   description: string;
 }>;
 
-export type AuditorDecision =
-  | Readonly<{
-      auditId: string;
-      verdict: "pass";
-      criterionIds: readonly string[];
-      gaps: readonly [];
-    }>
-  | Readonly<{
-      auditId: string;
-      verdict: "gaps";
-      criterionIds: readonly string[];
-      gaps: readonly AuditorGap[];
-    }>;
+export type AuditorDecision = Readonly<{
+  auditId: string;
+  verdict: "pass" | "gaps" | "needs_evidence";
+  criterionIds: readonly string[];
+  gaps: readonly AuditorGap[];
+  neededEvidenceIds: readonly string[];
+  notNeededEvidenceIds: readonly string[];
+  requestedEvidenceIds: readonly string[];
+}>;
 
 export type AuditorDecisionValidationIssue = Readonly<{
   code: string;
@@ -153,7 +165,8 @@ export function projectAuditorEvidenceProjectionStatus(
     Number.isSafeInteger(assignment.omittedEvidenceCount) &&
     assignment.availableEvidenceCount >= 0 &&
     assignment.omittedEvidenceCount >= 0 &&
-    assignment.availableEvidenceCount ===
+    assignment.availableEvidenceCount === assignment.inventory.length &&
+    assignment.selectedEvidenceIds.length ===
       assignment.evidence.length + assignment.omittedEvidenceCount;
   return Object.freeze({
     complete:
@@ -162,6 +175,7 @@ export function projectAuditorEvidenceProjectionStatus(
       assignment.omittedEvidenceCount === 0,
     evidenceCountConsistent,
     projectedEvidenceCount: assignment.evidence.length,
+    selectedEvidenceCount: assignment.selectedEvidenceIds.length,
     availableEvidenceCount: assignment.availableEvidenceCount,
     omittedEvidenceCount: assignment.omittedEvidenceCount,
   });

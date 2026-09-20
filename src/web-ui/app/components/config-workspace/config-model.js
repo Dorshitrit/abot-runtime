@@ -1,6 +1,17 @@
+import {
+  malformedConfigRaw,
+  configRequiresRawRepair,
+} from "./raw-config-repair.js";
 import { textOf } from "../../lib/text-format.js";
 
-export const CONFIG_CATEGORIES = ["memory", "pipeline", "models", "advanced"];
+export const CONFIG_CATEGORIES = [
+  "memory",
+  "pipeline",
+  "models",
+  "plugins",
+  "computer",
+  "advanced",
+];
 
 const DEFAULT_MODEL_EXECUTION_POLICY = "supervisor-worker-v1";
 
@@ -120,6 +131,7 @@ export function createConfigWorkspaceModel() {
     configDashboard: null,
     baselinesByKey: new Map(),
     rawDraftsByKey: new Map(),
+    appliedJsonRepairKeys: new Set(),
     savingKeys: new Set(),
     savedKeys: new Set(),
     expandedCalibrationKeys: new Set(),
@@ -165,11 +177,15 @@ export function createConfigWorkspaceModel() {
   function captureBaselines() {
     state.baselinesByKey.clear();
     state.rawDraftsByKey.clear();
+    state.appliedJsonRepairKeys.clear();
     state.savedKeys.clear();
     for (const file of configFileEntries()) {
       const key = configFileKey(file);
       state.baselinesByKey.set(key, cloneConfig(file.config));
-      state.rawDraftsByKey.set(key, formattedConfig(file.config));
+      state.rawDraftsByKey.set(
+        key,
+        malformedConfigRaw(file) ?? formattedConfig(file.config),
+      );
     }
   }
 
@@ -178,6 +194,7 @@ export function createConfigWorkspaceModel() {
   }
 
   function isFileDirty(file) {
+    if (state.appliedJsonRepairKeys.has(configFileKey(file))) return true;
     const baseline = baselineFor(file);
     return baseline ? !configValuesEqual(file.config, baseline) : false;
   }
@@ -186,10 +203,13 @@ export function createConfigWorkspaceModel() {
     const key = configFileKey(file);
     return state.rawDraftsByKey.has(key)
       ? state.rawDraftsByKey.get(key)
-      : formattedConfig(file.config);
+      : (malformedConfigRaw(file) ?? formattedConfig(file.config));
   }
 
   function hasRawDraftChanges(file) {
+    const appliedRepair = state.appliedJsonRepairKeys.has(configFileKey(file));
+    if (configRequiresRawRepair(file, appliedRepair))
+      return rawDraftFor(file) !== malformedConfigRaw(file);
     return rawConfigDraftHasChanges(rawDraftFor(file), file.config);
   }
 

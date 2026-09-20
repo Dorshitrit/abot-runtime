@@ -1,4 +1,5 @@
 import type { ModelStep } from "../../shared/model-steps.js";
+import type { ModelWorkPlanUpdate } from "../orchestration/role-calls/work-plan-contracts.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { MemoryRecallDecision } from "../steps/memory-recall-decision.js";
 import type { RequestToolResultsView } from "../context/request-tool-results.js";
@@ -30,7 +31,7 @@ export type RootContractCallIdentity = Readonly<{
   invocationAttempt: number;
 }>;
 
-export type RootContractDecision =
+type RootContractAction =
   | MemoryRecallDecision
   | Readonly<{
       action: "respond";
@@ -87,6 +88,9 @@ export type RootContractDecision =
       acknowledgement?: undefined;
       title?: undefined;
     }>;
+
+export type RootContractDecision = RootContractAction &
+  Readonly<{ workPlan?: ModelWorkPlanUpdate }>;
 
 export type RootContractDecisionOutcome = Readonly<{
   decision: RootContractDecision;

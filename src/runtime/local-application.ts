@@ -97,6 +97,16 @@ export function createLocalRuntimeApplication(
       }
     },
     getOwnership: () => connection?.ownership,
+    isOwnerIdle: () => !stopped && connection?.isOwnerIdle() === true,
+    stopIfIdle(): Promise<boolean> {
+      if (stopped) return Promise.resolve(false);
+      if (!connection?.isOwnerIdle()) return Promise.resolve(false);
+      // Do not await startup between checking admission and closing intake.
+      const closing = connection.closeIfIdle();
+      stopped = true;
+      client.close();
+      return closing;
+    },
     subscribeScheduledEvents: client.subscribe.bind(client),
   });
 }

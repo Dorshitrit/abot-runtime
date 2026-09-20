@@ -160,6 +160,23 @@ the active role has changed before completion. These fields are display identity
 they do not change runtime stages, tool parameters, approval inputs or evidence.
 The root role identifier remains `supervisor` regardless of its selected contract.
 
+Input `eventPresentation.metadata` mappings support typed boolean parameters
+without converting strings or numbers into booleans. Omitted or mistyped values
+use a declared default or remain absent. The system command declaration exposes
+its `elevated` flag (default false) in activity and approval evidence.
+
+Input `eventPresentation.metadata` string mappings may opt into `maxLength`
+(an integer from 1 to 4,096) and `preserveWhitespace` (boolean). These options
+apply to string mappings. `preserveWhitespace` is also supported on string arrays:
+opted-in arrays preserve empty values and positions, show up to 32 items bounded
+to 500 characters each, and include `<key>Truncated` and `<key>OmittedCount`.
+Existing mappings keep their 500-character,
+trimmed display summaries. Opted-in strings expose a companion
+`<key>Truncated` flag, preserve text when requested and avoid splitting Unicode
+surrogate pairs. They affect client display only, never accepted tool inputs.
+The system command plugin declares its full 4,096-character command bound;
+clients render that recorded command as inert text, separately from model intent.
+
 `eventPresentation.resultMetadata` maps optional display keys to existing tool
 result fields through `{path, kind}` descriptors. Paths select `output` or an
 own-property path under `data` (at most four segments). Kinds are `preview`,

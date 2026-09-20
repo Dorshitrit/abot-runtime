@@ -1,5 +1,3 @@
-import type { ResolvedRuntimeToolPath } from "../../../src/plugin-sdk/index.js";
-
 export type ExecActionSummary = Readonly<{
   type: string;
   target?: string;
@@ -66,10 +64,14 @@ export type ExecFilesystemDelta = Readonly<{
   }>;
 }>;
 
+export type ExecWorkingDirectory = Readonly<{
+  absolutePath: string;
+  logicalPath: string;
+}>;
+
 export type PendingExecExecution = Readonly<{
   commandPreview: string;
-  commandWasNormalized: boolean;
-  cwd: ResolvedRuntimeToolPath;
+  cwd: ExecWorkingDirectory;
   filesystemStateBefore: ExecFilesystemSnapshot | null;
   hardTimeoutMs: number;
   idleTimeoutMs: number;

@@ -1,0 +1,73 @@
+.model-setup-dialog {
+  width: min(calc(100vw - 40px), 640px);
+  max-width: none;
+  max-height: calc(100dvh - 40px);
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: var(--panel);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.model-setup-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.64);
+}
+.model-setup-panel {
+  width: 100%;
+  max-height: calc(100dvh - 42px);
+  min-height: 0;
+  padding: 28px 32px;
+  gap: 24px;
+}
+.model-setup-panel > :not(.runtime-setup-content) {
+  flex-shrink: 0;
+}
+.model-setup-panel .runtime-setup-content {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.model-setup-dialog [data-model-form] {
+  display: grid;
+  gap: 22px;
+  min-width: 0;
+  margin: 0;
+}
+.model-setup-back-actions {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+.model-setup-dialog .runtime-setup-footer button {
+  min-height: 44px;
+}
+
+@media (max-width: 520px) {
+  .model-setup-dialog {
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+  .model-setup-panel {
+    max-height: calc(100dvh - 26px);
+    padding: 24px 18px;
+  }
+  .model-setup-back-actions {
+    gap: 14px;
+  }
+}
+
+@media (max-height: 520px) {
+  .model-setup-panel {
+    gap: 12px;
+    padding-block: 16px;
+  }
+  .model-setup-dialog .runtime-setup-progress {
+    padding-bottom: 12px;
+  }
+  .model-setup-dialog .runtime-setup-footer {
+    padding-top: 12px;
+  }
+}

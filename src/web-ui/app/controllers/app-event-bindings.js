@@ -12,6 +12,7 @@ export function createAppEventBindings({
   composerActions,
   actions,
   documentRoot = document,
+  onSessionCreated = () => {},
 }) {
   function bind() {
     dom.sessionSearchInput.addEventListener("input", () => {
@@ -31,6 +32,7 @@ export function createAppEventBindings({
       if (!actions.suspendQueueRecovery()) return;
       if (preparedWorkspaceActivation() === false) return;
       state.currentSessionId = createWebSessionId();
+      onSessionCreated(state.currentSessionId);
       actions.saveSessionId(
         actions.selectedEnvironmentId(),
         state.currentSessionId,

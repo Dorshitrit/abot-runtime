@@ -27,6 +27,7 @@ export type AgentPluginOperationManifest = Readonly<{
 }>;
 
 export type AgentPluginCapabilityManifest = Readonly<{
+  requiredPermissionMode?: import("../capabilities/tool-permission-mode.js").ToolRequiredPermissionMode;
   description: string;
   routingCapability: ToolRoutingCapability;
   controlsRefinement?: "mechanical_when_complete";

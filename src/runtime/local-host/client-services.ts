@@ -1,10 +1,12 @@
 import type { SessionStore } from "../ports.js";
+import type { RuntimeProjectService } from "../projects/contracts.js";
 import type { RuntimeAttachmentStore } from "../attachments/store.js";
 import type { SchedulerService } from "../scheduler/contracts.js";
 import type { LocalRuntimeCallHandler } from "./contracts.js";
 import { bindManagedSessionAttachmentDeletion } from "../session/session-attachment-deletion.js";
 import {
   LOCAL_SESSION_METHODS,
+  LOCAL_PROJECT_METHODS,
   LOCAL_ATTACHMENT_METHODS,
   LOCAL_SCHEDULER_METHODS,
 } from "./app-service-dispatch.js";
@@ -28,5 +30,9 @@ export function createLocalServiceClients(call: LocalRuntimeCallHandler) {
     LOCAL_SCHEDULER_METHODS,
   );
   bindManagedSessionAttachmentDeletion(sessions, attachments);
-  return { sessions, attachments, scheduler };
+  const projects = service<RuntimeProjectService>(
+    "projects",
+    LOCAL_PROJECT_METHODS,
+  );
+  return { sessions, attachments, scheduler, projects };
 }

@@ -127,9 +127,11 @@ isolation boundaries.
   only the smallest complete set of offered catalog groups; the Worker still
   owns capability and control selection.
 - **Planner Graph advisory contract** may propose or decline one bounded
-  dependency graph for the Execution Agent. It is a terminal passive child
-  result: it cannot execute graph nodes, write canonical plan state, or commit
-  completion.
+  dependency graph for the Execution Agent, including sequential steps or
+  parallel components converging into one integrated deliverable. It is a
+  terminal passive child result: it cannot execute graph nodes, adopt a plan,
+  or commit completion. The root model may explicitly adopt its exact proposal
+  and report item progress alongside an existing decision.
 - **Worker** performs one bounded objective. It may return a substantive result
   from supplied knowledge or invoke one offered capability when an external
   observation or effect is required. Its structured decision selects the
@@ -138,9 +140,29 @@ isolation boundaries.
   policy and returns a human-readable summary plus a bounded, revision-bound
   `reviewer_verdict_v1` receipt to its exact caller. The receipt is passive
   canonical evidence; it does not choose remediation or finalization.
-- **Auditor** receives typed criteria and whole canonical evidence entries in
-  the direct policy. It returns a passive pass/gaps advisory; omitted evidence
-  makes pass unavailable and the root still owns the next action.
+- **Auditor** receives typed criteria and a complete canonical work inventory
+  in the direct policy. It independently selects whole original evidence,
+  then returns a passive pass/gaps/needs_evidence advisory. A request for more
+  evidence identifies the complete next bundle; the next root invocation of
+  the same criteria binds those exact records without rerunning tools. Pass
+  requires full inventory classification and all needed originals in the
+  current bundle. Previews and prior advisory summaries are not proof.
+  Exact evidence is never compacted or truncated to fit. The configured model
+  context budget controls admission, with no separate fixed evidence-count or
+  character ceiling. Exact duplicate receipt supplements use explicit paths
+  into the same unchanged original adapter result. Capacity failures return a
+  failed advisory instead of requesting repair of a valid evidence selection;
+  the root still owns the next action.
+
+Finished audits and already reviewed bundles are unavailable for unchanged
+work and steering. Canonical work results or new user steering can reopen an
+audit; plan progress, capability-scope changes and advisory returns alone
+cannot. These mechanics prevent repeated identical reviews without choosing
+evidence relevance or semantic completion for the models.
+The Execution Agent's policy favors completion review after implementation and
+available validation, with another review after addressing findings. An earlier
+targeted review remains available for user requests or decisions that benefit
+from it; the runtime never schedules reviews from tool settlement.
 
 A Planner Graph or Auditor structured-output validation failure settles as a
 failed passive child result and returns to the root; it does not write plan
@@ -441,8 +463,14 @@ Top-level delegated Planner calls that commit canonical plan state are
 projected as the existing `planner.plan.*` snapshot and item events. Their
 payload continues to use `stage=development_plan` for client compatibility.
 That stage is presentation metadata only: events are emitted after role-call
-commits and never select a role or advance canonical state. `planner.graph`
-advisories do not create canonical plan state or these events.
+commits and never select a role or advance canonical state. A `planner.graph`
+advisory alone creates no plan or event. The Execution Agent can attach an
+explicit plan adoption or progress report to an existing decision. The ledger
+binds its exact source and item identities on the root, and the same observer
+projects those committed reports into the existing events. This adds no model
+turns. The statuses are model reports, not tool evidence or completion gates;
+Planner/Auditor returns and tool settlement never auto-complete their items.
+The delegated policy keeps its existing Worker-bound plan semantics.
 
 Tool execution continues to use the existing `tool.*` lifecycle. A successful
 tool event establishes only that bounded capability outcome, not completion of

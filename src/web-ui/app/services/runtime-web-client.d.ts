@@ -1,3 +1,7 @@
+import type { ProjectRequests } from "./runtime-web-client/projects.js";
+import type { ConversationFileClient } from "./runtime-web-client/conversation-files.js";
+import type { ModelSetupInput } from "../../local-runtime/model-setup-input.js";
+import type { SetupEmbeddingInput } from "../../local-runtime/setup-embedding-input.js";
 import type {
   UpdateSchedulerJobInput,
   SchedulerJob,
@@ -54,6 +58,7 @@ export type RuntimeAvailability =
       status: "setup_required";
       code: "runtime_configuration_required";
       message: string;
+      recovery?: "configuration";
     };
 
 export type RuntimeModelCatalogResponse = Record<string, unknown> & {
@@ -68,6 +73,41 @@ export declare function createRuntimeWebClient(options: {
   fetchImpl?: typeof fetch;
   origin?: string;
 }): {
+  supportsSystemHostConnection(): boolean;
+  getSystemHostConnection(): Promise<Record<string, unknown>>;
+  downloadSystemHostSetup(
+    platform: "windows" | "macos",
+  ): Promise<Record<string, unknown>>;
+  createSystemHostPairing(): Promise<Record<string, unknown>>;
+  revokeSystemHostConnection(): Promise<Record<string, unknown>>;
+  supportsProjects: ProjectRequests["supportsProjects"];
+  listProjects: ProjectRequests["listProjects"];
+  browseProjectFolders: ProjectRequests["browseProjectFolders"];
+  createProject: ProjectRequests["createProject"];
+  createProjectSession: ProjectRequests["createProjectSession"];
+  getRuntimeSetup(environmentId?: string): Promise<Record<string, unknown>>;
+  saveRuntimeSetup(
+    input: {
+      provider: string;
+      model: string;
+      baseUrl?: string;
+      apiKey?: string;
+      deferActivation?: boolean;
+    },
+    environmentId?: string,
+  ): Promise<Record<string, unknown>>;
+  saveRuntimeSetupEmbedding(
+    input: SetupEmbeddingInput,
+    environmentId?: string,
+  ): Promise<Record<string, unknown>>;
+  getRuntimePlugins(environmentId?: string): Promise<Record<string, unknown>>;
+  setRuntimePlugin(
+    input: { pluginId: string; capabilityId?: string; enabled: boolean },
+    environmentId?: string,
+  ): Promise<Record<string, unknown>>;
+  applyRuntimeConfiguration(
+    environmentId?: string,
+  ): Promise<Record<string, unknown>>;
   supportsSchedules(): boolean;
   listSchedules(environmentId?: string): Promise<{ jobs: SchedulerJob[] }>;
   getSchedule(
@@ -97,6 +137,12 @@ export declare function createRuntimeWebClient(options: {
     action: "pause" | "resume" | "cancel" | "run-now",
     environmentId?: string,
   ): Promise<Record<string, unknown>>;
+  supportsConversationFiles(): boolean;
+  loadConversationFile: ConversationFileClient["loadConversationFile"];
+  openConversationFile: NonNullable<
+    ConversationFileClient["openConversationFile"]
+  >;
+  conversationFileUrl: ConversationFileClient["conversationFileUrl"];
   getRuntimeStatus(): Promise<Record<string, unknown>>;
   getRuntimeLogs(lines?: number): Promise<Record<string, unknown>>;
   getSystemHealth(): Promise<Record<string, unknown>>;
@@ -161,12 +207,18 @@ export declare function createRuntimeWebClient(options: {
     toolPermissionMode: string;
     modelPreference?: Record<string, unknown> | null;
   }): Promise<string>;
+  loadModelSetup(environmentId?: string): Promise<Record<string, unknown>>;
+  addRuntimeModel(
+    input: ModelSetupInput,
+    environmentId?: string,
+  ): Promise<Record<string, unknown>>;
   loadConfigDashboard(environmentId?: string): Promise<Record<string, unknown>>;
   saveConfigFile(options: {
     environmentId?: string;
     kind: string;
     id: string;
     config: unknown;
+    expectedRevision?: string;
   }): Promise<Record<string, unknown>>;
   loadLongTermMemoryStatus(
     environmentId?: string,

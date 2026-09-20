@@ -11,6 +11,7 @@ import type {
   RoleCallState,
 } from "../orchestration/role-calls/index.js";
 import { createRequestPlanEventPresentation } from "./planner-plan-events.js";
+import { projectRootWorkPlanCommit } from "./root-plan-event-projection.js";
 import {
   traceRequestPlannerEventsEmitted,
   traceRequestPlannerEventsFailed,
@@ -36,6 +37,9 @@ const ROLE_CALL_PLAN_EVENT_PRESENTATION = createRequestPlanEventPresentation({
 export function projectRequestPlannerRoleCallCommit(
   commit: CommittedRoleCallTransition,
 ): readonly RequestPlanClientEvent[] {
+  if (commit.effect.type === "model_work_plan_updated") {
+    return projectRootWorkPlanCommit(commit, ROLE_CALL_PLAN_EVENT_PRESENTATION);
+  }
   if (
     commit.effect.type !== "child_opened" &&
     commit.effect.type !== "child_returned"

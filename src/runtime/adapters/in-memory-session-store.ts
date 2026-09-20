@@ -1,3 +1,9 @@
+import { randomUUID } from "node:crypto";
+import {
+  assertSessionProjectUnchanged,
+  copySessionProject,
+  type SessionCreationOptions,
+} from "../../sessions/project-binding.js";
 import type { AgentMode } from "../../shared/types.js";
 import {
   assertValidSessionArtifactPathInputs,
@@ -107,16 +113,23 @@ class InMemorySessionStore {
     }
   }
 
-  async getOrCreateSession(sessionId: string): Promise<SessionRecord> {
+  async getOrCreateSession(
+    sessionId: string,
+    options: SessionCreationOptions = {},
+  ): Promise<SessionRecord> {
     assertValidSessionId(sessionId);
     const existing = this.sessions.get(sessionId);
     if (existing) {
+      assertSessionProjectUnchanged(existing, options.project);
       return cloneSession(existing);
     }
 
     const timestamp = toIso(this.now);
     const session: SessionRecord = {
       id: sessionId,
+      ...(options.project
+        ? { project: copySessionProject(options.project) }
+        : {}),
       title: sessionId,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -170,6 +183,7 @@ class InMemorySessionStore {
     }
     return {
       sessionId,
+      ...(session.project ? { project: session.project } : {}),
       title: session.title,
       messages: filterMessagesAfter(
         clientVisibleMessages(session.messages),
@@ -199,6 +213,7 @@ class InMemorySessionStore {
       return {
         requestId,
         sessionId: request.sessionId,
+        ...(request.generation ? { generation: request.generation } : {}),
         events: request.events
           .filter((event) => event.seqNo > normalizedAfterSeq)
           .map(toClientReplayEvent),
@@ -417,6 +432,8 @@ class InMemorySessionStore {
       const request: SessionRequestRecord = {
         requestId,
         sessionId,
+        // Only an explicit new stream establishes a request lifetime.
+        generation: randomUUID(),
         status: "streaming",
         createdAt: timestamp,
         updatedAt: timestamp,

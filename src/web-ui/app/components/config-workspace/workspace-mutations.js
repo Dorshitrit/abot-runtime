@@ -1,3 +1,8 @@
+import {
+  malformedConfigRaw,
+  configRequiresRawRepair,
+  selectMalformedConfigForRepair,
+} from "./raw-config-repair.js";
 import { textOf } from "../../lib/text-format.js";
 import {
   cloneConfig,
@@ -27,6 +32,13 @@ export function createConfigWorkspaceMutations({
     const file = findConfigFile(kind, id);
     if (!file) return;
     const key = configFileKey(file);
+    if (configRequiresRawRepair(file, state.appliedJsonRepairKeys.has(key))) {
+      setWorkspaceStatus(
+        "Repair this file in Advanced → Raw JSON before editing its fields.",
+        "error-text",
+      );
+      return;
+    }
     const shouldFollowStructuredConfig = !hasRawDraftChanges(file);
     mutator(file.config);
     state.savedKeys.delete(key);
@@ -47,7 +59,8 @@ export function createConfigWorkspaceMutations({
     const baseline = state.baselinesByKey.get(key);
     if (!baseline) return;
     file.config = cloneConfig(baseline);
-    state.rawDraftsByKey.set(key, formattedConfig(baseline));
+    state.appliedJsonRepairKeys.delete(key);
+    state.rawDraftsByKey.set(key, malformedConfigRaw(file) ?? formattedConfig(baseline));
     state.savedKeys.delete(key);
     renderConfigDashboard();
   }
@@ -58,7 +71,8 @@ export function createConfigWorkspaceMutations({
       const baseline = state.baselinesByKey.get(key);
       if (!baseline) continue;
       file.config = cloneConfig(baseline);
-      state.rawDraftsByKey.set(key, formattedConfig(baseline));
+      state.appliedJsonRepairKeys.delete(key);
+      state.rawDraftsByKey.set(key, malformedConfigRaw(file) ?? formattedConfig(baseline));
     }
     state.savedKeys.clear();
     renderConfigDashboard();
@@ -105,6 +119,7 @@ export function createConfigWorkspaceMutations({
     if (!models.some((model) => model.id === state.selectedConfigModelId)) {
       state.selectedConfigModelId = models[0]?.id || "";
     }
+    selectMalformedConfigForRepair(state, configFileEntries(), configFileKey);
     ensureRawSelection();
     renderConfigDashboard();
   }
@@ -113,6 +128,7 @@ export function createConfigWorkspaceMutations({
     state.configDashboard = null;
     state.baselinesByKey.clear();
     state.rawDraftsByKey.clear();
+    state.appliedJsonRepairKeys.clear();
     state.savedKeys.clear();
     state.selectedRawConfigKey = "";
     dom.configDashboard.innerHTML = "";
@@ -146,6 +162,8 @@ export function createConfigWorkspaceMutations({
       const parsed = parseRawDraft(file);
       file.config = parsed;
       const key = configFileKey(file);
+      if (malformedConfigRaw(file) !== undefined)
+        state.appliedJsonRepairKeys.add(key);
       state.rawDraftsByKey.set(key, formattedConfig(parsed));
       state.savedKeys.delete(key);
       setWorkspaceStatus("");
@@ -170,7 +188,9 @@ export function createConfigWorkspaceMutations({
     }
     state.rawDraftsByKey.set(
       configFileKey(currentFile),
-      formattedConfig(currentFile.config),
+      configRequiresRawRepair(currentFile, state.appliedJsonRepairKeys.has(configFileKey(currentFile)))
+        ? malformedConfigRaw(currentFile)
+        : formattedConfig(currentFile.config),
     );
     return true;
   }

@@ -1,4 +1,5 @@
 import type WebSocket from "ws";
+import type { SessionCreationOptions } from "../sessions/project-binding.js";
 
 import type {
   AgentMode,
@@ -167,7 +168,10 @@ export type AppendSessionContextEntryOptions = {
 };
 
 export type SessionStore = SessionMemoryRepository & {
-  getOrCreateSession: (sessionId: string) => Promise<SessionRecord>;
+  getOrCreateSession: (
+    sessionId: string,
+    options?: SessionCreationOptions,
+  ) => Promise<SessionRecord>;
   getAllSessions: () => Promise<SessionRecord[]>;
   listSessions: (params?: {
     limit?: number;
@@ -249,12 +253,15 @@ export type ConversationContextProvider = {
 };
 
 export type ToolExecutionOptions = {
+  /** Trusted request snapshot, never parsed from a model tool payload. */
+  requestWorkingDirectory?: string;
   abortSignal?: AbortSignal;
   sharedState?: ToolExecutionContext["sharedState"];
   modelInvoker?: ToolExecutionContext["modelInvoker"];
+  reportFileOutput?: ToolExecutionContext["reportFileOutput"];
 };
 
-export type ToolPermissionMode = "full_access" | "ask";
+export type { ToolPermissionMode } from "../capabilities/tool-permission-mode.js";
 
 export type ToolApprovalRequest = {
   requestId: string;
@@ -276,6 +283,8 @@ export type ToolApprovalController = {
 };
 
 export type ToolRegistry = {
+  /** Build an isolated availability/execution snapshot before model projection. */
+  prepareRequest?: () => Promise<ToolRegistry>;
   listDefinitions: () => ToolDefinition[];
   /** The sole config-filtered availability snapshot for ordinary invocation. */
   listNormalInvocations?: () => readonly RegisteredToolNormalInvocation[];

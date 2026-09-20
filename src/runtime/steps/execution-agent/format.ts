@@ -1,5 +1,6 @@
 import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
 import { createMemoryRecallDecisionSchema } from "../memory-recall-decision.js";
+import { withExecutionWorkPlanVariants } from "./work-plan-contract.js";
 import { isToolCatalogGroupId } from "../../../capabilities/tool-types.js";
 import { createStructuredDecisionEnvelopeSchema } from "../../model/structured-decision-envelope.js";
 import {
@@ -21,6 +22,7 @@ import {
   EXECUTION_AGENT_AUDIT_CRITERION_COUNT_MAX,
   EXECUTION_AGENT_AUDIT_CRITERION_ID_MAX_LENGTH,
   EXECUTION_AGENT_CAPABILITY_SCOPE_GROUP_COUNT_MAX,
+  EXECUTION_AGENT_CAPABILITY_BATCH_COUNT_MAX,
   EXECUTION_AGENT_OBJECTIVE_MAX_LENGTH,
   EXECUTION_AGENT_RESPONSE_MAX_LENGTH,
   EXECUTION_AGENT_TITLE_MAX_LENGTH,
@@ -190,7 +192,7 @@ export function createExecutionAgentDecisionFormat(
         ]
       : []),
   ];
-  const schema = createStructuredDecisionEnvelopeSchema(variants);
+  const schema = createStructuredDecisionEnvelopeSchema(withExecutionWorkPlanVariants(variants, options.workPlan));
   return {
     type: "json_schema",
     name: "execution_agent_decision",
@@ -286,7 +288,7 @@ export function prepareExecutionAgentDecisionContract(
     uniqueIds.size !== suppliedCapabilities.length ||
     !Number.isInteger(maxBatchCapabilityExecutions) ||
     maxBatchCapabilityExecutions < 0 ||
-    maxBatchCapabilityExecutions > CAPABILITY_COUNT_MAX
+    maxBatchCapabilityExecutions > EXECUTION_AGENT_CAPABILITY_BATCH_COUNT_MAX
   ) {
     throw new Error("execution_agent_capabilities_invalid");
   }

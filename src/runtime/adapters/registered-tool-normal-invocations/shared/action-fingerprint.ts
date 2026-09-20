@@ -10,6 +10,7 @@ export function createRegisteredToolActionFingerprint(input: {
   contractVersion: number;
   operationId: string;
   call: ToolCall;
+  executionIdentity?: string;
 }): string {
   const canonical = JSON.stringify([
     "registered_tool_normal_invocation_v1",
@@ -17,6 +18,7 @@ export function createRegisteredToolActionFingerprint(input: {
     input.operationId,
     input.call.tool,
     canonicalEntries(input.call.params),
+    ...(input.executionIdentity === undefined ? [] : [input.executionIdentity]),
   ]);
   return `sha256:${createHash("sha256").update(canonical).digest("hex")}`;
 }

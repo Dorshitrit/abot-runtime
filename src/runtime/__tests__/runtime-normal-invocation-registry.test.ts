@@ -1,3 +1,4 @@
+import { expectLegacyAndFullPlusInventories } from "./full-plus-inventory-fixture.js";
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -44,7 +45,9 @@ describe("manifest-derived ordinary invocation registry", () => {
         })),
       )
       .sort(compareOperation);
-    const registry = createDefaultToolRegistry(config);
+    const registry = expectLegacyAndFullPlusInventories(
+      createDefaultToolRegistry(config),
+    );
     const registeredOperations = (registry.listNormalInvocations?.() ?? [])
       .flatMap((registration) =>
         registration.contract.operations.map((operation) => ({
@@ -229,7 +232,9 @@ describe("manifest-derived ordinary invocation registry", () => {
       executionEffect: "read_only",
     });
 
-    const registry = createDefaultToolRegistry(config);
+    const registry = expectLegacyAndFullPlusInventories(
+      createDefaultToolRegistry(config),
+    );
     expect(registry.listDefinitions().map(({ name }) => name)).toEqual([
       "host_lookup",
     ]);

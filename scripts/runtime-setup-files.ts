@@ -102,6 +102,7 @@ export function buildModelConfig(
   template: JsonObject,
   provider: Provider,
   model: string,
+  contextWindowTokens?: number,
 ): JsonObject {
   const context = isRecord(template.context) ? template.context : {};
   return {
@@ -109,6 +110,9 @@ export function buildModelConfig(
     label: model,
     provider,
     model,
+    ...(contextWindowTokens !== undefined
+      ? { contextWindowTokens: parseContextWindowTokens(contextWindowTokens) }
+      : {}),
     ...(provider === "openai"
       ? {
           execution: {
@@ -123,4 +127,26 @@ export function buildModelConfig(
       },
     },
   };
+}
+
+export function parseContextWindowTokens(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0)
+    throw new Error(
+      "Context window must be a positive whole number of tokens.",
+    );
+  return value;
+}
+
+export async function readDefaultContextWindowTokens(): Promise<number> {
+  const template = await readJsonObject(
+    join(
+      resolveRuntimePackageRoot(import.meta.dirname),
+      "examples/models/default.config.json",
+    ),
+  );
+  const value = parseContextWindowTokens(template.contextWindowTokens);
+  if (value === undefined)
+    throw new Error("The model template is missing its context window.");
+  return value;
 }

@@ -1,3 +1,4 @@
+import { configRepairGuidance } from "./raw-config-repair.js";
 import { escapeAttribute, escapeHtml } from "../../lib/text-format.js";
 
 export function createConfigDashboardRendering({
@@ -78,6 +79,7 @@ export function createConfigDashboardRendering({
             >Save file</button>
           </div>
         </div>
+        <p id="configRawRepairGuidance" class="error-text" ${configRepairGuidance(file) ? "" : "hidden"}>${escapeHtml(configRepairGuidance(file))}</p>
         <textarea
           id="configRawEditor"
           class="config-view"

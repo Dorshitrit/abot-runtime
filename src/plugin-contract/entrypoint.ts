@@ -13,6 +13,8 @@ import type {
   ToolExecutionContext,
   ToolImplementation,
   ToolImplementationOutput,
+  ToolModuleDeclaration,
+  ToolModuleRequestPreparation,
 } from "../capabilities/tool-types.js";
 import type { ToolNormalInvocationContract } from "../capabilities/normal-invocation/contracts.js";
 
@@ -44,6 +46,8 @@ export type RuntimePluginLoadContext = {
 export type RuntimePluginEntrypoint = Readonly<{
   handlers: Readonly<Record<string, ToolImplementation>>;
   adapters?: Readonly<Record<string, ToolCallAdapter>>;
+  /** Observe availability once before any model sees this request's catalog. */
+  prepareRequest?: ToolModuleRequestPreparation;
 }>;
 
 export type RuntimePluginEntrypointFactory = (
@@ -65,5 +69,7 @@ export type {
   ToolExecutionContext,
   ToolImplementation,
   ToolImplementationOutput,
+  ToolModuleDeclaration,
+  ToolModuleRequestPreparation,
   ToolNormalInvocationContract,
 };

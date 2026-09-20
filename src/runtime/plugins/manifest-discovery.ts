@@ -11,6 +11,17 @@ import { traceDebug } from "../observability/debug-logger.js";
 import type { DiscoveredAgentPluginManifest } from "./discovered-manifest.js";
 import { parseAgentPluginManifest } from "./manifest-validator.js";
 
+export type AgentPluginManifestDiscoveryOptions = Readonly<{
+  excludedPluginIds?: ReadonlySet<string>;
+}>;
+
+function isPluginManifestExcluded(
+  pluginId: string,
+  options: AgentPluginManifestDiscoveryOptions,
+): boolean {
+  return options.excludedPluginIds?.has(pluginId) ?? false;
+}
+
 function isContained(root: string, candidate: string): boolean {
   const relativePath = relative(root, candidate);
   return (
@@ -98,6 +109,7 @@ export function readAgentPluginSkills(
 
 export function discoverAgentPluginManifests(
   rootDir: string,
+  options: AgentPluginManifestDiscoveryOptions = {},
 ): DiscoveredAgentPluginManifest[] {
   const pluginsPath = resolve(rootDir, "plugins");
   traceDebug("runtime.plugins", "manifest_discovery.started", {
@@ -118,6 +130,9 @@ export function discoverAgentPluginManifests(
   const discovered: DiscoveredAgentPluginManifest[] = [];
 
   for (const entry of entries) {
+    // A valid manifest must use its directory name as the plugin ID. An
+    // explicitly denied package needs no filesystem traversal or validation.
+    if (isPluginManifestExcluded(entry.name, options)) continue;
     const candidateRoot = join(resolvedPluginsPath, entry.name);
     if (!statSync(candidateRoot).isDirectory()) {
       continue;

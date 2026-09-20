@@ -7,6 +7,7 @@ import {
   createCheckpointFixture,
   readCheckpointManifest,
 } from "./support/scheduler-checkpoint-fixture.js";
+import { seedCheckpointJobRevisions } from "./support/scheduler-checkpoint-suffix-fixture.js";
 
 const events = vi.hoisted(
   () =>
@@ -249,29 +250,12 @@ directorySyncTest(
     const owner = await f.own();
     const before = await readCheckpointManifest(f.directory);
     await owner.close();
-    // Seed a valid bounded suffix without performing hundreds of unrelated syncs.
-    for (let offset = 1; offset <= 256; offset++) {
-      await fs.writeFile(
-        checkpointTransactionPath(
-          f.directory,
-          before.generation,
-          before.sequence + offset,
-        ),
-        JSON.stringify({
-          version: 1,
-          jobs: [{ ...f.snapshot.jobs[1], title: `Revision ${offset}` }],
-          runs: [],
-          deletedJobs: [],
-          deletedRuns: [],
-        }),
-      );
-    }
-    await fs.writeFile(
-      join(f.directory, "scheduler-journal.json"),
-      JSON.stringify({
-        ...before,
-        sequence: before.sequence + 256,
-      }),
+    await seedCheckpointJobRevisions(
+      f.directory,
+      Array.from({ length: 256 }, (_, index) => ({
+        ...f.snapshot.jobs[1],
+        title: `Revision ${index + 1}`,
+      })),
     );
     events.length = 0;
     await f.own();

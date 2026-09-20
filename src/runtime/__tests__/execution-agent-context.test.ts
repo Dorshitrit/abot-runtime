@@ -405,7 +405,7 @@ describe("Execution Agent bounded context", () => {
     );
   });
 
-  test("keeps audit available after a prior review when canonical evidence exists", async () => {
+  test("keeps audit available when a prior review has no canonical audit binding", async () => {
     const adapter = createAdapter(observePrimary, {
       outcome: "succeeded",
       observedEffect: "observation",

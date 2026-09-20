@@ -1,3 +1,8 @@
+import { createProjectRequests } from "./runtime-web-client/projects.js";
+import { createSystemHostRequests } from "./runtime-web-client/system-host.js";
+import { toolPermissionRequestError } from "../lib/tool-permission-mode.js";
+import { createConversationFileRequests } from "./runtime-web-client/conversation-files.js";
+import { createConfigurationRequests } from "./runtime-web-client/configuration.js";
 import { createScheduleRequests } from "./runtime-web-client/schedules.js";
 import { createLongTermMemoryRequests } from "./runtime-web-client/memory.js";
 
@@ -184,9 +189,10 @@ export function createRuntimeWebClient({
         Number.isFinite(readThroughMessageId)
           ? Math.max(0, Math.floor(readThroughMessageId))
           : null;
-      const requestReadBoundary = numericReadThrough === null
-        ? String(readThroughRequestId || "").trim()
-        : "";
+      const requestReadBoundary =
+        numericReadThrough === null
+          ? String(readThroughRequestId || "").trim()
+          : "";
       const body = {
         readThroughMessageId: numericReadThrough,
         lastReadMessageId:
@@ -253,6 +259,15 @@ export function createRuntimeWebClient({
       toolPermissionMode,
       modelPreference,
     }) {
+      const permissionError = toolPermissionRequestError(
+        toolPermissionMode,
+        getConfig(),
+      );
+      if (permissionError) {
+        throw new RuntimeWebClientError(permissionError.message, {
+          code: permissionError.code,
+        });
+      }
       const result = await requestApi("/chat/messages", {
         method: "POST",
         body: JSON.stringify({
@@ -283,7 +298,13 @@ export function createRuntimeWebClient({
       );
     },
 
-    saveConfigFile({ environmentId = getEnvironmentId(), kind, id, config }) {
+    saveConfigFile({
+      environmentId = getEnvironmentId(),
+      kind,
+      id,
+      config,
+      expectedRevision,
+    }) {
       return requestApi("/runtime/config/dashboard/file", {
         method: "PUT",
         body: JSON.stringify({
@@ -291,11 +312,21 @@ export function createRuntimeWebClient({
           kind,
           id,
           config,
+          expectedRevision,
         }),
       });
     },
 
+    ...createConversationFileRequests({
+      requestApi,
+      resolveApiPath,
+      origin,
+      getConfig,
+    }),
+    ...createConfigurationRequests({ requestApi, environmentQuery }),
+    ...createSystemHostRequests({ requestApi, getConfig }),
     ...longTermMemoryRequests,
     ...createScheduleRequests({ requestApi, getEnvironmentId, getConfig }),
+    ...createProjectRequests({ requestApi, getEnvironmentId, getConfig }),
   };
 }

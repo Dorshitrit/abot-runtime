@@ -16,7 +16,6 @@ import type {
   RoleCallLedgerHead,
 } from "../../orchestration/role-calls/index.js";
 import {
-  CAPABILITY_COUNT_MAX,
   projectCapabilityCatalogGroups,
   projectCapabilityScope,
   type CapabilityCatalogGroup,
@@ -28,12 +27,17 @@ import {
 } from "../../request/execution-scope.js";
 import { appendRequestSteeringContext } from "../../request/request-steering-context.js";
 import type { RequestSteeringSnapshot } from "../../request/request-steering.js";
-import { EXECUTION_AGENT_ROOT_AUDIT_CRITERION_ID } from "../auditor-decision/index.js";
 import {
+  EXECUTION_AGENT_ROOT_AUDIT_CRITERION_ID,
+  projectAuditorInputState,
+} from "../auditor-decision/index.js";
+import {
+  EXECUTION_AGENT_CAPABILITY_BATCH_COUNT_MAX,
   EXECUTION_AGENT_DECISION_MODEL_STEP,
   type ExecutionAgentDecisionContractOptions,
 } from "./contracts.js";
 import { createExecutionAgentDecisionFormat } from "./format.js";
+import { projectExecutionWorkPlanOptions } from "./work-plan-sources.js";
 import { buildExecutionAgentInstructions } from "./prompt.js";
 import {
   buildExecutionCapabilityCatalogMessage,
@@ -108,26 +112,21 @@ export function buildExecutionAgentInput(
         : hasInactiveGroup
           ? ("extend" as const)
           : null;
-  const hasCurrentEvidence =
-    options.head.state.capabilityExecutions.some(
-      (execution) =>
-        execution.callId === options.call.callId &&
-        execution.status === "settled",
-    ) ||
-    options.head.state.results.some((result) => {
-      const producer = options.head.state.calls.find(
-        (candidate) => candidate.callId === result.producerCallId,
-      );
-      return producer?.parentCallId === options.call.callId;
-    });
+  const auditInput = projectAuditorInputState(
+    options.head,
+    options.call.callId,
+    options.steeringSnapshot.version,
+  );
   const availableAuditCriterionIds =
-    options.allowAuditor && hasCurrentEvidence
+    options.allowAuditor && auditInput.available
       ? Object.freeze([EXECUTION_AGENT_ROOT_AUDIT_CRITERION_ID])
       : Object.freeze([]);
   const memoryRecallMessage = request.longTermMemory?.enabled
     ? options.memoryRecallMessage
     : undefined;
+  const workPlan = projectExecutionWorkPlanOptions(options.head, options.call);
   const contract = Object.freeze({
+    ...(workPlan ? { workPlan } : {}),
     allowMemoryRecall: canOfferMemoryRecall({
       enabled: request.longTermMemory?.enabled === true,
       recallCount: options.head.state.memoryRecalls.length,
@@ -137,7 +136,7 @@ export function buildExecutionAgentInput(
     capabilityCatalogGroupIds: knownGroupIds,
     activeCapabilityCatalogGroupIds,
     maxBatchCapabilityExecutions: Math.min(
-      CAPABILITY_COUNT_MAX,
+      EXECUTION_AGENT_CAPABILITY_BATCH_COUNT_MAX,
       Math.max(0, remainingExecutions),
     ),
     includeAcknowledgement: options.includeAcknowledgement,
@@ -150,6 +149,7 @@ export function buildExecutionAgentInput(
   } satisfies ExecutionAgentDecisionContractOptions);
   const format = createExecutionAgentDecisionFormat(contract);
   const instructions = buildExecutionAgentInstructions({
+    allowWorkPlan: workPlan !== undefined,
     allowMemoryRecall: contract.allowMemoryRecall,
     hasMemoryRecallContext: memoryRecallMessage !== undefined,
     hasCapabilities: capabilities.length > 0,

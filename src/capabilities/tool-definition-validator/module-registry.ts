@@ -85,6 +85,9 @@ export function validateToolModuleDeclarations(
       implementation: tool.implementation,
       ...(tool.adapter ? { adapter: tool.adapter } : {}),
       normalInvocation: tool.normalInvocation,
+      ...(source.prepareRequest
+        ? { prepareRequest: source.prepareRequest }
+        : {}),
     };
   });
 }
@@ -99,6 +102,7 @@ function parseToolAdapter(
   }
   const normalizeCall = raw.normalizeCall;
   const validateCall = raw.validateCall;
+  const executionBinding = raw.executionBinding;
   if (normalizeCall !== undefined && typeof normalizeCall !== "function") {
     throw new Error(
       `Invalid tool module for ${toolName} (adapter.normalizeCall)`,
@@ -110,6 +114,18 @@ function parseToolAdapter(
     );
   }
   const adapter: ToolCallAdapter = {};
+  if (
+    executionBinding !== undefined &&
+    typeof executionBinding !== "function"
+  ) {
+    throw new Error(
+      `Invalid tool module for ${toolName} (adapter.executionBinding)`,
+    );
+  }
+  if (typeof executionBinding === "function") {
+    adapter.executionBinding =
+      executionBinding as ToolCallAdapter["executionBinding"];
+  }
   if (typeof normalizeCall === "function") {
     adapter.normalizeCall = normalizeCall as ToolCallAdapter["normalizeCall"];
   }

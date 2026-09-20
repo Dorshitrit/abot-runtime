@@ -1,3 +1,7 @@
+import {
+  mergeRuntimeModelAddition,
+  parseRuntimeModelProfileId,
+} from "./runtime-model-addition.js";
 import { constants } from "node:fs";
 import { access, mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -49,16 +53,6 @@ function requireValue(argv: string[], index: number, flag: string): string {
   return value;
 }
 
-function parseProfile(value: string): string {
-  const profile = value.trim();
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(profile)) {
-    throw new Error(
-      "--profile must start with a letter or number and use only letters, numbers, dot, underscore, or dash",
-    );
-  }
-  return profile;
-}
-
 function parseArgs(
   argv: string[],
   commandMode: RuntimeSetupCommandMode,
@@ -96,12 +90,14 @@ function parseArgs(
       continue;
     }
     if (arg === "--profile") {
-      profile = parseProfile(requireValue(argv, index, "--profile"));
+      profile = parseRuntimeModelProfileId(
+        requireValue(argv, index, "--profile"),
+      );
       index += 1;
       continue;
     }
     if (arg.startsWith("--profile=")) {
-      profile = parseProfile(arg.slice("--profile=".length));
+      profile = parseRuntimeModelProfileId(arg.slice("--profile=".length));
       continue;
     }
     if (arg === "--base-url") {
@@ -181,68 +177,6 @@ function readConfigMap(parent: JsonObject, key: string): JsonObject {
   return value;
 }
 
-function mergeRuntimeConfig(
-  runtimeConfig: JsonObject,
-  options: AddModelOptions,
-): Readonly<{ config: JsonObject; providerAdded: boolean }> {
-  const models = readConfigMap(runtimeConfig, "models");
-  const providers = readConfigMap(models, "providers");
-  const profiles = readConfigMap(models, "profiles");
-  if (profiles[options.profile] !== undefined) {
-    throw new Error(
-      `model profile already exists: ${options.profile}; no files were changed`,
-    );
-  }
-
-  const existingProvider = providers[options.provider];
-  if (existingProvider !== undefined) {
-    if (
-      !isRecord(existingProvider) ||
-      existingProvider.type !== options.provider
-    ) {
-      throw new Error(
-        `provider id is already configured with a different adapter: ${options.provider}; no files were changed`,
-      );
-    }
-    if (
-      options.provider === "ollama" &&
-      options.baseUrl &&
-      existingProvider.baseUrl !== options.baseUrl
-    ) {
-      throw new Error(
-        `provider ${options.provider} already uses a different base URL; no files were changed`,
-      );
-    }
-  }
-
-  return {
-    providerAdded: existingProvider === undefined,
-    config: {
-      ...runtimeConfig,
-      models: {
-        ...models,
-        providers: {
-          ...providers,
-          ...(existingProvider === undefined
-            ? {
-                [options.provider]: buildProviderConfig(
-                  options.provider,
-                  options.baseUrl,
-                ),
-              }
-            : {}),
-        },
-        profiles: {
-          ...profiles,
-          [options.profile]: {
-            configRef: `./models/${options.profile}.config.json`,
-          },
-        },
-      },
-    },
-  };
-}
-
 function selectDefaultProfile(
   runnerConfig: JsonObject,
   profile: string,
@@ -294,7 +228,13 @@ export async function runAddRuntimeModel(
   if (options.setDefault) {
     parseRequestRunnerConfig(runnerConfig, runnerConfigPath);
   }
-  const merged = mergeRuntimeConfig(runtimeConfig, options);
+  const merged = mergeRuntimeModelAddition(runtimeConfig, {
+    profileId: options.profile,
+    providerId: options.provider,
+    provider: buildProviderConfig(options.provider, options.baseUrl),
+    profile: { configRef: `./models/${options.profile}.config.json` },
+    baseUrl: options.baseUrl,
+  });
   const nextRunnerConfig = options.setDefault
     ? selectDefaultProfile(runnerConfig, options.profile)
     : runnerConfig;

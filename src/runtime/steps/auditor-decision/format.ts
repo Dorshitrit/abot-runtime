@@ -1,14 +1,17 @@
 import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
 import { createStructuredDecisionEnvelopeSchema } from "../../model/structured-decision-envelope.js";
 import {
-  AUDITOR_DECISION_TEXT_MAX_LENGTH,
   projectAuditorEvidenceProjectionStatus,
   type AuditorAssignment,
 } from "./contracts.js";
 
+import { getAuditorAdvisoryDescriptionMaxLength } from "./advisory-result-budget.js";
+
 export function createAuditorDecisionFormat(
   assignment: AuditorAssignment,
 ): ModelGatewayJsonSchemaFormat {
+  const descriptionMaxLength =
+    getAuditorAdvisoryDescriptionMaxLength(assignment);
   const criterionIds = [...assignment.criterionIds];
   const criterionCoverage = {
     type: "array",
@@ -19,6 +22,8 @@ export function createAuditorDecisionFormat(
   const common = {
     auditId: literal(assignment.auditId),
     criterionIds: criterionCoverage,
+    neededEvidenceIds: inventoryIdsSchema(assignment),
+    notNeededEvidenceIds: inventoryIdsSchema(assignment),
   };
   const passAllowed =
     projectAuditorEvidenceProjectionStatus(assignment).complete;
@@ -28,6 +33,7 @@ export function createAuditorDecisionFormat(
           exactObject({
             ...common,
             verdict: literal("pass"),
+            requestedEvidenceIds: emptyIdsSchema(),
             gaps: {
               type: "array",
               minItems: 0,
@@ -40,13 +46,31 @@ export function createAuditorDecisionFormat(
     exactObject({
       ...common,
       verdict: literal("gaps"),
+      requestedEvidenceIds: emptyIdsSchema(),
       gaps: {
         type: "array",
         minItems: 1,
         maxItems: criterionIds.length,
         items: exactObject({
           criterionId: { type: "string", enum: criterionIds },
-          description: boundedText(AUDITOR_DECISION_TEXT_MAX_LENGTH),
+          description: boundedText(descriptionMaxLength),
+        }),
+      },
+    }),
+    exactObject({
+      ...common,
+      verdict: literal("needs_evidence"),
+      requestedEvidenceIds: {
+        ...inventoryIdsSchema(assignment),
+        minItems: 1,
+      },
+      gaps: {
+        type: "array",
+        minItems: 1,
+        maxItems: criterionIds.length,
+        items: exactObject({
+          criterionId: { type: "string", enum: criterionIds },
+          description: boundedText(descriptionMaxLength),
         }),
       },
     }),
@@ -59,6 +83,29 @@ export function createAuditorDecisionFormat(
     postValidatedSchemaConstraints: collectMaxLengths(schema),
     schema,
   });
+}
+
+function inventoryIdsSchema(
+  assignment: AuditorAssignment,
+): Record<string, unknown> {
+  return {
+    type: "array",
+    minItems: 0,
+    maxItems: assignment.inventory.length,
+    items: {
+      type: "string",
+      enum: assignment.inventory.map(({ executionId }) => executionId),
+    },
+  };
+}
+
+function emptyIdsSchema(): Record<string, unknown> {
+  return {
+    type: "array",
+    minItems: 0,
+    maxItems: 0,
+    items: { type: "string", enum: ["__none__"] },
+  };
 }
 
 function exactObject(

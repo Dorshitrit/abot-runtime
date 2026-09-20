@@ -31,7 +31,7 @@
               "outputPreview": { "path": "output", "kind": "preview" }
             }
           },
-          "skills": [],
+          "skills": ["dev_view_skill"],
           "operations": {
             "inspect_target": {
               "summary": "Inspect one bounded directory sample or bounded file window when unresolved work requires current content. Choose either a locator or numeric lines; locator takes precedence. Truncation metadata distinguishes a complete result from a bounded scan.",

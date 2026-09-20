@@ -24,6 +24,8 @@ export type ModelGatewayInvocationContext = Readonly<{
 }>;
 
 export type ModelGatewayHandlerOptions = {
+  rootDir?: string;
+  configPath?: string;
   fetchImpl?: GatewayFetch;
   modelPolicy?: ModelGatewayPolicyConfig;
   ollamaUrl?: string;
@@ -61,10 +63,10 @@ export type ProviderRequestAbortScopeParams = Readonly<{
 }>;
 
 export type ProviderFetchParams = Readonly<{
-    endpoint: "chat" | "raw" | "input_tokens";
-    requestBody: ModelGatewayRequest;
-    invocation: ResolvedModelInvocation;
-    fetchImpl: typeof fetch;
-    abortSignal: AbortSignal;
-    inputTokenMeasurement?: ModelProviderInputTokenMeasurement;
-  }>;
+  endpoint: "chat" | "raw" | "input_tokens";
+  requestBody: ModelGatewayRequest;
+  invocation: ResolvedModelInvocation;
+  fetchImpl: typeof fetch;
+  abortSignal: AbortSignal;
+  inputTokenMeasurement?: ModelProviderInputTokenMeasurement;
+}>;

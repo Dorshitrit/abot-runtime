@@ -12,6 +12,7 @@ import {
 } from "./capability-selection-supervision.js";
 import { isValidRoleCapabilitySelectionSupervision } from "./capability-selection-supervision-validation.js";
 import { validateRoleMemoryRecalls } from "./memory-recall-state-validation.js";
+import { isValidAdoptedModelWorkPlan } from "./work-plan-validation.js";
 import {
   isRoleOperationFingerprint,
   isRoleOperationOutcomeFingerprintForOutcome,
@@ -223,7 +224,8 @@ export function validateRoleCallState(
       (call.parentCallId === null
         ? call.objective !== null || call.dependencyResultRefs.length !== 0
         : !isBoundedText(call.objective, policy.limits.maxObjectiveChars)) ||
-      !isValidCapabilitySelectionReconsideration(call, policy, state)
+      !isValidCapabilitySelectionReconsideration(call, policy, state) ||
+      !isValidAdoptedModelWorkPlan(state, call, policy)
     ) {
       issues.push(
         issue("invalid_role_call_frame", `state.calls.${call.callId}`),
@@ -687,7 +689,7 @@ function isExecutionPolicyAuthoritySnapshot(
         "availableSubordinateContractIds",
         "capabilityAuthorities",
       ],
-      ["terminalTextMode"],
+      ["terminalTextMode", "modelWorkPlanAuthority"],
     ) ||
     typeof value.id !== "string" ||
     !/^[a-z][a-z0-9-]*$/.test(value.id) ||
@@ -698,6 +700,7 @@ function isExecutionPolicyAuthoritySnapshot(
     !isExecutionContractId(value.rootContractId) ||
     !Array.isArray(value.availableSubordinateContractIds) ||
     !Array.isArray(value.capabilityAuthorities) ||
+    (value.modelWorkPlanAuthority !== undefined && value.modelWorkPlanAuthority !== "root") ||
     (value.terminalTextMode !== undefined &&
       value.terminalTextMode !== "normalized" &&
       value.terminalTextMode !== "exact")

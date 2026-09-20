@@ -1,4 +1,5 @@
 import type WebSocket from "ws";
+import { resolveSessionWorkingDirectory } from "../projects/session-paths.js";
 
 import { traceDebug } from "../observability/debug-logger.js";
 import { RequestLifecycle } from "../orchestration/lifecycle/request-lifecycle.js";
@@ -131,6 +132,9 @@ class RequestHandlingSession {
       sessionStore,
       attachmentStore,
     });
+    const requestWorkingDirectory = resolveSessionWorkingDirectory(
+      openedSession.session,
+    );
     const historyMessages = snapshotRequestHistory(openedSession.session);
     const sessionMemory = createRequestSessionMemory({
       sessionId,
@@ -217,19 +221,24 @@ class RequestHandlingSession {
         this.events.event(name, extra),
       ...(sessionArtifactPaths.length > 0 ? { sessionArtifactPaths } : {}),
     } satisfies RequestExecutionSeed;
+    const toolRegistry = this.options.toolRegistry?.prepareRequest
+      ? await this.options.toolRegistry.prepareRequest()
+      : this.options.toolRegistry;
+    this.lifecycle.signal.throwIfAborted();
     const runnerRequest = createRequestExecutionScope({
       seed: runnerRequestSeed,
       executionPolicy,
       createWorkerCapabilities: (request) =>
         createRequestWorkerCapabilityProvider({
           request,
+          requestWorkingDirectory,
           executionPolicyAuthority: executionPolicy.authority,
           requestAttachments: initializedRequest.toolAttachments,
           ...(this.options.runtimeConfig
             ? { runtimeConfig: this.options.runtimeConfig }
             : {}),
-          ...(this.options.toolRegistry
-            ? { toolRegistryOverride: this.options.toolRegistry }
+          ...(toolRegistry
+            ? { toolRegistryOverride: toolRegistry }
             : {}),
         }),
     });

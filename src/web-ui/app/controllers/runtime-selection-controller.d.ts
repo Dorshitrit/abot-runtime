@@ -1,5 +1,6 @@
 export type AgentMode = "auto" | "fast" | "reasoning" | "deep";
-export type ToolPermissionMode = "ask" | "full_access";
+import type { ToolPermissionMode } from "../lib/tool-permission-mode.js";
+export type { ToolPermissionMode } from "../lib/tool-permission-mode.js";
 
 export declare function normalizeAgentMode(mode: unknown): AgentMode;
 export declare function normalizeToolPermissionMode(
@@ -79,6 +80,8 @@ export interface RuntimeSelectionControllerDependencies {
         label?: unknown;
       }>[];
       defaultEnvironmentId?: unknown;
+      backend?: unknown;
+      supportedToolPermissionModes?: readonly unknown[];
     }> | null;
     pinnedSessionIds: readonly string[];
     sessionModes: Record<string, Record<string, unknown>>;
@@ -119,6 +122,8 @@ export interface RuntimeSelectionControllerDependencies {
       normalize: (value: unknown) => ToolPermissionMode,
     ): Record<string, Record<string, unknown>>;
     saveSessionModes(modes: Record<string, Record<string, unknown>>): void;
+    loadLastToolPermissionMode(normalize: (value: unknown) => ToolPermissionMode): ToolPermissionMode;
+    saveLastToolPermissionMode(mode: ToolPermissionMode): void;
     loadModelPreferences(): {
       sessionModels: Record<string, unknown>;
       lastModelByEnvironment: Record<string, unknown>;
@@ -175,4 +180,5 @@ export declare function createRuntimeSelectionController(
   selectedModelSupportsImageInput(profileId?: string): boolean;
   setAgentMode(mode: AgentMode): Promise<boolean>;
   setToolPermissionMode(mode: ToolPermissionMode): void;
+  initializeSessionMode(sessionId: string): void;
 };

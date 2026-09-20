@@ -11,6 +11,7 @@ export function createSessionController({
   state,
   dom,
   sessionActionsMenu,
+  renderGroups = () => false,
   shell,
   preferences,
   client,
@@ -63,6 +64,8 @@ export function createSessionController({
     dom.sessionsList.innerHTML = "";
     const sessions = filtered();
     dom.sessionsCount.textContent = String(sessions.length);
+    if (renderGroups({ root: dom.sessionsList, sessions, createSessionItem }))
+      return;
     if (state.sessions.length === 0) {
       dom.sessionsList.innerHTML = `
         <div class="empty-state sidebar-empty-state">
@@ -82,64 +85,68 @@ export function createSessionController({
       return;
     }
     for (const [sessionIndex, session] of sessions.entries()) {
-      const sessionId = textOf(session.id);
-      const pinned = isPinned(sessionId);
-      const busy = state.busySessionIds.has(sessionId);
-      const unreadCount = getNumber(session.unreadCount, 0);
-      const unreadUnavailable = isSessionReadStateUnavailable(session);
-      const hasUnread = unreadUnavailable
-        ? false
-        : session.hasUnread === true || unreadCount > 0;
-      const item = document.createElement("div");
-      item.className = `session-item ${
-        session.id === state.currentSessionId ? "active" : ""
-      } ${pinned ? "pinned" : ""} ${busy ? "busy" : ""} ${
-        hasUnread ? "unread" : ""
-      }`;
-      item.innerHTML = `
-        <button class="session-open-button" type="button" title="${escapeAttribute(titleOf(session))}">
-          <div class="session-title-row">
-            <div class="session-title" dir="auto">${escapeHtml(titleOf(session))}</div>
-            ${unreadUnavailable ? '<span class="session-unread-badge" title="Unread status unavailable" aria-label="Unread status unavailable">?</span>' : ""}
-            ${
-              hasUnread
-                ? `<span class="session-unread-badge" title="${escapeAttribute(
-                    `${unreadCount || 1} unread`,
-                  )}">${unreadCount > 99 ? "99+" : unreadCount || 1}</span>`
-                : ""
-            }
-          </div>
-        </button>
-        <div class="session-actions" aria-label="Session actions">
-          <button class="session-menu-button" type="button" title="Session actions" aria-label="Session actions" aria-haspopup="menu" aria-expanded="false" aria-controls="session-menu-${sessionIndex}">•••</button>
-          <div id="session-menu-${sessionIndex}" class="session-menu" role="menu" hidden>
-            <button class="session-action pin-action" type="button" role="menuitem" tabindex="-1" title="${pinned ? "Unpin session" : "Pin session"}">${pinned ? "Unpin" : "Pin"}</button>
-            <button class="session-action copy-filename-action" type="button" role="menuitem" tabindex="-1" title="Copy session filename">Copy filename</button>
-            <button class="session-action clear-action" type="button" role="menuitem" tabindex="-1" title="Reset messages">Reset</button>
-            <button class="session-action delete-action" type="button" role="menuitem" tabindex="-1" title="Delete session">Delete</button>
-          </div>
-        </div>
-      `;
-      item
-        .querySelector(".session-open-button")
-        ?.addEventListener("click", () => {
-          shell.setSessionsDrawerOpen(false);
-          void onOpen(session.id);
-        });
-      item
-        .querySelector(".pin-action")
-        ?.addEventListener("click", () => togglePinned(sessionId));
-      item
-        .querySelector(".copy-filename-action")
-        ?.addEventListener("click", () => void copyFilename(sessionId));
-      item
-        .querySelector(".clear-action")
-        ?.addEventListener("click", () => void clearMessages(sessionId));
-      item
-        .querySelector(".delete-action")
-        ?.addEventListener("click", () => void deleteSession(sessionId));
-      dom.sessionsList.appendChild(item);
+      dom.sessionsList.appendChild(createSessionItem(session, sessionIndex));
     }
+  }
+
+  function createSessionItem(session, sessionIndex) {
+    const sessionId = textOf(session.id);
+    const pinned = isPinned(sessionId);
+    const busy = state.busySessionIds.has(sessionId);
+    const unreadCount = getNumber(session.unreadCount, 0);
+    const unreadUnavailable = isSessionReadStateUnavailable(session);
+    const hasUnread = unreadUnavailable
+      ? false
+      : session.hasUnread === true || unreadCount > 0;
+    const item = document.createElement("div");
+    item.className = `session-item ${
+      session.id === state.currentSessionId ? "active" : ""
+    } ${pinned ? "pinned" : ""} ${busy ? "busy" : ""} ${
+      hasUnread ? "unread" : ""
+    }`;
+    item.innerHTML = `
+      <button class="session-open-button" type="button" title="${escapeAttribute(titleOf(session))}">
+        <div class="session-title-row">
+          <div class="session-title" dir="auto">${escapeHtml(titleOf(session))}</div>
+          ${unreadUnavailable ? '<span class="session-unread-badge" title="Unread status unavailable" aria-label="Unread status unavailable">?</span>' : ""}
+          ${
+            hasUnread
+              ? `<span class="session-unread-badge" title="${escapeAttribute(
+                  `${unreadCount || 1} unread`,
+                )}">${unreadCount > 99 ? "99+" : unreadCount || 1}</span>`
+              : ""
+          }
+        </div>
+      </button>
+      <div class="session-actions" aria-label="Session actions">
+        <button class="session-menu-button" type="button" title="Session actions" aria-label="Session actions" aria-haspopup="menu" aria-expanded="false" aria-controls="session-menu-${sessionIndex}">•••</button>
+        <div id="session-menu-${sessionIndex}" class="session-menu" role="menu" hidden>
+          <button class="session-action pin-action" type="button" role="menuitem" tabindex="-1" title="${pinned ? "Unpin session" : "Pin session"}">${pinned ? "Unpin" : "Pin"}</button>
+          <button class="session-action copy-filename-action" type="button" role="menuitem" tabindex="-1" title="Copy session filename">Copy filename</button>
+          <button class="session-action clear-action" type="button" role="menuitem" tabindex="-1" title="Reset messages">Reset</button>
+          <button class="session-action delete-action" type="button" role="menuitem" tabindex="-1" title="Delete session">Delete</button>
+        </div>
+      </div>
+    `;
+    item
+      .querySelector(".session-open-button")
+      ?.addEventListener("click", () => {
+        shell.setSessionsDrawerOpen(false);
+        void onOpen(session.id);
+      });
+    item
+      .querySelector(".pin-action")
+      ?.addEventListener("click", () => togglePinned(sessionId));
+    item
+      .querySelector(".copy-filename-action")
+      ?.addEventListener("click", () => void copyFilename(sessionId));
+    item
+      .querySelector(".clear-action")
+      ?.addEventListener("click", () => void clearMessages(sessionId));
+    item
+      .querySelector(".delete-action")
+      ?.addEventListener("click", () => void deleteSession(sessionId));
+    return item;
   }
 
   function setCurrentTitle(title) {

@@ -1,3 +1,18 @@
+import { ProjectRoutes } from "./project-routes.js";
+import { ConversationFileRoutes } from "./conversation-file-routes.js";
+import { ConfigFileConflictError } from "../../runtime/adapters/config-file-transaction.js";
+import { ModelSetupRoutes } from "./model-setup-routes.js";
+import { ModelSetupService } from "./model-setup-service.js";
+import { SetupEmbeddingRoutes } from "./setup-embedding-routes.js";
+import { SetupEmbeddingService } from "./setup-embedding-service.js";
+import { RuntimeSetupRoutes } from "./runtime-setup-routes.js";
+import { RuntimeSetupService } from "./runtime-setup-service.js";
+import {
+  applyAndCompleteRuntimeSetup,
+  pendingRuntimeSetupCatalog,
+} from "./runtime-setup-completion.js";
+import { PluginManagementRoutes } from "./plugin-management-routes.js";
+import { acceptConfigMutationRequest } from "./config-mutation-request.js";
 import { WebSessionRoutes } from "./session-routes.js";
 import { WebSessionReadStates } from "../session-read-state/service.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -48,18 +63,66 @@ function sendRuntimeSetupRequired(
 }
 
 export class LocalRuntimeApiRouter {
+  private readonly conversationFiles: ConversationFileRoutes;
   private readonly attachments = new LocalAttachmentRoutes();
+  private readonly setup: RuntimeSetupRoutes;
+  private readonly modelSetup: ModelSetupRoutes;
+  private readonly setupEmbedding: SetupEmbeddingRoutes;
+  private readonly plugins: PluginManagementRoutes;
   private readonly memoryManagement: LongTermMemoryManagementRoutes;
   private readonly memoryOnboarding: LongTermMemoryOnboardingRoutes;
   private readonly schedules: ScheduleManagementRoutes;
   private readonly readStates: WebSessionReadStates;
   private readonly sessions: WebSessionRoutes;
+  private readonly projects = new ProjectRoutes();
 
   constructor(
     private readonly options: ResolvedLocalRuntimeBackendOptions,
     private readonly environments: RuntimeEnvironmentRegistry,
     private readonly requests: LocalRequestExecution,
   ) {
+    this.conversationFiles = new ConversationFileRoutes(
+      environments,
+      requests,
+      () => this.options.defaultEnvironmentId,
+    );
+    this.modelSetup = new ModelSetupRoutes(
+      new ModelSetupService({
+        rootDir: options.rootDir ?? process.cwd(),
+        getConfigPath: () =>
+          options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
+      }),
+    );
+    this.setup = new RuntimeSetupRoutes(
+      new RuntimeSetupService({
+        rootDir: options.rootDir ?? process.cwd(),
+        getConfigPath: () =>
+          options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
+        configure: (configPath) => this.environments.configure(configPath),
+        activate: async (_configPath) => {
+          const activation = await this.applyWhenRequestsIdle();
+          if (activation.status === "ready") {
+            await this.initializeSessionReadState([
+              options.defaultEnvironmentId,
+            ]);
+          }
+          return activation;
+        },
+      }),
+    );
+    this.setupEmbedding = new SetupEmbeddingRoutes(
+      new SetupEmbeddingService({
+        rootDir: options.rootDir ?? process.cwd(),
+        getConfigPath: () =>
+          options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
+        providerAdapters: options.providerAdapters,
+      }),
+    );
+    this.plugins = new PluginManagementRoutes({
+      rootDir: options.rootDir ?? process.cwd(),
+      getConfigPath: () =>
+        options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
+    });
     this.readStates = new WebSessionReadStates((id) =>
       this.environments.get(id),
     );
@@ -67,17 +130,29 @@ export class LocalRuntimeApiRouter {
     this.schedules = new ScheduleManagementRoutes((id) =>
       this.environments.get(id),
     );
-    this.memoryOnboarding = new LongTermMemoryOnboardingRoutes(
+    this.memoryOnboarding = new LongTermMemoryOnboardingRoutes(() =>
       createLocalLongTermMemoryOnboardingService({
         rootDir: options.rootDir ?? process.cwd(),
         providerAdapters: options.providerAdapters,
-        ...(options.configPath ? { configPath: options.configPath } : {}),
+        configPath: options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
       }),
     );
     this.memoryManagement = new LongTermMemoryManagementRoutes(
       (environmentId) =>
         this.environments.get(environmentId).services.longTermMemory,
     );
+  }
+
+  private async applyWhenRequestsIdle() {
+    const hasAcknowledgedRequests = this.requests.healthDetails().length > 0;
+    if (hasAcknowledgedRequests) {
+      return {
+        status: "restart_required" as const,
+        message:
+          "Your agent is working. Wait for active conversations and Jobs to finish, then apply again.",
+      };
+    }
+    return this.environments.applyConfiguration();
   }
 
   async initializeSessionReadState(
@@ -102,6 +177,44 @@ export class LocalRuntimeApiRouter {
     const method = req.method || "GET";
     const segments = pathSegments(pathname);
     const route = segments.join("/");
+    if (await this.conversationFiles.handle(route, req, res)) return;
+
+    if (
+      await this.modelSetup.handle({
+        method,
+        route,
+        request: req,
+        response: res,
+      })
+    )
+      return;
+    if (await this.setup.handle({ method, route, request: req, response: res }))
+      return;
+    if (
+      await this.setupEmbedding.handle({
+        method,
+        route,
+        request: req,
+        response: res,
+      })
+    )
+      return;
+    if (
+      method === "PUT" &&
+      ["runtime/plugins", "runtime/config/dashboard/file"].includes(route)
+    ) {
+      if (!acceptConfigMutationRequest(req, res)) return;
+    }
+    if (method === "POST" && route === "runtime/config/apply") {
+      if (!acceptConfigMutationRequest(req, res)) return;
+      sendJson(res, 200, {
+        ok: true,
+        activation: await applyAndCompleteRuntimeSetup(this.setup, () =>
+          this.applyWhenRequestsIdle(),
+        ),
+      });
+      return;
+    }
 
     if (route === "chat/attachments") {
       const environmentId = requestEnvironmentId(
@@ -139,6 +252,9 @@ export class LocalRuntimeApiRouter {
       body,
       this.options.defaultEnvironmentId,
     );
+
+    if (await this.plugins.handle({ method, route, body, response: res }))
+      return;
 
     if (segments[0] === "schedules")
       await this.initializeSessionReadState([environmentId]);
@@ -185,6 +301,7 @@ export class LocalRuntimeApiRouter {
     }
 
     if (method === "GET" && route === "runtime/config/dashboard") {
+      res.setHeader("cache-control", "no-store");
       sendJson(res, 200, {
         ok: true,
         dashboard: await getConfigDashboardSnapshot({
@@ -196,26 +313,47 @@ export class LocalRuntimeApiRouter {
     }
 
     if (method === "PUT" && route === "runtime/config/dashboard/file") {
+      res.setHeader("cache-control", "no-store");
       const kind = readConfigFileKind(body?.kind);
       if (!kind) {
         sendJson(res, 400, { ok: false, error: "invalid_config_file_kind" });
         return;
       }
-      const result = await saveConfigDashboardFile({
-        rootDir: this.options.rootDir ?? process.cwd(),
-        configPath: this.options.configPath,
-        kind,
-        id: getString(body?.id),
-        config: body?.config,
-      });
-      sendJson(res, 200, { ...result, restartRequired: true });
+      const expectedRevision = getString(body?.expectedRevision);
+      if (!expectedRevision) {
+        sendJson(res, 428, {
+          ok: false,
+          error: "config_revision_required",
+          message: "Reload Configuration before saving this file.",
+        });
+        return;
+      }
+      try {
+        const result = await saveConfigDashboardFile({
+          rootDir: this.options.rootDir ?? process.cwd(),
+          configPath: this.options.configPath,
+          kind,
+          id: getString(body?.id),
+          config: body?.config,
+          expectedRevision,
+        });
+        sendJson(res, 200, { ...result, restartRequired: true });
+      } catch (error) {
+        if (!(error instanceof ConfigFileConflictError)) throw error;
+        sendJson(res, 409, {
+          ok: false,
+          error: error.code,
+          message: error.message,
+        });
+      }
       return;
     }
 
     if (method === "GET" && route === "chat/models") {
+      const pendingSetup = await pendingRuntimeSetupCatalog(this.setup);
       sendJson(res, 200, {
         ok: true,
-        ...this.environments.modelCatalog(environmentId),
+        ...(pendingSetup ?? this.environments.modelCatalog(environmentId)),
         modes: [],
       });
       return;
@@ -242,6 +380,18 @@ export class LocalRuntimeApiRouter {
     }
 
     const environment = this.environments.get(environmentId);
+    if (
+      await this.projects.handle({
+        method,
+        segments,
+        url,
+        body,
+        environment,
+        request: req,
+        response: res,
+      })
+    )
+      return;
 
     if (
       await this.sessions.handle({
@@ -256,7 +406,12 @@ export class LocalRuntimeApiRouter {
       return;
 
     if (method === "POST" && route === "chat/messages") {
-      await this.requests.start(res, body ?? {}, environmentId, environment);
+      await this.requests.start(
+        res,
+        body ?? {},
+        environmentId,
+        this.environments.get(environmentId),
+      );
       return;
     }
 
