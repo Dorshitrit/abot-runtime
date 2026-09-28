@@ -1,8 +1,9 @@
 import { expect, test, vi } from "vitest";
 import {
   createProcessOwnerIdentityProbe,
+  hasSameProcessOwnerIdentity,
   type ProcessOwnerIdentityDependencies,
-} from "../../../plugins/system/source/companion/process-owner-identity.js";
+} from "../../computer-access/companion/process-owner-identity.js";
 
 const boot = "741b95bb-7389-4726-a6d7-3ced1c6fb310";
 function dependencies(
@@ -81,15 +82,13 @@ test.each(["linux", "darwin", "win32"] as const)(
 );
 
 test("Windows uses a fixed encoded native probe with hidden execution and PID as data", async () => {
-  const execute = vi.fn(
-    async () => "638900000000000000|638938000000000000\r\n",
-  );
+  const execute = vi.fn(async () => "638938000000000000\r\n");
   const probe = createProcessOwnerIdentityProbe({
     ...dependencies("win32"),
     execute,
   });
   expect(await probe.readProcessOwnerIdentity(123)).toBe(
-    "windows:638900000000000000|638938000000000000",
+    "windows:638938000000000000",
   );
   const call = execute.mock.calls[0] as unknown as [
     string,
@@ -112,6 +111,41 @@ test("Windows uses a fixed encoded native probe with hidden execution and PID as
     env: { ABOT_HOST_OWNER_PID: "123" },
   });
 });
+
+test("Windows liveness preserves legacy ownership when the reported boot time drifts", async () => {
+  const execute = vi.fn(async () => "639258367054633809");
+  const probe = createProcessOwnerIdentityProbe({
+    ...dependencies("win32"),
+    execute,
+  });
+  const legacy = "windows:639234943810385860|639258367054633809";
+  expect(await probe.isProcessOwnerAlive(123, legacy)).toBe(true);
+  expect(
+    await probe.isProcessOwnerAlive(123, "windows:639258367054633809"),
+  ).toBe(true);
+  expect(
+    hasSameProcessOwnerIdentity(
+      legacy,
+      "windows:639234943798338700|639258367054633809",
+    ),
+  ).toBe(true);
+  execute.mockResolvedValue("639258367054633810");
+  expect(await probe.isProcessOwnerAlive(123, legacy)).toBe(false);
+});
+
+test.each([
+  "windows:bad|639258367054633809",
+  "windows:639258367054633809|extra",
+  "linux:639258367054633809",
+  "macos:639258367054633809",
+])(
+  "Windows identity compatibility rejects unrelated formats: %s",
+  (observed) => {
+    expect(
+      hasSameProcessOwnerIdentity("windows:639258367054633809", observed),
+    ).toBe(false);
+  },
+);
 
 test("macOS uses boot-session identity and stable UTC/C-locale process start time", async () => {
   const execute = vi.fn(async (file: string) =>

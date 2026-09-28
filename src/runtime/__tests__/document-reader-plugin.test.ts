@@ -151,7 +151,20 @@ describe("document-reader plugin", () => {
       actions: [{ target: "long.txt" }],
     });
     expect(result.output).toContain("Path: long.txt");
-    expect(result.output).toContain("Next start_char: 1000");
+    expect(result.output.split("\n").slice(0, 3)).toEqual([
+      "Coverage: characters 0-1000 of 2500 (partial)",
+      "Returned characters: 1000; omitted before window: 0; remaining after window: 1500.",
+      "Next start_char: 1000",
+    ]);
+    const suffix = await handlerFor(fixture)(
+      { source: "long.txt", start_char: 1_500, max_chars: 1_000 },
+      fixture.executionContext,
+    );
+    expect(suffix.output.split("\n").slice(0, 2)).toEqual([
+      "Coverage: characters 1500-2500 of 2500 (partial)",
+      "Returned characters: 1000; omitted before window: 1500; remaining after window: 0.",
+    ]);
+    expect(suffix.output).not.toContain("Next start_char:");
     expect(JSON.stringify(result)).not.toContain(fixture.root);
   });
 

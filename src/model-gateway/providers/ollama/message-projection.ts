@@ -76,10 +76,12 @@ export function toOllamaMessage(message: unknown): unknown {
     };
   }
   if (isToolResultMessage(message)) {
+    const images = message.attachments?.map(readImageData).filter((data): data is string => Boolean(data));
     return {
       role: "tool",
       tool_name: message.toolName,
       content: message.content,
+      ...(images?.length ? { images } : {}),
     };
   }
 

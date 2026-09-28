@@ -6,6 +6,18 @@ import { createExecAdapter } from "./validation.js";
 
 export default defineRuntimePlugin((context) => ({
   handlers: createExecHandlers(context, readExecSettings(context.config)),
+  prepareRequest: async (modules, preparation) => {
+    if (!preparation?.requestState) return modules;
+    const handlers = createExecHandlers(
+      context,
+      readExecSettings(context.config),
+      preparation,
+    );
+    return modules.map((module) => ({
+      ...module,
+      implementation: handlers[module.definition.name as keyof typeof handlers],
+    }));
+  },
   adapters: {
     exec: createExecAdapter(),
   },

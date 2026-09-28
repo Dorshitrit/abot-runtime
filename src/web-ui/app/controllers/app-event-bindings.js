@@ -13,7 +13,86 @@ export function createAppEventBindings({
   actions,
   documentRoot = document,
   onSessionCreated = () => {},
+  onNavigationChange = () => {},
 }) {
+  let environmentChangeRevision = 0;
+  let environmentChanging = false;
+
+  async function changeEnvironment(
+    nextEnvironmentId,
+    { restoreSession = true, notifyEnvironmentChange = true } = {},
+  ) {
+    const previousEnvironmentId = actions.savedEnvironmentId?.() || "";
+    const recoveryEnvironmentId =
+      state.activeComposerQueueRecovery?.scope.environmentId ?? "";
+    const restoreEnvironmentSelection = () => {
+      dom.environmentSelect.value =
+        previousEnvironmentId || recoveryEnvironmentId;
+      state.agentPickerOpen = false;
+      actions.renderAgentPicker();
+    };
+    if (nextEnvironmentId === previousEnvironmentId) {
+      state.agentPickerOpen = false;
+      actions.renderAgentPicker();
+      return true;
+    }
+    dom.environmentSelect.value = nextEnvironmentId;
+    const preparedEnvironmentChange = actions.beforeEnvironmentChange
+      ? actions.beforeEnvironmentChange({
+          from: previousEnvironmentId,
+          to: nextEnvironmentId,
+        })
+      : true;
+    if (environmentChangeWasDeclined(preparedEnvironmentChange)) {
+      restoreEnvironmentSelection();
+      return false;
+    }
+    if (!actions.suspendQueueRecovery()) {
+      restoreEnvironmentSelection();
+      return false;
+    }
+    const revision = ++environmentChangeRevision;
+    environmentChanging = true;
+    if (typeof preparedEnvironmentChange === "function")
+      preparedEnvironmentChange();
+    actions.invalidateSessionLoads?.();
+    state.agentPickerOpen = false;
+    actions.renderAgentPicker();
+    actions.saveEnvironmentId(nextEnvironmentId);
+    state.currentSessionId = "";
+    state.messages = [];
+    actions.clearAttachments();
+    actions.resetLiveRequestView();
+    dom.sessionTitle.textContent = "New conversation";
+    actions.applyConversationChrome();
+    actions.renderMessages();
+    try {
+      const loading = Promise.allSettled([
+        actions.loadModels(),
+        actions.loadAgentMode(),
+        actions.loadRuntimeConfig({
+          protectUnsaved: false,
+          clearBeforeLoad: true,
+        }),
+      ]);
+      if (notifyEnvironmentChange) {
+        const ChangeEvent =
+          dom.environmentSelect.ownerDocument?.defaultView?.Event ?? Event;
+        dom.environmentSelect.dispatchEvent(new ChangeEvent("change"));
+      }
+      await loading;
+      if (revision !== environmentChangeRevision) return false;
+      if (dom.environmentSelect.value !== nextEnvironmentId) return false;
+      if (restoreSession) await actions.restoreLastSession();
+      return dom.environmentSelect.value === nextEnvironmentId;
+    } finally {
+      if (revision === environmentChangeRevision) {
+        environmentChanging = false;
+        onNavigationChange();
+      }
+    }
+  }
+
   function bind() {
     dom.sessionSearchInput.addEventListener("input", () => {
       state.sessionQuery = dom.sessionSearchInput.value;
@@ -50,63 +129,9 @@ export function createAppEventBindings({
       dom.composerInput.focus();
     });
     dom.environmentSelect.addEventListener("change", () => {
-      const previousEnvironmentId = actions.savedEnvironmentId?.() || "";
-      const nextEnvironmentId = dom.environmentSelect.value;
-      const recoveryEnvironmentId =
-        state.activeComposerQueueRecovery?.scope.environmentId ?? "";
-      const restoreEnvironmentSelection = () => {
-        dom.environmentSelect.value =
-          previousEnvironmentId || recoveryEnvironmentId;
-        state.agentPickerOpen = false;
-        actions.renderAgentPicker();
-      };
-      if (nextEnvironmentId === previousEnvironmentId) {
-        state.agentPickerOpen = false;
-        actions.renderAgentPicker();
-        return;
-      }
-      const preparedEnvironmentChange = actions.beforeEnvironmentChange
-        ? actions.beforeEnvironmentChange({
-            from: previousEnvironmentId,
-            to: nextEnvironmentId,
-          })
-        : true;
-      if (
-        preparedEnvironmentChange === false ||
-        preparedEnvironmentChange === null
-      ) {
-        restoreEnvironmentSelection();
-        return;
-      }
-      if (!actions.suspendQueueRecovery()) {
-        restoreEnvironmentSelection();
-        return;
-      }
-      if (typeof preparedEnvironmentChange === "function") {
-        preparedEnvironmentChange();
-      }
-      actions.invalidateSessionLoads?.();
-      state.agentPickerOpen = false;
-      actions.renderAgentPicker();
-      actions.saveEnvironmentId(nextEnvironmentId);
-      state.currentSessionId = "";
-      state.messages = [];
-      actions.clearAttachments();
-      actions.resetLiveRequestView();
-      dom.sessionTitle.textContent = "New conversation";
-      actions.applyConversationChrome();
-      actions.renderMessages();
-      void (async () => {
-        await Promise.allSettled([
-          actions.loadModels(),
-          actions.loadAgentMode(),
-          actions.loadRuntimeConfig({
-            protectUnsaved: false,
-            clearBeforeLoad: true,
-          }),
-        ]);
-        await actions.restoreLastSession();
-      })();
+      void changeEnvironment(dom.environmentSelect.value, {
+        notifyEnvironmentChange: false,
+      });
     });
     dom.agentPickerButton.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -315,5 +340,14 @@ export function createAppEventBindings({
     );
   }
 
-  return { bind };
+  return {
+    bind,
+    changeEnvironment,
+    isEnvironmentChanging: () => environmentChanging,
+  };
+}
+
+function environmentChangeWasDeclined(preparedChange) {
+  if (preparedChange === false) return true;
+  return preparedChange === null;
 }

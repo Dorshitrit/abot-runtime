@@ -1,39 +1,56 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { HostPairingStore } from "../../../plugins/system/source/companion/pairing-store.js";
+import type { HostPairingStore } from "../../computer-access/companion/pairing-store.js";
 import { acceptConfigMutationRequest } from "../local-runtime/config-mutation-request.js";
 import { readBody, sendJson } from "../local-runtime/http.js";
 import { hostBearerCredential } from "./native-authorization.js";
 import type { HostReadiness, HostSetupPlatform } from "./readiness.js";
-import { renderCompanionInstaller, renderWslInteropInstaller } from "./installers.js";
+import {
+  renderCompanionInstaller,
+} from "./installers.js";
 import { InstallerInputError } from "./installer-contract.js";
 import { readInstallerCompanionBundle } from "./companion-bundle.js";
+import { LocalHostConnection, LOCAL_HOST_SETUP_PATH } from "./local-connection.js";
 
 const setupPath = "/web-api/runtime/system-host/setup";
 const bundlePath = "/web-api/runtime/system-host/bundle";
 
 export function isHostSetupRoute(pathname: string): boolean {
-  return [setupPath, bundlePath].includes(pathname);
+  return [setupPath, bundlePath, LOCAL_HOST_SETUP_PATH].includes(pathname);
 }
 
-export function sendHostSetupInputError(response: ServerResponse, error: unknown): boolean {
+export function sendHostSetupInputError(
+  response: ServerResponse,
+  error: unknown,
+): boolean {
   if (!(error instanceof InstallerInputError)) return false;
-  sendJson(response, 400, { ok: false, error: "host_setup_input_rejected", message: error.message });
+  sendJson(response, 400, {
+    ok: false,
+    error: "host_setup_input_rejected",
+    message: error.message,
+  });
   return true;
 }
 
-function isSetupPlatformRequest(value: unknown): value is { platform: HostSetupPlatform } {
+function isSetupPlatformRequest(
+  value: unknown,
+): value is { platform: HostSetupPlatform; purpose?: "learning" } {
   if (!value || typeof value !== "object") return false;
   if (Array.isArray(value)) return false;
-  if (Object.keys(value).length !== 1) return false;
-  const platform = (value as Record<string, unknown>).platform;
+  if (Object.keys(value).some((key) => !["platform", "purpose"].includes(key)))
+    return false;
+  const input = value as Record<string, unknown>;
+  if (input.purpose !== undefined && input.purpose !== "learning") return false;
+  const platform = input.platform;
+  if (platform === "linux") return true;
   return platform === "windows" || platform === "macos";
 }
 
 function requestRuntimeOrigin(request: IncomingMessage): string {
   const encrypted = "encrypted" in request.socket && request.socket.encrypted;
-  return new URL(`${encrypted ? "https" : "http"}://${request.headers.host}`).origin;
+  return new URL(`${encrypted ? "https" : "http"}://${request.headers.host}`)
+    .origin;
 }
 
 export type HostSetupRouteDependencies = {
@@ -45,10 +62,20 @@ export type HostSetupRouteDependencies = {
 
 /** GUI writes use same-origin JSON; native code downloads use the expiring setup grant. */
 export class HostSetupRoutes {
-  constructor(private readonly dependencies: HostSetupRouteDependencies) {}
+  private readonly local: LocalHostConnection;
+  constructor(private readonly dependencies: HostSetupRouteDependencies) {
+    this.local = new LocalHostConnection({ ...dependencies, bundle: () => this.bundle() });
+  }
+
+  rejectConcurrentMutation(response: ServerResponse): boolean {
+    return this.local.rejectConcurrentMutation(response);
+  }
+
+  async close(): Promise<void> { await this.local.close(); }
 
   private async bundle(): Promise<Buffer> {
-    if (this.dependencies.bundleFile) return readFile(this.dependencies.bundleFile);
+    if (this.dependencies.bundleFile)
+      return readFile(this.dependencies.bundleFile);
     return readInstallerCompanionBundle();
   }
 
@@ -57,6 +84,10 @@ export class HostSetupRoutes {
     response: ServerResponse,
     pathname: string,
   ): Promise<void> {
+    if (pathname === LOCAL_HOST_SETUP_PATH) {
+      await this.local.handle(request, response);
+      return;
+    }
     if (pathname === bundlePath) {
       await this.downloadBundle(request, response);
       return;
@@ -68,11 +99,19 @@ export class HostSetupRoutes {
     if (!acceptConfigMutationRequest(request, response)) return;
     const raw = await readBody(request, { maxBytes: 1024 });
     let input: unknown;
-    try { input = JSON.parse(raw.toString()); } catch { /* rejected below */ }
+    try {
+      input = JSON.parse(raw.toString());
+    } catch {
+      /* rejected below */
+    }
     if (!isSetupPlatformRequest(input)) {
-      sendJson(response, 400, { ok: false, error: "invalid_host_setup_platform" });
+      sendJson(response, 400, {
+        ok: false,
+        error: "invalid_host_setup_platform",
+      });
       return;
     }
+    if (this.rejectConcurrentMutation(response)) return;
     const readiness = await this.dependencies.readiness();
     if (!readiness.platforms.includes(input.platform)) {
       sendJson(response, 409, {
@@ -82,20 +121,22 @@ export class HostSetupRoutes {
       });
       return;
     }
-    if (readiness.environment === "wsl") {
-      const installer = await renderWslInteropInstaller({ distribution: readiness.distribution });
-      sendJson(response, 200, { ok: true, ...installer, restartRequired: true });
-      return;
-    }
     // Read and hash the exact running build before creating a setup grant.
     const bundle = await this.bundle();
     await this.dependencies.prepareCompanion();
-    const pairing = this.dependencies.store.begin(15 * 60_000);
+    if (this.rejectConcurrentMutation(response)) return;
+    const upgrading = Boolean(this.dependencies.store.host());
+    const pairing = upgrading
+      ? this.dependencies.store.beginBundleUpgrade()
+      : this.dependencies.store.begin(15 * 60_000);
     const installer = await renderCompanionInstaller({
       platform: input.platform,
       url: requestRuntimeOrigin(request),
       code: pairing.code,
       expiresAt: pairing.expiresAt,
+      ...(upgrading
+        ? { upgradeHostId: this.dependencies.store.host()!.hostId }
+        : {}),
       bundleSha256: createHash("sha256").update(bundle).digest("hex"),
     });
     sendJson(response, 200, {
@@ -106,7 +147,10 @@ export class HostSetupRoutes {
     });
   }
 
-  private async downloadBundle(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  private async downloadBundle(
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> {
     if (request.method !== "GET") {
       sendJson(response, 405, { ok: false, error: "method_not_allowed" });
       return;
@@ -127,6 +171,8 @@ export class HostSetupRoutes {
 
   private hasCurrentSetupGrant(credential: string | undefined): boolean {
     if (!credential) return false;
-    return this.dependencies.store.authenticate(credential) === "pairing";
+    if (this.dependencies.store.authenticate(credential) === "pairing")
+      return true;
+    return this.dependencies.store.authenticateBundleUpgrade(credential);
   }
 }

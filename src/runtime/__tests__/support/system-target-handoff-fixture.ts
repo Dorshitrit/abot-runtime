@@ -5,10 +5,10 @@ import type { TestRequestSeed } from "./request-execution-scope.js";
 import { CAPABILITY_CONTROLS_MODEL_STEP } from "../../orchestration/worker-capabilities/index.js";
 import { loadPublicRuntimeConfig } from "../public-runtime-config-fixture.js";
 import { createConfiguredToolRegistry } from "../../capabilities/configured-tool-registry.js";
-import { createSystemHandlers } from "../../../../plugins/system/source/handlers.js";
+import { createSystemHandlers } from "../../../computer-access/handlers.js";
 import type { SystemHostConnection } from "../../../../plugins/system/source/host-dispatch.js";
 import { prepareSystemRequestModules } from "../../../../plugins/system/source/request-system-modules.js";
-import { observeSystemHost } from "../../../../plugins/system/source/host-observation.js";
+import { observeSystemHost } from "../../../computer-access/host-observation.js";
 import {
   successResult,
   type ToolModuleRequestPreparation,

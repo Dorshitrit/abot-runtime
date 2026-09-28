@@ -1,50 +1,53 @@
 /* Schedule page layout, list navigation and page-level states. */
+.schedules-content {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+}
 .schedules-workspace-body [hidden] {
   display: none !important;
 }
 .schedules-workspace-body
   :is(.schedules-toolbar, .schedule-action-row, .schedule-state-copy)
   > button {
-  border: 1px solid rgba(197, 212, 224, 0.2);
-  border-radius: 10px;
-  padding: 9px 15px;
-  background: linear-gradient(
-    180deg,
-    rgba(216, 227, 235, 0.075),
-    rgba(216, 227, 235, 0.035)
-  );
-  color: #dce5e9;
-  font-weight: 600;
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-height: 34px;
+  padding: 6px 12px;
+  background: var(--control-bg);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  box-shadow: none;
 }
 .schedules-workspace-body
   :is(.schedules-toolbar, .schedule-action-row, .schedule-state-copy)
   > button:hover:not(:disabled) {
-  border-color: rgba(212, 226, 234, 0.38);
-  background: rgba(216, 227, 235, 0.12);
-  color: #f3f6f5;
+  border-color: var(--line);
+  background: var(--control-bg-hover);
+  color: var(--text-strong);
 }
 .schedules-workspace-body
   :is(.schedules-toolbar, .schedule-action-row, .schedule-state-copy)
   > .primary-button {
-  border-color: #d6e0dd;
-  background: linear-gradient(180deg, #e6ede9, #d2ded9);
-  color: #172c29;
-  box-shadow:
-    0 2px 7px rgba(0, 0, 0, 0.14),
-    inset 0 1px rgba(255, 255, 255, 0.6);
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
 }
 .schedules-workspace-body
   :is(.schedules-toolbar, .schedule-action-row, .schedule-state-copy)
   > .primary-button:hover:not(:disabled) {
-  border-color: #f1f5f2;
-  background: #eff4f0;
-  color: #132722;
+  border-color: var(--accent);
+  background: var(--accent-strong);
+  color: var(--bg);
 }
 .schedules-workspace-body button:focus-visible {
-  border-color: #b4ccc1;
-  outline: 2px solid #b4ccc1;
-  outline-offset: 3px;
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
   box-shadow: none;
 }
 .schedules-workspace-body button:disabled {
@@ -53,20 +56,20 @@
   transform: none;
 }
 .schedules-workspace-body .schedule-action-row > [data-job-action="cancel"] {
-  color: #d6a6ae;
+  color: var(--danger);
 }
 .schedules-workspace-body
   .schedule-action-row
   > [data-job-action="cancel"]:hover:not(:disabled) {
-  border-color: rgba(228, 161, 173, 0.35);
-  background: rgba(228, 161, 173, 0.08);
-  color: #f0bec7;
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  color: var(--danger);
 }
 .schedules-toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 .schedule-search {
   display: flex;
@@ -78,32 +81,33 @@
 }
 .schedule-search svg {
   position: absolute;
-  inset-inline-start: 12px;
-  width: 18px;
-  height: 18px;
+  inset-inline-start: 11px;
+  width: 16px;
+  height: 16px;
   color: var(--muted);
   pointer-events: none;
 }
 .schedule-search input {
   width: 100%;
-  padding-inline: 38px 12px;
+  padding-inline: 34px 10px;
 }
 .schedules-toolbar input,
 .schedules-toolbar select,
 .schedules-toolbar button {
-  height: 40px;
-  border-radius: 9px;
-  font-size: var(--font-size-md);
+  height: 36px;
+  border-radius: 8px;
+  font-size: var(--font-size-sm);
 }
 .schedules-toolbar select {
   width: auto;
-  min-width: 132px;
-  padding-inline: 12px 26px;
+  min-width: 126px;
+  padding-inline: 10px 26px;
+  font-weight: 400;
 }
 .schedules-toolbar > button {
   width: auto;
   flex: none;
-  padding-inline: 15px;
+  padding-inline: 12px;
 }
 .schedules-feedback {
   min-height: 1.5em;
@@ -112,15 +116,15 @@
   margin-block: 0 12px;
 }
 .schedules-feedback.schedule-error {
-  border: 1px solid rgba(245, 148, 153, 0.2);
+  border: 1px solid color-mix(in srgb, var(--danger) 24%, transparent);
   border-radius: 9px;
-  background: rgba(245, 148, 153, 0.055);
+  background: color-mix(in srgb, var(--danger) 6%, transparent);
   padding: 12px 15px;
   line-height: 1.6;
 }
 .schedules-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+  grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
   align-items: start;
   gap: 18px;
 }
@@ -130,8 +134,12 @@
 }
 .schedules-list {
   display: grid;
-  gap: 4px;
+  gap: 0;
   min-width: 0;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
 }
 .schedule-list-item {
   display: grid;
@@ -139,29 +147,34 @@
   width: 100%;
   padding: 10px 12px;
   text-align: start;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(16, 32, 49, 0.45);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
 }
+.schedule-list-item + .schedule-list-item {
+  border-top: 1px solid var(--line);
+}
 .schedule-list-item:hover {
-  border-color: rgba(187, 206, 210, 0.35);
-  background: rgba(189, 211, 208, 0.055);
+  background: var(--control-bg);
+}
+.schedule-list-item:active {
+  transform: none;
 }
 .schedule-list-item.selected {
-  border-color: rgba(181, 210, 198, 0.46);
-  background: rgba(168, 203, 187, 0.07);
-  box-shadow: inset 3px 0 #a9c6b8;
+  background: var(--accent-soft);
 }
 .schedule-list-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
   min-width: 0;
 }
 .schedule-list-top strong {
+  color: var(--text-strong);
   font-size: var(--font-size-sm);
+  font-weight: 400;
   line-height: 1.5;
   min-width: 0;
   overflow: hidden;
@@ -169,12 +182,38 @@
   white-space: nowrap;
 }
 .schedule-list-top .schedule-badge {
-  padding: 2px 6px;
+  --schedule-status-color: var(--muted-2);
+  gap: 6px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.schedule-list-top .schedule-badge::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--schedule-status-color);
+}
+.schedule-list-top .schedule-badge[data-state="active"],
+.schedule-list-top .schedule-badge[data-state="succeeded"] {
+  --schedule-status-color: var(--green);
+}
+.schedule-list-top .schedule-badge[data-state="running"],
+.schedule-list-top .schedule-badge[data-state="pending"] {
+  --schedule-status-color: var(--accent);
+}
+.schedule-list-top .schedule-badge[data-state="failed"],
+.schedule-list-top .schedule-badge[data-state="interrupted"] {
+  --schedule-status-color: var(--danger);
+}
+.schedule-list-top .schedule-badge[data-state="paused"] {
+  --schedule-status-color: var(--amber);
 }
 .schedule-list-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  display: grid;
+  gap: 2px;
   min-width: 0;
 }
 .schedule-list-meta > span {
@@ -184,11 +223,10 @@
   font-size: var(--font-size-xs);
 }
 .schedule-list-meta .schedule-next-run {
-  flex-shrink: 0;
-  max-width: 65%;
+  font-variant-numeric: tabular-nums;
 }
 .schedule-list-description {
-  color: var(--text);
+  color: var(--muted);
   font-weight: 400;
   font-size: var(--font-size-sm);
   line-height: 1.6;
@@ -202,13 +240,13 @@
 .schedule-workspace-state {
   display: flex;
   align-items: flex-start;
-  gap: 24px;
+  gap: 20px;
   width: min(680px, 100%);
   margin: clamp(30px, 9vh, 90px) auto;
-  padding: 32px;
+  padding: 24px;
   border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgba(15, 32, 50, 0.5);
+  border-radius: 10px;
+  background: var(--panel);
 }
 .schedule-state-icon {
   display: grid;
@@ -216,19 +254,19 @@
   flex: none;
   width: 52px;
   height: 52px;
-  border: 1px solid rgba(108, 163, 232, 0.2);
-  border-radius: 14px;
-  color: #a3c9ff;
-  background: rgba(71, 126, 196, 0.08);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--accent);
+  background: var(--control-bg);
 }
 .schedule-state-icon svg {
   width: 28px;
   height: 28px;
 }
 .schedule-workspace-state[data-state="error"] .schedule-state-icon {
-  color: #e5bc86;
-  border-color: rgba(229, 188, 134, 0.2);
-  background: rgba(229, 188, 134, 0.06);
+  color: var(--amber);
+  border-color: var(--line);
+  background: var(--control-bg);
 }
 .schedule-state-copy {
   min-width: 0;
@@ -237,7 +275,7 @@
   margin: 1px 0 10px;
   color: var(--text-strong);
   font-size: 1.25rem;
-  font-weight: 600;
+  font-weight: 400;
   line-height: 1.4;
 }
 .schedule-state-copy p {
@@ -249,6 +287,6 @@
 }
 .schedule-state-copy button {
   width: auto;
-  min-height: 38px;
-  padding-inline: 15px;
+  min-height: 34px;
+  padding-inline: 12px;
 }

@@ -37,8 +37,13 @@ export function normalizeWorkspaceDestination(value) {
   const destination = String(value ?? "")
     .trim()
     .toLowerCase();
+  if (destination === "notifications") return "notifications";
   if (destination === "schedules") return "schedules";
+  if (destination === "learning") return "learning";
+  if (destination === "memory") return "memory";
   if (destination === "home") return "home";
+  if (destination === "models") return "models";
+  if (destination === "plugins") return "plugins";
   return destination === "config" ? "config" : "chat";
 }
 

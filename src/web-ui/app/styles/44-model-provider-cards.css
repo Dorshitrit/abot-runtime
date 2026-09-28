@@ -1,59 +1,78 @@
 .config-model-setup-entry {
   display: grid;
-  gap: 18px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin-bottom: 20px;
 }
 .config-model-setup-entry > header,
 .config-provider-card footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
 }
 .config-model-setup-entry h2,
 .config-provider-card h3 {
   margin: 0;
   color: var(--text);
+  font-weight: 400;
+}
+.config-model-setup-entry h2 {
   font-size: var(--font-size-md);
-  font-weight: 600;
 }
 .config-model-setup-entry p {
-  margin: 7px 0 0;
+  margin: 5px 0 0;
   color: var(--muted);
   font-size: var(--font-size-sm);
   line-height: 1.5;
 }
 .config-model-setup-entry button {
   flex: none;
-  min-height: 36px;
-  padding: 8px 12px;
+  min-height: 34px;
+  padding: 6px 10px;
   border: 1px solid var(--config-line);
-  border-radius: 8px;
+  border-radius: 6px;
   font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-weight: 400;
 }
 .config-provider-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 8px;
 }
 .config-provider-card {
-  display: grid;
-  gap: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   min-width: 0;
-  padding: 18px;
+  padding: 8px 12px;
   border: 1px solid var(--config-line);
-  border-radius: 14px;
+  border-radius: 8px;
   background: var(--config-surface);
 }
+.config-provider-identity {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+}
 .config-provider-card h3 {
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
   overflow-wrap: anywhere;
 }
 .config-provider-card span {
-  display: inline-block;
-  margin-top: 4px;
   color: var(--muted);
   font-size: var(--font-size-xs);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.config-provider-card footer {
+  flex: none;
+}
+.config-provider-card footer span {
+  white-space: nowrap;
 }
 @media (max-width: 520px) {
   .config-model-setup-entry > header {

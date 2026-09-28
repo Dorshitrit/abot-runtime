@@ -1,10 +1,20 @@
 import type {
+  ToolRequestWork,
+  ToolRequestState,
+  ToolRequestPreparationContext,
+} from "./tool-request-resources.js";
+import type {
   ToolPermissionMode,
   ToolRequiredPermissionMode,
 } from "./tool-permission-mode.js";
 
 import type { ModelStep } from "../shared/types.js";
 import type { RuntimeAttachmentKind } from "../shared/attachments.js";
+import type {
+  ToolImageEvidence,
+  ToolMediaWriter,
+  ToolRequestDisposer,
+} from "./tool-media.js";
 import type { ToolNormalInvocationContract } from "./normal-invocation/contracts.js";
 import type { ToolFileOutputReporter } from "./file-output-presentation.js";
 
@@ -275,6 +285,10 @@ export type ToolModelInvoker = Readonly<{
 }>;
 
 export type ToolExecutionContext = {
+  requestWork?: ToolRequestWork;
+  requestState?: ToolRequestState;
+  media?: ToolMediaWriter;
+  onRequestDispose?: ToolRequestDisposer;
   abortSignal?: AbortSignal;
   sharedState?: ToolExecutionSharedState;
   /** Runtime-owned path interpretation and containment authority. */
@@ -329,6 +343,7 @@ export type ToolModuleDeclaration = ToolModuleDeclarationBase & {
 
 export type ToolModuleRequestPreparation = (
   modules: readonly ToolModuleDeclaration[],
+  context?: ToolRequestPreparationContext,
 ) => Promise<readonly ToolModuleDeclaration[]>;
 
 export type RegisteredToolNormalInvocation = Readonly<{
@@ -379,6 +394,7 @@ export type ParsedToolCall =
   | { ok: false; error: string; repairHint?: string };
 
 export type ToolExecutionResult = {
+  media?: readonly ToolImageEvidence[];
   ok: boolean;
   tool: string;
   output: string;
@@ -404,6 +420,7 @@ export type ToolExecutionResult = {
 };
 
 export type ToolImplementationOutput = {
+  media?: readonly ToolImageEvidence[];
   ok: boolean;
   output: string;
   progress?: boolean;

@@ -5,12 +5,9 @@ import {
 import { textOf } from "../../lib/text-format.js";
 
 export const CONFIG_CATEGORIES = [
-  "memory",
-  "pipeline",
   "models",
   "plugins",
-  "computer",
-  "advanced",
+  "operations",
 ];
 
 const DEFAULT_MODEL_EXECUTION_POLICY = "supervisor-worker-v1";
@@ -135,9 +132,10 @@ export function createConfigWorkspaceModel() {
     savingKeys: new Set(),
     savedKeys: new Set(),
     expandedCalibrationKeys: new Set(),
+    expandedCalibrationSections: new Set(),
     selectedConfigModelId: "",
     selectedRawConfigKey: "",
-    activeCategory: "memory",
+    activeCategory: "models",
     rawPanelOpen: false,
     loadGeneration: 0,
     loading: false,

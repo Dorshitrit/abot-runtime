@@ -319,7 +319,9 @@ export function startWebUiServer(
 
   const handleLinkPreview = createLinkPreviewRouteHandler();
   const systemHost = localRuntimeBackend
-    ? new WebSystemHostService(rootDir)
+    ? new WebSystemHostService(rootDir, () =>
+        localRuntimeBackend.notifyHostConnectionChanged(),
+      )
     : null;
   const allowPublishedLoopback = allowsPublishedLoopbackAuthority(options.host);
   const server = createServer((req, res) => {

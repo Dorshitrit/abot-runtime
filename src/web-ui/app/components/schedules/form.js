@@ -94,7 +94,14 @@ export function createScheduleForm({
         .map((mode) => ({ value: mode, label: mode })),
       values.agentMode || "reasoning",
     )}</select></label></div>
-    <p class="schedule-permission-note"><strong>Full tool access</strong> · This task runs in its conversation using the saved model and mode.</p>
+    <label>Tool access<select name="toolPermissionMode">${options(
+      [
+        { value: "full_access", label: "Full" },
+        { value: "full_plus", label: "FULL+" },
+      ],
+      values.toolPermissionMode || "full_access",
+    )}</select><small>FULL+ includes system actions without approval prompts. OS permissions still apply.</small></label>
+    <p class="schedule-permission-note">This task runs in its conversation using the saved model, mode and tool access.</p>
     <p class="schedule-form-feedback" role="alert" hidden></p>
     <div class="schedule-action-row"><button type="submit" class="primary-button">${job ? "Save changes" : "Create schedule"}</button><button type="button" data-cancel>Cancel</button></div>`;
   const fields = form.elements;
@@ -180,6 +187,7 @@ export function scheduleFormInput(data, originalSchedule) {
     prompt: value("prompt"),
     modelProfileId: value("modelProfileId"),
     agentMode: value("agentMode"),
+    toolPermissionMode: value("toolPermissionMode") || "full_access",
     timeZone: value("timeZone"),
     schedule,
   };

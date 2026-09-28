@@ -1,5 +1,8 @@
+import type { NotificationRequests } from "./runtime-web-client/notifications.js";
 import type { ProjectRequests } from "./runtime-web-client/projects.js";
+import type { ToolApprovalRequests } from "./runtime-web-client/tool-approvals.js";
 import type { ConversationFileClient } from "./runtime-web-client/conversation-files.js";
+import type { ModelRemovalInput } from "../../local-runtime/model-removal.js";
 import type { ModelSetupInput } from "../../local-runtime/model-setup-input.js";
 import type { SetupEmbeddingInput } from "../../local-runtime/setup-embedding-input.js";
 import type {
@@ -8,6 +11,13 @@ import type {
   SchedulerRun,
 } from "../../../runtime/scheduler/contracts.js";
 import type { CreateWebScheduleJobInput } from "../../schedule-creation-contract.js";
+import type { LearningCandidateRecord } from "../../../runtime/long-term-memory/maturation/contracts.js";
+import type {
+  LearningBatch,
+  LearningBatchSummary,
+  PassiveLearningPreferences,
+  PassiveLearningStatus,
+} from "../../../runtime/passive-learning/contracts.js";
 
 export declare function parseJsonResponseText(
   text: string,
@@ -73,10 +83,19 @@ export declare function createRuntimeWebClient(options: {
   fetchImpl?: typeof fetch;
   origin?: string;
 }): {
+  supportsNotifications: NotificationRequests["supportsNotifications"];
+  listNotifications: NotificationRequests["listNotifications"];
+  markNotificationsRead: NotificationRequests["markNotificationsRead"];
+  saveNotificationPreferences: NotificationRequests["saveNotificationPreferences"];
+  supportsToolApprovals: ToolApprovalRequests["supportsToolApprovals"];
+  listToolApprovals: ToolApprovalRequests["listToolApprovals"];
+  decideToolApproval: ToolApprovalRequests["decideToolApproval"];
   supportsSystemHostConnection(): boolean;
   getSystemHostConnection(): Promise<Record<string, unknown>>;
+  connectLocalSystemHost(): Promise<Record<string, unknown>>;
   downloadSystemHostSetup(
-    platform: "windows" | "macos",
+    platform: "windows" | "macos" | "linux",
+    options?: { purpose?: "learning" },
   ): Promise<Record<string, unknown>>;
   createSystemHostPairing(): Promise<Record<string, unknown>>;
   revokeSystemHostConnection(): Promise<Record<string, unknown>>;
@@ -143,8 +162,8 @@ export declare function createRuntimeWebClient(options: {
     ConversationFileClient["openConversationFile"]
   >;
   conversationFileUrl: ConversationFileClient["conversationFileUrl"];
-  getRuntimeStatus(): Promise<Record<string, unknown>>;
-  getRuntimeLogs(lines?: number): Promise<Record<string, unknown>>;
+  getRuntimeStatus(environmentId?: string): Promise<Record<string, unknown>>;
+  getRuntimeLogs(lines?: number, environmentId?: string): Promise<Record<string, unknown>>;
   getSystemHealth(): Promise<Record<string, unknown>>;
   listModels(environmentId?: string): Promise<RuntimeModelCatalogResponse>;
   getAgentMode(environmentId?: string): Promise<Record<string, unknown>>;
@@ -182,7 +201,7 @@ export declare function createRuntimeWebClient(options: {
   markSessionRead(options: {
     sessionId: string;
     environmentId?: string;
-    readThroughMessageId?: number | null;
+    readThroughMessageId?: number | string | null;
     readThroughRequestId?: string;
   }): Promise<Record<string, unknown>>;
   clearSessionMessages(
@@ -198,6 +217,11 @@ export declare function createRuntimeWebClient(options: {
     afterSeq?: number;
     environmentId?: string;
   }): Promise<unknown[]>;
+  stopChatRequest(options: {
+    requestId: string;
+    sessionId: string;
+    environmentId?: string;
+  }): Promise<{ accepted: boolean; reason?: string }>;
   postChatMessage(options: {
     text: string;
     attachments: unknown[];
@@ -212,7 +236,14 @@ export declare function createRuntimeWebClient(options: {
     input: ModelSetupInput,
     environmentId?: string,
   ): Promise<Record<string, unknown>>;
-  loadConfigDashboard(environmentId?: string): Promise<Record<string, unknown>>;
+  removeRuntimeModel(
+    input: ModelRemovalInput,
+    environmentId?: string,
+  ): Promise<Record<string, unknown>>;
+  loadConfigDashboard(
+    environmentId?: string,
+    options?: { settled?: boolean },
+  ): Promise<Record<string, unknown>>;
   saveConfigFile(options: {
     environmentId?: string;
     kind: string;
@@ -241,6 +272,7 @@ export declare function createRuntimeWebClient(options: {
     environmentId?: string;
     limit?: number;
     offset?: number;
+    origin?: "passive_observation";
     signal?: AbortSignal;
   }): Promise<LongTermMemoryPage>;
   searchLongTermMemories(options: {
@@ -266,4 +298,35 @@ export declare function createRuntimeWebClient(options: {
     environmentId?: string;
     id: string;
   }): Promise<Record<string, unknown>>;
+  loadPassiveLearning(
+    environmentId?: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<{ ok: true; status: PassiveLearningStatus }>;
+  configurePassiveLearning(
+    input: Partial<PassiveLearningPreferences>,
+    environmentId?: string,
+  ): Promise<{ ok: true; status: PassiveLearningStatus }>;
+  restartPassiveLearningCollection(
+    environmentId?: string,
+  ): Promise<{ ok: true; status: PassiveLearningStatus }>;
+  clearPassiveLearningPending(
+    environmentId?: string,
+  ): Promise<{ ok: true; status: PassiveLearningStatus }>;
+  listPassiveLearningCandidates(
+    environmentId?: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<{ ok: true; items: Omit<LearningCandidateRecord, "embedding">[] }>;
+  dismissPassiveLearningProposal(
+    id: string,
+    environmentId?: string,
+  ): Promise<{ ok: true }>;
+  listPassiveLearningBatches(
+    environmentId?: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<{ ok: true; items: LearningBatchSummary[] }>;
+  loadPassiveLearningBatch(
+    id: string,
+    environmentId?: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<{ ok: true; batch: LearningBatch }>;
 };

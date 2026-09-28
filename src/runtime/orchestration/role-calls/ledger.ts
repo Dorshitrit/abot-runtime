@@ -1,3 +1,5 @@
+import type { RoleCallLedgerCheckpoint } from "./checkpoint-contract.js";
+import { restoreCheckpointState } from "./checkpoint-state.js";
 import { consumeUnexpectedThenable } from "../synchronous-boundary.js";
 import { createCanonicalStateHeadFactory } from "../state-head.js";
 import {
@@ -52,8 +54,12 @@ const issuedRoleCallLedgerHeads = new WeakMap<
 export function createRoleCallLedger(params: {
   requestId: string;
   policy: RoleCallPolicyInput;
+  checkpoint?: RoleCallLedgerCheckpoint;
 }): RoleCallLedger {
-  const initialState = createInitialRoleCallState(params.requestId);
+  const policy = sealRoleCallPolicy(params.policy);
+  const initialState = params.checkpoint
+    ? restoreCheckpointState(params.checkpoint, params.requestId, policy)
+    : createInitialRoleCallState(params.requestId);
   const capabilitySelectionSupervisionIssuanceAuthority =
     resolveRoleCapabilitySelectionSupervisionIssuanceAuthority(initialState);
   if (!capabilitySelectionSupervisionIssuanceAuthority) {
@@ -64,10 +70,12 @@ export function createRoleCallLedger(params: {
   const createRoleCallStateHead = createRoleCallStateHeadFactory(
     capabilitySelectionSupervisionIssuanceAuthority,
   );
-  const channel = createRoleCallStateHead({
-    state: initialState,
-    policy: sealRoleCallPolicy(params.policy),
-  });
+  const channel = createRoleCallStateHead(
+    { state: initialState, policy },
+    params.checkpoint
+      ? { initialRevision: params.checkpoint.revision }
+      : undefined,
+  );
   const commitObservers = new Set<RoleCallLedgerCommitObserver>();
   const commits = Object.freeze({
     subscribe(observer: RoleCallLedgerCommitObserver) {

@@ -15,10 +15,11 @@ const REQUEST_CONTEXT: LongTermMemoryRequestContext = {
 };
 
 describe("passive long-term memory", () => {
-  test("keeps the disabled path free of repository and embedding work", async () => {
+  test("keeps disabled requests free of repository and embedding work after retention bootstrap", async () => {
+    const base = createInMemoryLongTermMemoryRepository();
     const repository = {
-      read: vi.fn(),
-      update: vi.fn(),
+      read: vi.fn(base.read),
+      update: vi.fn(base.update),
     };
     const embeddings = { embed: vi.fn() };
     const service = createLongTermMemoryService({
@@ -27,6 +28,8 @@ describe("passive long-term memory", () => {
       enabled: false,
       emitClientEvents: false,
     });
+    await service.retention!.start();
+    repository.read.mockClear();
 
     await expect(
       service.retrieve({ query: "anything", context: REQUEST_CONTEXT }),
@@ -40,6 +43,7 @@ describe("passive long-term memory", () => {
     expect(repository.read).not.toHaveBeenCalled();
     expect(repository.update).not.toHaveBeenCalled();
     expect(embeddings.embed).not.toHaveBeenCalled();
+    await service.retention!.stop();
   });
 
   test("retrieves a relevant memory across languages and rejects an unrelated query", async () => {
@@ -53,13 +57,9 @@ describe("passive long-term memory", () => {
       now: () => new Date("2026-08-26T08:00:00.000Z"),
       createId: () => "memory-coffee",
     });
-    await service.processCandidates({
-      candidates: [
-        {
-          content: "The user prefers coffee without sugar.",
-          tags: ["coffee", "preference"],
-        },
-      ],
+    await service.create({
+      content: "The user prefers coffee without sugar.",
+      tags: ["coffee", "preference"], source: "web_ui",
       context: REQUEST_CONTEXT,
     });
 
@@ -102,23 +102,24 @@ describe("passive long-term memory", () => {
       ],
       context: REQUEST_CONTEXT,
     });
-    const listed = await service.list();
+    const candidates = await service.learning!.list();
 
     expect(result).toMatchObject({
       acceptedCount: 1,
       rejectedCount: 2,
       duplicateCount: 1,
     });
-    expect(listed.total).toBe(1);
-    expect(listed.items[0]).toMatchObject({
-      id: "memory-one",
+    expect((await service.list()).total).toBe(0);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
       content: "User prefers dark mode.",
       tags: ["ux", "preference"],
-      provenance: {
+      score: 0,
+      sources: [{
         kind: "passive_response",
         sourceSessionId: "session-memory",
         sourceRequestId: "request-memory",
-      },
+      }],
     });
   });
 
@@ -132,8 +133,8 @@ describe("passive long-term memory", () => {
       emitClientEvents: false,
       createId: () => "memory-reindex",
     });
-    await service.processCandidates({
-      candidates: [{ content: "User prefers coffee.", tags: ["coffee"] }],
+    await service.create({
+      content: "User prefers coffee.", tags: ["coffee"], source: "web_ui",
       context: REQUEST_CONTEXT,
     });
     const replacement = createSemanticFixtureEmbeddings("fingerprint-v2");
@@ -184,36 +185,35 @@ describe("passive long-term memory", () => {
     expect((await repository.read()).vectors).toHaveLength(129);
   });
 
-  test("saves candidate embeddings in provider-sized batches", async () => {
+  test("bounds proposals and saves candidate embeddings in provider-sized batches", async () => {
     const repository = createInMemoryLongTermMemoryRepository();
     const embed = vi.fn(async (input: { texts: readonly string[] }) => ({
       modelFingerprint: "fingerprint-current",
       dimensions: 2,
       vectors: input.texts.map(() => Object.freeze([1, 0])),
     }));
-    let nextId = 0;
     const service = createLongTermMemoryService({
       repository,
-      embeddings: { maxBatchSize: 128, embed },
+      embeddings: { maxBatchSize: 2, embed },
       enabled: true,
       emitClientEvents: false,
-      createId: () => `memory-candidate-${nextId++}`,
     });
 
     await expect(
       service.processCandidates({
-        candidates: Array.from({ length: 129 }, (_, index) => ({
+        candidates: Array.from({ length: 16 }, (_, index) => ({
           content: `Durable preference ${index}.`,
           tags: ["fixture"],
         })),
         context: REQUEST_CONTEXT,
       }),
-    ).resolves.toMatchObject({ acceptedCount: 129 });
+    ).resolves.toMatchObject({ acceptedCount: 12, rejectedCount: 4 });
 
     expect(embed.mock.calls.map(([input]) => input.texts.length)).toEqual([
-      128, 1,
+      2, 2, 2, 2, 2, 2,
     ]);
-    expect((await repository.read()).records).toHaveLength(129);
+    expect((await repository.read()).records).toEqual([]);
+    expect(await service.learning!.list()).toHaveLength(12);
   });
 
   test("does not replace a concurrent record update with a stale reindex vector", async () => {
@@ -354,7 +354,7 @@ describe("passive long-term memory", () => {
     expect(onEvent).not.toHaveBeenCalled();
   });
 
-  test("reports the committed winner and duplicate under concurrent saves", async () => {
+  test("concurrent replays share one committed candidate receipt", async () => {
     const repository = createInMemoryLongTermMemoryRepository();
     let started = 0;
     let releaseEmbeddings!: () => void;
@@ -394,12 +394,15 @@ describe("passive long-term memory", () => {
 
     const results = await Promise.all([first, second]);
     expect(results.map(({ acceptedCount }) => acceptedCount).sort()).toEqual([
-      0, 1,
+      1, 1,
     ]);
     expect(results.map(({ duplicateCount }) => duplicateCount).sort()).toEqual([
-      0, 1,
+      0, 0,
     ]);
-    expect((await repository.read()).records).toHaveLength(1);
+    const snapshot = await repository.read();
+    expect(snapshot.records).toEqual([]);
+    expect(snapshot.learningCandidates).toHaveLength(1);
+    expect(snapshot.learningReceipts).toHaveLength(1);
   });
 
   test("does not persist candidates after cancellation while awaiting the repository update", async () => {
@@ -432,57 +435,6 @@ describe("passive long-term memory", () => {
     });
   });
 
-  test.each([" ", "x".repeat(129)])(
-    "rejects an invalid generated passive-memory id without persisting: %j",
-    async (generatedId) => {
-      const repository = createInMemoryLongTermMemoryRepository();
-      const service = createLongTermMemoryService({
-        repository,
-        embeddings: createSemanticFixtureEmbeddings(),
-        enabled: true,
-        emitClientEvents: false,
-        createId: () => generatedId,
-      });
-
-      await expect(
-        service.processCandidates({
-          candidates: [{ content: "Remember this preference.", tags: [] }],
-          context: REQUEST_CONTEXT,
-        }),
-      ).resolves.toMatchObject({ available: false, acceptedCount: 0 });
-      await expect(repository.read()).resolves.toMatchObject({
-        records: [],
-        vectors: [],
-      });
-    },
-  );
-
-  test("rejects a generated passive-memory id that is already in use", async () => {
-    const repository = createInMemoryLongTermMemoryRepository();
-    const service = createLongTermMemoryService({
-      repository,
-      embeddings: createSemanticFixtureEmbeddings(),
-      enabled: true,
-      emitClientEvents: false,
-      createId: () => "memory-shared-id",
-    });
-    await service.processCandidates({
-      candidates: [{ content: "First durable preference.", tags: [] }],
-      context: REQUEST_CONTEXT,
-    });
-
-    await expect(
-      service.processCandidates({
-        candidates: [{ content: "Second durable preference.", tags: [] }],
-        context: REQUEST_CONTEXT,
-      }),
-    ).resolves.toMatchObject({ available: false, acceptedCount: 0 });
-    await expect(repository.read()).resolves.toMatchObject({
-      records: [expect.objectContaining({ content: "First durable preference." })],
-      vectors: [expect.objectContaining({ memoryId: "memory-shared-id" })],
-    });
-  });
-
   test("exposes canonical management without vectors", async () => {
     const service = createLongTermMemoryService({
       repository: createInMemoryLongTermMemoryRepository(),
@@ -491,8 +443,8 @@ describe("passive long-term memory", () => {
       emitClientEvents: false,
       createId: () => "memory-managed",
     });
-    await service.processCandidates({
-      candidates: [{ content: "User prefers coffee.", tags: ["coffee"] }],
+    await service.create({
+      content: "User prefers coffee.", tags: ["coffee"], source: "web_ui",
       context: REQUEST_CONTEXT,
     });
 

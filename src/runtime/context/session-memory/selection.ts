@@ -1,6 +1,7 @@
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { SessionMemoryCheckpoint } from "../../../sessions/memory/contracts.js";
 import type { SessionMessage } from "../../../sessions/types.js";
+import { isAssistantInitiativeMessage } from "../../../sessions/assistant-initiative.js";
 import {
   resolveCoveredTurnCount,
   type SessionMemorySourceSnapshot,
@@ -25,6 +26,12 @@ export function selectSessionMemoryProjection(params: {
     throw new Error("session_memory_checkpoint_coverage_invalid");
   }
   const uncoveredTurns = params.source.turns.slice(coveredTurnCount);
+  const uncoveredMessageIds = new Set(uncoveredTurns.flatMap(({ userMessages, assistant }) =>
+    [...userMessages, assistant].map(({ id }) => id)));
+  const historyMessages = params.source.historyMessages.filter(function retainsOriginalHistoryMessage(message) {
+    if (isAssistantInitiativeMessage(message)) return true;
+    return uncoveredMessageIds.has(message.id);
+  });
   const compactableTurnCount = Math.max(
     0,
     uncoveredTurns.length - SESSION_MEMORY_PROTECTED_TURN_COUNT,
@@ -40,10 +47,7 @@ export function selectSessionMemoryProjection(params: {
   return Object.freeze({
     priorConversationMessages,
     historyMessages: Object.freeze(
-      uncoveredTurns.flatMap(({ userMessages, assistant }) => [
-        ...userMessages.map(toRequestHistoryMessage),
-        toRequestHistoryMessage(assistant),
-      ]),
+      historyMessages.map(toRequestHistoryMessage),
     ),
     compactableTurnCount,
     checkpointRevision: params.checkpoint?.revision ?? 0,
@@ -60,5 +64,6 @@ function toRequestHistoryMessage(
     content: message.content,
     createdAt: message.createdAt,
     ...(message.requestId ? { requestId: message.requestId } : {}),
+    ...(isAssistantInitiativeMessage(message) ? { assistantInitiativeId: message.initiative!.proposalId } : {}),
   });
 }

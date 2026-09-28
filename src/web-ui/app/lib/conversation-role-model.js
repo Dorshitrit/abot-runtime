@@ -7,6 +7,7 @@ import {
 import { textOf } from "./text-format.js";
 import { countToolInvocations } from "./tool-invocation-count.js";
 import { projectToolActivityEvent } from "./tool-activity-event.js";
+import { correlateToolApprovalActivity } from "./tool-approval-activity.js";
 import {
   buildConversationToolActions,
   summarizeConversationTools,
@@ -113,6 +114,7 @@ function hasSupportedRoleStage(stage) {
 }
 
 function isFailedRoleActivity(event) {
+  if (isToolActivityEvent(event)) return false;
   return (textOf(event.tone) || eventTone(event)) === "failed";
 }
 
@@ -188,13 +190,14 @@ export function buildConversationRoleCards({
   let terminalSeen = false;
   const activityEvents = Array.isArray(events) ? events : [];
   const orderedEvents = orderedRequestActivity(
-    activityEvents,
+    correlateToolApprovalActivity(activityEvents, normalizedRequestId),
     normalizedRequestId,
   );
   const executionOwners = recordedExecutionOwners(orderedEvents);
   const toolEvents = [];
   for (const event of orderedEvents) {
     if (isRequestTerminalEvent(event)) {
+      toolEvents.push(event);
       terminalSeen = true;
       activeRole = "";
       continue;

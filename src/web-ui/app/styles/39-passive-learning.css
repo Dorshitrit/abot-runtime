@@ -1,0 +1,226 @@
+/* Co-worker workspace: shared controls, knowledge and review history. */
+.learning-workspace-body > * { width: min(var(--workspace-content-width), 100%); }
+.passive-learning-card { min-width: 0; color: var(--text); font-size: var(--font-size-sm); }
+.co-worker-workspace { border: 0; background: transparent; overflow: visible; }
+.passive-learning-card button, .memory-origin-filter {
+  min-height: 32px; padding: 5px 10px; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--text); font: inherit; font-weight: 400; box-shadow: none;
+}
+.passive-learning-card button:hover:not(:disabled), .memory-origin-filter:hover:not(:disabled) {
+  border-color: transparent; background: var(--panel-raised);
+}
+.passive-learning-card button:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
+.passive-learning-card button:disabled { opacity: .5; cursor: default; }
+.passive-learning-card [data-learning-save], .memory-origin-filter[aria-pressed="true"] {
+  border-color: var(--line); background: var(--panel-raised);
+}
+.co-worker-quick-controls { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin: 13px 0 26px; }
+.passive-learning-control-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.passive-learning-card .passive-learning-control-actions button { font-size: var(--font-size-xs); color: var(--text); background: var(--panel); border-color: color-mix(in srgb, var(--line) 55%, transparent); }
+.passive-learning-card .passive-learning-control-actions [data-learning-proactive-toggle] { color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
+.passive-learning-card .passive-learning-control-actions button[data-action-tone="danger"] { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--panel)); border-color: color-mix(in srgb, var(--danger) 20%, transparent); }
+.passive-learning-card .passive-learning-control-actions button[data-action-tone="danger"]:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 14%, var(--panel)); border-color: color-mix(in srgb, var(--danger) 32%, transparent); }
+.passive-learning-card .passive-learning-control-actions button[data-action-tone="setup"] { color: var(--muted); background: var(--control-bg); border-color: var(--line); }
+.passive-learning-card .passive-learning-control-actions button[data-action-tone="setup"]:hover:not(:disabled) { color: var(--text); background: var(--control-bg-hover); }
+.passive-learning-schedule-summary { margin: 0; color: var(--muted); font-size: var(--font-size-xs); }
+.passive-learning-tabs { display: flex; gap: 26px; padding: 0; border-bottom: 1px solid var(--line); margin-bottom: 24px; overflow-x: auto; }
+.passive-learning-tabs [data-learning-tab] { position: relative; padding: 10px 0 13px; flex: none; border: 0; border-radius: 0; color: var(--muted); }
+.passive-learning-tabs [data-learning-tab][aria-selected="true"] { color: var(--text-strong); }
+.passive-learning-tabs [data-learning-tab][aria-selected="true"]::after { content: ""; position: absolute; inset: auto 0 0; height: 2px; background: var(--accent); }
+.passive-learning-card .passive-learning-tabs button:hover:not(:disabled) { background: transparent; color: var(--text-strong); }
+.passive-learning-panel { min-width: 0; padding: 0 0 24px; }
+.passive-learning-section-heading { display: flex; justify-content: space-between; align-items: start; gap: 18px; margin-bottom: 22px; }
+.passive-learning-section-heading h4 { margin: 0; font-size: var(--font-size-lg); font-weight: 400; }
+.passive-learning-section-heading p, .passive-learning-hint, .passive-learning-feedback, .passive-learning-setup p {
+  margin: 7px 0 0; color: var(--muted); font-size: var(--font-size-xs); line-height: 1.65;
+}
+.passive-learning-section-heading button { color: var(--muted); flex: none; }
+.passive-learning-feedback { margin-bottom: 18px; }
+.passive-learning-feedback:empty { display: none; }
+.passive-learning-attention { margin: 16px 0; padding: 14px 18px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.passive-learning-attention p { margin: 0 0 8px; line-height: 1.6; }
+.co-worker-computer-update { display: flex; align-items: center; gap: 14px; margin: 0 0 20px; padding: 16px 18px; border: 1px solid color-mix(in srgb, var(--amber) 38%, var(--line)); border-inline-start: 3px solid var(--amber); border-radius: 10px; background: color-mix(in srgb, var(--amber) 8%, var(--panel)); }
+.co-worker-computer-update-icon { display: grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 9px; color: var(--amber); background: color-mix(in srgb, var(--amber) 13%, transparent); font-size: 22px; }
+.co-worker-computer-update-copy { flex: 1; min-width: 0; }
+.co-worker-computer-update p { margin: 4px 0 0; color: var(--muted); font-size: var(--font-size-sm); line-height: 1.6; }
+.co-worker-computer-update .co-worker-computer-update-title { margin: 0; color: var(--text-strong); font-size: var(--font-size-lg); }
+.co-worker-computer-update :is([data-learning-open-update], [data-learning-restart-collection]) { flex: none; min-height: 34px; padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent); border-radius: 6px; color: var(--amber); background: color-mix(in srgb, var(--amber) 9%, var(--panel)); font: inherit; font-size: var(--font-size-sm); font-weight: 400; }
+.co-worker-computer-update :is([data-learning-open-update], [data-learning-restart-collection]):hover:not(:disabled) { border-color: color-mix(in srgb, var(--amber) 50%, transparent); background: color-mix(in srgb, var(--amber) 16%, var(--panel)); }
+.co-worker-computer-update :is([data-learning-open-update], [data-learning-restart-collection]):focus-visible { outline: 1px solid var(--amber); outline-offset: 3px; }
+.home-learning-panel .co-worker-computer-update { margin: 18px 18px 14px; }
+@media (max-width: 640px) {
+  .co-worker-computer-update { flex-wrap: wrap; gap: 10px; padding: 14px; }
+  .co-worker-computer-update :is([data-learning-open-update], [data-learning-restart-collection]) { margin-inline-start: 42px; }
+  .home-learning-panel .co-worker-computer-update { margin-inline: 14px; }
+}
+.passive-learning-setup, .passive-learning-diagnostics { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); }
+.passive-learning-setup summary, .passive-learning-diagnostics summary { color: var(--muted); cursor: pointer; }
+.passive-learning-diagnostics code { display: block; margin-top: 10px; overflow-wrap: anywhere; }
+.passive-learning-diagnostic-list { margin: 12px 0 0; }
+.passive-learning-diagnostic-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 8px 20px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.passive-learning-diagnostic-row:last-child { border-bottom: 0; }
+.passive-learning-diagnostic-row code { margin: 0; color: var(--text); font-size: var(--font-size-xs); }
+.passive-learning-diagnostic-row dd { margin: 0; color: var(--muted); line-height: 1.6; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .passive-learning-diagnostic-row { grid-template-columns: minmax(0, 1fr); } }
+.co-worker-knowledge { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; font-weight: 400; }
+.co-worker-knowledge-column { min-width: 0; }
+.co-worker-knowledge-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.co-worker-knowledge-heading h4 { margin: 0; color: var(--text-strong); font-size: 1rem; font-weight: 400; line-height: 1.4; }
+.co-worker-knowledge-heading button { flex: none; color: var(--muted); font-size: var(--font-size-md); }
+.co-worker-knowledge-heading :is([data-learning-candidate-count],[data-learning-saved-count]) { color: var(--muted); font-size: var(--font-size-sm); margin-inline-start: 6px; }
+.co-worker-knowledge-heading p { margin: 5px 0 0; color: var(--muted); font-size: var(--font-size-md); line-height: 1.6; }
+.co-worker-knowledge-heading [data-learning-threshold] { color: var(--muted); font-size: var(--font-size-sm); white-space: nowrap; padding-top: 4px; }
+.co-worker-knowledge-note { max-width: 58ch; color: var(--muted); font-size: var(--font-size-sm); line-height: 1.65; margin: 14px 2px 0; }
+.co-worker-knowledge-note[role="status"] { margin: 0 0 14px; }
+.co-worker-knowledge-list { display: grid; gap: 12px; }
+.co-worker-record { min-width: 0; padding: 18px 20px; border: 1px solid color-mix(in srgb, var(--line) 55%, transparent); border-radius: 10px; background: var(--panel); overflow-wrap: anywhere; font-weight: 400; }
+.co-worker-record-content { display: block; max-width: 62ch; margin: 0; color: var(--text); font-size: var(--font-size-lg); font-weight: 400; line-height: 1.8; white-space: pre-line; }
+.co-worker-record-reason { max-width: 62ch; margin: 12px 0 0; color: var(--muted); line-height: 1.75; font-size: var(--font-size-md); }
+.co-worker-record-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: var(--font-size-sm); line-height: 1.7; margin-top: 14px; }
+.co-worker-record-footer { position: relative; min-height: 22px; margin-top: 16px; }
+.co-worker-record-score { display: inline-flex; align-items: center; gap: 8px; position: absolute; inset-inline-end: 0; top: 1px; color: var(--muted); font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; }
+.co-worker-record-score meter { width: 36px; height: 5px; border: 0; border-radius: 9px; background: var(--line); appearance: none; }
+.co-worker-record-score meter::-webkit-meter-bar { height: 5px; border: 0; background: var(--line); }
+.co-worker-record-score meter::-webkit-meter-optimum-value { background: var(--accent); }
+.co-worker-record-score meter::-moz-meter-bar { background: var(--accent); }
+.co-worker-record-details { color: var(--muted); font-size: var(--font-size-sm); line-height: 1.7; }
+.co-worker-record-details summary { cursor: pointer; width: fit-content; max-width: calc(100% - 112px); font-weight: 400; }
+.co-worker-record-details[open] { padding-bottom: 2px; }
+.co-worker-record-reading > summary { display: block; list-style: none; cursor: pointer; font-weight: 400; }
+.co-worker-record-reading > summary::-webkit-details-marker { display: none; }
+.co-worker-record-reading:not([open]) .co-worker-record-content { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.co-worker-record-read-more, .co-worker-record-read-less { display: block; width: fit-content; margin-top: 9px; color: var(--muted); font-size: var(--font-size-sm); line-height: 1.6; }
+.co-worker-record-reading:not([open]) .co-worker-record-read-less, .co-worker-record-reading[open] .co-worker-record-read-more { display: none; }
+.co-worker-record summary:focus-visible { outline: 1px solid var(--muted); outline-offset: 4px; border-radius: 2px; }
+.co-worker-record summary:hover { color: var(--text); }
+.co-worker-knowledge-pagination { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 18px; color: var(--muted); font-size: var(--font-size-sm); }
+.co-worker-knowledge-empty { margin: 0; padding: 24px 20px; border: 1px solid color-mix(in srgb, var(--line) 55%, transparent); border-radius: 10px; background: var(--panel); color: var(--muted); font-size: var(--font-size-md); line-height: 1.8; }
+.co-worker-activity-overview { padding: 18px 22px; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; margin-bottom: 28px; }
+.co-worker-activity-overview > p { color: var(--muted); margin: 0 0 18px; }
+.passive-learning-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 24px; margin: 0; }
+.passive-learning-facts div { min-width: 0; }
+.passive-learning-facts dt { color: var(--muted); font-size: var(--font-size-xs); }
+.passive-learning-facts dd { margin: 5px 0 0; overflow-wrap: anywhere; line-height: 1.6; }
+.passive-learning-facts small { display: block; margin-top: 4px; color: var(--muted); }
+[data-learning-pending-fact][data-processing-active="true"] [data-learning-pending] { color: var(--text-strong); font-size: 20px; font-variant-numeric: tabular-nums; }
+.co-worker-processing-badge { display: flex; align-items: center; gap: 7px; width: fit-content; margin-top: 7px; padding: 3px 8px; border-radius: 6px; color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); font-size: var(--font-size-xs); }
+.co-worker-processing-badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
+.co-worker-processing-badge[hidden] { display: none; }
+.co-worker-connection-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 18px 0; }
+.passive-learning-pending-controls { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--line); }
+.passive-learning-pending-controls p { margin: 0; }
+.passive-learning-pending-controls button { flex: none; }
+.passive-learning-review-layout { display: grid; gap: 24px; }
+.passive-learning-review-list { min-width: 0; }
+.passive-learning-review-list > h5 { margin: 0 0 10px; font-size: var(--font-size-sm); font-weight: 400; }
+.passive-learning-review-layout:has(.passive-learning-detail:not([hidden])) .passive-learning-review-list {
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.passive-learning-batches { display: grid; gap: 2px; }
+
+.passive-learning-card .passive-learning-batch {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px;
+  text-align: start;
+}
+
+.passive-learning-card .passive-learning-batch[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--panel-raised);
+}
+.passive-learning-batch-heading { display: flex; justify-content: space-between; gap: 12px; }
+.passive-learning-batch-heading > span { color: var(--muted); font-size: var(--font-size-xs); }
+.passive-learning-batch small,
+.passive-learning-detail p { color: var(--muted); font-weight: 400; }
+
+.passive-learning-detail {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.passive-learning-detail-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 16px; align-items: start; padding: 0 0 20px; }
+.passive-learning-detail-header p { grid-column: 1; margin: 0; font-size: var(--font-size-sm); line-height: 1.7; }
+.passive-learning-detail-header button { grid-column: 2; grid-row: 1 / 3; color: var(--muted); background: var(--panel); }
+.passive-learning-detail-reason { margin: 0 0 16px; }
+.passive-learning-detail h5 { margin: 0; font-size: 16px; font-weight: 400; }
+.passive-learning-observation { margin: 0 0 12px; border: 1px solid color-mix(in srgb, var(--line) 60%, transparent); border-radius: 10px; background: var(--panel); overflow: hidden; }
+.passive-learning-observation > summary {
+  position: relative;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+  padding: 18px 42px 18px 20px;
+  cursor: pointer;
+  list-style: none;
+}
+.passive-learning-observation > summary::-webkit-details-marker { display: none; }
+.passive-learning-observation > summary::after {
+  content: "";
+  position: absolute;
+  right: 22px;
+  top: 26px;
+  width: 5px;
+  height: 5px;
+  border-right: 1px solid var(--muted);
+  border-bottom: 1px solid var(--muted);
+  transform: rotate(-45deg);
+}
+.passive-learning-observation[open] > summary::after { transform: rotate(45deg); }
+.passive-learning-observation > summary:hover { background: color-mix(in srgb, var(--panel-raised) 45%, var(--panel)); }
+.passive-learning-observation > summary:focus-visible { outline: 1px solid var(--muted); outline-offset: -3px; border-radius: 10px; }
+.passive-learning-observation-icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 9px; color: var(--accent); background: var(--accent-soft); font-size: 11px; letter-spacing: .5px; }
+.passive-learning-observation-heading { min-width: 0; }
+.passive-learning-observation-labels { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 10px; margin-bottom: 6px; font-size: var(--font-size-sm); }
+.passive-learning-observation-app { color: var(--muted); }
+.passive-learning-observation-kind { padding: 2px 6px; border-radius: 4px; color: var(--muted); background: var(--panel-raised); font-size: 11px; }
+.passive-learning-observation-source { display: block; color: var(--text); font-size: var(--font-size-lg); line-height: 1.65; font-weight: 400; }
+.passive-learning-observation:not([open]) .passive-learning-observation-source { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.passive-learning-observation-meta { display: block; margin-top: 7px; color: var(--muted); font-size: var(--font-size-sm); }
+.passive-learning-observation-body { padding: 18px 20px 20px; border-top: 1px solid var(--line); }
+.passive-learning-observation-body .passive-learning-observation-content-label { margin: 0 0 10px; font-size: var(--font-size-sm); }
+.passive-learning-detail pre {
+  margin: 0;
+  padding: 16px 18px;
+  max-height: min(380px, 55vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--bg);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  font-size: var(--font-size-lg);
+  line-height: 1.8;
+}
+.passive-learning-detail pre:focus-visible { outline: 1px solid var(--muted); outline-offset: 3px; }
+.passive-learning-observation-diagnostics { display: block; margin-top: 14px; color: var(--muted); font-size: var(--font-size-sm); }
+.passive-learning-observation-diagnostics summary { width: fit-content; cursor: pointer; }
+.passive-learning-observation-diagnostics code { display: block; margin-top: 8px; overflow-wrap: anywhere; }
+
+
+.memory-management-toolbar { flex-wrap: wrap; }
+@media (max-width: 780px) {
+  .co-worker-knowledge { grid-template-columns: 1fr; gap: 32px; }
+  .passive-learning-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .co-worker-activity-overview { padding: 18px 16px; }
+  .passive-learning-pending-controls { align-items: start; flex-direction: column; }
+  .passive-learning-tabs { gap: 22px; }
+  .co-worker-quick-controls { margin-bottom: 18px; }
+}
+@media (max-width: 460px) {
+  .co-worker-knowledge-heading { flex-wrap: wrap; gap: 8px 12px; }
+  .co-worker-record { padding: 16px; }
+  .passive-learning-section-heading { flex-wrap: wrap; gap: 10px; }
+  .passive-learning-batch-heading { flex-wrap: wrap; gap: 6px; }
+  .passive-learning-observation > summary { gap: 10px; padding: 16px 30px 16px 14px; grid-template-columns: 30px minmax(0, 1fr); }
+  .passive-learning-observation-icon { width: 30px; height: 30px; }
+  .passive-learning-observation > summary::after { right: 15px; top: 23px; }
+  .passive-learning-observation-body { padding: 14px; }
+  .passive-learning-detail pre { padding: 12px; }
+}

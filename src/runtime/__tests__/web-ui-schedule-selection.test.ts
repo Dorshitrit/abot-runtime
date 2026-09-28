@@ -30,7 +30,6 @@ function harness(
   ],
 ) {
   let environmentId = "dev";
-  let poll: () => void = () => {};
   const client = {
     listSchedules: vi.fn(async (_environmentId: string) => ({ jobs })),
     listSessions: vi.fn(async () => ({
@@ -56,20 +55,23 @@ function harness(
     getEnvironmentId: () => environmentId,
     render,
     openConversation: vi.fn(),
-    setTimer: vi.fn((callback: () => void) => {
-      poll = callback;
-    }),
-    clearTimer: vi.fn(),
   });
   return {
     client,
     controller,
     render,
-    poll: () => poll(),
+    refresh: () => controller.refresh(),
     changeEnvironment: (value: string) => {
       environmentId = value;
     },
   };
+}
+
+async function chooseCurrentFilter(fixture: ReturnType<typeof harness>) {
+  await fixture.controller.load();
+  await fixture.controller.filter("", "current");
+  fixture.client.listSchedules.mockClear();
+  fixture.client.listScheduleRuns.mockClear();
 }
 
 async function activate(controller: ReturnType<typeof harness>["controller"]) {
@@ -113,7 +115,9 @@ describe("schedule filters", () => {
 
 describe("schedule entry and selection", () => {
   test("broadening a filter retains the nonfirst visible selection and its history page", async () => {
-    const { controller, client } = harness();
+    const fixture = harness();
+    await chooseCurrentFilter(fixture);
+    const { controller, client } = fixture;
     client.listScheduleRuns.mockImplementation(
       async (_id, _environment, query) =>
         query?.cursor
@@ -135,14 +139,16 @@ describe("schedule entry and selection", () => {
     expect(client.listScheduleRuns).not.toHaveBeenCalled();
   });
 
-  test("the automatic editor keeps its identity while list polling refreshes jobs", async () => {
-    const { controller, client, poll } = harness();
+  test("the automatic editor keeps its identity while list events refresh jobs", async () => {
+    const fixture = harness();
+    await chooseCurrentFilter(fixture);
+    const { controller, client, refresh } = fixture;
     await activate(controller);
     const editor = controller.snapshot().editor;
     client.listSchedules.mockResolvedValue({
       jobs: [job("active", "paused"), job("new", "active")],
     });
-    poll();
+    refresh();
     await vi.waitFor(() =>
       expect(client.listSchedules).toHaveBeenCalledTimes(2),
     );
@@ -155,10 +161,12 @@ describe("schedule entry and selection", () => {
     controller.setActive(false);
   });
 
-  test("a pending history read does not block the editor or list polls and is not duplicated", async () => {
-    const { controller, client, poll, render } = harness();
+  test("events during a pending history read retain the editor and queue one fresh read", async () => {
+    const fixture = harness();
+    await chooseCurrentFilter(fixture);
+    const { controller, client, refresh, render } = fixture;
     const pending = deferred<{ runs: { id: string }[] }>();
-    client.listScheduleRuns.mockReturnValue(pending.promise);
+    client.listScheduleRuns.mockReturnValueOnce(pending.promise);
     controller.setActive(true);
     await vi.waitFor(() => expect(controller.snapshot().loading).toBe(false));
     const editor = controller.snapshot().editor;
@@ -166,19 +174,19 @@ describe("schedule entry and selection", () => {
     expect(render).toHaveBeenLastCalledWith(
       expect.objectContaining({ loading: false, editor }),
     );
-    for (const expectedReads of [2, 3]) {
-      poll();
-      await vi.waitFor(() =>
-        expect(client.listSchedules).toHaveBeenCalledTimes(expectedReads),
-      );
-      await vi.waitFor(() => expect(controller.snapshot().loading).toBe(false));
-    }
+    const queued = refresh();
+    refresh();
+    refresh();
+    expect(client.listSchedules).toHaveBeenCalledOnce();
     expect(client.listScheduleRuns).toHaveBeenCalledOnce();
     expect(controller.snapshot().editor).toBe(editor);
+    pending.resolve({ runs: [{ id: "initial" }] });
+    await queued;
+    expect(client.listSchedules).toHaveBeenCalledTimes(2);
+    expect(client.listScheduleRuns).toHaveBeenCalledTimes(2);
+    expect(controller.snapshot().runs).toEqual([{ id: "run-1" }]);
+    expect(controller.snapshot().editor).toBe(editor);
     controller.setActive(false);
-    pending.resolve({ runs: [{ id: "late" }] });
-    await Promise.resolve();
-    expect(controller.snapshot().runs).not.toEqual([{ id: "late" }]);
   });
 
   test("foreground history navigation supersedes a pending background page refresh", async () => {
@@ -190,7 +198,7 @@ describe("schedule entry and selection", () => {
           : { runs: [{ id: "latest-run" }], nextCursor: "older" },
     );
     await controller.load();
-    await controller.select("paused");
+    await controller.select("active");
     await controller.olderRuns();
     const pending = deferred<{ runs: { id: string }[] }>();
     client.listScheduleRuns.mockReturnValueOnce(pending.promise);
@@ -200,7 +208,7 @@ describe("schedule entry and selection", () => {
     );
     await controller.newerRuns();
     expect(controller.snapshot()).toMatchObject({
-      selectedId: "paused",
+      selectedId: "active",
       runsCursor: null,
       runs: [{ id: "latest-run" }],
     });
@@ -210,16 +218,16 @@ describe("schedule entry and selection", () => {
     expect(controller.snapshot().runs).toEqual([{ id: "latest-run" }]);
   });
 
-  test("explicit refresh replaces pending history while timer polling deduplicates it", async () => {
-    const { controller, client, poll, render } = harness();
+  test("explicit refresh supersedes pending history while an event waits for its follow-up", async () => {
+    const { controller, client, refresh, render } = harness();
     const pending = deferred<{ runs: { id: string }[] }>();
     client.listScheduleRuns.mockReturnValueOnce(pending.promise);
     await activate(controller);
     expect(client.listScheduleRuns).toHaveBeenCalledOnce();
     render.mockClear();
-    poll();
-    await vi.waitFor(() => expect(render).toHaveBeenCalled());
-    expect(client.listSchedules).toHaveBeenCalledTimes(2);
+    const queued = refresh();
+    expect(render).not.toHaveBeenCalled();
+    expect(client.listSchedules).toHaveBeenCalledOnce();
     expect(client.listScheduleRuns).toHaveBeenCalledOnce();
     await controller.load();
     expect(client.listScheduleRuns).toHaveBeenCalledTimes(2);
@@ -227,7 +235,8 @@ describe("schedule entry and selection", () => {
       expect(controller.snapshot().runs).toEqual([{ id: "run-1" }]),
     );
     pending.resolve({ runs: [{ id: "stale-run" }] });
-    await Promise.resolve();
+    await queued;
+    expect(client.listSchedules).toHaveBeenCalledTimes(3);
     expect(controller.snapshot().runs).toEqual([{ id: "run-1" }]);
     controller.setActive(false);
   });
@@ -252,7 +261,9 @@ describe("schedule entry and selection", () => {
   });
 
   test("opens the first visible current schedule in its edit form on entry", async () => {
-    const { controller, client } = harness();
+    const fixture = harness();
+    await chooseCurrentFilter(fixture);
+    const { controller, client } = fixture;
     await activate(controller);
     expect(controller.snapshot()).toMatchObject({
       filter: "current",
@@ -266,7 +277,9 @@ describe("schedule entry and selection", () => {
   });
 
   test("does not edit hidden completed schedules when Current has no matches", async () => {
-    const { controller, client } = harness([job("finished", "completed")]);
+    const fixture = harness([job("finished", "completed")]);
+    await chooseCurrentFilter(fixture);
+    const { controller, client } = fixture;
     await activate(controller);
     expect(controller.snapshot()).toMatchObject({
       selectedId: "",
@@ -339,7 +352,9 @@ describe("schedule entry and selection", () => {
   });
 
   test("refresh and unguarded filtering retain the existing draft identity", async () => {
-    const { controller, client } = harness();
+    const fixture = harness();
+    await chooseCurrentFilter(fixture);
+    const { controller, client } = fixture;
     await activate(controller);
     const editor = controller.snapshot().editor;
     client.listSchedules.mockResolvedValue({ jobs: [job("active", "active")] });
@@ -356,7 +371,7 @@ describe("schedule entry and selection", () => {
     client.listSchedules.mockImplementation((environmentId) =>
       environmentId === "dev"
         ? oldRead.promise
-        : Promise.resolve({ jobs: [job("new", "paused")] }),
+        : Promise.resolve({ jobs: [job("new", "active")] }),
     );
     controller.setActive(true);
     changeEnvironment("other");
@@ -417,7 +432,7 @@ describe("schedule entry and selection", () => {
     },
   );
 
-  test("a fresh environment restores Current while re-entry retains the chosen same-environment filter", async () => {
+  test("a fresh environment restores Active while re-entry retains the chosen same-environment filter", async () => {
     const { controller, changeEnvironment } = harness();
     await activate(controller);
     controller.cancelEdit();
@@ -433,7 +448,7 @@ describe("schedule entry and selection", () => {
     await controller.load();
     expect(controller.snapshot()).toMatchObject({
       query: "",
-      filter: "current",
+      filter: "active",
       selectedId: "active",
       editor: { job: { id: "active" }, environmentId: "other" },
     });

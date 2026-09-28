@@ -19,7 +19,7 @@ with the Job navigation disabled. There is no scheduling adapter for the
 external bridge.
 
 Run history shows one newest-first page at a time, with Newest, Newer and Older
-navigation. Refresh and five-second polling keep the current page; selecting a
+navigation. Refresh and server change events keep the current page; selecting a
 different Job or environment starts at the newest page. The HTTP endpoint
 defaults to 50 runs and accepts a maximum page size of 100, with a Job-scoped
 cursor for older records. The owner query is bounded before local RPC transfer;
@@ -52,6 +52,84 @@ The local scheduled-event publisher marks terminal events with
 therefore refresh from its explicit environment, session and request identity,
 even without the earlier trigger. This marker carries no activation prompt and
 does not synthesize a chat message or replay an action.
+
+## Live workspace updates
+
+Home and Schedules fetch on entry, runtime readiness, visibility return and
+WebSocket connection, then refresh on relevant server events. They do not poll
+APIs on a recurring timer. Bursts are coalesced; a change received during a read
+causes a follow-up read. Hidden or inactive workspaces reconcile on return.
+Unchanged regions retain their DOM; updated regions preserve focus, disclosures
+and scroll positions.
+
+The scheduler publishes `scheduler.changed` only after a committed store change,
+including terminal run history. Read-only and no-op scheduler ticks are silent.
+The Web backend publishes environment-scoped `workspace_changed` frames for
+approval registration/removal and session read/clear/delete operations. Home can
+fetch and approve another conversation's action without opening or marking it
+read. Web requests persist pure approval waits with their conversation and release
+live execution resources. Compatible waits survive Runtime restart and resume
+the prepared action only after an explicit decision. Duplicate or stale decisions
+cannot dispatch a different activation, and cancellation remains available.
+New messages and Jobs in that conversation wait until the request resumes or is
+cancelled. Incompatible continuations remain pending and cancellable; persisted
+activity events alone never authorize execution.
+Persisted user messages and steering updates emit `session.messages.updated`.
+Delete failures also invalidate because cleanup can fail after deletion commits.
+These frames invalidate projections; they never recreate sessions or pending
+approvals from event history and never appear as conversation activity.
+
+## Workspace addresses
+
+Home, Chat, Schedules, Notifications, Spark, Memory, Models, Plugins and System
+have browser addresses at `/home`, `/chat`, `/schedules`, `/notifications`,
+`/learning`, `/memory`, `/models`, `/plugins` and `/system`. Refresh restores the
+addressed workspace, and browser Back and Forward follow accepted navigation.
+`/` starts at Home. Legacy `/config` addresses map to the current workspace.
+
+The address includes the configured `environment`. Chat adds its `session`;
+System adds its Operations `tab`; Schedules adds the selected saved `job`.
+For example, `/system?environment=dev&tab=logs` restores System's Logs view.
+These addresses use the existing static app fallback.
+They do not save drafts or perform configuration, schedule, or approval actions.
+
+Restore validates environment and conversation identities against the current
+catalog and list. Workspace availability and the existing configuration,
+schedule-draft, and queue guards also apply to browser navigation. Declining a
+transition keeps the accepted view and address. An unavailable environment never
+redirects its conversation or Job identifier into another environment.
+
+## Notifications
+
+The local backend exposes `/notifications` with a persistent inbox, unread
+filter, read controls, source navigation and desktop preferences per event kind.
+Bridge mode hides this workspace. The Web backend records completed agent replies
+when no client is focused on their conversation, failures, pending approvals and
+delivered Co-worker proposals. A cancelled request creates a reply only when the
+runtime supplies its saved stopped-response text. Progress and reconnect replay
+do not create records.
+
+Browsers report the visible, focused chat through `notification_presence` frames.
+Presence is scoped to the environment and conversation, renewed every 20 seconds
+and expires after 60 seconds; socket close removes it immediately. Suppression
+applies only to replies. Reading a notification does not mark conversation
+messages read, and opening the inbox does not mark every notification read.
+
+`notifications/` owns projection, persistence, HTTP routes and delivery. Records
+are scoped by environment and configured sessions path under
+`<runtimeDir>/web-ui/notifications/`. The store uses atomic writes, stable event
+identities and cursor paging. History has no automatic retention deletion.
+Preferences affect desktop delivery only. A stored notification precedes delivery;
+pending records from an earlier process become unconfirmed on restart without
+being resent. A native submission acknowledgment is not a display/read receipt.
+
+Desktop delivery uses the existing authenticated Computer access connection and
+the `desktop_notifications_v1` capability. It is a transport operation, unavailable
+as a model tool. The native companion resolves source links against its paired
+runtime origin, preserving WSL/Docker host ports. Browser availability does not
+control delivery, but the Runtime Web backend and the graphical host companion
+must remain running. See [installation](../../docs/installation.md#notifications)
+for platform requirements and notification permissions.
 
 ## Message content
 

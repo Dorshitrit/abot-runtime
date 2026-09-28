@@ -1,55 +1,55 @@
+import { randomUUID } from "node:crypto";
 import type WebSocket from "ws";
-import { resolveSessionWorkingDirectory } from "../projects/session-paths.js";
-
+import { isRequestCancelled, REQUEST_CANCELLED } from "./cancellation.js";
+import { isRequestInterrupted, REQUEST_INTERRUPTED } from "./interruption.js";
+import { RequestToolResources } from "../capabilities/request-tool-resources.js";
 import { traceDebug } from "../observability/debug-logger.js";
 import { RequestLifecycle } from "../orchestration/lifecycle/request-lifecycle.js";
-import type {
-  RequestHandlerOptions,
-  RequestExecutionSeed,
-  RunRequestMessage,
-} from "./contracts.js";
-import { createRequestContextCompactionStore } from "../context/semantic-compaction/index.js";
+import { ROLE_CALL_RESPONSE_MAX_LENGTH } from "../orchestration/role-calls/index.js";
+import { runModelAuthoredDegradedFinalization } from "../steps/degraded-finalization/model-authored.js";
+import type { RequestHandlerOptions, RunRequestMessage } from "./contracts.js";
 import { captureRequestTemporalContext } from "../context/request-temporal-context.js";
 import {
   failRequest,
   finalizeRequest,
 } from "../lifecycle/request-finalizer.js";
-import { resolveModelSelection } from "../model/model-selection.js";
 import { resolveRequestDependencies } from "./dependencies.js";
 import { parseRequestInput } from "./input.js";
-import { resolveScheduledExecution } from "./scheduled-execution.js";
 import { runRequestRunner } from "./runner.js";
-import { createRequestWorkerCapabilityProvider } from "./worker-capability-composition.js";
-import { resolveRequestExecutionPolicy } from "./role-executor-composition.js";
-import {
-  initializeRequestSession,
-  openRequestSession,
-} from "../session/request-session.js";
-import { snapshotRequestHistory } from "../session/request-history.js";
-import {
-  createRequestSessionTitleUpdater,
-  shouldGenerateSessionTitle,
-} from "../session/session-title.js";
+import { persistCancelledResponse } from "../session/cancelled-response.js";
 import {
   createInitialRequestEvents,
   createRequestCallbacks,
-  createPersistentRequestEvents,
 } from "../streaming/request-callbacks.js";
 import { createRequestSteeringInbox } from "./request-steering.js";
-import { snapshotSessionArtifactPathTargets } from "./session-artifact-path-persistence.js";
-import { createRequestExecutionScope } from "./execution-scope.js";
-import { createRequestSessionMemory } from "../context/session-memory/index.js";
+import { prepareRequestExecution } from "./prepared-execution.js";
+import type { RequestActivationEvents } from "./approval-wait/activation-events.js";
+import { parkRequestApproval } from "./approval-wait/park.js";
+import {
+  classifyRequestTerminalCause,
+  createRequestFailureMessage,
+} from "./approval-wait/failure.js";
+import type {
+  SessionRequestLifecycleSnapshot,
+  SessionTerminalMessage,
+} from "../../sessions/request-lifecycle/contracts.js";
+
+export type RequestHandlerOutcome = void | Readonly<{
+  kind: "awaiting_approval";
+  lifecycle: SessionRequestLifecycleSnapshot;
+}>;
 
 export async function handleRunRequest(
   ws: WebSocket,
   msg: RunRequestMessage,
   options: RequestHandlerOptions = {},
-): Promise<void> {
+): Promise<RequestHandlerOutcome> {
   return new RequestHandlingSession(ws, msg, options).run();
 }
 
-/** Owns the lifecycle and mutable edge state of one accepted request. */
+/** One active invocation. A saved approval boundary retires this entire object. */
 class RequestHandlingSession {
+  private readonly toolResources = new RequestToolResources();
   private readonly input: ReturnType<typeof parseRequestInput>;
   private readonly temporalContext: ReturnType<
     typeof captureRequestTemporalContext
@@ -60,6 +60,9 @@ class RequestHandlingSession {
   private readonly dependencies: ReturnType<typeof resolveRequestDependencies>;
   private readonly lifecycle: RequestLifecycle;
   private events: ReturnType<typeof createInitialRequestEvents>;
+  private callbacks?: ReturnType<typeof createRequestCallbacks>;
+  private durable?: RequestActivationEvents;
+  private steeringPersistenceError: unknown;
   private finalized = false;
 
   constructor(
@@ -68,14 +71,31 @@ class RequestHandlingSession {
     private readonly options: RequestHandlerOptions,
   ) {
     this.input = parseRequestInput(msg);
-    this.temporalContext = captureRequestTemporalContext();
+    const restored = options.approvalExecution?.resume?.snapshot;
+    this.temporalContext =
+      restored?.seed.temporalContext ?? captureRequestTemporalContext();
     this.requestSteering =
       options.requestSteering ??
       createRequestSteeringInbox({ requestId: this.input.requestId });
+    for (const update of restored?.steering.updates ?? []) {
+      const result = this.requestSteering.append(update);
+      if (!result.ok || result.update.sequence !== update.sequence) {
+        throw new Error("request_steering_restore_mismatch");
+      }
+    }
     this.dependencies = resolveRequestDependencies(options);
     this.lifecycle = new RequestLifecycle({
       requestId: this.input.requestId,
+      abortSignal: options.abortSignal,
+      ...(restored ? { budgets: restored.budgets } : {}),
     });
+    this.lifecycle.signal.addEventListener(
+      "abort",
+      () => {
+        void this.toolResources.dispose();
+      },
+      { once: true },
+    );
     this.events = createInitialRequestEvents({
       eventSinkFactory: this.dependencies.eventSinkFactory,
       requestId: this.input.requestId,
@@ -83,252 +103,215 @@ class RequestHandlingSession {
     });
   }
 
-  async run(): Promise<void> {
+  async run(): Promise<RequestHandlerOutcome> {
     try {
-      await this.execute();
+      return await this.execute();
     } catch (error: unknown) {
-      this.fail(error);
+      return await this.fail(error);
     } finally {
       await this.dispose();
     }
   }
 
-  private async execute(): Promise<void> {
-    const schedule = resolveScheduledExecution(this.options, this.input);
-    const {
-      requestId,
-      sessionId,
-      prompt,
-      rawAttachments,
-      rawAgentMode,
-      rawModelPreference,
-      toolPermissionMode,
-    } = this.input;
-    const {
-      eventSinkFactory,
-      modelGatewayClient,
-      sessionStore,
-      attachmentStore,
-      loadDecisionEnvironment,
-      toolApprovalController,
-      sessionMemoryCompactor,
-      longTermMemory,
-    } = this.dependencies;
-    const { runnerConfig, modelPolicy, modelExecutionPolicies } =
-      loadDecisionEnvironment();
-    const modelSelection = resolveModelSelection({
-      agentMode: rawAgentMode,
-      modelPreference: rawModelPreference,
-      modelPolicy,
-      ...(modelExecutionPolicies ? { modelExecutionPolicies } : {}),
-    });
-    const executionPolicy = resolveRequestExecutionPolicy(
-      modelSelection.execution.policy,
-    );
-    const openedSession = await openRequestSession({
-      sessionId,
-      requestId,
-      rawAttachments,
-      sessionStore,
-      attachmentStore,
-    });
-    const requestWorkingDirectory = resolveSessionWorkingDirectory(
-      openedSession.session,
-    );
-    const historyMessages = snapshotRequestHistory(openedSession.session);
-    const sessionMemory = createRequestSessionMemory({
-      sessionId,
-      session: openedSession.session,
-      repository: sessionStore,
-      compactor: sessionMemoryCompactor,
-    });
-    const generateSessionTitle = shouldGenerateSessionTitle(
-      openedSession.session,
-    );
-
-    this.events = createPersistentRequestEvents({
-      currentEvents: this.events,
-      eventSinkFactory,
-      requestId,
-      sessionId,
-      sessionStore,
+  private async execute(): Promise<RequestHandlerOutcome> {
+    const prepared = await prepareRequestExecution({
       ws: this.ws,
-    });
-
-    const callbacks = createRequestCallbacks(this.events);
-    const onSessionTitle = createRequestSessionTitleUpdater({
-      shouldGenerateTitle: generateSessionTitle,
-      sessionId,
-      requestId,
-      sessionStore,
-      events: this.events,
-      abortSignal: this.lifecycle.signal,
-    });
-    const initializedRequest = await initializeRequestSession({
-      opened: openedSession,
-      sessionId,
-      requestId,
-      prompt,
-      agentMode: modelSelection.agentMode,
-      sessionStore,
-      attachmentStore,
-      events: this.events,
-      ...(schedule ? { schedule } : {}),
+      options: this.options,
+      input: this.input,
+      dependencies: this.dependencies,
+      resources: this.toolResources,
+      lifecycle: this.lifecycle,
+      steering: this.requestSteering,
+      temporalContext: this.temporalContext,
+      initialEvents: this.events,
+      onEventsReady: (events, callbacks, durable) => {
+        this.events = events;
+        this.callbacks = callbacks;
+        this.durable = durable;
+      },
     });
     this.bindSteeringPersistence();
-    this.enterModelStage();
-
-    const sessionArtifactPaths = snapshotSessionArtifactPathTargets(
-      openedSession.session.artifactPaths,
-    );
-    const memoryRecallLimit =
-      this.options.runtimeConfig?.longTermMemory?.maxRecallCallsPerRequest;
-    const runnerRequestSeed = {
-      requestId,
-      sessionId,
-      prompt: initializedRequest.prompt,
-      temporalContext: this.temporalContext,
-      ...(schedule ? { scheduledExecution: schedule } : {}),
-      historyMessages,
-      shouldGenerateSessionTitle: generateSessionTitle,
-      runnerConfig,
-      executionPolicySelection: modelSelection.execution,
-      ...(initializedRequest.modelAttachments.length > 0
-        ? { attachments: initializedRequest.modelAttachments }
-        : {}),
-      agentMode: modelSelection.agentMode,
-      ...(modelSelection.modelPreference
-        ? { modelPreference: modelSelection.modelPreference }
-        : {}),
-      ...(modelSelection.modelPolicy
-        ? { modelPolicy: modelSelection.modelPolicy }
-        : {}),
-      modelGatewayClient,
-      contextCompactionStore: createRequestContextCompactionStore(),
-      sessionMemory,
-      longTermMemory,
-      ...(memoryRecallLimit !== undefined ? { memoryRecallLimit } : {}),
-      requestSteering: this.requestSteering,
-      toolPermissionMode,
-      ...(toolApprovalController ? { toolApprovalController } : {}),
-      abortSignal: this.lifecycle.signal,
-      onAcknowledgement: callbacks.onAcknowledgement,
-      onSessionTitle,
-      onThinkingDelta: callbacks.onThinkingDelta,
-      onThinkingTrace: callbacks.onThinkingTrace,
-      onAnswerToken: callbacks.onAnswerToken,
-      onEvent: (name: string, extra?: Record<string, unknown>) =>
-        this.events.event(name, extra),
-      ...(sessionArtifactPaths.length > 0 ? { sessionArtifactPaths } : {}),
-    } satisfies RequestExecutionSeed;
-    const toolRegistry = this.options.toolRegistry?.prepareRequest
-      ? await this.options.toolRegistry.prepareRequest()
-      : this.options.toolRegistry;
     this.lifecycle.signal.throwIfAborted();
-    const runnerRequest = createRequestExecutionScope({
-      seed: runnerRequestSeed,
-      executionPolicy,
-      createWorkerCapabilities: (request) =>
-        createRequestWorkerCapabilityProvider({
-          request,
-          requestWorkingDirectory,
-          executionPolicyAuthority: executionPolicy.authority,
-          requestAttachments: initializedRequest.toolAttachments,
-          ...(this.options.runtimeConfig
-            ? { runtimeConfig: this.options.runtimeConfig }
-            : {}),
-          ...(toolRegistry
-            ? { toolRegistryOverride: toolRegistry }
-            : {}),
-        }),
-    });
-    const upsertArtifactPaths =
-      sessionStore.upsertArtifactPaths?.bind(sessionStore);
-    const runnerResult = await runRequestRunner(runnerRequest, {
-      ...(upsertArtifactPaths
-        ? {
-            persistArtifactPaths: async (inputs) => {
-              await upsertArtifactPaths(sessionId, inputs);
-            },
-          }
-        : {}),
-    });
-
-    if (this.lifecycle.timedOutReason !== null) {
-      throw new Error(this.lifecycle.timedOutReason);
+    this.lifecycle.updateState({ stage: "model" });
+    this.events.runtimeState({ stage: "model" });
+    const store = this.dependencies.sessionStore;
+    const upsertArtifactPaths = store.upsertArtifactPaths?.bind(store);
+    const persistArtifactPaths = upsertArtifactPaths
+      ? async (inputs: Parameters<typeof upsertArtifactPaths>[1]) => {
+          await upsertArtifactPaths(this.input.sessionId, inputs);
+        }
+      : undefined;
+    let result;
+    if (this.durable) {
+      const resume = this.options.approvalExecution?.resume;
+      const outcome = await runRequestRunner(prepared.request, {
+        durableApproval: true,
+        persistArtifactPaths,
+        ...(resume
+          ? {
+              continuation: resume.snapshot.runner,
+              decisions: resume.decisions,
+            }
+          : {}),
+      });
+      if (outcome.kind === "awaiting_approval") {
+        await this.requestSteering.close();
+        if (this.steeringPersistenceError) throw this.steeringPersistenceError;
+        const current = await parkRequestApproval({
+          prepared,
+          continuation: outcome.continuation,
+          originalPrompt: resume?.snapshot.originalPrompt ?? this.input.prompt,
+          resources: this.toolResources,
+          steering: this.requestSteering,
+          lifecycle: this.lifecycle,
+          store: store.requestLifecycle!,
+        });
+        this.finalized = true;
+        return { kind: "awaiting_approval", lifecycle: current };
+      }
+      result = outcome.result;
+    } else {
+      result = await runRequestRunner(prepared.request, {
+        persistArtifactPaths,
+      });
     }
-
-    const finalization = await finalizeRequest({
-      rawOutput: runnerResult.output,
-      ...(runnerResult.outputTextMode
-        ? { outputTextMode: runnerResult.outputTextMode }
-        : {}),
+    if (this.lifecycle.timedOutReason !== null)
+      throw new Error(this.lifecycle.timedOutReason);
+    await finalizeRequest({
+      rawOutput: result.output,
+      outputTextMode: result.outputTextMode,
       events: this.events,
       lifecycle: this.lifecycle,
-      sessionStore,
-      sessionId,
-      requestId,
-      agentMode: modelSelection.agentMode,
-      thinkingTrace: callbacks.getThinkingTrace(),
-      finalObservation: runnerResult.finalObservation,
-      memoryCandidates: runnerResult.memoryCandidates,
-      longTermMemory,
+      claimFinalization: this.options.claimFinalization,
+      sessionStore: store,
+      sessionId: this.input.sessionId,
+      requestId: this.input.requestId,
+      agentMode: prepared.seed.agentMode,
+      thinkingTrace: prepared.callbacks.getThinkingTrace(),
+      finalObservation: result.finalObservation,
+      memoryCandidates: result.memoryCandidates,
+      longTermMemory: this.dependencies.longTermMemory,
+      ...(this.durable
+        ? {
+            persistResponse: (message: SessionTerminalMessage) =>
+              this.commitTerminal(message, "completed"),
+          }
+        : {}),
+      composeInvalidFinalOutput: () =>
+        runModelAuthoredDegradedFinalization({
+          request: prepared.request,
+          input: {
+            problem: {
+              code: "invalid_final_output",
+              stage: "chat_finalization",
+            },
+            progress: null,
+          },
+          maxResponseChars: ROLE_CALL_RESPONSE_MAX_LENGTH,
+        }),
     });
     this.finalized = true;
-    if (finalization.status === "failed") return;
-
-    traceDebug("runtime.request", "request.completed", {
-      requestId,
-      sessionId,
-      outputLength: finalization.output.length,
-    });
   }
 
   private bindSteeringPersistence(): void {
-    const { requestId, sessionId } = this.input;
-    const { sessionStore } = this.dependencies;
-    this.requestSteering.bindPersistence((update) =>
-      sessionStore
-        .appendMessage(sessionId, "user", update.text, {
-          source: "user",
-          requestId,
-        })
-        .then(() => undefined),
+    const persistedPrefix =
+      this.options.approvalExecution?.resume?.snapshot.steering.version ?? 0;
+    this.requestSteering.bindPersistence(async (update) => {
+      if (update.sequence <= persistedPrefix) return;
+      try {
+        await this.dependencies.sessionStore.appendMessage(
+          this.input.sessionId,
+          "user",
+          update.text,
+          {
+            source: "user",
+            requestId: this.input.requestId,
+          },
+        );
+        this.events.event("session.messages.updated", {
+          sessionId: this.input.sessionId,
+        });
+      } catch (error) {
+        this.steeringPersistenceError ??= error;
+        throw error;
+      }
+    });
+  }
+
+  private async commitTerminal(
+    message: SessionTerminalMessage,
+    status: "completed" | "failed",
+  ): Promise<void> {
+    const store = this.dependencies.sessionStore.requestLifecycle!;
+    await this.durable!.commit((expected) =>
+      store.commitTerminal(this.input.sessionId, {
+        expected,
+        commandId: randomUUID(),
+        status,
+        message,
+      }),
     );
+    this.finalized = true;
   }
 
-  private enterModelStage(): void {
-    const modelState = { stage: "model" };
-    this.lifecycle.updateState(modelState);
-    this.events.runtimeState(modelState);
-  }
-
-  private fail(error: unknown): void {
-    const { requestId, sessionId } = this.input;
-    const timedOutReason = this.lifecycle.timedOutReason;
-    const message =
-      timedOutReason ??
-      (error instanceof Error ? error.message : "unknown error");
-
-    traceDebug("runtime.request", "request.failed", {
-      requestId,
-      sessionId,
-      error: message,
-    });
+  private async fail(error: unknown): Promise<RequestHandlerOutcome> {
     if (this.finalized) return;
-
-    failRequest({
-      events: this.events,
+    const cancelled = isRequestCancelled(this.lifecycle.signal);
+    const interrupted = isRequestInterrupted(this.lifecycle.signal);
+    let message = error instanceof Error ? error.message : "unknown error";
+    if (this.lifecycle.timedOutReason) message = this.lifecycle.timedOutReason;
+    if (cancelled) message = REQUEST_CANCELLED;
+    if (interrupted) message = REQUEST_INTERRUPTED;
+    traceDebug("runtime.request", "request.failed", {
+      requestId: this.input.requestId,
+      sessionId: this.input.sessionId,
       error: message,
-      ...(timedOutReason ? { details: { stage: "timeout" } } : {}),
     });
+    if (this.durable) {
+      await this.requestSteering.close();
+      const cause = classifyRequestTerminalCause(this.lifecycle.signal);
+      const current = await this.durable.finalizeFailure({
+        commandId: randomUUID(),
+        cause,
+        error: message,
+        message: createRequestFailureMessage({
+          cause,
+          partialAnswer: this.callbacks?.getAnswerText() ?? "",
+          thinkingTrace: this.callbacks?.getThinkingTrace(),
+        }),
+      });
+      this.finalized = true;
+      if (current?.status === "awaiting_approval")
+        return { kind: "awaiting_approval", lifecycle: current };
+      return;
+    }
+    const details: Record<string, unknown> = {};
+    if (this.lifecycle.timedOutReason) details.stage = "timeout";
+    if (cancelled && this.callbacks) {
+      await this.requestSteering.close();
+      Object.assign(
+        details,
+        await persistCancelledResponse({
+          sessionStore: this.dependencies.sessionStore,
+          sessionId: this.input.sessionId,
+          requestId: this.input.requestId,
+          partialAnswer: this.callbacks.getAnswerText(),
+          thinkingTrace: this.callbacks.getThinkingTrace(),
+        }),
+      );
+    }
+    failRequest({ events: this.events, error: message, details });
     this.finalized = true;
   }
 
   private async dispose(): Promise<void> {
-    await this.requestSteering.close();
-    await this.events.drain();
-    this.events.dispose();
-    this.lifecycle.dispose();
+    try {
+      await this.toolResources.dispose();
+      await this.requestSteering.close();
+      if (!this.finalized || !this.durable) await this.events.drain();
+    } finally {
+      this.events.dispose();
+      this.lifecycle.dispose();
+    }
   }
 }

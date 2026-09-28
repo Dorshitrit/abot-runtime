@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { WebSocketServer } from "ws";
 import { expect, test, vi } from "vitest";
-import { connectNativeHost } from "../../../plugins/system/source/companion/native-session.js";
+import { connectNativeHost } from "../../computer-access/companion/native-session.js";
 
 async function fixture(autoPong = true) {
   const server = new WebSocketServer({ host: "127.0.0.1", port: 0, autoPong });

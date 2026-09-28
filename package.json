@@ -42,6 +42,10 @@
       "import": "./dist/src/plugin-sdk/index.js",
       "types": "./dist/src/plugin-sdk/index.d.ts"
     },
+    "./plugin-sdk/computer-access": {
+      "import": "./dist/src/plugin-sdk/computer-access.js",
+      "types": "./dist/src/plugin-sdk/computer-access.d.ts"
+    },
     "./runtime": {
       "import": "./dist/src/runtime/index.js",
       "types": "./dist/src/runtime/index.d.ts"
@@ -81,7 +85,7 @@
     "dist/src/plugin-contract/",
     "dist/src/plugin-sdk/",
     "dist/src/web-ui/",
-    "dist/plugins/system/",
+    "dist/src/computer-access/",
     "runtime.config.schema.json",
     "src/runtime/README.md",
     "src/runtime/scheduler/README.md",
@@ -177,5 +181,5 @@
   },
   "type": "module",
   "types": "./dist/src/runtime/index.d.ts",
-  "version": "1.4.0"
+  "version": "1.5.0"
 }

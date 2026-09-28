@@ -7,31 +7,58 @@ import {
 } from "./installer-contract.js";
 import { renderWindowsCompanionScript } from "./companion-windows.js";
 import { renderMacCompanionScript } from "./companion-macos.js";
+import { renderLinuxCompanionScript } from "./companion-linux.js";
 import { renderWindowsWslInteropScript } from "./wsl-interop-windows.js";
 
 export { InstallerInputError } from "./installer-contract.js";
 
-export async function renderCompanionInstaller(raw: CompanionInstallerInput): Promise<InstallerDownload> {
+export async function renderCompanionInstaller(
+  raw: CompanionInstallerInput,
+): Promise<InstallerDownload> {
   const input = validateCompanionInstaller(raw);
-  if (input.platform === "windows") return {
-    filename: "ABot-Connect-Computer.cmd",
-    mimeType: "application/octet-stream",
-    contentBase64: Buffer.from(renderWindowsCompanionScript(input), "utf8").toString("base64"),
-  };
+  if (input.platform === "linux")
+    return {
+      filename: "ABot-Connect-Computer-Linux.sh",
+      mimeType: "application/x-sh",
+      contentBase64: Buffer.from(
+        renderLinuxCompanionScript(input),
+        "utf8",
+      ).toString("base64"),
+    };
+  if (input.platform === "windows")
+    return {
+      filename: "ABot-Connect-Computer.cmd",
+      mimeType: "application/octet-stream",
+      contentBase64: Buffer.from(
+        renderWindowsCompanionScript(input),
+        "utf8",
+      ).toString("base64"),
+    };
   const zip = new JSZip();
-  zip.file("ABot-Connect-Computer.command", renderMacCompanionScript(input), { unixPermissions: 0o100755 });
+  zip.file("ABot-Connect-Computer.command", renderMacCompanionScript(input), {
+    unixPermissions: 0o100755,
+  });
   return {
     filename: "ABot-Connect-Computer-macOS.zip",
     mimeType: "application/zip",
-    contentBase64: await zip.generateAsync({ type: "base64", platform: "UNIX", compression: "DEFLATE" }),
+    contentBase64: await zip.generateAsync({
+      type: "base64",
+      platform: "UNIX",
+      compression: "DEFLATE",
+    }),
   };
 }
 
-export async function renderWslInteropInstaller(input: Readonly<{ distribution?: string }>): Promise<InstallerDownload> {
+export async function renderWslInteropInstaller(
+  input: Readonly<{ distribution?: string }>,
+): Promise<InstallerDownload> {
   const distribution = validateWslDistribution(input.distribution);
   return {
     filename: "ABot-Enable-WSL-Interop.cmd",
     mimeType: "application/octet-stream",
-    contentBase64: Buffer.from(renderWindowsWslInteropScript(distribution), "utf8").toString("base64"),
+    contentBase64: Buffer.from(
+      renderWindowsWslInteropScript(distribution),
+      "utf8",
+    ).toString("base64"),
   };
 }

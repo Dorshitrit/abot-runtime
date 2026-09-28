@@ -13,6 +13,7 @@ import { createLocalRuntimeOwner } from "./local-host/app-owner.js";
 import { LocalRuntimeClientRequests } from "./local-host/client-requests.js";
 import { createLocalMemoryClient } from "./local-host/client-memory.js";
 import { createLocalServiceClients } from "./local-host/client-services.js";
+import { createLocalLearningClient } from "./local-host/client-learning.js";
 
 export type LocalRuntimeApplicationOptions = Readonly<{
   scheduledRequestOptions?: (run: SchedulerRun) => RuntimeRequestOptions;
@@ -25,6 +26,7 @@ export function createLocalRuntimeApplication(
 ) {
   let connection: LocalRuntimeConnection | undefined;
   let startup: Promise<void> | undefined;
+  let approvalConnection: Promise<void> | undefined;
   let stopped = false;
   const call = async (method: string, args: readonly unknown[]) => {
     await start();
@@ -33,16 +35,33 @@ export function createLocalRuntimeApplication(
   const client = new LocalRuntimeClientRequests(
     call,
     options.scheduledRequestOptions,
+    async (method, args) => {
+      await start();
+      approvalConnection ??= attachApprovalConnection().finally(() => {
+        approvalConnection = undefined;
+      });
+      await approvalConnection;
+      return connection!.call(method, args);
+    },
   );
   const memory = createLocalMemoryClient(
     call,
     config.longTermMemory?.enabled === true,
   );
+  const learning = createLocalLearningClient(call);
   const services = Object.freeze({
     config,
     ...createLocalServiceClients(call),
     longTermMemory: memory.service,
+    passiveLearning: learning.service,
   });
+
+  async function attachApprovalConnection(): Promise<void> {
+    const reconnected = await connection!.reconnect();
+    if (!reconnected) return;
+    if (options.scheduledRequestOptions)
+      await connection!.call("controls.register", []);
+  }
 
   async function connect(): Promise<void> {
     const current = await createLocalRuntimeConnection({
@@ -52,7 +71,10 @@ export function createLocalRuntimeApplication(
     });
     connection = current;
     try {
-      current.onClose(() => client.close(true));
+      current.onClose(() => {
+        client.close(true);
+        learning.close();
+      });
       current.setClientHandler(async (method, args) => {
         if (method === "memory.event") {
           memory.handleEvent(args);
@@ -60,7 +82,10 @@ export function createLocalRuntimeApplication(
         }
         return client.handleCallback(method, args);
       });
-      current.subscribe((event) => client.receive(event));
+      current.subscribe((event) => {
+        client.receive(event);
+        learning.receive(event);
+      });
       if (options.scheduledRequestOptions) {
         await current.call("controls.register", []);
       }
@@ -86,6 +111,7 @@ export function createLocalRuntimeApplication(
   return Object.freeze({
     services,
     requests: client.requests as RuntimeRequestHandler,
+    approvals: client.approvals,
     start,
     async stop(): Promise<void> {
       stopped = true;
@@ -93,6 +119,7 @@ export function createLocalRuntimeApplication(
         await startup;
       } finally {
         client.close();
+        learning.close();
         await connection?.close();
       }
     },
@@ -105,9 +132,11 @@ export function createLocalRuntimeApplication(
       const closing = connection.closeIfIdle();
       stopped = true;
       client.close();
+      learning.close();
       return closing;
     },
     subscribeScheduledEvents: client.subscribe.bind(client),
+    subscribeLearningEvents: learning.subscribe,
   });
 }
 

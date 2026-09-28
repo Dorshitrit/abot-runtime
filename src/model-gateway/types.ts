@@ -38,7 +38,7 @@ export type ChatToolResultMessage = Readonly<{
   content: string;
   toolCallId: string;
   toolName: string;
-  attachments?: never;
+  attachments?: ModelGatewayAttachment[];
   toolCalls?: never;
 }>;
 
@@ -49,6 +49,8 @@ export type ChatMessage =
 
 export type ModelGatewayAttachment = RuntimeAttachmentReference & {
   data?: string;
+  /** Request-local tool evidence; never persist or trace this attachment. */
+  toolEvidence?: Readonly<{ executionId: string }>;
 };
 
 export type ModelGatewayJsonSchemaFormat = {

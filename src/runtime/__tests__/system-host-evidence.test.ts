@@ -1,11 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { observeSystemHost } from "../../../plugins/system/source/host-observation.js";
-import { systemProcessResult } from "../../../plugins/system/source/process-result.js";
+import { observeSystemHost } from "../../computer-access/host-observation.js";
+import { systemProcessResult } from "../../computer-access/process-result.js";
 import type {
   SystemApplication,
   SystemProcessResult,
   SystemTarget,
-} from "../../../plugins/system/source/contracts.js";
+} from "../../computer-access/contracts.js";
 import {
   boundedSummary,
   projectObservationOutput,

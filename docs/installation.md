@@ -75,6 +75,8 @@ Continue through the optional **Embedding** step to configure semantic memory,
 or choose to set it up later. **Plugins** starts with all tools selected for a
 fresh installation; turn off any plugin or individual tool you do not want.
 Choose **Finish setup** to apply the selections, then **Start chatting**.
+Complete initial setup on Home before opening other workspaces. Spark appears
+when setup is ready; Computer access remains available throughout setup.
 Saving chat connection details does not make a paid model request. Explicitly
 checking an embedding model sends a small embedding probe to the chosen provider.
 
@@ -90,11 +92,23 @@ OpenAI profiles use the recommended `execution-agent-v1` policy. A gateway
 managed by a separate process remains under that process's lifecycle; the UI
 reports when saved changes require that owner to restart.
 
-In the Web UI, open **Config → Models → Add model** to add another model.
+In the Web UI, open **Models → Add model** to add another model.
 Choose a saved provider connection or create a new OpenAI/Ollama connection.
 Each provider card also has an **Add model** shortcut. Review the model, then
 choose **Save and apply**. Saved API keys are reused; existing model profiles and
 the default model are preserved. The added model is selected in the Models list.
+New profiles are stored in a separate `models/<profile-id>.config.json` beside
+the selected Runtime configuration, which keeps only its `configRef`. Existing
+inline profiles continue to work. If activation is deferred, the dialog confirms
+that the model is saved but not active yet; **Apply model** retries activation
+without adding it again, and **Close** keeps the saved declaration.
+
+Use **Remove model** to remove a profile from the Runtime declaration. Referenced
+model files, provider connections and credentials are retained. Files in the
+standard `models/` directory, and directories still referenced by another
+profile, appear as **Not registered**. Removal is refused if it would break the
+configuration, such as a default model or a request-runner mapping. Update those
+references first, then remove the profile and explicitly **Apply changes**.
 
 You can also add a model from the command line:
 
@@ -108,7 +122,7 @@ the profiles that are already configured.
 ### Optional Passive Long-Term Memory
 
 Long-term memory is disabled by default. After a provider is configured, choose
-an embedding model in the onboarding Embedding step, the Web UI Config workspace,
+an embedding model in the onboarding Embedding step, **Memory → Setup**,
 or the CLI:
 
 ```bash
@@ -126,24 +140,87 @@ See [Passive Long-Term Memory](long-term-memory.md) before enabling persistence.
 
 ### Computer Access During Setup
 
-The optional **Computer** step checks whether direct system access already works.
-Native macOS and working WSL-to-Windows access need no additional configuration.
-You can also open this step later in **Config → Connected computer**.
+The optional **Computer** step and **Home → Computer access** manage one
+Computer access connection shared by SYSTEM tools, ABot Spark and compatible
+plugins. Direct native/WSL command access can already work; the shared companion
+adds desktop access and background collection without a second ABot Spark setup.
 
-For Docker, download and open the Windows or Mac setup script on the computer
-running Docker. It installs the matching companion and its private Node runtime,
-pairs automatically and enables user-login startup. No copied code, separate npm
-installation or terminal command is required. Wait for **Ready** in the Web UI.
+When ABot runs natively on your Mac, open its local Web UI and choose **Connect
+this Mac**. ABot uses its installed Node runtime and companion bundle, pairs the
+computer and enables startup at sign-in. This path does not download a Finder
+installer or require an Apple Developer account. Use **Repair Mac connection**
+to repair or update an existing connection while retaining its pairing.
 
-For WSL with unavailable Windows interop, download and open the Windows repair
-script. Opening it enables Windows interop and automatically restarts only the
-selected distribution, preserving unrelated configuration. Finish active work
-before opening the file: the restart interrupts that distribution's services.
-No typed restart confirmation is required; the script verifies Windows access
-after the restart.
+For a Mac connecting to a Docker or forwarded Runtime, choose **Connect a Mac**.
+Install the ABot CLI on that Mac, run the displayed `abot host connect --url ...`
+command in its graphical login, then paste the one-time code when Terminal asks.
+The code expires after five minutes. Docker must publish the Web UI port on host
+loopback; a remote Runtime needs a local port forward. Direct connections to a
+remote network address are not supported. Mac desktop tools and Spark collection
+still require local Swift tools and the relevant macOS privacy permissions.
+
+**Spark permissions on macOS:** Computer access **Ready** confirms the connection;
+collection additionally needs Accessibility permission. Companion setup keeps a
+private copy of its Node executable at `~/.abot/host-companion/runtime/node` and
+uses that same path at sign-in, independently of NVM version paths. Start Spark
+collection to request consent, then authorize that executable in **System
+Settings → Privacy & Security → Accessibility** (called **Device Control & Data
+Access** on some macOS versions). Use **+**, **Command–Shift–G**, and the path above
+if needed. The entry may be named `node`; verify the path before approving it.
+The collector checks approval for at most two minutes without reading content.
+After granting access, choose **Restart collection** in Home or Spark to check
+again. Setup reuses identical runtime bytes; replacing the runtime can require
+consent again. Screen recording and input permissions for other desktop tools
+are separate.
+
+For Windows or Linux, download setup and run it in that computer's graphical
+login. Windows setup installs the companion and a private Node runtime; Linux
+uses an existing Node.js installation. Setup pairs automatically and enables
+startup at sign-in. Wait for **Ready** in the Web UI; downloading alone does not
+establish a connection. WSL uses the same Windows companion setup, which does
+not require changing interop settings or restarting the distribution.
+
+Installation does not enable ABot Spark collection or disabled plugin tools.
+Collection and processing controls remain in ABot Spark; tool approval modes still
+apply. Use **Unpair computer** to revoke the shared pairing and pending setup
+grants. Saved insights are retained. Reconnect through Computer access setup.
+Updates reuse the existing pairing and must replace the actual running companion.
+
+### Notifications
+
+Open **Notifications** for saved notifications, unread counts, source links and
+desktop notification settings. ABot records agent replies received while their
+conversation is not visible and focused, failed requests, approval requests and
+delivered ABot Spark suggestions. Settings control desktop delivery for each kind;
+the history stays available when desktop delivery is disabled or disconnected.
+
+Desktop notifications use the paired Computer access companion. The browser can
+be closed while ABot and the companion keep running in your graphical login.
+Install or update Computer access to register the **ABot** notification identity.
+Clicking a notification opens its source in your default browser. Docker and WSL
+use the companion on the desktop computer; links retain the address and published
+port used during pairing.
+
+- **Windows:** setup registers ABot with Windows notifications and a click handler.
+- **macOS:** setup installs a local ABot application. Allow notifications for ABot
+  in macOS settings when prompted. The helper currently uses Apple's legacy
+  `NSUserNotification` API; availability depends on the macOS release.
+- **Linux:** a graphical desktop with its notification service, `notify-send`
+  (including action support), `gdbus` and `xdg-open` is required. The desktop's
+  notification service must support actions. On Debian/Ubuntu, these commands
+  come from `libnotify-bin`, `libglib2.0-bin` and `xdg-utils`, respectively.
+  ABot keeps up to 32 active desktop alerts; when another arrives, it closes the
+  oldest alert. All saved notifications remain available in Notifications.
+
+Operating-system permissions and Do Not Disturb still control presentation.
+**Sent to computer** means the native delivery call succeeded, not that a person
+saw the notification. Unconfirmed deliveries and old records are not sent again
+after reconnect or restart. A failed notification setup leaves the other Computer
+access features available; the Notifications page reports desktop availability.
+
 See [Connecting a Docker Runtime to its computer](projects-and-full-plus.md#connecting-a-docker-runtime-to-its-computer)
-for connection limits and removal. Installing ABot as a library never changes
-host configuration or enables interop.
+for connection limits and removal. Importing ABot as a library never changes host
+configuration or starts background collection.
 
 ## Use As A Library
 

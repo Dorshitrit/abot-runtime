@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { readSystemApplications } from "../../../plugins/system/source/application-catalog.js";
+import { readSystemApplications } from "../../computer-access/application-catalog.js";
 import type {
   SystemProcessRunner,
   SystemTarget,
-} from "../../../plugins/system/source/contracts.js";
+} from "../../computer-access/contracts.js";
 
 const filesystem = vi.hoisted(() => ({ readdir: vi.fn(), readFile: vi.fn() }));
 vi.mock("node:fs/promises", async (importOriginal) => ({

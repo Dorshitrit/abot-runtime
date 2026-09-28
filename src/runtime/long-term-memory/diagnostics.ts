@@ -1,6 +1,16 @@
 import { traceDebug } from "../observability/debug-logger.js";
 
 const SAFE_MEMORY_FAILURE_CODES = new Set([
+  "learning_conversation_evidence_invalid",
+  "learning_conversation_evidence_expired",
+  "learning_content_exceeds_limit",
+  "learning_content_sensitive",
+  "learning_knowledge_conflict",
+  "learning_duplicate_requires_bound_update",
+  "learning_candidate_expired",
+  "learning_memory_protected",
+  "learning_receipt_capacity",
+  "learning_embedding_reindex_required",
   "long_term_memory_embedding_binding_changed",
   "long_term_memory_embedding_client_required",
   "long_term_memory_embedding_gateway_unavailable",

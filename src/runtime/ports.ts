@@ -168,6 +168,11 @@ export type AppendSessionContextEntryOptions = {
 };
 
 export type SessionStore = SessionMemoryRepository & {
+  requestLifecycle?: import("../sessions/request-lifecycle/contracts.js").SessionRequestLifecycleStore;
+  createAssistantConversation?: (
+    sessionId: string,
+    input: import("../sessions/assistant-initiative.js").CreateAssistantConversationInput,
+  ) => Promise<SessionRecord>;
   getOrCreateSession: (
     sessionId: string,
     options?: SessionCreationOptions,
@@ -253,6 +258,10 @@ export type ConversationContextProvider = {
 };
 
 export type ToolExecutionOptions = {
+  requestWork?: ToolExecutionContext["requestWork"];
+  requestState?: ToolExecutionContext["requestState"];
+  media?: ToolExecutionContext["media"];
+  onRequestDispose?: ToolExecutionContext["onRequestDispose"];
   /** Trusted request snapshot, never parsed from a model tool payload. */
   requestWorkingDirectory?: string;
   abortSignal?: AbortSignal;
@@ -284,7 +293,9 @@ export type ToolApprovalController = {
 
 export type ToolRegistry = {
   /** Build an isolated availability/execution snapshot before model projection. */
-  prepareRequest?: () => Promise<ToolRegistry>;
+  prepareRequest?: (
+    context?: import("../capabilities/tool-request-resources.js").ToolRequestPreparationContext,
+  ) => Promise<ToolRegistry>;
   listDefinitions: () => ToolDefinition[];
   /** The sole config-filtered availability snapshot for ordinary invocation. */
   listNormalInvocations?: () => readonly RegisteredToolNormalInvocation[];

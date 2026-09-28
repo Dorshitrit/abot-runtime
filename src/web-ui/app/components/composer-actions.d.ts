@@ -5,6 +5,7 @@ export declare function createComposerActions(options: {
     composerForm: HTMLFormElement;
     composerSubmitControl: HTMLElement;
     sendButton: HTMLButtonElement;
+    stopButton?: HTMLButtonElement;
     sendButtonLabel: HTMLElement;
     sendNextMenuButton: HTMLButtonElement;
     sendNextMenu: HTMLElement;
@@ -18,9 +19,12 @@ export declare function createComposerActions(options: {
   primaryAction(): ComposerAction;
   render(options: {
     activeRequestId: unknown;
+    waitingRequestId?: unknown;
     attachmentCount?: number;
     busy?: boolean;
     disabled?: boolean;
     queuedCount?: number;
+    stopping?: boolean;
+    onStop?: () => void;
   }): void;
 }>;

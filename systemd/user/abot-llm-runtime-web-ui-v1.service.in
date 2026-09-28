@@ -7,4 +7,5 @@ After=llm-runtime.service
 Type=simple
 WorkingDirectory=@@ROOT_DIR@@
 ExecCondition=@@NODE@@ @@TSX_CLI@@ @@CONTROL_SCRIPT@@ condition
+ExecStartPre=@@NODE@@ @@TSX_CLI@@ @@COMPANION_BUILD@@
 ExecStart=@@NODE@@ @@TSX_CLI@@ @@WEB_UI_SERVER@@

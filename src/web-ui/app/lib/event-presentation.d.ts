@@ -15,6 +15,7 @@ export declare function getPlanItemPayload(
 export declare function formatEventLabel(message: EventRecord): string;
 export declare function formatEventDetail(message: EventRecord): string;
 export declare function eventTone(message: EventRecord): string;
+export declare function isUncompletedToolEvent(message: EventRecord): boolean;
 export declare function isLowValueActivityEvent(message: EventRecord): boolean;
 export declare function eventKeyFor(
   message: EventRecord,

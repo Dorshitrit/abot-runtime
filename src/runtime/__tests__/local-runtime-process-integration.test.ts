@@ -297,7 +297,24 @@ describe("local Runtime across separate processes", () => {
     await first.observer.services.scheduler.tick();
     expect((await first.waitForRun(pending.id)).status).toBe("succeeded");
     expect(second.invoke).not.toHaveBeenCalled();
-    expect(secondChild.events).toEqual([]);
+    expect(firstChild.events).toContainEqual({
+      source: "scheduled",
+      event: {
+        type: "event",
+        name: "scheduler.changed",
+        environment: "first-environment",
+      },
+    });
+    expect(secondChild.events).toEqual([
+      {
+        source: "scheduled",
+        event: {
+          type: "event",
+          name: "scheduler.changed",
+          environment: "second-environment",
+        },
+      },
+    ]);
     expect(await secondChild.call("listRuns")).toEqual([]);
   }, 20_000);
 });

@@ -1,13 +1,8 @@
-import {
-  WORKER_RESULT_MAX_LENGTH,
-  type WorkerDecisionValidationIssue,
-} from "../contracts.js";
+import { isRoleCallResultText } from "../../../orchestration/role-calls/index.js";
+import type { WorkerDecisionValidationIssue } from "../contracts.js";
 import { validateCapabilityBatchDecision } from "./capability-batch-validation.js";
 import { validateSingleCapabilityDecision } from "./capability-invocation-validation.js";
-import {
-  validateBoundedWorkerDecisionText,
-  validateExactWorkerDecisionKeys,
-} from "./decision-shape-validation.js";
+import { validateExactWorkerDecisionKeys } from "./decision-shape-validation.js";
 import type {
   ActionValidation,
   DecisionValidationContext,
@@ -91,11 +86,8 @@ function validateReturnFailureDecision(
   issues: WorkerDecisionValidationIssue[],
 ): void {
   validateExactWorkerDecisionKeys(record, ["action", "reason"], issues);
-  validateBoundedWorkerDecisionText(
-    record.reason,
-    WORKER_RESULT_MAX_LENGTH,
-    "worker_result_invalid",
-    "decision.reason",
-    issues,
+  if (isRoleCallResultText(record.reason)) return;
+  issues.push(
+    createWorkerDecisionIssue("worker_result_invalid", "decision.reason"),
   );
 }

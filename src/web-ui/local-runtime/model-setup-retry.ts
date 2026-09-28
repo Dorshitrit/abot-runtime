@@ -10,6 +10,7 @@ import {
   modelSetupResult,
 } from "./model-setup-identity.js";
 import { ModelSetupError, type ModelSetupInput } from "./model-setup-input.js";
+import { readSavedModelSetupProfile } from "./model-setup-profile-file.js";
 import {
   buildNewModelProvider,
   planModelProvider,
@@ -46,7 +47,7 @@ async function requireUnchangedRetryConfiguration(
   );
 }
 
-/** A repeated POST may acknowledge only the exact inline addition already committed. */
+/** A repeated POST may acknowledge only the exact addition already committed. */
 export async function recoverCommittedModelAddition(
   options: ModelSetupOptions & { configPath: string },
   models: Record<string, unknown>,
@@ -54,9 +55,9 @@ export async function recoverCommittedModelAddition(
   expectedRevision: string,
 ) {
   const profiles = modelConfigMap(models.profiles);
-  const profile = profiles[input.profileId];
-  const savedProfileIsInline = isRecord(profile);
-  if (!savedProfileIsInline) rejectModelProfileCollision();
+  const declaration = profiles[input.profileId];
+  if (!isRecord(declaration)) rejectModelProfileCollision();
+  const saved = await readSavedModelSetupProfile(options, declaration);
   const providers = modelConfigMap(models.providers);
   const providerId = input.providerId ?? input.newProvider.id;
   const hasSavedProviderConnection = isRecord(providers[providerId]);
@@ -69,7 +70,7 @@ export async function recoverCommittedModelAddition(
   if (!savedProviderMatchesRequest) rejectModelProfileCollision();
   const expectedProfile = await buildModelSetupProfile(provider, input);
   const savedProfileMatchesRequest = isDeepStrictEqual(
-    profile,
+    saved.profile,
     expectedProfile,
   );
   if (!savedProfileMatchesRequest) rejectModelProfileCollision();
@@ -81,9 +82,10 @@ export async function recoverCommittedModelAddition(
   if (credential?.apiKey)
     throw new ModelSetupError(
       "model_credential_required",
-      "The saved model's credential is missing. Restore its connection in Configuration before retrying.",
+      "The saved model's credential is missing. Restore its connection in Models before retrying.",
       409,
     );
   await requireUnchangedRetryConfiguration(options, expectedRevision);
+  await saved.assertUnchanged();
   return modelSetupResult(provider, input);
 }

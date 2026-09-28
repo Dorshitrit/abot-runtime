@@ -6,7 +6,15 @@ export class SessionRequestAdmission {
   private readonly idleWaiters = new Set<() => void>();
   private closed = false;
 
-  constructor(private readonly isDeleted: (sessionId: string) => boolean) {}
+  constructor(
+    private readonly isDeleted: (sessionId: string) => boolean,
+    private readonly hasSavedWait?: (sessionId: string) => Promise<boolean>,
+  ) {}
+
+  async tryReserveAvailable(sessionId: string): Promise<(() => void) | null> {
+    if (await this.hasSavedWait?.(sessionId)) return null;
+    return this.tryReserve(sessionId);
+  }
 
   tryReserve(sessionId: string): (() => void) | null {
     if (this.closed) return null;
@@ -25,9 +33,14 @@ export class SessionRequestAdmission {
     };
   }
 
-  async run<T>(sessionId: string, execute: () => Promise<T>): Promise<T> {
+  async run<T>(
+    sessionId: string,
+    execute: () => Promise<T>,
+    resume = false,
+  ): Promise<T> {
     this.requireOpenAdmission();
     while (this.reserved.has(sessionId)) {
+      // Even a cancelled request must wait before changing session history.
       await new Promise<void>((resolve) => {
         const waiting = this.waiters.get(sessionId) ?? new Set();
         waiting.add(resolve);
@@ -35,6 +48,9 @@ export class SessionRequestAdmission {
       });
       this.requireOpenAdmission();
     }
+    if (!resume && this.hasSavedWait && (await this.hasSavedWait(sessionId)))
+      throw new Error("session_awaiting_approval");
+    this.requireOpenAdmission();
     if (this.isDeleted(sessionId)) throw new Error("session_deleted");
     this.active.set(sessionId, (this.active.get(sessionId) ?? 0) + 1);
     try {

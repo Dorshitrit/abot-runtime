@@ -11,14 +11,12 @@ import {
   updateSessionTitle,
   compareAndSwapSessionMemoryCheckpoint,
 } from "../../sessions/index.js";
-import type {
-  ConversationContextProvider,
-  SessionStore,
-} from "../ports.js";
+import type { ConversationContextProvider, SessionStore } from "../ports.js";
 
 export const defaultRuntimeSessionStore: Pick<
   SessionStore,
   | "appendMessage"
+  | "requestLifecycle"
   | "appendContextEntry"
   | "appendRequestEvent"
   | "compareAndSwapSessionMemoryCheckpoint"

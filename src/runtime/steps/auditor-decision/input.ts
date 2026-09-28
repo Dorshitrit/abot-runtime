@@ -130,6 +130,7 @@ export function buildAuditorDecisionInput(
         callId: assignment.auditId,
       },
       onEvent: request.onEvent,
+      deferCompactionFailure: true,
     }),
     format,
     modelStep: AUDITOR_DECISION_MODEL_STEP,

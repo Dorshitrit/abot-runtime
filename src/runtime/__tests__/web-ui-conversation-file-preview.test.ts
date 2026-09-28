@@ -221,7 +221,7 @@ describe("native action presentation", () => {
 });
 
 describe("viewer focus and close behavior", () => {
-  test("returns focus to Activity after switching to timeline while the side viewer is open", () => {
+  test("returns focus to the agents toggle after switching to timeline while the side viewer is open", () => {
     const { dom, view } = setup();
     const activity = createConversationActivity({
       documentRoot: dom.documentRoot,
@@ -243,7 +243,7 @@ describe("viewer focus and close behavior", () => {
         },
         fileCompletionEvent(),
       ],
-    }) as HTMLDetailsElement;
+    })!;
     dom.chat.replaceChildren(current as unknown as ContextElement);
     click(node(current, ".conversation-tool-file-action"));
     expect(view.panel.hidden).toBe(false);
@@ -255,14 +255,15 @@ describe("viewer focus and close behavior", () => {
 
     expect(view.panel.hidden).toBe(true);
     expect(dom.activeElement).toBe(
-      node(current, ".conversation-activity-summary"),
+      node(current, ".conversation-role-toggle"),
     );
     expect(cards.hidden).toBe(true);
-    expect(current.open).toBe(true);
+    expect(current.tagName).toBe("section");
+    expect(node(current, ".conversation-activity-timeline").hidden).toBe(false);
   });
 
   test.each([false, true])(
-    "returns focus to the collapsed Activity after streaming completes (overlay=%s)",
+    "keeps inline agents visible and restores file action focus after streaming completes (overlay=%s)",
     (narrow) => {
       const { dom, view } = setup(narrow);
       const activity = createConversationActivity({
@@ -281,9 +282,9 @@ describe("viewer focus and close behavior", () => {
         requestId: "r1",
         events: [event],
         streaming: true,
-      }) as HTMLDetailsElement;
+      })!;
       dom.chat.replaceChildren(streaming as unknown as ContextElement);
-      expect(streaming.open).toBe(true);
+      expect(streaming.tagName).toBe("section");
       click(node(streaming, ".conversation-tool-file-action"));
       expect(view.panel.hidden).toBe(false);
 
@@ -291,15 +292,15 @@ describe("viewer focus and close behavior", () => {
         requestId: "r1",
         events: [event],
         streaming: false,
-      }) as HTMLDetailsElement;
+      })!;
       dom.chat.replaceChildren(completed as unknown as ContextElement);
-      expect(completed.open).toBe(false);
+      expect(completed.tagName).toBe("section");
       view.render({ open: false });
 
       expect(view.panel.hidden).toBe(true);
-      expect(completed.open).toBe(false);
+      expect(node(completed, ".conversation-role-list").hidden).toBe(false);
       expect(dom.activeElement).toBe(
-        node(completed, ".conversation-activity-summary"),
+        node(completed, ".conversation-tool-file-action"),
       );
     },
   );

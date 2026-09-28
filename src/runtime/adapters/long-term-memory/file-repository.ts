@@ -12,6 +12,7 @@ import {
   parseMemorySnapshot,
 } from "../../long-term-memory/repository-state.js";
 import { withFileLock } from "./file-lock.js";
+import { preserveMemoryMigrationBackup } from "./migration-backup.js";
 
 const STORE_FILE_NAME = "memory.json";
 const LOCK_FILE_NAME = "memory.lock";
@@ -29,6 +30,7 @@ export function createFileLongTermMemoryRepository(
       return withFileLock(lockPath, async () => {
         const current = await readSnapshot(storePath);
         const next = advanceMemorySnapshot(current, mutate(current));
+        await preserveMemoryMigrationBackup(storePath, current, next);
         await writeSnapshot(storePath, next);
         return next;
       });

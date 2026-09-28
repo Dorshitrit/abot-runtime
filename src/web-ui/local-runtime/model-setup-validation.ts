@@ -6,7 +6,7 @@ import { isRecord } from "../../runtime/config/utils.js";
 import { validateRuntimeConfigFile } from "../../runtime/config/validation.js";
 
 /** Staging beside the selected source preserves every existing relative reference. */
-export async function validateModelAddition(
+export async function validateModelConfigurationChange(
   config: Record<string, unknown>,
   options: { rootDir: string; configPath: string },
 ): Promise<void> {
@@ -37,3 +37,5 @@ export async function validateModelAddition(
     await rm(temporary, { force: true });
   }
 }
+
+export { validateModelConfigurationChange as validateModelAddition };

@@ -1,4 +1,5 @@
 import type { AgentMode } from "../../shared/types.js";
+import type { SchedulerToolPermissionMode } from "./tool-permission-mode.js";
 
 export type SchedulerScheduleInput =
   | { kind: "timer"; delayMs: number }
@@ -25,7 +26,7 @@ export interface SchedulerJob {
   prompt: string;
   modelProfileId: string;
   agentMode: AgentMode;
-  toolPermissionMode: "full_access";
+  toolPermissionMode: SchedulerToolPermissionMode;
   timeZone: string;
   schedule: SchedulerSchedule;
   state: SchedulerJobState;
@@ -35,6 +36,7 @@ export interface SchedulerJob {
   revision: number;
 }
 export interface CreateSchedulerJobInput {
+  toolPermissionMode?: SchedulerToolPermissionMode;
   sessionId: string;
   title: string;
   prompt: string;
@@ -55,6 +57,8 @@ export type SchedulerRunStatus =
   | "interrupted"
   | "missed";
 export interface SchedulerRun {
+  /** Omitted by historical runs, which always used Full. */
+  toolPermissionMode?: SchedulerToolPermissionMode;
   id: string;
   jobId: string;
   environmentId: string;
@@ -83,7 +87,9 @@ export interface SchedulerRunOutcome {
 }
 export interface SchedulerExecutor {
   sessionExists(sessionId: string): Promise<boolean>;
-  tryReserve(sessionId: string): (() => void) | null;
+  tryReserve(
+    sessionId: string,
+  ): (() => void) | null | Promise<(() => void) | null>;
   start(job: SchedulerJob, run: SchedulerRun): Promise<SchedulerRunOutcome>;
 }
 export interface SchedulerSnapshot {

@@ -21,8 +21,9 @@ function renderCanonicalProgress(input: DegradedFinalizationInput): string {
     return "";
   }
 
+  const planSummary = normalizeLine(input.progress.planSummary);
   return [
-    `### ${normalizeLine(input.progress.planSummary)}`,
+    ...(planSummary ? [`### ${planSummary}`] : []),
     ...input.progress.completed.map(
       (item) => `- [x] ${normalizeLine(item.title)}`,
     ),

@@ -3,7 +3,7 @@ import {
   isNativeLoopbackAddress,
   normalizeNativeRuntimeUrl,
   resolveNativeRuntimeAddress,
-} from "../../../plugins/system/source/companion/native-address.js";
+} from "../../computer-access/companion/native-address.js";
 
 test("normalizes origin and pins localhost aliases without external DNS", async () => {
   const resolve = vi.fn();
@@ -14,7 +14,7 @@ test("normalizes origin and pins localhost aliases without external DNS", async 
     await resolveNativeRuntimeAddress("http://abot-qa.localhost:5184", resolve),
   ).toEqual({
     url: "ws://abot-qa.localhost:5184/system-host/connect",
-    address: { address: "127.0.0.1", family: 4 },
+    addresses: [{ address: "127.0.0.1", family: 4 }, { address: "::1", family: 6 }],
   });
   expect(resolve).not.toHaveBeenCalled();
 });

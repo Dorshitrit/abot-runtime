@@ -7,6 +7,7 @@ export * from "./capability-selection-reconsideration.js";
 export * from "./capability-selection-supervision.js";
 export * from "./reconsideration-cause.js";
 export * from "./result-receipt.js";
+export * from "./role-result-text.js";
 export * from "./return-result-receipt.js";
 export * from "./work-result-lineage.js";
 export * from "./work-result-receipt.js";

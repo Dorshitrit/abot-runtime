@@ -1,5 +1,5 @@
 import { readFile, stat, symlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ModelSetupService } from "../../web-ui/local-runtime/model-setup-service.js";
 import * as dashboard from "../../web-ui/config-dashboard-backend.js";
@@ -16,8 +16,16 @@ afterEach(async () => {
   await fixture.cleanup();
 });
 
+async function readAddedProfile(profileId: string) {
+  const declaration = (await fixture.readConfig()).models.profiles[profileId];
+  expect(declaration).toEqual({
+    configRef: `./models/${profileId}.config.json`,
+  });
+  return fixture.readModelProfile(profileId);
+}
+
 describe("additive Web model setup", () => {
-  test("adds an inline profile while preserving referenced files, defaults, and unrelated configuration", async () => {
+  test("adds a referenced profile while preserving existing files, defaults, and unrelated configuration", async () => {
     const before = await fixture.readConfig();
     const paths = [
       join(fixture.rootDir, "local/models/default.config.json"),
@@ -47,13 +55,14 @@ describe("additive Web model setup", () => {
         ...before.models,
         profiles: {
           ...before.models.profiles,
-          second: expect.objectContaining({
-            provider: "ollama",
-            model: "fixture-second",
-            context: { formatTokenAccounting: { mode: "none" } },
-          }),
+          second: { configRef: "./models/second.config.json" },
         },
       },
+    });
+    expect(await readAddedProfile("second")).toMatchObject({
+      provider: "ollama",
+      model: "fixture-second",
+      context: { formatTokenAccounting: { mode: "none" } },
     });
     expect(
       await Promise.all(paths.map((path) => readFile(path, "utf8"))),
@@ -97,7 +106,7 @@ describe("additive Web model setup", () => {
       });
       const after = await fixture.readConfig();
       expect(after.models.providers[providerId]).toEqual(provider);
-      expect(after.models.profiles["alias-model"]).toMatchObject({
+      expect(await readAddedProfile("alias-model")).toMatchObject({
         provider: providerId,
         context: {
           formatTokenAccounting: {
@@ -222,9 +231,9 @@ describe("additive Web model setup", () => {
       model: { profileId: "committed", providerId: "ollama" },
       restartRequired: true,
     });
-    expect(
-      (await fixture.readConfig()).models.profiles.committed,
-    ).toMatchObject({ model: "fixture-committed" });
+    expect(await readAddedProfile("committed")).toMatchObject({
+      model: "fixture-committed",
+    });
     expect(dashboard.saveConfigDashboardFile).toHaveBeenCalledOnce();
   });
 
@@ -247,13 +256,13 @@ describe("additive Web model setup", () => {
         providerId: "ollama",
       }),
     ).rejects.toMatchObject({ code: "model_save_failed" });
-    expect((await fixture.readConfig()).models.profiles.mismatch).toMatchObject(
-      { model: "fixture" },
-    );
+    expect(await readAddedProfile("mismatch")).toMatchObject({
+      model: "fixture",
+    });
   });
 
   test("serializes distinct and colliding additions through aliases of the same config file", async () => {
-    const alias = join(fixture.rootDir, "alias.json");
+    const alias = join(dirname(fixture.configPath), "alias.json");
     await symlink(fixture.configPath, alias);
     const second = new ModelSetupService({
       rootDir: fixture.rootDir,

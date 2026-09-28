@@ -10,7 +10,7 @@ import {
   writeLocalRuntimeEndpoint,
 } from "./endpoint.js";
 import { startLocalRuntimeOwnerServer } from "./owner-server.js";
-import { LocalRuntimeRpcPeer } from "./rpc-peer.js";
+import { createReconnectableRuntimeConnection } from "./reconnectable-connection.js";
 import { releaseRuntimeOwnerWhenIdle } from "./owner-retirement.js";
 import {
   connectToPublishedRuntimeOwner,
@@ -35,11 +35,13 @@ export async function createLocalRuntimeConnection(
   for (;;) {
     const release = await tryAcquireRuntimeOwner(options.directory);
     if (release) return establishRuntimeOwner(options, release);
-    const peer = await connectToPublishedRuntimeOwner(options, deadline);
-    if (peer)
-      return createConnection(peer, "client", async () => {
-        peer.close();
-      });
+    const connected = await connectToPublishedRuntimeOwner(options, deadline);
+    if (connected)
+      return createReconnectableRuntimeConnection(
+        connected.peer,
+        connected.endpoint,
+        "client",
+      );
     await waitForRuntimeOwnerElection(deadline);
   }
 }
@@ -60,8 +62,9 @@ async function establishRuntimeOwner(
       host.endpoint,
       Date.now() + 10_000,
     );
-    return createConnection(
+    return createReconnectableRuntimeConnection(
       peer,
+      host.endpoint,
       "owner",
       async () => {
         try {
@@ -93,35 +96,6 @@ async function establishRuntimeOwner(
     }
     throw error;
   }
-}
-
-function createConnection(
-  peer: LocalRuntimeRpcPeer,
-  ownership: "owner" | "client",
-  close: () => Promise<void>,
-  isOwnerIdle: () => boolean = () => false,
-): LocalRuntimeConnection {
-  let shutdown: Promise<void> | undefined;
-  return Object.freeze({
-    ownership,
-    isOwnerIdle: () => !shutdown && isOwnerIdle(),
-    closeIfIdle: () => {
-      if (ownership !== "owner") return Promise.resolve(false);
-      if (shutdown) return shutdown.then(() => true);
-      if (!isOwnerIdle()) return Promise.resolve(false);
-      // close() synchronously closes host intake before its first await.
-      shutdown = close();
-      return shutdown.then(() => true);
-    },
-    call: (method, args) => peer.call(method, args),
-    subscribe: (listener) => peer.subscribe(listener),
-    setClientHandler: (handler) => peer.setHandler(handler),
-    onClose: (listener) => peer.onClose(listener),
-    close: () => {
-      shutdown ??= close();
-      return shutdown;
-    },
-  });
 }
 
 async function tryAcquireRuntimeOwner(

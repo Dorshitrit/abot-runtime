@@ -1,4 +1,11 @@
-import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { ModelSetupService } from "../../web-ui/local-runtime/model-setup-service.js";
@@ -9,7 +16,9 @@ import {
 
 let fixture: ModelSetupFixture;
 beforeEach(async () => {
-  fixture = await createModelSetupFixture();
+  fixture = await createModelSetupFixture(
+    ".codex/artifacts/pr86-review-paths-20260923/profile-id-boundaries",
+  );
 });
 afterEach(async () => {
   await fixture.cleanup();
@@ -91,6 +100,79 @@ describe("model addition input and persistence boundaries", () => {
     },
   );
 
+  test.each(
+    [
+      ...["CON", "PRN", "AUX", "NUL"],
+      ...Array.from({ length: 9 }, (_, index) => `COM${index + 1}`),
+      ...Array.from({ length: 9 }, (_, index) => `LPT${index + 1}`),
+    ]
+      .flatMap((id) => [id, `${id.toLowerCase()}.profile`])
+      .concat(["cOn", "aUx.extra.part"]),
+  )(
+    "rejects Windows device profile ID %s before changing files or credentials",
+    async (profileId) => {
+      const config = await readFile(fixture.configPath, "utf8");
+      const env = await fixture.readEnv();
+      const modelsDirectory = join(dirname(fixture.configPath), "models");
+      const modelFiles = await readdir(modelsDirectory);
+      await expect(
+        fixture.service.add({
+          profileId,
+          model: "fixture",
+          newProvider: { id: "new-cloud", type: "openai" },
+          apiKey: "fixture-never-save",
+        }),
+      ).rejects.toMatchObject({ code: "invalid_profile_id", statusCode: 400 });
+      expect(await readFile(fixture.configPath, "utf8")).toBe(config);
+      expect(await fixture.readEnv()).toBe(env);
+      expect(await readdir(modelsDirectory)).toEqual(modelFiles);
+    },
+  );
+
+  test.each([
+    "console",
+    "auxiliary",
+    "COM0",
+    "COM10",
+    "LPT0",
+    "LPT10",
+    "COM1x",
+    "CON-model",
+    "NUL_model",
+    "model.CON",
+  ])("persists the nearby portable profile ID %s", async (profileId) => {
+    await expect(
+      fixture.service.add({
+        profileId,
+        model: "fixture",
+        providerId: "ollama",
+      }),
+    ).resolves.toMatchObject({ model: { profileId } });
+    expect((await fixture.readConfig()).models.profiles[profileId]).toEqual({
+      configRef: `./models/${profileId}.config.json`,
+    });
+    expect(await fixture.readModelProfile(profileId)).toMatchObject({
+      provider: "ollama",
+      model: "fixture",
+    });
+  });
+
+  test.each(["CON", "PRN", "aux", "NUL", "COM1", "LPT9"])(
+    "preserves Windows device name %s as a provider ID",
+    async (providerId) => {
+      await expect(
+        fixture.service.add({
+          profileId: "portable-profile",
+          model: "fixture",
+          newProvider: { id: providerId, type: "ollama" },
+        }),
+      ).resolves.toMatchObject({ model: { providerId } });
+      expect(await fixture.readModelProfile("portable-profile")).toMatchObject({
+        provider: providerId,
+      });
+    },
+  );
+
   test("rejects registered profile and new-provider collisions before credentials", async () => {
     const env = await fixture.readEnv();
     await expect(
@@ -112,14 +194,16 @@ describe("model addition input and persistence boundaries", () => {
     expect(await fixture.readEnv()).toBe(env);
   });
 
-  test("reserves IDs of existing unregistered model files shown by Configuration", async () => {
+  test("offers an unregistered ID for exact recovery but preserves a mismatched file", async () => {
     const content = await readFile(
       join(fixture.rootDir, "local/models/default.config.json"),
       "utf8",
     );
     const path = join(fixture.rootDir, "local/models/orphan.config.json");
     await writeFile(path, content);
-    expect((await fixture.service.catalog()).profileIds).toContain("orphan");
+    expect((await fixture.service.catalog()).profileIds).not.toContain(
+      "orphan",
+    );
     await expect(
       fixture.service.add({
         profileId: "orphan",

@@ -27,6 +27,12 @@ export function createConfigurationRequests({ requestApi, environmentQuery }) {
         body: JSON.stringify(input),
       });
     },
+    removeRuntimeModel(input, environmentId) {
+      return requestApi(scoped("/runtime/config/models", environmentId), {
+        method: "DELETE",
+        body: JSON.stringify(input),
+      });
+    },
     getRuntimePlugins(environmentId) {
       return requestApi(scoped("/runtime/plugins", environmentId));
     },

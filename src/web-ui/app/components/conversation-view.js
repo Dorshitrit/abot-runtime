@@ -1,5 +1,6 @@
 import { createConversationSchedule } from "./conversation-schedule.js";
 import { createConversationStatus } from "./conversation-status.js";
+import { createConversationReasoning } from "./conversation-reasoning.js";
 import { isNearScrollEnd, pinScrollToEnd } from "../ui-behavior.js";
 import { applyTextDirection, renderMarkdown } from "../lib/text-format.js";
 import { createConversationActivity } from "./conversation-activity.js";
@@ -12,6 +13,7 @@ import {
 import { createMessageAttachments } from "./message-attachments.js";
 import { createMessageTimestamp } from "./message-timestamp.js";
 import { createMessageLinkPreviews } from "./message-link-previews.js";
+import { projectApprovalContinuations } from "../lib/request-lifecycle-view.js";
 
 export function createConversationView({
   dom,
@@ -20,6 +22,7 @@ export function createConversationView({
   isConnected = () => true,
   getActivityForMessage,
   getPendingApproval,
+  getPendingApprovals = () => [getPendingApproval?.()].filter(Boolean),
   createApprovalCard,
   copyText,
   notify,
@@ -27,6 +30,7 @@ export function createConversationView({
   onOpenSchedule = () => {},
   canOpenSchedule = () => true,
   filePreview = { reset() {}, syncScope() {}, setWorkspace() {} },
+  sparkActions = { createNode: () => null },
   documentRoot = document,
   viewport = window,
 }) {
@@ -40,6 +44,7 @@ export function createConversationView({
     onOpenFile: filePreview.open,
     canOpenFile: filePreview.canOpen,
   });
+  const conversationReasoning = createConversationReasoning({ documentRoot });
   const conversationStatus = createConversationStatus({
     getActiveRequestId,
     getActivityForMessage,
@@ -68,7 +73,6 @@ export function createConversationView({
   });
   const viewState = {
     followMessages: true,
-    collapsedThinkingMessageIds: new Set(),
     messageRenderTimer: 0,
     thinkingRenderTimer: 0,
     scrollSettleVersion: 0,
@@ -168,31 +172,8 @@ export function createConversationView({
       if (activity) bubble.appendChild(activity);
     }
 
-    if (message.thinkingText) {
-      const thinking = documentRoot.createElement("details");
-      thinking.className = "thinking-card";
-      thinking.open =
-        Boolean(message.streaming) &&
-        !viewState.collapsedThinkingMessageIds.has(message.id);
-      thinking.addEventListener("toggle", () => {
-        if (!message.streaming) return;
-        if (thinking.open) {
-          viewState.collapsedThinkingMessageIds.delete(message.id);
-        } else {
-          viewState.collapsedThinkingMessageIds.add(message.id);
-        }
-      });
-      const summary = documentRoot.createElement("summary");
-      summary.innerHTML = `<span>Reasoning</span><span>${
-        message.streaming ? "Live" : "View"
-      }</span>`;
-      const thinkingBody = documentRoot.createElement("div");
-      thinkingBody.className = "thinking-body";
-      applyTextDirection(thinkingBody, message.thinkingText);
-      thinkingBody.innerHTML = renderMarkdown(message.thinkingText);
-      thinking.append(summary, thinkingBody);
-      bubble.appendChild(thinking);
-    }
+    const thinking = conversationReasoning.createNode(message);
+    if (thinking) bubble.appendChild(thinking);
 
     bubble.appendChild(body);
     const status = conversationStatus.createNode(message);
@@ -214,6 +195,11 @@ export function createConversationView({
       });
       actions.appendChild(copyButton);
       bubble.appendChild(actions);
+    }
+    const sparkChoices = sparkActions.createNode(message, { onKept: () => row.focus({ preventScroll: true }) });
+    if (sparkChoices) {
+      row.tabIndex = -1;
+      bubble.appendChild(sparkChoices);
     }
     row.appendChild(bubble);
     return row;
@@ -242,7 +228,8 @@ export function createConversationView({
     const previousScrollTop = dom.messagesList.scrollTop;
     const shouldFollow =
       viewState.followMessages || isNearScrollEnd(dom.messagesList);
-    const messages = getMessages();
+    const messages = projectApprovalContinuations(getMessages());
+    conversationReasoning.beginRender(messages);
     messageLinkPreviews.reset();
     conversationStatus.reset();
     dom.messagesList.innerHTML = "";
@@ -255,8 +242,7 @@ export function createConversationView({
     for (const message of messages) {
       dom.messagesList.appendChild(createMessageNode(message));
     }
-    const pendingApproval = getPendingApproval();
-    if (pendingApproval) {
+    for (const pendingApproval of getPendingApprovals()) {
       dom.messagesList.appendChild(createApprovalCard(pendingApproval));
     }
     if (shouldFollow) {
@@ -299,20 +285,16 @@ export function createConversationView({
   function reset() {
     filePreview.reset();
     viewState.followMessages = true;
-    viewState.collapsedThinkingMessageIds.clear();
     viewState.scrollSettleVersion += 1;
     cancelScheduledMessageRender();
     cancelScheduledThinkingRender();
     conversationActivity.reset();
+    conversationReasoning.reset();
     conversationStatus.reset();
     conversationSchedule.reset();
     composerContextWindow.reset();
     composerPlan.reset();
     messageLinkPreviews.reset();
-  }
-
-  function forgetThinkingDisclosure(messageId) {
-    viewState.collapsedThinkingMessageIds.delete(messageId);
   }
 
   function bind() {
@@ -332,7 +314,6 @@ export function createConversationView({
     bind,
     cancelScheduledMessageRender,
     cancelScheduledThinkingRender,
-    forgetThinkingDisclosure,
     render,
     renderActivityStatus: conversationStatus.render,
     renderContextWindow,

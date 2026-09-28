@@ -2,11 +2,11 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { connectNativeHost } from "../../../plugins/system/source/companion/native-session.js";
+import { connectNativeHost } from "../../computer-access/companion/native-session.js";
 import {
   executeHostOperation,
   readHostStatus,
-} from "../../../plugins/system/source/companion/broker-client.js";
+} from "../../computer-access/companion/broker-client.js";
 import {
   hostCompanionFixture,
   nextHostMessage,

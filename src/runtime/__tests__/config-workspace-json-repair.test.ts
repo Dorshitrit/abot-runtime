@@ -56,10 +56,10 @@ function harness(files = [malformedFile()]) {
   return { model, mutations, persistence, rendering, editor, status, saveFile, confirmDiscard, draft };
 }
 
-test("malformed linked files open Advanced Raw JSON with their exact clean baseline", () => {
+test("malformed linked files open the conditional repair editor with their exact clean baseline", () => {
   const file = malformedFile();
   const h = harness([file]);
-  expect(h.model.state.activeCategory).toBe("advanced");
+  expect(h.model.state.activeCategory).toBe("models");
   expect(h.model.state.rawPanelOpen).toBe(true);
   expect(h.model.selectedRawConfigFile()).toBe(file);
   expect(h.editor.value).toBe(file.invalidJson.raw);
@@ -153,7 +153,7 @@ test("structured edits cannot replace the malformed placeholder before raw repai
   const edit = vi.fn((config: Record<string, unknown>) => { config.model = "changed"; });
   h.mutations.mutateConfigFile(file.kind, file.id, edit);
   expect(edit).not.toHaveBeenCalled();
-  expect(h.status.textContent).toContain("Raw JSON");
+  expect(h.status.textContent).toContain("configuration repair section");
   expect(h.editor.value).toBe(file.invalidJson.raw);
   h.draft("{}");
   h.mutations.applyRawDraft();

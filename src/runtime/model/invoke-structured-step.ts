@@ -63,6 +63,7 @@ export async function invokeStructuredModelStep<T>(params: {
   timeoutReason: string;
   boundSteeringVersion?: number;
   invalidOutputReason: string;
+  contextRetention?: "exact";
   contextCompaction?: ModelStepContextCompactionController;
   parse: (text: string) => StructuredModelParseResult<T>;
 }): Promise<T> {
@@ -82,12 +83,17 @@ export async function invokeStructuredModelStep<T>(params: {
       timeoutReason: params.timeoutReason,
       boundSteeringVersion: params.boundSteeringVersion,
       format: params.format,
+      contextRetention: params.contextRetention,
       ...(params.contextCompaction
         ? { contextCompaction: params.contextCompaction }
         : {}),
       accept(text, outputDiagnostics) {
-        const incompleteError = resolveOutputIncompleteError(outputDiagnostics);
+        const incompleteError = resolveOutputIncompleteError(
+          outputDiagnostics,
+          params.modelStep,
+        );
         if (incompleteError) {
+          params.request.abortSignal.throwIfAborted();
           traceDebug("runtime.model", "step.output_incomplete", {
             requestId: params.request.requestId,
             modelStep: params.modelStep,
@@ -126,6 +132,7 @@ export async function invokeStructuredModelStep<T>(params: {
           },
         );
         if (finalAttempt) {
+          params.request.abortSignal.throwIfAborted();
           traceDebug("runtime.model", "step.repair.exhausted", diagnostic);
           throw error;
         }

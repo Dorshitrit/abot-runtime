@@ -3,58 +3,16 @@ import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 
-import { sanitizeJsonText } from "../../../src/plugin-sdk/index.js";
+import { CappedTextBuffer } from "./process-output-buffer.js";
 
 import { ExecPluginError } from "./errors.js";
 import { assertSupportedShell, EXEC_SHELL } from "./shell-platform.js";
-import type {
-  ExecProcessSnapshot,
-  ExecStreamSnapshot,
-  ExecTerminationReason,
-} from "./types.js";
+import type { ExecProcessSnapshot, ExecTerminationReason } from "./types.js";
 
 const COMPLETED_PROCESS_RETENTION_MS = 5 * 60_000;
 const MAX_ACTIVE_PROCESSES_PER_SCOPE = 4;
 
 type ExecChild = ChildProcessByStdio<null, Readable, Readable>;
-
-class CappedTextBuffer {
-  private text = "";
-  private originalChars = 0;
-  private omittedChars = 0;
-  private sawOutput = false;
-
-  constructor(private readonly maxChars: number) {}
-
-  append(chunk: string): void {
-    if (!chunk) return;
-    const safeChunk = sanitizeJsonText(chunk);
-    this.sawOutput = true;
-    this.originalChars += safeChunk.length;
-    const available = Math.max(this.maxChars - this.text.length, 0);
-    this.text += safeChunk.slice(0, available);
-    this.omittedChars += Math.max(safeChunk.length - available, 0);
-  }
-
-  consume(): ExecStreamSnapshot {
-    const text = this.text;
-    const originalChars = this.originalChars;
-    const omittedChars = this.omittedChars;
-    this.text = "";
-    this.originalChars = 0;
-    this.omittedChars = 0;
-    return Object.freeze({
-      text,
-      sawOutput: this.sawOutput,
-      metadata: Object.freeze({
-        truncated: omittedChars > 0,
-        originalChars,
-        returnedChars: text.length,
-        omittedChars,
-      }),
-    });
-  }
-}
 
 type ManagedExecProcess = {
   processId: string;
@@ -94,6 +52,7 @@ export type ExecProcessManager = Readonly<{
       hardTimeoutMs: number;
       abortSignal?: AbortSignal;
       onDisposed?: (processId: string) => void;
+      onStarted?: (processId: string, settled: Promise<void>) => void;
     }>,
   ): Promise<ExecProcessSnapshot>;
   wait(
@@ -111,6 +70,10 @@ export type ExecProcessManager = Readonly<{
     }>,
   ): Promise<ExecProcessSnapshot>;
   release(processId: string, scope: string): Promise<void>;
+  snapshotSettled(
+    processId: string,
+    scope: string,
+  ): Readonly<{ cursor: number; snapshot: ExecProcessSnapshot }>;
 }>;
 
 export function createExecProcessManager(): ExecProcessManager {
@@ -312,6 +275,7 @@ export function createExecProcessManager(): ExecProcessManager {
         ...(params.onDisposed ? { onDisposed: params.onDisposed } : {}),
       };
       processes.set(managed.processId, managed);
+      params.onStarted?.(managed.processId, managed.settlePromise);
 
       const observe = (stream: "stdout" | "stderr", chunk: string): void => {
         if (managed.settled || !chunk) return;
@@ -397,6 +361,31 @@ export function createExecProcessManager(): ExecProcessManager {
       });
     },
 
+    snapshotSettled(processId, scope) {
+      const managed = getScopedProcess(processId, scope);
+      if (
+        !managed.settled ||
+        managed.waitInFlight ||
+        managed.terminalSnapshotClaimed
+      )
+        throw new Error("exec_snapshot_not_quiescent");
+      return Object.freeze({
+        cursor: managed.cursor,
+        snapshot: Object.freeze({
+          processId,
+          status: "settled" as const,
+          ...(managed.exitCode === undefined
+            ? {}
+            : { exitCode: managed.exitCode }),
+          stdout: managed.stdout.peek(),
+          stderr: managed.stderr.peek(),
+          ...(managed.terminationReason
+            ? { terminationReason: managed.terminationReason }
+            : {}),
+          elapsedMs: Date.now() - managed.startedAt,
+        }),
+      });
+    },
     async release(processId, scope) {
       const managed = processes.get(processId);
       if (!managed) return;

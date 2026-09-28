@@ -107,6 +107,7 @@ function enforcePluginResultByteBudget(result) {
 function successResult(input) {
   return enforcePluginResultByteBudget({
     ok: true,
+    ...input.media !== void 0 ? { media: input.media } : {},
     output: input.output,
     producedNewInformation: input.producedNewInformation ?? true,
     ...input.progress !== void 0 ? { progress: input.progress } : {},
@@ -120,6 +121,7 @@ function successResult(input) {
 function failureResult(input) {
   return enforcePluginResultByteBudget({
     ok: false,
+    ...input.media !== void 0 ? { media: input.media } : {},
     output: input.output ?? input.message,
     producedNewInformation: false,
     ...input.progress !== void 0 ? { progress: input.progress } : {},
@@ -132,6 +134,9 @@ function failureResult(input) {
     errorCode: input.errorCode
   });
 }
+
+// src/capabilities/tool-media.ts
+var TOOL_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
 // src/plugin-sdk/tool-availability-brief.ts
 var TOOL_COUNT_MAX = 64;

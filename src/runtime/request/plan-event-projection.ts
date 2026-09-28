@@ -110,7 +110,7 @@ export function projectRequestPlanCommit<
   return Object.freeze([...params.presentation.project(projection)]);
 }
 
-function buildRequestPlanSnapshot(
+export function buildRequestPlanSnapshot(
   plan: ProjectablePlan,
 ): RequestPlanEventSnapshot {
   const statusById = new Map(

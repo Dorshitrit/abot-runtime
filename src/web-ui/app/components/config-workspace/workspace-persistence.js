@@ -14,7 +14,6 @@ export function createConfigWorkspacePersistence({
   memorySetup,
   memoryManagement,
   pluginManagement,
-  hostConnection,
   recordControlEvent,
   applyRawDraft,
   baselineFor,
@@ -93,7 +92,6 @@ export function createConfigWorkspacePersistence({
       replaceDashboard(payload);
       const memoryLoads = [memoryManagement.load()];
       if (pluginManagement) memoryLoads.push(pluginManagement.load());
-      if (hostConnection) memoryLoads.push(hostConnection.load());
       if (options.loadMemorySetup !== false) {
         memoryLoads.unshift(memorySetup.load());
       }

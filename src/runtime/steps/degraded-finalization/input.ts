@@ -12,6 +12,7 @@ import {
 export function buildDegradedFinalizationModelInput(params: {
   request: RequestExecutionSeed;
   input: DegradedFinalizationInput;
+  languageSampleText?: string;
 }): {
   messages: ChatMessage[];
   format: ReturnType<typeof createDegradedFinalizationFormat>;
@@ -25,7 +26,7 @@ export function buildDegradedFinalizationModelInput(params: {
       {
         role: "user",
         content: buildDegradedFinalizationUserPrompt({
-          requestText: params.request.prompt,
+          requestText: params.languageSampleText ?? params.request.prompt,
           problemText: JSON.stringify(params.input.problem, null, 2),
         }),
       },

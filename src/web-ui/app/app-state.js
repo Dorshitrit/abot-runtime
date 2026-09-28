@@ -19,6 +19,7 @@ export function createAppState() {
     contextWindowByRequest: new Map(),
     submittedToolApprovalIds: new Set(),
     requestMessages: new Map(),
+    requestLifecycles: new Map(),
     currentSessionId: "",
     activeRequestId: "",
     sessionViewVersion: 0,

@@ -4,6 +4,7 @@ import { deleteSessionWithAttachments } from "../../runtime/session/session-atta
 import { deleteSessionAttachmentsIfSupported } from "./attachment-routes.js";
 import { WebSessionReadStates } from "../session-read-state/service.js";
 import { sendJson } from "./http.js";
+import type { WorkspaceChangeNotifier } from "./workspace-notifications.js";
 
 type SessionRouteRequest = {
   method: string;
@@ -15,7 +16,10 @@ type SessionRouteRequest = {
 };
 
 export class WebSessionRoutes {
-  constructor(private readonly readStates: WebSessionReadStates) {}
+  constructor(
+    private readonly readStates: WebSessionReadStates,
+    private readonly notifyChanged?: WorkspaceChangeNotifier,
+  ) {}
 
   async handle(request: SessionRouteRequest): Promise<boolean> {
     const { method, segments, body, environmentId, environment, response } =
@@ -62,6 +66,7 @@ export class WebSessionRoutes {
         sendJson(response, 404, { ok: false, error: "session_not_found" });
         return true;
       }
+      this.notifyChanged?.(environmentId, ["sessions"]);
       sendJson(response, 200, { ok: true, readState });
       return true;
     }
@@ -71,19 +76,28 @@ export class WebSessionRoutes {
         sendJson(response, 404, { ok: false, error: "session_not_found" });
         return true;
       }
-      await this.readStates.reset(environmentId, sessionId);
-      await deleteSessionAttachmentsIfSupported(environment, sessionId);
+      try {
+        await this.readStates.reset(environmentId, sessionId);
+        await deleteSessionAttachmentsIfSupported(environment, sessionId);
+      } finally {
+        this.notifyChanged?.(environmentId, ["sessions"]);
+      }
       sendJson(response, 200, { ok: true, ...result });
       return true;
     }
     if (method === "DELETE" && !action) {
-      const result = await deleteSessionWithAttachments(
-        sessions,
-        environment.services.attachments,
-        sessionId,
-      );
-      await this.readStates.forget(environmentId, sessionId);
-      sendJson(response, 200, { ok: true, ...result });
+      try {
+        const result = await deleteSessionWithAttachments(
+          sessions,
+          environment.services.attachments,
+          sessionId,
+        );
+        await this.readStates.forget(environmentId, sessionId);
+        sendJson(response, 200, { ok: true, ...result });
+      } finally {
+        // Cleanup can reject after deletion commits. Request a reread, not a success claim.
+        this.notifyChanged?.(environmentId, ["sessions"]);
+      }
       return true;
     }
     return false;

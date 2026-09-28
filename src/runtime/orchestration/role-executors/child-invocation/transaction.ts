@@ -1,3 +1,8 @@
+import {
+  isRoleApprovalWait,
+  type RoleApprovalWait,
+} from "../approval-continuation.js";
+import { restoreEnteredChild, type EnteredChild } from "./entered-child.js";
 import type {
   RoleCallChildReturnCommit,
   RoleCallFrame,
@@ -13,6 +18,8 @@ import type {
   RoleChildInvocationResult,
   RoleExecutionResult,
   RoleExecutorRegistry,
+  RoleChildInvocationInput,
+  RoleExecutionInput,
 } from "../contracts.js";
 import {
   traceRoleExecutorChildCompleted,
@@ -44,22 +51,20 @@ import {
   readLedgerOrReject,
 } from "../shared/runtime-invariants.js";
 
-type RoleChildInvocationInput<TContext, TValue> = Parameters<
-  RoleExecutorRegistry<TContext, TValue>["invokeChild"]
->[0];
-
 export class ChildInvocationTransaction<TContext, TValue> {
   private readonly diagnostic: RoleExecutorDiagnosticContext;
   private readonly transactions: ReturnType<typeof resolveRoleCallTransactions>;
 
   constructor(
     private readonly params: Readonly<{
-      input: RoleChildInvocationInput<TContext, TValue>;
+      input: RoleChildInvocationInput<TContext>;
       registeredRoleIds: RoleExecutorRegistry<TContext, TValue>["roleIds"];
       isRoleRegistered(
-        roleId: RoleChildInvocationInput<TContext, TValue>["roleId"],
+        roleId: RoleChildInvocationInput<TContext>["roleId"],
       ): boolean;
-      executeRole: RoleExecutorRegistry<TContext, TValue>["execute"];
+      executeRole(
+        input: RoleExecutionInput<TContext>,
+      ): Promise<RoleExecutionResult<TValue> | RoleApprovalWait>;
     }>,
   ) {
     this.transactions = resolveRoleCallTransactions(params.input.ledger);
@@ -70,45 +75,72 @@ export class ChildInvocationTransaction<TContext, TValue> {
     });
   }
 
-  async run(): Promise<RoleChildInvocationResult<TValue>> {
+  async run(): Promise<RoleChildInvocationResult<TValue> | RoleApprovalWait> {
+    const entered = await this.enterChild();
+    const execution = await this.params.executeRole({
+      allowApprovalWait: this.params.input.allowApprovalWait,
+      requestId: this.params.input.requestId,
+      context: this.params.input.context,
+      call: entered.call,
+      ledger: this.params.input.ledger,
+      ...(this.params.input.entered
+        ? {
+            continuationState: {
+              ...this.params.input.entered,
+              callers: this.params.input.entered.callers.slice(1),
+            },
+          }
+        : {}),
+    });
+    if (isRoleApprovalWait(execution)) {
+      return Object.freeze({
+        ...execution,
+        callers: Object.freeze([entered.cursor, ...execution.callers]),
+      });
+    }
+    traceRoleExecutorChildCompleted(this.diagnostic, {
+      childCallId: entered.call.callId,
+      childRoleId: entered.call.roleId,
+      outcome: execution.outcome,
+      summaryLength: execution.summary.length,
+      turnCount: this.params.input.turnCount,
+    });
+    const returnCommit = await this.returnChild(
+      entered,
+      entered.callerCall,
+      execution,
+    );
+    return Object.freeze({ execution, returnCommit });
+  }
+
+  private async enterChild(): Promise<EnteredChild> {
+    const saved = this.params.input.entered?.callers[0];
+    if (saved) return restoreEnteredChild(this.params.input.ledger, saved);
     const before = this.readExpectedCallerHead();
     const callerCall = this.requireActiveCaller(before);
     this.requireInvocableChildRole(callerCall);
-
     const dependencyResultRefs = projectPriorDirectSiblingResultRefs(
       before,
       callerCall,
     );
     this.traceChildRequested(callerCall, dependencyResultRefs);
-
-    const openedChild = await this.openChild(
+    const opened = await this.openChild(
       before,
       callerCall,
       dependencyResultRefs,
     );
-    const execution = await this.params.executeRole({
-      requestId: this.params.input.requestId,
-      context: this.params.input.context,
-      call: openedChild.call,
-      ledger: this.params.input.ledger,
-    });
-    traceRoleExecutorChildCompleted(this.diagnostic, {
-      childCallId: openedChild.call.callId,
-      childRoleId: openedChild.call.roleId,
-      outcome: execution.outcome,
-      summaryLength: execution.summary.length,
-      turnCount: this.params.input.turnCount,
-    });
-
-    const returnCommit = await this.returnChild(
-      openedChild,
+    return {
+      call: opened.call,
       callerCall,
-      execution,
-    );
-    return Object.freeze({
-      execution,
-      returnCommit,
-    });
+      cursor: Object.freeze({
+        callerCall,
+        childCallId: opened.call.callId,
+        turnCount: this.params.input.turnCount,
+        ...(opened.commit.effect.planItemIds
+          ? { planItemIds: opened.commit.effect.planItemIds }
+          : {}),
+      }),
+    };
   }
 
   private readExpectedCallerHead(): RoleCallLedgerHead {
@@ -249,7 +281,7 @@ export class ChildInvocationTransaction<TContext, TValue> {
   }
 
   private async returnChild(
-    openedChild: OpenedChild,
+    openedChild: EnteredChild,
     callerCall: RoleCallFrame,
     execution: RoleExecutionResult<TValue>,
   ): Promise<RoleCallChildReturnCommit> {
@@ -275,7 +307,7 @@ export class ChildInvocationTransaction<TContext, TValue> {
       });
     }
     const returned = returnedResult.commit;
-    if (!isValidChildReturnTransition(returned, openedChild.commit)) {
+    if (!isValidChildReturnTransition(returned, openedChild.cursor)) {
       this.rejectChild({
         issueCode: "child_return_transition_invalid",
         callerCall,

@@ -73,9 +73,16 @@ exit ${options.setupExitCode ?? 0}
   return { directory, base, node, bundle, connection };
 }
 
-function runInstaller(directory: string) {
+function runInstaller(
+  directory: string,
+  input = metadata,
+  downloadShim?: string,
+) {
+  let script = renderMacCompanionScript(input);
+  if (downloadShim)
+    script = script.replaceAll("/usr/bin/curl", `"${downloadShim}"`);
   return spawnSync("/bin/bash", [], {
-    input: renderMacCompanionScript(metadata),
+    input: script,
     encoding: "utf8",
     env: { ...process.env, HOME: directory },
     timeout: 5_000,
@@ -104,19 +111,65 @@ test("an expired installer resumes verified cached setup without downloading or 
 });
 
 test.each(["node", "bundle"] as const)(
-  "resume refuses missing cached %s before setup or downloads",
+  "expired setup with missing cached %s requires a fresh invitation before downloads",
   async (missing) => {
     const fixture = await cachedInstallation();
     await rm(fixture[missing]);
     const result = runInstaller(fixture.directory);
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("cached");
+    expect(result.stderr).toContain("invitation expired");
     expect(result.stdout).not.toContain("Downloading");
     await expect(
       readFile(join(fixture.directory, "setup-payload.json")),
     ).rejects.toMatchObject({ code: "ENOENT" });
   },
 );
+
+test("a fresh invitation downloads the new exact bundle while preserving the previous pairing and cached build", async () => {
+  const fixture = await cachedInstallation();
+  const saved = await readFile(fixture.connection, "utf8");
+  const nextContent = `${bundleContent}// upgraded build\n`;
+  const next = {
+    ...metadata,
+    bundleSha256: createHash("sha256").update(nextContent).digest("hex"),
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  };
+  const download = join(fixture.directory, "download-fixture");
+  await writeFile(download, nextContent);
+  const shim = join(fixture.directory, "curl-fixture");
+  await writeFile(
+    shim,
+    `#!/bin/bash
+set -euo pipefail
+printf '%s\\n' "$@" > "$HOME/download-arguments"
+/bin/cat > "$HOME/download-authorization"
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = '--output' ]; then destination="$2"; shift; fi
+  shift
+done
+/bin/cp "$HOME/download-fixture" "$destination"
+`,
+    { mode: 0o700 },
+  );
+  const result = runInstaller(fixture.directory, next, shim);
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toContain(
+    "Downloading and verifying the ABot companion",
+  );
+  const nextBundle = join(fixture.base, `companion-${next.bundleSha256}.mjs`);
+  expect(await readFile(nextBundle, "utf8")).toBe(nextContent);
+  expect(await readFile(fixture.bundle, "utf8")).toBe(bundleContent);
+  expect(await readFile(fixture.connection, "utf8")).toBe(saved);
+  expect(
+    await readFile(join(fixture.directory, "setup-arguments"), "utf8"),
+  ).toBe(`${nextBundle}\nsetup\n`);
+  expect(
+    await readFile(join(fixture.directory, "download-arguments"), "utf8"),
+  ).toContain(`${metadata.url}/web-api/runtime/system-host/bundle`);
+  expect(
+    await readFile(join(fixture.directory, "download-authorization"), "utf8"),
+  ).toContain(`Authorization: Bearer ${metadata.code}`);
+});
 
 test("resume rejects a modified cached bundle before executing setup", async () => {
   const fixture = await cachedInstallation();

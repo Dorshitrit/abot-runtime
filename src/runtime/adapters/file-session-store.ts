@@ -13,6 +13,9 @@ export function createFileSessionStore(
 ): SessionStore {
   const service = new SessionService(options);
   return {
+    requestLifecycle: service.requestLifecycle,
+    createAssistantConversation:
+      service.createAssistantConversation.bind(service),
     getOrCreateSession: service.getOrCreateSession.bind(service),
     getAllSessions: service.getAllSessions.bind(service),
     listSessions: service.listSessions.bind(service),

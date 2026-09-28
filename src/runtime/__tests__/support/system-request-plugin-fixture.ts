@@ -9,12 +9,12 @@ import {
 import {
   HOST_OPERATIONS,
   type HostStatus,
-} from "../../../../plugins/system/source/companion/protocol.js";
+} from "../../../computer-access/companion/protocol.js";
 import type { SystemHostConnection } from "../../../../plugins/system/source/host-dispatch.js";
-import type { SystemTarget } from "../../../../plugins/system/source/contracts.js";
-import { observeSystemHost } from "../../../../plugins/system/source/host-observation.js";
+import type { SystemTarget } from "../../../computer-access/contracts.js";
+import { observeSystemHost } from "../../../computer-access/host-observation.js";
 import { prepareSystemRequestModules } from "../../../../plugins/system/source/request-system-modules.js";
-import { readSystemTargetId } from "../../../../plugins/system/source/targets.js";
+import { readSystemTargetId } from "../../../computer-access/targets.js";
 
 export const requestHostId = "550e8400-e29b-41d4-a716-446655440000";
 export const requestConnectionId = "550e8400-e29b-41d4-a716-446655440001";

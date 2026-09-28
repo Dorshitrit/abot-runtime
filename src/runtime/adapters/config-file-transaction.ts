@@ -103,9 +103,16 @@ function parseSnapshotConfig(
   }
 }
 
+async function requireRegularConfigFile(path: string): Promise<void> {
+  if ((await stat(path)).isFile()) return;
+  throw new Error("Configuration path must be a regular file.");
+}
+
 async function readSnapshot(path: string, options: ConfigFileReadOptions = {}) {
   let raw: Buffer | undefined;
   try {
+    // Inspect before opening: special entries such as FIFOs can block a read.
+    await requireRegularConfigFile(path);
     raw = await readFile(path);
   } catch (error) {
     if (!isMissingFile(error)) throw error;

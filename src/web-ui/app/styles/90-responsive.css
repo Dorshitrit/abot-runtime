@@ -6,7 +6,7 @@
   }
 
   .workspace-page-body {
-    padding-inline: 28px;
+    padding-inline: var(--workspace-page-gutter);
   }
 }
 
@@ -21,11 +21,11 @@
   }
 
   .workspace-page-header {
-    padding-inline: 28px;
+    padding-inline: var(--workspace-page-gutter);
   }
 
   .workspace-page-body {
-    padding: 20px 24px 48px;
+    padding: 20px var(--workspace-page-gutter) 48px;
   }
 
   .config-category-panel {
@@ -41,8 +41,7 @@
     position: static;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     max-height: none;
-    border-right: 0;
-    border-bottom: 1px solid var(--config-line);
+    border: 1px solid var(--config-line);
   }
 
   .config-model-list-title {
@@ -58,6 +57,8 @@
 
 /* Keep editable fields above the mobile focus-zoom threshold. */
 @media (max-width: 760px), (hover: none) and (pointer: coarse) {
+  .composer textarea,
+  .session-search input,
   .config-dashboard input,
   .config-dashboard select,
   .config-dashboard textarea,
@@ -73,6 +74,7 @@
 @media (max-width: 760px) {
   :root {
     --mobile-rail-height: 68px;
+    --workspace-page-gutter: 14px;
   }
 
   .app-shell,
@@ -100,9 +102,9 @@
     min-height: var(--mobile-rail-height);
     padding: 7px max(10px, env(safe-area-inset-right))
       max(7px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
-    border-top: 1px solid rgba(116, 166, 216, 0.18);
+    border-top: 1px solid var(--line);
     border-right: 0;
-    background: rgba(7, 20, 33, 0.96);
+    background: var(--panel);
     box-shadow: 0 -14px 34px rgba(0, 7, 18, 0.22);
     backdrop-filter: blur(20px);
   }
@@ -111,6 +113,7 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .workspace-brand,
   .rail-spacer,
   .rail-runtime {
     display: none;
@@ -138,16 +141,16 @@
   }
 
   .workspace-rail button.rail-button {
-    display: grid;
-    grid-template-rows: 22px minmax(1.125rem, auto);
-    gap: 1px;
-    place-items: center;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
     width: 100%;
     min-width: 0;
     min-height: 52px;
-    padding: 5px 4px 4px;
+    padding: 8px 10px;
     border: 0;
-    border-radius: 11px;
+    border-radius: 8px;
   }
 
   .rail-button svg {
@@ -320,7 +323,7 @@
 
   .workspace-page-header {
     min-height: 66px;
-    padding: 11px 14px;
+    padding: 11px var(--workspace-page-gutter);
   }
 
   .workspace-page-heading h2 {
@@ -328,7 +331,7 @@
   }
 
   .workspace-page-body {
-    padding: 16px 14px 42px;
+    padding: 16px var(--workspace-page-gutter) 42px;
   }
 
   .config-summary {
@@ -364,7 +367,7 @@
 
 @media (max-width: 620px) {
   .config-workspace-body {
-    padding: 12px 10px 34px;
+    padding: 12px var(--workspace-page-gutter) 34px;
   }
 
   .config-dashboard {

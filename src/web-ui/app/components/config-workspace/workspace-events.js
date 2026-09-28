@@ -1,15 +1,13 @@
+import { rememberCalibrationDisclosure } from "./calibration-disclosure.js";
 import { textOf } from "../../lib/text-format.js";
-import {
-  CONFIG_CATEGORIES,
-  resolveModelExecutionRoute,
-} from "./config-model.js";
+import { resolveModelExecutionRoute } from "./config-model.js";
 
 export function createConfigWorkspaceEvents({
   state,
   dom,
   eventTarget,
   onAddModel,
-  activateCategory,
+  onRemoveModel,
   applyRawDraft,
   changeRawFile,
   configFileKey,
@@ -102,43 +100,13 @@ export function createConfigWorkspaceEvents({
     }
   }
 
-  function handleCategoryKeydown(event, element) {
-    const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
-    if (!keys.includes(event.key)) return;
-    event.preventDefault();
-    const currentIndex = CONFIG_CATEGORIES.indexOf(
-      element.dataset.configCategory,
-    );
-    let nextIndex = currentIndex;
-    if (event.key === "Home") nextIndex = 0;
-    if (event.key === "End") nextIndex = CONFIG_CATEGORIES.length - 1;
-    if (event.key === "ArrowLeft") {
-      nextIndex =
-        (currentIndex - 1 + CONFIG_CATEGORIES.length) %
-        CONFIG_CATEGORIES.length;
-    }
-    if (event.key === "ArrowRight") {
-      nextIndex = (currentIndex + 1) % CONFIG_CATEGORIES.length;
-    }
-    activateCategory(CONFIG_CATEGORIES[nextIndex], { focus: true });
-  }
-
-  function handleDashboardKeydown(event) {
-    if (dashboardIsBusy()) return;
-    const element = event.target?.closest?.("[data-config-category]");
-    if (element) handleCategoryKeydown(event, element);
-  }
-
   function handleDashboardToggle(event) {
     const details = event.target;
     if (details?.id === "configRawPanel") {
       state.rawPanelOpen = details.open;
       return;
     }
-    const key = details?.dataset?.calibrationKey;
-    if (!key) return;
-    if (details.open) state.expandedCalibrationKeys.add(key);
-    else state.expandedCalibrationKeys.delete(key);
+    rememberCalibrationDisclosure(state, details);
   }
 
   function stepMappingIsComplete(step, profile) {
@@ -184,19 +152,29 @@ export function createConfigWorkspaceEvents({
     );
   }
 
+  function handleRemoveModelAction(id) {
+    const file = findConfigFile("model", id);
+    if (file?.registered !== true) return;
+    onRemoveModel?.({
+      profileId: file.id,
+      label: file.config?.label || file.id,
+      expectedRevision: state.configDashboard?.files?.runtime?.revision,
+    });
+  }
+
   function handleDashboardClick(event) {
-    if (dashboardIsBusy()) return;
     const element = event.target?.closest?.("[data-config-action]");
     if (!element) return;
     const action = element.dataset.configAction;
     const kind = element.dataset.kind;
     const id = element.dataset.id;
-    if (action === "select-category") {
-      activateCategory(element.dataset.configCategory || "memory");
-      return;
-    }
+    if (dashboardIsBusy()) return;
     if (action === "add-model") {
       onAddModel?.({ providerId: element.dataset.providerId || undefined });
+      return;
+    }
+    if (action === "remove-model") {
+      handleRemoveModelAction(id);
       return;
     }
     if (action === "select-model") {
@@ -267,7 +245,6 @@ export function createConfigWorkspaceEvents({
     dom.configDashboard.addEventListener("input", handleDashboardInput);
     dom.configDashboard.addEventListener("input", handleRawEditorInput);
     dom.configDashboard.addEventListener("change", handleDashboardChange);
-    dom.configDashboard.addEventListener("keydown", handleDashboardKeydown);
     dom.configDashboard.addEventListener("toggle", handleDashboardToggle, true);
     eventTarget.addEventListener?.("beforeunload", handleBeforeUnload);
   }

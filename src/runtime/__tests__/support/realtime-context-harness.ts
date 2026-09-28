@@ -46,7 +46,6 @@ export function createRealtimeContextHarness() {
     scheduleThinkingRender: vi.fn(),
     cancelScheduledMessageRender: vi.fn(),
     cancelScheduledThinkingRender: vi.fn(),
-    forgetThinkingDisclosure: vi.fn(),
     markCurrentSessionReadSoon: vi.fn(),
     applySessionTitleUpdate: vi.fn(),
     setMessageActivityStatus: vi.fn(),

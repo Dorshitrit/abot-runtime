@@ -3,65 +3,65 @@
 .config-operations-section {
   display: grid;
   align-content: start;
-  gap: 18px;
+  gap: 16px;
   min-width: 0;
-  margin-block-start: 30px;
-  padding-block-start: 24px;
-  border-top: 1px solid var(--config-line);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .config-operations-heading h3 {
   margin: 0;
   color: var(--config-copy);
   font-size: var(--font-size-2xl);
-  font-weight: 520;
+  font-weight: 400;
 }
 
 .config-operations-heading p {
   margin: 5px 0 0;
   color: var(--config-muted);
-  font-size: var(--font-size-md);
-  line-height: 1.45;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
 }
 
 .operations-tabs {
-  position: sticky;
-  top: 0;
-  z-index: 6;
   display: flex;
   gap: 4px;
-  width: min(1260px, 100%);
-  padding: 4px;
-  border: 1px solid rgba(114, 162, 210, 0.16);
-  border-radius: 12px;
-  background: rgba(11, 29, 47, 0.96);
-  box-shadow: 0 12px 32px rgba(0, 7, 18, 0.14);
-  backdrop-filter: blur(16px);
+  width: fit-content;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
-.operations-tab-button {
-  flex: 0 1 150px;
-  min-height: 36px;
+.config-operations-section .operations-tab-button {
+  flex: none;
+  min-height: 32px;
+  padding: 5px 14px;
   border: 0;
-  border-radius: 9px;
+  border-radius: 6px;
+  background: transparent;
   color: var(--muted);
   font-size: var(--font-size-md);
-  font-weight: 620;
+  font-weight: 400;
 }
 
-.operations-tab-button:hover {
-  background: rgba(84, 133, 181, 0.09);
+.config-operations-section .operations-tab-button:hover {
+  background: var(--control-bg);
   color: var(--text);
 }
 
-.operations-tab-button.active {
-  background: rgba(76, 136, 218, 0.16);
-  color: #dceaff;
+.config-operations-section .operations-tab-button.active {
+  background: var(--accent-soft);
+  color: var(--text);
 }
 
 .operations-tab-page {
   display: none;
-  width: min(1260px, 100%);
+  width: 100%;
   min-height: 0;
 }
 
@@ -71,14 +71,21 @@
   gap: 16px;
 }
 
-.operations-tab-page .runtime-card,
-.operations-tab-page .logs-view {
-  min-height: 280px;
-  padding: clamp(18px, 3vw, 30px);
+.operations-tab-page .runtime-card {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
-.logs-view {
+.operations-tab-page .logs-view {
+  min-height: 120px;
+  max-height: min(52dvh, 480px);
+  padding: 12px;
+  background: var(--bg);
   font-family: var(--font-mono);
+  line-height: 1.6;
 }
 
 .runtime-card {
@@ -89,14 +96,15 @@
 
 .runtime-grid {
   display: grid;
-  gap: 10px;
+  gap: 0;
 }
 
 .runtime-row {
   display: grid;
   grid-template-columns: 7rem minmax(0, 1fr);
-  gap: 10px;
+  gap: 16px;
   min-width: 0;
+  padding-block: 6px;
 }
 
 .runtime-row span:first-child {
@@ -104,6 +112,7 @@
 }
 
 .runtime-row strong {
+  font-weight: 400;
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -116,32 +125,32 @@
   margin-bottom: 12px;
   color: var(--muted);
   font-size: var(--font-size-sm);
-  font-weight: 720;
+  font-weight: 400;
 }
 
 .health-pill {
   min-width: 48px;
   padding: 3px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--line);
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--control-bg);
   text-align: center;
   color: var(--text);
   font-size: var(--font-size-sm);
-  font-weight: 780;
+  font-weight: 400;
   text-transform: uppercase;
 }
 
 .health-pill.healthy {
-  border-color: rgba(50, 215, 75, 0.2);
-  background: rgba(50, 215, 75, 0.12);
-  color: #9ef0aa;
+  border-color: color-mix(in srgb, var(--green) 24%, transparent);
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+  color: var(--green);
 }
 
 .health-pill.failed {
-  border-color: rgba(255, 69, 58, 0.24);
-  background: rgba(255, 69, 58, 0.13);
-  color: #ffb0ab;
+  border-color: color-mix(in srgb, var(--danger) 24%, transparent);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  color: var(--danger);
 }
 
 .health-requests {
@@ -157,10 +166,9 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
-  padding: 8px 9px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.045);
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
 }
 
 .health-request div {
@@ -174,6 +182,7 @@
 }
 
 .health-request strong {
+  font-weight: 400;
   overflow: hidden;
   color: var(--text-strong);
   text-overflow: ellipsis;
@@ -189,9 +198,14 @@
   font-size: var(--font-size-sm);
 }
 
-.runtime-row,
-.health-request {
-  border-color: rgba(112, 157, 201, 0.13);
-  border-radius: 10px;
-  background: rgba(54, 94, 133, 0.08);
+.config-operations-section .empty-state.compact {
+  min-height: 0;
+  padding: 12px 0;
+  text-align: start;
+}
+
+@media (min-width: 621px) {
+  .config-workspace-panel .config-category-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }

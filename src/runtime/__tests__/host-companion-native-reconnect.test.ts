@@ -1,15 +1,18 @@
+vi.mock("../../computer-access/companion/native-notifications.js", () => ({
+  createNativeNotificationSession: vi.fn(async () => ({ ready: false, handlers: () => ({}), close: () => {} })),
+}));
 import { randomUUID } from "node:crypto";
 import { afterEach, expect, test, vi } from "vitest";
-import { resolveNativeRuntimeAddress } from "../../../plugins/system/source/companion/native-address.js";
-import { runNativeHostSupervisor } from "../../../plugins/system/source/companion/native-supervisor.js";
+import { resolveNativeRuntimeAddress } from "../../computer-access/companion/native-address.js";
+import { runNativeHostSupervisor } from "../../computer-access/companion/native-supervisor.js";
 import type {
   NativeSessionOptions,
   NativeSessionOutcome,
-} from "../../../plugins/system/source/companion/native-session.js";
+} from "../../computer-access/companion/native-session.js";
 import type {
   NativeHostConnection,
   NativeHostState,
-} from "../../../plugins/system/source/companion/native-state.js";
+} from "../../computer-access/companion/native-state.js";
 
 afterEach(() => vi.useRealTimers());
 

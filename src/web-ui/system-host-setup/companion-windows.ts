@@ -32,7 +32,9 @@ function Invoke-VerifiedCompanionSetup {
   if ((& $Node --version) -ne $Metadata.nodeVersion -or $LASTEXITCODE -ne 0) { throw 'The dedicated Node.js runtime could not be verified.' }
   if ((Get-FileHash -LiteralPath $Bundle -Algorithm SHA256).Hash -ne $Metadata.bundleSha256) { throw 'The existing companion bundle does not match its recorded checksum.' }
   Write-Host 'Connecting this computer and enabling startup at sign-in...'
-  $Payload = @{ url = $Metadata.url; code = $Metadata.code } | ConvertTo-Json -Compress
+  $Setup = @{ url = $Metadata.url; code = $Metadata.code }
+  if ($Metadata.upgradeHostId) { $Setup.upgradeHostId = $Metadata.upgradeHostId }
+  $Payload = $Setup | ConvertTo-Json -Compress
   $Payload | & $Node $Bundle setup
   if ($LASTEXITCODE -ne 0) { throw 'Companion setup did not complete. Check the message above before resuming setup.' }
   Write-Host 'Companion setup completed. Return to ABot to check the computer connection.'
@@ -77,7 +79,8 @@ try {
   $Node = Join-Path $NodeDirectory 'node.exe'
   $Bundle = Join-Path $Base ('companion-' + $Metadata.bundleSha256 + '.mjs')
   $ExistingConnection = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.abot\host-companion\connection.json'
-  if (Test-Path -LiteralPath $ExistingConnection) {
+  $CanResumeCached = (Test-Path -LiteralPath $ExistingConnection -PathType Leaf) -and (Test-Path -LiteralPath $Node -PathType Leaf) -and (Test-Path -LiteralPath $Bundle -PathType Leaf)
+  if ($CanResumeCached) {
     Invoke-VerifiedCompanionSetup
     exit 0
   }

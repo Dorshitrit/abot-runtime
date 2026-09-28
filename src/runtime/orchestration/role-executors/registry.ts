@@ -1,19 +1,17 @@
 import { RoleActivationLoop } from "./activation/loop.js";
+import {
+  isRoleApprovalWait,
+  type RoleApprovalWait,
+} from "./approval-continuation.js";
 import { ChildInvocationTransaction } from "./child-invocation/transaction.js";
 import type {
   RoleChildInvocationResult,
   RoleExecutionResult,
   RoleExecutor,
   RoleExecutorRegistry,
+  RoleChildInvocationInput,
+  RoleExecutionInput,
 } from "./contracts.js";
-
-type RoleChildInvocationInput<TContext, TValue> = Parameters<
-  RoleExecutorRegistry<TContext, TValue>["invokeChild"]
->[0];
-
-type RoleExecutionInput<TContext, TValue> = Parameters<
-  RoleExecutorRegistry<TContext, TValue>["execute"]
->[0];
 
 export function createRoleExecutorRegistry<TContext, TValue = unknown>(
   executors: readonly RoleExecutor<TContext, TValue>[],
@@ -41,30 +39,42 @@ class RoleExecutorRuntime<TContext, TValue> {
     this.roleIds = Object.freeze([...byRoleId.keys()]);
     this.registry = Object.freeze({
       roleIds: this.roleIds,
-      invokeChild: async (input) => this.invokeChild(input),
-      execute: async (input) => this.execute(input),
+      invokeChild: this.invokeChild.bind(this) as RoleExecutorRegistry<
+        TContext,
+        TValue
+      >["invokeChild"],
+      execute: this.execute.bind(this) as RoleExecutorRegistry<
+        TContext,
+        TValue
+      >["execute"],
     });
   }
 
-  private invokeChild(
-    input: RoleChildInvocationInput<TContext, TValue>,
-  ): Promise<RoleChildInvocationResult<TValue>> {
-    return new ChildInvocationTransaction({
+  private async invokeChild(
+    input: RoleChildInvocationInput<TContext>,
+  ): Promise<RoleChildInvocationResult<TValue> | RoleApprovalWait> {
+    const result = await new ChildInvocationTransaction({
       input,
       registeredRoleIds: this.roleIds,
       isRoleRegistered: (roleId) => this.byRoleId.has(roleId),
       executeRole: async (executionInput) => this.execute(executionInput),
     }).run();
+    if (isRoleApprovalWait(result) && !input.allowApprovalWait)
+      throw new Error("role_approval_wait_not_enabled");
+    return result;
   }
 
-  private execute(
-    input: RoleExecutionInput<TContext, TValue>,
-  ): Promise<RoleExecutionResult<TValue>> {
-    return new RoleActivationLoop({
+  private async execute(
+    input: RoleExecutionInput<TContext>,
+  ): Promise<RoleExecutionResult<TValue> | RoleApprovalWait> {
+    const result = await new RoleActivationLoop({
       input,
       registeredRoleIds: this.roleIds,
       executorByRoleId: this.byRoleId,
       invokeChild: async (childInput) => this.invokeChild(childInput),
     }).run();
+    if (isRoleApprovalWait(result) && !input.allowApprovalWait)
+      throw new Error("role_approval_wait_not_enabled");
+    return result;
   }
 }

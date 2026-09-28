@@ -1,0 +1,55 @@
+/* Independent Co-worker controls; shared native input/button primitives remain canonical. */
+.co-worker-settings.passive-learning-settings { display: grid; gap: 20px; max-width: none; }
+.co-worker-settings-header { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; }
+.co-worker-settings-header .co-worker-settings-intro { flex: 1 1 320px; }
+.co-worker-settings-header button { flex-shrink: 0; margin-inline-start: auto; }
+.co-worker-settings-intro h4,
+.co-worker-settings-card h4,
+.co-worker-usage h4 { margin: 0; font-size: var(--font-size-lg); font-weight: 400; color: var(--text-strong); }
+.co-worker-settings-intro p,
+.co-worker-settings-card > p,
+.co-worker-usage-header p { margin: 6px 0 0; color: var(--muted); font-size: var(--font-size-sm); line-height: 1.6; }
+.co-worker-settings-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.co-worker-settings-card,
+.co-worker-settings-limits { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
+.co-worker-settings-card > p:first-of-type { min-height: 44px; }
+.co-worker-settings-card h4::before { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); margin-inline-end: 8px; transition: background-color 180ms ease; }
+.co-worker-settings-card[data-enabled="true"] h4::before { background: var(--accent); }
+.co-worker-setting-field { display: grid; gap: 7px; min-width: 0; margin-top: 14px; color: var(--muted); font-size: var(--font-size-sm); }
+.co-worker-setting-field :is(input, select) { width: 100%; min-width: 0; min-height: 34px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--control-fill); color: var(--text); font-size: var(--font-size-sm); font-weight: 400; box-shadow: none; }
+.co-worker-setting-field select { padding-inline-end: 28px; }
+.co-worker-setting-field :is(input, select):hover { border-color: var(--line); background: var(--control-fill); }
+.co-worker-setting-field :is(input, select):focus { border-color: var(--line-strong); outline: none; box-shadow: none; }
+.co-worker-setting-field :is(input, select):focus-visible { outline: 1px solid var(--line-strong); outline-offset: 1px; }
+.co-worker-setting-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.co-worker-setting-switch,
+.co-worker-hours-toggle { display: flex; align-items: center; gap: 9px; color: var(--text); font-size: var(--font-size-sm); cursor: pointer; }
+.co-worker-setting-switch { min-height: 42px; margin: 11px 0 14px; }
+.co-worker-setting-switch input[type="checkbox"] { position: relative; appearance: none; flex: 0 0 30px; width: 30px; min-height: 18px; height: 18px; margin: 0; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--control-fill); transition: background-color 180ms ease; }
+.co-worker-setting-switch input::after { content: ""; position: absolute; width: 10px; height: 10px; top: 3px; left: 3px; border-radius: 50%; background: var(--muted); transition: transform 180ms ease, background-color 180ms ease; }
+.co-worker-setting-switch input:checked { background: var(--accent-soft); }
+.co-worker-setting-switch input:checked::after { transform: translateX(12px); background: var(--accent); }
+.co-worker-setting-switch input:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
+.co-worker-hours-toggle { margin-top: 18px; color: var(--muted); }
+.co-worker-hours-toggle input { margin: 0; }
+.co-worker-window-fields:not([hidden]) { animation: co-worker-window-reveal 160ms ease-out both; }
+.co-worker-setting-note { margin: 14px 0 0; color: var(--muted); font-size: var(--font-size-xs); line-height: 1.65; }
+.co-worker-limits-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 18px; }
+.co-worker-memory-policy > summary { cursor: pointer; color: var(--text); font-size: var(--font-size-sm); }
+.co-worker-settings-footer { display: flex; justify-content: space-between; align-items: center; gap: 14px; min-height: 36px; }
+.co-worker-settings-footer [role="status"] { color: var(--muted); font-size: var(--font-size-xs); }
+.co-worker-settings-footer button { flex-shrink: 0; margin-inline-start: auto; }
+.co-worker-usage-header,
+.co-worker-usage-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.co-worker-usage-header { margin-bottom: 8px; }
+.co-worker-usage-row { padding: 18px 0; border-bottom: 1px solid var(--line); }
+.co-worker-usage-heading { font-size: var(--font-size-sm); }
+.co-worker-usage-heading small { display: block; margin-top: 5px; color: var(--muted); font-size: var(--font-size-xs); line-height: 1.5; }
+.co-worker-usage-value { text-align: end; font-variant-numeric: tabular-nums; color: var(--text); }
+.co-worker-usage-meter { height: 3px; margin-top: 13px; border-radius: 4px; overflow: hidden; background: var(--control-fill); }
+.co-worker-usage-meter > span { display: block; width: 100%; height: 100%; border-radius: inherit; background: var(--accent); opacity: .62; transform-origin: left; transform: scaleX(var(--co-worker-usage, 0)); transition: transform 220ms ease-out; }
+@keyframes co-worker-window-reveal { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@media (max-width: 1050px) { .co-worker-settings-grid { grid-template-columns: 1fr; } .co-worker-settings-card > p:first-of-type { min-height: 0; } .co-worker-setting-pair { max-width: 420px; } }
+@media (max-width: 700px) { .co-worker-limits-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .co-worker-settings-card, .co-worker-settings-limits { padding: 16px; } .co-worker-usage-heading { align-items: start; } }
+@media (max-width: 460px) { .co-worker-limits-grid { grid-template-columns: 1fr; } .co-worker-usage-heading { flex-direction: column; gap: 8px; } .co-worker-usage-value { text-align: start; } }
+@media (prefers-reduced-motion: reduce) { .co-worker-window-fields:not([hidden]) { animation: none; } .co-worker-setting-switch input, .co-worker-setting-switch input::after, .co-worker-settings-card h4::before, .co-worker-usage-meter > span { transition: none; } }

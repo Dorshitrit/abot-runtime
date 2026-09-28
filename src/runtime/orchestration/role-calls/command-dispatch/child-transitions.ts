@@ -24,6 +24,7 @@ import {
 } from "../reducer-primitives.js";
 import { isRoleCallWorkingDirectoryRoleId } from "../working-directory.js";
 import { resolveCanonicalResultReceiptForReturn } from "../return-result-receipt.js";
+import { isRoleCallResultText } from "../role-result-text.js";
 import { nextCallId, replaceCall } from "./call-frame-state.js";
 
 export function openChild(
@@ -149,7 +150,7 @@ export function returnChild(
     return reject(state, "child_return_mismatch");
   }
   const { caller, child } = matchedReturn;
-  if (!hasValidChildReturnPayload(child, outcome, summary, policy)) {
+  if (!hasValidChildReturnPayload(child, outcome, summary)) {
     return reject(state, "invalid_command");
   }
   const resultRef = nextResultRef(state);
@@ -280,11 +281,10 @@ function hasValidChildReturnPayload(
   child: RoleCallFrame,
   outcome: ReturnChildRoleCallCommand["outcome"],
   summary: string,
-  policy: RoleCallPolicy,
 ): child is ReturnableChildFrame {
   if (child.roleId === RUNTIME_ROOT_ROLE_ID) return false;
   if (outcome !== "completed" && outcome !== "failed") return false;
-  return isBoundedText(summary, policy.limits.maxResultChars);
+  return isRoleCallResultText(summary);
 }
 
 function hasIncompleteCompletedPlannerPlan(

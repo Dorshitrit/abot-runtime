@@ -1,38 +1,25 @@
+import type { ComputerAccessConnection } from "../../../src/plugin-sdk/computer-access.js";
 import {
   failureResult,
   successResult,
   type ToolImplementation,
-  type ToolImplementationOutput,
 } from "../../../src/plugin-sdk/index.js";
 import {
   executeHostOperation,
   readHostStatus,
-} from "./companion/broker-client.js";
+} from "../../../src/plugin-sdk/computer-access.js";
 import {
   HOST_OPERATIONS,
   type HostOperation,
-  type HostStatus,
-} from "./companion/protocol.js";
-import { SystemOperationError } from "./contracts.js";
+} from "../../../src/plugin-sdk/computer-access.js";
+import { SystemOperationError } from "../../../src/plugin-sdk/computer-access.js";
 import {
   observeCapturedSystemTargets,
   requireSystemRequestRoute,
   type SystemTargetSnapshot,
 } from "./request-target-snapshot.js";
 
-export type SystemHostConnection = Readonly<{
-  readHostStatus(rootDir: string): Promise<HostStatus>;
-  executeHostOperation(
-    rootDir: string,
-    input: Readonly<{
-      hostId: string;
-      connectionId: string;
-      operation: HostOperation;
-      params: Record<string, unknown>;
-      abortSignal?: AbortSignal;
-    }>,
-  ): Promise<ToolImplementationOutput>;
-}>;
+export type SystemHostConnection = ComputerAccessConnection;
 
 export const defaultSystemHostConnection: SystemHostConnection = {
   readHostStatus,

@@ -14,6 +14,12 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
+function requestEvents(events: Record<string, unknown>[]) {
+  return events.filter(
+    (event) => event.type !== "event" || event.name !== "scheduler.changed",
+  );
+}
+
 async function createDispatchFixture(handle: RuntimeRequestHandler["handle"]) {
   const fixture = await createSchedulerRuntimeFixture();
   cleanups.push(fixture.dispose);
@@ -69,58 +75,64 @@ async function createDispatchFixture(handle: RuntimeRequestHandler["handle"]) {
 }
 
 describe("scheduler dispatch adapter contract", () => {
-  test("submits FULL, saved model and mode, exact invocation text and correlated metadata to the canonical handler", async () => {
-    const handle = vi.fn<RuntimeRequestHandler["handle"]>(
-      async (ws, message) => {
-        await fixture.application.services.sessions.appendMessage(
-          "session",
-          "assistant",
-          "persisted result",
-          { requestId: message.requestId as string },
-        );
-        ws.send(
-          JSON.stringify({
-            type: "completed",
-            requestId: message.requestId,
-            output: "persisted result",
-          }),
-        );
-      },
-    );
-    const fixture = await createDispatchFixture(handle);
-    fixture.runtime.subscribe(() => {
-      throw new Error("view_failure");
-    });
-    const { submitted, settled } = await fixture.runNow();
-    expect(handle).toHaveBeenCalledOnce();
-    expect(handle.mock.calls[0][1]).toMatchObject({
-      type: "run_request",
-      requestId: submitted.requestId,
-      sessionId: "session",
-      text: SCHEDULED_PROMPT,
-      agentMode: "deep",
-      modelPreference: { profileId: "scheduled-model", scope: "all" },
-      toolPermissionMode: "full_access",
-    });
-    expect(handle.mock.calls[0][1]).not.toHaveProperty("schedule");
-    expect(
-      resolveScheduledExecution(handle.mock.calls[0][2]!, {
+  test.each(["full_access", "full_plus"] as const)(
+    "submits %s, saved model and mode, exact invocation text and correlated metadata to the canonical handler",
+    async (toolPermissionMode) => {
+      const handle = vi.fn<RuntimeRequestHandler["handle"]>(
+        async (ws, message) => {
+          await fixture.application.services.sessions.appendMessage(
+            "session",
+            "assistant",
+            "persisted result",
+            { requestId: message.requestId as string },
+          );
+          ws.send(
+            JSON.stringify({
+              type: "completed",
+              requestId: message.requestId,
+              output: "persisted result",
+            }),
+          );
+        },
+      );
+      const fixture = await createDispatchFixture(handle);
+      await fixture.runtime.scheduler.update(fixture.job.id, {
+        toolPermissionMode,
+      });
+      fixture.runtime.subscribe(() => {
+        throw new Error("view_failure");
+      });
+      const { submitted, settled } = await fixture.runNow();
+      expect(handle).toHaveBeenCalledOnce();
+      expect(handle.mock.calls[0][1]).toMatchObject({
+        type: "run_request",
         requestId: submitted.requestId,
         sessionId: "session",
-      }),
-    ).toEqual({
-      jobId: fixture.job.id,
-      runId: submitted.id,
-      title: "Dispatch contract",
-      scheduledAt: submitted.scheduledAt,
-      triggerType: "manual",
-    });
-    expect(settled).toMatchObject({
-      status: "succeeded",
-      resultText: "persisted result",
-      resultMessageId: expect.any(String),
-    });
-  });
+        text: SCHEDULED_PROMPT,
+        agentMode: "deep",
+        modelPreference: { profileId: "scheduled-model", scope: "all" },
+        toolPermissionMode,
+      });
+      expect(handle.mock.calls[0][1]).not.toHaveProperty("schedule");
+      expect(
+        resolveScheduledExecution(handle.mock.calls[0][2]!, {
+          requestId: submitted.requestId,
+          sessionId: "session",
+        }),
+      ).toEqual({
+        jobId: fixture.job.id,
+        runId: submitted.id,
+        title: "Dispatch contract",
+        scheduledAt: submitted.scheduledAt,
+        triggerType: "manual",
+      });
+      expect(settled).toMatchObject({
+        status: "succeeded",
+        resultText: "persisted result",
+        resultMessageId: expect.any(String),
+      });
+    },
+  );
 
   test("does not infer success from a resolved handler without terminal evidence", async () => {
     const fixture = await createDispatchFixture(async () => undefined);
@@ -146,7 +158,7 @@ describe("scheduler dispatch adapter contract", () => {
       status: "failed",
       error: "scheduled_result_not_persisted",
     });
-    expect(events).toEqual([
+    expect(requestEvents(events)).toEqual([
       expect.objectContaining({
         type: "failed",
         error: "scheduled_result_not_persisted",
@@ -185,12 +197,12 @@ describe("scheduler dispatch adapter contract", () => {
     const running = fixture.runNow();
     await entered.waiting;
     try {
-      expect(events).toEqual([]);
+      expect(requestEvents(events)).toEqual([]);
     } finally {
       release.open();
       await running;
     }
-    expect(events).toEqual([
+    expect(requestEvents(events)).toEqual([
       expect.objectContaining({ type: "completed", output: "saved" }),
     ]);
   });
@@ -214,7 +226,7 @@ describe("scheduler dispatch adapter contract", () => {
       status: "failed",
       error: "session_read_failed",
     });
-    expect(events).toEqual([
+    expect(requestEvents(events)).toEqual([
       expect.objectContaining({ type: "failed", error: "session_read_failed" }),
     ]);
   });
@@ -239,13 +251,13 @@ describe("scheduler dispatch adapter contract", () => {
         status: "failed",
         error: "handler_cleanup_failed",
       });
-      expect(events).toEqual([
+      expect(requestEvents(events)).toEqual([
         expect.objectContaining({
           type: "failed",
           error: "handler_cleanup_failed",
         }),
       ]);
-      expect(events[0]).not.toHaveProperty("output");
+      expect(requestEvents(events)[0]).not.toHaveProperty("output");
     },
   );
 
@@ -297,7 +309,7 @@ describe("scheduler dispatch adapter contract", () => {
     ).toBe("pending");
     release.open();
     await fixture.admission.whenIdle();
-    expect(events).toEqual([]);
+    expect(requestEvents(events)).toEqual([]);
     await fixture.runtime.scheduler.tick();
     await vi.waitFor(async () => {
       expect(
@@ -306,7 +318,7 @@ describe("scheduler dispatch adapter contract", () => {
         )?.status,
       ).toBe("succeeded");
     });
-    expect(events).toEqual([
+    expect(requestEvents(events)).toEqual([
       expect.objectContaining({ type: "completed", requestId: next.requestId }),
     ]);
     expect(
@@ -359,7 +371,8 @@ describe("scheduler dispatch adapter contract", () => {
     });
     const nextEvents: Record<string, unknown>[] = [];
     let restarted: Promise<void> | undefined;
-    fixture.runtime.subscribe(() => {
+    fixture.runtime.subscribe((event) => {
+      if (event.type !== "completed") return;
       const stopped = fixture.runtime.stop();
       const started = fixture.runtime.start();
       restarted = Promise.all([stopped, started]).then(() => undefined);
@@ -367,7 +380,7 @@ describe("scheduler dispatch adapter contract", () => {
     });
     await fixture.runNow();
     await restarted;
-    expect(nextEvents).toEqual([]);
+    expect(requestEvents(nextEvents)).toEqual([]);
   });
 
   test("fails before dispatch when the saved model disappears instead of falling back", async () => {

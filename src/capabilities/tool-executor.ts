@@ -1,4 +1,5 @@
 import { traceDebug } from "../runtime/observability/debug-logger.js";
+import { isToolResultMedia } from "./tool-media.js";
 import type {
   ToolCall,
   ToolActionSummary,
@@ -9,6 +10,10 @@ import type {
 } from "./tool-types.js";
 
 type ToolExecutorOptions = {
+  requestWork?: ToolExecutionContext["requestWork"];
+  requestState?: ToolExecutionContext["requestState"];
+  media?: ToolExecutionContext["media"];
+  onRequestDispose?: ToolExecutionContext["onRequestDispose"];
   implementations?: Record<string, ToolImplementation>;
   abortSignal?: AbortSignal;
   sharedState?: ToolExecutionContext["sharedState"];
@@ -18,6 +23,7 @@ type ToolExecutorOptions = {
 };
 
 function normalizeImplementationOutput(value: ToolImplementationOutput): {
+  media?: ToolImplementationOutput["media"];
   ok: boolean;
   output: string;
   progress: boolean;
@@ -36,7 +42,8 @@ function normalizeImplementationOutput(value: ToolImplementationOutput): {
     Array.isArray(value) ||
     typeof value.ok !== "boolean" ||
     typeof value.output !== "string" ||
-    typeof value.producedNewInformation !== "boolean"
+    typeof value.producedNewInformation !== "boolean" ||
+    !isToolResultMedia(value.media)
   ) {
     const error = new TypeError(
       "tool implementations must return ok, output, and producedNewInformation",
@@ -46,6 +53,7 @@ function normalizeImplementationOutput(value: ToolImplementationOutput): {
   }
   const output = value.output;
   return {
+    ...(value.media ? { media: value.media } : {}),
     ok: value.ok,
     output,
     progress: value.progress === true,
@@ -149,6 +157,10 @@ export async function executeToolCall(
       throw createToolAbortError(options.abortSignal.reason);
     }
     const execution = execute(call.params, {
+      requestWork: options.requestWork,
+      requestState: options.requestState,
+      media: options.media,
+      onRequestDispose: options.onRequestDispose,
       abortSignal: options.abortSignal,
       sharedState: options.sharedState,
       modelInvoker: options.modelInvoker,
@@ -165,6 +177,7 @@ export async function executeToolCall(
       output: normalized.output,
       progress: normalized.progress,
       producedNewInformation: normalized.producedNewInformation,
+      ...(normalized.media ? { media: normalized.media } : {}),
       ...(normalized.actions ? { actions: normalized.actions } : {}),
       ...(typeof normalized.exitCode === "number"
         ? { exitCode: normalized.exitCode }

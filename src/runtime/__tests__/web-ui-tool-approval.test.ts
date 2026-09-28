@@ -123,10 +123,13 @@ describe("web ui tool approval controller", () => {
     const actions = bubble.children[2]!;
     const approveButton = actions.children[0]!;
     const header = bubble.children[0]!;
-    const detail = bubble.children[1]!;
+    const explanation = bubble.children[1]!;
+    const detail = explanation.children[1]!;
     expect(row.className).toBe("message-row assistant approval-message-row");
-    expect(header.children[0]?.textContent).toBe("Approval required");
-    expect(header.children[1]?.textContent).toBe("Allow file writer to run?");
+    expect(header.children[0]?.textContent).toBe("file writer");
+    expect(explanation.tagName).toBe("DETAILS");
+    expect(explanation.children[0]?.textContent).toBe("Action details");
+    expect(explanation.attributes.has("open")).toBe(false);
     expect(detail.textContent).toBe("Write the requested file");
     expect(detail.dir).toBe("auto");
     expect(approveButton.disabled).toBe(false);

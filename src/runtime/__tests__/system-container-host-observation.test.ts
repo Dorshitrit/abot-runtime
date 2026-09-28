@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { existsSync } from "node:fs";
-import { isWslHostRuntime, observeSystemHost, readSystemHostFacts } from "../../../plugins/system/source/host-observation.js";
+import { isWslHostRuntime, observeSystemHost, readSystemHostFacts } from "../../computer-access/host-observation.js";
 
 vi.mock("node:fs", async (importOriginal) => ({
   ...await importOriginal<typeof import("node:fs")>(),

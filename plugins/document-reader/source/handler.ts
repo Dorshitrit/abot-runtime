@@ -148,12 +148,14 @@ function renderWindow(
   endChar: number,
   totalCharacters: number,
 ): string {
-  const truncated = endChar < totalCharacters;
+  const hasRemainingText = endChar < totalCharacters;
+  const hasCompleteTextCoverage = startChar === 0 && !hasRemainingText;
   return [
+    `Coverage: characters ${startChar}-${endChar} of ${totalCharacters}${hasCompleteTextCoverage ? " (complete)" : " (partial)"}`,
+    `Returned characters: ${endChar - startChar}; omitted before window: ${startChar}; remaining after window: ${totalCharacters - endChar}.`,
+    ...(hasRemainingText ? [`Next start_char: ${endChar}`] : []),
     ...identityLines(document),
     `MIME: ${document.mimeType}`,
-    `Coverage: characters ${startChar}-${endChar} of ${totalCharacters}${truncated ? " (partial)" : " (complete)"}`,
-    ...(truncated ? [`Next start_char: ${endChar}`] : []),
     "Content:",
     sanitizeJsonText(text.slice(startChar, endChar)) || "[no extractable text]",
   ].join("\n");

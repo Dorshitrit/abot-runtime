@@ -19,6 +19,10 @@ import type {
   SessionMemoryRequestProjection,
 } from "./contracts.js";
 import { selectSessionMemoryProjection } from "./selection.js";
+import {
+  validateRequestSessionMemorySnapshot,
+  type RequestSessionMemorySnapshot,
+} from "./snapshot-state.js";
 
 export function createRequestSessionMemory(
   params: CreateRequestSessionMemoryParams,
@@ -33,12 +37,20 @@ class RequestSessionMemoryController implements RequestSessionMemory {
   private readonly persistedCheckpointRevision: number;
 
   constructor(private readonly params: CreateRequestSessionMemoryParams) {
-    this.source = snapshotSessionMemorySource(params.session);
-    this.checkpoint = resolveApplicableSessionMemoryCheckpoint(params.session);
-    this.persistedCheckpointRevision = normalizeCheckpointRevision(
-      params.session.sessionMemoryCheckpoint?.revision,
-    );
+    const state = resolveInitialSessionMemoryState(params);
+    this.source = state.source;
+    this.checkpoint = state.checkpoint;
+    this.persistedCheckpointRevision = state.persistedCheckpointRevision;
     this.now = params.now ?? (() => new Date());
+  }
+
+  snapshot(): RequestSessionMemorySnapshot {
+    return Object.freeze({
+      kind: "request_session_memory_v1",
+      source: this.source,
+      ...(this.checkpoint ? { checkpoint: this.checkpoint } : {}),
+      persistedCheckpointRevision: this.persistedCheckpointRevision,
+    });
   }
 
   project(): SessionMemoryRequestProjection {
@@ -118,6 +130,22 @@ class RequestSessionMemoryController implements RequestSessionMemory {
       },
     });
   }
+}
+
+function resolveInitialSessionMemoryState(
+  params: CreateRequestSessionMemoryParams,
+): RequestSessionMemorySnapshot {
+  if ("snapshot" in params)
+    return validateRequestSessionMemorySnapshot(params.snapshot);
+  const checkpoint = resolveApplicableSessionMemoryCheckpoint(params.session);
+  return Object.freeze({
+    kind: "request_session_memory_v1",
+    source: snapshotSessionMemorySource(params.session),
+    ...(checkpoint ? { checkpoint } : {}),
+    persistedCheckpointRevision: normalizeCheckpointRevision(
+      params.session.sessionMemoryCheckpoint?.revision,
+    ),
+  });
 }
 
 function normalizeCheckpointRevision(revision: number | undefined): number {

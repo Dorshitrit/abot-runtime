@@ -1,3 +1,4 @@
+import type { CapabilityApprovalGate } from "./approval-contracts.js";
 import type {
   RoleCallDependencyResult,
   RoleCallFrame,
@@ -36,6 +37,7 @@ type PreparedInvocationBatchSettlement<TContext> = Readonly<{
   invocations: readonly PreparedBoundInvocation<TContext>[];
   diagnostic: WorkerCapabilityDiagnosticContext;
   executionFreshness?: WorkerCapabilityExecutionFreshness;
+  approvalGate?: CapabilityApprovalGate;
 }>;
 
 export async function executeBoundWorkerCapability<TContext>(params: {
@@ -51,6 +53,7 @@ export async function executeBoundWorkerCapability<TContext>(params: {
   capabilityScope: WorkerCapabilityScopeProjection<unknown>;
   dependencyResults?: readonly RoleCallDependencyResult[];
   executionFreshness?: WorkerCapabilityExecutionFreshness;
+  approvalGate?: CapabilityApprovalGate;
 }): Promise<WorkerCapabilityAttemptReference> {
   assertExecutionCapabilityScope(
     params.capabilityScope,
@@ -98,6 +101,7 @@ export async function executeBoundWorkerCapability<TContext>(params: {
       prepared,
     }),
     diagnostic: params.diagnostic,
+    ...(params.approvalGate ? { approvalGate: params.approvalGate } : {}),
     ...(params.executionFreshness
       ? { executionFreshness: params.executionFreshness }
       : {}),
@@ -119,6 +123,7 @@ export async function executeBoundWorkerCapabilityBatch<TContext>(params: {
   capabilityScope: WorkerCapabilityScopeProjection<unknown>;
   dependencyResults?: readonly RoleCallDependencyResult[];
   executionFreshness?: WorkerCapabilityExecutionFreshness;
+  approvalGate?: CapabilityApprovalGate;
 }): Promise<WorkerCapabilityBatchAttemptReference> {
   if (!isExecutableObservationBatch(params.invocations)) {
     throw new Error("worker_capability_batch_invalid");
@@ -176,6 +181,7 @@ export async function executeBoundWorkerCapabilityBatch<TContext>(params: {
     call: params.call,
     invocations: uniqueInvocations,
     diagnostic: params.diagnostic,
+    ...(params.approvalGate ? { approvalGate: params.approvalGate } : {}),
     ...(params.executionFreshness
       ? { executionFreshness: params.executionFreshness }
       : {}),
@@ -221,6 +227,7 @@ async function settleCollapsedPreparedBatch<TContext>(
     call: params.call,
     invocation: params.invocations[0]!,
     diagnostic: params.diagnostic,
+    ...(params.approvalGate ? { approvalGate: params.approvalGate } : {}),
     ...(params.executionFreshness
       ? { executionFreshness: params.executionFreshness }
       : {}),
@@ -231,7 +238,7 @@ async function settleCollapsedPreparedBatch<TContext>(
 function projectSingleAttemptAsBatch(
   result: WorkerCapabilityAttemptReference,
 ): WorkerCapabilityBatchAttemptReference {
-  if ("commit" in result) return result;
+  if ("commit" in result || "kind" in result) return result;
   return Object.freeze({
     executionIds: Object.freeze([result.executionId]),
   });

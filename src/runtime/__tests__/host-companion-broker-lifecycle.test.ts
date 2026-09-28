@@ -3,13 +3,13 @@ import { lstat, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { startHostBroker } from "../../../plugins/system/source/companion/broker-server.js";
-import { readBrokerLocation } from "../../../plugins/system/source/companion/broker-location.js";
-import { readHostStatus } from "../../../plugins/system/source/companion/broker-client.js";
-import { HostConnection } from "../../../plugins/system/source/companion/connection.js";
-import { HostPairingStore } from "../../../plugins/system/source/companion/pairing-store.js";
-import { ensureHostStateDirectory, hostStateDirectory } from "../../../plugins/system/source/companion/private-store.js";
-import { isProcessOwnerAlive, requireCurrentProcessOwnerIdentity } from "../../../plugins/system/source/companion/process-owner-identity.js";
+import { startHostBroker } from "../../computer-access/companion/broker-server.js";
+import { readBrokerLocation } from "../../computer-access/companion/broker-location.js";
+import { readHostStatus } from "../../computer-access/companion/broker-client.js";
+import { HostConnection } from "../../computer-access/companion/connection.js";
+import { HostPairingStore } from "../../computer-access/companion/pairing-store.js";
+import { ensureHostStateDirectory, hostStateDirectory } from "../../computer-access/companion/private-store.js";
+import { isProcessOwnerAlive, requireCurrentProcessOwnerIdentity } from "../../computer-access/companion/process-owner-identity.js";
 import { acquireFileLock } from "../adapters/long-term-memory/file-lock/acquisition.js";
 import { installLockDirectory } from "../adapters/long-term-memory/file-lock/install.js";
 
@@ -52,7 +52,7 @@ afterEach(async () => {
   socketDirectories.clear();
 });
 
-describe.skipIf(process.platform !== "linux")("private companion broker lifecycle", () => {
+describe.skipIf(!["linux", "darwin"].includes(process.platform))("private companion broker lifecycle", () => {
   test("a competing broker cannot replace the live owner's receipt or listener", async () => {
     const rootDir = await freshRoot();
     const first = await start(rootDir);

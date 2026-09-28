@@ -25,6 +25,7 @@ export type LongTermMemorySnapshot = Readonly<{
   offset: number;
   limit: number;
   query: string;
+  originFilter?: string;
   loading: boolean;
   mutation: string;
   message: string;
@@ -39,6 +40,7 @@ export interface LongTermMemoryClient {
     limit: number;
     offset: number;
     signal: AbortSignal;
+    origin?: "passive_observation";
   }): Promise<LongTermMemoryPage>;
   searchLongTermMemories(options: {
     environmentId: string;
@@ -76,6 +78,7 @@ export interface LongTermMemoryController {
   refresh(): Promise<void>;
   save(input: { content: string; tags: readonly string[] }): Promise<void>;
   search(query: string): Promise<void>;
+  setOriginFilter(origin: "passive_observation" | ""): Promise<void>;
   snapshot(): LongTermMemorySnapshot;
 }
 

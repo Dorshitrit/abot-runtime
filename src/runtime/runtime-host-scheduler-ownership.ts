@@ -29,7 +29,11 @@ export function acquireHostScheduler(
     }
     if (owner.started) {
       owner.stopping = (async () => {
-        await services?.stopScheduler?.();
+        await Promise.all([
+          services?.stopScheduler?.(),
+          services?.passiveLearning?.stop(),
+          services?.longTermMemory?.retention?.stop(),
+        ]);
       })();
     }
     owner.stopping ??= Promise.resolve();
@@ -45,9 +49,7 @@ export function acquireHostScheduler(
   return { ready: owner.ready, release };
 }
 
-function hasSchedulerHostReferences(
-  owner: SchedulerOwnership,
-): boolean {
+function hasSchedulerHostReferences(owner: SchedulerOwnership): boolean {
   return owner.references > 0;
 }
 
@@ -78,6 +80,11 @@ function retainSchedulerOwner(
     if (!hasSchedulerHostReferences(owner)) return;
     owner.started = true;
     await services.startScheduler?.();
+    if (!hasSchedulerHostReferences(owner)) return;
+    await services.longTermMemory?.retention?.start();
+    if (!hasSchedulerHostReferences(owner)) return;
+    // The compatibility host owns the environment's background learning too.
+    await services.passiveLearning?.start();
   };
   owner.ready = previous?.stopping ? previous.stopping.then(start) : start();
   return owner;

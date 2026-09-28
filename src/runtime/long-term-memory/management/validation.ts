@@ -1,4 +1,5 @@
 import type { MemoryCandidate } from "../contracts.js";
+import type { LearningCandidateRecord } from "../maturation/contracts.js";
 import {
   isMemoryCandidateWithinLimits,
   normalizeMemoryCandidate,
@@ -17,6 +18,16 @@ import { LongTermMemoryManagementError } from "./errors.js";
 const DEFAULT_LIST_LIMIT = 100;
 const MAX_LIST_LIMIT = 500;
 const MAX_SEARCH_QUERY_CHARACTERS = 4_000;
+
+export function assertCandidateSupersessionCurrent(
+  candidates: readonly LearningCandidateRecord[],
+  target: MemoryCreateInput["supersedesCandidate"],
+): void {
+  if (!target) return;
+  const current = candidates.find((candidate) => candidate.id === target.id);
+  if (current?.revision === target.revision) return;
+  throw new LongTermMemoryManagementError("long_term_memory_management_conflict", { memoryId: target.id });
+}
 
 export type MemoryPage = Readonly<{ limit: number; offset: number }>;
 

@@ -61,7 +61,8 @@ test("container setup offers both native platforms and can be skipped without si
   const h = harness(false);
   await openComputer(h);
   expect(h.container.innerHTML).toContain('data-system-host-install="windows"');
-  expect(h.container.innerHTML).toContain('data-system-host-install="macos"');
+  expect(h.container.innerHTML).toContain('data-system-host-mac="manual"');
+  expect(h.container.innerHTML).not.toContain('data-system-host-install="macos"');
   h.submit();
   expect(h.container.innerHTML).toContain("Set up computer access");
   h.click("skip-computer");

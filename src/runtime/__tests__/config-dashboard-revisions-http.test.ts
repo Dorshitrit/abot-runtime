@@ -1,5 +1,8 @@
+import { constants } from "node:fs";
+import { access, chmod, readdir, stat } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { dirname } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { LocalRuntimeWebBackend } from "../../web-ui/local-runtime-backend.js";
 import {
@@ -13,7 +16,7 @@ let backend: LocalRuntimeWebBackend;
 let origin: string;
 beforeEach(async () => {
   fixture = await createModelSetupFixture(
-    ".codex/artifacts/pr71-review-fixes-20260908/config-http",
+    ".codex/artifacts/pr86-canonical-snapshots-20260923/config-http",
   );
   backend = new LocalRuntimeWebBackend({
     rootDir: fixture.rootDir,
@@ -112,6 +115,10 @@ test("inline model revisions cover unrelated root changes made by another browse
     providerId: "ollama",
     model: "fixture-inline",
   });
+  // Keep coverage for legacy inline declarations now that new models use references.
+  const config = await fixture.readConfig();
+  config.models.profiles.inline = await fixture.readModelProfile("inline");
+  await fixture.writeConfig(config);
   const first = await dashboard();
   const model = first.files.models.find(
     (item: { id: string }) => item.id === "inline",
@@ -143,3 +150,29 @@ test("inline model revisions cover unrelated root changes made by another browse
     (await fixture.readConfig()).models.profiles.inline.contextWindowTokens,
   ).toBe(32768);
 });
+
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+  "ordinary dashboard GET reads a non-writable configuration directory without creating a lock",
+  async () => {
+    const configDir = dirname(fixture.configPath);
+    const originalMode = (await stat(configDir)).mode & 0o777;
+    const beforeEntries = (await readdir(configDir)).sort();
+    const beforeConfig = await fixture.readConfig();
+    await chmod(configDir, 0o555);
+    try {
+      await expect(access(configDir, constants.W_OK)).rejects.toMatchObject({
+        code: "EACCES",
+      });
+      const response = await fetch(
+        `${origin}/web-api/runtime/config/dashboard`,
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      const payload = await response.json();
+      expect(payload.dashboard.files.runtime.config).toEqual(beforeConfig);
+      expect((await readdir(configDir)).sort()).toEqual(beforeEntries);
+    } finally {
+      await chmod(configDir, originalMode);
+    }
+  },
+);

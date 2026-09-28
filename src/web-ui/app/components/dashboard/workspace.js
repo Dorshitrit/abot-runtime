@@ -1,66 +1,44 @@
+import { updateLiveRegion } from "../../lib/live-region.js";
 import { getDashboardJobTemplates } from "../../lib/dashboard-job-templates.js";
-import { dashboardIcon } from "./icons.js";
 import { renderDashboardActivity } from "./activity.js";
 import { renderDashboardConversations } from "./recent-conversations.js";
+import {
+  hasPendingDashboardApprovals,
+  renderDashboardApprovals,
+} from "./approvals.js";
 
-const shortcuts = [
-  {
-    action: "attach",
-    icon: "upload",
-    title: "Upload a file",
-    detail: "Image or document",
-  },
-  {
-    action: "create-job",
-    icon: "job",
-    title: "Create a job",
-    detail: "Schedule an agent task",
-  },
-  {
-    action: "conversations",
-    icon: "conversations",
-    title: "Continue a chat",
-    detail: "Pick up where you left off",
-  },
-  {
-    action: "configuration",
-    icon: "configuration",
-    title: "Configuration",
-    detail: "Models and tools",
-  },
-];
-
-function shortcutMarkup(shortcut) {
-  return `<button type="button" class="home-shortcut" data-dashboard-action="${shortcut.action}">${dashboardIcon(shortcut.icon)}<span><strong>${shortcut.title}</strong><small>${shortcut.detail}</small></span></button>`;
-}
-
-export function createDashboardWorkspace({ root, actions }) {
+export function createDashboardWorkspace({ root, actions, passiveLearning }) {
   root.classList.add("home-workspace");
   root.innerHTML = `<div class="home-workspace-body">
-    <div class="home-overview">
-      <section class="home-panel home-activity-panel" aria-label="Recent activity" data-dashboard-activity></section>
-      <section class="home-panel home-recent-panel" aria-label="Recent conversations" data-dashboard-conversations></section>
-    </div>
-    <section class="home-workspace-start" aria-label="Start a new conversation">
-      <div class="home-shortcuts" aria-label="Quick actions">${shortcuts.map(shortcutMarkup).join("")}</div>
+    <div class="home-workspace-content">
+      <section class="home-panel home-learning-panel" data-dashboard-learning hidden><div data-dashboard-learning-content></div></section>
+      <div class="home-overview">
+        <section class="home-panel home-activity-panel" aria-label="Recent activity" data-dashboard-activity></section>
+        <section class="home-panel home-recent-panel" aria-label="Recent conversations" data-dashboard-conversations></section>
+      </div>
       <div class="home-setup-host" data-dashboard-setup hidden></div>
+      <section class="home-panel home-approvals-panel" aria-label="Pending approvals" data-dashboard-approvals hidden></section>
+    </div>
+    <div class="home-approval-dock" data-dashboard-approval-dock hidden></div>
+    <section class="home-workspace-start" aria-label="Start a new conversation">
       <div class="home-composer-host" data-dashboard-composer></div>
       <p class="home-composer-note">Starts a new conversation</p>
     </section>
   </div>`;
   const overview = root.querySelector(".home-overview");
-  const shortcutRegion = root.querySelector(".home-shortcuts");
   const activity = root.querySelector("[data-dashboard-activity]");
   const conversations = root.querySelector("[data-dashboard-conversations]");
+  const approvals = root.querySelector("[data-dashboard-approvals]");
+  const approvalDock = root.querySelector("[data-dashboard-approval-dock]");
+  const content = root.querySelector(".home-workspace-content");
   const composerHost = root.querySelector("[data-dashboard-composer]");
   const setupHost = root.querySelector("[data-dashboard-setup]");
+  const learningPanel = root.querySelector("[data-dashboard-learning]");
+  passiveLearning?.mountHome(root.querySelector("[data-dashboard-learning-content]"));
   const composerNote = root.querySelector(".home-composer-note");
   const handlers = {
-    attach: () => actions.attach(),
-    "create-job": () => actions.createJob(),
     template: (button) => actions.createJob(button.dataset.templateId),
     conversations: () => actions.continueConversation(),
-    configuration: () => actions.openConfiguration(),
     jobs: () => actions.openJobs(),
     conversation: (button) =>
       actions.openConversation(
@@ -77,34 +55,51 @@ export function createDashboardWorkspace({ root, actions }) {
 
   function render(snapshot) {
     const setupRequired = snapshot.composerAvailable === false;
+    const pendingApprovals = hasPendingDashboardApprovals(snapshot);
+    approvalDock.hidden = setupRequired || !pendingApprovals;
+    // Keep pending actions beside the composer; refresh errors stay in content.
+    const approvalParent = pendingApprovals ? approvalDock : content;
+    if (approvals.parentElement !== approvalParent)
+      approvalParent.appendChild(approvals);
     root.classList.toggle("home-setup-active", setupRequired);
+    learningPanel.hidden = setupRequired || !passiveLearning;
     overview.hidden = setupRequired;
-    shortcutRegion.hidden = setupRequired;
-    root.querySelector('[data-dashboard-action="attach"]').disabled =
-      snapshot.composerAvailable === false;
-    root.querySelector('[data-dashboard-action="create-job"]').disabled =
-      snapshot.supportsSchedules === false;
+    approvals.hidden = setupRequired;
     composerHost.hidden = snapshot.composerAvailable === false;
     setupHost.hidden = snapshot.composerAvailable !== false;
     composerNote.hidden = snapshot.composerAvailable === false;
     if (setupRequired) {
       activity.innerHTML = "";
       conversations.innerHTML = "";
+      approvals.innerHTML = "";
       return;
     }
 
-    activity.innerHTML = renderDashboardActivity({
-      runs: snapshot.runs,
-      loading: snapshot.loadingActivity,
-      error: snapshot.activityError,
-      supported: snapshot.supportsSchedules,
-      templates: getDashboardJobTemplates(),
+    renderDashboardApprovals({
+      root: approvals,
+      snapshot,
+      onDecision: actions.decideApproval,
+      documentRoot: root.ownerDocument,
     });
-    conversations.innerHTML = renderDashboardConversations({
-      sessions: snapshot.sessions,
-      loading: snapshot.loadingSessions,
-      error: snapshot.sessionsError,
-    });
+
+    updateLiveRegion(
+      activity,
+      renderDashboardActivity({
+        runs: snapshot.runs,
+        loading: snapshot.loadingActivity,
+        error: snapshot.activityError,
+        supported: snapshot.supportsSchedules,
+        templates: getDashboardJobTemplates(),
+      }),
+    );
+    updateLiveRegion(
+      conversations,
+      renderDashboardConversations({
+        sessions: snapshot.sessions,
+        loading: snapshot.loadingSessions,
+        error: snapshot.sessionsError,
+      }),
+    );
     activity.setAttribute(
       "aria-busy",
       String(Boolean(snapshot.loadingActivity)),

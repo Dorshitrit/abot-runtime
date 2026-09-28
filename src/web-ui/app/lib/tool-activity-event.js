@@ -1,5 +1,6 @@
 import { getRecord, titleCaseEventValue } from "./event-presentation.js";
 import { projectConversationFileReference } from "./conversation-file-reference.js";
+import { computerInputFields } from "./tool-computer-activity-fields.js";
 import {
   processInputFields,
   processResultFields,
@@ -52,7 +53,7 @@ function lineRange(start, end) {
 }
 
 function inputFields(meta, completed, tool) {
-  const fields = processInputFields(meta);
+  const fields = [...processInputFields(meta), ...computerInputFields(meta)];
   addText(fields, "Query", meta.query);
   addText(fields, "Path", meta.path);
   if (!meta.source || meta.displayTarget !== ".")

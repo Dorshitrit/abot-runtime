@@ -28,6 +28,54 @@ function scheduleClient() {
 }
 
 describe("schedules management", () => {
+  test.each(["full_access", "full_plus"])(
+    "serializes the selected %s authority for creation and permission-only editing",
+    (mode) => {
+      const data = new FormData();
+      data.set("kind", "timer");
+      data.set("seconds", "60");
+      const initial = scheduleFormInput(data);
+      expect(initial.toolPermissionMode).toBe("full_access");
+      data.set("toolPermissionMode", mode);
+      const input = scheduleFormInput(data);
+      expect(input.toolPermissionMode).toBe(mode);
+      expect(scheduleUpdateInput({ ...input }, { ...initial })).toEqual(
+        mode === "full_access" ? {} : { toolPermissionMode: mode },
+      );
+    },
+  );
+
+  test("sends explicit FULL+ on create/edit only to an advertising server", async () => {
+    const requestApi = vi.fn(async () => ({}));
+    let supported = true;
+    const client = createScheduleRequests({
+      requestApi,
+      getEnvironmentId: () => "dev",
+      getConfig: () => ({
+        backend: "runtime",
+        supportedToolPermissionModes: supported
+          ? ["full_access", "full_plus"]
+          : ["full_access"],
+      }),
+    });
+    const input = { toolPermissionMode: "full_plus" };
+    await client.createSchedule(input);
+    await client.updateSchedule("job", input);
+    expect(requestApi.mock.calls).toHaveLength(2);
+    expect(requestApi).toHaveBeenLastCalledWith(
+      "/schedules/job?environment=dev",
+      { method: "PATCH", body: JSON.stringify(input) },
+    );
+    supported = false;
+    await expect(client.createSchedule(input)).rejects.toThrow(
+      "does not advertise FULL+",
+    );
+    await expect(client.updateSchedule("job", input)).rejects.toThrow(
+      "does not advertise FULL+",
+    );
+    expect(requestApi.mock.calls).toHaveLength(2);
+  });
+
   test("metadata-only edits preserve the exact stored recurrence and anchor", () => {
     const initial = {
       sessionId: "session-1",

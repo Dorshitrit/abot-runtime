@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { createSystemHandlers } from "../../../plugins/system/source/handlers.js";
-import { executeSystemCommand } from "../../../plugins/system/source/commands.js";
-import { elevatedSystemCommand } from "../../../plugins/system/source/elevation.js";
-import { systemProcessResult } from "../../../plugins/system/source/process-result.js";
-import { parseDesktopApplication } from "../../../plugins/system/source/application-catalog.js";
-import { powershellArguments } from "../../../plugins/system/source/targets.js";
+import { createSystemHandlers } from "../../computer-access/handlers.js";
+import { executeSystemCommand } from "../../computer-access/commands.js";
+import { elevatedSystemCommand } from "../../computer-access/elevation.js";
+import { systemProcessResult } from "../../computer-access/process-result.js";
+import { parseDesktopApplication } from "../../computer-access/application-catalog.js";
+import { powershellArguments } from "../../computer-access/targets.js";
 import type {
   SystemProcessInput,
   SystemProcessResult,
   SystemProcessRunner,
   SystemTarget,
-} from "../../../plugins/system/source/contracts.js";
+} from "../../computer-access/contracts.js";
 import type { ToolExecutionContext } from "../../capabilities/tool-types.js";
 
 const windowsTarget: SystemTarget = {

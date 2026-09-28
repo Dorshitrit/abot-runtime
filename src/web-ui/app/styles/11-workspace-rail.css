@@ -1,0 +1,360 @@
+/* Persistent workspace navigation, labels and environment control. */
+
+:root {
+  --workspace-rail-width: 166px;
+}
+
+.workspace-rail {
+  position: relative;
+  z-index: 35;
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: var(--workspace-rail-width);
+  min-width: var(--workspace-rail-width);
+  height: 100dvh;
+  padding: 14px 10px;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.workspace-brand {
+  align-self: flex-start;
+  padding: 7px 12px 12px;
+}
+
+.workspace-brand img {
+  display: block;
+  width: 28px;
+  height: 28px;
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .workspace-brand img {
+    transform-origin: 50% 55%;
+    transition: transform 220ms cubic-bezier(0.2, 0.9, 0.25, 1.3);
+  }
+
+  .workspace-brand img:hover {
+    transform: scale(1.18);
+  }
+}
+
+.rail-history-button {
+  flex: none;
+  margin-bottom: 4px;
+}
+
+.rail-actions,
+.rail-footer,
+.rail-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.rail-footer,
+.rail-bottom,
+.rail-runtime {
+  margin-top: auto;
+}
+
+.rail-spacer {
+  flex: 1;
+}
+
+.rail-button,
+.rail-action,
+.workspace-rail button:not(.rail-brand) {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  min-height: 44px;
+  padding: 6px 8px;
+  gap: 10px;
+  border-color: transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  box-shadow: none;
+  text-align: start;
+}
+
+.rail-button:hover,
+.rail-action:hover,
+.workspace-rail button:not(.rail-brand):hover,
+.rail-button.active,
+.rail-action.active,
+.rail-button[aria-current="page"],
+.workspace-rail button[aria-expanded="true"] {
+  border-color: transparent;
+  background: var(--control-bg-hover);
+  color: var(--text-strong);
+}
+
+.rail-button.active,
+.rail-action.active,
+.rail-button[aria-current="page"],
+.workspace-rail button[aria-expanded="true"] {
+  background: var(--panel-raised);
+  color: var(--accent-strong);
+}
+
+.rail-button svg,
+.rail-action svg,
+.workspace-rail button svg {
+  width: 19px;
+  height: 19px;
+  flex-shrink: 0;
+}
+
+.workspace-rail .rail-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel-raised) 34%, var(--panel));
+  color: var(--muted);
+}
+
+.workspace-rail .rail-icon svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.workspace-rail .rail-icon-coworker {
+  border-radius: 11px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+}
+
+.workspace-rail .rail-actions .rail-button:is(.active, [aria-current="page"]),
+.workspace-rail .rail-history-button[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+  color: var(--text-strong);
+}
+
+.workspace-rail .rail-button:is(.active, [aria-current="page"], [aria-expanded="true"]) .rail-icon {
+  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 15%, var(--panel));
+}
+
+.workspace-rail .rail-actions .rail-button:is(.active, [aria-current="page"])::before,
+.workspace-rail .rail-history-button[aria-expanded="true"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 13px;
+  width: 2px;
+  height: 18px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.workspace-rail .rail-button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* Labels remain visible without a hover or focus interaction. */
+.rail-button > .rail-button-label,
+.rail-action > .rail-button-label {
+  display: block;
+  max-width: 100%;
+  color: currentColor;
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.rail-runtime {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 0;
+  width: 100%;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.rail-runtime:hover,
+.rail-runtime:focus-within {
+  border-color: var(--line);
+  background: transparent;
+}
+
+.rail-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(59, 209, 155, 0.1);
+}
+
+.rail-status.connecting {
+  background: var(--amber);
+  box-shadow: 0 0 0 3px rgba(242, 187, 92, 0.1);
+}
+
+.rail-status.failed,
+.rail-status.error {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(255, 116, 128, 0.1);
+}
+
+.rail-environment {
+  position: relative;
+  width: 100%;
+  overflow: visible;
+}
+
+.workspace-rail .rail-environment .rail-environment-button {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 24px 0 10px;
+  overflow: hidden;
+  border-radius: 6px;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+}
+
+.rail-environment-button > .rail-button-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rail-environment .agent-picker-menu {
+  position: absolute;
+  bottom: 0;
+  left: calc(100% + 12px);
+  z-index: 90;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 3px;
+  width: 190px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-raised);
+  box-shadow: 0 18px 42px rgba(0, 6, 16, 0.34);
+}
+
+.workspace-rail #connectionLabel {
+  position: absolute;
+  top: 13px;
+  right: 10px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  min-height: 12px;
+  overflow: hidden;
+  background: transparent;
+  color: transparent;
+  font-size: 0;
+  pointer-events: none;
+}
+
+.workspace-rail #connectionLabel::before {
+  width: 6px;
+  height: 6px;
+  margin: 0;
+  border: 2px solid var(--panel);
+  background: var(--amber);
+  box-shadow: 0 0 0 2px rgba(242, 187, 92, 0.08);
+}
+
+.workspace-rail #connectionLabel.connected::before {
+  background: var(--green);
+  box-shadow: 0 0 0 2px rgba(59, 209, 155, 0.08);
+}
+
+.workspace-rail #connectionLabel.error-text::before {
+  background: var(--danger);
+  box-shadow: 0 0 0 2px rgba(255, 116, 128, 0.08);
+}
+
+@media (min-width: 761px) {
+  .rail-actions {
+    padding-top: 4px;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex-shrink: 1;
+    scrollbar-width: thin;
+  }
+
+  .rail-actions > .rail-button,
+  .rail-runtime {
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-shell .workspace-rail.workspace-rail {
+    grid-auto-columns: minmax(76px, 1fr);
+    gap: 4px;
+    padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right));
+    scrollbar-width: thin;
+  }
+
+  .app-shell .workspace-rail button.rail-button {
+    flex-direction: column;
+    gap: 3px;
+    height: 52px;
+    padding: 3px 5px;
+    border-radius: 8px;
+  }
+
+  .workspace-rail .rail-icon {
+    flex-basis: 28px;
+    width: 28px;
+    height: 28px;
+  }
+
+  .workspace-rail .rail-actions .rail-button:is(.active, [aria-current="page"])::before,
+  .workspace-rail .rail-history-button[aria-expanded="true"]::before {
+    inset: auto calc(50% - 9px) 0;
+    width: 18px;
+    height: 2px;
+  }
+}
+
+.workspace-rail .rail-button[data-onboarding-blocked="true"] {
+  color: var(--muted);
+  opacity: 0.42;
+  cursor: not-allowed;
+  background: transparent;
+  box-shadow: none;
+}
+.workspace-rail .rail-button[data-onboarding-blocked="true"] .rail-icon {
+  color: inherit;
+  background: transparent;
+}

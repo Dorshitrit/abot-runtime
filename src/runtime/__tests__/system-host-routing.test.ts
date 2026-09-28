@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { failureResult } from "../../plugin-sdk/index.js";
-import { createSystemHandlers } from "../../../plugins/system/source/handlers.js";
-import type { SystemProcessRunner } from "../../../plugins/system/source/contracts.js";
+import { createSystemHandlers } from "../../computer-access/handlers.js";
+import type { SystemProcessRunner } from "../../computer-access/contracts.js";
 import {
   connectedSystemHost,
   requestConnectionId,

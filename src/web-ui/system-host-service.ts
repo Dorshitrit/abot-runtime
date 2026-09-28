@@ -2,18 +2,18 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 import { join } from "node:path";
 import { WebSocketServer } from "ws";
-import { HostConnection } from "../../plugins/system/source/companion/connection.js";
-import { HostPairingStore } from "../../plugins/system/source/companion/pairing-store.js";
-import { startHostBroker } from "../../plugins/system/source/companion/broker-server.js";
-import { hostStateDirectory } from "../../plugins/system/source/companion/private-store.js";
+import { HostConnection } from "../computer-access/companion/connection.js";
+import { HostPairingStore } from "../computer-access/companion/pairing-store.js";
+import { startHostBroker } from "../computer-access/companion/broker-server.js";
+import { hostStateDirectory } from "../computer-access/companion/private-store.js";
 import {
   HOST_SOCKET_PATH,
   HOST_WIRE_MAX_BYTES,
-} from "../../plugins/system/source/companion/protocol.js";
+} from "../computer-access/companion/protocol.js";
 import {
   isProcessOwnerAlive,
   requireCurrentProcessOwnerIdentity,
-} from "../../plugins/system/source/companion/process-owner-identity.js";
+} from "../computer-access/companion/process-owner-identity.js";
 import { ensurePrivateRuntimeDirectory } from "../runtime/local-host/private-directory.js";
 import { acquireFileLock } from "../runtime/adapters/long-term-memory/file-lock/acquisition.js";
 import { acceptConfigMutationRequest } from "./local-runtime/config-mutation-request.js";
@@ -22,6 +22,8 @@ import { hostBearerCredential } from "./system-host-setup/native-authorization.j
 import { hasTrustedSystemHostUpgrade, rejectSystemHostUpgrade } from "./system-host-upgrade-authority.js";
 import { readHostReadiness } from "./system-host-setup/readiness.js";
 import { HostSetupRoutes, isHostSetupRoute, sendHostSetupInputError } from "./system-host-setup/routes.js";
+import { reportHostStartupFailure } from "./system-host-startup-diagnostic.js";
+import { withLocalMacSetup } from "./system-host-setup/local-setup-availability.js";
 function isSystemHostRoute(pathname: string): boolean {
   if (pathname === "/web-api/runtime/system-host") return true;
   return pathname === "/web-api/runtime/system-host/pairing";
@@ -38,9 +40,9 @@ export class WebSystemHostService {
   private broker?: Awaited<ReturnType<typeof startHostBroker>>;
   private starting?: Promise<void>;
   private closing = false;
-  constructor(private readonly rootDir: string) {
+  constructor(private readonly rootDir: string, connectionChanged?: () => void) {
     this.store = new HostPairingStore(rootDir);
-    this.connection = new HostConnection(this.store);
+    this.connection = new HostConnection(this.store, connectionChanged);
     this.setup = new HostSetupRoutes({
       store: this.store,
       readiness: () => readHostReadiness(this.connection.status()),
@@ -61,6 +63,7 @@ export class WebSystemHostService {
       );
     })().catch((error) => {
       this.starting = undefined;
+      reportHostStartupFailure(error);
       throw error;
     });
     return this.starting;
@@ -123,7 +126,7 @@ export class WebSystemHostService {
         pathname === "/web-api/runtime/system-host"
       ) {
         const status = this.connection.status();
-        const readiness = await readHostReadiness(status);
+        const readiness = withLocalMacSetup(request, await readHostReadiness(status));
         sendJson(response, 200, { ok: true, ...status, readiness });
         return true;
       }
@@ -139,6 +142,7 @@ export class WebSystemHostService {
       }
       if (request.method === "POST" && pathname.endsWith("/pairing")) {
         await this.ensureStarted();
+        if (this.setup.rejectConcurrentMutation(response)) return true;
         sendJson(response, 200, { ok: true, ...this.store.begin() });
         return true;
       }
@@ -147,10 +151,12 @@ export class WebSystemHostService {
         pathname === "/web-api/runtime/system-host"
       ) {
         await this.ensureStarted();
+        if (this.setup.rejectConcurrentMutation(response)) return true;
         this.store.revoke();
         this.connection.disconnect();
         const status = this.connection.status();
-        sendJson(response, 200, { ok: true, ...status, readiness: await readHostReadiness(status) });
+        sendJson(response, 200, { ok: true, ...status,
+          readiness: withLocalMacSetup(request, await readHostReadiness(status)) });
         return true;
       }
       sendJson(response, 405, { ok: false, error: "method_not_allowed" });
@@ -173,6 +179,7 @@ export class WebSystemHostService {
   async close(): Promise<void> {
     if (this.closing) return;
     this.closing = true;
+    await this.setup.close();
     await this.starting?.catch(() => undefined);
     this.connection.close();
     await this.broker?.close();

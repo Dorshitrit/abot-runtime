@@ -26,11 +26,11 @@ vi.mock("node:http", async (original) => {
   };
 });
 vi.mock(
-  "../../../plugins/system/source/host-observation.js",
+  "../../computer-access/host-observation.js",
   async (original) => {
     const actual =
       await original<
-        typeof import("../../../plugins/system/source/host-observation.js")
+        typeof import("../../computer-access/host-observation.js")
       >();
     return {
       ...actual,
@@ -46,6 +46,7 @@ vi.mock("../../web-ui/local-runtime-backend.js", () => ({
   LocalRuntimeWebBackend: class {
     start = async () => {};
     stop = async () => {};
+    notifyHostConnectionChanged = () => {};
     handleRealtimeConnection = mock.realtime;
     environmentConfig = () => ({
       defaultEnvironmentId: "prod",

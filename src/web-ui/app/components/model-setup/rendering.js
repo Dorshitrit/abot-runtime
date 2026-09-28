@@ -81,7 +81,7 @@ export function modelSetupFooter(state) {
           ? "Apply model"
           : "Save and apply";
   const action = state.step === 2 ? "finish" : "next";
-  return `<div class="model-setup-back-actions"><button type="button" class="runtime-setup-secondary" data-model-action="cancel" data-runtime-setup-action="model-cancel" ${disabled}>Cancel</button>${back}</div><button type="button" class="runtime-setup-action" data-model-action="${action}" data-runtime-setup-action="model-${action}" ${state.busy || !state.loaded || !state.choice ? "disabled" : ""}>${label}</button>`;
+  return `<div class="model-setup-back-actions"><button type="button" class="runtime-setup-secondary" data-model-action="cancel" data-runtime-setup-action="model-cancel" ${disabled}>${state.saved ? "Close" : "Cancel"}</button>${back}</div><button type="button" class="runtime-setup-action" data-model-action="${action}" data-runtime-setup-action="model-${action}" ${state.busy || !state.loaded || !state.choice ? "disabled" : ""}>${label}</button>`;
 }
 
 export function modelSetupMarkup(state) {

@@ -47,6 +47,56 @@ for (const path of paths) {
 }
 
 const requiredPaths = [
+  ...[
+    "capabilities/tool-media",
+    "model-gateway/observability/tool-media-privacy",
+    "model-gateway/providers/openai/image-content",
+    "runtime/attachments/request-tool-media",
+    "runtime/attachments/tool-image-validation",
+    "runtime/capabilities/request-property-narrowing",
+    "runtime/capabilities/request-tool-resources",
+    "runtime/local-host/saved-approvals",
+    "runtime/request/approval-wait/park",
+    "runtime/request/approval-wait/preflight",
+    "sessions/request-lifecycle/service",
+    "sessions/request-lifecycle/continuation-blobs",
+    "runtime/context/tool-media-projection",
+    "runtime/adapters/registered-tool-normal-invocations/execution/tool-media-execution",
+    "runtime/passive-learning/service",
+    "runtime/passive-learning/model",
+    "runtime/passive-learning/analysis-clock",
+    "runtime/passive-learning/batch-lifecycle",
+    "runtime/passive-learning/collection-source",
+    "runtime/passive-learning/control-policy",
+    "runtime/passive-learning/activity-permissions",
+    "runtime/long-term-memory/observation-receipt-retention",
+    "shared/passive-observation",
+    "web-ui/local-runtime/learning-routes",
+    "web-ui/system-host-setup/companion-linux",
+    "computer-access/companion/native-loopback-lookup",
+  ].flatMap((name) => [
+    "dist/src/" + name + ".js",
+    "dist/src/" + name + ".d.ts",
+  ]),
+  "dist/src/computer-access/companion/observation-client.js",
+  "dist/src/computer-access/companion/native-observations.js",
+  "dist/src/computer-access/companion/observation-windows.js",
+  "dist/src/computer-access/companion/observation-macos.js",
+  "dist/src/computer-access/companion/observation-linux.js",
+  "dist/src/computer-access/computer/companion-sessions.js",
+  "dist/src/computer-access/computer/windows-backend.js",
+  "dist/src/computer-access/computer/macos-backend.js",
+  "dist/src/computer-access/computer/linux-backend.js",
+  "plugins/system/README.md",
+  "dist/src/web-ui/app/passive-learning-feature.js",
+  "dist/src/web-ui/app/components/passive-learning/memory.js",
+  "dist/src/web-ui/app/components/passive-learning/home.js",
+  "dist/src/web-ui/app/components/passive-learning/activity-controls.js",
+  "dist/src/web-ui/app/components/passive-learning/workspace-view.js",
+  "dist/src/web-ui/app/components/passive-learning/batch-detail.js",
+  "dist/src/web-ui/app/components/passive-learning/presentation.js",
+  "dist/src/web-ui/app/styles/39-passive-learning.css",
+  "dist/src/web-ui/app/styles/39-memory-workspace.css",
   "dist/src/cli/host-companion.js",
   "dist/src/cli/host-companion.d.ts",
   "dist/src/cli/host-companion-bundle.mjs",
@@ -55,15 +105,25 @@ const requiredPaths = [
   "dist/src/web-ui/system-host-setup/readiness.js",
   "dist/src/web-ui/system-host-setup/routes.js",
   "dist/src/web-ui/system-host-service.js",
-  "dist/plugins/system/source/companion/native-session.js",
-  "dist/plugins/system/source/companion/native-supervisor.js",
-  "dist/plugins/system/source/companion/native-state.js",
-  "dist/plugins/system/source/companion/autostart.js",
-  "dist/plugins/system/source/companion/broker-server.js",
-  "dist/plugins/system/source/companion/pairing-store.js",
-  "dist/plugins/system/source/companion/protocol.js",
+  "dist/src/computer-access/companion/native-session.js",
+  "dist/src/computer-access/companion/native-build-identity.js",
+  "dist/src/computer-access/companion/native-replacement.js",
+  "dist/src/computer-access/companion/native-supervisor.js",
+  "dist/src/computer-access/companion/native-state.js",
+  "dist/src/computer-access/companion/observation-capture-policy.js",
+  "dist/src/computer-access/companion/release-version.js",
+  "dist/src/computer-access/companion/autostart.js",
+  "dist/src/computer-access/companion/broker-server.js",
+  "dist/src/computer-access/companion/pairing-store.js",
+  "dist/src/computer-access/companion/protocol.js",
   "dist/src/web-ui/app/components/system-host/manager.js",
   "dist/src/web-ui/app/components/system-host/rendering.js",
+  "dist/src/web-ui/app/computer-access-feature.js",
+  "dist/src/web-ui/app/lib/configuration-pages.js",
+  "dist/src/web-ui/app/components/passive-learning/macos-collection-restart-notice.js",
+  "dist/src/web-ui/app/components/system-host/macos-permission-dialog.js",
+  "dist/src/web-ui/app/components/passive-learning/macos-collection-consent.js",
+  "dist/src/web-ui/app/styles/49-macos-permission.css",
   "dist/src/web-ui/app/services/runtime-web-client/system-host.js",
   "dist/src/web-ui/app/styles/46-system-host.css",
   "dist/src/capabilities/tool-definition-validator/event-input-text-options.d.ts",
@@ -144,6 +204,8 @@ const requiredPaths = [
     "model-setup-provider",
     "model-setup-validation",
     "model-setup-service",
+    "model-setup-profile-file",
+    "model-removal",
     "model-setup-routes",
     "runtime-setup-service",
     "runtime-setup-scaffold",
@@ -174,6 +236,7 @@ const requiredPaths = [
     "runtime-setup/configuration-recovery",
     "runtime-setup/wizard-shell",
     "config-workspace/model-setup-entry",
+    "config-workspace/model-removal",
     "config-workspace/raw-config-repair",
   ].map((name) => "dist/src/web-ui/app/components/" + name + ".js"),
   "dist/src/web-ui/app/styles/43-model-setup.css",
@@ -282,6 +345,7 @@ const requiredPaths = [
     "runtime/scheduler/journal-store",
     "runtime/scheduler/journal-transaction",
     "runtime/scheduler/working-store",
+    "runtime/scheduler/tool-permission-mode",
     "runtime/adapters/scheduler-runtime",
     "runtime/adapters/scheduled-request-outcome",
     "runtime/capabilities/scheduling/tool-contract",
@@ -315,6 +379,7 @@ const requiredPaths = [
   "dist/src/plugin-sdk/index.js",
   "dist/src/plugin-sdk/index.d.ts",
   ...[
+    "plugin-sdk/computer-access",
     "plugin-sdk/tool-availability-brief",
     "plugin-sdk/tool-availability-overview",
     "runtime/capabilities/tool-availability",
@@ -379,6 +444,7 @@ const requiredPaths = [
     "lib/session-read-state.js",
     "lib/session-read-state.d.ts",
     "styles/18-dashboard.css",
+    "styles/11-workspace-rail.css",
     "styles/92-dashboard-responsive.css",
     "schedules-feature.js",
     "components/conversation-schedule.js",
@@ -618,9 +684,106 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // four emitted artifacts; routing readmission adds two. Planner now shares that
 // admission and replaces its old catalog module: two net emitted artifacts.
 // Worker intent and system launch guidance reuse existing files; no added paths.
-// Measured: 2,353 files / 7,248,979 bytes; retain one file/512 bytes of headroom.
-const maxFileCount = 2_354;
-const maxUnpackedSizeBytes = 7_249_491;
+// INVALID boundaries add six runtime modules (12 emitted artifacts).
+// Exact Auditor admission: 2,367 files / 7,274,934 bytes; retain one file/512 bytes.
+// Web navigation, Home approvals, favicon and startup add 17 audited assets/outputs.
+// Compact composer sizing adds one asset; unread grouping reuses existing owners.
+// Event-driven workspace updates add three browser modules and two notifier outputs.
+// Web route restore, activity replay, route-owned loading and broadcast
+// isolation reuse existing outputs. Sub-workspace route revisions and schedule
+// session-event refresh reuse the same outputs. Measured: 2,390 files /
+// 7,336,038 bytes; retain one file and 512 bytes of headroom.
+// Model reference storage and declaration removal add five audited outputs/assets.
+// Measured: 2,395 files / 7,353,262 bytes; retain one file and 512 bytes of headroom.
+// Model config review fixes and browser content guidance retain the same paths.
+// Measured: 2,395 files / 7,364,880 bytes; retain one file and 512 bytes of headroom.
+// Passive learning adds 77 audited runtime, Companion and Web UI outputs/assets.
+// Includes installer cache upgrades and explicit learning setup feedback.
+// Measured: 2,472 files / 7,671,080 bytes; retain one file and 512 bytes of headroom.
+// The standalone Learning workspace reuses the existing browser assets.
+// Measured: 2,472 files / 7,672,956 bytes; retain one file and 512 bytes of headroom.
+// Learning review details and the Memory workspace add three browser assets.
+// Measured: 2,475 files / 7,696,007 bytes; retain one file and 512 bytes of headroom.
+// Independent learning controls and review fixes add five focused modules.
+// Measured: 2,485 files / 7,721,829 bytes; retain one file and 512 bytes of headroom.
+// Verified Companion replacement adds two native source modules and four outputs.
+// Schedule permission and visible rail labels add three audited outputs/assets.
+// Measured with learning review fixes: 2,494 files / 7,749,119 bytes.
+// Retain one file and 512 bytes of headroom.
+// Co-worker cadence and Companion release metadata add two source modules,
+// each with its JavaScript and declaration output. Includes the updated bundle.
+// Includes watcher recovery, stable Windows ownership, host events and X11 activation recovery.
+// Measured: 2,500 files / 7,776,819 bytes; retain one file and 512 bytes of headroom.
+// Web UI navigation and schedule styling add 2,115 bytes with no new files.
+// Main measured in CI: 2,500 files / 7,778,934 bytes.
+// Computer control adds 120 audited paths: 39 SYSTEM sources, 62 native companion
+// outputs, 18 generic media/runtime outputs and one plugin guide. Measured:
+// After integrating Co-worker resource guards and Companion version 3:
+// PR review corrections add one approval-display asset and update existing
+// computer, companion-readiness and media-error outputs. Audited against the
+// preceding 2,620-file / 8,504,418-byte package: +1 file / +24,502 bytes.
+// Measured before the second review: 2,621 files / 8,528,920 bytes.
+// Topology/source guards and paired-origin setup add 14 audited paths and
+// 73,485 bytes; integrated main UI changes account for the remaining 2,115 bytes.
+// Focus, post-action source and offline-release fixes add 7,036 audited bytes,
+// with no new package files. Measured: 2,635 files / 8,611,556 bytes.
+// Shared Computer access removes duplicated plugin infrastructure; audited 2,564 files / 8,252,589 bytes.
+// Web UI workspace styling and controls: audited 2,567 files / 8,273,941 bytes.
+// Composer cancellation adds seven audited outputs/assets: two runtime control
+// outputs, two HTTP route outputs, two browser controllers/projections and CSS.
+// Measured: 2,574 files / 8,287,525 bytes.
+// Stop lifecycle review fixes, title eligibility and shutdown finalization reuse
+// existing outputs. After removing the cancelled-history experiments:
+// 2,574 files / 8,288,739 bytes (+1,214 audited bytes).
+// Merged Web UI follow-ups add one audited Home readiness module and 8,483 bytes.
+// Combined package: 2,575 files / 8,297,222 bytes.
+// Persisted cancellation responses add two runtime outputs; the handler, title
+// eligibility and live response display reuse existing outputs (+4,074 bytes).
+// Co-worker candidate gating and Applications: audited 2,717 files / 8,663,550 bytes.
+// Burst capacity reservation and confirmed preference reconciliation reuse outputs (+1,317 bytes).
+// Measured: 2,728 files / 8,701,720 bytes.
+// Shared memory admission and core retention replace the legacy candidate writer.
+// Net: 26 compiled paths; the standalone memory plugin remains unchanged.
+// Audited: 2,754 files / 8,743,266 bytes.
+// Existing conversation authoring now binds direct save requests and reuses
+// protected core management writes; Co-worker adds content-free JSON failure
+// shape diagnostics. Audited: 2,754 files / 8,754,288 bytes.
+// Atomic explicit candidate supersession and restored override notifications:
+// audited 2,754 files / 8,756,344 bytes (+2,056 bytes; no new packaged files).
+// Retain one file and 512 bytes of headroom.
+// Home guidance, daily memory review and session organization add 11 net browser assets.
+// Measured: 2,739 files / 8,736,865 bytes; retain one file and 512 bytes of headroom.
+// Integrated with shared core memory admission from main:
+// audited 2,765 files / 8,791,657 bytes; retain one file and 512 bytes of headroom.
+// Home guidance polish and manual memory-review entry add one browser asset.
+// Audited: 2,766 files / 8,793,927 bytes (+1 file / +2,270 bytes).
+// Review availability and error-state fixes reuse two assets (+564 bytes).
+// Audited: 2,766 files / 8,794,491 bytes.
+// Staged Co-worker reviews and bounded progress add 17 runtime modules (34 emitted files).
+// Audited: 2,800 files / 8,878,710 bytes.
+// Shared Web UI owners include the bounded reasoning disclosure component.
+// Audited: 2,804 files / 8,883,862 bytes. Retain one file and 512 bytes of headroom.
+// ASK approval continuity adds eight runtime/Web modules (16 emitted files).
+// Audited: 2,820 files / 8,930,071 bytes; retain one file and 512 bytes of headroom.
+// Notification history and native delivery include Companion observation redaction.
+// Audited: 2,881 files / 9,147,131 bytes; retain one file and 512 bytes of headroom.
+// Windows notification identity repair and owned legacy cleanup reuse existing outputs.
+// Audited: 2,881 files / 9,148,512 bytes; retain one file and 512 bytes of headroom.
+// Spark conversation choices and project previews add five browser assets.
+// Audited: 2,886 files / 9,159,498 bytes; retain one file and 512 bytes of headroom.
+// Saved ASK approvals, activation reconciliation and 1.5.0 release documentation.
+// Audited: 2,997 files / 9,432,446 bytes; retain one file and 512 bytes of headroom.
+// Native Mac broker support, safe startup diagnostics, and fresh Spark setup.
+// Audited: 2,999 files / 9,435,320 bytes; retain one file and 512 bytes of headroom.
+// Local Mac setup and manual pairing reuse the installed companion.
+// Audited: 3,009 files / 9,465,100 bytes; retain one file and 512 bytes of headroom.
+// Mac permission gating and fixed private runtime add five outputs/assets.
+// Audited: 3,014 files / 9,488,513 bytes; retain one file and 512 bytes of headroom.
+// Dual-stack loopback pinning and the Mac consent explanation add five outputs/assets.
+// Audited: 3,019 files / 9,505,744 bytes; retain one file and 512 bytes of headroom.
+// Spark permissions, onboarding and final release docs: 3,026 files / 9,536,773 bytes; retain one file and 512 bytes of headroom.
+const maxFileCount = 3_027;
+const maxUnpackedSizeBytes = 9_537_285;
 
 if (paths.length > maxFileCount) {
   fail(`package includes too many files: ${paths.length} > ${maxFileCount}`);

@@ -5,14 +5,21 @@ import { RuntimeEnvironmentRegistry } from "./environment-registry.js";
 import { getNumber, getString, requestEnvironmentId } from "./http.js";
 import { RealtimeClientHub } from "./realtime-hub.js";
 import { LocalRequestExecution } from "./request-execution.js";
+import { ManagedWebToolApprovals } from "./managed-tool-approvals.js";
 
 export class LocalRealtimeController {
+  private readonly approvals: ManagedWebToolApprovals;
   constructor(
     private readonly options: LocalRuntimeBackendOptions,
     private readonly environments: RuntimeEnvironmentRegistry,
     private readonly requests: LocalRequestExecution,
     private readonly clients: RealtimeClientHub,
-  ) {}
+  ) {
+    this.approvals = new ManagedWebToolApprovals(
+      (id) => environments.get(id),
+      requests,
+    );
+  }
 
   connect(client: WebSocket): void {
     this.clients.add(client);
@@ -31,8 +38,23 @@ export class LocalRealtimeController {
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
     const message = parsed as JsonObject;
+    if (message.type === "notification_presence") {
+      this.clients.updatePresence(client, message);
+      return;
+    }
     if (message.type === "tool_approval_response") {
-      this.requests.resolveToolApproval(message);
+      const accepted = await this.approvals.resolveRealtime(
+        message,
+        this.options.defaultEnvironmentId ?? "",
+      );
+      this.clients.send(client, {
+        type: "tool_approval_ack",
+        approvalId: message.approvalId,
+        accepted,
+        environment: message.environment,
+        sessionId: message.sessionId,
+        ...(accepted ? {} : { reason: "approval_conflict_or_unavailable" }),
+      });
       return;
     }
     if (message.type === "steer_request") {
@@ -57,10 +79,17 @@ export class LocalRealtimeController {
       this.options.defaultEnvironmentId,
     );
     const environment = this.environments.get(environmentId);
-    const replay = await environment.services.sessions.getRequestReplayById(
+    let replay = await environment.services.sessions.getRequestReplayById(
       requestId,
       getNumber(message.afterSeq),
     );
+    if (!replay?.finalState) {
+      await this.approvals.resume(environmentId, requestId);
+      replay = await environment.services.sessions.getRequestReplayById(
+        requestId,
+        getNumber(message.afterSeq),
+      );
+    }
     for (const event of replay?.events ?? []) {
       this.clients.send(client, { ...event, environment: environmentId });
     }

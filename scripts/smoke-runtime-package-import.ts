@@ -8,6 +8,7 @@ const adapters = await import("@abot-ai/runtime/runtime/adapters");
 const ports = await import("@abot-ai/runtime/runtime/ports");
 const modelGateway = await import("@abot-ai/runtime/model-gateway");
 const pluginSdk = await import("@abot-ai/runtime/plugin-sdk");
+const computerAccess = await import("@abot-ai/runtime/plugin-sdk/computer-access");
 
 const expectations: Array<[string, unknown]> = [
   ["runtime.loadRuntimeConfig", runtime.loadRuntimeConfig],
@@ -45,6 +46,8 @@ const expectations: Array<[string, unknown]> = [
   ["pluginSdk.defineRuntimePlugin", pluginSdk.defineRuntimePlugin],
   ["pluginSdk.resolvePluginPath", pluginSdk.resolvePluginPath],
   ["pluginSdk.successResult", pluginSdk.successResult],
+  ["computerAccess.readHostStatus", computerAccess.readHostStatus],
+  ["computerAccess.createNativeComputerBackend", computerAccess.createNativeComputerBackend],
 ];
 
 for (const [name, value] of expectations) {

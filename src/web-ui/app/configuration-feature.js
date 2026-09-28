@@ -1,11 +1,13 @@
 import { createModelSetupWizard } from "./components/model-setup/wizard.js";
 import { createRuntimeConfigActivation } from "./components/runtime-config-activation.js";
 import { createPluginManager } from "./components/plugins/manager.js";
-import { createSystemHostConnectionManager } from "./components/system-host/manager.js";
-import { createSystemHostSetupNotice } from "./components/system-host/setup-notice.js";
+import { createComputerAccessFeature } from "./computer-access-feature.js";
+import { createHomeGuidance } from "./components/home-guidance/home-guidance.js";
 import { createConfigWorkspace } from "./components/config-workspace.js";
+import { createModelRemovalController } from "./components/config-workspace/model-removal.js";
 import { createLongTermMemorySetup } from "./components/long-term-memory-setup.js";
 import { createLongTermMemoryManager } from "./components/long-term-memory/manager.js";
+import { createMemoryWorkspace } from "./components/long-term-memory/workspace.js";
 import { createLongTermMemoryController } from "./controllers/long-term-memory/controller.js";
 
 export function createConfigurationFeature({
@@ -13,12 +15,16 @@ export function createConfigurationFeature({
   runtimeClient,
   selectedEnvironmentId,
   recordControlEvent,
+  onNavigationChange = () => {},
   onConfigurationApplied = async () => {},
   onConfigurationSettled = () => true,
+  getLearningSnapshot = () => null,
+  isRuntimeReady = () => true,
 }) {
   let configWorkspace;
   let activation;
   let modelSetup;
+  let modelRemoval;
   const longTermMemorySetup = createLongTermMemorySetup({
     getEnvironmentId: selectedEnvironmentId,
     loadStatus: (environmentId) =>
@@ -28,13 +34,19 @@ export function createConfigurationFeature({
         environmentId,
         providerId,
       }),
-    enableMemory: (input, environmentId) =>
-      runtimeClient.enableLongTermMemory({
+    enableMemory: async (input, environmentId) => {
+      const result = await runtimeClient.enableLongTermMemory({
         environmentId,
         ...input,
-      }),
-    disableMemory: (environmentId) =>
-      runtimeClient.disableLongTermMemory(environmentId),
+      });
+      activation?.markPending();
+      return result;
+    },
+    disableMemory: async (environmentId) => {
+      const result = await runtimeClient.disableLongTermMemory(environmentId);
+      activation?.markPending();
+      return result;
+    },
     recordControlEvent,
     beginRuntimeMutation: () =>
       configWorkspace?.beginExternalRuntimeMutation() ?? false,
@@ -53,6 +65,11 @@ export function createConfigurationFeature({
   longTermMemoryManager = createLongTermMemoryManager({
     actions: longTermMemoryController,
   });
+  longTermMemorySetup.mount(dom.memorySetupRoot);
+  longTermMemoryManager.mount(dom.memoryManagementRoot);
+  const memoryWorkspace = createMemoryWorkspace({
+    root: dom.memoryWorkspacePanel,
+  });
 
   const pluginManager = createPluginManager({
     getEnvironmentId: selectedEnvironmentId,
@@ -68,29 +85,40 @@ export function createConfigurationFeature({
     recordControlEvent,
   });
 
-  let hostSetupNotice;
-  const hostConnection = createSystemHostConnectionManager({
-    loadConnection: () => runtimeClient.getSystemHostConnection(),
-    downloadSetup: (platform) =>
-      runtimeClient.downloadSystemHostSetup(platform),
-    revokeConnection: () => runtimeClient.revokeSystemHostConnection(),
-    supportsConnection: () => runtimeClient.supportsSystemHostConnection(),
-    onChange: () => hostSetupNotice?.render(),
+  let homeSetupSuggestion;
+  const computerAccess = createComputerAccessFeature({
+    dom,
+    runtimeClient,
+    onChange: () => homeSetupSuggestion?.render(),
   });
-  hostSetupNotice = createSystemHostSetupNotice({
-    container: dom.chatPanel?.querySelector(".composer-dock"),
-    conversationRegion: dom.messagesList,
-    getConnectionState: () => hostConnection.state,
-    supportsConnection: () => runtimeClient.supportsSystemHostConnection(),
-    refreshConnection: () => hostConnection.load(true),
-    onOpen: () => {
-      dom.configWorkspaceButton?.click();
-      if (dom.configWorkspacePanel?.hidden === false)
-        configWorkspace.activateCategory("computer");
+  homeSetupSuggestion = createHomeGuidance({
+    container: dom.homeDashboardRoot?.querySelector(".home-workspace-content"),
+    homeRegion: dom.homeWorkspacePanel,
+    client: runtimeClient,
+    getEnvironmentId: selectedEnvironmentId,
+    getLearningSnapshot,
+    isRuntimeReady,
+    // Computer access is permanently visible above the Home suggestions.
+    getConnectionState: () => null,
+    supportsConnection: () => false,
+    refreshConnection: () => {},
+    onOpen: (id) => {
+      if (id === "coworker") return dom.learningWorkspaceButton?.click();
+      if (id === "memory") {
+        dom.memoryWorkspaceButton?.click();
+        if (dom.memoryWorkspacePanel?.hidden === false)
+          memoryWorkspace.activate("setup");
+        return;
+      }
+      dom.pluginsWorkspaceButton?.click();
     },
   });
-
   configWorkspace = createConfigWorkspace({
+    onNavigationChange,
+    onRemoveModel: (model) => {
+      if (modelSetup?.isOpen()) return;
+      return modelRemoval.remove(model);
+    },
     dom: {
       refreshConfigButton: dom.refreshConfigButton,
       configStatus: dom.configStatus,
@@ -122,7 +150,6 @@ export function createConfigurationFeature({
     },
     memorySetup: longTermMemorySetup,
     pluginManagement: pluginManager,
-    hostConnection,
     memoryManagement: {
       load: () => longTermMemoryController.load(),
       mount: (root) => longTermMemoryManager.mount(root),
@@ -144,6 +171,20 @@ export function createConfigurationFeature({
       return refreshed;
     },
   });
+  modelRemoval = createModelRemovalController({
+    removeModel: (input, environmentId) =>
+      runtimeClient.removeRuntimeModel(input, environmentId),
+    loadDashboard: (environmentId) =>
+      runtimeClient.loadConfigDashboard(environmentId, { settled: true }),
+    getEnvironmentId: selectedEnvironmentId,
+    beginRuntimeMutation: (subject) =>
+      configWorkspace.beginExternalRuntimeMutation(subject),
+    endRuntimeMutation: () => configWorkspace.endExternalRuntimeMutation(),
+    refreshRuntimeConfig: (prefix) =>
+      configWorkspace.refreshAfterExternalRuntimeMutation(prefix),
+    onSaved: () => activation.markPending(),
+    setStatus: (...args) => configWorkspace.setStatus(...args),
+  });
   modelSetup = createModelSetupWizard({
     root: dom.configDashboard.parentElement,
     getEnvironmentId: selectedEnvironmentId,
@@ -156,6 +197,14 @@ export function createConfigurationFeature({
       configWorkspace.beginExternalRuntimeMutation("model setup"),
     endRuntimeMutation: () => configWorkspace.endExternalRuntimeMutation(),
     onSaved: () => activation.markPending(),
+    onDeferred: async (model) => {
+      const refreshed =
+        await configWorkspace.refreshAfterExternalRuntimeMutation(
+          "Model saved; refresh required",
+        );
+      if (!refreshed) return false;
+      return configWorkspace.selectModel(model.profileId);
+    },
     onComplete: async (model) => {
       activation.markApplied();
       try {
@@ -181,6 +230,14 @@ export function createConfigurationFeature({
   const prepareDiscardChanges = configWorkspace.prepareDiscardChanges;
   return {
     ...configWorkspace,
+    openComputerSetup: computerAccess.open,
+    refreshComputerAccess: computerAccess.load,
+    renderHomeGuidance: () => homeSetupSuggestion.render(),
+    showActivityMemories: () => {
+      memoryWorkspace.activate("memories");
+      void longTermMemoryController.setOriginFilter("passive_observation");
+      longTermMemoryManager.focus();
+    },
     prepareDiscardChanges: (...args) => {
       if (modelSetup.isOpen()) {
         dom.configStatus.textContent =

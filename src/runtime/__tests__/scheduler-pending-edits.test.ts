@@ -60,6 +60,43 @@ afterEach(async () => {
   );
 });
 describe("scheduler pending edit preservation", () => {
+  it.each([
+    ["full_access", "full_plus"],
+    ["full_plus", "full_access"],
+  ] as const)(
+    "replaces pending %s authority with explicitly saved %s without changing its due time",
+    async (before, after) => {
+      const f = await fixture();
+      await f.service.update(f.job.id, { toolPermissionMode: before });
+      f.advance();
+      await f.service.tick();
+      const [original] = await f.service.listRuns(f.job.id);
+      const edited = await f.service.update(f.job.id, {
+        toolPermissionMode: after,
+      });
+      const runs = await f.service.listRuns(f.job.id);
+      expect(runs).toHaveLength(2);
+      expect(runs[0]).toMatchObject({
+        id: original.id,
+        status: "cancelled",
+        toolPermissionMode: before,
+      });
+      expect(runs[1]).toMatchObject({
+        status: "pending",
+        toolPermissionMode: after,
+        scheduledAt: original.scheduledAt,
+        jobRevision: edited.revision,
+      });
+      expect(
+        await f.service.update(f.job.id, { toolPermissionMode: after }),
+      ).toEqual(edited);
+      f.freeSession();
+      await f.service.tick();
+      expect(f.start.mock.calls[0][0].toolPermissionMode).toBe(after);
+      expect(f.start.mock.calls[0][1].toolPermissionMode).toBe(after);
+    },
+  );
+
   it("replaces a busy one-shot snapshot after title/prompt/model edits without dropping its occurrence", async () => {
     const f = await fixture();
     f.advance();

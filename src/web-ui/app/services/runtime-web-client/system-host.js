@@ -14,10 +14,12 @@ export function createSystemHostRequests({ requestApi, getConfig }) {
   return {
     supportsSystemHostConnection,
     getSystemHostConnection: () => requestSystemHost(),
-    downloadSystemHostSetup: (platform) =>
+    connectLocalSystemHost: () =>
+      requestSystemHost("/connect-local", { method: "POST", body: "{}" }),
+    downloadSystemHostSetup: (platform, options = {}) =>
       requestSystemHost("/setup", {
         method: "POST",
-        body: JSON.stringify({ platform }),
+        body: JSON.stringify({ platform, ...(options.purpose === "learning" ? { purpose: "learning" } : {}) }),
       }),
     createSystemHostPairing: () =>
       requestSystemHost("/pairing", { method: "POST", body: "{}" }),

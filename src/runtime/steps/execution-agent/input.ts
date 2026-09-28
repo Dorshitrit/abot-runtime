@@ -5,6 +5,7 @@ import type {
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
 import { projectRequestContext } from "../../context/request-context.js";
 import { projectRootSessionMemory } from "../../context/session-memory/root-projection.js";
+import { buildConversationMemoryAvailabilityInstructions } from "../../long-term-memory/conversation-authoring/prompt.js";
 import { canOfferMemoryRecall } from "../../long-term-memory/recall-policy.js";
 import { projectMemoryRecallContinuations } from "../../long-term-memory/recall-continuation.js";
 import { buildRequestTemporalContextMessage } from "../../context/request-temporal-context.js";
@@ -148,20 +149,23 @@ export function buildExecutionAgentInput(
     includeWorkingDirectory: options.call.workingDirectory === undefined,
   } satisfies ExecutionAgentDecisionContractOptions);
   const format = createExecutionAgentDecisionFormat(contract);
-  const instructions = buildExecutionAgentInstructions({
-    allowWorkPlan: workPlan !== undefined,
-    allowMemoryRecall: contract.allowMemoryRecall,
-    hasMemoryRecallContext: memoryRecallMessage !== undefined,
-    hasCapabilities: capabilities.length > 0,
-    hasCapabilityCatalogGroups: capabilityCatalogGroups.length > 0,
-    capabilityScopeAction,
-    allowPlanner: options.allowPlanner,
-    availableAuditCriterionCount: availableAuditCriterionIds.length,
-    allowRespond: true,
-    includeAcknowledgement: options.includeAcknowledgement,
-    includeTitle: options.includeTitle,
-    includeWorkingDirectory: options.call.workingDirectory === undefined,
-  });
+  const instructions = [
+    buildExecutionAgentInstructions({
+      allowWorkPlan: workPlan !== undefined,
+      allowMemoryRecall: contract.allowMemoryRecall,
+      hasMemoryRecallContext: memoryRecallMessage !== undefined,
+      hasCapabilities: capabilities.length > 0,
+      hasCapabilityCatalogGroups: capabilityCatalogGroups.length > 0,
+      capabilityScopeAction,
+      allowPlanner: options.allowPlanner,
+      availableAuditCriterionCount: availableAuditCriterionIds.length,
+      allowRespond: true,
+      includeAcknowledgement: options.includeAcknowledgement,
+      includeTitle: options.includeTitle,
+      includeWorkingDirectory: options.call.workingDirectory === undefined,
+    }),
+    ...buildConversationMemoryAvailabilityInstructions(request.longTermMemory?.enabled === true),
+  ].join("\n");
   const scheduledExecution = projectScheduledExecutionContext(
     request,
     instructions,

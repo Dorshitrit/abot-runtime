@@ -109,7 +109,7 @@ describe("web ui tool invocation count", () => {
     expect(activity.events[0].count).toBe(3);
   });
 
-  test("keeps failed completion evidence separate from invocation count", () => {
+  test("keeps tool error evidence without adding a request failure", () => {
     const activity = buildConversationActivityModel({
       requestId: "request-current",
       events: [
@@ -123,13 +123,18 @@ describe("web ui tool invocation count", () => {
           name: "tool.completed",
           tool: "read_file",
           ok: false,
+          error: "file_not_found",
         },
       ],
     });
 
     expect(activity.toolCount).toBe(1);
-    expect(activity.failureCount).toBe(1);
+    expect(activity.failureCount).toBe(0);
     expect(activity.events).toHaveLength(2);
-    expect(activity.events[1].tone).toBe("failed");
+    expect(activity.events[1].tone).toBe("neutral");
+    expect(activity.toolActions[0]).toMatchObject({
+      status: "failed",
+      received: [{ label: "Error", value: "file_not_found" }],
+    });
   });
 });

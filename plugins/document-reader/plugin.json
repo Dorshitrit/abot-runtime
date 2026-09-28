@@ -10,7 +10,7 @@
       "catalogGroups": ["read"],
       "capabilities": {
         "document_reader": {
-          "description": "Extract bounded text from an attached or configured-root PDF, DOCX, XLSX, PPTX, TXT, CSV, Markdown, JSON, or RTF document. Use source for an attachment id/name or configured-root path. Use source_mode=working_path with path for a runtime/session artifact beneath the current execution working directory. Document bytes remain outside model context, and results expose only attachment identities or logical runtime paths.",
+          "description": "Extract bounded text only from PDF, DOCX, XLSX, PPTX, TXT, CSV, Markdown (.md), JSON, or RTF documents. Local paths require one of those extensions. Source-code paths such as .js and .ts are unsupported; use read_one_file for source code and other text files when that operation is available. Use source for an attachment id/name or configured-root path. Use source_mode=working_path with path for a runtime/session artifact beneath the current execution working directory. Document bytes remain outside model context, and results expose only attachment identities or logical runtime paths.",
           "routingCapability": "filesystem_inspection",
           "developmentRoles": ["inspect", "verify"],
           "eventPresentation": {
@@ -41,7 +41,7 @@
           "skills": ["document_reader_skill"],
           "operations": {
             "read_document": {
-              "summary": "Read one bounded character window from a supported attachment or logical runtime path, with explicit input, extraction, archive, window, and output bounds.",
+              "summary": "Read one bounded character window from PDF, DOCX, XLSX, PPTX, TXT, CSV, Markdown (.md), JSON, or RTF documents only. Local .js, .ts, and other unsupported extensions cannot be read here; use read_one_file for source code and other text files when available. Input, extraction, archive, window, and output bounds are explicit.",
               "input": {
                 "type": "object",
                 "additionalProperties": false,

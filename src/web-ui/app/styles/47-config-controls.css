@@ -1,0 +1,178 @@
+/* Config-only controls; Memory and native plugin switches keep their styles. */
+
+.config-workspace-panel .config-dashboard {
+  --config-control: color-mix(in srgb, var(--bg) 60%, var(--panel));
+}
+
+.config-workspace-panel
+  .config-dashboard
+  :is(input:not([type="checkbox"], [type="radio"]), select, textarea) {
+  border-color: var(--config-line);
+  border-radius: 6px;
+  background-color: var(--config-control);
+  color: var(--config-copy);
+}
+
+.config-workspace-panel
+  .config-dashboard
+  :is(input:not([type="checkbox"], [type="radio"]), select) {
+  min-height: 36px;
+  padding: 6px 10px;
+}
+
+.config-workspace-panel .config-dashboard textarea {
+  padding: 8px 10px;
+}
+
+.config-workspace-panel .config-dashboard :is(input, textarea)::placeholder {
+  color: var(--config-faint);
+  opacity: 1;
+}
+
+.config-workspace-panel
+  .config-dashboard
+  :is(input:not([type="checkbox"], [type="radio"]), select, textarea):focus {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  outline-offset: 1px;
+  background-color: var(--config-control);
+  box-shadow: none;
+}
+
+.config-workspace-panel .config-dashboard :is(input, textarea)[readonly] {
+  background-color: var(--config-surface);
+  color: var(--config-muted);
+}
+
+.config-workspace-panel
+  .config-dashboard
+  :is(input:not([type="checkbox"], [type="radio"]), select, textarea):disabled {
+  background-color: var(--config-surface);
+  color: var(--config-muted);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.config-workspace-panel
+  .config-dashboard
+  :is(input:not([type="checkbox"], [type="radio"]), select, textarea):is(
+    [aria-invalid="true"],
+    :user-invalid
+  ) {
+  border-color: var(--danger);
+  outline-color: color-mix(in srgb, var(--danger) 22%, transparent);
+}
+
+.config-workspace-panel .config-toggle {
+  align-self: end;
+  justify-self: start;
+  gap: 8px;
+  min-height: 36px;
+  max-width: 100%;
+  padding: 0 8px;
+  border-color: transparent;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.config-workspace-panel .config-toggle:has(input:not(:disabled)):hover {
+  background: var(--accent-soft);
+}
+
+.config-workspace-panel .config-toggle input {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  accent-color: var(--accent);
+}
+
+.config-workspace-panel .config-toggle > span {
+  color: var(--config-copy);
+  font-size: var(--font-size-md);
+}
+
+.config-workspace-panel .config-toggle:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.config-workspace-panel .config-model-defaults-title {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.config-workspace-panel .config-model-defaults-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.config-workspace-panel .config-model-defaults-heading .config-toggle {
+  align-self: center;
+  min-height: 28px;
+  padding-inline: 6px;
+}
+
+.config-workspace-panel .config-model-defaults-title > span {
+  white-space: normal;
+}
+
+.config-workspace-panel .config-calibration-meta,
+.config-workspace-panel .config-calibration-card .config-field-grid {
+  align-items: start;
+}
+
+.config-workspace-panel .config-calibration-meta > label,
+.config-workspace-panel .config-calibration-card .config-field-grid > label {
+  align-content: start;
+}
+
+.config-calibration-section {
+  border-top: 1px solid var(--config-line);
+}
+
+.config-calibration-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  color: var(--config-copy);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  list-style: none;
+  cursor: pointer;
+}
+
+.config-calibration-section-title::-webkit-details-marker {
+  display: none;
+}
+
+.config-calibration-section-title::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-right: 1px solid var(--config-muted);
+  border-bottom: 1px solid var(--config-muted);
+  transform: rotate(-45deg);
+}
+
+.config-calibration-section[open] > .config-calibration-section-title::before {
+  transform: rotate(45deg);
+}
+
+.config-calibration-section-title small {
+  margin-inline-start: auto;
+  color: var(--config-muted);
+  font-weight: 400;
+}
+
+.config-calibration-section-body {
+  display: grid;
+  gap: 16px;
+  padding: 4px 0 12px;
+}

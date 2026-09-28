@@ -314,6 +314,11 @@ function collectConversationTurns(
       continue;
     }
 
+    if (message.assistantInitiativeId) {
+      turns.push({ source: [message], messages: [{ role: "assistant", content: message.content }] });
+      continue;
+    }
+
     const pendingTurn = findPendingConversationTurn(turns, message);
     if (!pendingTurn) {
       continue;
@@ -347,7 +352,7 @@ function findPendingConversationTurn(
   turns: ConversationTurn[],
   assistant: RequestHistoryMessage,
 ): ConversationTurn | undefined {
-  const pendingTurns = turns.filter((turn) => turn.source.length === 1);
+  const pendingTurns = turns.filter((turn) => turn.source.length === 1 && turn.source[0]?.role === "user");
   if (assistant.requestId) {
     const exactMatch = findLastConversationTurn(
       pendingTurns,

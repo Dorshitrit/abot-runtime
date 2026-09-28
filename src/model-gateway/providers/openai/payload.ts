@@ -1,4 +1,5 @@
 import { resolveModelStepOutputTokenLimit } from "../../../shared/model-step-registry.js";
+import { openAIImageContents, projectOpenAIImageMessage } from "./image-content.js";
 import {
   isAssistantToolCallMessage,
   isToolResultMessage,
@@ -74,11 +75,13 @@ function projectOpenAIInputItems(input: unknown): unknown {
         {
           type: "function_call_output",
           call_id: item.toolCallId,
-          output: item.content,
+          output: item.attachments?.length
+            ? [{ type: "input_text", text: item.content }, ...openAIImageContents(item.attachments)]
+            : item.content,
         },
       ];
     }
-    return [item];
+    return [projectOpenAIImageMessage(item)];
   });
 }
 

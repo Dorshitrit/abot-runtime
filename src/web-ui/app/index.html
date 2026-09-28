@@ -3,13 +3,29 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#07111f" />
-    <title>ABot Runtime</title>
+    <meta name="theme-color" content="#090f17" />
+    <title>ABot Runtime — Workspace</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+      html {
+        background: #090f17;
+      }
+      #app[data-startup-pending] {
+        visibility: hidden;
+      }
+    </style>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div id="app" class="app-shell">
+    <section id="appStartup" class="app-startup" aria-label="ABot startup">
+      <img src="/favicon.svg" width="48" height="48" alt="" />
+      <p id="startupStatus" role="status" aria-live="polite">Loading ABot…</p>
+      <button id="startupRetry" type="button" hidden>Reload</button>
+      <noscript>Enable JavaScript to open ABot.</noscript>
+    </section>
+    <div id="app" class="app-shell" data-startup-pending aria-busy="true" inert>
       <nav class="workspace-rail" aria-label="Workspace navigation">
+        <div class="workspace-brand"><img src="/favicon.svg" width="28" height="28" alt="ABot" /></div>
         <button
           id="sessionsToggleButton"
           class="rail-button rail-history-button"
@@ -19,9 +35,9 @@
           aria-expanded="false"
           title="Conversations"
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M5 6.5h14M5 12h14M5 17.5h9" />
-          </svg>
+          <span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24">
+            <path d="M5 6h14v10H9l-4 4V6ZM8 3h14v10M9 10h6" />
+          </svg></span>
           <span class="rail-button-label">Chats</span>
         </button>
         <div class="rail-actions">
@@ -34,9 +50,9 @@
             aria-current="page"
             title="Home"
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
+            <span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24">
               <path d="m3 10 9-7 9 7M5 9v12h5v-7h4v7h5V9" />
-            </svg>
+            </svg></span>
             <span class="rail-button-label">Home</span>
           </button>
           <button
@@ -47,37 +63,39 @@
             aria-controls="chatWorkspace"
             title="Chat"
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
+            <span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24">
               <path d="M7 17.5 4 20v-5.2A7.5 7.5 0 1 1 7 17.5Z" />
               <path d="M8 10h8M8 13h5" />
-            </svg>
+            </svg></span>
             <span class="rail-button-label">Chat</span>
           </button>
           <button
-            id="newSessionButton"
-            class="rail-button rail-new-button"
+            id="learningWorkspaceButton"
+            class="rail-button"
             type="button"
-            aria-label="New conversation"
-            title="New conversation"
+            aria-label="Open ABot Spark workspace"
+            aria-controls="learningWorkspacePanel"
+            title="ABot Spark"
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            <span class="rail-button-label">New</span>
+            <span class="rail-icon rail-icon-coworker" aria-hidden="true"><svg viewBox="0 0 24 24">
+              <path d="M12 3c0 6-3 9-9 9 6 0 9 3 9 9 0-6 3-9 9-9-6 0-9-3-9-9Z" />
+              <path d="M18 3v4m-2-2h4" />
+            </svg></span>
+            <span class="rail-button-label">ABot Spark</span>
           </button>
           <button
-            id="newProjectButton"
-            class="rail-button rail-project-button"
+            id="memoryWorkspaceButton"
+            class="rail-button"
             type="button"
-            disabled
-            aria-label="Create a project"
-            title="Create a project"
-            aria-controls="projectCreationRoot"
+            aria-label="Open memory workspace"
+            aria-controls="memoryWorkspacePanel"
+            title="Memory"
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M3 7V5h6l2 2h10v13H3ZM12 10v7M8.5 13.5h7" />
-            </svg>
-            <span class="rail-button-label">Project</span>
+            <span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24">
+              <path d="M12 6c-3-2-6-2-9-1v14c3-1 6-1 9 1m0-14c3-2 6-2 9-1v14c-3-1-6-1-9 1V6Z" />
+              <path d="M6 9h3m-3 4h3m6-4h3m-3 4h3" />
+            </svg></span>
+            <span class="rail-button-label">Memory</span>
           </button>
           <button
             id="schedulesWorkspaceButton"
@@ -89,25 +107,37 @@
             aria-controls="schedulesWorkspacePanel"
             title="Schedules"
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="12" r="8" />
-              <path d="M12 7v5l3 2" />
-            </svg>
+            <span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24">
+              <rect x="4" y="5" width="16" height="16" rx="2" />
+              <path d="M8 3v4m8-4v4M4 10h16m-8 3v3l2 1" />
+            </svg></span>
             <span class="rail-button-label">Schedules</span>
+          </button>
+          <button id="modelsWorkspaceButton" class="rail-button" type="button"
+            aria-label="Open models workspace" aria-controls="configWorkspacePanel" title="Models">
+            <span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24">
+              <rect x="6" y="6" width="12" height="12" rx="2" /><path d="M9 2v4m6-4v4M9 18v4m6-4v4M2 9h4m-4 6h4m12-6h4m-4 6h4" />
+            </svg></span><span class="rail-button-label">Models</span>
+          </button>
+          <button id="pluginsWorkspaceButton" class="rail-button" type="button"
+            aria-label="Open plugins workspace" aria-controls="configWorkspacePanel" title="Plugins">
+            <span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24">
+              <path d="M8 3v5m8-5v5M6 8h12v3a6 6 0 0 1-12 0V8Zm6 9v4" />
+            </svg></span><span class="rail-button-label">Plugins</span>
           </button>
           <button
             id="configWorkspaceButton"
             class="rail-button"
             type="button"
-            aria-label="Open configuration workspace"
+            aria-label="Open system workspace"
             aria-controls="configWorkspacePanel"
-            title="Configuration"
+            title="System"
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
-              <circle cx="12" cy="12" r="4" />
-            </svg>
-            <span class="rail-button-label">Config</span>
+            <span class="rail-icon" aria-hidden="true"><svg viewBox="0 0 24 24">
+              <path d="M4 7h8m4 0h4M4 17h3m4 0h9" />
+              <circle cx="14" cy="7" r="2" /><circle cx="9" cy="17" r="2" />
+            </svg></span>
+            <span class="rail-button-label">System</span>
           </button>
         </div>
         <div class="rail-spacer"></div>
@@ -152,7 +182,11 @@
         class="home-workspace-panel"
         aria-label="Home dashboard"
       >
-        <header class="home-workspace-header"><h1>Home</h1></header>
+        <header class="home-workspace-header">
+          <div>
+            <h1>Home</h1>
+          </div>
+        </header>
         <div id="homeDashboardRoot"></div>
       </section>
 
@@ -196,6 +230,35 @@
           </div>
         </div>
 
+        <div class="session-create-row">
+          <button
+            id="newSessionButton"
+            class="sessions-new-button"
+            type="button"
+            aria-label="New conversation"
+            title="New conversation"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            <span>New chat</span>
+          </button>
+          <button
+            id="newProjectButton"
+            class="sessions-project-button"
+            type="button"
+            disabled
+            aria-label="Create a project"
+            title="Create a project"
+            aria-controls="projectCreationRoot"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 7V5h6l2 2h10v13H3ZM12 10v7M8.5 13.5h7" />
+            </svg>
+            <span>New project</span>
+          </button>
+        </div>
+
         <section class="sessions-section" aria-labelledby="sessionsHeading">
           <div class="sessions-heading-row">
             <span class="sessions-list-label">Recent conversations</span>
@@ -222,7 +285,7 @@
         <header class="chat-header">
           <div class="chat-heading-group">
             <div class="chat-heading-copy">
-              <h2 id="sessionTitle">New conversation</h2>
+              <h2 id="sessionTitle" dir="auto">New conversation</h2>
               <p
                 id="currentProjectContext"
                 class="current-project-context"
@@ -376,6 +439,7 @@
                   hidden
                 ></div>
               </div>
+              <div class="composer-submit-actions">
               <div id="composerSubmitControl" class="composer-submit-control">
                 <button
                   id="sendButton"
@@ -414,6 +478,10 @@
                   </button>
                 </div>
               </div>
+                <button id="stopButton" class="composer-stop-button" type="button" title="Stop response" aria-label="Stop response" hidden disabled>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg>
+                </button>
+              </div>
             </div>
           </form>
           <p class="composer-hint">
@@ -449,6 +517,118 @@
       </section>
 
       <section
+        id="learningWorkspacePanel"
+        class="workspace-page-panel learning-workspace-panel"
+        aria-labelledby="learningWorkspaceTitle"
+        hidden
+      >
+        <header class="workspace-page-header">
+          <div class="workspace-page-heading">
+            <p class="eyebrow">Computer activity</p>
+            <h2 id="learningWorkspaceTitle">ABot Spark</h2>
+            <p>What ABot learns from your computer activity.</p>
+          </div>
+          <button
+            id="closeLearningWorkspaceButton"
+            class="workspace-page-back"
+            type="button"
+          >
+            Back to chat
+          </button>
+        </header>
+        <div class="workspace-page-body learning-workspace-body">
+          <div id="learningRoot"></div>
+        </div>
+      </section>
+
+      <section
+        id="memoryWorkspacePanel"
+        class="workspace-page-panel memory-workspace-panel"
+        aria-labelledby="memoryWorkspaceTitle"
+        hidden
+      >
+        <header class="workspace-page-header config-workspace-header">
+          <div class="workspace-page-heading config-workspace-heading">
+            <p class="eyebrow">Long-term memory</p>
+            <h2 id="memoryWorkspaceTitle">Memory</h2>
+            <p>
+              Review and manage what ABot can remember across conversations.
+            </p>
+          </div>
+          <div class="toolbar-actions">
+            <button
+              id="openMemoryRestartControlsButton"
+              class="workspace-page-back"
+              type="button"
+            >
+              Open restart controls
+            </button>
+            <button
+              id="closeMemoryWorkspaceButton"
+              class="workspace-page-back"
+              type="button"
+            >
+              Back to chat
+            </button>
+          </div>
+        </header>
+        <div class="workspace-page-body memory-workspace-body">
+          <div class="config-dashboard memory-workspace-content">
+            <nav
+              class="config-category-nav memory-workspace-nav"
+              role="tablist"
+              aria-label="Memory views"
+            >
+              <button
+                id="memoryMemoriesTab"
+                class="config-category-tab active"
+                type="button"
+                role="tab"
+                data-memory-tab="memories"
+                aria-controls="memoryManagementRoot"
+                aria-selected="true"
+              >
+                Memories
+              </button>
+              <button
+                id="memorySetupTab"
+                class="config-category-tab"
+                type="button"
+                role="tab"
+                data-memory-tab="setup"
+                aria-controls="memorySetupRoot"
+                aria-selected="false"
+                tabindex="-1"
+              >
+                Setup
+              </button>
+            </nav>
+            <div class="config-category-panels">
+              <div
+                id="memoryManagementRoot"
+                class="config-category-panel"
+                role="tabpanel"
+                aria-labelledby="memoryMemoriesTab"
+                tabindex="0"
+                data-memory-panel="memories"
+                data-long-term-memory-management
+              ></div>
+              <div
+                id="memorySetupRoot"
+                class="config-category-panel"
+                role="tabpanel"
+                aria-labelledby="memorySetupTab"
+                tabindex="0"
+                data-memory-panel="setup"
+                data-long-term-memory-setup
+                hidden
+              ></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
         id="configWorkspacePanel"
         class="workspace-page-panel config-workspace-panel"
         aria-labelledby="configWorkspaceTitle"
@@ -457,8 +637,8 @@
         <header class="workspace-page-header config-workspace-header">
           <div class="workspace-page-heading config-workspace-heading">
             <p class="eyebrow">Runtime workspace</p>
-            <h2 id="configWorkspaceTitle">Configuration</h2>
-            <p>Review and edit runtime configuration with explicit saves.</p>
+            <h2 id="configWorkspaceTitle">System</h2>
+            <p id="configWorkspaceDescription">Inspect runtime status, logs and health, and apply saved settings.</p>
           </div>
           <div class="toolbar-actions">
             <button
@@ -490,6 +670,7 @@
             id="configOperationsSection"
             class="config-operations-section"
             aria-labelledby="configOperationsTitle"
+            hidden
           >
             <header class="config-operations-heading">
               <h3 id="configOperationsTitle">Operations</h3>

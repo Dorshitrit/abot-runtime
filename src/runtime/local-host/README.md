@@ -42,7 +42,67 @@ remain terminal.
 If initial startup fails before a connection is established, a later explicit
 `start()` or service call can start a fresh connection attempt. Concurrent callers
 share the current attempt. No attempt is repeated automatically, and an established
-connection loss never reconnects or replays a request with an uncertain outcome.
+connection loss never replays a request with an uncertain outcome. Ordinary service
+calls retain the failed connection. Explicit approval access may reconnect to the
+same captured owner endpoint; it never elects a replacement owner or resends a run.
+
+## Saved ASK approvals
+
+Web requests opt into `durableApprovals`. When approval is the only remaining
+work, the request saves an `awaiting_approval` interaction in its existing session
+record and returns. Its runner, request RPC, approval callbacks, timers and tool
+resources retire. Restart leaves this saved response pending. Startup interrupts
+previously running durable activations; it never replays them.
+
+The session record owns the lifecycle, approval descriptions, decision receipts
+and event sequence. Immutable content blobs beneath the session store hold the
+versioned continuation, including the role ledger, prepared actions, history and
+request resource data. These blobs cannot authorize execution on their own.
+Session replacement syncs file data and its directory on supported platforms;
+Windows power-loss durability remains dependent on filesystem guarantees.
+
+`application.approvals.list()` reads pending metadata without loading a
+continuation. Saved-wait `attach(...)` only acknowledges availability. A decision
+includes `generation`, `waitId`, `revision` and a stable `commandId`, in addition
+to session, request and approval IDs. Partial decisions remain saved. The final
+decision validates compatibility, atomically consumes the wait and claims a new
+activation, then resumes the same runner at the exact prepared action. Repeated
+decision commands return the saved receipt. A group dispatches only after all
+its decisions are recorded. No model decision or payload preparation is replayed.
+
+An incompatible or unreadable continuation stays pending and can still be
+cancelled. Explicit cancellation is distinct from tool rejection. A crash after
+the activation claim interrupts that activation even if dispatch has not started
+or its external effect is uncertain: the runtime does not promise exactly-once
+external effects or automatically repeat such work.
+
+While a saved wait exists, the Web composer is frozen and a new request or
+scheduled job in that session is not admitted. The user can cancel the waiting
+request and start another. Previously admitted requests and other sessions retain
+their existing concurrency. Active background tool work keeps its request live;
+the request parks when that work becomes quiescent.
+
+## Legacy approval clients
+
+Clients without `durableApprovals`, including existing Bridge and scheduler
+callers, retain live-owner approvals. Elapsed time and connection loss cannot
+become a user rejection. Their `attach(...)` restores delivery before a late
+decision; stale callbacks cannot decide after replacement. Scheduled requests
+keep their existing broadcast delivery. Saved approval events from older versions
+do not contain a continuation and cannot be migrated into resumable permission.
+
+If the connection closes before an approval notification arrives, an
+approval-capable client request remains unconfirmed until explicit approval
+access checks the same owner's state. An empty approval list is not completion:
+the client retains the request while the owner's exact request/session remains
+active. Older reads cannot replace newer callback or attachment observations.
+This reconciliation never runs a request again or elects a replacement owner.
+
+Legacy request timers exclude approval waits, including overlapping approvals.
+Durable requests preserve their remaining active-time budgets across saved waits;
+time with actual work still in flight continues to count. Owner shutdown aborts
+live execution with `request_interrupted`, without recording a rejection. Saved
+waits have no live execution to abort.
 
 The endpoint contains a random token and is private to the local user: Unix
 directories/files use 0700/0600 and ownership checks; Windows directories are
@@ -77,9 +137,11 @@ A client connection's `close()` only detaches that client.
 Detached passive-memory saves retain their existing background queue and
 independent repository locking; they are not part of request admission.
 Both are idempotent. `onClose` fires on local closure or connection loss and fires
-immediately when registered after loss. Pending calls reject on connection loss;
-the transport never reconnects or replays an uncertain request. A later explicit
-connection can acquire an abandoned PID lock and start a new application.
+immediately when registered after loss. Pending RPC calls reject on connection
+loss; the managed client retains an ordinary request waiting for approval until
+explicit attachment or local shutdown. The transport never replays an uncertain
+request. A later explicit new application can acquire an abandoned PID lock and
+start a new owner; approval reconnection is limited to the original owner.
 
 The application boundary must carry ordinary execution, session lifecycle and
 scheduler operations together. A scheduler-only proxy cannot protect admission,

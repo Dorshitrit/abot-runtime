@@ -184,64 +184,72 @@ describe("role cards in conversation activity", () => {
     ).toBe("cards");
   });
 
-  test("pins only the streaming timeline and returns to the top for cards", () => {
+  test("keeps the agents footer outside the scrolling timeline and pins only its content", () => {
     const { documentRoot, flushFrames } = createRoleDom();
     const node = createConversationActivity({ documentRoot }).createNode(
       input,
     )!;
     const body = child(node, ".conversation-activity-body");
+    const panel = child(node, ".conversation-role-panel");
+    const toolbar = child(node, ".conversation-role-toolbar");
+    const roleView = child(node, ".conversation-role-view");
     const toggle = child(node, ".conversation-role-toggle");
+    expect(roleView.children.at(-1)).toBe(toolbar);
+    expect(toolbar.contains(child(node, ".conversation-activity-summary"))).toBe(true);
+    expect(panel.contains(toggle)).toBe(false);
     flushFrames();
-    expect(body.scrollTop).toBe(0);
+    expect(panel.scrollTop).toBe(0);
     toggle.dispatch("click");
     flushFrames();
-    expect(body.scrollTop).toBe(500);
+    expect(panel.scrollTop).toBe(500);
+    expect(body.scrollTop).toBe(0);
+    expect(toolbar.hidden).toBe(false);
     toggle.dispatch("click");
     flushFrames();
-    expect(body.scrollTop).toBe(0);
+    expect(panel.scrollTop).toBe(0);
+    expect(child(node, ".conversation-role-list").hidden).toBe(false);
   });
 
-  test("restores cards scroll in recreated bodies until the view, request or session resets", () => {
-    const { documentRoot, flushFrames } = createRoleDom();
+  test("keeps tool errors in their row without a request or role alarm", () => {
+    const { documentRoot } = createRoleDom();
+    const node = createConversationActivity({ documentRoot }).createNode({
+      ...input,
+      events: [
+        ...input.events,
+        {
+          requestId: "request",
+          name: "tool.failed",
+          tool: "read_file",
+          executionId: "failure-1",
+          executorRole: "worker",
+          error: "Not found",
+        },
+      ],
+    })!;
+    expect(child(node, ".conversation-activity-title").textContent).toBe("Agents");
+    expect(child(node, ".conversation-activity-facts").textContent).not.toContain("failed");
+    expect(node.querySelector(".conversation-role-error")).toBeNull();
+    expect(child(node, ".conversation-tool-status").textContent).toBe("Not completed");
+  });
+
+  test("keeps agents inline and visible through terminal updates without an outer disclosure", () => {
+    const { documentRoot } = createRoleDom();
     const activity = createConversationActivity({ documentRoot });
     const initial = activity.createNode(input)!;
-    flushFrames();
-    const initialBody = child(initial, ".conversation-activity-body");
-    initialBody.scrollTop = 140;
-    initialBody.dispatch("scroll");
-
-    const updated = activity.createNode(input)!;
-    const updatedBody = child(updated, ".conversation-activity-body");
-    expect(updatedBody).not.toBe(initialBody);
-    flushFrames();
-    expect(updatedBody.scrollTop).toBe(140);
-    initialBody.scrollTop = 0;
-    initialBody.dispatch("scroll");
-
     const completed = activity.createNode({ ...input, streaming: false })!;
-    (completed as unknown as ActivityElement).open = true;
-    flushFrames();
-    expect(child(completed, ".conversation-activity-body").scrollTop).toBe(140);
-    const toggle = child(completed, ".conversation-role-toggle");
-    toggle.dispatch("click");
-    toggle.dispatch("click");
-    flushFrames();
-    expect(child(completed, ".conversation-activity-body").scrollTop).toBe(0);
-
-    for (const reset of [
-      () => activity.forget("request"),
-      () => activity.reset(),
-    ]) {
-      const node = activity.createNode(input)!;
-      flushFrames();
-      const body = child(node, ".conversation-activity-body");
-      body.scrollTop = 90;
-      body.dispatch("scroll");
-      reset();
-      const recreated = activity.createNode(input)!;
-      flushFrames();
-      expect(child(recreated, ".conversation-activity-body").scrollTop).toBe(0);
+    for (const node of [initial, completed]) {
+      expect(node.tagName).toBe("section");
+      expect(node.classList.contains("is-inline-agents")).toBe(true);
+      const heading = child(node, ".conversation-activity-summary");
+      expect(heading.tagName).toBe("header");
+      expect(heading.getAttribute("tabindex")).toBe("-1");
+      expect(child(node, ".conversation-role-list").hidden).toBe(false);
+      expect(child(node, ".conversation-activity-timeline").hidden).toBe(true);
+      expect(child(node, ".conversation-role-action").textContent).toBe(
+        "Reading the file",
+      );
     }
+    expect(completed.querySelector(".conversation-role-active")).toBeNull();
   });
 
   test.each(["worker", "execution"])(
@@ -288,7 +296,10 @@ describe("role cards in conversation activity", () => {
       expect(timeline.hidden).toBe(false);
       expect(timeline.textContent).toContain("Plan updated");
       expect(timeline.textContent).toContain("Read file, then summarize");
-      expect(child(node, ".conversation-activity-body").scrollTop).toBe(500);
+      const scrollContainer = stage === "worker"
+        ? ".conversation-role-panel"
+        : ".conversation-activity-body";
+      expect(child(node, scrollContainer).scrollTop).toBe(500);
     },
   );
 
@@ -298,6 +309,9 @@ describe("role cards in conversation activity", () => {
       ...input,
       events: [{ ...input.events[0], stage: "execution", phase: "executing" }],
     })!;
+    expect(node.tagName).toBe("details");
+    expect(node.classList.contains("is-inline-agents")).toBe(false);
+    expect(child(node, ".conversation-activity-summary").tagName).toBe("summary");
     expect(node.querySelector(".conversation-role-toggle")).toBeNull();
     expect(child(node, ".conversation-activity-timeline").hidden).toBe(false);
   });

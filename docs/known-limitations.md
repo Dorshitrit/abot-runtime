@@ -18,6 +18,7 @@ The current public entrypoints are:
 - `@abot-ai/runtime/runtime/adapters`
 - `@abot-ai/runtime/runtime/ports`
 - `@abot-ai/runtime/plugin-sdk`
+- `@abot-ai/runtime/plugin-sdk/computer-access`
 - `@abot-ai/runtime/model-gateway`
 - `@abot-ai/runtime/runtime.config.schema.json`
 
@@ -104,9 +105,22 @@ request state.
 ## Steering And Cancellation
 
 Text steering is not a hard cancellation mechanism for active delegated work.
-Hosts that require immediate cancellation need an explicit mechanical abort
-path with defined child, capability, persistence, and terminal-state semantics.
-Cancellation must not be inferred from message wording.
+The Web UI Stop control and local Runtime cancellation API explicitly cancel an
+active request and preserve its stopped conversation context. Stopping does not
+undo completed tool effects. Cancellation must not be inferred from message wording.
+
+## Saved Tool Approvals
+
+Web UI requests save a pure approval wait with the conversation and release their
+live execution resources. Compatible waits survive Runtime restart and resume the
+prepared action only after an explicit decision. New requests and Jobs in that
+conversation are blocked while it waits; cancellation remains available.
+
+Restart interrupts work that was actually running and never replays it
+automatically. An incompatible or unreadable continuation stays pending and
+cancellable. Older approval events cannot be upgraded into executable
+continuations. Bridge and scheduler clients without durable-approval support
+retain their existing live-owner contract.
 
 ## Generated State
 

@@ -1,5 +1,55 @@
-import { escapeHtml, escapeAttribute } from "../lib/text-format.js";
+import { escapeHtml } from "../lib/text-format.js";
 import { matchesSessionQuery } from "../ui-behavior.js";
+import { renderProjectSessionPreview } from "./project-session-preview.js";
+
+function shouldExpandProjectGroup(projectId, query, collapsedProjectIds) {
+  if (String(query ?? "").trim()) return true;
+  return !collapsedProjectIds.has(projectId);
+}
+
+function createProjectGroup({
+  group, query, collapsedProjectIds, busyProjectId,
+  onToggleGroup, onNewConversation, documentRoot,
+}) {
+  const section = documentRoot.createElement("section");
+  section.className = "project-session-group";
+  const header = documentRoot.createElement("header");
+  header.title = group.directory;
+  const content = documentRoot.createElement("div");
+  content.className = "project-group-content";
+  content.id = "project-sessions-" + encodeURIComponent(group.id);
+  content.hidden = !shouldExpandProjectGroup(group.id, query, collapsedProjectIds);
+  const toggle = documentRoot.createElement("button");
+  toggle.type = "button";
+  toggle.className = "project-group-toggle";
+  toggle.setAttribute("aria-expanded", String(!content.hidden));
+  toggle.setAttribute("aria-controls", content.id);
+  const title = documentRoot.createElement("span");
+  title.className = "project-group-title";
+  title.dir = "auto";
+  title.textContent = group.name;
+  toggle.appendChild(title);
+  const chevron = documentRoot.createElement("span");
+  chevron.className = "project-group-chevron";
+  chevron.setAttribute("aria-hidden", "true");
+  toggle.appendChild(chevron);
+  toggle.addEventListener("click", () => {
+    content.hidden = !content.hidden;
+    toggle.setAttribute("aria-expanded", String(!content.hidden));
+    onToggleGroup(group.id, content.hidden);
+  });
+  const create = documentRoot.createElement("button");
+  create.type = "button";
+  create.className = "project-group-new";
+  create.title = "New conversation in " + group.name;
+  create.setAttribute("aria-label", create.title);
+  create.disabled = Boolean(busyProjectId);
+  create.textContent = busyProjectId === group.id ? "…" : "+";
+  create.addEventListener("click", () => void onNewConversation(group.id));
+  header.append(toggle, create);
+  section.append(header, content);
+  return { section, content };
+}
 
 export function renderProjectSessionGroups({
   root,
@@ -12,6 +62,10 @@ export function renderProjectSessionGroups({
   busyProjectId,
   onNewConversation,
   onRetry,
+  collapsedProjectIds = new Set(),
+  expandedProjectSessionIds = new Set(),
+  onToggleGroup = () => {},
+  onToggleProjectSessions = () => {},
   documentRoot = document,
 }) {
   const groups = new Map(
@@ -44,21 +98,23 @@ export function renderProjectSessionGroups({
       query,
     );
     if (!matchesProject && group.sessions.length === 0) continue;
-    const section = documentRoot.createElement("section");
-    section.className = "project-session-group";
-    section.innerHTML = `<header title="${escapeAttribute(group.directory)}"><span class="project-group-title" dir="auto">${escapeHtml(group.name)}</span><button type="button" title="New conversation in ${escapeAttribute(group.name)}" aria-label="New conversation in ${escapeAttribute(group.name)}" ${busyProjectId ? "disabled" : ""}>${busyProjectId === group.id ? "…" : "+"}</button></header>`;
-    section
-      .querySelector("button")
-      .addEventListener("click", () => void onNewConversation(group.id));
-    for (const session of group.sessions)
-      section.appendChild(createSessionItem(session, index++));
+    const { section, content } = createProjectGroup({
+      group, query, collapsedProjectIds, busyProjectId,
+      onToggleGroup, onNewConversation, documentRoot,
+    });
+    renderProjectSessionPreview({
+      content, group, query, documentRoot,
+      expanded: expandedProjectSessionIds.has(group.id),
+      createSessionItem: (session) => createSessionItem(session, index++),
+      onToggleExpanded: onToggleProjectSessions,
+    });
     if (group.sessions.length === 0) {
       const empty = documentRoot.createElement("p");
       empty.className = "project-empty-copy";
       empty.textContent = query
         ? "No matching conversations"
         : "No conversations yet";
-      section.appendChild(empty);
+      content.appendChild(empty);
     }
     root.appendChild(section);
   }

@@ -148,7 +148,7 @@ describe("workspace drawer read visibility", () => {
     },
   );
 
-  test.each(["home", "config", "schedules"])(
+  test.each(["home", "config", "schedules", "learning"])(
     "does not acknowledge the background Chat or notify an unchanged workspace on resize: %s",
     async (workspace) => {
       const harness = createVisibilityHarness();

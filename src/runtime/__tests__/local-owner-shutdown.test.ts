@@ -52,14 +52,29 @@ test.each(["ordinary", "scheduled"] as const)(
         (message) =>
           message.role === "assistant" && message.requestId !== undefined,
       ),
-    ).toBe(true);
+    ).toBe(false);
+    expect(session.requests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "failed",
+          events: expect.arrayContaining([
+            expect.objectContaining({
+              type: "failed",
+              payload: expect.objectContaining({
+                error: "request_interrupted",
+              }),
+            }),
+          ]),
+        }),
+      ]),
+    );
     if (kind === "scheduled") {
       const runs = (await replacement.call(
         "scheduler.listRuns",
       )) as SchedulerRun[];
       expect(runs).toMatchObject([{ status: "interrupted" }]);
     }
-    expect(fixture.invoke).toHaveBeenCalledTimes(2);
+    expect(fixture.invoke).toHaveBeenCalledTimes(1);
     if (pending) expect(await pending).toBe("local_runtime_connection_lost");
   },
 );
@@ -85,7 +100,7 @@ test("shutdown rejects an ordinary request queued behind scheduled work before i
   fixture.completion.open();
   const replacement = await fixture.connect();
   await pending;
-  expect(fixture.invoke).toHaveBeenCalledTimes(2);
+  expect(fixture.invoke).toHaveBeenCalledTimes(1);
   const session = (await replacement.call("sessions.getSessionById", [
     "session",
   ])) as Session;

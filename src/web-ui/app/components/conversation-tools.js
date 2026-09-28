@@ -6,7 +6,7 @@ const STATUS_SYMBOLS = {
   running: "◌",
   awaiting_approval: "○",
   completed: "✓",
-  failed: "×",
+  failed: "−",
   empty: "−",
   unchanged: "−",
   incomplete: "!",

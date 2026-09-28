@@ -1,4 +1,6 @@
+import type { BoundApprovalDecision } from "../../../orchestration/worker-capabilities/approval-contracts.js";
 import type { ToolEventExecutorIdentity } from "./event-metadata.js";
+import type { RequestToolResources } from "../../../capabilities/request-tool-resources.js";
 import type {
   RegisteredToolNormalInvocation,
   ToolActionSummary,
@@ -9,6 +11,7 @@ import type {
 } from "../../../../capabilities/tool-types.js";
 import type {
   ToolApprovalController,
+  ToolApprovalRequest,
   ToolPermissionMode,
   ToolRegistry,
 } from "../../../ports.js";
@@ -56,16 +59,21 @@ export type RegisteredToolNormalInvocationResult =
 
 export type RegisteredToolPreparedNormalInvocation = Readonly<{
   status: "prepared";
+  snapshot: unknown;
+  approvalRequest?: ToolApprovalRequest;
+  applyApprovalDecision(decision: BoundApprovalDecision): void;
   /** Opaque identity of the exact normalized call that would be executed. */
   actionFingerprint: string;
   /** Exact validated non-payload controls accepted for this invocation. */
   acceptedControls: Readonly<Record<string, unknown>>;
   /** Client-only terminal event when admission is rejected before execution. */
-  emitRejection(input: Readonly<{
-    executionId: string;
-    executorIdentity: ToolEventExecutorIdentity;
-    errorCode: string;
-  }>): void;
+  emitRejection(
+    input: Readonly<{
+      executionId: string;
+      executorIdentity: ToolEventExecutorIdentity;
+      errorCode: string;
+    }>,
+  ): void;
   /** Canonical execution identity for client lifecycle events only. */
   execute(
     executionId?: string,
@@ -101,12 +109,15 @@ export type RegisteredToolNormalInvocationPayloadLifecyclePreparation =
 
 export type RegisteredToolNormalInvocationExecutor = Readonly<{
   operations: readonly RegisteredToolNormalInvocationProjection[];
+  restore(snapshot: unknown): RegisteredToolNormalInvocationPreparation;
   /** Prepares client-only rejection reporting for a registered source handle. */
-  prepareRejectionEvent(input: Readonly<{
-    handle: RegisteredToolNormalInvocationHandle;
-    controls: Readonly<Record<string, unknown>>;
-    intent?: string;
-  }>): RegisteredToolPreparedNormalInvocation["emitRejection"] | undefined;
+  prepareRejectionEvent(
+    input: Readonly<{
+      handle: RegisteredToolNormalInvocationHandle;
+      controls: Readonly<Record<string, unknown>>;
+      intent?: string;
+    }>,
+  ): RegisteredToolPreparedNormalInvocation["emitRejection"] | undefined;
   /**
    * Emits the existing client payload lifecycle without exposing the bound
    * tool name or payload parameter to the profile that owns model context.
@@ -179,6 +190,7 @@ export type BoundOperation = Readonly<{
 }>;
 
 export type RegisteredToolNormalInvocationExecutorParams = Readonly<{
+  toolResources?: RequestToolResources;
   registrations: readonly RegisteredToolNormalInvocation[];
   toolRegistry: Pick<ToolRegistry, "execute">;
   requestId: string;

@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import { createSystemHandlers } from "../../../plugins/system/source/handlers.js";
-import type { SystemProcessRunner } from "../../../plugins/system/source/contracts.js";
+import { createSystemHandlers } from "../../computer-access/handlers.js";
+import type { SystemProcessRunner } from "../../computer-access/contracts.js";
 import type { ToolModuleDeclaration } from "../../capabilities/tool-types.js";
 import { createConfiguredToolRegistry } from "../capabilities/configured-tool-registry.js";
 import { restrictToolRegistryToRequestMode } from "../capabilities/request-permission-tool-registry.js";
@@ -43,7 +43,7 @@ function harness(
     implementation:
       entry.definition.name === "system_command"
         ? implementation
-        : handlers[entry.definition.name]!,
+        : (handlers[entry.definition.name] ?? entry.implementation),
   }));
   if (normalized)
     modules.push({

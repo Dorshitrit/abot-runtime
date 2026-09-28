@@ -3801,8 +3801,7 @@ describe("registered ordinary tool Worker capability provider", () => {
         {
           outcome: "succeeded",
           observedEffect: "observation",
-          summary:
-            "The capability result is available in the canonical execution result.",
+          summary: expect.stringContaining(oversizedOutput.slice(0, 512)),
         },
         toolResult,
       ),

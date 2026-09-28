@@ -9,8 +9,8 @@
 .composer-plan-details {
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface, #132438);
+  border-radius: 8px;
+  background: var(--panel);
 }
 
 .composer-plan-toggle {
@@ -28,16 +28,16 @@
 }
 
 .composer-plan-toggle:focus-visible {
-  outline: 2px solid #80b7ff;
+  outline: 2px solid var(--accent);
   outline-offset: -3px;
-  border-radius: 11px;
+  border-radius: 7px;
 }
 
 .composer-plan-label {
   flex: none;
   color: var(--muted-2);
   font-size: var(--font-size-sm);
-  font-weight: 650;
+  font-weight: 400;
 }
 
 .composer-plan-preview {
@@ -82,7 +82,7 @@
   min-width: 0;
   margin: 0;
   font-size: var(--font-size-md);
-  font-weight: 600;
+  font-weight: 400;
   overflow-wrap: anywhere;
 }
 
@@ -131,17 +131,17 @@
 
 .composer-plan-item.is-active .composer-plan-status,
 .composer-plan-status.is-active {
-  color: #80b7ff;
+  color: var(--accent);
 }
 
 .composer-plan-item.is-done .composer-plan-status,
 .composer-plan-status.is-done {
-  color: #8dd7b6;
+  color: var(--green);
 }
 
 .composer-plan-item.is-blocked .composer-plan-status,
 .composer-plan-item.is-blocked .composer-plan-item-status {
-  color: #ef9a9a;
+  color: var(--danger);
 }
 
 .composer-plan-item.is-superseded {

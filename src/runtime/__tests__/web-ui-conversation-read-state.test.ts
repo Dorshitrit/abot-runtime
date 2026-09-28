@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 
 import { createRuntimeWebClient } from "../../web-ui/app/services/runtime-web-client.js";
+import { normalizeConversationMessage } from "../../web-ui/app/controllers/conversation-session-controller.js";
 
 import {
   createConversationReadStateController,
@@ -21,7 +22,7 @@ function createHarness() {
   };
   const readState = { unreadCount: 1, readThroughMessageId: 2 };
   const client = {
-    markSessionRead: vi.fn(async () => ({ readState })),
+    markSessionRead: vi.fn(async (_options: Parameters<ConversationReadStateControllerOptions["client"]["markSessionRead"]>[0]) => ({ readState })),
   };
   const applyReadState = vi.fn();
   const recordControlEvent = vi.fn();
@@ -56,6 +57,24 @@ function createHarness() {
 }
 
 describe("web ui conversation read visibility", () => {
+  test("sends the exact persisted nonnumeric assistant ID through the Web client", async () => {
+    const harness = createHarness();
+    const id = "initiative:proposal-1";
+    harness.state.messages = [normalizeConversationMessage({ id, role: "assistant", text: "A suggestion" })];
+    harness.controller.markCurrentSessionReadSoon(); await harness.runTasks();
+    expect(harness.client.markSessionRead).toHaveBeenCalledWith({
+      environmentId: "dev", sessionId: "session-1", readThroughMessageId: id,
+    });
+    const fetchImpl = vi.fn(async (_url: RequestInfo | URL, _options?: RequestInit) =>
+      new Response(JSON.stringify({ readState: { unreadCount: 0 } })));
+    const client = createRuntimeWebClient({ getConfig: () => ({ apiBasePath: "/web-api" }),
+      getEnvironmentId: () => "dev", fetchImpl, origin: "http://localhost:5177" });
+    await client.markSessionRead(harness.client.markSessionRead.mock.calls[0]![0]);
+    expect(JSON.parse(String(fetchImpl.mock.calls[0]![1]?.body))).toEqual({
+      readThroughMessageId: id, lastReadMessageId: id,
+    });
+  });
+
   test("marks only the persisted assistant boundary captured while Chat is visible", async () => {
     const harness = createHarness();
     harness.controller.markCurrentSessionReadSoon();

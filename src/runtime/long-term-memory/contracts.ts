@@ -1,5 +1,14 @@
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { LongTermMemoryManagementService } from "./management/contracts.js";
+import type { LearningCandidateRecord, LearningMemoryReceipt, LearningMemoryService } from "./maturation/contracts.js";
+import type { MaturationPolicy } from "./maturation/contracts.js";
+import type { ConversationMemoryAssessment } from "./maturation/evidence-contracts.js";
+import type { MemoryRetentionLifecycle } from "./maturation/retention-lifecycle.js";
+import type {
+  ObservationMemorySource,
+  ObservationMemoryReceipt,
+  SaveObservationMemoryInput,
+} from "./observation-contracts.js";
 
 export type {
   LongTermMemoryManagementContext,
@@ -21,6 +30,8 @@ export type {
 export type MemoryCandidate = Readonly<{
   content: string;
   tags: readonly string[];
+  /** Optional for older callers; unassessed proposals cannot become memories. */
+  assessment?: ConversationMemoryAssessment;
 }>;
 
 export type RootAuthoredResponse = Readonly<{
@@ -29,6 +40,7 @@ export type RootAuthoredResponse = Readonly<{
 }>;
 
 export type LongTermMemoryProvenance =
+  | ObservationMemorySource
   | Readonly<{
       kind: "passive_response";
       sourceSessionId: string;
@@ -46,6 +58,10 @@ export type LongTermMemoryRecord = Readonly<{
   provenance: LongTermMemoryProvenance;
   createdAt: string;
   updatedAt: string;
+  /** Absence is protected: old records do not prove absence of manual edits. */
+  automaticManagement?: "allowed" | "protected";
+  reconsiderAt?: string | null;
+  observationSources?: readonly ObservationMemorySource[];
 }>;
 
 export type MemoryVectorIndexEntry = Readonly<{
@@ -56,15 +72,20 @@ export type MemoryVectorIndexEntry = Readonly<{
 }>;
 
 export type LongTermMemoryRepositorySnapshot = Readonly<{
-  schemaVersion: 1;
+  schemaVersion: 1 | 3 | 4 | 5;
   revision: number;
+  knowledgeRevision?: number;
   records: readonly LongTermMemoryRecord[];
   vectors: readonly MemoryVectorIndexEntry[];
+  observationReceipts?: readonly ObservationMemoryReceipt[];
+  learningCandidates?: readonly LearningCandidateRecord[];
+  learningReceipts?: readonly LearningMemoryReceipt[];
+  maturationPolicy?: MaturationPolicy;
 }>;
 
 export type LongTermMemoryRepositoryState = Pick<
   LongTermMemoryRepositorySnapshot,
-  "records" | "vectors"
+  "records" | "vectors" | "observationReceipts" | "learningCandidates" | "learningReceipts" | "maturationPolicy"
 >;
 
 export type LongTermMemoryRepository = Readonly<{
@@ -131,6 +152,15 @@ export type LongTermMemoryRequestContext = Readonly<{
 
 export type LongTermMemoryService = Readonly<{
   enabled: boolean;
+  retention?: MemoryRetentionLifecycle;
+  subscribeChanges?(listener: () => void): () => void;
+  learning?: LearningMemoryService;
+  saveObservationBatch?(
+    input: SaveObservationMemoryInput,
+  ): Promise<ObservationMemoryReceipt>;
+  observationBatchReceipt?(
+    batchId: string,
+  ): Promise<ObservationMemoryReceipt | undefined>;
   retrieve(
     input: Readonly<{
       query: string;

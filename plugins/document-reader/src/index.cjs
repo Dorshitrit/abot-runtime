@@ -268,6 +268,7 @@ function enforcePluginResultByteBudget(result) {
 function successResult(input) {
   return enforcePluginResultByteBudget({
     ok: true,
+    ...input.media !== void 0 ? { media: input.media } : {},
     output: input.output,
     producedNewInformation: input.producedNewInformation ?? true,
     ...input.progress !== void 0 ? { progress: input.progress } : {},
@@ -281,6 +282,7 @@ function successResult(input) {
 function failureResult(input) {
   return enforcePluginResultByteBudget({
     ok: false,
+    ...input.media !== void 0 ? { media: input.media } : {},
     output: input.output ?? input.message,
     producedNewInformation: false,
     ...input.progress !== void 0 ? { progress: input.progress } : {},
@@ -304,6 +306,9 @@ function failureFromError(error, options) {
     output: options.operation ? `${options.operation} failed: ${message}` : message
   });
 }
+
+// src/capabilities/tool-media.ts
+var TOOL_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
 // plugins/document-reader/source/constants.ts
 var MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
@@ -1319,12 +1324,14 @@ function actionTarget(document) {
   );
 }
 function renderWindow(document, text, startChar, endChar, totalCharacters) {
-  const truncated = endChar < totalCharacters;
+  const hasRemainingText = endChar < totalCharacters;
+  const hasCompleteTextCoverage = startChar === 0 && !hasRemainingText;
   return [
+    `Coverage: characters ${startChar}-${endChar} of ${totalCharacters}${hasCompleteTextCoverage ? " (complete)" : " (partial)"}`,
+    `Returned characters: ${endChar - startChar}; omitted before window: ${startChar}; remaining after window: ${totalCharacters - endChar}.`,
+    ...hasRemainingText ? [`Next start_char: ${endChar}`] : [],
     ...identityLines(document),
     `MIME: ${document.mimeType}`,
-    `Coverage: characters ${startChar}-${endChar} of ${totalCharacters}${truncated ? " (partial)" : " (complete)"}`,
-    ...truncated ? [`Next start_char: ${endChar}`] : [],
     "Content:",
     sanitizeJsonText(text.slice(startChar, endChar)) || "[no extractable text]"
   ].join("\n");

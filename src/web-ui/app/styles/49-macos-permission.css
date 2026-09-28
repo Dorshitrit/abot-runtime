@@ -1,0 +1,225 @@
+.mac-permission-dialog {
+  width: min(calc(100vw - 40px), 604px);
+  max-width: none;
+  max-height: calc(100dvh - 40px);
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: 0 28px 110px #0009;
+  overflow: auto;
+}
+.mac-permission-dialog::backdrop {
+  background: rgba(3, 8, 14, 0.73);
+  backdrop-filter: blur(5px);
+}
+.mac-permission-content {
+  padding: 30px 32px 25px;
+}
+.mac-permission-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+.mac-permission-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #82d4c233;
+  border-radius: 10px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-size: 24px;
+}
+.mac-permission-dialog .mac-permission-close {
+  width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  font-size: 23px;
+}
+.mac-permission-eyebrow {
+  margin: 0 0 10px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.mac-permission-dialog h2 {
+  margin: 0 0 18px;
+  color: var(--text-strong);
+  font-size: 27px;
+  font-weight: 600;
+  letter-spacing: -0.7px;
+  line-height: 1.2;
+}
+.mac-permission-dialog h2:focus {
+  outline: none;
+}
+.mac-permission-lead {
+  margin: 0 0 9px;
+  font-size: 17px;
+  font-weight: 500;
+}
+.mac-permission-description {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+.mac-permission-identity {
+  margin: 23px 0 20px;
+  border: 1px solid #304a56;
+  border-radius: 8px;
+  background: #101e28;
+  overflow: hidden;
+}
+.mac-permission-identity > p:first-child {
+  margin: 0;
+  padding: 14px 16px 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+}
+.mac-permission-path {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 12px 14px 16px;
+}
+.mac-permission-path code {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--accent-strong);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.mac-permission-path button {
+  flex: none;
+  min-height: 32px;
+  padding: 7px 9px;
+  font-size: 11px;
+}
+.mac-permission-identity .mac-permission-path-note {
+  margin: 0;
+  padding: 10px 16px;
+  border-top: 1px solid #263c47;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.mac-permission-usage {
+  margin: 0 0 21px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.mac-permission-usage strong,
+.mac-permission-details strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.mac-permission-details {
+  border-top: 1px solid var(--line);
+  padding-top: 17px;
+}
+.mac-permission-details summary {
+  cursor: pointer;
+  color: var(--text);
+  font-size: 12px;
+}
+.mac-permission-details p {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.mac-permission-feedback {
+  margin: 12px 0 0;
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.mac-permission-feedback:empty {
+  display: none;
+}
+.mac-permission-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 19px 32px;
+  background: #0b131c;
+  border-top: 1px solid var(--line);
+}
+.mac-permission-footer > span {
+  color: var(--muted-2);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.mac-permission-footer > div {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.mac-permission-footer button {
+  min-height: 40px;
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.mac-permission-footer .mac-permission-continue {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #08251e;
+  font-weight: 600;
+}
+.mac-permission-footer .mac-permission-continue:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+.mac-permission-dialog button:focus-visible,
+.mac-permission-dialog summary:focus-visible,
+.mac-permission-path code:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (max-width: 560px) {
+  .mac-permission-dialog {
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+  .mac-permission-content {
+    padding: 23px 22px 20px;
+  }
+  .mac-permission-dialog h2 {
+    font-size: 24px;
+  }
+  .mac-permission-lead {
+    font-size: 16px;
+  }
+  .mac-permission-footer {
+    padding: 17px 22px;
+    flex-wrap: wrap;
+    gap: 13px;
+  }
+  .mac-permission-footer > div {
+    margin-left: auto;
+  }
+  .mac-permission-path {
+    align-items: flex-start;
+  }
+  .mac-permission-path code {
+    font-size: 11px;
+  }
+}

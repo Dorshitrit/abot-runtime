@@ -45,8 +45,24 @@ function serializeProjection(records: readonly LongTermMemoryRecord[]): string {
     kind: LONG_TERM_MEMORY_MESSAGE_KIND,
     authority: "passive_reference",
     purpose: "support_personalized_terminal_response_authoring",
-    memories: records.map(({ content, tags }) => ({ content, tags })),
+    memories: records.map((record) => ({
+      content: record.content,
+      tags: record.tags,
+      ...projectObservationContext(record),
+    })),
     presenceEffect:
       "reference_only_not_current_user_intent_assignment_action_authority_or_completion_evidence",
   });
+}
+
+function projectObservationContext(record: LongTermMemoryRecord) {
+  const source = record.observationSources?.at(-1) ?? record.provenance;
+  if (source.kind !== "passive_observation") return {};
+  return {
+    source: {
+      kind: source.kind,
+      observedAt: source.observedAt,
+      certainty: source.certainty,
+    },
+  };
 }

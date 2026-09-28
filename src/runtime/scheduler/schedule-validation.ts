@@ -4,6 +4,7 @@ import type {
   SchedulerScheduleInput,
 } from "./contracts.js";
 
+import { requireSchedulerToolPermissionMode } from "./tool-permission-mode.js";
 import { SchedulerValidationError } from "./validation-error.js";
 import {
   parseSchedulerInstant,
@@ -51,6 +52,7 @@ export function validateSchedulerJobInput(
       "agentMode is invalid",
     );
   }
+  requireSchedulerToolPermissionMode(input.toolPermissionMode);
   validateTimeZone(input.timeZone);
 }
 export function validateTimeZone(timeZone: string): void {

@@ -1,21 +1,23 @@
 .conversation-role-view,
 .conversation-role-panel,
-.conversation-role-content {
+.conversation-role-content,
+.conversation-role-message {
   min-width: 0;
 }
 
 .conversation-role-view {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
+  gap: 12px;
 }
 
 .conversation-role-toolbar {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
+  padding: 8px 2px 0;
+  border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
 }
 
 .conversation-role-label {
@@ -24,123 +26,128 @@
 }
 
 .conversation-role-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: none;
   min-height: 32px;
   padding: 4px 8px;
-  border-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
   background: transparent;
+  color: var(--muted);
   font-size: var(--font-size-xs);
   line-height: 1.4;
   cursor: pointer;
 }
 
+.conversation-role-toggle:hover,
+.conversation-role-toggle[aria-pressed="true"] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.conversation-role-toggle-icon,
+.conversation-role-toggle-icon svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
 .conversation-role-list {
+  display: grid;
+  gap: 22px;
   margin: 0;
-  padding: 0;
+  padding: 4px 2px 8px;
   list-style: none;
 }
 
-.conversation-role-card,
-.conversation-role-summary-item {
-  --role-accent: #58b9a8;
+.conversation-role-list[hidden] {
+  display: none;
 }
 
 .conversation-role-card {
+  --role-accent: var(--accent);
+}
+
+.conversation-role-card {
+  position: relative;
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
+  grid-template-columns: 34px minmax(0, 1fr);
   align-items: start;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
-  padding: 8px 2px;
   color: var(--text);
 }
 
-.conversation-role-card:not(:last-child) {
-  border-block-end: 1px solid var(--line);
+.conversation-role-message {
+  width: fit-content;
+  max-width: 100%;
+  margin-block-start: 7px;
+  padding: 10px 14px;
+  border-radius: 3px 12px 12px;
+  background: color-mix(in srgb, var(--role-accent) 5%, var(--panel));
 }
 
-.conversation-role-card[data-role="planner"],
-.conversation-role-summary-item[data-role="planner"] {
-  --role-accent: #a99af2;
+.conversation-role-message:has(> .conversation-tools) {
+  width: 100%;
 }
 
-.conversation-role-card[data-role="worker"],
-.conversation-role-summary-item[data-role="worker"] {
-  --role-accent: #55a7e8;
+.conversation-role-card.is-active > .conversation-role-avatar {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--role-accent) 8%, transparent);
 }
 
-.conversation-role-card[data-role="reviewer"],
-.conversation-role-summary-item[data-role="reviewer"] {
-  --role-accent: #e0ac4f;
+.conversation-role-card[data-role="planner"] {
+  --role-accent: #8ebcff;
 }
 
-.conversation-role-card.is-failed,
-.conversation-role-summary-item.is-failed {
-  --role-accent: #ffb4ab;
+.conversation-role-card[data-role="worker"] {
+  --role-accent: #c7a1ef;
+}
+
+.conversation-role-card[data-role="researcher"] {
+  --role-accent: #7dd4e7;
+}
+
+.conversation-role-card[data-role="reviewer"] {
+  --role-accent: var(--amber);
+}
+
+.conversation-role-card[data-role="unknown"] {
+  --role-accent: var(--muted);
+}
+
+.conversation-role-card.is-failed {
+  --role-accent: var(--danger);
 }
 
 .conversation-role-avatar {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
-  margin-block-start: 2px;
+  width: 34px;
+  height: 34px;
   border: 1px solid color-mix(in srgb, var(--role-accent) 22%, transparent);
   border-radius: 50%;
-  background: color-mix(in srgb, var(--role-accent) 8%, transparent);
+  background: color-mix(in srgb, var(--role-accent) 12%, var(--panel));
   color: var(--role-accent);
   font-size: var(--font-size-xs);
-  font-weight: 650;
-}
-
-.conversation-role-summary-strip {
-  display: inline-flex;
-  align-items: center;
-  flex: none;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-.conversation-role-summary-strip .conversation-role-avatar {
-  margin-block-start: 0;
-}
-
-.conversation-activity[open] .conversation-role-summary-strip,
-.conversation-activity.has-role-summary:not([open])
-  .conversation-activity-current {
-  display: none;
-}
-
-.conversation-activity.has-role-summary:not([open])
-  > .conversation-activity-summary {
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: 6px 10px;
-}
-
-.conversation-activity.has-role-summary:not([open])
-  .conversation-activity-heading {
-  max-width: 100%;
-}
-
-.conversation-activity.has-role-summary:not([open])
-  .conversation-activity-facts {
-  max-width: 100%;
-  margin-inline-start: auto;
-  overflow-wrap: anywhere;
+  font-weight: 400;
 }
 
 .conversation-role-header {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 8px;
-  line-height: 1.4;
+  align-items: center;
+  min-height: 24px;
+  gap: 4px 10px;
+  line-height: 1.5;
 }
 
 .conversation-role-title {
-  color: var(--text-strong);
+  color: var(--role-accent);
   font-size: var(--font-size-md);
-  font-weight: 650;
+  font-weight: 400;
 }
 
 .conversation-role-responsibility {
@@ -151,23 +158,29 @@
 }
 
 .conversation-role-active {
-  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   flex: none;
+  padding: 2px 0;
+  color: var(--role-accent);
+  font-size: var(--font-size-xs);
+}
+
+.conversation-role-active::before {
+  content: "";
   width: 6px;
   height: 6px;
+  flex: none;
   border-radius: 50%;
-  background: var(--text);
+  background: var(--role-accent);
   animation: conversation-role-pulse 1600ms ease-in-out infinite;
 }
 
 .conversation-role-summary {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  margin: 2px 0 0;
+  margin: 0;
   font-size: var(--font-size-md);
-  line-height: 1.4;
+  line-height: 1.6;
   overflow-wrap: anywhere;
 }
 
@@ -177,19 +190,97 @@
   font-size: var(--font-size-xs);
 }
 
+.conversation-role-action-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.conversation-role-error {
+  color: var(--danger);
+}
+
 .conversation-role-facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 8px;
-  margin: 0;
+  gap: 4px 8px;
+  margin: 8px 0 0;
   padding: 0;
-  color: var(--muted-2);
+  color: var(--muted);
   font-size: var(--font-size-xs);
   list-style: none;
 }
 
 .conversation-role-fact {
   overflow-wrap: anywhere;
+}
+
+.conversation-role-card .conversation-role-message > .conversation-tools {
+  margin-block-start: 10px;
+  padding: 4px;
+  border: 1px solid color-mix(in srgb, var(--role-accent) 12%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--bg) 65%, transparent);
+}
+
+.conversation-role-card .conversation-tool-row + .conversation-tool-row {
+  border-block-start: 0;
+}
+
+.conversation-role-card .conversation-tool-summary {
+  min-height: 34px;
+  padding: 6px 8px;
+  gap: 8px;
+  border-radius: 5px;
+}
+
+.conversation-role-card .conversation-tool-summary:hover,
+.conversation-role-card .conversation-tool[open] > .conversation-tool-summary {
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+.conversation-role-card .conversation-tool-body {
+  padding: 6px 8px 12px;
+}
+
+.conversation-role-card .conversation-tool-status {
+  font-size: var(--font-size-xs);
+}
+
+@media (max-width: 600px) {
+  .conversation-role-card {
+    grid-template-columns: 26px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .conversation-role-message {
+    padding: 9px 10px;
+  }
+
+  .conversation-role-card > .conversation-role-avatar {
+    width: 26px;
+    height: 26px;
+  }
+
+  .conversation-role-responsibility {
+    flex-basis: 100%;
+    order: 2;
+  }
+
+  .conversation-role-active {
+    margin-inline-start: auto;
+  }
+}
+
+@media (pointer: coarse) {
+  .conversation-role-toggle,
+  .conversation-role-card .conversation-tool-summary {
+    min-height: 44px;
+  }
 }
 
 @keyframes conversation-role-pulse {
@@ -199,7 +290,45 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .conversation-role-active {
+  .conversation-role-active::before {
     animation: none;
   }
+}
+.conversation-activity.is-inline-agents {
+  margin: 8px 0 22px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.is-inline-agents .conversation-activity-summary {
+  min-width: 0;
+  flex-wrap: wrap;
+  min-height: 0;
+  padding: 0;
+  gap: 6px 12px;
+  cursor: default;
+  user-select: text;
+}
+
+.is-inline-agents .conversation-activity-facts {
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+
+.is-inline-agents > .conversation-activity-body {
+  max-height: none;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  scrollbar-gutter: auto;
+}
+
+.conversation-role-view[data-view="timeline"] > .conversation-role-panel {
+  max-height: 330px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }

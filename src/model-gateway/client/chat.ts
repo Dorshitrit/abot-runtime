@@ -1,4 +1,5 @@
 import { traceDebug } from "../../runtime/observability/debug-logger.js";
+import { permitsModelContentTrace } from "../observability/content-trace-policy.js";
 import type {
   InvokeModelGatewayParams,
   ModelGatewayClientOptions,
@@ -68,10 +69,12 @@ export async function invokeModelGatewayWithOptions(
       requestId,
       status: response.status,
       bodyLength: errorText.length,
-      bodyPreview: errorText.slice(0, 400),
+      ...(permitsModelContentTrace(params.modelStep, params.messages)
+        ? { bodyPreview: errorText.slice(0, 400) }
+        : { contentOmitted: true }),
     });
     throw new Error(
-      `bridge_request_failed:${response.status}:${errorText || "empty error body"}`,
+      `bridge_request_failed:${response.status}:${permitsModelContentTrace(params.modelStep, params.messages) ? errorText || "empty error body" : "content omitted"}`,
     );
   }
 

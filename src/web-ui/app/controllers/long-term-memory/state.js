@@ -9,6 +9,7 @@ export function createLongTermMemoryState(pageSize) {
     offset: 0,
     limit: pageSize,
     query: "",
+    originFilter: "",
     loading: false,
     mutation: "",
     message: "",

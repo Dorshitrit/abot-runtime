@@ -1,0 +1,19 @@
+.spark-conversation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.spark-conversation-actions[hidden] { display: none; }
+
+.spark-conversation-choice {
+  min-height: 32px;
+  padding: 5px 11px;
+  border-color: var(--line);
+  background: var(--panel-soft);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  box-shadow: none;
+}

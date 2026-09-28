@@ -1,3 +1,9 @@
+import {
+  isRoleApprovalWait,
+  validateRoleApprovalWait,
+  type RoleApprovalWait,
+} from "../approval-continuation.js";
+import { createEnteredChildInvocation } from "../child-invocation/entered-child.js";
 import type {
   RoleCallFrame,
   RoleCallLedgerHead,
@@ -9,6 +15,9 @@ import type {
   RoleExecutor,
   RoleExecutorActivationResult,
   RoleExecutorRegistry,
+  RoleExecutionInput,
+  RoleChildInvocationInput,
+  RoleChildInvocationResult,
 } from "../contracts.js";
 import {
   traceRoleExecutorCompleted,
@@ -31,12 +40,9 @@ import {
   stateError,
 } from "../shared/runtime-invariants.js";
 import { continueRoleThroughCapability } from "./capability-continuation.js";
+import { executeRoleWithModelOutputFailure } from "./model-output-failure.js";
 import { normalizeRoleExecutorActivationResult } from "./result-normalization.js";
 import { resolveCurrentCall } from "./state-validation.js";
-
-type RoleExecutionInput<TContext, TValue> = Parameters<
-  RoleExecutorRegistry<TContext, TValue>["execute"]
->[0];
 
 type CurrentRoleActivation = Readonly<{
   before: RoleCallLedgerHead;
@@ -50,19 +56,24 @@ export class RoleActivationLoop<TContext, TValue> {
 
   constructor(
     private readonly params: Readonly<{
-      input: RoleExecutionInput<TContext, TValue>;
+      input: RoleExecutionInput<TContext>;
       registeredRoleIds: RoleExecutorRegistry<TContext, TValue>["roleIds"];
       executorByRoleId: ReadonlyMap<
         RoleExecutor<TContext, TValue>["roleId"],
         RoleExecutor<TContext, TValue>
       >;
-      invokeChild: RoleExecutorRegistry<TContext, TValue>["invokeChild"];
+      invokeChild(
+        input: RoleChildInvocationInput<TContext>,
+      ): Promise<RoleChildInvocationResult<TValue> | RoleApprovalWait>;
     }>,
   ) {
     this.expectedCall = params.input.call;
+    this.continuationReference = params.input.continuationState?.capability;
   }
 
-  async run(): Promise<RoleExecutionResult<TValue>> {
+  async run(): Promise<RoleExecutionResult<TValue> | RoleApprovalWait> {
+    const continued = await this.continueEnteredChild();
+    if (continued) return continued;
     const { executor, call } = this.resolveInitialActivation();
     this.expectedCall = call;
 
@@ -75,6 +86,32 @@ export class RoleActivationLoop<TContext, TValue> {
       );
       if (terminal) return terminal;
     }
+  }
+
+  private async continueEnteredChild(): Promise<RoleApprovalWait | undefined> {
+    const continuation = this.params.input.continuationState;
+    if (!continuation?.callers.length) return undefined;
+    const previousCall = continuation.callers[0]!.callerCall;
+    if (previousCall.callId !== this.expectedCall.callId)
+      throw stateError("approval_caller_cursor_mismatch");
+    const child = await this.params.invokeChild(
+      createEnteredChildInvocation({
+        requestId: this.params.input.requestId,
+        context: this.params.input.context,
+        ledger: this.params.input.ledger,
+        continuation,
+      }),
+    );
+    if (isRoleApprovalWait(child)) return child;
+    this.expectedCall = requireResumedCallerCall(
+      child.returnCommit,
+      previousCall,
+    );
+    this.continuationReference = Object.freeze({
+      kind: "role_child",
+      commit: child.returnCommit,
+    });
+    return undefined;
   }
 
   private resolveInitialActivation(): Readonly<{
@@ -114,7 +151,7 @@ export class RoleActivationLoop<TContext, TValue> {
     const initialAuthority = resolveCurrentCall({
       head: initialHead,
       requestId: input.requestId,
-      expectedCall: input.call,
+      expectedCall: this.expectedCall,
     });
     if (!initialAuthority.ok) {
       traceRoleExecutorInitialStateRejected(
@@ -183,7 +220,7 @@ export class RoleActivationLoop<TContext, TValue> {
     executor: RoleExecutor<TContext, TValue>,
     activation: CurrentRoleActivation,
     turnCount: number,
-  ): Promise<RoleExecutionResult<TValue> | undefined> {
+  ): Promise<RoleExecutionResult<TValue> | RoleApprovalWait | undefined> {
     const { input, registeredRoleIds } = this.params;
     const availableChildRoleIds = Object.freeze(
       registeredRoleIds.filter((roleId) => roleId !== activation.call.roleId),
@@ -195,16 +232,20 @@ export class RoleActivationLoop<TContext, TValue> {
 
     try {
       const result = normalizeRoleExecutorActivationResult(
-        await executor.execute({
-          context: input.context,
-          call: activation.call,
-          ledger: input.ledger,
-          availableChildRoleIds,
-          ...(this.continuationReference
-            ? { continuation: this.continuationReference }
-            : {}),
-        }),
-        activation.before.policy.limits.maxResultChars,
+        await executeRoleWithModelOutputFailure(
+          executor,
+          {
+            context: input.context,
+            call: activation.call,
+            ledger: input.ledger,
+            availableChildRoleIds,
+            ...(this.continuationReference
+              ? { continuation: this.continuationReference }
+              : {}),
+          },
+          activation.before.policy.limits.maxResultChars,
+          input.requestId,
+        ),
         activation.before.policy.limits.maxObjectiveChars,
       );
       if (!result.ok) {
@@ -220,12 +261,15 @@ export class RoleActivationLoop<TContext, TValue> {
         );
       }
 
+      if (isRoleApprovalWait(result.value)) {
+        validateRoleApprovalWait(input.ledger, activation.call, result.value);
+        return result.value;
+      }
       if (result.value.kind === "terminal") {
         return this.completeTerminal(activation, result.value, turnCount);
       }
       if (result.value.kind === "invoke_role") {
-        await this.continueThroughChild(activation, result.value, turnCount);
-        return undefined;
+        return this.continueThroughChild(activation, result.value, turnCount);
       }
       const continued = continueRoleThroughCapability({
         ledger: input.ledger,
@@ -281,9 +325,10 @@ export class RoleActivationLoop<TContext, TValue> {
       { kind: "invoke_role" }
     >,
     turnCount: number,
-  ): Promise<void> {
+  ): Promise<RoleApprovalWait | undefined> {
     const { input } = this.params;
     const child = await this.params.invokeChild({
+      allowApprovalWait: input.allowApprovalWait,
       requestId: input.requestId,
       context: input.context,
       callerCall: activation.call,
@@ -300,6 +345,7 @@ export class RoleActivationLoop<TContext, TValue> {
       ...(result.plannerPlan ? { plannerPlan: result.plannerPlan } : {}),
       turnCount,
     });
+    if (isRoleApprovalWait(child)) return child;
     const continuationReference = Object.freeze({
       kind: "role_child" as const,
       commit: child.returnCommit,

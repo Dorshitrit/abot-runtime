@@ -43,11 +43,12 @@ export function createRuntimeScheduler(options: {
 
   function publish(
     event: ScheduledRequestEvent,
-    sessionId: string,
+    sessionId: string | undefined,
     runGeneration: number,
   ): void {
     if (!canPublishRunEvents(runGeneration)) return;
-    const isDeletedSession = options.isDeleted(sessionId);
+    const isDeletedSession =
+      sessionId !== undefined && options.isDeleted(sessionId);
     const isTerminalEvent = isScheduledTerminalEvent(event);
     if (isDeletedSession && !isTerminalEvent) return;
     const outbound = isDeletedSession
@@ -119,7 +120,7 @@ export function createRuntimeScheduler(options: {
       text: run.prompt,
       agentMode: job.agentMode,
       modelPreference: { profileId: job.modelProfileId, scope: "all" as const },
-      toolPermissionMode: "full_access",
+      toolPermissionMode: run.toolPermissionMode ?? "full_access",
     };
     try {
       await options.handle(
@@ -141,9 +142,20 @@ export function createRuntimeScheduler(options: {
     environmentId: options.config.runtimeId,
     store: createFileSchedulerStore(
       join(options.config.paths.runtimeDir, "scheduler"),
+      () =>
+        publish(
+          {
+            type: "event",
+            name: "scheduler.changed",
+            environment: options.config.runtimeId,
+          },
+          undefined,
+          generation,
+        ),
     ),
     executor: {
-      tryReserve: (sessionId) => options.admission.tryReserve(sessionId),
+      tryReserve: (sessionId) =>
+        options.admission.tryReserveAvailable(sessionId),
       sessionExists: async (sessionId) => {
         if (options.isDeleted(sessionId)) return false;
         return (await options.sessions.getSessionById(sessionId)) !== null;

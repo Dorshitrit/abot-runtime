@@ -20,6 +20,7 @@ export function makeSchedulerRun(
     prompt: job.prompt,
     modelProfileId: job.modelProfileId,
     agentMode: job.agentMode,
+    toolPermissionMode: job.toolPermissionMode,
     timeZone: job.timeZone,
     jobRevision: job.revision,
     scheduledAt,

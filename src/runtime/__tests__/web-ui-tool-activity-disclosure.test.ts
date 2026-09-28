@@ -62,6 +62,38 @@ function diagnostic(requestId = "request-1") {
 }
 
 describe("tool activity timeline availability", () => {
+  test("a recorded tool error stays visible without a failure badge or role alarm", () => {
+    const { render } = activity();
+    const event = {
+      ...toolEvent(),
+      tool: "read_file",
+      ok: false,
+      tone: "failed",
+      eventName: "tool.completed",
+      name: "file reader failed",
+      meta: {
+        path: "news.txt",
+        errorCode: "file_not_found",
+        outputPreview: "Path does not exist: news.txt",
+      },
+    };
+    const node = render([event], "request-1", false);
+    expect(child(node, ".conversation-tool-status").textContent).toBe(
+      "Not completed",
+    );
+    expect(child(node, ".conversation-tool-symbol").textContent).toBe("−");
+    expect(
+      child(node, ".conversation-activity-facts").textContent,
+    ).not.toContain("failed");
+    expect(node.querySelector(".conversation-role-error")).toBeNull();
+    const tool = child(node, ".conversation-tool");
+    tool.open = true;
+    expect(tool.textContent).toContain("file_not_found");
+    expect(tool.textContent).toContain("Path does not exist: news.txt");
+    expect(event.tone).toBe("failed");
+    expect(event.ok).toBe(false);
+  });
+
   test.each([true, false])(
     "tool-only activity has no empty timeline option when streaming=%s",
     (streaming) => {

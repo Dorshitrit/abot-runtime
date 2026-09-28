@@ -107,6 +107,48 @@ describe("responsive workspace navigation", () => {
     expectDockedChat(dom);
   });
 
+  test("opens Learning from the sidebar as an independent workspace", () => {
+    const { dom, shell, flushFrames, documentRoot } = createNavigation(1260);
+    dom.learningWorkspaceButton.dispatch("click");
+    flushFrames();
+    expect(shell.activeWorkspace()).toBe("learning");
+    expect(dom.learningWorkspacePanel.hidden).toBe(false);
+    expect(dom.learningWorkspacePanel.inert).toBe(false);
+    expect(dom.learningWorkspacePanel.getAttribute("aria-hidden")).toBe("false");
+    expect(dom.learningWorkspaceButton.getAttribute("aria-current")).toBe("page");
+    expect(dom.configWorkspacePanel.hidden).toBe(true);
+    expect(dom.chatPanel.hidden).toBe(true);
+    expect(dom.sessionsPanel.hidden).toBe(true);
+    expect(documentRoot.activeElement).toBe(dom.closeLearningWorkspaceButton);
+    dom.closeLearningWorkspaceButton.dispatch("click");
+    expectDockedChat(dom);
+    expect(dom.learningWorkspacePanel.hidden).toBe(true);
+    expect(dom.learningWorkspacePanel.inert).toBe(true);
+    expect(dom.learningWorkspacePanel.getAttribute("aria-hidden")).toBe("true");
+    expect(dom.learningWorkspaceButton.getAttribute("aria-current")).toBeNull();
+  });
+
+  test("opens Memory from the sidebar with its own scroll panel and close action", () => {
+    const { dom, shell, flushFrames, documentRoot } = createNavigation(390);
+    dom.memoryWorkspaceButton.dispatch("click");
+    flushFrames();
+    expect(shell.activeWorkspace()).toBe("memory");
+    expect(dom.memoryWorkspacePanel.hidden).toBe(false);
+    expect(dom.memoryWorkspacePanel.inert).toBe(false);
+    expect(dom.memoryWorkspacePanel.getAttribute("aria-hidden")).toBe("false");
+    expect(dom.memoryWorkspaceButton.getAttribute("aria-current")).toBe("page");
+    expect(dom.chatPanel.hidden).toBe(true);
+    expect(documentRoot.activeElement).toBe(dom.closeMemoryWorkspaceButton);
+    dom.openMemoryRestartControlsButton.dispatch("click");
+    expect(shell.activeWorkspace()).toBe("config");
+    expect(dom.memoryWorkspacePanel.hidden).toBe(true);
+    expect(dom.configWorkspacePanel.hidden).toBe(false);
+    shell.activateWorkspace("memory");
+    expect(shell.closeOverlaysOnEscape()).toBe(true);
+    expect(dom.memoryWorkspacePanel.hidden).toBe(true);
+    expect(dom.chatPanel.hidden).toBe(false);
+  });
+
   test("docks conversations at the exact wide breakpoint without making Chat modal", () => {
     const { dom, shell, mediaQueries } = createNavigation(1260);
 

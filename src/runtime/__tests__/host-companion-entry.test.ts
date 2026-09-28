@@ -4,6 +4,7 @@ import { runHostCompanionEntry } from "../../cli/host-companion-entry.js";
 
 const setup = { url: "http://abot.localhost:5184", code: "a".repeat(43) };
 const cliPath = "/fixture/host-companion-bundle.mjs";
+const upgradeHostId = "317ec6e1-1148-47c7-85a2-dd6acac9fbe2";
 
 describe("standalone companion entry", () => {
   test("hands setup credentials through memory and pins the stable bundle for startup", async () => {
@@ -27,6 +28,19 @@ describe("standalone companion entry", () => {
       expect(runCli).toHaveBeenCalledWith([command], { cliPath });
     },
   );
+  test("forwards the exact paired host identity separately from the download origin", async () => {
+    const runCli = vi.fn(async () => {});
+    await runHostCompanionEntry(["setup"], {
+      cliPath,
+      runCli,
+      input: Readable.from([JSON.stringify({ ...setup, upgradeHostId })]),
+    });
+    expect(runCli).toHaveBeenCalledWith(["connect", "--url", setup.url], {
+      cliPath,
+      pairingCode: setup.code,
+      upgradeHostId,
+    });
+  });
   test.each([
     "not-json-private-test-value",
     "null",
@@ -34,6 +48,8 @@ describe("standalone companion entry", () => {
     JSON.stringify({ ...setup, url: "" }),
     JSON.stringify({ ...setup, url: "x".repeat(4_097) }),
     JSON.stringify({ ...setup, credential: "unaccepted-field" }),
+    JSON.stringify({ ...setup, upgradeHostId: "wrong-host-id" }),
+    JSON.stringify({ ...setup, upgradeHostId: null }),
     "x".repeat(16_385),
   ])(
     "rejects malformed or oversized input without dispatch",

@@ -25,6 +25,16 @@ export function createCapabilityCompositionView(
   modelSteps: RequestModelStepPort,
 ): RequestCapabilityCompositionView {
   return createFrozenSurface<RequestCapabilityCompositionView>({
+    ...(facets.model.modelInvocationScope !== undefined
+      ? {
+          modelInvocationScope: enumerableGetter(
+            () => facets.model.modelInvocationScope!,
+          ),
+        }
+      : {}),
+    ...(facets.model.toolResources
+      ? { toolResources: enumerableGetter(() => facets.model.toolResources!) }
+      : {}),
     requestId: enumerableGetter(() => facets.identity.requestId),
     runnerConfig: enumerableGetter(() => facets.model.runnerConfig),
     agentMode: enumerableGetter(() => facets.input.agentMode),
@@ -151,6 +161,19 @@ function requestSeedDescriptors(
   includeSessionArtifactPaths: boolean,
 ): PropertyDescriptorMap {
   return {
+    ...(facets.lifecycle.approvalGate
+      ? { approvalGate: enumerableGetter(() => facets.lifecycle.approvalGate!) }
+      : {}),
+    ...(facets.model.modelInvocationScope !== undefined
+      ? {
+          modelInvocationScope: enumerableGetter(
+            () => facets.model.modelInvocationScope!,
+          ),
+        }
+      : {}),
+    ...(facets.model.toolResources
+      ? { toolResources: enumerableGetter(() => facets.model.toolResources!) }
+      : {}),
     requestId: enumerableGetter(() => facets.identity.requestId),
     sessionId: enumerableGetter(() => facets.identity.sessionId),
     prompt: enumerableGetter(() => facets.input.prompt),

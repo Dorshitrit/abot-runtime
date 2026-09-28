@@ -1,4 +1,4 @@
-import type { LongTermMemoryRecord, MemoryCandidate } from "./contracts.js";
+import type { MemoryCandidate } from "./contracts.js";
 import {
   mergeMemoryTags,
   normalizeMemoryCandidate,
@@ -27,15 +27,19 @@ export function prepareMemoryCandidates(
     const key = normalizeMemoryText(candidate.content);
     const duplicate = byContent.get(key);
     if (!duplicate) {
-      byContent.set(key, candidate);
+      byContent.set(key, { ...candidate, ...(rawCandidate.assessment ? { assessment: rawCandidate.assessment } : {}) });
       continue;
     }
     duplicateCount += 1;
+    const assessment = rawCandidate.assessment?.explicitlyRequested
+      ? rawCandidate.assessment
+      : duplicate.assessment;
     byContent.set(
       key,
       Object.freeze({
         content: duplicate.content,
         tags: mergeMemoryTags(duplicate.tags, candidate.tags),
+        ...(assessment ? { assessment } : {}),
       }),
     );
   }
@@ -44,14 +48,6 @@ export function prepareMemoryCandidates(
     rejectedCount,
     duplicateCount,
   });
-}
-
-export function indexMemoryRecordsByContent(
-  records: readonly LongTermMemoryRecord[],
-): ReadonlyMap<string, LongTermMemoryRecord> {
-  return new Map(
-    records.map((record) => [normalizeMemoryText(record.content), record]),
-  );
 }
 
 function shouldRejectCandidate(

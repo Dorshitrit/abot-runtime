@@ -1308,17 +1308,15 @@ describe("model gateway provider transport", () => {
   });
 
   test("rejects image attachments when the selected adapter lacks image support", async () => {
-    let fetchCalled = false;
+    let adapterInvoked = false;
     const handler = createChatHandler({
-      fetchImpl: async () => {
-        fetchCalled = true;
-        return {
-          ok: false,
-          status: 502,
-          body: null,
-          text: async () => "unexpected",
-        } as Response;
-      },
+      additionalProviderAdapters: [{
+        type: "text-only-fixture", supportsImageInput: false,
+        invoke: async () => {
+          adapterInvoked = true;
+          return { kind: "error", statusCode: 502, message: "unexpected" };
+        },
+      }],
     });
     const res = createCaptureResponse();
 
@@ -1341,14 +1339,14 @@ describe("model gateway provider transport", () => {
         ],
         modelPolicy: {
           providers: {
-            openai: {
-              type: "openai",
+            fixture: {
+              type: "text-only-fixture",
             },
           },
           profiles: {
-            "openai-vision": {
-              provider: "openai",
-              model: "gpt-test",
+            "fixture-vision": {
+              provider: "fixture",
+              model: "fixture-test",
               contextWindowTokens: 32_768,
               capabilities: {
                 inputModalities: ["text", "image"],
@@ -1356,14 +1354,14 @@ describe("model gateway provider transport", () => {
             },
           },
           defaults: {
-            profileId: "openai-vision",
+            profileId: "fixture-vision",
           },
         },
       },
       res,
     );
 
-    expect(fetchCalled).toBe(false);
+    expect(adapterInvoked).toBe(false);
     expect(res.statusCode).toBe(400);
     expect(res.body).toBe("resolved_provider_does_not_support_image_input");
   });

@@ -10,4 +10,5 @@ export type RequestSessionStore = Pick<
   | "startRequestStream"
   | "upsertArtifactPaths"
   | "updateSessionTitle"
+  | "requestLifecycle"
 >;

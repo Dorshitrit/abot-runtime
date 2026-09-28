@@ -134,12 +134,10 @@ afterEach(() => {
 });
 
 test("stale entry prevents memory retrieval and every provider invocation", async () => {
-  const invoke = vi
-    .fn<ModelGatewayClient["invoke"]>()
-    .mockResolvedValue({
-      text: JSON.stringify({ memoryCandidates: [] }),
-      meta: {},
-    });
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>().mockResolvedValue({
+    text: JSON.stringify({ memoryCandidates: [] }),
+    meta: {},
+  });
   const { request, memory } = createHarness(invoke);
   request.requestSteering!.append({ steerId: "already-stale", text: STEERING });
   await expect(
@@ -313,10 +311,11 @@ test.each([false, true])(
   "preserves memory-error isolation and primary abort, aborted=%j",
   async (abortRequest) => {
     const memoryError = new Error("Memory authoring unavailable.");
+    const abortReason = new Error("Primary request cancelled.");
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
       if (invocationPhase(input) === "memory") {
         assertMemoryInput(input);
-        if (abortRequest) abortController.abort();
+        if (abortRequest) abortController.abort(abortReason);
         throw memoryError;
       }
       return { text: "Answer without memory candidates.", meta: {} };
@@ -324,7 +323,7 @@ test.each([false, true])(
     const { request, abortController } = createHarness(invoke);
     const result = runSupervisorAuthoredResponse(request, BOUND_OPTIONS);
     if (abortRequest) {
-      await expect(result).rejects.toBe(memoryError);
+      await expect(result).rejects.toBe(abortReason);
       expect(invoke).toHaveBeenCalledTimes(1);
       return;
     }

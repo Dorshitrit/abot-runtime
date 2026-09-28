@@ -96,11 +96,53 @@ afterEach(async () => {
 });
 
 describe("scheduler management routes with persisted domain service", () => {
-  it("creates, lists, gets, and edits one canonical Job with fixed FULL authority", async () => {
+  it("defaults to Full and preserves an explicit FULL+ selection across reload and unrelated edits", async () => {
+    const { routes, service } = await createRoutes();
+    const created = await request(routes, "POST", undefined, jobInput);
+    const path = `/web-api/schedules/${created.data.job.id}`;
+    expect(created.data.job.toolPermissionMode).toBe("full_access");
+    await request(routes, "PATCH", path, { toolPermissionMode: "full_plus" });
+    await service.stop();
+    await service.start();
+    expect(
+      (await request(routes, "GET", path)).data.job.toolPermissionMode,
+    ).toBe("full_plus");
+    const edited = await request(routes, "PATCH", path, { title: "New title" });
+    expect(edited.data.job.toolPermissionMode).toBe("full_plus");
+    expect((await service.runNow(edited.data.job.id)).toolPermissionMode).toBe(
+      "full_plus",
+    );
+  });
+
+  it.each(["ask", "FULL+", " full_plus ", "unknown", null])(
+    "rejects unsupported authority %s on create and edit without changing saved permission",
+    async (mode) => {
+      const { routes } = await createRoutes();
+      expect(
+        (
+          await request(routes, "POST", undefined, {
+            ...jobInput,
+            toolPermissionMode: mode,
+          })
+        ).status,
+      ).toBe(400);
+      const created = await request(routes, "POST", undefined, jobInput);
+      const path = `/web-api/schedules/${created.data.job.id}`;
+      expect(
+        (await request(routes, "PATCH", path, { toolPermissionMode: mode }))
+          .status,
+      ).toBe(400);
+      expect(
+        (await request(routes, "GET", path)).data.job.toolPermissionMode,
+      ).toBe("full_access");
+    },
+  );
+
+  it("creates, lists, gets, and edits one canonical Job with explicit FULL+ authority", async () => {
     const { routes, service } = await createRoutes();
     const created = await request(routes, "POST", undefined, {
       ...jobInput,
-      toolPermissionMode: "ask",
+      toolPermissionMode: "full_plus",
       environmentId: "injected",
       id: "injected",
     });
@@ -110,7 +152,7 @@ describe("scheduler management routes with persisted domain service", () => {
       sessionId: "chat-a",
       environmentId: "development",
       modelProfileId: "primary",
-      toolPermissionMode: "full_access",
+      toolPermissionMode: "full_plus",
     });
     expect(job.id).not.toBe("injected");
     const listed = await request(routes, "GET");
@@ -127,7 +169,7 @@ describe("scheduler management routes with persisted domain service", () => {
         modelProfileId: "secondary",
         agentMode: "deep",
         sessionId: "chat-b",
-        toolPermissionMode: "ask",
+        toolPermissionMode: "full_plus",
         id: "changed",
       },
     );
@@ -138,7 +180,7 @@ describe("scheduler management routes with persisted domain service", () => {
       title: "Updated",
       modelProfileId: "secondary",
       agentMode: "deep",
-      toolPermissionMode: "full_access",
+      toolPermissionMode: "full_plus",
       revision: 2,
     });
     expect(await service.get(job.id)).toEqual(edited.data.job);

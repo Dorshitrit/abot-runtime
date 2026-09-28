@@ -58,7 +58,7 @@ describe("tool rejection before external execution", () => {
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({
         status: "failed",
-        statusLabel: "Failed",
+        statusLabel: "Not completed",
         executed: false,
         executorRole: "supervisor",
         roleCallId: "call-1",
@@ -118,7 +118,7 @@ describe("tool rejection before external execution", () => {
       expect(cards.find((card) => card.role === "supervisor")).toMatchObject({
         title: "Root agent",
         active: false,
-        tone: "failed",
+        tone: "recorded",
         toolActions: [
           expect.objectContaining({
             executorRole: "supervisor",

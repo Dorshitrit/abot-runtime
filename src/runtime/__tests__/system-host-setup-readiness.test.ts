@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { readHostReadiness } from "../../web-ui/system-host-setup/readiness.js";
-import type { resolveSystemTarget } from "../../../plugins/system/source/targets.js";
+import type { resolveSystemTarget } from "../../computer-access/targets.js";
 
 const unpaired = { paired: false, connected: false } as const;
 const resolveTarget = () => vi.fn<typeof resolveSystemTarget>(async (id) => ({
@@ -8,12 +8,12 @@ const resolveTarget = () => vi.fn<typeof resolveSystemTarget>(async (id) => ({
 }));
 
 describe("installation host readiness", () => {
-  test("native Mac uses the existing direct target and needs no setup", async () => {
+  test("native Mac offers the shared connection while preserving direct access", async () => {
     const resolve = resolveTarget();
     expect(await readHostReadiness(unpaired, {
       facts: { platform: "darwin", kernelRelease: "Darwin", containerMarker: false },
       resolveTarget: resolve,
-    })).toMatchObject({ ready: true, route: "native", platforms: [], restartRequired: false });
+    })).toMatchObject({ ready: false, directAccessReady: true, route: "setup_required", platforms: ["macos"], restartRequired: false });
     expect(resolve).toHaveBeenCalledExactlyOnceWith("macos");
   });
 
@@ -22,11 +22,11 @@ describe("installation host readiness", () => {
     expect(await readHostReadiness(unpaired, {
       facts: { platform: "linux", kernelRelease: "microsoft-standard-WSL2", containerMarker: true },
       resolveTarget: resolve,
-    })).toMatchObject({ ready: false, environment: "container", platforms: ["windows", "macos"], restartRequired: false });
+    })).toMatchObject({ ready: false, environment: "container", platforms: ["windows", "macos", "linux"], restartRequired: false });
     expect(resolve).not.toHaveBeenCalled();
   });
 
-  test("WSL readiness depends on the real Windows execution probe", async () => {
+  test("WSL offers one companion installer regardless of interop readiness", async () => {
     const resolve = resolveTarget();
     const dependencies = {
       facts: { platform: "linux" as const, kernelRelease: "microsoft-standard-WSL2" },
@@ -34,11 +34,11 @@ describe("installation host readiness", () => {
       resolveTarget: resolve,
     };
     expect(await readHostReadiness(unpaired, dependencies)).toMatchObject({
-      ready: true, environment: "wsl", route: "wsl_interop", platforms: [],
+      ready: false, directAccessReady: true, environment: "wsl", route: "setup_required", platforms: ["windows"],
     });
     resolve.mockRejectedValueOnce(new Error("exec format error"));
     expect(await readHostReadiness(unpaired, dependencies)).toMatchObject({
-      ready: false, platforms: ["windows"], restartRequired: true, distribution: "Ubuntu-test",
+      ready: false, directAccessReady: false, platforms: ["windows"], restartRequired: false,
     });
     expect(resolve).toHaveBeenCalledTimes(2);
   });
@@ -55,6 +55,6 @@ describe("installation host readiness", () => {
     const resolve = resolveTarget().mockRejectedValue(new Error("missing shell"));
     expect(await readHostReadiness(unpaired, {
       facts: { platform: "darwin", kernelRelease: "Darwin" }, resolveTarget: resolve,
-    })).toMatchObject({ ready: false, environment: "native", platforms: [], restartRequired: false });
+    })).toMatchObject({ ready: false, directAccessReady: false, environment: "native", platforms: ["macos"], restartRequired: false });
   });
 });

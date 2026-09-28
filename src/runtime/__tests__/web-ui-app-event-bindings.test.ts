@@ -30,6 +30,10 @@ function fakeEventElement() {
         });
       }
     },
+    dispatchEvent(event: Event) {
+      this.dispatch(event.type);
+      return true;
+    },
     focus: vi.fn(),
   };
 }
@@ -95,19 +99,24 @@ function createHarness(overrides: Record<string, unknown> = {}) {
     documentRoot: fakeEventElement(),
   });
   controller.bind();
-  return { actions, dom, shell, state, onSessionCreated };
+  return { actions, dom, shell, state, onSessionCreated, controller };
 }
 
 describe("web ui environment transitions", () => {
   test("initializes the new ordinary session before permission controls render", () => {
     const harness = createHarness({
-      saveSessionId: vi.fn(), selectedEnvironmentId: () => "dev",
-      rememberModelSelection: vi.fn(), setCurrentSessionTitle: vi.fn(),
-      subscribeSession: vi.fn(), renderSessions: vi.fn(),
+      saveSessionId: vi.fn(),
+      selectedEnvironmentId: () => "dev",
+      rememberModelSelection: vi.fn(),
+      setCurrentSessionTitle: vi.fn(),
+      subscribeSession: vi.fn(),
+      renderSessions: vi.fn(),
     });
     harness.dom.newSessionButton.dispatch("click");
     expect(harness.state.currentSessionId).not.toBe("session-1");
-    expect(harness.onSessionCreated).toHaveBeenCalledExactlyOnceWith(harness.state.currentSessionId);
+    expect(harness.onSessionCreated).toHaveBeenCalledExactlyOnceWith(
+      harness.state.currentSessionId,
+    );
     expect(harness.onSessionCreated.mock.invocationCallOrder[0]).toBeLessThan(
       harness.actions.applyConversationChrome.mock.invocationCallOrder[0],
     );
@@ -197,5 +206,48 @@ describe("web ui new-session transitions", () => {
     expect(harness.state.messages).toEqual([{ id: "message-1" }]);
     expect(harness.actions.clearAttachments).not.toHaveBeenCalled();
     expect(harness.shell.setSessionsDrawerOpen).not.toHaveBeenCalled();
+  });
+});
+
+describe("awaitable environment navigation", () => {
+  test("notifies existing environment subscribers and can defer session restoration to the route owner", async () => {
+    let saved = "dev";
+    const loaded = deferred<void>();
+    const f = createHarness({
+      savedEnvironmentId: () => saved,
+      saveEnvironmentId: (value: string) => {
+        saved = value;
+      },
+      loadModels: () => loaded.promise,
+    });
+    const listener = vi.fn();
+    f.dom.environmentSelect.addEventListener("change", listener);
+    const result = f.controller.changeEnvironment("prod", {
+      restoreSession: false,
+    });
+    expect(listener).toHaveBeenCalledOnce();
+    expect(f.controller.isEnvironmentChanging()).toBe(true);
+    loaded.resolve();
+    await expect(result).resolves.toBe(true);
+    expect(f.actions.restoreLastSession).not.toHaveBeenCalled();
+    expect(f.controller.isEnvironmentChanging()).toBe(false);
+  });
+
+  test("a stale environment read cannot restore a conversation after a round trip", async () => {
+    let saved = "dev";
+    const firstLoad = deferred<void>();
+    let calls = 0;
+    const f = createHarness({
+      savedEnvironmentId: () => saved,
+      saveEnvironmentId: (value: string) => {
+        saved = value;
+      },
+      loadModels: () => (++calls === 1 ? firstLoad.promise : Promise.resolve()),
+    });
+    const first = f.controller.changeEnvironment("prod");
+    await f.controller.changeEnvironment("dev");
+    firstLoad.resolve();
+    await expect(first).resolves.toBe(false);
+    expect(f.actions.restoreLastSession).toHaveBeenCalledOnce();
   });
 });

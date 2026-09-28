@@ -1,6 +1,7 @@
 import { readdir, realpath } from "node:fs/promises";
 import { assignDiscoveredModelIds } from "./config-dashboard-model-identity.js";
 import {
+  ConfigFileConflictError,
   canonicalConfigFilePath,
   readConfigFileSnapshot,
   type ConfigFileSnapshot,
@@ -30,6 +31,7 @@ type ConfigFileDescriptor = {
   exists: boolean;
   revision: string;
   config: JsonRecord;
+  registered?: boolean;
   invalidJson?: ConfigFileSnapshot["invalidJson"];
   source?: {
     type: "inlineModelProfile";
@@ -76,6 +78,7 @@ function ensureInsideRoot(rootDir: string, filePath: string): void {
 type ModelConfigRef = {
   id: string;
   path: string;
+  registered: boolean;
   source?: ConfigFileDescriptor["source"];
   inlineConfig?: JsonRecord;
 };
@@ -92,12 +95,13 @@ function modelRefsFromRuntimeConfig(params: {
     const configRef =
       typeof value.configRef === "string" ? value.configRef.trim() : "";
     if (configRef) {
-      return [{ id, path: configRef }];
+      return [{ id, path: configRef, registered: true }];
     }
     return [
       {
         id,
         path: mainConfigPath,
+        registered: true,
         source: {
           type: "inlineModelProfile",
           runtimeConfigPath: mainConfigPath,
@@ -113,6 +117,10 @@ function modelIdFromConfigFile(fileName: string): string {
   return fileName.replace(/\.config\.json$/u, "").replace(/\.json$/u, "");
 }
 
+function modelDirectoryIsMissing(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
 async function discoverModelRefs(params: {
   mainConfigPath: string;
   runtimeConfig: JsonRecord;
@@ -121,44 +129,55 @@ async function discoverModelRefs(params: {
     mainConfigPath: params.mainConfigPath,
     runtimeConfig: params.runtimeConfig,
   });
-  const configuredKeys = new Set<string>();
+  const requestRunnerRef = configRefFrom(params.runtimeConfig.requestRunner);
+  const nonModelConfigPaths = [params.mainConfigPath];
+  if (requestRunnerRef)
+    nonModelConfigPaths.push(
+      resolveRefPath(params.mainConfigPath, requestRunnerRef),
+    );
+  const excludedFilePaths = new Set(
+    await Promise.all(nonModelConfigPaths.map(canonicalConfigFilePath)),
+  );
+  const visitedFilePaths = new Set<string>();
   const discovered: ModelConfigRef[] = [];
   for (const ref of configured) {
-    const key = ref.source
-      ? `inline:${ref.id}`
-      : `file:${resolveRefPath(params.mainConfigPath, ref.path)}`;
-    configuredKeys.add(key);
+    if (ref.source) continue;
+    visitedFilePaths.add(
+      await canonicalConfigFilePath(
+        resolveRefPath(params.mainConfigPath, ref.path),
+      ),
+    );
   }
 
-  const firstFileRef = configured.find((ref) => !ref.source)?.path;
-  const modelsDir = firstFileRef
-    ? dirname(resolveRefPath(params.mainConfigPath, firstFileRef))
-    : resolve(dirname(params.mainConfigPath), "models");
-  let fileNames: string[] = [];
-  try {
-    fileNames = await readdir(modelsDir);
-  } catch (error) {
-    if (
-      !(
-        error &&
-        typeof error === "object" &&
-        "code" in error &&
-        (error as { code?: unknown }).code === "ENOENT"
-      )
-    ) {
-      throw error;
+  const modelDirs = new Set([
+    resolve(dirname(params.mainConfigPath), "models"),
+    ...configured
+      .filter((ref) => !ref.source)
+      .map((ref) =>
+        dirname(resolve(resolveRefPath(params.mainConfigPath, ref.path))),
+      ),
+  ]);
+  for (const modelsDir of [...modelDirs].sort()) {
+    let fileNames: string[] = [];
+    try {
+      fileNames = await readdir(modelsDir);
+    } catch (error) {
+      if (!modelDirectoryIsMissing(error)) throw error;
     }
-  }
 
-  for (const fileName of fileNames) {
-    if (!fileName.endsWith(".json")) continue;
-    const filePath = resolve(modelsDir, fileName);
-    const key = `file:${filePath}`;
-    if (configuredKeys.has(key)) continue;
-    discovered.push({
-      id: modelIdFromConfigFile(fileName),
-      path: relative(dirname(params.mainConfigPath), filePath),
-    });
+    for (const fileName of fileNames.sort()) {
+      if (!fileName.endsWith(".json")) continue;
+      const filePath = resolve(modelsDir, fileName);
+      const canonicalPath = await canonicalConfigFilePath(filePath);
+      if (excludedFilePaths.has(canonicalPath)) continue;
+      if (visitedFilePaths.has(canonicalPath)) continue;
+      visitedFilePaths.add(canonicalPath);
+      discovered.push({
+        id: modelIdFromConfigFile(fileName),
+        path: relative(dirname(params.mainConfigPath), filePath),
+        registered: false,
+      });
+    }
   }
 
   return [
@@ -184,6 +203,7 @@ async function readDescriptor(params: {
   path: string;
   config?: JsonRecord;
   snapshot?: ConfigFileSnapshot;
+  registered?: boolean;
   source?: ConfigFileDescriptor["source"];
 }): Promise<ConfigFileDescriptor> {
   ensureInsideRoot(params.rootDir, params.path);
@@ -202,20 +222,24 @@ async function readDescriptor(params: {
     exists: snapshot.exists,
     revision: snapshot.revision,
     config: params.config ?? snapshot.config,
+    ...(params.registered === undefined
+      ? {}
+      : { registered: params.registered }),
     ...(snapshot.invalidJson ? { invalidJson: snapshot.invalidJson } : {}),
     ...(params.source ? { source: params.source } : {}),
   };
 }
 
-export async function getConfigDashboardSnapshot(params: {
-  rootDir: string;
-  configPath?: string;
-}): Promise<ConfigDashboardSnapshot> {
+export async function getConfigDashboardSnapshot(
+  params: { rootDir: string; configPath?: string },
+  lockedRuntimeSnapshot?: ConfigFileSnapshot,
+): Promise<ConfigDashboardSnapshot> {
   const mainConfigPath = resolveMainConfigPath(
     params.rootDir,
     params.configPath,
   );
-  const runtimeSnapshot = await readConfigFileSnapshot(mainConfigPath);
+  const runtimeSnapshot =
+    lockedRuntimeSnapshot ?? (await readConfigFileSnapshot(mainConfigPath));
   const runtimeConfig = runtimeSnapshot.config;
   const configDir = dirname(mainConfigPath);
 
@@ -258,6 +282,7 @@ export async function getConfigDashboardSnapshot(params: {
             kind: "model",
             id: model.id,
             label: basename(model.path).replace(/\.json$/u, ""),
+            registered: model.registered,
             path: resolveRefPath(mainConfigPath, model.path),
             ...(model.inlineConfig
               ? { config: model.inlineConfig, snapshot: runtimeSnapshot }
@@ -268,6 +293,32 @@ export async function getConfigDashboardSnapshot(params: {
       ),
     },
   };
+}
+
+/** Outcome reconciliation waits for writes; ordinary reads require no write access. */
+export async function getSettledConfigDashboardSnapshot(params: {
+  rootDir: string;
+  configPath?: string;
+}): Promise<ConfigDashboardSnapshot> {
+  const mainConfigPath = resolveMainConfigPath(
+    params.rootDir,
+    params.configPath,
+  );
+  const runtimePath = await canonicalConfigFilePath(mainConfigPath);
+  return withConfigDashboardRootTransaction(
+    runtimePath,
+    undefined,
+    async (root) => {
+      const selectedTarget = await canonicalConfigFilePath(mainConfigPath);
+      const hasCurrentRuntimeTarget = selectedTarget === root.path;
+      if (!hasCurrentRuntimeTarget) throw new ConfigFileConflictError();
+      const snapshot = await getConfigDashboardSnapshot(params, root.snapshot);
+      const hasSameRuntimeTarget =
+        (await canonicalConfigFilePath(mainConfigPath)) === root.path;
+      if (!hasSameRuntimeTarget) throw new ConfigFileConflictError();
+      return snapshot;
+    },
+  );
 }
 
 function selectConfigDashboardTarget(
@@ -319,10 +370,10 @@ export async function saveConfigDashboardFile(params: {
     runtimePath,
     params.transaction,
     async (rootTransaction) => {
-      const snapshot = await getConfigDashboardSnapshot({
-        rootDir: params.rootDir,
-        configPath: params.configPath,
-      });
+      const snapshot = await getConfigDashboardSnapshot(
+        { rootDir: params.rootDir, configPath: params.configPath },
+        rootTransaction.snapshot,
+      );
       const target = selectConfigDashboardTarget(
         snapshot,
         params.kind,
@@ -372,6 +423,7 @@ export async function saveConfigDashboardFile(params: {
           kind: target.kind,
           id: target.id,
           label: target.label,
+          registered: target.registered,
           path: filePath,
           snapshot: transaction.snapshot,
           ...(target.source

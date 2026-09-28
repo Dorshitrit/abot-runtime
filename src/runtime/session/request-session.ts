@@ -1,5 +1,9 @@
 import type { ModelGatewayAttachment } from "../../model-gateway/types.js";
 import type { SessionRecord } from "../../sessions/types.js";
+import type {
+  SessionActivation,
+  SessionRequestLifecycleSnapshot,
+} from "../../sessions/request-lifecycle/contracts.js";
 import type { AgentMode } from "../../shared/types.js";
 import type {
   RuntimeAttachmentReference,
@@ -14,10 +18,12 @@ import {
 } from "../orchestration/request/request-attachments.js";
 import type { ToolRequestAttachment } from "../../capabilities/tool-types.js";
 import type { RequestSessionStore } from "../request/session-store.js";
+import { startRequestActivation } from "./request-activation.js";
 
 type OpenedRequestSession = {
   session: SessionRecord;
   attachments: RuntimeAttachmentReference[];
+  activation?: SessionRequestLifecycleSnapshot;
 };
 
 export async function openRequestSession(params: {
@@ -26,6 +32,7 @@ export async function openRequestSession(params: {
   rawAttachments: unknown;
   sessionStore: RequestSessionStore;
   attachmentStore?: RuntimeAttachmentStore;
+  activation?: SessionActivation;
 }): Promise<OpenedRequestSession> {
   if (!params.sessionId) {
     throw new Error("sessionId required");
@@ -39,6 +46,16 @@ export async function openRequestSession(params: {
     sessionId: params.sessionId,
     attachmentStore: params.attachmentStore,
   });
+  if (params.activation) {
+    const store = params.sessionStore.requestLifecycle;
+    if (!store) throw new Error("durable_approval_store_unavailable");
+    // The first persisted running record already has its recoverable activation.
+    const activation = await startRequestActivation(store, params.sessionId, {
+      requestId: params.requestId,
+      ...params.activation,
+    });
+    return { session, attachments, activation };
+  }
   await params.sessionStore.startRequestStream(
     params.sessionId,
     params.requestId,
@@ -81,6 +98,10 @@ export async function initializeRequestSession(params: {
         : {}),
     },
   );
+
+  params.events.event("session.messages.updated", {
+    sessionId: params.sessionId,
+  });
 
   if (params.schedule) {
     const message = persisted.messages.find(

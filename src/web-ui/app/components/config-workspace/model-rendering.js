@@ -2,6 +2,18 @@ import { configRequiresRawRepair } from "./raw-config-repair.js";
 import { escapeAttribute, escapeHtml, textOf } from "../../lib/text-format.js";
 import { isConfigObject } from "./config-model.js";
 
+function modelListStatus(model, hasImage) {
+  if (model.registered === false) return "Not registered";
+  return hasImage ? "image input" : "text input";
+}
+
+function renderModelRegistrationAction(model) {
+  if (model.registered === false)
+    return '<p class="muted">Not registered in the saved configuration. This file is kept for reference.</p>';
+  if (model.registered !== true) return "";
+  return `<button type="button" data-config-action="remove-model" data-id="${escapeAttribute(model.id)}">Remove model</button>`;
+}
+
 export function createConfigModelRendering({
   state,
   calibrationProfileLabel,
@@ -40,7 +52,7 @@ export function createConfigModelRendering({
                 <span>${escapeHtml(model.config?.label || model.id)}</span>
                 <small>
                   <span>${escapeHtml(model.config?.provider || "-")}</span>
-                  <span>${escapeHtml(hasImage ? "image input" : "text input")}</span>
+                  <span>${escapeHtml(modelListStatus(model, hasImage))}</span>
                 </small>
               </button>
             `;
@@ -153,11 +165,13 @@ export function createConfigModelRendering({
       return '<div class="empty-state compact">No model configs found</div>';
     }
     state.selectedConfigModelId = model.id;
-    if (configRequiresRawRepair(
-      model,
-      state.appliedJsonRepairKeys.has(configFileKey(model)),
-    ))
-      return '<p class="error-text">Repair this linked file in Advanced → Raw JSON before editing model settings.</p>';
+    if (
+      configRequiresRawRepair(
+        model,
+        state.appliedJsonRepairKeys.has(configFileKey(model)),
+      )
+    )
+      return `${renderModelRegistrationAction(model)}<p class="error-text">Repair this linked file in the configuration repair section before editing model settings.</p>`;
     const calibration = isConfigObject(model.config?.calibration)
       ? model.config.calibration
       : {};
@@ -165,6 +179,10 @@ export function createConfigModelRendering({
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([stepId, profile]) => renderCalibrationCard(model, stepId, profile))
       .join("");
+    const calibrationSectionKey = configFileKey(model);
+    const calibrationSectionExpanded = state.expandedCalibrationSections.has(
+      calibrationSectionKey,
+    );
     const availableCalibrationProfiles = configStepOptions().filter(
       (step) => !Object.prototype.hasOwnProperty.call(calibration, step),
     );
@@ -180,11 +198,20 @@ export function createConfigModelRendering({
             )}</p>
             <code>${escapeHtml(model.path)}</code>
           </div>
-          ${renderFileActions(model)}
+          <div class="config-file-actions">
+            ${renderFileActions(model)}
+            ${renderModelRegistrationAction(model)}
+          </div>
         </div>
         <div class="config-form-panel">
-          <div class="config-form-panel-title">
-            <strong>Model defaults</strong>
+          <div class="config-form-panel-title config-model-defaults-title">
+            <div class="config-model-defaults-heading">
+              <strong>Model defaults</strong>
+              ${renderConfigInput(model, ["supportsThinking"], {
+                type: "boolean",
+                label: "Thinking",
+              })}
+            </div>
             <span>Provider, generation, and base context limits.</span>
           </div>
           <div class="config-field-grid model-basics">
@@ -195,10 +222,6 @@ export function createConfigModelRendering({
               { type: "select", values: configProviderOptions() },
             )}</label>
             <label><span>Model</span>${renderConfigInput(model, ["model"])}</label>
-            ${renderConfigInput(model, ["supportsThinking"], {
-              type: "boolean",
-              label: "Thinking",
-            })}
             <label><span>Temperature</span>${renderConfigInput(
               model,
               ["generation", "temperature"],
@@ -217,38 +240,44 @@ export function createConfigModelRendering({
           </div>
           ${renderExecutionRoute(model)}
         </div>
-        <div class="config-subheader">
-          <div>
+        <details
+          class="config-calibration-section"
+          data-calibration-section-key="${escapeAttribute(calibrationSectionKey)}"
+          ${calibrationSectionExpanded ? "open" : ""}
+        >
+          <summary class="config-calibration-section-title">
             <span>Invocation calibration</span>
             <small>${escapeHtml(
               Object.keys(calibration).length === 1
                 ? "1 profile"
                 : `${Object.keys(calibration).length} profiles`,
             )}</small>
+          </summary>
+          <div class="config-calibration-section-body">
+            <div class="config-add-row compact">
+              <label>
+                <span>Add profile</span>
+                <select data-new-calibration-key>
+                  <option value="">Choose invocation profile</option>
+                  ${renderSelectOptions(availableCalibrationProfiles)}
+                </select>
+              </label>
+              <button
+                type="button"
+                data-config-action="add-calibration"
+                data-kind="model"
+                data-id="${escapeAttribute(model.id)}"
+                ${availableCalibrationProfiles.length ? "" : "disabled"}
+              >Add</button>
+            </div>
+            <div class="config-calibration-grid">
+              ${
+                calibrationCards ||
+                '<div class="empty-state compact">No calibration entries</div>'
+              }
+            </div>
           </div>
-          <div class="config-add-row compact">
-            <label>
-              <span>Add profile</span>
-              <select data-new-calibration-key>
-                <option value="">Choose invocation profile</option>
-                ${renderSelectOptions(availableCalibrationProfiles)}
-              </select>
-            </label>
-            <button
-              type="button"
-              data-config-action="add-calibration"
-              data-kind="model"
-              data-id="${escapeAttribute(model.id)}"
-              ${availableCalibrationProfiles.length ? "" : "disabled"}
-            >Add</button>
-          </div>
-        </div>
-        <div class="config-calibration-grid">
-          ${
-            calibrationCards ||
-            '<div class="empty-state compact">No calibration entries</div>'
-          }
-        </div>
+        </details>
       </section>
     `;
   }

@@ -1,6 +1,5 @@
 import {
   PLANNER_OBJECTIVE_MAX_LENGTH,
-  PLANNER_RESULT_MAX_LENGTH,
   type PlannerDecisionPlanContext,
 } from "./contracts.js";
 
@@ -90,7 +89,6 @@ export function buildPlannerDecisionInstructions(
     "Choose return_failure when no materially different, evidence-supported next outcome remains through the offered roles. A fresh child frame does not change capability, evidence, or feasibility. State the unmet requirement truthfully and concisely.",
     "Absence of a reported problem is not completion evidence. Never fabricate child work, observations, files, citations, review, or completion.",
     "Do not address the end user or decide the Supervisor's next action.",
-    `The result or failure reason must contain at most ${PLANNER_RESULT_MAX_LENGTH} characters.`,
     "Return exactly one JSON object matching the supplied schema and nothing else.",
   ].join("\n");
 }

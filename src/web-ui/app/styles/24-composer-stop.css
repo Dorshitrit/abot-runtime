@@ -1,0 +1,44 @@
+.composer-submit-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.composer-stop-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.composer-stop-button svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.composer-stop-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  color: var(--text);
+}
+
+.composer-stop-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.composer-stop-button[aria-busy="true"] {
+  opacity: 0.65;
+}
+
+.composer-stop-button:focus-visible {
+  outline: 1px solid var(--muted);
+  outline-offset: 2px;
+}

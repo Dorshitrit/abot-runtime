@@ -132,6 +132,7 @@ async function invokeAuditorPhase<T>(
     modelStep: input.modelStep,
     format: input.format,
     messages: input.context.messages,
+    contextRetention: "exact",
     timeoutReason: "auditor_decision_timeout",
     invalidOutputReason: "invalid_auditor_decision",
     parse,

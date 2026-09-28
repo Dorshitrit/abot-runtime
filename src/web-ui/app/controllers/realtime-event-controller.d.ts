@@ -32,7 +32,6 @@ export interface RealtimeEventControllerOptions {
   scheduleThinkingRender(): void;
   cancelScheduledMessageRender(): void;
   cancelScheduledThinkingRender(): void;
-  forgetThinkingDisclosure(messageId: string): void;
   markCurrentSessionReadSoon(): void;
   applySessionTitleUpdate(sessionId: unknown, title: unknown): void;
   setMessageActivityStatus(message: string): void;
@@ -41,6 +40,7 @@ export interface RealtimeEventControllerOptions {
     environmentId: string;
     sessionId: string;
     terminalRequestId: string;
+    cancelled?: boolean;
   }): void | Promise<void>;
   loadSessions(): void | Promise<unknown>;
 }

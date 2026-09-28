@@ -1,4 +1,13 @@
 import { randomUUID } from "node:crypto";
+import { saveDurableSessionFile } from "./durable-session-commit.js";
+import { cleanupSessionContinuations } from "./request-lifecycle/continuation-cleanup.js";
+import { createSessionRequestLifecycle } from "./request-lifecycle/service.js";
+import { projectSessionRequestLifecycle } from "./request-lifecycle/projection.js";
+import type { SessionRequestLifecycleStore } from "./request-lifecycle/contracts.js";
+import {
+  createAssistantConversationRecord,
+  type CreateAssistantConversationInput,
+} from "./assistant-initiative.js";
 import {
   assertSessionProjectUnchanged,
   copySessionProject,
@@ -78,6 +87,7 @@ function toIso(now: () => Date): string {
 }
 
 export class SessionService {
+  readonly requestLifecycle: SessionRequestLifecycleStore;
   private readonly sessionsDir: string;
 
   private readonly now: () => Date;
@@ -91,6 +101,14 @@ export class SessionService {
       options.sessionsDir || getDefaultSessionsDir(process.cwd());
     this.now = options.now || (() => new Date());
     this.createMessageId = options.createMessageId || defaultCreateMessageId;
+    this.requestLifecycle = createSessionRequestLifecycle({
+      sessionsDir: this.sessionsDir,
+      now: this.now,
+      createMessageId: this.createMessageId,
+      enqueue: this.runSessionMutation.bind(this),
+      read: this.getSessionById.bind(this),
+      list: this.getAllSessions.bind(this),
+    });
   }
 
   async getOrCreateSession(
@@ -195,6 +213,9 @@ export class SessionService {
       return {
         requestId,
         sessionId: request.sessionId,
+        ...(request.lifecycle
+          ? { lifecycle: projectSessionRequestLifecycle(request) }
+          : {}),
         ...(request.generation ? { generation: request.generation } : {}),
         events: request.events
           .filter((event) => event.seqNo > normalizedAfterSeq)
@@ -214,15 +235,17 @@ export class SessionService {
     sessionId: string,
   ): Promise<SessionDeleteResult> {
     assertValidSessionId(sessionId);
-    await ensureSessionsDir(this.sessionsDir);
-    const session = await loadSessionFile(this.sessionsDir, sessionId);
-    const deleted = await deleteSessionFile(this.sessionsDir, sessionId);
-    return {
-      sessionId,
-      deleted,
-      deletedMessages: deleted ? (session?.messages.length ?? 0) : 0,
-      deletedRequests: deleted ? (session?.requests?.length ?? 0) : 0,
-    };
+    return this.runSessionMutation(sessionId, async () => {
+      await ensureSessionsDir(this.sessionsDir);
+      const session = await loadSessionFile(this.sessionsDir, sessionId);
+      const deleted = await deleteSessionFile(this.sessionsDir, sessionId);
+      return {
+        sessionId,
+        deleted,
+        deletedMessages: deleted ? (session?.messages.length ?? 0) : 0,
+        deletedRequests: deleted ? (session?.requests?.length ?? 0) : 0,
+      };
+    });
   }
 
   async resetSession(sessionId: string): Promise<SessionRecord | null> {
@@ -294,6 +317,9 @@ export class SessionService {
       }
       const deletedMessages = session.messages.length;
       const deletedRequests = session.requests?.length ?? 0;
+      const hadDurableRequests = session.requests?.some(
+        (request) => request.lifecycle,
+      );
       const updatedAt = toIso(this.now);
       session.messages = [];
       session.messageCount = 0;
@@ -303,7 +329,10 @@ export class SessionService {
       delete session.sessionMemoryCheckpoint;
       delete session.runtimeModeId;
       session.updatedAt = updatedAt;
-      await saveSessionFile(this.sessionsDir, session);
+      if (hadDurableRequests)
+        await saveDurableSessionFile(this.sessionsDir, session);
+      else await saveSessionFile(this.sessionsDir, session);
+      await cleanupSessionContinuations(this.sessionsDir, sessionId);
       return {
         sessionId,
         cleared: deletedMessages > 0 || deletedRequests > 0,
@@ -366,6 +395,21 @@ export class SessionService {
       await saveSessionFile(this.sessionsDir, session);
       return session;
     });
+  }
+
+  async createAssistantConversation(
+    sessionId: string,
+    input: CreateAssistantConversationInput,
+  ): Promise<SessionRecord> {
+    assertValidSessionId(sessionId);
+    return this.runSessionMutation(sessionId, () =>
+      createAssistantConversationRecord({
+        directory: this.sessionsDir,
+        sessionId,
+        input,
+        now: this.now(),
+      }),
+    );
   }
 
   async compareAndSwapSessionMemoryCheckpoint(
@@ -457,6 +501,8 @@ export class SessionService {
       const timestamp = toIso(this.now);
       const existing = getSessionRequest(session, requestId);
       if (existing) {
+        if (existing.lifecycle)
+          throw new Error("request_lifecycle_command_required");
         existing.status = "streaming";
         existing.updatedAt = timestamp;
         existing.events = compactRequestEvents(existing.events);
@@ -494,6 +540,8 @@ export class SessionService {
       const session = await this.getOrCreateSession(sessionId);
       const timestamp = toIso(this.now);
       let request = getSessionRequest(session, requestId);
+      if (request?.lifecycle)
+        throw new Error("request_lifecycle_command_required");
       if (!request) {
         request = {
           requestId,
@@ -593,6 +641,9 @@ export class SessionService {
       }
 
       const requestId = targetMessage.requestId;
+      const hadDurableRequests = session.requests?.some(
+        (request) => request.lifecycle,
+      );
       let deletedRequestId: string | undefined;
       let deletedRequestEvents: number | undefined;
       if (requestId) {
@@ -616,7 +667,9 @@ export class SessionService {
         delete session.runtimeModeId;
       }
       session.updatedAt = updatedAt;
-      await saveSessionFile(this.sessionsDir, session);
+      if (hadDurableRequests)
+        await saveDurableSessionFile(this.sessionsDir, session);
+      else await saveSessionFile(this.sessionsDir, session);
       return {
         sessionId,
         messageId,

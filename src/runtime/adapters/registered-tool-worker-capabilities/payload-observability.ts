@@ -55,7 +55,7 @@ export function createDeferredPayloadObservability(params: {
       });
     },
     release(executionId: string): void {
-      for (const publish of deferred) publish(executionId);
+      for (const publish of deferred.splice(0)) publish(executionId);
     },
   });
 }

@@ -22,7 +22,6 @@ import {
   WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS,
 } from "../../orchestration/worker-capabilities/index.js";
 import {
-  WORKER_RESULT_MAX_LENGTH,
   WORKER_RESULT_MODEL_STEP,
   type WorkerDecisionDiagnosticContext,
   type WorkerResultAuthorSource,
@@ -204,20 +203,6 @@ function validateCompleteWorkerResult(
           code: "worker_result_empty",
           path: "result",
           message: "Return one non-empty raw Worker handoff.",
-        }),
-      ]),
-      reason: "invalid_worker_result",
-    });
-  }
-  if (result.length > WORKER_RESULT_MAX_LENGTH) {
-    return Object.freeze({
-      ok: false,
-      stage: "raw_result",
-      issues: Object.freeze([
-        Object.freeze({
-          code: "worker_result_too_long",
-          path: "result",
-          message: `Return at most ${WORKER_RESULT_MAX_LENGTH} characters without file bodies, source code, diffs, or tool transcripts.`,
         }),
       ]),
       reason: "invalid_worker_result",

@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { readSystemApplications } from "../../../plugins/system/source/application-catalog.js";
-import { systemApplicationObservation } from "../../../plugins/system/source/application-observation.js";
-import { createSystemHandlers } from "../../../plugins/system/source/handlers.js";
+import { readSystemApplications } from "../../computer-access/application-catalog.js";
+import { systemApplicationObservation } from "../../computer-access/application-observation.js";
+import { createSystemHandlers } from "../../computer-access/handlers.js";
 import type {
   SystemApplication,
   SystemProcessInput,
   SystemProcessResult,
   SystemTarget,
   SystemTargetId,
-} from "../../../plugins/system/source/contracts.js";
+} from "../../computer-access/contracts.js";
 
 const filesystem = vi.hoisted(() => ({ readdir: vi.fn(), readFile: vi.fn() }));
 vi.mock("node:fs/promises", async (importOriginal) => ({
@@ -16,10 +16,10 @@ vi.mock("node:fs/promises", async (importOriginal) => ({
   ...filesystem,
 }));
 vi.mock(
-  "../../../plugins/system/source/targets.js",
+  "../../computer-access/targets.js",
   async (importOriginal) => ({
     ...(await importOriginal<
-      typeof import("../../../plugins/system/source/targets.js")
+      typeof import("../../computer-access/targets.js")
     >()),
     resolveSystemTarget: vi.fn(async (id: SystemTargetId) => targetFor(id)),
     findExecutable: vi.fn(async () => "/observed/gio"),

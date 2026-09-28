@@ -32,6 +32,7 @@ import {
 import { retrieveResponseLongTermMemory } from "../../long-term-memory/response-context.js";
 import type { RootAuthoredResponse } from "../../long-term-memory/contracts.js";
 import { authorSupervisorMemoryCandidates } from "./memory-authoring.js";
+import { canAuthorConversationMemory, prepareConversationMemoryAuthoring } from "../../long-term-memory/conversation-authoring/context.js";
 import {
   assertBoundModelStepSteeringCurrent,
   isModelStepSteeringSuperseded,
@@ -64,18 +65,19 @@ export async function runSupervisorAuthoredResponse(
     steeringSnapshot?: RequestSteeringSnapshot;
   }>,
 ): Promise<RootAuthoredResponse> {
-  const hasResponseRecommendation =
-    options.responseRecommendation !== undefined;
+  const requestSteering = resolveRequestSteeringInbox(request.requestSteering);
+  const steeringSnapshot = options.steeringSnapshot ?? requestSteering.snapshot();
+  const memoryEnabled = request.longTermMemory?.enabled === true;
+  const memoryAuthoringVersion = memoryEnabled && request.longTermMemory?.learning ? steeringSnapshot.version : undefined;
   const boundSteeringVersion =
     resolveMemoryRecallSteeringVersion(
       options.memoryRecallMessage,
       request.requestId,
       options.call.callId,
     ) ??
-    (hasResponseRecommendation ? options.steeringSnapshot?.version : undefined);
-  const requestSteering = resolveRequestSteeringInbox(request.requestSteering);
+    memoryAuthoringVersion ??
+    (options.responseRecommendation !== undefined ? options.steeringSnapshot?.version : undefined);
   assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
-  const memoryEnabled = request.longTermMemory?.enabled === true;
   const memoryMessage =
     options.memoryRecallMessage ??
     (memoryEnabled && options.steeringSnapshot
@@ -86,16 +88,28 @@ export async function runSupervisorAuthoredResponse(
     ...options,
     ...(memoryMessage ? { longTermMemoryMessage: memoryMessage } : {}),
   };
-  const memoryCandidates = memoryEnabled
+  const memoryAuthoringContext = memoryEnabled
+    ? await prepareConversationMemoryAuthoring(request, steeringSnapshot)
+    : undefined;
+  assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
+  const memoryCandidates = canAuthorConversationMemory(request, memoryAuthoringContext)
     ? await authorSupervisorMemoryCandidates({
         request,
         boundSteeringVersion,
-        messages: buildSupervisorMemoryAuthoringInput(request, inputOptions)
+        ...(memoryAuthoringContext ? { memoryAuthoringContext } : {}),
+        messages: buildSupervisorMemoryAuthoringInput(request, {
+          ...inputOptions,
+          ...(memoryAuthoringContext ? { memoryAuthoringMessage: memoryAuthoringContext.message } : {}),
+        })
           .context.messages,
         contextCompaction: createSupervisorResponseCompaction(request, options),
       })
     : Object.freeze([]);
-  const input = buildSupervisorResponseInput(request, inputOptions);
+  const input = buildSupervisorResponseInput(request, {
+    ...inputOptions,
+    ...(memoryEnabled ? { memoryCandidateCount: memoryCandidates.length } : {}),
+    ...(memoryEnabled ? { hasDirectMemorySaveRequest: memoryCandidates.some((candidate) => candidate.assessment?.explicitlyRequested) } : {}),
+  });
   const diagnostic: SupervisorResponseDiagnosticContext = {
     requestId: request.requestId,
     modelStep: SUPERVISOR_RESPONSE_MODEL_STEP,

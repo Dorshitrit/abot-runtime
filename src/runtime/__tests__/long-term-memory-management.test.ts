@@ -65,6 +65,7 @@ describe("long-term memory management", () => {
       content: "User prefers coffee without sugar.",
       tags: ["coffee", "preference"],
       provenance: { kind: "manual", source: "web_ui" },
+      automaticManagement: "protected",
       createdAt: "2026-08-26T10:00:00.000Z",
       updatedAt: "2026-08-26T10:00:00.000Z",
     });
@@ -138,8 +139,7 @@ describe("long-term memory management", () => {
     const repository = createInMemoryLongTermMemoryRepository();
     const now = vi
       .fn<() => Date>()
-      .mockReturnValueOnce(new Date("2026-08-26T10:00:00.000Z"))
-      .mockReturnValueOnce(new Date("2026-08-26T11:00:00.000Z"));
+      .mockReturnValue(new Date("2026-08-26T10:00:00.000Z"));
     const service = createLongTermMemoryService({
       repository,
       embeddings: createFixtureEmbeddings(),
@@ -155,6 +155,7 @@ describe("long-term memory management", () => {
       context: MANAGEMENT_CONTEXT,
     });
 
+    now.mockReturnValue(new Date("2026-08-26T11:00:00.000Z"));
     const updated = await service.update({
       id: created.record.id,
       expectedUpdatedAt: created.record.updatedAt,

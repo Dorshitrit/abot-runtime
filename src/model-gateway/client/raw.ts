@@ -8,6 +8,8 @@ import type {
 } from "./contracts.js";
 import { buildModelInvocationMetrics } from "./invocation-metrics.js";
 import { resolveClientOptions } from "./options.js";
+import { permitsModelContentTrace } from "../observability/content-trace-policy.js";
+import { toolMediaSafeMessage } from "../observability/tool-media-privacy.js";
 
 export async function invokeRawModelGatewayWithOptions(
   params: InvokeRawModelGatewayParams,
@@ -73,10 +75,10 @@ export async function invokeRawModelGatewayWithOptions(
       requestId,
       status: response.status,
       bodyLength: errorText.length,
-      bodyPreview: errorText.slice(0, 400),
+      ...(permitsModelContentTrace(modelStep, params.prompt) ? { bodyPreview: errorText.slice(0, 400) } : { contentOmitted: true }),
     });
     throw new Error(
-      `bridge_raw_failed:${response.status}:${errorText || "empty error body"}`,
+      `bridge_raw_failed:${response.status}:${toolMediaSafeMessage(errorText || "empty error body", params.prompt)}`,
     );
   }
 
@@ -96,7 +98,7 @@ export async function invokeRawModelGatewayWithOptions(
     ...(providerCompletionReason !== undefined
       ? { providerCompletionReason }
       : {}),
-    outputPreview: text.slice(0, 300),
+    ...(permitsModelContentTrace(modelStep, params.prompt) ? { outputPreview: text.slice(0, 300) } : { contentOmitted: true }),
     ...(providerUsage ? { usage: providerUsage } : {}),
   });
 

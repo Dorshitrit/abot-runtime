@@ -61,6 +61,37 @@ export function createSessionLifecycleStore(
   }
 
   const store: SessionStore = {
+    ...(base.requestLifecycle
+      ? {
+          requestLifecycle: {
+            ...base.requestLifecycle,
+            startActivation: wrapSessionMutation(
+              base.requestLifecycle.startActivation,
+            ),
+            commitWait: wrapSessionMutation(base.requestLifecycle.commitWait),
+            commitDecision: wrapSessionMutation(
+              base.requestLifecycle.commitDecision,
+            ),
+            cancelWait: wrapSessionMutation(base.requestLifecycle.cancelWait),
+            interruptActivation: wrapSessionMutation(
+              base.requestLifecycle.interruptActivation,
+            ),
+            commitTerminal: wrapSessionMutation(
+              base.requestLifecycle.commitTerminal,
+            ),
+            appendActivationEvent: wrapSessionMutation(
+              base.requestLifecycle.appendActivationEvent,
+            ),
+          },
+        }
+      : {}),
+    ...(base.createAssistantConversation
+      ? {
+          createAssistantConversation: wrapSessionMutation(
+            base.createAssistantConversation,
+          ),
+        }
+      : {}),
     getAllSessions: base.getAllSessions.bind(base),
     listSessions: base.listSessions.bind(base),
     getSessionById: base.getSessionById.bind(base),

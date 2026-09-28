@@ -34,7 +34,7 @@ export function createConfigWorkspaceMutations({
     const key = configFileKey(file);
     if (configRequiresRawRepair(file, state.appliedJsonRepairKeys.has(key))) {
       setWorkspaceStatus(
-        "Repair this file in Advanced → Raw JSON before editing its fields.",
+        "Repair this file in the configuration repair section before editing its fields.",
         "error-text",
       );
       return;

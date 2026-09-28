@@ -1,15 +1,9 @@
 import { permitsRequiredToolMode } from "../../../../capabilities/tool-permission-mode.js";
-import {
-  buildToolCompletedEventActions,
-  buildToolCompletedEventMetadata,
-  buildToolLifecycleEventCopy,
-} from "../../../../capabilities/tool-event-metadata.js";
 import type {
   RegisteredToolNormalInvocation,
   ToolCall,
 } from "../../../../capabilities/tool-types.js";
-import { requestNormalInvocationApproval } from "./approval.js";
-import { createPreparedInvocationRejectionEmitter } from "./rejection-event.js";
+import { createPreparedNormalInvocation } from "./prepared-execution.js";
 import {
   captureToolCall,
   materializeCall,
@@ -25,14 +19,9 @@ import type {
   RegisteredToolNormalInvocationResult,
 } from "../shared/contracts.js";
 import { createRegisteredToolActionFingerprint } from "../shared/action-fingerprint.js";
-import {
-  buildToolExecutorEventMetadata,
-  buildToolIntentEventMetadata,
-  type ToolEventExecutorIdentity,
-} from "../shared/event-metadata.js";
+import { buildToolIntentEventMetadata } from "../shared/event-metadata.js";
 import { prepareCompleteInvocationInput } from "../payload/input-preparation.js";
 import { rejectNormalInvocation } from "../shared/rejection.js";
-import { createFileOutputPresentation } from "./file-output-presentation.js";
 import { captureExecutionBinding } from "./execution-binding.js";
 
 export async function executeNormalInvocation(params: {
@@ -149,129 +138,21 @@ export function prepareNormalInvocation(params: {
       ? { executionIdentity: executionBinding.identity }
       : {}),
   });
-  return Object.freeze({
-    status: "prepared" as const,
+  return createPreparedNormalInvocation({
+    executor,
+    source,
+    target: target.binding,
+    call: normalizedCall.call,
     actionFingerprint,
     acceptedControls: preparedInput.controls,
-    emitRejection: createPreparedInvocationRejectionEmitter({
-      tool: source.registration.toolName,
-      eventMeta,
-      onEvent: executor.onEvent,
-    }),
-    execute: (
-      executionId?: string,
-      executorIdentity?: ToolEventExecutorIdentity,
-    ) =>
-      executePreparedNormalInvocation({
-        ...(executionId ? { executionId } : {}),
-        ...(executorIdentity ? { executorIdentity } : {}),
-        executor,
-        source,
-        target: target.binding,
-        call: normalizedCall.call,
-        eventMeta,
-        ...(executionBinding.metadata
-          ? { executionMetadata: executionBinding.metadata }
-          : {}),
-        input: params.input,
-      }),
-  });
-}
-
-async function executePreparedNormalInvocation(params: {
-  executionId?: string;
-  executorIdentity?: ToolEventExecutorIdentity;
-  executor: RegisteredToolNormalInvocationExecutorParams;
-  source: BoundOperation;
-  target: BoundOperation;
-  call: ToolCall;
-  eventMeta: ReturnType<typeof buildToolIntentEventMetadata>;
-  executionMetadata?: Readonly<Record<string, unknown>>;
-  input: RegisteredToolNormalInvocationPreparationInput;
-}): Promise<RegisteredToolNormalInvocationResult> {
-  const approval = await requestNormalInvocationApproval({
-    ...(params.executorIdentity
-      ? { executorIdentity: params.executorIdentity }
+    eventMeta,
+    ...(params.input.intent ? { intent: params.input.intent } : {}),
+    ...(executionBinding.identity
+      ? { executionIdentity: executionBinding.identity }
       : {}),
-    ...(params.executionId ? { executionId: params.executionId } : {}),
-    requestId: params.executor.requestId,
-    abortSignal: params.executor.abortSignal,
-    toolPermissionMode: params.executor.toolPermissionMode,
-    ...(params.executor.toolApprovalController
-      ? { toolApprovalController: params.executor.toolApprovalController }
+    ...(executionBinding.metadata
+      ? { executionMetadata: executionBinding.metadata }
       : {}),
-    nextApprovalId: params.executor.nextApprovalId,
-    ...(params.executor.onEvent ? { onEvent: params.executor.onEvent } : {}),
-    call: params.call,
-    ...(params.eventMeta ? { eventMeta: params.eventMeta } : {}),
-    force:
-      params.source.operation.approval === "always" ||
-      params.target.operation.approval === "always",
-  });
-  if (!approval.ok) return approval.rejection;
-  params.executor.abortSignal.throwIfAborted();
-
-  const startedCopy = buildToolLifecycleEventCopy(
-    params.target.registration.definition,
-    "started",
-  );
-  params.executor.onEvent?.("tool.started", {
-    ...buildToolExecutorEventMetadata(params.executorIdentity),
-    ...(params.executionId ? { executionId: params.executionId } : {}),
-    tool: params.call.tool,
-    ...(params.input.intent
-      ? { intent: params.input.intent, intentSource: "model" }
-      : {}),
-    ...(params.eventMeta ? { meta: params.eventMeta } : {}),
-    ...(startedCopy ?? {}),
-  });
-  const fileOutputPresentation = createFileOutputPresentation(
-    params.executor.sharedState?.runtimePaths,
-  );
-  const result = await params.executor.toolRegistry.execute(params.call, {
-    abortSignal: params.executor.abortSignal,
-    reportFileOutput: fileOutputPresentation.report,
-    ...(params.executor.sharedState
-      ? { sharedState: params.executor.sharedState }
-      : {}),
-  });
-  const completionActions = Object.freeze(
-    buildToolCompletedEventActions(
-      params.call,
-      result,
-      params.target.registration.definition,
-    ).map((action) => Object.freeze({ ...action })),
-  );
-  const completedMeta = fileOutputPresentation.finish(
-    result,
-    buildToolCompletedEventMetadata(
-      params.call,
-      result,
-      params.target.registration.definition,
-    ),
-    params.target.operation.effect,
-  );
-  const completedCopy = buildToolLifecycleEventCopy(
-    params.target.registration.definition,
-    result.ok ? "completed" : "failed",
-  );
-  const completedEventMeta = params.executionMetadata
-    ? { ...completedMeta, ...params.executionMetadata }
-    : completedMeta;
-  params.executor.onEvent?.("tool.completed", {
-    ...buildToolExecutorEventMetadata(params.executorIdentity),
-    ...(params.executionId ? { executionId: params.executionId } : {}),
-    tool: params.source.registration.toolName,
-    ok: result.ok,
-    actions: completionActions,
-    ...(completedEventMeta ? { meta: completedEventMeta } : {}),
-    ...(completedCopy ?? {}),
-  });
-  return Object.freeze({
-    status: "executed" as const,
-    effect: params.target.operation.effect,
-    result,
-    completionActions,
   });
 }
 

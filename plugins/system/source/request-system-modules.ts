@@ -2,10 +2,16 @@ import type {
   ToolCallAdapter,
   ToolImplementation,
   ToolModuleDeclaration,
+  ToolRequestPreparationContext,
 } from "../../../src/plugin-sdk/index.js";
-import type { SystemTarget, SystemTargetId } from "./contracts.js";
-import { isHostOperation } from "./companion/protocol.js";
-import { createSystemHandlers } from "./handlers.js";
+import type {
+  SystemTarget,
+  SystemTargetId,
+} from "../../../src/plugin-sdk/computer-access.js";
+import { isHostOperation } from "../../../src/plugin-sdk/computer-access.js";
+import { isComputerTool } from "./computer/handlers.js";
+import { prepareComputerModules } from "./computer/request-modules.js";
+import { createSystemHandlers } from "../../../src/plugin-sdk/computer-access.js";
 import {
   createBoundSystemHandlers,
   defaultSystemHostConnection,
@@ -14,7 +20,7 @@ import {
 import {
   observeSystemTargets,
   type SystemTargetObservation,
-} from "./target-observation.js";
+} from "../../../src/plugin-sdk/computer-access.js";
 import {
   captureSystemTargetSnapshot,
   requireSystemRequestRoute,
@@ -37,16 +43,28 @@ export async function prepareSystemRequestModules(
   rootDir: string,
   modules: readonly ToolModuleDeclaration[],
   dependencies: SystemRequestDependencies = {},
+  preparation?: ToolRequestPreparationContext,
 ): Promise<readonly ToolModuleDeclaration[]> {
   if (modules.length === 0) return Object.freeze([]);
-  if (modules.some((module) => !isHostOperation(module.definition.name)))
+  if (modules.some(isUnsupportedSystemModule))
     throw new Error("system_request_module_unknown");
   const connection = dependencies.connection ?? defaultSystemHostConnection;
-  const snapshot = await captureSystemTargetSnapshot({
+  const candidates = await captureSystemTargetSnapshot({
     observeTargets: dependencies.observeTargets ?? observeSystemTargets,
     readHostStatus: () => connection.readHostStatus(rootDir),
+    includeSameOsCompanion: true,
   });
-  if (snapshot.length === 0) return Object.freeze([]);
+  // Existing command targeting retains its one-route-per-OS contract.
+  const snapshot = uniqueSystemCommandRoutes(candidates);
+  const computerModules = prepareComputerModules(
+    rootDir,
+    modules.filter((module) => isComputerTool(module.definition.name)),
+    candidates,
+    connection,
+    preparation,
+  );
+  const hasCommandTargets = snapshot.length > 0;
+  if (!hasCommandTargets) return Object.freeze(computerModules);
   const createNative =
     dependencies.createNativeHandlers ??
     ((resolve) => createSystemHandlers(undefined, resolve));
@@ -59,11 +77,29 @@ export async function prepareSystemRequestModules(
     connection,
     nativeHandlers,
   });
-  return Object.freeze(
-    modules.map((module) =>
-      projectSystemRequestModule(module, snapshot, handlers),
-    ),
-  );
+  return Object.freeze([
+    ...modules
+      .filter((module) => !isComputerTool(module.definition.name))
+      .map((module) => projectSystemRequestModule(module, snapshot, handlers)),
+    ...computerModules,
+  ]);
+}
+
+function isUnsupportedSystemModule(module: ToolModuleDeclaration): boolean {
+  if (isHostOperation(module.definition.name)) return false;
+  return !isComputerTool(module.definition.name);
+}
+
+function uniqueSystemCommandRoutes(
+  candidates: SystemTargetSnapshot,
+): SystemTargetSnapshot {
+  const seen = new Set<SystemTargetId>();
+  return candidates.filter((route) => {
+    const target = routeTargetId(route);
+    if (seen.has(target)) return false;
+    seen.add(target);
+    return true;
+  });
 }
 
 function projectSystemRequestModule(

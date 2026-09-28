@@ -84,3 +84,13 @@ export function resolveModelContextAdmission(params: {
       : {}),
   });
 }
+
+/** Exact evidence is admitted whole; only reducible inputs use the trigger. */
+export function isModelStepCompactionEligible(params: {
+  modelStep: ModelStep;
+  contextRetention?: "exact";
+}): boolean {
+  if (params.contextRetention === "exact") return false;
+  if (params.modelStep === "context.compact") return false;
+  return true;
+}

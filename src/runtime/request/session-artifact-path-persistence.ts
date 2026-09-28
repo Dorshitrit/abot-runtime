@@ -79,7 +79,7 @@ export function snapshotSessionArtifactPathTargets(
 export async function persistSettledSessionArtifactPaths(params: {
   head: RoleCallLedgerHead;
   sessionId: string;
-  trigger: "root_succeeded" | "root_failed";
+  trigger: "root_succeeded" | "root_failed" | "approval_wait";
   persistArtifactPaths?: RequestArtifactPathPersistence;
 }): Promise<void> {
   const inputs = collectSettledSessionArtifactPathInputs(params.head);

@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { beforeEach, expect, test, vi } from "vitest";
 import { spawn } from "node:child_process";
-import { runSystemProcess } from "../../../plugins/system/source/process-runner.js";
+import { runSystemProcess } from "../../computer-access/process-runner.js";
 
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 

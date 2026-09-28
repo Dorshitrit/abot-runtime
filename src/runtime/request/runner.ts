@@ -1,8 +1,18 @@
+import { createRequestRoleCallPolicy } from "./role-call-policy.js";
+import { restoreApprovalExecutionFreshness } from "./capability-execution-freshness.js";
+import { captureRoleCallLedgerCheckpoint } from "../orchestration/role-calls/checkpoint.js";
+import { isRoleApprovalWait } from "../orchestration/role-executors/approval-continuation.js";
+import type { BoundApprovalDecision } from "../orchestration/worker-capabilities/approval-contracts.js";
+import { resumeCapabilityApprovalGroup } from "../orchestration/worker-capabilities/execution/approval-group.js";
+import {
+  createRoleApprovalContinuation,
+  validateRequestApprovalContinuation,
+  type RequestApprovalContinuation,
+  type RequestRunnerOutcome,
+} from "./approval-continuation.js";
+import type { RootApprovalWait } from "./root-execution-contracts.js";
 import {
   createRoleCallLedger,
-  ROLE_CALL_OBJECTIVE_MAX_LENGTH,
-  ROLE_CALL_RESPONSE_MAX_LENGTH,
-  ROLE_CALL_RESULT_MAX_LENGTH,
   resolveRoleCallTransactions,
 } from "../orchestration/role-calls/index.js";
 import { traceDebug } from "../observability/debug-logger.js";
@@ -13,27 +23,27 @@ import {
   persistSettledSessionArtifactPaths,
   type RequestArtifactPathPersistence,
 } from "./session-artifact-path-persistence.js";
-import {
-  type RequestExecutionScope,
-} from "./execution-scope.js";
+import { type RequestExecutionScope } from "./execution-scope.js";
 
-const INITIAL_ROLE_CALL_LIMITS = Object.freeze({
-  limits: Object.freeze({
-    maxDepth: 12,
-    maxCalls: 48,
-    maxCapabilityExecutions: 96,
-    maxObjectiveChars: ROLE_CALL_OBJECTIVE_MAX_LENGTH,
-    maxResultChars: ROLE_CALL_RESULT_MAX_LENGTH,
-    maxResponseChars: ROLE_CALL_RESPONSE_MAX_LENGTH,
-  }),
-});
+type RequestRunnerOptions = Readonly<{
+  persistArtifactPaths?: RequestArtifactPathPersistence;
+  durableApproval?: boolean;
+  continuation?: RequestApprovalContinuation;
+  decisions?: readonly BoundApprovalDecision[];
+}>;
 
+export function runRequestRunner(
+  request: RequestExecutionScope,
+  options: RequestRunnerOptions & { durableApproval: true },
+): Promise<RequestRunnerOutcome>;
+export function runRequestRunner(
+  request: RequestExecutionScope,
+  options?: RequestRunnerOptions & { durableApproval?: false },
+): Promise<RequestRunnerResult>;
 export async function runRequestRunner(
   request: RequestExecutionScope,
-  options: Readonly<{
-    persistArtifactPaths?: RequestArtifactPathPersistence;
-  }> = {},
-): Promise<RequestRunnerResult> {
+  options: RequestRunnerOptions = {},
+): Promise<RequestRunnerResult | RequestRunnerOutcome> {
   const executionPolicy = request.executionPolicy;
   if (
     request.executionPolicySelection?.policy !== undefined &&
@@ -54,26 +64,55 @@ export async function runRequestRunner(
   });
   const ledger = createRoleCallLedger({
     requestId: request.requestId,
-    policy: Object.freeze({
-      authority: executionPolicy.authority,
-      limits: INITIAL_ROLE_CALL_LIMITS.limits,
-    }),
+    ...(options.continuation
+      ? { checkpoint: options.continuation.ledger }
+      : {}),
+    policy: createRequestRoleCallPolicy(executionPolicy),
   });
   attachRequestPlannerRoleCallEvents({
     ledger,
     onEvent: request.onEvent,
   });
-  let result: RequestRunnerResult;
+  let result: RequestRunnerResult | RootApprovalWait;
   try {
-    const created = await resolveRoleCallTransactions(ledger).createRoot({
-      expectedHead: ledger.current(),
-    });
-    if (!created.ok) {
-      throw new Error(`role_call_ledger_rejected:${created.issueCode}`);
+    let continuation;
+    if (options.continuation) {
+      validateRequestApprovalContinuation(
+        options.continuation,
+        ledger,
+        request.workerCapabilities.provider.getDescriptors(),
+      );
+      const executionFreshness = restoreApprovalExecutionFreshness(
+        options.continuation.preparedGroup.executionFreshnessToken,
+        request.requestSteering,
+      );
+      const settled = await resumeCapabilityApprovalGroup({
+        ...(executionFreshness ? { executionFreshness } : {}),
+        ledger,
+        context: request.workerCapabilities.executionContext,
+        adapters: request.workerCapabilities.provider.getAdapters(),
+        group: options.continuation.preparedGroup,
+        decisions: options.decisions ?? [],
+      });
+      continuation = createRoleApprovalContinuation(
+        options.continuation,
+        settled.executionIds,
+      );
+    } else {
+      const created = await resolveRoleCallTransactions(ledger).createRoot({
+        expectedHead: ledger.current(),
+      });
+      if (!created.ok)
+        throw new Error(`role_call_ledger_rejected:${created.issueCode}`);
     }
     result = await runRootExecutionKernel({
       request,
       ledger,
+      durableApproval: true,
+      ...(continuation ? { continuation } : {}),
+      ...(options.continuation
+        ? { presentation: options.continuation.root }
+        : {}),
     });
   } catch (error: unknown) {
     await persistSettledSessionArtifactPaths({
@@ -87,6 +126,32 @@ export async function runRequestRunner(
     throw error;
   }
 
+  if (isRoleApprovalWait(result)) {
+    if (!options.durableApproval)
+      throw new Error("request_durable_approval_not_enabled");
+    const continuation = Object.freeze({
+      kind: "request_approval_continuation_v1" as const,
+      ledger: captureRoleCallLedgerCheckpoint(ledger),
+      root: result.root,
+      callers: result.callers,
+      preparedGroup: result.group,
+    });
+    validateRequestApprovalContinuation(
+      continuation,
+      ledger,
+      request.workerCapabilities.provider.getDescriptors(),
+    );
+    await persistSettledSessionArtifactPaths({
+      head: ledger.current(),
+      sessionId: request.sessionId,
+      trigger: "approval_wait",
+      ...(options.persistArtifactPaths
+        ? { persistArtifactPaths: options.persistArtifactPaths }
+        : {}),
+    });
+    return Object.freeze({ kind: "awaiting_approval", continuation });
+  }
+
   await persistSettledSessionArtifactPaths({
     head: ledger.current(),
     sessionId: request.sessionId,
@@ -95,7 +160,10 @@ export async function runRequestRunner(
       ? { persistArtifactPaths: options.persistArtifactPaths }
       : {}),
   });
-  return deliverAnswer(request, result);
+  const delivered = deliverAnswer(request, result);
+  if (options.durableApproval)
+    return Object.freeze({ kind: "completed", result: delivered });
+  return delivered;
 }
 
 function deliverAnswer(

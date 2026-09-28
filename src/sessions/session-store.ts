@@ -10,6 +10,11 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import type { SessionRecord } from "./types.js";
+import {
+  saveDurableSessionFile,
+  syncSessionDirectory,
+} from "./durable-session-commit.js";
+import { cleanupSessionContinuations } from "./request-lifecycle/continuation-cleanup.js";
 
 function getSessionFilePath(sessionsDir: string, sessionId: string): string {
   return join(sessionsDir, `${sessionId}.json`);
@@ -38,11 +43,16 @@ export async function loadSessionFile(
 export async function saveSessionFile(
   sessionsDir: string,
   session: SessionRecord,
+  assertCurrent?: () => void,
 ): Promise<void> {
+  if (session.requests?.some((request) => request.lifecycle)) {
+    return saveDurableSessionFile(sessionsDir, session, assertCurrent);
+  }
   const filePath = getSessionFilePath(sessionsDir, session.id);
   const tempPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
   try {
     await writeFile(tempPath, JSON.stringify(session, null, 2), "utf-8");
+    assertCurrent?.();
     await rename(tempPath, filePath);
   } catch (error) {
     await rm(tempPath, { force: true }).catch(() => undefined);
@@ -57,6 +67,8 @@ export async function deleteSessionFile(
   const filePath = getSessionFilePath(sessionsDir, sessionId);
   try {
     await rm(filePath);
+    await syncSessionDirectory(sessionsDir);
+    await cleanupSessionContinuations(sessionsDir, sessionId);
     return true;
   } catch (error: any) {
     if (error?.code === "ENOENT") {

@@ -4,8 +4,8 @@ import { afterEach, expect, test, vi } from "vitest";
 import {
   executeHostOperation,
   readHostStatus,
-} from "../../../plugins/system/source/companion/broker-client.js";
-import { readBrokerLocation } from "../../../plugins/system/source/companion/broker-location.js";
+} from "../../computer-access/companion/broker-client.js";
+import { readBrokerLocation } from "../../computer-access/companion/broker-location.js";
 import { hostCompanionFixture } from "./support/host-companion-fixture.js";
 
 type Fixture = Awaited<ReturnType<typeof hostCompanionFixture>>;

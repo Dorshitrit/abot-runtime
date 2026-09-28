@@ -50,7 +50,7 @@ export function renderDashboardActivity({
   supported = true,
   templates = [],
 }) {
-  const activity = projectDashboardActivity(runs);
+  const activity = projectDashboardActivity(runs, 3);
   const header = `<header class="home-panel-header"><h2>Recent activity</h2><button type="button" class="home-text-button" data-dashboard-action="jobs" ${supported ? "" : "disabled"}>View jobs${dashboardIcon("arrow")}</button></header>`;
   if (!activity.length)
     return header + activityState({ loading, error, supported, templates });

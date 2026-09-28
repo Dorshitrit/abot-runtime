@@ -12,6 +12,8 @@ export function createMemoryManagerView(snapshot) {
     status: memoryStatus(snapshot),
     emptyMessage: snapshot.query
       ? "No memories match this search."
+      : snapshot.originFilter === "passive_observation"
+        ? "No memories from computer activity yet."
       : "No long-term memories have been stored yet.",
     pageLabel: pageLabel(snapshot),
     hasPreviousPage: snapshot.offset > 0,
@@ -38,6 +40,7 @@ export function formatMemoryTimestamp(value) {
 export function memoryOriginLabel(origin) {
   const labels = {
     passive_response: "Learned from conversation",
+    passive_observation: "Learned from computer activity",
     web_ui: "Added in Web UI",
     management_api: "Added through API",
   };

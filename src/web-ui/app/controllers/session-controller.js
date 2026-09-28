@@ -6,6 +6,7 @@ import {
 import { matchesSessionQuery } from "../ui-behavior.js";
 import { escapeAttribute, escapeHtml, textOf } from "../lib/text-format.js";
 import { getNumber } from "../lib/event-presentation.js";
+import { createSessionSidebarController } from "./session-sidebar-controller.js";
 
 export function createSessionController({
   state,
@@ -22,6 +23,7 @@ export function createSessionController({
   onSaveModelPreferences,
   onReload,
   onControlEvent,
+  onSidebarChange,
   confirmAction = window.confirm.bind(window),
   copyText = (value) => navigator.clipboard.writeText(value),
 }) {
@@ -30,24 +32,13 @@ export function createSessionController({
   const byId = (sessionId) =>
     state.sessions.find((session) => textOf(session.id) === sessionId);
   const isPinned = (sessionId) => state.pinnedSessionIds.includes(sessionId);
-
-  function ordered() {
-    const pinnedOrder = new Map(
-      state.pinnedSessionIds.map((sessionId, index) => [sessionId, index]),
-    );
-    return [...state.sessions].sort((left, right) => {
-      const leftPinned = pinnedOrder.has(left.id);
-      const rightPinned = pinnedOrder.has(right.id);
-      if (leftPinned !== rightPinned) return leftPinned ? -1 : 1;
-      if (leftPinned && rightPinned) {
-        return pinnedOrder.get(left.id) - pinnedOrder.get(right.id);
-      }
-      return 0;
-    });
-  }
+  const sidebar = createSessionSidebarController({
+    state, preferences, selectedEnvironmentId, showToast: shell?.showToast,
+    render: onSidebarChange ?? render, getFilteredSessions: filtered,
+  });
 
   function filtered() {
-    return ordered().filter((session) =>
+    return sidebar.visibleSessions().filter((session) =>
       matchesSessionQuery(
         [
           titleOf(session),
@@ -64,29 +55,7 @@ export function createSessionController({
     dom.sessionsList.innerHTML = "";
     const sessions = filtered();
     dom.sessionsCount.textContent = String(sessions.length);
-    if (renderGroups({ root: dom.sessionsList, sessions, createSessionItem }))
-      return;
-    if (state.sessions.length === 0) {
-      dom.sessionsList.innerHTML = `
-        <div class="empty-state sidebar-empty-state">
-          <strong>No conversations yet</strong>
-          <span>Start a new conversation to keep its history here.</span>
-        </div>
-      `;
-      return;
-    }
-    if (sessions.length === 0) {
-      dom.sessionsList.innerHTML = `
-        <div class="empty-state sidebar-empty-state compact">
-          <strong>No matches</strong>
-          <span>Try a different conversation name or message.</span>
-        </div>
-      `;
-      return;
-    }
-    for (const [sessionIndex, session] of sessions.entries()) {
-      dom.sessionsList.appendChild(createSessionItem(session, sessionIndex));
-    }
+    sidebar.renderSections({ root: dom.sessionsList, sessions, createSessionItem, renderGroups });
   }
 
   function createSessionItem(session, sessionIndex) {
@@ -105,7 +74,7 @@ export function createSessionController({
       hasUnread ? "unread" : ""
     }`;
     item.innerHTML = `
-      <button class="session-open-button" type="button" title="${escapeAttribute(titleOf(session))}">
+      <button id="session-open-${escapeAttribute(encodeURIComponent(sessionId))}" class="session-open-button" type="button" title="${escapeAttribute(titleOf(session))}">
         <div class="session-title-row">
           <div class="session-title" dir="auto">${escapeHtml(titleOf(session))}</div>
           ${unreadUnavailable ? '<span class="session-unread-badge" title="Unread status unavailable" aria-label="Unread status unavailable">?</span>' : ""}
@@ -113,7 +82,7 @@ export function createSessionController({
             hasUnread
               ? `<span class="session-unread-badge" title="${escapeAttribute(
                   `${unreadCount || 1} unread`,
-                )}">${unreadCount > 99 ? "99+" : unreadCount || 1}</span>`
+                )}">${unreadCount > 99 ? "99+" : unreadCount || 1} unread</span>`
               : ""
           }
         </div>
@@ -122,6 +91,9 @@ export function createSessionController({
         <button class="session-menu-button" type="button" title="Session actions" aria-label="Session actions" aria-haspopup="menu" aria-expanded="false" aria-controls="session-menu-${sessionIndex}">•••</button>
         <div id="session-menu-${sessionIndex}" class="session-menu" role="menu" hidden>
           <button class="session-action pin-action" type="button" role="menuitem" tabindex="-1" title="${pinned ? "Unpin session" : "Pin session"}">${pinned ? "Unpin" : "Pin"}</button>
+          <button class="session-action move-up-action" type="button" role="menuitem" tabindex="-1">Move up</button>
+          <button class="session-action move-down-action" type="button" role="menuitem" tabindex="-1">Move down</button>
+          <button class="session-action archive-action" type="button" role="menuitem" tabindex="-1" title="Hide or restore this conversation in this browser and environment">${sidebar.isArchiveView() ? "Restore" : "Archive"}</button>
           <button class="session-action copy-filename-action" type="button" role="menuitem" tabindex="-1" title="Copy session filename">Copy filename</button>
           <button class="session-action clear-action" type="button" role="menuitem" tabindex="-1" title="Reset messages">Reset</button>
           <button class="session-action delete-action" type="button" role="menuitem" tabindex="-1" title="Delete session">Delete</button>
@@ -146,6 +118,7 @@ export function createSessionController({
     item
       .querySelector(".delete-action")
       ?.addEventListener("click", () => void deleteSession(sessionId));
+    sidebar.bindItem(item, session);
     return item;
   }
 
@@ -239,7 +212,7 @@ export function createSessionController({
           session.latestAssistantMessageId,
       };
     });
-    if (changed) render();
+    if (changed) (onSidebarChange ?? render)();
     return changed;
   }
 
@@ -337,6 +310,7 @@ export function createSessionController({
   }
 
   return {
+    archiveSession: (sessionId) => sidebar.archiveSession(sessionId),
     applyReadState,
     applyTitle,
     byId,

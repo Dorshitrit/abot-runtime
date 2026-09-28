@@ -19,7 +19,6 @@ import {
 } from "../../orchestration/worker-capabilities/index.js";
 import {
   WORKER_CAPABILITY_INTENT_MAX_LENGTH,
-  WORKER_RESULT_MAX_LENGTH,
   type WorkerDecisionPhase,
 } from "./contracts.js";
 
@@ -257,14 +256,13 @@ export function createWorkerDecisionFormat(
     ? [
         exactObject({
           action: literal("return_failure"),
-          reason: boundedText(WORKER_RESULT_MAX_LENGTH),
+          reason: { type: "string", minLength: 1 },
         }),
       ]
     : [];
   const singleCapabilityVariantCount = allowSingleCapabilityInvocation
     ? singleCapabilityVariants.length
     : 0;
-  const returnFailureVariantIndex = returnResultVariants.length;
   const capabilityVariantStartIndex =
     returnResultVariants.length + returnFailureVariants.length;
   const batchVariantIndex =
@@ -287,14 +285,6 @@ export function createWorkerDecisionFormat(
     name: "worker_decision",
     strict: true,
     postValidatedSchemaConstraints: [
-      ...(allowReturnFailure
-        ? [
-            {
-              keyword: "maxLength" as const,
-              path: `${structuredDecisionVariantSchemaPath(returnFailureVariantIndex, variants.length)}/properties/reason/maxLength`,
-            },
-          ]
-        : []),
       ...(allowSingleCapabilityInvocation && singleCapabilityVariants.length > 0
         ? decisionPhase === "capability_selection"
           ? singleSelectionGroups.flatMap((group, index) => {

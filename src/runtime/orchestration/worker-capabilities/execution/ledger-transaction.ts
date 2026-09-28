@@ -1,3 +1,6 @@
+import type { CapabilityApprovalGate } from "../approval-contracts.js";
+import { resolvePreparedGroupApproval } from "./approval-group.js";
+import { settleAdmittedPreparedGroup } from "./settle-prepared.js";
 import {
   requireRoleCallOperationSupervisionInterventionCommit,
   resolveRoleCallTransactions,
@@ -28,6 +31,7 @@ export async function beginAndSettlePreparedSingle<TContext>(params: {
   invocation: PreparedBoundInvocation<TContext>;
   diagnostic: WorkerCapabilityDiagnosticContext;
   executionFreshness?: WorkerCapabilityExecutionFreshness;
+  approvalGate?: CapabilityApprovalGate;
 }): Promise<WorkerCapabilityAttemptReference> {
   const transactions = resolveRoleCallTransactions(params.ledger);
   const actionFingerprint = params.invocation.prepared.actionFingerprint;
@@ -61,48 +65,25 @@ export async function beginAndSettlePreparedSingle<TContext>(params: {
   }
 
   const executionId = begun.effect.executionId;
-  traceWorkerCapabilityExecutionStarted(
-    params.diagnostic,
-    params.invocation.adapter.descriptor,
-    executionId,
-    params.invocation.intent.length,
-    Object.keys(params.invocation.prepared.acceptedControls).length,
-  );
-  const execution = await executePreparedAndNormalizeAdapter({
-    prepared: params.invocation.prepared,
-    descriptor: params.invocation.adapter.descriptor,
-    diagnostic: params.diagnostic,
-    executionId,
+  const wait = await resolvePreparedGroupApproval({
+    gate: params.approvalGate,
+    requestId: params.diagnostic.requestId,
+    call: params.call,
+    invocations: [params.invocation],
+    executionIds: [executionId],
+    batch: false,
+    executionFreshness: params.executionFreshness,
   });
-  const { result, outcomeFingerprint } = execution;
-  const settledResult = await transactions.settleCapabilityExecution({
+  if (wait) return wait;
+  await settleAdmittedPreparedGroup({
+    ledger: params.ledger,
     expectedHead: begun.head,
-    callId: params.call.callId,
-    executionId,
-    outcome: result.outcome,
-    ...(outcomeFingerprint ? { outcomeFingerprint } : {}),
-    observedEffect: result.observedEffect,
-    summary: result.summary,
-    ...(result.referenceData ? { referenceData: result.referenceData } : {}),
-    ...(result.references ? { references: result.references } : {}),
-    exactResult: result.exactResult,
+    call: params.call,
+    invocations: [params.invocation],
+    executionIds: [executionId],
+    batch: false,
+    diagnostic: params.diagnostic,
   });
-  if (!settledResult.ok) {
-    traceStateRejection(
-      params.diagnostic,
-      [params.invocation],
-      "settle",
-      settledResult.issueCode,
-      [executionId],
-    );
-    throw stateRejection("settle", settledResult.issueCode);
-  }
-  traceWorkerCapabilityExecutionCompleted(
-    params.diagnostic,
-    params.invocation.adapter.descriptor,
-    result,
-    executionId,
-  );
   return Object.freeze({ executionId });
 }
 
@@ -113,6 +94,7 @@ export async function beginAndSettlePreparedBatch<TContext>(params: {
   invocations: readonly PreparedBoundInvocation<TContext>[];
   diagnostic: WorkerCapabilityDiagnosticContext;
   executionFreshness?: WorkerCapabilityExecutionFreshness;
+  approvalGate?: CapabilityApprovalGate;
 }): Promise<WorkerCapabilityBatchAttemptReference> {
   const transactions = resolveRoleCallTransactions(params.ledger);
   const admission = createExecutionAdmission(params.executionFreshness);
@@ -149,58 +131,25 @@ export async function beginAndSettlePreparedBatch<TContext>(params: {
   }
 
   const executionIds = begun.effect.executionIds;
-  params.invocations.forEach((invocation, index) => {
-    traceWorkerCapabilityExecutionStarted(
-      params.diagnostic,
-      invocation.adapter.descriptor,
-      executionIds[index]!,
-      invocation.intent.length,
-      Object.keys(invocation.prepared.acceptedControls).length,
-    );
+  const wait = await resolvePreparedGroupApproval({
+    gate: params.approvalGate,
+    requestId: params.diagnostic.requestId,
+    call: params.call,
+    invocations: params.invocations,
+    executionIds,
+    batch: true,
+    executionFreshness: params.executionFreshness,
   });
-  const executions = await Promise.all(
-    params.invocations.map((invocation, index) =>
-      executePreparedAndNormalizeAdapter({
-        prepared: invocation.prepared,
-        descriptor: invocation.adapter.descriptor,
-        diagnostic: params.diagnostic,
-        executionId: executionIds[index]!,
-      }),
-    ),
-  );
-  const settledResult = await transactions.settleCapabilityBatch({
+  if (wait) return wait;
+  return settleAdmittedPreparedGroup({
+    ledger: params.ledger,
     expectedHead: begun.head,
-    callId: params.call.callId,
-    settlements: executions.map(({ result, outcomeFingerprint }, index) => ({
-      executionId: executionIds[index]!,
-      outcome: result.outcome,
-      ...(outcomeFingerprint ? { outcomeFingerprint } : {}),
-      observedEffect: result.observedEffect,
-      summary: result.summary,
-      ...(result.referenceData ? { referenceData: result.referenceData } : {}),
-      ...(result.references ? { references: result.references } : {}),
-      exactResult: result.exactResult,
-    })),
+    call: params.call,
+    invocations: params.invocations,
+    executionIds,
+    batch: true,
+    diagnostic: params.diagnostic,
   });
-  if (!settledResult.ok) {
-    traceStateRejection(
-      params.diagnostic,
-      params.invocations,
-      "settle",
-      settledResult.issueCode,
-      executionIds,
-    );
-    throw stateRejection("settle", settledResult.issueCode);
-  }
-  params.invocations.forEach((invocation, index) => {
-    traceWorkerCapabilityExecutionCompleted(
-      params.diagnostic,
-      invocation.adapter.descriptor,
-      executions[index]!.result,
-      executionIds[index]!,
-    );
-  });
-  return Object.freeze({ executionIds: Object.freeze([...executionIds]) });
 }
 
 function createExecutionAdmission(

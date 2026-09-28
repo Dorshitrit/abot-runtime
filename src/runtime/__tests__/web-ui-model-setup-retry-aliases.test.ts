@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ModelSetupService } from "../../web-ui/local-runtime/model-setup-service.js";
 import * as dashboard from "../../web-ui/config-dashboard-backend.js";
@@ -36,9 +37,21 @@ function recreatedService() {
 }
 
 async function persistedFiles() {
+  const declarations = Object.entries<{ configRef?: string }>(
+    (await fixture.readConfig()).models.profiles,
+  );
   return {
     config: await readFile(fixture.configPath, "utf8"),
     env: await fixture.readEnv(),
+    models: Object.fromEntries(
+      await Promise.all(
+        declarations.flatMap(([id, profile]) => {
+          if (!profile.configRef) return [];
+          const path = resolve(dirname(fixture.configPath), profile.configRef);
+          return [readFile(path, "utf8").then((bytes) => [id, bytes])];
+        }),
+      ),
+    ),
   };
 }
 
@@ -101,9 +114,9 @@ describe("committed model retries after unrelated credential aliases are added",
 
   test("rejects changed saved profile identity despite an unchanged provider and alias", async () => {
     await commitThenAddCredentialAlias();
-    const config = await fixture.readConfig();
-    config.models.profiles[request.profileId].model = "externally-edited";
-    await fixture.writeConfig(config);
+    const profile = await fixture.readModelProfile(request.profileId);
+    profile.model = "externally-edited";
+    await fixture.writeModelProfile(request.profileId, profile);
     const before = await persistedFiles();
 
     await expect(recreatedService().add(request)).rejects.toMatchObject({

@@ -3,6 +3,7 @@ import {
   eventTone,
   formatEventDetail,
   formatEventLabel,
+  isUncompletedToolEvent,
 } from "../lib/event-presentation.js";
 import { countToolInvocations } from "../lib/tool-invocation-count.js";
 import { buildConversationRoleCards } from "../lib/conversation-role-model.js";
@@ -38,18 +39,21 @@ function progressStatus(value) {
 
 function presentEvent(event) {
   const isPresentedEvent = Boolean(event?.eventName || event?.key);
+  const eventName = textOf(event?.eventName || event?.name || event?.rawType || event?.type);
+  let name = isPresentedEvent ? textOf(event.name, "Event") : formatEventLabel(event);
+  let tone = textOf(event?.tone) || eventTone(event);
+  if (isUncompletedToolEvent(event)) {
+    name = formatEventLabel({ ...event, name: eventName });
+    tone = "neutral";
+  }
   return {
     ...event,
-    eventName: textOf(
-      event?.eventName || event?.name || event?.rawType || event?.type,
-    ),
-    name: isPresentedEvent
-      ? textOf(event.name, "Event")
-      : formatEventLabel(event),
+    eventName,
+    name,
     summary: isPresentedEvent
       ? textOf(event.summary)
       : formatEventDetail(event),
-    tone: textOf(event?.tone) || eventTone(event),
+    tone,
     count: Math.max(1, countOf(event?.count, 1)),
   };
 }
@@ -308,32 +312,33 @@ export function createConversationActivity({
     const model = buildConversationActivityModel(input);
     if (!model.hasContent) return null;
     const hasFailures = model.failureCount > 0;
+    const hasRoleCards = model.roleCards.length > 0;
 
-    const details = documentRoot.createElement("details");
+    const details = documentRoot.createElement(hasRoleCards ? "section" : "details");
     details.className = "conversation-activity";
+    details.classList.toggle("is-inline-agents", hasRoleCards);
     details.dataset.requestId = model.requestId;
-    details.open = model.openByDefault
-      ? !manuallyCollapsedStreamingRequests.has(model.requestId)
-      : manuallyExpandedCompletedRequests.has(model.requestId);
+    if (!hasRoleCards) {
+      details.open = model.openByDefault
+        ? !manuallyCollapsedStreamingRequests.has(model.requestId)
+        : manuallyExpandedCompletedRequests.has(model.requestId);
+    }
 
-    const summary = documentRoot.createElement("summary");
+    const summary = documentRoot.createElement(hasRoleCards ? "header" : "summary");
     summary.className = "conversation-activity-summary";
+    if (hasRoleCards) summary.setAttribute("tabindex", "-1");
     const heading = documentRoot.createElement("span");
     heading.className = "conversation-activity-heading";
-    appendTextNode(documentRoot, heading, "conversation-activity-chevron", "");
+    if (!hasRoleCards)
+      appendTextNode(documentRoot, heading, "conversation-activity-chevron", "");
+    const activityTitle = hasRoleCards ? "Agents" : "Activity";
     appendTextNode(
       documentRoot,
       heading,
       "conversation-activity-title",
-      hasFailures ? "Activity needs attention" : "Activity",
+      activityTitle,
     );
     summary.appendChild(heading);
-    const roleSummary = roleCards.createSummaryNode(model.roleCards);
-    if (roleSummary) {
-      details.classList.add("has-role-summary");
-      summary.appendChild(roleSummary);
-    }
-
     if (model.currentLabel) {
       appendTextNode(
         documentRoot,
@@ -382,24 +387,22 @@ export function createConversationActivity({
         `${model.failureCount} failed`,
       );
     }
-    details.appendChild(summary);
+    if (!hasRoleCards) details.appendChild(summary);
 
     const body = documentRoot.createElement("div");
     body.className = "conversation-activity-body";
-    const hasRoleCards = model.roleCards.length > 0;
-    const restoreCardsScroll = hasRoleCards
-      ? roleCards.bindScroll({ requestId: model.requestId, body, details })
-      : () => false;
     if (model.events.length > 0) {
       const timelineEvents = model.events.filter(isNonToolTimelineEvent);
       body.appendChild(
         roleCards.createNode({
           requestId: model.requestId,
           cards: model.roleCards,
+          heading: summary,
           timeline: renderTimeline(documentRoot, timelineEvents),
           hasTimeline: timelineEvents.length > 0,
           onViewChange() {
-            body.scrollTop = 0;
+            const panel = body.querySelector(".conversation-role-panel");
+            if (panel) panel.scrollTop = 0;
             schedulePinToLatest();
           },
         }),
@@ -412,10 +415,10 @@ export function createConversationActivity({
     const pinToLatest = () => {
       const showsTimeline =
         model.roleCards.length === 0 || roleCards.isTimeline(model.requestId);
-      if (!showsTimeline) return restoreCardsScroll();
+      if (!showsTimeline) return false;
       return pinConversationActivityToLatest({
-        details,
-        body,
+        details: hasRoleCards ? { open: true } : details,
+        body: hasRoleCards ? body.querySelector(".conversation-role-panel") : body,
         streaming: model.openByDefault && showsTimeline,
       });
     };
@@ -429,6 +432,7 @@ export function createConversationActivity({
     };
     schedulePinToLatest();
 
+    if (hasRoleCards) return details;
     details.addEventListener("toggle", () => {
       if (model.openByDefault) {
         if (details.open) {

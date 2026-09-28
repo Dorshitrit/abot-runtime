@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { uninstallDesktopNotificationIdentity } from "../computer-access/companion/notification-installation.js";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
@@ -7,27 +8,28 @@ import {
   nativeAutostartFile,
   uninstallNativeAutostart,
   type NativeAutostartOptions,
-} from "../../plugins/system/source/companion/autostart.js";
+} from "../computer-access/companion/autostart.js";
 import {
   normalizeNativeRuntimeUrl,
   resolveNativeRuntimeAddress,
-} from "../../plugins/system/source/companion/native-address.js";
-import { readNativeHostIdentity } from "../../plugins/system/source/companion/native-identity.js";
-import { connectNativeHost } from "../../plugins/system/source/companion/native-session.js";
+} from "../computer-access/companion/native-address.js";
+import { readNativeHostIdentity } from "../computer-access/companion/native-identity.js";
+import { connectNativeHost } from "../computer-access/companion/native-session.js";
 import {
   createNativeHostState,
-  type NativeHostConnection,
   type NativeHostState,
-} from "../../plugins/system/source/companion/native-state.js";
-import { runNativeHostSupervisor } from "../../plugins/system/source/companion/native-supervisor.js";
+} from "../computer-access/companion/native-state.js";
+import { runNativeHostSupervisor } from "../computer-access/companion/native-supervisor.js";
 import {
   isProcessOwnerAlive,
   requireCurrentProcessOwnerIdentity,
-} from "../../plugins/system/source/companion/process-owner-identity.js";
+} from "../computer-access/companion/process-owner-identity.js";
 import { acquireFileLock } from "../runtime/adapters/long-term-memory/file-lock/acquisition.js";
 import { ensurePrivateRuntimeDirectory } from "../runtime/local-host/private-directory.js";
 import { assertPrivateRuntimeAccess } from "../runtime/local-host/private-access.js";
 import { completeHostCompanionStartup } from "./host-companion-startup.js";
+import { resolveHostCompanionSetupUrl } from "./host-companion-setup-target.js";
+import { readNativeCompanionBuildId } from "../computer-access/companion/native-build-identity.js";
 
 function printHostHelp(): void {
   console.log(
@@ -40,7 +42,7 @@ function printHostHelp(): void {
       "  abot host run",
       "",
       "Connect asks for a one-time code from ABot Settings, saves a private credential,",
-      "and starts the companion now and at future Windows/macOS user logins.",
+      "and starts the companion now and at future Windows/macOS/Linux desktop logins.",
       "Run is the foreground companion used by the login registration.",
       "Disconnect/uninstall stop the registration and remove this computer's credential.",
       "Revoke the host in ABot Settings to remove Runtime-side pairing too.",
@@ -63,6 +65,7 @@ function nativeState(): NativeHostState {
 export type HostCompanionCliOptions = Readonly<{
   cliPath?: string;
   pairingCode?: string;
+  upgradeHostId?: string;
 }>;
 
 function autostartOptions(
@@ -73,6 +76,7 @@ function autostartOptions(
     platform: process.platform,
     homeDir: homedir(),
     appData: process.env.APPDATA,
+    xdgConfigHome: process.env.XDG_CONFIG_HOME,
     uid: process.getuid?.(),
     nodePath: process.execPath,
     cliPath:
@@ -105,14 +109,6 @@ async function withStopSignals(
   }
 }
 
-function hasConflictingSavedRuntime(
-  saved: NativeHostConnection | undefined,
-  url: string,
-): boolean {
-  if (!saved) return false;
-  return saved.url !== url;
-}
-
 async function connectHost(
   args: string[],
   state: NativeHostState,
@@ -122,13 +118,13 @@ async function connectHost(
     throw new Error("Usage: abot host connect --url http://localhost:5177");
   const startup = autostartOptions(state, options);
   nativeAutostartFile(startup);
-  const url = normalizeNativeRuntimeUrl(args[1]!);
-  await resolveNativeRuntimeAddress(url);
   const saved = await state.read();
-  if (hasConflictingSavedRuntime(saved, url))
-    throw new Error(
-      "A Runtime is already paired. Use 'abot host disconnect' before pairing another.",
-    );
+  const url = resolveHostCompanionSetupUrl(
+    saved,
+    normalizeNativeRuntimeUrl(args[1]!),
+    options.upgradeHostId,
+  );
+  await resolveNativeRuntimeAddress(url);
   if (saved) {
     await completeHostCompanionStartup(state, startup, saved.hostId);
     return;
@@ -171,8 +167,14 @@ async function connectHost(
   await completeHostCompanionStartup(state, startup, pairedHostId);
 }
 
-async function runHost(state: NativeHostState): Promise<void> {
+async function runHost(
+  state: NativeHostState,
+  options: HostCompanionCliOptions,
+): Promise<void> {
   if (!(await state.read())) return;
+  const buildId = await readNativeCompanionBuildId(
+    autostartOptions(state, options).cliPath,
+  );
   const ownerIdentity = await requireCurrentProcessOwnerIdentity();
   let release: (() => Promise<void>) | undefined;
   try {
@@ -196,6 +198,7 @@ async function runHost(state: NativeHostState): Promise<void> {
         state,
         identity: readNativeHostIdentity(),
         signal,
+        buildId,
       }),
     );
   } finally {
@@ -206,6 +209,7 @@ async function runHost(state: NativeHostState): Promise<void> {
 async function disconnectHost(state: NativeHostState): Promise<void> {
   await state.remove();
   await uninstallNativeAutostart(autostartOptions(state));
+  await uninstallDesktopNotificationIdentity(autostartOptions(state));
   const ownerIdentity = await requireCurrentProcessOwnerIdentity();
   const release = await acquireFileLock(join(state.directory, "agent"), {
     waitMs: 5_000,
@@ -235,7 +239,7 @@ export async function runHostCompanionCli(
   }
   if (rest.length > 0) throw new Error(`Unknown host argument: ${rest[0]}`);
   if (command === "run") {
-    await runHost(state);
+    await runHost(state, options);
     return;
   }
   if (command === "disconnect" || command === "uninstall") {

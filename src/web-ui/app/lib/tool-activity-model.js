@@ -1,5 +1,6 @@
 import { titleCaseEventValue } from "./event-presentation.js";
 import { projectToolActivityEvent } from "./tool-activity-event.js";
+import { correlateToolApprovalActivity } from "./tool-approval-activity.js";
 
 const TITLES = Object.freeze({
   dev_view: "Read",
@@ -25,9 +26,9 @@ const PHASES = Object.freeze({
   "tool.approval.required": [3, "awaiting_approval", "Awaiting approval"],
   "tool.approval.granted": [4, "preparing", "Approved"],
   "tool.started": [5, "running", "Running"],
-  "tool.payload.failed": [6, "failed", "Preparation failed"],
+  "tool.payload.failed": [6, "failed", "Not prepared"],
   "tool.approval.rejected": [6, "failed", "Not approved"],
-  "tool.failed": [6, "failed", "Failed"],
+  "tool.failed": [6, "failed", "Not completed"],
   "tool.completed": [6, "completed", "Completed"],
 });
 
@@ -35,7 +36,7 @@ const SETTLED_LABELS = Object.freeze({
   completed: "Completed",
   empty: "No results",
   unchanged: "No change",
-  failed: "Failed",
+  failed: "Not completed",
   incomplete: "Outcome not recorded",
 });
 
@@ -154,7 +155,7 @@ function canAdvanceToolPhase(phase, evidence, nextRank) {
   return nextRank >= phase.rank;
 }
 
-function finishAction(group, streaming) {
+function finishAction(group, streaming, requestEnded) {
   const action = initialAction(
     group.id,
     group.entries[0].evidence,
@@ -172,11 +173,27 @@ function finishAction(group, streaming) {
     }
     applyPhase(action, evidence);
   }
-  if (!streaming && phase.rank < 6) {
+  if (hasUnrecordedCompletion(action, streaming, phase.rank, requestEnded)) {
     action.status = "incomplete";
     action.statusLabel = "Completion not recorded";
   }
   return action;
+}
+
+function hasUnrecordedCompletion(action, streaming, rank, requestEnded) {
+  if (streaming || rank >= 6) return false;
+  if (action.status === "awaiting_approval" && !requestEnded) return false;
+  return true;
+}
+
+function isTerminalRequestEvent(event) {
+  const name = event.eventName || event.name || event.type;
+  return [
+    "completed",
+    "failed",
+    "request.completed",
+    "request.failed",
+  ].includes(name);
 }
 
 /** Lifecycle correlation is exact. Older, uncorrelated history supplies outcome rows only. */
@@ -187,7 +204,11 @@ export function buildConversationToolActions({
 }) {
   const groups = new Map();
   const seen = new Set();
-  for (const [index, event] of events.entries()) {
+  const correlated = correlateToolApprovalActivity(events, requestId);
+  const requestEnded = events.some(
+    (event) => event.requestId === requestId && isTerminalRequestEvent(event),
+  );
+  for (const [index, event] of correlated.entries()) {
     if (event.requestId !== requestId) continue;
     const evidence = event.toolActivity || projectToolActivityEvent(event);
     if (!evidence) continue;
@@ -209,7 +230,9 @@ export function buildConversationToolActions({
     group.entries.push({ evidence, sequence });
     groups.set(id, group);
   }
-  return [...groups.values()].map((group) => finishAction(group, streaming));
+  return [...groups.values()].map((group) =>
+    finishAction(group, streaming, requestEnded),
+  );
 }
 
 const CATEGORIES = Object.freeze({

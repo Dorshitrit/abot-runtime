@@ -10,7 +10,7 @@ export type ComposerScope = Readonly<{
 }>;
 
 export type ComposerQueueDrainScope = ComposerScope &
-  Readonly<{ terminalRequestId: string }>;
+  Readonly<{ terminalRequestId: string; cancelled?: boolean }>;
 
 export interface ComposerQueueRecovery {
   scope: ComposerScope;
@@ -62,7 +62,7 @@ export interface ComposerQueuePostChatRequest {
 export interface ComposerQueueControlEvent {
   type: "control";
   name: string;
-  tone: "failed";
+  tone: "failed" | "neutral";
   summary: string;
 }
 

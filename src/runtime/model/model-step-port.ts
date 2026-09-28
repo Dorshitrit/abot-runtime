@@ -3,6 +3,8 @@ import type { ModelStep } from "../../shared/model-steps.js";
 
 export type ModelStepOutputDiagnostics = Readonly<{
   outputLength: number;
+  /** Runtime-owned steering snapshot used by this provider attempt. */
+  steeringVersion?: number;
   transportOutputLength?: number;
   terminalEventCount?: number;
   providerCompletionReason?: string | null;
@@ -36,6 +38,8 @@ export type ModelStepInvocationInput<T> = Readonly<{
   /** A frozen caller decision; supersession returns control instead of retrying this step. */
   boundSteeringVersion?: number;
   format?: "json" | Record<string, unknown>;
+  /** Exact input bypasses compaction, but must fit the shared input budget. */
+  contextRetention?: "exact";
   contextCompaction?: ModelStepContextCompactionController;
   accept(text: string, diagnostics: ModelStepOutputDiagnostics): T;
 }>;

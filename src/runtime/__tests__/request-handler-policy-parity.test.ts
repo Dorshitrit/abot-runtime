@@ -498,6 +498,7 @@ function expectRequestTimeline(
     "events.create.persistent",
     "events.event.thinking.started",
     "session.message.user",
+    "events.event.session.messages.updated",
     "events.state.model",
     "runner.enter",
     "events.thinking",
@@ -561,7 +562,7 @@ function expectPersistedEvents(
   const requestEvents = events.filter(
     ({ requestId }) => requestId === fixture.requestId,
   );
-  expect(requestEvents).toHaveLength(5);
+  expect(requestEvents).toHaveLength(6);
   expect(
     requestEvents.map(({ sessionId, requestId, payload }) => ({
       sessionId,
@@ -571,6 +572,13 @@ function expectPersistedEvents(
       name: payload.name,
     })),
   ).toEqual([
+    {
+      sessionId: fixture.sessionId,
+      requestId: fixture.requestId,
+      payloadRequestId: fixture.requestId,
+      type: "event",
+      name: "session.messages.updated",
+    },
     {
       sessionId: fixture.sessionId,
       requestId: fixture.requestId,

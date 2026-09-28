@@ -20,7 +20,7 @@ function sourceStatus(source) {
 
 function sourceDescription(source, url, status) {
   const details = [source.title, url.href, status.detail];
-  if (source.retrieval === "failed") details.push("Fetch failed");
+  if (source.retrieval === "failed") details.push("Page content not retrieved");
   if (source.contentTruncated) details.push("Partial content");
   const requested = parseWebSourceUrl(source.requestedUrl);
   if (requested && requested.href !== url.href) {
@@ -96,7 +96,7 @@ function sourceCard(documentRoot, source) {
   domain.dir = "ltr";
   link.appendChild(domain);
   const failed = source.retrieval === "failed";
-  const label = failed ? `${status.short} · failed` : status.short;
+  const label = failed ? `${status.short} · not retrieved` : status.short;
   const badge = element(
     documentRoot,
     "span",

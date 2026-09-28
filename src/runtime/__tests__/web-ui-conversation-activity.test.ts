@@ -52,13 +52,13 @@ describe("web ui conversation activity", () => {
       "tool.failed",
     ]);
     expect(activity.events.at(-1)).toMatchObject({
-      name: "file reader failed",
-      tone: "failed",
+      name: "file reader not completed",
+      tone: "neutral",
     });
     expect(activity.toolCount).toBe(2);
-    expect(activity.failureCount).toBe(1);
+    expect(activity.failureCount).toBe(0);
     expect(activity.openByDefault).toBe(true);
-    expect(activity.currentLabel).toBe("file reader failed");
+    expect(activity.currentLabel).toBe("file reader not completed");
     expect(activity.hasContent).toBe(true);
   });
 

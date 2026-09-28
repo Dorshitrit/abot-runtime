@@ -137,3 +137,18 @@ Generated local state is ignored by git:
 
 Do not publish local sessions, logs, memory, artifacts, or machine-specific
 configuration.
+
+## Shared computer access
+
+`src/computer-access` owns native OS drivers, the Companion protocol, pairing,
+private state, process replacement and bounded passive observation collectors.
+The CLI and Web host compose this infrastructure independently of configured
+plugins. Runtime passive learning connects through its existing injected
+observation port; deleting or disabling SYSTEM does not remove that connection.
+
+SYSTEM owns model-facing tool declarations, request bindings, approvals and result
+projection. It consumes `src/plugin-sdk/computer-access.ts`; shared host code never
+imports optional plugin implementations. The SDK subpath is opt-in so ordinary
+plugins need not load computer drivers. A shared installation does not grant tool
+permissions or enable collection. The native collector starts only for an active
+observation lease; request computer backends remain lazy and disposable.

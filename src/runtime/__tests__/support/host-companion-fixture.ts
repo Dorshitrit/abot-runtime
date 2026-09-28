@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import WebSocket from "ws";
 import { WebSystemHostService } from "../../../web-ui/system-host-service.js";
-import type { HostIdentity } from "../../../../plugins/system/source/companion/protocol.js";
+import type { HostIdentity } from "../../../computer-access/companion/protocol.js";
 
 export const testHostIdentity: HostIdentity = {
   name: "QA computer",
@@ -28,9 +28,9 @@ export function nextHostMessage(
     socket.once("close", onClose);
   });
 }
-export async function hostCompanionFixture() {
+export async function hostCompanionFixture(connectionChanged?: () => void) {
   const rootDir = await mkdtemp(join(tmpdir(), "abot-host-test-"));
-  let service = new WebSystemHostService(rootDir);
+  let service = new WebSystemHostService(rootDir, connectionChanged);
   const server = createServer((request, response) => {
     void service
       .handleHttp(
@@ -120,7 +120,7 @@ export async function hostCompanionFixture() {
     activate,
     async restart() {
       await service.close();
-      service = new WebSystemHostService(rootDir);
+      service = new WebSystemHostService(rootDir, connectionChanged);
     },
     async close() {
       await service.close();

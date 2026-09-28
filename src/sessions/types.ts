@@ -3,9 +3,19 @@ import type { AgentMode } from "../shared/types.js";
 
 import type { RuntimeAttachmentReference } from "../shared/attachments.js";
 import type { SessionMemoryCheckpoint } from "./memory/contracts.js";
+import type {
+  SessionApprovalPresentation,
+  SessionRequestLifecycleRecord,
+  SessionRequestLifecycleSnapshot,
+} from "./request-lifecycle/contracts.js";
 
 export type SessionMessageRole = "user" | "assistant";
-export type SessionMessageSource = "user" | "request" | "agent_bridge" | "cron";
+export type SessionMessageSource =
+  | "user"
+  | "request"
+  | "agent_bridge"
+  | "cron"
+  | "co_worker";
 export type SessionMessageTaskType = string;
 export type SessionMessageGrounding = "conversation" | "tool_observation";
 export type ToolObservationKind =
@@ -60,7 +70,11 @@ export type SessionThinkingTraceEntry = {
   text: string;
 };
 
-export type SessionRequestStatus = "streaming" | "completed" | "failed";
+export type SessionRequestStatus =
+  | "streaming"
+  | "awaiting_approval"
+  | "completed"
+  | "failed";
 
 export type SessionRuntimeEvent = {
   seqNo: number;
@@ -71,6 +85,7 @@ export type SessionRuntimeEvent = {
 };
 
 export type SessionRequestRecord = {
+  lifecycle?: SessionRequestLifecycleRecord;
   requestId: string;
   sessionId: string;
   /** Absent for legacy records and records recreated by late event appends. */
@@ -95,6 +110,7 @@ export type SessionRequestFinalState =
     };
 
 export type SessionRequestReplay = {
+  lifecycle?: SessionRequestLifecycleSnapshot;
   requestId: string;
   sessionId: string;
   generation?: string;
@@ -120,6 +136,9 @@ export type SessionListResult = {
 };
 
 export type SessionSnapshotMessage = {
+  kind?: "tool_approval_request" | "terminal";
+  approvalRequest?: SessionApprovalPresentation;
+  initiative?: import("./assistant-initiative.js").AssistantInitiative;
   schedule?: import("./schedule-metadata.js").ScheduleMessageReference;
   id: string | number;
   sessionId: string;
@@ -135,6 +154,7 @@ export type SessionSnapshotMessage = {
 };
 
 export type SessionSnapshotRequest = {
+  lifecycle?: SessionRequestLifecycleSnapshot;
   requestId: string;
   sessionId: string;
   status: SessionRequestStatus;
@@ -179,6 +199,9 @@ export type SessionMessageDeleteResult = {
 };
 
 export type SessionMessage = {
+  kind?: "tool_approval_request" | "terminal";
+  approvalRequest?: SessionApprovalPresentation;
+  initiative?: import("./assistant-initiative.js").AssistantInitiative;
   schedule?: import("./schedule-metadata.js").ScheduleMessageReference;
   id: string;
   role: SessionMessageRole;

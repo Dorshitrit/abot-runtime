@@ -16,7 +16,8 @@
   min-width: 0;
   margin: 20px auto;
   display: grid;
-  gap: 22px;
+  gap: 16px;
+  font-weight: 400;
 }
 .project-create-form h2 {
   margin: 0 0 8px;
@@ -34,29 +35,26 @@
 }
 .project-create-form label {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   color: var(--text);
   font-size: var(--font-size-sm);
 }
 .project-create-form input {
   width: 100%;
   min-width: 0;
-  padding: 9px 12px;
+  min-height: 34px;
+  padding: 5px 10px;
   font-size: var(--font-size-md);
-  line-height: 1.4;
+  line-height: 1.35;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--control-bg);
+  border-radius: 6px;
+  background: var(--panel);
   color: var(--text);
-}
-.project-create-form input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 .project-path-input {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 6px;
 }
 .project-create-form button,
 .project-load-error button {
@@ -68,14 +66,16 @@
   cursor: pointer;
 }
 .project-create-form button {
-  min-height: 36px;
-  padding: 8px 12px;
+  min-height: 32px;
+  padding: 5px 10px;
+  border-radius: 6px;
   background: transparent;
   font-size: var(--font-size-sm);
   font-weight: 400;
-  line-height: 1.4;
+  line-height: 1.35;
 }
 .project-create-form button:hover:not(:disabled) {
+  border-color: var(--line);
   background: var(--control-bg-hover);
 }
 .project-create-form button:disabled {
@@ -180,33 +180,61 @@
 .project-create-form footer {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  padding-top: 16px;
+  gap: 6px;
+  padding-top: 12px;
   border-top: 1px solid var(--line);
 }
 .project-create-form [data-cancel] {
   border-color: transparent;
   color: var(--muted);
 }
+.project-create-form
+  :is(
+    [data-cancel],
+    [data-cancel-picker],
+    [data-parent],
+    [data-root],
+    [data-folder]
+  ):hover:not(:disabled) {
+  border-color: transparent;
+}
 .project-create-form .project-create-submit {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.project-create-form
+  :is(.project-create-submit, [data-select-folder]):hover:not(:disabled) {
   border-color: var(--line-strong);
+}
+.project-create-form .project-create-submit:hover:not(:disabled) {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+  color: var(--bg);
 }
 .project-section-heading {
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
-  padding: 10px 2px 7px;
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  padding: 8px 4px 5px;
 }
 .project-session-group {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .project-session-group > header {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 3px;
+  gap: 7px;
+  min-height: 30px;
+  padding: 1px 4px;
+}
+.project-session-group > header::before {
+  content: "";
+  flex: none;
+  width: 14px;
+  height: 14px;
+  background: var(--muted-2);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 7V5h6l2 2h10v13H3Z' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 .project-group-title {
   flex: 1;
@@ -215,7 +243,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-strong);
-  font-size: 13px;
+  font-size: var(--font-size-sm);
+  text-align: left;
 }
 .project-session-group > header > button {
   border: 0;
@@ -223,33 +252,69 @@
   color: var(--muted);
   cursor: pointer;
   border-radius: 5px;
+  flex: none;
+  width: 28px;
   min-width: 28px;
+  height: 28px;
   min-height: 28px;
-  font-size: 18px;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+  padding: 0;
+  font-size: 16px;
 }
 .project-session-group > header > button:hover {
   background: var(--control-bg-hover);
   color: var(--text-strong);
 }
+.project-session-group > header > .project-group-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  width: auto;
+  padding: 0;
+  text-align: left;
+}
+.project-group-chevron {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+}
+.project-group-chevron::after {
+  content: "";
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: rotate(45deg);
+}
+.project-group-toggle[aria-expanded="false"] .project-group-chevron::after {
+  transform: rotate(-45deg);
+}
 .project-session-group .session-item {
-  width: calc(100% - 9px);
-  margin-inline-start: 9px;
+  width: calc(100% - 16px);
+  margin-inline-start: 16px;
 }
 .project-empty-copy {
   color: var(--muted);
   padding: 3px 8px;
   margin: 4px 0 10px;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 .ordinary-conversations-heading {
   border-top: 1px solid var(--line);
-  margin-top: 12px;
-  padding-top: 14px;
+  margin-top: 8px;
+  padding-top: 10px;
 }
 .project-load-error {
   display: grid;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: var(--danger);
 }
 @media (max-width: 640px) {
@@ -259,14 +324,67 @@
   .project-create-form {
     margin-top: 6px;
   }
+  .project-create-form input {
+    font-size: 16px;
+  }
 }
 
 .current-project-context {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: var(--muted);
-  max-width: 75vw;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Keep conversation and project identity on separate, direction-safe lines. */
+.chat-header .chat-heading-group {
+  width: 100%;
+}
+.chat-header .chat-heading-copy {
+  display: grid;
+  width: 100%;
+  gap: 4px;
+}
+.chat-header h2[dir="auto"] {
+  text-align: start;
+}
+.chat-header .current-project-context {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  direction: ltr;
+}
+.chat-heading-copy:has(#sessionTitle:dir(rtl)) .current-project-context {
+  justify-self: end;
+  width: fit-content;
+}
+.current-project-context bdi {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.current-project-name {
+  flex: 0 1 auto;
+}
+.current-project-path {
+  flex: 1 1 auto;
+}
+.project-session-more {
+  margin: 3px 8px 6px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  text-align: start;
+}
+
+.project-session-more:hover,
+.project-session-more:focus-visible {
+  color: var(--accent-strong);
 }

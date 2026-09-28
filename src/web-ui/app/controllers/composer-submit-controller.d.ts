@@ -26,6 +26,8 @@ export interface ComposerSubmitActions {
   primaryAction(): string;
   render(options: {
     activeRequestId: string;
+    stopping?: boolean;
+    onStop?: () => void;
     attachmentCount: number;
     busy: boolean;
     disabled: boolean;
@@ -46,6 +48,7 @@ export interface ComposerSubmitQueue {
 
 export interface ComposerSubmitChatRequests {
   sendMessage(text: string): Promise<void>;
+  stopRequest?(scope: ComposerScope & { requestId: string }): Promise<{ accepted: boolean; reason?: string }>;
 }
 
 export interface ComposerSubmitConversationSession {
@@ -69,6 +72,7 @@ export interface ComposerSubmitControllerOptions {
 }
 
 export interface ComposerSubmitController {
+  stop(): false | Promise<void>;
   dispatch(requestedAction?: string): void;
   resize(): void;
   updateSendState(): void;

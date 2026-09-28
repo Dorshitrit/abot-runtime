@@ -145,6 +145,7 @@ function enforcePluginResultByteBudget(result) {
 function successResult(input) {
   return enforcePluginResultByteBudget({
     ok: true,
+    ...input.media !== void 0 ? { media: input.media } : {},
     output: input.output,
     producedNewInformation: input.producedNewInformation ?? true,
     ...input.progress !== void 0 ? { progress: input.progress } : {},
@@ -158,6 +159,7 @@ function successResult(input) {
 function failureResult(input) {
   return enforcePluginResultByteBudget({
     ok: false,
+    ...input.media !== void 0 ? { media: input.media } : {},
     output: input.output ?? input.message,
     producedNewInformation: false,
     ...input.progress !== void 0 ? { progress: input.progress } : {},
@@ -181,6 +183,9 @@ function failureFromError(error, options) {
     output: options.operation ? `${options.operation} failed: ${message}` : message
   });
 }
+
+// src/capabilities/tool-media.ts
+var TOOL_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
 // plugins/memory/source/format.ts
 var OUTPUT_MAX_CHARS = 2e4;

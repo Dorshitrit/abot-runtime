@@ -12,7 +12,10 @@ hardcoded defaults.
 
 - Configurable local and hosted model providers
 - Persistent conversations, request events, and replay
-- Optional passive long-term memory across sessions
+- Optional long-term memory with protected saves and reviewed automatic candidates
+- ABot Spark for optional desktop learning and proactive conversation suggestions
+- Desktop observation and control through shared Computer access
+- A notification inbox and optional native desktop alerts
 - Local scheduled requests bound to their conversations
 - Planning, execution, and review workflows
 - Manifest-based tools and plugins with explicit runtime boundaries
@@ -28,23 +31,25 @@ local runtime backend by default, so an external bridge is not required.
 
 The Web UI supports:
 
-- creating, reopening, and deleting conversations
+- creating, pinning, reordering, archiving, reopening, and deleting conversations
 - choosing the active environment, model, and reasoning mode
 - uploading files and images
 - streaming messages, current activity, tool progress, and failures
-- steering an active request or queuing the next message
+- steering or stopping an active request, or queuing the next message
 - editing runtime configuration
 - configuring passive long-term memory with a consumer-selected embedding model
-- managing schedules, their saved models, and run history in the Schedules workspace
+- managing scheduled Jobs, their saved models and permissions, and run history
+- controlling Spark collection, learning, proactive suggestions, and application exclusions
+- reviewing saved memories and opening notification sources
 - inspecting runtime status, logs, and health
 
 The UI is a client of the runtime; persisted sessions, events, and request state
 remain owned by the runtime.
 
 Schedules can also be managed through the model's built-in `schedules` capability.
-Every Job belongs to a conversation and runs there with its saved model and FULL
-tool permissions. The chat shows a compact run card; expand it to read the exact
-historical prompt. ABot must be running at the scheduled time. Missed offline
+Every Job belongs to a conversation and runs there with its saved model and Full
+or FULL+ tool permissions. New Jobs default to Full. The chat shows a compact run
+card; expand it to read the exact historical prompt. ABot must be running at the scheduled time. Missed offline
 occurrences and failed runs are not retried. Cancelling a Job or deleting its
 conversation prevents pending starts; an already-started run continues.
 
@@ -98,7 +103,7 @@ OpenAI profiles created by `abot init` or `abot add-model` use the recommended
 the user explicitly requests replacement.
 
 Passive long-term memory is disabled by default. After configuring a provider,
-choose and probe an embedding model from the Config workspace or CLI:
+choose and probe an embedding model from **Memory → Setup** or the CLI:
 
 ```bash
 npx abot memory enable --provider <provider-id> --model <embedding-model-id>
@@ -106,6 +111,13 @@ npx abot memory enable --provider <provider-id> --model <embedding-model-id>
 
 See [Passive Long-Term Memory](docs/long-term-memory.md) for its privacy,
 storage, retrieval, and management contracts.
+[ABot Spark](docs/long-term-memory.md#learning-from-computer-activity) adds optional
+computer-activity learning and proactive suggestions, with separate controls and
+daily usage limits. Collection and proactive messages are off by default.
+
+[Computer access and notifications](docs/installation.md#computer-access-during-setup)
+use one paired Companion. Desktop tools require the [SYSTEM platform dependencies
+and permissions](plugins/system/README.md#execution-environments).
 
 ## Quick Start From Source
 

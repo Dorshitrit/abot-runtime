@@ -19,6 +19,7 @@ import { executionProtocolError } from "./errors.js";
 import { isPlainRecord, nonEmpty } from "./values.js";
 
 const MUTATION_GROUNDING_MAX_LENGTH = 32_768;
+const OBSERVATION_OUTPUT_PREVIEW_MAX_LENGTH = 512;
 
 export function summarizeCompletedMutation(
   completionActions: readonly ToolActionSummary[],
@@ -197,18 +198,19 @@ export function projectObservationOutput(
   if (normalized.length <= ROLE_CALL_RESULT_MAX_LENGTH) {
     return Object.freeze({ summary: normalized });
   }
-  if (
-    directRoot ||
-    normalized.length > ROLE_CAPABILITY_REFERENCE_DATA_MAX_LENGTH
-  ) {
+  if (directRoot) {
     return Object.freeze({
-      summary: directRoot
-        ? "The capability result is available in the canonical direct execution result."
-        : "The capability result is available in the canonical execution result.",
+      summary: "The capability result is available in the canonical direct execution result.",
     });
   }
+  const preview = normalized
+    .slice(0, OBSERVATION_OUTPUT_PREVIEW_MAX_LENGTH)
+    .replace(/[\uD800-\uDBFF]$/u, "");
+  const omittedCharacters = normalized.length - preview.length;
+  const hasBoundedReferenceData =
+    normalized.length <= ROLE_CAPABILITY_REFERENCE_DATA_MAX_LENGTH;
   return Object.freeze({
-    summary: `The observation completed successfully with ${normalized.length} characters of result data; its producing Worker received the complete result.`,
-    referenceData: normalized,
+    summary: `The observation returned ${normalized.length} characters of result data. Output preview (${preview.length} characters; ${omittedCharacters} omitted from this preview):\n${preview}`,
+    ...(hasBoundedReferenceData ? { referenceData: normalized } : {}),
   });
 }

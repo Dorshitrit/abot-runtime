@@ -25,6 +25,7 @@ import type { LongTermMemoryService } from "./long-term-memory/contracts.js";
 import type { SchedulerRun, SchedulerService } from "./scheduler/contracts.js";
 import { SessionRequestAdmission } from "./request/session-admission.js";
 import type { RequestSteeringAppendResult } from "./request/request-steering.js";
+import type { PassiveLearningService } from "./passive-learning/contracts.js";
 
 export type RuntimeEnvironmentServices = Readonly<{
   config: RuntimeConfig;
@@ -36,6 +37,7 @@ export type RuntimeEnvironmentServices = Readonly<{
   events: EventSinkFactory;
   sessionMemoryCompactor: SessionMemoryCompactor;
   longTermMemory: LongTermMemoryService;
+  passiveLearning?: PassiveLearningService;
   scheduler?: SchedulerService;
   startScheduler?: () => Promise<void>;
   stopScheduler?: () => Promise<void>;
@@ -44,10 +46,20 @@ export type RuntimeEnvironmentServices = Readonly<{
 
 export type RuntimeRequestOptions = Pick<
   RequestHandlerOptions,
-  "toolApprovalController" | "requestSteering"
+  | "toolApprovalController"
+  | "requestSteering"
+  | "abortSignal"
+  | "claimFinalization"
+  | "durableApprovals"
+  | "approvalExecution"
 >;
 
 export type RuntimeRequestHandler = Readonly<{
+  cancel?: (
+    requestId: string,
+    sessionId: string,
+    wait?: import("./request/cancellation.js").SavedWaitCancellation,
+  ) => Promise<import("./request/cancellation.js").RequestCancellationResult>;
   steer?: (
     requestId: string,
     input: Readonly<{ steerId: string; text: string }>,
@@ -56,7 +68,7 @@ export type RuntimeRequestHandler = Readonly<{
     ws: WebSocket,
     message: RunRequestMessage,
     options?: RuntimeRequestOptions,
-  ) => Promise<void>;
+  ) => Promise<import("./request/handler.js").RequestHandlerOutcome>;
 }>;
 
 export type RuntimeApplication = Readonly<{
@@ -80,6 +92,7 @@ export type RuntimeDependencies = {
   events: EventSinkFactory;
   sessionMemoryCompactor: SessionMemoryCompactor;
   longTermMemory: LongTermMemoryService;
+  passiveLearning?: PassiveLearningService;
   scheduler?: SchedulerService;
   startScheduler?: () => Promise<void>;
   stopScheduler?: () => Promise<void>;

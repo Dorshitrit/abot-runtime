@@ -13,13 +13,15 @@ import { LocalRuntimeRpcPeer } from "./rpc-peer.js";
 export async function connectToPublishedRuntimeOwner(
   options: Pick<LocalRuntimeConnectionOptions, "directory" | "identity">,
   deadline: number,
-): Promise<LocalRuntimeRpcPeer | undefined> {
+): Promise<
+  { peer: LocalRuntimeRpcPeer; endpoint: LocalRuntimeEndpoint } | undefined
+> {
   const endpoint = await readLocalRuntimeEndpoint(options.directory);
   if (!endpoint) return undefined;
   if (!isLocalRuntimeProcessAlive(endpoint.pid)) return undefined;
   assertRuntimeOwnerIdentity(endpoint, options.identity);
   try {
-    return await connectToRuntimeOwner(endpoint, deadline);
+    return { peer: await connectToRuntimeOwner(endpoint, deadline), endpoint };
   } catch (error) {
     if (!isTransientRuntimeOwnerHandshakeFailure(error)) throw error;
     return undefined;
@@ -73,7 +75,10 @@ export async function connectToRuntimeOwner(
       cleanupHandshake();
       resolve(peer);
     };
-    const startupTimer = setTimeout(timedOut, Math.max(1, deadline - Date.now()));
+    const startupTimer = setTimeout(
+      timedOut,
+      Math.max(1, deadline - Date.now()),
+    );
     socket.once("error", failed);
     socket.once("open", opened);
   });

@@ -49,6 +49,7 @@ export function projectDashboardConversations(sessions = [], recentLimit = 6) {
   const availableReadSlots = Math.max(0, recentLimit - unread.length);
   return {
     conversations: [...unread, ...read.slice(0, availableReadSlots)],
+    recentConversations: conversations.slice(0, recentLimit),
     totalCount: conversations.length,
     hasUnavailableReadState: conversations.some(
       (session) => session.readStateUnavailable,

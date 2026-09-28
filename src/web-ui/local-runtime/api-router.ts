@@ -1,4 +1,5 @@
 import { ProjectRoutes } from "./project-routes.js";
+import { cancelWebRequest } from "./request-cancellation-route.js";
 import { ConversationFileRoutes } from "./conversation-file-routes.js";
 import { ConfigFileConflictError } from "../../runtime/adapters/config-file-transaction.js";
 import { ModelSetupRoutes } from "./model-setup-routes.js";
@@ -14,6 +15,9 @@ import {
 import { PluginManagementRoutes } from "./plugin-management-routes.js";
 import { acceptConfigMutationRequest } from "./config-mutation-request.js";
 import { WebSessionRoutes } from "./session-routes.js";
+import type { WorkspaceChangeNotifier } from "./workspace-notifications.js";
+import { ToolApprovalRoutes } from "./tool-approval-routes.js";
+import { ManagedWebToolApprovals } from "./managed-tool-approvals.js";
 import { WebSessionReadStates } from "../session-read-state/service.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -27,6 +31,7 @@ import {
 } from "../../runtime/admin/system-control.js";
 import {
   getConfigDashboardSnapshot,
+  getSettledConfigDashboardSnapshot,
   saveConfigDashboardFile,
 } from "../config-dashboard-backend.js";
 import { LocalAttachmentRoutes } from "./attachment-routes.js";
@@ -49,6 +54,7 @@ import { LocalRequestExecution } from "./request-execution.js";
 import { LongTermMemoryManagementRoutes } from "./memory-management-routes.js";
 import { LongTermMemoryOnboardingRoutes } from "./memory-onboarding-routes.js";
 import { ScheduleManagementRoutes } from "./schedule-management-routes.js";
+import { PassiveLearningRoutes } from "./learning-routes.js";
 
 function sendRuntimeSetupRequired(
   res: ServerResponse,
@@ -75,12 +81,21 @@ export class LocalRuntimeApiRouter {
   private readonly readStates: WebSessionReadStates;
   private readonly sessions: WebSessionRoutes;
   private readonly projects = new ProjectRoutes();
+  private readonly toolApprovals: ToolApprovalRoutes;
+  private readonly learning: PassiveLearningRoutes;
 
   constructor(
     private readonly options: ResolvedLocalRuntimeBackendOptions,
     private readonly environments: RuntimeEnvironmentRegistry,
     private readonly requests: LocalRequestExecution,
+    notifyWorkspaceChanged?: WorkspaceChangeNotifier,
   ) {
+    this.toolApprovals = new ToolApprovalRoutes(
+      new ManagedWebToolApprovals((id) => environments.get(id), requests),
+    );
+    this.learning = new PassiveLearningRoutes(
+      (id) => this.environments.get(id).services.passiveLearning,
+    );
     this.conversationFiles = new ConversationFileRoutes(
       environments,
       requests,
@@ -126,7 +141,10 @@ export class LocalRuntimeApiRouter {
     this.readStates = new WebSessionReadStates((id) =>
       this.environments.get(id),
     );
-    this.sessions = new WebSessionRoutes(this.readStates);
+    this.sessions = new WebSessionRoutes(
+      this.readStates,
+      notifyWorkspaceChanged,
+    );
     this.schedules = new ScheduleManagementRoutes((id) =>
       this.environments.get(id),
     );
@@ -253,6 +271,37 @@ export class LocalRuntimeApiRouter {
       this.options.defaultEnvironmentId,
     );
 
+    if (method === "POST" && route === "chat/stop") {
+      await cancelWebRequest({ request: req, response: res, body, environment: this.environments.get(environmentId) });
+      return;
+    }
+
+    if (
+      await this.learning.handle({
+        method,
+        route,
+        segments,
+        url,
+        body,
+        environmentId,
+        request: req,
+        response: res,
+      })
+    )
+      return;
+
+    if (
+      await this.toolApprovals.handle({
+        method,
+        segments,
+        body,
+        environmentId,
+        request: req,
+        response: res,
+      })
+    )
+      return;
+
     if (await this.plugins.handle({ method, route, body, response: res }))
       return;
 
@@ -302,9 +351,13 @@ export class LocalRuntimeApiRouter {
 
     if (method === "GET" && route === "runtime/config/dashboard") {
       res.setHeader("cache-control", "no-store");
+      const waitsForMutations = url.searchParams.get("settled") === "true";
+      const readDashboard = waitsForMutations
+        ? getSettledConfigDashboardSnapshot
+        : getConfigDashboardSnapshot;
       sendJson(res, 200, {
         ok: true,
-        dashboard: await getConfigDashboardSnapshot({
+        dashboard: await readDashboard({
           rootDir: this.options.rootDir ?? process.cwd(),
           configPath: this.options.configPath,
         }),

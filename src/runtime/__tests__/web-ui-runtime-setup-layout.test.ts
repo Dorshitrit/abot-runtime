@@ -62,13 +62,33 @@ describe("web ui runtime setup layout", () => {
     expect(setupRegion).toMatch(/aria-label="[^"]+"/);
     expect(setupRegion).toContain('tabindex="0"');
   });
-  test("gives Home one outer scroll owner while the setup host uses natural height", () => {
+  test("gives Home one content scroll owner while the composer stays pinned below it", () => {
     const setup = postcss.parse(readAppFile("styles/19-runtime-setup.css"));
     const home = postcss.parse(readAppFile("styles/18-dashboard.css"));
     expect(rootRuleDeclarations(home, ".home-workspace-panel")).toMatchObject({
-      overflow: "auto",
+      overflow: "hidden",
       "min-height": "0",
     });
+    expect(rootRuleDeclarations(home, ".home-workspace-body")).toMatchObject({
+      overflow: "hidden",
+      "min-height": "0",
+    });
+    const content = rootRuleDeclarations(home, ".home-workspace-content");
+    expect(content).toMatchObject({
+      flex: "1",
+      "min-height": "0",
+      "overflow-y": "auto",
+      "overscroll-behavior": "contain",
+    });
+    expect(content).not.toHaveProperty("overflow");
+    const composer = rootRuleDeclarations(home, ".home-workspace-start");
+    expect(composer).toMatchObject({ flex: "none" });
+    expect(composer).not.toHaveProperty("position");
+    expect(composer).not.toHaveProperty("overflow");
+    expect(composer).not.toHaveProperty("overflow-y");
+    expect(
+      rootRuleDeclarations(home, ".home-setup-active .home-workspace-start"),
+    ).toMatchObject({ display: "none" });
     expect(
       rootRuleDeclarations(setup, ".home-setup-host .runtime-setup-guide"),
     ).toMatchObject({ overflow: "visible", padding: "0" });

@@ -1,5 +1,9 @@
 import type { SessionMessageObservationMeta } from "../../sessions/types.js";
 import type { MemoryCandidate } from "../long-term-memory/contracts.js";
+export type {
+  RequestApprovalContinuation,
+  RequestRunnerOutcome,
+} from "./approval-continuation.js";
 
 export type RequestObservation = {
   observationMeta: SessionMessageObservationMeta;

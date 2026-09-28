@@ -1,8 +1,9 @@
+import { updateLiveRegion } from "../../lib/live-region.js";
 import { escapeHtml } from "../../lib/text-format.js";
 import { scheduleTimeLabel } from "../../lib/schedule-message.js";
 import {
   emptyScheduleListMessage,
-  matchesScheduleFilter,
+  scheduleListJobs,
   scheduleDescription,
 } from "../../lib/schedule-presentation.js";
 import { createScheduleForm } from "./form.js";
@@ -22,12 +23,12 @@ export function createSchedulesWorkspace({
   confirmDiscard = (message) => window.confirm(message),
 }) {
   let editorIdentity = null;
-  root.innerHTML = `<div class="schedules-toolbar"><label class="schedule-search"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input type="search" placeholder="Search schedules…" aria-label="Search schedules"></label>
+  root.innerHTML = `<div class="schedules-content"><div class="schedules-toolbar"><label class="schedule-search"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input type="search" placeholder="Search schedules…" aria-label="Search schedules"></label>
     <select aria-label="Filter schedule status"><option value="current">Active &amp; paused</option><option value="active">Active</option><option value="paused">Paused</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="all">All statuses</option></select>
     <button type="button" data-refresh>Refresh</button><button type="button" class="primary-button" data-create>New schedule</button></div>
     <p class="schedules-feedback" role="status" aria-live="polite"></p>
     <section class="schedule-workspace-state" aria-live="polite" hidden></section>
-    <div class="schedules-layout"><div class="schedules-list" aria-label="Schedules"></div><section class="schedule-details" aria-label="Schedule details"></section></div>`;
+    <div class="schedules-layout"><div class="schedules-list" aria-label="Schedules"></div><section class="schedule-details" aria-label="Schedule details"></section></div></div>`;
   const list = root.querySelector(".schedules-list");
   const details = root.querySelector(".schedule-details");
   const search = root.querySelector('[type="search"]');
@@ -71,16 +72,23 @@ export function createSchedulesWorkspace({
     void actions.filter(query, status);
   }
 
+  function bindListActions() {
+    for (const button of list.querySelectorAll("[data-job-id]")) {
+      button.addEventListener("click", () => {
+        if (button.dataset.jobId === actions.snapshot().selectedId) return;
+        if (prepareLeave()) void actions.select(button.dataset.jobId);
+      });
+    }
+  }
+
   function render(snapshot) {
     search.value = snapshot.query;
     filter.value = snapshot.filter;
-    const visible = snapshot.jobs.filter((job) =>
-      matchesScheduleFilter(
-        job,
-        snapshot.query,
-        snapshot.filter,
-        snapshot.sessions,
-      ),
+    const visible = scheduleListJobs(
+      snapshot.jobs,
+      snapshot.query,
+      snapshot.filter,
+      snapshot.sessions,
     );
     const pageState = scheduleWorkspaceState(snapshot);
     const firstScheduleEditor =
@@ -97,11 +105,13 @@ export function createSchedulesWorkspace({
         chat: () => actions.openConversation(getCurrentSessionId()),
       },
     });
-    feedback.textContent =
+    const feedbackText =
       (snapshot.error ? scheduleErrorMessage(snapshot.error) : "") ||
       (snapshot.loading
         ? "Loading schedules…"
         : `${visible.length} shown · ${snapshot.jobs.length} schedules`);
+    if (feedback.textContent !== feedbackText)
+      feedback.textContent = feedbackText;
     feedback.classList.toggle("schedule-error", Boolean(snapshot.error));
     root.setAttribute("aria-busy", String(snapshot.loading));
     createButton.disabled = snapshot.loading || snapshot.sessions.length === 0;
@@ -111,7 +121,7 @@ export function createSchedulesWorkspace({
     if (pageState) return;
     layout.classList.toggle("schedule-editor-only", snapshot.jobs.length === 0);
     list.hidden = snapshot.jobs.length === 0;
-    list.innerHTML =
+    const listMarkup =
       visible
         .map(
           (
@@ -122,12 +132,7 @@ export function createSchedulesWorkspace({
         )
         .join("") ||
       `<div class="schedule-list-empty">${escapeHtml(emptyScheduleListMessage(snapshot))}</div>`;
-    for (const button of list.querySelectorAll("[data-job-id]")) {
-      button.addEventListener("click", () => {
-        if (button.dataset.jobId === actions.snapshot().selectedId) return;
-        if (prepareLeave()) void actions.select(button.dataset.jobId);
-      });
-    }
+    if (updateLiveRegion(list, listMarkup)) bindListActions();
     if (snapshot.editor) {
       details.classList.remove("schedule-details-placeholder");
       if (editorIdentity === snapshot.editor) return;
@@ -149,17 +154,7 @@ export function createSchedulesWorkspace({
       return;
     }
     editorIdentity = null;
-    const openDetails = new Set(
-      [...details.querySelectorAll("details[data-disclosure-id]")]
-        .filter((node) => node.open)
-        .map((node) => node.dataset.disclosureId),
-    );
     renderScheduleDetails({ root: details, snapshot, actions });
-    for (const node of details.querySelectorAll(
-      "details[data-disclosure-id]",
-    )) {
-      node.open = openDetails.has(node.dataset.disclosureId);
-    }
   }
   return { render, prepareLeave };
 }

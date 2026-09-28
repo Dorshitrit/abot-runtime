@@ -43,6 +43,7 @@ export function createLongTermMemoryController({
     state.items = [];
     state.total = 0;
     state.query = "";
+    state.originFilter = "";
     state.offset = 0;
     state.mutation = "";
     state.editor = null;
@@ -68,6 +69,14 @@ export function createLongTermMemoryController({
       return;
     }
     state.query = normalized;
+    state.offset = 0;
+    await loadRecords({ preserveFeedback: false });
+  }
+
+  async function setOriginFilter(origin) {
+    const next = origin === "passive_observation" ? origin : "";
+    state.originFilter = next;
+    state.query = "";
     state.offset = 0;
     await loadRecords({ preserveFeedback: false });
   }
@@ -241,7 +250,7 @@ export function createLongTermMemoryController({
     };
     return state.query
       ? client.searchLongTermMemories({ ...page, query: state.query })
-      : client.listLongTermMemories(page);
+      : client.listLongTermMemories({ ...page, origin: state.originFilter || undefined });
   }
 
   function beginRead() {
@@ -297,6 +306,7 @@ export function createLongTermMemoryController({
     refresh,
     save,
     search,
+    setOriginFilter,
     snapshot,
   });
 }

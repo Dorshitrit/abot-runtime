@@ -55,6 +55,8 @@ export function createLongTermMemoryManager({
     if (action === "edit") actions.beginEdit(recordId);
     if (action === "cancel-edit") actions.cancelEdit();
     if (action === "clear-search") void actions.search("");
+    if (action === "toggle-origin")
+      void actions.setOriginFilter(view.originFilter ? "" : "passive_observation");
     if (action === "previous-page") void actions.changePage(-1);
     if (action === "next-page") void actions.changePage(1);
     if (action === "delete") confirmAndDelete(recordId);
@@ -109,7 +111,11 @@ export function createLongTermMemoryManager({
     );
   }
 
-  return Object.freeze({ mount, render });
+  return Object.freeze({
+    mount,
+    render,
+    focus: () => root?.querySelector(".memory-management-heading h4")?.scrollIntoView({ block: "start" }),
+  });
 }
 
 function managerMarkup(view) {
@@ -124,6 +130,7 @@ function managerMarkup(view) {
       </div>
       ${availabilityMarkup(view)}
       <div class="memory-management-toolbar">
+        <button class="memory-origin-filter" type="button" data-memory-management-action="toggle-origin" aria-pressed="${!view.query && view.originFilter === "passive_observation"}" ${view.query ? "disabled title=\"Activity filter is paused during semantic search\"" : ""}>Computer activity${view.query && view.originFilter ? " (paused)" : ""}</button>
         <form class="memory-search" role="search" data-memory-search-form>
           <label class="sr-only" for="memoryManagementSearch">Search stored memories</label>
           <div class="memory-search-shell">

@@ -1,3 +1,4 @@
+import type { CapabilityApprovalGate } from "../approval-contracts.js";
 import {
   parseRoleCallWorkerCapabilityScope,
   type RoleCallDependencyResult,
@@ -34,6 +35,7 @@ export function createRoleCapabilityBinding<TContext>(params: {
   adapters: readonly WorkerCapabilityAdapter<TContext>[];
   dependencyResults?: readonly RoleCallDependencyResult[];
   executionFreshness?: WorkerCapabilityExecutionFreshness;
+  approvalGate?: CapabilityApprovalGate;
 }): WorkerCapabilityBinding<TContext> {
   const boundCall = copyBoundCapabilityCall(params.call);
   const emptyDiagnostic = createEmptyBindingDiagnostic(
@@ -83,6 +85,7 @@ export function createRoleCapabilityBinding<TContext>(params: {
     diagnostic,
     capabilityScope: catalog.capabilityScope,
     dependencyResults,
+    ...(params.approvalGate ? { approvalGate: params.approvalGate } : {}),
     ...(executionFreshness ? { executionFreshness } : {}),
   });
   return session.toBinding();

@@ -55,6 +55,10 @@ export function createRequestSeedFacets(
       : {}),
   });
   const model = Object.freeze({
+    ...(seed.toolResources ? { toolResources: seed.toolResources } : {}),
+    ...(seed.modelInvocationScope !== undefined
+      ? { modelInvocationScope: seed.modelInvocationScope }
+      : {}),
     runnerConfig: seed.runnerConfig,
     ...(seed.modelPreference !== undefined
       ? { modelPreference: seed.modelPreference }
@@ -73,6 +77,7 @@ export function createRequestSeedFacets(
       : {}),
   });
   const lifecycle = Object.freeze({
+    ...(seed.approvalGate ? { approvalGate: seed.approvalGate } : {}),
     ...(seed.requestSteering !== undefined
       ? { requestSteering: seed.requestSteering }
       : {}),
@@ -105,6 +110,16 @@ export function createModelInvocationView(
   facets: RequestSeedFacets,
 ): RequestModelInvocationView {
   return createFrozenSurface<RequestModelInvocationView>({
+    ...(facets.model.modelInvocationScope !== undefined
+      ? {
+          modelInvocationScope: enumerableGetter(
+            () => facets.model.modelInvocationScope!,
+          ),
+        }
+      : {}),
+    ...(facets.model.toolResources
+      ? { toolResources: enumerableGetter(() => facets.model.toolResources!) }
+      : {}),
     requestId: enumerableGetter(() => facets.identity.requestId),
     runnerConfig: enumerableGetter(() => facets.model.runnerConfig),
     agentMode: enumerableGetter(() => facets.input.agentMode),

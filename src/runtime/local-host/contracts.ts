@@ -30,6 +30,8 @@ export type LocalRuntimeConnection = Readonly<{
   setClientHandler: (handler: LocalRuntimeCallHandler) => void;
   onClose: (listener: () => void) => () => void;
   close: () => Promise<void>;
+  /** Explicit attachment to the same live owner; never elects or replays work. */
+  reconnect: () => Promise<boolean>;
   /** Only the owning connection can synchronously observe its idle fence. */
   isOwnerIdle: () => boolean;
   /** Closes intake in the same turn as the idle check; clients never close owners. */

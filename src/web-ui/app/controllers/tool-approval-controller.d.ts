@@ -7,6 +7,8 @@ export interface ToolApprovalControllerState {
   connected: boolean;
   events: ToolApprovalEvent[];
   submittedToolApprovalIds: Set<string>;
+  messages?: Array<Record<string, unknown>>;
+  requestLifecycles?: Map<string, Record<string, unknown>>;
 }
 
 export interface ToolApprovalControllerOptions {
@@ -24,5 +26,6 @@ export declare function createToolApprovalController(
   createCard(event: ToolApprovalEvent | undefined): HTMLElement;
   isPending(event: ToolApprovalEvent | undefined): boolean;
   pendingEvent(): ToolApprovalEvent | undefined;
+  pendingEvents(): ToolApprovalEvent[];
   submit(approvalId: string, approved: boolean): boolean;
 };

@@ -15,7 +15,6 @@ export function createConversationRoleCards({
 } = {}) {
   const timelineRequests = new Set();
   const timelineToggles = new Map();
-  const cardsScroll = new Map();
   const toolsByRequest = new Map();
   let panelSequence = 0;
 
@@ -40,24 +39,6 @@ export function createConversationRoleCards({
     );
     avatar.setAttribute("aria-hidden", "true");
     return avatar;
-  }
-
-  function createSummaryNode(cards) {
-    if (cards.length === 0) return null;
-    const strip = element("span", "conversation-role-summary-strip");
-    for (const card of cards) {
-      const item = element(
-        "span",
-        `conversation-role-summary-item is-${card.tone}`,
-      );
-      item.dataset.role = card.role;
-      item.setAttribute("role", "img");
-      item.setAttribute("aria-label", card.title);
-      item.setAttribute("title", card.title);
-      item.appendChild(roleAvatar(card.role));
-      strip.appendChild(item);
-    }
-    return strip;
   }
 
   function toolsForCard(requestId, cardId) {
@@ -96,7 +77,7 @@ export function createConversationRoleCards({
       textElement("span", "conversation-role-title", card.title),
     );
     if (card.active) {
-      const active = element("span", "conversation-role-active");
+      const active = element("span", "conversation-role-active", "Working");
       active.setAttribute("role", "img");
       active.setAttribute("aria-label", "Active role");
       header.appendChild(active);
@@ -114,21 +95,22 @@ export function createConversationRoleCards({
         element("span", "conversation-role-error", "Activity error"),
       );
     }
-    if (card.facts.length > 0) {
-      const facts = element("ul", "conversation-role-facts");
-      for (const fact of card.facts) {
-        facts.appendChild(textElement("li", "conversation-role-fact", fact));
-      }
-      header.appendChild(facts);
-    }
     content.appendChild(header);
+    const message = element("div", "conversation-role-message");
     if (card.summary) {
       const summary = element("p", "conversation-role-summary");
       summary.append(
         element("span", "conversation-role-action-label", "Latest: "),
         textElement("bdi", "conversation-role-action", card.summary),
       );
-      content.appendChild(summary);
+      message.appendChild(summary);
+    }
+    if (card.facts.length > 0) {
+      const facts = element("ul", "conversation-role-facts");
+      for (const fact of card.facts) {
+        facts.appendChild(textElement("li", "conversation-role-fact", fact));
+      }
+      message.appendChild(facts);
     }
     const tools = toolsForCard(requestId, card.id).createNode({
       requestId,
@@ -137,8 +119,9 @@ export function createConversationRoleCards({
     });
     if (tools) {
       tools.setAttribute("aria-label", `${card.title} tool activity`);
-      content.appendChild(tools);
+      message.appendChild(tools);
     }
+    content.appendChild(message);
     row.appendChild(content);
     return row;
   }
@@ -147,28 +130,10 @@ export function createConversationRoleCards({
     return timelineRequests.has(requestId);
   }
 
-  function bindScroll({ requestId, body, details }) {
-    const position = { top: cardsScroll.get(requestId)?.top || 0 };
-    cardsScroll.set(requestId, position);
-    function ownsVisibleCards() {
-      if (cardsScroll.get(requestId) !== position) return false;
-      if (!details.open) return false;
-      return !isTimeline(requestId);
-    }
-    body.addEventListener("scroll", () => {
-      if (!ownsVisibleCards()) return;
-      position.top = body.scrollTop;
-    });
-    return () => {
-      if (!ownsVisibleCards()) return false;
-      body.scrollTop = position.top;
-      return true;
-    };
-  }
-
   function createNode({
     requestId,
     cards,
+    heading,
     timeline,
     hasTimeline,
     onViewChange = () => {},
@@ -179,9 +144,16 @@ export function createConversationRoleCards({
     if (cards.length === 0) return timeline;
     const section = element("div", "conversation-role-view");
     const toolbar = element("div", "conversation-role-toolbar");
-    toolbar.appendChild(element("span", "conversation-role-label", "Agents"));
+    toolbar.appendChild(
+      heading || element("span", "conversation-role-label", "Agents"),
+    );
     const toggle = element("button", "conversation-role-toggle");
     toggle.type = "button";
+    const icon = element("span", "conversation-role-toggle-icon");
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M3 3v10M7 3h6M7 8h6M7 13h6"/><circle cx="3" cy="3" r="1"/><circle cx="3" cy="8" r="1"/><circle cx="3" cy="13" r="1"/></svg>';
+    const toggleLabel = element("span", "conversation-role-toggle-label");
+    toggle.append(icon, toggleLabel);
     timelineToggles.set(requestId, toggle);
     if (hasTimeline) toolbar.appendChild(toggle);
     const panel = element("div", "conversation-role-panel");
@@ -191,14 +163,15 @@ export function createConversationRoleCards({
     list.setAttribute("aria-label", "Request agents");
     for (const card of cards) list.appendChild(renderCard(requestId, card));
     panel.append(list, timeline);
-    section.append(toolbar, panel);
+    section.append(panel, toolbar);
 
     function updateView() {
       const showTimeline = isTimeline(requestId);
       list.hidden = showTimeline;
       timeline.hidden = !showTimeline;
       section.dataset.view = showTimeline ? "timeline" : "cards";
-      toggle.textContent = showTimeline ? "Show agents" : "Show timeline";
+      toggleLabel.textContent = showTimeline ? "Show agents" : "Show timeline";
+      toggle.setAttribute("aria-pressed", String(showTimeline));
     }
 
     toggle.addEventListener("click", () => {
@@ -206,8 +179,6 @@ export function createConversationRoleCards({
       if (!hasTimeline) return;
       if (isTimeline(requestId)) timelineRequests.delete(requestId);
       else timelineRequests.add(requestId);
-      const position = cardsScroll.get(requestId);
-      if (position) position.top = 0;
       updateView();
       onViewChange();
     });
@@ -218,7 +189,6 @@ export function createConversationRoleCards({
   function forget(requestId) {
     timelineRequests.delete(requestId);
     timelineToggles.delete(requestId);
-    cardsScroll.delete(requestId);
     const tools = toolsByRequest.get(requestId);
     tools?.forEach((renderer) => renderer.reset());
     toolsByRequest.delete(requestId);
@@ -227,7 +197,6 @@ export function createConversationRoleCards({
   function reset() {
     timelineRequests.clear();
     timelineToggles.clear();
-    cardsScroll.clear();
     for (const tools of toolsByRequest.values()) {
       tools.forEach((renderer) => renderer.reset());
     }
@@ -236,9 +205,7 @@ export function createConversationRoleCards({
 
   return {
     createNode,
-    createSummaryNode,
     isTimeline,
-    bindScroll,
     forget,
     reset,
   };

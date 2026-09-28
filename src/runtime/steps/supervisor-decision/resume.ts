@@ -6,7 +6,7 @@ import {
   type SupervisorResumeContext,
 } from "./contracts.js";
 import {
-  ROLE_CALL_RESULT_MAX_LENGTH,
+  isRoleCallResultText,
   normalizeRoleCallWorkingDirectory,
   isRoleCallReviewerVerdictReceiptBoundToChild,
   normalizeRoleCallWorkResultReceipt,
@@ -180,7 +180,7 @@ function validateCompletedChild(
     !isSupervisorDelegateRoleId(child.roleId) ||
     !boundedText(child.objective, SUPERVISOR_OBJECTIVE_MAX_LENGTH) ||
     (child.outcome !== "completed" && child.outcome !== "failed") ||
-    !boundedText(child.summary, ROLE_CALL_RESULT_MAX_LENGTH)
+    !isRoleCallResultText(child.summary)
   ) {
     throw new Error("supervisor_resume_child_invalid");
   }

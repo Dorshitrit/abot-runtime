@@ -1,4 +1,4 @@
-import { escapeAttribute, escapeHtml } from "../../lib/text-format.js";
+import { escapeHtml } from "../../lib/text-format.js";
 import { isConfigObject } from "./config-model.js";
 
 export function renderModelSetupEntry(runtime, models) {
@@ -10,10 +10,13 @@ export function renderModelSetupEntry(runtime, models) {
       const count = models.filter(
         (model) => model.config?.provider === id,
       ).length;
+      const providerType = String(provider.type || "");
+      const hasDistinctProviderType =
+        providerType.length > 0 &&
+        providerType.toLowerCase() !== id.toLowerCase();
       return `<article class="config-provider-card">
-        <div><h3>${escapeHtml(id)}</h3><span>${escapeHtml(provider.type || "Provider")}</span></div>
+        <div class="config-provider-identity"><h3>${escapeHtml(id)}</h3>${hasDistinctProviderType ? `<span>${escapeHtml(providerType)}</span>` : ""}</div>
         <footer><span>${count} ${count === 1 ? "model" : "models"}</span>
-          <button type="button" data-config-action="add-model" data-provider-id="${escapeAttribute(id)}" aria-label="${escapeAttribute(`Add model to ${id}`)}">Add model</button>
         </footer>
       </article>`;
     })

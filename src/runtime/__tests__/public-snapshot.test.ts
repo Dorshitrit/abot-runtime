@@ -14,6 +14,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  commitFixture,
+  initializePublicSnapshotGitFixture,
+} from "./support/public-snapshot-git-fixture.js";
 
 import {
   PUBLIC_PACKAGE_FILES,
@@ -65,35 +69,6 @@ async function writeFixtureFile(
   const target = join(sourceRoot, ...relativePath.split("/"));
   await mkdir(dirname(target), { recursive: true });
   await writeFile(target, content, "utf-8");
-}
-
-async function commitFixture(
-  sourceRoot: string,
-  message = "fixture state",
-): Promise<void> {
-  await execFileAsync("git", [
-    "-C",
-    sourceRoot,
-    "config",
-    "user.email",
-    "fixture@example.invalid",
-  ]);
-  await execFileAsync("git", [
-    "-C",
-    sourceRoot,
-    "config",
-    "user.name",
-    "Fixture",
-  ]);
-  await execFileAsync("git", ["-C", sourceRoot, "add", "--all"]);
-  await execFileAsync("git", [
-    "-C",
-    sourceRoot,
-    "commit",
-    "--quiet",
-    "--message",
-    message,
-  ]);
 }
 
 function createPackageJson(): Record<string, unknown> {
@@ -242,7 +217,7 @@ async function createFixture(extraFiles: readonly string[] = []): Promise<{
     ".gitignore",
     "!plugins/internal-canary/**\n",
   );
-  await execFileAsync("git", ["-C", sourceRoot, "init", "--quiet"]);
+  await initializePublicSnapshotGitFixture(sourceRoot);
   await commitFixture(sourceRoot, "initial fixture");
   return { parent, sourceRoot, manifest };
 }
@@ -438,7 +413,7 @@ describe("public snapshot builder and verifier", () => {
     for (const relativePath of [...nestedPublicPaths, ...rootRuntimePaths]) {
       await writeFixtureFile(root, relativePath, "fixture\n");
     }
-    await execFileAsync("git", ["-C", root, "init", "--quiet"]);
+    await initializePublicSnapshotGitFixture(root);
     await execFileAsync("git", ["-C", root, "add", "--all"]);
 
     const { stdout: trackedOutput } = await execFileAsync("git", [

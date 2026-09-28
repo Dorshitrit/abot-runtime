@@ -1,3 +1,5 @@
+import { toolPermissionRequestError } from "../../lib/tool-permission-mode.js";
+
 export function createScheduleRequests({
   requestApi,
   getEnvironmentId,
@@ -7,8 +9,15 @@ export function createScheduleRequests({
   const requestSchedules = async (url, options) => {
     if (!supportsSchedules())
       throw new Error("Schedules require the local Runtime backend.");
+    const input = options?.body ? JSON.parse(options.body) : null;
+    requireSchedulePermission(input);
     return requestApi(url, options);
   };
+  function requireSchedulePermission(input) {
+    if (input?.toolPermissionMode === undefined) return;
+    const error = toolPermissionRequestError(input.toolPermissionMode, getConfig());
+    if (error) throw new Error(error.message);
+  }
   const path = (suffix = "", environmentId = getEnvironmentId()) =>
     `/schedules${suffix}?environment=${encodeURIComponent(environmentId)}`;
   const runPagePath = (resourceSuffix, environmentId, page = {}) => {

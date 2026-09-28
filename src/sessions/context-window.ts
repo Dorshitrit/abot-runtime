@@ -196,6 +196,7 @@ export function buildContextBuckets(
 
   for (let i = session.messages.length - 1; i >= 0; i -= 1) {
     const message = session.messages[i]!;
+    if (message.kind === "tool_approval_request") continue;
     const taskResultBoundary = isTaskResultBoundary(message);
 
     const observationContent =

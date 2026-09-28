@@ -9,19 +9,24 @@ import { createConversationSchedule } from "../../web-ui/app/components/conversa
 import { createWorkspaceShellHarness } from "./support/workspace-shell-harness.js";
 import { ContextElement } from "./support/composer-context-window-dom.js";
 
+const renderScheduleWorkspace = vi.hoisted(() => vi.fn());
+
 vi.mock("../../web-ui/app/components/schedules/workspace.js", () => ({
   createSchedulesWorkspace: () => ({
-    render: vi.fn(),
+    render: renderScheduleWorkspace,
     prepareLeave: () => true,
   }),
 }));
 afterEach(() => vi.useRealTimers());
 
-function createAvailabilityFixture(backend: string | undefined) {
+function createAvailabilityFixture(backend: string | undefined, ready = true) {
   vi.useFakeTimers();
   let config = backend ? { backend } : null;
+  const documentRoot = Object.assign(new EventTarget(), {
+    visibilityState: "visible",
+  });
   const fetchImpl = vi.fn(
-    async () =>
+    async (_url: string | URL | Request, _init?: RequestInit) =>
       new Response(
         JSON.stringify({
           jobs: [],
@@ -54,6 +59,8 @@ function createAvailabilityFixture(backend: string | undefined) {
     getCurrentSessionId: () => "session",
     getAgentModes: () => ["reasoning"],
     openSession: vi.fn(),
+    documentRoot,
+    isRuntimeReady: () => ready,
   });
   shell.bind();
   shell.load();
@@ -63,6 +70,11 @@ function createAvailabilityFixture(backend: string | undefined) {
     shell,
     fetchImpl,
     ...harness,
+    documentRoot,
+    setReady(value: boolean) {
+      ready = value;
+      feature.runtimeAvailabilityChanged();
+    },
     setBackend(value: string) {
       config = { backend: value };
       feature.refreshAvailability();
@@ -118,6 +130,117 @@ describe("native schedule backend availability", () => {
     expect(dom.homeWorkspacePanel.hidden).toBe(false);
     expect(dom.chatPanel.hidden).toBe(true);
     expect(dom.schedulesWorkspacePanel.hidden).toBe(true);
+  });
+
+  test("matching resource events coalesce and hidden, unrelated or inactive changes are ignored", async () => {
+    const f = createAvailabilityFixture("runtime");
+    f.shell.activateWorkspace("schedules");
+    await vi.advanceTimersByTimeAsync(0);
+    const count = () =>
+      f.fetchImpl.mock.calls.filter(([url]) =>
+        String(url).includes("/schedules?"),
+      ).length;
+    expect(count()).toBe(1);
+    f.feature.handleRealtime({
+      type: "event",
+      name: "scheduler.changed",
+      environment: "other",
+    });
+    f.feature.handleRealtime({
+      type: "workspace_changed",
+      environment: "dev",
+      resources: ["approvals"],
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(count()).toBe(1);
+    for (let i = 0; i < 3; i++)
+      f.feature.handleRealtime({
+        type: "event",
+        name: "scheduler.changed",
+        environment: "dev",
+      });
+    await vi.advanceTimersByTimeAsync(80);
+    expect(count()).toBe(2);
+    f.documentRoot.visibilityState = "hidden";
+    f.documentRoot.dispatchEvent(new Event("visibilitychange"));
+    f.feature.handleRealtime({
+      type: "workspace_changed",
+      environment: "dev",
+      resources: ["sessions"],
+    });
+    f.feature.reconnect();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(count()).toBe(2);
+    f.documentRoot.visibilityState = "visible";
+    f.documentRoot.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(count()).toBe(3);
+    f.feature.reconnect();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(count()).toBe(4);
+    f.shell.activateWorkspace("chat");
+    f.feature.handleRealtime({
+      type: "event",
+      name: "scheduler.changed",
+      environment: "dev",
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(count()).toBe(4);
+  });
+
+  test("committed session events refresh schedule conversation labels once per burst", async () => {
+    const f = createAvailabilityFixture("runtime");
+    f.shell.activateWorkspace("schedules");
+    await vi.advanceTimersByTimeAsync(0);
+    const sessionReads = () =>
+      f.fetchImpl.mock.calls.filter(([url]) =>
+        String(url).includes("/chat/sessions?"),
+      );
+    expect(sessionReads()).toHaveLength(1);
+    f.fetchImpl.mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            jobs: [],
+            sessions: [{ id: "session", title: "Renamed conversation" }],
+            profiles: [],
+            runs: [],
+          }),
+        ),
+    );
+    for (const name of ["session.messages.updated", "session.title.updated"])
+      f.feature.handleRealtime({ type: "event", name, environment: "other" });
+    f.feature.handleRealtime({
+      type: "event",
+      name: "thinking.started",
+      environment: "dev",
+    });
+    await vi.advanceTimersByTimeAsync(80);
+    expect(sessionReads()).toHaveLength(1);
+    for (const name of ["session.messages.updated", "session.title.updated"])
+      f.feature.handleRealtime({ type: "event", name, environment: "dev" });
+    await vi.advanceTimersByTimeAsync(80);
+    expect(sessionReads()).toHaveLength(2);
+    expect(sessionReads()[1][0]).toBe("/web-api/chat/sessions?environment=dev");
+    expect(renderScheduleWorkspace).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        sessions: [{ id: "session", title: "Renamed conversation" }],
+      }),
+    );
+  });
+
+  test("an already-open workspace refreshes once when runtime readiness returns", async () => {
+    const f = createAvailabilityFixture("runtime", false);
+    f.shell.activateWorkspace("schedules");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(f.fetchImpl).not.toHaveBeenCalled();
+    f.setReady(true);
+    await vi.advanceTimersByTimeAsync(0);
+    const calls = f.fetchImpl.mock.calls.length;
+    expect(calls).toBeGreaterThan(0);
+    f.setReady(true);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(f.fetchImpl).toHaveBeenCalledTimes(calls);
   });
 
   test("every bridge schedule client operation fails locally while ordinary requests remain usable", async () => {

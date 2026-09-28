@@ -43,6 +43,9 @@ export function normalizeCapabilityAdapter<TContext>(
       descriptor: descriptor.value,
       ...(adapter.prepare ? { prepare: adapter.prepare } : {}),
       execute: adapter.execute,
+      ...(typeof adapter.restore === "function"
+        ? { restore: adapter.restore }
+        : {}),
     }),
   };
 }

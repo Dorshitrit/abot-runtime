@@ -177,6 +177,7 @@ function enforcePluginResultByteBudget(result) {
 function failureResult(input) {
   return enforcePluginResultByteBudget({
     ok: false,
+    ...input.media !== void 0 ? { media: input.media } : {},
     output: input.output ?? input.message,
     producedNewInformation: false,
     ...input.progress !== void 0 ? { progress: input.progress } : {},
@@ -201,29 +202,8 @@ function failureFromError(error, options) {
   });
 }
 
-// plugins/exec/source/errors.ts
-var ExecPluginError = class extends Error {
-  code;
-  constructor(code, message) {
-    super(message);
-    this.name = "ExecPluginError";
-    this.code = code;
-  }
-};
-function execFailureFromError(error, operation) {
-  if (error instanceof ExecPluginError) {
-    return failureResult({
-      errorCode: error.code,
-      message: error.message,
-      output: `${operation} failed: ${error.message}`
-    });
-  }
-  return failureFromError(error, {
-    fallbackCode: `${operation}_failed`,
-    fallbackMessage: `${operation} failed without a safe diagnostic.`,
-    operation
-  });
-}
+// src/capabilities/tool-media.ts
+var TOOL_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
 // plugins/exec/source/filesystem-observer.ts
 var import_node_crypto = require("node:crypto");
@@ -495,476 +475,7 @@ function diffExecFilesystemSnapshots(before, after) {
   });
 }
 
-// plugins/exec/source/paths.ts
-var import_promises2 = require("node:fs/promises");
-var import_node_path2 = require("node:path");
-function resolveContextualDirectory(pluginContext, executionContext, requestedPath) {
-  if ((0, import_node_path2.isAbsolute)(requestedPath)) return { absolutePath: requestedPath };
-  const isWorkspaceAlias = requestedPath === "workspace" || requestedPath.startsWith("workspace/");
-  const base = resolvePluginPath(
-    {
-      runtimePathResolver: executionContext?.runtimePathResolver ?? pluginContext.runtimePathResolver
-    },
-    isWorkspaceAlias ? "workspace" : ".",
-    { allowedLocations: [isWorkspaceAlias ? "workspace" : "agent_work"] }
-  );
-  const relativePath = isWorkspaceAlias ? requestedPath.slice("workspace".length + 1) || "." : requestedPath;
-  return { absolutePath: `${base.absolutePath}${import_node_path2.sep}${relativePath}`, base };
-}
-function isOutsideExecContextBase(relativePath) {
-  if (relativePath === "..") return true;
-  if (relativePath.startsWith(`..${import_node_path2.sep}`)) return true;
-  return (0, import_node_path2.isAbsolute)(relativePath);
-}
-function logicalDirectory(absolutePath, base) {
-  if (!base) return absolutePath;
-  const fromBase = (0, import_node_path2.relative)(base.absolutePath, absolutePath);
-  if (isOutsideExecContextBase(fromBase)) return absolutePath;
-  return import_node_path2.posix.join(base.logicalPath, fromBase.split(import_node_path2.sep).join("/") || ".");
-}
-async function resolveExecWorkingDirectory(pluginContext, executionContext, rawPath) {
-  const requestedPath = readRequiredString(rawPath, {
-    name: "cwd",
-    trim: false,
-    maxLength: 4096
-  });
-  if (requestedPath.includes("\0")) {
-    throw new ExecPluginError(
-      "exec_cwd_invalid",
-      "The selected cwd contains NUL characters."
-    );
-  }
-  const target = resolveContextualDirectory(
-    pluginContext,
-    executionContext,
-    requestedPath
-  );
-  let absolutePath;
-  let info;
-  try {
-    absolutePath = await (0, import_promises2.realpath)(target.absolutePath);
-    info = await (0, import_promises2.stat)(absolutePath);
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      throw new ExecPluginError(
-        "exec_cwd_not_found",
-        "The selected cwd does not exist. Select an existing directory."
-      );
-    }
-    throw new ExecPluginError(
-      "exec_cwd_inaccessible",
-      "The selected cwd cannot be accessed by the runtime."
-    );
-  }
-  if (!info.isDirectory()) {
-    throw new ExecPluginError(
-      "exec_cwd_not_directory",
-      "The selected cwd is not a directory."
-    );
-  }
-  return Object.freeze({
-    absolutePath,
-    logicalPath: logicalDirectory(absolutePath, target.base)
-  });
-}
-
-// plugins/exec/source/process-manager.ts
-var import_node_child_process = require("node:child_process");
-var import_node_crypto2 = require("node:crypto");
-var import_node_string_decoder = require("node:string_decoder");
-
-// plugins/exec/source/shell-platform.ts
-var import_node_fs2 = require("node:fs");
-var import_promises3 = require("node:fs/promises");
-var EXEC_SHELL = "/bin/bash";
-function isSupportedExecPlatform(platform) {
-  return platform === "linux" || platform === "darwin";
-}
-async function assertSupportedShell(platform = process.platform) {
-  if (!isSupportedExecPlatform(platform)) {
-    throw new ExecPluginError(
-      "exec_platform_unsupported",
-      "The exec plugin requires Linux or macOS and executable /bin/bash."
-    );
-  }
-  try {
-    await (0, import_promises3.access)(EXEC_SHELL, import_node_fs2.constants.X_OK);
-  } catch {
-    throw new ExecPluginError(
-      "exec_shell_unavailable",
-      "The exec plugin cannot start because executable /bin/bash is unavailable."
-    );
-  }
-}
-
-// plugins/exec/source/process-manager.ts
-var COMPLETED_PROCESS_RETENTION_MS = 5 * 6e4;
-var MAX_ACTIVE_PROCESSES_PER_SCOPE = 4;
-var CappedTextBuffer = class {
-  constructor(maxChars) {
-    this.maxChars = maxChars;
-  }
-  maxChars;
-  text = "";
-  originalChars = 0;
-  omittedChars = 0;
-  sawOutput = false;
-  append(chunk) {
-    if (!chunk) return;
-    const safeChunk = sanitizeJsonText(chunk);
-    this.sawOutput = true;
-    this.originalChars += safeChunk.length;
-    const available = Math.max(this.maxChars - this.text.length, 0);
-    this.text += safeChunk.slice(0, available);
-    this.omittedChars += Math.max(safeChunk.length - available, 0);
-  }
-  consume() {
-    const text = this.text;
-    const originalChars = this.originalChars;
-    const omittedChars = this.omittedChars;
-    this.text = "";
-    this.originalChars = 0;
-    this.omittedChars = 0;
-    return Object.freeze({
-      text,
-      sawOutput: this.sawOutput,
-      metadata: Object.freeze({
-        truncated: omittedChars > 0,
-        originalChars,
-        returnedChars: text.length,
-        omittedChars
-      })
-    });
-  }
-};
-function createExecProcessManager() {
-  const processes = /* @__PURE__ */ new Map();
-  const unknownProcess = () => new ExecPluginError(
-    "unknown_exec_process",
-    "The exec process is unknown to this plugin instance and session."
-  );
-  const dispose = (managed) => {
-    if (managed.retentionTimeout) clearTimeout(managed.retentionTimeout);
-    processes.delete(managed.processId);
-    managed.onDisposed?.(managed.processId);
-  };
-  const activeProcessCount = (scope) => [...processes.values()].filter(
-    (managed) => managed.scope === scope && !managed.settled
-  ).length;
-  const killProcessTree = (managed) => {
-    const pid = managed.child.pid;
-    if (typeof pid === "number") {
-      try {
-        process.kill(-pid, "SIGKILL");
-        return;
-      } catch {
-      }
-    }
-    managed.child.kill("SIGKILL");
-  };
-  const requestTermination = (managed, reason) => {
-    if (managed.settled || managed.terminationReason) return;
-    managed.terminationReason = reason;
-    killProcessTree(managed);
-  };
-  const scheduleIdleTimeout = (managed, idleTimeoutMs) => {
-    if (managed.idleTimeout) clearTimeout(managed.idleTimeout);
-    managed.idleTimeout = setTimeout(
-      () => requestTermination(managed, "idle_timeout"),
-      idleTimeoutMs
-    );
-    managed.idleTimeout.unref?.();
-  };
-  const settle = (managed, exitCode, fallbackReason) => {
-    if (managed.settled) return;
-    managed.settled = true;
-    managed.terminationReason ??= fallbackReason;
-    managed.exitCode = managed.terminationReason === "hard_timeout" || managed.terminationReason === "idle_timeout" ? 124 : managed.terminationReason === "cancelled" || managed.terminationReason === "aborted" ? 130 : exitCode;
-    if (managed.hardTimeout) clearTimeout(managed.hardTimeout);
-    if (managed.idleTimeout) clearTimeout(managed.idleTimeout);
-    if (managed.abortSignal && managed.abortListener) {
-      managed.abortSignal.removeEventListener("abort", managed.abortListener);
-    }
-    managed.resolveSettled();
-    if (managed.terminationReason === "aborted") {
-      dispose(managed);
-      return;
-    }
-    managed.retentionTimeout = setTimeout(
-      () => dispose(managed),
-      COMPLETED_PROCESS_RETENTION_MS
-    );
-    managed.retentionTimeout.unref?.();
-  };
-  const consumeSnapshot = (managed) => {
-    if (managed.settled) {
-      if (managed.terminalSnapshotClaimed) throw unknownProcess();
-      managed.terminalSnapshotClaimed = true;
-    }
-    return Object.freeze({
-      processId: managed.processId,
-      status: managed.settled ? "settled" : "running",
-      ...!managed.settled ? { nextCursor: managed.cursor } : {},
-      ...managed.exitCode === void 0 ? {} : { exitCode: managed.exitCode },
-      stdout: managed.stdout.consume(),
-      stderr: managed.stderr.consume(),
-      ...managed.terminationReason ? { terminationReason: managed.terminationReason } : {},
-      elapsedMs: Date.now() - managed.startedAt
-    });
-  };
-  const waitForSettlement = async (managed, waitMs) => {
-    if (managed.settled) return;
-    let timeout;
-    await Promise.race([
-      managed.settlePromise,
-      new Promise((resolve) => {
-        timeout = setTimeout(resolve, waitMs);
-        timeout.unref?.();
-      })
-    ]);
-    if (timeout) clearTimeout(timeout);
-  };
-  const getScopedProcess = (processId, scope) => {
-    const managed = processes.get(processId);
-    if (!managed || managed.scope !== scope) {
-      throw unknownProcess();
-    }
-    return managed;
-  };
-  const withProcessTransition = async (managed, operation) => {
-    const previous = managed.transitionTail;
-    let releaseTransition = () => void 0;
-    managed.transitionTail = new Promise((resolve) => {
-      releaseTransition = resolve;
-    });
-    await previous;
-    try {
-      if (processes.get(managed.processId) !== managed) throw unknownProcess();
-      return await operation();
-    } finally {
-      releaseTransition();
-    }
-  };
-  return Object.freeze({
-    async start(params) {
-      await assertSupportedShell();
-      if (activeProcessCount(params.scope) >= MAX_ACTIVE_PROCESSES_PER_SCOPE) {
-        throw new ExecPluginError(
-          "exec_process_limit_reached",
-          `The session already has ${MAX_ACTIVE_PROCESSES_PER_SCOPE} active exec processes.`
-        );
-      }
-      let resolveSettled = () => void 0;
-      const settlePromise = new Promise((resolve) => {
-        resolveSettled = resolve;
-      });
-      let child;
-      try {
-        child = (0, import_node_child_process.spawn)(EXEC_SHELL, ["-lc", params.shellCommand], {
-          cwd: params.cwd,
-          detached: true,
-          stdio: ["ignore", "pipe", "pipe"]
-        });
-      } catch {
-        throw new ExecPluginError(
-          "exec_spawn_failed",
-          "The runtime could not start the configured non-interactive shell."
-        );
-      }
-      const managed = {
-        processId: `exec_${(0, import_node_crypto2.randomUUID)()}`,
-        scope: params.scope,
-        child,
-        startedAt: Date.now(),
-        cursor: 1,
-        stdout: new CappedTextBuffer(params.outputMaxChars),
-        stderr: new CappedTextBuffer(params.outputMaxChars),
-        stdoutDecoder: new import_node_string_decoder.StringDecoder("utf8"),
-        stderrDecoder: new import_node_string_decoder.StringDecoder("utf8"),
-        settled: false,
-        settlePromise,
-        resolveSettled,
-        transitionTail: Promise.resolve(),
-        terminalSnapshotClaimed: false,
-        waitInFlight: false,
-        ...params.abortSignal ? { abortSignal: params.abortSignal } : {},
-        ...params.onDisposed ? { onDisposed: params.onDisposed } : {}
-      };
-      processes.set(managed.processId, managed);
-      const observe = (stream, chunk) => {
-        if (managed.settled || !chunk) return;
-        if (stream === "stdout") managed.stdout.append(chunk);
-        else managed.stderr.append(chunk);
-        scheduleIdleTimeout(managed, params.idleTimeoutMs);
-      };
-      child.stdout.on(
-        "data",
-        (chunk) => observe("stdout", managed.stdoutDecoder.write(chunk))
-      );
-      child.stderr.on(
-        "data",
-        (chunk) => observe("stderr", managed.stderrDecoder.write(chunk))
-      );
-      child.on("error", () => settle(managed, -1, "spawn_failed"));
-      child.on("close", (code) => {
-        observe("stdout", managed.stdoutDecoder.end());
-        observe("stderr", managed.stderrDecoder.end());
-        settle(managed, typeof code === "number" ? code : -1, "completed");
-      });
-      managed.hardTimeout = setTimeout(
-        () => requestTermination(managed, "hard_timeout"),
-        params.hardTimeoutMs
-      );
-      managed.hardTimeout.unref?.();
-      scheduleIdleTimeout(managed, params.idleTimeoutMs);
-      if (params.abortSignal) {
-        managed.abortListener = () => requestTermination(managed, "aborted");
-        if (params.abortSignal.aborted) managed.abortListener();
-        else {
-          params.abortSignal.addEventListener("abort", managed.abortListener, {
-            once: true
-          });
-        }
-      }
-      if (params.yieldAfterMs === null || params.yieldAfterMs >= params.hardTimeoutMs) {
-        await managed.settlePromise;
-      } else {
-        await waitForSettlement(managed, params.yieldAfterMs);
-      }
-      return consumeSnapshot(managed);
-    },
-    async wait(params) {
-      const managed = getScopedProcess(params.processId, params.scope);
-      await withProcessTransition(managed, () => {
-        if (managed.terminalSnapshotClaimed) throw unknownProcess();
-        if (managed.waitInFlight) {
-          throw new ExecPluginError(
-            "exec_wait_in_progress",
-            "Another wait is already observing this exec process."
-          );
-        }
-        if (params.cursor !== managed.cursor) {
-          throw new ExecPluginError(
-            "stale_exec_process_cursor",
-            `The exec cursor is stale; expected ${managed.cursor}.`
-          );
-        }
-        managed.waitInFlight = true;
-        if (!managed.settled) managed.cursor += 1;
-      });
-      await waitForSettlement(managed, params.waitMs);
-      return withProcessTransition(managed, () => {
-        managed.waitInFlight = false;
-        if (managed.terminalSnapshotClaimed) throw unknownProcess();
-        return consumeSnapshot(managed);
-      });
-    },
-    async cancel(params) {
-      const managed = getScopedProcess(params.processId, params.scope);
-      return withProcessTransition(managed, async () => {
-        if (managed.terminalSnapshotClaimed) throw unknownProcess();
-        if (!managed.settled) {
-          requestTermination(managed, "cancelled");
-          await managed.settlePromise;
-        }
-        return consumeSnapshot(managed);
-      });
-    },
-    async release(processId, scope) {
-      const managed = processes.get(processId);
-      if (!managed) return;
-      if (managed.scope !== scope) {
-        throw unknownProcess();
-      }
-      await withProcessTransition(managed, () => {
-        if (managed.settled) dispose(managed);
-      });
-    }
-  });
-}
-
-// plugins/exec/source/settings.ts
-var DEFAULT_EXEC_HARD_TIMEOUT_MS = 6e5;
-var DEFAULT_EXEC_YIELD_AFTER_MS = 15e3;
-var DEFAULT_EXEC_IDLE_TIMEOUT_MS = 12e4;
-var DEFAULT_EXEC_OUTPUT_MAX_CHARS = 8e3;
-var EXEC_OUTPUT_MAX_CHARS = 8e3;
-var EXEC_COMMAND_MAX_CHARS = 4096;
-function readExecSettings(config) {
-  return Object.freeze({
-    hardTimeoutMs: readBoundedInteger(config?.timeoutMs, {
-      defaultValue: DEFAULT_EXEC_HARD_TIMEOUT_MS,
-      minimum: 1,
-      maximum: 36e5,
-      name: "timeoutMs"
-    }),
-    yieldAfterMs: readBoundedInteger(config?.yieldAfterMs, {
-      defaultValue: DEFAULT_EXEC_YIELD_AFTER_MS,
-      minimum: 1,
-      maximum: 6e5,
-      name: "yieldAfterMs"
-    }),
-    idleTimeoutMs: readBoundedInteger(config?.idleTimeoutMs, {
-      defaultValue: DEFAULT_EXEC_IDLE_TIMEOUT_MS,
-      minimum: 1,
-      maximum: 36e5,
-      name: "idleTimeoutMs"
-    }),
-    outputMaxChars: readBoundedInteger(config?.outputMaxChars, {
-      defaultValue: DEFAULT_EXEC_OUTPUT_MAX_CHARS,
-      minimum: 64,
-      maximum: EXEC_OUTPUT_MAX_CHARS,
-      name: "outputMaxChars"
-    })
-  });
-}
-
-// plugins/exec/source/validation.ts
-function isExecutableCommand(value) {
-  if (value.trim().length === 0) return false;
-  return !value.includes("\0");
-}
-function readExecCommand(value) {
-  const command = readRequiredString(value, {
-    name: "command",
-    trim: false,
-    maxLength: EXEC_COMMAND_MAX_CHARS
-  });
-  if (!isExecutableCommand(command)) {
-    throw new ExecPluginError(
-      "exec_command_invalid",
-      "The command must contain nonempty text without NUL characters."
-    );
-  }
-  return command;
-}
-function isInvalidExecParameter(name, value) {
-  if (typeof value !== "string") return true;
-  if (value.length === 0) return true;
-  if (name === "command") return !isExecutableCommand(value);
-  return value.includes("\0");
-}
-function createExecAdapter() {
-  return {
-    validateCall(input) {
-      const invalid = ["command", "cwd"].filter(
-        (name) => isInvalidExecParameter(name, input.params[name])
-      );
-      if (invalid.length === 0) return null;
-      return {
-        error: `invalid params for exec: invalid ${invalid.join(", ")}`,
-        repairHint: "Provide one command without NUL characters and one explicit existing cwd."
-      };
-    }
-  };
-}
-
-// plugins/exec/source/handlers.ts
-var COMMAND_PREVIEW_MAX_CHARS = 768;
-function processScope(context) {
-  const sessionId = context?.sharedState?.currentSessionId?.trim();
-  return sessionId || "anonymous";
-}
+// plugins/exec/source/result-presentation.ts
 function streamDisplay(snapshot) {
   if (snapshot.text) return snapshot.text;
   return snapshot.sawOutput ? "(no new output; earlier output was already returned)" : "(empty)";
@@ -1140,14 +651,661 @@ async function finalizeExecResult(params) {
     errorCode
   });
 }
-function createExecHandlers(pluginContext, settings) {
+
+// plugins/exec/source/errors.ts
+var ExecPluginError = class extends Error {
+  code;
+  constructor(code, message) {
+    super(message);
+    this.name = "ExecPluginError";
+    this.code = code;
+  }
+};
+function execFailureFromError(error, operation) {
+  if (error instanceof ExecPluginError) {
+    return failureResult({
+      errorCode: error.code,
+      message: error.message,
+      output: `${operation} failed: ${error.message}`
+    });
+  }
+  return failureFromError(error, {
+    fallbackCode: `${operation}_failed`,
+    fallbackMessage: `${operation} failed without a safe diagnostic.`,
+    operation
+  });
+}
+
+// plugins/exec/source/request-resources.ts
+var ExecRequestResources = class {
+  constructor(manager, pending, preparation) {
+    this.manager = manager;
+    this.pending = pending;
+    const state = preparation?.requestState;
+    if (!state) return;
+    const saved = state.read("exec.terminal.v1");
+    if (saved !== void 0) this.restore(saved);
+    state.register("exec.terminal.v1", {
+      snapshot: () => this.snapshot(),
+      dispose: () => this.dispose()
+    });
+  }
+  manager;
+  pending;
+  owned = /* @__PURE__ */ new Map();
+  restored = /* @__PURE__ */ new Map();
+  started(processId, scope, settled, context) {
+    this.owned.set(processId, scope);
+    context?.requestWork?.trackUntil(settled);
+  }
+  forget(processId) {
+    this.owned.delete(processId);
+    this.restored.delete(processId);
+  }
+  terminal(processId, scope, cursor) {
+    const entry = this.restored.get(processId);
+    if (!entry) return void 0;
+    if (entry.scope !== scope)
+      throw new ExecPluginError(
+        "unknown_exec_process",
+        "The exec process belongs to a different session."
+      );
+    if (cursor !== void 0 && cursor !== entry.cursor)
+      throw new ExecPluginError(
+        "stale_exec_process_cursor",
+        "The saved exec cursor is stale."
+      );
+    this.restored.delete(processId);
+    return structuredClone(entry.snapshot);
+  }
+  snapshot() {
+    const executions = [...this.restored.values()];
+    for (const [processId, scope] of this.owned) {
+      const execution = this.pending.get(processId);
+      if (!execution) continue;
+      const terminal = this.manager.snapshotSettled(processId, scope);
+      const before = execution.filesystemStateBefore;
+      executions.push({
+        processId,
+        scope,
+        ...terminal,
+        execution: {
+          ...execution,
+          filesystemStateBefore: before ? { ...before, entries: [...before.entries] } : null
+        }
+      });
+    }
+    return { kind: "exec_terminal_state_v1", executions };
+  }
+  restore(value) {
+    if (!isRecord(value) || value.kind !== "exec_terminal_state_v1" || !Array.isArray(value.executions))
+      throw invalid();
+    for (const entry of value.executions) {
+      if (!isSavedExecution(entry) || this.restored.has(entry.processId))
+        throw invalid();
+      const before = entry.execution.filesystemStateBefore;
+      this.restored.set(entry.processId, structuredClone(entry));
+      this.pending.set(entry.processId, {
+        ...structuredClone(entry.execution),
+        filesystemStateBefore: before ? { ...before, entries: new Map(before.entries) } : null
+      });
+    }
+  }
+  async dispose() {
+    for (const [processId, scope] of this.owned) {
+      try {
+        await this.manager.cancel({ processId, scope });
+      } catch {
+      }
+      try {
+        await this.manager.release(processId, scope);
+      } catch {
+      }
+      this.pending.delete(processId);
+    }
+    for (const id of this.restored.keys()) this.pending.delete(id);
+    this.owned.clear();
+    this.restored.clear();
+  }
+};
+function isSavedExecution(value) {
+  if (!isRecord(value) || typeof value.processId !== "string" || typeof value.scope !== "string" || !Number.isSafeInteger(value.cursor) || value.cursor < 1 || !isRecord(value.snapshot) || value.snapshot.processId !== value.processId || value.snapshot.status !== "settled" || !isStream(value.snapshot.stdout) || !isStream(value.snapshot.stderr) || !Number.isFinite(value.snapshot.elapsedMs) || !isRecord(value.execution) || typeof value.execution.commandPreview !== "string" || !isRecord(value.execution.cwd) || typeof value.execution.cwd.absolutePath !== "string" || typeof value.execution.cwd.logicalPath !== "string")
+    return false;
+  if (![
+    value.execution.hardTimeoutMs,
+    value.execution.idleTimeoutMs,
+    value.execution.outputMaxChars
+  ].every(Number.isFinite))
+    return false;
+  const before = value.execution.filesystemStateBefore;
+  return before === null || isRecord(before) && typeof before.absoluteRoot === "string" && typeof before.logicalRoot === "string" && typeof before.rootExists === "boolean" && typeof before.complete === "boolean" && Array.isArray(before.entries) && before.entries.every(
+    (entry) => Array.isArray(entry) && entry.length === 2 && typeof entry[0] === "string" && isRecord(entry[1]) && typeof entry[1].kind === "string" && [entry[1].mode, entry[1].size, entry[1].mtimeMs].every(
+      Number.isFinite
+    )
+  );
+}
+function isStream(value) {
+  return isRecord(value) && typeof value.text === "string" && typeof value.sawOutput === "boolean" && isRecord(value.metadata) && typeof value.metadata.truncated === "boolean" && [
+    value.metadata.originalChars,
+    value.metadata.returnedChars,
+    value.metadata.omittedChars
+  ].every(Number.isFinite);
+}
+function isRecord(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+function invalid() {
+  return new Error("exec_terminal_snapshot_invalid");
+}
+
+// plugins/exec/source/paths.ts
+var import_promises2 = require("node:fs/promises");
+var import_node_path2 = require("node:path");
+function resolveContextualDirectory(pluginContext, executionContext, requestedPath) {
+  if ((0, import_node_path2.isAbsolute)(requestedPath)) return { absolutePath: requestedPath };
+  const isWorkspaceAlias = requestedPath === "workspace" || requestedPath.startsWith("workspace/");
+  const base = resolvePluginPath(
+    {
+      runtimePathResolver: executionContext?.runtimePathResolver ?? pluginContext.runtimePathResolver
+    },
+    isWorkspaceAlias ? "workspace" : ".",
+    { allowedLocations: [isWorkspaceAlias ? "workspace" : "agent_work"] }
+  );
+  const relativePath = isWorkspaceAlias ? requestedPath.slice("workspace".length + 1) || "." : requestedPath;
+  return { absolutePath: `${base.absolutePath}${import_node_path2.sep}${relativePath}`, base };
+}
+function isOutsideExecContextBase(relativePath) {
+  if (relativePath === "..") return true;
+  if (relativePath.startsWith(`..${import_node_path2.sep}`)) return true;
+  return (0, import_node_path2.isAbsolute)(relativePath);
+}
+function logicalDirectory(absolutePath, base) {
+  if (!base) return absolutePath;
+  const fromBase = (0, import_node_path2.relative)(base.absolutePath, absolutePath);
+  if (isOutsideExecContextBase(fromBase)) return absolutePath;
+  return import_node_path2.posix.join(base.logicalPath, fromBase.split(import_node_path2.sep).join("/") || ".");
+}
+async function resolveExecWorkingDirectory(pluginContext, executionContext, rawPath) {
+  const requestedPath = readRequiredString(rawPath, {
+    name: "cwd",
+    trim: false,
+    maxLength: 4096
+  });
+  if (requestedPath.includes("\0")) {
+    throw new ExecPluginError(
+      "exec_cwd_invalid",
+      "The selected cwd contains NUL characters."
+    );
+  }
+  const target = resolveContextualDirectory(
+    pluginContext,
+    executionContext,
+    requestedPath
+  );
+  let absolutePath;
+  let info;
+  try {
+    absolutePath = await (0, import_promises2.realpath)(target.absolutePath);
+    info = await (0, import_promises2.stat)(absolutePath);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      throw new ExecPluginError(
+        "exec_cwd_not_found",
+        "The selected cwd does not exist. Select an existing directory."
+      );
+    }
+    throw new ExecPluginError(
+      "exec_cwd_inaccessible",
+      "The selected cwd cannot be accessed by the runtime."
+    );
+  }
+  if (!info.isDirectory()) {
+    throw new ExecPluginError(
+      "exec_cwd_not_directory",
+      "The selected cwd is not a directory."
+    );
+  }
+  return Object.freeze({
+    absolutePath,
+    logicalPath: logicalDirectory(absolutePath, target.base)
+  });
+}
+
+// plugins/exec/source/process-manager.ts
+var import_node_child_process = require("node:child_process");
+var import_node_crypto2 = require("node:crypto");
+var import_node_string_decoder = require("node:string_decoder");
+
+// plugins/exec/source/process-output-buffer.ts
+var CappedTextBuffer = class {
+  constructor(maxChars) {
+    this.maxChars = maxChars;
+  }
+  maxChars;
+  text = "";
+  originalChars = 0;
+  omittedChars = 0;
+  sawOutput = false;
+  append(chunk) {
+    if (!chunk) return;
+    const safeChunk = sanitizeJsonText(chunk);
+    this.sawOutput = true;
+    this.originalChars += safeChunk.length;
+    const available = Math.max(this.maxChars - this.text.length, 0);
+    this.text += safeChunk.slice(0, available);
+    this.omittedChars += Math.max(safeChunk.length - available, 0);
+  }
+  peek() {
+    const text = this.text;
+    const originalChars = this.originalChars;
+    const omittedChars = this.omittedChars;
+    return Object.freeze({
+      text,
+      sawOutput: this.sawOutput,
+      metadata: Object.freeze({
+        truncated: omittedChars > 0,
+        originalChars,
+        returnedChars: text.length,
+        omittedChars
+      })
+    });
+  }
+  consume() {
+    const result = this.peek();
+    this.text = "";
+    this.originalChars = 0;
+    this.omittedChars = 0;
+    return result;
+  }
+};
+
+// plugins/exec/source/shell-platform.ts
+var import_node_fs2 = require("node:fs");
+var import_promises3 = require("node:fs/promises");
+var EXEC_SHELL = "/bin/bash";
+function isSupportedExecPlatform(platform) {
+  return platform === "linux" || platform === "darwin";
+}
+async function assertSupportedShell(platform = process.platform) {
+  if (!isSupportedExecPlatform(platform)) {
+    throw new ExecPluginError(
+      "exec_platform_unsupported",
+      "The exec plugin requires Linux or macOS and executable /bin/bash."
+    );
+  }
+  try {
+    await (0, import_promises3.access)(EXEC_SHELL, import_node_fs2.constants.X_OK);
+  } catch {
+    throw new ExecPluginError(
+      "exec_shell_unavailable",
+      "The exec plugin cannot start because executable /bin/bash is unavailable."
+    );
+  }
+}
+
+// plugins/exec/source/process-manager.ts
+var COMPLETED_PROCESS_RETENTION_MS = 5 * 6e4;
+var MAX_ACTIVE_PROCESSES_PER_SCOPE = 4;
+function createExecProcessManager() {
+  const processes = /* @__PURE__ */ new Map();
+  const unknownProcess = () => new ExecPluginError(
+    "unknown_exec_process",
+    "The exec process is unknown to this plugin instance and session."
+  );
+  const dispose = (managed) => {
+    if (managed.retentionTimeout) clearTimeout(managed.retentionTimeout);
+    processes.delete(managed.processId);
+    managed.onDisposed?.(managed.processId);
+  };
+  const activeProcessCount = (scope) => [...processes.values()].filter(
+    (managed) => managed.scope === scope && !managed.settled
+  ).length;
+  const killProcessTree = (managed) => {
+    const pid = managed.child.pid;
+    if (typeof pid === "number") {
+      try {
+        process.kill(-pid, "SIGKILL");
+        return;
+      } catch {
+      }
+    }
+    managed.child.kill("SIGKILL");
+  };
+  const requestTermination = (managed, reason) => {
+    if (managed.settled || managed.terminationReason) return;
+    managed.terminationReason = reason;
+    killProcessTree(managed);
+  };
+  const scheduleIdleTimeout = (managed, idleTimeoutMs) => {
+    if (managed.idleTimeout) clearTimeout(managed.idleTimeout);
+    managed.idleTimeout = setTimeout(
+      () => requestTermination(managed, "idle_timeout"),
+      idleTimeoutMs
+    );
+    managed.idleTimeout.unref?.();
+  };
+  const settle = (managed, exitCode, fallbackReason) => {
+    if (managed.settled) return;
+    managed.settled = true;
+    managed.terminationReason ??= fallbackReason;
+    managed.exitCode = managed.terminationReason === "hard_timeout" || managed.terminationReason === "idle_timeout" ? 124 : managed.terminationReason === "cancelled" || managed.terminationReason === "aborted" ? 130 : exitCode;
+    if (managed.hardTimeout) clearTimeout(managed.hardTimeout);
+    if (managed.idleTimeout) clearTimeout(managed.idleTimeout);
+    if (managed.abortSignal && managed.abortListener) {
+      managed.abortSignal.removeEventListener("abort", managed.abortListener);
+    }
+    managed.resolveSettled();
+    if (managed.terminationReason === "aborted") {
+      dispose(managed);
+      return;
+    }
+    managed.retentionTimeout = setTimeout(
+      () => dispose(managed),
+      COMPLETED_PROCESS_RETENTION_MS
+    );
+    managed.retentionTimeout.unref?.();
+  };
+  const consumeSnapshot = (managed) => {
+    if (managed.settled) {
+      if (managed.terminalSnapshotClaimed) throw unknownProcess();
+      managed.terminalSnapshotClaimed = true;
+    }
+    return Object.freeze({
+      processId: managed.processId,
+      status: managed.settled ? "settled" : "running",
+      ...!managed.settled ? { nextCursor: managed.cursor } : {},
+      ...managed.exitCode === void 0 ? {} : { exitCode: managed.exitCode },
+      stdout: managed.stdout.consume(),
+      stderr: managed.stderr.consume(),
+      ...managed.terminationReason ? { terminationReason: managed.terminationReason } : {},
+      elapsedMs: Date.now() - managed.startedAt
+    });
+  };
+  const waitForSettlement = async (managed, waitMs) => {
+    if (managed.settled) return;
+    let timeout;
+    await Promise.race([
+      managed.settlePromise,
+      new Promise((resolve) => {
+        timeout = setTimeout(resolve, waitMs);
+        timeout.unref?.();
+      })
+    ]);
+    if (timeout) clearTimeout(timeout);
+  };
+  const getScopedProcess = (processId, scope) => {
+    const managed = processes.get(processId);
+    if (!managed || managed.scope !== scope) {
+      throw unknownProcess();
+    }
+    return managed;
+  };
+  const withProcessTransition = async (managed, operation) => {
+    const previous = managed.transitionTail;
+    let releaseTransition = () => void 0;
+    managed.transitionTail = new Promise((resolve) => {
+      releaseTransition = resolve;
+    });
+    await previous;
+    try {
+      if (processes.get(managed.processId) !== managed) throw unknownProcess();
+      return await operation();
+    } finally {
+      releaseTransition();
+    }
+  };
+  return Object.freeze({
+    async start(params) {
+      await assertSupportedShell();
+      if (activeProcessCount(params.scope) >= MAX_ACTIVE_PROCESSES_PER_SCOPE) {
+        throw new ExecPluginError(
+          "exec_process_limit_reached",
+          `The session already has ${MAX_ACTIVE_PROCESSES_PER_SCOPE} active exec processes.`
+        );
+      }
+      let resolveSettled = () => void 0;
+      const settlePromise = new Promise((resolve) => {
+        resolveSettled = resolve;
+      });
+      let child;
+      try {
+        child = (0, import_node_child_process.spawn)(EXEC_SHELL, ["-lc", params.shellCommand], {
+          cwd: params.cwd,
+          detached: true,
+          stdio: ["ignore", "pipe", "pipe"]
+        });
+      } catch {
+        throw new ExecPluginError(
+          "exec_spawn_failed",
+          "The runtime could not start the configured non-interactive shell."
+        );
+      }
+      const managed = {
+        processId: `exec_${(0, import_node_crypto2.randomUUID)()}`,
+        scope: params.scope,
+        child,
+        startedAt: Date.now(),
+        cursor: 1,
+        stdout: new CappedTextBuffer(params.outputMaxChars),
+        stderr: new CappedTextBuffer(params.outputMaxChars),
+        stdoutDecoder: new import_node_string_decoder.StringDecoder("utf8"),
+        stderrDecoder: new import_node_string_decoder.StringDecoder("utf8"),
+        settled: false,
+        settlePromise,
+        resolveSettled,
+        transitionTail: Promise.resolve(),
+        terminalSnapshotClaimed: false,
+        waitInFlight: false,
+        ...params.abortSignal ? { abortSignal: params.abortSignal } : {},
+        ...params.onDisposed ? { onDisposed: params.onDisposed } : {}
+      };
+      processes.set(managed.processId, managed);
+      params.onStarted?.(managed.processId, managed.settlePromise);
+      const observe = (stream, chunk) => {
+        if (managed.settled || !chunk) return;
+        if (stream === "stdout") managed.stdout.append(chunk);
+        else managed.stderr.append(chunk);
+        scheduleIdleTimeout(managed, params.idleTimeoutMs);
+      };
+      child.stdout.on(
+        "data",
+        (chunk) => observe("stdout", managed.stdoutDecoder.write(chunk))
+      );
+      child.stderr.on(
+        "data",
+        (chunk) => observe("stderr", managed.stderrDecoder.write(chunk))
+      );
+      child.on("error", () => settle(managed, -1, "spawn_failed"));
+      child.on("close", (code) => {
+        observe("stdout", managed.stdoutDecoder.end());
+        observe("stderr", managed.stderrDecoder.end());
+        settle(managed, typeof code === "number" ? code : -1, "completed");
+      });
+      managed.hardTimeout = setTimeout(
+        () => requestTermination(managed, "hard_timeout"),
+        params.hardTimeoutMs
+      );
+      managed.hardTimeout.unref?.();
+      scheduleIdleTimeout(managed, params.idleTimeoutMs);
+      if (params.abortSignal) {
+        managed.abortListener = () => requestTermination(managed, "aborted");
+        if (params.abortSignal.aborted) managed.abortListener();
+        else {
+          params.abortSignal.addEventListener("abort", managed.abortListener, {
+            once: true
+          });
+        }
+      }
+      if (params.yieldAfterMs === null || params.yieldAfterMs >= params.hardTimeoutMs) {
+        await managed.settlePromise;
+      } else {
+        await waitForSettlement(managed, params.yieldAfterMs);
+      }
+      return consumeSnapshot(managed);
+    },
+    async wait(params) {
+      const managed = getScopedProcess(params.processId, params.scope);
+      await withProcessTransition(managed, () => {
+        if (managed.terminalSnapshotClaimed) throw unknownProcess();
+        if (managed.waitInFlight) {
+          throw new ExecPluginError(
+            "exec_wait_in_progress",
+            "Another wait is already observing this exec process."
+          );
+        }
+        if (params.cursor !== managed.cursor) {
+          throw new ExecPluginError(
+            "stale_exec_process_cursor",
+            `The exec cursor is stale; expected ${managed.cursor}.`
+          );
+        }
+        managed.waitInFlight = true;
+        if (!managed.settled) managed.cursor += 1;
+      });
+      await waitForSettlement(managed, params.waitMs);
+      return withProcessTransition(managed, () => {
+        managed.waitInFlight = false;
+        if (managed.terminalSnapshotClaimed) throw unknownProcess();
+        return consumeSnapshot(managed);
+      });
+    },
+    async cancel(params) {
+      const managed = getScopedProcess(params.processId, params.scope);
+      return withProcessTransition(managed, async () => {
+        if (managed.terminalSnapshotClaimed) throw unknownProcess();
+        if (!managed.settled) {
+          requestTermination(managed, "cancelled");
+          await managed.settlePromise;
+        }
+        return consumeSnapshot(managed);
+      });
+    },
+    snapshotSettled(processId, scope) {
+      const managed = getScopedProcess(processId, scope);
+      if (!managed.settled || managed.waitInFlight || managed.terminalSnapshotClaimed)
+        throw new Error("exec_snapshot_not_quiescent");
+      return Object.freeze({
+        cursor: managed.cursor,
+        snapshot: Object.freeze({
+          processId,
+          status: "settled",
+          ...managed.exitCode === void 0 ? {} : { exitCode: managed.exitCode },
+          stdout: managed.stdout.peek(),
+          stderr: managed.stderr.peek(),
+          ...managed.terminationReason ? { terminationReason: managed.terminationReason } : {},
+          elapsedMs: Date.now() - managed.startedAt
+        })
+      });
+    },
+    async release(processId, scope) {
+      const managed = processes.get(processId);
+      if (!managed) return;
+      if (managed.scope !== scope) {
+        throw unknownProcess();
+      }
+      await withProcessTransition(managed, () => {
+        if (managed.settled) dispose(managed);
+      });
+    }
+  });
+}
+
+// plugins/exec/source/settings.ts
+var DEFAULT_EXEC_HARD_TIMEOUT_MS = 6e5;
+var DEFAULT_EXEC_YIELD_AFTER_MS = 15e3;
+var DEFAULT_EXEC_IDLE_TIMEOUT_MS = 12e4;
+var DEFAULT_EXEC_OUTPUT_MAX_CHARS = 8e3;
+var EXEC_OUTPUT_MAX_CHARS = 8e3;
+var EXEC_COMMAND_MAX_CHARS = 4096;
+function readExecSettings(config) {
+  return Object.freeze({
+    hardTimeoutMs: readBoundedInteger(config?.timeoutMs, {
+      defaultValue: DEFAULT_EXEC_HARD_TIMEOUT_MS,
+      minimum: 1,
+      maximum: 36e5,
+      name: "timeoutMs"
+    }),
+    yieldAfterMs: readBoundedInteger(config?.yieldAfterMs, {
+      defaultValue: DEFAULT_EXEC_YIELD_AFTER_MS,
+      minimum: 1,
+      maximum: 6e5,
+      name: "yieldAfterMs"
+    }),
+    idleTimeoutMs: readBoundedInteger(config?.idleTimeoutMs, {
+      defaultValue: DEFAULT_EXEC_IDLE_TIMEOUT_MS,
+      minimum: 1,
+      maximum: 36e5,
+      name: "idleTimeoutMs"
+    }),
+    outputMaxChars: readBoundedInteger(config?.outputMaxChars, {
+      defaultValue: DEFAULT_EXEC_OUTPUT_MAX_CHARS,
+      minimum: 64,
+      maximum: EXEC_OUTPUT_MAX_CHARS,
+      name: "outputMaxChars"
+    })
+  });
+}
+
+// plugins/exec/source/validation.ts
+function isExecutableCommand(value) {
+  if (value.trim().length === 0) return false;
+  return !value.includes("\0");
+}
+function readExecCommand(value) {
+  const command = readRequiredString(value, {
+    name: "command",
+    trim: false,
+    maxLength: EXEC_COMMAND_MAX_CHARS
+  });
+  if (!isExecutableCommand(command)) {
+    throw new ExecPluginError(
+      "exec_command_invalid",
+      "The command must contain nonempty text without NUL characters."
+    );
+  }
+  return command;
+}
+function isInvalidExecParameter(name, value) {
+  if (typeof value !== "string") return true;
+  if (value.length === 0) return true;
+  if (name === "command") return !isExecutableCommand(value);
+  return value.includes("\0");
+}
+function createExecAdapter() {
+  return {
+    validateCall(input) {
+      const invalid2 = ["command", "cwd"].filter(
+        (name) => isInvalidExecParameter(name, input.params[name])
+      );
+      if (invalid2.length === 0) return null;
+      return {
+        error: `invalid params for exec: invalid ${invalid2.join(", ")}`,
+        repairHint: "Provide one command without NUL characters and one explicit existing cwd."
+      };
+    }
+  };
+}
+
+// plugins/exec/source/handlers.ts
+var COMMAND_PREVIEW_MAX_CHARS = 768;
+function processScope(context) {
+  const sessionId = context?.sharedState?.currentSessionId?.trim();
+  return sessionId || "anonymous";
+}
+function createExecHandlers(pluginContext, settings, preparation) {
   const processManager = createExecProcessManager();
   const pendingExecutions = /* @__PURE__ */ new Map();
+  const requestResources = new ExecRequestResources(
+    processManager,
+    pendingExecutions,
+    preparation
+  );
   const finalizeAndRelease = async (params) => {
     try {
       return await finalizeExecResult(params);
     } finally {
       pendingExecutions.delete(params.snapshot.processId);
+      requestResources.forget(params.snapshot.processId);
       await processManager.release(params.snapshot.processId, params.scope);
     }
   };
@@ -1185,7 +1343,11 @@ function createExecHandlers(pluginContext, settings) {
         idleTimeoutMs: execution.idleTimeoutMs,
         hardTimeoutMs: execution.hardTimeoutMs,
         ...context?.abortSignal ? { abortSignal: context.abortSignal } : {},
-        onDisposed: (processId) => pendingExecutions.delete(processId)
+        onDisposed: (processId) => {
+          pendingExecutions.delete(processId);
+          requestResources.forget(processId);
+        },
+        onStarted: (processId, settled) => requestResources.started(processId, scope, settled, context)
       });
       if (snapshot.status === "running") {
         pendingExecutions.set(snapshot.processId, execution);
@@ -1215,7 +1377,7 @@ function createExecHandlers(pluginContext, settings) {
         );
       }
       const scope = processScope(context);
-      const snapshot = await processManager.wait({
+      const snapshot = requestResources.terminal(processId, scope, cursor) ?? await processManager.wait({
         processId,
         scope,
         cursor,
@@ -1240,7 +1402,7 @@ function createExecHandlers(pluginContext, settings) {
         );
       }
       const scope = processScope(context);
-      const snapshot = await processManager.cancel({ processId, scope });
+      const snapshot = requestResources.terminal(processId, scope) ?? await processManager.cancel({ processId, scope });
       return finalizeAndRelease({
         snapshot,
         execution,
@@ -1257,6 +1419,18 @@ function createExecHandlers(pluginContext, settings) {
 // plugins/exec/source/index.ts
 var index_default = defineRuntimePlugin((context) => ({
   handlers: createExecHandlers(context, readExecSettings(context.config)),
+  prepareRequest: async (modules, preparation) => {
+    if (!preparation?.requestState) return modules;
+    const handlers = createExecHandlers(
+      context,
+      readExecSettings(context.config),
+      preparation
+    );
+    return modules.map((module2) => ({
+      ...module2,
+      implementation: handlers[module2.definition.name]
+    }));
+  },
   adapters: {
     exec: createExecAdapter()
   }

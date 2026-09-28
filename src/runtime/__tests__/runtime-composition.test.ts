@@ -140,6 +140,7 @@ describe("runtime composition", () => {
       events: defaults.services.events,
       sessionMemoryCompactor: defaults.services.sessionMemoryCompactor,
       longTermMemory: defaults.services.longTermMemory,
+      passiveLearning: defaults.services.passiveLearning,
     };
 
     const runtime = createDefaultRuntimeDependencies(config, overrides);

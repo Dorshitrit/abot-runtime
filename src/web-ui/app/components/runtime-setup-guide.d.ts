@@ -71,8 +71,10 @@ export interface RuntimeSetupGuideDependencies {
   }) => Promise<Record<string, unknown>>;
   readonly getEnvironmentId?: () => string;
   readonly loadHostConnection?: () => Promise<Record<string, unknown>>;
+  readonly connectLocalHost?: () => Promise<Record<string, unknown>>;
+  readonly createHostPairing?: () => Promise<Record<string, unknown>>;
   readonly downloadHostSetup?: (
-    platform: "windows" | "macos",
+    platform: "windows" | "macos" | "linux",
   ) => Promise<Record<string, unknown>>;
   readonly revokeHostConnection?: () => Promise<Record<string, unknown>>;
   readonly openConfiguration?: () => void;

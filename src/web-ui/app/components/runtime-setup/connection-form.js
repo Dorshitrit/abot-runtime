@@ -63,7 +63,7 @@ export function renderConnectionFields(state) {
       min: "1",
       step: "1",
       readonly: !canEditSetupConnection(state),
-      help: "Use a value supported by your model. Larger windows need more memory with Ollama. You can change this later in Configuration.",
+      help: "Use a value supported by your model. Larger windows need more memory with Ollama. You can change this later in Models.",
     });
   if (providerType === "ollama") {
     if (state.existingProvider) return model;

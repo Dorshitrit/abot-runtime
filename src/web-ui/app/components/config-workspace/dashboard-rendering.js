@@ -117,32 +117,16 @@ export function createConfigDashboardRendering({
     `;
   }
 
-  function renderCategoryTab(category, label) {
-    const active = state.activeCategory === category;
-    return `
-      <button
-        id="configCategory${category[0].toUpperCase()}${category.slice(1)}"
-        class="config-category-tab ${active ? "active" : ""}"
-        type="button"
-        role="tab"
-        data-config-action="select-category"
-        data-config-category="${escapeAttribute(category)}"
-        aria-controls="config${category[0].toUpperCase()}${category.slice(1)}Panel"
-        aria-selected="${active ? "true" : "false"}"
-        tabindex="${active ? "0" : "-1"}"
-      >${escapeHtml(label)}</button>
-    `;
-  }
-
   function renderCategoryPanel(category, content) {
     const capitalized = `${category[0].toUpperCase()}${category.slice(1)}`;
+    const label = category === "operations" ? "System" : capitalized;
     const active = state.activeCategory === category;
     return `
       <section
         id="config${capitalized}Panel"
         class="config-category-panel ${active ? "active" : ""}"
-        role="tabpanel"
-        aria-labelledby="configCategory${capitalized}"
+        role="region"
+        aria-label="${escapeAttribute(label)}"
         data-config-category-panel="${escapeAttribute(category)}"
         ${active ? "" : "hidden"}
       >${content}</section>
@@ -151,7 +135,6 @@ export function createConfigDashboardRendering({
 
   return {
     renderCategoryPanel,
-    renderCategoryTab,
     renderConfigMap,
   };
 }

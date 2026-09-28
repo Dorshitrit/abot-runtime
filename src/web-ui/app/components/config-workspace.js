@@ -1,3 +1,4 @@
+import { createConfigCalibrationDisclosure } from "./config-workspace/calibration-disclosure.js";
 import { createConfigDashboardRendering } from "./config-workspace/dashboard-rendering.js";
 import { createConfigFieldRendering } from "./config-workspace/field-rendering.js";
 import { createConfigWorkspaceModel } from "./config-workspace/config-model.js";
@@ -7,6 +8,7 @@ import { createConfigWorkspaceEvents } from "./config-workspace/workspace-events
 import { createConfigWorkspaceMutations } from "./config-workspace/workspace-mutations.js";
 import { createConfigWorkspacePersistence } from "./config-workspace/workspace-persistence.js";
 import { createConfigWorkspaceView } from "./config-workspace/workspace-view.js";
+import { configurationCategoryForWorkspace } from "../lib/configuration-pages.js";
 
 export {
   configValuesEqual,
@@ -24,14 +26,20 @@ export function createConfigWorkspace({
   memorySetup,
   memoryManagement,
   pluginManagement,
-  hostConnection,
   onAddModel,
+  onRemoveModel,
+  onNavigationChange = () => {},
   recordControlEvent,
   confirmDiscard = (message) => window.confirm(message),
   eventTarget = window,
 }) {
   const workspaceModel = createConfigWorkspaceModel();
   const { state } = workspaceModel;
+  const calibrationDisclosure = createConfigCalibrationDisclosure({
+    state,
+    root: dom.configDashboard,
+  });
+  let navigationRevision = 0;
 
   const fieldRendering = createConfigFieldRendering({
     state,
@@ -79,13 +87,14 @@ export function createConfigWorkspace({
   });
 
   const workspaceView = createConfigWorkspaceView({
+    onNavigationChange: () => {
+      navigationRevision += 1;
+      onNavigationChange();
+    },
     state,
     dom,
     eventTarget,
-    memorySetup,
-    memoryManagement,
     pluginManagement,
-    hostConnection,
     configFileEntries: workspaceModel.configFileEntries,
     configFileKey: workspaceModel.configFileKey,
     countObjectKeys: fieldRendering.countObjectKeys,
@@ -98,7 +107,6 @@ export function createConfigWorkspace({
     isFileDirty: workspaceModel.isFileDirty,
     rawDraftFor: workspaceModel.rawDraftFor,
     renderCategoryPanel: dashboardRendering.renderCategoryPanel,
-    renderCategoryTab: dashboardRendering.renderCategoryTab,
     renderConfigMap: dashboardRendering.renderConfigMap,
     renderModelList: modelRendering.renderModelList,
     renderSelectedModelEditor: modelRendering.renderSelectedModelEditor,
@@ -133,7 +141,6 @@ export function createConfigWorkspace({
     memorySetup,
     memoryManagement,
     pluginManagement,
-    hostConnection,
     recordControlEvent,
     applyRawDraft: workspaceMutations.applyRawDraft,
     baselineFor: workspaceModel.baselineFor,
@@ -154,10 +161,10 @@ export function createConfigWorkspace({
 
   const workspaceEvents = createConfigWorkspaceEvents({
     onAddModel,
+    onRemoveModel,
     state,
     dom,
     eventTarget,
-    activateCategory: workspaceView.activateCategory,
     applyRawDraft: workspaceMutations.applyRawDraft,
     changeRawFile: workspaceMutations.changeRawFile,
     configFileKey: workspaceModel.configFileKey,
@@ -182,6 +189,13 @@ export function createConfigWorkspace({
   });
 
   return {
+    activeCategory: () => state.activeCategory,
+    setActive: calibrationDisclosure.setActive,
+    setWorkspace: (workspace) => {
+      const category = configurationCategoryForWorkspace(workspace);
+      calibrationDisclosure.setActive(Boolean(category));
+      if (category) workspaceView.activateCategory(category);
+    },
     activateCategory: workspaceView.activateCategory,
     beginExternalRuntimeMutation:
       workspacePersistence.beginExternalRuntimeMutation,
@@ -190,7 +204,9 @@ export function createConfigWorkspace({
     endExternalRuntimeMutation: workspacePersistence.endExternalRuntimeMutation,
     hasUnsavedChanges: workspaceModel.hasUnsavedChanges,
     load: workspacePersistence.loadRuntimeConfig,
+    navigationRevision: () => navigationRevision,
     selectModel: workspaceView.selectModel,
+    setStatus: workspaceView.setWorkspaceStatus,
     focusSelectedModel: workspaceView.focusSelectedModel,
     prepareDiscardChanges: workspaceMutations.prepareDiscardChanges,
     refreshAfterExternalRuntimeMutation:

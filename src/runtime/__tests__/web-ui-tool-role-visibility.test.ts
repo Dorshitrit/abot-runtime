@@ -81,8 +81,8 @@ function roleRows(node: HTMLElement): ActivityElement[] {
 describe("unattributed legacy outcomes remain visible", () => {
   test.each([
     ["tool.completed", "Completed", "Recorded result"],
-    ["tool.failed", "Failed", "Recorded failure"],
-    ["tool.payload.failed", "Preparation failed", "Recorded failure"],
+    ["tool.failed", "Not completed", "Recorded failure"],
+    ["tool.payload.failed", "Not prepared", "Recorded failure"],
     ["tool.approval.rejected", "Not approved", "Recorded failure"],
   ])("%s survives Activity, live projection and saved-session restore", async (
     name,

@@ -7,6 +7,7 @@ import type { SessionRecord } from "../../../sessions/types.js";
 import type { SessionMemorySettledTurn } from "../../../sessions/memory/source.js";
 import type { RequestHistoryMessage } from "../request-context-contracts.js";
 import type { BoundRequestModelInvocationContext } from "../../request/contracts.js";
+import type { RequestSessionMemorySnapshot } from "./snapshot-state.js";
 
 export const SESSION_MEMORY_PROTECTED_TURN_COUNT = 10;
 
@@ -26,6 +27,7 @@ export type PreparedSessionMemoryCheckpoint = Readonly<{
 }>;
 
 export type RequestSessionMemory = Readonly<{
+  snapshot?(): RequestSessionMemorySnapshot;
   project(): SessionMemoryRequestProjection;
   prepare(
     request: BoundRequestModelInvocationContext,
@@ -42,8 +44,11 @@ export type SessionMemoryCompactor = Readonly<{
 
 export type CreateRequestSessionMemoryParams = Readonly<{
   sessionId: string;
-  session: SessionRecord;
   repository: SessionMemoryRepository;
   compactor: SessionMemoryCompactor;
   now?: () => Date;
-}>;
+}> &
+  (
+    | Readonly<{ session: SessionRecord }>
+    | Readonly<{ snapshot: RequestSessionMemorySnapshot }>
+  );

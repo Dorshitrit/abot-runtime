@@ -39,11 +39,17 @@ export async function listMemoryRecords(
 ): Promise<MemoryListResult> {
   const snapshot = await repository.read();
   const page = normalizeMemoryPage(input);
+  const records =
+    input.origin === "passive_observation"
+      ? snapshot.records.filter(
+          (record) =>
+            record.provenance.kind === "passive_observation" ||
+            (record.observationSources?.length ?? 0) > 0,
+        )
+      : snapshot.records;
   return Object.freeze({
-    items: Object.freeze(
-      snapshot.records.slice(page.offset, page.offset + page.limit),
-    ),
-    total: snapshot.records.length,
+    items: Object.freeze(records.slice(page.offset, page.offset + page.limit)),
+    total: records.length,
   });
 }
 

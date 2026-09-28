@@ -46,6 +46,8 @@ export function createRuntimeSetupGuide({
   loadPlugins,
   setPlugin,
   loadHostConnection,
+  connectLocalHost,
+  createHostPairing,
   downloadHostSetup,
   revokeHostConnection,
   getEnvironmentId = () => "",
@@ -78,7 +80,7 @@ export function createRuntimeSetupGuide({
   const optionalSteps = createSetupOptionalSteps({
     container, getEnvironmentId, getPreferredProvider: () => state.provider,
     loadEmbeddingStatus, discoverEmbeddingModels, saveEmbedding, loadPlugins,
-    setPlugin, loadHostConnection, downloadHostSetup, revokeHostConnection,
+    setPlugin, loadHostConnection, connectLocalHost, createHostPairing, downloadHostSetup, revokeHostConnection,
     onChange: paint, goToStep,
   });
   const { embedding, plugins, readyStep } = optionalSteps;

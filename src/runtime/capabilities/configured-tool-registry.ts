@@ -37,10 +37,10 @@ export function createConfiguredToolRegistry(
   return {
     ...(modules.some((module) => module.prepareRequest)
       ? {
-          prepareRequest: async () =>
+          prepareRequest: async (context) =>
             createConfiguredToolRegistry(
               config,
-              await prepareRequestToolModules(modules),
+              await prepareRequestToolModules(modules, context),
             ),
         }
       : {}),

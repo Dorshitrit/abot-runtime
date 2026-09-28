@@ -135,7 +135,7 @@ export class RuntimeSetupService {
         if (requirement?.recovery === "configuration")
           throw new RuntimeSetupError(
             "setup_configuration_exists",
-            "Existing model profiles need repair in Configuration before setup can continue.",
+            "Existing model profiles need repair in Models before setup can continue.",
             409,
           );
         const existingModel = requirement

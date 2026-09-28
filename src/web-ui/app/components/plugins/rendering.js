@@ -89,10 +89,10 @@ function renderPluginCard(plugin, busy, openPluginIds) {
 
 function globalPolicyMessage(selection) {
   if (selection?.enabled === false) {
-    return "Plugins are disabled globally. Turn on plugins.enabled in Advanced settings before enabling individual plugins.";
+    return "Plugins are disabled globally. Turn on plugins.enabled in the runtime configuration file before enabling individual plugins.";
   }
   if (selection?.deny?.includes("*")) {
-    return "The global deny rule blocks every plugin. Review plugins.deny in Advanced settings before enabling individual plugins.";
+    return "The global deny rule blocks every plugin. Review plugins.deny in the runtime configuration file before enabling individual plugins.";
   }
   return "";
 }

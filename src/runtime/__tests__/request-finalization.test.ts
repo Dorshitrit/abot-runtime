@@ -31,6 +31,7 @@ describe("runtime request finalization", () => {
       inactivityTimeoutMs: 0,
     });
     const events = createEventSink();
+    const composeInvalidFinalOutput = vi.fn(async () => "Unneeded summary.");
 
     try {
       await expect(
@@ -43,6 +44,7 @@ describe("runtime request finalization", () => {
           requestId: "request-atomic-finalization",
           agentMode: "reasoning",
           finalObservation,
+          composeInvalidFinalOutput,
         }),
       ).resolves.toEqual({
         status: "completed",
@@ -53,6 +55,7 @@ describe("runtime request finalization", () => {
     }
 
     expect(appendContextEntry).not.toHaveBeenCalled();
+    expect(composeInvalidFinalOutput).not.toHaveBeenCalled();
     expect(appendMessage).toHaveBeenCalledTimes(1);
     expect(appendMessage).toHaveBeenCalledWith(
       "session-atomic-finalization",
@@ -140,7 +143,7 @@ describe("runtime request finalization", () => {
     );
   });
 
-  test("rejects whitespace-only output even in exact mode", async () => {
+  test("delivers a model-authored summary for blank exact output without stale claims or memory", async () => {
     const appendMessage = vi.fn<SessionStore["appendMessage"]>(
       async () => ({}) as SessionRecord,
     );
@@ -150,27 +153,121 @@ describe("runtime request finalization", () => {
       requestTimeoutMs: 0,
       inactivityTimeoutMs: 0,
     });
+    const authoredOutput = "  Model-authored explanation of this failure.\n\t";
+    const composeInvalidFinalOutput = vi.fn(async () => authoredOutput);
+    const scheduleCandidates = vi.fn();
     try {
       await expect(
         finalizeRequest({
           rawOutput: " \n\t ",
           outputTextMode: "exact",
+          composeInvalidFinalOutput,
           events,
           lifecycle,
           sessionStore: { appendMessage },
           sessionId: "session-blank-exact-finalization",
           requestId: "request-blank-exact-finalization",
           agentMode: "reasoning",
+          finalObservation: {
+            observationMeta: { kind: "task_result", carryPolicy: "always" },
+            observationContent: "Stale claimed success must not be persisted.",
+          },
+          memoryCandidates: [
+            { content: "Stale claimed fact.", tags: ["fact"] },
+          ],
+          longTermMemory: {
+            enabled: true,
+            retrieve: vi.fn(),
+            processCandidates: vi.fn(),
+            scheduleCandidates,
+            status: vi.fn(),
+            list: vi.fn(),
+            search: vi.fn(),
+            create: vi.fn(),
+            update: vi.fn(),
+            delete: vi.fn(),
+            clear: vi.fn(),
+          },
         }),
-      ).resolves.toEqual({ status: "failed" });
+      ).resolves.toEqual({ status: "completed", output: authoredOutput });
+    } finally {
+      lifecycle.dispose();
+    }
+    expect(appendMessage).toHaveBeenCalledTimes(1);
+    expect(composeInvalidFinalOutput).toHaveBeenCalledOnce();
+    expect(appendMessage.mock.calls[0]?.[2]).toBe(authoredOutput);
+    expect(appendMessage.mock.calls[0]?.[3]).not.toHaveProperty(
+      "observationMeta",
+    );
+    expect(appendMessage.mock.calls[0]?.[3]).not.toHaveProperty(
+      "observationContent",
+    );
+    expect(scheduleCandidates).not.toHaveBeenCalled();
+    expect(events.completed).toHaveBeenCalledExactlyOnceWith(authoredOutput);
+    expect(events.failed).not.toHaveBeenCalled();
+  });
+
+  test("does not recover blank output after the request is aborted", async () => {
+    const events = createEventSink();
+    const appendMessage = vi.fn<SessionStore["appendMessage"]>();
+    const lifecycle = new RequestLifecycle({
+      requestId: "blank-aborted",
+      requestTimeoutMs: 0,
+      inactivityTimeoutMs: 0,
+    });
+    const abortReason = new Error("request_aborted");
+    const composeInvalidFinalOutput = vi.fn(async () => "Unneeded summary.");
+    lifecycle.abortController.abort(abortReason);
+    try {
+      await expect(
+        finalizeRequest({
+          rawOutput: " ",
+          composeInvalidFinalOutput,
+          events,
+          lifecycle,
+          sessionStore: { appendMessage },
+          sessionId: "session",
+          requestId: "blank-aborted",
+          agentMode: "reasoning",
+        }),
+      ).rejects.toBe(abortReason);
     } finally {
       lifecycle.dispose();
     }
     expect(appendMessage).not.toHaveBeenCalled();
-    expect(events.failed).toHaveBeenCalledExactlyOnceWith(
-      "invalid_final_output",
-      expect.objectContaining({ reason: "empty_final_output" }),
-    );
+    expect(composeInvalidFinalOutput).not.toHaveBeenCalled();
+    expect(events.completed).not.toHaveBeenCalled();
+  });
+
+  test("does not hide persistence failure after model-authored blank-output finalization", async () => {
+    const events = createEventSink();
+    const persistenceFailure = new Error("session_persistence_failed");
+    const appendMessage = vi.fn<SessionStore["appendMessage"]>(async () => {
+      throw persistenceFailure;
+    });
+    const lifecycle = new RequestLifecycle({
+      requestId: "blank-persistence",
+      requestTimeoutMs: 0,
+      inactivityTimeoutMs: 0,
+    });
+    try {
+      await expect(
+        finalizeRequest({
+          rawOutput: " ",
+          composeInvalidFinalOutput: async () =>
+            "Model-authored failure summary.",
+          events,
+          lifecycle,
+          sessionStore: { appendMessage },
+          sessionId: "session",
+          requestId: "blank-persistence",
+          agentMode: "reasoning",
+        }),
+      ).rejects.toBe(persistenceFailure);
+    } finally {
+      lifecycle.dispose();
+    }
+    expect(events.completed).not.toHaveBeenCalled();
   });
 
   test("persists and completes the response after scheduling memory work", async () => {

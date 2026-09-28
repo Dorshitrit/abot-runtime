@@ -15,9 +15,13 @@ export type WebMemoryUpdateInput = WebMemoryCreateInput &
 export function readMemoryPage(url: URL): MemoryListInput {
   const limit = readOptionalInteger(url, "limit", false);
   const offset = readOptionalInteger(url, "offset", true);
+  const origin = url.searchParams.get("origin");
+  if (origin !== null && origin !== "passive_observation")
+    throw invalidManagementInput();
   return Object.freeze({
     ...(limit === undefined ? {} : { limit }),
     ...(offset === undefined ? {} : { offset }),
+    ...(origin === "passive_observation" ? { origin } : {}),
   });
 }
 

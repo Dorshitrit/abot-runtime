@@ -1,4 +1,5 @@
-import type { SessionRecord } from "../../sessions/types.js";
+import type { SessionRecord, SessionRequestRecord } from "../../sessions/types.js";
+import { getRequestFinalState } from "../../sessions/record/projection.js";
 import { traceDebug } from "../observability/debug-logger.js";
 import type { EventSink } from "../ports.js";
 import type { RequestSessionStore } from "../request/session-store.js";
@@ -52,8 +53,29 @@ export function createRequestSessionTitleUpdater(params: {
 }
 
 export function shouldGenerateSessionTitle(session: SessionRecord): boolean {
+  const hasPlaceholderTitle =
+    !session.title.trim() || session.title === session.id;
+  if (!hasPlaceholderTitle) return false;
+  if (session.messages.length === 0) return true;
+  return hasOnlyCancelledRequestMessages(session);
+}
+
+function hasOnlyCancelledRequestMessages(session: SessionRecord): boolean {
+  const cancelledIds = new Set(
+    (session.requests ?? [])
+      .filter(isUserCancelledRequest)
+      .map(({ requestId }) => requestId),
+  );
+  return session.messages.every(
+    (message) =>
+      cancelledIds.has(message.requestId ?? ""),
+  );
+}
+
+function isUserCancelledRequest(request: SessionRequestRecord): boolean {
+  if (request.status !== "failed") return false;
+  const terminal = getRequestFinalState(request);
   return (
-    session.messages.length === 0 &&
-    (!session.title.trim() || session.title === session.id)
+    terminal?.status === "failed" && terminal.error === "request_cancelled"
   );
 }

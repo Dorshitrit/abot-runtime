@@ -84,6 +84,20 @@ function requireIdentifier(
   return kind === "profile" ? parseRuntimeModelProfileId(value) : value;
 }
 
+function hasWindowsDeviceBasename(value: string): boolean {
+  return /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/iu.test(value);
+}
+
+function requirePortableModelProfileId(value: string): string {
+  const profileId = requireIdentifier(value, "profile");
+  if (hasWindowsDeviceBasename(profileId))
+    throw new ModelSetupError(
+      "invalid_profile_id",
+      "Choose a profile ID that is not a reserved Windows device name.",
+    );
+  return profileId;
+}
+
 function readNewProvider(value: unknown): NewModelProvider {
   if (!isRecord(value))
     throw new ModelSetupError(
@@ -144,9 +158,8 @@ export function parseModelSetupInput(
     "newProvider",
     "apiKey",
   ]);
-  const profileId = requireIdentifier(
+  const profileId = requirePortableModelProfileId(
     inputString(body, "profileId")!,
-    "profile",
   );
   let contextWindowTokens: number | undefined;
   try {

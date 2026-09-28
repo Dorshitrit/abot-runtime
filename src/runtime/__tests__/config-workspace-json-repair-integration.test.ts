@@ -66,7 +66,7 @@ test("real malformed linked files can be repaired from browser state through can
     syncDashboardInteractivity: vi.fn(), syncDirtyPresentation: vi.fn(),
   });
   mutations.replaceDashboard({ dashboard: await getConfigDashboardSnapshot(fixture) });
-  expect(model.state.activeCategory).toBe("advanced");
+  expect(model.state.activeCategory).toBe("models");
   expect(model.state.rawPanelOpen).toBe(true);
   expect(editor.value).toBe("{broken-runner");
   expect(model.hasUnsavedChanges()).toBe(false);

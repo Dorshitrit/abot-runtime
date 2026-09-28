@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isAssistantInitiativeMessage } from "../assistant-initiative.js";
 
 import type { SessionMessage, SessionRecord } from "../types.js";
 import type {
@@ -13,6 +14,8 @@ export type SessionMemorySettledTurn = Readonly<{
 
 export type SessionMemorySourceSnapshot = Readonly<{
   sourceRevision: string;
+  /** Settled history, including assistant initiatives that must never be summarized. */
+  historyMessages: readonly SessionMessage[];
   turns: readonly SessionMemorySettledTurn[];
   messageReferences: readonly SessionMemoryMessageReference[];
 }>;
@@ -20,17 +23,33 @@ export type SessionMemorySourceSnapshot = Readonly<{
 export function snapshotSessionMemorySource(
   session: Pick<SessionRecord, "messages">,
 ): SessionMemorySourceSnapshot {
-  const turns = collectSettledConversationTurns(session.messages);
+  const settledTurns = collectSettledConversationTurns(session.messages);
+  const historyMessages = Object.freeze(settledTurns.flatMap(turnMessages));
+  const turns = Object.freeze(
+    settledTurns.filter(isCompactableConversationTurn),
+  );
+  const historyReferences = historyMessages.map(createMessageReference);
   const messageReferences = Object.freeze(
-    turns.flatMap(turnMessages).map(createMessageReference),
+    historyReferences.filter(
+      function isCompactableMessageReference(_reference, index) {
+        return !isAssistantInitiativeMessage(historyMessages[index]!);
+      },
+    ),
   );
   return Object.freeze({
     sourceRevision: fingerprint(
-      messageReferences.map(({ fingerprint: value }) => value).join("\n"),
+      historyReferences.map(({ fingerprint: value }) => value).join("\n"),
     ),
+    historyMessages,
     turns,
     messageReferences,
   });
+}
+
+function isCompactableConversationTurn(
+  turn: SessionMemorySettledTurn,
+): boolean {
+  return !isAssistantInitiativeMessage(turn.assistant);
 }
 
 export function resolveCoveredTurnCount(
@@ -76,6 +95,12 @@ function collectSettledConversationTurns(
       pendingUsers.push(message);
       continue;
     }
+    if (isAssistantInitiativeMessage(message)) {
+      turns.push(
+        Object.freeze({ userMessages: Object.freeze([]), assistant: message }),
+      );
+      continue;
+    }
     const userMessages = takePendingUsers(pendingUsers, message);
     if (userMessages.length === 0) {
       continue;
@@ -86,6 +111,7 @@ function collectSettledConversationTurns(
 }
 
 function isConversationMessage(message: SessionMessage): boolean {
+  if (message.kind === "tool_approval_request") return false;
   return (
     message.grounding !== "tool_observation" &&
     message.content.trim().length > 0
@@ -146,6 +172,7 @@ function createMessageReference(
         content: message.content,
         createdAt: message.createdAt,
         requestId: message.requestId ?? null,
+        ...(message.initiative ? { initiative: message.initiative } : {}),
       }),
     ),
   });

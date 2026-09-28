@@ -34,6 +34,14 @@ export function issueCanonicalRoleOperationSupervisionTransition(input: {
   return input.after.operationSupervision === input.before.operationSupervision;
 }
 
+/** Reissue only a private persisted copy, validated before publication. */
+export function restoreRoleOperationSupervisionIssuance(
+  state: RoleCallState,
+): void {
+  for (const intervention of state.operationSupervision.interventions)
+    issuedInterventionRequestIds.set(intervention, state.requestId);
+}
+
 export function isIssuedRoleOperationSupervisionInterventionForRequest(input: {
   requestId: string;
   intervention: RoleOperationSupervisionInterventionRecord;

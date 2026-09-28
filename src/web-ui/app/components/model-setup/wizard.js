@@ -35,6 +35,7 @@ export function createModelSetupWizard({
   beginRuntimeMutation = () => true,
   endRuntimeMutation = () => {},
   onSaved = () => {},
+  onDeferred = async () => true,
   onComplete = async () => true,
   onClosed = () => {},
 }) {
@@ -77,6 +78,7 @@ export function createModelSetupWizard({
       loaded: false,
       busy: "",
       error: "",
+      notice: "",
       saved: null,
       applied: false,
       credentialSavedFor: "",
@@ -153,6 +155,7 @@ export function createModelSetupWizard({
     beginRuntimeMutation,
     endRuntimeMutation,
     onSaved,
+    onDeferred,
     onComplete,
   });
 
@@ -185,6 +188,7 @@ export function createModelSetupWizard({
     const feedback = dialog.querySelector("[data-model-feedback]");
     feedback.textContent =
       state.error ||
+      state.notice ||
       (state.busy
         ? `${state.busy === "saving" ? "Saving model" : state.busy === "applying" ? "Applying model" : state.busy === "refreshing" ? "Refreshing model list" : "Loading providers"}…`
         : "");

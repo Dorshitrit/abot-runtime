@@ -1,6 +1,6 @@
 import { createSystemHostVisibility } from "./visibility.js";
 
-function needsComputerSetup(state) {
+export function needsComputerSetup(state) {
   if (!state || state.busy || state.statusUnavailable) return false;
   const snapshot = state.snapshot;
   const readiness = snapshot?.readiness;
@@ -9,7 +9,7 @@ function needsComputerSetup(state) {
   if (!["container", "wsl"].includes(readiness.environment)) return false;
   if (!Array.isArray(readiness.platforms)) return false;
   return readiness.platforms.some((platform) =>
-    ["windows", "macos"].includes(platform),
+    ["windows", "macos", "linux"].includes(platform),
   );
 }
 

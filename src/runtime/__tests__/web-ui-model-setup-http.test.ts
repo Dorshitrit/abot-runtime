@@ -112,7 +112,8 @@ describe("post-onboarding model addition HTTP", () => {
       ),
     ).toMatchObject({
       id: "cloud-one",
-      source: { type: "inlineModelProfile", profileId: "cloud-one" },
+      path: "local/models/cloud-one.config.json",
+      registered: true,
       config: { model: "fixture-cloud", provider: "work-cloud" },
     });
     expect(JSON.stringify(workspace)).not.toContain(secret);
@@ -136,7 +137,7 @@ describe("post-onboarding model addition HTTP", () => {
       activation: { status: "restart_required" },
     });
     expect(activate).toHaveBeenCalledOnce();
-    expect((await fixture.readConfig()).models.profiles.pending).toMatchObject({
+    expect(await fixture.readModelProfile("pending")).toMatchObject({
       model: "fixture",
     });
     expect((await fixture.service.catalog()).profileIds).toEqual([

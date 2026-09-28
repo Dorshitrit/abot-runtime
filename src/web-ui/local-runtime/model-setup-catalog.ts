@@ -57,7 +57,11 @@ export async function getModelSetupCatalog(options: ModelSetupOptions) {
     providers,
     defaultContextWindowTokens: await readDefaultContextWindowTokens(),
     profileIds: [
-      ...new Set(dashboard.files.models.map((profile) => profile.id)),
+      ...new Set(
+        dashboard.files.models
+          .filter((profile) => profile.registered)
+          .map((profile) => profile.id),
+      ),
     ],
   };
 }

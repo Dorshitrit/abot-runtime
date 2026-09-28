@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { LearningCandidateRecord } from "../maturation/contracts.js";
+import { normalizeMemoryText } from "../policies/normalization.js";
 
 import type {
   LongTermMemoryEmbeddingClient,
@@ -19,6 +21,7 @@ import type {
 import { LongTermMemoryManagementError } from "./errors.js";
 import { clearMemoryRecords } from "./queries.js";
 import {
+  assertCandidateSupersessionCurrent,
   findExactMemoryDuplicate,
   normalizeMemoryId,
   prepareCreatedMemory,
@@ -38,6 +41,7 @@ export async function createManagedMemory(params: {
 }): Promise<MemoryCreateResult> {
   const prepared = prepareCreatedMemory(params.input);
   const initial = await params.repository.read();
+  assertCandidateSupersessionCurrent(initial.learningCandidates ?? [], params.input.supersedesCandidate);
   const initialDuplicate = findExactMemoryDuplicate(
     initial.records,
     prepared.candidate.content,
@@ -63,11 +67,13 @@ export async function createManagedMemory(params: {
       kind: "manual" as const,
       source: prepared.source,
     }),
+    automaticManagement: "protected",
     createdAt: timestamp,
     updatedAt: timestamp,
   });
   await params.repository.update((current) => {
     params.input.context.abortSignal.throwIfAborted();
+    assertCandidateSupersessionCurrent(current.learningCandidates ?? [], params.input.supersedesCandidate);
     const duplicate = findExactMemoryDuplicate(current.records, record.content);
     if (duplicate) {
       throw new LongTermMemoryManagementError(
@@ -83,6 +89,8 @@ export async function createManagedMemory(params: {
     }
     return {
       records: Object.freeze([...current.records, record]),
+      learningCandidates: retainUnsupersededCandidates(current.learningCandidates ?? [], record.content,
+        undefined, params.input.supersedesCandidate?.id),
       vectors: Object.freeze([
         ...current.vectors,
         createVectorEntry(record.id, embedded),
@@ -100,7 +108,7 @@ export async function updateManagedMemory(params: {
 }): Promise<MemoryUpdateResult> {
   const prepared = prepareUpdatedMemory(params.input);
   const initial = await findUpdateTarget(params.repository, prepared);
-  if (matchesCandidate(initial, prepared.candidate)) {
+  if (canSkipManagedMemoryUpdate(initial, prepared.candidate, params.input.supersedesCandidate)) {
     return Object.freeze({ record: initial, updated: false });
   }
   const contentChanged = initial.content !== prepared.candidate.content;
@@ -114,6 +122,7 @@ export async function updateManagedMemory(params: {
   let updatedRecord: LongTermMemoryRecord | undefined;
   await params.repository.update((current) => {
     params.input.context.abortSignal.throwIfAborted();
+    assertCandidateSupersessionCurrent(current.learningCandidates ?? [], params.input.supersedesCandidate);
     const target = requireCurrentUpdateTarget(current.records, prepared);
     const duplicate = findExactMemoryDuplicate(
       current.records,
@@ -130,9 +139,12 @@ export async function updateManagedMemory(params: {
       ...target,
       content: prepared.candidate.content,
       tags: prepared.candidate.tags,
+      automaticManagement: "protected",
       updatedAt: nextTimestamp(target.updatedAt, params.now),
     });
     return {
+      learningCandidates: retainUnsupersededCandidates(current.learningCandidates ?? [], updatedRecord.content,
+        target.id, params.input.supersedesCandidate?.id),
       records: Object.freeze(
         current.records.map((record) =>
           record.id === target.id ? updatedRecord! : record,
@@ -183,6 +195,21 @@ export function clearManagedMemories(
   return clearMemoryRecords(repository);
 }
 
+function retainUnsupersededCandidates(
+  candidates: readonly LearningCandidateRecord[],
+  content: string,
+  editedMemoryId?: string,
+  supersededCandidateId?: string,
+): readonly LearningCandidateRecord[] {
+  const key = normalizeMemoryText(content);
+  return Object.freeze(candidates.filter((candidate) => {
+    if (candidate.id === supersededCandidateId) return false;
+    const duplicatesExplicitContent = normalizeMemoryText(candidate.content) === key;
+    const replacesEditedMemory = editedMemoryId !== undefined && candidate.replacement?.id === editedMemoryId;
+    return !duplicatesExplicitContent && !replacesEditedMemory;
+  }));
+}
+
 async function findUpdateTarget(
   repository: LongTermMemoryRepository,
   prepared: Readonly<{ id: string; expectedUpdatedAt: string }>,
@@ -211,10 +238,13 @@ function requireCurrentUpdateTarget(
   return target;
 }
 
-function matchesCandidate(
+function canSkipManagedMemoryUpdate(
   record: LongTermMemoryRecord,
   candidate: Readonly<{ content: string; tags: readonly string[] }>,
+  supersedesCandidate: MemoryUpdateInput["supersedesCandidate"],
 ): boolean {
+  if (supersedesCandidate) return false;
+  if (record.automaticManagement !== "protected") return false;
   return (
     record.content === candidate.content &&
     record.tags.length === candidate.tags.length &&

@@ -16,7 +16,11 @@ export function renderMacCompanionScript(
   const resolve = localAlias
     ? ` --resolve ${shellString(`${url.hostname}:${url.port || "80"}:127.0.0.1`)}`
     : "";
-  const payload = JSON.stringify({ url: input.url, code: input.code });
+  const payload = JSON.stringify({
+    url: input.url,
+    code: input.code,
+    ...(input.upgradeHostId ? { upgradeHostId: input.upgradeHostId } : {}),
+  });
   return `#!/bin/bash
 set -euo pipefail
 umask 077
@@ -31,6 +35,11 @@ trap failed ERR
 verify_installation_directory() {
   if [ -L "$BASE" ]; then echo 'The installation directory must not be a link.' >&2; exit 1; fi
   if [ ! -O "$BASE" ]; then echo 'The installation directory must belong to this user.' >&2; exit 1; fi
+}
+can_resume_cached_setup() {
+  [ -f "$HOME/.abot/host-companion/connection.json" ] || return 1
+  [ -f "$NODE" ] || return 1
+  [ -f "$BUNDLE" ]
 }
 run_verified_companion_setup() {
   if [ ! -f "$NODE" ]; then echo 'The cached Node.js runtime is missing. Restore this installation before resuming setup.' >&2; exit 1; fi
@@ -51,7 +60,7 @@ esac
 NODE_NAME="node-${COMPANION_NODE_VERSION}-darwin-$ARCH"
 NODE="$BASE/$NODE_NAME/bin/node"
 BUNDLE="$BASE/companion-${input.bundleSha256}.mjs"
-if [ -e "$HOME/.abot/host-companion/connection.json" ]; then
+if can_resume_cached_setup; then
   run_verified_companion_setup
   exit 0
 fi

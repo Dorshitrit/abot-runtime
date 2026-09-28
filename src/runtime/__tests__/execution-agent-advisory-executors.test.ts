@@ -243,6 +243,39 @@ async function commit(
   return result.head;
 }
 
+function createFailingAdvisoryRequest(
+  requestId: string,
+  modelStep: "planner.graph" | "auditor.decision",
+  failure: "invalid" | "incomplete" | "timeout",
+) {
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    if (failure === "timeout") {
+      await new Promise<never>((_resolve, reject) => {
+        input.abortSignal!.addEventListener(
+          "abort",
+          () => reject(input.abortSignal!.reason),
+          { once: true },
+        );
+      });
+    }
+    return {
+      text: "not-json",
+      meta:
+        failure === "incomplete" ? { providerCompletionReason: "length" } : {},
+    };
+  });
+  const request = createRequest(requestId, invoke);
+  return {
+    invoke,
+    request: deriveTestRequestExecutionScope(request, {
+      runnerConfig: {
+        ...runnerConfig,
+        steps: { ...runnerConfig.steps, [modelStep]: { timeoutMs: 5 } },
+      },
+    }),
+  };
+}
+
 function requireActiveCall(head: RoleCallLedgerHead): RoleCallFrame {
   const call = head.state.calls.find(
     (candidate) => candidate.callId === head.state.activeCallId,
@@ -302,81 +335,100 @@ describe("execution-agent advisory Planner", () => {
     });
   });
 
-  test("settles exhausted invalid model output as a passive failed result", async () => {
-    const ledger = await createLedger("planner-invalid-request");
-    const callerCall = requireActiveCall(ledger.current());
-    const invoke = vi.fn(
-      async (_input: Parameters<ModelGatewayClient["invoke"]>[0]) => ({
-        text: "not-json",
-        meta: {},
-      }),
-    );
+  test.each([
+    ["invalid", "invalid_planner_graph", 3],
+    ["incomplete", "output_incomplete", 1],
+    ["timeout", "planner_graph_timeout", 1],
+  ] as const)(
+    "settles %s model output as a passive failed result",
+    async (failure, reason, attempts) => {
+      const ledger = await createLedger("planner-invalid-request");
+      const callerCall = requireActiveCall(ledger.current());
+      const { request, invoke } = createFailingAdvisoryRequest(
+        "planner-invalid-request",
+        PLANNER_GRAPH_MODEL_STEP,
+        failure,
+      );
 
-    await expect(
-      EXECUTION_AGENT_ROLE_EXECUTORS.invokeChild({
-        requestId: "planner-invalid-request",
-        context: createRequest("planner-invalid-request", invoke),
-        callerCall,
-        ledger,
-        expectedHead: ledger.current(),
-        roleId: "planner",
-        objective: "Advise on a bounded decomposition.",
-        turnCount: 0,
-      }),
-    ).resolves.toMatchObject({
-      execution: {
-        kind: "terminal",
-        outcome: "failed",
-        summary: expect.stringContaining('"reason":"invalid_planner_graph"'),
-      },
-    });
-    expect(invoke).toHaveBeenCalledTimes(3);
-    expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-      PLANNER_GRAPH_MODEL_STEP,
-      PLANNER_GRAPH_MODEL_STEP,
-      PLANNER_GRAPH_MODEL_STEP,
-    ]);
-    expect(invoke.mock.calls[0]?.[0].format).toMatchObject({
-      name: "planner_graph_proposal",
-    });
-    expect(ledger.current().state.activeCallId).toBe(callerCall.callId);
-    expect(ledger.current().state.results).toMatchObject([
-      { roleId: "planner", outcome: "failed" },
-    ]);
-  });
+      await expect(
+        EXECUTION_AGENT_ROLE_EXECUTORS.invokeChild({
+          requestId: "planner-invalid-request",
+          context: request,
+          callerCall,
+          ledger,
+          expectedHead: ledger.current(),
+          roleId: "planner",
+          objective: "Advise on a bounded decomposition.",
+          turnCount: 0,
+        }),
+      ).resolves.toMatchObject({
+        execution: {
+          kind: "terminal",
+          outcome: "failed",
+          summary: expect.stringContaining(
+            JSON.stringify({ reason }).slice(1, -1),
+          ),
+        },
+      });
+      expect(invoke).toHaveBeenCalledTimes(attempts);
+      expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual(
+        Array(attempts).fill(PLANNER_GRAPH_MODEL_STEP),
+      );
+      expect(invoke.mock.calls[0]?.[0].format).toMatchObject({
+        name: "planner_graph_proposal",
+      });
+      expect(ledger.current().state.activeCallId).toBe(callerCall.callId);
+      expect(ledger.current().state.results).toMatchObject([
+        { roleId: "planner", outcome: "failed" },
+      ]);
+    },
+  );
 });
 
 describe("execution-agent advisory Auditor", () => {
-  test("settles exhausted invalid model output without child or capability action", async () => {
-    const ledger = await createLedger("auditor-invalid-request");
-    await settleRootCapability(ledger, "bounded evidence");
-    const callerCall = requireActiveCall(ledger.current());
-    const invoke = vi.fn(async () => ({ text: "not-json", meta: {} }));
+  test.each([
+    ["invalid", "invalid_auditor_decision", 3],
+    ["incomplete", "output_incomplete", 1],
+    ["timeout", "auditor_decision_timeout", 1],
+  ] as const)(
+    "settles %s model output without child or capability action",
+    async (failure, reason, attempts) => {
+      const ledger = await createLedger("auditor-invalid-request");
+      await settleRootCapability(ledger, "bounded evidence");
+      const callerCall = requireActiveCall(ledger.current());
+      const { request, invoke } = createFailingAdvisoryRequest(
+        "auditor-invalid-request",
+        AUDITOR_DECISION_MODEL_STEP,
+        failure,
+      );
 
-    await expect(
-      EXECUTION_AGENT_ROLE_EXECUTORS.invokeChild({
-        requestId: "auditor-invalid-request",
-        context: createRequest("auditor-invalid-request", invoke),
-        callerCall,
-        ledger,
-        expectedHead: ledger.current(),
-        roleId: "reviewer",
-        objective: encodeExecutionAgentAuditObjective([
-          EXECUTION_AGENT_ROOT_AUDIT_CRITERION_ID,
-        ]),
-        turnCount: 0,
-      }),
-    ).resolves.toMatchObject({
-      execution: {
-        kind: "terminal",
-        outcome: "failed",
-        summary: expect.stringContaining('"reason":"invalid_auditor_decision"'),
-      },
-    });
-    expect(invoke).toHaveBeenCalledTimes(3);
-    expect(ledger.current().state.activeCallId).toBe(callerCall.callId);
-    expect(ledger.current().state.results).toMatchObject([
-      { roleId: "reviewer", outcome: "failed" },
-    ]);
-  });
+      await expect(
+        EXECUTION_AGENT_ROLE_EXECUTORS.invokeChild({
+          requestId: "auditor-invalid-request",
+          context: request,
+          callerCall,
+          ledger,
+          expectedHead: ledger.current(),
+          roleId: "reviewer",
+          objective: encodeExecutionAgentAuditObjective([
+            EXECUTION_AGENT_ROOT_AUDIT_CRITERION_ID,
+          ]),
+          turnCount: 0,
+        }),
+      ).resolves.toMatchObject({
+        execution: {
+          kind: "terminal",
+          outcome: "failed",
+          summary: expect.stringContaining(
+            JSON.stringify({ reason }).slice(1, -1),
+          ),
+        },
+      });
+      expect(invoke).toHaveBeenCalledTimes(attempts);
+      expect(ledger.current().state.activeCallId).toBe(callerCall.callId);
+      expect(ledger.current().state.results).toMatchObject([
+        { roleId: "reviewer", outcome: "failed" },
+      ]);
+    },
+  );
 });

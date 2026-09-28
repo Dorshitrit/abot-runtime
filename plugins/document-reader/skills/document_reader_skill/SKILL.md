@@ -4,6 +4,13 @@ Use `document_reader` for an uploaded document before answering questions that
 depend on its contents. Also use it for supported local documents that ordinary
 source-code views do not represent well.
 
+Supported formats are PDF, DOCX, XLSX, PPTX, TXT, CSV, Markdown, JSON, and RTF.
+Local paths must end in `.pdf`, `.docx`, `.xlsx`, `.pptx`, `.txt`, `.csv`, `.md`,
+`.json`, or `.rtf`. Attachments can also be identified by a supported MIME type.
+Do not select this tool for source-code paths such as `.js` or `.ts`. Use
+`read_one_file` for source code and other text files when that operation is
+available. An unsupported extension is not fixed by changing `source_mode`.
+
 When invoking `read_document` for an attachment, omit `source_mode` or set it to
 `source`, and pass the exact attachment id or name in `source`. The same source
 lane preserves legacy allowed paths beneath configured agent roots. When

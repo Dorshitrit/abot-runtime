@@ -38,7 +38,8 @@ afterAll(async () => {
 test("bundles websocket and native handlers with only built-in external imports", () => {
   expect(bundle.bytes).toBeGreaterThan(1_000);
   expect(bundle.inputPaths).toContain("node_modules/ws/lib/websocket.js");
-  expect(bundle.inputPaths).toContain("plugins/system/source/handlers.ts");
+  expect(bundle.inputPaths).toContain("src/computer-access/handlers.ts");
+  expect(bundle.inputPaths.some((path) => path.startsWith("plugins/"))).toBe(false);
 });
 test("preserves the complete Runtime and installed websocket license notices", async () => {
   const wsRoot = dirname(

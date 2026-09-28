@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { traceDebug } from "../../runtime/observability/debug-logger.js";
+import { toolMediaSafeMessage } from "../observability/tool-media-privacy.js";
 import type {
   ModelGatewayInputTokenCountParams,
   ModelGatewayInputTokenCountResult,
@@ -139,7 +140,7 @@ export async function countModelGatewayInputTokensWithOptions(
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
     throw new Error(
-      `bridge_input_token_count_failed:${response.status}:${errorText || "empty error body"}`,
+      `bridge_input_token_count_failed:${response.status}:${toolMediaSafeMessage(errorText || "empty error body", requestMessages)}`,
     );
   }
   const result = parseInputTokenCountResult(

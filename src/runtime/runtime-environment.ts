@@ -1,4 +1,6 @@
 import { createRuntimeProjectService } from "./projects/service.js";
+import { traceDebug } from "./observability/debug-logger.js";
+import { createRuntimePassiveLearning } from "./adapters/passive-learning-runtime.js";
 import {
   createDefaultAttachmentStore,
   createDefaultEventSinkFactory,
@@ -46,7 +48,14 @@ export function createRuntimeEnvironment(
       deleteSessionAttachmentsIfSupported(attachments, result.sessionId),
   );
   bindManagedSessionAttachmentDeletion(sessionLifecycle.store, attachments);
-  const admission = new SessionRequestAdmission(sessionLifecycle.isDeleted);
+  const admission = new SessionRequestAdmission(
+    sessionLifecycle.isDeleted,
+    async (sessionId) =>
+      Boolean(
+        (await sessionLifecycle.store.requestLifecycle?.listWaiting(sessionId))
+          ?.length,
+      ),
+  );
   const scheduling = createRuntimeScheduler({
     config,
     sessions: sessionLifecycle.store,
@@ -66,6 +75,30 @@ export function createRuntimeEnvironment(
       ready: scheduling.ensureStarted,
     });
   const models = overrides.models ?? createDefaultModelGatewayClient(config);
+  const longTermMemory =
+    overrides.longTermMemory ??
+    createDefaultLongTermMemoryService(config, models);
+  const passiveLearning =
+    overrides.passiveLearning ??
+    createRuntimePassiveLearning({
+      config,
+      models,
+      memory: longTermMemory,
+      sessions: sessionLifecycle.store,
+    });
+  sessionLifecycle.onDeleted(async (sessionId) => {
+    try {
+      await passiveLearning.sessionDeleted?.(sessionId);
+    } catch {
+      traceDebug(
+        "runtime.passive_learning",
+        "proposal.session_cleanup_failed",
+        {
+          reason: "proactive_session_cleanup_failed",
+        },
+      );
+    }
+  });
   const services: RuntimeEnvironmentServices = Object.freeze({
     config,
     sessions: sessionLifecycle.store,
@@ -76,9 +109,8 @@ export function createRuntimeEnvironment(
     events: overrides.events ?? createDefaultEventSinkFactory(config),
     sessionMemoryCompactor:
       overrides.sessionMemoryCompactor ?? createModelSessionMemoryCompactor(),
-    longTermMemory:
-      overrides.longTermMemory ??
-      createDefaultLongTermMemoryService(config, models),
+    longTermMemory,
+    passiveLearning,
     scheduler: scheduling.scheduler,
     startScheduler: scheduling.start,
     stopScheduler: scheduling.stop,
@@ -102,11 +134,39 @@ export function createRuntimeEnvironment(
       });
     },
   });
+  let unsubscribeInjectedLearning: (() => void) | undefined;
   return {
     services,
     requests,
-    start: scheduling.start,
-    stop: scheduling.stop,
+    async start() {
+      await scheduling.start();
+      await longTermMemory.retention?.start();
+      const notifyInjectedLearning =
+        overrides.passiveLearning?.notifyKnowledgeChanged;
+      if (notifyInjectedLearning) {
+        unsubscribeInjectedLearning ??= longTermMemory.subscribeChanges?.(
+          () => {
+            overrides.passiveLearning!.notifyKnowledgeChanged!();
+          },
+        );
+      }
+      try {
+        await passiveLearning.start();
+      } catch (error) {
+        unsubscribeInjectedLearning?.();
+        unsubscribeInjectedLearning = undefined;
+        throw error;
+      }
+    },
+    async stop() {
+      unsubscribeInjectedLearning?.();
+      unsubscribeInjectedLearning = undefined;
+      await Promise.all([
+        passiveLearning.stop(),
+        scheduling.stop(),
+        longTermMemory.retention?.stop(),
+      ]);
+    },
     subscribeScheduledEvents: scheduling.subscribe,
   };
 }

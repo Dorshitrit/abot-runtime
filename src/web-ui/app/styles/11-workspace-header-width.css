@@ -1,0 +1,99 @@
+/* Match every workspace header to the shared content column. */
+.config-workspace-panel .config-workspace-header,
+.workspace-page-header,
+.home-workspace-header {
+  padding-inline: max(
+    var(--workspace-page-gutter),
+    calc((100% - var(--workspace-content-width)) / 2)
+  );
+}
+
+@media (min-width: 1261px) {
+  .chat-header {
+    padding-inline: max(
+      42px,
+      calc((100% - var(--chat-content-width)) / 2 + 42px)
+    );
+  }
+}
+
+.config-workspace-body > .runtime-config-activation {
+  width: min(var(--workspace-content-width), 100%);
+  margin-inline: auto;
+}
+
+/* A shared desktop baseline joins the brand, navigation and workspace. */
+@media (min-width: 761px) {
+  .app-shell {
+    --workspace-header-height: 94px;
+  }
+
+  .home-workspace-header,
+  .workspace-page-header,
+  .config-workspace-panel .config-workspace-header,
+  .chat-header {
+    height: var(--workspace-header-height);
+    min-height: var(--workspace-header-height);
+    flex-shrink: 0;
+    align-items: center;
+  }
+
+  .workspace-rail {
+    padding-top: 0;
+  }
+
+  .workspace-brand {
+    display: flex;
+    flex: 0 0 var(--workspace-header-height);
+    align-self: stretch;
+    align-items: center;
+    justify-content: center;
+    height: var(--workspace-header-height);
+    padding: 0;
+  }
+
+  .workspace-brand img {
+    width: 36px;
+    height: 36px;
+  }
+
+  .workspace-rail::before,
+  .workspace-rail::after {
+    position: absolute;
+    content: "";
+    pointer-events: none;
+  }
+
+  .workspace-rail::before {
+    top: calc(var(--workspace-header-height) - 1px);
+    right: -1px;
+    left: 0;
+    height: 1px;
+    background: var(--line);
+  }
+
+  .workspace-rail::after {
+    top: calc(var(--workspace-header-height) - 61px);
+    right: -100px;
+    width: 200px;
+    height: 120px;
+    background: radial-gradient(
+      ellipse,
+      color-mix(in srgb, var(--accent) 10%, transparent),
+      transparent 70%
+    );
+    filter: blur(18px);
+  }
+
+  .app-shell .sessions-panel {
+    padding-top: 0;
+  }
+
+  .app-shell .sessions-panel .sidebar-topline {
+    flex: 0 0 var(--workspace-header-height);
+    min-height: var(--workspace-header-height);
+    margin-inline: -12px;
+    padding-inline: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+}

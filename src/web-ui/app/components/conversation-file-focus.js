@@ -37,6 +37,9 @@ function fileReturnTarget(node) {
   if (target) return target;
   const activity = node?.closest(".conversation-activity");
   if (!activity) return null;
+  const viewToggle = activity.querySelector(".conversation-role-toggle");
+  const visibleToggle = visibleFileReturnTarget(viewToggle);
+  if (visibleToggle) return visibleToggle;
   const summary = [...activity.children].find(isDisclosureSummary);
   return visibleFileReturnTarget(summary);
 }

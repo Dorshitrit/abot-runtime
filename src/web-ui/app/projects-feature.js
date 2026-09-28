@@ -1,3 +1,4 @@
+import { escapeHtml } from "./lib/text-format.js";
 import { createProjectsController } from "./controllers/projects-controller.js";
 import { createProjectCreation } from "./components/project-creation.js";
 import { renderProjectSessionGroups } from "./components/project-session-groups.js";
@@ -16,6 +17,9 @@ export function createProjectsFeature({
 }) {
   let view;
   let wasOpen = false;
+  let groupEnvironmentId = selectedEnvironmentId();
+  const collapsedProjectIds = new Set();
+  const expandedProjectSessionIds = new Set();
   const controller = createProjectsController({
     client,
     getEnvironmentId: selectedEnvironmentId,
@@ -60,8 +64,40 @@ export function createProjectsFeature({
     const hadOpenDraft = Boolean(controller.snapshot().draft);
     const closed = controller.closeCreate();
     if (!hadOpenDraft) return closed;
-    if (closed) dom.newProjectButton.focus();
+    if (!closed) return closed;
+    const focusTarget = dom.sessionsPanel.hidden
+      ? dom.sessionsToggleButton
+      : dom.newProjectButton;
+    focusTarget.focus();
     return closed;
+  }
+
+  function syncProjectGroupEnvironment() {
+    const environmentId = selectedEnvironmentId();
+    if (groupEnvironmentId === environmentId) return;
+    groupEnvironmentId = environmentId;
+    collapsedProjectIds.clear();
+    expandedProjectSessionIds.clear();
+  }
+
+  function rememberProjectGroupCollapse(projectId, collapsed) {
+    syncProjectGroupEnvironment();
+    const isSearchingSessions = Boolean(String(state.sessionQuery ?? "").trim());
+    if (isSearchingSessions) return;
+    if (collapsed) {
+      collapsedProjectIds.add(projectId);
+      return;
+    }
+    collapsedProjectIds.delete(projectId);
+  }
+
+  function rememberProjectSessionExpansion(projectId, expanded) {
+    syncProjectGroupEnvironment();
+    if (expanded) {
+      expandedProjectSessionIds.add(projectId);
+      return;
+    }
+    expandedProjectSessionIds.delete(projectId);
   }
 
   function refreshAvailability() {
@@ -76,12 +112,15 @@ export function createProjectsFeature({
     load: controller.load,
     refreshAvailability,
     renderSessionGroups({ root, sessions, createSessionItem }) {
+      syncProjectGroupEnvironment();
       const project = state.sessions.find(
         (session) => session.id === state.currentSessionId,
       )?.project;
       dom.currentProjectContext.hidden = !project;
-      dom.currentProjectContext.textContent = project
-        ? `${project.name} · ${project.directory}`
+      dom.currentProjectContext.innerHTML = project
+        ? `<bdi class="current-project-name" dir="auto">${escapeHtml(project.name)}</bdi>
+           <span aria-hidden="true">·</span>
+           <bdi class="current-project-path" dir="ltr">${escapeHtml(project.directory)}</bdi>`
         : "";
       dom.currentProjectContext.title = project?.directory || "";
       if (!client.supportsProjects()) return false;
@@ -91,6 +130,10 @@ export function createProjectsFeature({
         createSessionItem,
         ...controller.snapshot(),
         query: state.sessionQuery,
+        collapsedProjectIds,
+        expandedProjectSessionIds,
+        onToggleGroup: rememberProjectGroupCollapse,
+        onToggleProjectSessions: rememberProjectSessionExpansion,
         onNewConversation: controller.newConversation,
         onRetry: () => void controller.load(),
       });
@@ -118,6 +161,7 @@ export function createProjectsFeature({
       });
       dom.environmentSelect.addEventListener("change", () => {
         queueMicrotask(() => {
+          syncProjectGroupEnvironment();
           refreshAvailability();
           void controller.environmentChanged();
         });

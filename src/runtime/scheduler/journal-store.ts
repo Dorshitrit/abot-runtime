@@ -46,7 +46,10 @@ export class SchedulerJournalStore {
   private legacy?: SchedulerSnapshot;
   private publicationFailure?: JournalPublicationSyncError;
   private ownedDirectoriesSynced = false;
-  constructor(private readonly directory: string) {}
+  constructor(
+    private readonly directory: string,
+    private readonly onCommittedChange?: () => void,
+  ) {}
 
   async load(): Promise<this> {
     const head = await readJournalHead(this.directory);
@@ -125,7 +128,7 @@ export class SchedulerJournalStore {
         view === "active"
           ? applyWorkingChanges(await this.snapshot(), delta)
           : after;
-      await this.replaceGeneration(complete);
+      await this.replaceGeneration(complete, true);
       return result;
     }
     const file = join(
@@ -139,9 +142,13 @@ export class SchedulerJournalStore {
     this.index.apply(delta, file);
     this.sequence += 1;
     this.head = head;
+    this.notifyCommittedChange();
     return result;
   }
-  private async replaceGeneration(snapshot: SchedulerSnapshot): Promise<void> {
+  private async replaceGeneration(
+    snapshot: SchedulerSnapshot,
+    hasLogicalChange = false,
+  ): Promise<void> {
     const generation = await createJournalGeneration(this.directory);
     const index = new SchedulerJournalIndex();
     let sequence = 0;
@@ -175,8 +182,16 @@ export class SchedulerJournalStore {
     this.generation = generation;
     this.head = head;
     this.legacy = undefined;
+    if (hasLogicalChange) this.notifyCommittedChange();
     // Failed physical removal remains discoverable on the next explicit operation.
     await cleanObsoleteJournalGenerations(this.directory, generation);
+  }
+  private notifyCommittedChange(): void {
+    try {
+      this.onCommittedChange?.();
+    } catch {
+      /* A view cannot change the outcome of a committed transaction. */
+    }
   }
   private async ensureOwnedDirectoriesSynced(): Promise<void> {
     if (this.ownedDirectoriesSynced) return;

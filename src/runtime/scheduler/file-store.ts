@@ -5,7 +5,10 @@ import type { SchedulerStore } from "./contracts.js";
 import { SchedulerJournalStore } from "./journal-store.js";
 import { journalReadIdentity, readJournalHead } from "./journal-head.js";
 
-export function createFileSchedulerStore(directory: string): SchedulerStore {
+export function createFileSchedulerStore(
+  directory: string,
+  onCommittedChange?: () => void,
+): SchedulerStore {
   let releaseOwner: (() => Promise<void>) | undefined;
   let journal: SchedulerJournalStore | undefined;
   let transactionTail: Promise<unknown> = Promise.resolve();
@@ -45,7 +48,10 @@ export function createFileSchedulerStore(directory: string): SchedulerStore {
         throw error;
       }
       try {
-        journal = await new SchedulerJournalStore(directory).load();
+        journal = await new SchedulerJournalStore(
+          directory,
+          onCommittedChange,
+        ).load();
         await journal.prepareOwned();
       } catch (error) {
         const release = releaseOwner;

@@ -43,6 +43,7 @@ function renderMemoryRecord(record, view) {
               Updated ${escapeHtml(formatMemoryTimestamp(record.updatedAt))}
             </time>
           </div>
+          ${renderObservationSources(record.observationSources)}
         </div>
       </div>
       <div class="memory-record-actions">
@@ -67,6 +68,12 @@ function renderMemoryRecord(record, view) {
       </div>
     </article>
   `;
+}
+
+function renderObservationSources(sources) {
+  if (!Array.isArray(sources) || sources.length === 0) return "";
+  return `<details class="memory-observation-sources"><summary>Activity sources (${sources.length})</summary><ul>${sources.map((source) =>
+    `<li>${escapeHtml(String(source.kind || "Observation"))} · ${escapeHtml(formatMemoryTimestamp(source.observedAt))}${source.reason ? ` · ${escapeHtml(String(source.reason))}` : ""}${source.certainty ? ` · ${escapeHtml(String(source.certainty))}` : ""}</li>`).join("")}</ul></details>`;
 }
 
 function renderContent(content) {

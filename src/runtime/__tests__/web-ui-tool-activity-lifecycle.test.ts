@@ -351,7 +351,7 @@ describe("tool activity client lifecycle", () => {
   });
 
   test.each([
-    ["tool.payload.failed", "Preparation failed"],
+    ["tool.payload.failed", "Not prepared"],
     ["tool.approval.rejected", "Not approved"],
   ])("pre-execution %s keeps prepared-input wording", (name, label) => {
     const harness = createPlanLifecycleHarness();

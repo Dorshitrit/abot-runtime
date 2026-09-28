@@ -2396,22 +2396,6 @@ describe("Supervisor-root request runner slice", () => {
     }
   });
 
-  test("rejects invalid Supervisor output without emitting an answer", async () => {
-    const request = createRequest(
-      vi.fn(async () => ({ text: encodeDecision("not-json"), meta: {} })),
-    );
-
-    await expect(runRequestRunner(request)).rejects.toThrow(
-      "invalid_supervisor_decision",
-    );
-    expect(request.onAnswerToken).not.toHaveBeenCalled();
-    expect(request.onThinkingTrace).toHaveBeenCalledWith({
-      step: SUPERVISOR_DECISION_MODEL_STEP,
-      status: "error",
-      text: "",
-    });
-  });
-
   test("does not invoke the Supervisor after the request aborts", async () => {
     const abort = new AbortController();
     abort.abort(new Error("request cancelled"));

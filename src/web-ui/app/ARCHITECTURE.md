@@ -19,6 +19,17 @@ Controllers and components communicate through injected callbacks or values. The
 
 `workspace-shell.js` is the single owner of workspace navigation. It owns the active Home, Chat, Schedules or Config workspace, responsive Conversations visibility, focus restoration, Escape handling, backdrop state, and related ARIA attributes. `conversation-sidebar-layout.js` resolves the sidebar presentation policy; `operations-section.js` owns the internal Runtime, Logs, and Health tabs within Configuration. These components must not own session data, request state, or Runtime transport.
 
+`workspace-route-controller.js` owns the browser address projection and history
+restoration; `lib/workspace-route.js` owns address parsing and serialization.
+The four workspace paths reuse the existing server fallback. Environment is
+explicit, with a Chat session, Configuration category and Operations tab, or
+saved schedule Job when relevant. Bootstrap validates the URL environment before
+loading its data, then restores the addressed view. Route application uses the
+existing shell, environment, conversation and schedule controllers and respects
+their guards. Environment transitions suppress intermediate history entries;
+rejected Back or Forward navigation restores the accepted history entry. The URL
+never contains drafts, credentials, approval choices, or mutation payloads.
+
 `conversation-activity.js` owns only request-scoped activity presentation. `realtime-event-controller.js` preserves sequence authority, associates events and progress with their exact `requestId`, and injects those values into the conversation view. `realtime-transport.js` only parses and transports frames; it does not reduce application state.
 
 `composer-context-window.js` presents the existing context estimate as one compact composer indicator. It selects the active assistant request, or the newest conversation message only when it is a request-linked assistant message while idle. A pending user turn, an assistant message without a request ID, or missing metrics hides the indicator instead of falling back to an earlier request. Context metric updates refresh it independently of message tokens; session-view resets clear it. Estimated usage, provider-reported usage, and compaction remain distinct, and provider usage stays bound to the matching model invocation.
@@ -83,7 +94,7 @@ Panel resizing and persisted panel widths are intentionally not part of this arc
 
 `composer-workspace-controller.js` moves the existing composer DOM between Home and Chat and isolates their draft text and attachments. `composer-surface-controller.js` routes input, rendering and attachment actions to the active surface. Both surfaces use the same attachment and submission controllers; background Chat queue work writes to its own input surface. Home submission adopts its draft into a new conversation before invoking the ordinary Chat request controller. Home navigation alone never resets or reads the active conversation. `conversation-read-state-controller.js` rechecks visible Chat, environment, session and view revision before marking persisted assistant messages read.
 
-Dashboard Job suggestions are inert data in `dashboard-job-templates.js`. They open the ordinary schedule form with editable defaults, a selected model, device time zone and a new dedicated conversation target. Only explicit Save creates state. `schedule-job-creation.ts` adapts this Web-only target into an owner-created conversation and the existing scheduler contract; it never invokes the model. Existing-conversation creation remains supported. `configuration-feature.js` owns the composition of Configuration and its memory controls. `app-bootstrap.js` owns startup ordering, environment restoration, initial loading and Home activation.
+Dashboard Job suggestions are inert data in `dashboard-job-templates.js`. They open the ordinary schedule form with editable defaults, a selected model, device time zone and a new dedicated conversation target. Only explicit Save creates state. `schedule-job-creation.ts` adapts this Web-only target into an owner-created conversation and the existing scheduler contract; it never invokes the model. Existing-conversation creation remains supported. `configuration-feature.js` owns the composition of Configuration and its memory controls. `app-bootstrap.js` owns startup ordering, environment restoration, initial loading and route-controller composition; an unaddressed start activates Home.
 
 Read tracking belongs only to the native Web UI backend. `session-read-state/service.ts` reads canonical session snapshots and projects unread assistant replies; `store.ts` persists the UI cursors in an environment-specific sidecar under `runtimeDir/web-ui/read-state/`. Runtime session files, model context and Runtime contracts remain unchanged. A persisted initialization timestamp treats existing history as read and tracks later replies, including newly created Job conversations. Read acknowledgements resolve only the displayed persisted assistant message or its exact completed request ID. Cursors advance monotonically and survive server restarts; invalid boundaries never acknowledge unseen replies. Browser consumers retain newer read revisions when older responses arrive late.
 
@@ -143,9 +154,14 @@ Visual components may format or group events, but they never accept transport fr
 `schedules-feature.js` composes the scheduler browser feature from its controller,
 transport requests and presentation. `schedules-controller.js` owns loading and
 management actions scoped to the selected environment, guards stale reads, and
-refreshes only while the workspace is active and no editor or mutation is pending.
+refreshes from committed server changes while the workspace is active and visible.
+The event refresh queue coalesces bursts and preserves changes received during
+reads or mutations; reconnection and visibility return reconcile missed changes.
+Background updates retain the open editor and the selected run-history page.
 The full Schedules workspace shares the shell navigation and discard guards;
-its editor uses an explicit save and a saved model/mode with Full tool access.
+its editor uses an explicit save and a saved model/mode with selectable Full or
+FULL+ tool access. Full remains the default; FULL+ must be selected explicitly.
+The run history shows the permission captured for each invocation.
 Unchanged timing fields are omitted from edits, preserving the original timer or
 interval anchor when only a title, prompt or model changes.
 
@@ -215,6 +231,9 @@ external mutation lock during save, Apply and refresh. Saved model identity
 survives Apply failure; successful Apply survives refresh failure. Completion
 refreshes Memory provider choices and chat models, selects the new profile, and
 focuses it only after closing the modal and releasing the lock.
+Deferred activation refreshes the saved declaration without marking it active or
+refreshing the active chat catalog. The dialog distinguishes saved/pending status
+from save failures, and closing it does not undo the saved declaration.
 
 local-runtime/model-setup-\* owns catalog/input/credential/addition behavior.
 It uses the canonical configuration repository and shared CLI merge helper,
@@ -222,6 +241,12 @@ preserving existing profiles, references, defaults and connection settings.
 Only new OpenAI/Ollama connections are created here; existing provider IDs are
 resolved by adapter type. The transport exposes no secret values and requires
 the same-origin JSON mutation guard. This flow does not invoke a model.
+
+New Web additions use a model file and `configRef`; existing inline profiles
+remain supported. Declaration removal uses the canonical Runtime lock and loaded
+root revision, validates the remaining configuration for every environment, and
+keeps referenced files, providers and credentials. Discovered files without a
+declaration remain editable and are explicitly marked as not registered.
 
 ## Projects and permission modes
 
@@ -245,3 +270,15 @@ values and server compatibility. FULL+ requires advertised server support, and
 transport rejects unsupported requests without a silent downgrade. The existing
 composer queue keeps its captured mode. Project membership never selects FULL+.
 `app-state.js` constructs the same one shared browser state identity for `app.js`.
+
+Home approvals reuse the local Web transport's live approval promises through
+`GET /chat/approvals`. An explicit decision POST binds the environment, session,
+request and approval identities and rechecks live ownership before resolving it.
+The dashboard controller discards old-environment responses; discovery and
+approval never load or mark a conversation as read. External bridge connections
+show that Home discovery is unavailable. The shared approval card keeps recorded
+execution evidence visible and places the complete rationale in a native disclosure.
+
+Startup keeps the app inert and hidden from the initial HTML until workspace
+restoration finishes. The branded startup screen reveals the app once ready;
+failed bootstrap reads remain on an error with an explicit Reload action.

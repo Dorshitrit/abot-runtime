@@ -45,6 +45,7 @@ afterEach(() => vi.unstubAllGlobals());
 function clientFixture() {
   return {
     supportsSchedules: () => true,
+    supportsToolApprovals: () => true,
     listSchedules: vi.fn(
       async (): Promise<{ jobs: { id: string }[] }> => ({ jobs: [] }),
     ),
@@ -68,7 +69,7 @@ function featureFixture(modelProfileId = "selected-model") {
     schedulesRoot: {},
     modelSelect: { value: modelProfileId },
     environmentSelect: { addEventListener: vi.fn() },
-    schedulesWorkspaceButton: { hidden: false, disabled: false },
+    schedulesWorkspaceButton: { hidden: false, disabled: false, dataset: {} },
   };
   const shell = { activateWorkspace: vi.fn(() => true) };
   const schedules = createSchedulesFeature({

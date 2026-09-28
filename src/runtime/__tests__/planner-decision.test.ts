@@ -28,7 +28,6 @@ import {
   parsePlannerDecisionOutput,
   PLANNER_DECISION_MODEL_STEP,
   PLANNER_OBJECTIVE_MAX_LENGTH,
-  PLANNER_RESULT_MAX_LENGTH,
   projectPlannerDecisionCallIdentity,
   runPlannerDecision,
 } from "../steps/planner-decision/index.js";
@@ -479,7 +478,7 @@ describe("generic Planner decision contract", () => {
               {
                 properties: {
                   action: { enum: ["return_result"] },
-                  result: { maxLength: PLANNER_RESULT_MAX_LENGTH },
+                  result: { type: "string", minLength: 1 },
                 },
                 required: ["action", "result"],
                 additionalProperties: false,
@@ -487,7 +486,7 @@ describe("generic Planner decision contract", () => {
               {
                 properties: {
                   action: { enum: ["return_failure"] },
-                  reason: { maxLength: PLANNER_RESULT_MAX_LENGTH },
+                  reason: { type: "string", minLength: 1 },
                 },
                 required: ["action", "reason"],
                 additionalProperties: false,

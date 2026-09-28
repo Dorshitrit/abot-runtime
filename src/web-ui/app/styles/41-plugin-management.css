@@ -15,6 +15,7 @@
 .plugin-manager-heading h2,
 .plugin-card h3 {
   margin: 0;
+  font-weight: 400;
 }
 
 .plugin-manager-heading p,
@@ -28,7 +29,7 @@
   margin: 0;
   padding: 12px 16px;
   border: 1px solid var(--config-line);
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--config-surface-subtle);
   color: var(--muted);
   font-size: 13px;
@@ -39,14 +40,14 @@
   display: grid;
   align-items: start;
   grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
-  gap: 16px;
+  gap: 12px;
 }
 
 .plugin-card {
   position: relative;
-  padding: 20px;
+  padding: 16px;
   border: 1px solid var(--config-line);
-  border-radius: 16px;
+  border-radius: 10px;
   background: var(--config-surface);
   min-width: 0;
 }
@@ -90,10 +91,37 @@
 }
 
 .plugin-selection-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   white-space: nowrap;
   padding: 5px 8px;
-  border: 1px solid var(--config-line);
-  border-radius: 999px;
+  color: var(--muted);
+  background: var(--config-surface-subtle);
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: 5px;
+}
+
+.plugin-selection-state::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+
+.plugin-selection-state[data-plugin-state="enabled"] {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 9%, var(--config-surface));
+}
+
+.plugin-selection-state[data-plugin-state="partial"] {
+  color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 9%, var(--config-surface));
+}
+
+.plugin-selection-state:is([data-plugin-state="enabled"], [data-plugin-state="partial"])::before {
+  background: currentColor;
 }
 
 .plugin-description {
@@ -143,7 +171,6 @@
   line-height: 1.5;
 }
 
-
 .plugin-tools-open svg {
   flex: none;
   width: 16px;
@@ -178,7 +205,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 20px;
+  padding: 16px;
   overflow: hidden;
   border-radius: inherit;
   background: var(--config-surface);
@@ -300,7 +327,7 @@
   height: 18px;
   padding: 3px;
   border: 1px solid var(--line-strong);
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--control-bg);
   pointer-events: none;
 }
@@ -347,5 +374,4 @@
   .plugin-tools-panel {
     padding: 16px;
   }
-
 }

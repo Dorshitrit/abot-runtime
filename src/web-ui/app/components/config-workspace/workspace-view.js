@@ -7,13 +7,11 @@ import { escapeHtml, textOf } from "../../lib/text-format.js";
 import { CONFIG_CATEGORIES } from "./config-model.js";
 
 export function createConfigWorkspaceView({
+  onNavigationChange = () => {},
   state,
   dom,
   eventTarget,
-  memorySetup,
-  memoryManagement,
   pluginManagement,
-  hostConnection,
   configFileEntries,
   configFileKey,
   countObjectKeys,
@@ -26,13 +24,24 @@ export function createConfigWorkspaceView({
   isFileDirty,
   rawDraftFor,
   renderCategoryPanel,
-  renderCategoryTab,
   renderConfigMap,
   renderModelList,
   renderSelectedModelEditor,
   renderStepsEditor,
   selectedRawConfigFile,
 }) {
+  const operationsSection = dom.configDashboard.parentElement?.querySelector?.(
+    "#configOperationsSection",
+  );
+
+  function mountOperationsSection() {
+    if (!operationsSection) return;
+    const panel = dom.configDashboard.querySelector("#configOperationsPanel");
+    if (!panel) return;
+    panel.appendChild(operationsSection);
+    operationsSection.hidden = false;
+  }
+
   function selectedConfigModelIsAvailable(models) {
     return (
       Boolean(state.selectedConfigModelId) &&
@@ -65,7 +74,7 @@ export function createConfigWorkspaceView({
         state.appliedJsonRepairKeys.has(configFileKey(requestRunner)),
       )
     )
-      return '<p class="error-text">Repair this linked file in Advanced → Raw JSON before editing pipeline settings.</p>';
+      return '<p class="error-text">Repair this linked configuration file before editing pipeline settings.</p>';
     return renderStepsEditor(
       requestRunner,
       "Request pipeline",
@@ -82,9 +91,42 @@ export function createConfigWorkspaceView({
     return editor !== eventTarget.document?.activeElement;
   }
 
+  function renderUnavailableDashboard() {
+    const unavailable =
+      '<div class="empty-state">No config dashboard data</div>';
+    dom.configDashboard.innerHTML =
+      '<div class="config-category-panels">' +
+      CONFIG_CATEGORIES.map((category) =>
+        renderCategoryPanel(
+          category,
+          category === "operations" ? "" : unavailable,
+        ),
+      ).join("") +
+      "</div>";
+    mountOperationsSection();
+  }
+
+  function unavailableDashboardNeedsShell() {
+    const filesUnavailable = !state.configDashboard?.files;
+    const operationsPanelMissing = !dom.configDashboard.querySelector(
+      "#configOperationsPanel",
+    );
+    return filesUnavailable && operationsPanelMissing;
+  }
+
+  function shouldLockConfigPanel(panel, busy) {
+    return busy && panel.dataset.configCategoryPanel !== "operations";
+  }
+
   function syncDashboardInteractivity() {
+    if (unavailableDashboardNeedsShell()) renderUnavailableDashboard();
     const busy = dashboardIsBusy();
-    dom.configDashboard.inert = busy;
+    dom.configDashboard.inert = false;
+    for (const panel of dom.configDashboard.querySelectorAll(
+      ".config-category-panel",
+    )) {
+      panel.inert = shouldLockConfigPanel(panel, busy);
+    }
     dom.configDashboard.setAttribute("aria-busy", busy ? "true" : "false");
     dom.refreshConfigButton.disabled = busy;
   }
@@ -92,8 +134,7 @@ export function createConfigWorkspaceView({
   function renderConfigDashboard() {
     const dashboard = state.configDashboard;
     if (!dashboard?.files) {
-      dom.configDashboard.innerHTML =
-        '<div class="empty-state">No config dashboard data</div>';
+      renderUnavailableDashboard();
       return;
     }
     const runtime = dashboard.files.runtime;
@@ -117,6 +158,12 @@ export function createConfigWorkspaceView({
       sparseOverrides,
     );
     const dirtyCount = dirtyFiles().length;
+    const repairNeeded = configFileEntries().some((file) =>
+      configRequiresRawRepair(
+        file,
+        state.appliedJsonRepairKeys.has(configFileKey(file)),
+      ),
+    );
     dom.configDashboard.innerHTML = `
       <dl class="config-summary" aria-label="Configuration summary">
         <div class="config-summary-item">
@@ -151,23 +198,12 @@ export function createConfigWorkspaceView({
           >${escapeHtml(configChangeSummary(dirtyCount))}</dd>
         </div>
       </dl>
-      <nav class="config-category-nav" role="tablist" aria-label="Configuration categories">
-        ${renderCategoryTab("memory", "Memory")}
-        ${renderCategoryTab("pipeline", "Pipeline")}
-        ${renderCategoryTab("models", "Models")}
-        ${renderCategoryTab("plugins", "Plugins")}
-        ${renderCategoryTab("computer", "Connected computer")}
-        ${renderCategoryTab("advanced", "Advanced")}
-      </nav>
+      ${
+        repairNeeded
+          ? `<section class="config-category-panel" aria-label="Repair configuration file">${renderConfigMap()}</section>`
+          : ""
+      }
       <div class="config-category-panels">
-        ${renderCategoryPanel(
-          "memory",
-          '<div class="config-memory-layout"><div data-long-term-memory-setup></div><div data-long-term-memory-management></div></div>',
-        )}
-        ${renderCategoryPanel(
-          "pipeline",
-          requestPipelineContent(requestRunner),
-        )}
         ${renderCategoryPanel(
           "models",
           `<section class="config-section models-section">
@@ -179,35 +215,18 @@ export function createConfigWorkspaceView({
           </section>`,
         )}
         ${renderCategoryPanel("plugins", "<div data-plugin-management></div>")}
-        ${renderCategoryPanel("computer", "<div data-system-host-connection></div>")}
-        ${renderCategoryPanel("advanced", renderConfigMap())}
+        ${renderCategoryPanel("operations", "")}
       </div>
     `;
-    memorySetup.mount(
-      dom.configDashboard.querySelector("[data-long-term-memory-setup]"),
-    );
-    memoryManagement.mount(
-      dom.configDashboard.querySelector("[data-long-term-memory-management]"),
-    );
+    mountOperationsSection();
     pluginManagement?.mount(
       dom.configDashboard.querySelector("[data-plugin-management]"),
     );
-    hostConnection?.mount(
-      dom.configDashboard.querySelector("[data-system-host-connection]"),
-    );
-    hostConnection?.setActive(state.activeCategory === "computer");
     syncDirtyPresentation({ syncRawEditor: true });
+    syncDashboardInteractivity();
   }
 
   function syncActiveCategory() {
-    for (const button of dom.configDashboard.querySelectorAll(
-      "[data-config-category]",
-    )) {
-      const active = button.dataset.configCategory === state.activeCategory;
-      button.classList.toggle("active", active);
-      button.setAttribute("aria-selected", active ? "true" : "false");
-      button.tabIndex = active ? 0 : -1;
-    }
     for (const panel of dom.configDashboard.querySelectorAll(
       "[data-config-category-panel]",
     )) {
@@ -217,16 +236,11 @@ export function createConfigWorkspaceView({
     }
   }
 
-  function activateCategory(category, options = {}) {
+  function activateCategory(category) {
     if (!CONFIG_CATEGORIES.includes(category)) return;
     state.activeCategory = category;
     syncActiveCategory();
-    hostConnection?.setActive(category === "computer");
-    if (options.focus) {
-      dom.configDashboard
-        .querySelector(`[data-config-category="${category}"]`)
-        ?.focus();
-    }
+    onNavigationChange();
   }
 
   function selectModel(profileId) {
@@ -235,6 +249,7 @@ export function createConfigWorkspaceView({
     state.selectedConfigModelId = profileId;
     state.activeCategory = "models";
     renderConfigDashboard();
+    onNavigationChange();
     return true;
   }
 

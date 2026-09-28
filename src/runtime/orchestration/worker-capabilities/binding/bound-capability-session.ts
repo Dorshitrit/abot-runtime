@@ -1,3 +1,4 @@
+import type { CapabilityApprovalGate } from "../approval-contracts.js";
 import {
   isRoleCapabilityId,
   type RoleCallDependencyResult,
@@ -33,6 +34,7 @@ export class BoundCapabilitySession<TContext> {
   readonly #capabilityScope: WorkerCapabilityScopeProjection<
     WorkerCapabilityAdapter<TContext>
   >;
+  readonly #approvalGate?: CapabilityApprovalGate;
   readonly #executionFreshness?: WorkerCapabilityExecutionFreshness;
   readonly #dependencyResults: readonly RoleCallDependencyResult[];
   readonly #invocationPreparer: CapabilityInvocationPreparer<TContext>;
@@ -50,7 +52,9 @@ export class BoundCapabilitySession<TContext> {
     >;
     dependencyResults: readonly RoleCallDependencyResult[];
     executionFreshness?: WorkerCapabilityExecutionFreshness;
+    approvalGate?: CapabilityApprovalGate;
   }) {
+    this.#approvalGate = params.approvalGate;
     this.#requestId = params.requestId;
     this.#context = params.context;
     this.#boundCall = params.boundCall;
@@ -102,6 +106,7 @@ export class BoundCapabilitySession<TContext> {
       ...invocation,
       diagnostic: this.#diagnostic,
       capabilityScope: this.#capabilityScope,
+      ...(this.#approvalGate ? { approvalGate: this.#approvalGate } : {}),
       ...(this.#dependencyResults.length > 0
         ? { dependencyResults: this.#dependencyResults }
         : {}),
@@ -131,6 +136,7 @@ export class BoundCapabilitySession<TContext> {
       invocations,
       diagnostic: this.#diagnostic,
       capabilityScope: this.#capabilityScope,
+      ...(this.#approvalGate ? { approvalGate: this.#approvalGate } : {}),
       ...(this.#dependencyResults.length > 0
         ? { dependencyResults: this.#dependencyResults }
         : {}),

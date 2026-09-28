@@ -17,6 +17,7 @@ const TOOL_RESULT_MESSAGE_KEYS = new Set([
   "content",
   "toolCallId",
   "toolName",
+  "attachments",
 ]);
 const ATTACHMENT_KEYS = new Set([
   "id",
@@ -26,6 +27,7 @@ const ATTACHMENT_KEYS = new Set([
   "name",
   "size",
   "data",
+  "toolEvidence",
 ]);
 
 export class ModelGatewayMessageValidationError extends Error {
@@ -76,8 +78,16 @@ function isStrictAttachment(value: unknown): value is ModelGatewayAttachment {
       (typeof value.size === "number" &&
         Number.isFinite(value.size) &&
         value.size >= 0)) &&
-    (value.data === undefined || typeof value.data === "string")
+    (value.data === undefined || typeof value.data === "string") &&
+    isToolEvidenceBinding(value.toolEvidence)
   );
+}
+
+function isToolEvidenceBinding(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!isRecord(value)) return false;
+  if (Object.keys(value).some((key) => key !== "executionId")) return false;
+  return typeof value.executionId === "string" && value.executionId.length > 0;
 }
 
 export function isModelGatewayToolCall(
@@ -123,7 +133,10 @@ export function isToolResultMessage(
     typeof value.toolCallId === "string" &&
     value.toolCallId.trim().length > 0 &&
     typeof value.toolName === "string" &&
-    MODEL_GATEWAY_TOOL_NAME_PATTERN.test(value.toolName)
+    MODEL_GATEWAY_TOOL_NAME_PATTERN.test(value.toolName) &&
+    (value.attachments === undefined ||
+      (Array.isArray(value.attachments) && value.attachments.every((attachment) =>
+        isStrictAttachment(attachment) && attachment.toolEvidence?.executionId === value.toolCallId)))
   );
 }
 

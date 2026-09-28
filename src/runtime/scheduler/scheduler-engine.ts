@@ -79,7 +79,7 @@ async function dispatchPendingRun(
   }
   if (!canBeginSchedulerRun(context, pending.jobId, pending.sessionId, epoch))
     return;
-  const release = context.executor.tryReserve(pending.sessionId);
+  const release = await context.executor.tryReserve(pending.sessionId);
   if (!release) return;
   let delegated = false;
   try {
@@ -173,6 +173,7 @@ function startCapturedRun(
         title: run.title,
         modelProfileId: run.modelProfileId,
         agentMode: run.agentMode,
+        toolPermissionMode: run.toolPermissionMode ?? "full_access",
         timeZone: run.timeZone,
         revision: run.jobRevision,
       },

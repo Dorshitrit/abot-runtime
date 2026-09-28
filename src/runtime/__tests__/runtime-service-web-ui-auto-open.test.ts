@@ -351,6 +351,14 @@ describe("runtime-service Web UI integration", () => {
     );
     expect(serverUnit).toContain("PartOf=llm-runtime.service");
     expect(serverUnit).toContain("ExecCondition=");
+    const prebuild = serverUnit
+      .split("\n")
+      .find((line) => line.startsWith("ExecStartPre="));
+    expect(prebuild).toContain(
+      `"${join(REPOSITORY_ROOT, "scripts", "build-host-companion.ts")}"`,
+    );
+    expect(prebuild).not.toContain("ExecStartPre=-");
+    expect(serverUnit).not.toContain("@@COMPANION_BUILD@@");
     expect(serverUnit).not.toContain("Restart=");
     expect(openUnit).toContain(`Wants=${WEB_UI_SERVER_UNIT}`);
     expect(openUnit).toContain("WantedBy=llm-runtime.service");

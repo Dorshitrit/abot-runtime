@@ -100,10 +100,8 @@ export function createRuntimeSelectionController({
     const selectedOption =
       options.find((option) => option.value === selected) || options[0];
     const label = selectedOption?.label || selected || "Environment";
-    const glyph = label.slice(0, 3).toLocaleUpperCase();
     dom.agentPickerButton.hidden = false;
     dom.agentPickerButton.innerHTML = `
-      <span class="rail-environment-glyph" aria-hidden="true">${escapeHtml(glyph)}</span>
       <span class="rail-button-label">${escapeHtml(label)}</span>
     `;
     dom.agentPickerButton.title = `Environment: ${label}`;

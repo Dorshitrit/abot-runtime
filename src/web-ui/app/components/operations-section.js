@@ -1,7 +1,12 @@
 import { wrappedIndex } from "../ui-behavior.js";
 import { textOf } from "../lib/text-format.js";
 
-export function createOperationsSection({ buttons, pages }) {
+export function createOperationsSection({
+  buttons,
+  pages,
+  onNavigationChange = () => {},
+}) {
+  let currentTab = "runtime";
   const availableTabs = new Set(
     buttons.map((button) => textOf(button.dataset.tab)),
   );
@@ -9,6 +14,7 @@ export function createOperationsSection({ buttons, pages }) {
   function activateTab(tabName) {
     const normalized = textOf(tabName, "runtime") || "runtime";
     const nextTab = availableTabs.has(normalized) ? normalized : "runtime";
+    currentTab = nextTab;
     for (const button of buttons) {
       const active = button.dataset.tab === nextTab;
       button.classList.toggle("active", active);
@@ -21,6 +27,7 @@ export function createOperationsSection({ buttons, pages }) {
       page.hidden = !active;
       page.inert = !active;
     }
+    onNavigationChange();
   }
 
   function navigateTab(event, button) {
@@ -42,5 +49,5 @@ export function createOperationsSection({ buttons, pages }) {
     }
   }
 
-  return { activateTab, bind };
+  return { activateTab, activeTab: () => currentTab, bind };
 }

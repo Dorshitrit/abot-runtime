@@ -1,11 +1,13 @@
 import {
   isRoleCallWorkingDirectoryRoleId,
+  isRoleCallResultText,
   normalizeRoleCallWorkingDirectory,
   normalizeRoleCallResultReceipt,
   parseRoleCallPlanBinding,
   parseRoleCallWorkerCapabilityScope,
 } from "../../role-calls/index.js";
 import { isRuntimeDelegateRoleId } from "../../roles.js";
+import { isRoleApprovalWait } from "../approval-continuation.js";
 import type {
   RoleExecutionResult,
   RoleExecutorActivationResult,
@@ -14,7 +16,6 @@ import type {
 
 export function normalizeRoleExecutorActivationResult<TValue>(
   input: RoleExecutorActivationResult<TValue>,
-  maxSummaryLength: number,
   maxObjectiveLength: number,
 ):
   | Readonly<{
@@ -25,6 +26,7 @@ export function normalizeRoleExecutorActivationResult<TValue>(
   if (!isPlainRecord(input)) {
     return { ok: false, issueCode: "result_not_object" };
   }
+  if (isRoleApprovalWait(input)) return { ok: true, value: input };
   if (input.kind === "terminal") {
     const receipt = normalizeRoleCallResultReceipt(input.receipt);
     if (
@@ -38,11 +40,7 @@ export function normalizeRoleExecutorActivationResult<TValue>(
     ) {
       return { ok: false, issueCode: "terminal_shape_invalid" };
     }
-    if (
-      typeof input.summary !== "string" ||
-      input.summary.trim().length === 0 ||
-      input.summary.length > maxSummaryLength
-    ) {
+    if (!isRoleCallResultText(input.summary)) {
       return { ok: false, issueCode: "summary_invalid" };
     }
     return {

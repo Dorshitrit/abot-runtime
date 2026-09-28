@@ -2,7 +2,6 @@ import type { ChatMessage } from "../../../model-gateway/types.js";
 import { MODEL_STEPS } from "../../../shared/model-steps.js";
 import type { RequestToolResultsView } from "../../context/request-tool-results.js";
 import {
-  ROLE_CALL_RESULT_MAX_LENGTH,
   type RoleCallFrame,
   type RoleCallDependencyResult,
 } from "../../orchestration/role-calls/index.js";
@@ -20,7 +19,6 @@ export const WORKER_DECISION_MODEL_STEP = MODEL_STEPS.WORKER_DECISION;
 export const WORKER_RESULT_MODEL_STEP = MODEL_STEPS.WORKER_RESULT;
 export { CAPABILITY_CONTROLS_MODEL_STEP };
 export const WORKER_ROLE_ID = "worker" as const;
-export const WORKER_RESULT_MAX_LENGTH = ROLE_CALL_RESULT_MAX_LENGTH;
 export const WORKER_DECISION_ACTIONS = Object.freeze([
   "return_result",
   "return_failure",

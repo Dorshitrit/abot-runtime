@@ -5,59 +5,7 @@ import { describe, expect, test, vi } from "vitest";
 import { configValuesEqual, createConfigWorkspace, executionPolicyValueForConfig, modelContextWindowValidationError, rawConfigDraftHasChanges, resolveModelExecutionRoute, runtimeConfigGraphChanged } from "../../web-ui/app/components/config-workspace.js";
 // @ts-expect-error Browser-only JavaScript module has no declaration surface.
 import { createWorkspaceShell } from "../../web-ui/app/components/workspace-shell.js";
-
-function fakeElement() {
-  const classes = new Set<string>();
-  const attributes = new Map<string, string>();
-  return {
-    hidden: false,
-    inert: false,
-    tabIndex: 0,
-    dataset: {} as Record<string, string>,
-    classList: {
-      toggle(name: string, active: boolean) {
-        if (active) classes.add(name);
-        else classes.delete(name);
-      },
-      contains(name: string) {
-        return classes.has(name);
-      },
-    },
-    setAttribute(name: string, value: string) {
-      attributes.set(name, value);
-    },
-    removeAttribute(name: string) {
-      attributes.delete(name);
-    },
-    getAttribute(name: string) {
-      return attributes.get(name) ?? null;
-    },
-    addEventListener() {},
-    focus() {},
-  };
-}
-
-function fakeShellDom() {
-  return {
-    app: fakeElement(),
-    chatPanel: fakeElement(),
-    sessionsPanel: fakeElement(),
-    operationsWorkspacePanel: fakeElement(),
-    configWorkspacePanel: fakeElement(),
-    chatWorkspaceButton: fakeElement(),
-    operationsWorkspaceButton: fakeElement(),
-    configWorkspaceButton: fakeElement(),
-    sessionsToggleButton: fakeElement(),
-    closeSessionsButton: fakeElement(),
-    closeOperationsWorkspaceButton: fakeElement(),
-    closeConfigWorkspaceButton: fakeElement(),
-    newSessionButton: fakeElement(),
-    panelBackdrop: fakeElement(),
-    toastRegion: fakeElement(),
-    operationsTabButtons: [],
-    operationsTabPages: [],
-  };
-}
+import { createWorkspaceShellHarness } from "./support/workspace-shell-harness.js";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -485,7 +433,7 @@ describe("config workspace ui behavior", () => {
     });
   });
 
-  test("makes the stale dashboard inert for the full configuration load", async () => {
+  test("marks configuration busy for the full load while keeping navigation available", async () => {
     const pending = deferred<ReturnType<typeof configDashboardPayload>>();
     const harness = createConfigHarness({
       loadDashboard: vi.fn(() => pending.promise),
@@ -493,7 +441,7 @@ describe("config workspace ui behavior", () => {
 
     const load = harness.workspace.load();
 
-    expect(harness.configDashboard.inert).toBe(true);
+    expect(harness.configDashboard.inert).toBe(false);
     expect(harness.configDashboard.getAttribute("aria-busy")).toBe("true");
     expect(harness.refreshConfigButton.disabled).toBe(true);
 
@@ -504,7 +452,7 @@ describe("config workspace ui behavior", () => {
     expect(harness.refreshConfigButton.disabled).toBe(false);
   });
 
-  test("unlocks refresh while keeping the dashboard empty after an initial load failure", async () => {
+  test("unlocks refresh and preserves the unavailable dashboard after an initial load failure", async () => {
     const pending = deferred<ReturnType<typeof configDashboardPayload>>();
     const harness = createConfigHarness({
       loadDashboard: vi.fn(() => pending.promise),
@@ -514,8 +462,8 @@ describe("config workspace ui behavior", () => {
     pending.reject(new Error("dashboard unavailable"));
 
     await expect(load).resolves.toBe(false);
-    expect(harness.configDashboard.inert).toBe(false);
-    expect(harness.configDashboard.innerHTML).toBe("");
+    expect(harness.configDashboard.getAttribute("aria-busy")).toBe("false");
+    expect(harness.configDashboard.innerHTML).toContain("No config dashboard data");
     expect(harness.refreshConfigButton.disabled).toBe(false);
     expect(harness.configStatus.textContent).toBe("dashboard unavailable");
   });
@@ -536,8 +484,8 @@ describe("config workspace ui behavior", () => {
       }),
     ).resolves.toBe(false);
 
-    expect(harness.configDashboard.innerHTML).toBe("");
-    expect(harness.configDashboard.inert).toBe(false);
+    expect(harness.configDashboard.innerHTML).toContain("No config dashboard data");
+    expect(harness.configDashboard.getAttribute("aria-busy")).toBe("false");
     expect(harness.configStatus.textContent).toBe(
       "new environment unavailable",
     );
@@ -560,24 +508,30 @@ describe("config workspace ui behavior", () => {
       clearBeforeLoad: true,
     });
     newEnvironment.resolve(
-      configDashboardPayload({ runnerPath: "new-environment-runner.json" }),
+      configDashboardPayload({
+        runnerPath: "new-environment-runner.json",
+        models: [configFile("model", "new", "models/new.json", { label: "New environment model" })],
+      }),
     );
 
     await expect(newLoad).resolves.toBe(true);
-    expect(harness.configDashboard.inert).toBe(false);
+    expect(harness.configDashboard.getAttribute("aria-busy")).toBe("false");
     expect(harness.configDashboard.innerHTML).toContain(
-      "new-environment-runner.json",
+      "New environment model",
     );
 
     oldEnvironment.resolve(
-      configDashboardPayload({ runnerPath: "old-environment-runner.json" }),
+      configDashboardPayload({
+        runnerPath: "old-environment-runner.json",
+        models: [configFile("model", "old", "models/old.json", { label: "Old environment model" })],
+      }),
     );
     await expect(oldLoad).resolves.toBe(false);
     expect(harness.configDashboard.innerHTML).toContain(
-      "new-environment-runner.json",
+      "New environment model",
     );
     expect(harness.configDashboard.innerHTML).not.toContain(
-      "old-environment-runner.json",
+      "Old environment model",
     );
   });
 
@@ -643,7 +597,7 @@ describe("config workspace ui behavior", () => {
     });
     expect(harness.workspace.beginExternalRuntimeMutation()).toBe(false);
     expect(harness.configStatus.textContent).toContain("Save or reset");
-    expect(harness.configDashboard.inert).toBe(false);
+    expect(harness.configDashboard.getAttribute("aria-busy")).toBe("false");
 
     harness.configDashboard.dispatch("click", {
       target: configActionTarget(
@@ -653,26 +607,26 @@ describe("config workspace ui behavior", () => {
       ),
     });
     expect(harness.workspace.beginExternalRuntimeMutation()).toBe(true);
-    expect(harness.configDashboard.inert).toBe(true);
+    expect(harness.configDashboard.getAttribute("aria-busy")).toBe("true");
     expect(harness.workspace.prepareDiscardChanges("change environment")).toBe(
       null,
     );
 
     const refresh = harness.workspace.refreshAfterExternalRuntimeMutation();
-    expect(harness.configDashboard.innerHTML).toBe("");
+    expect(harness.configDashboard.innerHTML).toContain("No config dashboard data");
     refreshedDashboard.resolve(
       configDashboardPayload({ runnerPath: "memory-updated-runner.json" }),
     );
     await expect(refresh).resolves.toBe(true);
     expect(harness.memorySetup.load).toHaveBeenCalledOnce();
     expect(harness.memoryManagement.load).toHaveBeenCalledTimes(2);
-    expect(harness.configDashboard.inert).toBe(true);
+    expect(harness.configDashboard.getAttribute("aria-busy")).toBe("true");
     expect(harness.configDashboard.innerHTML).toContain(
-      "memory-updated-runner.json",
+      "data-config-registered-step-count>0 registered",
     );
 
     harness.workspace.endExternalRuntimeMutation();
-    expect(harness.configDashboard.inert).toBe(false);
+    expect(harness.configDashboard.getAttribute("aria-busy")).toBe("false");
     expect(harness.refreshConfigButton.disabled).toBe(false);
   });
 
@@ -827,13 +781,13 @@ describe("config workspace ui behavior", () => {
     harness.configDashboard.dispatch("click", {
       target: configActionTarget("save-file", "runtime", "runtime"),
     });
-    expect(harness.configDashboard.inert).toBe(true);
+    expect(harness.configDashboard.getAttribute("aria-busy")).toBe("true");
 
     pendingSave.resolve({ ok: true });
     await vi.waitFor(() => expect(loadDashboard).toHaveBeenCalledTimes(2));
-    await vi.waitFor(() => expect(harness.configDashboard.inert).toBe(false));
+    await vi.waitFor(() => expect(harness.configDashboard.getAttribute("aria-busy")).toBe("false"));
 
-    expect(harness.configDashboard.innerHTML).toContain("new-runner.json");
+    expect(loadDashboard).toHaveBeenCalledTimes(2);
     expect(harness.workspace.hasUnsavedChanges()).toBe(false);
   });
 
@@ -876,7 +830,7 @@ describe("config workspace ui behavior", () => {
     });
 
     await vi.waitFor(() => expect(loadDashboard).toHaveBeenCalledTimes(2));
-    await vi.waitFor(() => expect(harness.configDashboard.inert).toBe(false));
+    await vi.waitFor(() => expect(harness.configDashboard.getAttribute("aria-busy")).toBe("false"));
     expect(harness.configDashboard.innerHTML).toContain(
       "models/local.config.json",
     );
@@ -909,13 +863,13 @@ describe("config workspace ui behavior", () => {
         "Runtime saved; refresh required",
       ),
     );
-    expect(harness.configDashboard.innerHTML).toBe("");
-    expect(harness.configDashboard.inert).toBe(false);
+    expect(harness.configDashboard.innerHTML).toContain("No config dashboard data");
+    expect(harness.configDashboard.getAttribute("aria-busy")).toBe("false");
     expect(harness.refreshConfigButton.disabled).toBe(false);
   });
 
   test("keeps the config canvas active when leaving is declined", () => {
-    const dom = fakeShellDom();
+    const dom = createWorkspaceShellHarness().dom;
     let allowLeave = false;
     const shell = createWorkspaceShell({
       dom: dom as never,
@@ -946,7 +900,7 @@ describe("config workspace ui behavior", () => {
   });
 
   test("defers a prepared workspace change until its activation is committed", () => {
-    const dom = fakeShellDom();
+    const dom = createWorkspaceShellHarness().dom;
     const discardPreparedChanges = vi.fn();
     const shell = createWorkspaceShell({
       dom: dom as never,

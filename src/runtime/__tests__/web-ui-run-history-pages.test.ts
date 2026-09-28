@@ -15,7 +15,6 @@ const pages: Record<string, RunPage> = {
 
 function fixture() {
   let environmentId = "dev";
-  let timer: (() => void) | undefined;
   const jobs = [
     { id: "job-1", state: "active" },
     { id: "job-2", state: "active" },
@@ -46,11 +45,6 @@ function fixture() {
     getEnvironmentId: () => environmentId,
     render,
     openConversation: vi.fn(),
-    setTimer: (callback: () => void) => {
-      timer = callback;
-      return 1;
-    },
-    clearTimer: () => {},
   });
   return {
     client,
@@ -59,7 +53,7 @@ function fixture() {
     setEnvironment: (value: string) => {
       environmentId = value;
     },
-    poll: () => timer!(),
+    refresh: () => controller.refresh(),
   };
 }
 
@@ -86,7 +80,7 @@ describe("Web run history pages", () => {
     expect(controller.snapshot().runsPreviousCursors).toEqual([]);
   });
 
-  it("polls the displayed older page and discards its late response after newer navigation", async () => {
+  it("refreshes the displayed older page after an event and discards its late response after newer navigation", async () => {
     const f = fixture();
     await f.controller.load();
     await f.controller.select("job-1");
@@ -104,7 +98,7 @@ describe("Web run history pages", () => {
           settle = resolve;
         }),
     );
-    f.poll();
+    const refreshing = f.refresh();
     await vi.waitFor(() =>
       expect(f.client.listScheduleRuns).toHaveBeenCalledTimes(4),
     );
@@ -113,8 +107,7 @@ describe("Web run history pages", () => {
     });
     await f.controller.newerRuns();
     settle({ runs: [{ id: "stale-older" }], nextCursor: null });
-    await Promise.resolve();
-    await Promise.resolve();
+    await refreshing;
     expect(f.controller.snapshot().runs).toEqual(pages.latest.runs);
     expect(f.controller.snapshot().runsCursor).toBeNull();
     f.controller.setActive(false);
@@ -194,6 +187,8 @@ describe("Web run history pages", () => {
     }));
     const root = {
       innerHTML: "",
+      ownerDocument: { activeElement: null },
+      contains: () => false,
       classList: { add: vi.fn(), remove: vi.fn() },
       querySelectorAll: (selector: string) =>
         selector === "[data-run-page]" ? buttons : [],

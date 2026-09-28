@@ -1,17 +1,17 @@
+import type { ToolRequestPreparationContext } from "../../capabilities/tool-request-resources.js";
 import { isDeepStrictEqual } from "node:util";
 import type {
   ToolModuleDeclaration,
   ToolModuleRequestPreparation,
 } from "../../capabilities/tool-types.js";
-import type {
-  ToolNormalInvocationOperation,
-  ToolNormalInvocationPropertyInput,
-} from "../../capabilities/normal-invocation/contracts.js";
+import type { ToolNormalInvocationOperation } from "../../capabilities/normal-invocation/contracts.js";
 import { validateToolModuleDeclarations } from "../../capabilities/tool-definition-validator.js";
+import { isNarrowedInputProperty } from "./request-property-narrowing.js";
 
 /** Config selection precedes observation. A plugin may narrow, never add authority. */
 export async function prepareRequestToolModules(
   modules: readonly ToolModuleDeclaration[],
+  context?: ToolRequestPreparationContext,
 ): Promise<readonly ToolModuleDeclaration[]> {
   const selectedModules = validateToolModuleDeclarations(modules);
   const groups = new Map<
@@ -28,7 +28,9 @@ export async function prepareRequestToolModules(
   await Promise.all(
     [...groups].map(async ([prepare, selected]) => {
       const inputs = Object.freeze(selected.map(captureSelectedModule));
-      const output = validateToolModuleDeclarations(await prepare(inputs));
+      const output = validateToolModuleDeclarations(
+        await prepare(inputs, context),
+      );
       assertPreparedAuthorityIsNarrowed(selected, output);
       for (const module of output) {
         const { prepareRequest: _prepare, ...bound } = module;
@@ -133,16 +135,4 @@ function assertOperationAuthorityIsNarrowed(
       throw new Error(`Request preparation widened input control: ${name}`);
     }
   }
-}
-
-function isNarrowedInputProperty(
-  original: ToolNormalInvocationPropertyInput,
-  prepared: ToolNormalInvocationPropertyInput,
-): boolean {
-  if (!("enum" in original)) return isDeepStrictEqual(original, prepared);
-  if (!("enum" in prepared)) return false;
-  const { enum: originalValues, ...originalShape } = original;
-  const { enum: preparedValues, ...preparedShape } = prepared;
-  if (!isDeepStrictEqual(originalShape, preparedShape)) return false;
-  return preparedValues.every((value) => originalValues.includes(value));
 }

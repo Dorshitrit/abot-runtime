@@ -1,16 +1,23 @@
+import { createEventRefresh } from "../lib/event-refresh.js";
 import {
   canManageSchedule,
   matchesScheduleFilter,
   scheduleErrorMessage,
 } from "../lib/schedule-presentation.js";
 
+function scheduleEntryFilter(jobId = "") {
+  return jobId ? "all" : "active";
+}
+
 export function createSchedulesController({
   client,
   getEnvironmentId,
   render,
   openConversation,
+  onRouteSelectionChange = () => {},
   setTimer = setTimeout,
   clearTimer = clearTimeout,
+  isVisible = () => globalThis.document?.visibilityState !== "hidden",
 }) {
   const state = {
     environmentId: "",
@@ -24,7 +31,7 @@ export function createSchedulesController({
     runsNextCursor: null,
     runsPreviousCursors: [],
     query: "",
-    filter: "current",
+    filter: scheduleEntryFilter(),
     loading: false,
     loadingRuns: false,
     mutation: "",
@@ -37,7 +44,19 @@ export function createSchedulesController({
   let detailRevision = 0;
   let selectionRevision = 0;
   let pendingDetailRead = null;
-  let pollTimer;
+  let historySettled = false;
+  let nextRefreshOptions = null;
+  let refreshDeferred = false;
+  const eventRefresh = createEventRefresh({
+    canRefresh: canRefreshVisibleSchedules,
+    refresh: () => {
+      const options = nextRefreshOptions || { background: true };
+      nextRefreshOptions = null;
+      return load({ ...options, waitForHistory: true });
+    },
+    setTimer,
+    clearTimer,
+  });
   const publish = () => render({ ...state });
   const isCurrentEnvironment = (environmentId) =>
     environmentId === getEnvironmentId();
@@ -49,17 +68,21 @@ export function createSchedulesController({
     state.selectedId === jobId;
 
   function resetRunPages() {
+    historySettled = false;
     Object.assign(state, {
       runs: [],
+      detailError: "",
       runsCursor: null,
       runsNextCursor: null,
       runsPreviousCursors: [],
     });
   }
 
-  function selectJobIdentity(jobId) {
-    if (state.selectedId !== jobId) resetRunPages();
+  function selectJobIdentity(jobId, { routeNavigation = false } = {}) {
+    if (state.selectedId === jobId) return;
+    resetRunPages();
     state.selectedId = jobId;
+    if (routeNavigation) onRouteSelectionChange();
   }
 
   function isVisibleJob(job) {
@@ -94,7 +117,7 @@ export function createSchedulesController({
 
   function shouldShowHistoryLoading(background) {
     if (!background) return true;
-    return state.runs.length === 0;
+    return !historySettled;
   }
 
   function shouldOpenEntryEditor(
@@ -149,23 +172,56 @@ export function createSchedulesController({
     selectJobIdentity(firstVisibleJob()?.id || "");
   }
 
+  function canRefreshVisibleSchedules() {
+    if (!active) return false;
+    if (state.mutation) return false;
+    return isVisible();
+  }
+
+  function refresh(options = { background: true }) {
+    if (!nextRefreshOptions) nextRefreshOptions = options;
+    if (state.mutation) {
+      refreshDeferred = true;
+      return Promise.resolve();
+    }
+    return eventRefresh.run();
+  }
+
   function scheduleRefresh() {
-    clearTimer(pollTimer);
-    if (!active) return;
-    pollTimer = setTimer(() => {
-      if (state.mutation) {
-        scheduleRefresh();
-        return;
-      }
-      void load({ background: true });
-    }, 5000);
+    if (state.mutation) {
+      refreshDeferred = true;
+      return;
+    }
+    eventRefresh.schedule();
+  }
+
+  function finishMutation() {
+    state.mutation = "";
+    publish();
+    if (!refreshDeferred) return;
+    refreshDeferred = false;
+    if (canRefreshVisibleSchedules()) void refresh();
+  }
+
+  function visibilityChanged() {
+    eventRefresh.cancel();
+    nextRefreshOptions = null;
+    void refresh();
+  }
+
+  function environmentChanged() {
+    eventRefresh.cancel();
+    nextRefreshOptions = null;
+    void refresh({ background: false });
   }
 
   async function load({
     background = false,
     openFirstEditor = false,
     targetJobId = "",
+    waitForHistory = false,
   } = {}) {
+    let historyRead;
     const environmentId = getEnvironmentId();
     const revision = ++loadRevision;
     const readSelectionRevision = selectionRevision;
@@ -178,7 +234,7 @@ export function createSchedulesController({
         models: [],
         selectedId: "",
         query: "",
-        filter: targetJobId ? "all" : "current",
+        filter: scheduleEntryFilter(targetJobId),
         runs: [],
         editor: null,
         error: "",
@@ -212,7 +268,7 @@ export function createSchedulesController({
         readSelectionRevision,
       );
       if (state.selectedId)
-        void select(state.selectedId, {
+        historyRead = select(state.selectedId, {
           background: true,
           reusePendingRead: background,
         });
@@ -223,9 +279,9 @@ export function createSchedulesController({
       if (hasCurrentListRead(revision, environmentId)) {
         state.loading = false;
         publish();
-        scheduleRefresh();
       }
     }
+    if (waitForHistory) await historyRead;
   }
 
   async function select(
@@ -233,19 +289,31 @@ export function createSchedulesController({
     { background = false, reusePendingRead = background } = {},
   ) {
     const environmentId = getEnvironmentId();
-    if (reusePendingRead && hasPendingDetailRead(jobId, environmentId)) return;
+    if (reusePendingRead && hasPendingDetailRead(jobId, environmentId))
+      return pendingDetailRead.settled;
     if (!background) selectionRevision += 1;
     const revision = ++detailRevision;
-    selectJobIdentity(jobId);
+    const selectionChanged = state.selectedId !== jobId;
+    selectJobIdentity(jobId, { routeNavigation: !background });
     state.loadingRuns = shouldShowHistoryLoading(background);
-    state.detailError = "";
+    if (selectionChanged) state.detailError = "";
     if (!hasLoadedJob(jobId)) {
       resetRunPages();
       state.loadingRuns = false;
       publish();
       return;
     }
-    const read = { revision, environmentId, jobId, cursor: state.runsCursor };
+    let finishRead;
+    const settled = new Promise((resolve) => {
+      finishRead = resolve;
+    });
+    const read = {
+      revision,
+      environmentId,
+      jobId,
+      cursor: state.runsCursor,
+      settled,
+    };
     pendingDetailRead = read;
     if (!background) publish();
     try {
@@ -254,13 +322,16 @@ export function createSchedulesController({
       });
       if (!hasCurrentDetailRead(revision, environmentId, jobId)) return;
       state.runs = result.runs || [];
+      state.detailError = "";
       state.runsNextCursor = result.nextCursor ?? null;
     } catch (error) {
       if (!hasCurrentDetailRead(revision, environmentId, jobId)) return;
       state.detailError = scheduleErrorMessage(error);
     } finally {
+      finishRead();
       if (pendingDetailRead === read) pendingDetailRead = null;
       if (hasCurrentDetailRead(revision, environmentId, jobId)) {
+        historySettled = true;
         state.loadingRuns = false;
         publish();
       }
@@ -268,6 +339,7 @@ export function createSchedulesController({
   }
 
   async function moveRunPage(cursor, previousCursors) {
+    historySettled = false;
     state.runsCursor = cursor;
     state.runsPreviousCursors = previousCursors;
     state.runsNextCursor = null;
@@ -308,7 +380,6 @@ export function createSchedulesController({
     selectionRevision += 1;
     state.editor = null;
     publish();
-    scheduleRefresh();
   }
 
   async function save(input) {
@@ -326,11 +397,10 @@ export function createSchedulesController({
         : await client.createSchedule(input, editor.environmentId);
       if (!isCurrentEnvironment(editor.environmentId)) return;
       state.editor = null;
-      selectJobIdentity(result.job.id);
+      selectJobIdentity(result.job.id, { routeNavigation: true });
       await load();
     } finally {
-      state.mutation = "";
-      publish();
+      finishMutation();
     }
   }
 
@@ -347,15 +417,14 @@ export function createSchedulesController({
       if (isCurrentEnvironment(environmentId))
         state.error = scheduleErrorMessage(error);
     } finally {
-      state.mutation = "";
-      publish();
+      finishMutation();
     }
   }
 
   async function openJob(jobId) {
     selectionRevision += 1;
-    Object.assign(state, { query: "", filter: "all", editor: null });
-    selectJobIdentity(jobId);
+    Object.assign(state, { query: "", filter: scheduleEntryFilter(jobId), editor: null });
+    selectJobIdentity(jobId, { routeNavigation: true });
     await load({ targetJobId: jobId });
   }
 
@@ -368,7 +437,8 @@ export function createSchedulesController({
     if (state.error) return;
     beginEdit("", {
       ...initialValues,
-      modelProfileId: initialValues.modelProfileId || state.defaultModelProfileId,
+      modelProfileId:
+        initialValues.modelProfileId || state.defaultModelProfileId,
     });
   }
 
@@ -401,19 +471,25 @@ export function createSchedulesController({
     openJob,
     openCreate,
     snapshot: () => ({ ...state }),
+    visibilityChanged,
+    environmentChanged,
+    refresh,
+    scheduleRefresh,
     filter,
     setActive(value) {
       const entering = value && !active;
       active = value;
+      refreshDeferred = false;
+      eventRefresh.cancel();
+      nextRefreshOptions = null;
       if (active) {
-        void load({ openFirstEditor: entering });
+        void refresh({ background: !entering, openFirstEditor: entering });
         return;
       }
       loadRevision += 1;
       detailRevision += 1;
       state.loading = false;
       state.loadingRuns = false;
-      clearTimer(pollTimer);
     },
     openConversation: (sessionId, requestId) =>
       openConversation(sessionId, requestId),

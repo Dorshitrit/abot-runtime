@@ -84,7 +84,7 @@ describe("conversation role cards", () => {
     },
   );
 
-  test("reports an observed tool error only on its owning role, and allows later activity", () => {
+  test("a tool error does not settle its active role or block later activity", () => {
     const events = [
       phase("planner", "planning"),
       phase("worker", "working"),
@@ -98,8 +98,8 @@ describe("conversation role cards", () => {
     expect(cards[0]).toMatchObject({ role: "planner", tone: "recorded" });
     expect(cards[1]).toMatchObject({
       role: "worker",
-      tone: "failed",
-      active: false,
+      tone: "active",
+      active: true,
       summary: "Permission denied",
     });
     const resumed = buildConversationRoleCards({

@@ -265,7 +265,7 @@ describe("web ui client behavior", () => {
     expect(eventTone({ type: "failed", name: "request.failed" })).toBe(
       "failed",
     );
-    expect(eventTone({ name: "tool.completed", ok: false })).toBe("failed");
+    expect(eventTone({ name: "tool.completed", ok: false })).toBe("neutral");
     expect(
       getPlanPayload({
         plan: {

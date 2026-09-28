@@ -37,12 +37,29 @@ export function latestHealthEvent(details) {
   )[0];
 }
 
-export function createOperationsController({ dom, client }) {
-  return {
+export function createOperationsController({ dom, client, getEnvironmentId = () => undefined }) {
+  let statusRevision = 0;
+  let logsRevision = 0;
+  let displayedEnvironment = getEnvironmentId();
+  function isCurrentOperationsRead(environmentId, revision, currentRevision) {
+    if (environmentId !== getEnvironmentId()) return false;
+    return revision === currentRevision;
+  }
+  const controller = {
+    environmentChanged() {
+      const environmentId = getEnvironmentId();
+      if (displayedEnvironment === environmentId) return;
+      displayedEnvironment = environmentId;
+      void controller.loadRuntimeStatus();
+      void controller.loadRuntimeLogs();
+    },
     async loadRuntimeStatus() {
+      const environmentId = getEnvironmentId();
+      const revision = ++statusRevision;
       dom.runtimeStatus.textContent = "Loading...";
       try {
-        const payload = await client.getRuntimeStatus();
+        const payload = await client.getRuntimeStatus(environmentId);
+        if (!isCurrentOperationsRead(environmentId, revision, statusRevision)) return;
         const status = payload.status || {};
         dom.runtimeStatus.innerHTML = `
           <div class="runtime-grid">
@@ -54,6 +71,7 @@ export function createOperationsController({ dom, client }) {
           </div>
         `;
       } catch (error) {
+        if (!isCurrentOperationsRead(environmentId, revision, statusRevision)) return;
         dom.runtimeStatus.innerHTML = `<span class="error-text">${escapeHtml(
           error instanceof Error ? error.message : String(error),
         )}</span>`;
@@ -61,9 +79,12 @@ export function createOperationsController({ dom, client }) {
     },
 
     async loadRuntimeLogs() {
+      const environmentId = getEnvironmentId();
+      const revision = ++logsRevision;
       dom.runtimeLogs.textContent = "Loading...";
       try {
-        const payload = await client.getRuntimeLogs(100);
+        const payload = await client.getRuntimeLogs(100, environmentId);
+        if (!isCurrentOperationsRead(environmentId, revision, logsRevision)) return;
         const lines = Array.isArray(payload.log?.lines)
           ? payload.log.lines
           : [];
@@ -71,6 +92,7 @@ export function createOperationsController({ dom, client }) {
           ? lines.join("\n")
           : "No runtime log lines returned.";
       } catch (error) {
+        if (!isCurrentOperationsRead(environmentId, revision, logsRevision)) return;
         dom.runtimeLogs.textContent =
           error instanceof Error ? error.message : String(error);
       }
@@ -134,4 +156,5 @@ export function createOperationsController({ dom, client }) {
       }
     },
   };
+  return controller;
 }

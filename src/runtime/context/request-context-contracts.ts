@@ -12,6 +12,8 @@ export type RequestHistoryMessage = Readonly<{
   createdAt: string;
   requestId?: string;
   grounding?: SessionMessageGrounding;
+  /** Trusted persisted assistant-origin turn; never supplied as current user intent. */
+  assistantInitiativeId?: string;
 }>;
 
 export type RequestContextBudget = Readonly<{

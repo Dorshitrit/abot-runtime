@@ -25,3 +25,37 @@ jobs:
 
       - name: Validate
         run: npm run validate
+
+  macos-companion:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Validate native Mac connection
+        run: >-
+          npx vitest run
+          src/runtime/__tests__/host-companion-broker-platform.test.ts
+          src/runtime/__tests__/host-companion-broker-lifecycle.test.ts
+          src/runtime/__tests__/host-passive-observation-transport.test.ts
+          src/runtime/__tests__/host-companion-native-process-owner.test.ts
+          src/runtime/__tests__/web-system-host-startup-retry.test.ts
+          src/runtime/__tests__/web-system-host-owner-revocation.test.ts
+          src/runtime/__tests__/web-system-host-macos-setup.test.ts
+          src/runtime/__tests__/web-ui-system-host-startup-diagnostic.test.ts
+          src/runtime/__tests__/host-companion-local-installation.test.ts
+          src/runtime/__tests__/system-host-local-setup.test.ts
+          src/runtime/__tests__/web-system-host-local-connection.test.ts
+          src/runtime/__tests__/host-companion-native-runtime.test.ts
+          src/runtime/__tests__/host-companion-native-loopback.test.ts
+          src/runtime/__tests__/host-companion-native-loopback-tls.test.ts
+          src/runtime/__tests__/host-companion-managed-startup.test.ts
+          src/runtime/__tests__/host-companion-setup.test.ts
+          src/runtime/__tests__/host-macos-observation-permission.test.ts
+          src/runtime/__tests__/host-observation-process-lifecycle.test.ts

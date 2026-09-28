@@ -79,7 +79,9 @@ describe("shared config writer transactions", () => {
     gate.resume();
     await Promise.all([pending, toggled]);
     const current = await fixture.readConfig();
-    expect(current.models.profiles.added.model).toBe("fixture-added");
+    expect((await fixture.readModelProfile("added")).model).toBe(
+      "fixture-added",
+    );
     expect(current.plugins).toMatchObject({ deny: ["system-probe"] });
   });
 
@@ -99,7 +101,9 @@ describe("shared config writer transactions", () => {
     gate.resume();
     await Promise.all([toggled, added]);
     const current = await fixture.readConfig();
-    expect(current.models.profiles.added.model).toBe("fixture-added");
+    expect((await fixture.readModelProfile("added")).model).toBe(
+      "fixture-added",
+    );
     expect(current.plugins).toMatchObject({ deny: ["system-probe"] });
   });
 
@@ -151,6 +155,9 @@ describe("shared config writer transactions", () => {
 
   test("serializes dashboard inline merges and rejects stale root and inline revisions", async () => {
     await addition();
+    const legacy = await fixture.readConfig();
+    legacy.models.profiles.added = await fixture.readModelProfile("added");
+    await fixture.writeConfig(legacy);
     const options = {
       rootDir: fixture.rootDir,
       configPath: fixture.configPath,

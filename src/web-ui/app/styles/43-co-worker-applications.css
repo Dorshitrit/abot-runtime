@@ -1,0 +1,19 @@
+/* Application rules reuse the workspace switches without adding focus or hover effects. */
+.co-worker-applications-note { max-width: 82ch; margin: 0 0 18px; color: var(--muted); font-size: var(--font-size-sm); line-height: 1.7; }
+.co-worker-applications-count, .co-worker-applications-feedback { margin: 0 0 14px; color: var(--muted); font-size: var(--font-size-xs); line-height: 1.6; }
+.co-worker-applications-feedback:empty { display: none; }
+.co-worker-applications-list { display: grid; gap: 10px; margin-bottom: 20px; }
+.co-worker-application { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 18px; padding: 16px 18px; border: 1px solid color-mix(in srgb, var(--line) 55%, transparent); border-radius: 9px; background: var(--panel); min-width: 0; }
+.co-worker-application-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.co-worker-application-icon { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 30px; border-radius: 7px; background: var(--panel-raised); color: var(--muted); font-size: 10px; letter-spacing: .5px; }
+.co-worker-application-text { min-width: 0; overflow-wrap: anywhere; }
+.co-worker-application h5 { margin: 0; color: var(--text); font-size: var(--font-size-sm); font-weight: 400; line-height: 1.5; }
+.co-worker-application-text p { margin: 4px 0 0; color: var(--muted); font-size: var(--font-size-xs); line-height: 1.6; }
+.co-worker-application .co-worker-application-toggle { min-height: 34px; margin: 0; font-size: var(--font-size-xs); line-height: 1.5; }
+.co-worker-application-toggle:has(input:disabled) { opacity: .55; cursor: default; }
+.co-worker-applications-empty { margin: 0; padding: 24px 20px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); font-size: var(--font-size-sm); line-height: 1.7; }
+@media (max-width: 780px) {
+  .co-worker-application { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px; }
+  .co-worker-application-identity { grid-column: 1 / -1; }
+  .co-worker-application-toggle { overflow-wrap: anywhere; }
+}

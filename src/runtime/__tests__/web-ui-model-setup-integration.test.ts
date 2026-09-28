@@ -8,10 +8,12 @@ const fixtures = vi.hoisted(() => ({
     refreshAfterExternalRuntimeMutation: vi.fn(),
     selectModel: vi.fn(),
     focusSelectedModel: vi.fn(),
+    setStatus: vi.fn(),
   },
   wizard: { open: vi.fn(), isOpen: vi.fn() },
   activation: { markPending: vi.fn(), markApplied: vi.fn() },
-  memory: { load: vi.fn() },
+  memory: { load: vi.fn(), mount: vi.fn() },
+  memoryOptions: {} as Record<string, any>,
   plugins: { markApplied: vi.fn() },
   workspaceOptions: {} as Record<string, any>,
   wizardOptions: {} as Record<string, any>,
@@ -33,13 +35,16 @@ vi.mock("../../web-ui/app/components/runtime-config-activation.js", () => ({
   createRuntimeConfigActivation: () => fixtures.activation,
 }));
 vi.mock("../../web-ui/app/components/long-term-memory-setup.js", () => ({
-  createLongTermMemorySetup: () => fixtures.memory,
+  createLongTermMemorySetup: (options: Record<string, any>) => {
+    fixtures.memoryOptions = options;
+    return fixtures.memory;
+  },
 }));
 vi.mock("../../web-ui/app/components/plugins/manager.js", () => ({
   createPluginManager: () => fixtures.plugins,
 }));
 vi.mock("../../web-ui/app/components/long-term-memory/manager.js", () => ({
-  createLongTermMemoryManager: () => ({}),
+  createLongTermMemoryManager: () => ({ mount: vi.fn() }),
 }));
 vi.mock("../../web-ui/app/controllers/long-term-memory/controller.js", () => ({
   createLongTermMemoryController: () => ({}),
@@ -67,7 +72,10 @@ function setup() {
     saveConfigFile: vi.fn(),
     loadModelSetup: vi.fn(),
     addRuntimeModel: vi.fn(),
+    removeRuntimeModel: vi.fn(),
     applyRuntimeConfiguration: vi.fn(),
+    enableLongTermMemory: vi.fn(),
+    disableLongTermMemory: vi.fn(),
   };
   const onConfigurationApplied = vi.fn();
   const feature = createConfigurationFeature({
@@ -79,6 +87,31 @@ function setup() {
   });
   return { feature, client, status, root, onConfigurationApplied };
 }
+
+test("successful Memory changes require a runtime restart", async () => {
+  const { client } = setup();
+  const enabled = { enabled: true };
+  const disabled = { enabled: false };
+  client.enableLongTermMemory.mockResolvedValue(enabled);
+  client.disableLongTermMemory.mockResolvedValue(disabled);
+
+  expect(
+    await fixtures.memoryOptions.enableMemory({ model: "embedding" }, "dev"),
+  ).toBe(enabled);
+  expect(client.enableLongTermMemory).toHaveBeenCalledWith({
+    environmentId: "dev",
+    model: "embedding",
+  });
+  expect(await fixtures.memoryOptions.disableMemory("dev")).toBe(disabled);
+  expect(client.disableLongTermMemory).toHaveBeenCalledWith("dev");
+  expect(fixtures.activation.markPending).toHaveBeenCalledTimes(2);
+
+  client.enableLongTermMemory.mockRejectedValueOnce(new Error("save failed"));
+  await expect(fixtures.memoryOptions.enableMemory({}, "dev")).rejects.toThrow(
+    "save failed",
+  );
+  expect(fixtures.activation.markPending).toHaveBeenCalledTimes(2);
+});
 
 test("the provider shortcut honors draft/busy guards and opens outside the dashboard", async () => {
   const { root } = setup();
@@ -174,6 +207,25 @@ test("post-Apply dashboard failure still updates the chat catalog and remains re
   expect(onConfigurationApplied).toHaveBeenCalledTimes(3);
 });
 
+test("deferred activation reveals the saved model without claiming it is active", async () => {
+  const { onConfigurationApplied } = setup();
+  const model = { profileId: "saved-model" };
+  fixtures.wizardOptions.onSaved(model);
+  expect(await fixtures.wizardOptions.onDeferred(model)).toBe(true);
+  expect(fixtures.workspace.selectModel).toHaveBeenCalledWith("saved-model");
+  expect(fixtures.activation.markPending).toHaveBeenCalledOnce();
+  expect(fixtures.activation.markApplied).not.toHaveBeenCalled();
+  expect(fixtures.memory.load).not.toHaveBeenCalled();
+  expect(onConfigurationApplied).not.toHaveBeenCalled();
+
+  fixtures.workspace.selectModel.mockClear();
+  fixtures.workspace.refreshAfterExternalRuntimeMutation.mockResolvedValueOnce(
+    false,
+  );
+  expect(await fixtures.wizardOptions.onDeferred(model)).toBe(false);
+  expect(fixtures.workspace.selectModel).not.toHaveBeenCalled();
+});
+
 test("Configuration composition preserves the loaded revision through the transport boundary", async () => {
   const { client } = setup();
   const result = { file: { revision: "saved-revision" } };
@@ -190,4 +242,34 @@ test("Configuration composition preserves the loaded revision through the transp
     environmentId: "dev",
   });
   expect(fixtures.activation.markPending).toHaveBeenCalledOnce();
+});
+
+test("model removal passes the loaded root revision and remains pending explicit Apply", async () => {
+  vi.stubGlobal("window", { confirm: () => true });
+  try {
+    const { client } = setup();
+    const model = {
+      profileId: "extra-model",
+      label: "Extra model",
+      expectedRevision: "loaded-root-revision",
+    };
+    fixtures.wizard.isOpen.mockReturnValueOnce(true);
+    await fixtures.workspaceOptions.onRemoveModel(model);
+    expect(client.removeRuntimeModel).not.toHaveBeenCalled();
+    await fixtures.workspaceOptions.onRemoveModel(model);
+    expect(client.removeRuntimeModel).toHaveBeenCalledExactlyOnceWith(
+      { profileId: model.profileId, expectedRevision: model.expectedRevision },
+      "dev",
+    );
+    expect(
+      fixtures.workspace.beginExternalRuntimeMutation,
+    ).toHaveBeenCalledWith("model removal");
+    expect(
+      fixtures.workspace.endExternalRuntimeMutation,
+    ).toHaveBeenCalledOnce();
+    expect(fixtures.activation.markPending).toHaveBeenCalledOnce();
+    expect(client.applyRuntimeConfiguration).not.toHaveBeenCalled();
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });

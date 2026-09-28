@@ -113,7 +113,7 @@ action may start; it does not lower that process's OS permissions.
 
 ## Connecting a Docker Runtime to its computer
 
-A Docker Runtime can use applications and commands on its Windows or macOS host
+A Docker Runtime can use applications and commands on its Windows, macOS or Linux host
 through the optional native host companion. The companion runs as the signed-in
 desktop user and connects outbound to the Runtime's published loopback Web UI
 address. It does not require a Docker socket, a privileged container, a Windows
@@ -126,12 +126,14 @@ Linux target; discovery identifies Docker separately from WSL.
    loopback port mapping (for example, `-p 127.0.0.1:5184:5184
    -e ABOT_WEB_TRUST_LOOPBACK_PUBLISH=1`). Open the Web UI using its configured
    hostname and port.
-2. In the initial **Computer** step or **Config → Connected computer**, download
-   the setup script for the computer running Docker. Open the Windows script, or
-   extract the Mac ZIP and open its executable command file, on that computer.
-3. The script installs a private, checksum-verified Node runtime and the exact
-   companion build supplied by this ABot installation. It pairs automatically
-   using a single-use grant valid for 15 minutes, without a copied code or command.
+2. In the initial **Computer** step or **Home → Computer access**, choose
+   the computer running Docker. On a Mac, choose **Connect a Mac**, install the
+   same ABot version's CLI locally, run the displayed command in Terminal and
+   enter its separate one-time code. That code is valid for five minutes.
+3. On Windows or Linux, download and run the setup script. Windows setup installs
+   a private, checksum-verified Node runtime; Linux uses an existing Node runtime.
+   The script installs the exact companion build supplied by ABot and pairs
+   automatically using a single-use grant valid for 15 minutes.
 4. The companion saves a private credential and starts now and at future user
    logins. The Web UI polls actual connection readiness. Downloading the script
    alone is not a successful connection; wait for **Ready**.
@@ -154,15 +156,11 @@ Web UI origin. They do not disable TLS validation for unsupported HTTPS setups.
 
 One computer connection is shared by all Runtime environments belonging to the
 same ABot installation. The native user can pair with one installation at a time;
-disconnect before connecting another. Existing native macOS operation and Windows
-operation through functioning WSL interop do not require this companion. The
-setup screen checks those direct paths first. If WSL Windows execution is
-unavailable, it offers a Windows interop repair script instead. The script
-preserves unrelated `wsl.conf` settings, including `appendWindowsPath`, then
-automatically restarts only the selected distribution without a typed confirmation.
-Finish active work before opening the file: the restart interrupts all services
-in that distribution. If the configuration update fails, no restart occurs.
-The script and GUI verify actual Windows execution after the restart.
+disconnect before connecting another. Native commands and functioning WSL interop
+remain available without the companion. Computer access setup installs the shared
+companion for desktop tools and ABot Spark on every supported host, including WSL;
+it does not change interop settings or restart WSL. ABot Spark links to this same
+setup screen. Enabling or disabling collection does not pair or unpair a computer.
 
 Host requests use the existing system plugin and the same exact-action approval
 flow: Ask and Full request approval; FULL+ does not add a separate ABot prompt.
@@ -180,12 +178,12 @@ path. OS authorization still applies, and a launch receipt alone is not proof
 that a visible application window appeared.
 
 When confirmed Docker or WSL readiness requires setup, Chat shows a small,
-dismissible suggestion linking to **Config → Connected computer**. It does not
+dismissible suggestion linking to **Home → Computer access**. It does not
 appear for working native access, unknown status, or an already paired computer.
 It reuses the existing readiness state and refreshes on returning to Chat, without
 adding a polling loop. Dismissal lasts until the page is reloaded.
 
-Use **Disconnect computer** in the Web UI to revoke the Runtime's pairing and
+Use **Unpair computer** in the Web UI to revoke the Runtime's pairing and
 pending invitations. The connected companion removes its credential after
 revocation. Downloaded setup files contain an expiring invitation, so keep them
 private and delete them after use. Browser storage retains neither the invitation
@@ -193,10 +191,11 @@ nor the persistent credential.
 
 Advanced installations using the ABot CLI can still use `abot host status`,
 `abot host disconnect` and `abot host uninstall`. The downloaded installer does
-not add a global `abot` command. Its private Node binary and immutable companion
-bundle live under `%LOCALAPPDATA%\ABot\HostCompanion` on Windows or
-`~/Library/Application Support/ABot/HostCompanion` on Mac; the same CLI operations
-can be invoked there as `<node> <companion-bundle> host uninstall`. This removes
+not add a global `abot` command. On Windows, its private Node binary and immutable
+companion bundle live under `%LOCALAPPDATA%\ABot\HostCompanion`. On Mac, the Node
+executable is `~/.abot/host-companion/runtime/node` and the bundle lives under
+`~/Library/Application Support/ABot/HostCompanion`. The same CLI operations can
+be invoked as `<node> <companion-bundle> host uninstall`. This removes
 the local credential and login registration; use the Web UI to clear Runtime-side
 pairing as well. Reconnecting never silently replaces another installation's
 saved native connection.

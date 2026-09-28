@@ -1,5 +1,13 @@
-import { captureComposerSubmissionScope, isCurrentComposerSubmissionScope } from "../lib/composer-submission-scope.js";
+import {
+  captureComposerSubmissionScope,
+  isCurrentComposerSubmissionScope,
+} from "../lib/composer-submission-scope.js";
 import { resolveComposerPrimaryAction } from "../ui-behavior.js";
+import { createComposerStopController } from "./composer-stop-controller.js";
+import {
+  hasWaitingApproval,
+  waitingRequest,
+} from "../lib/request-lifecycle-view.js";
 
 export function createComposerSubmitController({
   state,
@@ -16,6 +24,13 @@ export function createComposerSubmitController({
   onSubmissionBlocked = () => {},
   isComposerVisible = () => true,
 }) {
+  const stopping = createComposerStopController({
+    state,
+    selectedEnvironmentId,
+    setMessageStatus,
+    updateSendState,
+    stopRequest: (scope) => chatRequests.stopRequest(scope),
+  });
   function resize() {
     if (!isComposerVisible()) return;
     dom.composerInput.style.height = "auto";
@@ -31,9 +46,16 @@ export function createComposerSubmitController({
     const submissionBlock = getSubmissionBlock();
     composerActions.render({
       activeRequestId: state.activeRequestId,
+      waitingRequestId: waitingRequest(state)?.requestId,
+      stopping: stopping.isStopping(),
+      onStop: () => {
+        if (isComposerVisible()) void stopping.stop();
+      },
       attachmentCount: state.pendingAttachments.length,
       busy: state.composerSending || queueDraining,
       disabled:
+        stopping.isStopping() ||
+        hasWaitingApproval(state) ||
         Boolean(submissionBlock) ||
         !dom.composerInput.value.trim() ||
         state.composerSending ||
@@ -45,6 +67,13 @@ export function createComposerSubmitController({
 
   function dispatch(requestedAction = "") {
     if (!isComposerVisible()) return;
+    if (stopping.isStopping()) return;
+    if (hasWaitingApproval(state)) {
+      setMessageStatus(
+        "Decide or cancel the pending approval before sending a new message.",
+      );
+      return;
+    }
     const text = dom.composerInput.value.trim();
     const submissionBlock = getSubmissionBlock();
     if (text && submissionBlock) {
@@ -90,11 +119,15 @@ export function createComposerSubmitController({
           ? queue.enqueue(text)
           : chatRequests.sendMessage(text);
     const completionScope = captureComposerSubmissionScope(
-      state, selectedEnvironmentId(),
+      state,
+      selectedEnvironmentId(),
     );
-    const isSubmissionForCurrentComposerView = () => isCurrentComposerSubmissionScope(
-      completionScope, state, selectedEnvironmentId(),
-    );
+    const isSubmissionForCurrentComposerView = () =>
+      isCurrentComposerSubmissionScope(
+        completionScope,
+        state,
+        selectedEnvironmentId(),
+      );
     void operation
       .then(() => {
         if (!isSubmissionForCurrentComposerView()) return;
@@ -118,5 +151,10 @@ export function createComposerSubmitController({
       });
   }
 
-  return { dispatch, resize, updateSendState };
+  return {
+    dispatch,
+    resize,
+    updateSendState,
+    stop: () => isComposerVisible() && stopping.stop(),
+  };
 }

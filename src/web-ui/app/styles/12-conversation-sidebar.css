@@ -1,7 +1,78 @@
 /* Persistent conversation navigation; viewport policy lives in workspace-shell. */
 
+.sessions-panel,
+.workspace-sheet.sessions-sheet {
+  gap: 10px;
+  padding: 16px 12px 14px;
+}
+
+#sessionsHeading {
+  font-size: var(--font-size-2xl);
+}
+
+.sidebar-topline {
+  min-height: 34px;
+}
+
+.sessions-section {
+  gap: 8px;
+}
+
+.sessions-list-label {
+  font-size: var(--font-size-sm);
+}
+
+.session-search input {
+  min-height: 32px;
+  font-size: var(--font-size-sm);
+}
+
+.sessions-panel .session-create-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.sessions-new-button,
+.sessions-project-button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: auto;
+  min-height: 28px;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  text-align: start;
+}
+
+.sessions-new-button:hover:not(:disabled),
+.sessions-project-button:hover:not(:disabled) {
+  background: transparent;
+  color: var(--accent-strong);
+}
+
+.sessions-new-button svg,
+.sessions-project-button svg {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+
+.sessions-panel #newSessionButton {
+  order: 0;
+  min-height: 32px;
+  color: var(--text);
+}
+
 .app-shell.sessions-docked {
-  grid-template-columns: 72px var(--sessions-panel-width) minmax(0, 1fr);
+  grid-template-columns:
+    var(--workspace-rail-width) var(--sessions-panel-width)
+    minmax(0, 1fr);
 }
 
 .app-shell.sessions-docked .sessions-panel {
@@ -25,24 +96,24 @@
 
 .session-item {
   align-items: center;
-  min-height: 38px;
-  margin-block-end: 3px;
-  padding: 7px 9px 7px 12px;
-  border-radius: 8px;
+  min-height: 32px;
+  margin-block-end: 0;
+  padding: 4px 8px;
+  border-radius: 5px;
   background: transparent;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 35%, transparent);
+  box-shadow: none;
 }
 
 .session-item:hover,
 .session-item:focus-within {
-  background: var(--control-bg-hover);
+  background: color-mix(in srgb, var(--panel-raised) 30%, var(--panel));
 }
 
 .session-item.active,
 .session-item.active:hover,
 .session-item.active:focus-within {
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+  background: color-mix(in srgb, var(--panel-raised) 55%, var(--panel));
+  box-shadow: none;
 }
 
 .session-open-button {
@@ -50,7 +121,7 @@
   min-height: 24px;
   gap: 0;
   padding: 0;
-  padding-inline-end: 30px;
+  padding-inline-end: 26px;
   border-radius: 4px;
 }
 
@@ -59,27 +130,28 @@
   outline-offset: 3px;
 }
 
+.session-title-row {
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  gap: 6px;
+}
+
 .session-title {
   font-size: var(--font-size-sm);
   line-height: 1.4;
-  text-align: start;
+  text-align: left;
 }
 
 .session-item.active .session-title,
 .session-item.unread .session-title {
   color: var(--text-strong);
-  font-weight: 550;
-}
-
-.session-item.pinned::before {
-  top: 50%;
-  left: auto;
-  inset-inline-start: 4px;
-  transform: translateY(-50%);
+  font-weight: 400;
 }
 
 .session-actions {
-  top: 6px;
+  top: 3px;
+  right: 3px;
 }
 
 .session-menu-button {
@@ -88,6 +160,48 @@
 
 .session-menu-button:hover,
 .session-menu-button:focus-visible {
-  background: var(--control-bg-hover);
-  color: var(--text-strong);
+  background: transparent;
+  color: var(--accent-strong);
+}
+
+.session-open-button[draggable="true"] {
+  cursor: grab;
+}
+
+.pinned-conversations-heading {
+  color: var(--muted);
+  margin-block: 4px 6px;
+}
+
+.session-dragging {
+  opacity: 0.45;
+}
+
+.session-drop-before {
+  box-shadow: inset 0 2px var(--accent-strong) !important;
+}
+
+.session-drop-after {
+  box-shadow: inset 0 -2px var(--accent-strong) !important;
+}
+
+.session-archive-toggle {
+  margin-block-start: 12px;
+  padding: 6px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  text-align: start;
+}
+
+.session-archive-toggle:hover,
+.session-archive-toggle:focus-visible {
+  color: var(--accent-strong);
+}
+
+.session-archive-notice {
+  margin: 4px 8px 10px;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
 }

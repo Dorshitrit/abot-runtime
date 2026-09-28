@@ -31,6 +31,7 @@ export function buildExecutionAgentResponseInput(
     steeringSnapshot: RequestSteeringSnapshot;
     memoryAuthoringMaxResponseChars?: number;
     longTermMemoryMessage?: ChatMessage;
+    memoryAuthoringMessage?: ChatMessage;
   }>,
 ): Readonly<{
   context: RequestContextProjection;
@@ -97,6 +98,7 @@ export function buildExecutionAgentResponseInput(
         ? [operationSupervisionEvidenceMessage]
         : []),
       ...(options.longTermMemoryMessage ? [options.longTermMemoryMessage] : []),
+      ...(options.memoryAuthoringMessage ? [options.memoryAuthoringMessage] : []),
     ],
     ...(continuationMessages.length > 0 ? { continuationMessages } : {}),
     deferCompactionFailure: true,

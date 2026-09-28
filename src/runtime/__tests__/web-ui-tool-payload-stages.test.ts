@@ -152,7 +152,7 @@ describe("staged preparation status", () => {
     ];
     expect(actions(failed)[0]).toMatchObject({
       status: "failed",
-      statusLabel: "Preparation failed",
+      statusLabel: "Not prepared",
       executed: false,
     });
   });
@@ -162,7 +162,7 @@ describe("staged preparation status", () => {
     ["tool.approval.granted", "Approved"],
     ["tool.started", "Running"],
     ["tool.completed", "Completed"],
-    ["tool.failed", "Failed"],
+    ["tool.failed", "Not completed"],
     ["tool.approval.rejected", "Not approved"],
   ])("a later payload stage cannot reopen %s", (name, statusLabel) => {
     const events = [

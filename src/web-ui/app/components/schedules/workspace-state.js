@@ -1,3 +1,4 @@
+import { updateLiveRegion } from "../../lib/live-region.js";
 import { escapeHtml } from "../../lib/text-format.js";
 import { scheduleErrorMessage } from "../../lib/schedule-errors.js";
 
@@ -50,9 +51,10 @@ export function renderScheduleWorkspaceState({ root, state, actions }) {
   if (!state) return;
   root.dataset.state = state.kind;
   root.setAttribute("role", state.kind === "error" ? "alert" : "status");
-  root.innerHTML = `<div class="schedule-state-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8.5"/><path d="M12 6.5V12l3.5 2"/></svg></div>
+  const markup = `<div class="schedule-state-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8.5"/><path d="M12 6.5V12l3.5 2"/></svg></div>
     <div class="schedule-state-copy"><h3>${escapeHtml(state.title)}</h3><p>${escapeHtml(state.description)}</p>
     ${state.action ? `<button type="button" class="${state.action === "create" ? "primary-button" : ""}" data-state-action>${escapeHtml(state.actionLabel)}</button>` : ""}</div>`;
+  if (!updateLiveRegion(root, markup)) return;
   root
     .querySelector("[data-state-action]")
     ?.addEventListener("click", () => actions[state.action]());

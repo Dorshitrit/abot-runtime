@@ -5,6 +5,7 @@ import { createRuntimeOnboardingController } from "./controllers/runtime-onboard
 
 export function createRuntimeOnboardingFeature({
   dom,
+  shell,
   runtimeClient,
   selectedEnvironmentId,
   state,
@@ -35,7 +36,7 @@ export function createRuntimeOnboardingFeature({
     return createRuntimeSetupGuide({
       ...common,
       loadSetup: () => runtimeClient.getRuntimeSetup(),
-      openConfiguration: () => dom.configWorkspaceButton?.click(),
+      openConfiguration: () => dom.modelsWorkspaceButton?.click(),
       saveSetup: (input) => runtimeClient.saveRuntimeSetup(input),
       applySetup: () =>
         runtimeClient.applyRuntimeConfiguration(selectedEnvironmentId()),
@@ -49,6 +50,8 @@ export function createRuntimeOnboardingFeature({
       loadPlugins: () => runtimeClient.getRuntimePlugins(),
       setPlugin: (input) => runtimeClient.setRuntimePlugin(input),
       loadHostConnection: () => runtimeClient.getSystemHostConnection(),
+      connectLocalHost: () => runtimeClient.connectLocalSystemHost(),
+      createHostPairing: () => runtimeClient.createSystemHostPairing(),
       downloadHostSetup: (platform) =>
         runtimeClient.downloadSystemHostSetup(platform),
       revokeHostConnection: () => runtimeClient.revokeSystemHostConnection(),
@@ -62,6 +65,7 @@ export function createRuntimeOnboardingFeature({
       selectedGuide?.bind(options);
     },
     render(availability) {
+      shell?.runtimeAvailabilityChanged(availability);
       const hasConfiguredBackend = ["runtime", "bridge"].includes(
         state.config?.backend,
       );

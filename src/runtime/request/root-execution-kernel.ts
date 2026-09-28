@@ -1,3 +1,21 @@
+import { createRootExecutionFreshness } from "./capability-execution-freshness.js";
+import {
+  bindRoleApprovalWait,
+  isRoleApprovalWait,
+} from "../orchestration/role-executors/approval-continuation.js";
+import { isWorkerCapabilityApprovalWait } from "../orchestration/worker-capabilities/approval-contracts.js";
+import { createEnteredChildInvocation } from "../orchestration/role-executors/child-invocation/entered-child.js";
+import { projectRootChildCompletion } from "./root-child-completion.js";
+import type {
+  RootActivation,
+  RootDecisionActivation,
+  RootActivationAttempt,
+  RootLoopControl,
+  RootExecutionInput,
+  RootApprovalWait,
+} from "./root-execution-contracts.js";
+import { finalizeInvalidRootOutput } from "./root-invalid-output.js";
+import { commitSupervisorResponse } from "./root-response-commit.js";
 import { projectRequestToolResults } from "../context/request-tool-results.js";
 import { emitRuntimeStatus } from "../events/runtime-status.js";
 import { isModelStepSteeringSuperseded } from "../model/model-step-steering.js";
@@ -42,7 +60,6 @@ import {
   traceSupervisorRootResponseSuperseded,
 } from "./supervisor-root-execution-diagnostics.js";
 import {
-  bindSupervisorObservationHandoff,
   projectSupervisorFinalObservation,
   type RootObservationHandoff,
 } from "./root-observation-handoff.js";
@@ -61,30 +78,6 @@ export type { CompiledRequestExecutionPolicy } from "./execution-scope.js";
 export type RequestRootContractAdapter =
   RootContractAdapter<RequestExecutionScope>;
 
-type RootActivation = Readonly<{
-  head: RoleCallLedgerHead;
-  call: RoleCallFrame;
-  callIdentity: RootContractCallIdentity;
-}>;
-
-type RootDecisionActivation = RootActivation &
-  Readonly<{
-    decision: RootContractDecision;
-    decisionSteeringVersion: number;
-    requiresFreshPresentation: boolean;
-    deferPresentation: boolean;
-  }>;
-
-type RootActivationAttempt = {
-  failureStage: SupervisorRootFailureStage;
-  head?: RoleCallLedgerHead;
-  call?: RoleCallFrame;
-};
-
-type RootLoopControl =
-  | Readonly<{ kind: "continue" }>
-  | Readonly<{ kind: "complete"; result: RequestRunnerResult }>;
-
 const CONTINUE_ROOT_EXECUTION = Object.freeze({
   kind: "continue" as const,
 });
@@ -93,10 +86,15 @@ function isTerminalRootDecision(decision: RootContractDecision): boolean {
   return decision.action === "respond" || decision.action === "blocked";
 }
 
-export async function runRootExecutionKernel(params: {
-  request: RequestExecutionScope;
-  ledger: RoleCallLedger;
-}): Promise<RequestRunnerResult> {
+export function runRootExecutionKernel(
+  params: RootExecutionInput & { durableApproval: true },
+): Promise<RequestRunnerResult | RootApprovalWait>;
+export function runRootExecutionKernel(
+  params: RootExecutionInput & { durableApproval?: false },
+): Promise<RequestRunnerResult>;
+export async function runRootExecutionKernel(
+  params: RootExecutionInput,
+): Promise<RequestRunnerResult | RootApprovalWait> {
   return new RootExecutionSession(params).run();
 }
 
@@ -117,14 +115,15 @@ class RootExecutionSession {
   private acknowledgementPublished = false;
   private titlePublished = false;
 
-  constructor(params: {
-    request: RequestExecutionScope;
-    ledger: RoleCallLedger;
-  }) {
+  constructor(private readonly params: RootExecutionInput) {
     this.request = params.request;
     this.ledger = params.ledger;
     this.transactions = resolveRoleCallTransactions(params.ledger);
     this.policy = params.request.executionPolicy;
+    this.acknowledgementPublished =
+      params.presentation?.acknowledgementPublished ?? false;
+    this.titlePublished = params.presentation?.titlePublished ?? false;
+    this.observationHandoff = params.presentation?.observationHandoff;
     this.diagnostic = Object.freeze({
       requestId: params.request.requestId,
       allowedRoleIds: this.policy.roleExecutors.roleIds,
@@ -134,17 +133,58 @@ class RootExecutionSession {
     );
   }
 
-  async run(): Promise<RequestRunnerResult> {
+  async run(): Promise<RequestRunnerResult | RootApprovalWait> {
+    if (this.params.continuation?.callers.length) {
+      const child = await this.policy.roleExecutors.invokeChild(
+        createEnteredChildInvocation({
+          requestId: this.request.requestId,
+          context: this.request,
+          ledger: this.ledger,
+          continuation: this.params.continuation,
+        }),
+      );
+      if (isRoleApprovalWait(child)) return this.captureApprovalWait(child);
+      const completed = projectRootChildCompletion({
+        ledger: this.ledger,
+        policy: this.policy,
+        child,
+        diagnostic: this.diagnostic,
+        ...(this.observationHandoff
+          ? { observationHandoff: this.observationHandoff }
+          : {}),
+      });
+      this.resume = completed.resume;
+      this.observationHandoff = completed.observationHandoff;
+    }
     // Every accepted continuation reserves its next activation in the ledger.
     for (;;) {
       const control = await this.runActivation();
+      if (isRoleApprovalWait(control)) return this.captureApprovalWait(control);
       if (control.kind === "complete") {
         return control.result;
       }
     }
   }
 
+  private captureApprovalWait(
+    wait: import("../orchestration/role-executors/approval-continuation.js").RoleApprovalWait,
+  ): RootApprovalWait {
+    if (!this.params.durableApproval)
+      throw new Error("request_durable_approval_not_enabled");
+    return Object.freeze({
+      ...wait,
+      root: Object.freeze({
+        acknowledgementPublished: this.acknowledgementPublished,
+        titlePublished: this.titlePublished,
+        ...(this.observationHandoff
+          ? { observationHandoff: this.observationHandoff }
+          : {}),
+      }),
+    });
+  }
+
   private async runActivation(): Promise<RootLoopControl> {
+    const steeringVersion = this.requestSteering.snapshot().version;
     const attempt: RootActivationAttempt = {
       failureStage: "project_activation",
     };
@@ -165,6 +205,16 @@ class RootExecutionSession {
         );
         return CONTINUE_ROOT_EXECUTION;
       }
+      const invalidOutput = await finalizeInvalidRootOutput({
+        request: this.request,
+        ledger: this.ledger,
+        expectedHead: attempt.head,
+        failureStage: attempt.failureStage,
+        steeringVersion,
+        publishDeferredTitle: attempt.publishDeferredTitle,
+        error,
+      });
+      if (invalidOutput) return invalidOutput;
       traceSupervisorRootActivationFailed({
         diagnostic: this.diagnostic,
         failureStage: attempt.failureStage,
@@ -352,6 +402,7 @@ class RootExecutionSession {
     }
     attempt.failureStage = "invoke_child";
     const child = await this.policy.roleExecutors.invokeChild({
+      allowApprovalWait: true,
       requestId: this.request.requestId,
       context: this.request,
       callerCall: activation.call,
@@ -367,21 +418,19 @@ class RootExecutionSession {
         : {}),
       turnCount: activation.call.activationCount,
     });
+    if (isRoleApprovalWait(child)) return child;
     attempt.failureStage = "project_resume";
-    this.resume = this.policy.rootContract.projectResume(
-      this.ledger,
-      child.returnCommit,
-    );
-    if (child.execution.value?.finalObservation) {
-      attempt.failureStage = "bind_observation";
-      this.observationHandoff = bindSupervisorObservationHandoff({
-        diagnostic: this.diagnostic,
-        returnCommit: child.returnCommit,
-        resume: this.resume,
-        finalObservation: child.execution.value.finalObservation,
-        replaced: this.observationHandoff !== undefined,
-      });
-    }
+    const completed = projectRootChildCompletion({
+      ledger: this.ledger,
+      policy: this.policy,
+      child,
+      diagnostic: this.diagnostic,
+      ...(this.observationHandoff
+        ? { observationHandoff: this.observationHandoff }
+        : {}),
+    });
+    this.resume = completed.resume;
+    this.observationHandoff = completed.observationHandoff;
     return CONTINUE_ROOT_EXECUTION;
   }
 
@@ -487,6 +536,9 @@ class RootExecutionSession {
       call,
       ledger: this.ledger,
       adapters: this.request.workerCapabilities.provider.getAdapters(),
+      ...(this.request.approvalGate
+        ? { approvalGate: this.request.approvalGate }
+        : {}),
       ...(this.policy.authority.capabilityAuthorities.includes("root")
         ? {
             executionFreshness: createRootExecutionFreshness({
@@ -497,14 +549,17 @@ class RootExecutionSession {
         : {}),
     });
     try {
-      if (decision.action === "invoke_capability") {
-        await binding.execute({
-          capabilityId: decision.capabilityId,
-          intent: decision.intent,
-          controls: decision.controls,
-        });
-      } else {
-        await binding.executeBatch({ invocations: decision.invocations });
+      const execution =
+        decision.action === "invoke_capability"
+          ? await binding.execute({
+              capabilityId: decision.capabilityId,
+              intent: decision.intent,
+              controls: decision.controls,
+            })
+          : await binding.executeBatch({ invocations: decision.invocations });
+      if (isWorkerCapabilityApprovalWait(execution)) {
+        this.resume = undefined;
+        return bindRoleApprovalWait(execution);
       }
     } catch (error: unknown) {
       if (!isWorkerCapabilityOperationSupervisionLimitError(error)) {
@@ -597,6 +652,8 @@ class RootExecutionSession {
     const finalObservation = this.observationHandoff
       ? projectSupervisorFinalObservation(this.observationHandoff, this.resume)
       : undefined;
+    attempt.publishDeferredTitle = () =>
+      this.publishDeferredTitle(activation, attempt);
     attempt.failureStage = "compose_response";
     const authoredResponse =
       decision.action === "blocked"
@@ -707,28 +764,6 @@ class RootExecutionSession {
   }
 }
 
-function createRootExecutionFreshness(params: {
-  requestSteering: ReturnType<typeof resolveRequestSteeringInbox>;
-  steeringVersion: number;
-}): WorkerCapabilityExecutionFreshness {
-  const snapshot = projectRequestSteeringSnapshot(
-    params.requestSteering,
-    params.steeringVersion,
-  );
-  return Object.freeze({
-    token: Object.freeze({
-      kind: "request_steering_v1" as const,
-      version: snapshot.version,
-      updates: Object.freeze(
-        snapshot.updates.map(({ sequence, text }) =>
-          Object.freeze({ sequence, text }),
-        ),
-      ),
-    }),
-    isCurrent: () => params.requestSteering.isCurrent(snapshot.version),
-  });
-}
-
 function emitSupervisorResumeStatus(request: RequestExecutionScope): void {
   emitRuntimeStatus(request, {
     stage: "supervisor",
@@ -755,25 +790,4 @@ function requireRootCallFrame(params: {
     throw new Error("supervisor_call_frame_missing");
   }
   return call;
-}
-
-async function commitSupervisorResponse(params: {
-  transactions: RoleCallTransactions;
-  expectedHead: RoleCallLedgerHead;
-  callId: string;
-  response: string;
-}): Promise<string> {
-  const committed = await params.transactions.completeRootResponse({
-    expectedHead: params.expectedHead,
-    callId: params.callId,
-    response: params.response,
-  });
-  if (!committed.ok) {
-    throw new Error(`role_call_ledger_rejected:${committed.issueCode}`);
-  }
-  const output = committed.commit.head.state.rootResponse;
-  if (!output) {
-    throw new Error("supervisor_root_response_missing");
-  }
-  return output;
 }

@@ -1,3 +1,10 @@
+import { createTechnicalExecutionFailureResult } from "../../orchestration/worker-capabilities/execution/adapter-result-normalization.js";
+import { createWorkerCapabilityExecutionErrorOutcomeFingerprint } from "../../orchestration/worker-capabilities/outcome-fingerprint.js";
+import { createPreparedWorkerInvocation } from "./prepared-execution.js";
+import {
+  restorePreparedWorkerInvocation,
+  createPreparedRejectionSnapshot,
+} from "./prepared-snapshot.js";
 import type { ToolExecutionSharedState } from "../../../capabilities/tool-types.js";
 import {
   assertWorkerCapabilityWithinScope,
@@ -111,6 +118,9 @@ function createWorkerAdapter<TContext>(
     async prepare(input) {
       return prepareRegisteredToolWorkerAdapter(params, input);
     },
+    async restore(input, snapshot) {
+      return restorePreparedWorkerInvocation(params, input, snapshot);
+    },
     async execute(input) {
       const preparationInput = Object.freeze({
         ...input,
@@ -153,22 +163,23 @@ async function prepareRegisteredToolWorkerAdapter<TContext>(
           : {}),
         error,
       });
+    const failedResult = {
+      ...createTechnicalExecutionFailureResult(error),
+      failureOutcomeFingerprint:
+        createWorkerCapabilityExecutionErrorOutcomeFingerprint(error) ?? null,
+    } as WorkerCapabilityAdapterResult;
     return Object.freeze({
       ...(actionFingerprint ? { actionFingerprint } : {}),
       acceptedControls: input.controls,
+      snapshot: createPreparedRejectionSnapshot(
+        operationId,
+        actionFingerprint!,
+        input.controls,
+        failedResult,
+      ),
+      onAdmitted: payloadObservability.release,
       execute: async (executionId: string) => {
-        try {
-          payloadObservability.release(executionId);
-        } catch (releaseError: unknown) {
-          tracePreparedExecutionFailed(
-            params,
-            input,
-            operationId,
-            executionId,
-            releaseError,
-          );
-          throw releaseError;
-        }
+        payloadObservability.release(executionId);
         tracePreparedExecutionFailed(
           params,
           input,
@@ -292,79 +303,13 @@ async function prepareRegisteredToolWorkerCapability<TContext>(
     });
   }
 
-  return Object.freeze({
-    actionFingerprint: normalPreparation.actionFingerprint,
-    acceptedControls: normalPreparation.acceptedControls,
-    execute: async (executionId: string) => {
-      try {
-        payloadObservability.release(executionId);
-        tracePreparedExecutionStarted(params, input, operationId, executionId);
-        const rejectedExecution = executionFreshnessRejection(
-          input.executionFreshness,
-        );
-        if (rejectedExecution) {
-          normalPreparation.emitRejection({
-            executionId,
-            executorIdentity: input.call,
-            errorCode: rejectedExecution.sourceIssueCode,
-          });
-          return completeRuntimeRejection({
-            params,
-            input,
-            operationId,
-            executionId,
-            selectedTargetReferences,
-            rejectedExecution,
-          });
-        }
-        const externalResult = await normalPreparation.execute(executionId, input.call);
-        const observed = observeExternalResult(
-          externalResult,
-          params.projection.operation.effect,
-          input.call.parentCallId === null,
-        );
-        const observedResult = attachTargetReferences(
-          observed.result,
-          selectedTargetReferences,
-        );
-        traceRegisteredToolWorkerCapabilityExecutionCompleted(
-          params.diagnostic,
-          operationId,
-          input.call,
-          executionId,
-          observedResult,
-          externalResult.status,
-          {
-            ...(observed.sourceIssueCode
-              ? { sourceIssueCode: observed.sourceIssueCode }
-              : {}),
-            summaryProjection:
-              externalResult.status === "executed" &&
-              observedResult.outcome === "succeeded" &&
-              observedResult.observedEffect === "mutation"
-                ? externalResult.completionActions.length > 0
-                  ? "logical_completion_actions"
-                  : "mutation_evidence_only"
-                : "bounded_external_result",
-            completionActions:
-              externalResult.status === "executed"
-                ? externalResult.completionActions
-                : Object.freeze([]),
-          },
-        );
-        return observedResult;
-      } catch (error: unknown) {
-        tracePreparedExecutionFailed(
-          params,
-          input,
-          operationId,
-          executionId,
-          error,
-        );
-        throw error;
-      }
-    },
-  });
+  return createPreparedWorkerInvocation(
+    params,
+    input,
+    normalPreparation,
+    selectedTargetReferences,
+    payloadObservability,
+  );
 }
 
 function preparedRuntimeRejection<TContext>(input: {
@@ -392,6 +337,27 @@ function preparedRuntimeRejection<TContext>(input: {
         : { materializedParams: input.materializedParams }),
     }),
     acceptedControls: input.effectiveControls,
+    snapshot: createPreparedRejectionSnapshot(
+      input.operationId,
+      createRegisteredToolPreparationAttemptFingerprint({
+        operationId: input.operationId,
+        controls: input.effectiveControls,
+        rejectionCode: input.rejectedExecution.sourceIssueCode,
+        ...(input.payload === undefined ? {} : { payload: input.payload }),
+        ...(input.materializedParams === undefined
+          ? {}
+          : { materializedParams: input.materializedParams }),
+      }),
+      input.effectiveControls,
+      attachTargetReferences(
+        {
+          ...input.rejectedExecution.result,
+          exactResult: input.rejectedExecution.exactResult,
+        },
+        input.selectedTargetReferences,
+      ),
+    ),
+    onAdmitted: input.payloadObservability.release,
     execute: async (executionId: string) => {
       try {
         input.payloadObservability.release(executionId);

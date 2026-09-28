@@ -17,6 +17,7 @@ type UnitPaths = Readonly<{
   node: string;
   tsxCli: string;
   controlScript: string;
+  companionBuild: string;
   webUiServer: string;
 }>;
 
@@ -33,6 +34,7 @@ export function renderRuntimeWebUiUnit(
     "@@NODE@@": quoteSystemdArgument(paths.node),
     "@@TSX_CLI@@": quoteSystemdArgument(paths.tsxCli),
     "@@CONTROL_SCRIPT@@": quoteSystemdArgument(paths.controlScript),
+    "@@COMPANION_BUILD@@": quoteSystemdArgument(paths.companionBuild),
     "@@WEB_UI_SERVER@@": quoteSystemdArgument(paths.webUiServer),
   };
   return Object.entries(replacements).reduce(
@@ -63,6 +65,7 @@ export async function installRuntimeWebUiUserServices(
     node: options.nodePath ?? process.execPath,
     tsxCli: join(rootDir, "node_modules", "tsx", "dist", "cli.mjs"),
     controlScript: join(rootDir, "scripts", "runtime-service-web-ui.ts"),
+    companionBuild: join(rootDir, "scripts", "build-host-companion.ts"),
     webUiServer: join(rootDir, "src", "web-ui", "server.ts"),
   };
   const units = [WEB_UI_SERVER_UNIT, WEB_UI_OPEN_UNIT] as const;

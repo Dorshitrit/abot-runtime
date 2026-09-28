@@ -1,14 +1,19 @@
 import { downloadHostSetup } from "./download.js";
 import { hostSetupIsReady, renderSystemHostConnection } from "./rendering.js";
 import { createSystemHostVisibility } from "./visibility.js";
+import { createMacConnectionActions } from "./macos-connection-actions.js";
 
 export function createSystemHostConnectionManager({
   loadConnection,
   downloadSetup,
+  connectLocal,
+  createPairing,
+  getRuntimeOrigin = () => globalThis.location?.origin,
   revokeConnection,
   supportsConnection = () => true,
   saveDownload = downloadHostSetup,
   documentRoot = globalThis.document,
+  compact = false,
   onChange = () => {},
   schedulePoll = (callback, delay) => setTimeout(callback, delay),
   cancelPoll = (timer) => clearTimeout(timer),
@@ -23,6 +28,8 @@ export function createSystemHostConnectionManager({
     message: "",
     statusUnavailable: false,
     downloaded: null,
+    manualMac: null,
+    managementOpen: false,
   };
   let revision = 0;
   let pollTimer;
@@ -36,14 +43,40 @@ export function createSystemHostConnectionManager({
     isActive: () => state.active,
     onChange: visibilityChanged,
   });
+  const mac = createMacConnectionActions({
+    state,
+    connectLocal,
+    createPairing,
+    getRuntimeOrigin,
+    canInstallOnPlatform,
+    beginRequest,
+    finishRequest,
+    isCurrentResponse,
+    load,
+    getSurfaceRevision: () => surfaceRevision,
+    isVisible: () => visibility.isVisible(),
+  });
   function markup() {
     return renderSystemHostConnection({
       ...state,
       error: state.error || state.actionError,
       supported: supportsConnection(),
+      compact,
     });
   }
   function afterPaint(root = state.root) {
+    const management = root?.querySelector("[data-system-host-management]");
+    management?.addEventListener("toggle", () => {
+      if (management !== state.root?.querySelector("[data-system-host-management]")) return;
+      state.managementOpen = management.open;
+      lastNotification = markup();
+    });
+    root
+      ?.querySelector('[data-system-host-mac="local"]')
+      ?.addEventListener("click", () => void mac.connectMac());
+    root
+      ?.querySelector('[data-system-host-mac="manual"]')
+      ?.addEventListener("click", () => void mac.pairMac());
     root
       ?.querySelector("[data-system-host-refresh]")
       ?.addEventListener("click", () => void load());
@@ -90,6 +123,8 @@ export function createSystemHostConnectionManager({
     if (!visible && wasVisible) surfaceRevision += 1;
     wasVisible = visible;
     if (!visible) {
+      state.manualMac = null;
+      notify();
       stopPolling();
       return;
     }
@@ -131,6 +166,7 @@ export function createSystemHostConnectionManager({
       state.statusUnavailable = false;
       state.error = "";
       if (hostSetupIsReady(snapshot)) {
+        state.manualMac = null;
         state.downloaded = null;
         state.message = "";
         state.actionError = "";
@@ -161,7 +197,9 @@ export function createSystemHostConnectionManager({
     return message || "Setup could not be downloaded. Try again.";
   }
   async function install(platform) {
+    if (platform === "macos") return false;
     if (!canInstallOnPlatform(platform)) return false;
+    state.manualMac = null;
     const operation = beginRequest();
     const surface = surfaceRevision;
     try {
@@ -195,8 +233,9 @@ export function createSystemHostConnectionManager({
       if (!isCurrentResponse(operation)) return false;
       state.snapshot = snapshot;
       state.downloaded = null;
+      state.manualMac = null;
       state.statusUnavailable = false;
-      state.message = "Computer access revoked.";
+      state.message = "Computer unpaired.";
       return true;
     } catch {
       if (isCurrentResponse(operation))
@@ -219,20 +258,28 @@ export function createSystemHostConnectionManager({
     state.snapshot = null;
     state.statusUnavailable = false;
     state.downloaded = null;
+    state.manualMac = null;
     state.error = "";
     state.actionError = "";
     state.message = "";
+    state.managementOpen = false;
     stopPolling();
     wasVisible = false;
+    render();
   }
   return {
     state,
     load,
     install,
+    ...mac,
     revoke,
     markup,
     afterPaint,
     setActive,
+    openManagement() {
+      state.managementOpen = true;
+      notify();
+    },
     reset,
     mount(root) {
       state.root = root;

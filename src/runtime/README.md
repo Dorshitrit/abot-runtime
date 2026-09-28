@@ -70,6 +70,16 @@ The bridge and Web UI backend call `handleRunRequest(...)` through this path.
 Do not add another runner, request classifier, profile router, or fallback
 semantic loop.
 
+On user cancellation, the request closes its tool resources and drains accepted
+steering before persisting an assistant acknowledgement with any already streamed
+answer text. This ordinary user/assistant pair enters existing session history
+and compaction for either root policy. No model is called to write the stop
+acknowledgement. The terminal event remains `failed` / `request_cancelled`, emitted
+after persistence, and carries the saved response for consistent live display.
+A persistence failure preserves cancellation and sets
+`details.stoppedResponsePersistenceFailed`; it does not claim that history was
+saved. Earlier cancelled requests without an assistant message are not migrated.
+
 ## Code Lifetimes and Composition
 
 `createRuntimeApplication(...)` is the primary composition root. It constructs
@@ -125,7 +135,10 @@ isolation boundaries.
   represents the completed sub-process to Supervisor, which separately owns
   Reviewer delegation and audit decisions. For a Worker child, Planner selects
   only the smallest complete set of offered catalog groups; the Worker still
-  owns capability and control selection.
+  owns capability and control selection. Worker and Planner result prose has no
+  fixed character ceiling; model context admission and compaction retain their
+  configured budgets. Result validation still requires non-empty text and exact
+  caller, dependency, and receipt bindings.
 - **Planner Graph advisory contract** may propose or decline one bounded
   dependency graph for the Execution Agent, including sequential steps or
   parallel components converging into one integrated deliverable. It is a

@@ -2,7 +2,6 @@ import { MODEL_STEPS } from "../../../shared/model-steps.js";
 import {
   normalizeRoleCallWorkingDirectory,
   ROLE_CALL_OBJECTIVE_MAX_LENGTH,
-  ROLE_CALL_RESULT_MAX_LENGTH,
   type RoleCallFrame,
   type RoleCallPlanBinding,
   type RoleCallWorkerCapabilityScope,
@@ -11,7 +10,6 @@ export const PLANNER_DECISION_MODEL_STEP = MODEL_STEPS.PLANNER_DECISION;
 export const PLANNER_ROLE_ID = "planner" as const;
 export const PLANNER_CHILD_ROLE_IDS = Object.freeze(["worker"] as const);
 export const PLANNER_OBJECTIVE_MAX_LENGTH = ROLE_CALL_OBJECTIVE_MAX_LENGTH;
-export const PLANNER_RESULT_MAX_LENGTH = ROLE_CALL_RESULT_MAX_LENGTH;
 export const PLANNER_DISPATCH_ITEM_COUNT = 1;
 export const PLANNER_DECISION_ACTIONS = Object.freeze([
   "return_result",

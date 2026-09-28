@@ -1,3 +1,6 @@
+vi.mock("../../computer-access/companion/native-notifications.js", () => ({
+  createNativeNotificationSession: vi.fn(async () => ({ ready: false, handlers: () => ({}), close: () => {} })),
+}));
 import { randomUUID } from "node:crypto";
 import {
   mkdtemp,
@@ -16,12 +19,13 @@ import {
   renderNativeAutostart,
   uninstallNativeAutostart,
   type NativeAutostartOptions,
-} from "../../../plugins/system/source/companion/autostart.js";
+} from "../../computer-access/companion/autostart.js";
 import {
   createNativeHostState,
   type NativeHostConnection,
-} from "../../../plugins/system/source/companion/native-state.js";
-import { runNativeHostSupervisor } from "../../../plugins/system/source/companion/native-supervisor.js";
+} from "../../computer-access/companion/native-state.js";
+import { runNativeHostSupervisor } from "../../computer-access/companion/native-supervisor.js";
+import { readNativeCompanionBuildId } from "../../computer-access/companion/native-build-identity.js";
 import { ensurePrivateRuntimeDirectory } from "../local-host/private-directory.js";
 import { assertPrivateRuntimeAccess } from "../local-host/private-access.js";
 
@@ -51,6 +55,28 @@ async function fixture() {
 }
 
 describe("native credential lifetime", () => {
+  test("readiness requires the exact entry bundle and rejects legacy or stale build status", async () => {
+    const { directory, state, connection } = await fixture();
+    const bundle = join(directory, "companion.mjs");
+    await writeFile(bundle, "old bundle");
+    const oldBuild = await readNativeCompanionBuildId(bundle);
+    await writeFile(bundle, "new bundle");
+    const newBuild = await readNativeCompanionBuildId(bundle);
+    expect(newBuild).not.toBe(oldBuild);
+    await state.setStatus(connection.hostId, true);
+    expect(await state.isConnected(connection.hostId)).toBe(true);
+    expect(await state.isConnected(connection.hostId, newBuild)).toBe(false);
+    await state.setStatus(connection.hostId, true, oldBuild);
+    expect(await state.isConnected(connection.hostId, newBuild)).toBe(false);
+    await state.setStatus(connection.hostId, true, newBuild);
+    expect(await state.isConnected(connection.hostId, newBuild)).toBe(true);
+    expect(
+      await state.isConnected(connection.hostId, newBuild, Date.now()),
+    ).toBe(false);
+    expect(await state.isConnected(randomUUID(), newBuild)).toBe(false);
+    await state.setStatus(connection.hostId, false, newBuild);
+    expect(await state.isConnected(connection.hostId, newBuild)).toBe(false);
+  });
   test("stores a private credential and compare-removes only the intended pairing", async () => {
     const { state, connection } = await fixture();
     await state.write(connection);
@@ -99,6 +125,9 @@ describe("native credential lifetime", () => {
       expect(options.authorization).toBe(connection.credential);
       expect(options.hostId).toBe(connection.hostId);
       await options.onReady(connection.hostId);
+      expect(await state.isConnected(connection.hostId, "current-build")).toBe(
+        true,
+      );
       if (attempts === 1) return "disconnected" as const;
       stop.abort();
       return "stopped" as const;
@@ -113,6 +142,7 @@ describe("native credential lifetime", () => {
       },
       signal: stop.signal,
       reconnectDelayMs: 1,
+      buildId: "current-build",
       connect,
     });
     expect(connect).toHaveBeenCalledTimes(2);
@@ -206,9 +236,7 @@ describe("current-user login registration", () => {
       nodePath: "/fixture/a&b/node",
       cliPath: "/fixture/A Bot/bin.js",
     };
-    expect(renderNativeAutostart(options)).toContain(
-      "/fixture/a&amp;b/node",
-    );
+    expect(renderNativeAutostart(options)).toContain("/fixture/a&amp;b/node");
     expect(renderNativeAutostart(options)).toContain("<string>Aqua</string>");
     expect(await installNativeAutostart(options)).toEqual({ started: true });
     expect(options.execute).toHaveBeenCalledWith("/bin/launchctl", [
@@ -222,6 +250,44 @@ describe("current-user login registration", () => {
       "gui/501/com.abot.host-companion",
     ]);
   });
+  test.skipIf(process.platform === "win32")(
+    "Linux installs and removes its registration under the absolute XDG config home",
+    async () => {
+      const { directory } = await fixture();
+      const options = {
+        ...settings(directory, "linux"),
+        xdgConfigHome: join(directory, "custom-config"),
+        nodePath: "/fixture/node",
+        cliPath: "/fixture/companion.mjs",
+      };
+      const path = join(
+        options.xdgConfigHome,
+        "autostart",
+        "com.abot.host-companion.desktop",
+      );
+      expect(nativeAutostartFile(options)).toBe(path);
+      expect(await installNativeAutostart(options)).toEqual({ started: false });
+      expect(await readFile(path, "utf8")).toBe(renderNativeAutostart(options));
+      expect(options.execute).not.toHaveBeenCalled();
+      await uninstallNativeAutostart(options);
+      await expect(stat(path)).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
+  test.each([undefined, "", "relative/config"])(
+    "Linux falls back to the home config directory for XDG_CONFIG_HOME=%s",
+    async (xdgConfigHome) => {
+      const { directory } = await fixture();
+      const options = { ...settings(directory, "linux"), xdgConfigHome };
+      expect(nativeAutostartFile(options)).toBe(
+        join(
+          directory,
+          ".config",
+          "autostart",
+          "com.abot.host-companion.desktop",
+        ),
+      );
+    },
+  );
   test("preserves an unmanaged startup file", async () => {
     const { directory } = await fixture();
     const options = settings(directory, "win32");

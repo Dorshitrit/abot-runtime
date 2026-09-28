@@ -6,13 +6,7 @@ import { createConfigWorkspace } from "../../web-ui/app/components/config-worksp
 type Listener = (event: Record<string, unknown>) => void;
 type TestElement = Record<string, any>;
 
-const CONFIG_CATEGORIES = [
-  "memory",
-  "pipeline",
-  "models",
-  "plugins",
-  "advanced",
-];
+const CONFIG_SECTIONS = ["models", "plugins", "operations"];
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -73,34 +67,22 @@ function createRawEditor() {
 function createDashboardElement() {
   const dashboard = Object.assign(createEventTarget(), createElement());
   let html = "";
-  let categoryButtons = new Map<string, TestElement>();
   let categoryPanels: TestElement[] = [];
   let rawEditor: TestElement | null = null;
   let mountRoots = { management: {}, setup: {} };
 
   function rebuildRenderedNodes() {
-    categoryButtons = new Map();
     categoryPanels = [];
-    for (const category of CONFIG_CATEGORIES) {
+    for (const category of CONFIG_SECTIONS) {
       const capitalized = `${category[0].toUpperCase()}${category.slice(1)}`;
-      const start = html.indexOf(`id="configCategory${capitalized}"`);
+      const start = html.indexOf(`id="config${capitalized}Panel"`);
       if (start < 0) continue;
-      const tabMarkup = html.slice(start, html.indexOf("</button>", start));
-      const active = tabMarkup.includes('aria-selected="true"');
-      const button = createElement({
-        configAction: "select-category",
-        configCategory: category,
-      });
-      button.setAttribute("aria-selected", active ? "true" : "false");
-      button.tabIndex = active ? 0 : -1;
-      button.closest = (selector: string) =>
-        selector === "[data-config-action]" ||
-        selector === "[data-config-category]"
-          ? button
-          : null;
-      categoryButtons.set(category, button);
+      const opening = html.slice(
+        html.lastIndexOf("<section", start),
+        html.indexOf(">", start),
+      );
       const panel = createElement({ configCategoryPanel: category });
-      panel.hidden = !active;
+      panel.hidden = /\bhidden\b/u.test(opening);
       categoryPanels.push(panel);
     }
     rawEditor = html.includes('id="configRawEditor"')
@@ -117,7 +99,10 @@ function createDashboardElement() {
     },
   });
   Object.assign(dashboard, {
-    category: (category: string) => categoryButtons.get(category),
+    panel: (category: string) =>
+      categoryPanels.find(
+        (panel) => panel.dataset.configCategoryPanel === category,
+      ),
     currentRawEditor: () => rawEditor,
     mountRoot: (kind: "management" | "setup") => mountRoots[kind],
     querySelector(selector: string) {
@@ -125,15 +110,9 @@ function createDashboardElement() {
       if (selector === "[data-long-term-memory-management]")
         return mountRoots.management;
       if (selector === "#configRawEditor") return rawEditor;
-      const categoryMatch = selector.match(
-        /^\[data-config-category="([^"]+)"\]$/,
-      );
-      return categoryMatch ? categoryButtons.get(categoryMatch[1]) : null;
+      return null;
     },
     querySelectorAll(selector: string) {
-      if (selector === "[data-config-category]") {
-        return [...categoryButtons.values()];
-      }
       if (selector === "[data-config-category-panel]") return categoryPanels;
       return [];
     },
@@ -261,91 +240,94 @@ function createHarness(options: Record<string, any> = {}) {
 }
 
 describe("config workspace DOM characterization", () => {
-  test("preserves category/action/ARIA markup and selection state", async () => {
+  test("renders labeled workspace regions and switches their visibility through the shared owner", async () => {
     const harness = createHarness();
     harness.workspace.bind();
     await harness.workspace.load();
 
     const html = harness.configDashboard.innerHTML as string;
-    const positions = CONFIG_CATEGORIES.map((category) => {
+    const labels = {
+      models: "Models",
+      plugins: "Plugins",
+      operations: "System",
+    };
+    const positions = CONFIG_SECTIONS.map((category) => {
       const name = `${category[0].toUpperCase()}${category.slice(1)}`;
-      expect(html).toContain(`id="configCategory${name}"`);
-      expect(html).toContain(`aria-controls="config${name}Panel"`);
       expect(html).toContain(`id="config${name}Panel"`);
-      expect(html).toContain(`aria-labelledby="configCategory${name}"`);
-      expect(html).toContain(`data-config-category="${category}"`);
+      expect(html).toContain(
+        `aria-label="${labels[category as keyof typeof labels]}"`,
+      );
       expect(html).toContain(`data-config-category-panel="${category}"`);
-      return html.indexOf(`id="configCategory${name}"`);
+      return html.indexOf(`id="config${name}Panel"`);
     });
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
-    expect(html).toContain('role="tablist"');
-    expect(html).toContain('role="tab"');
-    expect(html).toContain('role="tabpanel"');
+    expect(html).toContain('role="region"');
+    for (const role of ["tablist", "tab", "tabpanel"])
+      expect(html).not.toContain(`role="${role}"`);
     for (const action of [
       "add-calibration",
-      "add-step",
-      "apply-raw",
       "field",
       "reset-file",
       "save-file",
-      "save-raw",
-      "select-category",
       "select-model",
-      "step-value",
-    ]) {
+    ])
       expect(html).toContain(`data-config-action="${action}"`);
-    }
+    expect(html).not.toContain('data-config-action="select-category"');
     expect(html).not.toContain('data-config-action="delete-path"');
-    expect(harness.memorySetup.mount).toHaveBeenCalledWith(
-      harness.configDashboard.mountRoot("setup"),
-    );
-    expect(harness.memoryManagement.mount).toHaveBeenCalledWith(
-      harness.configDashboard.mountRoot("management"),
-    );
+    for (const retired of ["computer", "memory", "pipeline", "advanced"])
+      expect(html).not.toContain(`data-config-category-panel="${retired}"`);
+    expect(html).not.toContain('id="configRawEditor"');
+    expect(harness.memorySetup.mount).not.toHaveBeenCalled();
+    expect(harness.memoryManagement.mount).not.toHaveBeenCalled();
 
-    harness.configDashboard.dispatch("click", {
-      target: harness.configDashboard.category("models"),
-    });
-    harness.configDashboard.dispatch("toggle", {
-      target: { dataset: {}, id: "configRawPanel", open: true },
-    });
+    harness.workspace.setWorkspace("models");
     harness.configDashboard.dispatch("click", {
       target: actionTarget("select-model", { modelId: "beta" }),
     });
-    const rerendered = harness.configDashboard.innerHTML as string;
-    const rawPanel = rerendered.indexOf('id="configRawPanel"');
-    expect(rerendered).toContain("<h3>Beta Model</h3>");
-    expect(
-      rerendered.slice(rawPanel, rerendered.indexOf(">", rawPanel)),
-    ).toContain("open");
-    expect(
-      harness.configDashboard.category("models").getAttribute("aria-selected"),
-    ).toBe("true");
+    expect(harness.configDashboard.innerHTML).toContain("<h3>Beta Model</h3>");
+    expect(harness.configDashboard.panel("models").hidden).toBe(false);
 
-    const preventDefault = vi.fn();
-    harness.configDashboard.dispatch("keydown", {
-      key: "ArrowRight",
-      preventDefault,
-      target: harness.configDashboard.category("models"),
-    });
-    expect(preventDefault).toHaveBeenCalledOnce();
-    expect(
-      harness.configDashboard.category("plugins").getAttribute("aria-selected"),
-    ).toBe("true");
-    expect(
-      harness.configDashboard.category("plugins").focus,
-    ).toHaveBeenCalledOnce();
+    harness.workspace.setWorkspace("plugins");
+    expect(harness.workspace.activeCategory()).toBe("plugins");
+    expect(harness.configDashboard.panel("plugins").hidden).toBe(false);
+    expect(harness.configDashboard.panel("models").hidden).toBe(true);
+    harness.workspace.setWorkspace("config");
+    expect(harness.workspace.activeCategory()).toBe("operations");
+    expect(harness.configDashboard.panel("operations").hidden).toBe(false);
+    expect(harness.configDashboard.panel("plugins").hidden).toBe(true);
+    harness.workspace.setWorkspace("models");
+    expect(harness.configDashboard.innerHTML).toContain("<h3>Beta Model</h3>");
+    expect(harness.configDashboard.panel("models").hidden).toBe(false);
   });
 
-  test("delegates add, delete, reset, and invalid raw actions", async () => {
+  test("keeps linked JSON repair available without restoring the Advanced tab", async () => {
+    const payload = dashboardPayload();
+    Object.assign(payload.dashboard.files.requestRunner, {
+      invalidJson: { raw: '{"broken":', message: "Invalid JSON" },
+    });
+    const harness = createHarness({
+      loadDashboard: vi.fn(async () => payload),
+    });
+    await harness.workspace.load();
+    expect(harness.workspace.activeCategory()).toBe("models");
+    expect(harness.configDashboard.innerHTML).toContain(
+      'aria-label="Repair configuration file"',
+    );
+    expect(harness.configDashboard.innerHTML).toContain('id="configRawEditor"');
+    expect(harness.configDashboard.innerHTML).not.toContain(
+      'data-config-category="advanced"',
+    );
+  });
+
+  test("preserves runner mapping mutations without showing the retired Pipeline tab", async () => {
     const harness = createHarness();
     harness.workspace.bind();
     await harness.workspace.load();
 
     harness.configDashboard.dispatch("click", { target: addStepTarget() });
     expect(harness.workspace.hasUnsavedChanges()).toBe(true);
-    expect(harness.configDashboard.innerHTML).toContain(
-      'aria-label="Mapping target for review"',
+    expect(harness.configDashboard.innerHTML).not.toContain(
+      'data-config-category="pipeline"',
     );
     harness.configDashboard.dispatch("click", {
       target: actionTarget("delete-path", {
@@ -364,23 +346,9 @@ describe("config workspace DOM characterization", () => {
       }),
     });
     expect(harness.workspace.hasUnsavedChanges()).toBe(false);
-
-    const editor = harness.configDashboard.currentRawEditor();
-    editor.value = "{invalid";
-    harness.configDashboard.dispatch("input", { target: editor });
-    harness.configDashboard.dispatch("click", {
-      target: actionTarget("apply-raw"),
-    });
-    expect(harness.configStatus.textContent).toMatch(/^Raw JSON:/);
-    expect(harness.recordControlEvent).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        name: "Raw config invalid",
-        tone: "failed",
-      }),
-    );
   });
 
-  test("binds once, protects refresh, and preserves the focused raw editor", async () => {
+  test("binds once and protects refresh when visible model settings change", async () => {
     const confirmDiscard = vi.fn(() => false);
     const harness = createHarness({ confirmDiscard });
     harness.workspace.bind();
@@ -390,9 +358,6 @@ describe("config workspace DOM characterization", () => {
     expect(harness.configDashboard.listenerCount("click")).toBe(1);
     expect(harness.refreshConfigButton.listenerCount("click")).toBe(1);
 
-    const editor = harness.configDashboard.currentRawEditor();
-    const originalValue = editor.value;
-    const originalWrites = editor.valueWrites;
     const field = actionTarget("field", {
       id: "runtime",
       kind: "runtime",
@@ -401,16 +366,7 @@ describe("config workspace DOM characterization", () => {
     });
     field.value = "changed";
     harness.configDashboard.dispatch("input", { target: field });
-    expect(editor.value).not.toBe(originalValue);
-    expect(editor.valueWrites).toBe(originalWrites + 1);
-
-    const focusedValue = editor.value;
-    const focusedWrites = editor.valueWrites;
-    harness.eventTarget.document.activeElement = editor;
-    field.value = "changed again";
-    harness.configDashboard.dispatch("input", { target: field });
-    expect(editor.value).toBe(focusedValue);
-    expect(editor.valueWrites).toBe(focusedWrites);
+    expect(harness.workspace.hasUnsavedChanges()).toBe(true);
 
     const preventDefault = vi.fn();
     const beforeUnload = harness.eventTarget.dispatch("beforeunload", {
@@ -454,7 +410,9 @@ describe("config workspace DOM characterization", () => {
     );
 
     canonicalRefresh.resolve(dashboardPayload());
-    await vi.waitFor(() => expect(harness.configDashboard.inert).toBe(false));
+    await vi.waitFor(() =>
+      expect(harness.configDashboard.getAttribute("aria-busy")).toBe("false"),
+    );
   });
 
   test("ignores stale memory completion after a newer dashboard wins", async () => {

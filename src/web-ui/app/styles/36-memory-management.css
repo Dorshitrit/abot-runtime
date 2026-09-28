@@ -4,10 +4,10 @@
   display: grid;
   gap: 14px;
   min-width: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
+  padding: 20px;
+  border: 1px solid var(--config-line, var(--line));
+  border-radius: 10px;
+  background: var(--panel);
   box-shadow: none;
 }
 
@@ -41,7 +41,7 @@
 .memory-management-heading h4 {
   color: var(--text-strong);
   font-size: var(--font-size-2xl);
-  font-weight: 520;
+  font-weight: 400;
   line-height: 1.3;
 }
 
@@ -64,7 +64,7 @@
 }
 
 .memory-management-card .memory-status.unavailable {
-  border-color: rgba(255, 116, 128, 0.3);
+  border-color: var(--danger);
   color: var(--danger);
 }
 
@@ -99,9 +99,9 @@
 }
 
 .memory-search-shell:focus-within {
-  border-color: rgba(87, 148, 255, 0.72);
-  outline: 2px solid rgba(87, 148, 255, 0.2);
-  outline-offset: 1px;
+  border-color: var(--config-line-strong, var(--line-strong));
+  outline: 0;
+  box-shadow: none;
 }
 
 .memory-search-icon {
@@ -212,8 +212,9 @@
 .memory-management-feedback {
   margin: 0;
   padding: 7px 9px;
-  border-left: 2px solid var(--config-line-strong, var(--line-strong));
-  background: rgba(111, 151, 191, 0.045);
+  border: 1px solid var(--config-line, var(--line));
+  border-radius: 6px;
+  background: var(--control-bg);
   color: var(--config-muted, var(--muted));
   font-size: var(--font-size-sm);
   line-height: 1.45;
@@ -242,11 +243,11 @@
 }
 
 .memory-record:hover {
-  background: rgba(111, 151, 191, 0.045);
+  background: var(--control-bg);
 }
 
 .memory-record.editing {
-  background: rgba(87, 148, 255, 0.065);
+  background: var(--accent-soft);
 }
 
 .memory-record-copy {
@@ -321,7 +322,7 @@
 .memory-record-tags span {
   padding: 2px 6px;
   border: 1px solid var(--config-line, var(--line));
-  border-radius: 999px;
+  border-radius: 5px;
   color: var(--config-muted, var(--muted));
   font-size: var(--font-size-xs);
   line-height: 1.25;
@@ -350,7 +351,7 @@
   border: 0;
   border-bottom: 1px solid var(--config-line, var(--line));
   border-radius: 0;
-  background: rgba(87, 148, 255, 0.055);
+  background: var(--control-bg);
 }
 
 .memory-editor-heading {
@@ -360,7 +361,7 @@
 .memory-editor-heading h5 {
   color: var(--config-copy, var(--text));
   font-size: var(--font-size-md);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .memory-editor-heading p {
@@ -374,7 +375,7 @@
   gap: 5px;
   color: var(--config-muted, var(--muted));
   font-size: var(--font-size-xs);
-  font-weight: 450;
+  font-weight: 400;
 }
 
 .memory-editor-card textarea {
@@ -414,6 +415,6 @@
 }
 
 .memory-management-card .danger-button:hover {
-  background: rgba(255, 116, 128, 0.08);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
   color: var(--danger);
 }

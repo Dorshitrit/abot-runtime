@@ -2,7 +2,7 @@ import { readFile, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { ModelSetupRoutes } from "../../web-ui/local-runtime/model-setup-routes.js";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ModelSetupService } from "../../web-ui/local-runtime/model-setup-service.js";
 import * as dashboard from "../../web-ui/config-dashboard-backend.js";
@@ -36,12 +36,20 @@ function recreatedService(configPath = fixture.configPath) {
   });
 }
 async function persistedFiles() {
+  const declarations = Object.entries<{ configRef?: string }>(
+    (await fixture.readConfig()).models.profiles,
+  );
   return {
     config: await readFile(fixture.configPath, "utf8"),
     env: await fixture.readEnv(),
-    model: await readFile(
-      join(fixture.rootDir, "local/models/default.config.json"),
-      "utf8",
+    models: Object.fromEntries(
+      await Promise.all(
+        declarations.flatMap(([id, profile]) => {
+          if (!profile.configRef) return [];
+          const path = resolve(dirname(fixture.configPath), profile.configRef);
+          return [readFile(path, "utf8").then((bytes) => [id, bytes])];
+        }),
+      ),
     ),
   };
 }
@@ -182,11 +190,11 @@ describe("committed model addition retry", () => {
   test("recognizes an explicit template context window when the first request omitted it", async () => {
     const { contextWindowTokens: _context, ...request } = input;
     const first = await fixture.service.add(request);
-    const config = await fixture.readConfig();
+    const profile = await fixture.readModelProfile(request.profileId);
     await expect(
       fixture.service.add({
         ...request,
-        contextWindowTokens: config.models.profiles.retried.contextWindowTokens,
+        contextWindowTokens: profile.contextWindowTokens,
       }),
     ).resolves.toEqual(first);
   });
@@ -230,9 +238,9 @@ describe("committed model addition retry", () => {
     "does not adopt a profile whose %s configuration was edited",
     async (field, value) => {
       await fixture.service.add(input);
-      const config = await fixture.readConfig();
-      config.models.profiles.retried[field] = value;
-      await fixture.writeConfig(config);
+      const profile = await fixture.readModelProfile(input.profileId);
+      profile[field] = value;
+      await fixture.writeModelProfile(input.profileId, profile);
       const before = await persistedFiles();
       await expect(fixture.service.add(input)).rejects.toMatchObject({
         code: "model_profile_exists",
@@ -241,6 +249,43 @@ describe("committed model addition retry", () => {
       expect(await persistedFiles()).toEqual(before);
     },
   );
+
+  test("rejects an inline override added to a linked declaration", async () => {
+    await fixture.service.add(input);
+    const config = await fixture.readConfig();
+    config.models.profiles.retried.label = "Externally overlaid label";
+    await fixture.writeConfig(config);
+    const before = await persistedFiles();
+    await expect(fixture.service.add(input)).rejects.toMatchObject({
+      code: "model_profile_exists",
+      statusCode: 409,
+    });
+    expect(await persistedFiles()).toEqual(before);
+  });
+
+  test("accepts an exact legacy inline profile without migrating or rewriting it", async () => {
+    const result = await fixture.service.add(input);
+    const config = await fixture.readConfig();
+    const childPath = resolve(
+      dirname(fixture.configPath),
+      config.models.profiles.retried.configRef,
+    );
+    const childBytes = await readFile(childPath, "utf8");
+    config.models.profiles.retried = await fixture.readModelProfile(
+      input.profileId,
+    );
+    await fixture.writeConfig(config);
+    const before = await persistedFiles();
+    const save = vi.spyOn(dashboard, "saveConfigDashboardFile");
+
+    await expect(recreatedService().add(input)).resolves.toEqual(result);
+    expect(await persistedFiles()).toEqual(before);
+    expect(await readFile(childPath, "utf8")).toBe(childBytes);
+    expect(save).not.toHaveBeenCalled();
+    expect(
+      (await fixture.readConfig()).models.profiles.retried,
+    ).not.toHaveProperty("configRef");
+  });
 
   test("rejects a changed new-provider connection even when its model profile still matches", async () => {
     const request = {
@@ -278,7 +323,7 @@ describe("committed model addition retry", () => {
   });
 
   test("serializes identical additions through separate service instances and config aliases", async () => {
-    const alias = join(fixture.rootDir, "config-alias.json");
+    const alias = join(dirname(fixture.configPath), "config-alias.json");
     await symlink(fixture.configPath, alias);
     const save = vi.spyOn(dashboard, "saveConfigDashboardFile");
     const results = await Promise.all([
@@ -326,6 +371,33 @@ describe("committed model addition retry", () => {
     });
     expect((await fixture.readConfig()).models.profiles.retried.model).toBe(
       "external-edit",
+    );
+  });
+
+  test("rejects a child-file edit completed while retry identity is being checked", async () => {
+    await fixture.service.add(input);
+    const before = await persistedFiles();
+    const prepare = provider.prepareModelCredential;
+    vi.spyOn(provider, "prepareModelCredential").mockImplementationOnce(
+      async (...args) => {
+        const result = await prepare(...args);
+        const profile = await fixture.readModelProfile(input.profileId);
+        profile.model = "external-child-edit";
+        await fixture.writeModelProfile(input.profileId, profile);
+        return result;
+      },
+    );
+
+    await expect(fixture.service.add(input)).rejects.toMatchObject({
+      code: "config_changed",
+      statusCode: 409,
+    });
+    const after = await persistedFiles();
+    expect(after.config).toBe(before.config);
+    expect(after.env).toBe(before.env);
+    expect(after.models.default).toBe(before.models.default);
+    expect((await fixture.readModelProfile(input.profileId)).model).toBe(
+      "external-child-edit",
     );
   });
 });

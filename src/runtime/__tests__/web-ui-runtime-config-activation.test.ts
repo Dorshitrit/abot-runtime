@@ -11,6 +11,7 @@ function activationHarness({
   const status = { textContent: "" };
   const button = {
     disabled: false,
+    textContent: "Restart runtime",
     addEventListener: (_name: string, callback: () => Promise<void>) => {
       click = callback;
     },
@@ -21,9 +22,11 @@ function activationHarness({
     setAttribute: vi.fn(),
     querySelector: (selector: string) => (selector === "p" ? status : button),
   };
+  const existingControls = { name: "configuration and operations controls" };
+  const children: unknown[] = [existingControls];
   const root = {
     ownerDocument: { createElement: () => panel },
-    prepend: vi.fn(),
+    append: (node: unknown) => children.push(node),
   };
   const workspace = {
     beginExternalRuntimeMutation: vi.fn(() => true),
@@ -39,6 +42,9 @@ function activationHarness({
     getEnvironmentId: () => environmentId,
   });
   return {
+    children,
+    existingControls,
+    panel,
     controller,
     status,
     button,
@@ -53,6 +59,30 @@ function activationHarness({
 }
 
 describe("saved configuration activation feedback", () => {
+  test("places the restart explanation and existing action after configuration content", () => {
+    const harness = activationHarness();
+    expect(harness.children).toEqual([harness.existingControls, harness.panel]);
+    expect(harness.panel.innerHTML).toContain('role="status"');
+    harness.controller.markPending();
+    expect(harness.status.textContent).toContain("Restart");
+    expect(harness.button.textContent).toBe("Apply & restart");
+    expect(harness.apply).not.toHaveBeenCalled();
+  });
+
+  test("restarts unchanged saved settings and keeps unsaved-edit protection", async () => {
+    const harness = activationHarness();
+    harness.workspace.beginExternalRuntimeMutation.mockReturnValueOnce(false);
+    await harness.click();
+    expect(harness.apply).not.toHaveBeenCalled();
+    await harness.click();
+    expect(harness.apply).toHaveBeenCalledOnce();
+    expect(harness.status.textContent).toMatch(/Runtime restarted/);
+    harness.controller.markPending();
+    expect(harness.button.textContent).toBe("Apply & restart");
+    await harness.click();
+    expect(harness.button.textContent).toBe("Restart runtime");
+  });
+
   test.each([false, true])(
     "preserves successful activation when refresh %s fails",
     async (throws) => {
@@ -66,7 +96,7 @@ describe("saved configuration activation feedback", () => {
       expect(harness.apply).toHaveBeenCalledOnce();
       expect(harness.refresh).toHaveBeenCalledOnce();
       expect(harness.status.textContent).toMatch(
-        /Changes applied.*Refresh configuration/,
+        /Runtime restarted.*Refresh configuration/,
       );
       expect(harness.button.disabled).toBe(false);
       expect(

@@ -34,6 +34,9 @@ function requestedAssistantIndex(
   const id = boundary.readThroughMessageId;
   const hasNumericBoundary =
     typeof id === "number" && Number.isSafeInteger(id) && id >= 0;
+  const hasStringBoundary = typeof id === "string" && id.length > 0;
+  if (hasStringBoundary)
+    return messages.findIndex((message) => message.role === "assistant" && message.id === id);
   if (hasNumericBoundary)
     return messages.findIndex(
       (message) =>

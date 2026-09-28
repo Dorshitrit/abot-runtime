@@ -11,7 +11,8 @@ import type { ModelStepContextCompactionController } from "../../model/model-ste
 import { isModelStepSteeringSuperseded } from "../../model/model-step-steering.js";
 import { traceDebug } from "../../observability/debug-logger.js";
 import type { BoundRequestModelInvocationContext } from "../../request/contracts.js";
-import { MAX_ROOT_MEMORY_CANDIDATES } from "../../orchestration/final-response/authoring-contract.js";
+import { conversationMemoryCandidatesSchema, conversationMemoryPostValidatedSchemaConstraints, parseConversationMemoryCandidates } from "../../long-term-memory/conversation-authoring/contract.js";
+import type { ConversationMemoryAuthoringContext } from "../../long-term-memory/conversation-authoring/context.js";
 import { SUPERVISOR_RESPONSE_MODEL_STEP } from "./contracts.js";
 
 const EMPTY_MEMORY_CANDIDATES: readonly MemoryCandidate[] = Object.freeze([]);
@@ -21,27 +22,11 @@ export function createSupervisorMemoryCandidatesFormat(): ModelGatewayJsonSchema
     type: "json_schema" as const,
     name: "supervisor_memory_candidates",
     strict: true,
+    postValidatedSchemaConstraints: conversationMemoryPostValidatedSchemaConstraints,
     schema: Object.freeze({
       type: "object",
       properties: Object.freeze({
-        memoryCandidates: Object.freeze({
-          type: "array",
-          maxItems: MAX_ROOT_MEMORY_CANDIDATES,
-          description:
-            "Optional durable facts or preferences proposed for core policy review.",
-          items: Object.freeze({
-            type: "object",
-            properties: Object.freeze({
-              content: Object.freeze({ type: "string" }),
-              tags: Object.freeze({
-                type: "array",
-                items: Object.freeze({ type: "string" }),
-              }),
-            }),
-            required: Object.freeze(["content", "tags"]),
-            additionalProperties: false,
-          }),
-        }),
+        memoryCandidates: conversationMemoryCandidatesSchema,
       }),
       required: Object.freeze(["memoryCandidates"]),
       additionalProperties: false,
@@ -54,6 +39,7 @@ export async function authorSupervisorMemoryCandidates(params: {
   messages: ChatMessage[];
   boundSteeringVersion?: number;
   contextCompaction?: ModelStepContextCompactionController;
+  memoryAuthoringContext?: ConversationMemoryAuthoringContext;
 }): Promise<readonly MemoryCandidate[]> {
   try {
     return await invokeStructuredModelStep({
@@ -67,7 +53,7 @@ export async function authorSupervisorMemoryCandidates(params: {
       ...(params.contextCompaction
         ? { contextCompaction: params.contextCompaction }
         : {}),
-      parse: parseSupervisorMemoryCandidates,
+      parse: (text) => parseSupervisorMemoryCandidates(text, params.memoryAuthoringContext),
     });
   } catch (error: unknown) {
     if (isModelStepSteeringSuperseded(error)) throw error;
@@ -86,6 +72,7 @@ export async function authorSupervisorMemoryCandidates(params: {
 
 function parseSupervisorMemoryCandidates(
   text: string,
+  context?: ConversationMemoryAuthoringContext,
 ): StructuredModelParseResult<readonly MemoryCandidate[]> {
   const envelope = decodeMemoryEnvelope(text);
   if (!envelope) {
@@ -94,31 +81,10 @@ function parseSupervisorMemoryCandidates(
   if (!Array.isArray(envelope.memoryCandidates)) {
     return invalidMemoryCandidates("supervisor_memory_candidates_missing");
   }
-  const candidates: MemoryCandidate[] = [];
-  for (const entry of envelope.memoryCandidates) {
-    if (candidates.length >= MAX_ROOT_MEMORY_CANDIDATES) {
-      break;
-    }
-    const candidate = parseMemoryCandidate(entry);
-    if (candidate) {
-      candidates.push(candidate);
-    }
-  }
   return Object.freeze({
     ok: true as const,
-    decision: Object.freeze(candidates),
+    decision: parseConversationMemoryCandidates(envelope.memoryCandidates, context),
   });
-}
-
-function parseMemoryCandidate(value: unknown): MemoryCandidate | undefined {
-  const record = readObject(value);
-  if (!record || typeof record.content !== "string") {
-    return undefined;
-  }
-  const tags = Array.isArray(record.tags)
-    ? record.tags.filter((tag): tag is string => typeof tag === "string")
-    : [];
-  return Object.freeze({ content: record.content, tags: Object.freeze(tags) });
 }
 
 function decodeMemoryEnvelope(

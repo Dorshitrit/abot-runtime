@@ -101,6 +101,79 @@ test("an orphan keeps its own identity when a configured profile has the same ba
   await verifyIndependentSaves(snapshot);
 });
 
+test("removed standard model files stay discoverable beside refs in other directories", async () => {
+  await mkdir(join(rootDir, "legacy"));
+  await mkdir(join(rootDir, "alternate"));
+  const profiles = {
+    legacy: { configRef: "./legacy/primary.json" },
+    alternate: { configRef: "./alternate/primary.json" },
+    removed: { configRef: "./models/removed.json" },
+  };
+  await writeJson(configPath, { models: { profiles } });
+  for (const path of [
+    "legacy/primary.json",
+    "legacy/orphan.json",
+    "alternate/primary.json",
+    "alternate/orphan.json",
+    "models/removed.json",
+  ]) {
+    await writeJson(join(rootDir, path), {
+      model: path,
+      contextWindowTokens: 32768,
+    });
+  }
+  expect(
+    (await getConfigDashboardSnapshot(options())).files.models.find(
+      ({ id }) => id === "removed",
+    )?.registered,
+  ).toBe(true);
+
+  await writeJson(configPath, {
+    models: {
+      profiles: { legacy: profiles.legacy, alternate: profiles.alternate },
+    },
+  });
+  const snapshot = await getConfigDashboardSnapshot(options());
+  const discovered = snapshot.files.models.filter((model) => !model.registered);
+  expect(discovered.map(({ path }) => path).sort()).toEqual([
+    "alternate/orphan.json",
+    "legacy/orphan.json",
+    "models/removed.json",
+  ]);
+  expect(new Set(snapshot.files.models.map(({ id }) => id)).size).toBe(
+    snapshot.files.models.length,
+  );
+  expect(identityByPath(await getConfigDashboardSnapshot(options()))).toEqual(
+    identityByPath(snapshot),
+  );
+});
+
+test("a model ref beside Runtime does not discover Runtime or request-runner files as models", async () => {
+  await writeJson(configPath, {
+    requestRunner: { configRef: "./request-runner.config.json" },
+    models: { profiles: { legacy: { configRef: "./default.config.json" } } },
+  });
+  await writeJson(join(rootDir, "request-runner.config.json"), {
+    version: 2,
+  });
+  await writeJson(join(rootDir, "default.config.json"), {
+    model: "legacy",
+    contextWindowTokens: 32768,
+  });
+  await writeJson(join(rootDir, "orphan.json"), {
+    model: "unregistered",
+    contextWindowTokens: 32768,
+  });
+
+  const snapshot = await getConfigDashboardSnapshot(options());
+  expect(
+    snapshot.files.models.map(({ path, registered }) => ({ path, registered })),
+  ).toEqual([
+    { path: "default.config.json", registered: true },
+    { path: "orphan.json", registered: false },
+  ]);
+});
+
 test("a discovered collision cannot replace an inline configured profile ID", async () => {
   const inline = { model: "inline", contextWindowTokens: 32768 };
   await writeJson(configPath, { models: { profiles: { foo: inline } } });

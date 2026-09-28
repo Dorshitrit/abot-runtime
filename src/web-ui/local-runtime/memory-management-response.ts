@@ -6,14 +6,23 @@ import type {
 } from "../../runtime/long-term-memory/contracts.js";
 import { isLongTermMemoryManagementError } from "../../runtime/long-term-memory/index.js";
 import { sendJson } from "./http.js";
+import type { ObservationMemorySource } from "../../runtime/long-term-memory/observation-contracts.js";
 
 export type WebMemoryRecord = Readonly<{
   id: string;
   content: string;
   tags: readonly string[];
-  origin: "passive_response" | "web_ui" | "management_api";
+  origin:
+    | "passive_response"
+    | "passive_observation"
+    | "web_ui"
+    | "management_api";
   createdAt: string;
   updatedAt: string;
+  observationSources?: readonly Pick<
+    ObservationMemorySource,
+    "kind" | "batchId" | "observedAt" | "reason" | "certainty"
+  >[];
 }>;
 
 export type WebMemoryStatus = Readonly<{
@@ -33,16 +42,33 @@ export function projectWebMemoryStatus(
 export function projectWebMemoryRecord(
   record: LongTermMemoryRecord,
 ): WebMemoryRecord {
+  const sources =
+    record.provenance.kind === "passive_observation"
+      ? [record.provenance, ...(record.observationSources ?? [])]
+      : [...(record.observationSources ?? [])];
   return Object.freeze({
     id: record.id,
     content: record.content,
     tags: Object.freeze([...record.tags]),
     origin:
-      record.provenance.kind === "passive_response"
-        ? "passive_response"
-        : record.provenance.source,
+      record.provenance.kind === "manual"
+        ? record.provenance.source
+        : record.provenance.kind,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+    ...(sources.length
+      ? {
+          observationSources: sources.map(
+            ({ kind, batchId, observedAt, reason, certainty }) => ({
+              kind,
+              batchId,
+              observedAt,
+              reason,
+              certainty,
+            }),
+          ),
+        }
+      : {}),
   });
 }
 

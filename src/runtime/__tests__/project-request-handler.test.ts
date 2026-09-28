@@ -75,7 +75,7 @@ test("real request handler and shared kernel keep concurrent project writes sepa
     target: string;
     marker: string;
   }[] = [];
-  let running: Promise<void[]> | undefined;
+  let running: Promise<unknown[]> | undefined;
   try {
     await writeFile(
       fixture.config.requestRunner.configPath,

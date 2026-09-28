@@ -87,6 +87,7 @@ function detachSave(save: BackgroundMemorySave): BackgroundMemorySave {
         Object.freeze({
           content: candidate.content,
           tags: Object.freeze([...candidate.tags]),
+          ...(candidate.assessment ? { assessment: structuredClone(candidate.assessment) } : {}),
         }),
       ),
     ),

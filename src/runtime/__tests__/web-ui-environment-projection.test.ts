@@ -111,7 +111,7 @@ function activation(
     querySelector: (name: string) => (name === "p" ? status : button),
   };
   createRuntimeConfigActivation({
-    root: { ownerDocument: { createElement: () => panel }, prepend: vi.fn() },
+    root: { ownerDocument: { createElement: () => panel }, append: vi.fn() },
     apply,
     refresh: composed.options.onConfigurationApplied,
     onAppliedSettled: composed.options.onConfigurationSettled,

@@ -96,6 +96,56 @@ function harness(overrides: Record<string, unknown> = {}) {
   };
 }
 describe("computer setup GUI", () => {
+  test("offers explicit unpairing and returns to setup after revocation", async () => {
+    const { manager, root, dependencies, activate } = harness({ loadConnection: async () => ready });
+    await activate();
+    expect(root.innerHTML).toContain("Unpair computer");
+    expect(root.innerHTML).toContain("Saved insights are kept");
+    expect(await manager.revoke()).toBe(true);
+    expect(dependencies.revokeConnection).toHaveBeenCalledOnce();
+    expect(manager.state.snapshot.paired).toBe(false);
+    expect(root.innerHTML).not.toContain("My Mac");
+    expect(root.innerHTML).toContain("Computer unpaired");
+  });
+  test("a connected Windows companion needing an update keeps its installer until capability readiness returns", async () => {
+    const updateNeeded = {
+      ...ready,
+      readiness: {
+        ...ready.readiness,
+        ready: false,
+        companionUpdateRequired: true,
+        platforms: ["windows"],
+      },
+    };
+    const { manager, root, dependencies, activate } = harness({
+      loadConnection: vi.fn(async () => updateNeeded),
+    });
+    await activate();
+    expect(root.innerHTML).toContain("Update needed");
+    expect(root.innerHTML).not.toContain("Paired · offline");
+    expect(root.innerHTML).toContain('data-system-host-install="windows"');
+    expect(root.innerHTML).not.toContain('data-system-host-install="macos"');
+    expect(await manager.install("windows")).toBe(true);
+    expect(dependencies.downloadSetup).toHaveBeenCalledWith("windows");
+    expect(root.innerHTML).toContain("Downloaded:");
+    expect(root.innerHTML).toContain("Update needed");
+    dependencies.loadConnection.mockResolvedValueOnce(ready as never);
+    await manager.load();
+    expect(root.innerHTML).toContain("Ready");
+    expect(root.innerHTML).not.toContain("data-system-host-install=");
+    expect(root.innerHTML).not.toContain("Downloaded:");
+  });
+
+  test("an incompatible newer connected companion is not displayed as offline or offered a downgrade", () => {
+    const html = renderSystemHostConnection({
+      snapshot: { ...ready, readiness: { ...ready.readiness, ready: false } },
+      supported: true,
+    });
+    expect(html).toContain("Computer access unavailable");
+    expect(html).not.toContain("Paired · offline");
+    expect(html).not.toContain("data-system-host-install=");
+  });
+
   test("downloads the selected platform without exposing authorization or claiming readiness", async () => {
     const { manager, root, dependencies, activate } = harness();
     await activate();

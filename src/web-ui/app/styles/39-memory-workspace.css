@@ -1,0 +1,80 @@
+.memory-workspace-panel {
+  --config-surface: var(--panel);
+  --config-control: var(--panel-raised);
+  --config-control-hover: var(--accent-soft);
+  --config-line: var(--line);
+  --config-line-strong: var(--line-strong);
+  --config-copy: var(--text);
+  --config-muted: var(--muted);
+  --config-faint: var(--muted-2);
+}
+
+.memory-workspace-body > .memory-workspace-content {
+  width: min(var(--workspace-content-width), 100%);
+  min-width: 0;
+}
+
+.memory-workspace-panel .memory-workspace-nav {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.memory-workspace-panel
+  .config-category-panel
+  > :is(.memory-setup-card, .memory-management-card) {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.memory-workspace-panel
+  :is(.memory-setup-card, .memory-management-card)
+  button:not(.memory-icon-button, .memory-content-toggle) {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  box-shadow: none;
+}
+
+.memory-workspace-panel
+  :is(.memory-setup-card, .memory-management-card)
+  button:not(.memory-icon-button, .memory-content-toggle):hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--control-bg);
+}
+
+.memory-workspace-panel
+  :is(.memory-setup-card, .memory-management-card)
+  button:focus-visible {
+  outline: 1px solid var(--accent-strong);
+  outline-offset: 1px;
+}
+
+.memory-workspace-panel
+  :is(.memory-setup-card, .memory-management-card)
+  button:is(.primary-button, [data-memory-action="enable"]):not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.memory-workspace-panel
+  :is(.memory-setup-card, .memory-management-card)
+  button:is(.primary-button, [data-memory-action="enable"]):hover:not(
+    :disabled
+  ) {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+  color: var(--bg);
+}
+
+@media (max-width: 620px) {
+  .memory-workspace-panel .memory-search {
+    flex: 0 1 auto;
+  }
+}

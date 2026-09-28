@@ -36,8 +36,8 @@ const config = loadRuntimeConfig({ rootDir: process.cwd(), configPath: "local/ru
 const application = createLocalRuntimeApplication(config);
 const sessionId = "packed-local-runtime-probe";
 const { scheduler, sessions } = application.services;
-let scheduledEvents = 0;
-application.subscribeScheduledEvents(() => { scheduledEvents += 1; });
+const scheduledEvents = [];
+application.subscribeScheduledEvents(event => { scheduledEvents.push(event); });
 async function command(method, jobId) {
   if (method === "create") {
     await sessions.appendMessage(sessionId, "user", "A temporary packed-package schedule probe.");
@@ -48,7 +48,7 @@ async function command(method, jobId) {
     });
     return scheduler.pause(job.id);
   }
-  if (method === "inspect") return { job: await scheduler.get(jobId), runs: await scheduler.listRuns(), scheduledEvents };
+  if (method === "inspect") return { job: await scheduler.get(jobId), runs: await scheduler.listRuns(), scheduledEvents, environmentId: config.runtimeId };
   if (method === "cancel") return scheduler.cancel(jobId);
   if (method === "delete") { await sessions.deleteSession(sessionId); return scheduler.list(); }
   throw new Error("unknown_packed_probe_command");
@@ -245,7 +245,8 @@ export async function runPackedLocalRuntimeProbe(
     const afterDetach = await owner.call<{
       job: ProbeJob;
       runs: unknown[];
-      scheduledEvents: number;
+      scheduledEvents: Record<string, unknown>[];
+      environmentId: string;
     }>("inspect", job.id);
     assert.deepEqual(
       afterDetach.job,
@@ -257,7 +258,22 @@ export async function runPackedLocalRuntimeProbe(
       [],
       "packed consumer probe must not execute a Job",
     );
-    assert.equal(afterDetach.scheduledEvents, 0);
+    assert.deepEqual(
+      afterDetach.scheduledEvents,
+      [
+        {
+          type: "event",
+          name: "scheduler.changed",
+          environment: afterDetach.environmentId,
+        },
+        {
+          type: "event",
+          name: "scheduler.changed",
+          environment: afterDetach.environmentId,
+        },
+      ],
+      "create and pause publish changes without executing a request",
+    );
     assert.equal(
       (await owner.call<ProbeJob>("cancel", job.id)).state,
       "cancelled",

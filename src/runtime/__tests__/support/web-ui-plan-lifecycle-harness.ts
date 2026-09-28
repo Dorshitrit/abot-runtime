@@ -65,6 +65,9 @@ export function createPlanLifecycleHarness(
     fetchRequestEvents: vi.fn(async () => replayEvents),
   };
   const sendRealtime = vi.fn(() => true);
+  const saveSessionPreference = vi.fn();
+  const clearPendingAttachments = vi.fn();
+  const suspendQueueRecovery = vi.fn(() => true);
   const conversationSession = createConversationSessionController({
     state,
     dom: {
@@ -74,7 +77,7 @@ export function createPlanLifecycleHarness(
     client,
     preferences: {
       sessionIdForEnvironment: () => "session-1",
-      saveSessionIdForEnvironment: vi.fn(),
+      saveSessionIdForEnvironment: saveSessionPreference,
     },
     sessions: {
       titleOf: () => "Conversation",
@@ -90,7 +93,7 @@ export function createPlanLifecycleHarness(
       },
     },
     selectedEnvironmentId,
-    clearPendingAttachments: vi.fn(),
+    clearPendingAttachments,
     applyConversationChrome: vi.fn(),
     applyModelSelection: vi.fn(),
     renderSessions: vi.fn(),
@@ -103,7 +106,7 @@ export function createPlanLifecycleHarness(
     recordControlEvent: (event) => realtime.recordControlEvent(event),
     reportQueueFailure: vi.fn(),
     drainQueuedMessage: vi.fn(),
-    suspendQueueRecovery: () => true,
+    suspendQueueRecovery,
     recoverBlockedQueue: vi.fn(),
     isCurrentComposerScope: () => true,
     scheduleTask: vi.fn(),
@@ -126,7 +129,6 @@ export function createPlanLifecycleHarness(
     scheduleThinkingRender: vi.fn(),
     cancelScheduledMessageRender: vi.fn(),
     cancelScheduledThinkingRender: vi.fn(),
-    forgetThinkingDisclosure: vi.fn(),
     markCurrentSessionReadSoon,
     applySessionTitleUpdate: vi.fn(),
     setMessageActivityStatus: vi.fn(),
@@ -141,6 +143,9 @@ export function createPlanLifecycleHarness(
     realtime,
     renderMessages,
     sendRealtime,
+    saveSessionPreference,
+    clearPendingAttachments,
+    suspendQueueRecovery,
     loadSessions,
     markCurrentSessionReadSoon,
     drainQueuedComposerMessage,

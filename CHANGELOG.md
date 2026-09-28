@@ -4,6 +4,195 @@ All notable changes to this project should be documented in this file.
 
 This project follows semantic versioning after the first public release.
 
+## 1.5.0 - 2026-09-28
+
+ABot 1.5.0 introduces ABot Spark, desktop observation and control, native
+notifications, and a redesigned Web UI. It also expands memory management and
+strengthens request cancellation, approvals, and delegated-work reliability.
+
+### Added
+
+- ABot Spark brings optional learning from computer activity and proactive
+  conversation suggestions. Collection, learning, and proactive mode have
+  independent controls and activity hours. Learning and proactive reviews select
+  models and share daily usage limits; application rules separately control
+  collection and processing. Collection and proactive messages are off by default.
+- Desktop activity collection uses visible accessibility text from the paired
+  computer, with bounded local history, application filtering, and explicit
+  partial-coverage reporting. Learning and proactive reviews cannot invoke tools
+  or act on suggestions themselves.
+- Spark learning can start on a time interval or an eligible observation count.
+  Supervisor profiles use bounded review stages with saved progress that can
+  resume after pauses, resource deferrals, or restarts while its inputs remain
+  valid. Execution Agent profiles use direct reviews.
+- A dedicated Memory workspace manages saved records and embedding setup;
+  Spark shows memory candidates. Home offers a keep-or-delete review of saved
+  memories, resumes unfinished reviews, and hides completed reviews until more
+  records are available.
+- SYSTEM desktop tools discover desktops and windows, capture visible screens
+  or regions, and click, move, drag, scroll, type text, press key chords, or focus
+  an observed window. Actions bind to a fresh observation and reject detected
+  focus, session, or geometry changes.
+- Desktop backends cover Windows, macOS, and Linux X11/Wayland, with host access
+  from WSL or Docker through supported native routes or the paired Companion.
+  Available operations depend on the desktop, installed helpers, and OS grants;
+  see the [SYSTEM platform requirements](plugins/system/README.md).
+- Tool images travel as temporary request-bound media to supported model
+  consumers. Screenshots are excluded from persisted conversation history and
+  ordinary provider traces, and released when the request ends or is cancelled.
+  Models without image support receive an explicit limitation.
+- A persistent Notifications inbox provides unread filtering, read controls,
+  and source links for replies received outside the focused conversation,
+  failures, pending approvals, and Spark suggestions.
+- Native desktop alerts use the paired Companion on Windows, macOS, and Linux,
+  with settings for each notification kind and visible delivery status.
+  Delivery can work with the browser closed while Runtime and Companion run;
+  operating-system notification permissions and platform requirements apply.
+- Conversation organization adds a pinned section, drag-and-drop and keyboard
+  reordering, and archive/restore controls. These preferences are local to the
+  browser and environment; archived conversations are also hidden from Home.
+- Direct workspace URLs and browser Back/Forward restore the selected
+  environment, conversation, configuration section, or Job.
+- A persistent composer Stop control cancels the active request, closes owned
+  resources, and preserves the stopped exchange for later conversation context.
+  Completed tool effects are not rolled back.
+- Spark's initial proactive conversation offers **Keep** and **Not interested**
+  before the user replies. Keep records a browser-local choice; Not interested
+  archives the conversation and returns Home.
+- Project groups initially show five conversations with **Show more / Show less**.
+  Search reveals every match, and pinned and ordinary conversations remain uncapped.
+- Web UI approval waits are saved with their conversation and survive Runtime
+  restart. An explicit decision resumes the exact prepared action when its saved
+  continuation is compatible. New messages and Jobs in that conversation wait
+  until the request resumes or is cancelled.
+- The optional `@abot-ai/runtime/plugin-sdk/computer-access` entry point lets
+  compatible plugins reuse Runtime-owned computer backends and the paired
+  Companion connection.
+
+### Changed
+
+- The Web UI uses an ink-and-mint design with labeled navigation, clearer
+  configuration forms, collapsible project groups, and a Home composer anchored
+  below the dashboard.
+- Agent activity appears inline in conversations, with an optional timeline and
+  compact, expandable reasoning. Home brings unread suggestions, pending
+  approvals, recent conversations, and Companion updates into view.
+- Computer access uses one setup and pairing shared by SYSTEM, Spark, and
+  compatible plugins. Linux setup is available, and Windows/WSL setup no longer
+  requires changing interop settings or restarting the distribution.
+- Automatic memory proposals from conversations and Spark share one candidate
+  pool and admission policy. A new candidate requires at least two independent
+  evidence opportunities and a configurable promotion score before recall.
+  Replayed observations and unchanged revisits do not count as new support.
+- Explicit requests to remember a fact can use protected core-memory saves
+  bound to the current user message. Manual records, edits, and deletions take
+  precedence over automatic replacements. The standalone memory plugin retains
+  its separate store and does not require the core memory service.
+- Jobs support saved Full or FULL+ permissions. New Jobs default to Full, and
+  existing Jobs retain their permission mode unless explicitly changed.
+- Newly added model profiles use separate configuration files. Removing a model
+  declaration preserves its file and credentials; existing inline profiles
+  remain supported.
+- Worker and Planner handoffs retain full result prose without fixed character
+  ceilings, subject to configured context admission and compaction.
+- Home and Jobs refresh from committed server events while preserving current
+  selection, expanded sections, focus, and scroll position.
+
+### Fixed
+
+- Fresh Web UI onboarding keeps unavailable pages disabled and hides Spark until
+  setup is ready, while independent Computer access remains available. Spark
+  Settings also exposes the existing save action beside Activity permissions.
+- Spark activity authorization is separate from its start/stop controls. Home starts
+  the authorized activities together; stopping preserves the saved selection,
+  and granting permission requires a configured model without starting work.
+- Computer access stays at the top of Home with connection status and pairing
+  controls. Models and Plugins have their own navigation pages, and Config is
+  renamed System while preserving existing links and unsaved-change protection.
+- Native macOS Computer access connects or repairs through the installed ABot
+  runtime, preserves pairing, and uses a stable private Node executable across
+  sign-ins. Companion startup handles macOS temporary-directory and broker
+  socket path limits.
+- Companion loopback connections support IPv4 and IPv6 while preserving the
+  Runtime hostname for TLS certificate validation.
+- On macOS, Home and Spark offer **Restart collection** after an Accessibility
+  permission block. The action rechecks access without restarting the Runtime,
+  changing collection settings, interrupting reviews, or deleting pending work.
+  Permission guidance identifies the Companion executable and checks for consent
+  for up to two minutes before offering another attempt.
+- System status and trace paths follow the selected environment and ignore stale
+  responses after switching. Notifications use readable cards, Schedules opens
+  with the Active filter, and plugin states have distinct color indicators.
+- Invalid, truncated, or timed-out delegated model output returns a failure to
+  the correct parent without granting completion or review approval. Recognized
+  root-output failures can return confirmed progress and remaining limitations,
+  while cancellation, request deadlines, and newer steering retain priority.
+- Exact audit evidence uses the model's physical context budget instead of
+  failing solely because it crosses the ordinary compaction trigger.
+- Saved Web approvals retain their remaining execution budgets and release live
+  request resources while waiting. Compatible waits can resume after restart or
+  Computer reconnection without repeating model decisions or payload preparation.
+  Bridge and scheduler clients retain their existing live-owner approval lifecycle;
+  elapsed time or connection loss does not become a user rejection.
+- Waiting, resumed, and final output remain in one conversation response with a
+  continuous activity timeline. Saved approval prompts are excluded from later
+  model history, preserving the preceding final answer and settled artifact paths.
+- Duplicate or stale approval decisions cannot dispatch a different activation.
+  Cancellation remains distinct from rejection, and unavailable or incompatible
+  continuations remain visible and cancellable.
+- Tool outcomes and unavailable source content use neutral presentation with
+  expandable error details. Spark activity markers reflect Collection, Learning,
+  and Proactive state and stop active animation when connection state is stale.
+- Stopping a request preserves already streamed response text and accepted
+  steering in durable conversation history. Cancellation and graceful shutdown
+  handle late model results and concurrent request lifecycle transitions.
+- Memory admission, explicit supersession, and policy changes apply atomically.
+  Saved records remain protected from stale replacement candidates, duplicate
+  evidence, and concurrent manual changes.
+- Spark preserves eligible pending work across transient failures, processing
+  pauses, budget exhaustion, and restart. Completed review stages and committed
+  receipts prevent repeating accepted work; expired or changed inputs invalidate
+  saved progress.
+- Spark collection reduces repeated reads on noisy screens, avoids duplicate
+  embeddings, and excludes ABot's own identifiable windows. Collection and
+  processing exclusions remain independent, with visible coverage limitations.
+- Companion observations redact entire fields containing recognized credential
+  labels or secret formats before transport, including captured text and source
+  metadata. Recognition is bounded and applies only to new observations.
+- Notification history reconciles atomically, avoids duplicate records, and
+  retains delivery failures. Unconfirmed alerts are not resent after reconnect
+  or restart. Windows setup repairs notification registration and removes owned
+  legacy registrations.
+- Companion updates replace the running bundle while preserving pairing.
+  Source Web UI startup builds the Companion before starting the service.
+- Model configuration writes preserve referenced paths and pinned snapshots,
+  reject unsafe file entries, coordinate removal with pending saves, and avoid
+  duplicate profiles when activation is deferred.
+- Web UI navigation rejects stale session loads and replayed activity, preserves
+  read-only dashboard access during configuration recovery, and reports memory
+  availability and review errors.
+- Document-reader windows distinguish omitted leading content from remaining
+  trailing content, so reaching the end of a document does not claim that the
+  complete document was returned.
+
+### Upgrade notes
+
+- Approval events from older versions cannot become executable saved continuations.
+  Restart interrupts work that was running and never automatically replays it;
+  compatible saved approval waits remain pending. If an action was already running
+  when interrupted, inspect its effects before trying again.
+- Update an installed Companion through **Home → Computer access** for the
+  current desktop, notification, and observation-redaction features. Updating
+  Runtime alone does not replace an already running native Companion.
+- Core memory storage upgrades automatically to schema version 5, preserves
+  existing records, and creates a private `.pre-v5.backup`. ABot 1.4.0 cannot
+  read the upgraded store; preserve the backup if a downgrade may be needed.
+  The independent memory plugin's storage is unchanged.
+- Desktop control still requires native acceptance checks for the actual OS,
+  permissions, applications, and model provider. Automated transport and helper
+  tests do not establish interactive support on every desktop; current coverage
+  and platform limits are documented in the SYSTEM plugin.
+
 ## 1.4.0 - 2026-09-20
 
 ABot 1.4.0 adds guided setup, project conversations, FULL+ system access,

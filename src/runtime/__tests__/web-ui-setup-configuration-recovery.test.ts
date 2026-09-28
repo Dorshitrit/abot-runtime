@@ -106,7 +106,7 @@ test("Configuration recovery offers navigation and refresh without provider or s
     },
   });
   await harness.ready();
-  expect(harness.container.innerHTML).toContain("Open Configuration");
+  expect(harness.container.innerHTML).toContain("Open Models");
   expect(harness.container.innerHTML).not.toContain(
     'data-runtime-setup-field="provider"',
   );
@@ -123,7 +123,7 @@ test("Configuration recovery offers navigation and refresh without provider or s
     'data-runtime-setup-field="provider"',
   );
   controller.catalogUnavailable(new Error("fixture-refresh-failed"));
-  expect(harness.container.innerHTML).toContain("Open Configuration");
+  expect(harness.container.innerHTML).toContain("Open Models");
   expect(harness.container.innerHTML).not.toContain(
     'data-runtime-setup-field="provider"',
   );
@@ -194,11 +194,11 @@ test("setup metadata recovery survives transient catalog refresh failures", asyn
     availability: { status: "setup_required" },
   });
   await harness.ready();
-  expect(harness.container.innerHTML).toContain("Open Configuration");
+  expect(harness.container.innerHTML).toContain("Open Models");
   controller.beginCatalogLoad();
-  expect(harness.container.innerHTML).toContain("Open Configuration");
+  expect(harness.container.innerHTML).toContain("Open Models");
   controller.catalogUnavailable(new Error("temporary-catalog-failure"));
-  expect(harness.container.innerHTML).toContain("Open Configuration");
+  expect(harness.container.innerHTML).toContain("Open Models");
   expect(harness.container.innerHTML).not.toContain(
     'data-runtime-setup-field="provider"',
   );

@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { createToolPermissionModeController } from "../../web-ui/app/controllers/tool-permission-mode-controller.js";
 import { createClientPreferences } from "../../web-ui/app/services/client-preferences.js";
+import { createPlanLifecycleHarness } from "./support/web-ui-plan-lifecycle-harness.js";
 
 import {
   createConversationSessionController,
@@ -246,6 +247,54 @@ describe("web ui conversation session controller", () => {
         },
       ],
     );
+  });
+
+  test("restores request activity without presenting workspace changes", async () => {
+    const harness = createPlanLifecycleHarness({
+      sessionId: "session-1",
+      messages: [
+        {
+          id: "answer",
+          role: "assistant",
+          text: "Saved answer",
+          requestId: "request-1",
+        },
+      ],
+      requests: [
+        {
+          requestId: "request-1",
+          status: "completed",
+          events: [
+            {
+              type: "event",
+              name: "tool.completed",
+              tool: "read_file",
+              requestId: "request-1",
+              seqNo: 1,
+            },
+            {
+              type: "event",
+              name: "session.messages.updated",
+              requestId: "request-1",
+              seqNo: 2,
+            },
+            {
+              type: "event",
+              name: "scheduler.changed",
+              requestId: "request-1",
+              seqNo: 3,
+            },
+          ],
+        },
+      ],
+    });
+
+    await harness.conversationSession.openSession("session-1");
+
+    expect(harness.state.events.map((event) => event.eventName)).toEqual([
+      "tool.completed",
+    ]);
+    expect(harness.state.lastSeqByRequest.get("request-1")).toBe(3);
   });
 
   test("normalizes nested messages and merges one assistant per request", () => {

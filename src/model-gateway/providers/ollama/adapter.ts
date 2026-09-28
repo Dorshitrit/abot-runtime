@@ -1,4 +1,5 @@
 import { fetchProviderWithTrace } from "../../model-io-trace.js";
+import { toolMediaSafeError, toolMediaSafeMessage } from "../../observability/tool-media-privacy.js";
 import type { OllamaSchemaProjectionDiagnostic } from "../../structured-output/projection.js";
 import type { ModelGatewayEvent } from "../../types.js";
 import type {
@@ -95,7 +96,7 @@ export function createOllamaProviderAdapter(options: {
         return {
           kind: "error" as const,
           statusCode: response.status || 502,
-          message: message || "ollama error",
+          message: toolMediaSafeMessage(message || "ollama error", params.requestBody),
         };
       }
 
@@ -121,8 +122,8 @@ export function createOllamaProviderAdapter(options: {
               await forwardOllamaStream(body, writer, streamOptions);
             } catch (error) {
               outcome = resolveFailureOutcome(error);
-              failure = error;
-              throw error;
+              failure = toolMediaSafeError(error, params.requestBody);
+              throw failure;
             } finally {
               streamDiagnostics.terminate(outcome, failure);
               await responseTrace;
@@ -151,8 +152,8 @@ export function createOllamaProviderAdapter(options: {
         };
       } catch (error) {
         outcome = resolveFailureOutcome(error);
-        failure = error;
-        throw error;
+        failure = toolMediaSafeError(error, params.requestBody);
+        throw failure;
       } finally {
         streamDiagnostics.terminate(outcome, failure);
         await responseTrace;

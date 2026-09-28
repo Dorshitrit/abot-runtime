@@ -17,6 +17,41 @@ function conversation(id: string, updatedAt: number, unreadCount = 0) {
 }
 
 describe("dashboard recent conversations", () => {
+  test("Home shows the latest three conversations while counting all unread messages", () => {
+    const sessions = [
+      conversation("latest-read", 500),
+      conversation("latest-unread", 400, 2),
+      conversation("third", 300),
+      conversation("older-unread", 200, 4),
+      conversation("oldest-unread", 100, 1),
+      conversation("latest-unread", 350, 2),
+    ];
+    const html = renderDashboardConversations({ sessions });
+    const rows = [...html.matchAll(/data-session-id="([^"]+)"/gu)].map(
+      (match) => match[1],
+    );
+    expect(rows).toEqual(["latest-read", "latest-unread", "third"]);
+    expect(html).toContain('aria-label="7 unread messages"');
+    expect(html).toContain('class="home-recent-row has-unread"');
+    expect(html).toContain("Open chats");
+  });
+
+  test("Home limits unread rows too and reports unavailable state outside the displayed three", () => {
+    const sessions = Array.from({ length: 5 }, (_, index) =>
+      conversation(`session-${index}`, 500 - index, 1),
+    );
+    const html = renderDashboardConversations({
+      sessions: [
+        ...sessions,
+        { id: "unavailable", updatedAt: 1, readStateStatus: "unavailable" },
+      ],
+    });
+    expect([...html.matchAll(/data-session-id=/gu)]).toHaveLength(3);
+    expect(html).not.toContain('data-session-id="unavailable"');
+    expect(html).toContain("Unread status unavailable");
+    expect(html).not.toContain("home-unread-count");
+  });
+
   test("all unread conversations survive the recent cutoff and remain deduplicated", () => {
     const unread = Array.from({ length: 9 }, (_, index) =>
       conversation(`unread-${index}`, index + 1, 2),
@@ -100,6 +135,23 @@ describe("dashboard recent conversations", () => {
 });
 
 describe("dashboard job activity", () => {
+  test("Home shows three latest distinct job runs and keeps the jobs navigation", () => {
+    const runs = Array.from({ length: 5 }, (_, index) => ({
+      id: `run-${index}`,
+      title: `Task ${index}`,
+      scheduledAt: 500 - index,
+      status: "succeeded",
+      sessionId: `session-${index}`,
+      requestId: `request-${index}`,
+    }));
+    const html = renderDashboardActivity({ runs: [...runs, runs[0]] });
+    const rows = [...html.matchAll(/data-request-id="([^"]+)"/gu)].map(
+      (match) => match[1],
+    );
+    expect(rows).toEqual(["request-0", "request-1", "request-2"]);
+    expect(html).toContain("View jobs");
+  });
+
   test("preserves scheduled run chronology when an older run finishes late", () => {
     const runs = [
       {

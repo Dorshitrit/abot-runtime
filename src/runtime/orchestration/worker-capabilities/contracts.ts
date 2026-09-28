@@ -17,6 +17,11 @@ import type {
   ToolRoutingCapability,
 } from "../../../capabilities/tool-types.js";
 import type { CapabilityAdapterResult } from "../capability-adapters/result.js";
+import type {
+  BoundApprovalDecision,
+  WorkerCapabilityApprovalWait,
+} from "./approval-contracts.js";
+import type { ToolApprovalRequest } from "../../ports.js";
 
 export const WORKER_CAPABILITY_ID_MAX_LENGTH = ROLE_CAPABILITY_ID_MAX_LENGTH;
 /** Client-facing capability narration; never an execution objective or payload. */
@@ -212,6 +217,11 @@ export type WorkerCapabilityPreparedExecution = Readonly<{
    * including any adapter-validated staged controls hidden from selection.
    */
   acceptedControls: WorkerCapabilityControls;
+  /** Adapter-owned data; never a live execution closure. */
+  snapshot?: unknown;
+  onAdmitted?(executionId: string): void;
+  approvalRequest?: ToolApprovalRequest;
+  applyApprovalDecision?(decision: BoundApprovalDecision): void;
   execute(executionId: string): Promise<WorkerCapabilityAdapterResult>;
 }>;
 
@@ -233,7 +243,8 @@ export type WorkerCapabilityOperationInterventionReference = Readonly<{
 
 export type WorkerCapabilityAttemptReference =
   | WorkerCapabilityExecutionReference
-  | WorkerCapabilityOperationInterventionReference;
+  | WorkerCapabilityOperationInterventionReference
+  | WorkerCapabilityApprovalWait;
 
 export type WorkerCapabilityBatchExecutionReference = Readonly<{
   executionIds: readonly string[];
@@ -241,7 +252,8 @@ export type WorkerCapabilityBatchExecutionReference = Readonly<{
 
 export type WorkerCapabilityBatchAttemptReference =
   | WorkerCapabilityBatchExecutionReference
-  | WorkerCapabilityOperationInterventionReference;
+  | WorkerCapabilityOperationInterventionReference
+  | WorkerCapabilityApprovalWait;
 
 export type WorkerCapabilityInvocation = Readonly<{
   capabilityId: string;
@@ -278,9 +290,23 @@ export type WorkerCapabilityAdapter<TContext> = Readonly<{
   prepare?(
     input: WorkerCapabilityAdapterPreparationInput<TContext>,
   ): Promise<WorkerCapabilityPreparedExecution>;
+  /** Rebind an exact saved action without preparation, model calls, or effects. */
+  restore?(
+    input: WorkerCapabilityAdapterRestoreInput<TContext>,
+    snapshot: unknown,
+  ): Promise<WorkerCapabilityPreparedExecution>;
   execute(
     input: WorkerCapabilityAdapterExecutionInput<TContext>,
   ): Promise<WorkerCapabilityAdapterResult>;
+}>;
+
+export type WorkerCapabilityAdapterRestoreInput<TContext> = Readonly<{
+  context: TContext;
+  call: RoleCallFrame;
+  intent: string;
+  authoringObjective?: string;
+  controls: WorkerCapabilityControls;
+  executionFreshness?: WorkerCapabilityExecutionFreshness;
 }>;
 
 /**

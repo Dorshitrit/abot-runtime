@@ -75,9 +75,10 @@ test("saves a model's declared context and publishes canonical defaults and exis
     model: "fixture-larger",
     contextWindowTokens: 65536,
   });
-  expect(
-    (await fixture.readConfig()).models.profiles.larger.contextWindowTokens,
-  ).toBe(65536);
+  const declaration = (await fixture.readConfig()).models.profiles.larger;
+  expect(declaration).toEqual({ configRef: "./models/larger.config.json" });
+  const addedProfile = await fixture.readModelProfile("larger");
+  expect(addedProfile.contextWindowTokens).toBe(65536);
   expect((await fixture.service.catalog()).defaultContextWindowTokens).toBe(
     await readDefaultContextWindowTokens(),
   );
@@ -95,12 +96,17 @@ test("saves a model's declared context and publishes canonical defaults and exis
   expect(status.existingModel?.contextWindowTokens).toBe(
     template.contextWindowTokens,
   );
-  await expect(setup.save({
-    provider: "ollama",
-    model: "fixture-chat",
-    contextWindowTokens: 131072,
-    deferActivation: true,
-  })).rejects.toMatchObject({ code: "setup_configuration_exists", statusCode: 409 });
+  await expect(
+    setup.save({
+      provider: "ollama",
+      model: "fixture-chat",
+      contextWindowTokens: 131072,
+      deferActivation: true,
+    }),
+  ).rejects.toMatchObject({
+    code: "setup_configuration_exists",
+    statusCode: 409,
+  });
   expect(
     JSON.parse(await readFile(modelPath, "utf8")).contextWindowTokens,
   ).toBe(template.contextWindowTokens);

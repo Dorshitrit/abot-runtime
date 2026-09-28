@@ -53,8 +53,8 @@ describe("bundled system tools use ordinary plugin management", () => {
     const snapshot = getRuntimePluginSnapshot(options);
     expect(system(snapshot)).toMatchObject({
       pluginEnabled: true,
-      capabilityCount: 4,
-      selectedCapabilityCount: 4,
+      capabilityCount: 7,
+      selectedCapabilityCount: 7,
       state: "enabled",
       blockedByGlobalPolicy: false,
     });
@@ -63,6 +63,9 @@ describe("bundled system tools use ordinary plugin management", () => {
         .capabilities.map((entry) => entry.id)
         .sort(),
     ).toEqual([
+      "computer_act",
+      "computer_desktops",
+      "computer_observe",
       "system_applications",
       "system_command",
       "system_launch",
@@ -115,7 +118,7 @@ describe("bundled system tools use ordinary plugin management", () => {
     });
     expect(system(enabled)).toMatchObject({
       pluginEnabled: true,
-      selectedCapabilityCount: 4,
+      selectedCapabilityCount: 7,
       state: "enabled",
     });
     expect(otherPlugins(enabled)).toEqual(otherPlugins(before));
@@ -136,7 +139,7 @@ describe("bundled system tools use ordinary plugin management", () => {
     });
     expect(system(disabled)).toMatchObject({
       pluginEnabled: true,
-      selectedCapabilityCount: 3,
+      selectedCapabilityCount: 6,
       state: "partial",
     });
     expect(
@@ -158,7 +161,7 @@ describe("bundled system tools use ordinary plugin management", () => {
       capabilityId: "system_command",
       enabled: true,
     });
-    expect(system(enabled).selectedCapabilityCount).toBe(4);
+    expect(system(enabled).selectedCapabilityCount).toBe(7);
     expect((await readConfig(options.configPath)).plugins).toEqual({
       deny: [],
     });

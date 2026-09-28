@@ -35,6 +35,7 @@ export interface ConversationSessionState {
   contextWindowByRequest: Map<string, Record<string, unknown>>;
   submittedToolApprovalIds: Set<string>;
   requestMessages: Map<string, string>;
+  requestLifecycles?: Map<string, Record<string, unknown>>;
   lastSeqByRequest: Map<string, number>;
   sessions: ConversationSession[];
 }
@@ -43,7 +44,7 @@ export interface ConversationSessionClient {
   markSessionRead(options: {
     sessionId: string;
     environmentId: string;
-    readThroughMessageId: number | null;
+    readThroughMessageId: number | string | null;
     readThroughRequestId?: string;
   }): Promise<Record<string, unknown>>;
   listSessions(environmentId: string): Promise<Record<string, unknown>>;
@@ -99,6 +100,7 @@ export interface ConversationSessionControllerOptions {
   drainQueuedMessage(
     input: ConversationSessionScope & {
       terminalRequestId: unknown;
+      cancelled?: boolean;
     },
   ): void | Promise<void>;
   suspendQueueRecovery(): boolean;
@@ -149,7 +151,13 @@ export declare function createConversationSessionController(
   loadSessions(): Promise<ConversationSession[]>;
   markCurrentSessionReadSoon(): void;
   normalizeMessage(raw: unknown): ConversationMessage;
-  openSession(sessionId: string): Promise<void>;
+  openSession(
+    sessionId: string,
+    options?: {
+      isRouteCurrent(): boolean;
+      commitRouteNavigation(): boolean;
+    },
+  ): Promise<void>;
   requestBelongsToCurrentView(requestId: string): boolean;
   resetLiveRequestView(): void;
   restoreLastSession(): Promise<void>;

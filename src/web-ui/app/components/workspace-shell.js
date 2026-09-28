@@ -3,12 +3,14 @@ import {
   normalizeWorkspaceDestination,
   toggleWorkspaceSheet,
 } from "../ui-behavior.js";
+import { createOnboardingWorkspaceAccess } from "./onboarding-workspace-access.js";
 import { textOf } from "../lib/text-format.js";
 import {
   CONVERSATION_SIDEBAR_MEDIA_QUERY,
   resolveConversationSidebarLayout,
 } from "./conversation-sidebar-layout.js";
 import { createOperationsSection } from "./operations-section.js";
+import { isConfigurationWorkspace, renderConfigurationPageHeading } from "../lib/configuration-pages.js";
 
 export function createWorkspaceShell({
   dom,
@@ -17,18 +19,26 @@ export function createWorkspaceShell({
   beforeWorkspaceChange = () => true,
   isWorkspaceAvailable = () => true,
   onWorkspaceChange = () => {},
+  onNavigationChange = () => {},
 }) {
+  const workspaceAccess = createOnboardingWorkspaceAccess({ dom, backendAllows: isWorkspaceAvailable });
   const shellState = {
     ...createInitialWorkspaceShellState(),
     toastTimer: 0,
     bound: false,
   };
+  let navigationRevision = 0;
+  function noteShellNavigation() {
+    navigationRevision += 1;
+    onNavigationChange();
+  }
   const sidebarViewport = viewport.matchMedia?.(
     CONVERSATION_SIDEBAR_MEDIA_QUERY,
   );
   const operationsSection = createOperationsSection({
     buttons: dom.operationsTabButtons,
     pages: dom.operationsTabPages,
+    onNavigationChange: noteShellNavigation,
   });
 
   function sidebarLayout() {
@@ -49,10 +59,14 @@ export function createWorkspaceShell({
   }
 
   function syncShell() {
+    workspaceAccess.render();
     const homeWorkspace = shellState.workspace === "home";
     const chatWorkspace = shellState.workspace === "chat";
-    const configWorkspace = shellState.workspace === "config";
+    const configWorkspace = isConfigurationWorkspace(shellState.workspace);
     const schedulesWorkspace = shellState.workspace === "schedules";
+    const learningWorkspace = shellState.workspace === "learning";
+    const memoryWorkspace = shellState.workspace === "memory";
+    const notificationsWorkspace = shellState.workspace === "notifications";
     const sessions = sidebarLayout();
     const showSessionsToggle = chatWorkspace && !sessions.docked;
 
@@ -61,7 +75,10 @@ export function createWorkspaceShell({
     if (dom.homeWorkspacePanel) {
       dom.homeWorkspacePanel.hidden = !homeWorkspace;
       dom.homeWorkspacePanel.inert = !homeWorkspace;
-      dom.homeWorkspacePanel.setAttribute("aria-hidden", String(!homeWorkspace));
+      dom.homeWorkspacePanel.setAttribute(
+        "aria-hidden",
+        String(!homeWorkspace),
+      );
     }
     dom.app.classList.toggle("schedules-workspace", schedulesWorkspace);
     dom.app.classList.toggle("sessions-open", sessions.drawerOpen);
@@ -75,6 +92,7 @@ export function createWorkspaceShell({
       "aria-hidden",
       configWorkspace ? "false" : "true",
     );
+    renderConfigurationPageHeading(dom.configWorkspacePanel, shellState.workspace);
 
     if (dom.schedulesWorkspacePanel) {
       dom.schedulesWorkspacePanel.hidden = !schedulesWorkspace;
@@ -84,6 +102,24 @@ export function createWorkspaceShell({
         String(!schedulesWorkspace),
       );
     }
+    dom.learningWorkspacePanel.hidden = !learningWorkspace;
+    dom.learningWorkspacePanel.inert = !learningWorkspace;
+    dom.learningWorkspacePanel.setAttribute(
+      "aria-hidden",
+      String(!learningWorkspace),
+    );
+    dom.memoryWorkspacePanel.hidden = !memoryWorkspace;
+    dom.memoryWorkspacePanel.inert = !memoryWorkspace;
+    dom.memoryWorkspacePanel.setAttribute(
+      "aria-hidden",
+      String(!memoryWorkspace),
+    );
+    if (dom.notificationsWorkspacePanel) {
+      dom.notificationsWorkspacePanel.hidden = !notificationsWorkspace;
+      dom.notificationsWorkspacePanel.inert = !notificationsWorkspace;
+      dom.notificationsWorkspacePanel.setAttribute("aria-hidden", String(!notificationsWorkspace));
+    }
+    setCurrentPage(dom.notificationsWorkspaceButton, notificationsWorkspace);
     dom.sessionsPanel.hidden = !sessions.visible;
     dom.sessionsPanel.inert = !sessions.visible;
     dom.sessionsPanel.setAttribute(
@@ -103,8 +139,12 @@ export function createWorkspaceShell({
 
     setCurrentPage(dom.chatWorkspaceButton, chatWorkspace);
     setCurrentPage(dom.homeWorkspaceButton, homeWorkspace);
-    setCurrentPage(dom.configWorkspaceButton, configWorkspace);
+    setCurrentPage(dom.configWorkspaceButton, shellState.workspace === "config");
+    setCurrentPage(dom.modelsWorkspaceButton, shellState.workspace === "models");
+    setCurrentPage(dom.pluginsWorkspaceButton, shellState.workspace === "plugins");
     setCurrentPage(dom.schedulesWorkspaceButton, schedulesWorkspace);
+    setCurrentPage(dom.learningWorkspaceButton, learningWorkspace);
+    setCurrentPage(dom.memoryWorkspaceButton, memoryWorkspace);
 
     dom.panelBackdrop.classList.toggle("visible", sessions.drawerOpen);
     dom.panelBackdrop.tabIndex = sessions.drawerOpen ? 0 : -1;
@@ -158,7 +198,7 @@ export function createWorkspaceShell({
 
   function prepareWorkspaceTransition(destination) {
     const nextWorkspace = normalizeWorkspaceDestination(destination);
-    if (!isWorkspaceAvailable(nextWorkspace)) return null;
+    if (!workspaceAccess.isAvailable(nextWorkspace)) return null;
     if (nextWorkspace === shellState.workspace) {
       return { nextWorkspace, commitBeforeChange: () => {} };
     }
@@ -175,7 +215,7 @@ export function createWorkspaceShell({
   }
 
   function commitWorkspaceActivation(preparedTransition, options = {}) {
-    if (!isWorkspaceAvailable(preparedTransition.nextWorkspace)) return false;
+    if (!workspaceAccess.isAvailable(preparedTransition.nextWorkspace)) return false;
     preparedTransition.commitBeforeChange();
     const nextWorkspace = preparedTransition.nextWorkspace;
     const previousWorkspace = shellState.workspace;
@@ -184,6 +224,7 @@ export function createWorkspaceShell({
     shellState.activeSheet = "";
     syncShell();
     onWorkspaceChange(nextWorkspace);
+    noteShellNavigation();
 
     if (options.focus === false) return true;
     if (nextWorkspace === "home") {
@@ -193,11 +234,16 @@ export function createWorkspaceShell({
     if (nextWorkspace !== "chat") {
       viewport.requestAnimationFrame(() => {
         if (shellState.workspace !== nextWorkspace) return;
-        const closeButton =
-          nextWorkspace === "schedules"
-            ? dom.closeSchedulesWorkspaceButton
-            : dom.closeConfigWorkspaceButton;
-        closeButton?.focus();
+        const closeButtons = {
+          notifications: dom.closeNotificationsWorkspaceButton,
+          schedules: dom.closeSchedulesWorkspaceButton,
+          learning: dom.closeLearningWorkspaceButton,
+          memory: dom.closeMemoryWorkspaceButton,
+          config: dom.closeConfigWorkspaceButton,
+          models: dom.closeConfigWorkspaceButton,
+          plugins: dom.closeConfigWorkspaceButton,
+        };
+        closeButtons[nextWorkspace]?.focus();
       });
       return true;
     }
@@ -234,6 +280,7 @@ export function createWorkspaceShell({
     shellState.activeSheet = useDrawer ? "sessions" : "";
     syncShell();
     onWorkspaceChange("chat");
+    noteShellNavigation();
 
     if (options.focus === false) return true;
     if (open) {
@@ -271,7 +318,7 @@ export function createWorkspaceShell({
       setSessionsDrawerOpen(false, { restoreFocus: true });
       return true;
     }
-    if (["config", "schedules"].includes(shellState.workspace)) {
+    if (["config", "models", "plugins", "schedules", "learning", "memory", "notifications"].includes(shellState.workspace)) {
       return activateWorkspace("chat");
     }
     return false;
@@ -280,6 +327,8 @@ export function createWorkspaceShell({
   function bind() {
     if (shellState.bound) return;
     shellState.bound = true;
+    dom.notificationsWorkspaceButton?.addEventListener("click", () => activateWorkspace("notifications"));
+    dom.closeNotificationsWorkspaceButton?.addEventListener("click", () => activateWorkspace("chat"));
     dom.homeWorkspaceButton?.addEventListener("click", () => {
       activateWorkspace("home");
     });
@@ -289,8 +338,25 @@ export function createWorkspaceShell({
     dom.configWorkspaceButton.addEventListener("click", () => {
       activateWorkspace("config");
     });
+    dom.modelsWorkspaceButton?.addEventListener("click", () => activateWorkspace("models"));
+    dom.pluginsWorkspaceButton?.addEventListener("click", () => activateWorkspace("plugins"));
     dom.schedulesWorkspaceButton?.addEventListener("click", () =>
       activateWorkspace("schedules"),
+    );
+    dom.learningWorkspaceButton.addEventListener("click", () =>
+      activateWorkspace("learning"),
+    );
+    dom.memoryWorkspaceButton.addEventListener("click", () =>
+      activateWorkspace("memory"),
+    );
+    dom.openMemoryRestartControlsButton?.addEventListener("click", () =>
+      activateWorkspace("config"),
+    );
+    dom.closeLearningWorkspaceButton.addEventListener("click", () =>
+      activateWorkspace("chat"),
+    );
+    dom.closeMemoryWorkspaceButton.addEventListener("click", () =>
+      activateWorkspace("chat"),
     );
     dom.closeSchedulesWorkspaceButton?.addEventListener("click", () =>
       activateWorkspace("chat"),
@@ -311,6 +377,12 @@ export function createWorkspaceShell({
     operationsSection.bind();
   }
 
+  function runtimeAvailabilityChanged(availability) {
+    workspaceAccess.update(availability);
+    if (!workspaceAccess.isAvailable(shellState.workspace))
+      activateWorkspace("home", { focus: false });
+  }
+
   function load() {
     Object.assign(shellState, createInitialWorkspaceShellState());
     operationsSection.activateTab("runtime");
@@ -319,6 +391,12 @@ export function createWorkspaceShell({
 
   return {
     activeWorkspace: () => shellState.workspace,
+    isWorkspaceSupportedByBackend: isWorkspaceAvailable,
+    isWorkspaceAvailable: workspaceAccess.isAvailable,
+    runtimeAvailabilityChanged,
+    workspaceUnavailableMessage: workspaceAccess.unavailableMessage,
+    navigationRevision: () => navigationRevision,
+    activeOperationsTab: operationsSection.activeTab,
     activateOperationsTab: operationsSection.activateTab,
     activateWorkspace,
     bind,

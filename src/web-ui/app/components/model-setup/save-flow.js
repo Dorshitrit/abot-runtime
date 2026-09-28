@@ -1,7 +1,8 @@
 import { selectedModelProvider } from "./validation.js";
 import {
   isDefinitiveModelSaveRejection,
-  modelSaveFailureMessage,
+  modelSaveErrorMessage,
+  deferredModelMessage,
 } from "./save-outcome.js";
 
 export function createModelSaveFlow({
@@ -18,6 +19,7 @@ export function createModelSaveFlow({
   beginRuntimeMutation,
   endRuntimeMutation,
   onSaved,
+  onDeferred,
   onComplete,
 }) {
   async function refreshModelList(operation) {
@@ -44,6 +46,7 @@ export function createModelSaveFlow({
     let completed = false;
     try {
       state.error = "";
+      state.notice = "";
       if (!state.saved) {
         const input = readRequest();
         if (!input) return false;
@@ -73,9 +76,12 @@ export function createModelSaveFlow({
         const payload = await applySetup();
         if (!isCurrent(operation)) return false;
         if (payload?.activation?.status === "restart_required") {
-          state.error =
-            payload.activation.message ||
-            "Model saved. Apply it when your agent is idle.";
+          state.notice = deferredModelMessage(payload.activation);
+          state.busy = "refreshing";
+          render();
+          const refreshed = await onDeferred(state.saved);
+          if (!isCurrent(operation)) return false;
+          if (refreshed === false) state.error = modelSaveErrorMessage(state);
           return false;
         }
         if (payload?.activation?.status !== "ready")
@@ -91,8 +97,7 @@ export function createModelSaveFlow({
       if (credentialSaved)
         state.credentialSavedFor =
           selectedModelProvider(state)?.id || state.newProviderId;
-      const fallback = modelSaveFailureMessage(state);
-      state.error = error?.payload?.message || fallback;
+      state.error = modelSaveErrorMessage(state, error);
       if (credentialSaved)
         state.error +=
           " Your API key was saved privately and will be reused on retry.";

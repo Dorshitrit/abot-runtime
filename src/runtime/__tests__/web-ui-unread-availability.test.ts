@@ -15,11 +15,12 @@ function sessionHarness(session: Session) {
     createElement: () => ({
       className: "",
       innerHTML: "",
+      addEventListener: vi.fn(),
       querySelector: (selector: string) =>
         selector === ".session-open-button"
           ? {
-              addEventListener: (_type: string, listener: () => void) => {
-                openConversation = listener;
+              addEventListener: (type: string, listener: () => void) => {
+                if (type === "click") openConversation = listener;
               },
             }
           : null,
@@ -200,7 +201,7 @@ describe("Web UI unread availability", () => {
     expect(html).toContain('data-dashboard-action="conversations"');
   });
 
-  test("a previously unread conversation retains its priority during an outage", () => {
+  test("an older unread conversation preserves the outage notice without displacing the latest three", () => {
     const recent = Array.from({ length: 7 }, (_, index) => ({
       id: `known-${index}`,
       updatedAt: index + 1,
@@ -212,10 +213,9 @@ describe("Web UI unread availability", () => {
         { ...unavailableSession(), ...knownReadState, updatedAt: 0 },
       ],
     });
-    expect(html).toContain('data-session-id="session-one"');
-    expect(html.indexOf('data-session-id="session-one"')).toBeLessThan(
-      html.indexOf('data-session-id="known-6"'),
-    );
+    expect(
+      [...html.matchAll(/data-session-id="([^"]+)"/gu)].map((match) => match[1]),
+    ).toEqual(["known-6", "known-5", "known-4"]);
     expect(html).toContain("Unread status unavailable");
     expect(html).not.toContain("home-small-count");
     expect(html).not.toContain("home-unread-count");
@@ -225,9 +225,7 @@ describe("Web UI unread availability", () => {
     const html = renderDashboardConversations({
       sessions: [unavailableSession(), { id: "known", unreadCount: 2 }],
     });
-    expect(html).toContain(
-      'class="home-small-count" aria-label="2 unread messages"',
-    );
+    expect(html).toMatch(/data-session-id="known">[\s\S]*?2 unread messages/);
     expect(html).not.toContain("home-unread-count");
     expect(html).toContain("Unread status unavailable");
   });
@@ -236,7 +234,10 @@ describe("Web UI unread availability", () => {
     const legacy = { id: "legacy", unreadCount: 0, hasUnread: false };
     expect(mergeSessionListReadState([legacy], [])[0]).toBe(legacy);
     const html = renderDashboardConversations({ sessions: [legacy] });
-    expect(html).toContain("All clear. No unread messages.");
+    expect(html).toContain('data-session-id="legacy"');
+    expect(html).toContain('data-dashboard-action="conversations"');
+    expect(html).not.toContain("home-unread-count");
+    expect(html).not.toContain("All clear. No unread messages.");
     expect(html).not.toContain("Unread status unavailable");
   });
 });

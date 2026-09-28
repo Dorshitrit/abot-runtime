@@ -5,39 +5,39 @@
   gap: 5px;
   width: fit-content;
   flex: none;
-  padding: 4px 8px;
-  border-radius: 20px;
+  padding: 3px 7px;
+  border-radius: 5px;
   text-transform: capitalize;
   font-size: var(--font-size-xs);
-  font-weight: 600;
-  color: #bbc9dc;
-  background: rgba(150, 170, 200, 0.13);
+  font-weight: 400;
+  color: var(--muted);
+  background: var(--control-bg);
 }
 .schedule-badge[data-state="active"],
 .schedule-badge[data-state="succeeded"] {
-  background: rgba(47, 193, 144, 0.12);
-  color: #7cddba;
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+  color: var(--green);
 }
 .schedule-badge[data-state="running"],
 .schedule-badge[data-state="pending"] {
-  background: rgba(78, 145, 255, 0.16);
-  color: #a3c9ff;
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 .schedule-badge[data-state="failed"],
 .schedule-badge[data-state="interrupted"] {
-  background: rgba(247, 107, 118, 0.12);
-  color: #ffa8b3;
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  color: var(--danger);
 }
 .schedule-badge[data-state="paused"] {
-  background: rgba(225, 173, 63, 0.12);
-  color: #e9ca81;
+  background: color-mix(in srgb, var(--amber) 8%, transparent);
+  color: var(--amber);
 }
 .schedule-details {
   min-width: 0;
-  padding: 26px;
+  padding: 20px;
   border: 1px solid var(--line);
-  border-radius: 18px;
-  background: rgba(17, 31, 49, 0.52);
+  border-radius: 10px;
+  background: var(--panel);
 }
 .schedule-detail-heading {
   display: grid;
@@ -47,32 +47,32 @@
 }
 .schedule-detail-heading h3 {
   margin: 0;
-  font-size: 1.6rem;
-  font-weight: 600;
+  font-size: var(--font-size-4xl);
+  font-weight: 400;
   overflow-wrap: anywhere;
 }
 .schedule-eyebrow {
-  color: #a9c6b8;
+  color: var(--muted);
   font-size: var(--font-size-xs);
-  font-weight: 650;
-  letter-spacing: 0.1em;
+  font-weight: 400;
+  letter-spacing: 0.035em;
   text-transform: uppercase;
 }
 .schedule-action-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 .schedule-action-row button {
-  min-height: 36px;
+  min-height: 34px;
   font-size: var(--font-size-sm);
 }
 .schedule-facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-  padding: 24px 0;
+  gap: 14px;
+  padding: 20px 0;
   margin: 0;
 }
 .schedule-facts dt {
@@ -95,14 +95,15 @@
   border: 0;
   background: transparent;
   box-shadow: none;
-  color: #bdcfc8;
+  color: var(--accent);
   font-size: var(--font-size-sm);
+  font-weight: 400;
   text-align: start;
 }
 .schedule-conversation-link:hover,
 .schedule-text-button:hover,
 .schedule-chat-title:hover {
-  color: #edf3ef;
+  color: var(--accent-strong);
   background: transparent;
   text-decoration: underline;
   text-underline-offset: 4px;
@@ -129,7 +130,7 @@
   font-size: var(--font-size-sm);
   line-height: 1.7;
   padding: 12px;
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--bg);
   border-radius: 9px;
   margin-block: 12px 0;
   max-height: 360px;
@@ -157,6 +158,7 @@
 .schedule-section-heading h3 {
   margin: 0;
   font-size: 1rem;
+  font-weight: 400;
 }
 .schedule-section-heading > span {
   color: var(--muted);
@@ -174,12 +176,15 @@
   margin-bottom: 8px;
   font-size: var(--font-size-sm);
 }
+.schedule-run-heading strong {
+  font-weight: 400;
+}
 .schedule-result {
   margin-top: 12px;
 }
 .schedule-error,
 .schedule-form-feedback {
-  color: #ffb0ba;
+  color: var(--danger);
 }
 .schedule-details.schedule-details-placeholder {
   border-color: transparent;
@@ -200,11 +205,11 @@
 }
 .schedule-detail-empty > span {
   font-size: 32px;
-  color: #86abdc;
+  color: var(--accent);
 }
 .schedule-detail-empty h3 {
   color: var(--text);
-  font-weight: 500;
+  font-weight: 400;
 }
 .schedule-detail-empty p {
   font-size: var(--font-size-sm);
@@ -214,12 +219,12 @@
 }
 .schedule-editor {
   display: grid;
-  gap: 18px;
+  gap: 14px;
 }
 .schedule-editor label {
   display: grid;
   align-content: start;
-  gap: 8px;
+  gap: 6px;
   font-size: var(--font-size-sm);
   color: var(--muted);
   min-width: 0;
@@ -229,12 +234,18 @@
 .schedule-editor select {
   width: 100%;
   min-width: 0;
-  min-height: 40px;
-  padding: 9px 12px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background-color: var(--control-fill);
   color: var(--text);
+  font-weight: 400;
+  box-shadow: none;
 }
 .schedule-editor textarea {
   resize: vertical;
+  height: 108px;
+  min-height: 96px;
 }
 .schedule-editor small {
   font-size: var(--font-size-xs);
@@ -243,7 +254,7 @@
 .schedule-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  gap: 14px;
 }
 .schedule-form-grid [hidden] {
   display: none;
@@ -273,18 +284,18 @@
 }
 .schedule-weekdays span {
   display: inline-block;
-  padding: 8px 10px;
+  padding: 6px 9px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 7px;
   cursor: pointer;
 }
 .schedule-weekdays input:checked + span {
-  background: rgba(168, 203, 187, 0.14);
-  color: #dceae2;
-  border-color: #96b5a6;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  border-color: var(--accent);
 }
 .schedule-weekdays input:focus-visible + span {
-  outline: 2px solid #b4ccc1;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 .schedule-permission-note {
@@ -294,7 +305,10 @@
   color: var(--muted);
   padding: 12px 14px;
   border-radius: 10px;
-  background: rgba(104, 148, 208, 0.08);
+  background: var(--control-bg);
+}
+.schedule-permission-note strong {
+  font-weight: 400;
 }
 .schedule-message-row {
   justify-content: flex-start;
@@ -303,14 +317,9 @@
 .schedule-chat-card {
   width: min(100%, 540px);
   padding: 18px 20px;
-  border: 1px solid rgba(177, 201, 188, 0.23);
-  border-inline-start: 3px solid #a9c6b8;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: linear-gradient(
-    110deg,
-    rgba(130, 161, 145, 0.09),
-    rgba(24, 42, 45, 0.2)
-  );
+  background: var(--panel);
 }
 .schedule-chat-title {
   display: block;
@@ -318,11 +327,11 @@
   padding: 0;
   text-align: start;
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: 400;
   background: none;
   border: 0;
   box-shadow: none;
-  color: #dceae2;
+  color: var(--text);
 }
 .schedule-chat-time {
   margin-top: 7px;

@@ -1,10 +1,16 @@
 import { spawn } from "node:child_process";
+import { installDesktopNotificationIdentity } from "../computer-access/companion/notification-installation.js";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   installNativeAutostart,
+  existingOwnedRegistration,
+  nativeAutostartFile,
   type NativeAutostartOptions,
-} from "../../plugins/system/source/companion/autostart.js";
-import type { NativeHostState } from "../../plugins/system/source/companion/native-state.js";
+} from "../computer-access/companion/autostart.js";
+import type { NativeHostState } from "../computer-access/companion/native-state.js";
+import { readNativeCompanionBuildId } from "../computer-access/companion/native-build-identity.js";
+import { stopOwnedNativeCompanion } from "../computer-access/companion/native-replacement.js";
+import { prepareNativeCompanionRuntime } from "../computer-access/companion/native-runtime-installation.js";
 
 async function startDetachedCompanion(
   options: NativeAutostartOptions,
@@ -25,10 +31,12 @@ async function startDetachedCompanion(
 async function waitForNativeConnection(
   state: NativeHostState,
   hostId: string,
+  buildId: string,
+  connectedAfter: number,
 ): Promise<boolean> {
   const deadline = Date.now() + 10_000;
   do {
-    if (await state.isConnected(hostId)) return true;
+    if (await state.isConnected(hostId, buildId, connectedAfter)) return true;
     await delay(200);
   } while (Date.now() < deadline);
   return false;
@@ -40,12 +48,29 @@ export async function completeHostCompanionStartup(
   startup: NativeAutostartOptions,
   hostId: string,
 ): Promise<void> {
-  const installed = await installNativeAutostart(startup);
-  if (!installed.started) await startDetachedCompanion(startup);
-  const connected = await waitForNativeConnection(state, hostId);
+  const buildId = await readNativeCompanionBuildId(startup.cliPath);
+  await existingOwnedRegistration(nativeAutostartFile(startup));
+  await stopOwnedNativeCompanion(state.directory);
+  const managedStartup = await prepareNativeCompanionRuntime(startup);
+  const connection = await state.read();
+  if (connection)
+    await installDesktopNotificationIdentity(
+      managedStartup,
+      connection.url,
+    ).catch((error: unknown) => {
+      console.warn(
+        "Desktop notifications setup needs attention: " +
+          (error instanceof Error ? error.message : String(error)),
+      );
+    });
+  const connectedAfter = Date.now();
+  const installed = await installNativeAutostart(managedStartup);
+  if (!installed.started) await startDetachedCompanion(managedStartup);
+  if (!(await waitForNativeConnection(state, hostId, buildId, connectedAfter)))
+    throw new Error(
+      "The updated host companion did not connect. The saved pairing is preserved; run setup again to retry.",
+    );
   console.log(
-    connected
-      ? "Host companion connected. It will start automatically when you log in."
-      : "Host companion installed for login startup. It is waiting for the local Runtime to reconnect.",
+    "Host companion connected. It will start automatically when you log in.",
   );
 }

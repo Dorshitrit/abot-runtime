@@ -1,4 +1,8 @@
 import { createScheduleRealtimeController } from "./schedule-realtime.js";
+import {
+  isStopResult,
+  stoppedResponseText,
+} from "../lib/request-stop-state.js";
 import { isMatchingActiveRequest } from "../ui-behavior.js";
 import {
   eventKeyFor,
@@ -13,6 +17,8 @@ import { reduceTaskProgress } from "../lib/task-progress.js";
 import { projectWebSourceEvent } from "../lib/web-source-event.js";
 import { projectToolActivityEvent } from "../lib/tool-activity-event.js";
 import { canReplaceContextWindowEvidence } from "../lib/context-window-snapshot-order.js";
+import { isWorkspaceChange } from "../lib/workspace-change.js";
+import { createRequestLifecycleController } from "./request-lifecycle-controller.js";
 
 export { normalizeRealtimeMessage } from "../lib/realtime-message.js";
 export { taskStatusClass } from "../lib/task-progress.js";
@@ -60,7 +66,6 @@ export function createRealtimeEventController({
   scheduleThinkingRender,
   cancelScheduledMessageRender,
   cancelScheduledThinkingRender,
-  forgetThinkingDisclosure,
   markCurrentSessionReadSoon,
   applySessionTitleUpdate,
   setMessageActivityStatus,
@@ -68,6 +73,18 @@ export function createRealtimeEventController({
   drainQueuedComposerMessage,
   loadSessions,
 }) {
+  const lifecycleController = createRequestLifecycleController({
+    state,
+    addOrMergeMessage,
+    normalizeChatMessage,
+    activeAssistantForRequest,
+    updateComposerSendState,
+    renderMessages,
+    setMessageActivityStatus,
+    markCurrentSessionReadSoon,
+    cancelScheduledMessageRender,
+    cancelScheduledThinkingRender,
+  });
   const scheduleRealtime = createScheduleRealtimeController({
     state,
     selectedEnvironmentId,
@@ -83,7 +100,13 @@ export function createRealtimeEventController({
 
   function trackSeq(message) {
     if (message.requestId && typeof message.seqNo === "number") {
-      state.lastSeqByRequest.set(message.requestId, message.seqNo);
+      state.lastSeqByRequest.set(
+        message.requestId,
+        Math.max(
+          state.lastSeqByRequest.get(message.requestId) || 0,
+          message.seqNo,
+        ),
+      );
     }
   }
 
@@ -254,6 +277,10 @@ export function createRealtimeEventController({
   }
 
   function recordEvent(message) {
+    if (isWorkspaceChange(message)) {
+      trackSeq(message);
+      return;
+    }
     const requestId = textOf(message.requestId) || state.activeRequestId;
     const eventSequence = hasOriginalEventSequence(message.eventSequence)
       ? message.eventSequence
@@ -381,15 +408,33 @@ export function createRealtimeEventController({
       environmentId,
       sessionId,
       terminalRequestId: requestId,
+      cancelled: isStopResult(message),
     });
   }
 
   function handle(rawMessage) {
     const message = normalizeRealtimeMessage(rawMessage);
+    if (message.type === "tool_approval_ack") {
+      if (!message.accepted) {
+        state.submittedToolApprovalIds.delete(message.approvalId);
+        recordControlEvent({
+          name: "Approval unavailable",
+          tone: "failed",
+          summary:
+            "The decision could not be saved. Refresh the conversation and try again.",
+        });
+        renderMessages();
+      }
+      return;
+    }
     if (message.type === "steer_ack" && handleSteerAcknowledgement(message))
       return;
     if (scheduleRealtime.handle(message)) return;
     if (!shouldAcceptMessage(message)) return;
+    if (lifecycleController.handle(message)) {
+      recordEvent(message);
+      return;
+    }
     if (message.type === "chat_read_state") {
       applySessionReadState(message.sessionId, message.readState || message);
       return;
@@ -446,7 +491,6 @@ export function createRealtimeEventController({
         const assistant = activeAssistantForRequest(requestId);
         assistant.streaming = false;
         if (message.output) assistant.text = textOf(message.output);
-        forgetThinkingDisclosure(assistant.id);
       }
       cancelScheduledMessageRender();
       recordEvent(message);
@@ -466,13 +510,16 @@ export function createRealtimeEventController({
       if (requestId) {
         const assistant = activeAssistantForRequest(requestId);
         assistant.streaming = false;
-        assistant.text = textOf(message.error, "Request failed.");
-        forgetThinkingDisclosure(assistant.id);
+        assistant.text = isStopResult(message)
+          ? stoppedResponseText(assistant.text, message)
+          : textOf(message.error, "Request failed.");
       }
       recordEvent(message);
       cancelScheduledThinkingRender();
       renderMessages();
-      setMessageActivityStatus("ABot request failed.");
+      setMessageActivityStatus(
+        isStopResult(message) ? "Response stopped." : "ABot request failed.",
+      );
       settleTerminal(message, terminalRequestId);
       return;
     }

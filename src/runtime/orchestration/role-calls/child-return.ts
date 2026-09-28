@@ -1,6 +1,5 @@
 import {
   ROLE_CALL_OBJECTIVE_MAX_LENGTH,
-  ROLE_CALL_RESULT_MAX_LENGTH,
   type RoleCallCommitEffect,
   type RoleCallLedger,
   type RoleCallLedgerCommitResult,
@@ -21,6 +20,8 @@ import {
   projectRoleCallWorkResultLineage,
   type RoleCallWorkResultLineage,
 } from "./work-result-lineage.js";
+
+import { isRoleCallResultText } from "./role-result-text.js";
 
 export type CompletedRoleChildResult = Readonly<{
   callerCallId: string;
@@ -161,7 +162,7 @@ function projectCompletedChild(
     result?.producerCallId !== child.callId ||
     result.roleId !== child.roleId ||
     (result.outcome !== "completed" && result.outcome !== "failed") ||
-    !isBoundedText(result.summary, ROLE_CALL_RESULT_MAX_LENGTH) ||
+    !isRoleCallResultText(result.summary) ||
     !isRoleCallResultReceiptValidForStoredResult({
       receipt: result.receipt,
       producer: child,

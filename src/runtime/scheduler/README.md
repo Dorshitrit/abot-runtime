@@ -128,8 +128,14 @@ removes its Jobs and run records; late completion cannot recreate them.
 Pausing again cancels a pending manual run even when the Job is already paused.
 It leaves an already-started run alone; a later explicit Run now is still allowed.
 
-Run records keep immutable prompt, title, model profile, agent mode, time zone,
-and Job revision snapshots. A non-timing edit replaces pending work with a fresh
+Jobs accept explicit `full_access` or `full_plus` tool permission. Omitted create
+input defaults to Full; edits preserve the saved permission unless explicitly
+changed. Unsupported values are rejected.
+
+Run records keep immutable prompt, title, model profile, agent mode, tool permission,
+time zone, and Job revision snapshots. Historical runs without tool permission
+retain Full authority. The Runtime adapter submits the captured run permission.
+Permission edits follow the same pending-run replacement rule as other metadata. A non-timing edit replaces pending work with a fresh
 snapshot while preserving its original due time and trigger. Timing edits
 reschedule it; empty and identical edits preserve its identity. Already-started
 and completed history is unchanged. Resume preserves manual pending work.

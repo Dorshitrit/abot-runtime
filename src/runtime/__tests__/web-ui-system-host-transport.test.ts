@@ -31,6 +31,7 @@ test("host pairing uses shared routes without session, environment or tool-selec
   changeEnvironment("dev");
   await client.getSystemHostConnection();
   await client.createSystemHostPairing();
+  await client.connectLocalSystemHost();
   await client.downloadSystemHostSetup("windows");
   await client.revokeSystemHostConnection();
   expect(fetchImpl.mock.calls).toEqual([
@@ -38,6 +39,14 @@ test("host pairing uses shared routes without session, environment or tool-selec
     ["/web-api/runtime/system-host", { headers: {} }],
     [
       "/web-api/runtime/system-host/pairing",
+      {
+        method: "POST",
+        body: "{}",
+        headers: { "content-type": "application/json" },
+      },
+    ],
+    [
+      "/web-api/runtime/system-host/connect-local",
       {
         method: "POST",
         body: "{}",
@@ -70,6 +79,9 @@ test("bridge backend rejects host configuration locally", async () => {
     "local Runtime backend",
   );
   await expect(client.createSystemHostPairing()).rejects.toThrow(
+    "local Runtime backend",
+  );
+  await expect(client.connectLocalSystemHost()).rejects.toThrow(
     "local Runtime backend",
   );
   await expect(client.downloadSystemHostSetup("macos")).rejects.toThrow(

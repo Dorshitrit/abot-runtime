@@ -135,7 +135,7 @@ describe("tool activity projection and lifecycle", () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       status: "failed",
-      statusLabel: "Preparation failed",
+      statusLabel: "Not prepared",
     });
     expect(result[0]!.received).toContainEqual({
       label: "Error",

@@ -5,6 +5,7 @@ import type {
 import { createProviderEnvelopeFingerprint } from "../envelope-budget.js";
 import { buildOpenAIInputTokenCountPayload } from "./payload.js";
 import { resolveOpenAIProviderSettings } from "./settings.js";
+import { toolMediaSafeError, toolMediaSafeMessage } from "../../observability/tool-media-privacy.js";
 
 function readInputTokenCount(body: unknown): number | undefined {
   const isRecord =
@@ -43,13 +44,13 @@ export async function countOpenAIInputTokens(
       },
       body: JSON.stringify(payload),
     },
-  );
+  ).catch((error) => { throw toolMediaSafeError(error, params.requestBody); });
   if (!response.ok) {
     const message = await response.text().catch(() => "");
     return {
       kind: "error",
       statusCode: response.status || 502,
-      message: message || "openai input token count error",
+      message: toolMediaSafeMessage(message || "openai input token count error", params.requestBody),
     };
   }
 

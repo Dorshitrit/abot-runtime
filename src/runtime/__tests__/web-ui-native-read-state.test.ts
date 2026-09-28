@@ -68,6 +68,31 @@ afterEach(async () => {
 });
 
 describe("native Web UI read state through real HTTP and persisted sessions", () => {
+  test("marks a Co-worker proposal read by its persisted ID without clearing a later reply", async () => {
+    const f = await fixture(); await migrationBoundary(f);
+    const session = await f.sessions().createAssistantConversation("co-worker-proposal", {
+      title: "A suggestion", content: "Would you like to discuss it?",
+      initiative: { kind: "proactive_proposal_v1", proposalId: "proposal-1", reason: "A relevant change",
+        sources: [{ kind: "candidate", id: "candidate-1", version: "1" }] },
+    });
+    const original = await f.sessionBytes(session.id);
+    const loaded = await snapshot(f, session.id);
+    const id = loaded.messages[0]!.id;
+    expect(id).toBe("initiative:proposal-1");
+    expect(loaded.readState.unreadCount).toBe(1);
+    expect((await mark(f, session.id, { readThroughMessageId: "initiative:unseen" })).readState.unreadCount).toBe(1);
+    expect((await mark(f, session.id, { readThroughMessageId: id })).readState).toMatchObject({
+      unreadCount: 0, hasUnread: false, lastReadMessageId: id,
+    });
+    expect(await f.sessionBytes(session.id)).toBe(original);
+    await f.recreateBackend();
+    expect((await list(f)).sessions.find((value) => value.id === session.id)?.hasUnread).toBe(false);
+    await f.sessions().appendMessage(session.id, "user", "A follow-up", { requestId: "follow-up" });
+    await f.sessions().appendMessage(session.id, "assistant", "New reply", { requestId: "follow-up" });
+    expect((await mark(f, session.id, { readThroughMessageId: id })).readState.unreadCount).toBe(1);
+    expect((await mark(f, session.id, { readThroughRequestId: "follow-up" })).readState.unreadCount).toBe(0);
+  });
+
   test("migration leaves historical conversations read and keeps their full history byte-identical", async () => {
     const f = await fixture();
     const sessions = f.sessions();

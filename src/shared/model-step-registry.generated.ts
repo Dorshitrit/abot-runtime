@@ -3,6 +3,15 @@
 import type { RegisteredModelInvocationStepDefinition } from "./model-step-registry.types.js";
 
 export const GENERATED_MODEL_INVOCATION_STEP_REGISTRY = {
+  LEARNING_BATCH: {
+    id: "learning.batch",
+    owner: "runtime-core",
+    role: "utility",
+    lane: "utility",
+    defaultFormat: "json",
+    outputContract: "passive_learning_batch",
+    attachmentPolicy: "none",
+  },
   SUPERVISOR_DECISION: {
     id: "supervisor.decision",
     owner: "runtime-core",

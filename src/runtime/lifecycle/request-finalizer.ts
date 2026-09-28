@@ -1,4 +1,5 @@
 import type { SessionThinkingTraceEntry } from "../../sessions/types.js";
+import { throwIfRequestCancelled } from "../request/cancellation.js";
 import type { AgentMode } from "../../shared/types.js";
 import type { EventSink } from "../ports.js";
 import { finalizeResponse } from "../orchestration/final-response/finalization.js";
@@ -13,6 +14,8 @@ import type {
   MemoryCandidate,
 } from "../long-term-memory/contracts.js";
 import { scheduleFinalResponseMemory } from "../long-term-memory/finalization.js";
+import { traceDebug } from "../observability/debug-logger.js";
+import type { SessionTerminalMessage } from "../../sessions/request-lifecycle/contracts.js";
 
 type RequestFinalizationResult =
   | { status: "completed"; output: string }
@@ -32,6 +35,7 @@ export async function finalizeRequest(params: {
   outputTextMode?: RequestOutputTextMode;
   events: EventSink;
   lifecycle: RequestLifecycle;
+  claimFinalization?: () => void;
   sessionStore: Pick<RequestSessionStore, "appendMessage">;
   sessionId: string;
   requestId: string;
@@ -40,28 +44,45 @@ export async function finalizeRequest(params: {
   finalObservation?: RequestObservation;
   memoryCandidates?: readonly MemoryCandidate[];
   longTermMemory?: LongTermMemoryService;
+  composeInvalidFinalOutput?: () => Promise<string>;
+  persistResponse?: (message: SessionTerminalMessage) => Promise<void>;
 }): Promise<RequestFinalizationResult> {
-  if (!params.rawOutput.trim()) {
-    failRequest({
-      events: params.events,
-      error: "invalid_final_output",
-      details: {
-        reason: "empty_final_output",
-        stage: "chat_finalization",
-      },
+  throwIfRequestCancelled(params.lifecycle.signal);
+  const hasValidFinalOutput = params.rawOutput.trim().length > 0;
+  if (!hasValidFinalOutput) {
+    params.lifecycle.signal.throwIfAborted();
+    traceDebug("runtime.request", "final_output.invalid", {
+      requestId: params.requestId,
+      code: "invalid_final_output",
+      reason: "empty_final_output",
+      stage: "chat_finalization",
+      disposition: "degraded_authoring",
     });
-    return { status: "failed" };
   }
-  const output =
-    params.outputTextMode === "exact"
-      ? params.rawOutput
-      : params.rawOutput.trim();
+  const output = await resolveFinalizationOutput(
+    params.rawOutput,
+    params.outputTextMode,
+    params.lifecycle.signal,
+    params.composeInvalidFinalOutput,
+  );
+  if (!hasValidFinalOutput) params.lifecycle.signal.throwIfAborted();
+  const finalObservation = hasValidFinalOutput
+    ? params.finalObservation
+    : undefined;
+  const memoryCandidates = hasValidFinalOutput
+    ? params.memoryCandidates
+    : undefined;
 
   params.lifecycle.markProgress("valid_final_output");
   const finalizationState = { stage: "finalization" };
   params.lifecycle.updateState(finalizationState);
   params.events.runtimeState(finalizationState);
+  throwIfRequestCancelled(params.lifecycle.signal);
+  params.claimFinalization?.();
   await finalizeResponse({
+    ...(params.persistResponse
+      ? { persistResponse: params.persistResponse }
+      : {}),
     events: params.events,
     sessionStore: params.sessionStore,
     sessionId: params.sessionId,
@@ -70,16 +91,16 @@ export async function finalizeRequest(params: {
     output,
     grounding: "conversation",
     thinkingTrace: params.thinkingTrace,
-    ...(params.finalObservation
+    ...(finalObservation
       ? {
-          observationMeta: params.finalObservation.observationMeta,
-          observationContent: params.finalObservation.observationContent,
+          observationMeta: finalObservation.observationMeta,
+          observationContent: finalObservation.observationContent,
         }
       : {}),
     afterPersist: () =>
       scheduleFinalResponseMemory({
         service: params.longTermMemory,
-        candidates: params.memoryCandidates,
+        candidates: memoryCandidates,
         requestId: params.requestId,
         sessionId: params.sessionId,
         onEvent: params.events.event.bind(params.events),
@@ -87,4 +108,23 @@ export async function finalizeRequest(params: {
   });
 
   return { status: "completed", output };
+}
+
+async function resolveFinalizationOutput(
+  rawOutput: string,
+  outputTextMode: RequestOutputTextMode | undefined,
+  signal: AbortSignal,
+  composeInvalidFinalOutput: (() => Promise<string>) | undefined,
+): Promise<string> {
+  const hasValidFinalOutput = rawOutput.trim().length > 0;
+  if (hasValidFinalOutput) {
+    return outputTextMode === "exact" ? rawOutput : rawOutput.trim();
+  }
+  const canComposeInvalidFinalOutput = composeInvalidFinalOutput !== undefined;
+  if (!canComposeInvalidFinalOutput) throw new Error("invalid_final_output");
+  const authored = await composeInvalidFinalOutput();
+  signal.throwIfAborted();
+  const hasValidDegradedOutput = authored.trim().length > 0;
+  if (!hasValidDegradedOutput) throw new Error("invalid_final_output");
+  return outputTextMode === "exact" ? authored : authored.trim();
 }

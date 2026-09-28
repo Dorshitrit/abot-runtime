@@ -19,19 +19,25 @@ export function createBoundRuntimeRequestHandler(
     longTermMemory: services.longTermMemory,
   };
   return Object.freeze({
-    handle(ws, message, requestOptions = {}) {
+    async handle(ws, message, requestOptions = {}) {
+      const releaseLearning = services.passiveLearning?.beginInteractive();
       const invoke = () =>
         handleRunRequest(ws, message, {
           ...environmentOptions,
           ...requestOptions,
         });
-      if (services.requestAdmission) {
-        return services.requestAdmission.run(
-          typeof message.sessionId === "string" ? message.sessionId : "",
-          invoke,
-        );
+      try {
+        if (services.requestAdmission) {
+          return await services.requestAdmission.run(
+            typeof message.sessionId === "string" ? message.sessionId : "",
+            invoke,
+            Boolean(requestOptions.approvalExecution?.resume),
+          );
+        }
+        return await invoke();
+      } finally {
+        releaseLearning?.();
       }
-      return invoke();
     },
   });
 }

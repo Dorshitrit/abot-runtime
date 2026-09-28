@@ -171,6 +171,7 @@ export function createRegisteredToolWorkerCapabilityProvider<TContext>(
           registrations: narrowedRegistrations,
           toolRegistry: resolvedCatalog.registry,
           requestId: params.requestId,
+          ...(params.toolResources ? { toolResources: params.toolResources } : {}),
           abortSignal: params.abortSignal,
           sharedState,
           toolPermissionMode: params.toolPermissionMode,

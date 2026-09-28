@@ -17,7 +17,7 @@ function readConfigMap(parent: JsonObject, key: string): JsonObject {
   return value;
 }
 
-/** Shared additive merge for CLI file references and Web inline model profiles. */
+/** Shared additive profile-declaration merge for CLI and Web model setup. */
 export function mergeRuntimeModelAddition(
   runtimeConfig: JsonObject,
   input: {

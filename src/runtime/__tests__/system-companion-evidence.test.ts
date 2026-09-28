@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { failureResult, successResult } from "../../plugin-sdk/index.js";
-import { attachHostEvidence } from "../../../plugins/system/source/host-evidence.js";
-import { systemProcessResult } from "../../../plugins/system/source/process-result.js";
-import type { HostIdentity } from "../../../plugins/system/source/companion/protocol.js";
-import { HOST_OPERATIONS } from "../../../plugins/system/source/companion/protocol.js";
+import { attachHostEvidence } from "../../computer-access/host-evidence.js";
+import { systemProcessResult } from "../../computer-access/process-result.js";
+import type { HostIdentity } from "../../computer-access/companion/protocol.js";
+import { HOST_OPERATIONS } from "../../computer-access/companion/protocol.js";
 import {
   buildToolStartEventMetadata,
   buildToolCompletedEventMetadata,

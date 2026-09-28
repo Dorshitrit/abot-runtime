@@ -21,20 +21,22 @@ export function createToolApprovalCard({
 
   const header = documentRoot.createElement("div");
   header.className = "approval-message-header";
-  const label = documentRoot.createElement("span");
-  label.className = "approval-message-label";
-  label.textContent = "Approval required";
   const title = documentRoot.createElement("strong");
   title.className = "approval-message-title";
-  title.textContent = `Allow ${toolLabel} to run?`;
-  header.append(label, title);
+  title.textContent = toolLabel;
+  header.appendChild(title);
 
   const detail = documentRoot.createElement("p");
   detail.className = "approval-message-detail";
   detail.dir = "auto";
   detail.textContent =
     textOf(event?.summary) || "The runtime is waiting for your decision.";
-  bubble.append(header, detail);
+  const explanation = documentRoot.createElement("details");
+  explanation.className = "approval-message-explanation";
+  const explanationLabel = documentRoot.createElement("summary");
+  explanationLabel.textContent = "Action details";
+  explanation.append(explanationLabel, detail);
+  bubble.append(header, explanation);
 
   const evidence = createConversationToolEvidence(
     { ...event?.toolActivity, executed: false },

@@ -76,17 +76,17 @@ test.each([true, false])(
       }),
     );
     expect(descriptionEntries(routing)).toEqual(canonicalEntries);
-    expect(canonicalEntries).toHaveLength(4);
-    const expectedTargets = connected ? "linux, windows" : "linux";
-    for (const entry of canonicalEntries) {
-      expect(entry.summary).toContain(
-        `Available targets for this request: ${expectedTargets}.`,
-      );
+    expect(canonicalEntries).toHaveLength(14);
+    const prepared = await result.prepare.mock.results[0]!.value;
+    const expectedTargets = connected ? ["linux", "windows"] : ["linux"];
+    for (const module of prepared) {
+      for (const operation of module.normalInvocation.operations) {
+        const properties = operation.input.properties;
+        if (properties.target) expect(properties.target).toEqual({ type: "string", enum: expectedTargets });
+        if (properties.desktop_ref && "enum" in properties.desktop_ref)
+          expect(properties.desktop_ref.enum).toHaveLength(connected ? 2 : 1);
+      }
     }
-    if (!connected)
-      expect(JSON.stringify(descriptionEntries(routing))).not.toContain(
-        "windows",
-      );
     expect(
       messages(routing).filter(
         ({ role, content }) =>

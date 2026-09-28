@@ -125,6 +125,7 @@ function toRequestMessage(message: ChatMessage): ChatMessage {
       content: message.content,
       toolCallId: message.toolCallId,
       toolName: message.toolName,
+      ...(message.attachments?.length ? { attachments: message.attachments } : {}),
     };
   }
   const attachments = normalizeMessageAttachments(message.attachments);

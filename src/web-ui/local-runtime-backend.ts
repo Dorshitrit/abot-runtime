@@ -10,15 +10,23 @@ import { sendJson } from "./local-runtime/http.js";
 import { LocalRealtimeController } from "./local-runtime/realtime-controller.js";
 import { RealtimeClientHub } from "./local-runtime/realtime-hub.js";
 import { LocalRequestExecution } from "./local-runtime/request-execution.js";
+import { createWorkspaceChangeNotifier } from "./local-runtime/workspace-notifications.js";
+import { createLearningChangeNotifier } from "./local-runtime/learning-notifications.js";
+import { WebNotificationService } from "./notifications/service.js";
+import { WebNotificationRoutes } from "./notifications/routes.js";
+import { DesktopNotificationDelivery } from "./notifications/desktop-delivery.js";
 
 export type { LocalRuntimeBackendOptions } from "./local-runtime/contracts.js";
 
 /** Stable server-facing facade for the direct Runtime Web UI backend. */
 export class LocalRuntimeWebBackend {
+  private readonly clients: RealtimeClientHub;
   private readonly environments: RuntimeEnvironmentRegistry;
   private readonly api: LocalRuntimeApiRouter;
   private readonly realtime: LocalRealtimeController;
   private readonly controls: LocalRuntimeControlRoutes;
+  private readonly notifications: WebNotificationService;
+  private readonly notificationRoutes: WebNotificationRoutes;
 
   constructor(options: LocalRuntimeBackendOptions) {
     const resolvedOptions = {
@@ -27,16 +35,45 @@ export class LocalRuntimeWebBackend {
         providerAdapters: options.providerAdapters,
       }),
     };
-    const clients = new RealtimeClientHub();
+    const clients = new RealtimeClientHub((event) =>
+      this.notifications.observe(event),
+    );
+    this.clients = clients;
     const requests = new LocalRequestExecution(clients);
     this.environments = new RuntimeEnvironmentRegistry(resolvedOptions, {
       requestOptions: (run) => requests.scheduledRequestOptions(run),
       publish: (event) => requests.publishScheduled(event),
+      publishLearning: createLearningChangeNotifier(clients),
     });
+    const desktop = new DesktopNotificationDelivery(
+      options.rootDir ?? process.cwd(),
+    );
+    this.notifications = new WebNotificationService({
+      hasEnvironment: (id) => {
+        const configured = this.environments.environmentConfig();
+        if (!configured) return id === options.defaultEnvironmentId;
+        return configured.environments.some(
+          (environment) => environment.id === id,
+        );
+      },
+      environment: (id) => this.environments.get(id),
+      isViewing: (environment, session) =>
+        clients.presence.isViewing(environment, session),
+      changed: (environment) =>
+        clients.broadcast({
+          type: "workspace_changed",
+          environment,
+          resources: ["notifications"],
+        }),
+      desktop: () => desktop.status(),
+      deliver: (item, signal) => desktop.send(item, signal),
+    });
+    this.notificationRoutes = new WebNotificationRoutes(this.notifications);
     this.api = new LocalRuntimeApiRouter(
       resolvedOptions,
       this.environments,
       requests,
+      createWorkspaceChangeNotifier(clients),
     );
     this.realtime = new LocalRealtimeController(
       resolvedOptions,
@@ -53,6 +90,7 @@ export class LocalRuntimeWebBackend {
     pathname: string,
   ): Promise<boolean> {
     try {
+      if (await this.notificationRoutes.handle(req, res, pathname)) return true;
       if (pathname === "/web-health" || pathname === "/web-api/health") {
         this.controls.health(res);
         return true;
@@ -94,6 +132,10 @@ export class LocalRuntimeWebBackend {
     this.realtime.connect(client);
   }
 
+  notifyHostConnectionChanged(): void {
+    this.clients.broadcast({ type: "system-host.changed" });
+  }
+
   async start(environmentIds: readonly string[]): Promise<void> {
     await this.api.initializeSessionReadState(environmentIds);
     await this.environments.start(environmentIds);
@@ -103,7 +145,8 @@ export class LocalRuntimeWebBackend {
     return this.environments.environmentConfig();
   }
 
-  stop(): Promise<void> {
-    return this.environments.stop();
+  async stop(): Promise<void> {
+    await this.notifications.stop();
+    await this.environments.stop();
   }
 }

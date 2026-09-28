@@ -19,7 +19,6 @@ import {
   PLANNER_CHILD_ROLE_IDS,
   PLANNER_DISPATCH_ITEM_COUNT,
   PLANNER_OBJECTIVE_MAX_LENGTH,
-  PLANNER_RESULT_MAX_LENGTH,
   type PlannerChildRoleId,
   type PlannerDecisionPlanContext,
 } from "./contracts.js";
@@ -84,13 +83,13 @@ export function createPlannerDecisionFormat(
       ? [
           exactObject({
             action: literal("return_result"),
-            result: boundedText(PLANNER_RESULT_MAX_LENGTH),
+            result: { type: "string", minLength: 1 },
           }),
         ]
       : []),
     exactObject({
       action: literal("return_failure"),
-      reason: boundedText(PLANNER_RESULT_MAX_LENGTH),
+      reason: { type: "string", minLength: 1 },
     }),
     ...invokeVariantDefinitions.map(({ schema }) => schema),
   ];
@@ -102,18 +101,6 @@ export function createPlannerDecisionFormat(
     name: "planner_decision",
     strict: true,
     postValidatedSchemaConstraints: [
-      ...(!selectingPlan
-        ? [
-            {
-              keyword: "maxLength" as const,
-              path: `${structuredDecisionVariantSchemaPath(0, variants.length)}/properties/result/maxLength`,
-            },
-          ]
-        : []),
-      {
-        keyword: "maxLength",
-        path: `${structuredDecisionVariantSchemaPath(failureVariantIndex, variants.length)}/properties/reason/maxLength`,
-      },
       ...invokeVariantDefinitions.flatMap(({ worker }, index) =>
         invokeRoleMaxLengthConstraints(
           planContext,

@@ -791,7 +791,6 @@ describe("generic Worker capability decision boundary", () => {
     });
     expect(format).toMatchObject({
       postValidatedSchemaConstraints: [
-        {},
         {
           keyword: "maxLength",
           path: "/properties/decision/anyOf/2/properties/intent/maxLength",
@@ -4761,7 +4760,7 @@ describe("generic Worker capability decision boundary", () => {
     expect(executionReference).toEqual({
       executionId: "capability-execution-1",
     });
-    if ("commit" in executionReference) {
+    if ("commit" in executionReference || "kind" in executionReference) {
       throw new Error("unexpected operation supervision intervention");
     }
 

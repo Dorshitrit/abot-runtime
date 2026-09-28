@@ -3,8 +3,9 @@ import { once } from "node:events";
 import WebSocket, { WebSocketServer } from "ws";
 import { expect, test, vi } from "vitest";
 import type { ToolImplementation } from "../../plugin-sdk/index.js";
-import { connectNativeHost } from "../../../plugins/system/source/companion/native-session.js";
-import type { HostIdentity } from "../../../plugins/system/source/companion/protocol.js";
+import { connectNativeHost } from "../../computer-access/companion/native-session.js";
+import type { HostIdentity } from "../../computer-access/companion/protocol.js";
+import { COMPANION_RELEASE_VERSION } from "../../computer-access/companion/release-version.js";
 
 const identity: HostIdentity = {
   name: "Native test",
@@ -84,6 +85,8 @@ test("persists pairing before a graceful socket close settles and sends credenti
           type: "hello",
           version: 1,
           identity,
+          capabilities: ["passive-observations-v1", "computer_control_v1"],
+          companionVersion: COMPANION_RELEASE_VERSION,
         });
         client.send(JSON.stringify({ type: "paired", hostId, credential }));
         client.close(1000, "reconnect_with_credential");

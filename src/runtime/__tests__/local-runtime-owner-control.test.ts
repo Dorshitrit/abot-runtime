@@ -1,36 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { LocalRequestControls } from "../local-host/app-request-control.js";
-import type { LocalRuntimePeer } from "../local-host/contracts.js";
+import { makeOwnerControlPeer as makePeer } from "./support/local-runtime-owner-peer.js";
 import type { ToolApprovalRequest } from "../ports.js";
 import type { SchedulerRun } from "../scheduler/contracts.js";
-
-function makePeer(id: string) {
-  const listeners = new Set<() => void>();
-  let closed = false;
-  const callClient = vi.fn<LocalRuntimePeer["callClient"]>(async () => ({
-    approved: true,
-  }));
-  const peer: LocalRuntimePeer = {
-    id,
-    callClient,
-    onClose(listener) {
-      if (closed) listener();
-      else listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-  };
-  return {
-    peer,
-    callClient,
-    close() {
-      closed = true;
-      for (const listener of listeners) listener();
-      listeners.clear();
-    },
-  };
-}
 
 const run: SchedulerRun = {
   id: "run",
@@ -48,11 +20,11 @@ const run: SchedulerRun = {
   trigger: "manual",
   status: "running",
 };
-const approval = {
+const approval: ToolApprovalRequest = {
   requestId: run.requestId,
   approvalId: "approval",
-  call: { tool: "tool", input: {} },
-} as unknown as ToolApprovalRequest;
+  call: { tool: "tool", params: {} },
+};
 
 describe("local owner request controls", () => {
   it("preloads steering once and returns the owner's canonical duplicate/conflict result", () => {
@@ -83,6 +55,26 @@ describe("local owner request controls", () => {
       reason: "request_not_active",
     });
   });
+
+  it.each(["finalizing", "cancelled"])(
+    "projects exact request activity through %s until canonical finish",
+    (phase) => {
+      const controls = new LocalRequestControls(() => {});
+      const { peer } = makePeer("origin");
+      const options = controls.ordinary("ordinary", peer, {}, "session");
+      expect(controls.listApprovals()).toEqual([]);
+      expect(controls.hasActiveRequest("ordinary", "session")).toBe(true);
+      expect(controls.hasActiveRequest("ordinary", "other")).toBe(false);
+      expect(controls.hasActiveRequest("absent", "session")).toBe(false);
+      expect(controls.hasActiveRequest(undefined, "session")).toBe(false);
+      expect(controls.hasActiveRequest("ordinary", undefined)).toBe(false);
+      if (phase === "finalizing") options.claimFinalization!();
+      else controls.cancel("ordinary", "session");
+      expect(controls.hasActiveRequest("ordinary", "session")).toBe(true);
+      controls.finish("ordinary");
+      expect(controls.hasActiveRequest("ordinary", "session")).toBe(false);
+    },
+  );
 
   it("does not install an approval controller when none is available", () => {
     const controls = new LocalRequestControls(() => {});
@@ -137,44 +129,34 @@ describe("local owner request controls", () => {
     expect(second.callClient).not.toHaveBeenCalled();
   });
 
-  it("rejects a lost peer's pending approval without replay to another peer", async () => {
-    const controls = new LocalRequestControls(() => {});
-    const first = makePeer("first");
-    const second = makePeer("second");
-    first.callClient.mockImplementation(() => new Promise(() => {}));
-    controls.register(first.peer);
-    controls.register(second.peer);
-    const pending = controls
-      .scheduled(run)
-      .toolApprovalController!.requestToolApproval(approval);
-    first.close();
-    await expect(pending).resolves.toMatchObject({
-      approved: false,
-      reason: expect.stringContaining("closed"),
-    });
-    expect(second.callClient).not.toHaveBeenCalled();
-    controls.finish(run.requestId);
-    await expect(
-      controls
-        .scheduled({ ...run, requestId: "next" })
-        .toolApprovalController!.requestToolApproval(approval),
-    ).resolves.toEqual({ approved: true });
-    expect(second.callClient).toHaveBeenCalledOnce();
-    controls.stop();
-  });
-
-  it("resolves immediately if an already disconnected peer is selected", async () => {
+  it("retains scheduled approval with canonical run metadata after every control peer detaches", async () => {
     const controls = new LocalRequestControls(() => {});
     const origin = makePeer("origin");
-    const options = controls.ordinary("ordinary", origin.peer, {
-      approvalAvailable: true,
-    });
+    await controls.register(origin.peer);
+    const options = controls.scheduled(run);
     origin.close();
-    await expect(
-      options.toolApprovalController!.requestToolApproval(approval),
-    ).resolves.toMatchObject({ approved: false });
-    expect(origin.callClient).not.toHaveBeenCalled();
-    controls.stop();
+    const pending =
+      options.toolApprovalController!.requestToolApproval(approval);
+    expect(controls.listApprovals(run.sessionId)).toEqual([
+      {
+        sessionId: run.sessionId,
+        request: approval,
+        run,
+      },
+    ]);
+    expect(
+      controls.decideApproval(
+        {
+          sessionId: run.sessionId,
+          requestId: run.requestId,
+          approvalId: approval.approvalId,
+          approved: false,
+        },
+        makePeer("different-scheduled-observer").peer,
+      ),
+    ).toEqual({ accepted: true });
+    await expect(pending).resolves.toEqual({ approved: false });
+    controls.finish(run.requestId);
   });
 
   it("cancels remote approval when its canonical abort signal fires", async () => {
@@ -190,11 +172,11 @@ describe("local owner request controls", () => {
       approvalAvailable: true,
     });
     const pending = options.toolApprovalController!.requestToolApproval(
-      approval,
+      { ...approval, requestId: "ordinary" },
       { abortSignal: controller.signal },
     );
     controller.abort();
-    await expect(pending).resolves.toMatchObject({ approved: false });
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     expect(origin.callClient).toHaveBeenCalledWith("request.approval.cancel", [
       approval.approvalId,
     ]);
@@ -208,10 +190,12 @@ describe("local owner request controls", () => {
     const options = controls.ordinary("ordinary", origin.peer, {
       approvalAvailable: true,
     });
-    const pending =
-      options.toolApprovalController!.requestToolApproval(approval);
+    const pending = options.toolApprovalController!.requestToolApproval({
+      ...approval,
+      requestId: "ordinary",
+    });
     controls.stop();
-    await expect(pending).resolves.toMatchObject({ approved: false });
+    await expect(pending).rejects.toThrow("request_interrupted");
     expect(options.requestSteering!.isCurrent(0)).toBe(true);
     await options.requestSteering!.close();
   });

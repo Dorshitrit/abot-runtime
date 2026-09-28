@@ -76,6 +76,7 @@ export async function invokeRawModelStep(params: {
       throwIfOutputIncomplete({
         requestId: params.request.requestId,
         modelStep: params.modelStep,
+        abortSignal: params.request.abortSignal,
         outputDiagnostics,
       });
       return text;
@@ -122,6 +123,7 @@ export async function invokeRepairableRawModelStep(params: {
         throwIfOutputIncomplete({
           requestId: params.request.requestId,
           modelStep: params.modelStep,
+          abortSignal: params.request.abortSignal,
           outputDiagnostics,
         });
         const validation = params.validate(text, outputDiagnostics);
@@ -142,6 +144,7 @@ export async function invokeRepairableRawModelStep(params: {
         };
         traceDebug("runtime.model", "step.invalid_output", diagnostic);
         if (finalAttempt) {
+          params.request.abortSignal.throwIfAborted();
           traceDebug("runtime.model", "step.repair.exhausted", diagnostic);
           throw new RawModelValidationError({
             stage: validation.stage,
@@ -215,11 +218,16 @@ function throwIfOutputIncomplete(params: {
   requestId: string;
   modelStep: ModelStep;
   outputDiagnostics: ModelStepOutputDiagnostics;
+  abortSignal: AbortSignal;
 }): void {
-  const error = resolveOutputIncompleteError(params.outputDiagnostics);
+  const error = resolveOutputIncompleteError(
+    params.outputDiagnostics,
+    params.modelStep,
+  );
   if (!error) {
     return;
   }
+  params.abortSignal.throwIfAborted();
   traceDebug("runtime.model", "step.output_incomplete", {
     requestId: params.requestId,
     modelStep: params.modelStep,

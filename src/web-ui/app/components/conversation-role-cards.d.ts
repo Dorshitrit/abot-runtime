@@ -9,22 +9,15 @@ export declare function createConversationRoleCards(options?: {
     opener: HTMLElement,
   ) => unknown;
 }): {
-  createSummaryNode(
-    cards: ReturnType<typeof buildConversationRoleCards>,
-  ): HTMLElement | null;
   createNode(input: {
     requestId: string;
     cards: ReturnType<typeof buildConversationRoleCards>;
+    heading?: HTMLElement;
     timeline: HTMLElement;
     hasTimeline: boolean;
     onViewChange?: () => void;
   }): HTMLElement;
   isTimeline(requestId: string): boolean;
-  bindScroll(input: {
-    requestId: string;
-    body: HTMLElement;
-    details: HTMLDetailsElement;
-  }): () => boolean;
   forget(requestId: string): void;
   reset(): void;
 };

@@ -2,6 +2,7 @@ import type {
   LongTermMemoryRecord,
   LongTermMemoryStatus,
 } from "../contracts.js";
+import type { LearningCandidateRecord } from "../maturation/contracts.js";
 
 export type LongTermMemoryManagementErrorCode =
   | "long_term_memory_disabled"
@@ -22,6 +23,7 @@ export type LongTermMemoryManagementContext = Readonly<{
 export type MemoryListInput = Readonly<{
   limit?: number;
   offset?: number;
+  origin?: "passive_observation";
 }>;
 
 export type MemoryListResult = Readonly<{
@@ -42,6 +44,8 @@ export type MemoryCreateInput = Readonly<{
   tags: readonly string[];
   source: MemoryManagementSource;
   context: LongTermMemoryManagementContext;
+  /** Atomically replace this exact candidate with the explicitly saved fact. */
+  supersedesCandidate?: Pick<LearningCandidateRecord, "id" | "revision">;
 }>;
 
 export type MemoryCreateResult = Readonly<{
@@ -54,6 +58,7 @@ export type MemoryUpdateInput = Readonly<{
   content: string;
   tags: readonly string[];
   context: LongTermMemoryManagementContext;
+  supersedesCandidate?: Pick<LearningCandidateRecord, "id" | "revision">;
 }>;
 
 export type MemoryUpdateResult = Readonly<{

@@ -1,3 +1,6 @@
+import type { RequestToolResources } from "../capabilities/request-tool-resources.js";
+import type { CapabilityApprovalGate } from "../orchestration/worker-capabilities/approval-contracts.js";
+import type { RequestApprovalExecution } from "./approval-wait/snapshot.js";
 import type {
   ModelGatewayAttachment,
   ModelGatewayPolicyConfig,
@@ -42,6 +45,12 @@ export type RunRequestMessage = {
 };
 
 export type RequestHandlerOptions = {
+  /** Opted-in client; the managed owner supplies the trusted activation below. */
+  durableApprovals?: boolean;
+  approvalExecution?: RequestApprovalExecution;
+  abortSignal?: AbortSignal;
+  /** Synchronously close cancellation before final-response persistence starts. */
+  claimFinalization?: () => void;
   runtimeConfig?: RuntimeConfig;
   eventSinkFactory?: EventSinkFactory;
   modelGatewayClient?: ModelGatewayClient;
@@ -56,6 +65,10 @@ export type RequestHandlerOptions = {
 
 /** Exact provider-free seed used to construct one request execution scope. */
 export type RequestExecutionSeed = Readonly<{
+  toolResources?: RequestToolResources;
+  approvalGate?: CapabilityApprovalGate;
+  /** Disambiguates model invocations across durable execution segments. */
+  modelInvocationScope?: string;
   requestId: string;
   sessionId: string;
   prompt: string;
@@ -118,6 +131,8 @@ export type RequestSessionSnapshot = Readonly<{
 
 /** Model configuration and gateway selected once for this request. */
 export type RequestModelRuntime = Readonly<{
+  toolResources?: RequestExecutionSeed["toolResources"];
+  modelInvocationScope?: RequestExecutionSeed["modelInvocationScope"];
   runnerConfig: RequestExecutionSeed["runnerConfig"];
   modelPreference?: RequestExecutionSeed["modelPreference"];
   modelPolicy?: RequestExecutionSeed["modelPolicy"];
@@ -132,6 +147,7 @@ export type RequestMemoryRuntime = Readonly<{
 
 /** Request-local cancellation, steering, capability controls, and events. */
 export type RequestLifecycleRuntime = Readonly<{
+  approvalGate?: RequestExecutionSeed["approvalGate"];
   requestSteering?: RequestExecutionSeed["requestSteering"];
   toolPermissionMode: RequestExecutionSeed["toolPermissionMode"];
   toolApprovalController?: RequestExecutionSeed["toolApprovalController"];
@@ -153,6 +169,8 @@ export type RequestModelInvocationView = Readonly<
   Pick<
     RequestExecutionSeed,
     | "requestId"
+    | "toolResources"
+    | "modelInvocationScope"
     | "runnerConfig"
     | "agentMode"
     | "modelPreference"

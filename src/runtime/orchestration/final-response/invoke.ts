@@ -9,6 +9,7 @@ import {
   type RootFinalResponseValidator,
 } from "./authoring-contract.js";
 import { createRootAuthoredResponseFormat } from "./format.js";
+import type { ConversationMemoryAuthoringContext } from "../../long-term-memory/conversation-authoring/context.js";
 
 export function invokeRootAuthoredResponse(params: {
   request: BoundRequestModelInvocationContext;
@@ -20,6 +21,7 @@ export function invokeRootAuthoredResponse(params: {
   contextCompaction?: ModelStepContextCompactionController;
   maxResponseChars?: number;
   validateFinalResponse?: RootFinalResponseValidator;
+  memoryAuthoringContext?: ConversationMemoryAuthoringContext;
 }): Promise<RootAuthoredResponse> {
   return invokeStructuredModelStep({
     request: params.request,
@@ -34,6 +36,7 @@ export function invokeRootAuthoredResponse(params: {
       : {}),
     parse: (text) =>
       parseRootAuthoredResponse(text, {
+        ...(params.memoryAuthoringContext ? { memoryAuthoringContext: params.memoryAuthoringContext } : {}),
         ...(params.maxResponseChars !== undefined
           ? { maxResponseChars: params.maxResponseChars }
           : {}),

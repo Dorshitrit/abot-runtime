@@ -30,6 +30,7 @@ export interface ModelSetupWizardDependencies {
   beginRuntimeMutation?: (subject?: string) => boolean;
   endRuntimeMutation?: () => void;
   onSaved?: (model: AddedModelIdentity) => void;
+  onDeferred?: (model: AddedModelIdentity) => Promise<boolean>;
   onComplete?: (model: AddedModelIdentity) => Promise<boolean>;
   onClosed?: (result: { completed: boolean }) => void;
 }

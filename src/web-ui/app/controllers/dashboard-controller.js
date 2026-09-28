@@ -1,3 +1,6 @@
+import { createEventRefresh } from "../lib/event-refresh.js";
+import { dashboardRefreshResources } from "../lib/workspace-change.js";
+
 export function createDashboardController({
   client,
   getEnvironmentId,
@@ -8,6 +11,7 @@ export function createDashboardController({
   isVisible = () => document.visibilityState === "visible",
   setTimer = setTimeout,
   clearTimer = clearTimeout,
+  approvalData,
 }) {
   const state = {
     runs: [],
@@ -22,7 +26,14 @@ export function createDashboardController({
   let environmentId = "";
   let sessionsEnvironmentId = "";
   let revision = 0;
-  let timer;
+  const pendingResources = new Set();
+  const eventRefresh = createEventRefresh({
+    canRefresh,
+    refresh: readPendingResources,
+    setTimer,
+    clearTimer,
+  });
+  let activitySettled = false;
 
   function snapshot() {
     const sessions =
@@ -31,6 +42,7 @@ export function createDashboardController({
       ...state,
       sessions,
       supportsSchedules: client.supportsSchedules(),
+      ...approvalData?.snapshot(),
     };
   }
   const publish = () => render(snapshot());
@@ -44,23 +56,27 @@ export function createDashboardController({
     if (!active) return false;
     return isVisible();
   }
-  function scheduleRefresh() {
-    clearTimer(timer);
-    if (!canRefresh()) return;
-    timer = setTimer(() => void refresh(), 10000);
+  function cancelRefresh() {
+    eventRefresh.cancel();
+    pendingResources.clear();
   }
   async function refreshActivity() {
     const readEnvironmentId = getEnvironmentId();
     const readRevision = ++revision;
     const environmentChanged = environmentId !== readEnvironmentId;
     environmentId = readEnvironmentId;
-    if (environmentChanged) state.runs = [];
-    state.loadingActivity = state.runs.length === 0;
-    state.activityError = "";
+    if (environmentChanged) {
+      state.runs = [];
+      activitySettled = false;
+      state.activityError = "";
+    }
+    state.loadingActivity = !activitySettled;
     publish();
     if (!client.supportsSchedules()) {
       state.runs = [];
       state.loadingActivity = false;
+      activitySettled = true;
+      state.activityError = "";
       publish();
       return;
     }
@@ -70,6 +86,7 @@ export function createDashboardController({
       });
       if (!hasCurrentActivityRead(readRevision, readEnvironmentId)) return;
       state.runs = result.runs || [];
+      state.activityError = "";
     } catch (error) {
       if (!hasCurrentActivityRead(readRevision, readEnvironmentId)) return;
       state.activityError =
@@ -77,20 +94,39 @@ export function createDashboardController({
     } finally {
       if (hasCurrentActivityRead(readRevision, readEnvironmentId)) {
         state.loadingActivity = false;
+        activitySettled = true;
         publish();
       }
     }
   }
-  async function refresh() {
+  async function readPendingResources() {
+    const resources = [...pendingResources];
+    pendingResources.clear();
+    const readers = {
+      sessions: loadSessions,
+      activity: refreshActivity,
+      approvals: () => approvalData?.refresh(),
+    };
+    await Promise.allSettled(resources.map((resource) => readers[resource]()));
+  }
+  function refresh() {
+    if (!canRefresh()) return Promise.resolve();
+    for (const resource of ["sessions", "activity", "approvals"])
+      pendingResources.add(resource);
+    return eventRefresh.run();
+  }
+  function handleRealtime(message) {
     if (!canRefresh()) return;
-    clearTimer(timer);
-    await Promise.allSettled([loadSessions(), refreshActivity()]);
-    scheduleRefresh();
+    const resources = dashboardRefreshResources(message, getEnvironmentId());
+    if (!resources.length) return;
+    for (const resource of resources) pendingResources.add(resource);
+    eventRefresh.schedule();
   }
   return {
     snapshot,
     publish,
     refresh,
+    handleRealtime,
     runtimeAvailabilityChanged() {
       const available = isRuntimeReady();
       if (runtimeReady === available) {
@@ -99,7 +135,8 @@ export function createDashboardController({
       }
       runtimeReady = available;
       revision += 1;
-      clearTimer(timer);
+      if (!available) approvalData?.invalidate();
+      cancelRefresh();
       state.activityError = "";
       state.sessionsError = "";
       publish();
@@ -112,20 +149,25 @@ export function createDashboardController({
     setActive(value) {
       const entering = value && !active;
       active = value;
-      clearTimer(timer);
+      cancelRefresh();
       if (entering) void refresh();
     },
     sessionsChanged(status = {}) {
       if (status.environmentId && status.environmentId !== getEnvironmentId())
         return;
       if (status.status === "ready") sessionsEnvironmentId = getEnvironmentId();
-      state.loadingSessions = status.status === "loading";
-      state.sessionsError = status.error || "";
+      state.loadingSessions =
+        status.status === "loading" &&
+        sessionsEnvironmentId !== getEnvironmentId();
+      if (status.status !== "loading") state.sessionsError = status.error || "";
       publish();
     },
     environmentChanged() {
+      cancelRefresh();
       revision += 1;
+      approvalData?.invalidate();
       sessionsEnvironmentId = "";
+      activitySettled = false;
       Object.assign(state, {
         runs: [],
         activityError: "",
@@ -137,7 +179,7 @@ export function createDashboardController({
       void refresh();
     },
     visibilityChanged() {
-      clearTimer(timer);
+      cancelRefresh();
       if (canRefresh()) void refresh();
     },
   };

@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import type WebSocket from "ws";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionService } from "../../../sessions/session-service.js";
@@ -107,6 +108,9 @@ export async function createNativeSessionHttpFixture() {
   });
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   return {
+    connectRealtime(client: WebSocket): void {
+      backend.handleRealtimeConnection(client);
+    },
     paths(environment = "prod") {
       return configFor(environment).paths;
     },

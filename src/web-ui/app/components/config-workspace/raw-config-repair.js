@@ -18,7 +18,7 @@ export function selectMalformedConfigForRepair(state, files, configFileKey) {
   const file = files.find((entry) => configRequiresRawRepair(entry));
   if (!file) return;
   state.selectedRawConfigKey = configFileKey(file);
-  state.activeCategory = "advanced";
+  state.activeCategory = "models";
   state.rawPanelOpen = true;
 }
 

@@ -14,6 +14,9 @@ function displayedAssistantReadBoundary(messages) {
   const numericId = Number(textOf(message.id).replace(/^msg-/, ""));
   const hasPersistedMessageId = Number.isSafeInteger(numericId) && numericId > 0;
   if (hasPersistedMessageId) return { readThroughMessageId: numericId };
+  const persistedId = message.persistedMessageId;
+  const hasPersistedStringId = typeof persistedId === "string" && persistedId.length > 0 && persistedId === message.id;
+  if (hasPersistedStringId) return { readThroughMessageId: persistedId };
   const requestId = textOf(message.requestId).trim();
   if (!requestId) return null;
   return {

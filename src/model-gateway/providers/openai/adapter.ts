@@ -1,4 +1,5 @@
 import { fetchProviderWithTrace } from "../../model-io-trace.js";
+import { toolMediaSafeError, toolMediaSafeEvent, toolMediaSafeMessage } from "../../observability/tool-media-privacy.js";
 import type { ModelProviderAdapter } from "../contracts.js";
 import {
   emitOpenAIMessageOutputDiagnostic,
@@ -21,7 +22,7 @@ import { embedWithOpenAI } from "./embeddings.js";
 export function createOpenAIProviderAdapter(): ModelProviderAdapter {
   return Object.freeze({
     type: "openai",
-    supportsImageInput: false,
+    supportsImageInput: true,
     embed: embedWithOpenAI,
     countInputTokens: countOpenAIInputTokens,
     async invoke(params) {
@@ -70,7 +71,7 @@ export function createOpenAIProviderAdapter(): ModelProviderAdapter {
         return {
           kind: "error" as const,
           statusCode: response.status || 502,
-          message: message || "openai error",
+          message: toolMediaSafeMessage(message || "openai error", params.requestBody),
         };
       }
 
@@ -83,11 +84,13 @@ export function createOpenAIProviderAdapter(): ModelProviderAdapter {
             let outcome: OpenAIStreamTerminationOutcome = "completed";
             let failure: unknown;
             try {
-              await forwardOpenAIResponsesStream(body, writer, streamOptions);
+              await forwardOpenAIResponsesStream(body, {
+                emit: (event) => writer.emit(toolMediaSafeEvent(event, params.requestBody)),
+              }, streamOptions);
             } catch (error) {
               outcome = resolveOpenAIStreamFailureOutcome(error);
-              failure = error;
-              throw error;
+              failure = toolMediaSafeError(error, params.requestBody);
+              throw failure;
             } finally {
               emitOpenAIStreamTermination({
                 invocationParams: params,
@@ -121,8 +124,8 @@ export function createOpenAIProviderAdapter(): ModelProviderAdapter {
         };
       } catch (error) {
         outcome = resolveOpenAIStreamFailureOutcome(error);
-        failure = error;
-        throw error;
+        failure = toolMediaSafeError(error, params.requestBody);
+        throw failure;
       } finally {
         emitOpenAIStreamTermination({
           invocationParams: params,

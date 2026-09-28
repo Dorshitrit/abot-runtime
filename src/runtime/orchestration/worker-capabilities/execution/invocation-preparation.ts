@@ -1,3 +1,4 @@
+import { preparationRejectionSnapshot } from "./preparation-rejection.js";
 import {
   isRoleOperationFingerprint,
   type RoleCallDependencyResult,
@@ -91,6 +92,16 @@ export async function prepareBoundInvocation<TContext>(
       actionFingerprint: prepared.actionFingerprint,
       acceptedControls: acceptedControls.value,
       execute: prepared.execute,
+      ...(prepared.snapshot !== undefined
+        ? { snapshot: prepared.snapshot }
+        : {}),
+      ...(prepared.onAdmitted ? { onAdmitted: prepared.onAdmitted } : {}),
+      ...(prepared.approvalRequest
+        ? { approvalRequest: prepared.approvalRequest }
+        : {}),
+      ...(prepared.applyApprovalDecision
+        ? { applyApprovalDecision: prepared.applyApprovalDecision }
+        : {}),
     });
   } catch (error: unknown) {
     if (error instanceof Error && error.name === "AbortError") throw error;
@@ -181,6 +192,11 @@ function createPreparationFailureExecution<TContext>(
   return Object.freeze({
     ...(actionFingerprint ? { actionFingerprint } : {}),
     acceptedControls: params.controls,
+    snapshot: preparationRejectionSnapshot(
+      actionFingerprint,
+      params.controls,
+      error,
+    ),
     execute: async () => {
       throw error;
     },

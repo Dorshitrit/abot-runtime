@@ -139,7 +139,7 @@ describe("conversation source cards", () => {
       ]),
     ])!;
     expect(child(node, ".conversation-source-status").textContent).toBe(
-      "Snippet · failed",
+      "Snippet · not retrieved",
     );
     expect(
       child(node, ".conversation-source-status").classList.contains(
@@ -148,7 +148,7 @@ describe("conversation source cards", () => {
     ).toBe(true);
     const link = child(node, ".conversation-source-link");
     expect(link.title).toContain("Snippet returned");
-    expect(link.title).toContain("Fetch failed");
+    expect(link.title).toContain("Page content not retrieved");
     expect(link.title).toContain("Partial content");
     expect(link.getAttribute("aria-label")).toBe(link.title);
   });
@@ -240,7 +240,7 @@ describe("conversation source cards", () => {
 });
 
 describe("sources composed with activity role cards", () => {
-  test("keeps sources in Activity across role/timeline toggles with summary avatars intact", () => {
+  test("keeps sources alongside inline agents across role/timeline toggles", () => {
     const { documentRoot } = createSourceDom();
     const activity = createConversationActivity({ documentRoot });
     const input = {
@@ -268,9 +268,9 @@ describe("sources composed with activity role cards", () => {
     const body = child(node, ".conversation-activity-body");
     const sources = child(node, ".conversation-sources");
     expect(sources.parentElement).toBe(body);
-    expect(
-      node.querySelector(".conversation-role-summary-strip"),
-    ).not.toBeNull();
+    expect(node.tagName).toBe("section");
+    expect(child(node, ".conversation-role-list").hidden).toBe(false);
+    expect(child(node, ".conversation-role-title").textContent).toBe("Worker");
     expect(child(node, ".conversation-activity-facts").textContent).toBe(
       "1 web search · 1 source",
     );

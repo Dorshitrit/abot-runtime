@@ -65,7 +65,7 @@
 .permission-mode-button:hover,
 .permission-mode-button.open {
   border-color: transparent;
-  background: rgba(95, 139, 182, 0.08);
+  background: var(--control-bg-hover);
   color: var(--text);
 }
 
@@ -94,7 +94,7 @@
   width: 18px;
   height: 18px;
   border-radius: 5px;
-  background: rgba(93, 133, 173, 0.1);
+  background: var(--control-bg);
   color: var(--muted);
   font-size: var(--font-size-xs);
   font-weight: 400;
@@ -136,12 +136,12 @@
 .permission-mode-button {
   width: auto;
   font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .permission-mode-button.full {
   background: transparent;
-  color: #d3b875;
+  color: var(--amber);
 }
 
 .agent-mode-menu,
@@ -158,8 +158,8 @@
   overscroll-behavior: contain;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #132438;
-  box-shadow: 0 18px 42px rgba(0, 6, 16, 0.34);
+  background: var(--panel-raised);
+  box-shadow: var(--shadow);
   opacity: 0;
   pointer-events: none;
   transform: translateY(4px);
@@ -209,7 +209,7 @@
 .permission-mode-option:hover,
 .permission-mode-option.selected {
   border-color: transparent;
-  background: rgba(91, 138, 183, 0.11);
+  background: var(--control-bg-hover);
 }
 
 .model-select-option {
@@ -228,7 +228,7 @@
 }
 
 .model-select-check {
-  color: #8eb7ec;
+  color: var(--accent);
   text-align: center;
 }
 
@@ -260,7 +260,7 @@
   margin-top: 2px;
   color: var(--muted-2);
   font-size: var(--font-size-sm);
-  font-weight: 450;
+  font-weight: 400;
 }
 
 .permission-mode-option {
@@ -311,7 +311,7 @@
     height: 18px;
     color: var(--muted);
     font-size: var(--font-size-md);
-    font-weight: 500;
+    font-weight: 400;
   }
 
   .agent-mode-button::after {

@@ -71,14 +71,15 @@ describe("web ui controller transport ownership", () => {
     const controller = createOperationsController({
       dom: dom as never,
       client,
+      getEnvironmentId: () => "dev",
     });
 
     await controller.loadRuntimeStatus();
     await controller.loadRuntimeLogs();
     await controller.loadSystemHealth();
 
-    expect(client.getRuntimeStatus).toHaveBeenCalledOnce();
-    expect(client.getRuntimeLogs).toHaveBeenCalledWith(100);
+    expect(client.getRuntimeStatus).toHaveBeenCalledExactlyOnceWith("dev");
+    expect(client.getRuntimeLogs).toHaveBeenCalledWith(100, "dev");
     expect(client.getSystemHealth).toHaveBeenCalledOnce();
     expect(dom.runtimeLogs.textContent).toBe("ready");
   });

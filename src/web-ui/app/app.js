@@ -1,3 +1,4 @@
+import { isWorkspaceChange } from "./lib/workspace-change.js";
 import { createAppState } from "./app-state.js";
 import { createProjectsFeature } from "./projects-feature.js";
 import {
@@ -5,10 +6,13 @@ import {
   isCurrentComposerSubmissionScope,
 } from "./lib/composer-submission-scope.js";
 import { createComposerSurfaceController } from "./controllers/composer-surface-controller.js";
-import { bootstrapWebApp } from "./app-bootstrap.js";
-import { bindRuntimeSetupPageLifecycle } from "./runtime-setup-page-lifecycle.js";
+import { startWebApp } from "./app-bootstrap.js";
+import { createNotificationsFeature } from "./notifications-feature.js";
+import { bindWebAppWorkspaceLifecycle } from "./app-page-bindings.js";
 import { createConfigurationFeature } from "./configuration-environment-refresh.js";
+import { isConfigurationWorkspace } from "./lib/configuration-pages.js";
 import { createDashboardFeature } from "./dashboard-feature.js";
+import { createPassiveLearningFeature } from "./passive-learning-feature.js";
 import { createComposerWorkspaceController } from "./controllers/composer-workspace-controller.js";
 import { createHomeComposerFeature } from "./controllers/home-composer-feature.js";
 import { createHomeConversationActivation } from "./controllers/home-conversation-activation.js";
@@ -26,7 +30,7 @@ import { createSessionComposerQueue } from "./lib/session-composer-queue.js";
 import { createRuntimeWebClient } from "./services/runtime-web-client.js";
 import { createClientPreferences } from "./services/client-preferences.js";
 import { createOperationsController } from "./controllers/operations-controller.js";
-import { createRealtimeTransport } from "./services/realtime-transport.js";
+import { createAppRealtimeTransport } from "./app-realtime-transport.js";
 import { createSteerController } from "./controllers/steer-controller.js";
 import { createSessionController } from "./controllers/session-controller.js";
 import { createComposerAttachmentsController } from "./controllers/composer-attachments-controller.js";
@@ -57,41 +61,30 @@ let conversationView;
 let configWorkspace;
 let schedulesFeature;
 let dashboardFeature;
+let passiveLearning;
 let homeComposer;
 let runtimeSelection;
 let projectsFeature;
+let workspaceRoutes;
+let notifications;
 const operationsController = createOperationsController({
   dom,
   client: runtimeClient,
+  getEnvironmentId: selectedEnvironmentId,
 });
-const realtimeTransport = createRealtimeTransport({
+const realtimeTransport = createAppRealtimeTransport({
+  state,
   getConfig: () => state.config,
   onMessage: handleRealtimeMessage,
-  onOpen: () => {
-    state.connected = true;
-    setConnectionLabel("Connected");
+  setConnectionLabel,
+  rejectPendingSteers,
+  recordControlEvent,
+  onConnected: () => {
+    void dashboardFeature?.refresh();
+    schedulesFeature?.reconnect();
+    passiveLearning?.reconnect();
+    notifications?.reconnect();
     if (state.currentSessionId) subscribeSession(state.currentSessionId);
-  },
-  onClose: () => {
-    state.connected = false;
-    rejectPendingSteers(
-      "Realtime connection closed before steer was accepted.",
-    );
-    setConnectionLabel("Reconnecting", true);
-  },
-  onError: () => {
-    state.connected = false;
-    setConnectionLabel("Connection issue", true);
-  },
-  onParseError: (error, preview) => {
-    recordControlEvent({
-      type: "control",
-      name: "Realtime parse error",
-      tone: "failed",
-      summary: `${error instanceof Error ? error.message : String(error)}${
-        preview ? `: ${preview}` : ""
-      }`,
-    });
   },
 });
 const steerController = createSteerController({
@@ -107,8 +100,11 @@ const steerController = createSteerController({
 
 const shell = createWorkspaceShell({
   dom,
-  isWorkspaceAvailable: (destination) =>
-    schedulesFeature?.isWorkspaceAvailable(destination) ?? false,
+  onNavigationChange: () => workspaceRoutes?.sync(),
+  isWorkspaceAvailable: (destination) => {
+    if (!notifications?.isWorkspaceAvailable(destination)) return false;
+    return schedulesFeature?.isWorkspaceAvailable(destination) ?? false;
+  },
   onWorkspaceChange: (workspace) => {
     runtimeSelection?.rememberModelSelection();
     homeComposer?.setWorkspace(workspace);
@@ -117,6 +113,9 @@ const shell = createWorkspaceShell({
     runtimeSetupGuide.clearSecret();
     schedulesFeature?.setActive(workspace === "schedules");
     dashboardFeature?.setActive(workspace === "home");
+    passiveLearning?.setWorkspace(workspace);
+    notifications?.workspaceChanged(workspace);
+    configWorkspace?.setWorkspace(workspace);
     runtimeSelection?.applyModelSelection();
     runtimeSelection?.renderPermissionMode();
     renderAttachmentComposer();
@@ -126,14 +125,17 @@ const shell = createWorkspaceShell({
   beforeWorkspaceChange: ({ from, to }) => {
     if (from === "schedules" && to !== "schedules")
       return schedulesFeature?.prepareLeave() ?? true;
-    if (from !== "config" || to === "config") return true;
+    if (!isConfigurationWorkspace(from) || from === to) return true;
     if (!configWorkspace) return true;
     return configWorkspace.prepareDiscardChanges("leave configuration");
   },
 });
+notifications = createNotificationsFeature({
+  dom, state, client: runtimeClient, shell, getEnvironmentId: selectedEnvironmentId, send: sendRealtime,
+});
 const { guide: runtimeSetupGuide, controller: runtimeOnboarding } =
   createRuntimeOnboardingFeature({
-    dom,
+    dom, shell,
     runtimeClient,
     selectedEnvironmentId,
     state,
@@ -144,6 +146,8 @@ const { guide: runtimeSetupGuide, controller: runtimeOnboarding } =
       updateComposerSendState();
       renderAttachmentComposer();
       dashboardFeature?.runtimeAvailabilityChanged();
+      schedulesFeature?.runtimeAvailabilityChanged();
+      configWorkspace?.renderHomeGuidance();
     },
   });
 
@@ -153,16 +157,33 @@ const composerActions = createComposerActions({
 });
 schedulesFeature = createSchedulesFeature({
   dom,
+  onNavigationChange: () => workspaceRoutes?.sync(),
   client: runtimeClient,
   shell,
   selectedEnvironmentId,
   getCurrentSessionId: () => state.currentSessionId,
   getAgentModes: () => state.supportedAgentModes,
+  isRuntimeReady: runtimeOnboarding.isReady,
   openSession: (sessionId) => conversationSession.openSession(sessionId),
+});
+passiveLearning = createPassiveLearningFeature({
+  onChange: () => configWorkspace?.renderHomeGuidance(),
+  client: runtimeClient,
+  openSession: (sessionId) => conversationSession.openSession(sessionId),
+  activateChat: () => shell.activateWorkspace("chat"),
+  getEnvironmentId: selectedEnvironmentId,
+  learningRoot: dom.learningRoot,
+  openLearning: () => shell.activateWorkspace("learning"),
+  openComputerAccess: () => configWorkspace?.openComputerSetup(),
+  showActivityMemories: () => {
+    if (shell.activateWorkspace("memory"))
+      configWorkspace?.showActivityMemories();
+  },
 });
 dashboardFeature = createDashboardFeature({
   dom,
   state,
+  preferences,
   client: runtimeClient,
   shell,
   schedules: schedulesFeature,
@@ -170,9 +191,11 @@ dashboardFeature = createDashboardFeature({
   loadSessions,
   openSession: (sessionId) => conversationSession.openSession(sessionId),
   isComposerAvailable: runtimeOnboarding.isReady,
+  passiveLearning,
 });
 const composerWorkspace = createComposerWorkspaceController({
-  onSessionCreated: (sessionId) => runtimeSelection.initializeSessionMode(sessionId),
+  onSessionCreated: (sessionId) =>
+    runtimeSelection.initializeSessionMode(sessionId),
   state,
   dom,
   homeComposerHost: dashboardFeature.composerHost,
@@ -203,6 +226,7 @@ const sessionActionsMenu = createSessionActionsMenu({
 const sessionController = createSessionController({
   state,
   dom,
+  onSidebarChange: renderSessions,
   sessionActionsMenu,
   renderGroups: (input) => projectsFeature?.renderSessionGroups(input) ?? false,
   shell,
@@ -252,6 +276,9 @@ const toolApprovalController = createToolApprovalController({
 conversationView = createConversationView({
   dom,
   filePreviewClient: runtimeClient,
+  preferences,
+  archiveSession: (sessionId) => sessionController.archiveSession(sessionId),
+  onSparkArchived: () => shell.activateWorkspace("home"),
   getFileEnvironmentId: selectedEnvironmentId,
   getFileSessionId: () => state.currentSessionId,
   getMessages: () => state.messages,
@@ -265,6 +292,7 @@ conversationView = createConversationView({
       state.contextWindowByRequest.get(textOf(message.requestId)) || null,
   }),
   getPendingApproval: toolApprovalController.pendingEvent,
+  getPendingApprovals: toolApprovalController.pendingEvents,
   createApprovalCard: toolApprovalController.createCard,
   copyText: (text) => navigator.clipboard.writeText(text),
   notify: (message, tone) => shell.showToast(message, tone),
@@ -273,7 +301,8 @@ conversationView = createConversationView({
   canOpenSchedule: runtimeClient.supportsSchedules,
 });
 conversationSession = createConversationSessionController({
-  onSessionCreated: (sessionId) => runtimeSelection.initializeSessionMode(sessionId),
+  onSessionCreated: (sessionId) =>
+    runtimeSelection.initializeSessionMode(sessionId),
   state,
   dom,
   client: runtimeClient,
@@ -309,7 +338,8 @@ conversationSession = createConversationSessionController({
     composerQueueController.isCurrentScope(scope),
 });
 projectsFeature = createProjectsFeature({
-  onSessionCreated: (sessionId) => runtimeSelection.initializeSessionMode(sessionId),
+  onSessionCreated: (sessionId) =>
+    runtimeSelection.initializeSessionMode(sessionId),
   dom,
   state,
   client: runtimeClient,
@@ -395,13 +425,11 @@ realtimeEvents = createRealtimeEventController({
   scheduleThinkingRender,
   cancelScheduledMessageRender,
   cancelScheduledThinkingRender,
-  forgetThinkingDisclosure: (messageId) =>
-    conversationView.forgetThinkingDisclosure(messageId),
   markCurrentSessionReadSoon: conversationSession.markCurrentSessionReadSoon,
   applySessionTitleUpdate: conversationSession.applySessionTitleUpdate,
   setMessageActivityStatus,
   updateComposerSendState,
-  drainQueuedComposerMessage,
+  drainQueuedComposerMessage: (scope) => composerQueueController.drain(scope),
   loadSessions: conversationSession.loadSessions,
 });
 
@@ -487,7 +515,9 @@ homeComposer = createHomeComposerFeature({
   },
 });
 const appEventBindings = createAppEventBindings({
-  onSessionCreated: (sessionId) => runtimeSelection.initializeSessionMode(sessionId),
+  onNavigationChange: () => workspaceRoutes?.sync(),
+  onSessionCreated: (sessionId) =>
+    runtimeSelection.initializeSessionMode(sessionId),
   state,
   dom,
   shell,
@@ -534,6 +564,9 @@ const appEventBindings = createAppEventBindings({
 });
 
 configWorkspace = createConfigurationFeature({
+  getLearningSnapshot: () => passiveLearning?.snapshot(),
+  isRuntimeReady: runtimeOnboarding.isReady,
+  onNavigationChange: () => workspaceRoutes?.sync(),
   state,
   selection: runtimeSelection,
   onConfigurationApplied: loadModels,
@@ -627,7 +660,9 @@ function renderSessions() {
 }
 
 function renderMessages() {
+  notifications?.presenceChanged();
   conversationView.render();
+  workspaceRoutes?.sync();
 }
 
 function scheduleThinkingRender() {
@@ -679,7 +714,11 @@ function rejectPendingSteers(reason) {
 }
 
 function handleRealtimeMessage(message) {
-  realtimeEvents.handle(message);
+  dashboardFeature?.handleRealtime(message);
+  schedulesFeature?.handleRealtime(message);
+  passiveLearning?.handleRealtime(message);
+  notifications?.handleRealtime(message);
+  if (!isWorkspaceChange(message)) realtimeEvents.handle(message);
 }
 
 function sendRealtime(payload) {
@@ -702,18 +741,6 @@ async function restoreLastSession() {
   return conversationSession.restoreLastSession();
 }
 
-async function drainQueuedComposerMessage({
-  environmentId,
-  sessionId,
-  terminalRequestId,
-}) {
-  await composerQueueController.drain({
-    environmentId,
-    sessionId,
-    terminalRequestId,
-  });
-}
-
 async function loadRuntimeStatus() {
   await operationsController.loadRuntimeStatus();
 }
@@ -726,39 +753,25 @@ async function loadSystemHealth() {
   await operationsController.loadSystemHealth();
 }
 
-function bindEvents() {
-  appEventBindings.bind();
-  bindRuntimeSetupPageLifecycle({
-    page: window,
-    dispose: runtimeSetupGuide.dispose,
-    reloadModels: loadModels,
-  });
-  document.addEventListener(
-    "visibilitychange",
-    conversationSession.markCurrentSessionReadSoon,
-  );
-  dom.environmentSelect.addEventListener("change", () => {
-    homeComposer.environmentChanged();
-    dashboardFeature.environmentChanged();
-  });
-}
-
 function suspendRecoveredComposerReleaseForNavigation() {
   return composerQueueController.suspendRecoveryForNavigation();
 }
 
-void bootstrapWebApp({
+void startWebApp({
   state,
   dom,
   preferences,
   shell,
   homeComposer,
   dashboard: dashboardFeature,
+  learning: passiveLearning,
+  notifications,
   schedules: schedulesFeature,
   projects: projectsFeature,
   selection: runtimeSelection,
   client: runtimeClient,
   bindables: [
+    notifications,
     sessionActionsMenu,
     projectsFeature,
     conversationView,
@@ -767,7 +780,11 @@ void bootstrapWebApp({
     modelSelector,
     runtimeOnboarding,
   ],
-  bindEvents,
+  bindEvents: () => bindWebAppWorkspaceLifecycle({
+    appEventBindings, dom, runtimeSetupGuide, reloadModels: loadModels,
+    conversationSession, homeComposer, dashboardFeature, passiveLearning, notifications,
+    operations: operationsController,
+  }),
   renderComposer: () => {
     resizeComposerInput();
     updateComposerSendState();
@@ -777,9 +794,6 @@ void bootstrapWebApp({
   configuration: configWorkspace,
   realtime: realtimeTransport,
   restoreLastSession,
-}).catch((error) => {
-  setConnectionLabel(
-    error instanceof Error ? error.message : String(error),
-    true,
-  );
+  navigation: { bindings: appEventBindings, conversation: conversationSession },
+  onNavigationReady: (routes) => (workspaceRoutes = routes),
 });

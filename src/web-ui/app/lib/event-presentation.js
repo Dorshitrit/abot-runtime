@@ -1,4 +1,5 @@
 import { textOf } from "./text-format.js";
+import { isStopResult } from "./request-stop-state.js";
 
 function canMergeEventTimelineEntries(previous, event, name, summary) {
   if (!previous) return false;
@@ -152,27 +153,34 @@ export function formatEventLabel(message) {
     return "Response ready";
   }
   if (name === "request.failed" || message.type === "failed") {
-    return "Response failed";
+    return isStopResult(message) ? "Response stopped" : "Response failed";
   }
   if (name === "runtime.state") {
     return status || textOf(message.output) || "Runtime state";
   }
   if (name === "tool.intent") return "Next action";
+  if (isUncompletedToolEvent(message))
+    return uncompletedToolLabel(message, name);
   if (name.startsWith("tool.")) {
     const toolName = formatToolName(message.tool);
     if (status) return status;
     if (name === "tool.completed") {
       return toolName ? `${toolName} completed` : "Tool completed";
     }
-    if (name === "tool.failed") {
-      return toolName ? `${toolName} failed` : "Tool failed";
-    }
     return toolName ? `Using ${toolName}` : "Using a tool";
   }
   return titleCaseEventValue(name) || "Event";
 }
 
+function uncompletedToolLabel(message, name) {
+  if (name === "tool.approval.rejected") return "Tool not approved";
+  if (name === "tool.payload.failed") return "Tool not prepared";
+  const toolName = formatToolName(message.tool);
+  return toolName ? `${toolName} not completed` : "Tool not completed";
+}
+
 export function formatEventDetail(message) {
+  if (isStopResult(message)) return "Stopped by you.";
   const parts = [];
   const name = textOf(message.name || message.rawType || message.type);
   const plan = getPlanPayload(message);
@@ -203,6 +211,8 @@ export function formatEventDetail(message) {
 export function eventTone(message) {
   const name = textOf(message.name || message.type);
   const normalized = name.toLowerCase();
+  if (isStopResult(message)) return "neutral";
+  if (isUncompletedToolEvent(message)) return "neutral";
   if (
     message.ok === false ||
     textOf(message.status).toLowerCase() === "failed" ||
@@ -224,6 +234,17 @@ export function eventTone(message) {
   }
   if (name === "thinking.delta") return "thinking";
   return "active";
+}
+
+export function isUncompletedToolEvent(message) {
+  const name = textOf(message.eventName || message.name || message.type);
+  if (!name.startsWith("tool.")) return false;
+  if (message.ok === false || message.toolActivity?.ok === false) return true;
+  return [
+    "tool.failed",
+    "tool.payload.failed",
+    "tool.approval.rejected",
+  ].includes(name);
 }
 
 export function isLowValueActivityEvent(message) {

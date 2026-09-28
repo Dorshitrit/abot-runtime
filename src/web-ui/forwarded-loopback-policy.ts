@@ -1,7 +1,7 @@
 import {
   observeSystemHost,
   readSystemHostFacts,
-} from "../../plugins/system/source/host-observation.js";
+} from "../computer-access/host-observation.js";
 
 function hasExplicitLoopbackPublishTrust(): boolean {
   return process.env.ABOT_WEB_TRUST_LOOPBACK_PUBLISH === "1";

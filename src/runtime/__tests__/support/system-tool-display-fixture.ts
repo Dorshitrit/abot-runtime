@@ -8,7 +8,7 @@ import type {
   ToolExecutionResult,
 } from "../../../capabilities/tool-types.js";
 import { parseAgentPluginManifest } from "../../plugins/manifest-validator.js";
-import { systemProcessResult } from "../../../../plugins/system/source/process-result.js";
+import { systemProcessResult } from "../../../computer-access/process-result.js";
 
 export function systemDisplayDefinition(
   tool = "system_command",

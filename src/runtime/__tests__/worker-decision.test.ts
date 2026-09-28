@@ -33,7 +33,6 @@ import {
   runWorkerDecision,
   WORKER_DECISION_MODEL_STEP,
   WORKER_RESULT_MODEL_STEP,
-  WORKER_RESULT_MAX_LENGTH,
 } from "../steps/worker-decision/index.js";
 
 const runnerConfig: RequestRunnerConfig = {
@@ -358,12 +357,7 @@ describe("generic Worker no-tool decision contract", () => {
       type: "json_schema",
       name: "worker_decision",
       strict: true,
-      postValidatedSchemaConstraints: [
-        {
-          keyword: "maxLength",
-          path: "/properties/decision/anyOf/1/properties/reason/maxLength",
-        },
-      ],
+      postValidatedSchemaConstraints: [],
       schema: {
         type: "object",
         properties: {
@@ -382,7 +376,6 @@ describe("generic Worker no-tool decision contract", () => {
                   reason: {
                     type: "string",
                     minLength: 1,
-                    maxLength: WORKER_RESULT_MAX_LENGTH,
                   },
                 },
                 required: ["action", "reason"],
@@ -841,13 +834,6 @@ describe("generic Worker no-tool decision contract", () => {
         role: string;
         content: string;
       }>[];
-      expect(messages[0]!.content).toContain("Return only the raw result text");
-      expect(messages[0]!.content).toContain(
-        "The role result is the semantic delta for the caller",
-      );
-      expect(messages[0]!.content).toContain(
-        "Do not copy, quote, dump, or substantially restate tool-result summaries",
-      );
       expect(messages).toHaveLength(3);
       expect(JSON.parse(messages[1]!.content)).toEqual({
         kind: "runtime_request_source_v1",
@@ -1058,70 +1044,22 @@ describe("generic Worker no-tool decision contract", () => {
     );
   });
 
-  test("repairs one oversized raw result in the same Worker result step", async () => {
-    configureDebugLogger({ enabled: true });
-    const oversizedResult = "x".repeat(WORKER_RESULT_MAX_LENGTH + 1);
-    const repairedResult =
-      "Created the requested project files and verified the requested behavior.";
-    let resultAttempt = 0;
+  test("accepts a long raw result without repair or loss of content", async () => {
+    const longResult = "complete finding ".repeat(1_000);
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
       if (input.modelStep === WORKER_DECISION_MODEL_STEP) {
-        return {
-          text: workerDecisionText({ action: "return_result" }),
-          meta: {},
-        };
+        return { text: workerDecisionText({ action: "return_result" }), meta: {} };
       }
-      resultAttempt += 1;
-      const messages = input.messages as readonly Readonly<{
-        role: string;
-        content: string;
-      }>[];
-      if (resultAttempt === 1) {
-        return { text: oversizedResult, meta: {} };
-      }
-      expect(messages.at(-1)).toMatchObject({ role: "system" });
-      expect(messages.at(-1)!.content).toContain("worker_result_too_long");
-      expect(messages.at(-1)!.content).toContain(
-        `at most ${WORKER_RESULT_MAX_LENGTH} characters`,
-      );
-      expect(JSON.stringify(messages)).not.toContain(oversizedResult);
-      return { text: repairedResult, meta: {} };
+      expect(input.modelStep).toBe(WORKER_RESULT_MODEL_STEP);
+      return { text: longResult, meta: {} };
     });
-    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-
     await expect(
       runWorkerDecision(createRequest(invoke), {
         call: workerCall,
         requestToolResults: EMPTY_REQUEST_TOOL_RESULTS,
       }),
-    ).resolves.toEqual({
-      action: "return_result",
-      result: repairedResult,
-    });
-    expect(invoke).toHaveBeenCalledTimes(3);
-
-    const logs = consoleLog.mock.calls.map(
-      ([line]) => JSON.parse(String(line)) as Record<string, unknown>,
-    );
-    expect(logs).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          scope: "runtime.model",
-          event: "step.invalid_output",
-          modelStep: WORKER_RESULT_MODEL_STEP,
-          issues: [{ code: "worker_result_too_long", path: "result" }],
-          outputLength: WORKER_RESULT_MAX_LENGTH + 1,
-        }),
-        expect.objectContaining({
-          scope: "runtime.model",
-          event: "step.repair.succeeded",
-          modelStep: WORKER_RESULT_MODEL_STEP,
-          repairAttempts: 1,
-          sameRoleCall: true,
-        }),
-      ]),
-    );
-    expect(JSON.stringify(logs)).not.toContain(oversizedResult);
+    ).resolves.toEqual({ action: "return_result", result: longResult.trim() });
+    expect(invoke).toHaveBeenCalledTimes(2);
   });
 
   test("surfaces an explicitly truncated raw result without role completion", async () => {

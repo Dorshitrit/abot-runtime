@@ -1,5 +1,6 @@
 import {
   isRoleCapabilityId,
+  isRoleCallResultText,
   ROLE_CAPABILITY_REFERENCE_DATA_MAX_LENGTH,
   ROLE_CAPABILITY_RESULT_REFERENCE_LIMIT_MAX,
   ROLE_CAPABILITY_RESULT_REFERENCE_TARGET_MAX_LENGTH,
@@ -405,9 +406,7 @@ function validDependencyResults(
       candidate.producerCallId.length > 0 &&
       isRuntimeDelegateRoleId(candidate.roleId) &&
       (candidate.outcome === "completed" || candidate.outcome === "failed") &&
-      typeof candidate.summary === "string" &&
-      candidate.summary.trim().length > 0 &&
-      candidate.summary.length <= ROLE_CALL_RESULT_MAX_LENGTH &&
+      isRoleCallResultText(candidate.summary) &&
       (semanticCheckpoints === undefined ||
         (Array.isArray(semanticCheckpoints) &&
           semanticCheckpoints.length > 0 &&

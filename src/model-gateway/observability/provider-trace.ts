@@ -5,6 +5,8 @@ import {
   type ProviderTraceContext,
 } from "./provider-trace-context.js";
 import { isModelIoTraceEnabled, traceModelIo } from "./trace-store.js";
+import { permitsModelContentTrace } from "./content-trace-policy.js";
+import { toolMediaSafeError } from "./tool-media-privacy.js";
 
 export type ProviderResponseDecoder = (
   body: ReadableStream<Uint8Array>,
@@ -99,6 +101,10 @@ export async function fetchProviderWithTrace(params: {
   responseTrace: Promise<void>;
 }> {
   const traceEnabled = isModelIoTraceEnabled();
+  const contentTraceEnabled = permitsModelContentTrace(
+    params.requestBody.modelStep,
+    params.requestBody,
+  );
   const context = createProviderTraceContext(params);
   const serializedBody = JSON.stringify(params.payload);
 
@@ -110,7 +116,12 @@ export async function fetchProviderWithTrace(params: {
         url: params.url,
         method: "POST",
         headers: sanitizeProviderHeaders(params.headers),
-        body: params.payload,
+        body: contentTraceEnabled
+          ? params.payload
+          : {
+              contentOmitted: true,
+              byteLength: Buffer.byteLength(serializedBody),
+            },
       },
     });
   }
@@ -123,9 +134,10 @@ export async function fetchProviderWithTrace(params: {
     });
     return {
       response,
-      responseTrace: traceEnabled
-        ? captureProviderResponse(context, response, params.decodeResponse)
-        : Promise.resolve(),
+      responseTrace:
+        traceEnabled && contentTraceEnabled
+          ? captureProviderResponse(context, response, params.decodeResponse)
+          : Promise.resolve(),
     };
   } catch (error) {
     if (traceEnabled) {
@@ -133,9 +145,15 @@ export async function fetchProviderWithTrace(params: {
         event: "provider.failure",
         ...context,
         stage: "request.fetch",
-        error: serializeProviderError(error),
+        error: contentTraceEnabled
+          ? serializeProviderError(error)
+          : {
+              name: "Error",
+              message:
+                "Ephemeral evidence provider request failed; content omitted.",
+            },
       });
     }
-    throw error;
+    throw toolMediaSafeError(error, params.requestBody);
   }
 }

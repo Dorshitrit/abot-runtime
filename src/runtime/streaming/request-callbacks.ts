@@ -37,18 +37,37 @@ export function createPersistentRequestEvents(params: {
   });
 }
 
-export function createRequestCallbacks(events: EventSink): {
+export type RequestPresentationSnapshot = Readonly<{
+  answerText: string;
+  thinkingText: string;
+  thinkingTrace: readonly RuntimeThinkingTrace[];
+}>;
+
+export function createRequestCallbacks(
+  events: EventSink,
+  restored?: RequestPresentationSnapshot,
+): {
   onAcknowledgement: (acknowledgement: string) => void;
   onThinkingDelta: (delta: string) => void;
   onThinkingTrace: (entry: RuntimeThinkingTrace) => void;
   onAnswerToken: (token: string) => void;
+  getAnswerText: () => string;
   getThinkingTrace: () => SessionThinkingTraceEntry[] | undefined;
+  snapshot: () => RequestPresentationSnapshot;
 } {
-  let accumulatedAnswer = "";
-  let accumulatedThinking = "";
-  const thinkingTrace: RuntimeThinkingTrace[] = [];
+  let accumulatedAnswer = restored?.answerText ?? "";
+  let accumulatedThinking = restored?.thinkingText ?? "";
+  const thinkingTrace: RuntimeThinkingTrace[] = structuredClone([
+    ...(restored?.thinkingTrace ?? []),
+  ]);
 
   return {
+    snapshot: () =>
+      structuredClone({
+        answerText: accumulatedAnswer,
+        thinkingText: accumulatedThinking,
+        thinkingTrace,
+      }),
     onAcknowledgement: (acknowledgement) => {
       const delta = `${acknowledgement}\n\n`;
       events.thinkingDelta(delta, delta);
@@ -69,6 +88,7 @@ export function createRequestCallbacks(events: EventSink): {
       accumulatedAnswer += token;
       events.legacyToken(accumulatedAnswer);
     },
+    getAnswerText: () => accumulatedAnswer,
     getThinkingTrace: () => {
       if (thinkingTrace.length === 0) {
         return undefined;

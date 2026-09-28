@@ -1,3 +1,4 @@
+import { createNotificationRequests } from "./runtime-web-client/notifications.js";
 import { createProjectRequests } from "./runtime-web-client/projects.js";
 import { createSystemHostRequests } from "./runtime-web-client/system-host.js";
 import { toolPermissionRequestError } from "../lib/tool-permission-mode.js";
@@ -5,6 +6,8 @@ import { createConversationFileRequests } from "./runtime-web-client/conversatio
 import { createConfigurationRequests } from "./runtime-web-client/configuration.js";
 import { createScheduleRequests } from "./runtime-web-client/schedules.js";
 import { createLongTermMemoryRequests } from "./runtime-web-client/memory.js";
+import { createPassiveLearningRequests } from "./runtime-web-client/learning.js";
+import { createToolApprovalRequests } from "./runtime-web-client/tool-approvals.js";
 
 export function parseJsonResponseText(text, context) {
   if (!text.trim()) return {};
@@ -96,12 +99,12 @@ export function createRuntimeWebClient({
   });
 
   return {
-    getRuntimeStatus() {
-      return requestApi("/runtime/status");
+    getRuntimeStatus(environmentId = getEnvironmentId()) {
+      return requestApi(`/runtime/status?environment=${environmentQuery(environmentId)}`);
     },
 
-    getRuntimeLogs(lines = 100) {
-      return requestApi(`/runtime/logs?lines=${encodeURIComponent(lines)}`);
+    getRuntimeLogs(lines = 100, environmentId = getEnvironmentId()) {
+      return requestApi(`/runtime/logs?lines=${encodeURIComponent(lines)}&environment=${environmentQuery(environmentId)}`);
     },
 
     getSystemHealth() {
@@ -159,9 +162,8 @@ export function createRuntimeWebClient({
       return data.attachment;
     },
 
-    async loadWebConfig() {
-      const response = await fetchImpl("/web-config");
-      return response.json();
+    loadWebConfig() {
+      return request("/web-config", "Web configuration");
     },
 
     listSessions(environmentId = getEnvironmentId()) {
@@ -189,14 +191,20 @@ export function createRuntimeWebClient({
         Number.isFinite(readThroughMessageId)
           ? Math.max(0, Math.floor(readThroughMessageId))
           : null;
+      const hasStringReadBoundary =
+        typeof readThroughMessageId === "string" &&
+        readThroughMessageId.length > 0;
+      const messageReadBoundary = hasStringReadBoundary
+        ? readThroughMessageId
+        : numericReadThrough;
       const requestReadBoundary =
-        numericReadThrough === null
+        messageReadBoundary === null
           ? String(readThroughRequestId || "").trim()
           : "";
       const body = {
-        readThroughMessageId: numericReadThrough,
+        readThroughMessageId: messageReadBoundary,
         lastReadMessageId:
-          numericReadThrough === null ? null : String(numericReadThrough),
+          messageReadBoundary === null ? null : String(messageReadBoundary),
       };
       if (requestReadBoundary) body.readThroughRequestId = requestReadBoundary;
       return requestApi(
@@ -250,6 +258,26 @@ export function createRuntimeWebClient({
           : [];
     },
 
+    async stopChatRequest({
+      requestId,
+      sessionId,
+      environmentId = getEnvironmentId(),
+      generation,
+      waitId,
+      revision,
+      commandId,
+    }) {
+      return requestApi("/chat/stop", {
+        method: "POST",
+        body: JSON.stringify({
+          requestId,
+          sessionId,
+          environment: environmentId,
+          ...(waitId ? { generation, waitId, revision, commandId } : {}),
+        }),
+      });
+    },
+
     async postChatMessage({
       text,
       attachments,
@@ -290,11 +318,14 @@ export function createRuntimeWebClient({
       return requestId;
     },
 
-    loadConfigDashboard(environmentId = getEnvironmentId()) {
+    loadConfigDashboard(
+      environmentId = getEnvironmentId(),
+      { settled = false } = {},
+    ) {
       return requestApi(
         `/runtime/config/dashboard?environment=${environmentQuery(
           environmentId,
-        )}`,
+        )}${settled ? "&settled=true" : ""}`,
       );
     },
 
@@ -326,7 +357,14 @@ export function createRuntimeWebClient({
     ...createConfigurationRequests({ requestApi, environmentQuery }),
     ...createSystemHostRequests({ requestApi, getConfig }),
     ...longTermMemoryRequests,
+    ...createPassiveLearningRequests({
+      requestApi,
+      getEnvironmentId,
+      environmentQuery,
+    }),
     ...createScheduleRequests({ requestApi, getEnvironmentId, getConfig }),
     ...createProjectRequests({ requestApi, getEnvironmentId, getConfig }),
+    ...createToolApprovalRequests({ requestApi, getEnvironmentId, getConfig }),
+    ...createNotificationRequests({ requestApi, getEnvironmentId, getConfig }),
   };
 }

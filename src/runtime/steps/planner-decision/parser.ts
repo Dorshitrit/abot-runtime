@@ -1,4 +1,5 @@
 import {
+  isRoleCallResultText,
   normalizeRoleCallWorkingDirectory,
   type RoleCallPlanBinding,
   type RoleCallWorkerCapabilityScope,
@@ -13,7 +14,6 @@ import {
 import {
   PLANNER_DECISION_ACTIONS,
   PLANNER_OBJECTIVE_MAX_LENGTH,
-  PLANNER_RESULT_MAX_LENGTH,
   type PlannerDecision,
   type PlannerDecisionDiagnosticContext,
   type PlannerDecisionPlanContext,
@@ -125,22 +125,10 @@ export function parsePlannerDecisionOutput(
     if (planContext?.mode === "select") {
       issues.push(issue("planner_plan_incomplete", "decision.action"));
     }
-    validateBoundedText(
-      record.result,
-      PLANNER_RESULT_MAX_LENGTH,
-      "planner_result_invalid",
-      "decision.result",
-      issues,
-    );
+    validatePlannerResultText(record.result, "decision.result", issues);
   } else if (selectedAction === "return_failure") {
     exactKeys(record, ["action", "reason"], issues);
-    validateBoundedText(
-      record.reason,
-      PLANNER_RESULT_MAX_LENGTH,
-      "planner_result_invalid",
-      "decision.reason",
-      issues,
-    );
+    validatePlannerResultText(record.reason, "decision.reason", issues);
   } else {
     exactKeys(
       record,
@@ -338,6 +326,15 @@ function exactKeys(
   ) {
     issues.push(issue("planner_decision_shape_invalid", path));
   }
+}
+
+function validatePlannerResultText(
+  value: unknown,
+  path: string,
+  issues: PlannerDecisionValidationIssue[],
+): void {
+  if (isRoleCallResultText(value)) return;
+  issues.push(issue("planner_result_invalid", path));
 }
 
 function validateBoundedText(

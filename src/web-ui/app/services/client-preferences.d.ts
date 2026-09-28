@@ -2,10 +2,18 @@ import type { ToolPermissionMode } from "../lib/tool-permission-mode.js";
 
 type PreferenceMap = Record<string, unknown>;
 type SessionModeMap = Record<string, Record<string, unknown>>;
+type SessionSidebarPreferences = {
+  archivedSessionIds: string[];
+  orderedSessionIds: string[];
+};
 
 export declare function createClientPreferences(storage: Pick<
   Storage, "getItem" | "setItem" | "removeItem"
 >): {
+  loadSessionSidebar(environmentId: string): SessionSidebarPreferences;
+  hasKeptSparkConversation(environmentId: string, sessionId: string): boolean;
+  keepSparkConversation(environmentId: string, sessionId: string): void;
+  saveSessionSidebar(environmentId: string, value: SessionSidebarPreferences): void;
   loadPinnedSessions(): string[];
   savePinnedSessions(sessionIds: readonly string[]): void;
   loadSessionModes(normalize: (value: unknown) => ToolPermissionMode): SessionModeMap;

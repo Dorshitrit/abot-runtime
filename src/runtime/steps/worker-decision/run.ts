@@ -1,3 +1,5 @@
+import { bindRoleApprovalWait } from "../../orchestration/role-executors/approval-continuation.js";
+import { isWorkerCapabilityApprovalWait } from "../../orchestration/worker-capabilities/approval-contracts.js";
 import {
   invokeStructuredModelStep,
   StructuredModelInvalidOutputError,
@@ -517,6 +519,7 @@ export const GENERIC_WORKER_EXECUTOR: RoleExecutor<
       call,
       ledger,
       adapters: workerCapabilities.provider.getAdapters(),
+      ...(context.approvalGate ? { approvalGate: context.approvalGate } : {}),
       ...projectWorkerPayloadDependencyInput(dependencyResults),
     });
     const capabilitySource = {
@@ -592,6 +595,8 @@ export const GENERIC_WORKER_EXECUTOR: RoleExecutor<
           summary: WORKER_OPERATION_SUPERVISION_LIMIT_SUMMARY,
         });
       }
+      if (isWorkerCapabilityApprovalWait(execution))
+        return bindRoleApprovalWait(execution);
       if ("commit" in execution) {
         return Object.freeze({
           kind: "continue",
@@ -650,6 +655,8 @@ export const GENERIC_WORKER_EXECUTOR: RoleExecutor<
         summary: WORKER_OPERATION_SUPERVISION_LIMIT_SUMMARY,
       });
     }
+    if (isWorkerCapabilityApprovalWait(execution))
+      return bindRoleApprovalWait(execution);
     if ("commit" in execution) {
       return Object.freeze({
         kind: "continue",

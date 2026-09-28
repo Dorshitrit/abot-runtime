@@ -51,10 +51,11 @@ export function createLongTermMemoryRequests({
       environmentId = getEnvironmentId(),
       limit = 20,
       offset = 0,
+      origin,
       signal,
     } = {}) {
       return requestApi(
-        memoryRecordsPath({ environmentId, limit, offset }),
+        memoryRecordsPath({ environmentId, limit, offset, origin }),
         signal ? { signal } : {},
       );
     },
@@ -112,13 +113,15 @@ export function createLongTermMemoryRequests({
   });
 }
 
-function memoryRecordsPath({ environmentId, limit, offset, query }) {
+function memoryRecordsPath({ environmentId, limit, offset, query, origin }) {
   const params = new URLSearchParams({
     environment: environmentId,
     limit: String(limit),
     offset: String(offset),
   });
   if (query !== undefined) params.set("q", query);
+  if (query === undefined && origin === "passive_observation")
+    params.set("origin", origin);
   const route =
     query === undefined
       ? "/runtime/memory/records"

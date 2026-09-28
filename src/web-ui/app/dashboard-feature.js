@@ -1,10 +1,13 @@
 import { createDashboardWorkspace } from "./components/dashboard/workspace.js";
 import { createDashboardController } from "./controllers/dashboard-controller.js";
+import { createDashboardApprovalsController } from "./controllers/dashboard-approvals-controller.js";
 import { dashboardJobInitialValues } from "./lib/dashboard-job-templates.js";
+import { filterSessionsByArchiveState } from "./lib/session-archive-visibility.js";
 
 export function createDashboardFeature({
   dom,
   state,
+  preferences,
   client,
   shell,
   schedules,
@@ -12,29 +15,41 @@ export function createDashboardFeature({
   loadSessions,
   openSession,
   isComposerAvailable,
+  passiveLearning,
 }) {
   let view;
-  const controller = createDashboardController({
+  let controller;
+  const approvals = createDashboardApprovalsController({
+    client,
+    getEnvironmentId: selectedEnvironmentId,
+    render: () => controller?.publish(),
+  });
+  controller = createDashboardController({
     client,
     getEnvironmentId: selectedEnvironmentId,
     getSessions: () => state.sessions,
     loadSessions,
     isRuntimeReady: isComposerAvailable,
-    render: (snapshot) =>
-      view?.render({ ...snapshot, composerAvailable: isComposerAvailable() }),
+    approvalData: approvals,
+    render: (snapshot) => {
+      passiveLearning?.updateSessions?.({ environmentId: selectedEnvironmentId(), sessions: snapshot.sessions });
+      const sessions = filterSessionsByArchiveState(snapshot.sessions,
+        preferences?.loadSessionSidebar?.(selectedEnvironmentId())?.archivedSessionIds);
+      view?.render({ ...snapshot, sessions, composerAvailable: isComposerAvailable() });
+    },
   });
   view = createDashboardWorkspace({
     root: dom.homeDashboardRoot,
+    passiveLearning,
     actions: {
-      attach: () => dom.attachmentButton.click(),
       createJob: (templateId) =>
         schedules.createJob(
           dashboardJobInitialValues(templateId, dom.modelSelect.value),
         ),
       continueConversation: () => shell.setSessionsDrawerOpen(true),
-      openConfiguration: () => shell.activateWorkspace("config"),
       openJobs: () => shell.activateWorkspace("schedules"),
       refresh: controller.refresh,
+      decideApproval: approvals.submit,
       openConversation: async (sessionId, requestId) => {
         if (!shell.activateWorkspace("chat")) return;
         try {

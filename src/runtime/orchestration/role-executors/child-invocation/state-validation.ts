@@ -8,17 +8,13 @@ import type {
 } from "../../role-calls/index.js";
 import { normalizeRoleCallWorkingDirectory } from "../../role-calls/index.js";
 import type { RuntimeDelegateRoleId } from "../../roles.js";
-import type { RoleExecutorRegistry } from "../contracts.js";
+import type { RoleChildInvocationInput } from "../contracts.js";
 import {
   childInvocationError,
   sameCallFrame,
   sameStrings,
   sameWorkerCapabilityScope,
 } from "../shared/runtime-invariants.js";
-
-type RoleChildInvocationInput<TContext, TValue> = Parameters<
-  RoleExecutorRegistry<TContext, TValue>["invokeChild"]
->[0];
 
 export type ChildOpenedCommit = RoleCallLedgerCommit &
   Readonly<{
@@ -42,7 +38,7 @@ export function isValidOpenedChildProjection<TContext, TValue>(
   ledger: RoleCallLedger,
   opened: ChildOpenedCommit,
   callerCall: RoleCallFrame,
-  input: RoleChildInvocationInput<TContext, TValue>,
+  input: RoleChildInvocationInput<TContext>,
   dependencyResultRefs: readonly string[],
   childCall: RoleCallFrame | undefined,
 ): childCall is DelegateRoleCallFrame {
@@ -67,15 +63,12 @@ export function isValidOpenedChildProjection<TContext, TValue>(
 
 export function isValidChildReturnTransition(
   commit: ChildReturnedCommit,
-  opened: ChildOpenedCommit,
+  opened: Readonly<{ planItemIds?: readonly string[] }>,
 ): boolean {
   return (
-    (opened.effect.planItemIds === undefined) ===
+    (opened.planItemIds === undefined) ===
       (commit.effect.planItemIds === undefined) &&
-    sameStrings(
-      opened.effect.planItemIds ?? [],
-      commit.effect.planItemIds ?? [],
-    )
+    sameStrings(opened.planItemIds ?? [], commit.effect.planItemIds ?? [])
   );
 }
 

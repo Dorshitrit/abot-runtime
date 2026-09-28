@@ -26,6 +26,7 @@ vi.mock("../../web-ui/local-runtime-backend.js", () => ({
   LocalRuntimeWebBackend: class {
     start = mock.start;
     stop = mock.stop;
+    notifyHostConnectionChanged = () => {};
     handleRealtimeConnection = mock.realtime;
   },
 }));

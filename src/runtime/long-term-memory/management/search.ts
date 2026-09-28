@@ -13,12 +13,20 @@ export async function searchManagedMemories(params: {
 }): Promise<MemorySearchResult> {
   const query = normalizeSearchQuery(params.input.query);
   const page = normalizeMemoryPage(params.input);
-  const ranked = await searchRankedLongTermMemories({
+  const results = await searchRankedLongTermMemories({
     repository: params.repository,
     embeddings: params.embeddings,
     query,
     context: params.input.context,
   });
+  const ranked =
+    params.input.origin === "passive_observation"
+      ? results.filter(
+          ({ record }) =>
+            record.provenance.kind === "passive_observation" ||
+            (record.observationSources?.length ?? 0) > 0,
+        )
+      : results;
   return Object.freeze({
     items: Object.freeze(
       ranked

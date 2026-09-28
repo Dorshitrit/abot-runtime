@@ -15,7 +15,29 @@ export function findAppDom(documentRoot = document) {
       "closeSchedulesWorkspaceButton",
     ),
     schedulesRoot: documentRoot.getElementById("schedulesRoot"),
+    learningWorkspaceButton: documentRoot.getElementById(
+      "learningWorkspaceButton",
+    ),
+    learningWorkspacePanel: documentRoot.getElementById(
+      "learningWorkspacePanel",
+    ),
+    closeLearningWorkspaceButton: documentRoot.getElementById(
+      "closeLearningWorkspaceButton",
+    ),
+    learningRoot: documentRoot.getElementById("learningRoot"),
+    memoryWorkspaceButton: documentRoot.getElementById("memoryWorkspaceButton"),
+    memoryWorkspacePanel: documentRoot.getElementById("memoryWorkspacePanel"),
+    openMemoryRestartControlsButton: documentRoot.getElementById(
+      "openMemoryRestartControlsButton",
+    ),
+    closeMemoryWorkspaceButton: documentRoot.getElementById(
+      "closeMemoryWorkspaceButton",
+    ),
+    memorySetupRoot: documentRoot.getElementById("memorySetupRoot"),
+    memoryManagementRoot: documentRoot.getElementById("memoryManagementRoot"),
     configWorkspaceButton: documentRoot.getElementById("configWorkspaceButton"),
+    modelsWorkspaceButton: documentRoot.getElementById("modelsWorkspaceButton"),
+    pluginsWorkspaceButton: documentRoot.getElementById("pluginsWorkspaceButton"),
     chatPanel: documentRoot.querySelector(".chat-panel"),
     sessionsPanel: documentRoot.querySelector(".sessions-panel"),
     configWorkspacePanel: documentRoot.getElementById("configWorkspacePanel"),
@@ -58,6 +80,7 @@ export function findAppDom(documentRoot = document) {
     composerPlan: documentRoot.getElementById("composerPlan"),
     composerSubmitControl: documentRoot.getElementById("composerSubmitControl"),
     sendButton: documentRoot.getElementById("sendButton"),
+    stopButton: documentRoot.getElementById("stopButton"),
     sendButtonLabel: documentRoot.getElementById("sendButtonLabel"),
     sendNextMenuButton: documentRoot.getElementById("sendNextMenuButton"),
     sendNextMenu: documentRoot.getElementById("sendNextMenu"),

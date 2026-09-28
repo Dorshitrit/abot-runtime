@@ -1,0 +1,37 @@
+/* Visible from first paint until the requested workspace has been restored. */
+.app-startup {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 18px;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--muted);
+  color-scheme: dark;
+  text-align: center;
+}
+
+.app-startup[hidden],
+.app-startup button[hidden] {
+  display: none;
+}
+
+.app-startup img {
+  color-scheme: dark;
+}
+
+.app-startup p {
+  max-width: 36em;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.app-startup button {
+  min-height: 40px;
+  padding: 8px 20px;
+}

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { requireSchedulerToolPermissionMode } from "./tool-permission-mode.js";
 import type {
   CreateSchedulerJobInput,
   SchedulerJob,
@@ -47,7 +48,9 @@ export function createSchedulerJob(
       prompt: input.prompt,
       modelProfileId: input.modelProfileId,
       agentMode: input.agentMode,
-      toolPermissionMode: "full_access",
+      toolPermissionMode: requireSchedulerToolPermissionMode(
+        input.toolPermissionMode,
+      ),
       timeZone: input.timeZone,
       schedule,
       state: "active",
@@ -101,7 +104,6 @@ export function updateSchedulerJob(
         Object.assign(job, editable, {
           schedule,
           nextRunAt,
-          toolPermissionMode: "full_access",
           updatedAt: new Date(now).toISOString(),
           revision: job.revision + 1,
         });
@@ -137,13 +139,16 @@ function hasSchedulerJobChanges(
   candidate: SchedulerJob,
 ): boolean {
   if (hasSchedulerTimingChanges(job, candidate)) return true;
-  return ([
-    "title",
-    "prompt",
-    "modelProfileId",
-    "agentMode",
-    "timeZone",
-  ] as const).some((field) => job[field] !== candidate[field]);
+  return (
+    [
+      "title",
+      "prompt",
+      "modelProfileId",
+      "agentMode",
+      "toolPermissionMode",
+      "timeZone",
+    ] as const
+  ).some((field) => job[field] !== candidate[field]);
 }
 function pickEditableFields(
   patch: UpdateSchedulerJobInput,
@@ -154,6 +159,7 @@ function pickEditableFields(
     "prompt",
     "modelProfileId",
     "agentMode",
+    "toolPermissionMode",
     "timeZone",
     "schedule",
   ] as const) {

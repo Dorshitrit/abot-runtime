@@ -1,5 +1,21 @@
+import type { ModelStep } from "../../shared/model-steps.js";
+
+/** Identifies a deadline owned by one model step, never the request budget. */
+export class ModelStepTimeoutError extends Error {
+  readonly stage = "model_step_timeout";
+
+  constructor(
+    readonly code: string,
+    readonly modelStep: ModelStep,
+  ) {
+    super(code);
+    this.name = "ModelStepTimeoutError";
+  }
+}
+
 export function createModelStepAbort(params: {
   parentSignal: AbortSignal;
+  modelStep: ModelStep;
   timeoutMs: number;
   timeoutReason: string;
 }): {
@@ -20,7 +36,9 @@ export function createModelStepAbort(params: {
   }
 
   const timeout = setTimeout(() => {
-    controller.abort(new Error(params.timeoutReason));
+    controller.abort(
+      new ModelStepTimeoutError(params.timeoutReason, params.modelStep),
+    );
   }, params.timeoutMs);
 
   return {

@@ -1,3 +1,6 @@
+import { createSessionSidebarPreferences } from "./session-sidebar-preferences.js";
+import { createSparkConversationPreferences } from "./spark-conversation-preferences.js";
+
 const storageKeys = {
   environmentId: "abot-web.environmentId",
   pinnedSessions: "abot-web.pinnedSessions",
@@ -34,6 +37,8 @@ function restoreSessionMode(value, normalizeToolPermissionMode) {
 
 export function createClientPreferences(storage) {
   return {
+    ...createSessionSidebarPreferences(storage),
+    ...createSparkConversationPreferences(storage),
     loadPinnedSessions() {
       try {
         const raw = storage.getItem(storageKeys.pinnedSessions);

@@ -23,6 +23,9 @@ import { retrieveResponseLongTermMemory } from "../../long-term-memory/response-
 import type { RootAuthoredResponse } from "../../long-term-memory/contracts.js";
 import { createPlainRootAuthoredResponse } from "../../orchestration/final-response/authoring-contract.js";
 import { invokeRootAuthoredResponse } from "../../orchestration/final-response/invoke.js";
+import { canAuthorConversationMemory, prepareConversationMemoryAuthoring } from "../../long-term-memory/conversation-authoring/context.js";
+import { assertBoundModelStepSteeringCurrent } from "../../model/model-step-steering.js";
+import { resolveRequestSteeringInbox } from "../../request/request-steering.js";
 
 const EXECUTION_AGENT_RESPONSE_MAX_REPAIR_ATTEMPTS = 2;
 
@@ -48,12 +51,14 @@ export async function runExecutionAgentAuthoredResponse(
     steeringSnapshot: RequestSteeringSnapshot;
   }>,
 ): Promise<RootAuthoredResponse> {
+  const memoryEnabled = request.longTermMemory?.enabled === true;
   const boundSteeringVersion = resolveMemoryRecallSteeringVersion(
     options.memoryRecallMessage,
     request.requestId,
     options.call.callId,
-  );
-  const memoryEnabled = request.longTermMemory?.enabled === true;
+  ) ?? (memoryEnabled && request.longTermMemory?.learning ? options.steeringSnapshot.version : undefined);
+  const requestSteering = resolveRequestSteeringInbox(request.requestSteering);
+  assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
   const memoryMessage =
     options.memoryRecallMessage ??
     (memoryEnabled
@@ -63,12 +68,18 @@ export async function runExecutionAgentAuthoredResponse(
     EXECUTION_AGENT_RESPONSE_MAX_LENGTH,
     options.head.policy.limits.maxResponseChars,
   );
+  const memoryAuthoringContext = memoryEnabled
+    ? await prepareConversationMemoryAuthoring(request, options.steeringSnapshot)
+    : undefined;
+  assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
+  const memoryAuthoringEnabled = canAuthorConversationMemory(request, memoryAuthoringContext);
   const input = buildExecutionAgentResponseInput(request, {
     ...options,
-    ...(memoryEnabled
+    ...(memoryAuthoringEnabled
       ? { memoryAuthoringMaxResponseChars: maxResponseChars }
       : {}),
     ...(memoryMessage ? { longTermMemoryMessage: memoryMessage } : {}),
+    ...(memoryAuthoringContext ? { memoryAuthoringMessage: memoryAuthoringContext.message } : {}),
   });
   const contextCompaction = createSessionMemoryAwareCompactionController(
     request,
@@ -81,7 +92,7 @@ export async function runExecutionAgentAuthoredResponse(
       ]),
     }),
   );
-  if (memoryEnabled) {
+  if (memoryAuthoringEnabled) {
     return invokeRootAuthoredResponse({
       request,
       boundSteeringVersion,
@@ -91,6 +102,7 @@ export async function runExecutionAgentAuthoredResponse(
       timeoutReason: "execution_agent_response_timeout",
       invalidOutputReason: "invalid_execution_agent_authored_response",
       maxResponseChars,
+      ...(memoryAuthoringContext ? { memoryAuthoringContext } : {}),
     });
   }
   const output = await invokeRepairableRawModelStep({

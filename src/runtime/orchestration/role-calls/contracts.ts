@@ -23,6 +23,7 @@ export const ROLE_CALL_LEDGER_CONTRACT_VERSION = 18;
 export const ROLE_CALL_LEDGER_HEAD_KIND =
   "runtime_role_call_ledger_v18" as const;
 export const ROLE_CALL_OBJECTIVE_MAX_LENGTH = 8_192;
+/** Bounds structured receipts, capability summaries and diagnostics, not role-result prose. */
 export const ROLE_CALL_RESULT_MAX_LENGTH = 8_192;
 export const ROLE_CALL_RESPONSE_MAX_LENGTH = 65_536;
 export const ROLE_CALL_PLAN_ITEM_TITLE_MAX_LENGTH = 256;
@@ -88,6 +89,7 @@ export type RoleCallPolicy = Readonly<{
     maxCalls: number;
     maxCapabilityExecutions: number;
     maxObjectiveChars: number;
+    /** Capability-summary and diagnostic envelope bound; role-result prose is uncapped. */
     maxResultChars: number;
     maxResponseChars: number;
   }>;

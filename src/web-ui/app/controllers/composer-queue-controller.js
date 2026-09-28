@@ -54,7 +54,7 @@ export function createComposerQueueController({
     attachments.render();
   }
 
-  function reportFailure(scope, summary) {
+  function reportFailure(scope, summary, tone = "failed") {
     if (!isCurrentScope(scope)) return;
     state.messages.push({
       id: `queue-error-${Date.now()}`,
@@ -69,7 +69,7 @@ export function createComposerQueueController({
     recordControlEvent({
       type: "control",
       name: "Send next queue paused",
-      tone: "failed",
+      tone,
       summary,
     });
   }
@@ -99,7 +99,7 @@ export function createComposerQueueController({
     state.activeComposerQueueRecovery = null;
   }
 
-  async function drain({ environmentId, sessionId, terminalRequestId }) {
+  async function drain({ environmentId, sessionId, terminalRequestId, cancelled = false }) {
     const scope = { environmentId, sessionId };
     const key = scopeKey(scope);
     if (state.composerQueueDrainingScopes.has(key)) return;
@@ -121,6 +121,12 @@ export function createComposerQueueController({
     }
     if (!released) {
       state.composerQueueDrainingScopes.delete(key);
+      if (isCurrentScope(scope)) updateSendState();
+      return;
+    }
+    if (cancelled) {
+      state.composerQueueDrainingScopes.delete(key);
+      recoverForManualSend(scope, "Response stopped. The next queued message is back in the composer; send it when you are ready to continue.", "neutral");
       if (isCurrentScope(scope)) updateSendState();
       return;
     }
@@ -224,7 +230,7 @@ export function createComposerQueueController({
     return true;
   }
 
-  function recoverForManualSend(scope) {
+  function recoverForManualSend(scope, message = "Send next is paused. The queued message was restored to the composer for review and will not be sent automatically.", tone = "neutral") {
     let blockedRelease;
     try {
       blockedRelease = queue.getBlockedRelease(scope);
@@ -251,7 +257,8 @@ export function createComposerQueueController({
     };
     reportFailure(
       scope,
-      "A queued message could not be confirmed after the interruption. It was restored to the composer for review and will not be sent automatically.",
+      message,
+      tone,
     );
     return true;
   }

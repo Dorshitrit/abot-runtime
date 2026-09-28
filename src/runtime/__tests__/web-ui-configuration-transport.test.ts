@@ -156,3 +156,25 @@ test("additive model setup scopes requests and preserves credential-save retry e
   ]);
   expect(fetchImpl.mock.calls[1][0]).not.toContain(input.apiKey);
 });
+
+test("model removal sends the selected declaration and root revision as scoped JSON", async () => {
+  const fetchImpl = vi.fn<typeof fetch>(
+    async () => new Response(JSON.stringify({ ok: true })),
+  );
+  const client = createRuntimeWebClient({
+    getConfig: () => ({ apiBasePath: "/web-api" }),
+    getEnvironmentId: () => "prod",
+    origin: "http://localhost:5177",
+    fetchImpl,
+  });
+  const input = { profileId: "extra", expectedRevision: "runtime-revision" };
+  await client.removeRuntimeModel(input, "dev one");
+  expect(fetchImpl.mock.calls[0]).toEqual([
+    "/web-api/runtime/config/models?environment=dev%20one",
+    {
+      method: "DELETE",
+      body: JSON.stringify(input),
+      headers: { "content-type": "application/json" },
+    },
+  ]);
+});

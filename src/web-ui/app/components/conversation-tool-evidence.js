@@ -24,10 +24,16 @@ function isTextInputField(field) {
     "Instruction",
     "Command",
     "Command excerpt",
+    "Typed text",
+    "Typed text excerpt",
   ].includes(field.label);
 }
 
 function inputBlockLabel(field, executed) {
+  if (field.label === "Typed text")
+    return executed ? "Sent text" : "Prepared text";
+  if (field.label === "Typed text excerpt")
+    return executed ? "Sent text excerpt" : "Prepared text excerpt";
   if (field.label === "Instruction") return "Instruction";
   if (field.label === "Command")
     return executed ? "Sent command" : "Prepared command";

@@ -248,11 +248,7 @@ describe("Config Workspace request-runner v2", () => {
     expect(configDashboard.innerHTML).toContain(
       "data-config-step-target-count>1 override",
     );
-    expect(renderStepsEditor).toHaveBeenCalledWith(
-      requestRunner,
-      "Request pipeline",
-      ["models", "defaults", "steps"],
-      { sparseOverrides: true },
-    );
+    expect(renderStepsEditor).not.toHaveBeenCalled();
+    expect(configDashboard.innerHTML).not.toContain('data-config-category="pipeline"');
   });
 });

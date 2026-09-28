@@ -5,7 +5,7 @@
   padding: 5px 0 8px;
   color: var(--muted);
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1.6;
 }
 
@@ -19,7 +19,7 @@
       105deg,
       var(--muted) 38%,
       var(--text) 48%,
-      #fff 50%,
+      var(--accent-strong) 50%,
       var(--text) 52%,
       var(--muted) 62%
     );

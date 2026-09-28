@@ -15,6 +15,7 @@ class WorkspaceElement {
   readonly classes = new Set<string>();
   readonly attributes = new Map<string, string>();
   readonly listeners = new Map<string, WorkspaceListener[]>();
+  readonly children: WorkspaceElement[] = [];
   private hiddenValue = false;
   private inertValue = false;
   disabled = false;
@@ -87,6 +88,10 @@ class WorkspaceElement {
     this.documentRoot.activeElement = this;
   }
 
+  querySelector(selector: string): WorkspaceElement | null {
+    return this.children.find((child) => selector === `#${child.id}`) ?? null;
+  }
+
   closest(selector: string): WorkspaceElement | null {
     if (selector === `#${this.id}`) return this;
     if (this.classes.has(selector.slice(1))) return this;
@@ -135,11 +140,25 @@ export function createWorkspaceShellHarness(
     chatPanel: element("chatPanel"),
     sessionsPanel: element("sessionsPanel"),
     configWorkspacePanel: element("configWorkspacePanel"),
+    configWorkspaceTitle: element("configWorkspaceTitle"),
+    configWorkspaceDescription: element("configWorkspaceDescription"),
     schedulesWorkspacePanel: element("schedulesWorkspacePanel"),
+    learningWorkspacePanel: element("learningWorkspacePanel"),
+    memoryWorkspacePanel: element("memoryWorkspacePanel"),
+    notificationsWorkspacePanel: element("notificationsWorkspacePanel"),
+    notificationsWorkspaceButton: element("notificationsWorkspaceButton"),
+    closeNotificationsWorkspaceButton: element("closeNotificationsWorkspaceButton"),
     schedulesWorkspaceButton: element("schedulesWorkspaceButton"),
     closeSchedulesWorkspaceButton: element("closeSchedulesWorkspaceButton"),
+    learningWorkspaceButton: element("learningWorkspaceButton"),
+    closeLearningWorkspaceButton: element("closeLearningWorkspaceButton"),
+    memoryWorkspaceButton: element("memoryWorkspaceButton"),
+    openMemoryRestartControlsButton: element("openMemoryRestartControlsButton"),
+    closeMemoryWorkspaceButton: element("closeMemoryWorkspaceButton"),
     chatWorkspaceButton: element("chatWorkspaceButton"),
     configWorkspaceButton: element("configWorkspaceButton"),
+    modelsWorkspaceButton: element("modelsWorkspaceButton"),
+    pluginsWorkspaceButton: element("pluginsWorkspaceButton"),
     sessionsToggleButton: element("sessionsToggleButton"),
     closeSessionsButton: element("closeSessionsButton"),
     closeConfigWorkspaceButton: element("closeConfigWorkspaceButton"),
@@ -156,7 +175,15 @@ export function createWorkspaceShellHarness(
   dom.sessionSearchInput.parentElement = dom.sessionsPanel;
   dom.refreshSessionsButton.parentElement = dom.sessionsPanel;
   dom.closeConfigWorkspaceButton.parentElement = dom.configWorkspacePanel;
+  for (const heading of [dom.configWorkspaceTitle, dom.configWorkspaceDescription]) {
+    heading.parentElement = dom.configWorkspacePanel;
+    dom.configWorkspacePanel.children.push(heading);
+  }
   dom.closeSchedulesWorkspaceButton.parentElement = dom.schedulesWorkspacePanel;
+  dom.closeLearningWorkspaceButton.parentElement = dom.learningWorkspacePanel;
+  dom.closeMemoryWorkspaceButton.parentElement = dom.memoryWorkspacePanel;
+  dom.closeNotificationsWorkspaceButton.parentElement = dom.notificationsWorkspacePanel;
+  dom.openMemoryRestartControlsButton.parentElement = dom.memoryWorkspacePanel;
   for (const child of [...operationsTabButtons, ...operationsTabPages]) {
     child.parentElement = dom.configWorkspacePanel;
   }

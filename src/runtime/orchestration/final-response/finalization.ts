@@ -6,6 +6,7 @@ import type {
 import type { AgentMode } from "../../../shared/types.js";
 import type { EventSink, SessionStore } from "../../ports.js";
 import { defaultRuntimeSessionStore } from "../../adapters/default-session-adapters.js";
+import type { SessionTerminalMessage } from "../../../sessions/request-lifecycle/contracts.js";
 
 export async function finalizeResponse(params: {
   events: EventSink;
@@ -19,9 +20,10 @@ export async function finalizeResponse(params: {
   observationContent?: string;
   thinkingTrace?: SessionThinkingTraceEntry[];
   afterPersist?: () => void;
+  persistResponse?: (message: SessionTerminalMessage) => Promise<void>;
 }): Promise<void> {
   const sessionStore = params.sessionStore ?? defaultRuntimeSessionStore;
-  await sessionStore.appendMessage(params.sessionId, "assistant", params.output, {
+  const metadata = {
     lastAgentMode: params.agentMode,
     requestId: params.requestId,
     ...(params.grounding ? { grounding: params.grounding } : {}),
@@ -32,7 +34,17 @@ export async function finalizeResponse(params: {
       ? { observationContent: params.observationContent }
       : {}),
     ...(params.thinkingTrace ? { thinkingTrace: params.thinkingTrace } : {}),
-  });
+  };
+  if (params.persistResponse) {
+    await params.persistResponse({ content: params.output, ...metadata });
+  } else {
+    await sessionStore.appendMessage(
+      params.sessionId,
+      "assistant",
+      params.output,
+      metadata,
+    );
+  }
   params.afterPersist?.();
   params.events.event("thinking.completed");
   params.events.completed(params.output);

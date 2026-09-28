@@ -4,18 +4,33 @@ import { normalizeScheduleReference } from "../lib/schedule-message.js";
 import { createWebSessionId, escapeHtml, textOf } from "../lib/text-format.js";
 import { insertRequestUserMessageBeforeAssistant } from "../ui-behavior.js";
 import { normalizeRealtimeMessage } from "../lib/realtime-message.js";
+import { sparkProposalId } from "../lib/spark-proposal-message.js";
+import {
+  isStoppedRequest,
+  restoreStoppedResponses,
+} from "../lib/request-stop-state.js";
+import {
+  isApprovalPresentation,
+  requestLifecycles,
+  rememberRequestLifecycle,
+  sameConversationMessage,
+} from "../lib/request-lifecycle-view.js";
 
 export function normalizeConversationMessage(raw, fallbackIndex = 0) {
   const message =
     raw?.message && typeof raw.message === "object" ? raw.message : raw;
   return {
     id: textOf(message?.id) || `local-${fallbackIndex + 1}`,
+    persistedMessageId: message?.id ?? null,
+    kind: textOf(message?.kind),
+    approvalRequest: message?.approvalRequest,
     role: textOf(message?.role, "assistant"),
     text: textOf(message?.text ?? message?.content ?? message?.output),
     createdAt: message?.createdAt || Date.now(),
     requestId: textOf(message?.requestId),
     streaming: false,
     schedule: normalizeScheduleReference(message?.schedule),
+    sparkProposalId: sparkProposalId(message),
     events: Array.isArray(message?.events)
       ? message.events.map((event) => textOf(event)).filter(Boolean)
       : [],
@@ -86,15 +101,9 @@ export function createConversationSessionController({
   function addOrMergeMessage(message) {
     const id = textOf(message.id);
     const requestId = textOf(message.requestId);
-    const existingIndex = state.messages.findIndex((item) => {
-      if (id && item.id === id) return true;
-      return Boolean(
-        requestId &&
-        item.requestId === requestId &&
-        item.role === message.role &&
-        item.role === "assistant",
-      );
-    });
+    const existingIndex = state.messages.findIndex((item) =>
+      sameConversationMessage(item, message),
+    );
     if (existingIndex >= 0) {
       state.messages[existingIndex] = {
         ...state.messages[existingIndex],
@@ -106,7 +115,11 @@ export function createConversationSessionController({
     } else {
       state.messages.push(message);
     }
-    if (requestId && message.role === "assistant") {
+    if (
+      requestId &&
+      message.role === "assistant" &&
+      !isApprovalPresentation(message)
+    ) {
       state.requestMessages.set(requestId, message.id);
     }
   }
@@ -116,7 +129,7 @@ export function createConversationSessionController({
     const existing = state.messages.find(
       (message) => message.id === existingId,
     );
-    if (existing) return existing;
+    if (existing && !isApprovalPresentation(existing)) return existing;
 
     const message = {
       id: `assistant-${requestId}`,
@@ -141,6 +154,7 @@ export function createConversationSessionController({
     conversationView.reset();
     state.submittedToolApprovalIds.clear();
     state.requestMessages.clear();
+    requestLifecycles(state).clear();
     state.sessionViewVersion += 1;
     setMessageStatus("");
     updateComposerSendState();
@@ -168,7 +182,8 @@ export function createConversationSessionController({
   function requestBelongsToCurrentView(requestId) {
     if (!requestId) return true;
     return Boolean(
-      state.activeRequestId && requestId === state.activeRequestId,
+      requestLifecycles(state).has(requestId) ||
+      (state.activeRequestId && requestId === state.activeRequestId),
     );
   }
 
@@ -221,7 +236,9 @@ export function createConversationSessionController({
       if (hydrateRequestIds.has(requestId)) continue;
       const assistant = state.messages.find(
         (message) =>
-          message.role === "assistant" && message.requestId === requestId,
+          message.role === "assistant" &&
+          message.requestId === requestId &&
+          !isApprovalPresentation(message),
       );
       if (assistant) assistant.thinkingText = thinkingText;
     }
@@ -269,6 +286,9 @@ export function createConversationSessionController({
       sessionId,
       environment: selectedEnvironmentId(),
     });
+    const hasActiveRequestInSession =
+      sessionId === state.currentSessionId && Boolean(state.activeRequestId);
+    if (hasActiveRequestInSession) resumeRequest(state.activeRequestId);
   }
 
   function subscribeRequest(requestId) {
@@ -391,7 +411,22 @@ export function createConversationSessionController({
     if (targetSession?.id) await openSession(targetSession.id);
   }
 
-  async function openSession(sessionId) {
+  async function openSession(
+    sessionId,
+    { isRouteCurrent, commitRouteNavigation } = {},
+  ) {
+    const routeOwned = typeof commitRouteNavigation === "function";
+    let payload;
+    if (routeOwned) {
+      const environmentId = selectedEnvironmentId();
+      const viewVersion = state.sessionViewVersion;
+      const currentSessionId = state.currentSessionId;
+      payload = await client.loadSession(sessionId, environmentId);
+      if (environmentId !== selectedEnvironmentId()) return;
+      if (viewVersion !== state.sessionViewVersion) return;
+      if (currentSessionId !== state.currentSessionId) return;
+      if (isRouteCurrent?.() !== true) return;
+    }
     if (
       state.currentSessionId &&
       state.currentSessionId !== sessionId &&
@@ -399,6 +434,7 @@ export function createConversationSessionController({
     ) {
       return;
     }
+    if (routeOwned && commitRouteNavigation() !== true) return;
     const viewVersion = state.sessionViewVersion + 1;
     state.currentSessionId = sessionId;
     preferences.saveSessionIdForEnvironment(selectedEnvironmentId(), sessionId);
@@ -415,10 +451,9 @@ export function createConversationSessionController({
     renderMessages();
     subscribeSession(sessionId);
 
-    const payload = await client.loadSession(
-      sessionId,
-      selectedEnvironmentId(),
-    );
+    if (!routeOwned) {
+      payload = await client.loadSession(sessionId, selectedEnvironmentId());
+    }
     if (
       state.currentSessionId !== sessionId ||
       state.sessionViewVersion !== viewVersion
@@ -433,11 +468,17 @@ export function createConversationSessionController({
     sessions.applyTitle(sessionId, payload.title);
     sessions.applyReadState(sessionId, payload.readState);
     for (const message of state.messages) {
-      if (message.role === "assistant" && message.requestId) {
+      if (
+        message.role === "assistant" &&
+        message.requestId &&
+        !isApprovalPresentation(message)
+      ) {
         state.requestMessages.set(message.requestId, message.id);
       }
     }
     const requests = Array.isArray(payload.requests) ? payload.requests : [];
+    for (const request of requests)
+      rememberRequestLifecycle(state, request.lifecycle);
     applyConversationChrome();
     renderSessions();
     const streamingRequestIds = new Set(
@@ -465,6 +506,7 @@ export function createConversationSessionController({
     for (const requestId of streamingRequestIds) {
       activeAssistantForRequest(requestId);
     }
+    restoreStoppedResponses(state.messages, requests);
     restoreSessionEventState(requests, streamingRequestIds);
     for (const request of requests) {
       if (request.status === "streaming" && request.requestId) {
@@ -493,6 +535,7 @@ export function createConversationSessionController({
         await drainQueuedMessage({
           ...scope,
           terminalRequestId: terminal.requestId,
+          cancelled: isStoppedRequest(terminal),
         });
       }
     }

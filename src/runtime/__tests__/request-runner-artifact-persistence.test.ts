@@ -10,6 +10,12 @@ import type { RequestExecutionScope } from "../request/execution-scope.js";
 import { createRequestContextCompactionStore } from "../context/semantic-compaction/index.js";
 import { createTestRequestExecutionScope } from "./support/request-execution-scope.js";
 import { directRespondDecision } from "./support/supervisor-direct-respond.js";
+import * as rootKernel from "../request/root-execution-kernel.js";
+import type {
+  RootApprovalWait,
+  RootExecutionInput,
+} from "../request/root-execution-contracts.js";
+import { collectSettledSessionArtifactPathInputs } from "../request/session-artifact-path-persistence.js";
 
 const mocks = vi.hoisted(() => ({
   persistSettledSessionArtifactPaths: vi.fn(),
@@ -74,9 +80,11 @@ const modelPolicy: NonNullable<RequestExecutionScope["modelPolicy"]> = {
 function createRequest(
   invoke: ModelGatewayClient["invoke"],
   onAnswerToken = vi.fn(),
+  executionPolicySelection?: RequestExecutionScope["executionPolicySelection"],
 ): RequestExecutionScope {
   return createTestRequestExecutionScope({
     requestId: "runner-persistence-request",
+    ...(executionPolicySelection ? { executionPolicySelection } : {}),
     sessionId: "runner-persistence-session",
     prompt: "Return one bounded response.",
     historyMessages: [],
@@ -115,6 +123,106 @@ afterEach(() => {
 });
 
 describe("request runner artifact-path persistence sequencing", () => {
+  test("persists earlier settled targets before returning a cancellable approval wait", async () => {
+    vi.spyOn(rootKernel, "runRootExecutionKernel").mockImplementationOnce(
+      (async ({ ledger }: RootExecutionInput): Promise<RootApprovalWait> => {
+        const call = ledger.current().state.calls[0]!;
+        const begin = async (capabilityId: string) => {
+          const result = await ledger.apply({
+            expectedHead: ledger.current(),
+            command: {
+              authority: "active_role",
+              type: "begin_capability_execution",
+              callId: call.callId,
+              invocationAttempt:
+                ledger.current().state.calls[0]!.activationCount,
+              capabilityId,
+              declaredEffect: "observation",
+              intent: "Inspect the exact target.",
+              controlsJson: "{}",
+              actionFingerprint: `sha256:${"a".repeat(64)}`,
+            },
+          });
+          expect(result).toMatchObject({ ok: true });
+          return ledger.current().state.capabilityExecutions.at(-1)!;
+        };
+        const settled = await begin("settled-target");
+        const result = await ledger.apply({
+          expectedHead: ledger.current(),
+          command: {
+            authority: "runtime",
+            type: "settle_capability_execution",
+            callId: call.callId,
+            executionId: settled.executionId,
+            outcome: "succeeded",
+            observedEffect: "observation",
+            summary: "Read the artifact.",
+            exactResult: {
+              kind: "generic_capability_result_v1",
+              authority: "capability_adapter",
+              status: "executed",
+              ok: true,
+              payload: { output: "saved" },
+            },
+            references: [
+              { kind: "tool_target", target: "existing-artifact.txt" },
+            ],
+          },
+        });
+        expect(result.ok).toBe(true);
+        const pending = await begin("pending-target");
+        return {
+          kind: "awaiting_approval",
+          callers: [],
+          root: { acknowledgementPublished: true, titlePublished: true },
+          group: {
+            kind: "prepared_approval_group_v1",
+            requestId: ledger.current().state.requestId,
+            callId: call.callId,
+            invocationAttempt: ledger.current().state.calls[0]!.activationCount,
+            batch: false,
+            entries: [
+              {
+                executionId: pending.executionId,
+                capabilityId: pending.capabilityId,
+                declaredEffect: "observation",
+                intent: pending.intent,
+                controls: {},
+                actionFingerprint: pending.actionFingerprint!,
+                snapshot: {},
+              },
+            ],
+          },
+        };
+      }) as typeof rootKernel.runRootExecutionKernel,
+    );
+    mocks.persistSettledSessionArtifactPaths.mockImplementation(
+      async ({ head, persistArtifactPaths }) => {
+        await persistArtifactPaths(
+          collectSettledSessionArtifactPathInputs(head),
+        );
+      },
+    );
+    const request = createRequest(vi.fn(), vi.fn(), {
+      policy: "execution-agent-v1",
+      source: "default",
+    });
+    const persistArtifactPaths = vi.fn(async () => undefined);
+    const outcome = await runRequestRunner(request, {
+      durableApproval: true,
+      persistArtifactPaths,
+    });
+    expect(outcome.kind).toBe("awaiting_approval");
+    expect(persistArtifactPaths).toHaveBeenCalledWith([
+      {
+        target: "existing-artifact.txt",
+        sourceRequestId: request.requestId,
+        sourceExecutionId: "capability-execution-1",
+      },
+    ]);
+    expect(request.onAnswerToken).not.toHaveBeenCalled();
+  });
+
   test("persists the final ledger before delivering a successful answer", async () => {
     const order: string[] = [];
     mocks.persistSettledSessionArtifactPaths.mockImplementation(async () => {

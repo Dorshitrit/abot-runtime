@@ -14,6 +14,8 @@ export function createSetupOptionalSteps({
   loadPlugins,
   setPlugin,
   loadHostConnection,
+  connectLocalHost,
+  createHostPairing,
   downloadHostSetup,
   revokeHostConnection,
   onChange,
@@ -39,6 +41,8 @@ export function createSetupOptionalSteps({
   const computer = loadHostConnection
     ? createSystemHostConnectionManager({
         loadConnection: loadHostConnection,
+        connectLocal: connectLocalHost,
+        createPairing: createHostPairing,
         downloadSetup: downloadHostSetup,
         revokeConnection: revokeHostConnection,
         onChange,

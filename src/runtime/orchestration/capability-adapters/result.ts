@@ -1,3 +1,4 @@
+import { isToolResultMedia, type ToolImageEvidence } from "../../../capabilities/tool-media.js";
 import {
   ROLE_CAPABILITY_RESULT_REFERENCE_LIMIT_MAX,
   ROLE_CAPABILITY_RESULT_REFERENCE_TARGET_MAX_LENGTH,
@@ -21,6 +22,7 @@ export type CapabilityResultReference = Readonly<{
 }>;
 
 export type CanonicalToolExecutionResult = Readonly<{
+  media?: readonly ToolImageEvidence[];
   ok: boolean;
   tool: string;
   output: string;
@@ -277,6 +279,7 @@ function captureToolExecutionResult(
         "data",
         "error",
         "errorCode",
+        "media",
       ],
     ) ||
     typeof input.ok !== "boolean" ||
@@ -293,6 +296,7 @@ function captureToolExecutionResult(
     (input.error !== undefined && typeof input.error !== "string") ||
     (input.errorCode !== undefined && typeof input.errorCode !== "string") ||
     !validActions(input.actions) ||
+    !isToolResultMedia(input.media) ||
     !validToolData(input.data)
   ) {
     return undefined;

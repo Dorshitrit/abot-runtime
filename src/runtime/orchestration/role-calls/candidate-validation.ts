@@ -67,6 +67,8 @@ import {
   issue,
 } from "./reducer-primitives.js";
 
+import { isRoleCallResultText } from "./role-result-text.js";
+
 export function validateRoleCallPolicy(
   policy: RoleCallPolicy,
 ): RoleCallValidationIssue[] {
@@ -277,7 +279,7 @@ export function validateRoleCallState(
       producer.status !== "completed" ||
       producer.roleId !== result.roleId ||
       (result.outcome !== "completed" && result.outcome !== "failed") ||
-      !isBoundedText(result.summary, policy.limits.maxResultChars) ||
+      !isRoleCallResultText(result.summary) ||
       !isRoleCallResultReceiptValidForStoredResult({
         receipt: result.receipt,
         producer,

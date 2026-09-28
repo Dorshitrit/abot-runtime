@@ -1,3 +1,4 @@
+import { projectSessionRequestLifecycle } from "../request-lifecycle/projection.js";
 import type {
   SessionMessageSource,
   SessionRecord,
@@ -210,6 +211,10 @@ export function toSnapshotMessage(
   requests: SessionRequestRecord[],
 ): SessionSnapshotMessage {
   return {
+    ...(message.kind ? { kind: message.kind } : {}),
+    ...(message.approvalRequest
+      ? { approvalRequest: structuredClone(message.approvalRequest) }
+      : {}),
     id: toMessageIdForUi(message.id),
     sessionId,
     role: message.role,
@@ -218,6 +223,7 @@ export function toSnapshotMessage(
     createdAt: toEpochMs(message.createdAt),
     requestId: message.requestId ?? inferMessageRequestId(message, requests),
     cronJobId: message.cronJobId ?? null,
+    ...(message.initiative ? { initiative: message.initiative } : {}),
     ...(message.schedule ? { schedule: message.schedule } : {}),
     cronTitle: message.cronTitle ?? null,
     triggerType: message.triggerType ?? null,
@@ -252,6 +258,9 @@ export function toSnapshotRequest(
   request: SessionRequestRecord,
 ): SessionSnapshotRequest {
   return {
+    ...(request.lifecycle
+      ? { lifecycle: projectSessionRequestLifecycle(request) }
+      : {}),
     requestId: request.requestId,
     sessionId: request.sessionId,
     status: request.status,

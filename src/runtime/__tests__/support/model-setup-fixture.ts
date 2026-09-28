@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { vi } from "vitest";
 import { RuntimeSetupService } from "../../../web-ui/local-runtime/runtime-setup-service.js";
 import { ModelSetupService } from "../../../web-ui/local-runtime/model-setup-service.js";
@@ -39,6 +39,32 @@ export async function createModelSetupFixture(artifactDirectory?: string) {
   const readConfig = async () => JSON.parse(await readFile(configPath, "utf8"));
   const writeConfig = async (config: Record<string, unknown>) =>
     writeFile(configPath, JSON.stringify(config));
+  async function readModelProfile(profileId: string) {
+    const declaration = (await readConfig()).models.profiles[profileId];
+    if (!declaration.configRef) return declaration;
+    return JSON.parse(
+      await readFile(
+        resolve(dirname(configPath), declaration.configRef),
+        "utf8",
+      ),
+    );
+  }
+  async function writeModelProfile(
+    profileId: string,
+    profile: Record<string, unknown>,
+  ) {
+    const config = await readConfig();
+    const declaration = config.models.profiles[profileId];
+    if (declaration.configRef) {
+      await writeFile(
+        resolve(dirname(configPath), declaration.configRef),
+        JSON.stringify(profile),
+      );
+      return;
+    }
+    config.models.profiles[profileId] = profile;
+    await writeConfig(config);
+  }
   const envPath = join(rootDir, ".env");
   const readEnv = () => readFile(envPath, "utf8");
   return {
@@ -48,6 +74,8 @@ export async function createModelSetupFixture(artifactDirectory?: string) {
     service,
     readConfig,
     writeConfig,
+    readModelProfile,
+    writeModelProfile,
     readEnv,
     async cleanup() {
       vi.restoreAllMocks();

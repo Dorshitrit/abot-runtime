@@ -1,8 +1,11 @@
 import { stdin } from "node:process";
 import type { Readable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { isNativeCredential } from "../../plugins/system/source/companion/native-state.js";
-import { isHostRecord } from "../../plugins/system/source/companion/protocol.js";
+import { isNativeCredential } from "../computer-access/companion/native-state.js";
+import {
+  isHostIdentifier,
+  isHostRecord,
+} from "../computer-access/companion/protocol.js";
 import { runHostCompanionCli } from "./host-companion.js";
 
 const SETUP_INPUT_LIMIT_BYTES = 16_384;
@@ -34,15 +37,30 @@ async function readSetupInput(input: Readable): Promise<unknown> {
 
 function readSetupRequest(
   value: unknown,
-): Readonly<{ url: string; code: string }> {
+): Readonly<{ url: string; code: string; upgradeHostId?: string }> {
   if (!isHostRecord(value)) throw new Error("Invalid host setup request.");
-  if (Object.keys(value).some((key) => !["url", "code"].includes(key)))
+  if (
+    Object.keys(value).some(
+      (key) => !["url", "code", "upgradeHostId"].includes(key),
+    )
+  )
     throw new Error("Unexpected host setup fields.");
   if (typeof value.url !== "string") throw new Error("Missing Runtime URL.");
   if (value.url.length === 0 || value.url.length > 4_096)
     throw new Error("Invalid Runtime URL length.");
   if (!isNativeCredential(value.code)) throw new Error("Invalid pairing code.");
-  return { url: value.url, code: value.code };
+  if (
+    value.upgradeHostId !== undefined &&
+    !isHostIdentifier(value.upgradeHostId)
+  )
+    throw new Error("Invalid paired computer identity.");
+  return {
+    url: value.url,
+    code: value.code,
+    ...(value.upgradeHostId !== undefined
+      ? { upgradeHostId: value.upgradeHostId }
+      : {}),
+  };
 }
 
 /** Installer-only setup receives secrets over stdin; login startup uses host run. */
@@ -67,6 +85,7 @@ export async function runHostCompanionEntry(
     await runCli(["connect", "--url", setup.url], {
       cliPath,
       pairingCode: setup.code,
+      ...(setup.upgradeHostId ? { upgradeHostId: setup.upgradeHostId } : {}),
     });
     return;
   }

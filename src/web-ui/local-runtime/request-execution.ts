@@ -9,21 +9,16 @@ import {
   type RequestSteeringInbox,
 } from "../../runtime/request/request-steering.js";
 import type {
-  ToolApprovalController,
-  ToolApprovalDecision,
-} from "../../runtime/ports.js";
-import type {
   ActiveRequest,
   JsonObject,
   RuntimeEnvironment,
 } from "./contracts.js";
 import { getNumber, getString, sendJson } from "./http.js";
 import { RealtimeClientHub } from "./realtime-hub.js";
-
-type PendingToolApproval = {
-  requestId: string;
-  resolve: (decision: ToolApprovalDecision) => void;
-};
+import { PendingToolApprovals } from "./pending-tool-approvals.js";
+import { createWorkspaceChangeNotifier } from "./workspace-notifications.js";
+import type { LocalPendingToolApproval } from "../../runtime/local-host/request-approval-contracts.js";
+import { attachApprovalRequest } from "./approval-request-attachment.js";
 
 function createRequestId(): string {
   const random = Math.random().toString(36).slice(2, 8);
@@ -32,12 +27,19 @@ function createRequestId(): string {
 
 export class LocalRequestExecution {
   private readonly activeRequests = new Map<string, ActiveRequest>();
-  private readonly pendingToolApprovals = new Map<
-    string,
-    PendingToolApproval
-  >();
+  readonly toolApprovals: PendingToolApprovals;
 
-  constructor(private readonly realtime: RealtimeClientHub) {}
+  constructor(private readonly realtime: RealtimeClientHub) {
+    const notify = createWorkspaceChangeNotifier(realtime);
+    this.toolApprovals = new PendingToolApprovals(
+      (requestId) => this.activeRequests.get(requestId),
+      (requestId) => {
+        const active = this.activeRequests.get(requestId);
+        if (!active) return;
+        notify(active.environmentId, ["approvals"]);
+      },
+    );
+  }
 
   scheduledRequestOptions(run: SchedulerRun): RuntimeRequestOptions {
     const requestSteering = createRequestSteeringInbox({
@@ -55,7 +57,7 @@ export class LocalRequestExecution {
       requestSteering,
     });
     return {
-      toolApprovalController: this.createToolApprovalController(),
+      toolApprovalController: this.toolApprovals,
       requestSteering,
     };
   }
@@ -63,9 +65,10 @@ export class LocalRequestExecution {
   publishScheduled(payload: JsonObject): void {
     const isTerminal =
       payload.type === "completed" || payload.type === "failed";
-    const outbound = isTerminal
-      ? { ...payload, requestOrigin: "schedule" }
-      : payload;
+    const outbound =
+      isTerminal && payload.requestOrigin !== "approval"
+        ? { ...payload, requestOrigin: "schedule" }
+        : payload;
     if (payload.sessionDeleted !== true) this.publish(outbound);
     if (isTerminal) {
       this.activeRequests.delete(getString(payload.requestId));
@@ -200,13 +203,24 @@ export class LocalRequestExecution {
   }
 
   resolveToolApproval(message: JsonObject): void {
-    const approvalId = getString(message.approvalId);
-    if (!approvalId) return;
-    const pending = this.pendingToolApprovals.get(approvalId);
-    if (!pending) return;
-    pending.resolve({
-      approved: message.approved === true,
-      reason: getString(message.reason).trim() || undefined,
+    this.toolApprovals.resolveRealtime(message);
+  }
+
+  attachToolApproval(
+    environmentId: string,
+    environment: RuntimeEnvironment,
+    pending: LocalPendingToolApproval,
+    events: readonly JsonObject[],
+  ): Promise<void> {
+    return attachApprovalRequest({
+      environmentId,
+      environment,
+      pending,
+      events,
+      activeRequests: this.activeRequests,
+      toolApprovals: this.toolApprovals,
+      publish: (data) =>
+        this.publishRaw(data, { environmentId, sessionId: pending.sessionId }),
     });
   }
 
@@ -222,41 +236,10 @@ export class LocalRequestExecution {
         this.publishRaw(data, { environmentId, sessionId }),
     } as WebSocket;
     await environment.requests.handle(localWs, request, {
-      toolApprovalController: this.createToolApprovalController(),
+      toolApprovalController: this.toolApprovals,
       requestSteering,
+      durableApprovals: true,
     });
-  }
-
-  private createToolApprovalController(): ToolApprovalController {
-    return {
-      requestToolApproval: (request, options) =>
-        new Promise<ToolApprovalDecision>((resolve) => {
-          if (options?.abortSignal?.aborted) {
-            resolve({
-              approved: false,
-              reason: "Tool approval was cancelled.",
-            });
-            return;
-          }
-          const complete = (decision: ToolApprovalDecision) => {
-            this.pendingToolApprovals.delete(request.approvalId);
-            options?.abortSignal?.removeEventListener("abort", onAbort);
-            resolve(decision);
-          };
-          const onAbort = () =>
-            complete({
-              approved: false,
-              reason: "Tool approval was cancelled.",
-            });
-          options?.abortSignal?.addEventListener("abort", onAbort, {
-            once: true,
-          });
-          this.pendingToolApprovals.set(request.approvalId, {
-            requestId: request.requestId,
-            resolve: complete,
-          });
-        }),
-    };
   }
 
   private publishRaw(
@@ -305,5 +288,12 @@ export class LocalRequestExecution {
       }
     }
     this.realtime.broadcast(payload);
+    if (payload.name === "request.lifecycle.changed") {
+      this.realtime.broadcast({
+        type: "workspace_changed",
+        environment: payload.environment,
+        resources: ["approvals", "sessions"],
+      });
+    }
   }
 }

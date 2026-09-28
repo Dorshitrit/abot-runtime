@@ -22,6 +22,7 @@ import type {
 } from "./contracts.js";
 import { inspectRuntimeSetupRequirement } from "./runtime-availability.js";
 import { readSavedModelCatalog } from "./saved-model-catalog.js";
+import type { LearningChangedEvent } from "../../runtime/passive-learning/contracts.js";
 
 export class RuntimeEnvironmentRegistry {
   private readonly environments = new Map<string, RuntimeEnvironment>();
@@ -37,6 +38,10 @@ export class RuntimeEnvironmentRegistry {
     private readonly schedulerBindings: {
       requestOptions?: LocalRuntimeApplicationOptions["scheduledRequestOptions"];
       publish?: (event: Record<string, unknown>) => void;
+      publishLearning?: (
+        environmentId: string,
+        event?: LearningChangedEvent,
+      ) => void;
     } = {},
   ) {
     this.configuredEnvironments = options.resolveEnvironmentConfig?.(
@@ -202,6 +207,9 @@ export class RuntimeEnvironmentRegistry {
     if (this.schedulerBindings.publish) {
       environment.subscribeScheduledEvents(this.schedulerBindings.publish);
     }
+    environment.subscribeLearningEvents?.((event) =>
+      this.schedulerBindings.publishLearning?.(environmentId, event),
+    );
     return environment;
   }
 

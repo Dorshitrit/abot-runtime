@@ -9,6 +9,11 @@ import {
   validateTimeZone,
 } from "./schedule-validation.js";
 
+import {
+  isSchedulerToolPermissionMode,
+  requireSchedulerToolPermissionMode,
+} from "./tool-permission-mode.js";
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== "object") return false;
   return !Array.isArray(value);
@@ -25,7 +30,7 @@ export function parseStoredJob(value: unknown): SchedulerJob {
   const job = value as unknown as SchedulerJob;
   validateSchedulerJobInput(job);
   if (!job.id || !job.environmentId) failSnapshot();
-  if (job.toolPermissionMode !== "full_access") failSnapshot();
+  if (!isSchedulerToolPermissionMode(job.toolPermissionMode)) failSnapshot();
   if (!["active", "paused", "cancelled", "completed"].includes(job.state))
     failSnapshot();
   if (!Number.isSafeInteger(job.revision)) failSnapshot();
@@ -58,6 +63,7 @@ export function parseStoredRun(value: unknown): SchedulerRun {
     failSnapshot();
   if (!Number.isSafeInteger(value.jobRevision)) failSnapshot();
   if (Number(value.jobRevision) < 1) failSnapshot();
+  requireSchedulerToolPermissionMode(value.toolPermissionMode);
   validateTimeZone(String(value.timeZone));
   const states = [
     "pending",

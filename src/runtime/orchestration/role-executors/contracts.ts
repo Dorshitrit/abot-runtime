@@ -9,6 +9,10 @@ import type {
   RoleCallWorkerCapabilityScope,
 } from "../role-calls/index.js";
 import type { RuntimeDelegateRoleId } from "../roles.js";
+import type {
+  RoleApprovalContinuation,
+  RoleApprovalWait,
+} from "./approval-continuation.js";
 
 export type RoleExecutionOutcome = "completed" | "failed";
 
@@ -70,6 +74,7 @@ export type RoleExecutionChildInvocation = Readonly<{
 
 export type RoleExecutorActivationResult<TValue = unknown> =
   | RoleExecutionResult<TValue>
+  | RoleApprovalWait
   | RoleExecutionContinuation
   | RoleExecutionChildInvocation;
 
@@ -88,29 +93,43 @@ export type RoleExecutor<TContext, TValue = unknown> = Readonly<{
   ): Promise<RoleExecutorActivationResult<TValue>>;
 }>;
 
+export type RoleChildInvocationInput<TContext> = Readonly<{
+  requestId: string;
+  context: TContext;
+  callerCall: RoleCallFrame;
+  ledger: RoleCallLedger;
+  expectedHead: RoleCallLedgerHead;
+  roleId: RuntimeDelegateRoleId;
+  objective: string;
+  workerCapabilityScope?: RoleCallWorkerCapabilityScope;
+  workingDirectory?: string;
+  plannerPlan?: RoleCallPlanBinding;
+  turnCount: number;
+  entered?: RoleApprovalContinuation;
+  allowApprovalWait?: boolean;
+}>;
+
+export type RoleExecutionInput<TContext> = Readonly<{
+  requestId: string;
+  context: TContext;
+  call: RoleCallFrame;
+  ledger: RoleCallLedger;
+  continuationState?: RoleApprovalContinuation;
+  allowApprovalWait?: boolean;
+}>;
+
 export type RoleExecutorRegistry<TContext, TValue = unknown> = Readonly<{
   roleIds: readonly RuntimeDelegateRoleId[];
   invokeChild(
-    input: Readonly<{
-      requestId: string;
-      context: TContext;
-      callerCall: RoleCallFrame;
-      ledger: RoleCallLedger;
-      expectedHead: RoleCallLedgerHead;
-      roleId: RuntimeDelegateRoleId;
-      objective: string;
-      workerCapabilityScope?: RoleCallWorkerCapabilityScope;
-      workingDirectory?: string;
-      plannerPlan?: RoleCallPlanBinding;
-      turnCount: number;
-    }>,
+    input: RoleChildInvocationInput<TContext> & { allowApprovalWait: true },
+  ): Promise<RoleChildInvocationResult<TValue> | RoleApprovalWait>;
+  invokeChild(
+    input: RoleChildInvocationInput<TContext> & { allowApprovalWait?: false },
   ): Promise<RoleChildInvocationResult<TValue>>;
   execute(
-    input: Readonly<{
-      requestId: string;
-      context: TContext;
-      call: RoleCallFrame;
-      ledger: RoleCallLedger;
-    }>,
+    input: RoleExecutionInput<TContext> & { allowApprovalWait: true },
+  ): Promise<RoleExecutionResult<TValue> | RoleApprovalWait>;
+  execute(
+    input: RoleExecutionInput<TContext> & { allowApprovalWait?: false },
   ): Promise<RoleExecutionResult<TValue>>;
 }>;

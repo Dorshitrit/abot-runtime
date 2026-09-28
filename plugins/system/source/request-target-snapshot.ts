@@ -2,14 +2,14 @@ import {
   SystemOperationError,
   type SystemTarget,
   type SystemTargetId,
-} from "./contracts.js";
+} from "../../../src/plugin-sdk/computer-access.js";
 import {
   isHostIdentifier,
   isHostIdentity,
   type HostIdentity,
   type HostStatus,
-} from "./companion/protocol.js";
-import type { SystemTargetObservation } from "./target-observation.js";
+} from "../../../src/plugin-sdk/computer-access.js";
+import type { SystemTargetObservation } from "../../../src/plugin-sdk/computer-access.js";
 
 export type SystemRequestRoute = Readonly<
   | { kind: "native"; target: SystemTarget }
@@ -19,15 +19,17 @@ export type SystemRequestRoute = Readonly<
       hostId: string;
       connectionId: string;
       identity: HostIdentity;
+      capabilities?: readonly string[];
     }
 >;
 export type SystemTargetSnapshot = readonly SystemRequestRoute[];
 
-/** Capture availability once. A companion only supplies an OS missing natively. */
+/** Capture routes once; command callers keep native OS precedence, desktop callers retain distinct routes. */
 export async function captureSystemTargetSnapshot(
   input: Readonly<{
     observeTargets(): Promise<SystemTargetObservation>;
     readHostStatus(): Promise<HostStatus>;
+    includeSameOsCompanion?: boolean;
   }>,
 ): Promise<SystemTargetSnapshot> {
   const [native, companion] = await Promise.allSettled([
@@ -38,7 +40,10 @@ export async function captureSystemTargetSnapshot(
   if (companion.status !== "fulfilled") return Object.freeze(routes);
   const remote = connectedCompanionRoute(companion.value);
   if (!remote) return Object.freeze(routes);
-  if (routes.some((route) => routeTargetId(route) === remote.target))
+  if (
+    !input.includeSameOsCompanion &&
+    routes.some((route) => routeTargetId(route) === remote.target)
+  )
     return Object.freeze(routes);
   return Object.freeze([...routes, remote]);
 }
@@ -76,6 +81,9 @@ function connectedCompanionRoute(
     hostId: status.hostId,
     connectionId: status.connectionId,
     identity: Object.freeze({ ...status.identity }),
+    ...(status.capabilities
+      ? { capabilities: Object.freeze([...status.capabilities]) }
+      : {}),
   });
 }
 

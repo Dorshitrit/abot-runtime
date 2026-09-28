@@ -75,5 +75,5 @@ export function createChatRequestController({
     conversationSession.activateRequestForScope(scope, requestId);
   }
 
-  return { postChatMessage, sendMessage };
+  return { postChatMessage, sendMessage, stopRequest: (scope) => client.stopChatRequest(scope) };
 }

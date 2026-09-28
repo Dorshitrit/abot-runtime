@@ -1,20 +1,20 @@
 /* Configuration workspace ------------------------------------------------- */
 
 .config-workspace-panel {
-  --config-surface: #0a1827;
-  --config-surface-subtle: #0c1b2b;
-  --config-control: #0d1e30;
-  --config-control-hover: #11253a;
-  --config-line: rgba(119, 158, 198, 0.17);
-  --config-line-strong: rgba(127, 171, 214, 0.3);
-  --config-copy: #d8e4ef;
-  --config-muted: #8fa3b7;
-  --config-faint: #70869b;
+  --config-surface: var(--panel);
+  --config-surface-subtle: var(--panel);
+  --config-control: var(--panel-raised);
+  --config-control-hover: var(--accent-soft);
+  --config-line: var(--line);
+  --config-line-strong: var(--line-strong);
+  --config-copy: var(--text);
+  --config-muted: var(--muted);
+  --config-faint: var(--muted-2);
 }
 
 .app-shell.config-workspace {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-columns: var(--workspace-rail-width) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
   background: var(--bg);
@@ -22,19 +22,19 @@
 
 .config-workspace-panel {
   min-width: 0;
-  background: #071421;
+  background: var(--bg);
 }
 
 .config-workspace-panel .config-workspace-header {
   min-height: 70px;
   border-color: var(--config-line);
-  background: #081725;
+  background: var(--panel);
   backdrop-filter: none;
 }
 
 .config-workspace-heading h2 {
   font-size: var(--font-size-4xl);
-  font-weight: 520;
+  font-weight: 400;
   letter-spacing: -0.015em;
 }
 
@@ -52,48 +52,29 @@
 .config-workspace-header .toolbar-actions button {
   height: 32px;
   min-height: 32px;
-  padding-inline: 10px;
-  border-color: var(--config-line);
-  border-radius: 7px;
+  padding-inline: 8px;
+  border-color: transparent;
+  border-radius: 6px;
   background: transparent;
   color: var(--config-muted);
-  font-size: var(--font-size-md);
-  font-weight: 450;
+  font-size: var(--font-size-sm);
+  font-weight: 400;
   box-shadow: none;
 }
 
 .config-workspace-header .toolbar-actions button:hover {
-  border-color: var(--config-line-strong);
-  background: var(--config-control-hover);
-  color: var(--config-copy);
-}
-
-.config-workspace-back {
-  height: 32px;
-  min-height: 32px;
-  padding-inline: 10px;
-  border-color: var(--config-line);
-  border-radius: 7px;
-  background: transparent;
-  color: var(--config-muted);
-  font-size: var(--font-size-md);
-  font-weight: 450;
-  box-shadow: none;
-}
-
-.config-workspace-back:hover {
-  border-color: var(--config-line-strong);
-  background: var(--config-control-hover);
+  border-color: transparent;
+  background: var(--control-bg);
   color: var(--config-copy);
 }
 
 .config-workspace-body {
-  padding: 24px clamp(22px, 4vw, 52px) 52px;
+  padding: 24px var(--workspace-page-gutter) 52px;
   overflow-x: hidden;
 }
 
 .config-workspace-body > * {
-  width: min(1180px, 100%);
+  width: min(var(--workspace-content-width), 100%);
 }
 
 .config-workspace-body #configStatus {
@@ -134,7 +115,7 @@
   min-width: 0;
   margin: 0;
   border-bottom: 1px solid var(--config-line);
-  background: #091725;
+  background: var(--panel);
 }
 
 .config-summary-item {
@@ -145,7 +126,7 @@
   border-right: 1px solid var(--config-line);
   color: var(--config-faint);
   font-size: var(--font-size-xs);
-  font-weight: 450;
+  font-weight: 400;
   letter-spacing: 0.045em;
   text-transform: uppercase;
 }
@@ -166,7 +147,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--font-size-lg);
-  font-weight: 480;
+  font-weight: 400;
   letter-spacing: 0;
   text-transform: none;
 }
@@ -177,42 +158,39 @@
 
 .config-category-nav {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   min-width: 0;
-  padding: 0 12px;
+  padding: 6px;
   border-bottom: 1px solid var(--config-line);
-  background: #091725;
+  background: var(--panel);
 }
 
 .config-category-tab {
   position: relative;
   min-width: 0;
-  min-height: 40px;
+  min-height: 36px;
   padding: 0 10px;
   overflow: hidden;
   border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
+  border-radius: 6px;
   background: transparent;
   color: var(--config-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--font-size-md);
-  font-weight: 450;
+  font-weight: 400;
   box-shadow: none;
 }
 
 .config-category-tab:hover {
   border-color: transparent;
-  border-bottom-color: var(--config-line-strong);
-  background: transparent;
+  background: var(--control-bg);
   color: var(--config-copy);
 }
 
 .config-category-tab.active,
 .config-category-tab[aria-selected="true"] {
-  border-bottom-color: var(--accent);
-  background: transparent;
+  background: var(--accent-soft);
   color: var(--accent-strong);
 }
 
@@ -222,7 +200,7 @@
 }
 
 .config-category-panel {
-  padding: 24px 26px 28px;
+  padding: 20px;
 }
 
 .config-category-panel [data-long-term-memory-management] {
@@ -286,7 +264,7 @@
   margin: 0;
   color: var(--text-strong);
   font-size: var(--font-size-2xl);
-  font-weight: 520;
+  font-weight: 400;
   line-height: 1.3;
 }
 
@@ -333,7 +311,7 @@
 .config-section-kicker {
   color: var(--config-faint);
   font-size: var(--font-size-xs);
-  font-weight: 450;
+  font-weight: 400;
 }
 
 .config-file-status:empty,
@@ -357,7 +335,7 @@
   background: transparent;
   color: var(--config-muted);
   font-size: var(--font-size-md);
-  font-weight: 450;
+  font-weight: 400;
   box-shadow: none;
 }
 
@@ -382,9 +360,9 @@
   .memory-setup-actions
   [data-memory-action="enable"]:not(:disabled),
 .config-dashboard .primary-button:not(:disabled) {
-  border-color: rgba(107, 155, 218, 0.52);
-  background: rgba(66, 111, 170, 0.16);
-  color: #a9c7ed;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
 }
 
 .config-dashboard [data-config-action="save-file"]:not(:disabled):hover,
@@ -393,9 +371,9 @@
   .memory-setup-actions
   [data-memory-action="enable"]:not(:disabled):hover,
 .config-dashboard .primary-button:not(:disabled):hover {
-  border-color: rgba(126, 170, 226, 0.7);
-  background: rgba(74, 124, 187, 0.24);
-  color: #d0e1f6;
+  border-color: var(--accent-strong);
+  background: var(--control-bg-hover);
+  color: var(--text);
 }
 
 .config-dashboard input,
@@ -432,18 +410,11 @@
   line-height: 1.45;
 }
 
-.config-dashboard input:hover,
-.config-dashboard select:hover,
-.config-dashboard textarea:hover {
-  border-color: var(--config-line-strong);
-}
-
-.config-dashboard input:focus,
+.config-dashboard input:not([type="checkbox"], [type="radio"]):focus,
 .config-dashboard select:focus,
 .config-dashboard textarea:focus {
-  border-color: rgba(87, 148, 255, 0.72);
-  outline: 2px solid rgba(87, 148, 255, 0.2);
-  outline-offset: 1px;
+  border-color: var(--config-line-strong);
+  outline: 0;
   background-color: var(--config-control);
   box-shadow: none;
 }
@@ -458,7 +429,7 @@
 .config-calibration-meta label {
   color: var(--config-muted);
   font-size: var(--font-size-xs);
-  font-weight: 450;
+  font-weight: 400;
 }
 
 .config-step-list,
@@ -490,7 +461,7 @@
   border-bottom: 1px solid var(--config-line);
   color: var(--config-faint);
   font-size: var(--font-size-xs);
-  font-weight: 450;
+  font-weight: 400;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -505,7 +476,7 @@
 
 .config-step-row:hover,
 .config-file-row:hover {
-  background: rgba(111, 151, 191, 0.045);
+  background: var(--control-bg);
 }
 
 .config-step-key,
@@ -582,7 +553,7 @@
 .config-add-copy strong {
   color: var(--config-copy);
   font-size: var(--font-size-md);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .config-add-copy span {
@@ -605,7 +576,7 @@
 .config-model-layout {
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr);
-  gap: 24px;
+  gap: 20px;
   min-width: 0;
   align-items: start;
 }
@@ -616,7 +587,8 @@
   align-content: start;
   max-height: calc(100dvh - 230px);
   overflow: auto;
-  border-right: 1px solid var(--config-line);
+  border: 1px solid var(--config-line);
+  border-radius: 8px;
 }
 
 .config-model-list-title {
@@ -628,7 +600,7 @@
   border-bottom: 1px solid var(--config-line);
   color: var(--config-faint);
   font-size: var(--font-size-xs);
-  font-weight: 450;
+  font-weight: 400;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -647,7 +619,6 @@
   padding: 8px 12px;
   border: 0;
   border-bottom: 1px solid var(--config-line);
-  border-left: 2px solid transparent;
   border-radius: 0;
   background: transparent;
   text-align: left;
@@ -655,14 +626,12 @@
 
 .config-model-button:hover {
   border-color: var(--config-line);
-  border-left-color: var(--config-line-strong);
-  background: rgba(111, 151, 191, 0.05);
+  background: var(--control-bg);
 }
 
 .config-model-button.active,
 .config-model-button[aria-pressed="true"] {
-  border-left-color: var(--accent);
-  background: rgba(87, 148, 255, 0.09);
+  background: var(--accent-soft);
   color: var(--accent-strong);
 }
 
@@ -678,7 +647,7 @@
 .config-model-button > span {
   color: var(--config-copy);
   font-size: var(--font-size-md);
-  font-weight: 480;
+  font-weight: 400;
 }
 
 .config-model-button small {
@@ -723,7 +692,7 @@
 .config-execution-route > label > span {
   color: var(--config-muted);
   font-size: var(--font-size-xs);
-  font-weight: 450;
+  font-weight: 400;
 }
 
 .config-execution-route-copy {
@@ -742,7 +711,7 @@
 .config-execution-route-copy strong {
   color: var(--config-copy);
   font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .config-execution-route-copy p {
@@ -765,7 +734,7 @@
 .config-subheader > div:first-child > span {
   color: var(--config-copy);
   font-size: var(--font-size-md);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .config-form-panel-title span,
@@ -846,7 +815,7 @@
 }
 
 .config-calibration-title:hover {
-  background: rgba(111, 151, 191, 0.045);
+  background: var(--control-bg);
 }
 
 .config-calibration-title > div,
@@ -868,7 +837,7 @@
 .config-calibration-title strong {
   color: var(--config-copy);
   font-size: var(--font-size-md);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .config-calibration-title span,
@@ -915,7 +884,7 @@
 .config-readonly-field strong {
   color: var(--config-copy);
   font-size: var(--font-size-sm);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .config-readonly-field small {
@@ -942,7 +911,7 @@
   cursor: pointer;
   color: var(--config-muted);
   font-size: var(--font-size-md);
-  font-weight: 480;
+  font-weight: 400;
   list-style-position: inside;
 }
 
@@ -968,7 +937,7 @@
 .config-raw-file-select > span {
   color: var(--config-muted);
   font-size: var(--font-size-xs);
-  font-weight: 450;
+  font-weight: 400;
 }
 
 .config-dashboard #configRawEditor,

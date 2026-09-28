@@ -1,0 +1,21 @@
+/* Keep composer actions in view when little vertical space is available. */
+@media (max-height: 600px) {
+  .composer textarea {
+    max-height: clamp(42px, 16dvh, 96px);
+  }
+
+  .attachment-preview {
+    max-height: clamp(32px, 10dvh, 60px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .home-workspace-body {
+    gap: 8px;
+    padding-block: 8px;
+  }
+
+  .home-composer-note {
+    display: none;
+  }
+}

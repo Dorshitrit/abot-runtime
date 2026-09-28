@@ -29,7 +29,7 @@
   margin: 0 0 6px;
   color: var(--text-strong);
   font-size: var(--font-size-xs);
-  font-weight: 650;
+  font-weight: 400;
 }
 
 .conversation-tools-list {
@@ -97,7 +97,7 @@
   max-width: 100%;
   overflow-wrap: anywhere;
   color: var(--text);
-  font-weight: 550;
+  font-weight: 400;
 }
 
 .conversation-tool-target {
@@ -134,7 +134,7 @@
 
 .conversation-tool.is-failed .conversation-tool-symbol,
 .conversation-tool.is-failed .conversation-tool-status {
-  color: var(--danger);
+  color: var(--muted);
 }
 
 .conversation-tool.is-awaiting_approval .conversation-tool-status,
@@ -225,7 +225,7 @@
   padding: 6px;
   overflow: auto;
   border-radius: 5px;
-  background: var(--panel);
+  background: var(--bg);
   color: var(--text);
   white-space: pre-wrap;
   overflow-wrap: anywhere;

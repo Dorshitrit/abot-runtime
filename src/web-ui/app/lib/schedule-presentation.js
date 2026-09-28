@@ -62,6 +62,16 @@ export function matchesScheduleFilter(job, query, state, sessions = []) {
   );
 }
 
+export function scheduleListJobs(jobs, query, state, sessions = []) {
+  const matches = jobs.filter((job) =>
+    matchesScheduleFilter(job, query, state, sessions),
+  );
+  return [
+    ...matches.filter((job) => job.state === "active"),
+    ...matches.filter((job) => job.state !== "active"),
+  ];
+}
+
 export function canManageSchedule(job) {
   if (!job) return false;
   return job.state !== "cancelled";

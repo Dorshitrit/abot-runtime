@@ -1,3 +1,4 @@
+import type { RequestToolResources } from "../../capabilities/request-tool-resources.js";
 import type {
   RegisteredToolNormalInvocation,
   ToolExecutionRequestContext,
@@ -15,6 +16,7 @@ import type {
 import type { RegisteredToolStagedPayloadPlan } from "../registered-tool-payload-plan.js";
 
 export type RegisteredToolWorkerCapabilityProviderParams = Readonly<{
+  toolResources?: RequestToolResources;
   /**
    * Must return the already config-filtered, request-bound registry. The
    * callback is first invoked when a caller requests the public descriptor

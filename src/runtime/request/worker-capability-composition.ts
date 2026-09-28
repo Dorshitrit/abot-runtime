@@ -81,6 +81,7 @@ export function createRequestWorkerCapabilityProvider(
       {
         getRequestToolRegistry,
         requestId: params.request.requestId,
+        ...(params.request.toolResources ? { toolResources: params.request.toolResources } : {}),
         sessionId: params.request.sessionId,
         requestContext: Object.freeze({
           agentMode: params.request.agentMode,

@@ -1,0 +1,161 @@
+/* A shared, compact permission surface for Chat and Home. */
+.approval-message-row {
+  justify-content: flex-start;
+}
+
+.message-row.assistant .approval-message-bubble {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px 20px;
+  width: 100%;
+  max-width: 100%;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: none;
+  white-space: normal;
+}
+
+.approval-message-header {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: center;
+  min-width: 0;
+}
+
+.approval-message-title {
+  color: var(--text);
+  font-size: var(--font-size-md);
+  font-weight: 400;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.approval-message-explanation,
+.approval-message-bubble > .conversation-tool-panels,
+.approval-message-bubble > .approval-message-detail {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.approval-message-explanation > summary {
+  width: fit-content;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.approval-message-explanation[open] > summary {
+  margin-bottom: 8px;
+}
+
+.approval-message-detail {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.65;
+  text-align: start;
+  unicode-bidi: plaintext;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.approval-message-bubble .conversation-tool-fields {
+  display: grid;
+  gap: 6px;
+}
+
+.approval-message-bubble .conversation-tool-field {
+  display: grid;
+  grid-template-columns: minmax(90px, 120px) minmax(0, 1fr);
+  gap: 12px;
+  font-size: var(--font-size-sm);
+}
+
+.approval-message-bubble .conversation-tool-field-label,
+.approval-message-bubble .conversation-tool-preview-label {
+  color: var(--muted-2);
+  font-weight: 400;
+}
+
+.approval-message-bubble .conversation-tool-preview {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+}
+
+.tool-approval-actions {
+  grid-column: 2;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(76px, auto));
+  gap: 8px;
+}
+
+.tool-approval-button {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 5px;
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  box-shadow: none;
+}
+
+.tool-approval-button.approve {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.tool-approval-button.approve:hover:not(:disabled) {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+}
+
+.tool-approval-button.reject {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--muted);
+}
+
+.tool-approval-button.reject:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--control-bg-hover);
+  color: var(--text);
+}
+
+.tool-approval-button:focus-visible,
+.approval-message-explanation > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.tool-approval-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+  box-shadow: none;
+}
+
+@media (max-width: 600px) {
+  .message-row.assistant .approval-message-bubble {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px;
+    border-radius: 8px;
+  }
+
+  .tool-approval-button {
+    min-height: 44px;
+  }
+
+  .tool-approval-actions {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: stretch;
+  }
+}

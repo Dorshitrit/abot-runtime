@@ -1,13 +1,13 @@
 /* Compact context usage; details do not take space in the conversation. */
 
 .composer-context-window {
-  --context-accent: #80b7ff;
+  --context-accent: var(--accent);
   flex: none;
   margin-inline-start: auto;
 }
 
 .composer-context-window.rejected {
-  --context-accent: #ef9a9a;
+  --context-accent: var(--danger);
 }
 
 .composer-context-window-button {
@@ -26,7 +26,7 @@
 .composer-context-window-button:hover,
 .composer-context-window-button:focus-visible {
   border-color: transparent;
-  background: rgba(95, 139, 182, 0.08);
+  background: var(--control-bg-hover);
 }
 
 .composer-context-window-ring {
@@ -36,7 +36,7 @@
   border-radius: 50%;
   background: conic-gradient(
     var(--context-accent) var(--context-used, 0%),
-    rgba(118, 157, 198, 0.2) 0
+    var(--line) 0
   );
   mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 0);
 }
@@ -53,9 +53,9 @@
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #132438;
+  background: var(--panel-raised);
   color: var(--muted-2);
-  box-shadow: 0 12px 32px rgba(0, 6, 16, 0.3);
+  box-shadow: var(--shadow);
   font-size: var(--font-size-sm);
   line-height: 1.5;
   overflow-wrap: anywhere;
@@ -86,5 +86,5 @@
 }
 
 .composer-context-window-compaction {
-  color: #8dd7b6;
+  color: var(--green);
 }

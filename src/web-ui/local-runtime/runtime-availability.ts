@@ -21,7 +21,7 @@ function setupRequired(
     status: "setup_required",
     code: "runtime_configuration_required",
     message: hasExistingProfiles
-      ? "Existing model profiles need attention. Open Configuration to repair their provider, model and request-runner settings."
+      ? "Existing model profiles need attention. Open Models to repair their provider, model and request-runner settings."
       : message,
     ...(hasExistingProfiles ? { recovery: "configuration" as const } : {}),
   };

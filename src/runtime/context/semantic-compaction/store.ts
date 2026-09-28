@@ -5,8 +5,10 @@ import {
   SemanticCompactionCheckpoint,
   type SemanticCompactionSource,
 } from "./contracts.js";
+import type { RequestContextCompactionSnapshot } from "./snapshot.js";
 
 export type RequestContextCompactionStore = Readonly<{
+  snapshot?(): RequestContextCompactionSnapshot;
   get(scopeId: string): SemanticCompactionCheckpoint | undefined;
   findByCallIds(
     callIds: readonly string[],
@@ -23,6 +25,13 @@ export function createRequestContextCompactionStore(): RequestContextCompactionS
   const checkpoints = new Map<string, SemanticCompactionCheckpoint>();
   const sources = new Map<string, SemanticCompactionSource>();
   return Object.freeze({
+    snapshot() {
+      return Object.freeze({
+        kind: "request_context_compaction_v1" as const,
+        checkpoints: Object.freeze([...checkpoints.values()]),
+        sources: Object.freeze([...sources.values()]),
+      });
+    },
     get(scopeId) {
       return checkpoints.get(scopeId);
     },

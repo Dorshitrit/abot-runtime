@@ -10,20 +10,22 @@ export function createRuntimeConfigActivation({
   if (!root?.ownerDocument) return { markPending() {}, markApplied() {} };
   const panel = root.ownerDocument.createElement("section");
   panel.className = "runtime-config-activation";
-  panel.setAttribute("aria-label", "Apply saved configuration");
+  panel.setAttribute("aria-label", "Restart runtime with saved configuration");
   panel.innerHTML =
-    '<p role="status" aria-live="polite">Apply saved changes when your agent is idle.</p><button type="button">Apply changes</button>';
+    '<p role="status" aria-live="polite">Restart with saved settings across environments when idle.</p><button type="button">Restart runtime</button>';
   const status = panel.querySelector("p");
   const button = panel.querySelector("button");
-  root.prepend(panel);
+  root.append(panel);
   let busy = false;
 
   function markPending() {
-    status.textContent = "Changes saved. Apply them to update your agent.";
+    status.textContent = "Changes saved. Restart to apply them.";
+    button.textContent = "Apply & restart";
   }
 
   function markApplied() {
     status.textContent = "Saved changes are now active.";
+    button.textContent = "Restart runtime";
   }
 
   async function applySavedConfiguration() {
@@ -34,14 +36,14 @@ export function createRuntimeConfigActivation({
     let activated = false;
     busy = true;
     button.disabled = true;
-    status.textContent = "Applying saved changes…";
+    status.textContent = "Restarting with saved settings…";
     try {
       const result = await apply();
       if (environment !== getEnvironmentId()) return;
       if (result?.activation?.status !== "ready") {
         status.textContent =
           result?.activation?.message ||
-          "Saved changes are waiting to be applied.";
+          "The runtime could not restart yet. Try again when it is idle.";
         return;
       }
       activated = true;
@@ -49,33 +51,35 @@ export function createRuntimeConfigActivation({
       if (environment !== getEnvironmentId()) return;
       status.textContent =
         refreshed === false
-          ? "Changes applied. Refresh configuration to update this view."
-          : "Saved changes are now active.";
+          ? "Runtime restarted. Refresh configuration to update this view."
+          : "Runtime restarted. Saved settings are now active.";
     } catch (error) {
       if (environment !== getEnvironmentId()) return;
       if (activated) {
         status.textContent =
-          "Changes applied. Refresh configuration to update this view.";
+          "Runtime restarted. Refresh configuration to update this view.";
       } else {
         status.textContent =
           error instanceof Error
             ? error.message
-            : "Changes could not be applied. Try again.";
+            : "The runtime could not restart. Try again.";
       }
     } finally {
       busy = false;
       button.disabled = false;
+      if (activated) button.textContent = "Restart runtime";
       workspace.endExternalRuntimeMutation();
       if (environment !== getEnvironmentId()) {
         status.textContent =
-          "Environment changed. Apply saved changes when your agent is idle.";
+          "Environment changed. Restart with saved settings when idle.";
+        button.textContent = "Restart runtime";
       }
     }
     if (!activated) return;
     if (environment !== getEnvironmentId()) return;
     if (onAppliedSettled() === false)
       status.textContent =
-        "Changes applied. Finish your current edits, then refresh configuration to update environments.";
+        "Runtime restarted. Finish your current edits, then refresh configuration to update environments.";
   }
 
   button.addEventListener("click", applySavedConfiguration);

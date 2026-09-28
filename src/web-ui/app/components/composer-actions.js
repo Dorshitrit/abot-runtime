@@ -8,6 +8,7 @@ export function createComposerActions({
   let menuOpen = false;
   let primaryAction = "send";
   let splitAvailable = false;
+  let stopCurrent = () => {};
 
   function closeMenu({ restoreFocus = false } = {}) {
     if (!menuOpen) return false;
@@ -29,12 +30,28 @@ export function createComposerActions({
 
   function render({
     activeRequestId,
+    waitingRequestId,
     attachmentCount = 0,
     busy = false,
     disabled = false,
     queuedCount = 0,
+    stopping = false,
+    onStop = () => {},
   }) {
     const requestActive = Boolean(String(activeRequestId || "").trim());
+    stopCurrent = onStop;
+    if (dom.stopButton) {
+      const stoppable = requestActive || Boolean(waitingRequestId);
+      dom.stopButton.hidden = !stoppable;
+      dom.stopButton.disabled = !stoppable || stopping;
+      dom.stopButton.title = stopping
+        ? "Stopping…"
+        : waitingRequestId
+          ? "Cancel waiting request"
+          : "Stop response";
+      dom.stopButton.setAttribute("aria-label", dom.stopButton.title);
+      dom.stopButton.setAttribute("aria-busy", String(stopping));
+    }
     const hasAttachments = Number(attachmentCount) > 0;
     primaryAction = resolveComposerPrimaryAction(
       activeRequestId,
@@ -80,6 +97,9 @@ export function createComposerActions({
   }
 
   function bind() {
+    dom.stopButton?.addEventListener("click", () => {
+      if (!dom.stopButton.disabled) stopCurrent();
+    });
     dom.sendNextMenuButton.addEventListener("click", () => {
       if (!splitAvailable || dom.sendNextMenuButton.disabled) return;
       menuOpen = !menuOpen;

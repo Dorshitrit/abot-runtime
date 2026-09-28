@@ -4,14 +4,15 @@ export declare function latestHealthEvent(
 ): Record<string, unknown> | undefined;
 
 export interface OperationsControllerDependencies {
+  readonly getEnvironmentId?: () => string | undefined;
   readonly dom: Readonly<{
     runtimeStatus: Pick<HTMLElement, "innerHTML" | "textContent">;
     runtimeLogs: Pick<HTMLElement, "textContent">;
     healthStatus: Pick<HTMLElement, "innerHTML" | "textContent">;
   }>;
   readonly client: Readonly<{
-    getRuntimeStatus(): Promise<Record<string, unknown>>;
-    getRuntimeLogs(lines: number): Promise<Record<string, unknown>>;
+    getRuntimeStatus(environmentId?: string): Promise<Record<string, unknown>>;
+    getRuntimeLogs(lines: number, environmentId?: string): Promise<Record<string, unknown>>;
     getSystemHealth(): Promise<Record<string, unknown>>;
   }>;
 }
@@ -19,6 +20,7 @@ export interface OperationsControllerDependencies {
 export declare function createOperationsController(
   options: OperationsControllerDependencies,
 ): {
+  environmentChanged(): void;
   loadRuntimeStatus(): Promise<void>;
   loadRuntimeLogs(): Promise<void>;
   loadSystemHealth(): Promise<void>;

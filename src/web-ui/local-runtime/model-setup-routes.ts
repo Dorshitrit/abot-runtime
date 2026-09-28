@@ -34,7 +34,7 @@ export class ModelSetupRoutes {
         });
       } else if (
         params.route === "runtime/config/models" &&
-        params.method === "POST"
+        ["POST", "DELETE"].includes(params.method)
       ) {
         assertConfigMutationRequest(params.request);
         const body = readJsonBody(
@@ -42,7 +42,9 @@ export class ModelSetupRoutes {
         );
         sendJson(params.response, 200, {
           ok: true,
-          ...(await this.service.add(body)),
+          ...(params.method === "DELETE"
+            ? await this.service.remove(body)
+            : await this.service.add(body)),
         });
       } else
         sendJson(params.response, 405, {

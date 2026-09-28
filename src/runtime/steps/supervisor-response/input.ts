@@ -56,6 +56,8 @@ export function buildSupervisorResponseInput(
       hasResponseRecommendation: responseRecommendationMessage !== undefined,
       hasCompletedChildResult: options.resume !== undefined,
       hasRequestToolResults: options.toolResults.results.length > 0,
+      ...(options.memoryCandidateCount !== undefined ? { memoryCandidateCount: options.memoryCandidateCount } : {}),
+      ...(options.hasDirectMemorySaveRequest !== undefined ? { hasDirectMemorySaveRequest: options.hasDirectMemorySaveRequest } : {}),
     }),
     "response",
   );
@@ -78,6 +80,7 @@ export function buildSupervisorMemoryAuthoringInput(
       hasRequestToolResults: options.toolResults.results.length > 0,
     }),
     format: createSupervisorMemoryCandidatesFormat(),
+    ...(options.memoryAuthoringMessage ? { referenceMessages: [options.memoryAuthoringMessage] } : {}),
   });
 }
 
@@ -87,6 +90,9 @@ type SupervisorResponseInputOptions = Readonly<{
   toolResults: RequestToolResultsView;
   resume?: SupervisorResponseResumeContext;
   longTermMemoryMessage?: ChatMessage;
+  memoryAuthoringMessage?: ChatMessage;
+  memoryCandidateCount?: number;
+  hasDirectMemorySaveRequest?: boolean;
 }>;
 
 function buildSupervisorInput(

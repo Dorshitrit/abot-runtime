@@ -1,0 +1,108 @@
+.home-approval-dock {
+  flex: none;
+  min-width: 0;
+  max-height: min(30dvh, 280px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--line));
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.home-approval-dock > .home-approvals-panel {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+}
+
+.home-approval-dock .home-panel-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel);
+}
+
+.home-approval-dock .home-panel-header h2 {
+  color: var(--amber);
+}
+
+.home-approvals-panel {
+  min-width: 0;
+}
+
+.home-approval {
+  min-width: 0;
+  padding: 12px 16px;
+}
+
+.home-approval + .home-approval {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.home-approval-conversation {
+  max-width: 100%;
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+
+.home-approval .approval-message-row {
+  padding: 0;
+}
+
+.home-approval .message-row.assistant .approval-message-bubble {
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.home-approval .conversation-tool-preview {
+  max-height: 240px;
+  overflow: auto;
+}
+
+.home-approvals-panel > .home-panel-header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.home-approval .approval-message-header {
+  display: grid;
+  justify-items: start;
+  gap: 3px;
+}
+
+.home-approval .tool-approval-actions {
+  align-self: center;
+}
+
+.home-approval .approval-message-explanation > summary {
+  font-size: var(--font-size-xs);
+}
+
+.home-approvals-panel:not(:has(.home-approval)) {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 16px;
+  padding: 10px 16px;
+}
+
+.home-approvals-panel:not(:has(.home-approval)) > .home-panel-header {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+}
+
+.home-approvals-panel:not(:has(.home-approval)) > .home-panel-state {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 0;
+  overflow-wrap: anywhere;
+}

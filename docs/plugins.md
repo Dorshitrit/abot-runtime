@@ -13,7 +13,7 @@ the same physical directory, the catalog is discovered only once.
 
 ## Manage Plugins In The Web UI
 
-Open **Configuration → Plugins** to see installed manifests, capability counts,
+Open **Plugins** to see installed manifests, capability counts,
 and enabled, partially enabled or disabled selections. Switches save the selected
 plugin's configuration while preserving capability-specific allow/deny rules.
 Choose **Manage tools** on a plugin to manage its declared tools inside the same card.
@@ -448,3 +448,13 @@ counts imply full-file coverage.
    restrictive allow-list.
 
 No concrete tool or skill mapping should be added anywhere under `src/runtime`.
+
+### Shared Computer access
+
+Plugins that need host facilities can import the opt-in
+`@abot-ai/runtime/plugin-sdk/computer-access` facade. It exposes native target and
+computer backend contracts and the existing bound Companion client. The Runtime
+owns installation, pairing and connection lifecycle; plugins must not install
+another companion or import another plugin's implementation. Tool permissions,
+request disposal, target binding and exact-action approval remain the plugin's
+existing execution contract. Disabling SYSTEM does not disable ABot Spark.

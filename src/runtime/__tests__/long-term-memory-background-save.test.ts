@@ -71,9 +71,24 @@ describe("long-term memory background save queue", () => {
       proposedCount: 1,
     });
     await vi.waitFor(async () => {
-      expect((await repository.read()).records).toHaveLength(1);
+      expect((await repository.read()).learningCandidates).toHaveLength(1);
     });
+    expect((await repository.read()).records).toHaveLength(0);
     expect(onEvent).toHaveBeenCalledTimes(1);
+  });
+
+  test("detaches the canonical assessment before delayed background work", async () => {
+    const process = vi.fn(async () => result());
+    const queue = createLongTermMemorySaveQueue({ process });
+    const assessment = { score: 95, reason: "A durable preference.", reinforced: true,
+      evidence: { sourceSessionId: "session", sourceRequestId: "request", observedAt: "2026-09-26T10:00:00Z", evidenceDigest: "a".repeat(64) } };
+    queue.enqueue({ candidates: [{ content: "Prefers concise answers.", tags: [], assessment }], requestId: "request", sessionId: "session" });
+    assessment.score = 100;
+    assessment.evidence.sourceRequestId = "replaced";
+    await queue.drain();
+    expect(process).toHaveBeenCalledWith(expect.objectContaining({ candidates: [expect.objectContaining({
+      assessment: expect.objectContaining({ score: 95, evidence: expect.objectContaining({ sourceRequestId: "request" }) }),
+    })] }));
   });
 });
 

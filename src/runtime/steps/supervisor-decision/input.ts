@@ -8,6 +8,7 @@ import { resolveConfiguredStepInstructionMetadata } from "../../config/runner/st
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
 import { projectRequestContext } from "../../context/request-context.js";
 import { projectRootSessionMemory } from "../../context/session-memory/root-projection.js";
+import { buildConversationMemoryAvailabilityInstructions } from "../../long-term-memory/conversation-authoring/prompt.js";
 import { buildRequestTemporalContextMessage } from "../../context/request-temporal-context.js";
 import { projectScheduledExecutionContext } from "../../context/scheduled-execution-context.js";
 import {
@@ -58,6 +59,7 @@ export type SupervisorDecisionInputRequest = Pick<
       | "temporalContext"
       | "scheduledExecution"
       | "sessionMemory"
+      | "longTermMemory"
     >
   >;
 
@@ -162,18 +164,21 @@ export function buildSupervisorDecisionInput(
       runnerConfig: request.runnerConfig,
       modelStep: SUPERVISOR_DECISION_MODEL_STEP,
     });
-  const instructions = buildSupervisorDecisionInstructions({
-    allowMemoryRecall: options.allowMemoryRecall === true,
-    hasMemoryRecallContext: options.memoryRecallMessage !== undefined,
-    includeAcknowledgement,
-    includeTitle,
-    includeResponseRecommendation,
-    allowedRoleIds,
-    hasCompletedChildResult: options.resume !== undefined,
-    hasRequestToolResults: options.toolResults.results.length > 0,
-    workerCapabilityAffordances,
-    availableWorkerCapabilityCatalog,
-  });
+  const instructions = [
+    buildSupervisorDecisionInstructions({
+      allowMemoryRecall: options.allowMemoryRecall === true,
+      hasMemoryRecallContext: options.memoryRecallMessage !== undefined,
+      includeAcknowledgement,
+      includeTitle,
+      includeResponseRecommendation,
+      allowedRoleIds,
+      hasCompletedChildResult: options.resume !== undefined,
+      hasRequestToolResults: options.toolResults.results.length > 0,
+      workerCapabilityAffordances,
+      availableWorkerCapabilityCatalog,
+    }),
+    ...buildConversationMemoryAvailabilityInstructions(request.longTermMemory?.enabled === true),
+  ].join("\n");
   const scheduledExecution = projectScheduledExecutionContext(
     request,
     instructions,

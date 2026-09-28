@@ -8,7 +8,7 @@ import { runtimeToolPathErrorCode } from "./paths.js";
 
 type ResultCommon = Pick<
   ToolImplementationOutput,
-  "actions" | "data" | "exitCode" | "progress" | "stderr" | "stdout"
+  "actions" | "data" | "exitCode" | "progress" | "stderr" | "stdout" | "media"
 >;
 
 export const PLUGIN_RESULT_SERIALIZED_MAX_BYTES = 128 * 1024;
@@ -64,6 +64,7 @@ export function successResult(
 ): ToolImplementationOutput {
   return enforcePluginResultByteBudget({
     ok: true,
+    ...(input.media !== undefined ? { media: input.media } : {}),
     output: input.output,
     producedNewInformation: input.producedNewInformation ?? true,
     ...(input.progress !== undefined ? { progress: input.progress } : {}),
@@ -87,6 +88,7 @@ export function failureResult(
 ): ToolImplementationOutput {
   return enforcePluginResultByteBudget({
     ok: false,
+    ...(input.media !== undefined ? { media: input.media } : {}),
     output: input.output ?? input.message,
     producedNewInformation: false,
     ...(input.progress !== undefined ? { progress: input.progress } : {}),
