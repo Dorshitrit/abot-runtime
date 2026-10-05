@@ -1,4 +1,9 @@
-import type { SchedulerRun, SchedulerRunOutcome } from "./contracts.js";
+import type {
+  SchedulerRun,
+  SchedulerRunOutcome,
+  SchedulerStoredRun,
+} from "./contracts.js";
+import { isRequestSchedulerRun } from "./scheduler-target.js";
 import type { SchedulerContext } from "./service-context.js";
 
 export interface SchedulerRunCompletion {
@@ -93,10 +98,10 @@ function canPersistCompletion(
 }
 
 function isUnsettledCapturedRun(
-  run: SchedulerRun | undefined,
+  run: SchedulerStoredRun | undefined,
   completion: SchedulerRunCompletion,
 ): run is SchedulerRun {
-  if (!run) return false;
+  if (!run || !isRequestSchedulerRun(run)) return false;
   if (run.status !== "running") return false;
   if (run.sessionId !== completion.sessionId) return false;
   return run.requestId === completion.requestId;

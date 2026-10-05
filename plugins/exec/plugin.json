@@ -13,7 +13,7 @@
           "timeoutMs": 600000,
           "yieldAfterMs": 15000,
           "idleTimeoutMs": 120000,
-          "outputMaxChars": 8000
+          "outputRetentionMs": 604800000
         }
       },
       "capabilities": {
@@ -27,7 +27,7 @@
               "command": {
                 "param": "command",
                 "kind": "string",
-                "maxLength": 4096,
+                "maxLength": 8192,
                 "preserveWhitespace": true
               },
               "cwd": {
@@ -49,7 +49,7 @@
                   "command": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 4096
+                    "maxLength": 8192
                   },
                   "cwd": { "type": "string", "minLength": 1, "maxLength": 4096 }
                 },

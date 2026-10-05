@@ -1,18 +1,19 @@
 import { traceDebug } from "../runtime/observability/debug-logger.js";
-import { isToolResultMedia } from "./tool-media.js";
+import { normalizeImplementationOutput, projectToolExecutionResult } from "./tool-result-normalization.js";
 import type {
   ToolCall,
-  ToolActionSummary,
   ToolExecutionContext,
   ToolExecutionResult,
   ToolImplementation,
   ToolImplementationOutput,
+  ToolUnderlyingSettlement,
 } from "./tool-types.js";
 
 type ToolExecutorOptions = {
   requestWork?: ToolExecutionContext["requestWork"];
   requestState?: ToolExecutionContext["requestState"];
   media?: ToolExecutionContext["media"];
+  resultBudget?: ToolExecutionContext["resultBudget"];
   onRequestDispose?: ToolExecutionContext["onRequestDispose"];
   implementations?: Record<string, ToolImplementation>;
   abortSignal?: AbortSignal;
@@ -20,53 +21,36 @@ type ToolExecutorOptions = {
   modelInvoker?: ToolExecutionContext["modelInvoker"];
   runtimePathResolver?: ToolExecutionContext["runtimePathResolver"];
   reportFileOutput?: ToolExecutionContext["reportFileOutput"];
+  onUnderlyingSettlement?: (settled: Promise<ToolUnderlyingSettlement>) => void;
 };
 
-function normalizeImplementationOutput(value: ToolImplementationOutput): {
-  media?: ToolImplementationOutput["media"];
-  ok: boolean;
-  output: string;
-  progress: boolean;
-  producedNewInformation: boolean;
-  actions?: ToolActionSummary[];
-  exitCode?: number;
-  stdout?: string;
-  stderr?: string;
-  data?: ToolExecutionResult["data"];
-  error?: string;
-  errorCode?: string;
-} {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    Array.isArray(value) ||
-    typeof value.ok !== "boolean" ||
-    typeof value.output !== "string" ||
-    typeof value.producedNewInformation !== "boolean" ||
-    !isToolResultMedia(value.media)
-  ) {
-    const error = new TypeError(
-      "tool implementations must return ok, output, and producedNewInformation",
-    ) as TypeError & { code: string };
-    error.code = "tool_result_invalid";
-    throw error;
-  }
-  const output = value.output;
-  return {
-    ...(value.media ? { media: value.media } : {}),
-    ok: value.ok,
-    output,
-    progress: value.progress === true,
-    producedNewInformation: value.producedNewInformation === true,
-    actions: Array.isArray(value.actions) ? value.actions : undefined,
-    exitCode: typeof value.exitCode === "number" ? value.exitCode : undefined,
-    stdout: typeof value.stdout === "string" ? value.stdout : undefined,
-    stderr: typeof value.stderr === "string" ? value.stderr : undefined,
-    data: value.data,
-    error: typeof value.error === "string" ? value.error : undefined,
-    errorCode:
-      typeof value.errorCode === "string" ? value.errorCode : undefined,
-  };
+function safeErrorCode(value: unknown): string {
+  return typeof value === "string" && /^[a-z][a-z0-9_]{0,127}$/u.test(value)
+    ? value
+    : "tool_execution_failed";
+}
+
+function underlyingSettlement(
+  execution: Promise<ToolImplementationOutput>,
+): Promise<ToolUnderlyingSettlement> {
+  return execution.then(
+    (raw) => {
+      try {
+        const output = normalizeImplementationOutput(raw);
+        return {
+          status: "fulfilled" as const,
+          ok: output.ok,
+          ...(output.errorCode ? { errorCode: safeErrorCode(output.errorCode) } : {}),
+        };
+      } catch (error) {
+        return { status: "rejected" as const, errorCode: safeErrorCode((error as { code?: unknown })?.code) };
+      }
+    },
+    (error) => ({
+      status: "rejected" as const,
+      errorCode: safeErrorCode((error as { code?: unknown })?.code),
+    }),
+  );
 }
 
 function finalizeToolExecutionResult(
@@ -160,6 +144,7 @@ export async function executeToolCall(
       requestWork: options.requestWork,
       requestState: options.requestState,
       media: options.media,
+      resultBudget: options.resultBudget,
       onRequestDispose: options.onRequestDispose,
       abortSignal: options.abortSignal,
       sharedState: options.sharedState,
@@ -167,31 +152,13 @@ export async function executeToolCall(
       runtimePathResolver: options.runtimePathResolver,
       reportFileOutput: options.reportFileOutput,
     });
+    // The public result may win the abort race while the implementation still
+    // owns a live external effect. Automation admission tracks that promise.
+    options.onUnderlyingSettlement?.(underlyingSettlement(execution));
     const rawOutput = options.abortSignal
       ? await raceWithAbort(execution, options.abortSignal)
       : await execution;
-    const normalized = normalizeImplementationOutput(rawOutput);
-    return finalizeToolExecutionResult({
-      ok: normalized.ok,
-      tool: call.tool,
-      output: normalized.output,
-      progress: normalized.progress,
-      producedNewInformation: normalized.producedNewInformation,
-      ...(normalized.media ? { media: normalized.media } : {}),
-      ...(normalized.actions ? { actions: normalized.actions } : {}),
-      ...(typeof normalized.exitCode === "number"
-        ? { exitCode: normalized.exitCode }
-        : {}),
-      ...(typeof normalized.stdout === "string"
-        ? { stdout: normalized.stdout }
-        : {}),
-      ...(typeof normalized.stderr === "string"
-        ? { stderr: normalized.stderr }
-        : {}),
-      ...(normalized.data ? { data: normalized.data } : {}),
-      ...(normalized.error ? { error: normalized.error } : {}),
-      ...(normalized.errorCode ? { errorCode: normalized.errorCode } : {}),
-    });
+    return finalizeToolExecutionResult(projectToolExecutionResult(call.tool, rawOutput));
   } catch (error: any) {
     if (options.abortSignal?.aborted || isAbortLikeError(error)) {
       return finalizeToolExecutionResult({
@@ -202,6 +169,7 @@ export async function executeToolCall(
         producedNewInformation: false,
         error: "tool execution aborted",
         errorCode: "request_aborted",
+        interruption: "aborted",
       });
     }
     const message = error?.message || "tool execution failed";

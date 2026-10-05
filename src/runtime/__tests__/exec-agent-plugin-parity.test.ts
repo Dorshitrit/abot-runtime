@@ -103,7 +103,7 @@ describe("exec Agent Plugin parity", () => {
       timeoutMs: 600_000,
       yieldAfterMs: 15_000,
       idleTimeoutMs: 120_000,
-      outputMaxChars: 8_000,
+      outputRetentionMs: 604_800_000,
     });
     expect(Object.keys(capabilities.exec.operations)).toEqual([
       "execute_command",
@@ -193,7 +193,7 @@ describe("exec Agent Plugin parity", () => {
     expect(descriptor?.controls.properties.command).toEqual({
       type: "string",
       minLength: 1,
-      maxLength: 4_096,
+      maxLength: 8_192,
     });
     expect(descriptor?.controls.properties.cwd).toEqual({
       type: "string",
@@ -377,13 +377,13 @@ describe("exec Agent Plugin parity", () => {
     const runtimePaths = await createRuntimePaths();
     const { handlers } = loadPlugin(runtimePaths);
     const expectedFiles = [
-      { name: "index.html", content: `<main>${"I".repeat(1_200)}</main>` },
-      { name: "style.css", content: `body{${"S".repeat(1_200)}}` },
+      { name: "index.html", content: `<main>${"I".repeat(2_100)}</main>` },
+      { name: "style.css", content: `body{${"S".repeat(2_100)}}` },
       {
         name: "app.js",
-        content: `export default ${JSON.stringify("J".repeat(1_200))};`,
+        content: `export default ${JSON.stringify("J".repeat(2_100))};`,
       },
-      { name: "README.md", content: `# Runtime\n${"R".repeat(1_200)}` },
+      { name: "README.md", content: `# Runtime\n${"R".repeat(2_100)}` },
     ] as const;
     const command = expectedFiles
       .map(
@@ -392,7 +392,7 @@ describe("exec Agent Plugin parity", () => {
       )
       .join("\n");
 
-    expect(command.length).toBeGreaterThan(4_096);
+    expect(command.length).toBeGreaterThan(8_192);
     await expect(handlers.exec?.({ command, cwd: "." })).resolves.toMatchObject(
       {
         ok: false,
@@ -412,7 +412,6 @@ describe("exec Agent Plugin parity", () => {
       timeoutMs: 5_000,
       yieldAfterMs: 25,
       idleTimeoutMs: 5_000,
-      outputMaxChars: 8_000,
     });
     const context: ToolExecutionContext = {
       sharedState: {

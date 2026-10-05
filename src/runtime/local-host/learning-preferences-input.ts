@@ -19,6 +19,7 @@ const PREFERENCE_KEYS = [
   "collectionWindow",
   "proactiveEnabled",
   "proactiveModelProfileId",
+  "sparkToolPermissionMode",
   "proactiveIntervalMinutes",
   "proactiveWindow",
   "proactiveMessagesPerDay",

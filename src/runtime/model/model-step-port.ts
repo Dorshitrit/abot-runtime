@@ -1,5 +1,14 @@
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { ModelStep } from "../../shared/model-steps.js";
+import type { ModelStepContextCompactionController } from "./context-compaction-contracts.js";
+
+export type {
+  ModelStepCompactionScope,
+  ModelStepCompactionStage,
+  ModelStepCompactionStageOutcome,
+  ModelStepContextCompactionController,
+  ModelStepContextCompactionPreparation,
+} from "./context-compaction-contracts.js";
 
 export type ModelStepOutputDiagnostics = Readonly<{
   outputLength: number;
@@ -13,24 +22,6 @@ export type ModelStepOutputDiagnostics = Readonly<{
   providerTotalTokens?: number;
 }>;
 
-export type ModelStepContextCompactionPreparation = Readonly<{
-  messages: ChatMessage[];
-  commit(): void | Promise<void>;
-  scopeId: string;
-  sourceRevision: number | string;
-  coveredSourceCount: number;
-}>;
-
-export type ModelStepContextCompactionController = Readonly<{
-  compactionScope: "active_request" | "session_history";
-  /** Replaces already-covered exact working messages before assessment. */
-  project(messages: readonly ChatMessage[]): ChatMessage[];
-  /** Generates one replacement checkpoint without committing it yet. */
-  prepare(
-    messages: readonly ChatMessage[],
-  ): Promise<ModelStepContextCompactionPreparation>;
-}>;
-
 export type ModelStepInvocationInput<T> = Readonly<{
   modelStep: ModelStep;
   messages: ChatMessage[];
@@ -41,7 +32,12 @@ export type ModelStepInvocationInput<T> = Readonly<{
   /** Exact input bypasses compaction, but must fit the shared input budget. */
   contextRetention?: "exact";
   contextCompaction?: ModelStepContextCompactionController;
-  accept(text: string, diagnostics: ModelStepOutputDiagnostics): T;
+  /** Async validators must forward this attempt signal to their own work. */
+  accept(
+    text: string,
+    diagnostics: ModelStepOutputDiagnostics,
+    abortSignal: AbortSignal,
+  ): T | Promise<T>;
 }>;
 
 /** Request-owned port shared by every model step in one accepted request. */

@@ -1,3 +1,4 @@
+import { buildSparkConversationInstructions } from "../../context/spark-conversation-policy.js";
 import type {
   ChatMessage,
   ModelGatewayJsonSchemaFormat,
@@ -45,6 +46,7 @@ export type SupervisorDecisionInputRequest = Pick<
   | "requestId"
   | "prompt"
   | "historyMessages"
+  | "sessionKind"
   | "runnerConfig"
   | "attachments"
   | "agentMode"
@@ -178,6 +180,7 @@ export function buildSupervisorDecisionInput(
       availableWorkerCapabilityCatalog,
     }),
     ...buildConversationMemoryAvailabilityInstructions(request.longTermMemory?.enabled === true),
+    ...buildSparkConversationInstructions(request.sessionKind),
   ].join("\n");
   const scheduledExecution = projectScheduledExecutionContext(
     request,

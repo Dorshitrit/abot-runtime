@@ -2,9 +2,12 @@ export interface WorkspaceRoute {
   workspace: string;
   environment: string;
   session: string;
+  automationRun: string;
   category: string;
   tab: string;
   job: string;
+  automation: string;
+  run: string;
 }
 
 export function readWorkspaceRoute(

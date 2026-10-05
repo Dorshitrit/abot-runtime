@@ -4,6 +4,10 @@ import {
   validateCapabilitySelectionControls,
   type CapabilityControls,
 } from "../../orchestration/capability-adapters/index.js";
+import {
+  parseControlsEvidenceSelection,
+  requiresControlsEvidenceSelection,
+} from "./controls-evidence-contract.js";
 import { normalizeExecutionWorkingDirectory } from "../../orchestration/capability-adapters/working-directory.js";
 import {
   executionCapabilityControlsIssue,
@@ -91,6 +95,8 @@ export function parseCapabilityBatch(
       value: invocation,
       path: `decision.invocations.${index}`,
       capabilities: contract.capabilities,
+      eligibleControlsEvidenceExecutionIds:
+        contract.eligibleControlsEvidenceExecutionIds,
       observationOnly: true,
       includesAction: false,
       issues,
@@ -110,6 +116,7 @@ export function parseCapabilityInvocation(
     value: unknown;
     path: string;
     capabilities: readonly PreparedExecutionAgentCapability[];
+    eligibleControlsEvidenceExecutionIds: readonly string[];
     observationOnly: boolean;
     includesAction: boolean;
     issues: ExecutionAgentDecisionValidationIssue[];
@@ -167,8 +174,15 @@ export function parseCapabilityInvocation(
   }
   const expectedKeys = [
     ...baseExpectedKeys,
-    ...(capability && requiresExecutionOperationObjective(capability.partition)
+    ...(capability &&
+    requiresExecutionOperationObjective(
+      capability.partition,
+      capability.requiresPayloadAuthoringObjective,
+    )
       ? ["operationObjective"]
+      : []),
+    ...(capability && requiresControlsEvidenceSelection(capability.partition)
+      ? ["controlsEvidenceExecutionIds"]
       : []),
     ...(capability?.partition.selectionControlIds.length
       ? ["selectionControls"]
@@ -189,8 +203,20 @@ export function parseCapabilityInvocation(
     value: record.operationObjective,
     required:
       capability !== undefined &&
-      requiresExecutionOperationObjective(capability.partition),
+      requiresExecutionOperationObjective(
+        capability.partition,
+        capability.requiresPayloadAuthoringObjective,
+      ),
     path: `${params.path}.operationObjective`,
+    issues: params.issues,
+  });
+  const evidenceSelection = parseControlsEvidenceSelection({
+    value: record.controlsEvidenceExecutionIds,
+    required:
+      capability !== undefined &&
+      requiresControlsEvidenceSelection(capability.partition),
+    eligible: params.eligibleControlsEvidenceExecutionIds,
+    path: `${params.path}.controlsEvidenceExecutionIds`,
     issues: params.issues,
   });
   let selectionControls: CapabilityControls | undefined;
@@ -244,7 +270,8 @@ export function parseCapabilityInvocation(
     !capability ||
     (params.observationOnly && capability.effect !== "observation") ||
     intent === undefined ||
-    !operationObjective.ok
+    !operationObjective.ok ||
+    !evidenceSelection.ok
   ) {
     return { expectedKeys };
   }
@@ -255,6 +282,9 @@ export function parseCapabilityInvocation(
       intent,
       ...(operationObjective.value
         ? { operationObjective: operationObjective.value }
+        : {}),
+      ...(evidenceSelection.value
+        ? { controlsEvidenceExecutionIds: evidenceSelection.value }
         : {}),
       ...(selectionControls ? { selectionControls } : {}),
       ...(controls ? { controls } : {}),

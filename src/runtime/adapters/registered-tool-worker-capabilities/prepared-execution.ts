@@ -84,16 +84,15 @@ export function createPreparedWorkerInvocation(
         const externalResult = await normalPreparation.execute(
           executionId,
           input.call,
+          selectedTargetReferences,
         );
         const observed = observeExternalResult(
           externalResult,
           params.projection.operation.effect,
           input.call.parentCallId === null,
-        );
-        const observedResult = attachTargetReferences(
-          observed.result,
           selectedTargetReferences,
         );
+        const observedResult = observed.result;
         traceRegisteredToolWorkerCapabilityExecutionCompleted(
           params.diagnostic,
           operationId,

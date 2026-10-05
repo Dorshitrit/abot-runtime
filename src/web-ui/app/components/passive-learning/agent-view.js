@@ -1,7 +1,7 @@
 import { coWorkerActivityStates, coWorkerActivityTones, coWorkerAgentState } from "./agent-state.js";
 import { isObservationReviewActive } from "./processing-state.js";
 
-const glyph = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c0 6-3 9-9 9 6 0 9 3 9 9 0-6 3-9 9-9-6 0-9-3-9-9Z"/><path d="M18 3v4m-2-2h4"/></svg>`;
+const glyph = '<img src="/spark-mascot.svg" alt="" width="38" height="38" />';
 
 export function agentMarkup({ compact = false, actionMarkup = "" } = {}) {
   return `<section class="co-worker-agent${compact ? " co-worker-agent-compact" : ""}" data-coworker-agent data-agent-mode="quiet" data-motion="off" aria-label="ABot Spark activity">

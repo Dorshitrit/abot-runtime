@@ -1,0 +1,73 @@
+.automation-step-preview { display: grid; gap: 12px; padding: 14px; }
+.automation-step-preview .automation-inline-inspector-heading { margin: 0; }
+.automation-step-preview h5 { margin: 0; color: var(--muted); font-size: var(--font-size-xs); font-weight: 600; }
+.automation-step-preview p { margin: 0; line-height: 1.5; }
+.automation-step-preview-description { color: var(--text); font-size: var(--font-size-sm); overflow-wrap: anywhere; }
+.automation-step-preview-inputs { display: grid; gap: 3px; margin: -5px 0 0; font-size: var(--font-size-xs); }
+.automation-step-preview-inputs dt { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
+.automation-step-preview-inputs dd { margin: 0 0 6px; color: var(--muted); overflow-wrap: anywhere; }
+.automation-step-preview-output { display: flex; flex-wrap: wrap; gap: 6px; color: var(--muted); font-size: var(--font-size-xs); }
+.automation-step-preview-output strong { color: var(--text); font-weight: 600; }
+.automation-step-edit-button { width: 100%; min-height: 36px; padding: 8px 12px; border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); background: var(--accent-soft); color: var(--accent-strong); }
+.automation-tool-identity { display: grid; gap: 5px; min-width: 0; text-align: start; }
+.automation-tool-identity-name { justify-self: start; max-width: 100%; padding: 4px 8px; border-radius: 5px; background: var(--accent-soft); color: var(--accent-strong); font-size: var(--font-size-sm); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.automation-tool-identity-operation { color: var(--text); font-size: var(--font-size-sm); line-height: 1.45; overflow-wrap: anywhere; }
+.automation-node .automation-tool-identity-operation { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.automation-tool-identity-plugin { color: var(--muted); font-size: var(--font-size-xs); }
+.automation-step-dialog-heading > div { min-width: 0; }
+.automation-step-dialog-heading .automation-tool-identity { display: flex; flex-wrap: wrap; align-items: center; margin-top: 10px; gap: 7px 10px; }
+.automation-step-dialog-heading .automation-tool-identity-name { font-size: var(--font-size-md); }
+.automation-step-dialog-navigation { display: flex; align-items: center; flex: none; gap: 8px; }
+.automation-step-dialog-navigation > button[data-step-direction] { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--control-bg); color: var(--text); font-size: 18px; }
+.automation-step-dialog-navigation > button[data-step-direction]:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.automation-step-dialog-navigation > button:disabled { opacity: .35; cursor: default; }
+.automation-step-position { color: var(--muted); font-size: var(--font-size-xs); white-space: nowrap; }
+
+.automation-step-dialog { box-sizing: border-box; width: min(1060px, calc(100vw - 48px)); max-width: none; max-height: min(920px, calc(100dvh - 48px)); margin: auto; padding: 0; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--panel); color: var(--text); box-shadow: 0 24px 80px #0008; }
+.automation-step-dialog[open] { display: flex; flex-direction: column; }
+.automation-step-dialog::backdrop { background: #0009; backdrop-filter: blur(3px); }
+.automation-step-dialog-heading { display: flex; align-items: center; justify-content: space-between; flex: none; gap: 16px; padding: 20px 24px; border-bottom: 1px solid var(--line); }
+.automation-step-dialog-heading p { margin: 0 0 4px; color: var(--muted); font-size: var(--font-size-xs); }
+.automation-step-dialog-heading h2 { margin: 0; font-size: var(--font-size-xl); line-height: 1.3; overflow-wrap: anywhere; }
+.automation-step-dialog-feedback { flex: none; margin: 0; padding: 0 24px; color: var(--amber); font-size: var(--font-size-sm); line-height: 1.5; }
+.automation-step-dialog-feedback:not(:empty) { padding-block: 12px; }
+.automation-step-dialog-content { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 20px 24px; border: 0; border-radius: 0; }
+.automation-step-dialog-content form { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; }
+.automation-step-dialog-content form > h4 { display: none; }
+.automation-step-dialog-content form > :not(label) { grid-column: 1 / -1; }
+.automation-step-dialog-content form > label:has(textarea) { grid-column: 1 / -1; }
+.automation-step-dialog-content :is(input:not([type="checkbox"], [type="radio"]), select, textarea) { box-sizing: border-box; min-height: 38px; border: 1px solid var(--line); border-radius: 6px; background: color-mix(in srgb, var(--bg) 60%, var(--panel)); color: var(--text); }
+.automation-step-dialog-content :is(input, select, textarea):focus { outline: 2px solid color-mix(in srgb, var(--accent) 22%, transparent); outline-offset: 1px; border-color: var(--accent); }
+.automation-step-dialog-content textarea { min-height: 104px; line-height: 1.55; }
+.automation-step-dialog-content textarea[name="prompt"] { min-height: 164px; }
+.automation-step-dialog-content .automation-binding-fields { min-width: 0; gap: 12px; }
+.automation-step-dialog-content .automation-binding-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.automation-step-dialog-content .automation-binding-row > label:has([data-binding-value]) { grid-column: 1 / -1; }
+.automation-step-dialog-content .automation-binding-row > button { justify-self: start; align-self: end; min-height: 34px; padding: 6px 10px; }
+.automation-step-dialog-content .automation-binding-row > :is(small, .automation-node-error) { grid-column: 1 / -1; }
+.automation-step-dialog-content [data-binding-actions] { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; }
+.automation-step-dialog-content [data-binding-actions] > label { flex: 1 1 260px; min-width: 0; }
+.automation-step-dialog-content [data-binding-actions] > button { min-height: 38px; padding: 8px 12px; }
+.automation-step-dialog-content .automation-node-contract { min-width: 0; }
+.automation-step-dialog-content .automation-node-contract textarea { min-height: 150px; }
+.automation-step-dialog-content .automation-agent-tool-picker-body { max-height: 400px; }
+.automation-step-dialog-content .automation-agent-operations { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.automation-step-dialog-content .automation-inspector-actions { margin-top: 0; }
+.automation-step-dialog-content .automation-workflow-actions-note { flex-basis: 100%; margin: 0 0 4px; color: var(--muted); font-size: var(--font-size-xs); line-height: 1.4; }
+.automation-step-dialog-content .automation-save-agent { flex-basis: auto; padding: 7px 12px; }
+.automation-step-dialog-footer { display: flex; align-items: center; justify-content: space-between; flex: none; gap: 16px; padding: 16px 24px; border-top: 1px solid var(--line); background: var(--panel); }
+.automation-step-dialog-footer > span { max-width: 380px; color: var(--muted); font-size: var(--font-size-xs); line-height: 1.5; }
+.automation-step-dialog :is(.automation-step-dialog-footer, .automation-step-discard) button { min-height: 36px; padding: 8px 14px; border-radius: 6px; }
+.automation-step-discard { flex: none; padding: 14px 24px; border-bottom: 1px solid var(--line); background: var(--accent-soft); }
+.automation-step-discard p { margin: 0 0 10px; font-size: var(--font-size-sm); }
+.automation-step-discard .automation-actions { justify-content: flex-start; }
+.automation-step-discard[hidden] { display: none; }
+
+@media (max-width: 680px) {
+  .automation-step-dialog { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); border-radius: 9px; }
+  .automation-step-dialog-heading, .automation-step-dialog-content, .automation-step-dialog-footer, .automation-step-discard { padding: 16px; }
+  .automation-step-dialog-heading { flex-wrap: wrap; }
+  .automation-step-dialog-content form, .automation-step-dialog-content .automation-binding-row, .automation-step-dialog-content .automation-agent-operations { grid-template-columns: minmax(0, 1fr); }
+  .automation-step-dialog-footer { align-items: stretch; flex-direction: column; gap: 10px; }
+  .automation-step-dialog-footer .automation-actions { justify-content: space-between; }
+}

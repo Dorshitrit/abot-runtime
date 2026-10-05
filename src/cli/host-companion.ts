@@ -30,6 +30,7 @@ import { assertPrivateRuntimeAccess } from "../runtime/local-host/private-access
 import { completeHostCompanionStartup } from "./host-companion-startup.js";
 import { resolveHostCompanionSetupUrl } from "./host-companion-setup-target.js";
 import { readNativeCompanionBuildId } from "../computer-access/companion/native-build-identity.js";
+import { runHostPermissionsCli } from "./host-permissions.js";
 
 function printHostHelp(): void {
   console.log(
@@ -37,6 +38,7 @@ function printHostHelp(): void {
       "Usage:",
       "  abot host connect --url http://localhost:5177",
       "  abot host status",
+      "  abot host permissions [--request screen-recording|accessibility]",
       "  abot host disconnect",
       "  abot host uninstall",
       "  abot host run",
@@ -230,6 +232,10 @@ export async function runHostCompanionCli(
   const [command, ...rest] = args;
   if (!command || ["help", "--help", "-h"].includes(command)) {
     printHostHelp();
+    return;
+  }
+  if (command === "permissions") {
+    await runHostPermissionsCli(rest);
     return;
   }
   const state = nativeState();

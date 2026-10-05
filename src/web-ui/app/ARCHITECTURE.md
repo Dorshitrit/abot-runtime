@@ -282,3 +282,92 @@ execution evidence visible and places the complete rationale in a native disclos
 Startup keeps the app inert and hidden from the initial HTML until workspace
 restoration finishes. The branded startup screen reveals the app once ready;
 failed bootstrap reads remain on an error with an explicit Reload action.
+
+## Persistent SPARK popup
+
+`spark-chat-feature.js` is composed by `app-bootstrap.js` outside the exclusive
+workspace panels. It owns separate conversation state and DOM while reusing the
+ordinary session, submit/queue, steering, approval, attachment, replay and rendering
+controllers. Opening the popup does not replace the main selected session or draft.
+The launcher defaults to the sidebar above the environment picker. Its drag position
+is a browser preference shared across environments, with keyboard movement and a
+settings action to return it to the sidebar. The popup anchors above or below the
+launcher and stays inside the viewport.
+The external launcher remains visible and toggles the popup even while it is open;
+the header mascot also minimizes the chat. Free placement and anchor geometry stay intact.
+Drag release gently aligns to a nearby 16px grid and settles into the saved position.
+The popup fades and moves in from its launcher-facing edge without scaling message
+geometry; placement motion respects reduced-motion preferences.
+The marked permanent conversation is omitted from ordinary session listings.
+Initiatives are presented only in the popup. Home and the SPARK page have no
+proposal cards, card read filtering, dismissal actions or legacy suggestion toasts;
+their status views show the actual collection, learning and proactive activity.
+Popup notifications and read tracking belong to the companion alone. Desktop
+notification records derive the SPARK kind from the canonical persisted session.
+Their validated `/home` destination binds the environment, companion and exact
+message/request reference; ordinary conversation and automation destinations keep
+their existing contracts. The retired
+manual proposal-dismissal HTTP/RPC path and browser preference facade are removed;
+learning status no longer transports the card-only list of proposal contents.
+Durable engine receipts, delivery events and deletion-derived settlement remain
+owned by the proactive engine. Historical work sessions remain accessible through
+the ordinary session list.
+
+The native `/runtime/spark/chat` contract supplies the canonical session snapshot,
+shared proactive model selection and persisted tool permission preference. Changes
+live in SPARK's Chat tab; the shared model selector remains under Proactive mode
+in Settings. Chat also hosts the existing Fast / Reasoning / Deep selector, backed
+by the companion view state and used by ordinary send/queue capture. The compact
+composer keeps attachment, stop and send actions inside one input row; permissions
+remain in Chat settings. The popup settings button opens Chat directly. Clear uses the
+ordinary session-history cleanup route and
+keeps the session identity and preferences. The owner rejects clearing while a
+request or saved approval is active, reserves admission during cleanup, and removes
+only captured transcript attachment references so a concurrent new upload survives.
+Exact cleanup references are committed before history removal and retained on deletion
+failure for an explicit retry, including after restart. Proactive delivery shares the
+same admission boundary through message persistence, delivery receipt and notification.
+
+`spark-chat-reading.js` captures the first unread anchor before acknowledging any
+visible rows. SPARK read tracking uses exact persisted message identities rather
+than the ordinary cumulative read cursor; offscreen messages remain unread. Each
+receipt binds the observed message ID, timestamp and request identity plus the
+read generation. Initiative request identity remains null even if a later ordinary
+answer repeats its text. A delayed acknowledgement cannot mark a reused post-clear ID.
+Unread availability failures preserve the last known state and draft.
+The initial/reconnected snapshot produces one summary indication. Later new
+persisted assistant messages produce one indication each while the popup is closed,
+independent of streaming deltas and replay. An open popup suppresses the extra
+floating preview. View state, reads and realtime events remain environment scoped.
+
+`spark-chat-sync.js` reconciles durable snapshots and restores ordinary request
+replay after reconnect. Environment navigation first prepares both ordinary and SPARK
+queue recovery. Recovered drafts and their files are released only after every
+navigation guard accepts; failed saves leave the current composer intact.
+Shared rendering delegates popup scroll and asynchronous
+layout changes to its reading controller, keeping the ordinary view unchanged.
+The companion presents a friendly empty state and working indicator. Its canonical
+SPARK policy keeps replies in the current user's language unless another is requested,
+without announcing a language switch. It treats earlier assistant messages as its
+own conversation and distinguishes an empty long-term recall from available history.
+Its result view
+retains canonical file actions, web sources, failures and partial-result warnings;
+session event inspection, raw reasoning, context controls and routine completion
+status stay out of the companion. Approval and execution mechanisms remain shared.
+
+SPARK initiatives enter ordinary conversation history once as assistant messages in
+canonical order. They form settled assistant-only units without inventing a user
+request and follow the same checkpoint/compaction policy as other settled turns:
+older units are summarized while the latest ten remain exact. The saved transcript
+is retained for display and handoff. There is no separate initiative context block;
+saved reasons, source metadata and handoff briefs are not projected into chat model
+inputs. Request snapshots keep the existing exact source validation contract.
+
+Persisted initiatives expose an explicit handoff action when canonical metadata
+includes a saved title and brief. The client sends only the exact source message
+reference to `/runtime/spark/chat/sessions`; it never invents or submits the brief.
+`spark-handoff-navigation.js` captures the ordinary workspace and environment,
+then opens the returned ordinary session through its existing session controller.
+It submits no chat message or model request. Old suggestions without saved context
+show a disabled action and explanation. Legacy Keep/Not interested and Not now
+controls are removed; their stored historical preferences and statuses remain.

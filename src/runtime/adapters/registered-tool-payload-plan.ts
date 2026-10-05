@@ -75,16 +75,16 @@ export function deriveRegisteredToolPayloadContextPlan(
 }
 
 /**
- * Bridges only explicitly staged tool metadata into the ordinary invocation
- * contract. Single-stage operations deliberately remain on their established
- * raw-payload path.
+ * Bridges explicitly declared payload stages into ordinary invocation.
+ * One declared stage retains its response format; operations with no declared
+ * stages keep their established raw-payload path.
  */
 export function deriveRegisteredToolStagedPayloadPlan(
   definition: ToolDefinition,
   operation: ToolNormalInvocationOperation,
 ): RegisteredToolStagedPayloadPlan | undefined {
   const spec = definition.payloadChannelSpec;
-  if (!spec?.stages || spec.stages.length < 2) {
+  if (!spec?.stages || spec.stages.length === 0) {
     return undefined;
   }
   if (

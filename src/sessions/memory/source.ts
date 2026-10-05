@@ -14,7 +14,7 @@ export type SessionMemorySettledTurn = Readonly<{
 
 export type SessionMemorySourceSnapshot = Readonly<{
   sourceRevision: string;
-  /** Settled history, including assistant initiatives that must never be summarized. */
+  /** Settled history, including standalone assistant conversation units. */
   historyMessages: readonly SessionMessage[];
   turns: readonly SessionMemorySettledTurn[];
   messageReferences: readonly SessionMemoryMessageReference[];
@@ -23,33 +23,17 @@ export type SessionMemorySourceSnapshot = Readonly<{
 export function snapshotSessionMemorySource(
   session: Pick<SessionRecord, "messages">,
 ): SessionMemorySourceSnapshot {
-  const settledTurns = collectSettledConversationTurns(session.messages);
-  const historyMessages = Object.freeze(settledTurns.flatMap(turnMessages));
-  const turns = Object.freeze(
-    settledTurns.filter(isCompactableConversationTurn),
-  );
-  const historyReferences = historyMessages.map(createMessageReference);
-  const messageReferences = Object.freeze(
-    historyReferences.filter(
-      function isCompactableMessageReference(_reference, index) {
-        return !isAssistantInitiativeMessage(historyMessages[index]!);
-      },
-    ),
-  );
+  const turns = collectSettledConversationTurns(session.messages);
+  const historyMessages = Object.freeze(turns.flatMap(turnMessages));
+  const messageReferences = Object.freeze(historyMessages.map(createMessageReference));
   return Object.freeze({
     sourceRevision: fingerprint(
-      historyReferences.map(({ fingerprint: value }) => value).join("\n"),
+      messageReferences.map(({ fingerprint: value }) => value).join("\n"),
     ),
     historyMessages,
     turns,
     messageReferences,
   });
-}
-
-function isCompactableConversationTurn(
-  turn: SessionMemorySettledTurn,
-): boolean {
-  return !isAssistantInitiativeMessage(turn.assistant);
 }
 
 export function resolveCoveredTurnCount(

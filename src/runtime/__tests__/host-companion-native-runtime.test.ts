@@ -232,6 +232,8 @@ test("rejects a writable source without executing or activating it", async () =>
   await expect(lstat(managed)).rejects.toMatchObject({ code: "ENOENT" });
 });
 
+// Allow binary copy, hashing and fsync plus two sequential preflights bounded to 5s each.
+// This integration budget does not change either production subprocess deadline.
 test("the real current Node from a trusted fixture passes relocation preflight without startup registration", async () => {
   // Hosted toolcache ownership and modes are not this fixture's trust contract.
   await copyFile(process.execPath, startup.nodePath);
@@ -241,4 +243,4 @@ test("the real current Node from a trusted fixture passes relocation preflight w
   expect((await lstat(managed)).size).toBe(
     (await lstat(process.execPath)).size,
   );
-});
+}, 30_000);

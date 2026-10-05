@@ -1,3 +1,4 @@
+import { buildDegradedFinalizationFallback } from "../steps/degraded-finalization/fallback.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ModelOutputIncompleteError } from "../model/provider-completion.js";
 import {
@@ -124,6 +125,27 @@ describe.each(ROOT_OUTPUT_POLICIES)(
         const ledger = await createRootInvalidOutputLedger(policy.policyId);
         const initialHead = ledger.current();
         const running = runRootExecutionKernel({ request, ledger });
+        if (policy.policyId === "supervisor-worker-v1") {
+          const expected = buildDegradedFinalizationFallback({
+            problem: {
+              stage: "provider_completion",
+              code: "output_incomplete",
+              cause: "model_output_limit",
+              modelStep: policy.decisionStep,
+            },
+            progress: null,
+          });
+          await expect(running).resolves.toMatchObject({
+            output: expected,
+            disposition: "blocked",
+          });
+          expect(ledger.current().state.rootResponse).toBe(expected);
+          expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
+            policy.decisionStep,
+            "degraded.finalization",
+          ]);
+          return;
+        }
         if (degradedFailure === "provider") {
           await expect(running).rejects.toBe(failure);
         } else {

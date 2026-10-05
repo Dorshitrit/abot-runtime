@@ -57,7 +57,6 @@ describe("exec process-group termination", () => {
           scope,
           shellCommand,
           cwd: root,
-          outputMaxChars: 512,
           yieldAfterMs: 10,
           idleTimeoutMs: reason === "idle_timeout" ? 400 : 5_000,
           hardTimeoutMs: reason === "hard_timeout" ? 400 : 5_000,

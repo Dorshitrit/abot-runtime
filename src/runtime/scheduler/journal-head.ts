@@ -10,7 +10,7 @@ export type JournalHead =
   | { schemaVersion: 2; generation: string }
   | CommittedJournalHead;
 export type CommittedJournalHead = {
-  schemaVersion: 3;
+  schemaVersion: 3 | 4;
   generation: string;
   sequence: number;
   checkpoint: JournalCheckpointReference;
@@ -34,7 +34,8 @@ function parseJournalHead(value: unknown): JournalHead {
   if (!isJournalGeneration(value.generation)) corruptJournalHead();
   if (value.schemaVersion === 2)
     return { schemaVersion: 2, generation: value.generation };
-  if (value.schemaVersion !== 3) corruptJournalHead();
+  if (value.schemaVersion !== 3 && value.schemaVersion !== 4)
+    corruptJournalHead();
   if (!isJournalSequence(value.sequence)) corruptJournalHead();
   if (!isJournalObject(value.checkpoint)) corruptJournalHead();
   const checkpoint = value.checkpoint;
@@ -44,7 +45,7 @@ function parseJournalHead(value: unknown): JournalHead {
   if (!hasBoundedJournalSuffix(value.sequence, checkpoint.sequence))
     corruptJournalHead();
   return {
-    schemaVersion: 3,
+    schemaVersion: value.schemaVersion,
     generation: value.generation,
     sequence: value.sequence,
     checkpoint: {

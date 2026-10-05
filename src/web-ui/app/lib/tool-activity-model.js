@@ -94,6 +94,7 @@ function applyPhase(action, evidence) {
 }
 
 function applyEvidence(action, evidence) {
+  if (evidence.activityTitle) action.title = evidence.activityTitle;
   if (isSettledToolEvent(evidence)) delete action.fileReference;
   if (evidence.fileReference) action.fileReference = evidence.fileReference;
   if (evidence.executorRole) action.executorRole = evidence.executorRole;

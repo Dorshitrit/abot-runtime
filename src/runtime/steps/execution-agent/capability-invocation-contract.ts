@@ -8,7 +8,7 @@ import type { ExecutionAgentDecisionValidationIssue } from "./contracts.js";
 export const EXECUTION_AGENT_OPERATION_OBJECTIVE_MAX_LENGTH = 4_096;
 
 const EXECUTION_AGENT_OPERATION_OBJECTIVE_DESCRIPTION =
-  "Complete bounded operation for this invocation. This is internal execution input for controls refinement, not client-facing status, and cannot add unrelated request outcomes.";
+  "Complete bounded operation for this invocation, including all changes its payload must make. This is internal execution input for controls and payload authoring, not client-facing status, and cannot add unrelated request outcomes.";
 
 type ParsedExecutionOperationObjective =
   | Readonly<{ ok: true; value?: string }>
@@ -16,7 +16,9 @@ type ParsedExecutionOperationObjective =
 
 export function requiresExecutionOperationObjective(
   partition: CapabilityControlsPartition,
+  requiresPayloadAuthoringObjective = false,
 ): boolean {
+  if (requiresPayloadAuthoringObjective) return true;
   return Object.keys(partition.remainingSchema.properties).length > 0;
 }
 

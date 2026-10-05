@@ -16,9 +16,15 @@ import { normalizeRealtimeMessage } from "../lib/realtime-message.js";
 import { reduceTaskProgress } from "../lib/task-progress.js";
 import { projectWebSourceEvent } from "../lib/web-source-event.js";
 import { projectToolActivityEvent } from "../lib/tool-activity-event.js";
-import { canReplaceContextWindowEvidence } from "../lib/context-window-snapshot-order.js";
+import {
+  contextEvidenceScope,
+  contextEvidenceOrder,
+  reduceContextWindowEvidence,
+  synchronizeContextRequestLifecycle,
+} from "../lib/context-window-state.js";
 import { isWorkspaceChange } from "../lib/workspace-change.js";
 import { createRequestLifecycleController } from "./request-lifecycle-controller.js";
+import { ownsToolApprovalAcknowledgement } from "../lib/tool-approval-acknowledgement.js";
 
 export { normalizeRealtimeMessage } from "../lib/realtime-message.js";
 export { taskStatusClass } from "../lib/task-progress.js";
@@ -75,6 +81,12 @@ export function createRealtimeEventController({
 }) {
   const lifecycleController = createRequestLifecycleController({
     state,
+    onAcceptedLifecycle: (message) =>
+      synchronizeContextRequestLifecycle(
+        state,
+        message,
+        selectedEnvironmentId(),
+      ),
     addOrMergeMessage,
     normalizeChatMessage,
     activeAssistantForRequest,
@@ -119,161 +131,17 @@ export function createRealtimeEventController({
   }
 
   function updateContextWindow(message) {
-    const eventName = textOf(message.name || message.rawType);
-    const requestId = textOf(message.requestId) || state.activeRequestId;
-    if (!requestId) return;
-    const current = state.contextWindowByRequest.get(requestId) || {
+    const requestId = textOf(message.requestId);
+    const current = state.contextWindowByRequest.get(requestId);
+    const scope = contextEvidenceScope(
+      state,
+      selectedEnvironmentId(),
       requestId,
-      snapshot: null,
-      providerUsage: null,
-      pendingCompaction: null,
-      lastCompaction: null,
-      lastCompactionEvent: null,
-    };
-    if (eventName === "context.window.snapshot") {
-      const contextWindowTokens = Number(message.contextWindowTokens);
-      const estimatedInputTokens = Number(message.estimatedInputTokens);
-      const usedContextPercent = Number(message.usedContextPercent);
-      const remainingContextTokens = Number(message.remainingContextTokens);
-      if (
-        !Number.isFinite(contextWindowTokens) ||
-        contextWindowTokens <= 0 ||
-        !Number.isFinite(estimatedInputTokens) ||
-        estimatedInputTokens < 0 ||
-        !Number.isFinite(usedContextPercent)
-      ) {
-        return;
-      }
-      const previous = current.snapshot;
-      if (!canReplaceContextWindowEvidence(previous, message)) return;
-      const snapshot = {
-        requestId,
-        eventSequence: message.eventSequence,
-        seqNo: message.seqNo,
-        invocationId: textOf(message.invocationId),
-        modelStep: textOf(message.modelStep),
-        profileId: textOf(message.profileId),
-        provider: textOf(message.provider),
-        model: textOf(message.model),
-        measurement: textOf(message.measurement, "estimated"),
-        source: textOf(message.source, "runtime_token_estimator"),
-        admissionOutcome: textOf(message.admissionOutcome),
-        contextWindowTokens,
-        estimatedInputTokens,
-        remainingContextTokens: Number.isFinite(remainingContextTokens)
-          ? remainingContextTokens
-          : Math.max(0, contextWindowTokens - estimatedInputTokens),
-        usedContextPercent,
-        remainingContextPercent: Number(message.remainingContextPercent),
-        compactionTriggerPercent: Number(message.compactionTriggerPercent),
-        outputReserveTokens: Number(message.outputReserveTokens),
-        safetyReserveTokens: Number(message.safetyReserveTokens),
-        attachmentReserveTokens: Number(message.attachmentReserveTokens),
-        formatReserveTokens: Number(message.formatReserveTokens),
-      };
-      let lastCompaction = current.lastCompaction;
-      if (
-        current.pendingCompaction &&
-        previous?.profileId === snapshot.profileId &&
-        snapshot.usedContextPercent < previous.usedContextPercent
-      ) {
-        lastCompaction = {
-          beforePercent:
-            current.pendingCompaction.beforePercent ??
-            previous.usedContextPercent,
-          afterPercent: snapshot.usedContextPercent,
-        };
-      }
-      state.contextWindowByRequest.set(requestId, {
-        ...current,
-        requestId,
-        snapshot,
-        lastCompaction,
-        pendingCompaction: lastCompaction ? null : current.pendingCompaction,
-      });
-      return true;
-    }
-    if (eventName === "context.window.provider_usage") {
-      if (!canReplaceContextWindowEvidence(current.providerUsage, message))
-        return;
-      state.contextWindowByRequest.set(requestId, {
-        ...current,
-        requestId,
-        providerUsage: {
-          eventSequence: message.eventSequence,
-          seqNo: message.seqNo,
-          invocationId: textOf(message.invocationId),
-          modelStep: textOf(message.modelStep),
-          profileId: textOf(message.profileId),
-          source: textOf(message.source, "provider_reported"),
-          inputTokens: Number(message.inputTokens),
-          outputTokens: Number(message.outputTokens),
-          totalTokens: Number(message.totalTokens),
-        },
-      });
-      return true;
-    }
-    if (eventName === "context.compaction.started") {
-      if (
-        !canReplaceContextWindowEvidence(current.lastCompactionEvent, message)
-      )
-        return;
-      if (!canReplaceContextWindowEvidence(current.snapshot, message)) return;
-      state.contextWindowByRequest.set(requestId, {
-        ...current,
-        requestId,
-        lastCompactionEvent: {
-          eventSequence: message.eventSequence,
-          seqNo: message.seqNo,
-        },
-        pendingCompaction: {
-          beforePercent: Number.isFinite(
-            Number(message.beforeUsedContextPercent),
-          )
-            ? Number(message.beforeUsedContextPercent)
-            : current.snapshot?.usedContextPercent,
-        },
-      });
-      return true;
-    }
-    if (eventName === "context.compaction.completed") {
-      if (
-        !canReplaceContextWindowEvidence(current.lastCompactionEvent, message)
-      )
-        return;
-      const beforePercent = Number(message.beforeUsedContextPercent);
-      const afterPercent = Number(message.afterUsedContextPercent);
-      state.contextWindowByRequest.set(requestId, {
-        ...current,
-        requestId,
-        lastCompactionEvent: {
-          eventSequence: message.eventSequence,
-          seqNo: message.seqNo,
-        },
-        pendingCompaction: null,
-        lastCompaction:
-          Number.isFinite(beforePercent) && Number.isFinite(afterPercent)
-            ? { beforePercent, afterPercent }
-            : current.lastCompaction,
-      });
-      return true;
-    }
-    if (eventName === "context.compaction.failed") {
-      if (
-        !canReplaceContextWindowEvidence(current.lastCompactionEvent, message)
-      )
-        return;
-      state.contextWindowByRequest.set(requestId, {
-        ...current,
-        requestId,
-        lastCompactionEvent: {
-          eventSequence: message.eventSequence,
-          seqNo: message.seqNo,
-        },
-        pendingCompaction: null,
-      });
-      return true;
-    }
+    );
+    const next = reduceContextWindowEvidence(current, message, scope);
+    if (!next || next === current) return false;
+    state.contextWindowByRequest.set(requestId, next);
+    return true;
   }
 
   function recordEvent(message) {
@@ -285,16 +153,16 @@ export function createRealtimeEventController({
     const eventSequence = hasOriginalEventSequence(message.eventSequence)
       ? message.eventSequence
       : undefined;
-    if (hasRecordedOriginalEvent(state.events, requestId, eventSequence)) {
-      trackSeq(message);
-      return;
-    }
-    updateTaskProgress(message);
     const contextWindowUpdated = updateContextWindow(message);
     if (contextWindowUpdated) {
       renderContextWindow();
       renderActivityStatus();
     }
+    if (hasRecordedOriginalEvent(state.events, requestId, eventSequence)) {
+      trackSeq(message);
+      return;
+    }
+    updateTaskProgress(message);
     const eventName = textOf(message.name || message.rawType || message.type);
     if (isLowValueActivityEvent(message)) {
       trackSeq(message);
@@ -308,6 +176,10 @@ export function createRealtimeEventController({
     const key = eventKeyFor({ ...message, requestId }, name, tone);
     const webSources = projectWebSourceEvent(message);
     const toolActivity = projectToolActivityEvent(message);
+    const contextOrder = contextEvidenceOrder(
+      message,
+      contextEvidenceScope(state, selectedEnvironmentId(), requestId),
+    );
     const lastEvent = state.events[state.events.length - 1];
     if (
       canMergeUnsequencedActivity(
@@ -321,6 +193,7 @@ export function createRealtimeEventController({
       lastEvent.count = (lastEvent.count || 1) + 1;
       lastEvent.summary = summary;
       lastEvent.updatedAt = Date.now();
+      Object.assign(lastEvent, contextOrder);
       if (typeof message.seqNo === "number")
         lastEvent.lastSeqNo = message.seqNo;
       lastEvent.eventName = eventName || lastEvent.eventName;
@@ -334,6 +207,7 @@ export function createRealtimeEventController({
         lastSeqNo:
           typeof message.seqNo === "number" ? message.seqNo : undefined,
         eventSequence,
+        ...contextOrder,
         updatedAt: Date.now(),
         type: message.type,
         rawType: message.rawType,
@@ -415,6 +289,14 @@ export function createRealtimeEventController({
   function handle(rawMessage) {
     const message = normalizeRealtimeMessage(rawMessage);
     if (message.type === "tool_approval_ack") {
+      if (
+        !ownsToolApprovalAcknowledgement(
+          message,
+          state,
+          selectedEnvironmentId(),
+        )
+      )
+        return;
       if (!message.accepted) {
         state.submittedToolApprovalIds.delete(message.approvalId);
         recordControlEvent({

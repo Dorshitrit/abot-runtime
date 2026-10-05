@@ -1,3 +1,7 @@
+import {
+  buildRuntimeFilesystemScopeMessage,
+  type RuntimeFilesystemScope,
+} from "../../context/runtime-filesystem-scope.js";
 import type {
   ChatMessage,
   ModelGatewayJsonSchemaFormat,
@@ -60,6 +64,7 @@ export function buildSupervisorWorkingDirectoryInput(
   sourceContext: RequestContextProjection,
   options: Readonly<{
     frozenDecision: SupervisorWorkingDirectoryRoutingDecision;
+    filesystemScope?: RuntimeFilesystemScope;
     diagnostic?: SupervisorDecisionDiagnosticContext;
   }>,
 ): Readonly<{
@@ -78,12 +83,17 @@ export function buildSupervisorWorkingDirectoryInput(
       })
     : undefined;
   const format = createSupervisorWorkingDirectoryFormat();
+  const filesystemMessage = buildRuntimeFilesystemScopeMessage({
+    scope: options.filesystemScope,
+    canSelectWorkingDirectory: true,
+  });
   const messages: ChatMessage[] = [
     Object.freeze({
       role: "system" as const,
       content: buildSupervisorWorkingDirectoryInstructions(),
     }),
     ...sourceMessages.filter(belongsToSupervisorWorkingDirectoryContext),
+    ...(filesystemMessage ? [filesystemMessage] : []),
     Object.freeze({
       role: "user" as const,
       content: JSON.stringify({

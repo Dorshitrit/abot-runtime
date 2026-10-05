@@ -1,4 +1,5 @@
 import { isHostRecord, type HostIdentity } from "./protocol.js";
+import { hasBoundSparkNotificationQuery } from "./spark-notification-query.js";
 
 export const DESKTOP_NOTIFICATION_CAPABILITY = "desktop_notifications_v1";
 export { DESKTOP_NOTIFICATION_OPERATION } from "./protocol.js";
@@ -7,6 +8,7 @@ export const DESKTOP_NOTIFICATION_PATHS = [
   "/notifications",
   "/home",
   "/learning",
+  "/automations",
 ] as const;
 
 export type DesktopNotification = Readonly<{
@@ -26,6 +28,22 @@ export function notificationRuntimeOrigin(runtimeUrl: string): string {
   return url.origin;
 }
 
+function hasBoundAutomationRunQuery(url: URL): boolean {
+  const keys = ["environment", "automation", "run"];
+  for (const key of keys) {
+    if (url.searchParams.getAll(key).length !== 1) return false;
+    if (!url.searchParams.get(key)) return false;
+  }
+  return [...url.searchParams.keys()].every((key) => keys.includes(key));
+}
+
+function hasAllowedNotificationQuery(url: URL): boolean {
+  if (url.pathname === "/automations") return hasBoundAutomationRunQuery(url);
+  if (url.searchParams.has("spark")) return hasBoundSparkNotificationQuery(url);
+  return [...url.searchParams.keys()].every((key) =>
+    ["environment", "session"].includes(key));
+}
+
 export function resolveNotificationSourceUrl(
   value: unknown,
   runtimeUrl: string,
@@ -43,11 +61,7 @@ export function resolveNotificationSourceUrl(
     throw new Error("notification_url_invalid");
   if (!DESKTOP_NOTIFICATION_PATHS.some((path) => path === url.pathname))
     throw new Error("notification_url_path_invalid");
-  if (
-    [...url.searchParams.keys()].some(
-      (key) => !["environment", "session"].includes(key),
-    )
-  )
+  if (!hasAllowedNotificationQuery(url))
     throw new Error("notification_url_query_invalid");
   return url.toString();
 }

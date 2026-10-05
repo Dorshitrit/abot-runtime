@@ -129,7 +129,7 @@ function projectCompletedChildren(
 ): readonly CompletedRoleChildResult[] {
   return Object.freeze(
     caller.childCallIds.map((completedChildCallId) =>
-      projectCompletedChild(
+      projectStoredCompletedRoleChild(
         state,
         {
           callerCallId: caller.callId,
@@ -141,7 +141,7 @@ function projectCompletedChildren(
   );
 }
 
-function projectCompletedChild(
+export function projectStoredCompletedRoleChild(
   state: RoleCallState,
   refs: Readonly<{
     callerCallId: string;

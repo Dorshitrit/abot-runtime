@@ -3,9 +3,11 @@ import type { RuntimeAttachmentStore } from "../attachments/store.js";
 import type { SessionStore } from "../ports.js";
 import type { RuntimeProjectService } from "../projects/contracts.js";
 import type { SchedulerService } from "../scheduler/contracts.js";
+import type { AutomationService } from "../automations/service.js";
 
 export const LOCAL_SESSION_METHODS = [
   "getOrCreateSession",
+  "createAssistantConversation",
   "getAllSessions",
   "listSessions",
   "getSessionById",
@@ -57,6 +59,35 @@ export const LOCAL_SCHEDULER_METHODS = [
   "listRuns",
 ] as const satisfies readonly (keyof SchedulerService)[];
 
+export const LOCAL_AUTOMATION_METHODS = [
+  "list",
+  "create",
+  "createDraftPlan",
+  "applyDraftPlan",
+  "getDraft",
+  "deleteDraft",
+  "archive",
+  "restore",
+  "getPublishedDefinition",
+  "updateDraft",
+  "getSavedAgent",
+  "listSavedAgents",
+  "saveAgentFromDraft",
+  "validate",
+  "catalog",
+  "getGrant",
+  "replaceGrant",
+  "publish",
+  "activate",
+  "pause",
+  "runNow",
+  "listRuns",
+  "getRun",
+  "getStepEvidence",
+  "stopRun",
+  "rerun",
+] as const satisfies readonly (keyof AutomationService)[];
+
 type ServiceTarget = Record<string, unknown>;
 
 function selectServiceMethod(
@@ -103,6 +134,12 @@ export async function dispatchLocalServiceCall(
       services.scheduler,
       operation,
       LOCAL_SCHEDULER_METHODS,
+    )(...args);
+  if (service === "automations")
+    return selectServiceMethod(
+      services.automations,
+      operation,
+      LOCAL_AUTOMATION_METHODS,
     )(...args);
   throw new Error("local_runtime_method_unknown");
 }

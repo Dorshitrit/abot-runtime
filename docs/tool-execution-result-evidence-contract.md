@@ -77,10 +77,17 @@ The Runtime validates the result before ledger settlement:
 - no functions, symbols, accessors, cycles, or non-plain prototypes;
 - the registered result must match the public `ToolExecutionResult` fields;
 - references remain bounded by the RoleCall reference contract;
-- one serialized canonical adapter result is limited to 256 KiB.
+- the serialized canonical envelope is limited to 256 KiB. A registered
+  result may declare `contextTextFields` from `output`, `stdout`, and `stderr`;
+  those exact string bodies use the model-context budget instead. Field names,
+  declarations, references, and all other result data still count toward 256 KiB.
 
-The 256 KiB limit is a hard producer boundary, not a model-context truncation
-rule. An over-limit result becomes an explicit technical capability failure.
+The 256 KiB limit is a producer metadata boundary, not a model-context truncation
+rule. Without a text declaration it applies to the complete result as before.
+Declared text remains in the canonical result and follows the same provenance,
+consumer projection, token measurement, and semantic compaction as other tool
+evidence. The declaration grants no action or completion authority. Oversized
+metadata still becomes an explicit technical capability failure.
 The Runtime never sends a syntactically valid but incomplete object and never
 pretends that omitted structured facts were observed.
 

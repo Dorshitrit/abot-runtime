@@ -1,8 +1,7 @@
 import {
-  boundText,
-  enforcePluginResultByteBudget,
-  failureResult,
+  deliverPluginTextResult,
   type ToolImplementationOutput,
+  type ToolResultBudget,
 } from "../../../src/plugin-sdk/index.js";
 import {
   captureExecFilesystemSnapshot,
@@ -13,37 +12,44 @@ import type {
   ExecFilesystemDelta,
   ExecProcessSnapshot,
   ExecStreamSnapshot,
+  ExecStreamMetadata,
   PendingExecExecution,
 } from "./types.js";
 
-function streamDisplay(snapshot: ExecStreamSnapshot): string {
-  if (snapshot.text) return snapshot.text;
+const EXEC_CONTEXT_TEXT_FIELDS = Object.freeze(["stdout", "stderr"] as const);
+
+function streamReceipt(
+  snapshot: ExecStreamSnapshot,
+  field: "stdout" | "stderr",
+): string {
+  if (snapshot.text) return `See the ${field} field (${snapshot.text.length} characters).`;
   return snapshot.sawOutput
     ? "(no new output; earlier output was already returned)"
     : "(empty)";
 }
 
-function renderedOutput(
-  lines: readonly string[],
-  outputMaxChars: number,
-): Readonly<{
+function renderedOutput(lines: readonly string[]): Readonly<{
   output: string;
-  metadata: ReturnType<typeof boundText>["metadata"];
+  metadata: ExecStreamMetadata;
 }> {
-  const bounded = boundText(lines.join("\n"), {
-    maxChars: outputMaxChars,
-    marker: "\n[exec output truncated]",
+  const output = lines.join("\n");
+  return Object.freeze({
+    output,
+    metadata: Object.freeze({
+      truncated: false,
+      originalChars: output.length,
+      returnedChars: output.length,
+      omittedChars: 0,
+    }),
   });
-  return Object.freeze({ output: bounded.text, metadata: bounded.metadata });
 }
 
 function outputBoundsData(
   snapshot: ExecProcessSnapshot,
-  rendered: ReturnType<typeof renderedOutput>["metadata"],
-  maxChars: number,
+  rendered: ExecStreamMetadata,
 ) {
   return Object.freeze({
-    maxChars,
+    maxChars: null,
     stdout: snapshot.stdout.metadata,
     stderr: snapshot.stderr.metadata,
     rendered,
@@ -53,6 +59,7 @@ function outputBoundsData(
 export function runningResult(
   snapshot: ExecProcessSnapshot,
   execution: PendingExecExecution,
+  resultBudget?: ToolResultBudget,
 ): ToolImplementationOutput {
   const nextCursor = snapshot.nextCursor ?? 1;
   const rendered = renderedOutput(
@@ -63,16 +70,17 @@ export function runningResult(
       `Process ID: ${snapshot.processId}`,
       `Next cursor: ${nextCursor}`,
       "STDOUT since the previous observation:",
-      streamDisplay(snapshot.stdout),
+      streamReceipt(snapshot.stdout, "stdout"),
       "STDERR since the previous observation:",
-      streamDisplay(snapshot.stderr),
+      streamReceipt(snapshot.stderr, "stderr"),
       "Continue this exact process with exec_wait; do not run the command again.",
     ],
-    execution.outputMaxChars,
   );
-  return failureResult({
+  return deliverPluginTextResult({
+    ok: false,
+    producedNewInformation: false,
     errorCode: "exec_process_running",
-    message:
+    error:
       "The command is still running. Continue it with exec_wait using the returned process ID and cursor.",
     output: rendered.output,
     stdout: snapshot.stdout.text,
@@ -81,17 +89,13 @@ export function runningResult(
       processId: snapshot.processId,
       processStatus: "running",
       nextCursor,
-      outputBounds: outputBoundsData(
-        snapshot,
-        rendered.metadata,
-        execution.outputMaxChars,
-      ),
+      outputBounds: outputBoundsData(snapshot, rendered.metadata),
       observationMeta: {
         kind: "volatile_external",
         carryPolicy: "never",
       },
     },
-  });
+  }, EXEC_CONTEXT_TEXT_FIELDS, resultBudget);
 }
 
 async function captureFilesystemDelta(
@@ -166,6 +170,7 @@ export async function finalizeExecResult(params: {
   snapshot: ExecProcessSnapshot;
   execution: PendingExecExecution;
   cancellationIsSuccess?: boolean;
+  resultBudget?: ToolResultBudget;
 }): Promise<ToolImplementationOutput> {
   const { snapshot, execution } = params;
   const exitCode = snapshot.exitCode ?? -1;
@@ -202,12 +207,11 @@ export async function finalizeExecResult(params: {
       `Exit code: ${exitCode}`,
       ...(filesystemEvidence ? filesystemEvidence.outputLines : []),
       "STDOUT:",
-      streamDisplay(snapshot.stdout),
+      streamReceipt(snapshot.stdout, "stdout"),
       "STDERR:",
-      streamDisplay(snapshot.stderr),
+      streamReceipt(snapshot.stderr, "stderr"),
       ...(resultSummary ? [resultSummary] : []),
     ],
-    execution.outputMaxChars,
   );
   const processStatus = snapshot.terminationReason ?? "completed";
   const data = {
@@ -218,11 +222,7 @@ export async function finalizeExecResult(params: {
       : {}),
     processId: snapshot.processId,
     processStatus,
-    outputBounds: outputBoundsData(
-      snapshot,
-      rendered.metadata,
-      execution.outputMaxChars,
-    ),
+    outputBounds: outputBoundsData(snapshot, rendered.metadata),
     ...(filesystemDelta
       ? { filesystemObservation: filesystemDelta.observation }
       : { filesystemObservation: { available: false } }),
@@ -242,7 +242,7 @@ export async function finalizeExecResult(params: {
     data,
   };
   if (ok && (!inconclusiveSuccess || cancellationIsSuccess)) {
-    return enforcePluginResultByteBudget({ ok: true, ...common });
+    return deliverPluginTextResult({ ok: true, ...common }, EXEC_CONTEXT_TEXT_FIELDS, params.resultBudget);
   }
   const errorCode = inconclusiveSuccess
     ? "no_observable_result"
@@ -266,10 +266,10 @@ export async function finalizeExecResult(params: {
           : errorCode === "exec_hard_timeout"
             ? `The command exceeded the ${execution.hardTimeoutMs}ms hard timeout.`
             : `The command exited with code ${exitCode}.`;
-  return enforcePluginResultByteBudget({
+  return deliverPluginTextResult({
     ok: false,
     ...common,
     error,
     errorCode,
-  });
+  }, EXEC_CONTEXT_TEXT_FIELDS, params.resultBudget);
 }

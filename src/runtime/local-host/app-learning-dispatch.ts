@@ -1,6 +1,5 @@
 import type { PassiveLearningService } from "../passive-learning/contracts.js";
 import { readLearningPreferencesInput } from "./learning-preferences-input.js";
-import { isLearningEventId } from "./learning-events.js";
 
 /** An explicit management surface excludes collection ingress and lifecycle RPCs. */
 export function dispatchLocalLearningCall(
@@ -15,13 +14,6 @@ export function dispatchLocalLearningCall(
       throw new Error("passive_learning_candidates_invalid");
     if (!service.candidates) throw new Error("passive_learning_unavailable");
     return service.candidates();
-  }
-  if (method === "learning.dismissProposal") {
-    if (args.length !== 1 || !isLearningEventId(args[0]))
-      throw new Error("passive_learning_proposal_invalid");
-    if (!service.dismissProposal)
-      throw new Error("passive_learning_unavailable");
-    return service.dismissProposal(args[0]);
   }
   if (method === "learning.clearPending") {
     if (args.length !== 0)

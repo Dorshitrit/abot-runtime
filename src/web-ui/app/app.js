@@ -147,6 +147,8 @@ const { guide: runtimeSetupGuide, controller: runtimeOnboarding } =
       renderAttachmentComposer();
       dashboardFeature?.runtimeAvailabilityChanged();
       schedulesFeature?.runtimeAvailabilityChanged();
+      projectsFeature?.runtimeAvailabilityChanged();
+      passiveLearning?.runtimeAvailabilityChanged();
       configWorkspace?.renderHomeGuidance();
     },
   });
@@ -167,10 +169,9 @@ schedulesFeature = createSchedulesFeature({
   openSession: (sessionId) => conversationSession.openSession(sessionId),
 });
 passiveLearning = createPassiveLearningFeature({
+  isRuntimeReady: runtimeOnboarding.isReady,
   onChange: () => configWorkspace?.renderHomeGuidance(),
   client: runtimeClient,
-  openSession: (sessionId) => conversationSession.openSession(sessionId),
-  activateChat: () => shell.activateWorkspace("chat"),
   getEnvironmentId: selectedEnvironmentId,
   learningRoot: dom.learningRoot,
   openLearning: () => shell.activateWorkspace("learning"),
@@ -276,9 +277,6 @@ const toolApprovalController = createToolApprovalController({
 conversationView = createConversationView({
   dom,
   filePreviewClient: runtimeClient,
-  preferences,
-  archiveSession: (sessionId) => sessionController.archiveSession(sessionId),
-  onSparkArchived: () => shell.activateWorkspace("home"),
   getFileEnvironmentId: selectedEnvironmentId,
   getFileSessionId: () => state.currentSessionId,
   getMessages: () => state.messages,
@@ -338,6 +336,7 @@ conversationSession = createConversationSessionController({
     composerQueueController.isCurrentScope(scope),
 });
 projectsFeature = createProjectsFeature({
+  isRuntimeReady: runtimeOnboarding.isReady,
   onSessionCreated: (sessionId) =>
     runtimeSelection.initializeSessionMode(sessionId),
   dom,
@@ -526,7 +525,7 @@ const appEventBindings = createAppEventBindings({
   actions: {
     renderSessions,
     loadSessions,
-    suspendQueueRecovery: suspendRecoveredComposerReleaseForNavigation,
+    prepareQueueRecovery: () => composerQueueController.prepareRecoveryForNavigation(),
     saveSessionId: saveSessionIdForEnvironment,
     selectedEnvironmentId,
     rememberModelSelection: rememberCurrentModelSelection,
@@ -751,10 +750,6 @@ async function loadRuntimeLogs() {
 
 async function loadSystemHealth() {
   await operationsController.loadSystemHealth();
-}
-
-function suspendRecoveredComposerReleaseForNavigation() {
-  return composerQueueController.suspendRecoveryForNavigation();
 }
 
 void startWebApp({

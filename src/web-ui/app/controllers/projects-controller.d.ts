@@ -22,6 +22,7 @@ export type ProjectsControllerState = {
 export declare function createProjectsController(options: {
   client: ProjectRequests;
   getEnvironmentId: () => string;
+  isRuntimeReady?: () => boolean;
   getConversationRevision: () => string | number;
   prepareConversation: () => boolean;
   openSession: (sessionId: string) => Promise<unknown>;
@@ -33,6 +34,7 @@ export declare function createProjectsController(options: {
   snapshot(): ProjectsControllerState;
   load(): Promise<void>;
   environmentChanged(): Promise<void>;
+  runtimeAvailabilityChanged(): Promise<void>;
   openCreate(): void;
   closeCreate(): boolean;
   updateDraft(field: string, value: string): void;

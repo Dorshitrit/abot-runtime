@@ -2,6 +2,7 @@ import { updateLiveRegion } from "../../lib/live-region.js";
 import { getDashboardJobTemplates } from "../../lib/dashboard-job-templates.js";
 import { renderDashboardActivity } from "./activity.js";
 import { renderDashboardConversations } from "./recent-conversations.js";
+import { renderDashboardAutomations } from "./automations.js";
 import {
   hasPendingDashboardApprovals,
   renderDashboardApprovals,
@@ -12,6 +13,7 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
   root.innerHTML = `<div class="home-workspace-body">
     <div class="home-workspace-content">
       <section class="home-panel home-learning-panel" data-dashboard-learning hidden><div data-dashboard-learning-content></div></section>
+      <section class="home-automation-status" aria-label="Automations in progress" aria-live="polite" data-dashboard-automations hidden></section>
       <div class="home-overview">
         <section class="home-panel home-activity-panel" aria-label="Recent activity" data-dashboard-activity></section>
         <section class="home-panel home-recent-panel" aria-label="Recent conversations" data-dashboard-conversations></section>
@@ -34,6 +36,7 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
   const composerHost = root.querySelector("[data-dashboard-composer]");
   const setupHost = root.querySelector("[data-dashboard-setup]");
   const learningPanel = root.querySelector("[data-dashboard-learning]");
+  const automationPanel = root.querySelector("[data-dashboard-automations]");
   passiveLearning?.mountHome(root.querySelector("[data-dashboard-learning-content]"));
   const composerNote = root.querySelector(".home-composer-note");
   const handlers = {
@@ -63,6 +66,10 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
       approvalParent.appendChild(approvals);
     root.classList.toggle("home-setup-active", setupRequired);
     learningPanel.hidden = setupRequired || !passiveLearning;
+    const automationMarkup = renderDashboardAutomations(
+      snapshot.activeAutomations, snapshot.environmentId, snapshot.automationStatusUnavailable,
+    );
+    automationPanel.hidden = setupRequired || !automationMarkup;
     overview.hidden = setupRequired;
     approvals.hidden = setupRequired;
     composerHost.hidden = snapshot.composerAvailable === false;
@@ -70,6 +77,7 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
     composerNote.hidden = snapshot.composerAvailable === false;
     if (setupRequired) {
       activity.innerHTML = "";
+      automationPanel.innerHTML = "";
       conversations.innerHTML = "";
       approvals.innerHTML = "";
       return;
@@ -81,6 +89,7 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
       onDecision: actions.decideApproval,
       documentRoot: root.ownerDocument,
     });
+    updateLiveRegion(automationPanel, automationMarkup);
 
     updateLiveRegion(
       activity,

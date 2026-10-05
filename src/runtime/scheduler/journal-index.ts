@@ -1,27 +1,37 @@
 import { readFile } from "node:fs/promises";
+import type { AutomationJournalState } from "../automations/storage-records.js";
 import type {
-  SchedulerJob,
-  SchedulerRun,
   SchedulerRunListQuery,
   SchedulerSnapshot,
+  SchedulerStoredJob,
+  SchedulerStoredRun,
 } from "./contracts.js";
+import {
+  isAutomationSchedulerJob,
+  isAutomationSchedulerRun,
+  schedulerTargetKey,
+} from "./scheduler-target.js";
 import {
   assertJournalTransactionIds,
   parseSchedulerTransaction,
   type SchedulerTransaction,
 } from "./journal-transaction.js";
 import { querySchedulerRuns } from "./run-list-query.js";
+import { calendarDateAt } from "./calendar-time.js";
 import {
   matchesIndexedJournalRun,
   type JournalIndexState,
   type JournalRunEntry,
 } from "./journal-index-state.js";
+import { JournalAutomationIndex } from "./journal-automation-index.js";
 export class SchedulerJournalIndex {
-  private jobs = new Map<string, SchedulerJob>();
+  private jobs = new Map<string, SchedulerStoredJob>();
   private runs = new Map<string, JournalRunEntry>();
-  private active = new Map<string, SchedulerRun>();
+  private active = new Map<string, SchedulerStoredRun>();
+  private automations: JournalAutomationIndex;
 
   constructor(state?: JournalIndexState) {
+    this.automations = new JournalAutomationIndex(state?.automations);
     if (!state) return;
     const detached = structuredClone(state);
     this.jobs = new Map(detached.jobs.map((job) => [job.id, job]));
@@ -35,6 +45,7 @@ export class SchedulerJournalIndex {
     return structuredClone({
       jobs: [...this.jobs.values()],
       runs: [...this.runs.values()],
+      automations: this.automations.exportState(),
     });
   }
 
@@ -52,6 +63,8 @@ export class SchedulerJournalIndex {
         this.prospectiveRunIds(transaction),
         transaction.runOrder,
       );
+    if (transaction.automation)
+      this.automations.validate(transaction.automation);
   }
 
   private validateChangedJobHistory(transaction: SchedulerTransaction): void {
@@ -96,24 +109,28 @@ export class SchedulerJournalIndex {
     if (transaction.jobOrder)
       this.jobs = orderedJournalRecords(this.jobs, transaction.jobOrder);
     this.applyRunOrder(transaction.runOrder);
+    if (transaction.automation)
+      this.automations.apply(transaction.automation, file);
   }
-  private applyRun(run: SchedulerRun, file: string, offset: number): void {
+  private applyRun(run: SchedulerStoredRun, file: string, offset: number): void {
     const entry: JournalRunEntry = {
       id: run.id,
       jobId: run.jobId,
-      sessionId: run.sessionId,
       environmentId: run.environmentId,
       jobRevision: run.jobRevision,
       scheduledAt: run.scheduledAt,
-      requestId: run.requestId,
       status: run.status,
       file,
       offset,
+      ...(isAutomationSchedulerRun(run)
+        ? { target: run.target, idempotencyKey: run.idempotencyKey,
+            admittedAt: run.admittedAt }
+        : { sessionId: run.sessionId, requestId: run.requestId }),
     };
     this.updateActiveRun(run, entry);
     this.runs.set(run.id, entry);
   }
-  private updateActiveRun(run: SchedulerRun, entry: JournalRunEntry): void {
+  private updateActiveRun(run: SchedulerStoredRun, entry: JournalRunEntry): void {
     if (!isActiveSchedulerRun(run)) {
       this.active.delete(run.id);
       return;
@@ -139,13 +156,22 @@ export class SchedulerJournalIndex {
           : await this.readRuns(),
     };
   }
+  async readAutomations(): Promise<AutomationJournalState> {
+    return this.automations.snapshot();
+  }
   async readRuns(
     jobId?: string,
     query?: SchedulerRunListQuery,
-  ): Promise<SchedulerRun[]> {
-    const selected = querySchedulerRuns([...this.runs.values()], jobId, query);
+    target?: "request" | "automation",
+  ): Promise<SchedulerStoredRun[]> {
+    const scoped = [...this.runs.values()].filter((entry) => {
+      if (!target) return true;
+      const kind = entry.target?.kind ?? "request";
+      return kind === target;
+    });
+    const selected = querySchedulerRuns(scoped, jobId, query);
     const files = new Map<string, Promise<SchedulerTransaction>>();
-    const result: SchedulerRun[] = [];
+    const result: SchedulerStoredRun[] = [];
     for (const entry of selected) {
       if (entry.active) {
         result.push(structuredClone(entry.active));
@@ -165,6 +191,53 @@ export class SchedulerJournalIndex {
     }
     return result;
   }
+  async readRun(runId: string): Promise<SchedulerStoredRun | null> {
+    const entry = this.runs.get(runId);
+    if (!entry) return null;
+    if (entry.active) return structuredClone(entry.active);
+    const transaction = parseSchedulerTransaction(
+      JSON.parse(await readFile(entry.file, "utf8")),
+    );
+    const run = transaction.runs[entry.offset];
+    if (!matchesIndexedJournalRun(run, entry))
+      throw new Error("scheduler_store_corrupt");
+    return structuredClone(run);
+  }
+  async readAutomationRunByKey(
+    automationId: string,
+    idempotencyKey: string,
+  ) {
+    const entry = [...this.runs.values()].find(
+      (item) =>
+        item.target?.kind === "automation" &&
+        item.target.automationId === automationId &&
+        item.idempotencyKey === idempotencyKey,
+    );
+    if (!entry) return null;
+    const run = await this.readRun(entry.id);
+    if (!run || !isAutomationSchedulerRun(run))
+      throw new Error("scheduler_store_corrupt");
+    return run;
+  }
+  countAutomationRunsOnDay(
+    automationId: string,
+    timeZone: string,
+    at: number,
+  ): number {
+    const day = calendarDateAt(at, timeZone);
+    let count = 0;
+    for (const entry of this.runs.values()) {
+      if (entry.target?.kind !== "automation" ||
+          entry.target.automationId !== automationId ||
+          entry.status === "missed") continue;
+      const admittedAt = Date.parse(entry.admittedAt ?? entry.scheduledAt);
+      if (Math.abs(admittedAt - at) > 48 * 60 * 60_000) continue;
+      const admittedDay = calendarDateAt(admittedAt, timeZone);
+      if (admittedDay.year === day.year && admittedDay.month === day.month &&
+          admittedDay.day === day.day) count += 1;
+    }
+    return count;
+  }
   private removeRun(id: string): void {
     this.runs.delete(id);
     this.active.delete(id);
@@ -176,8 +249,9 @@ export class SchedulerJournalIndex {
     }
   }
 }
-export function isActiveSchedulerRun(run: SchedulerRun): boolean {
-  return run.status === "pending" || run.status === "running";
+export function isActiveSchedulerRun(run: SchedulerStoredRun): boolean {
+  if (run.status === "pending" || run.status === "running") return true;
+  return run.status === "stopping";
 }
 function orderedJournalRecords<T>(
   records: Map<string, T>,
@@ -205,29 +279,36 @@ function containsEveryJournalRecord(
 }
 
 function requiresJournalHistoryValidation(
-  previous: SchedulerJob | undefined,
-  next: SchedulerJob,
+  previous: SchedulerStoredJob | undefined,
+  next: SchedulerStoredJob,
 ): boolean {
   if (!previous) return false;
-  if (previous.sessionId !== next.sessionId) return true;
+  if (schedulerTargetKey(previous) !== schedulerTargetKey(next)) return true;
   if (previous.environmentId !== next.environmentId) return true;
   return next.revision < previous.revision;
 }
 
 function assertJournalRunOwner(
-  run: Pick<SchedulerRun, "sessionId" | "environmentId" | "jobRevision">,
-  job: SchedulerJob | undefined,
+  run: JournalRunEntry | SchedulerStoredRun,
+  job: SchedulerStoredJob | undefined,
 ): void {
   if (!hasConsistentJournalRunOwner(run, job))
     throw new Error("scheduler_store_corrupt");
 }
 
 function hasConsistentJournalRunOwner(
-  run: Pick<SchedulerRun, "sessionId" | "environmentId" | "jobRevision">,
-  job: SchedulerJob | undefined,
+  run: JournalRunEntry | SchedulerStoredRun,
+  job: SchedulerStoredJob | undefined,
 ): boolean {
   if (!job) return false;
-  if (run.sessionId !== job.sessionId) return false;
   if (run.environmentId !== job.environmentId) return false;
-  return run.jobRevision <= job.revision;
+  if (run.jobRevision > job.revision) return false;
+  if (isAutomationSchedulerJob(job)) {
+    if (run.target?.kind !== "automation") return false;
+    if (run.target.automationId !== job.target.automationId) return false;
+    return run.target.definitionRevision <= job.target.definitionRevision;
+  }
+  if (run.target?.kind === "automation") return false;
+  if (!("sessionId" in run)) return false;
+  return run.sessionId === job.sessionId;
 }

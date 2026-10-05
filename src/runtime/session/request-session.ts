@@ -73,6 +73,7 @@ export async function initializeRequestSession(params: {
   sessionStore: RequestSessionStore;
   attachmentStore?: RuntimeAttachmentStore;
   events: EventSink;
+  onUserMessagePersisted?(): void;
   schedule?: import("../../sessions/schedule-metadata.js").ScheduleMessageReference;
 }): Promise<
   Readonly<{
@@ -99,6 +100,7 @@ export async function initializeRequestSession(params: {
     },
   );
 
+  params.onUserMessagePersisted?.();
   params.events.event("session.messages.updated", {
     sessionId: params.sessionId,
   });

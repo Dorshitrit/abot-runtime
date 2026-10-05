@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { PLUGIN_RESULT_SERIALIZED_MAX_BYTES } from "../../../plugin-sdk/index.js";
 
 import { createWebPlugin } from "../../../../plugins/web/source/plugin.js";
 import type { WebSourcesReceipt } from "../../../../plugins/web/source/source-receipt-contract.js";
@@ -53,10 +54,10 @@ describe("web source receipt envelopes", () => {
       webSources: WebSourcesReceipt;
     };
     expect(result).toMatchObject({ ok: true });
-    expect(eventMeta.webSources.omittedSourceCount).toBeGreaterThan(0);
+    expect(eventMeta.webSources).not.toHaveProperty("omittedSourceCount");
     expect(
       eventMeta.webSources.sources.length +
-        eventMeta.webSources.omittedSourceCount!,
+        (eventMeta.webSources.omittedSourceCount ?? 0),
     ).toBe(25);
     expect(
       eventMeta.webSources.sources.filter(({ url }) => url.length === 4096),
@@ -67,7 +68,7 @@ describe("web source receipt envelopes", () => {
       ),
     ).toBe(true);
     expect(Buffer.byteLength(JSON.stringify(result), "utf8")).toBeLessThan(
-      128 * 1024,
+      PLUGIN_RESULT_SERIALIZED_MAX_BYTES,
     );
   });
 

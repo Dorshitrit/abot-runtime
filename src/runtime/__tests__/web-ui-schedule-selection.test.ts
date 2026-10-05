@@ -139,11 +139,12 @@ describe("schedule entry and selection", () => {
     expect(client.listScheduleRuns).not.toHaveBeenCalled();
   });
 
-  test("the automatic editor keeps its identity while list events refresh jobs", async () => {
+  test("an explicitly opened editor keeps its identity while list events refresh jobs", async () => {
     const fixture = harness();
     await chooseCurrentFilter(fixture);
     const { controller, client, refresh } = fixture;
     await activate(controller);
+    controller.beginEdit("active");
     const editor = controller.snapshot().editor;
     client.listSchedules.mockResolvedValue({
       jobs: [job("active", "paused"), job("new", "active")],
@@ -169,6 +170,7 @@ describe("schedule entry and selection", () => {
     client.listScheduleRuns.mockReturnValueOnce(pending.promise);
     controller.setActive(true);
     await vi.waitFor(() => expect(controller.snapshot().loading).toBe(false));
+    controller.beginEdit("active");
     const editor = controller.snapshot().editor;
     expect(editor.job.id).toBe("active");
     expect(render).toHaveBeenLastCalledWith(
@@ -260,7 +262,7 @@ describe("schedule entry and selection", () => {
     expect(controller.snapshot().runs).toEqual([]);
   });
 
-  test("opens the first visible current schedule in its edit form on entry", async () => {
+  test("opens the first visible current schedule in its details view on entry", async () => {
     const fixture = harness();
     await chooseCurrentFilter(fixture);
     const { controller, client } = fixture;
@@ -268,7 +270,7 @@ describe("schedule entry and selection", () => {
     expect(controller.snapshot()).toMatchObject({
       filter: "current",
       selectedId: "active",
-      editor: { job: { id: "active" }, environmentId: "dev" },
+      editor: null,
     });
     expect(client.listScheduleRuns).toHaveBeenCalledOnce();
     expect(client.listScheduleRuns).toHaveBeenCalledWith("active", "dev", {
@@ -276,7 +278,7 @@ describe("schedule entry and selection", () => {
     });
   });
 
-  test("does not edit hidden completed schedules when Current has no matches", async () => {
+  test("does not select hidden completed schedules when Current has no matches", async () => {
     const fixture = harness([job("finished", "completed")]);
     await chooseCurrentFilter(fixture);
     const { controller, client } = fixture;
@@ -341,6 +343,7 @@ describe("schedule entry and selection", () => {
   test("cancel, save, and ordinary refresh do not reopen an editor", async () => {
     const { controller } = harness();
     await activate(controller);
+    controller.beginEdit("active");
     controller.cancelEdit();
     await controller.load({ background: true });
     expect(controller.snapshot().editor).toBeNull();
@@ -356,6 +359,7 @@ describe("schedule entry and selection", () => {
     await chooseCurrentFilter(fixture);
     const { controller, client } = fixture;
     await activate(controller);
+    controller.beginEdit("active");
     const editor = controller.snapshot().editor;
     client.listSchedules.mockResolvedValue({ jobs: [job("active", "active")] });
     await controller.load();
@@ -381,7 +385,7 @@ describe("schedule entry and selection", () => {
     expect(controller.snapshot()).toMatchObject({
       environmentId: "other",
       selectedId: "new",
-      editor: { job: { id: "new" }, environmentId: "other" },
+      editor: null,
     });
     expect(client.listScheduleRuns).toHaveBeenCalledOnce();
     expect(client.listScheduleRuns).toHaveBeenCalledWith("new", "other", {
@@ -442,7 +446,7 @@ describe("schedule entry and selection", () => {
     expect(controller.snapshot()).toMatchObject({
       filter: "completed",
       selectedId: "finished",
-      editor: { job: { id: "finished" } },
+      editor: null,
     });
     changeEnvironment("other");
     await controller.load();
@@ -450,7 +454,7 @@ describe("schedule entry and selection", () => {
       query: "",
       filter: "active",
       selectedId: "active",
-      editor: { job: { id: "active" }, environmentId: "other" },
+      editor: null,
     });
   });
 

@@ -33,6 +33,8 @@ function createHarness(
   let selectedJob = "";
   let configurationRevision = 0;
   let scheduleRevision = 0;
+  let automationRevision = 0;
+  let automationRun = "";
   let allowWorkspace = true;
   let allowEnvironment = true;
   let environmentChanging = false;
@@ -126,11 +128,28 @@ function createHarness(
       return true;
     }),
   };
+  const automations = {
+    isWorkspaceAvailable: () => true,
+    selectedAutomationId: () => "",
+    selectedRunId: () => "",
+    chatRunId: () => automationRun,
+    navigationRevision: () => automationRevision,
+    openRoute: vi.fn(async () => true),
+    openChatRun: vi.fn(async (value: string) => {
+      if (value !== automationRun) {
+        automationRun = value;
+        automationRevision += 1;
+        onNavigationChange();
+      }
+      return true;
+    }),
+  };
   controller = createWorkspaceRouteController({
     viewport,
     shell,
     configuration,
     schedules,
+    automations,
     selection: {
       environmentOptions: () => [{ value: "dev" }, { value: "prod" }],
     },
@@ -150,6 +169,7 @@ function createHarness(
     shell,
     configuration,
     schedules,
+    automations,
     loadSessions,
     openSession,
     restoreLastSession,
@@ -202,6 +222,17 @@ async function waitForChatRoute(f: ReturnType<typeof createHarness>) {
 }
 
 describe("Web UI route restoration", () => {
+  test("opens a locked automation run in chat layout without loading a conversation", async () => {
+    const f = createHarness("/chat?environment=dev&automationRun=run%2Fone");
+    await f.start();
+    expect(f.shell.activeWorkspace()).toBe("chat");
+    expect(f.automations.openChatRun).toHaveBeenCalledWith("run/one");
+    expect(f.loadSessions).not.toHaveBeenCalled();
+    expect(f.openSession).not.toHaveBeenCalled();
+    expect(f.restoreLastSession).not.toHaveBeenCalled();
+    expect(f.address()).toBe("/chat?environment=dev&automationRun=run%2Fone");
+  });
+
   test("restores Learning directly without restoring a background conversation as its target", async () => {
     const f = createHarness("/learning?environment=prod&session=session-b");
     await f.start();

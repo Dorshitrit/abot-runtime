@@ -128,6 +128,41 @@ describe("normal tool invocation contract", () => {
     expect(Object.isFrozen(registered?.selectionControlIds)).toBe(true);
   });
 
+  test("accepts only a declared string input as an attachment source", () => {
+    const base = createNormalModule();
+    const operation = base.normalInvocation.operations[0]!;
+    const declared = {
+      ...base,
+      normalInvocation: {
+        version: 1 as const,
+        operations: [{
+          ...operation,
+          attachmentInput: {
+            param: "title",
+            acceptedMimeTypes: ["text/plain"],
+          },
+        }],
+      },
+    };
+    const [registered] = createToolRegistry({ modules: [declared] })
+      .getNormalInvocations()[0]!.contract.operations;
+    expect(registered?.attachmentInput).toEqual({
+      param: "title", acceptedMimeTypes: ["text/plain"],
+    });
+    expect(() => createToolRegistry({ modules: [{
+      ...declared,
+      normalInvocation: {
+        version: 1,
+        operations: [{
+          ...operation,
+          attachmentInput: {
+            param: "unknown", acceptedMimeTypes: ["text/plain"],
+          },
+        }],
+      },
+    }] })).toThrow(/attachmentInput\.param/u);
+  });
+
   test("accepts an explicitly unbounded string beyond the bounded-string ceiling", () => {
     const base = createNormalModule();
     const operation = base.normalInvocation?.operations[0];

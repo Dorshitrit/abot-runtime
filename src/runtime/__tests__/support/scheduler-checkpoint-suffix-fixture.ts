@@ -11,7 +11,7 @@ function canSeedCheckpointJobRevisions(
   head: CheckpointManifest,
   count: number,
 ): boolean {
-  if (head.schemaVersion !== 3) return false;
+  if (head.schemaVersion !== 4) return false;
   if (!head.checkpoint) return false;
   return head.sequence + count - head.checkpoint.sequence <= 256;
 }

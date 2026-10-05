@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
+import { requireRequestSchedulerJob } from "../scheduler/scheduler-target.js";
 import {
   checkpointTransactionPath,
   committedCheckpointPath,
@@ -253,7 +254,7 @@ directorySyncTest(
     await seedCheckpointJobRevisions(
       f.directory,
       Array.from({ length: 256 }, (_, index) => ({
-        ...f.snapshot.jobs[1],
+        ...requireRequestSchedulerJob(f.snapshot.jobs[1]),
         title: `Revision ${index + 1}`,
       })),
     );

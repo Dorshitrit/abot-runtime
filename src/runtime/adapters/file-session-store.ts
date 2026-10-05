@@ -14,8 +14,14 @@ export function createFileSessionStore(
   const service = new SessionService(options);
   return {
     requestLifecycle: service.requestLifecycle,
+    assertInteractiveSession: service.assertInteractiveSession.bind(service),
+    createAutomationSession: service.createAutomationSession.bind(service),
+    runAsAutomationSession: service.runAsAutomationSession.bind(service),
+    releaseAutomationSession: service.releaseAutomationSession.bind(service),
+    reconcileAutomationSessions: service.reconcileAutomationSessions.bind(service),
     createAssistantConversation:
       service.createAssistantConversation.bind(service),
+    appendAssistantInitiative: service.appendAssistantInitiative.bind(service),
     getOrCreateSession: service.getOrCreateSession.bind(service),
     getAllSessions: service.getAllSessions.bind(service),
     listSessions: service.listSessions.bind(service),

@@ -25,7 +25,24 @@ export function buildAuditorDecisionInput(
   modelStep: typeof AUDITOR_DECISION_MODEL_STEP;
   assignment: AuditorAssignment;
   phase: "selection" | "review";
+  selectedEvidenceChars: number;
+  reusedCompactedSourceCount: number;
 }> {
+  const compactedById = new Map(
+    assignment.compactedSourceEvidence?.sources.map((source) => [
+      source.executionId,
+      source,
+    ]),
+  );
+  const evidence =
+    phase === "review"
+      ? assignment.evidence.map((entry) =>
+          projectAuditorEvidenceRepresentation(
+            entry,
+            compactedById.get(entry.executionId),
+          ),
+        )
+      : [];
   const format =
     phase === "selection"
       ? createAuditorEvidenceSelectionFormat(assignment)
@@ -80,7 +97,7 @@ export function buildAuditorDecisionInput(
         retention: "exact",
         contextWindowTokens: budget.contextWindowTokens,
         evidenceSizeSemantics:
-          "exactEvidenceChars measures the lossless model-visible representation; canonical fingerprints bind the unchanged original records. Runtime admits the complete review message under the configured context policy.",
+          "exactEvidenceChars measures the original representation. For evidencePresentation=compacted, projectedEvidenceChars measures the verified source summary and retained receipt that will be supplied instead. Canonical fingerprints bind the unchanged original records. Runtime admits the complete review message under the configured context policy without further compaction.",
       },
       previewSemantics:
         "Summary and target previews may be truncated; originalChars, truncated and omittedReferencePreviewCount declare that. Every work execution is indexed. Previews are not original proof.",
@@ -98,13 +115,11 @@ export function buildAuditorDecisionInput(
               auditId: assignment.auditId,
               workFingerprint: assignment.workFingerprint,
               selectedEvidenceIds: assignment.selectedEvidenceIds,
-              evidence: assignment.evidence.map(
-                projectAuditorEvidenceRepresentation,
-              ),
+              evidence,
               evidenceProjection:
                 projectAuditorEvidenceProjectionStatus(assignment),
               omissionSemantics:
-                "Only whole explicitly selected canonical proof is admitted. adapterResult is unchanged. representedFields maps identical supplementary field values to exact paths under that same entry's adapterResult; all other supplements remain verbatim. No content is truncated or summarized. Pass requires complete inventory coverage and every needed ID in this current bundle. Previews and prior reviews are not proof.",
+                "Each selected entry contains its unchanged adapterResult or a verified existing compactedSourceEvidence summary of that same execution. Summaries may omit detail; omission does not establish absence. evidenceProjection.complete means all selected representations are present, not that summaries retain every original fact. representedFields maps identical supplements to exact paths in that entry's adapterResult; other supplements remain verbatim. Pass requires complete inventory classification and every needed ID in this current bundle with facts sufficient for the criteria. Previews and prior reviews are not proof.",
             }),
           },
         ]
@@ -136,5 +151,12 @@ export function buildAuditorDecisionInput(
     modelStep: AUDITOR_DECISION_MODEL_STEP,
     assignment,
     phase,
+    selectedEvidenceChars: evidence.reduce(
+      (total, entry) => total + JSON.stringify(entry).length,
+      0,
+    ),
+    reusedCompactedSourceCount: evidence.filter(
+      (entry) => entry.compactedSourceEvidence,
+    ).length,
   });
 }

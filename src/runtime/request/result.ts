@@ -11,9 +11,12 @@ export type RequestObservation = {
 };
 
 export type RequestOutputTextMode = "exact";
+export type RequestCompletionDisposition = "responded" | "blocked";
 
 export type RequestRunnerResult = {
   output: string;
+  /** Explicit root blockage; omission preserves ordinary response semantics. */
+  disposition?: RequestCompletionDisposition;
   /** Omission preserves the legacy normalized finalization contract. */
   outputTextMode?: RequestOutputTextMode;
   finalObservation?: RequestObservation;

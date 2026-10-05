@@ -22,6 +22,7 @@ import {
 } from "../../computer-access/companion/notification-locations.js";
 import type { NotificationProcessRunner } from "../../computer-access/companion/notification-process.js";
 import { withWindowsNotificationDirectoryPublication } from "./support/notification-directory-publication.js";
+import { createCompiledMacNotificationFixture, runMacNotificationPlistFixture } from "./support/mac-notification-bundle.js";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -127,20 +128,16 @@ test("notification cleanup refuses an unmanaged directory and preserves its data
   );
 });
 
-test("Mac app installation registers ABot with stable identity and signs before activation; uninstall stops helper first", async () => {
+test.each(["applet", "droplet"])("Mac %s installation registers ABot with stable identity and signs before activation; uninstall stops helper first", async (executable) => {
   const startup = await fixture("darwin");
   const calls: { file: string; args: readonly string[] }[] = [];
   const run: NotificationProcessRunner = async (input) => {
     calls.push(input);
     if (input.file === "/usr/bin/osacompile") {
       const app = input.args[input.args.indexOf("-o") + 1]!;
-      await mkdir(join(app, "Contents", "MacOS"), { recursive: true });
-      await writeFile(
-        join(app, "Contents", "MacOS", "applet"),
-        "fixture compiled native applet",
-      );
+      await createCompiledMacNotificationFixture(app, executable);
     }
-    return "";
+    return runMacNotificationPlistFixture(input) ?? "";
   };
   await installDesktopNotificationIdentity(
     startup,
@@ -149,10 +146,13 @@ test("Mac app installation registers ABot with stable identity and signs before 
   );
   const locations = notificationLocationsFromStartup(startup);
   const app = macNotificationAppPath(locations);
-  const plist = await readFile(join(app, "Contents", "Info.plist"), "utf8");
-  expect(plist).toContain("<string>com.abot.notifications</string>");
-  expect(plist).toContain("<string>ABot</string>");
-  expect(plist).toContain("<key>OSAAppletStayOpen</key><true/>");
+  const plist = JSON.parse(await readFile(join(app, "Contents", "Info.plist"), "utf8"));
+  expect(plist).toMatchObject({
+    CFBundleIdentifier: "com.abot.notifications", CFBundleName: "ABot",
+    CFBundleExecutable: executable, CFBundleIconFile: executable,
+    OSAAppletStayOpen: true, compilerMetadata: { retained: true },
+    CFBundleDocumentTypes: [{ CFBundleTypeRole: "Viewer" }],
+  });
   expect(
     calls.findIndex((call) => call.file.endsWith("/codesign")),
   ).toBeLessThan(calls.findIndex((call) => call.file.endsWith("/lsregister")));

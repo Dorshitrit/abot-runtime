@@ -183,6 +183,11 @@ export function projectOllamaFormat(
   if (!isPlainObject(format)) {
     return { format: undefined, diagnostics: [] };
   }
+  const requestsPlainTextOutput = format.type === "text";
+  if (requestsPlainTextOutput) {
+    rejectMisplacedProjectionMetadata(format);
+    return { format: undefined, diagnostics: [] };
+  }
   if (isModelGatewayJsonSchemaFormat(format)) {
     return projectWrappedJsonSchema(format);
   }

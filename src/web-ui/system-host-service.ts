@@ -24,6 +24,8 @@ import { readHostReadiness } from "./system-host-setup/readiness.js";
 import { HostSetupRoutes, isHostSetupRoute, sendHostSetupInputError } from "./system-host-setup/routes.js";
 import { reportHostStartupFailure } from "./system-host-startup-diagnostic.js";
 import { withLocalMacSetup } from "./system-host-setup/local-setup-availability.js";
+import { HOST_PERMISSION_PATH, HostPermissionRoute } from "./system-host-setup/permission-route.js";
+import { NativeRuntimePermissionRoute, type NativePermissionAccess } from "./system-host-setup/native-permission-route.js";
 function isSystemHostRoute(pathname: string): boolean {
   if (pathname === "/web-api/runtime/system-host") return true;
   return pathname === "/web-api/runtime/system-host/pairing";
@@ -32,6 +34,8 @@ export class WebSystemHostService {
   private readonly store: HostPairingStore;
   private readonly connection: HostConnection;
   private readonly setup: HostSetupRoutes;
+  private readonly permissions: HostPermissionRoute;
+  private readonly nativePermissions: NativeRuntimePermissionRoute;
   private readonly wss = new WebSocketServer({
     noServer: true,
     maxPayload: HOST_WIRE_MAX_BYTES,
@@ -40,9 +44,11 @@ export class WebSystemHostService {
   private broker?: Awaited<ReturnType<typeof startHostBroker>>;
   private starting?: Promise<void>;
   private closing = false;
-  constructor(private readonly rootDir: string, connectionChanged?: () => void) {
+  constructor(private readonly rootDir: string, connectionChanged?: () => void, nativePermissionAccess?: NativePermissionAccess) {
     this.store = new HostPairingStore(rootDir);
     this.connection = new HostConnection(this.store, connectionChanged);
+    this.nativePermissions = new NativeRuntimePermissionRoute(nativePermissionAccess);
+    this.permissions = new HostPermissionRoute(this.connection, this.nativePermissions);
     this.setup = new HostSetupRoutes({
       store: this.store,
       readiness: () => readHostReadiness(this.connection.status()),
@@ -114,9 +120,13 @@ export class WebSystemHostService {
     response: ServerResponse,
     pathname: string,
   ): Promise<boolean> {
-    if (!isSystemHostRoute(pathname) && !isHostSetupRoute(pathname)) return false;
+    if (!isSystemHostRoute(pathname) && !isHostSetupRoute(pathname) && pathname !== HOST_PERMISSION_PATH) return false;
     response.setHeader("cache-control", "no-store");
     try {
+      if (pathname === HOST_PERMISSION_PATH) {
+        await this.permissions.handle(request, response);
+        return true;
+      }
       if (isHostSetupRoute(pathname)) {
         await this.setup.handle(request, response, pathname);
         return true;
@@ -127,7 +137,8 @@ export class WebSystemHostService {
       ) {
         const status = this.connection.status();
         const readiness = withLocalMacSetup(request, await readHostReadiness(status));
-        sendJson(response, 200, { ok: true, ...status, readiness });
+        const nativePermissions = await this.nativePermissions.status(request);
+        sendJson(response, 200, { ok: true, ...status, readiness, nativePermissions });
         return true;
       }
       if (!acceptConfigMutationRequest(request, response)) return true;

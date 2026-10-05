@@ -33,7 +33,9 @@ export const WORKER_CAPABILITY_SUMMARY_MAX_LENGTH = 512;
 export const WORKER_CAPABILITY_COUNT_MAX = 128;
 export const WORKER_CAPABILITY_CONTROL_COUNT_MAX = 16;
 export const WORKER_CAPABILITY_CONTROL_ID_MAX_LENGTH = 64;
-export const WORKER_CAPABILITY_CONTROL_STRING_MAX_LENGTH = 4_096;
+export {
+  TOOL_NORMAL_INVOCATION_STRING_MAX_LENGTH as WORKER_CAPABILITY_CONTROL_STRING_MAX_LENGTH,
+} from "../../../capabilities/normal-invocation/contracts.js";
 export const WORKER_CAPABILITY_CONTROL_ENUM_MAX_VALUES = 64;
 export const WORKER_CAPABILITY_CONTROL_ENUM_VALUE_MAX_LENGTH = 256;
 export const WORKER_CAPABILITY_CONTROL_ARRAY_MAX_ITEMS = 64;
@@ -145,7 +147,7 @@ export type WorkerCapabilityDescriptor = Readonly<{
   routingCapability?: ToolRoutingCapability;
   /** Manifest-owned development phases served by this capability. */
   developmentRoles?: readonly ToolDevelopmentRole[];
-  /** Canonical payload contract requires a Worker authoring receipt. */
+  /** Canonical payload contract requires an accepted authoring assignment. */
   requiresPayloadAuthoringObjective?: true;
 }>;
 
@@ -201,7 +203,7 @@ export type WorkerCapabilityAdapterExecutionInput<TContext> = Readonly<{
   executionId: string;
   /** Client-facing presentation metadata for lifecycle events only. */
   intent: string;
-  /** Worker-only payload assignment; forbidden for root and non-payload calls. */
+  /** Accepted payload assignment; forbidden for non-payload calls. */
   authoringObjective?: string;
   controls: WorkerCapabilityControls;
   settledCapabilityResults: readonly WorkerSettledCapabilityResult[];

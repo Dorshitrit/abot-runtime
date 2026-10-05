@@ -122,6 +122,7 @@ function projectKernelDecision(
         action: "invoke_capability" as const,
         capabilityId: decision.capabilityId,
         intent: decision.intent,
+        ...(decision.authoringObjective ? { authoringObjective: decision.authoringObjective } : {}),
         controls: decision.controls,
         ...(decision.workingDirectory !== undefined
           ? { workingDirectory: decision.workingDirectory }
@@ -139,6 +140,7 @@ function projectKernelDecision(
             Object.freeze({
               capabilityId: invocation.capabilityId,
               intent: invocation.intent,
+              ...(invocation.authoringObjective ? { authoringObjective: invocation.authoringObjective } : {}),
               controls: invocation.controls!,
             }),
           ),

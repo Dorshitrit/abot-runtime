@@ -5,16 +5,13 @@ import { isToolCatalogGroupId } from "../../../capabilities/tool-types.js";
 import { createStructuredDecisionEnvelopeSchema } from "../../model/structured-decision-envelope.js";
 import {
   CAPABILITY_COUNT_MAX,
-  CAPABILITY_INTENT_MAX_LENGTH,
   EXECUTION_WORKING_DIRECTORY_MAX_LENGTH,
   EXECUTION_WORKING_DIRECTORY_PATTERN,
   canOfferCapabilityBatchSelection,
   normalizeCapabilityDescriptor,
   normalizeCapabilityControlsSchema,
   partitionCapabilityControlsSchema,
-  type CapabilityControl,
   type CapabilityControlsPartition,
-  type CapabilityControlsSchema,
   type CapabilityDescriptor,
 } from "../../orchestration/capability-adapters/index.js";
 import {
@@ -28,15 +25,14 @@ import {
   EXECUTION_AGENT_TITLE_MAX_LENGTH,
   type ExecutionAgentDecisionContractOptions,
 } from "./contracts.js";
-import {
-  executionOperationObjectiveSchema,
-  requiresExecutionOperationObjective,
-} from "./capability-invocation-contract.js";
+import { projectCapabilitySelectionProperties } from "./capability-selection-schema.js";
+import { freezeControlsEvidenceEligibility } from "./controls-evidence-contract.js";
 
 export type PreparedExecutionAgentCapability = Readonly<{
   capabilityId: string;
   effect: CapabilityDescriptor["effect"];
   partition: CapabilityControlsPartition;
+  requiresPayloadAuthoringObjective: boolean;
 }>;
 
 export type PreparedExecutionAgentDecisionContract = Readonly<{
@@ -54,11 +50,7 @@ export type PreparedExecutionAgentDecisionContract = Readonly<{
   allowAuditor: boolean;
   availableAuditCriterionIds: readonly string[];
   includeWorkingDirectory: boolean;
-}>;
-
-type CapabilityDecisionSchemaGroup = Readonly<{
-  capabilities: readonly PreparedExecutionAgentCapability[];
-  partition: CapabilityControlsPartition;
+  eligibleControlsEvidenceExecutionIds: readonly string[];
 }>;
 
 export function createExecutionAgentDecisionFormat(
@@ -66,11 +58,13 @@ export function createExecutionAgentDecisionFormat(
 ): ModelGatewayJsonSchemaFormat {
   const contract = prepareExecutionAgentDecisionContract(options);
   const presentation = presentationSchemas(contract);
-  const capabilityGroups = groupCapabilitiesByDecisionShape(
+  const capabilityGroups = projectCapabilitySelectionProperties(
     contract.capabilities,
+    contract.eligibleControlsEvidenceExecutionIds,
   );
-  const observationGroups = groupCapabilitiesByDecisionShape(
+  const observationGroups = projectCapabilitySelectionProperties(
     contract.observationCapabilities,
+    contract.eligibleControlsEvidenceExecutionIds,
   );
   const batchEnabled =
     contract.maxBatchCapabilityExecutions >= 2 &&
@@ -120,20 +114,7 @@ export function createExecutionAgentDecisionFormat(
     ...capabilityGroups.map((group) =>
       exactObject({
         action: literal("invoke_capability"),
-        capabilityId: enumeration(
-          group.capabilities.map(({ capabilityId }) => capabilityId),
-        ),
-        intent: boundedText(CAPABILITY_INTENT_MAX_LENGTH),
-        ...(requiresExecutionOperationObjective(group.partition)
-          ? { operationObjective: executionOperationObjectiveSchema() }
-          : {}),
-        ...(group.partition.selectionControlIds.length > 0
-          ? {
-              selectionControls: projectControlsSchema(
-                group.partition.selectionSchema,
-              ),
-            }
-          : {}),
+        ...group,
         ...presentation,
         ...(contract.includeWorkingDirectory
           ? { workingDirectory: nullable(workingDirectorySchema()) }
@@ -192,7 +173,9 @@ export function createExecutionAgentDecisionFormat(
         ]
       : []),
   ];
-  const schema = createStructuredDecisionEnvelopeSchema(withExecutionWorkPlanVariants(variants, options.workPlan));
+  const schema = createStructuredDecisionEnvelopeSchema(
+    withExecutionWorkPlanVariants(variants, options.workPlan),
+  );
   return {
     type: "json_schema",
     name: "execution_agent_decision",
@@ -315,6 +298,8 @@ export function prepareExecutionAgentDecisionContract(
         capabilityId: normalized.value.capabilityId,
         effect: normalized.value.effect,
         partition: partition.value,
+        requiresPayloadAuthoringObjective:
+          normalized.value.requiresPayloadAuthoringObjective === true,
       });
     }),
   );
@@ -352,6 +337,9 @@ export function prepareExecutionAgentDecisionContract(
     allowAuditor: options.allowAuditor === true,
     availableAuditCriterionIds,
     includeWorkingDirectory: options.includeWorkingDirectory === true,
+    eligibleControlsEvidenceExecutionIds: freezeControlsEvidenceEligibility(
+      options.eligibleControlsEvidenceExecutionIds,
+    ),
   });
 }
 
@@ -387,93 +375,11 @@ function presentationSchemas(
   };
 }
 
-function groupCapabilitiesByDecisionShape(
-  capabilities: readonly PreparedExecutionAgentCapability[],
-): readonly CapabilityDecisionSchemaGroup[] {
-  const groups = new Map<
-    string,
-    {
-      capabilities: PreparedExecutionAgentCapability[];
-      partition: CapabilityControlsPartition;
-    }
-  >();
-  for (const capability of capabilities) {
-    const signature = JSON.stringify([
-      capability.partition.selectionSchema,
-      requiresExecutionOperationObjective(capability.partition),
-    ]);
-    const group = groups.get(signature) ?? {
-      capabilities: [],
-      partition: capability.partition,
-    };
-    group.capabilities.push(capability);
-    groups.set(signature, group);
-  }
-  return Object.freeze(
-    [...groups.values()].map((group) =>
-      Object.freeze({
-        capabilities: Object.freeze([...group.capabilities]),
-        partition: group.partition,
-      }),
-    ),
-  );
-}
-
 function projectCapabilitySelectionItemSchema(
-  groups: readonly CapabilityDecisionSchemaGroup[],
+  groups: readonly Readonly<Record<string, unknown>>[],
 ): Record<string, unknown> {
-  const variants = groups.map((group) =>
-    exactObject({
-      capabilityId: enumeration(
-        group.capabilities.map(({ capabilityId }) => capabilityId),
-      ),
-      intent: boundedText(CAPABILITY_INTENT_MAX_LENGTH),
-      ...(requiresExecutionOperationObjective(group.partition)
-        ? { operationObjective: executionOperationObjectiveSchema() }
-        : {}),
-      ...(group.partition.selectionControlIds.length > 0
-        ? {
-            selectionControls: projectControlsSchema(
-              group.partition.selectionSchema,
-            ),
-          }
-        : {}),
-    }),
-  );
+  const variants = groups.map(exactObject);
   return variants.length === 1 ? variants[0]! : { anyOf: variants };
-}
-
-function projectControlsSchema(
-  schema: CapabilityControlsSchema,
-): Record<string, unknown> {
-  const required = new Set(schema.required);
-  return exactObject(
-    Object.fromEntries(
-      Object.entries(schema.properties).map(([controlId, control]) => [
-        controlId,
-        required.has(controlId)
-          ? projectControlSchema(control)
-          : { anyOf: [projectControlSchema(control), { type: "null" }] },
-      ]),
-    ),
-  );
-}
-
-function projectControlSchema(
-  control: CapabilityControl,
-): Record<string, unknown> {
-  if (control.type === "array") {
-    return {
-      type: "array",
-      items: projectControlSchema(control.items),
-      minItems: control.minItems,
-      maxItems: control.maxItems,
-    };
-  }
-  if (control.type === "string" && "enum" in control) {
-    return { type: "string", enum: [...control.enum] };
-  }
-  return { ...control };
 }
 
 function exactObject(

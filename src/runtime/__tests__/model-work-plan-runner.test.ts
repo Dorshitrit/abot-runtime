@@ -326,6 +326,7 @@ describe("EA model work-plan declarations through the shared request runner", ()
           intent: "Inspect record-1.txt.",
           workingDirectory: ".",
           operationObjective: "Inspect the first requested record.",
+          controlsEvidenceExecutionIds: [],
           workPlan: report(state, "adopt", [
             { itemId: "write", status: "in_progress" },
           ]),

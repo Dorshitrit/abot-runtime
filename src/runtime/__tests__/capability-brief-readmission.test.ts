@@ -9,7 +9,7 @@ import {
   createCapabilityBriefReadmissionController,
   type CapabilityBriefReadmissionOptions,
 } from "../context/capability-brief-readmission.js";
-import type { ModelStepContextCompactionController } from "../model/model-step-port.js";
+import type { ModelStepCompactionScope } from "../model/model-step-port.js";
 
 function createFixture() {
   const entries: ToolAvailabilityEntry[] = ["alpha", "beta"].map((name) => ({
@@ -41,8 +41,7 @@ function createFixture() {
     initial.message,
     { role: "user", content: "Current intent." },
   ];
-  let scope: ModelStepContextCompactionController["compactionScope"] =
-    "session_history";
+  let scope: ModelStepCompactionScope = "session_history";
   const receipt = {
     messages,
     commit: vi.fn(() => {
@@ -53,16 +52,18 @@ function createFixture() {
     coveredSourceCount: 0,
   };
   const project = vi.fn((current: readonly ChatMessage[]) => [...current]);
-  const prepare = vi.fn(async () => receipt);
+  const prepare = vi.fn(async () => ({
+    kind: "prepared" as const,
+    preparation: receipt,
+  }));
   const resolveOptions = vi.fn(() => options);
   const onReadmitted = vi.fn();
   const wrapped = createCapabilityBriefReadmissionController({
     controller: {
-      get compactionScope() {
-        return scope;
-      },
       project,
-      prepare,
+      getStages: () => [
+        { compactionScope: scope, scopeId: receipt.scopeId, prepare },
+      ],
     },
     resolveOptions,
     onReadmitted,
@@ -180,13 +181,21 @@ test.each(["additional messages", "schema"] as const)(
 
 test("delegates prepare receipt and live scope without reading options or committing", async () => {
   const fixture = createFixture();
-  expect(fixture.wrapped.compactionScope).toBe("session_history");
-  const receipt = await fixture.wrapped.prepare(fixture.messages);
+  expect(fixture.wrapped.getStages()[0]!.compactionScope).toBe(
+    "session_history",
+  );
+  const outcome = await fixture.wrapped
+    .getStages()[0]!
+    .prepare(fixture.messages);
+  if (outcome.kind !== "prepared") throw new Error("fixture stage unavailable");
+  const receipt = outcome.preparation;
   expect(receipt).toBe(fixture.receipt);
   expect(fixture.prepare).toHaveBeenCalledExactlyOnceWith(fixture.messages);
   expect(fixture.receipt.commit).not.toHaveBeenCalled();
   expect(fixture.resolveOptions).not.toHaveBeenCalled();
   expect(fixture.project).not.toHaveBeenCalled();
   await receipt.commit();
-  expect(fixture.wrapped.compactionScope).toBe("active_request");
+  expect(fixture.wrapped.getStages()[0]!.compactionScope).toBe(
+    "active_request",
+  );
 });

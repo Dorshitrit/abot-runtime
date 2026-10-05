@@ -48,3 +48,18 @@ export function isRequestToolResultsMessageBoundToView(
     descriptor.writable === false
   );
 }
+
+export function readBoundRequestToolResultsView(
+  message: ChatMessage,
+): RequestToolResultsView | undefined {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    message,
+    REQUEST_TOOL_RESULTS_MESSAGE_AUTHORITY,
+  );
+  if (!descriptor) return undefined;
+  const view = (descriptor.value as RequestToolResultsMessageAuthority)?.view;
+  if (!view || !isRequestToolResultsMessageBoundToView(message, view)) {
+    throw new Error("context_compaction_source_message_binding_invalid");
+  }
+  return view;
+}

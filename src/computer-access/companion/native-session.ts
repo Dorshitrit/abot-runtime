@@ -1,4 +1,6 @@
 import WebSocket from "ws";
+import { createNativePermissionHandlers } from "./native-permissions.js";
+import { MACOS_PERMISSION_CAPABILITY } from "./permission-protocol.js";
 import { nativeLoopbackSocketOptions } from "./native-loopback-lookup.js";
 import { DESKTOP_NOTIFICATION_CAPABILITY } from "./notification-protocol.js";
 import {
@@ -105,6 +107,7 @@ export async function connectNativeHost(
     ...createSystemHandlers(),
     ...computers.handlers(),
     ...notifications.handlers(),
+    ...createNativePermissionHandlers(options.identity.os),
   };
   return new Promise((resolve) => {
     const socket = new WebSocket(endpoint.url, {
@@ -309,6 +312,7 @@ export async function connectNativeHost(
         capabilities: [
           OBSERVATION_CAPABILITY,
           COMPUTER_CAPABILITY,
+          ...(options.identity.os === "macos" ? [MACOS_PERMISSION_CAPABILITY] : []),
           ...(advertisedNotificationReady
             ? [DESKTOP_NOTIFICATION_CAPABILITY]
             : []),

@@ -26,6 +26,7 @@ export type RequestSteeringAppendResult =
       reason:
         | "invalid_steer_request"
         | "request_not_active"
+        | "automation_session_locked"
         | "steer_id_conflict";
     }>;
 

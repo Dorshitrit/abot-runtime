@@ -67,9 +67,9 @@ async function readResourceUsage(background: LearningBackgroundDependencies) {
 }
 
 async function readProactiveStatus(background: LearningBackgroundDependencies, startupReason?: string) {
-  if (startupReason) return { state: "failed" as const, reason: startupReason, proposals: [] };
+  if (startupReason) return { state: "failed" as const, reason: startupReason };
   try { return await background.proactive?.status(); }
-  catch { return { state: "failed" as const, reason: "proactive_failed", proposals: [] }; }
+  catch { return { state: "failed" as const, reason: "proactive_failed" }; }
 }
 
 function readReassessmentStatus(background: LearningBackgroundDependencies, startupReason?: string) {

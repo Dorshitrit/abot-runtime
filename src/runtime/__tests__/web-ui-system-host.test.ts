@@ -108,8 +108,9 @@ describe("computer setup GUI", () => {
     expect(root.innerHTML).toContain("Computer unpaired");
   });
   test("a connected Windows companion needing an update keeps its installer until capability readiness returns", async () => {
+    const windowsReady = { ...ready, identity: { ...ready.identity, os: "windows" } };
     const updateNeeded = {
-      ...ready,
+      ...windowsReady,
       readiness: {
         ...ready.readiness,
         ready: false,
@@ -129,7 +130,7 @@ describe("computer setup GUI", () => {
     expect(dependencies.downloadSetup).toHaveBeenCalledWith("windows");
     expect(root.innerHTML).toContain("Downloaded:");
     expect(root.innerHTML).toContain("Update needed");
-    dependencies.loadConnection.mockResolvedValueOnce(ready as never);
+    dependencies.loadConnection.mockResolvedValueOnce(windowsReady as never);
     await manager.load();
     expect(root.innerHTML).toContain("Ready");
     expect(root.innerHTML).not.toContain("data-system-host-install=");
@@ -159,7 +160,7 @@ describe("computer setup GUI", () => {
     expect(root.innerHTML).not.toContain("pairing code");
     dependencies.loadConnection.mockResolvedValueOnce(ready as never);
     await manager.load();
-    expect(root.innerHTML).toContain(">Ready<");
+    expect(root.innerHTML).toContain(">Connected<");
     expect(root.innerHTML).not.toContain("Downloaded:");
   });
   test.each(["native", "wsl_interop"])(
@@ -279,7 +280,7 @@ describe("computer setup GUI", () => {
     expect(onChange).not.toHaveBeenCalled();
     expect(paint).not.toHaveBeenCalled();
     expect(manager.state.busy).toBe(false);
-    expect(root.innerHTML).toContain(">Ready<");
+    expect(root.innerHTML).toContain(">Connected<");
     expect(await manager.load(true)).toBe(false);
     expect(dependencies.loadConnection).toHaveBeenCalledTimes(2);
     pending.resolve({ ...ready } as never);
@@ -302,21 +303,19 @@ describe("computer setup GUI", () => {
     paint.mockClear();
     dependencies.loadConnection.mockResolvedValueOnce(ready as never);
     await manager.load(true);
-    expect(root.innerHTML).toContain(">Ready<");
+    expect(root.innerHTML).toContain(">Connected<");
     expect(paint).toHaveBeenCalledOnce();
     dependencies.loadConnection.mockRejectedValueOnce(new Error("offline"));
     await manager.load(true);
     expect(root.innerHTML).toContain("Status unavailable");
-    expect(root.innerHTML).not.toContain(
-      "Your computer is connected and ready",
-    );
+    expect(root.innerHTML).not.toContain(">Connected<");
     expect(paint).toHaveBeenCalledTimes(2);
     dependencies.loadConnection.mockRejectedValueOnce(new Error("offline"));
     await manager.load(true);
     expect(paint).toHaveBeenCalledTimes(2);
     dependencies.loadConnection.mockResolvedValueOnce(ready as never);
     await manager.load(true);
-    expect(root.innerHTML).toContain(">Ready<");
+    expect(root.innerHTML).toContain(">Connected<");
     expect(paint).toHaveBeenCalledTimes(3);
   });
   test.each([

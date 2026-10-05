@@ -1,6 +1,7 @@
 import type { ModelProviderAdapterRegistry } from "../../model-gateway/index.js";
 import { createLocalLongTermMemoryOnboardingService } from "../../runtime/adapters/long-term-memory/onboarding-service.js";
 import { parseSetupEmbeddingInput } from "./setup-embedding-input.js";
+import { createSetupEmbeddingConfigRepository } from "./setup-embedding-config-repository.js";
 import {
   prepareSetupEmbeddingProvider,
   type SavedEmbeddingProvider,
@@ -43,6 +44,7 @@ export class SetupEmbeddingService {
       const service = createLocalLongTermMemoryOnboardingService({
         ...options,
         providerAdapters: this.options.providerAdapters,
+        repository: createSetupEmbeddingConfigRepository(options),
       });
       const result = await service.enable({
         providerId: prepared.providerId,

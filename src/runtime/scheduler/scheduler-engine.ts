@@ -2,7 +2,13 @@ import type {
   SchedulerJob,
   SchedulerRun,
   SchedulerRunOutcome,
+  SchedulerStoredJob,
 } from "./contracts.js";
+import {
+  dispatchPendingAutomationRun,
+  enqueueDueAutomationOccurrences,
+} from "./automation-scheduler-engine.js";
+import { reconcileAutomationSchedulerCompletions } from "./automation-run-completion.js";
 import { nextSchedulerOccurrence } from "./next-occurrence.js";
 import {
   reconcileSchedulerCompletions,
@@ -14,28 +20,41 @@ import {
   makeSchedulerRun,
 } from "./run-records.js";
 import {
-  canBeginSchedulerRun,
+  canBeginRequestSchedulerRun,
   jobEpoch,
   type SchedulerContext,
 } from "./service-context.js";
+import {
+  isAutomationSchedulerRun,
+  isRequestSchedulerJob,
+  isRequestSchedulerRun,
+} from "./scheduler-target.js";
 
 export async function tickScheduler(context: SchedulerContext): Promise<void> {
   if (!context.running) return;
   await reconcileSchedulerCompletions(context);
+  await reconcileAutomationSchedulerCompletions(context);
   if (!context.running) return;
   const now = context.now();
+  await context.automationExecutor?.maintainRetention?.(now);
   const snapshot = await context.store.read();
   const hasDue = snapshot.jobs.some((job) => isDueJob(job, now));
   if (hasDue) await enqueueDueOccurrences(context, now);
+  await enqueueDueAutomationOccurrences(context, now);
   const pending = (await context.store.read()).runs.filter(
     (run) => run.status === "pending",
   );
   for (const run of pending) {
     if (!context.running) return;
+    if (isAutomationSchedulerRun(run)) {
+      await dispatchPendingAutomationRun(context, run);
+      continue;
+    }
     await dispatchPendingRun(context, run);
   }
 }
-function isDueJob(job: SchedulerJob, now: number): boolean {
+function isDueJob(job: SchedulerStoredJob, now: number): job is SchedulerJob {
+  if (!isRequestSchedulerJob(job)) return false;
   if (job.state !== "active") return false;
   if (!job.nextRunAt) return false;
   return Date.parse(job.nextRunAt) <= now;
@@ -46,6 +65,7 @@ async function enqueueDueOccurrences(
 ): Promise<void> {
   await context.store.update((state) => {
     for (const job of state.jobs) {
+      if (!isRequestSchedulerJob(job)) continue;
       if (!isDueJob(job, now)) continue;
       const pending = findPendingRun(state, job.id);
       if (!canRecordScheduledOccurrence(pending)) continue;
@@ -77,7 +97,7 @@ async function dispatchPendingRun(
     await removeDeletedSession(context, pending.sessionId);
     return;
   }
-  if (!canBeginSchedulerRun(context, pending.jobId, pending.sessionId, epoch))
+  if (!canBeginRequestSchedulerRun(context, pending.jobId, pending.sessionId, epoch))
     return;
   const release = await context.executor.tryReserve(pending.sessionId);
   if (!release) return;
@@ -87,7 +107,7 @@ async function dispatchPendingRun(
     if (!claimed) return;
     // Last validity guard and start invocation are in the same synchronous turn.
     if (
-      !canBeginSchedulerRun(context, pending.jobId, pending.sessionId, epoch)
+      !canBeginRequestSchedulerRun(context, pending.jobId, pending.sessionId, epoch)
     ) {
       await cancelClaimedRun(context, pending.id);
       return;
@@ -145,13 +165,14 @@ async function claimPendingRun(
   epoch: number,
 ): Promise<{ job: SchedulerJob; run: SchedulerRun } | null> {
   return context.store.update((state) => {
-    if (!canBeginSchedulerRun(context, pending.jobId, pending.sessionId, epoch))
+    if (!canBeginRequestSchedulerRun(context, pending.jobId, pending.sessionId, epoch))
       return null;
     const job = state.jobs.find((item) => item.id === pending.jobId);
-    if (!job) return null;
+    if (!job || !isRequestSchedulerJob(job)) return null;
     if (job.state === "cancelled") return null;
     const run = state.runs.find((item) => item.id === pending.id);
-    if (!run || run.status !== "pending") return null;
+    if (!run || !isRequestSchedulerRun(run)) return null;
+    if (run.status !== "pending") return null;
     if (job.state === "paused" && run.trigger !== "manual") return null;
     if (hasRunningSession(state, run.sessionId)) return null;
     run.status = "running";
@@ -200,7 +221,11 @@ async function removeDeletedSession(
   sessionId: string,
 ): Promise<void> {
   await context.store.update((state) => {
-    state.jobs = state.jobs.filter((job) => job.sessionId !== sessionId);
-    state.runs = state.runs.filter((run) => run.sessionId !== sessionId);
+    state.jobs = state.jobs.filter(
+      (job) => !isRequestSchedulerJob(job) || job.sessionId !== sessionId,
+    );
+    state.runs = state.runs.filter(
+      (run) => !isRequestSchedulerRun(run) || run.sessionId !== sessionId,
+    );
   });
 }

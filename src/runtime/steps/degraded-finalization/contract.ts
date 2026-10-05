@@ -1,5 +1,5 @@
 import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
-import { MODEL_STEPS } from "../../../shared/model-steps.js";
+import { MODEL_STEPS, type ModelStep } from "../../../shared/model-steps.js";
 
 export const DEGRADED_FINALIZATION_STEP_ID =
   MODEL_STEPS.DEGRADED_FINALIZATION;
@@ -7,6 +7,8 @@ export const DEGRADED_FINALIZATION_STEP_ID =
 export type DegradedFinalizationProblem = Readonly<{
   stage: string;
   code: string;
+  cause?: "model_output_limit";
+  modelStep?: ModelStep;
 }>;
 
 export type DegradedFinalizationWorkItem = Readonly<{

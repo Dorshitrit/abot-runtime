@@ -3,6 +3,8 @@ import { join, resolve } from "node:path";
 import type { RuntimeConfig, SessionStore } from "../../runtime/ports.js";
 import type { SessionSnapshot } from "../../sessions/types.js";
 import { SessionService } from "../../sessions/session-service.js";
+import { isSparkSession } from "../../sessions/spark-session.js";
+import { markVisibleAssistantMessages, projectVisibleSessionReadState, visibleReadMessageIds, visibleReadObservations } from "./visible-messages.js";
 import {
   clientVisibleMessages,
   toSessionListItem,
@@ -68,7 +70,9 @@ export class WebSessionReadStates {
   async project(environmentId: string, snapshot: SessionSnapshot) {
     const result = await captureReadStateAvailability(() =>
       this.store(environmentId).transaction((state) =>
-        projectSessionReadState(state, snapshot.sessionId, snapshot.messages),
+        isSparkSession(snapshot)
+          ? projectVisibleSessionReadState(state, snapshot.sessionId, snapshot.messages)
+          : projectSessionReadState(state, snapshot.sessionId, snapshot.messages),
       ),
     );
     if (result.readStateStatus === "unavailable")
@@ -85,6 +89,8 @@ export class WebSessionReadStates {
         includeRequests: false,
       });
       if (!snapshot) return null;
+      if (isSparkSession(snapshot))
+        return projectVisibleSessionReadState(state, sessionId, snapshot.messages);
       advanceReadCursor(
         state,
         sessionId,
@@ -96,13 +102,25 @@ export class WebSessionReadStates {
     });
   }
 
+  async markVisible(environmentId: string, sessionId: string, input: unknown, generation: unknown, visibleMessages: unknown) {
+    const ids = visibleReadMessageIds(input);
+    const observations = visibleReadObservations(ids, visibleMessages);
+    const sessions = this.getEnvironment(environmentId).services.sessions;
+    return this.store(environmentId).transaction(async (state) => {
+      const snapshot = await sessions.getSessionSnapshot(sessionId, { includeRequests: false });
+      if (!snapshot || !isSparkSession(snapshot)) return null;
+      markVisibleAssistantMessages(state, sessionId, snapshot.messages, observations, generation, this.now());
+      return projectVisibleSessionReadState(state, sessionId, snapshot.messages);
+    });
+  }
+
   async list(environmentId: string) {
     const { sessionsDir } =
       this.getEnvironment(environmentId).services.config.paths;
     // One canonical disk enumeration avoids mutable offset pages and sending
     // every request event across the managed Runtime's bounded RPC transport.
     const records = await new SessionService({ sessionsDir }).getAllSessions();
-    const projectedSessions = records.map((record) => ({
+    const projectedSessions = records.filter((record) => !isSparkSession(record)).map((record) => ({
       summary: toSessionListItem(record),
       messages: clientVisibleMessages(record.messages).map((message) =>
         toSnapshotMessage(record.id, message, record.requests ?? []),

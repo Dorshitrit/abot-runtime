@@ -1,3 +1,11 @@
+import {
+  captureRuntimeFilesystemScope,
+  type RuntimeFilesystemScope,
+} from "../context/runtime-filesystem-scope.js";
+import {
+  createSuperFailureFinalization,
+  type SuperFailureFinalization,
+} from "./super-failure-explanation.js";
 import { RequestModelStepInvoker } from "../model/invoke-step.js";
 import type { ToolAvailabilitySource } from "../capabilities/tool-availability.js";
 import type { WorkerCapabilityAdapterProvider } from "../orchestration/worker-capabilities/index.js";
@@ -36,6 +44,7 @@ export type RequestCapabilityCompositionView =
         | "historyMessages"
         | "toolPermissionMode"
         | "toolApprovalController"
+        | "effectPersistence"
         | "onEvent"
         | "contextCompactionStore"
       >
@@ -58,6 +67,7 @@ export type RequestCapabilityExecutionView = Readonly<
   BoundRequestModelInvocationContext;
 
 export type RequestWorkerCapabilities = Readonly<{
+  filesystemScope?: RuntimeFilesystemScope;
   provider: WorkerCapabilityAdapterProvider<RequestCapabilityExecutionView> &
     Partial<ToolAvailabilitySource>;
   executionContext: RequestCapabilityExecutionView;
@@ -83,6 +93,7 @@ export type RequestExecutionScope = RequestExecutionSeed &
     modelInvocation: RequestModelInvocationView;
     executionPolicy: CompiledExecutionPolicy<RequestExecutionScope>;
     capabilities: RequestWorkerCapabilities;
+    superFailureFinalization?: SuperFailureFinalization;
     workerCapabilities: RequestWorkerCapabilities;
   }>;
 
@@ -102,9 +113,12 @@ export type RequestWorkerCapabilityCatalog = Pick<
 export function createRequestExecutionScope(
   input: Readonly<{
     seed: RequestExecutionSeed;
+    requestWorkingDirectory?: string;
     executionPolicy: CompiledRequestExecutionPolicy;
+    superFailureFinalization?: SuperFailureFinalization;
     createWorkerCapabilities(
       view: RequestCapabilityCompositionView,
+      filesystemScope?: RuntimeFilesystemScope,
     ): WorkerCapabilityAdapterProvider<RequestCapabilityExecutionView>;
   }>,
 ): RequestExecutionScope {
@@ -122,16 +136,30 @@ export function createRequestExecutionScope(
     policy.selection,
     modelSteps,
   );
+  const filesystemScope = captureRuntimeFilesystemScope(
+    input.requestWorkingDirectory,
+  );
   const provider = input.createWorkerCapabilities(
     createCapabilityCompositionView(facets, modelSteps),
+    filesystemScope,
   );
-  const capabilities = Object.freeze({ provider, executionContext });
+  const capabilities = Object.freeze({
+    provider,
+    executionContext,
+    ...(filesystemScope ? { filesystemScope } : {}),
+  });
   return createScopeSurface({
     facets,
     policy,
     modelInvocation,
     modelSteps,
     capabilities,
+    superFailureFinalization:
+      input.superFailureFinalization ??
+      createSuperFailureFinalization({
+        request: input.seed,
+        executionPolicy: input.executionPolicy,
+      }),
   });
 }
 

@@ -76,7 +76,7 @@
           ],
           "operations": {
             "run_system_command": {
-              "summary": "Run an OS shell command on an available target with an absolute cwd in that target namespace. Can inspect application or browser page text, including signed-in pages, through native accessibility APIs such as Windows UI Automation when exposed to the current OS session. Verify the target document and returned text. Capability references are not shell commands. Exit zero alone is not effect evidence.",
+              "summary": "Run a shell command on an available OS target with absolute cwd in its namespace. The complete command, including inline file content, is limited to 4096 characters. File payload tools support larger bodies in the runtime-host namespace. Can read exposed application/browser text via native accessibility APIs, including signed-in pages. Verify the document and text. Capability references are not commands; exit zero is not effect evidence.",
               "input": {
                 "type": "object",
                 "additionalProperties": false,
@@ -767,7 +767,7 @@
               }
             },
             "computer_press_keys": {
-              "summary": "Press an explicit chord of named keys, for example [Control, L] or [Enter]. Keys are released after injection; no command-string parsing. Fresh observation and same desktop are required; no uncertain action is replayed.",
+              "summary": "Press a chord: [Command,L] on macOS or [Control,L] on Windows/Linux. Names: A-Z, 0-9, F1-F12, Control/Ctrl, Shift, Alt, Meta/Super, Enter/Return, Tab, Esc/Escape, Space, Backspace, Delete, ArrowLeft,ArrowRight,ArrowUp,ArrowDown, Home, End, PageUp/PageDown. macOS also accepts Command/Cmd and Option; Mac names ignore case. Keys release after injection; no chord-string parsing. Fresh observation and same desktop required; no uncertain action is replayed. Use computer_type_text for literal text.",
               "input": {
                 "type": "object",
                 "additionalProperties": false,

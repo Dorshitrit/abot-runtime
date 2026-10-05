@@ -31,6 +31,14 @@ export function createConversationView({
   canOpenSchedule = () => true,
   filePreview = { reset() {}, syncScope() {}, setWorkspace() {} },
   sparkActions = { createNode: () => null },
+  scrollBehavior = null,
+  preserveMessageHistory = false,
+  createActivityView = createConversationActivity,
+  statusPresentation = (model) => model,
+  statusPlacement = "bubble",
+  emptyState = { title: "What would you like to work on?", copy: "Ask a question, inspect a project, or start a task." },
+  showReasoning = true,
+  showContextWindow = true,
   documentRoot = document,
   viewport = window,
 }) {
@@ -39,7 +47,7 @@ export function createConversationView({
     onOpenJob: onOpenSchedule,
     canOpenJob: canOpenSchedule,
   });
-  const conversationActivity = createConversationActivity({
+  const conversationActivity = createActivityView({
     documentRoot,
     onOpenFile: filePreview.open,
     canOpenFile: filePreview.canOpen,
@@ -49,12 +57,13 @@ export function createConversationView({
     getActiveRequestId,
     getActivityForMessage,
     isConnected,
+    present: statusPresentation,
     documentRoot,
   });
-  const composerContextWindow = createComposerContextWindow({
+  const composerContextWindow = showContextWindow ? createComposerContextWindow({
     container: dom.composerContextWindow,
     documentRoot,
-  });
+  }) : { render() {}, reset() {} };
   const composerPlan = createComposerPlan({
     container: dom.composerPlan,
     documentRoot,
@@ -68,6 +77,7 @@ export function createConversationView({
     viewport,
     scrollRoot: dom.messagesList,
     onLayoutChange: () => {
+      if (scrollBehavior) { scrollBehavior.onLayoutChange?.(); return; }
       if (viewState.followMessages) scrollToEnd();
     },
   });
@@ -86,6 +96,7 @@ export function createConversationView({
   }
 
   function scrollToEnd() {
+    if (scrollBehavior) return scrollBehavior.toEnd();
     viewState.followMessages = true;
     pinScrollToEnd(dom.messagesList);
     updateJumpToLatest();
@@ -112,18 +123,22 @@ export function createConversationView({
   }
 
   function renderEmptyState() {
+    if (emptyState.render) return emptyState.render(dom.messagesList);
     dom.messagesList.innerHTML = `
       <div class="empty-state chat-empty-state">
-        <div class="mode-empty-title">What would you like to work on?</div>
-        <div class="mode-empty-copy">Ask a question, inspect a project, or start a task.</div>
+        <div class="mode-empty-title"></div>
+        <div class="mode-empty-copy"></div>
       </div>
     `;
+    dom.messagesList.querySelector(".mode-empty-title").textContent = emptyState.title;
+    dom.messagesList.querySelector(".mode-empty-copy").textContent = emptyState.copy;
   }
 
   function createMessageNode(message) {
     const scheduleNode = conversationSchedule.createNode(message);
     if (scheduleNode) return scheduleNode;
     const row = documentRoot.createElement("article");
+    row.dataset.messageId = String(message.id);
     row.dataset.requestId = message.requestId || "";
     row.className = `message-row ${message.role === "user" ? "user" : "assistant"}`;
     row.setAttribute(
@@ -162,22 +177,23 @@ export function createConversationView({
     const attachments = messageAttachments.createNode(message.attachments);
     if (attachments) bubble.appendChild(attachments);
 
+    let activity = null;
     if (message.role !== "user" && message.requestId) {
       const activityInput = {
         requestId: message.requestId,
         streaming: Boolean(message.streaming),
         ...getActivityForMessage(message),
       };
-      const activity = conversationActivity.createNode(activityInput);
+      activity = conversationActivity.createNode(activityInput);
       if (activity) bubble.appendChild(activity);
     }
 
-    const thinking = conversationReasoning.createNode(message);
+    const thinking = showReasoning ? conversationReasoning.createNode(message) : null;
     if (thinking) bubble.appendChild(thinking);
 
     bubble.appendChild(body);
     const status = conversationStatus.createNode(message);
-    if (status) bubble.appendChild(status);
+    if (status && statusPlacement === "bubble") bubble.appendChild(status);
     const linkPreviews = messageLinkPreviews.createNode(message);
     if (linkPreviews) bubble.appendChild(linkPreviews);
     if (message.role !== "user" && message.text && !message.streaming) {
@@ -196,12 +212,15 @@ export function createConversationView({
       actions.appendChild(copyButton);
       bubble.appendChild(actions);
     }
-    const sparkChoices = sparkActions.createNode(message, { onKept: () => row.focus({ preventScroll: true }) });
-    if (sparkChoices) {
-      row.tabIndex = -1;
-      bubble.appendChild(sparkChoices);
-    }
+    const initiativeAction = sparkActions.createNode(message);
+    if (initiativeAction) bubble.appendChild(initiativeAction);
     row.appendChild(bubble);
+    if (status && statusPlacement === "outside") {
+      const hasVisibleContent = Boolean(message.text || attachments || activity || thinking || linkPreviews || initiativeAction);
+      bubble.hidden = !hasVisibleContent;
+      row.classList.add("message-status-outside");
+      row.appendChild(status);
+    }
     return row;
   }
 
@@ -228,7 +247,7 @@ export function createConversationView({
     const previousScrollTop = dom.messagesList.scrollTop;
     const shouldFollow =
       viewState.followMessages || isNearScrollEnd(dom.messagesList);
-    const messages = projectApprovalContinuations(getMessages());
+    const messages = preserveMessageHistory ? getMessages() : projectApprovalContinuations(getMessages());
     conversationReasoning.beginRender(messages);
     messageLinkPreviews.reset();
     conversationStatus.reset();
@@ -237,6 +256,7 @@ export function createConversationView({
       renderEmptyState();
       viewState.followMessages = true;
       updateJumpToLatest();
+      scrollBehavior?.afterRender();
       return;
     }
     for (const message of messages) {
@@ -245,6 +265,7 @@ export function createConversationView({
     for (const pendingApproval of getPendingApprovals()) {
       dom.messagesList.appendChild(createApprovalCard(pendingApproval));
     }
+    if (scrollBehavior) return scrollBehavior.afterRender();
     if (shouldFollow) {
       scrollToEnd();
     } else {
@@ -302,6 +323,7 @@ export function createConversationView({
     viewState.bound = true;
     dom.jumpToLatestButton.addEventListener("click", scrollToEnd);
     dom.messagesList.addEventListener("scroll", () => {
+      if (scrollBehavior) return;
       viewState.followMessages = isNearScrollEnd(dom.messagesList);
       if (!viewState.followMessages) viewState.scrollSettleVersion += 1;
       updateJumpToLatest();

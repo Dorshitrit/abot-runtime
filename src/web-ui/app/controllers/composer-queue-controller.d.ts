@@ -96,6 +96,7 @@ export interface ComposerQueueController {
   enqueue(text: string): Promise<void>;
   isCurrentDraining(): boolean;
   isCurrentScope(scope: ComposerScope): boolean;
+  prepareRecoveryForNavigation(): false | (() => void);
   queuedCount(): number;
   recoverForManualSend(scope: ComposerScope): boolean;
   reportFailure(scope: ComposerScope, summary: string): void;

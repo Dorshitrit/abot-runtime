@@ -27,10 +27,15 @@ function filesystemErrorCode(error: unknown): string | undefined {
 
 export default defineRuntimePlugin((context) => ({
   handlers: {
-    async system_probe(params) {
+    async system_probe(params, executionContext = undefined) {
       const explicitPath = readOptionalString(params.path);
+      const pathContext = {
+        ...context,
+        runtimePathResolver:
+          executionContext?.runtimePathResolver ?? context.runtimePathResolver,
+      };
       try {
-        const target = resolvePluginPath(context, explicitPath ?? "/", {
+        const target = resolvePluginPath(pathContext, explicitPath ?? "/", {
           requirePath: true,
           allowedLocations: ALLOWED_PATH_LOCATIONS,
         });

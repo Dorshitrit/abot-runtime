@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { LearningMemoryService } from "../../long-term-memory/maturation/contracts.js";
+import { SPARK_SESSION_ID } from "../../../sessions/spark-session.js";
+import { hasVisibleAssistantInitiative } from "../../../sessions/assistant-initiative-append.js";
+import type { LearningMemoryService, LearningKnowledgeContext } from "../../long-term-memory/maturation/contracts.js";
 import type { SessionStore } from "../../ports.js";
+import type { SessionRequestAdmission } from "../../request/session-admission.js";
 import type { LearningBackgroundContext } from "../background-dependencies.js";
 import type { ProactiveStatus } from "../contracts.js";
 import { LearningAnalysisClock } from "../analysis-clock.js";
@@ -10,7 +13,7 @@ import { canDeliverProactiveProposal, hasProactiveReviewAttempt, isPendingPropos
 import { countProactiveDeliveries, createProactiveStateStore } from "./store.js";
 import type { createRuntimeProactiveModel } from "./model.js";
 import { runStagedProactiveAgentReview } from "./staged-agent-review.js";
-import { canResumeStagedProactiveAttempt, hasCompletedStagedProactiveProgress,
+import { canResumeStagedProactiveAttempt,
   hasExpiredStagedProactiveProgress } from "./staged-progress-store.js";
 
 export class CoWorkerProactiveAgent {
@@ -30,6 +33,7 @@ export class CoWorkerProactiveAgent {
   constructor(private readonly options: {
     directory: string; context: LearningBackgroundContext; memory: LearningMemoryService;
     model: ReturnType<typeof createRuntimeProactiveModel>; sessions: SessionStore;
+    deliveryAdmission?: Pick<SessionRequestAdmission, "run">;
     budget: CoWorkerResourceBudget; now?: () => number;
   }) {
     this.store = createProactiveStateStore(options.directory);
@@ -100,7 +104,7 @@ export class CoWorkerProactiveAgent {
   }
   async status(): Promise<ProactiveStatus> {
     const [state, usage] = await Promise.all([this.store.read(), this.options.budget.status()]);
-    return { state: this.stateLabel(), proposals: state.proposals.slice(-20),
+    return { state: this.stateLabel(),
       deliveredToday: countProactiveDeliveries(state, usage.startedAt),
       ...(this.reason ? { reason: this.reason } : {}),
       ...(this.clock.scheduledAt ? { nextReviewAt: new Date(this.clock.scheduledAt).toISOString() } : {}) };
@@ -125,8 +129,8 @@ export class CoWorkerProactiveAgent {
     if (this.usesStagedReview() && hasExpiredStagedProactiveProgress(state, this.now())) state = await this.store.expireReviewProgress(this.now());
     if (await this.deliverPending(state, signal, generation)) return;
     const usage = await this.options.budget.status();
-    if (this.limitReached(state, usage, this.canCompleteSavedReview(state))) return;
     const context = await this.options.memory.overview();
+    if (this.limitReached(state, usage, await this.canCompleteSavedReview(state, context, signal))) return;
     const last = state.lastReviewedAt ? Date.parse(state.lastReviewedAt) : 0;
     const eligible = isProactiveReviewEligible({ enabled: this.canRun(), insideWindow: this.insideWindow(),
       interactiveBusy: this.options.context.isInteractiveBusy(), now: this.now(), nextAllowedAt: Math.max(this.retryNotBefore, this.reviewNotBefore, last + this.interval()),
@@ -193,25 +197,34 @@ export class CoWorkerProactiveAgent {
   }
 
   private deliver(proposal: ProactiveProposal, signal: AbortSignal, generation: number): Promise<void> {
-    const next = this.controls.then(async () => {
+    const next = this.controls.then(() => this.withDeliveryAdmission(async () => {
       this.assertCurrent(signal, generation);
       if (!this.insideWindow()) return;
-      if (!this.options.sessions.createAssistantConversation) throw new Error("proactive_session_delivery_unavailable");
-      await this.options.sessions.createAssistantConversation(proposal.sessionId, {
+      if (!this.options.sessions.appendAssistantInitiative) throw new Error("proactive_session_delivery_unavailable");
+      const conversation = await this.options.sessions.appendAssistantInitiative(SPARK_SESSION_ID, {
         title: proposal.title, content: proposal.message,
-        initiative: { kind: "proactive_proposal_v1", proposalId: proposal.id, reason: proposal.reason, sources: proposal.sources },
+        initiative: { kind: "proactive_proposal_v1", proposalId: proposal.id, reason: proposal.reason, sources: proposal.sources,
+          ...(proposal.handoffBrief === undefined ? {} : { handoffBrief: proposal.handoffBrief, handoffTitle: proposal.title }) },
         assertCurrent: () => {
           this.assertCurrent(signal, generation);
           if (!this.insideWindow()) throw new Error("proactive_outside_window");
         },
       });
       const usage = await this.options.budget.ensureCurrentWindow();
-      await this.store.markDelivered(proposal.id, this.now(), usage.startedAt);
+      await this.store.markDelivered(proposal.id, this.now(), usage.startedAt, SPARK_SESSION_ID);
+      if (!hasVisibleAssistantInitiative(conversation, proposal.id)) return;
       if (this.canRun() && generation === this.generation && !signal.aborted)
-        this.options.context.changed({ type: "proposal_delivered", proposalId: proposal.id, sessionId: proposal.sessionId });
-    });
+        this.options.context.changed({ type: "proposal_delivered", proposalId: proposal.id, sessionId: SPARK_SESSION_ID });
+    }));
     this.controls = next.catch(() => {});
     return next;
+  }
+
+  private withDeliveryAdmission(deliver: () => Promise<void>): Promise<void> {
+    if (!this.options.deliveryAdmission) return deliver();
+    // Notifications share clear reservations, but do not resume requests or inherit
+    // their saved-approval eligibility. Keep the existing proactive eligibility checks.
+    return this.options.deliveryAdmission.run(SPARK_SESSION_ID, deliver, true);
   }
 
   private async arm(): Promise<void> {
@@ -249,7 +262,7 @@ export class CoWorkerProactiveAgent {
     if (!pending) earliest = Math.max(earliest, this.reviewNotBefore);
     if (state.lastReviewedAt && !pending) earliest = Math.max(earliest, Date.parse(state.lastReviewedAt) + this.interval());
     if (!pending && !newKnowledge && state.nextReviewAt) earliest = Math.max(earliest, Date.parse(state.nextReviewAt));
-    if (this.limitReached(state, usage, pending || this.canCompleteSavedReview(state))) earliest = Math.max(earliest, usage.resetsAt);
+    if (this.limitReached(state, usage, pending || await this.canCompleteSavedReview(state, context))) earliest = Math.max(earliest, usage.resetsAt);
     const due = nextAnalysisInstant(earliest, this.preferences().proactiveWindow);
     if (!this.canRun() || this.active || revision !== this.armRevision) return;
     this.clock.clear();
@@ -294,9 +307,17 @@ export class CoWorkerProactiveAgent {
     if (state.reviewAttempt?.method !== "super-v2") return false;
     return state.reviewAttempt.profileId === profile;
   }
-  private canCompleteSavedReview(state: ProactiveState): boolean {
+  private async canCompleteSavedReview(state: ProactiveState, context: LearningKnowledgeContext,
+    signal = new AbortController().signal): Promise<boolean> {
     if (!this.usesStagedReview()) return false;
-    return hasCompletedStagedProactiveProgress(state, this.now());
+    if (!canResumeStagedProactiveAttempt(state) || !state.reviewProgress) return false;
+    const profile = this.preferences().proactiveModelProfileId ?? this.preferences().modelProfileId;
+    if (!profile || !hasProactiveReviewAttempt(state, context.knowledgeRevision, profile)) return false;
+    if (!this.options.model.canCompleteSavedReview) return false;
+    return this.options.model.canCompleteSavedReview({ reviewId: state.reviewAttempt!.reviewId,
+      modelProfileId: profile, context, recentProposals: state.proposals, signal,
+      progress: { read: () => state.reviewProgress,
+        async save() { throw new Error("proactive_replay_cannot_persist"); } } });
   }
   private currentPreferencesKey(): string {
     const value = this.preferences();

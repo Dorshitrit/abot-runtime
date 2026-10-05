@@ -1,6 +1,23 @@
+import { buildCheckpointMessage } from "./semantic-compaction/checkpoint-message.js";
+import { createVerifiedCompactionProjection } from "./verified-compaction-projection.js";
+import { SEMANTIC_COMPACTION_EVIDENCE_SCOPE } from "./semantic-compaction/evidence-scope.js";
+import { readOperationSupervisionEvidenceBinding } from "./operation-supervision-evidence-binding.js";
+import { projectOperationSupervisionEvidenceClosure } from "./operation-supervision-evidence-projection.js";
+import { superWorkerCompactionFailureOwner } from "./super-worker-compaction-failure.js";
+import {
+  withSuperCompactionFailure,
+  type SuperCompactionFailureOwner,
+} from "./super-compaction-failure-owner.js";
+import { resolveSuperWorkerCompactionProjection } from "./super-worker-compaction-projection.js";
+import type { SuperWorkerCompactionSidecar } from "./super-worker-compaction-sidecar.js";
+import { CompactionSourceInvariantError } from "./compaction-source-invariant.js";
+import { projectRequestToolResultsCheckpointMessage } from "./request-tool-results-checkpoint.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { ModelStep } from "../../shared/model-steps.js";
-import type { ModelStepContextCompactionController } from "../model/model-step-port.js";
+import type {
+  ModelStepContextCompactionController,
+  ModelStepCompactionStage,
+} from "../model/model-step-port.js";
 import { OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND } from "./operation-supervision-evidence.js";
 import {
   SEMANTIC_COMPACTION_CONTEXT_LANE,
@@ -15,12 +32,22 @@ import {
 } from "./semantic-compaction/index.js";
 
 type ModelStepCompactionOptions = Readonly<{
-  call: Readonly<{ roleId: string; callId: string; objective: string | null }>;
+  call: Readonly<{
+    roleId: string;
+    callId: string;
+    objective: string | null;
+    activationCount?: number;
+  }>;
   sourceRevision: number;
   allowedConsumers: readonly ModelStep[];
   scopeId?: string;
   scopeSuffix?: string;
   resultSourceOverrides?: readonly SemanticCompactionSource[];
+  superWorkerCompaction?: SuperWorkerCompactionSidecar;
+  requireSuperWorkerSources?: boolean;
+  consumer?: ModelStep;
+  superFailureOwner?: SuperCompactionFailureOwner;
+  hasVerifiedCompactedEvidence?(messages: readonly ChatMessage[]): boolean;
 }>;
 
 type ScannedSource = Readonly<{
@@ -62,69 +89,115 @@ export function createModelStepCompactionController(
   if (!store) {
     throw new Error("context_compaction_store_required");
   }
-  const resultSourceOverrides = createResultSourceOverrideMap(
-    options.resultSourceOverrides ?? [],
-  );
+  const verifiedProjection = createVerifiedCompactionProjection();
+  let projectedCheckpoint: SemanticCompactionCheckpoint | undefined;
+  const reconcileEvidence = (
+    messages: readonly ChatMessage[],
+    checkpoint?: SemanticCompactionCheckpoint,
+  ) =>
+    projectOperationSupervisionEvidenceClosure(
+      messages,
+      {
+        requestId: request.requestId,
+        call: options.call,
+        sourceRevision: options.sourceRevision,
+        consumer: options.consumer,
+      },
+      checkpoint ? { checkpoint, store } : undefined,
+    );
+  const sourceProjection = (messages: readonly ChatMessage[]) => {
+    const sidecar = resolveSuperWorkerCompactionProjection(
+      messages,
+      {
+        requestId: request.requestId,
+        callId: options.call.callId,
+        sourceRevision: options.sourceRevision,
+      },
+      options.superWorkerCompaction,
+      options.requireSuperWorkerSources,
+    );
+    const failureOwner =
+      superWorkerCompactionFailureOwner(
+        sidecar,
+        options.consumer,
+        "model_context_projection",
+        scopeId,
+      ) ?? options.superFailureOwner;
+    withSuperCompactionFailure(failureOwner, () => reconcileEvidence(messages));
+    return {
+      sidecar,
+      failureOwner,
+      overrides: createResultSourceOverrideMap(
+        sidecar?.sources ?? options.resultSourceOverrides ?? [],
+      ),
+    };
+  };
 
-  const readPrevious = (): SemanticCompactionCheckpoint | undefined => {
+  const readPrevious = (
+    messages: readonly ChatMessage[],
+  ): SemanticCompactionCheckpoint | undefined => {
     const previous = store.get(scopeId);
     if (!previous) return undefined;
     assertValidSemanticCompactionCheckpoint(previous);
+    if (
+      (options.requireSuperWorkerSources ||
+        options.superFailureOwner ||
+        messages.some(readOperationSupervisionEvidenceBinding)) &&
+      previous.sourceRevision > options.sourceRevision
+    ) {
+      throw new Error("context_compaction_checkpoint_revision_invalid");
+    }
     if (!sameSemanticCompactionCheckpointBinding(previous, binding)) {
       throw new Error("context_compaction_checkpoint_not_applicable");
     }
     return previous;
   };
 
-  return Object.freeze({
-    compactionScope: "active_request" as const,
-    project(messages) {
-      const previous = readPrevious();
-      return previous
-        ? projectCheckpointMessages(
-            messages,
-            scopeId,
-            previous,
-            resultSourceOverrides,
-          )
-        : [...messages];
-    },
+  const activeStage = Object.freeze<ModelStepCompactionStage>({
+    compactionScope: "active_request",
+    scopeId,
     async prepare(messages) {
-      const previous = readPrevious();
+      const {
+        sidecar,
+        failureOwner,
+        overrides: resultSourceOverrides,
+      } = sourceProjection(messages);
+      const previous = withSuperCompactionFailure(failureOwner, () =>
+        readPrevious(messages),
+      );
       const scanned = scanCompactionSources(
         messages,
         scopeId,
         resultSourceOverrides,
+        sidecar,
       );
       const covered = new Map(
         previous?.sourceDigests.map((source) => [source.sourceRef, source]) ??
           [],
       );
-      const newSources = scanned
-        .map(({ source }) => source)
-        .filter((source) => {
-          const existing = covered.get(source.sourceRef);
-          if (!existing) return true;
-          if (existing.sourceFingerprint !== source.sourceFingerprint) {
-            throw new Error("context_compaction_source_identity_conflict");
-          }
-          return false;
-        });
-      if (newSources.length === 0) {
-        if (!previous) {
-          throw new Error("context_compaction_sources_empty");
-        }
+      const newSources = withSuperCompactionFailure(failureOwner, () =>
+        scanned
+          .map(({ source }) => source)
+          .filter((source) => {
+            const existing = covered.get(source.sourceRef);
+            if (!existing) return true;
+            if (existing.sourceFingerprint !== source.sourceFingerprint) {
+              if (failureOwner) {
+                throw new CompactionSourceInvariantError(
+                  "context_compaction_source_identity_conflict",
+                  source.sourceRef,
+                );
+              }
+              throw new Error("context_compaction_source_identity_conflict");
+            }
+            return false;
+          }),
+      );
+      const hasNewCompactionSources = newSources.length > 0;
+      if (!hasNewCompactionSources) {
         return Object.freeze({
-          messages: projectCheckpointMessages(
-            messages,
-            scopeId,
-            previous,
-            resultSourceOverrides,
-          ),
-          commit() {},
-          scopeId,
-          sourceRevision: previous.sourceRevision,
-          coveredSourceCount: previous.sourceDigests.length,
+          kind: "unavailable",
+          reason: previous ? "no_new_sources" : "no_eligible_sources",
         });
       }
       const candidate = await generateSemanticCompactionCandidateBatched({
@@ -133,23 +206,89 @@ export function createModelStepCompactionController(
         binding,
         sourceRevision: options.sourceRevision,
         preservationObjective: options.call.objective!,
+        consumer: options.consumer,
         ...(previous ? { previous } : {}),
         sources: newSources,
+        ...(sidecar || failureOwner
+          ? { registrationMode: "atomic" as const }
+          : {}),
+        ...(failureOwner ? { failureOwner } : {}),
       });
-      return Object.freeze({
-        messages: projectCheckpointMessages(
-          messages,
-          scopeId,
+      const preparedMessages = withSuperCompactionFailure(failureOwner, () =>
+        reconcileEvidence(
+          projectCheckpointMessages(
+            messages,
+            scopeId,
+            candidate,
+            resultSourceOverrides,
+            failureOwner !== undefined,
+          ),
           candidate,
-          resultSourceOverrides,
         ),
-        commit() {
-          store.commit(candidate);
-        },
-        scopeId,
-        sourceRevision: candidate.sourceRevision,
-        coveredSourceCount: candidate.sourceDigests.length,
+      );
+      return Object.freeze({
+        kind: "prepared",
+        preparation: Object.freeze({
+          messages: preparedMessages,
+          hasExhaustedCompactionSources:
+            scanCompactionSources(
+              preparedMessages,
+              scopeId,
+              resultSourceOverrides,
+              sidecar,
+            ).length === 0,
+          commit() {
+            withSuperCompactionFailure(failureOwner, () =>
+              store.commit(candidate),
+            );
+          },
+          scopeId,
+          sourceRevision: candidate.sourceRevision,
+          coveredSourceCount: candidate.sourceDigests.length,
+        }),
       });
+    },
+  });
+
+  return Object.freeze({
+    project(messages) {
+      verifiedProjection.clear();
+      const { failureOwner, overrides: resultSourceOverrides } =
+        sourceProjection(messages);
+      const previous = withSuperCompactionFailure(failureOwner, () =>
+        readPrevious(messages),
+      );
+      projectedCheckpoint = previous;
+      return withSuperCompactionFailure(failureOwner, () =>
+        reconcileEvidence(
+          previous
+            ? projectCheckpointMessages(
+                messages,
+                scopeId,
+                previous,
+                resultSourceOverrides,
+                failureOwner !== undefined,
+                verifiedProjection.record,
+              )
+            : [...messages],
+          previous,
+        ),
+      );
+    },
+    hasExhaustedVerifiedCompactionSources(messages) {
+      const ownProjection =
+        projectedCheckpoint !== undefined &&
+        store.get(scopeId) === projectedCheckpoint &&
+        verifiedProjection.contains(messages);
+      if (!ownProjection && !options.hasVerifiedCompactedEvidence?.(messages))
+        return false;
+      const { sidecar, overrides } = sourceProjection(messages);
+      return (
+        scanCompactionSources(messages, scopeId, overrides, sidecar).length === 0
+      );
+    },
+    getStages() {
+      return Object.freeze([activeStage]);
     },
   });
 }
@@ -159,6 +298,8 @@ function projectCheckpointMessages(
   scopeId: string,
   checkpoint: SemanticCompactionCheckpoint,
   resultSourceOverrides: ReadonlyMap<string, SemanticCompactionSource>,
+  superOwned = false,
+  recordVerifiedProjection?: (message: ChatMessage) => void,
 ): ChatMessage[] {
   const scanned = scanCompactionSources(
     messages,
@@ -187,6 +328,8 @@ function projectCheckpointMessages(
     }
   });
   const checkpointMessage = buildCheckpointMessage(checkpoint);
+  if (checkpoint.sourceDigests.length > 0 && !checkpointEmbedded)
+    recordVerifiedProjection?.(checkpointMessage);
   const projected: ChatMessage[] = [];
   let inserted = false;
   messages.forEach((message, index) => {
@@ -199,12 +342,16 @@ function projectCheckpointMessages(
       message,
       checkpoint,
       resultSourceOverrides,
+      superOwned,
     );
     if (!checkpointEmbedded && !inserted && index === insertionIndex) {
       projected.push(checkpointMessage);
       inserted = true;
     }
     if (!removable.has(index)) {
+      const carrier = requestToolResults ?? payloadContext;
+      if (checkpoint.sourceDigests.length > 0 && carrier)
+        recordVerifiedProjection?.(carrier);
       projected.push(requestToolResults ?? payloadContext ?? message);
     }
   });
@@ -212,43 +359,23 @@ function projectCheckpointMessages(
   return projected;
 }
 
-function buildCheckpointMessage(
-  checkpoint: SemanticCompactionCheckpoint,
-): ChatMessage {
-  return Object.freeze({
-    role: "user" as const,
-    content: JSON.stringify({
-      kind: checkpoint.kind,
-      authority: "runtime_role_continuation",
-      presenceEffect:
-        "passive_continuity_not_user_intent_routing_or_completion",
-      scopeId: checkpoint.scopeId,
-      roleId: checkpoint.roleId,
-      callId: checkpoint.callId,
-      sourceRevision: checkpoint.sourceRevision,
-      coveredSources: checkpoint.sourceDigests.map(
-        ({ sourceRef, sourceFingerprint, digest }) => ({
-          sourceRef,
-          sourceFingerprint,
-          digest,
-        }),
-      ),
-      continuation: checkpoint.continuation,
-    }),
-  });
-}
-
 function scanCompactionSources(
   messages: readonly ChatMessage[],
   scopeId: string,
   resultSourceOverrides: ReadonlyMap<string, SemanticCompactionSource>,
+  sidecar?: SuperWorkerCompactionSidecar,
 ): readonly ScannedSource[] {
   const sources: ScannedSource[] = [];
   messages.forEach((message, index) => {
-    if (isCheckpointMessage(message, scopeId)) return;
+    if (
+      isCheckpointMessage(message, scopeId) ||
+      readOperationSupervisionEvidenceBinding(message)
+    )
+      return;
     for (const source of resolveMessageSources(
       message,
       resultSourceOverrides,
+      sidecar,
     )) {
       sources.push(Object.freeze({ index, source }));
     }
@@ -259,6 +386,7 @@ function scanCompactionSources(
 function resolveMessageSources(
   message: ChatMessage,
   resultSourceOverrides: ReadonlyMap<string, SemanticCompactionSource>,
+  sidecar?: SuperWorkerCompactionSidecar,
 ): readonly SemanticCompactionSource[] {
   if (message.role === "tool") {
     return Object.freeze([
@@ -285,6 +413,7 @@ function resolveMessageSources(
             result,
             "payload-result",
             resultSourceOverrides,
+            sidecar,
           );
           return source ? [source] : [];
         },
@@ -310,6 +439,7 @@ function resolveMessageSources(
           result,
           undefined,
           resultSourceOverrides,
+          sidecar,
         );
         return source ? [source] : [];
       }),
@@ -381,101 +511,11 @@ function isCheckpointCarrierMessage(message: ChatMessage): boolean {
   );
 }
 
-function projectRequestToolResultsCheckpointMessage(
-  message: ChatMessage,
-  checkpoint: SemanticCompactionCheckpoint,
-  resultSourceOverrides: ReadonlyMap<string, SemanticCompactionSource>,
-): ChatMessage | undefined {
-  const record = parseJsonRecord(message.content);
-  if (record?.kind !== "runtime_request_tool_results_v1") return undefined;
-  if (message.role !== "user" || message.attachments?.length) {
-    throw new Error("context_compaction_request_tool_results_invalid");
-  }
-  const previousProjection = parseRecord(record.semanticCheckpoint);
-  const previousScopeId = readNonEmptyString(previousProjection?.scopeId);
-  if (previousScopeId && previousScopeId !== checkpoint.scopeId) {
-    throw new Error("context_compaction_checkpoint_scope_conflict");
-  }
-  const covered = new Map(
-    checkpoint.sourceDigests.map((source) => [source.sourceRef, source]),
-  );
-  const coveredResults = new Map<string, Record<string, unknown>>();
-  for (const receipt of readRecordArray(previousProjection?.coveredResults)) {
-    const executionId = readNonEmptyString(receipt.executionId);
-    const fingerprint = readNonEmptyString(receipt.sourceFingerprint);
-    const source = executionId
-      ? resolveResultSource(receipt, undefined, resultSourceOverrides)
-      : undefined;
-    const exact = source ? covered.get(source.sourceRef) : undefined;
-    if (
-      !executionId ||
-      !fingerprint ||
-      exact?.sourceFingerprint !== fingerprint
-    ) {
-      throw new Error("context_compaction_checkpoint_receipt_invalid");
-    }
-    coveredResults.set(executionId, receipt);
-  }
-  const remainingResults: Record<string, unknown>[] = [];
-  for (const result of readRecordArray(record.results)) {
-    const executionId = readNonEmptyString(result.executionId);
-    const source = resolveResultSource(
-      result,
-      undefined,
-      resultSourceOverrides,
-    );
-    const exact = source ? covered.get(source.sourceRef) : undefined;
-    if (!executionId || !source || !exact) {
-      remainingResults.push(result);
-      continue;
-    }
-    if (source.sourceFingerprint !== exact.sourceFingerprint) {
-      throw new Error("context_compaction_source_identity_conflict");
-    }
-    const {
-      referenceData: _referenceData,
-      adapterResult: _adapterResult,
-      ...receipt
-    } = result;
-    coveredResults.set(
-      executionId,
-      Object.freeze({
-        ...receipt,
-        sourceFingerprint: exact.sourceFingerprint,
-      }),
-    );
-  }
-  return Object.freeze({
-    role: "user" as const,
-    content: JSON.stringify({
-      ...record,
-      semanticCheckpoint: {
-        kind: checkpoint.kind,
-        scopeId: checkpoint.scopeId,
-        roleId: checkpoint.roleId,
-        callId: checkpoint.callId,
-        checkpointSourceRevision: checkpoint.sourceRevision,
-        presenceEffect:
-          "passive_role_continuation_not_user_intent_or_completion",
-        coveredSources: checkpoint.sourceDigests.map(
-          ({ sourceRef, sourceFingerprint, digest }) => ({
-            sourceRef,
-            sourceFingerprint,
-            digest,
-          }),
-        ),
-        continuation: checkpoint.continuation,
-        coveredResults: [...coveredResults.values()],
-      },
-      results: remainingResults,
-    }),
-  });
-}
-
 function projectPayloadContextCheckpointMessage(
   message: ChatMessage,
   checkpoint: SemanticCompactionCheckpoint,
   resultSourceOverrides: ReadonlyMap<string, SemanticCompactionSource>,
+  superOwned: boolean,
 ): ChatMessage | undefined {
   const context = parsePayloadContextRecord(message.content);
   if (!context) return undefined;
@@ -521,6 +561,12 @@ function projectPayloadContextCheckpointMessage(
       continue;
     }
     if (source.sourceFingerprint !== exact.sourceFingerprint) {
+      if (superOwned) {
+        throw new CompactionSourceInvariantError(
+          "context_compaction_source_identity_conflict",
+          source.sourceRef,
+        );
+      }
       throw new Error("context_compaction_source_identity_conflict");
     }
     const {
@@ -542,6 +588,7 @@ function projectPayloadContextCheckpointMessage(
       ...context,
       semanticCheckpoint: {
         kind: checkpoint.kind,
+        evidenceScope: SEMANTIC_COMPACTION_EVIDENCE_SCOPE,
         scopeId: checkpoint.scopeId,
         roleId: checkpoint.roleId,
         callId: checkpoint.callId,
@@ -621,9 +668,12 @@ function resolveScannableResultSource(
   result: Record<string, unknown>,
   sourceRefPrefix: string | undefined,
   overrides: ReadonlyMap<string, SemanticCompactionSource>,
+  sidecar?: SuperWorkerCompactionSidecar,
 ): SemanticCompactionSource | undefined {
   const executionId = readNonEmptyString(result.executionId);
   if (!executionId) return undefined;
+  if (sidecar && !sidecar.eligibleExecutionIds.includes(executionId))
+    return undefined;
   if (
     !overrides.has(executionId) &&
     !readNonEmptyString(result.referenceData) &&

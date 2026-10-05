@@ -4,7 +4,6 @@ import type { PassiveLearningPreferences } from "../../runtime/passive-learning/
 import { acceptConfigMutationRequest } from "./config-mutation-request.js";
 import { sendJson } from "./http.js";
 import { readLearningPreferencesInput } from "../../runtime/local-host/learning-preferences-input.js";
-import { isLearningEventId } from "../../runtime/local-host/learning-events.js";
 
 type LearningRouteRequest = Readonly<{
   method: string;
@@ -88,25 +87,6 @@ export class PassiveLearningRoutes {
       });
       return;
     }
-    if (input.segments[2] === "proposals") {
-      if (input.method !== "DELETE") {
-        sendLearningMethodNotAllowed(input.response, "DELETE");
-        return;
-      }
-      const id = input.segments[3];
-      if (!isLearningEventId(id)) {
-        sendJson(input.response, 400, {
-          ok: false,
-          error: "passive_learning_proposal_invalid",
-        });
-        return;
-      }
-      if (!service.dismissProposal)
-        throw new Error("passive_learning_unavailable");
-      await service.dismissProposal(id);
-      sendJson(input.response, 200, { ok: true });
-      return;
-    }
     if (input.route === "runtime/learning/pending") {
       if (input.method !== "DELETE") {
         sendLearningMethodNotAllowed(input.response, "DELETE");
@@ -156,7 +136,6 @@ function isLearningRoute(segments: readonly string[]): boolean {
     return segments.length === 4 && segments[3] === "restart";
   if (segments[2] === "pending") return segments.length === 3;
   if (segments[2] === "candidates") return segments.length === 3;
-  if (segments[2] === "proposals") return segments.length === 4;
   if (segments[2] !== "batches") return false;
   return segments.length === 3 || segments.length === 4;
 }

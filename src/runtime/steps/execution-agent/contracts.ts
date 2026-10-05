@@ -82,8 +82,12 @@ export type ExecutionAgentCapabilityInvocation = Readonly<{
   capabilityId: string;
   /** Client-facing presentation metadata; never execution input. */
   intent: string;
-  /** Request-local execution input consumed only while refining controls. */
+  /** Request-local bounded operation consumed by controls and payload authoring. */
   operationObjective?: string;
+  /** Transient selection of canonical evidence for remaining-controls authoring. */
+  controlsEvidenceExecutionIds?: readonly string[];
+  /** Runtime-only mapping of the accepted operation for a payload capability. */
+  authoringObjective?: string;
   selectionControls?: CapabilityControls;
   /** Present only when selection mechanically satisfies the full schema. */
   controls?: CapabilityControls;
@@ -142,8 +146,29 @@ export type ExecutionAgentReconsiderCapabilitySelectionDecision = Readonly<{
   title?: undefined;
 }>;
 
+export type ExecutionAgentResolvedCapabilityInvocation = Readonly<
+  Omit<
+    ExecutionAgentCapabilityInvocation,
+    "controls" | "operationObjective" | "controlsEvidenceExecutionIds"
+  > & {
+    controls: CapabilityControls;
+  }
+>;
+
 export type ExecutionAgentResolvedDecision =
-  | ExecutionAgentDecision
+  | Exclude<
+      ExecutionAgentDecision,
+      { action: "invoke_capability" | "invoke_capabilities" }
+    >
+  | (Omit<
+      ExecutionAgentInvokeCapabilityDecision,
+      keyof ExecutionAgentCapabilityInvocation
+    > &
+      ExecutionAgentResolvedCapabilityInvocation &
+      Pick<ExecutionAgentDecision, "workPlan">)
+  | (Omit<ExecutionAgentInvokeCapabilitiesDecision, "invocations"> & {
+      invocations: readonly ExecutionAgentResolvedCapabilityInvocation[];
+    } & Pick<ExecutionAgentDecision, "workPlan">)
   | ExecutionAgentReconsiderCapabilitySelectionDecision;
 
 export type ExecutionAgentDecisionOutcome = Readonly<{
@@ -172,6 +197,7 @@ export type ExecutionAgentDecisionParseResult =
 export type ExecutionAgentDecisionContractOptions = Readonly<{
   workPlan?: ExecutionWorkPlanOptions;
   capabilities?: readonly CapabilityDescriptor[];
+  eligibleControlsEvidenceExecutionIds?: readonly string[];
   capabilityCatalogGroupIds?: readonly string[];
   activeCapabilityCatalogGroupIds?: readonly string[] | null;
   maxBatchCapabilityExecutions?: number;

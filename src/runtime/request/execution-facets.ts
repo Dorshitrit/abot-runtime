@@ -40,8 +40,12 @@ export function createRequestSeedFacets(
       ? { attachments: seed.attachments }
       : {}),
     agentMode: seed.agentMode,
+    ...(seed.automationOutputContract !== undefined
+      ? { automationOutputContract: seed.automationOutputContract }
+      : {}),
   });
   const session = Object.freeze({
+    ...(seed.sessionKind ? { sessionKind: seed.sessionKind } : {}),
     historyMessages: seed.historyMessages,
     ...(seed.sessionArtifactPaths !== undefined
       ? { sessionArtifactPaths: seed.sessionArtifactPaths }
@@ -80,6 +84,9 @@ export function createRequestSeedFacets(
     ...(seed.approvalGate ? { approvalGate: seed.approvalGate } : {}),
     ...(seed.requestSteering !== undefined
       ? { requestSteering: seed.requestSteering }
+      : {}),
+    ...(seed.effectPersistence !== undefined
+      ? { effectPersistence: seed.effectPersistence }
       : {}),
     toolPermissionMode: seed.toolPermissionMode,
     ...(seed.toolApprovalController !== undefined

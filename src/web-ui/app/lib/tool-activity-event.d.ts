@@ -5,6 +5,7 @@ export interface ToolActivityEvent {
   fileReference?: ConversationFileReference;
   name: string;
   tool: string;
+  activityTitle?: string;
   executionId: string;
   executorRole: string;
   roleCallId: string;

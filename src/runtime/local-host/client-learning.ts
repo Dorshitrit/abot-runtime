@@ -14,7 +14,6 @@ export type PassiveLearningManagement = Pick<
   | "batches"
   | "batch"
   | "candidates"
-  | "dismissProposal"
 >;
 
 /** Read models and invalidations only; collection is never owned by a client. */
@@ -49,8 +48,6 @@ export function createLocalLearningClient(call: LocalRuntimeCallHandler) {
       call("learning.candidates", []) as ReturnType<
         NonNullable<PassiveLearningManagement["candidates"]>
       >,
-    dismissProposal: (id) =>
-      call("learning.dismissProposal", [id]) as Promise<void>,
   };
   return {
     service,

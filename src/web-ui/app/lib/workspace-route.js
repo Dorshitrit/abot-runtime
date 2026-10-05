@@ -5,6 +5,7 @@ const WORKSPACE_PATHS = Object.freeze({
   notifications: "/notifications",
   chat: "/chat",
   schedules: "/schedules",
+  automations: "/automations",
   learning: "/learning",
   memory: "/memory",
   models: "/models",
@@ -27,13 +28,17 @@ export function readWorkspaceRoute(location) {
   const workspace = path === "/config"
     ? legacyConfigurationWorkspace(requestedCategory)
     : requestedWorkspace || "home";
+  const automationRun = workspace === "chat" ? routeParameter(parameters, "automationRun") : "";
   return {
     workspace,
     environment: routeParameter(parameters, "environment"),
-    session: routeParameter(parameters, "session"),
+    session: automationRun ? "" : routeParameter(parameters, "session"),
+    automationRun,
     category: configurationCategoryForWorkspace(workspace) || "",
     tab: routeParameter(parameters, "tab"),
     job: routeParameter(parameters, "job"),
+    automation: routeParameter(parameters, "automation"),
+    run: routeParameter(parameters, "run"),
   };
 }
 
@@ -44,13 +49,19 @@ export function workspaceRouteUrl(route) {
   const path = WORKSPACE_PATHS[workspace] || WORKSPACE_PATHS.home;
   const parameters = new URLSearchParams();
   if (route.environment) parameters.set("environment", route.environment);
-  if (workspace === "chat" && route.session)
+  if (workspace === "chat" && route.automationRun)
+    parameters.set("automationRun", route.automationRun);
+  else if (workspace === "chat" && route.session)
     parameters.set("session", route.session);
   if (workspace === "config") {
     if (route.tab) parameters.set("tab", route.tab);
   }
   if (workspace === "schedules" && route.job)
     parameters.set("job", route.job);
+  if (workspace === "automations" && route.automation)
+    parameters.set("automation", route.automation);
+  if (workspace === "automations" && route.run)
+    parameters.set("run", route.run);
   const query = parameters.toString();
   return query ? `${path}?${query}` : path;
 }

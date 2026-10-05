@@ -1,13 +1,11 @@
 import {
-  SEMANTIC_COMPACTION_DIGEST_MAX_LENGTH,
-  SEMANTIC_COMPACTION_DIGEST_TOTAL_MAX_LENGTH,
   SEMANTIC_COMPACTION_LIST_MAX_COUNT,
   SEMANTIC_COMPACTION_TEXT_MAX_LENGTH,
-  semanticCompactionContinuationTotalLength,
   type SemanticCompactionContinuation,
   type SemanticCompactionDigest,
   type SemanticCompactionSourceIdentity,
 } from "./contracts.js";
+import { bindSemanticCompactionSourceSlots } from "./source-slots.js";
 
 export type SemanticCompactionParseResult =
   | Readonly<{
@@ -21,14 +19,13 @@ export type SemanticCompactionParseResult =
     }>;
 
 export const SEMANTIC_COMPACTION_PARSE_ISSUE_CODES = Object.freeze([
-  "context_compaction_digest_allowance_invalid",
   "context_compaction_output_not_json",
   "context_compaction_output_shape_invalid",
   "context_compaction_continuation_invalid",
-  "context_compaction_continuation_length_invalid",
   "context_compaction_sources_invalid",
   "context_compaction_source_invalid",
-  "context_compaction_digest_length_invalid",
+  "context_compaction_digest_empty",
+  "context_compaction_checkpoint_tokens_exceeded",
   "context_compaction_digest_not_semantic",
 ] as const);
 
@@ -52,15 +49,7 @@ const SHA256_DIGEST_PATTERN = /^(?:sha256:)?[a-f\d]{64}$/iu;
 export function parseSemanticCompactionOutput(
   text: string,
   expectedSources: readonly SemanticCompactionSourceIdentity[],
-  digestTotalAllowance = SEMANTIC_COMPACTION_DIGEST_TOTAL_MAX_LENGTH,
 ): SemanticCompactionParseResult {
-  if (
-    !Number.isSafeInteger(digestTotalAllowance) ||
-    digestTotalAllowance < expectedSources.length ||
-    digestTotalAllowance > SEMANTIC_COMPACTION_DIGEST_TOTAL_MAX_LENGTH
-  ) {
-    return failure("context_compaction_digest_allowance_invalid");
-  }
   let decoded: unknown;
   try {
     decoded = JSON.parse(text.trim()) as unknown;
@@ -77,43 +66,29 @@ export function parseSemanticCompactionOutput(
   if (!continuation) {
     return failure("context_compaction_continuation_invalid");
   }
-  if (
-    semanticCompactionContinuationTotalLength(continuation) >
-    SEMANTIC_COMPACTION_DIGEST_TOTAL_MAX_LENGTH
-  ) {
-    return failure("context_compaction_continuation_length_invalid");
-  }
-
   const digests = decoded.sourceDigests;
+  const sourceSlots = bindSemanticCompactionSourceSlots(expectedSources);
   const expectedRefs = expectedSources.map(({ sourceRef }) => sourceRef);
-  const digestMaxLength = Math.min(
-    SEMANTIC_COMPACTION_DIGEST_MAX_LENGTH,
-    Math.floor(digestTotalAllowance / Math.max(1, expectedRefs.length)),
-  );
   if (
     expectedRefs.length === 0 ||
     new Set(expectedRefs).size !== expectedRefs.length ||
-    !Array.isArray(digests) ||
-    digests.length !== expectedRefs.length
+    !isExactRecord(
+      digests,
+      sourceSlots.map(({ sourceKey }) => sourceKey),
+    )
   ) {
     return failure("context_compaction_sources_invalid");
   }
   const sourceDigests: SemanticCompactionDigest[] = [];
-  let totalDigestLength = 0;
-  for (const [index, digest] of digests.entries()) {
+  for (const expectedSource of sourceSlots) {
+    const digest = digests[expectedSource.sourceKey];
     if (typeof digest !== "string") {
       return failure("context_compaction_source_invalid");
     }
     const normalizedDigest = digest.trim();
-    totalDigestLength += normalizedDigest.length;
-    if (
-      normalizedDigest.length === 0 ||
-      normalizedDigest.length > digestMaxLength ||
-      totalDigestLength > digestTotalAllowance
-    ) {
-      return failure("context_compaction_digest_length_invalid");
+    if (normalizedDigest.length === 0) {
+      return failure("context_compaction_digest_empty");
     }
-    const expectedSource = expectedSources[index]!;
     if (
       normalizedDigest === expectedSource.sourceFingerprint ||
       SHA256_DIGEST_PATTERN.test(normalizedDigest)
@@ -186,7 +161,10 @@ function boundedText(value: unknown): string | undefined {
 }
 
 function boundedTextList(value: unknown): readonly string[] | undefined {
-  if (!Array.isArray(value) || value.length > SEMANTIC_COMPACTION_LIST_MAX_COUNT) {
+  if (
+    !Array.isArray(value) ||
+    value.length > SEMANTIC_COMPACTION_LIST_MAX_COUNT
+  ) {
     return undefined;
   }
   const entries = value.map(boundedText);

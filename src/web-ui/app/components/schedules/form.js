@@ -1,6 +1,7 @@
 import { escapeHtml } from "../../lib/text-format.js";
 import { SCHEDULE_WEEKDAYS } from "../../lib/schedule-presentation.js";
 import { scheduleErrorMessage } from "../../lib/schedule-errors.js";
+import { scheduleConversationOptions } from "../../lib/schedule-conversation-presentation.js";
 
 function deviceDateTime(instant) {
   if (!instant) return "";
@@ -61,10 +62,9 @@ export function createScheduleForm({
   form.className = "schedule-editor";
   const values = job || initialValues || {};
   const createsConversation = !job && values.newConversation === true;
-  const sessionOptions = sessions.map((session) => ({
-    value: session.id,
-    label: session.title || session.id,
-  }));
+  const sessionOptions = scheduleConversationOptions(
+    sessions, createsConversation ? null : values.sessionId || currentSessionId,
+  );
   const modelOptions = models.map((model) => ({
     value: model.id,
     label: model.label || model.name || model.id,

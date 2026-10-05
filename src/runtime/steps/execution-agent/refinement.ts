@@ -1,16 +1,4 @@
 import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
-import {
-  assessRequestMessagesBudget,
-  projectRequestContext,
-} from "../../context/request-context.js";
-import { createExecutionAgentCompactionController } from "./compaction.js";
-import { buildRequestTemporalContextMessage } from "../../context/request-temporal-context.js";
-import {
-  buildRequestSourceMessage,
-  projectRequestSource,
-} from "../../context/request-source.js";
-import { buildSessionArtifactPathsMessage } from "../../context/session-artifact-paths.js";
-import { resolveModelContextBudget } from "../../model/model-context-budget.js";
 import { invokeStructuredModelStep } from "../../model/invoke-structured-step.js";
 import {
   createStructuredDecisionEnvelopeSchema,
@@ -27,7 +15,6 @@ import {
   partitionCapabilityControlsSchema,
   type CapabilityControl,
   type CapabilityControls,
-  type CapabilityControlsPartition,
   type CapabilityControlsSchema,
   type CapabilityDescriptor,
 } from "../../orchestration/capability-adapters/index.js";
@@ -35,33 +22,20 @@ import {
   resolveRequestWorkerCapabilities,
   type RequestExecutionScope,
 } from "../../request/execution-scope.js";
-import { appendRequestSteeringContext } from "../../request/request-steering-context.js";
 import type { RequestSteeringSnapshot } from "../../request/request-steering.js";
 import { requiresExecutionOperationObjective } from "./capability-invocation-contract.js";
 import { type ExecutionAgentCapabilityInvocation } from "./contracts.js";
 import { buildExecutionControlsRefinementInstructions } from "./refinement-prompt.js";
 import {
-  buildExecutionContinuationMessages,
-  buildExecutionRefinementStateMessage,
-} from "./state-context.js";
+  buildExecutionControlsRefinementInput,
+  executionRefinementSlotId as slotId,
+  type PendingExecutionRefinement as PendingRefinement,
+} from "./refinement-input.js";
+import type { ExecutionAgentResolvedCapabilityInvocation } from "./contracts.js";
+import { requiresControlsEvidenceSelection } from "./controls-evidence-contract.js";
 
-type PendingRefinement = Readonly<{
-  index: number;
-  invocation: ExecutionAgentCapabilityInvocation;
-  descriptor: CapabilityDescriptor;
-  partition: CapabilityControlsPartition;
-  selectionControls: CapabilityControls;
-  guidance: string;
-}>;
-
-export type RefinedExecutionCapabilityInvocation = Readonly<
-  Omit<
-    ExecutionAgentCapabilityInvocation,
-    "controls" | "operationObjective"
-  > & {
-    controls: CapabilityControls;
-  }
->;
+export type RefinedExecutionCapabilityInvocation =
+  ExecutionAgentResolvedCapabilityInvocation;
 
 export type ExecutionCapabilityRefinementOutcome = Readonly<{
   disposition: "execute";
@@ -71,6 +45,7 @@ export type ExecutionCapabilityRefinementOutcome = Readonly<{
 type RefineExecutionCapabilityInvocationsOptions = Readonly<{
   head: RoleCallLedgerHead;
   call: RoleCallFrame;
+  workingDirectory?: string;
   capabilities: readonly CapabilityDescriptor[];
   eligibleSessionArtifactPaths: readonly string[];
   invocations: readonly ExecutionAgentCapabilityInvocation[];
@@ -96,7 +71,6 @@ export async function refineExecutionCapabilityInvocations(
   if (options.invocations.length === 0) {
     throw new Error("execution_capability_refinement_empty");
   }
-  const eligibleSessionArtifactPaths = options.eligibleSessionArtifactPaths;
   const prepared = options.invocations.map((invocation, index) => {
     const descriptor = options.capabilities.find(
       ({ capabilityId }) => capabilityId === invocation.capabilityId,
@@ -127,7 +101,10 @@ export async function refineExecutionCapabilityInvocations(
       throw new Error("execution_capability_selection_controls_invalid");
     }
     if (
-      requiresExecutionOperationObjective(partition.value) &&
+      requiresExecutionOperationObjective(
+        partition.value,
+        descriptor.requiresPayloadAuthoringObjective,
+      ) &&
       !invocation.operationObjective
     ) {
       throw new Error("execution_capability_operation_objective_missing");
@@ -177,126 +154,33 @@ export async function refineExecutionCapabilityInvocations(
   );
   if (pending.length === 0) {
     return executeOutcome(
-      prepared.map(({ invocation, controls }) =>
-        freezeInvocation(invocation, controls!),
+      prepared.map(({ invocation, controls, descriptor }) =>
+        freezeInvocation(invocation, controls!, descriptor),
       ),
     );
   }
   const format = createControlsRefinementFormat(pending);
   const instructions = buildExecutionControlsRefinementInstructions(
-    pending.map(({ index, descriptor, guidance }) => ({
+    pending.map(({ index, descriptor, guidance, partition }) => ({
       slot: slotId(index),
       capabilityId: descriptor.capabilityId,
       guidance,
+      requiresEvidenceSelection: requiresControlsEvidenceSelection(partition),
     })),
   );
-  const budget = resolveModelContextBudget({
-    runnerConfig: request.runnerConfig,
-    agentMode: request.agentMode,
-    modelStep: CAPABILITY_CONTROLS_MODEL_STEP,
-    ...(request.modelPreference
-      ? { modelPreference: request.modelPreference }
-      : {}),
-    ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),
-  });
-  const callId = `execution-refinement-${options.head.revision + 1}`;
-  const requestSource = projectRequestSource({
-    requestId: request.requestId,
-    prompt: request.prompt,
-    modelStep: CAPABILITY_CONTROLS_MODEL_STEP,
-    callId,
-    historyMessages: request.historyMessages,
-  });
-  const assignment = JSON.stringify({
-    kind: "runtime_execution_capability_refinement_v1",
-    authority: "runtime_state",
-    stateRevision: options.head.revision,
-    requestSourceRef: requestSource.sourceRef,
-    workingDirectory: options.call.workingDirectory ?? null,
-    invocations: pending.map(
-      ({ index, invocation, descriptor, partition }) => ({
-        slot: slotId(index),
-        capabilityId: descriptor.capabilityId,
-        ...(invocation.operationObjective
-          ? { operationObjective: invocation.operationObjective }
-          : {}),
-        selectionControls: invocation.selectionControls ?? {},
-        remainingControls: partition.remainingSchema,
-      }),
-    ),
-  });
-  const continuationMessages = buildExecutionContinuationMessages(
-    options.head,
-    options.call,
-  );
-  const baseReferenceMessages = Object.freeze([
-    ...(request.temporalContext
-      ? [buildRequestTemporalContextMessage(request.temporalContext)]
-      : []),
-    buildRequestSourceMessage(requestSource),
-    buildExecutionRefinementStateMessage(options.head, options.call),
-    ...appendRequestSteeringContext([], options.steeringSnapshot),
-  ]);
-  const currentMessage = {
-    role: "user" as const,
-    content: assignment,
-    ...(request.attachments ? { attachments: request.attachments } : {}),
-  };
-  const sessionArtifactPathProjection = buildSessionArtifactPathsMessage({
-    targets: eligibleSessionArtifactPaths,
-    availableTargetCount: request.sessionArtifactPaths?.length ?? 0,
-    applicable: pending.some(({ descriptor, partition }) =>
-      (descriptor.runtimePathControlIds ?? []).some((controlId) =>
-        Object.hasOwn(partition.remainingSchema.properties, controlId),
-      ),
-    ),
-    maxTargets: 8,
-    fits: (message) =>
-      assessRequestMessagesBudget({
-        messages: [
-          { role: "system", content: instructions },
-          message,
-          ...baseReferenceMessages,
-          currentMessage,
-          ...continuationMessages,
-        ],
-        format,
-        budget,
-      }).fits,
-  });
-  const context = projectRequestContext({
-    instructions,
+  const input = buildExecutionControlsRefinementInput(request, {
+    ...options,
+    pending,
     format,
-    historyMessages: [],
-    prompt: assignment,
-    ...(request.attachments ? { attachments: request.attachments } : {}),
-    referenceMessages: [
-      ...(sessionArtifactPathProjection
-        ? [sessionArtifactPathProjection.message]
-        : []),
-      ...baseReferenceMessages,
-    ],
-    ...(continuationMessages.length > 0 ? { continuationMessages } : {}),
-    budget,
-    diagnostic: {
-      requestId: request.requestId,
-      modelStep: CAPABILITY_CONTROLS_MODEL_STEP,
-      callId,
-    },
-    onEvent: request.onEvent,
-    deferCompactionFailure: true,
+    instructions,
   });
   const refined = await invokeStructuredModelStep({
     request,
     modelStep: CAPABILITY_CONTROLS_MODEL_STEP,
     format,
-    messages: context.messages,
-    contextCompaction: createExecutionAgentCompactionController(request, {
-      call: options.call,
-      sourceRevision: options.head.revision,
-      allowedConsumers: Object.freeze([CAPABILITY_CONTROLS_MODEL_STEP]),
-      scopeSuffix: "controls-refinement",
-    }),
+    messages: input.messages,
+    contextCompaction: input.contextCompaction,
+    boundSteeringVersion: options.steeringSnapshot.version,
     timeoutReason: "execution_capability_refinement_timeout",
     invalidOutputReason: "invalid_execution_capability_refinement",
     parse: (text) => parseControlsRefinement(text, pending),
@@ -306,8 +190,8 @@ export async function refineExecutionCapabilityInvocations(
     byIndex.set(entry.index, entry.controls);
   }
   return executeOutcome(
-    prepared.map(({ index, invocation, controls }) =>
-      freezeInvocation(invocation, controls ?? byIndex.get(index)!),
+    prepared.map(({ index, invocation, controls, descriptor }) =>
+      freezeInvocation(invocation, controls ?? byIndex.get(index)!, descriptor),
     ),
   );
 }
@@ -440,11 +324,15 @@ function parseControlsRefinement(
 function freezeInvocation(
   invocation: ExecutionAgentCapabilityInvocation,
   controls: CapabilityControls,
+  descriptor: CapabilityDescriptor,
 ): RefinedExecutionCapabilityInvocation {
   if (!controls) throw new Error("execution_capability_controls_missing");
   return Object.freeze({
     capabilityId: invocation.capabilityId,
     intent: invocation.intent,
+    ...(descriptor.requiresPayloadAuthoringObjective === true
+      ? { authoringObjective: invocation.operationObjective! }
+      : {}),
     ...(invocation.selectionControls
       ? { selectionControls: invocation.selectionControls }
       : {}),
@@ -524,10 +412,6 @@ function exactObject(
 
 function literal(value: string): Record<string, unknown> {
   return { type: "string", const: value };
-}
-
-function slotId(index: number): string {
-  return `invocation_${index + 1}`;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

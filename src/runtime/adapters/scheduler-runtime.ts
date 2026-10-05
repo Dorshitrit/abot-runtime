@@ -8,10 +8,12 @@ import type {
 import { createFileSchedulerStore } from "../scheduler/file-store.js";
 import { createSchedulerService } from "../scheduler/scheduler-service.js";
 import type {
+  SchedulerAutomationExecutor,
   SchedulerJob,
   SchedulerRun,
   SchedulerRunOutcome,
 } from "../scheduler/contracts.js";
+import { createSchedulerExecutorDispatch } from "./scheduler-executor-dispatch.js";
 import type { SessionRequestAdmission } from "../request/session-admission.js";
 import { withScheduledExecution } from "../request/scheduled-execution.js";
 import { resolveModelSelection } from "../model/model-selection.js";
@@ -30,6 +32,7 @@ export function createRuntimeScheduler(options: {
   isDeleted(sessionId: string): boolean;
   handle: RuntimeRequestHandler["handle"];
   requestOptions?: (run: SchedulerRun) => RuntimeRequestOptions;
+  automationExecutor?: Omit<SchedulerAutomationExecutor, "tryReserve">;
 }) {
   const listeners = new Set<(event: ScheduledRequestEvent) => void>();
   let startup: Promise<void> | undefined;
@@ -138,30 +141,44 @@ export function createRuntimeScheduler(options: {
     );
   }
 
+  const store = createFileSchedulerStore(
+    join(options.config.paths.runtimeDir, "scheduler"),
+    () =>
+      publish(
+        {
+          type: "event",
+          name: "scheduler.changed",
+          environment: options.config.runtimeId,
+        },
+        undefined,
+        generation,
+      ),
+  );
   const scheduler = createSchedulerService({
     environmentId: options.config.runtimeId,
-    store: createFileSchedulerStore(
-      join(options.config.paths.runtimeDir, "scheduler"),
-      () =>
-        publish(
-          {
-            type: "event",
-            name: "scheduler.changed",
-            environment: options.config.runtimeId,
-          },
-          undefined,
-          generation,
-        ),
-    ),
-    executor: {
-      tryReserve: (sessionId) =>
-        options.admission.tryReserveAvailable(sessionId),
-      sessionExists: async (sessionId) => {
-        if (options.isDeleted(sessionId)) return false;
-        return (await options.sessions.getSessionById(sessionId)) !== null;
+    store,
+    onAutomationRunChange: (change) => publish({
+      type: "event",
+      name: `automation.run.${change.phase}`,
+      environment: change.environmentId,
+      automationId: change.automationId,
+      runId: change.runId,
+      title: change.title,
+      status: change.status,
+    }, undefined, generation),
+    ...createSchedulerExecutorDispatch({
+      admission: options.admission,
+      request: {
+        tryReserve: (sessionId) =>
+          options.admission.tryReserveAvailable(sessionId),
+        sessionExists: async (sessionId) => {
+          if (options.isDeleted(sessionId)) return false;
+          return (await options.sessions.getSessionById(sessionId)) !== null;
+        },
+        start: execute,
       },
-      start: execute,
-    },
+      automation: options.automationExecutor,
+    }),
   });
   function start(): Promise<void> {
     stopped = false;
@@ -171,6 +188,7 @@ export function createRuntimeScheduler(options: {
 
   return {
     scheduler,
+    store,
     start,
     ensureStarted(): Promise<void> {
       if (stopped) return Promise.reject(new Error("scheduler_stopped"));

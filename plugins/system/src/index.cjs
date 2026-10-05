@@ -108,8 +108,28 @@ function defineRuntimePlugin(definition) {
   return definition;
 }
 
+// src/capabilities/tool-context-text.ts
+function hasValidToolContextText(carrier) {
+  const fields = carrier.contextTextFields;
+  if (fields === void 0) return true;
+  if (!Array.isArray(fields) || fields.length === 0 || fields.length > 3)
+    return false;
+  if (new Set(fields).size !== fields.length) return false;
+  for (const field of fields) {
+    if (!isContextTextField(field)) return false;
+    if (typeof carrier[field] !== "string") return false;
+  }
+  return true;
+}
+function isContextTextField(value) {
+  return value === "output" || value === "stdout" || value === "stderr";
+}
+
+// src/capabilities/result-budget.ts
+var CAPABILITY_RESULT_ENVELOPE_MAX_BYTES = 256 * 1024;
+
 // src/plugin-sdk/results.ts
-var PLUGIN_RESULT_SERIALIZED_MAX_BYTES = 128 * 1024;
+var PLUGIN_RESULT_SERIALIZED_MAX_BYTES = CAPABILITY_RESULT_ENVELOPE_MAX_BYTES;
 function resultBoundsFailure(code, message) {
   return {
     ok: false,
@@ -119,9 +139,27 @@ function resultBoundsFailure(code, message) {
     errorCode: code
   };
 }
-function enforcePluginResultByteBudget(result) {
-  let serialized;
+function enforcePluginResultByteBudget(result, resultBudget) {
+  let requiresContextTextHost = false;
+  let serializedBytes;
+  let envelopeBytes;
+  let maxBytes = PLUGIN_RESULT_SERIALIZED_MAX_BYTES;
+  let fitsDeclaredBudget = true;
   try {
+    if (!hasValidToolContextText(result)) {
+      return resultBoundsFailure(
+        "plugin_context_text_invalid",
+        "The plugin declared invalid context text fields."
+      );
+    }
+    requiresContextTextHost = result.contextTextFields !== void 0;
+    const lacksContextTextHost = requiresContextTextHost && resultBudget?.acceptsContextText !== true;
+    if (lacksContextTextHost) {
+      return resultBoundsFailure(
+        "plugin_context_text_unavailable",
+        "The host does not support context-managed tool text."
+      );
+    }
     const candidate = JSON.stringify(result);
     if (candidate === void 0) {
       return resultBoundsFailure(
@@ -129,50 +167,60 @@ function enforcePluginResultByteBudget(result) {
         "The plugin produced a result that is not JSON-safe."
       );
     }
-    serialized = candidate;
+    const assessment = resultBudget?.assess(result);
+    serializedBytes = assessment?.serializedBytes ?? Buffer.byteLength(candidate, "utf8");
+    envelopeBytes = assessment?.envelopeBytes ?? serializedBytes;
+    maxBytes = Math.min(assessment?.maxBytes ?? maxBytes, maxBytes);
+    fitsDeclaredBudget = assessment?.fits ?? true;
   } catch {
     return resultBoundsFailure(
       "plugin_result_not_json_safe",
       "The plugin produced a result that is not JSON-safe."
     );
   }
-  if (Buffer.byteLength(serialized, "utf8") > PLUGIN_RESULT_SERIALIZED_MAX_BYTES) {
-    return resultBoundsFailure(
-      "plugin_result_too_large",
-      `The plugin result exceeds the ${PLUGIN_RESULT_SERIALIZED_MAX_BYTES}-byte safety limit.`
-    );
+  const hasResultDeliveryHeadroom = fitsDeclaredBudget && envelopeBytes <= maxBytes;
+  if (!hasResultDeliveryHeadroom) {
+    const message = requiresContextTextHost ? `The plugin result envelope is ${envelopeBytes} bytes (${serializedBytes} total bytes) and exceeds the ${maxBytes}-byte delivery limit.` : `The plugin result is ${serializedBytes} bytes and exceeds the ${maxBytes}-byte delivery limit.`;
+    return resultBoundsFailure("plugin_result_too_large", message);
   }
   return result;
 }
-function successResult(input) {
-  return enforcePluginResultByteBudget({
-    ok: true,
-    ...input.media !== void 0 ? { media: input.media } : {},
-    output: input.output,
-    producedNewInformation: input.producedNewInformation ?? true,
-    ...input.progress !== void 0 ? { progress: input.progress } : {},
-    ...input.actions !== void 0 ? { actions: input.actions } : {},
-    ...input.exitCode !== void 0 ? { exitCode: input.exitCode } : {},
-    ...input.stdout !== void 0 ? { stdout: input.stdout } : {},
-    ...input.stderr !== void 0 ? { stderr: input.stderr } : {},
-    ...input.data !== void 0 ? { data: input.data } : {}
-  });
+function successResult(input, resultBudget) {
+  return enforcePluginResultByteBudget(
+    {
+      ok: true,
+      ...input.media !== void 0 ? { media: input.media } : {},
+      output: input.output,
+      producedNewInformation: input.producedNewInformation ?? true,
+      ...input.progress !== void 0 ? { progress: input.progress } : {},
+      ...input.actions !== void 0 ? { actions: input.actions } : {},
+      ...input.exitCode !== void 0 ? { exitCode: input.exitCode } : {},
+      ...input.stdout !== void 0 ? { stdout: input.stdout } : {},
+      ...input.stderr !== void 0 ? { stderr: input.stderr } : {},
+      ...input.data !== void 0 ? { data: input.data } : {}
+    },
+    resultBudget
+  );
 }
-function failureResult(input) {
-  return enforcePluginResultByteBudget({
-    ok: false,
-    ...input.media !== void 0 ? { media: input.media } : {},
-    output: input.output ?? input.message,
-    producedNewInformation: false,
-    ...input.progress !== void 0 ? { progress: input.progress } : {},
-    ...input.actions !== void 0 ? { actions: input.actions } : {},
-    ...input.exitCode !== void 0 ? { exitCode: input.exitCode } : {},
-    ...input.stdout !== void 0 ? { stdout: input.stdout } : {},
-    ...input.stderr !== void 0 ? { stderr: input.stderr } : {},
-    ...input.data !== void 0 ? { data: input.data } : {},
-    error: input.message,
-    errorCode: input.errorCode
-  });
+function failureResult(input, resultBudget) {
+  return enforcePluginResultByteBudget(
+    {
+      ok: false,
+      ...input.interruption ? { interruption: input.interruption } : {},
+      ...input.media !== void 0 ? { media: input.media } : {},
+      output: input.output ?? input.message,
+      producedNewInformation: false,
+      ...input.progress !== void 0 ? { progress: input.progress } : {},
+      ...input.actions !== void 0 ? { actions: input.actions } : {},
+      ...input.exitCode !== void 0 ? { exitCode: input.exitCode } : {},
+      ...input.stdout !== void 0 ? { stdout: input.stdout } : {},
+      ...input.stderr !== void 0 ? { stderr: input.stderr } : {},
+      ...input.data !== void 0 ? { data: input.data } : {},
+      error: input.message,
+      errorCode: input.errorCode
+    },
+    resultBudget
+  );
 }
 function failureFromError(error, options) {
   const pathCode = runtimeToolPathErrorCode(error);
@@ -2263,7 +2311,7 @@ func capability(_ available: Bool,_ reason: String = "",supported: Bool = true) 
   return result
 }
 func rectJSON(_ rect: CGRect) -> [String:Any] {
-  return ["x":rect.minX,"y":rect.minY,"width":rect.width,"height":rect.height]
+  return ["x":Double(rect.minX),"y":Double(rect.minY),"width":Double(rect.width),"height":Double(rect.height)]
 }
 func boundedText(_ value:String,_ limit:Int=256) -> String {
   var result="",length=0
@@ -2568,12 +2616,9 @@ final class CancellationFlag {
     }
   }
 }
-let keyCodes:[String:CGKeyCode] = ["a":0,"s":1,"d":2,"f":3,"h":4,"g":5,"z":6,"x":7,"c":8,"v":9,"b":11,"q":12,"w":13,"e":14,"r":15,"y":16,"t":17,"1":18,"2":19,"3":20,"4":21,"6":22,"5":23,"=":24,"9":25,"7":26,"-":27,"8":28,"0":29,"]":30,"o":31,"u":32,"[":33,"i":34,"p":35,"l":37,"j":38,"'":39,"k":40,";":41,"\\":42,",":43,"/":44,"n":45,"m":46,".":47,"\u{60}":50,"Enter":36,"Return":36,"Tab":48,"Space":49,"Backspace":51,"Delete":117,"Esc":53,"Escape":53,"Meta":55,"Super":55,"Command":55,"Shift":56,"Alt":58,"Option":58,"Ctrl":59,"Control":59,"F1":122,"F2":120,"F3":99,"F4":118,"F5":96,"F6":97,"F7":98,"F8":100,"F9":101,"F10":109,"F11":103,"F12":111,"Home":115,"End":119,"PageUp":116,"PageDown":121,"ArrowLeft":123,"ArrowRight":124,"ArrowDown":125,"ArrowUp":126]
+let keyCodes:[String:CGKeyCode] = ["a":0,"s":1,"d":2,"f":3,"h":4,"g":5,"z":6,"x":7,"c":8,"v":9,"b":11,"q":12,"w":13,"e":14,"r":15,"y":16,"t":17,"1":18,"2":19,"3":20,"4":21,"6":22,"5":23,"=":24,"9":25,"7":26,"-":27,"8":28,"0":29,"]":30,"o":31,"u":32,"[":33,"i":34,"p":35,"l":37,"j":38,"'":39,"k":40,";":41,"\\":42,",":43,"/":44,"n":45,"m":46,".":47,"\u{60}":50,"enter":36,"return":36,"tab":48,"space":49,"backspace":51,"delete":117,"esc":53,"escape":53,"meta":55,"super":55,"command":55,"cmd":55,"shift":56,"alt":58,"option":58,"ctrl":59,"control":59,"f1":122,"f2":120,"f3":99,"f4":118,"f5":96,"f6":97,"f7":98,"f8":100,"f9":101,"f10":109,"f11":103,"f12":111,"home":115,"end":119,"pageup":116,"pagedown":121,"arrowleft":123,"arrowright":124,"arrowdown":125,"arrowup":126]
 func nativeKey(_ value:String) throws -> CGKeyCode {
-  if let key=keyCodes[value] {
-    return key
-  }
-  if value.count==1,let key=keyCodes[value.lowercased()] {
+  if let key=keyCodes[value.lowercased()] {
     return key
   }
   throw NativeFailure("macos_key_unsupported")

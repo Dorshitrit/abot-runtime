@@ -1,3 +1,4 @@
+import { MAX_PROACTIVE_REVIEW_PROGRESS_AGE_MS } from "./staged-contract.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -5,6 +6,7 @@ import { withFileLock } from "../../adapters/long-term-memory/file-lock.js";
 import { fileSystemErrorCode } from "../../adapters/long-term-memory/file-lock/contracts.js";
 import { readCoWorkerReviewProgress } from "../review-progress.js";
 import { createProactiveReviewProgressStore } from "./staged-progress-store.js";
+import { SPARK_SESSION_ID } from "../../../sessions/spark-session.js";
 import {
   isBoundedProactiveText,
   isPendingProposalCurrent,
@@ -106,6 +108,7 @@ function parseProposal(value: unknown): ProactiveProposal {
       kind: "proposal",
       title: item.title,
       message: item.message,
+      handoffBrief: item.handoffBrief,
       reason: item.reason,
       sources: item.sources,
       expiresAt: item.expiresAt,
@@ -113,6 +116,7 @@ function parseProposal(value: unknown): ProactiveProposal {
     },
     item.sources,
     Date.parse(item.createdAt),
+    { allowLegacyProposalWithoutBrief: true },
   );
   return Object.freeze({
     id: item.id,
@@ -121,6 +125,7 @@ function parseProposal(value: unknown): ProactiveProposal {
     knowledgeRevision: item.knowledgeRevision,
     title: decision.title!,
     message: decision.message!,
+    ...(decision.handoffBrief === null ? {} : { handoffBrief: decision.handoffBrief }),
     reason: decision.reason,
     sources: decision.sources,
     createdAt: item.createdAt,
@@ -182,7 +187,7 @@ function parseState(value: unknown): ProactiveState {
       : { reviewAttempt: parseReviewAttempt(state.reviewAttempt) }),
     ...(state.reviewProgress === undefined
       ? {}
-      : { reviewProgress: readCoWorkerReviewProgress(state.reviewProgress) }),
+      : { reviewProgress: readCoWorkerReviewProgress(state.reviewProgress, MAX_PROACTIVE_REVIEW_PROGRESS_AGE_MS) }),
     ...(state.deliveryUsage
       ? { deliveryUsage: { ...state.deliveryUsage } }
       : {}),
@@ -201,10 +206,11 @@ function proposalFromDecision(input: {
   return {
     id,
     reviewId: input.reviewId,
-    sessionId: `co-worker-${id}`,
+    sessionId: SPARK_SESSION_ID,
     knowledgeRevision: input.knowledgeRevision,
     title: decision.title!,
     message: decision.message!,
+    handoffBrief: decision.handoffBrief!,
     reason: decision.reason,
     sources: decision.sources,
     createdAt: new Date(input.now).toISOString(),
@@ -269,6 +275,7 @@ export function createProactiveStateStore(directory: string) {
     status: "delivered" | "dismissed",
     now: number,
     startedAt?: number,
+    deliveredSessionId?: string,
   ): Promise<ProactiveState> {
     return update((current) => {
       const target = current.proposals.find((item) => item.id === id);
@@ -291,6 +298,7 @@ export function createProactiveStateStore(directory: string) {
             ? item
             : {
                 ...item,
+                ...(deliveredSessionId ? { sessionId: deliveredSessionId } : {}),
                 status,
                 settledAt: item.settledAt ?? new Date(now).toISOString(),
               },
@@ -436,8 +444,8 @@ export function createProactiveStateStore(directory: string) {
         };
       });
     },
-    markDelivered: (id: string, now: number, startedAt?: number) =>
-      settle(id, "delivered", now, startedAt),
+    markDelivered: (id: string, now: number, startedAt?: number, sessionId?: string) =>
+      settle(id, "delivered", now, startedAt, sessionId),
     dismiss: (id: string, now: number) => settle(id, "dismissed", now),
     cancelPending(now: number): Promise<ProactiveState> {
       return update((current) => {

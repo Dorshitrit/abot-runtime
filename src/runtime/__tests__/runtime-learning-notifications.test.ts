@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { createRuntimeEnvironment } from "../runtime-environment.js";
+import { emptyAutomationJournalState } from "../automations/storage-records.js";
 import { createRuntimePassiveLearning } from "../adapters/passive-learning-runtime.js";
 import { createInMemorySessionStore } from "../adapters/in-memory-session-store.js";
 import { createInMemoryLongTermMemoryRepository } from "../adapters/long-term-memory/in-memory-repository.js";
@@ -11,7 +12,10 @@ import type { PassiveLearningService } from "../passive-learning/contracts.js";
 import type { RuntimeConfig } from "../ports.js";
 
 vi.mock("../adapters/scheduler-runtime.js", () => ({ createRuntimeScheduler: () => ({
-  scheduler: {}, start: vi.fn(), stop: vi.fn(), subscribe: vi.fn(),
+  scheduler: { listAutomationRuns: vi.fn(), stopAutomationRun: vi.fn() }, store: {
+    readAutomations: vi.fn(async () => emptyAutomationJournalState()),
+    updateAutomations: vi.fn(), updateWithAutomations: vi.fn(),
+  }, start: vi.fn(), stop: vi.fn(), subscribe: vi.fn(),
 }) }));
 vi.mock("../adapters/passive-learning-runtime.js", () => ({ createRuntimePassiveLearning: vi.fn() }));
 

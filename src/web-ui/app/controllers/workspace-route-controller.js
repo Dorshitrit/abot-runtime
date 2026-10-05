@@ -18,6 +18,7 @@ export function createWorkspaceRouteController({
   openSession,
   restoreLastSession,
   schedules,
+  automations,
 }) {
   let initialRoute = readWorkspaceRoute(viewport.location);
   let pendingInitialHistory = null;
@@ -34,9 +35,12 @@ export function createWorkspaceRouteController({
       workspace: shell.activeWorkspace(),
       environment: getEnvironmentId(),
       session: getSessionId(),
+      automationRun: automations?.chatRunId() || "",
       category: configurationCategoryForWorkspace(shell.activeWorkspace()),
       tab: shell.activeOperationsTab(),
       job: schedules.selectedJobId(),
+      automation: automations?.selectedAutomationId() || "",
+      run: automations?.selectedRunId() || "",
     };
   }
 
@@ -96,6 +100,9 @@ export function createWorkspaceRouteController({
   }
 
   function routeBackendIsAvailable(route) {
+    if (route.workspace === "automations") return automations.isWorkspaceAvailable(route.workspace);
+    if (route.workspace === "chat" && route.automationRun)
+      return automations?.isWorkspaceAvailable("automations") === true;
     return shell.isWorkspaceSupportedByBackend(route.workspace);
   }
 
@@ -104,6 +111,7 @@ export function createWorkspaceRouteController({
       shell: shell.navigationRevision(),
       configuration: configuration.navigationRevision(),
       schedules: schedules.navigationRevision(),
+      automations: automations?.navigationRevision() || 0,
     };
   }
 
@@ -111,7 +119,8 @@ export function createWorkspaceRouteController({
     if (shell.navigationRevision() !== revisions.shell) return false;
     if (configuration.navigationRevision() !== revisions.configuration)
       return false;
-    return schedules.navigationRevision() === revisions.schedules;
+    if (schedules.navigationRevision() !== revisions.schedules) return false;
+    return (automations?.navigationRevision() || 0) === revisions.automations;
   }
 
   async function restoreSession(
@@ -121,6 +130,7 @@ export function createWorkspaceRouteController({
     routeActivationIsCurrent,
     commitLinkedConversationRoute,
   ) {
+    if (route.workspace === "chat" && route.automationRun) return true;
     if (!routeCarriesConversation(route)) {
       if (initial) await restoreLastSession();
       return true;
@@ -151,6 +161,7 @@ export function createWorkspaceRouteController({
   }
 
   async function applyRoute(route, { initial = false } = {}) {
+    if (automations?.prepareRouteChange?.(route) === false) return false;
     if (!routeEnvironmentIsAvailable(route)) {
       shell.showToast("This environment is no longer available.", "failed");
       return false;
@@ -215,6 +226,12 @@ export function createWorkspaceRouteController({
     if (route.workspace === "schedules") {
       return await schedules.openJob(route.job || "");
     }
+    if (route.workspace === "automations") {
+      return await automations.openRoute(route.automation || "", route.run || "");
+    }
+    if (route.workspace === "chat") {
+      return await automations?.openChatRun(route.automationRun || "") ?? true;
+    }
     return true;
   }
 
@@ -232,6 +249,8 @@ export function createWorkspaceRouteController({
         route.environment = getEnvironmentId();
         route.session = "";
         route.job = "";
+        route.automation = "";
+        route.run = "";
       }
       await applyRoute(route, { initial: true });
     } catch (error) {
@@ -313,6 +332,7 @@ function canReturnToAcceptedHistoryEntry(targetIndex, currentIndex) {
 
 function routeCarriesConversation(route) {
   if (route.workspace !== "chat") return false;
+  if (route.automationRun) return false;
   return Boolean(route.session);
 }
 

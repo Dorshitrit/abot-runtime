@@ -307,10 +307,17 @@ explicitly, provide the required string `output` and boolean
 `producedNewInformation`, and place structured operation facts needed by later
 steps in `data`. JSON-safe here means primitives, plain objects, and dense
 arrays with finite numbers: no functions, symbols, accessors, cycles, class
-instances, or other non-plain prototypes. The complete normalized result must
-fit the Runtime's 256 KiB serialized producer boundary. A plugin must return an
-explicit bounded or paginated result, or an explicit failure; neither the
-plugin nor the Runtime may silently remove structured facts.
+instances, or other non-plain prototypes. Results use a 256 KiB serialized
+envelope boundary. A context-aware host exposes `context.resultBudget`; pass it
+to `deliverPluginTextResult(result, ["stdout", "stderr"], context.resultBudget)`
+to hand exact large text to the existing context manager. The helper keeps
+ordinary results unchanged. When needed, it declares `contextTextFields` on
+the original result; metadata and references still count toward the byte limit.
+Only `output`, `stdout`, and `stderr` are eligible string fields. The Runtime
+retains their full content and applies token admission and compaction before
+model invocation. This does not manage the plugin's output storage or RAM.
+Hosts without this contract and plugins that do not opt in retain their
+existing result limit. Neither plugin nor Runtime may silently remove facts.
 
 `ToolRegistry` adds the selected tool identity and creates the canonical
 `ToolExecutionResult`. The Runtime validates and persists that complete result,
@@ -321,6 +328,39 @@ projection code under `src/runtime`. Result contents are model-facing evidence:
 they must not include secrets and they never act as instructions, new user
 intent, or proof that the whole request completed. See
 [tool-execution-result-evidence-contract.md](tool-execution-result-evidence-contract.md).
+
+### EXEC output storage
+
+EXEC captures stdout and stderr in private files under its injected `stateDir`.
+Pipe backpressure bounds queued capture data; the plugin does not accumulate a
+process's entire output in RAM while it runs. Disk writes use 64 KiB chunks, an
+I/O buffer size independent of the model context budget. A storage failure stops
+the producer and returns its process ID, status, cursor and committed byte
+counts; it never claims that incomplete output was successfully delivered.
+
+Delivery materializes the pending observation into the existing text-result
+contract. This still requires memory proportional to that observation; this
+contract is not streaming ingestion by the Runtime. The core owns token
+admission and compaction. It does not read EXEC file paths or manage its storage.
+
+Offsets advance only after the result fits the host's delivery contract. ASK
+state stores plugin-owned, session-bound disk receipts with range hashes, rather
+than copying the full text. Previously saved inline receipts remain readable.
+`outputRetentionMs` defaults to 604,800,000 (seven days) from capture closure,
+including unaccepted output and receipts saved for approval continuation. Reading,
+restoring or accepting a receipt does not extend retention. Active writers and
+readers prevent deletion until they finish. Interrupted and legacy captures
+without a closure timestamp expire using their last captured-file modification.
+
+The plugin sweeps existing storage when loaded and periodically while files
+remain (at most one hour between sweeps). A stopped runtime resumes cleanup when
+the plugin loads again. Expired output returns an explicit tool failure with the
+process ID; it never replays a command. Retention bounds age, not total disk usage.
+Preparation does not create storage directories, and cleanup belongs to EXEC.
+
+Concurrent terminal observations reserve one delivery before leaving the process
+transition. Rejected presentation releases the reservation without consuming any
+output. The same rule applies to restored terminal receipts.
 
 ## Filesystem Roots
 
@@ -406,13 +446,15 @@ searches use procfs; macOS searches inherit the verified current directory of
 an isolated Node child. File content searches use the held input descriptor on
 both platforms. A search fails closed when its authority cannot be established.
 
-All output and structured data must be bounded at the producer. The shared SDK
-reserves wrapper headroom by rejecting plugin results above 128 KiB before they
-reach the Runtime's 256 KiB canonical settlement boundary. Bounds include
-filesystem iteration, file/archive input, collection size, individual labels,
-and rendered text. A truncated success reports machine-readable truncation
-metadata; an operation that cannot produce a truthful bounded result fails
-explicitly.
+Plugins own resource bounds such as filesystem iteration, file/archive input,
+collection size, and buffered process output. Passing `context.resultBudget`
+lets the shared SDK use the Runtime's final envelope accounting, including
+canonical metadata and target references. Without it, the SDK measures the
+plugin object and the Runtime checks the canonical envelope separately.
+Declared context text is preserved separately from that byte
+accounting and remains subject to the complete model-input budget. An explicit
+truncated success reports machine-readable truncation metadata; an operation
+that cannot produce a truthful result fails explicitly.
 
 The bundled `exec` plugin provides trusted, non-interactive `/bin/bash` execution
 on Linux and macOS. Execute, wait and cancel each declare `approval="always"`:

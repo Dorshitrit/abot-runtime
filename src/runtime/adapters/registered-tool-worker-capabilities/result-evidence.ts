@@ -1,8 +1,6 @@
 import type { ToolActionSummary } from "../../../capabilities/tool-types.js";
 import {
   ROLE_CAPABILITY_REFERENCE_DATA_MAX_LENGTH,
-  ROLE_CAPABILITY_RESULT_REFERENCE_LIMIT_MAX,
-  ROLE_CAPABILITY_RESULT_REFERENCE_TARGET_MAX_LENGTH,
   ROLE_CALL_RESULT_MAX_LENGTH,
   type RoleCapabilityResultReference,
 } from "../../orchestration/role-calls/index.js";
@@ -11,10 +9,13 @@ import {
   type CapabilityAdapterResult,
 } from "../../orchestration/capability-adapters/index.js";
 import type { WorkerCapabilityAdapterResult } from "../../orchestration/worker-capabilities/index.js";
-import type {
-  RegisteredToolNormalInvocationProjection,
-  RegisteredToolNormalInvocationResult,
-} from "../registered-tool-normal-invocations.js";
+import type { RegisteredToolNormalInvocationResult } from "../registered-tool-normal-invocations.js";
+import { projectTargetReferences } from "./result-references.js";
+export {
+  projectSelectedTargetReferences,
+  projectToolTargetReferences,
+} from "./result-references.js";
+import { projectRegisteredToolResultEnvelope } from "./result-envelope.js";
 import { executionProtocolError } from "./errors.js";
 import { isPlainRecord, nonEmpty } from "./values.js";
 
@@ -25,7 +26,9 @@ export function summarizeCompletedMutation(
   completionActions: readonly ToolActionSummary[],
 ): string {
   if (completionActions.length === 0) {
-    return boundedSummary("The mutation capability reported a completed change.");
+    return boundedSummary(
+      "The mutation capability reported a completed change.",
+    );
   }
   return boundedSummary(
     [
@@ -51,26 +54,6 @@ export function projectMutationGrounding(
   return normalized.length <= MUTATION_GROUNDING_MAX_LENGTH
     ? normalized
     : `${normalized.slice(0, MUTATION_GROUNDING_MAX_LENGTH - 1)}…`;
-}
-
-export function projectToolTargetReferences(
-  completionActions: readonly ToolActionSummary[],
-) {
-  return projectTargetReferences(completionActions.map(({ target }) => target));
-}
-
-export function projectSelectedTargetReferences(
-  projection: RegisteredToolNormalInvocationProjection,
-  controls: Readonly<Record<string, unknown>>,
-  directRootSelectionControlIds?: readonly string[],
-): readonly RoleCapabilityResultReference[] {
-  const targetParam =
-    projection.stagedPayloadPlan?.targetParam ??
-    projection.payloadContextPlan?.targetParam;
-  const targetParams = targetParam
-    ? [targetParam]
-    : (directRootSelectionControlIds ?? []);
-  return projectTargetReferences(targetParams.map((param) => controls[param]));
 }
 
 export function attachTargetReferences(
@@ -103,6 +86,7 @@ export function attachTargetReferences(
 
 export function captureRegisteredToolResult(
   input: RegisteredToolNormalInvocationResult,
+  selectedReferences: readonly RoleCapabilityResultReference[] = [],
 ): CapabilityAdapterResult {
   if (input.status === "rejected") {
     return requireCapabilityAdapterResult({
@@ -114,14 +98,13 @@ export function captureRegisteredToolResult(
       message: input.message,
     });
   }
-  const references = projectToolTargetReferences(input.completionActions);
-  return requireCapabilityAdapterResult({
-    kind: "registered_tool_execution_result_v1",
-    authority: "registered_plugin",
-    status: "executed",
-    result: input.result,
-    ...(references.length > 0 ? { references } : {}),
-  });
+  return requireCapabilityAdapterResult(
+    projectRegisteredToolResultEnvelope(
+      input.result,
+      input.completionActions,
+      selectedReferences,
+    ),
+  );
 }
 
 export function requireCapabilityAdapterResult(
@@ -132,27 +115,6 @@ export function requireCapabilityAdapterResult(
     throw executionProtocolError(`canonical_result_${normalized.code}`);
   }
   return normalized.value;
-}
-
-function projectTargetReferences(
-  values: readonly unknown[],
-): readonly RoleCapabilityResultReference[] {
-  const targets = new Set<string>();
-  const references: RoleCapabilityResultReference[] = [];
-  for (const value of values) {
-    const target = typeof value === "string" ? value.trim() : "";
-    if (
-      !target ||
-      target.length > ROLE_CAPABILITY_RESULT_REFERENCE_TARGET_MAX_LENGTH ||
-      targets.has(target)
-    ) {
-      continue;
-    }
-    targets.add(target);
-    references.push(Object.freeze({ kind: "tool_target", target }));
-    if (references.length >= ROLE_CAPABILITY_RESULT_REFERENCE_LIMIT_MAX) break;
-  }
-  return Object.freeze(references);
 }
 
 export function validateToolExecutionResult(input: unknown): void {
@@ -200,7 +162,8 @@ export function projectObservationOutput(
   }
   if (directRoot) {
     return Object.freeze({
-      summary: "The capability result is available in the canonical direct execution result.",
+      summary:
+        "The capability result is available in the canonical direct execution result.",
     });
   }
   const preview = normalized

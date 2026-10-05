@@ -28,9 +28,6 @@ export function createCapabilityBriefReadmissionController(
 ): ModelStepContextCompactionController {
   const { controller } = params;
   return Object.freeze({
-    get compactionScope() {
-      return controller.compactionScope;
-    },
     project(messages) {
       const projected = controller.project(messages);
       const briefIndex = projected.findIndex(isCapabilityBriefMessage);
@@ -62,8 +59,8 @@ export function createCapabilityBriefReadmissionController(
         ...projected.slice(briefIndex + 1),
       ];
     },
-    prepare(messages) {
-      return controller.prepare(messages);
+    getStages() {
+      return controller.getStages();
     },
   });
 }

@@ -231,7 +231,8 @@ describe("passive learning Home card", () => {
       recentMemories: [{ id: "one", content: "<img src=x onerror=alert(1)>", createdAt: "2026-09-23T10:00:00Z" }],
     } } as never);
     expect(root.hidden).toBe(false);
-    expect(root.querySelector("img")).toBeNull();
+    expect(root.querySelectorAll("img").map((image) => image.attributes.get("src")))
+      .toEqual(["/spark-mascot.svg"]);
     expect(root.querySelector("[data-learning-memories]")).toBeNull();
     root.querySelector("[data-learning-open]")?.dispatch("click");
     expect(openLearning).toHaveBeenCalledTimes(1);
@@ -460,7 +461,9 @@ describe("passive learning agent form", () => {
     } });
     expect(root.querySelector("[data-learning-state]")?.textContent).toBe("Collection stopped");
     expect(root.querySelector("[data-learning-saved]")?.textContent).toContain("<img src=x");
-    expect(root.querySelector("img")).toBeNull();
+    expect(root.querySelectorAll("img").map((image) => image.attributes.get("src")))
+      .toEqual(["/spark-mascot.svg"]);
+    expect(root.querySelector("[data-learning-saved]")?.querySelector("img")).toBeNull();
 
     view.render({ ...snapshot, status: null, loadingStatus: true });
     expect(root.querySelector("[data-learning-saved]")?.textContent).toMatch(/loading|checking/i);

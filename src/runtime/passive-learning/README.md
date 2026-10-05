@@ -79,9 +79,15 @@ Manual protection, two independent evidence opportunities, configurable promotio
 scores and retention remain unchanged.
 
 SUPER proactive reviews separately select sources, choose an objective (or
-decline), write title/message, and determine expiry/reconsideration. There are
-at most four calls. Timing still runs for a declined proposal so a future
-reconsideration can be scheduled. Source aliases bind to exact current versions;
+decline), author the message, title and handoff background in three raw-text
+calls, and determine expiry/reconsideration. There are at most six calls.
+Sources, objectives and timing remain structured decisions; each content author
+writes one text body through an explicit plain-text provider format, overriding
+JSON calibration and omitting its slot instructions for those authoring calls.
+Other calls retain their configured instructions. The runtime assembles the proposal without parsing or slicing
+those bodies. Title authoring receives only the fixed objective and accepted
+message; handoff authoring also receives the exact selected sources. Timing still
+runs for a declined proposal so a future reconsideration can be scheduled. Source aliases bind to exact current versions;
 missing prior-proposal versions are never redirected to newer knowledge. The
 existing validator, receipt, duplicate prevention and delivery owner remain
 authoritative. These reviews have no tools or action authority.
@@ -97,8 +103,11 @@ total tokens and latency; the purpose is less responsibility per model call.
 
 Accepted stages are saved before another paid call, in the existing learning
 journal, scheduled-reassessment state or proactive state. There is no parallel
-checkpoint store or extra idle polling. Records are versioned, limited to 24
-hours and 256 KiB per review, and remain subject to their owner's stricter total
+checkpoint store or extra idle polling. Records are versioned and limited to
+256 KiB per review. Learning and reassessment retain their 24-hour limit. Proactive
+reviews retain an absolute six-day lifetime from admission, since their daily
+model-call budget is shared with learning and may leave only one call per day.
+Resume and quota changes do not extend that deadline. All records remain subject to their owner's stricter total
 storage/observation-retention limit. Saving progress cannot evict pending activity.
 The journal and proactive totals remain unchanged; scheduled state remains 128 KiB.
 
@@ -107,6 +116,11 @@ Stage fingerprints also cover their exact messages and response contracts.
 Resume validates these bindings and decodes cached responses again. Changed or
 expired inputs invalidate their saved work. Absolute timing retains the original
 acceptance time; only an expired timing decision needs a new timing call.
+Before bypassing an exhausted quota, the model owner runs the same stage sequence
+in replay-only mode against current sources, configuration and conversation style.
+Every required stage must pass its real fingerprint, decoder and timing checks.
+This proof makes no provider call, persistence write or execution trace. Legacy or
+changed authoring cannot qualify merely because all stage names are present.
 Stop, pause, resource deferral and restart can retain completed stages; invalid
 model responses still fail rather than starting an automatic repair loop.
 Terminal memory/delivery receipts clear progress, and explicit pending deletion
@@ -211,3 +225,29 @@ Current and legacy memory receipts are reconciled on restart or processing resum
 before cycle admission, budgets or application exclusions. Paused collection can
 still start without an available memory store. Reconciliation performs no model
 or embedding call and adds no polling timer.
+
+## Persistent SPARK conversation
+
+New proactive deliveries append an assistant initiative to the environment's
+single marked SPARK session. `sessions/spark-session.ts` owns its immutable kind
+and stable identity; `assistant-initiative-append.ts` commits through the normal
+session mutation queue and deduplicates by proposal identity. A cancelled delivery
+restores the prior transcript. Previously delivered proposal sessions remain
+historical sessions. Existing review eligibility, schedules, resource budgets and
+source authority do not change.
+
+The proactive model preference also selects the model for companion chat requests.
+The Web UI resolves it from current owner preferences when admitting a request;
+`sparkToolPermissionMode` is an independent persisted preference, defaulting to
+ASK. Neither a model choice nor a chat interaction grants collection or learning
+authorization. Proactive output remains assistant history, never a user request.
+
+Already-admitted proactive reviews may read the latest three retained human
+messages from that environment's marked SPARK session as passive language and
+tone samples. Each excerpt is bounded to 1,000 Unicode characters with explicit
+truncation and omission counts. Scheduled triggers, tool evidence and assistant
+messages are excluded. SUPER supplies this reference only to message authoring;
+the direct method scopes it to the eligible proposal's title and message.
+It never adds a request, knowledge source, objective or review trigger. The
+existing authoring-stage fingerprint invalidates changed or cleared samples on
+resume while retaining unchanged source and objective decisions.

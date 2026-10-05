@@ -36,6 +36,7 @@ import {
   powershellNotificationArguments,
   WINDOWS_NOTIFICATION_IDENTITY_SCRIPT,
 } from "./notification-windows.js";
+import { configureMacNotificationBundle } from "./notification-macos-bundle.js";
 
 export function notificationLocationsFromStartup(
   startup: NativeAutostartOptions,
@@ -102,23 +103,6 @@ async function assertLinuxDesktopOwnership(path: string): Promise<boolean> {
   return true;
 }
 
-function macNotificationPlist(): string {
-  return (
-    '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n' +
-    '<plist version="1.0"><dict>' +
-    "<key>CFBundleExecutable</key><string>applet</string>" +
-    "<key>CFBundleIdentifier</key><string>" +
-    NOTIFICATION_APP_ID +
-    "</string>" +
-    "<key>CFBundleName</key><string>ABot</string><key>CFBundleDisplayName</key><string>ABot</string>" +
-    "<key>CFBundlePackageType</key><string>APPL</string><key>CFBundleSignature</key><string>aplt</string>" +
-    "<key>CFBundleVersion</key><string>1</string><key>CFBundleShortVersionString</key><string>1.0</string>" +
-    "<key>CFBundleIconFile</key><string>applet</string><key>LSUIElement</key><true/>" +
-    "<key>OSAAppletStayOpen</key><true/><key>OSAAppletShowStartupScreen</key><false/>" +
-    "<key>NSHighResolutionCapable</key><true/></dict></plist>\n"
-  );
-}
-
 export async function stopMacNotificationApp(
   locations: NotificationLocations,
   run: NotificationProcessRunner,
@@ -152,10 +136,7 @@ async function installMacNotificationApp(
     args: ["-l", "JavaScript", "-s", "-o", temporary, source],
     timeoutMs: 30_000,
   });
-  await writeFile(
-    join(temporary, "Contents", "Info.plist"),
-    macNotificationPlist(),
-  );
+  await configureMacNotificationBundle(temporary, run);
   await run({
     file: "/usr/bin/codesign",
     args: [

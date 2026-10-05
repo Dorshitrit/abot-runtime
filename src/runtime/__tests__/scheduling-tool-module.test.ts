@@ -91,6 +91,17 @@ function createFixture() {
       .fn<SchedulerService["deleteSession"]>()
       .mockResolvedValue(),
     listRuns: vi.fn<SchedulerService["listRuns"]>().mockResolvedValue([run]),
+    createAutomationJob: vi.fn<SchedulerService["createAutomationJob"]>(),
+    getAutomationJob: vi.fn<SchedulerService["getAutomationJob"]>(),
+    listAutomationJobs: vi.fn<SchedulerService["listAutomationJobs"]>(),
+    updateAutomationJob: vi.fn<SchedulerService["updateAutomationJob"]>(),
+    pauseAutomationJob: vi.fn<SchedulerService["pauseAutomationJob"]>(),
+    resumeAutomationJob: vi.fn<SchedulerService["resumeAutomationJob"]>(),
+    runNowAutomation: vi.fn<SchedulerService["runNowAutomation"]>(),
+    rerunAutomationRun: vi.fn<SchedulerService["rerunAutomationRun"]>(),
+    stopAutomationRun: vi.fn<SchedulerService["stopAutomationRun"]>(),
+    listAutomationRuns: vi.fn<SchedulerService["listAutomationRuns"]>(),
+    getAutomationRun: vi.fn<SchedulerService["getAutomationRun"]>(),
   } satisfies SchedulerService;
   const ready = vi.fn(async () => undefined);
   const context: ToolExecutionContext = {

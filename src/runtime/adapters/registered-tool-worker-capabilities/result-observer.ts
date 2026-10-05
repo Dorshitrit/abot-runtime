@@ -1,3 +1,4 @@
+import type { RoleCapabilityResultReference } from "../../orchestration/role-calls/index.js";
 import type {
   ToolActionSummary,
   ToolExecutionResult,
@@ -7,6 +8,7 @@ import type { RegisteredToolNormalInvocationResult } from "../registered-tool-no
 import { executionProtocolError } from "./errors.js";
 import { createRegisteredToolWorkerFailureOutcomeFingerprint } from "./failure-outcome-fingerprint.js";
 import {
+  attachTargetReferences,
   boundedSummary,
   captureRegisteredToolResult,
   projectMutationGrounding,
@@ -38,27 +40,42 @@ export function observeExternalResult(
   input: RegisteredToolNormalInvocationResult,
   expectedEffect: "read_only" | "mutating" | "mixed",
   directRoot: boolean,
+  selectedReferences: readonly RoleCapabilityResultReference[] = [],
 ): ObservedExternalResult {
   const observed = observeExternalResultLegacy(
     input,
     expectedEffect,
     directRoot,
   );
-  const exactResult = captureRegisteredToolResult(input);
+  const exactResult = captureRegisteredToolResult(input, selectedReferences);
+  // Selected controls never changed the legacy failure identity.
+  const completionReferences =
+    input.status === "executed"
+      ? projectToolTargetReferences(input.completionActions)
+      : [];
+  const { references: _selectedReferences, ...exactWithoutReferences } =
+    exactResult;
+  const failureFingerprintSource = completionReferences.length
+    ? { ...exactWithoutReferences, references: completionReferences }
+    : exactWithoutReferences;
   return Object.freeze({
     ...observed,
-    result:
+    result: attachTargetReferences(
       observed.result.outcome === "failed"
         ? Object.freeze({
             ...observed.result,
             exactResult,
             failureOutcomeFingerprint:
-              createRegisteredToolWorkerFailureOutcomeFingerprint(exactResult),
+              createRegisteredToolWorkerFailureOutcomeFingerprint(
+                failureFingerprintSource,
+              ),
           })
         : Object.freeze({
             ...observed.result,
             exactResult,
           }),
+      selectedReferences,
+    ),
   });
 }
 

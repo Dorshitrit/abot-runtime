@@ -1,3 +1,5 @@
+import type { ToolResultBudget } from "./result-budget.js";
+import type { ToolContextTextField } from "./tool-context-text.js";
 import type {
   ToolRequestWork,
   ToolRequestState,
@@ -20,6 +22,7 @@ import type { ToolFileOutputReporter } from "./file-output-presentation.js";
 
 export type {
   ToolNormalInvocationApproval,
+  ToolNormalInvocationAttachmentInput,
   ToolNormalInvocationArrayInput,
   ToolNormalInvocationBooleanInput,
   ToolNormalInvocationBoundedStringInput,
@@ -67,6 +70,12 @@ export function isToolCatalogGroupId(
 }
 
 export type ToolExecutionEffect = "read_only" | "mutating" | "mixed";
+
+/** Bounded, content-free evidence from an implementation after its public abort race. */
+export type ToolUnderlyingSettlement = Readonly<
+  | { status: "fulfilled"; ok: boolean; errorCode?: string }
+  | { status: "rejected"; errorCode: string }
+>;
 
 export type ToolControlsRefinement = "mechanical_when_complete";
 
@@ -162,6 +171,8 @@ export type ToolRuntimePathBinding = Readonly<{
 export type ToolDefinition = {
   requiredPermissionMode?: ToolRequiredPermissionMode;
   name: string;
+  /** Runtime-owned provenance used when presenting tools by plugin. */
+  pluginName?: string;
   description?: string;
   routingCapability: ToolRoutingCapability;
   controlsRefinement?: ToolControlsRefinement;
@@ -241,6 +252,7 @@ export type RuntimeToolPathLocation =
 export type RuntimeToolPathErrorCode =
   | "runtime_tool_path_required"
   | "runtime_tool_path_null_byte"
+  | "runtime_tool_path_namespace_invalid"
   | "runtime_tool_path_location_required"
   | "runtime_tool_path_root_unavailable"
   | "runtime_tool_path_workspace_unavailable"
@@ -285,6 +297,8 @@ export type ToolModelInvoker = Readonly<{
 }>;
 
 export type ToolExecutionContext = {
+  /** Delivery-envelope measurement; unrelated to the model context budget. */
+  resultBudget?: ToolResultBudget;
   requestWork?: ToolRequestWork;
   requestState?: ToolRequestState;
   media?: ToolMediaWriter;
@@ -394,6 +408,10 @@ export type ParsedToolCall =
   | { ok: false; error: string; repairHint?: string };
 
 export type ToolExecutionResult = {
+  /** Exact text remains in its field; the runtime owns its context budget. */
+  contextTextFields?: readonly ToolContextTextField[];
+  /** Definite caller interruption; does not prove that a mutating effect was undone. */
+  interruption?: "aborted";
   media?: readonly ToolImageEvidence[];
   ok: boolean;
   tool: string;
@@ -420,6 +438,10 @@ export type ToolExecutionResult = {
 };
 
 export type ToolImplementationOutput = {
+  /** Opt-in delivery contract, supported only by a context-aware host. */
+  contextTextFields?: readonly ToolContextTextField[];
+  /** Set only when this failed operation was interrupted by its caller's signal. */
+  interruption?: "aborted";
   media?: readonly ToolImageEvidence[];
   ok: boolean;
   output: string;

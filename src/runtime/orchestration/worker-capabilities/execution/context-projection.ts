@@ -13,6 +13,7 @@ import {
   type WorkerCapabilityDiagnosticContext,
 } from "../diagnostics.js";
 import { projectWorkerSettledCapabilityResults } from "../settled-results.js";
+import { bindSuperWorkerCompactionSources } from "../../../context/super-worker-compaction-sidecar.js";
 import {
   assertWorkerCapabilityWithinScope,
   WorkerCapabilityScopeError,
@@ -68,7 +69,9 @@ export function projectExecutionSettledCapabilityResults(params: {
       settledCapabilityResults,
     );
   }
-  return settledCapabilityResults;
+  return bindSuperWorkerCompactionSources(
+    [...settledCapabilityResults], params.head, params.call.callId,
+  );
 }
 
 function settledResultProjectionIssueCode(error: unknown): string {

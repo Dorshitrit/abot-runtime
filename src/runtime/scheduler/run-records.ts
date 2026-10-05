@@ -4,6 +4,10 @@ import type {
   SchedulerRun,
   SchedulerSnapshot,
 } from "./contracts.js";
+import {
+  isRequestSchedulerJob,
+  isRequestSchedulerRun,
+} from "./scheduler-target.js";
 
 export function makeSchedulerRun(
   job: SchedulerJob,
@@ -33,7 +37,10 @@ export function findPendingRun(
   jobId: string,
 ): SchedulerRun | undefined {
   return state.runs.find(
-    (run) => run.jobId === jobId && run.status === "pending",
+    (run): run is SchedulerRun =>
+      isRequestSchedulerRun(run) &&
+      run.jobId === jobId &&
+      run.status === "pending",
   );
 }
 export function cancelPendingRuns(
@@ -52,7 +59,10 @@ export function requireSchedulerJob(
   state: SchedulerSnapshot,
   jobId: string,
 ): SchedulerJob {
-  const job = state.jobs.find((candidate) => candidate.id === jobId);
+  const job = state.jobs.find(
+    (candidate): candidate is SchedulerJob =>
+      isRequestSchedulerJob(candidate) && candidate.id === jobId,
+  );
   if (!job) throw new Error("scheduler_job_not_found");
   return job;
 }
@@ -61,6 +71,9 @@ export function hasRunningSession(
   sessionId: string,
 ): boolean {
   return state.runs.some(
-    (run) => run.sessionId === sessionId && run.status === "running",
+    (run) =>
+      isRequestSchedulerRun(run) &&
+      run.sessionId === sessionId &&
+      run.status === "running",
   );
 }

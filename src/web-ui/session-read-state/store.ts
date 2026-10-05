@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { readVisibleMessageReceipts, type VisibleMessageReadState } from "./visible-messages.js";
 
 export type WebReadCursor = {
   messageId: string;
@@ -11,6 +12,7 @@ export type WebReadState = {
   version: 1;
   initializedAt: number;
   cursors: Array<[string, WebReadCursor]>;
+  visibleMessages?: Array<[string, VisibleMessageReadState]>;
 };
 const pendingWrites = new Map<string, Promise<unknown>>();
 
@@ -39,6 +41,7 @@ function decodeReadState(raw: string): WebReadState {
     if (typeof entry[0] !== "string" || !isReadCursor(entry[1]))
       throw new Error("Invalid Web UI read cursor entry.");
   }
+  state.visibleMessages = readVisibleMessageReceipts(state.visibleMessages);
   return state;
 }
 
@@ -119,12 +122,17 @@ export class WebReadStateStore {
         ),
       });
       state.cursors = [...cursors];
+      const visible = new Map(state.visibleMessages ?? []);
+      const prior = visible.get(sessionId);
+      visible.set(sessionId, { generation: randomUUID(), revision: Math.max(now, (prior?.revision ?? 0) + 1), messages: [] });
+      state.visibleMessages = [...visible];
     });
   }
 
   forget(sessionId: string): Promise<void> {
     return this.transaction((state) => {
       state.cursors = state.cursors.filter(([id]) => id !== sessionId);
+      state.visibleMessages = state.visibleMessages?.filter(([id]) => id !== sessionId);
     });
   }
 }

@@ -1,3 +1,4 @@
+import type { ContextWindowDisplay } from "../lib/context-window-state.js";
 import type { ConversationFileReference } from "../lib/conversation-file-reference.js";
 import type { buildConversationRoleCards } from "../lib/conversation-role-model.js";
 import type { ConversationSourcesGroup } from "../lib/web-sources.js";
@@ -17,34 +18,7 @@ export type ConversationActivityEvent = Record<string, unknown> & {
   tone: string;
 };
 
-export type ConversationContextWindowModel = {
-  invocationId: string;
-  modelStep: string;
-  profileId: string;
-  measurement: string;
-  source: string;
-  admissionOutcome: string;
-  contextWindowTokens: number;
-  estimatedInputTokens: number;
-  remainingContextTokens: number;
-  usedContextPercent: number;
-  remainingContextPercent: number;
-  compactionTriggerPercent: number;
-  outputReserveTokens: number;
-  safetyReserveTokens: number;
-  attachmentReserveTokens: number;
-  formatReserveTokens: number;
-  providerUsage: {
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-    source: string;
-  } | null;
-  compaction: {
-    beforePercent: number;
-    afterPercent: number;
-  } | null;
-};
+export type ConversationContextWindowModel = ContextWindowDisplay;
 
 export declare function buildConversationActivityModel(
   input?: ConversationActivityInput,

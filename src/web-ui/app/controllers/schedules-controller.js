@@ -1,6 +1,5 @@
 import { createEventRefresh } from "../lib/event-refresh.js";
 import {
-  canManageSchedule,
   matchesScheduleFilter,
   scheduleErrorMessage,
 } from "../lib/schedule-presentation.js";
@@ -120,8 +119,8 @@ export function createSchedulesController({
     return !historySettled;
   }
 
-  function shouldOpenEntryEditor(
-    openFirstEditor,
+  function shouldSelectEntryJob(
+    selectFirstJob,
     environmentChanged,
     targetJobId,
     readSelectionRevision,
@@ -131,7 +130,7 @@ export function createSchedulesController({
     if (state.editor) return false;
     if (state.mutation) return false;
     if (!active) return false;
-    if (openFirstEditor) return true;
+    if (selectFirstJob) return true;
     return environmentChanged;
   }
 
@@ -145,15 +144,8 @@ export function createSchedulesController({
     return readSelectionRevision === selectionRevision;
   }
 
-  function openEntryScheduleEditor() {
-    const job = firstVisibleJob();
-    selectJobIdentity(job?.id || "");
-    if (!canManageSchedule(job)) return;
-    state.editor = { job, environmentId: getEnvironmentId() };
-  }
-
   function reconcileLoadedSelection(
-    openEditor,
+    selectEntryJob,
     targetJobId,
     readSelectionRevision,
   ) {
@@ -162,8 +154,8 @@ export function createSchedulesController({
       return;
     }
     if (state.editor) return;
-    if (openEditor) {
-      openEntryScheduleEditor();
+    if (selectEntryJob) {
+      selectJobIdentity(firstVisibleJob()?.id || "");
       return;
     }
     const selected = state.jobs.find((job) => job.id === state.selectedId);
@@ -217,7 +209,7 @@ export function createSchedulesController({
 
   async function load({
     background = false,
-    openFirstEditor = false,
+    selectFirstJob = false,
     targetJobId = "",
     waitForHistory = false,
   } = {}) {
@@ -258,8 +250,8 @@ export function createSchedulesController({
       state.defaultModelProfileId = models.defaultProfileId || "";
       state.error = "";
       reconcileLoadedSelection(
-        shouldOpenEntryEditor(
-          openFirstEditor,
+        shouldSelectEntryJob(
+          selectFirstJob,
           environmentChanged,
           targetJobId,
           readSelectionRevision,
@@ -425,7 +417,7 @@ export function createSchedulesController({
     selectionRevision += 1;
     Object.assign(state, { query: "", filter: scheduleEntryFilter(jobId), editor: null });
     selectJobIdentity(jobId, { routeNavigation: true });
-    await load({ targetJobId: jobId });
+    await load({ targetJobId: jobId, selectFirstJob: !jobId });
   }
 
   async function openCreate(initialValues = {}) {
@@ -483,7 +475,7 @@ export function createSchedulesController({
       eventRefresh.cancel();
       nextRefreshOptions = null;
       if (active) {
-        void refresh({ background: !entering, openFirstEditor: entering });
+        void refresh({ background: !entering, selectFirstJob: entering });
         return;
       }
       loadRevision += 1;

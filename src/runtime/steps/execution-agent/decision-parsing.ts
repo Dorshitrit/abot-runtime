@@ -190,6 +190,8 @@ function parseExecutionAgentActionOutput(
       value: record,
       path: "decision",
       capabilities: contract.capabilities,
+      eligibleControlsEvidenceExecutionIds:
+        contract.eligibleControlsEvidenceExecutionIds,
       observationOnly: false,
       includesAction: true,
       issues,

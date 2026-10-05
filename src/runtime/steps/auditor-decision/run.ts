@@ -24,7 +24,6 @@ import {
   AuditorEvidenceAdmissionError,
 } from "./evidence-binding.js";
 import { parseAuditorEvidenceSelection } from "./evidence-selection.js";
-import { projectAuditorEvidenceRepresentation } from "./evidence-representation.js";
 import {
   failedAuditorAdvisory,
   settleAuditorAdvisory,
@@ -116,12 +115,8 @@ async function invokeAuditorPhase<T>(
     inventoryCount: input.assignment.inventory.length,
     selectedEvidenceIds: input.assignment.selectedEvidenceIds,
     selectedEvidenceCount: input.assignment.evidence.length,
-    selectedEvidenceChars: input.assignment.evidence.reduce(
-      (total, entry) =>
-        total +
-        JSON.stringify(projectAuditorEvidenceRepresentation(entry)).length,
-      0,
-    ),
+    selectedEvidenceChars: input.selectedEvidenceChars,
+    reusedCompactedSourceCount: input.reusedCompactedSourceCount,
     canonicalEvidenceChars: input.assignment.evidence.reduce(
       (total, entry) => total + JSON.stringify(entry).length,
       0,

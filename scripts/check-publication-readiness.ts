@@ -304,12 +304,32 @@ function assertRootMarkdownLayout(): void {
   }
 }
 
-function assertNoWindowsBackupArtifacts(dir: string, prefix = ""): void {
+function shouldSkipBackupDirectory(
+  name: string,
+  prefix: string,
+  isPublicRelease: boolean,
+): boolean {
+  if (ignoredDirectoryNames.has(name)) {
+    return true;
+  }
+  if (prefix !== "") {
+    return false;
+  }
+  if (ignoredRootDirectories.has(name)) {
+    return true;
+  }
+  return !isPublicRelease && name === ".codex";
+}
+
+function assertNoWindowsBackupArtifacts(
+  dir: string,
+  isPublicRelease: boolean,
+  prefix = "",
+): void {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (
       entry.isDirectory() &&
-      (ignoredDirectoryNames.has(entry.name) ||
-        (prefix === "" && ignoredRootDirectories.has(entry.name)))
+      shouldSkipBackupDirectory(entry.name, prefix, isPublicRelease)
     ) {
       continue;
     }
@@ -323,7 +343,7 @@ function assertNoWindowsBackupArtifacts(dir: string, prefix = ""): void {
       fail(`publication-forbidden local artifact: ${relativePath}`);
     }
     if (entry.isDirectory()) {
-      assertNoWindowsBackupArtifacts(fullPath, relativePath);
+      assertNoWindowsBackupArtifacts(fullPath, isPublicRelease, relativePath);
     }
   }
 }
@@ -386,7 +406,7 @@ assertRootMarkdownLayout();
 assertPublicationFileLayout(publicationFiles);
 assertNoPrivateResidue(publicationFiles);
 assertEnvExampleDoesNotPinRuntimeEnvironment();
-assertNoWindowsBackupArtifacts(rootDir);
+assertNoWindowsBackupArtifacts(rootDir, isPublicRelease);
 assertNoDevelopmentPlanDocs();
 assertExampleConfigIsSanitized();
 if (isPublicRelease) {

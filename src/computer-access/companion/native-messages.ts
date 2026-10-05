@@ -67,6 +67,7 @@ export function readNativeServerMessage(text: string): HostServerMessage {
 }
 
 const NATIVE_OPERATION_FIELDS = {
+  macos_permissions: ["target", "action", "permission"],
   desktop_notification: ["target", "notificationId", "title", "body", "url"],
   system_targets: [],
   system_command: ["target", "command", "cwd", "elevated", "timeout_ms"],

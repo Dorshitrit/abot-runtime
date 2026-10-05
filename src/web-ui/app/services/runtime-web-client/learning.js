@@ -40,15 +40,6 @@ export function createPassiveLearningRequests({
         signal ? { signal } : {},
       );
     },
-    dismissPassiveLearningProposal(id, environmentId = getEnvironmentId()) {
-      return requestApi(
-        environmentPath(`/proposals/${encodeURIComponent(id)}`, environmentId),
-        {
-          method: "DELETE",
-          body: "{}",
-        },
-      );
-    },
     listPassiveLearningBatches(
       environmentId = getEnvironmentId(),
       { signal } = {},

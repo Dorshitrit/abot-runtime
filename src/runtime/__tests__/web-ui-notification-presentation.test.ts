@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 // @ts-expect-error Browser-only module has no declaration surface.
-import { renderNotificationItem, notificationSourceUrl } from "../../web-ui/app/components/notifications/presentation.js";
+import { renderNotificationItem, renderNotificationSettings, notificationSourceUrl } from "../../web-ui/app/components/notifications/presentation.js";
 // @ts-expect-error Browser-only module has no declaration surface.
 import { createNotificationFocus } from "../../web-ui/app/components/notifications/focus.js";
 // @ts-expect-error Browser-only module has no declaration surface.
@@ -10,6 +10,7 @@ import { createWorkspaceShell } from "../../web-ui/app/components/workspace-shel
 import { readWorkspaceRoute, workspaceRouteUrl } from "../../web-ui/app/lib/workspace-route.js";
 import { createRuntimeWebClient } from "../../web-ui/app/services/runtime-web-client.js";
 import { createWorkspaceShellHarness } from "./support/workspace-shell-harness.js";
+import { defaultNotificationPreferences } from "../../web-ui/notifications/contracts.js";
 
 const notice = {
   id: "notice-1", kind: "reply", title: "<script>alert(1)</script>", body: "<img src=x onerror=alert(1)>",
@@ -101,6 +102,41 @@ describe("notification presentation and navigation", () => {
     for (const sourceUrl of ["https://elsewhere.invalid/", "//elsewhere.invalid/", "//[", "/chat?environment=dev", "/web-api/notifications?environment=prod"])
       expect(notificationSourceUrl({ ...notice, sourceUrl })).toBe("");
     expect(notificationSourceUrl({ ...notice, sourceUrl: "/notifications?environment=prod" })).toContain("/notifications");
+  });
+
+  test("automation alerts present a run link only when every source identity matches", () => {
+    const { sessionId: _sessionId, ...base } = notice;
+    const automation = {
+      ...base,
+      kind: "automation",
+      automationId: "flow-a",
+      runId: "run-a",
+      sourceUrl: "/automations?environment=prod&automation=flow-a&run=run-a",
+    };
+    const html = renderNotificationItem(automation, false);
+    expect(html).toContain('aria-label="Automation runs"');
+    expect(html).toContain('href="/automations?environment=prod&amp;automation=flow-a&amp;run=run-a"');
+    const source = notificationSourceUrl(automation);
+    expect(readWorkspaceRoute(new URL(source, "https://abot.invalid"))).toMatchObject({
+      workspace: "automations", environment: "prod", automation: "flow-a", run: "run-a",
+    });
+    for (const malformed of [
+      { ...automation, automationId: "other" },
+      { ...automation, runId: "other" },
+      { ...automation, sessionId: "fake-session" },
+      { ...automation, sourceUrl: "/automations?environment=prod&run=run-a" },
+      { ...automation, sourceUrl: "/automations?environment=prod&automation=flow-a" },
+      { ...automation, sourceUrl: "/automations?environment=dev&automation=flow-a&run=run-a" },
+      { ...automation, sourceUrl: "/automations?environment=prod&automation=flow-a&run=run-a&extra=1" },
+      { ...automation, sourceUrl: "/automations?environment=prod&automation=flow-a&run=run-a#fragment" },
+    ]) {
+      expect(notificationSourceUrl(malformed)).toBe("");
+      expect(renderNotificationItem(malformed, false)).not.toContain('data-notification-action="open"');
+    }
+    expect(notificationSourceUrl({ ...notice, sourceUrl: automation.sourceUrl })).toBe("");
+    expect(renderNotificationSettings({
+      preferences: defaultNotificationPreferences(), busy: false,
+    })).toContain('data-notification-kind="automation" checked');
   });
 
   test("restores notifications routes and honors the configuration discard guard", () => {

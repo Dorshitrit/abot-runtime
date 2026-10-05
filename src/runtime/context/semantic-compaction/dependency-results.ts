@@ -1,3 +1,5 @@
+import { hasSuperContextContract } from "../super-context-policy.js";
+import { assertSuperCompactionCheckpointIntegrity } from "./super-source-integrity.js";
 import type { ModelStep } from "../../../shared/model-steps.js";
 import {
   projectRoleCallDependencyResults,
@@ -12,6 +14,7 @@ import {
   type SemanticCompactionCheckpoint,
 } from "./contracts.js";
 import type { RequestContextCompactionStore } from "./store.js";
+import { SEMANTIC_COMPACTION_EVIDENCE_SCOPE } from "./evidence-scope.js";
 
 export type SemanticCompactionDependencyResult = Readonly<
   RoleCallDependencyResult &
@@ -64,6 +67,15 @@ export function projectSemanticCompactionDependencyResults(params: {
         .store!.findByCallIds(lineageCallIds)
         .filter((checkpoint) => {
           assertValidSemanticCompactionCheckpoint(checkpoint);
+          if (
+            hasSuperContextContract(params.head.policy.authority, "supervisor")
+          ) {
+            assertSuperCompactionCheckpointIntegrity({
+              ...params,
+              store: params.store!,
+              checkpoint,
+            });
+          }
           const checkpointCall = callsById.get(checkpoint.callId);
           if (
             !checkpointCall?.objective ||
@@ -82,7 +94,13 @@ export function projectSemanticCompactionDependencyResults(params: {
             );
           }
           return checkpoint.allowedConsumers.includes(params.consumer);
-        });
+        })
+        .map((checkpoint) =>
+          Object.freeze({
+            ...checkpoint,
+            evidenceScope: SEMANTIC_COMPACTION_EVIDENCE_SCOPE,
+          }),
+        );
       return checkpoints.length === 0
         ? result
         : Object.freeze({

@@ -9,6 +9,7 @@ import {
   type RequestToolResultsView,
 } from "../../context/request-tool-results.js";
 import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
+import { superCompactionFailureOwner } from "../../context/super-compaction-failure-owner.js";
 import type {
   RoleCallFrame,
   RoleCallLedgerHead,
@@ -75,7 +76,22 @@ export async function runPlannerDecision(
         {
           input,
           controller: createModelStepCompactionController(request, {
+            consumer: PLANNER_DECISION_MODEL_STEP,
             call: options.call,
+            superFailureOwner: superCompactionFailureOwner(
+              request.executionPolicy.authority,
+              {
+                requestId: request.requestId,
+                callId: options.call.callId,
+                parentCallId: options.call.parentCallId,
+                contractId: "delegated.planner",
+                invocationAttempt: options.call.activationCount,
+                sourceRevision: options.toolResults.sourceRevision,
+                modelStep: PLANNER_DECISION_MODEL_STEP,
+                phase: "compaction",
+                scopeId: `role:planner:${options.call.callId}:continuation`,
+              },
+            ),
             sourceRevision: options.toolResults.sourceRevision,
             allowedConsumers: Object.freeze([
               PLANNER_DECISION_MODEL_STEP,

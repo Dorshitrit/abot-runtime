@@ -22,8 +22,8 @@ export function createPassiveLearningController({
   client,
   getEnvironmentId,
   render,
-  openSession = () => {},
   isVisible = () => document.visibilityState === "visible",
+  isRuntimeReady = () => true,
   setTimer = setTimeout,
   clearTimer = clearTimeout,
 }) {
@@ -35,8 +35,6 @@ export function createPassiveLearningController({
     candidates: [],
     candidateError: "",
     loadingCandidates: false,
-    proposalError: "",
-    dismissingProposalId: "",
     selectedBatch: null,
     selectedBatchId: "",
     models: [],
@@ -57,10 +55,15 @@ export function createPassiveLearningController({
   let stale = true;
   let modelsStale = true;
   let environmentEpoch = 0;
+  let runtimeReady = isRuntimeReady();
 
   const learningActive = () => workspace === "learning";
   const homeActive = () => workspace === "home";
-  const canRefresh = () => (learningActive() || homeActive()) && isVisible();
+  function canRefresh() {
+    if (!isRuntimeReady()) return false;
+    if (!learningActive() && !homeActive()) return false;
+    return isVisible();
+  }
   const snapshot = () => ({
     ...state,
     environmentId,
@@ -68,8 +71,11 @@ export function createPassiveLearningController({
     homeActive: homeActive(),
   });
   const publish = () => render(snapshot());
-  const currentRead = (readEnvironmentId, readRevision) =>
-    readRevision === revision && readEnvironmentId === getEnvironmentId();
+  function currentRead(readEnvironmentId, readRevision) {
+    if (!isRuntimeReady()) return false;
+    if (readRevision !== revision) return false;
+    return readEnvironmentId === getEnvironmentId();
+  }
 
   async function readCurrentState() {
     stale = false;
@@ -214,6 +220,7 @@ export function createPassiveLearningController({
 
   function resetEnvironment() {
     eventRefresh.cancel();
+    runtimeReady = isRuntimeReady();
     revision += 1;
     detailRevision += 1;
     environmentEpoch += 1;
@@ -226,8 +233,6 @@ export function createPassiveLearningController({
       candidates: [],
       candidateError: "",
       loadingCandidates: false,
-      proposalError: "",
-      dismissingProposalId: "",
       selectedBatch: null,
       selectedBatchId: "",
       models: [],
@@ -248,8 +253,14 @@ export function createPassiveLearningController({
   }
 
   async function selectBatch(id) {
+    if (!isRuntimeReady()) return;
     const readEnvironmentId = getEnvironmentId();
     const readRevision = ++detailRevision;
+    function hasCurrentBatchRead() {
+      if (!isRuntimeReady()) return false;
+      if (readRevision !== detailRevision) return false;
+      return readEnvironmentId === getEnvironmentId();
+    }
     state.selectedBatchId = id;
     state.selectedBatch = null;
     state.detailError = "";
@@ -261,26 +272,15 @@ export function createPassiveLearningController({
         id,
         readEnvironmentId,
       );
-      if (
-        readRevision !== detailRevision ||
-        readEnvironmentId !== getEnvironmentId()
-      )
-        return;
+      if (!hasCurrentBatchRead()) return;
       if (!result?.batch || result.batch.id !== id)
         throw new Error("Batch details are unavailable.");
       state.selectedBatch = result.batch;
     } catch (error) {
-      if (
-        readRevision !== detailRevision ||
-        readEnvironmentId !== getEnvironmentId()
-      )
-        return;
+      if (!hasCurrentBatchRead()) return;
       state.detailError = errorMessage(error);
     } finally {
-      if (
-        readRevision === detailRevision &&
-        readEnvironmentId === getEnvironmentId()
-      ) {
+      if (hasCurrentBatchRead()) {
         state.loadingDetail = false;
         publish();
       }
@@ -288,12 +288,15 @@ export function createPassiveLearningController({
   }
 
   async function mutateLearningState(mutate, failureMessage) {
+    if (!isRuntimeReady()) return;
     if (state.saving) return;
     const mutationEnvironmentId = getEnvironmentId();
     const epoch = environmentEpoch;
-    const mutationCurrent = () =>
-      epoch === environmentEpoch &&
-      mutationEnvironmentId === getEnvironmentId();
+    function mutationCurrent() {
+      if (!isRuntimeReady()) return false;
+      if (epoch !== environmentEpoch) return false;
+      return mutationEnvironmentId === getEnvironmentId();
+    }
     state.saving = true;
     state.statusError = "";
     publish();
@@ -315,6 +318,7 @@ export function createPassiveLearningController({
   }
 
   function canRestartCollection() {
+    if (!isRuntimeReady()) return false;
     if (state.saving || state.loadingStatus) return false;
     if (state.restartingCollection) return false;
     if (environmentId !== getEnvironmentId()) return false;
@@ -340,68 +344,14 @@ export function createPassiveLearningController({
     }
   }
 
-  function findDeliveredProposal(id) {
-    return state.status?.proactive?.proposals?.find(
-      (proposal) =>
-        proposal.id === id &&
-        ["delivered", "dismissed"].includes(proposal.status),
-    );
-  }
-
-  async function openProposal(id) {
-    const proposal = findDeliveredProposal(id);
-    if (!proposal || environmentId !== getEnvironmentId()) return;
-    const epoch = environmentEpoch;
-    state.proposalError = "";
-    try {
-      await openSession(proposal.sessionId, environmentId);
-    } catch (error) {
-      if (epoch !== environmentEpoch) return;
-      state.proposalError = errorMessage(error);
-      publish();
-    }
-  }
-
-  async function dismissProposal(id) {
-    if (state.dismissingProposalId || !findDeliveredProposal(id)) return;
-    const targetEnvironment = getEnvironmentId();
-    if (environmentId !== targetEnvironment) return;
-    const epoch = environmentEpoch;
-    state.dismissingProposalId = id;
-    state.proposalError = "";
-    publish();
-    try {
-      const result = await client.dismissPassiveLearningProposal(
-        id,
-        targetEnvironment,
-      );
-      if (
-        epoch !== environmentEpoch ||
-        targetEnvironment !== getEnvironmentId()
-      )
-        return;
-      if (result?.ok !== true)
-        throw new Error("Suggestion dismissal was not confirmed.");
-      markStale();
-    } catch (error) {
-      if (
-        epoch === environmentEpoch &&
-        targetEnvironment === getEnvironmentId()
-      )
-        state.proposalError = errorMessage(error);
-    } finally {
-      if (
-        epoch === environmentEpoch &&
-        targetEnvironment === getEnvironmentId()
-      ) {
-        state.dismissingProposalId = "";
-        publish();
-      }
-    }
+  function runtimeAvailabilityChanged() {
+    if (isRuntimeReady() === runtimeReady) return;
+    resetEnvironment();
   }
 
   return Object.freeze({
     snapshot,
+    runtimeAvailabilityChanged,
     publish,
     restartCollection,
     configure: (preferences) =>
@@ -415,8 +365,6 @@ export function createPassiveLearningController({
         "Pending activity deletion was not confirmed.",
       ),
     selectBatch,
-    openProposal,
-    dismissProposal,
     refresh: () => {
       stale = true;
       modelsStale = true;

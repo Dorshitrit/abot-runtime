@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "document-reader",
   "version": "0.1.0",
-  "description": "Extract bounded text from supported attachments or configured-root documents without exposing physical filesystem paths.",
+  "description": "Extract bounded text from PDF, Office and supported text documents. Use file readers for source code.",
   "extensions": {
     "ai.abot.runtime": {
       "version": 1,
@@ -10,7 +10,7 @@
       "catalogGroups": ["read"],
       "capabilities": {
         "document_reader": {
-          "description": "Extract bounded text only from PDF, DOCX, XLSX, PPTX, TXT, CSV, Markdown (.md), JSON, or RTF documents. Local paths require one of those extensions. Source-code paths such as .js and .ts are unsupported; use read_one_file for source code and other text files when that operation is available. Use source for an attachment id/name or configured-root path. Use source_mode=working_path with path for a runtime/session artifact beneath the current execution working directory. Document bytes remain outside model context, and results expose only attachment identities or logical runtime paths.",
+          "description": "Document extraction, not source-code reading. For code (.js, .ts, .html, .css, etc.), select read_one_file or inspect_target when available. Supported documents: PDF, DOCX, XLSX, PPTX, TXT, CSV, Markdown (.md), JSON and RTF. Use source for an attachment id/name or configured-root path; use source_mode=working_path with path beneath the execution working directory. Returns bounded text and logical identities, never physical paths. Changing source_mode does not change supported formats.",
           "routingCapability": "filesystem_inspection",
           "developmentRoles": ["inspect", "verify"],
           "eventPresentation": {
@@ -41,7 +41,22 @@
           "skills": ["document_reader_skill"],
           "operations": {
             "read_document": {
-              "summary": "Read one bounded character window from PDF, DOCX, XLSX, PPTX, TXT, CSV, Markdown (.md), JSON, or RTF documents only. Local .js, .ts, and other unsupported extensions cannot be read here; use read_one_file for source code and other text files when available. Input, extraction, archive, window, and output bounds are explicit.",
+              "summary": "Extract document text, not source code. For .js, .ts, .html, .css and other code files, use read_one_file or inspect_target when available. Accepts only PDF, DOCX, XLSX, PPTX, TXT, CSV, MD, JSON and RTF; returns one bounded character window.",
+              "attachmentInput": {
+                "param": "source",
+                "acceptedMimeTypes": [
+                  "application/pdf",
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                  "text/plain",
+                  "text/csv",
+                  "text/markdown",
+                  "application/json",
+                  "application/rtf"
+                ],
+                "mode": { "param": "source_mode", "value": "source" }
+              },
               "input": {
                 "type": "object",
                 "additionalProperties": false,

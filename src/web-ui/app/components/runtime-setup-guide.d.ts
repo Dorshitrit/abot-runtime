@@ -73,6 +73,7 @@ export interface RuntimeSetupGuideDependencies {
   readonly loadHostConnection?: () => Promise<Record<string, unknown>>;
   readonly connectLocalHost?: () => Promise<Record<string, unknown>>;
   readonly createHostPairing?: () => Promise<Record<string, unknown>>;
+  readonly requestHostPermissions?: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
   readonly downloadHostSetup?: (
     platform: "windows" | "macos" | "linux",
   ) => Promise<Record<string, unknown>>;
@@ -94,7 +95,10 @@ export declare function buildRuntimeSetupCommands(
 export declare function createRuntimeSetupGuide(
   options: RuntimeSetupGuideDependencies,
 ): {
-  bind(options?: { onCheckAgain?: () => void | Promise<void> }): void;
+  bind(options?: {
+    onCheckAgain?: () => void | Promise<void>;
+    onApplied?: () => void | Promise<void>;
+  }): void;
   clearSecret(): void;
   dispose(): void;
   focusAction(): void;

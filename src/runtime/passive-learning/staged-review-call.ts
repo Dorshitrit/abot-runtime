@@ -25,6 +25,9 @@ export async function runStagedCoWorkerReview<T>(options: Readonly<{
   referenceTime: string;
   expiresAt: string;
   maxCalls: number;
+  maxProgressAgeMs?: number;
+  /** Validate the exact replay path without provider calls, persistence or execution traces. */
+  replayOnly?: boolean;
   progress?: ReviewProgressPort;
   now?: () => number;
   run(call: StagedReviewCall, referenceTime: string): Promise<T>;
@@ -37,14 +40,17 @@ export async function runStagedCoWorkerReview<T>(options: Readonly<{
   const binding = fingerprintReviewProgress({ method: "super-v2", activity: options.activity,
     reviewId: options.reviewId, input: options.binding,
     preference: request.modelPreference, models: request.modelPolicy, runner: request.runnerConfig });
-  const previous = readCoWorkerReviewProgress(options.progress?.read());
+  const maxAgeMs = options.maxProgressAgeMs ?? MAX_CO_WORKER_REVIEW_PROGRESS_AGE_MS;
+  const trace = options.replayOnly ? () => {} : traceDebug;
+  const previous = readCoWorkerReviewProgress(options.progress?.read(), maxAgeMs);
   const canResume = canResumeReview(previous, binding, now(), options.expiresAt);
-  let progress: CoWorkerReviewProgress = canResume ? previous! : createProgress(options, binding);
+  if (options.replayOnly && !canResume) throw new Error("co_worker_review_requires_model_call");
+  let progress: CoWorkerReviewProgress = canResume ? previous! : createProgress(options, binding, maxAgeMs);
   const correlation = { requestId: request.requestId, reviewId: options.reviewId,
     activity: options.activity, method: "staged", modelProfileId: request.modelPreference?.profileId };
   if (previous && !canResume) {
     await options.progress?.save(progress);
-    traceDebug("runtime.passive_learning", "review.progress_discarded", { ...correlation, reason: "binding_or_retention_changed" });
+    trace("runtime.passive_learning", "review.progress_discarded", { ...correlation, reason: "binding_or_retention_changed" });
   }
   const invoker = new RequestModelStepInvoker(request);
   const visited = new Set<string>();
@@ -60,19 +66,20 @@ export async function runStagedCoWorkerReview<T>(options: Readonly<{
       let result;
       try { result = params.accept(saved.response, { outputLength: saved.response.length, acceptedAt: saved.acceptedAt }); }
       catch (error) {
-        traceDebug("runtime.passive_learning", "review.stage_failed", { ...correlation, stage,
+        trace("runtime.passive_learning", "review.stage_failed", { ...correlation, stage,
           reason: safeStagedReviewFailure(error), ...reviewValidationDetails(error) });
         throw error;
       }
       request.abortSignal.throwIfAborted();
       assertReviewProgressUnexpired(progress, now());
       if (!reuse || reuse(result)) {
-        traceDebug("runtime.passive_learning", "review.stage_resumed", { ...correlation, stage });
+        trace("runtime.passive_learning", "review.stage_resumed", { ...correlation, stage });
         return result;
       }
-      traceDebug("runtime.passive_learning", "review.stage_invalidated", { ...correlation, stage, reason: "result_expired" });
+      trace("runtime.passive_learning", "review.stage_invalidated", { ...correlation, stage, reason: "result_expired" });
     }
-    traceDebug("runtime.passive_learning", "review.stage_started", { ...correlation, stage,
+    if (options.replayOnly) throw new Error("co_worker_review_requires_model_call");
+    trace("runtime.passive_learning", "review.stage_started", { ...correlation, stage,
       inputCharacters: params.messages.reduce((sum, message) => sum + (message.content?.length ?? 0), 0),
       schemaCharacters: JSON.stringify(params.format ?? {}).length });
     try {
@@ -90,14 +97,14 @@ export async function runStagedCoWorkerReview<T>(options: Readonly<{
       assertReviewProgressUnexpired(progress, now());
       // Keep only the executed prefix when a stage's inputs change.
       const stages = progress.stages.filter(item => visited.has(item.key) && item.key !== stage);
-      const next = readCoWorkerReviewProgress({ ...progress, stages: [...stages, { key: stage, fingerprint, response, acceptedAt }] })!;
+      const next = readCoWorkerReviewProgress({ ...progress, stages: [...stages, { key: stage, fingerprint, response, acceptedAt }] }, maxAgeMs)!;
       await options.progress?.save(next);
       progress = next;
       request.abortSignal.throwIfAborted();
-      traceDebug("runtime.passive_learning", "review.stage_completed", { ...correlation, stage, savedStages: progress.stages.length });
+      trace("runtime.passive_learning", "review.stage_completed", { ...correlation, stage, savedStages: progress.stages.length });
       return result;
     } catch (error) {
-      traceDebug("runtime.passive_learning", "review.stage_failed", { ...correlation, stage,
+      trace("runtime.passive_learning", "review.stage_failed", { ...correlation, stage,
         reason: safeStagedReviewFailure(error), ...reviewValidationDetails(error) });
       throw error;
     }
@@ -113,11 +120,12 @@ function canResumeReview(progress: CoWorkerReviewProgress | undefined, binding: 
   if (Date.parse(progress.expiresAt) <= now) return false;
   return Date.parse(progress.expiresAt) <= Date.parse(expiresAt);
 }
-function createProgress(options: { referenceTime: string; expiresAt: string }, binding: string): CoWorkerReviewProgress {
+function createProgress(options: { referenceTime: string; expiresAt: string }, binding: string,
+  maxAgeMs: number): CoWorkerReviewProgress {
   const expiresAt = new Date(Math.min(Date.parse(options.expiresAt),
-    Date.parse(options.referenceTime) + MAX_CO_WORKER_REVIEW_PROGRESS_AGE_MS)).toISOString();
+    Date.parse(options.referenceTime) + maxAgeMs)).toISOString();
   return readCoWorkerReviewProgress({ schemaVersion: 1, method: "super-v2", binding,
-    referenceTime: options.referenceTime, expiresAt, stages: [] })!;
+    referenceTime: options.referenceTime, expiresAt, stages: [] }, maxAgeMs)!;
 }
 function assertReviewStageAdmission(stage: string, visited: ReadonlySet<string>, maximum: number): void {
   if (!isReviewStageKey(stage)) throw new Error("co_worker_review_stage_order_invalid");

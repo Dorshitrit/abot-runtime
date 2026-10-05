@@ -1,3 +1,4 @@
+import { isAssistantInitiativeMessage } from "../assistant-initiative.js";
 import { projectSessionRequestLifecycle } from "../request-lifecycle/projection.js";
 import type {
   SessionMessageSource,
@@ -237,6 +238,7 @@ function inferMessageRequestId(
   message: SessionRecord["messages"][number],
   requests: SessionRequestRecord[],
 ): string | null {
+  if (isAssistantInitiativeMessage(message)) return null;
   if (message.role !== "assistant") {
     return null;
   }
@@ -288,6 +290,7 @@ export function toSessionListItem(session: SessionRecord) {
     .find((message) => message.role === "assistant");
   return {
     id: session.id,
+    ...(session.kind ? { kind: session.kind } : {}),
     ...(session.project ? { project: session.project } : {}),
     title: session.title,
     createdAt: toEpochMs(session.createdAt),

@@ -48,6 +48,7 @@ export function createRuntimeSetupGuide({
   loadHostConnection,
   connectLocalHost,
   createHostPairing,
+  requestHostPermissions,
   downloadHostSetup,
   revokeHostConnection,
   getEnvironmentId = () => "",
@@ -76,11 +77,12 @@ export function createRuntimeSetupGuide({
   let revision = 0;
   let bound = false;
   let onCheckAgain = () => {};
+  let onApplied = () => {};
   const viewState = createSetupViewState(container);
   const optionalSteps = createSetupOptionalSteps({
     container, getEnvironmentId, getPreferredProvider: () => state.provider,
     loadEmbeddingStatus, discoverEmbeddingModels, saveEmbedding, loadPlugins,
-    setPlugin, loadHostConnection, connectLocalHost, createHostPairing, downloadHostSetup, revokeHostConnection,
+    setPlugin, loadHostConnection, connectLocalHost, createHostPairing, requestHostPermissions, downloadHostSetup, revokeHostConnection,
     onChange: paint, goToStep,
   });
   const { embedding, plugins, readyStep } = optionalSteps;
@@ -277,7 +279,7 @@ export function createRuntimeSetupGuide({
       state.step = readyStep;
       if (state.activation.status === "ready") {
         activated = true;
-        await onCheckAgain();
+        await onApplied();
       }
     } catch {
       if (!operationIsCurrent(operationRevision, operationEnvironment)) return;
@@ -428,8 +430,9 @@ export function createRuntimeSetupGuide({
       ?.focus?.({ preventScroll: true });
   }
 
-  function bind({ onCheckAgain: checkAgain = () => {} } = {}) {
+  function bind({ onCheckAgain: checkAgain = () => {}, onApplied: applied = checkAgain } = {}) {
     onCheckAgain = checkAgain;
+    onApplied = applied;
     if (bound) return;
     bound = true;
     container.addEventListener("submit", submit);

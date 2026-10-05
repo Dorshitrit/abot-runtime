@@ -390,6 +390,7 @@ function parseOperation(value: unknown, path: string): ParsedOperation {
       "skills",
       "fixedParams",
       "payload",
+      "attachmentInput",
     ],
     path,
   );
@@ -411,6 +412,10 @@ function parseOperation(value: unknown, path: string): ParsedOperation {
     operation.payload === undefined
       ? undefined
       : expectRecord(operation.payload, `${path}.payload`);
+  const attachmentInput =
+    operation.attachmentInput === undefined
+      ? undefined
+      : expectRecord(operation.attachmentInput, `${path}.attachmentInput`);
   const fixedParams = parseFixedParams(
     operation.fixedParams,
     `${path}.fixedParams`,
@@ -429,6 +434,9 @@ function parseOperation(value: unknown, path: string): ParsedOperation {
       ...(fixedParams ? { fixedParams } : {}),
       ...(payload
         ? { payload: payload as AgentPluginOperationManifest["payload"] }
+        : {}),
+      ...(attachmentInput
+        ? { attachmentInput: attachmentInput as AgentPluginOperationManifest["attachmentInput"] }
         : {}),
     },
     ...(legacySkills ? { legacySkills } : {}),

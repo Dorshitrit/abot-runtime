@@ -5,6 +5,10 @@ export function findAppDom(documentRoot = document) {
     homeWorkspacePanel: documentRoot.getElementById("homeWorkspacePanel"),
     homeDashboardRoot: documentRoot.getElementById("homeDashboardRoot"),
     chatWorkspaceButton: documentRoot.getElementById("chatWorkspaceButton"),
+    automationsWorkspaceButton: documentRoot.getElementById("automationsWorkspaceButton"),
+    automationsWorkspacePanel: documentRoot.getElementById("automationsWorkspacePanel"),
+    closeAutomationsWorkspaceButton: documentRoot.getElementById("closeAutomationsWorkspaceButton"),
+    automationsRoot: documentRoot.getElementById("automationsRoot"),
     schedulesWorkspaceButton: documentRoot.getElementById(
       "schedulesWorkspaceButton",
     ),
@@ -39,6 +43,7 @@ export function findAppDom(documentRoot = document) {
     modelsWorkspaceButton: documentRoot.getElementById("modelsWorkspaceButton"),
     pluginsWorkspaceButton: documentRoot.getElementById("pluginsWorkspaceButton"),
     chatPanel: documentRoot.querySelector(".chat-panel"),
+    automationChatRunPanel: documentRoot.getElementById("automationChatRunPanel"),
     sessionsPanel: documentRoot.querySelector(".sessions-panel"),
     configWorkspacePanel: documentRoot.getElementById("configWorkspacePanel"),
     closeConfigWorkspaceButton: documentRoot.getElementById(

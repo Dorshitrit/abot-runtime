@@ -19,6 +19,8 @@ export function createDashboardController({
     activityError: "",
     loadingSessions: true,
     sessionsError: "",
+    activeAutomations: [],
+    automationStatusUnavailable: false,
   };
   let active = false;
   let ready = false;
@@ -26,6 +28,7 @@ export function createDashboardController({
   let environmentId = "";
   let sessionsEnvironmentId = "";
   let revision = 0;
+  let automationRevision = 0;
   const pendingResources = new Set();
   const eventRefresh = createEventRefresh({
     canRefresh,
@@ -41,6 +44,7 @@ export function createDashboardController({
     return {
       ...state,
       sessions,
+      environmentId: getEnvironmentId(),
       supportsSchedules: client.supportsSchedules(),
       ...approvalData?.snapshot(),
     };
@@ -49,6 +53,14 @@ export function createDashboardController({
   function hasCurrentActivityRead(readRevision, readEnvironmentId) {
     if (readRevision !== revision) return false;
     return readEnvironmentId === getEnvironmentId();
+  }
+  function hasCurrentAutomationRead(readRevision, readEnvironmentId) {
+    if (readRevision !== automationRevision) return false;
+    return readEnvironmentId === getEnvironmentId();
+  }
+  function hasActiveAutomationRun(item) {
+    if (!item.latestRunId) return false;
+    return ["pending", "running", "stopping"].includes(item.latestRunStatus);
   }
   function canRefresh() {
     if (!isRuntimeReady()) return false;
@@ -99,19 +111,40 @@ export function createDashboardController({
       }
     }
   }
+  async function refreshAutomations() {
+    const readEnvironmentId = getEnvironmentId();
+    const readRevision = ++automationRevision;
+    if (!client.supportsAutomations?.()) {
+      state.activeAutomations = [];
+      state.automationStatusUnavailable = false;
+      publish();
+      return;
+    }
+    try {
+      const result = await client.listAutomations(readEnvironmentId);
+      if (!hasCurrentAutomationRead(readRevision, readEnvironmentId)) return;
+      state.activeAutomations = (result.automations || []).filter(hasActiveAutomationRun);
+      state.automationStatusUnavailable = false;
+    } catch {
+      if (!hasCurrentAutomationRead(readRevision, readEnvironmentId)) return;
+      state.automationStatusUnavailable = true;
+    }
+    publish();
+  }
   async function readPendingResources() {
     const resources = [...pendingResources];
     pendingResources.clear();
     const readers = {
       sessions: loadSessions,
       activity: refreshActivity,
+      automations: refreshAutomations,
       approvals: () => approvalData?.refresh(),
     };
     await Promise.allSettled(resources.map((resource) => readers[resource]()));
   }
   function refresh() {
     if (!canRefresh()) return Promise.resolve();
-    for (const resource of ["sessions", "activity", "approvals"])
+    for (const resource of ["sessions", "activity", "automations", "approvals"])
       pendingResources.add(resource);
     return eventRefresh.run();
   }
@@ -135,10 +168,15 @@ export function createDashboardController({
       }
       runtimeReady = available;
       revision += 1;
+      automationRevision += 1;
       if (!available) approvalData?.invalidate();
       cancelRefresh();
       state.activityError = "";
       state.sessionsError = "";
+      if (!available) {
+        state.activeAutomations = [];
+        state.automationStatusUnavailable = false;
+      }
       publish();
       if (available) void refresh();
     },
@@ -165,6 +203,7 @@ export function createDashboardController({
     environmentChanged() {
       cancelRefresh();
       revision += 1;
+      automationRevision += 1;
       approvalData?.invalidate();
       sessionsEnvironmentId = "";
       activitySettled = false;
@@ -174,6 +213,8 @@ export function createDashboardController({
         sessionsError: "",
         loadingActivity: true,
         loadingSessions: true,
+        activeAutomations: [],
+        automationStatusUnavailable: false,
       });
       publish();
       void refresh();

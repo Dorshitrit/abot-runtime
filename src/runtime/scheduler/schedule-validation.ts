@@ -2,6 +2,7 @@ import type {
   CreateSchedulerJobInput,
   SchedulerSchedule,
   SchedulerScheduleInput,
+  SchedulerTimedSchedule,
 } from "./contracts.js";
 
 import { requireSchedulerToolPermissionMode } from "./tool-permission-mode.js";
@@ -99,7 +100,7 @@ export function requireCalendarHour(value: unknown): string {
 export function normalizeSchedulerSchedule(
   input: SchedulerScheduleInput,
   now: number,
-): SchedulerSchedule {
+): SchedulerTimedSchedule {
   if (!input || typeof input !== "object") {
     throw new SchedulerValidationError(
       "scheduler_invalid_schedule",
@@ -152,6 +153,7 @@ export function normalizeSchedulerSchedule(
 export function normalizeStoredSchedulerSchedule(
   schedule: SchedulerSchedule,
 ): SchedulerSchedule {
+  if (schedule?.kind === "manual") return { kind: "manual" };
   if (schedule?.kind !== "timer")
     return normalizeSchedulerSchedule(schedule, 0);
   return {

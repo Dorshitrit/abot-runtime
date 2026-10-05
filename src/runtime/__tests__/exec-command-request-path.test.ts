@@ -25,6 +25,7 @@ afterEach(async () => {
 async function runExecRequest(
   policy: ExecRequestPolicy,
   outsideTarget: boolean,
+  options?: { command: string; contextWindowTokens: number },
 ) {
   const fixture = await createExecCommandPathFixture();
   const project = join(fixture.config.paths.rootDir, "project");
@@ -54,7 +55,7 @@ async function runExecRequest(
         scripted: {
           provider: "local",
           model: "injected-only",
-          contextWindowTokens: 64_000,
+          contextWindowTokens: options?.contextWindowTokens ?? 64_000,
         },
       },
     },
@@ -63,7 +64,7 @@ async function runExecRequest(
   const command = outsideTarget
     ? "printf 'external-%s' content > ../external.txt; cat ../external.txt; printf verified > marker.txt"
     : "if command -v printf >/dev/null 2>&1; then sed -i.bak '/obsolete/d' expected.txt && time -p x=1 awk '/project/ {print $0}' expected.txt | sed -n '/project/p' && printf discarded >&/dev/null && printf verified > marker.txt; fi";
-  const model = createExecRequestScript(policy, command);
+  const model = createExecRequestScript(policy, options?.command ?? command);
   const sessions = createInMemorySessionStore();
   const sessionId = "exec-path-request";
   await sessions.getOrCreateSession(sessionId, {
@@ -174,5 +175,41 @@ test.each(policies)(
       .at(-1)!;
     expect(JSON.stringify(continuation.messages)).toContain("external-content");
     expect(result.session?.messages.at(-1)?.content).toBe(EXEC_REQUEST_FINAL);
+  },
+);
+
+// A large window isolates delivery from semantic compaction; responses are scripted.
+test.each(policies)(
+  "%s admits exact context-managed output larger than the metadata envelope",
+  async (policy) => {
+    const expected = "evidence_".repeat(40_000);
+    const result = await runExecRequest(policy, false, {
+      command: `node -e 'process.stdout.write("evidence_".repeat(40000))'`,
+      contextWindowTokens: 1_000_000,
+    });
+    expect(result.events.filter(({ type }) => type === "failed")).toEqual([]);
+    expect(result.events).toContainEqual(
+      expect.objectContaining({
+        type: "completed",
+        output: EXEC_REQUEST_FINAL,
+      }),
+    );
+    const tools = result.events.filter(({ name }) => name === "tool.completed");
+    expect(tools).toHaveLength(1);
+    expect(tools[0]).toMatchObject({ tool: "exec", ok: true });
+    const consumers =
+      policy === "execution-agent-v1"
+        ? ["execution.decision", "execution.response"]
+        : ["worker.decision", "worker.result"];
+    for (const consumer of consumers) {
+      const input = result.model.invoke.mock.calls
+        .map(([input]) => input)
+        .filter(({ modelStep }) => modelStep === consumer)
+        .at(-1)!;
+      expect(input).toBeDefined();
+      expect(JSON.stringify(input.messages).includes(expected)).toBe(true);
+    }
+    expect(result.session?.messages.at(-1)?.content).toBe(EXEC_REQUEST_FINAL);
+    expect(result.model.invokeRaw).not.toHaveBeenCalled();
   },
 );

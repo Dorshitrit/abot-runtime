@@ -296,7 +296,7 @@ describe("call-scoped Worker capability binding", () => {
     });
   });
 
-  test("binds authoring objectives only for Worker payload capabilities", async () => {
+  test("binds accepted authoring objectives for Worker and root payload capabilities only", async () => {
     const workerPayloadAuthority = await openWorkerLedger(
       "request-worker-payload-objective",
     );
@@ -411,16 +411,14 @@ describe("call-scoped Worker capability binding", () => {
       rootPayloadBinding.execute({
         capabilityId: "example.payload",
         intent: "Author the direct root payload.",
-        authoringObjective: AUTHORING_OBJECTIVE,
         controls: {},
       }),
-    ).rejects.toThrow(
-      "worker_capability_rejected:authoring_objective_forbidden",
-    );
+    ).rejects.toThrow("worker_capability_rejected:authoring_objective_required");
     await expect(
       rootPayloadBinding.execute({
         capabilityId: "example.payload",
         intent: "Author the direct root payload.",
+        authoringObjective: AUTHORING_OBJECTIVE,
         controls: {},
       }),
     ).resolves.toEqual({ executionId: "capability-execution-1" });
@@ -429,6 +427,7 @@ describe("call-scoped Worker capability binding", () => {
       call: rootPayloadAuthority.call,
       executionId: "capability-execution-1",
       intent: "Author the direct root payload.",
+      authoringObjective: AUTHORING_OBJECTIVE,
       controls: {},
       settledCapabilityResults: [],
     });

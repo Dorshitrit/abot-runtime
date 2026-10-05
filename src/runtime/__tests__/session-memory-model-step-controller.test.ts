@@ -4,7 +4,7 @@ import {
   SESSION_MEMORY_CHECKPOINT_KIND,
   type SessionMemoryCheckpoint,
 } from "../../sessions/memory/contracts.js";
-import type { ModelStepContextCompactionController } from "../model/model-step-port.js";
+import type { ModelStepCompactionStage } from "../model/model-step-port.js";
 import type { RequestExecutionScope } from "../request/execution-scope.js";
 import {
   createSessionMemoryAwareCompactionController,
@@ -13,7 +13,7 @@ import {
 } from "../context/session-memory/index.js";
 
 describe("session-memory model-step controller", () => {
-  it("compacts session history before delegating active-request compaction", async () => {
+  it.each([0, 1])("reports remaining compactable history (%s)", async (remaining) => {
     const initial = projection({
       checkpoint: [],
       history: ["old user", "old assistant", "recent user", "recent assistant"],
@@ -23,7 +23,7 @@ describe("session-memory model-step controller", () => {
     const compacted = projection({
       checkpoint: [{ role: "system", content: "session checkpoint" }],
       history: ["recent user", "recent assistant"],
-      compactableTurnCount: 0,
+      compactableTurnCount: remaining,
       revision: 1,
     });
     let current = initial;
@@ -39,8 +39,7 @@ describe("session-memory model-step controller", () => {
         commit,
       })),
     });
-    const activePrepare =
-      vi.fn<ModelStepContextCompactionController["prepare"]>();
+    const activePrepare = vi.fn<ModelStepCompactionStage["prepare"]>();
     const activeProject = vi.fn((messages) => [...messages]);
     const controller = createSessionMemoryAwareCompactionController(
       {
@@ -48,9 +47,14 @@ describe("session-memory model-step controller", () => {
         sessionMemory,
       } as RequestExecutionScope,
       {
-        compactionScope: "active_request",
         project: activeProject,
-        prepare: activePrepare,
+        getStages: () => [
+          {
+            compactionScope: "active_request",
+            scopeId: "active",
+            prepare: activePrepare,
+          },
+        ],
       },
     );
     const input = [
@@ -59,9 +63,16 @@ describe("session-memory model-step controller", () => {
       { role: "user" as const, content: "current request" },
     ];
 
-    const prepared = await controller.prepare(input);
+    const stages = controller.getStages();
+    const outcome = await stages[0]!.prepare(input);
+    if (outcome.kind !== "prepared")
+      throw new Error("history stage unavailable");
+    const prepared = outcome.preparation;
 
-    expect(controller.compactionScope).toBe("session_history");
+    expect(stages.map(({ compactionScope }) => compactionScope)).toEqual([
+      "session_history",
+      "active_request",
+    ]);
     expect(activePrepare).not.toHaveBeenCalled();
     expect(prepared.messages.map(({ content }) => content)).toEqual([
       "root instructions",
@@ -70,9 +81,12 @@ describe("session-memory model-step controller", () => {
       "recent assistant",
       "current request",
     ]);
+    expect(prepared.hasExhaustedCompactionSources).toBe(remaining === 0);
     await prepared.commit();
     expect(commit).toHaveBeenCalledOnce();
-    expect(controller.compactionScope).toBe("active_request");
+    expect(
+      controller.getStages().map(({ compactionScope }) => compactionScope),
+    ).toEqual(remaining ? ["session_history", "active_request"] : ["active_request"]);
 
     const reprojected = controller.project(input);
     expect(activeProject).toHaveBeenCalledOnce();

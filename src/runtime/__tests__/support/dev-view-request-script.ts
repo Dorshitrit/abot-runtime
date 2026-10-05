@@ -25,12 +25,14 @@ function rootDecision(turn: number) {
     return {
       ...invocation,
       operationObjective: "Read the requested section containing target.",
+      controlsEvidenceExecutionIds: [],
       workingDirectory: ".",
     };
   if (turn === 3)
     return {
       ...invocation,
       operationObjective: "Read the second candidate's numeric window.",
+      controlsEvidenceExecutionIds: ["capability-execution-1"],
     };
   expect(turn).toBe(4);
   return { action: "respond" };

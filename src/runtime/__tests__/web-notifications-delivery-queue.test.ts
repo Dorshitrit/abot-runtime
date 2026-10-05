@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { RuntimeConfig } from "../ports.js";
 import type { NotificationDelivery } from "../../web-ui/notifications/contracts.js";
@@ -17,6 +17,11 @@ let directory: string;
 beforeEach(async () => {
   await mkdir(artifacts, { recursive: true });
   directory = await mkdtemp(join(artifacts, "delivery-queue-test-"));
+  for (const id of ["dev", "prod"]) {
+    const sessionsDir = join(directory, id, "sessions");
+    await mkdir(sessionsDir, { recursive: true });
+    await writeFile(join(sessionsDir, "session-1.json"), JSON.stringify({ id: "session-1" }));
+  }
 });
 afterEach(async () => {
   await rm(directory, { recursive: true, force: true });

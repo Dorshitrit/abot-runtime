@@ -33,7 +33,7 @@ describe("Co-worker provider schema compatibility", () => {
   test.each([
     ["activity review", activityFormat, 9],
     ["scheduled reassessment", scheduledFormat, 3],
-    ["proactive review", PROACTIVE_DECISION_FORMAT, 3],
+    ["proactive review", PROACTIVE_DECISION_FORMAT, 4],
   ] as const)("%s reaches Ollama projection and retains cloud constraints", (_name, format, count) => {
     const original = structuredClone(format);
     const projected = projectOllamaFormat(format);
@@ -118,6 +118,7 @@ const now = Date.parse("2026-09-25T14:00:00Z");
 const sources = [{ kind: "candidate" as const, id: "candidate", version: "1" }];
 const proactiveDecision = {
   kind: "proposal", title: "A useful idea", message: "Would a focused review help?",
+  handoffBrief: "Background from SPARK: repeated activity may warrant a focused review; no work is requested yet.",
   reason: "Repeated activity", sources, expiresAt: new Date(now + 3600000).toISOString(), reconsiderAt: null,
 };
 test.each(["ollama", "openai"])("%s accepts an omitted explanation as null or empty text", provider => {
@@ -125,13 +126,14 @@ test.each(["ollama", "openai"])("%s accepts an omitted explanation as null or em
     : projectOpenAIResponsesFormat(PROACTIVE_DECISION_FORMAT).format?.schema) as Record<string, unknown>;
   for (const reason of [null, "", "An explanation"]) {
     expect(validateJsonSchemaValue(schema, { ...proactiveDecision, reason })).toBeUndefined();
-    expect(validateJsonSchemaValue(schema, { kind: "none", title: null, message: null, reason,
+    expect(validateJsonSchemaValue(schema, { kind: "none", title: null, message: null, handoffBrief: null, reason,
       sources: [], expiresAt: null, reconsiderAt: null })).toBeUndefined();
   }
 });
 test.each([
   ["title", 161, "proactive_title_invalid"],
   ["message", 4001, "proactive_message_invalid"],
+  ["handoffBrief", 4001, "proactive_handoff_brief_invalid"],
   ["reason", 1001, "proactive_reason_invalid"],
 ])("proactive parser enforces the projected %s length", (field, length, error) => {
   expect(() => validateProactiveDecision({ ...proactiveDecision, [field]: "x".repeat(length) }, sources, now)).toThrow(error);

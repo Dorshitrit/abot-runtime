@@ -89,7 +89,7 @@ async function fixture() {
         start: async () => {}, stop: async () => {},
         preferencesChanged: async () => { proactiveChanges(context.preferences().proactiveEnabled); },
         knowledgeChanged() {}, beginInteractive: () => () => {},
-        status: async () => ({ state: "off", proposals: [] }), dismiss: async () => {},
+        status: async () => ({ state: "off" }),
       } }),
     });
     services.push(service);

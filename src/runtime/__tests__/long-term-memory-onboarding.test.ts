@@ -26,7 +26,8 @@ const BASE_CONFIG: RuntimeConfigFile = {
 
 describe("long-term memory onboarding", () => {
   test("probes the candidate profile before atomically enabling memory", async () => {
-    const harness = createRepositoryHarness(BASE_CONFIG);
+    const config = { ...BASE_CONFIG, plugins: { allow: ["*"], deny: ["web"] } };
+    const harness = createRepositoryHarness(config);
     const probe = vi.fn(async () => ({
       modelFingerprint: "sha256:embedding",
       dimensions: 768,
@@ -45,7 +46,8 @@ describe("long-term memory onboarding", () => {
 
     expect(probe).toHaveBeenCalledOnce();
     expect(harness.write).toHaveBeenCalledOnce();
-    expect(harness.write).toHaveBeenCalledWith(expect.any(Object), BASE_CONFIG);
+    expect(harness.write).toHaveBeenCalledWith(expect.any(Object), config);
+    expect(harness.current().plugins).toEqual(config.plugins);
     expect(harness.current()).toMatchObject({
       models: {
         embeddingProfiles: {

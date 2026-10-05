@@ -10,7 +10,7 @@
       "catalogGroups": ["read"],
       "capabilities": {
         "dev_view": {
-          "description": "Inspect a bounded sample from one current development directory or a bounded line-numbered window from one existing text file under agent work or workspace roots. For a file, provide path and either start_line/end_line or an exact locator. A locator takes precedence over numeric lines. Results declare scan and output truncation explicitly.",
+          "description": "Read source code or other text files, or inspect a development directory under agent work or workspace roots. Files return a bounded line-numbered window. Provide path and either start_line/end_line or an exact locator; a locator takes precedence. Results declare scan and output truncation explicitly.",
           "routingCapability": "filesystem_inspection",
           "developmentRoles": ["inspect", "verify"],
           "runtimePathBindings": [
@@ -34,7 +34,7 @@
           "skills": ["dev_view_skill"],
           "operations": {
             "inspect_target": {
-              "summary": "Inspect one bounded directory sample or bounded file window when unresolved work requires current content. Choose either a locator or numeric lines; locator takes precedence. Truncation metadata distinguishes a complete result from a bounded scan.",
+              "summary": "Read a bounded line-numbered window from source code or another text file, or inspect a directory sample. Choose a locator or numeric lines; locator takes precedence. Results declare truncation explicitly.",
               "input": {
                 "type": "object",
                 "additionalProperties": false,
@@ -171,7 +171,7 @@
           }
         },
         "read_file": {
-          "description": "Read one current text file under agent work or workspace roots. Small files are returned completely; larger files return a bounded head/tail view with explicit byte and truncation metadata.",
+          "description": "Read source code (.js, .ts, .py, .html, .css, etc.) or any other text file under agent work or workspace roots. Small files are returned completely; larger files return a bounded head/tail view with explicit byte and truncation metadata.",
           "routingCapability": "filesystem_inspection",
           "developmentRoles": ["inspect", "verify"],
           "runtimePathBindings": [
@@ -193,7 +193,7 @@
           "skills": ["read_file_skill"],
           "operations": {
             "read_one_file": {
-              "summary": "Read one current text file, returning complete content within the read budget or an explicitly truncated head/tail view.",
+              "summary": "Read one source-code or text file, including JS, TS, Python, HTML and CSS. Returns complete content within the read budget or an explicitly truncated head/tail view.",
               "input": {
                 "type": "object",
                 "additionalProperties": false,
@@ -244,7 +244,7 @@
           "skills": [],
           "operations": {
             "write_complete_file": {
-              "summary": "Create one missing or new file using a complete raw-text body authored outside the decision JSON. In one connected Worker call, establish source artifacts before consumers because later supported payload authoring receives bounded related successful artifacts automatically. Select this for an existing file only when the objective explicitly requires intentional full-file replacement; use edit_existing_file for ordinary changes to existing content. Do not create an unrequested adjacent artifact.",
+              "summary": "Create a new file via a separate complete raw-text payload. Paths use the runtime-host namespace; relative paths use the call's working directory under the request's agent work root. Path syntax does not select a SYSTEM OS target. Establish source artifacts before consumers in a connected Worker call; bounded successful artifacts reach later payloads. Existing files require explicit full replacement; use edit_existing_file for ordinary edits. Do not create unrequested adjacent artifacts.",
               "input": {
                 "type": "object",
                 "additionalProperties": false,

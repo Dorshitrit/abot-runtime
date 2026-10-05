@@ -89,6 +89,7 @@ export function createConfigurationFeature({
   const computerAccess = createComputerAccessFeature({
     dom,
     runtimeClient,
+    getEnvironmentId: selectedEnvironmentId,
     onChange: () => homeSetupSuggestion?.render(),
   });
   homeSetupSuggestion = createHomeGuidance({

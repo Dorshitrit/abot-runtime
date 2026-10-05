@@ -248,8 +248,13 @@ the reported result, not overall completion.
 
 The complete result is a mandatory canonical evidence object. Before capability
 settlement, the Runtime validates that it contains only plain JSON-safe data and
-fits the 256 KiB serialized producer boundary. Functions, symbols, accessors,
-cycles, non-plain prototypes, non-finite numbers, and oversized results fail
+fits the 256 KiB serialized envelope boundary. Registered results may declare
+`contextTextFields` (`output`, `stdout`, or `stderr`) whose exact text bodies are
+budgeted by the existing model-context admission and compaction path. The text
+is retained in the same canonical fields; metadata remains byte-bounded.
+Results without this declaration retain the complete-result byte limit.
+Functions, symbols, accessors, cycles, non-plain prototypes, non-finite numbers,
+and oversized metadata fail
 explicitly. The Runtime does not silently truncate, partially parse, or discard
 structured fields.
 

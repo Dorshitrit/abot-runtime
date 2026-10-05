@@ -1,5 +1,6 @@
 import type { ServerResponse } from "node:http";
 import type WebSocket from "ws";
+import { isAutomationSessionLockedError } from "../../sessions/automation-session-origin.js";
 
 import type { RunRequestMessage } from "../../runtime/request/contracts.js";
 import type { SchedulerRun } from "../../runtime/scheduler/contracts.js";
@@ -19,6 +20,7 @@ import { PendingToolApprovals } from "./pending-tool-approvals.js";
 import { createWorkspaceChangeNotifier } from "./workspace-notifications.js";
 import type { LocalPendingToolApproval } from "../../runtime/local-host/request-approval-contracts.js";
 import { attachApprovalRequest } from "./approval-request-attachment.js";
+import { publicSparkChatAdmissionFailure, resolveSparkChatRequest } from "./spark-chat-admission.js";
 
 function createRequestId(): string {
   const random = Math.random().toString(36).slice(2, 8);
@@ -90,7 +92,20 @@ export class LocalRequestExecution {
       });
       return;
     }
+    try {
+      await environment.services.sessions.assertInteractiveSession?.(sessionId);
+    } catch (error) {
+      if (!isAutomationSessionLockedError(error)) throw error;
+      sendJson(res, 409, { ok: false, error: "automation_session_locked" });
+      return;
+    }
     const requestId = createRequestId();
+    try {
+      body = await resolveSparkChatRequest(environment, sessionId, body);
+    } catch (error) {
+      sendJson(res, 409, { ok: false, ...publicSparkChatAdmissionFailure(error) });
+      return;
+    }
     const requestSteering = createRequestSteeringInbox({ requestId });
     const request: RunRequestMessage = {
       type: "run_request",
@@ -177,6 +192,21 @@ export class LocalRequestExecution {
     const steerId = getString(message.steerId).trim();
     const text = getString(message.text).trim();
     const active = requestId ? this.activeRequests.get(requestId) : undefined;
+    if (active) {
+      const sessions = resolveEnvironment(active.environmentId).services.sessions;
+      try {
+        await sessions.assertInteractiveSession?.(active.sessionId);
+      } catch (error) {
+        if (!isAutomationSessionLockedError(error)) throw error;
+        return {
+          type: "steer_ack",
+          requestId,
+          steerId,
+          accepted: false,
+          reason: "automation_session_locked",
+        };
+      }
+    }
     const steer = active
       ? resolveEnvironment(active.environmentId).requests.steer
       : undefined;

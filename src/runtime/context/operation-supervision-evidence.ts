@@ -1,3 +1,6 @@
+import { projectSingleCopyCapabilityResult } from "./capability-result-compaction-source.js";
+import { projectCanonicalRequestToolResult } from "./canonical-capability-result.js";
+import { bindOperationSupervisionEvidenceMessage } from "./operation-supervision-evidence-binding.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import {
   projectImmediateRoleOperationSupervisionNotices,
@@ -43,7 +46,7 @@ export type OperationSupervisionEvidenceEntry = Readonly<{
         executionId: string;
       }>
     | Readonly<{
-        kind: "embedded_cross_call_exact_result";
+        kind: "embedded_cross_call_exact_result" | "embedded_exact_result";
         acceptedAction: OperationSupervisionEvidenceAcceptedAction;
         receipt: OperationSupervisionEvidenceReceipt;
         adapterResult: CapabilityAdapterResult;
@@ -62,12 +65,24 @@ export function buildImmediateOperationSupervisionEvidenceMessage(
   const notices = projectImmediateRoleOperationSupervisionNotices(head, call);
   if (notices.length === 0) return undefined;
 
-  const entries = notices.map((notice) =>
-    projectLinkedEvidenceEntry(head, call, notice),
+  const exactEntries = notices.map((notice) =>
+    projectOperationSupervisionLinkedEvidence(head, call, notice, true),
   );
-  return Object.freeze({
-    role: "user" as const,
-    content: JSON.stringify({
+  const entries = exactEntries.map((entry) =>
+    entry.evidence.kind === "embedded_exact_result"
+      ? {
+          ...entry,
+          evidence: {
+            kind: "existing_exact_capability_result_lane",
+            executionId: entry.originExecutionId,
+          },
+        }
+      : entry,
+  );
+  return bindOperationSupervisionEvidenceMessage(
+    head,
+    call,
+    JSON.stringify({
       kind: OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND,
       authority: "canonical_role_call_ledger",
       purpose: "supply_exact_immediate_operation_supervision_evidence",
@@ -84,13 +99,15 @@ export function buildImmediateOperationSupervisionEvidenceMessage(
       coverage: "complete_for_immediate_operation_supervision_notices",
       entries,
     }),
-  });
+    exactEntries,
+  );
 }
 
-function projectLinkedEvidenceEntry(
+export function projectOperationSupervisionLinkedEvidence(
   head: RoleCallLedgerHead,
   call: RoleCallFrame,
   notice: RoleOperationSupervisionNotice,
+  embedSameCall = false,
 ): OperationSupervisionEvidenceEntry {
   const execution = head.state.capabilityExecutions.find(
     ({ executionId }) => executionId === notice.originExecutionId,
@@ -107,7 +124,7 @@ function projectLinkedEvidenceEntry(
     originExecutionId: notice.originExecutionId,
     notice,
   };
-  if (execution.callId === call.callId) {
+  if (execution.callId === call.callId && !embedSameCall) {
     return Object.freeze({
       ...entry,
       evidence: Object.freeze({
@@ -116,27 +133,25 @@ function projectLinkedEvidenceEntry(
       }),
     });
   }
+  const canonical = projectCanonicalRequestToolResult(head, execution);
+  const projected =
+    execution.callId === call.callId
+      ? projectSingleCopyCapabilityResult(canonical)
+      : canonical;
+  const {
+    acceptedAction: _action,
+    adapterResult: _result,
+    ...receipt
+  } = projected;
   return Object.freeze({
     ...entry,
     evidence: Object.freeze({
-      kind: "embedded_cross_call_exact_result" as const,
+      kind:
+        execution.callId === call.callId
+          ? ("embedded_exact_result" as const)
+          : ("embedded_cross_call_exact_result" as const),
       acceptedAction: projectAcceptedCapabilityAction(head, execution),
-      receipt: Object.freeze({
-        executionId: execution.executionId,
-        callId: execution.callId,
-        invocationAttempt: execution.invocationAttempt,
-        capabilityId: execution.capabilityId,
-        declaredEffect: execution.declaredEffect,
-        outcome: execution.outcome,
-        observedEffect: execution.observedEffect,
-        summary: execution.summary,
-        ...(execution.referenceData
-          ? { referenceData: execution.referenceData }
-          : {}),
-        ...(execution.references
-          ? { references: Object.freeze([...execution.references]) }
-          : {}),
-      }),
+      receipt: Object.freeze(receipt),
       adapterResult: exactResult.value,
     }),
   });

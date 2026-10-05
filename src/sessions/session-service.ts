@@ -1,4 +1,12 @@
 import { randomUUID } from "node:crypto";
+import {
+  AutomationSessionLockedError,
+  createAutomationSessionAccess,
+  hasAutomationSessionOrigin,
+  type AutomationSessionHandle,
+  type AutomationSessionOrigin,
+} from "./automation-session-origin.js";
+import { createAutomationSessionStore } from "./automation-session-store.js";
 import { saveDurableSessionFile } from "./durable-session-commit.js";
 import { cleanupSessionContinuations } from "./request-lifecycle/continuation-cleanup.js";
 import { createSessionRequestLifecycle } from "./request-lifecycle/service.js";
@@ -74,6 +82,8 @@ import type {
   SessionMemoryCheckpointCommitResult,
 } from "./memory/contracts.js";
 import { resolveSessionMemoryCheckpointCommit } from "./memory/rules.js";
+import { assertSessionKindUnchanged, sessionKindCreationFields } from "./spark-session.js";
+import { appendAssistantInitiativeRecord } from "./assistant-initiative-append.js";
 import type { AgentMode } from "../shared/types.js";
 
 type SessionServiceOptions = {
@@ -89,6 +99,8 @@ function toIso(now: () => Date): string {
 export class SessionService {
   readonly requestLifecycle: SessionRequestLifecycleStore;
   private readonly sessionsDir: string;
+  private readonly automationAccess = createAutomationSessionAccess();
+  private readonly automationSessions: ReturnType<typeof createAutomationSessionStore>;
 
   private readonly now: () => Date;
 
@@ -100,6 +112,10 @@ export class SessionService {
     this.sessionsDir =
       options.sessionsDir || getDefaultSessionsDir(process.cwd());
     this.now = options.now || (() => new Date());
+    this.automationSessions = createAutomationSessionStore({
+      sessionsDir: this.sessionsDir, now: this.now, access: this.automationAccess,
+      enqueue: this.runSessionMutation.bind(this),
+    });
     this.createMessageId = options.createMessageId || defaultCreateMessageId;
     this.requestLifecycle = createSessionRequestLifecycle({
       sessionsDir: this.sessionsDir,
@@ -111,6 +127,36 @@ export class SessionService {
     });
   }
 
+  async assertInteractiveSession(sessionId: string): Promise<void> {
+    assertValidSessionId(sessionId);
+    const session = await loadSessionFile(this.sessionsDir, sessionId);
+    if (session && hasAutomationSessionOrigin(session))
+      throw new AutomationSessionLockedError();
+  }
+
+  async createAutomationSession(
+    sessionId: string,
+    origin: AutomationSessionOrigin,
+  ): Promise<AutomationSessionHandle> {
+    return this.automationSessions.create(sessionId, origin);
+  }
+
+  releaseAutomationSession(handle: AutomationSessionHandle): void {
+    this.automationSessions.release(handle);
+  }
+
+  reconcileAutomationSessions(cleanupAttachments: (sessionId: string) => Promise<void>,
+    onError: (sessionId: string, error: unknown) => void): Promise<void> {
+    return this.automationSessions.reconcile(cleanupAttachments, onError);
+  }
+
+  runAsAutomationSession<T>(
+    handle: AutomationSessionHandle,
+    task: () => Promise<T>,
+  ): Promise<T> {
+    return this.automationAccess.run(handle, task);
+  }
+
   async getOrCreateSession(
     sessionId: string,
     options: SessionCreationOptions = {},
@@ -119,7 +165,9 @@ export class SessionService {
     await ensureSessionsDir(this.sessionsDir);
     const existing = await loadSessionFile(this.sessionsDir, sessionId);
     if (existing) {
+      this.automationAccess.assertAccess(sessionId, existing);
       assertSessionProjectUnchanged(existing, options.project);
+      assertSessionKindUnchanged(existing, options.kind);
       return existing;
     }
 
@@ -129,7 +177,7 @@ export class SessionService {
       ...(options.project
         ? { project: copySessionProject(options.project) }
         : {}),
-      title: sessionId,
+      ...sessionKindCreationFields(sessionId, options),
       createdAt: timestamp,
       updatedAt: timestamp,
       lastAgentMode: "reasoning",
@@ -142,7 +190,9 @@ export class SessionService {
 
   async getAllSessions(): Promise<SessionRecord[]> {
     const sessions = await loadAllSessionFiles(this.sessionsDir);
-    return sessions.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return sessions
+      .filter((session) => this.automationAccess.canAccess(session.id, session))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
   async listSessions(
@@ -165,7 +215,10 @@ export class SessionService {
   async getSessionById(sessionId: string): Promise<SessionRecord | null> {
     assertValidSessionId(sessionId);
     await ensureSessionsDir(this.sessionsDir);
-    return loadSessionFile(this.sessionsDir, sessionId);
+    const session = await loadSessionFile(this.sessionsDir, sessionId);
+    return session && this.automationAccess.canAccess(sessionId, session)
+      ? session
+      : null;
   }
 
   async getSessionSnapshot(
@@ -181,6 +234,7 @@ export class SessionService {
     }
     return {
       sessionId,
+      ...(session.kind ? { kind: session.kind } : {}),
       ...(session.project ? { project: session.project } : {}),
       title: session.title,
       messages: filterMessagesAfter(
@@ -205,6 +259,7 @@ export class SessionService {
     const normalizedAfterSeq = normalizeAfterSeq(afterSeq);
     const sessions = await loadAllSessionFiles(this.sessionsDir);
     for (const session of sessions) {
+      if (!this.automationAccess.canAccess(session.id, session)) continue;
       const request = getSessionRequest(session, requestId);
       if (!request) {
         continue;
@@ -410,6 +465,16 @@ export class SessionService {
         now: this.now(),
       }),
     );
+  }
+
+  async appendAssistantInitiative(
+    sessionId: string,
+    input: CreateAssistantConversationInput,
+  ): Promise<SessionRecord> {
+    assertValidSessionId(sessionId);
+    return this.runSessionMutation(sessionId, () => appendAssistantInitiativeRecord({
+      directory: this.sessionsDir, sessionId, input, now: this.now(),
+    }));
   }
 
   async compareAndSwapSessionMemoryCheckpoint(
@@ -689,7 +754,11 @@ export class SessionService {
   ): Promise<T> {
     const previous =
       this.sessionMutationQueues.get(sessionId) ?? Promise.resolve();
-    const current = previous.catch(() => undefined).then(mutation);
+    const current = previous.catch(() => undefined).then(async () => {
+      const existing = await loadSessionFile(this.sessionsDir, sessionId);
+      if (existing) this.automationAccess.assertAccess(sessionId, existing);
+      return mutation();
+    });
     const queued = current.then(
       () => undefined,
       () => undefined,

@@ -2,6 +2,7 @@
 export class SessionRequestAdmission {
   private readonly active = new Map<string, number>();
   private readonly reserved = new Set<string>();
+  private readonly automationReserved = new Set<string>();
   private readonly waiters = new Map<string, Set<() => void>>();
   private readonly idleWaiters = new Set<() => void>();
   private closed = false;
@@ -33,25 +34,39 @@ export class SessionRequestAdmission {
     };
   }
 
+  /** Automation Runs share idle accounting without impersonating a session. */
+  tryReserveAutomation(automationId: string): (() => void) | null {
+    if (this.closed) return null;
+    if (this.automationReserved.has(automationId)) return null;
+    this.automationReserved.add(automationId);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.automationReserved.delete(automationId);
+      this.notifyIdle();
+    };
+  }
+
   async run<T>(
     sessionId: string,
     execute: () => Promise<T>,
     resume = false,
   ): Promise<T> {
-    this.requireOpenAdmission();
-    while (this.reserved.has(sessionId)) {
-      // Even a cancelled request must wait before changing session history.
-      await new Promise<void>((resolve) => {
-        const waiting = this.waiters.get(sessionId) ?? new Set();
-        waiting.add(resolve);
-        this.waiters.set(sessionId, waiting);
-      });
+    for (;;) {
       this.requireOpenAdmission();
+      if (this.isSessionReserved(sessionId)) {
+        await this.waitForSessionReservation(sessionId);
+        continue;
+      }
+      if (this.shouldCheckSavedApproval(resume) && await this.hasSavedWait!(sessionId))
+        throw new Error("session_awaiting_approval");
+      this.requireOpenAdmission();
+      // The saved-wait read yielded; a clear or scheduler may have reserved meanwhile.
+      if (this.isSessionReserved(sessionId)) continue;
+      if (this.isDeleted(sessionId)) throw new Error("session_deleted");
+      break;
     }
-    if (!resume && this.hasSavedWait && (await this.hasSavedWait(sessionId)))
-      throw new Error("session_awaiting_approval");
-    this.requireOpenAdmission();
-    if (this.isDeleted(sessionId)) throw new Error("session_deleted");
     this.active.set(sessionId, (this.active.get(sessionId) ?? 0) + 1);
     try {
       return await execute();
@@ -61,6 +76,21 @@ export class SessionRequestAdmission {
       else this.active.delete(sessionId);
       this.notifyIdle();
     }
+  }
+
+  private isSessionReserved(sessionId: string): boolean { return this.reserved.has(sessionId); }
+
+  private shouldCheckSavedApproval(resume: boolean): boolean {
+    if (resume) return false;
+    return this.hasSavedWait !== undefined;
+  }
+
+  private waitForSessionReservation(sessionId: string): Promise<void> {
+    return new Promise((resolve) => {
+      const waiting = this.waiters.get(sessionId) ?? new Set();
+      waiting.add(resolve);
+      this.waiters.set(sessionId, waiting);
+    });
   }
 
   close(): void {
@@ -82,7 +112,8 @@ export class SessionRequestAdmission {
 
   isIdle(): boolean {
     if (this.active.size > 0) return false;
-    return this.reserved.size === 0;
+    if (this.reserved.size > 0) return false;
+    return this.automationReserved.size === 0;
   }
 
   private notifyIdle(): void {

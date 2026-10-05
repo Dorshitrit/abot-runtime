@@ -4,7 +4,10 @@ import type { ChatMessage } from "../../../model-gateway/types.js";
 import { projectCapabilityBrief } from "../../context/capability-brief.js";
 import { assessRequestMessagesBudget } from "../../context/request-context-budget.js";
 import { resolveModelContextAdmission } from "../../model/model-context-budget.js";
-import type { ModelStepContextCompactionController } from "../../model/model-step-port.js";
+import type {
+  ModelStepContextCompactionController,
+  ModelStepCompactionScope,
+} from "../../model/model-step-port.js";
 import type { WorkerCapabilityCatalogGroup } from "../../orchestration/worker-capabilities/index.js";
 import { createRequestSteeringInbox } from "../../request/request-steering.js";
 import { createSupervisorCapabilityBriefReadmissionController } from "../../steps/supervisor-decision/capability-brief-readmission.js";
@@ -173,8 +176,7 @@ export function createReadmissionFixture(
     },
     { role: "user", content: request.prompt },
   ];
-  let scope: ModelStepContextCompactionController["compactionScope"] =
-    "session_history";
+  let scope: ModelStepCompactionScope = "session_history";
   const receipt = {
     messages: [{ role: "system" as const, content: "Committed checkpoint" }],
     commit: vi.fn(() => {
@@ -185,13 +187,15 @@ export function createReadmissionFixture(
     coveredSourceCount: 2,
   };
   const project = vi.fn((current: readonly ChatMessage[]) => [...current]);
-  const prepare = vi.fn(async (_current: readonly ChatMessage[]) => receipt);
+  const prepare = vi.fn(async (_current: readonly ChatMessage[]) => ({
+    kind: "prepared" as const,
+    preparation: receipt,
+  }));
   const controller = {
-    get compactionScope() {
-      return scope;
-    },
     project,
-    prepare,
+    getStages: () => [
+      { compactionScope: scope, scopeId: receipt.scopeId, prepare },
+    ],
   } satisfies ModelStepContextCompactionController;
   const wrapped = createSupervisorCapabilityBriefReadmissionController(
     request,

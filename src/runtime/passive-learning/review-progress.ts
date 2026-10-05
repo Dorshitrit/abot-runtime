@@ -24,7 +24,7 @@ export function fingerprintReviewProgress(value: unknown): string {
 }
 
 /** Bound all persisted text; individual outputs are revalidated by their stage decoder. */
-export function readCoWorkerReviewProgress(value: unknown): CoWorkerReviewProgress | undefined {
+export function readCoWorkerReviewProgress(value: unknown, maxAgeMs = MAX_CO_WORKER_REVIEW_PROGRESS_AGE_MS): CoWorkerReviewProgress | undefined {
   if (value === undefined) return undefined;
   if (!isProgressObject(value)) throw progressInvalid();
   if (Buffer.byteLength(JSON.stringify(value)) > MAX_CO_WORKER_REVIEW_PROGRESS_BYTES) throw progressInvalid();
@@ -32,7 +32,7 @@ export function readCoWorkerReviewProgress(value: unknown): CoWorkerReviewProgre
   if (!isProgressFingerprint(value.binding)) throw progressInvalid();
   if (!isProgressTimestamp(value.referenceTime) || !isProgressTimestamp(value.expiresAt)) throw progressInvalid();
   const age = Date.parse(value.expiresAt) - Date.parse(value.referenceTime);
-  if (age <= 0 || age > MAX_CO_WORKER_REVIEW_PROGRESS_AGE_MS) throw progressInvalid();
+  if (age <= 0 || age > maxAgeMs) throw progressInvalid();
   if (!Array.isArray(value.stages) || value.stages.length > MAX_CO_WORKER_REVIEW_STAGES) throw progressInvalid();
   const seen = new Set<string>();
   const stages = value.stages.map(stage => {

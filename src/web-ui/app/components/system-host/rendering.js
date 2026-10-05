@@ -1,5 +1,5 @@
 import { escapeHtml } from "../../lib/text-format.js";
-import { renderMacPermissionGuide } from "./macos-permissions.js";
+import { macPermissionSummary, renderMacPermissionPreparation } from "./macos-permission-rendering.js";
 import {
   renderMacSetupAction,
   renderMacSetupNotice,
@@ -20,7 +20,7 @@ function pairedCompanionIsOffline(snapshot) {
 function connectionStatus(snapshot, statusUnavailable, busy) {
   if (statusUnavailable) return "Status unavailable";
   if (busy || !snapshot) return "Checking this computer…";
-  if (hostSetupIsReady(snapshot)) return "Ready";
+  if (hostSetupIsReady(snapshot)) return snapshot.identity?.os === "macos" ? "Connected" : "Ready";
   if (pairedCompanionIsOffline(snapshot)) return "Paired · offline";
   if (hostCompanionUpdateRequired(snapshot)) return "Update needed";
   if (snapshot.connected) return "Computer access unavailable";
@@ -34,6 +34,8 @@ function hostAccessIsAvailable(snapshot, supported, statusUnavailable, busy) {
 function readyDescription(snapshot) {
   if (["native", "wsl_interop"].includes(snapshot?.readiness?.route))
     return "Direct commands are available. No extra installation is needed for direct commands.";
+  if (snapshot?.identity?.os === "macos")
+    return "Your Mac is connected. macOS permissions and tool approvals are checked separately. Background collection starts only when you enable it.";
   return "Your computer is connected for system tools and ABot Spark. Background collection starts only when you enable it.";
 }
 function renderIdentity(snapshot) {
@@ -92,14 +94,16 @@ function setupDownloadHasExpired(downloaded) {
 export function renderSystemHostConnection(input) {
   const content = renderConnectionDetails(input);
   if (!input.compact) return content;
-  const { snapshot, supported, statusUnavailable, busy, managementOpen } = input;
+  const { snapshot, supported, statusUnavailable, busy, managementOpen, macPermissions, nativeMacPermissions } = input;
   const available = hostAccessIsAvailable(snapshot, supported, statusUnavailable, busy);
   const status = supported ? connectionStatus(snapshot, statusUnavailable, busy) : "Unavailable";
+  const permissionSummary = macPermissionSummary(snapshot, macPermissions, nativeMacPermissions);
   return `<details class="system-host-compact" data-system-host-management ${managementOpen ? "open" : ""}>
     <summary class="system-host-summary">
       <span class="system-host-summary-title">Computer access</span>
       <span class="system-host-status" role="status" data-tone="${available ? "ready" : "unavailable"}"><span class="system-host-status-dot" aria-hidden="true"></span>${escapeHtml(status)}</span>
       <span class="system-host-summary-name">${escapeHtml(snapshot?.identity?.name || "")}</span>
+      ${permissionSummary ? `<span class="system-host-summary-permissions">${escapeHtml(permissionSummary)}</span>` : ""}
       <span class="system-host-summary-action" aria-hidden="true"><span>⌄</span></span>
     </summary>
     <div class="system-host-management-body">${content}</div>
@@ -115,6 +119,10 @@ function renderConnectionDetails({
   statusUnavailable,
   downloaded,
   manualMac,
+  macPermissions,
+  macPermissionError,
+  nativeMacPermissions,
+  nativeMacPermissionError,
 }) {
   const ready = hostSetupIsReady(snapshot);
   const available = hostAccessIsAvailable(
@@ -130,7 +138,7 @@ function renderConnectionDetails({
     <p class="system-host-status" role="status" data-tone="${available ? "ready" : "unavailable"}"><span class="system-host-status-dot" aria-hidden="true"></span><span>${supported ? connectionStatus(snapshot, statusUnavailable, busy) : "Computer access setup requires the local Runtime backend."}</span></p>
     ${ready && !statusUnavailable && !busy ? `<p>${readyDescription(snapshot)}</p>` : ""}
     ${renderIdentity(snapshot)}
-    ${supported ? renderMacPermissionGuide(snapshot) : ""}
+    ${supported ? renderMacPermissionPreparation({ snapshot, macPermissions, macPermissionError, nativeMacPermissions, nativeMacPermissionError, busy, statusUnavailable }) : ""}
     ${supported ? renderMacSetupNotice(snapshot) : ""}
     ${supported ? renderMacConnectionInstructions(manualMac) : ""}
     ${!ready && snapshot?.readiness?.message ? `<p class="system-host-note">${escapeHtml(snapshot.readiness.message)}</p>` : ""}

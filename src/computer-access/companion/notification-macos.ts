@@ -38,7 +38,7 @@ function sourceUrlAllowed(value) {
   var origin = connection.url.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:');
   if (value.indexOf(origin + '/') !== 0) return false;
   var path = value.slice(origin.length).split('?')[0];
-  return ['/chat', '/notifications', '/home', '/learning'].indexOf(path) !== -1;
+  return ['/chat', '/notifications', '/home', '/learning', '/automations'].indexOf(path) !== -1;
 }
 ObjC.registerSubclass({
   name: 'ABotDesktopNotificationDelegate',

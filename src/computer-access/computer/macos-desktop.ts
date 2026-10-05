@@ -29,7 +29,7 @@ func capability(_ available: Bool,_ reason: String = "",supported: Bool = true) 
   return result
 }
 func rectJSON(_ rect: CGRect) -> [String:Any] {
-  return ["x":rect.minX,"y":rect.minY,"width":rect.width,"height":rect.height]
+  return ["x":Double(rect.minX),"y":Double(rect.minY),"width":Double(rect.width),"height":Double(rect.height)]
 }
 func boundedText(_ value:String,_ limit:Int=256) -> String {
   var result="",length=0

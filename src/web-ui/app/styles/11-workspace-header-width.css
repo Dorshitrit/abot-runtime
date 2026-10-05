@@ -22,22 +22,36 @@
   margin-inline: auto;
 }
 
-/* A shared desktop baseline joins the brand, navigation and workspace. */
+/* Primary headers share one height and title style on every page. */
+.app-shell {
+  --workspace-header-height: 64px;
+}
+
+.home-workspace-header,
+.workspace-page-header,
+.config-workspace-panel .config-workspace-header,
+.chat-header {
+  height: var(--workspace-header-height);
+  min-height: var(--workspace-header-height);
+  flex-shrink: 0;
+  align-items: center;
+  align-content: center;
+  padding-block: 6px;
+}
+
+.home-workspace-header h1,
+.workspace-page-header h2,
+.chat-header h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--font-size-4xl);
+  font-weight: 400;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+
+/* Join the brand, navigation and workspace at the shared baseline. */
 @media (min-width: 761px) {
-  .app-shell {
-    --workspace-header-height: 94px;
-  }
-
-  .home-workspace-header,
-  .workspace-page-header,
-  .config-workspace-panel .config-workspace-header,
-  .chat-header {
-    height: var(--workspace-header-height);
-    min-height: var(--workspace-header-height);
-    flex-shrink: 0;
-    align-items: center;
-  }
-
   .workspace-rail {
     padding-top: 0;
   }
@@ -95,5 +109,25 @@
     margin-inline: -12px;
     padding-inline: 12px;
     border-bottom: 1px solid var(--line);
+  }
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    --workspace-header-height: 56px;
+  }
+}
+
+/* Keep narrow-screen header actions clear of the shared title. */
+@media (max-width: 400px) {
+  .workspace-page-header .toolbar-actions {
+    max-width: calc(100vw - 2 * var(--workspace-page-gutter) - 100px);
+  }
+
+  .workspace-page-header .toolbar-actions button {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }

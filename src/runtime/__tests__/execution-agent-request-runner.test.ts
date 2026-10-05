@@ -28,6 +28,7 @@ import {
   createTestRequestExecutionScopeWithCapabilities,
 } from "./support/request-execution-scope.js";
 import { createRequestSteeringInbox } from "../request/request-steering.js";
+import { runtimeCapsule } from "./support/execution-controls-evidence-fixture.js";
 import { EXECUTION_AGENT_V1_EXECUTION_POLICY } from "../request/role-executor-composition.js";
 import { runRequestRunner } from "../request/runner.js";
 import { createRequestWorkerCapabilityProvider } from "../request/worker-capability-composition.js";
@@ -558,6 +559,7 @@ describe("Execution Agent request runner", () => {
               capabilityId: descriptor.capabilityId,
               intent: firstIntent,
               operationObjective,
+              controlsEvidenceExecutionIds: [],
               selectionControls: { path: "exact.txt" },
               workingDirectory: null,
             }),
@@ -568,18 +570,10 @@ describe("Execution Agent request runner", () => {
           expect(messages.filter(({ role }) => role === "tool")).toHaveLength(
             0,
           );
-          const assignment = messages
-            .map(({ content }) => {
-              try {
-                return JSON.parse(content) as Record<string, unknown>;
-              } catch {
-                return undefined;
-              }
-            })
-            .find(
-              (value) =>
-                value?.kind === "runtime_execution_capability_refinement_v1",
-            );
+          const assignment = runtimeCapsule(
+            messages,
+            "runtime_execution_capability_refinement_v1",
+          );
           expect(assignment).toMatchObject({
             invocations: [
               {
@@ -633,18 +627,18 @@ describe("Execution Agent request runner", () => {
               capabilityId: descriptor.capabilityId,
               intent: secondIntent,
               operationObjective,
+              controlsEvidenceExecutionIds: ["capability-execution-1"],
               selectionControls: { path: "exact.txt" },
             }),
             meta: {},
           };
         case 5: {
           expect(input.modelStep).toBe(CAPABILITY_CONTROLS_MODEL_STEP);
-          const resultMessages = messages.filter(
-            (message) => message.role === "tool",
-          );
-          expect(resultMessages).toHaveLength(1);
-          expect(JSON.parse(resultMessages[0]!.content)).toMatchObject({
-            result: {
+          expect(
+            runtimeCapsule(messages, "runtime_request_tool_results_v1")!
+              .results,
+          ).toMatchObject([
+            {
               executionId: "capability-execution-1",
               capabilityId: descriptor.capabilityId,
               adapterResult: {
@@ -657,7 +651,7 @@ describe("Execution Agent request runner", () => {
                 },
               },
             },
-          });
+          ]);
           expect(JSON.stringify(messages)).not.toContain(firstIntent);
           expect(JSON.stringify(messages)).not.toContain(secondIntent);
           expect(JSON.stringify(messages)).toContain(operationObjective);
@@ -1088,6 +1082,7 @@ describe("Execution Agent request runner", () => {
               action: "invoke_capability",
               capabilityId: "write_complete_file",
               intent: DIRECT_WRITE_INTENT,
+              operationObjective: DIRECT_WRITE_PROMPT,
               selectionControls: { path: "project/direct.txt" },
               workingDirectory: null,
             }),
@@ -1126,17 +1121,12 @@ describe("Execution Agent request runner", () => {
             },
             acceptedCapability: {
               capabilityId: "write_complete_file",
+              authoringObjective: DIRECT_WRITE_PROMPT,
               controls: { path: "project/direct.txt" },
             },
           });
           expect(context).not.toHaveProperty("worker");
-          expect(messages[0]?.content).toContain(
-            "root.updates through the frozen root.steeringVersion",
-          );
-          expect(messages[0]?.content).toContain(
-            "acceptedCapability.controls are the immutable execution parameters",
-          );
-          expect(messages[0]?.content).not.toContain("Worker objective");
+          expect(context).not.toHaveProperty("acceptedCapability.intent");
           return { text: DIRECT_WRITE_BODY, meta: {} };
         }
         case 4: {
@@ -1372,6 +1362,7 @@ describe("Execution Agent request runner", () => {
               action: "invoke_capability",
               capabilityId: "write_complete_file",
               intent: DIRECT_WRITE_INTENT,
+              operationObjective: DIRECT_WRITE_PROMPT,
               selectionControls: { path: "project/direct.txt" },
               ...(decisionCount === 2 ? { workingDirectory: null } : {}),
             }),

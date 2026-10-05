@@ -1,11 +1,17 @@
-import type { SchedulerExecutor, SchedulerStore } from "./contracts.js";
+import type {
+  SchedulerAutomationExecutor,
+  SchedulerExecutor,
+  SchedulerStore,
+} from "./contracts.js";
 import type { SchedulerRunCompletion } from "./run-completion.js";
+import type { AutomationSchedulerRunCompletion } from "./automation-run-completion.js";
 import type { SchedulerSessionDeletionState } from "./session-deletion-state.js";
 
 export interface SchedulerContext {
   environmentId: string;
   store: SchedulerStore;
   executor: SchedulerExecutor;
+  automationExecutor?: SchedulerAutomationExecutor;
   now(): number;
   running: boolean;
   generation: number;
@@ -13,6 +19,7 @@ export interface SchedulerContext {
   pendingJobMutations: Set<string>;
   deletedSessions: SchedulerSessionDeletionState;
   pendingCompletions: Map<string, SchedulerRunCompletion>;
+  pendingAutomationCompletions: Map<string, AutomationSchedulerRunCompletion>;
   enqueue<T>(operation: () => Promise<T>): Promise<T>;
   onError(error: unknown): void;
 }
@@ -37,11 +44,19 @@ export function invalidateJob(
 export function canBeginSchedulerRun(
   context: SchedulerContext,
   jobId: string,
-  sessionId: string,
   epoch: number,
 ): boolean {
   if (!context.running) return false;
-  if (context.deletedSessions.has(sessionId)) return false;
   if (context.pendingJobMutations.has(jobId)) return false;
   return jobEpoch(context, jobId) === epoch;
+}
+
+export function canBeginRequestSchedulerRun(
+  context: SchedulerContext,
+  jobId: string,
+  sessionId: string,
+  epoch: number,
+): boolean {
+  if (context.deletedSessions.has(sessionId)) return false;
+  return canBeginSchedulerRun(context, jobId, epoch);
 }

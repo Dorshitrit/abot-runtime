@@ -48,10 +48,34 @@ for (const path of paths) {
 
 const requiredPaths = [
   ...[
-    "capabilities/tool-media",
-    "model-gateway/observability/tool-media-privacy",
-    "model-gateway/providers/openai/image-content",
-    "runtime/attachments/request-tool-media",
+    "capabilities/tool-media", "model-gateway/observability/tool-media-privacy",
+    "model-gateway/providers/openai/image-content", "runtime/attachments/request-tool-media",
+    "runtime/automations/agent-session-lifetime", "runtime/automations/agent-assignment",
+    "runtime/automations/agent-request-failure", "sessions/automation-session-store",
+    "runtime/automations/model-dependency-projection", "runtime/automations/branch-result-projection",
+    "runtime/automations/effect-admission-lifetime", "runtime/automations/terminal-admission-receipt",
+    "runtime/automations/tool-step-outcome", "runtime/automations/snapshot-staging",
+    "runtime/automations/working-directory", "runtime/automations/run-output-summary",
+    "runtime/automations/draft-restoration", "runtime/automations/result-publication", "runtime/automations/trigger-schedule",
+    "capabilities/tool-interruption",
+    "runtime/capabilities/automations/authoring-catalog",
+    "runtime/capabilities/automations/authoring-catalog-contract",
+    "runtime/capabilities/automations/authoring-inputs", "runtime/capabilities/automations/authoring-input-contracts",
+    "runtime/automations/draft-batch", "runtime/automations/draft-batch-aliases",
+    "runtime/capabilities/automation-builder/tool-module",
+    "runtime/capabilities/automation-builder/tool-contract",
+    "runtime/capabilities/automation-builder/payload-instructions",
+    "runtime/capabilities/automation-builder/authoring-reference",
+    "runtime/capabilities/automation-builder/creation-recipe",
+    "runtime/capabilities/automation-builder/payload-schema",
+    "runtime/capabilities/automations/authoring-preparation",
+    "runtime/capabilities/automations/model-tool-contract",
+    "runtime/automations/agent-tool-scope",
+    "runtime/automations/input-batch-selection",
+    "runtime/automations/input-capacity", "runtime/automations/step-interruption",
+    "runtime/automations/starter-template-builder",
+    "runtime/automations/starter-template-contracts", "runtime/automations/starter-template-showcases",
+    "runtime/automations/starter-template-structure",
     "runtime/attachments/tool-image-validation",
     "runtime/capabilities/request-property-narrowing",
     "runtime/capabilities/request-tool-resources",
@@ -89,6 +113,7 @@ const requiredPaths = [
   "dist/src/computer-access/computer/linux-backend.js",
   "plugins/system/README.md",
   "dist/src/web-ui/app/passive-learning-feature.js",
+  "dist/src/web-ui/app/controllers/automation-mutation-lifecycle.js",
   "dist/src/web-ui/app/components/passive-learning/memory.js",
   "dist/src/web-ui/app/components/passive-learning/home.js",
   "dist/src/web-ui/app/components/passive-learning/activity-controls.js",
@@ -132,9 +157,9 @@ const requiredPaths = [
   "dist/src/capabilities/tool-event-input-text.js",
   "dist/src/web-ui/app/components/conversation-tool-evidence.d.ts",
   "dist/src/web-ui/app/components/conversation-tool-evidence.js",
-  "dist/src/web-ui/app/lib/tool-process-activity-fields.js",
+  ...["process", "automation"].map((kind) => `dist/src/web-ui/app/lib/tool-${kind}-activity-fields.js`),
   ...[
-    "capabilities/tool-permission-mode",
+    "capabilities/tool-permission-mode", "runtime/capabilities/automations/event-presentation",
     "runtime/capabilities/request-permission-catalog",
     "runtime/capabilities/request-permission-tool-registry",
     "runtime/capabilities/request-working-directory",
@@ -420,10 +445,16 @@ const requiredPaths = [
   "dist/src/web-ui/app/lib/context-window-snapshot-order.d.ts",
   "dist/src/web-ui/app/styles/28-conversation-status.css",
   ...[
-    "app-dom.js",
-    "app-bootstrap.js",
-    "configuration-feature.js",
-    "dashboard-feature.js",
+    "app-dom.js", "app-bootstrap.js", "components/automations/run-output-view.js", "components/automations/run-steps-view.js",
+    "components/automations/step-preview.js", "components/automations/step-editor-dialog.js",
+    "components/automations/schema-literal-inputs.js", "components/automations/tool-identity.js",
+    "components/automations/editor-actions.js", "components/automations/editor-action-icons.js",
+    "components/notifications/feedback.js", "styles/51-automation-editor-actions.css",
+    "components/automations/draft-recovery-actions.js", "controllers/automation-draft-actions.js", "controllers/automation-run-actions.js",
+    "controllers/automation-management-actions.js", "controllers/automation-view-scope.js",
+    "styles/52-automation-reports.css", "styles/52-automation-step-editor.css",
+    "styles/53-automation-schema-inputs.css",
+    "configuration-feature.js", "dashboard-feature.js",
     "components/dashboard/activity.js",
     "components/dashboard/icons.js",
     "components/dashboard/recent-conversations.js",
@@ -579,15 +610,9 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // or 18 exact JavaScript and declaration artifacts. Worker payload source
 // provenance adds one focused module, or two exact emitted artifacts. Planner
 // capability-catalog context adds one focused module, or two emitted artifacts.
-// PR1 work-result provenance adds four focused modules, or eight emitted
-// artifacts, and raises the measured baseline to 1,502 files and 4,798,102
-// unpacked bytes. Keep roughly 8 KiB of headroom instead of weakening either
-// publication boundary broadly.
-// Compact composer context usage and tool invocation counting add two browser
-// modules with declarations plus one stylesheet: five intentional assets.
-// The shared capability brief adds six production modules (12 emitted files).
-// Account for both additions while preserving the one-file margin. The brief
-// adds 10,000 bytes to the size ceiling; the composer change adds no size reserve.
+// PR1 provenance: 1,502 files / 4,798,102 bytes, with roughly 8 KiB headroom.
+// Composer context adds five assets; capability brief adds 12 emitted files.
+// Those changes preserve the one-file margin; the brief adds 10,000 size bytes.
 // The Planner drawer adds seven browser assets (three modules with declarations
 // and one stylesheet). Its net browser delta is 16,223 bytes. Account only for
 // that measured growth, retaining the existing size and one-file margins.
@@ -709,7 +734,6 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // Verified Companion replacement adds two native source modules and four outputs.
 // Schedule permission and visible rail labels add three audited outputs/assets.
 // Measured with learning review fixes: 2,494 files / 7,749,119 bytes.
-// Retain one file and 512 bytes of headroom.
 // Co-worker cadence and Companion release metadata add two source modules,
 // each with its JavaScript and declaration output. Includes the updated bundle.
 // Includes watcher recovery, stable Windows ownership, host events and X11 activation recovery.
@@ -745,45 +769,29 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // Shared memory admission and core retention replace the legacy candidate writer.
 // Net: 26 compiled paths; the standalone memory plugin remains unchanged.
 // Audited: 2,754 files / 8,743,266 bytes.
-// Existing conversation authoring now binds direct save requests and reuses
-// protected core management writes; Co-worker adds content-free JSON failure
-// shape diagnostics. Audited: 2,754 files / 8,754,288 bytes.
-// Atomic explicit candidate supersession and restored override notifications:
-// audited 2,754 files / 8,756,344 bytes (+2,056 bytes; no new packaged files).
-// Retain one file and 512 bytes of headroom.
-// Home guidance, daily memory review and session organization add 11 net browser assets.
-// Measured: 2,739 files / 8,736,865 bytes; retain one file and 512 bytes of headroom.
-// Integrated with shared core memory admission from main:
-// audited 2,765 files / 8,791,657 bytes; retain one file and 512 bytes of headroom.
-// Home guidance polish and manual memory-review entry add one browser asset.
-// Audited: 2,766 files / 8,793,927 bytes (+1 file / +2,270 bytes).
-// Review availability and error-state fixes reuse two assets (+564 bytes).
+// Conversation authoring binds direct saves/protected core writes; Co-worker adds content-free JSON failure diagnostics. Audited: 2,754 files / 8,754,288 bytes.
+// Candidate supersession/override notifications: 2,754 files / 8,756,344 bytes.
+// Home guidance and session organization: 2,739 files / 8,736,865 bytes.
+// Shared core memory admission: 2,765 files / 8,791,657 bytes.
+// Home guidance polish: 2,766 files / 8,793,927 bytes; review-state fixes add 564 bytes.
+// Budgets retain one file and 512 bytes of headroom above the audited package.
 // Audited: 2,766 files / 8,794,491 bytes.
 // Staged Co-worker reviews and bounded progress add 17 runtime modules (34 emitted files).
 // Audited: 2,800 files / 8,878,710 bytes.
-// Shared Web UI owners include the bounded reasoning disclosure component.
-// Audited: 2,804 files / 8,883,862 bytes. Retain one file and 512 bytes of headroom.
+// Shared Web UI reasoning disclosure: 2,804 files / 8,883,862 bytes; one file and 512 bytes of headroom.
 // ASK approval continuity adds eight runtime/Web modules (16 emitted files).
 // Audited: 2,820 files / 8,930,071 bytes; retain one file and 512 bytes of headroom.
-// Notification history and native delivery include Companion observation redaction.
-// Audited: 2,881 files / 9,147,131 bytes; retain one file and 512 bytes of headroom.
-// Windows notification identity repair and owned legacy cleanup reuse existing outputs.
-// Audited: 2,881 files / 9,148,512 bytes; retain one file and 512 bytes of headroom.
-// Spark conversation choices and project previews add five browser assets.
-// Audited: 2,886 files / 9,159,498 bytes; retain one file and 512 bytes of headroom.
-// Saved ASK approvals, activation reconciliation and 1.5.0 release documentation.
-// Audited: 2,997 files / 9,432,446 bytes; retain one file and 512 bytes of headroom.
-// Native Mac broker support, safe startup diagnostics, and fresh Spark setup.
-// Audited: 2,999 files / 9,435,320 bytes; retain one file and 512 bytes of headroom.
-// Local Mac setup and manual pairing reuse the installed companion.
-// Audited: 3,009 files / 9,465,100 bytes; retain one file and 512 bytes of headroom.
-// Mac permission gating and fixed private runtime add five outputs/assets.
-// Audited: 3,014 files / 9,488,513 bytes; retain one file and 512 bytes of headroom.
-// Dual-stack loopback pinning and the Mac consent explanation add five outputs/assets.
-// Audited: 3,019 files / 9,505,744 bytes; retain one file and 512 bytes of headroom.
-// Spark permissions, onboarding and final release docs: 3,026 files / 9,536,773 bytes; retain one file and 512 bytes of headroom.
-const maxFileCount = 3_027;
-const maxUnpackedSizeBytes = 9_537_285;
+// Notification history, native delivery and Companion redaction: 2,881 files / 9,147,131 bytes; one file and 512 bytes headroom.
+// Windows notification identity and owned legacy cleanup: 2,881 files / 9,148,512 bytes; one file and 512 bytes headroom.
+// Spark conversation choices and project previews: 2,886 files / 9,159,498 bytes.
+// Saved ASK approvals, activation reconciliation and release docs: 2,997 files / 9,432,446 bytes.
+// Native Mac broker, safe startup and Spark setup: 2,999 files / 9,435,320 bytes.
+// Local Mac setup and manual pairing reuse the companion: 3,009 files / 9,465,100 bytes; one file and 512 bytes headroom.
+// Mac permission gating and fixed private runtime: audited 3,014 files / 9,488,513 bytes, one file and 512 bytes headroom.
+// Dual-stack loopback pinning and Mac consent: audited 3,019 files / 9,505,744 bytes, one file and 512 bytes headroom.
+// SPARK review fixes, approved mascot and schedule visibility: 3,549 files / 11,353,641 bytes; one file and 512 bytes headroom.
+const maxFileCount = 3_550;
+const maxUnpackedSizeBytes = 11_354_153;
 
 if (paths.length > maxFileCount) {
   fail(`package includes too many files: ${paths.length} > ${maxFileCount}`);

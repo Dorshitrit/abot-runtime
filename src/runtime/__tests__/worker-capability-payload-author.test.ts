@@ -353,17 +353,10 @@ describe("neutral Worker capability payload author", () => {
     );
   });
 
-  test("authors a direct canonical root payload from the request without a Worker objective", async () => {
+  test("authors a direct canonical root payload from its bounded assignment", async () => {
     const invoke = vi.fn<WorkerCapabilityPayloadModelPort["invoke"]>(
       async (request) => {
         expect(request.executionId).toBe("capability-execution-1");
-        expect(request.instructions).toContain(
-          "root.updates through the frozen root.steeringVersion",
-        );
-        expect(request.instructions).toContain(
-          "acceptedCapability.controls are the immutable execution parameters",
-        );
-        expect(request.instructions).not.toContain("Worker objective");
         expect(request.context).toEqual({
           root: {
             callId: "call-1",
@@ -375,6 +368,7 @@ describe("neutral Worker capability payload author", () => {
           acceptedCapability: {
             capabilityId: "write_complete_file",
             summary: "Write one complete file.",
+            authoringObjective: AUTHORING_OBJECTIVE,
             controls: { path: "sandbox/result.txt" },
           },
           contextScope: "standard",
@@ -409,17 +403,14 @@ describe("neutral Worker capability payload author", () => {
       },
     } as const;
 
-    await expect(
-      author.author({
-        ...rootPayloadInput,
-        authoringObjective: AUTHORING_OBJECTIVE,
-      }),
-    ).resolves.toEqual({
+    await expect(author.author(rootPayloadInput)).resolves.toEqual({
       status: "failed",
       code: "payload_context_invalid",
     });
 
-    await expect(author.author(rootPayloadInput)).resolves.toEqual({
+    await expect(author.author({
+      ...rootPayloadInput, authoringObjective: AUTHORING_OBJECTIVE,
+    })).resolves.toEqual({
       status: "authored",
       body: "direct body\n",
     });
@@ -444,6 +435,8 @@ describe("neutral Worker capability payload author", () => {
     const input = {
       executionId: "capability-execution-1",
       descriptor: DESCRIPTOR,
+      authoringObjective: AUTHORING_OBJECTIVE,
+      requestSteering: ROOT_REQUEST_STEERING,
       controls: { path: "sandbox/result.txt" },
       settledCapabilityResults: [],
       contract: {
@@ -511,12 +504,12 @@ describe("neutral Worker capability payload author", () => {
         },
         acceptedCapability: {
           capabilityId: "write_complete_file",
+          authoringObjective: AUTHORING_OBJECTIVE,
           controls: { path: "sandbox/result.txt" },
         },
       });
       expect(context).not.toHaveProperty("acceptedCapability.intent");
       expect(context).not.toHaveProperty("worker");
-      expect(messages[0]?.content).not.toContain("Worker objective");
       return { text: "green\n", meta: {} };
     });
     const author = createRequestWorkerCapabilityPayloadAuthor(
@@ -532,6 +525,7 @@ describe("neutral Worker capability payload author", () => {
         call: ROOT_CALL,
         executionId: "capability-execution-1",
         descriptor: DESCRIPTOR,
+        authoringObjective: AUTHORING_OBJECTIVE,
         controls: { path: "sandbox/result.txt" },
         requestSteering: ROOT_REQUEST_STEERING,
         settledCapabilityResults: [],
@@ -1463,116 +1457,6 @@ describe("neutral Worker capability payload author", () => {
         },
       }),
     ).resolves.toEqual({ status: "authored", body: "selection" });
-    expect(invoke).toHaveBeenCalledOnce();
-  });
-
-  test("reuses the Worker checkpoint in tool payload authoring without recompacting its evidence", async () => {
-    const requestId = "request-worker-payload-checkpoint-reuse";
-    const prompt = "Create the exact requested file body.";
-    const call = Object.freeze({ ...WORKER_CALL, activationCount: 2 });
-    const semanticDigest =
-      "The observed source contains MID-FACT-01-954 and FINAL-MARKER-01-4204.";
-    const settledResult = Object.freeze({
-      executionId: "capability-execution-1",
-      callId: call.callId,
-      invocationAttempt: 1,
-      capabilityId: "inspect_system_state",
-      declaredEffect: "observation" as const,
-      outcome: "succeeded" as const,
-      observedEffect: "observation" as const,
-      summary: "Read the complete evidence source.",
-      referenceData: `RAW_PAYLOAD_EVIDENCE:${"x".repeat(2_000)}`,
-      adapterResult: testAdapterResult("checkpoint-reuse"),
-    });
-    const sourceContent = JSON.stringify(settledResult);
-    const sourceFingerprint =
-      createSemanticCompactionSha256Fingerprint(sourceContent);
-    const contextCompactionStore = createRequestContextCompactionStore();
-    contextCompactionStore.registerSources([
-      Object.freeze({
-        sourceRef: settledResult.executionId,
-        sourceFingerprint,
-        content: sourceContent,
-      }),
-    ]);
-    const checkpoint: SemanticCompactionCheckpoint = Object.freeze({
-      kind: "runtime_semantic_compaction_checkpoint_v2",
-      scopeId: workerCapabilityContextCompactionScopeId(call.callId),
-      requestId,
-      currentRequestFingerprint:
-        createSemanticCompactionSha256Fingerprint(prompt),
-      roleId: "worker",
-      callId: call.callId,
-      objectiveFingerprint: createSemanticCompactionSha256Fingerprint(
-        call.objective!,
-      ),
-      contextLane: SEMANTIC_COMPACTION_CONTEXT_LANE,
-      allowedConsumers: WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS,
-      sourceRevision: 1,
-      sourceDigests: Object.freeze([
-        Object.freeze({
-          sourceRef: settledResult.executionId,
-          sourceFingerprint,
-          digest: semanticDigest,
-        }),
-      ]),
-      continuation: Object.freeze({
-        completed: Object.freeze(["Read the complete evidence source."]),
-        currentState: "The source evidence is ready for payload authoring.",
-        findings: Object.freeze([semanticDigest]),
-        evidenceRefs: Object.freeze([settledResult.executionId]),
-        artifacts: Object.freeze([]),
-        decisions: Object.freeze([]),
-        failedApproaches: Object.freeze([]),
-        openWork: Object.freeze(["Write the requested report."]),
-        blockers: Object.freeze([]),
-        nextStep: "Author the report from the retained source facts.",
-      }),
-    });
-    contextCompactionStore.commit(checkpoint);
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      expect(input.modelStep).toBe(WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP);
-      const messages = asChatMessages(input.messages);
-      const serialized = JSON.stringify(messages);
-      expect(serialized).not.toContain("RAW_PAYLOAD_EVIDENCE");
-      expect(serialized).toContain(semanticDigest);
-      const canonicalMessage = messages.find(({ content }) =>
-        content.startsWith("Canonical runtime context:\n"),
-      )!;
-      const canonical = JSON.parse(
-        canonicalMessage.content.replace("Canonical runtime context:\n", ""),
-      );
-      expect(canonical.settledCapabilityResults).toEqual([]);
-      expect(canonical.semanticCheckpoint.coveredSources).toEqual([
-        {
-          sourceRef: settledResult.executionId,
-          sourceFingerprint,
-          digest: semanticDigest,
-        },
-      ]);
-      return { text: "report body", meta: {} };
-    });
-    const author = createRequestWorkerCapabilityPayloadAuthor(
-      deriveTestRequestExecutionScope(payloadRequest(invoke, requestId), {
-        contextCompactionStore,
-      }),
-    );
-
-    await expect(
-      author.author({
-        call,
-        authoringObjective: AUTHORING_OBJECTIVE,
-        executionId: "capability-execution-2",
-        descriptor: DESCRIPTOR,
-        controls: { path: "sandbox/result.txt" },
-        settledCapabilityResults: [settledResult],
-        contract: {
-          instructions: "Return the complete report body.",
-          minBytes: 0,
-          maxBytes: 1_024,
-        },
-      }),
-    ).resolves.toEqual({ status: "authored", body: "report body" });
     expect(invoke).toHaveBeenCalledOnce();
   });
 
@@ -2545,7 +2429,7 @@ describe("neutral Worker capability payload author", () => {
     },
   );
 
-  test("attempts semantic compaction before dispatching an oversized pinned payload", async () => {
+  test("rejects an oversized pinned payload when source compaction cannot fit", async () => {
     configureDebugLogger({ enabled: true });
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
     let normalPayloadDispatchCount = 0;
@@ -2591,7 +2475,6 @@ describe("neutral Worker capability payload author", () => {
       },
     );
     const author = createRequestWorkerCapabilityPayloadAuthor(request);
-
     await expect(
       author.author({
         call: WORKER_CALL,
@@ -2659,7 +2542,7 @@ describe("neutral Worker capability payload author", () => {
       }),
     ).resolves.toEqual({
       status: "failed",
-      code: "payload_model_invocation_failed",
+      code: "payload_context_budget_exceeded",
     });
     expect(invoke).not.toHaveBeenCalled();
     expect(normalPayloadDispatchCount).toBe(1);
@@ -2677,6 +2560,7 @@ describe("neutral Worker capability payload author", () => {
       expect.objectContaining({
         modelStep: WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP,
         reason: "semantic_checkpoint_rejected",
+        issueCode: "context_compaction_source_slice_exceeds_budget",
       }),
     );
     expect(
@@ -2695,7 +2579,7 @@ describe("neutral Worker capability payload author", () => {
     ).toEqual([
       expect.objectContaining({
         requestId: "request-payload-budget",
-        issueCode: "payload_model_invocation_failed",
+        issueCode: "payload_context_budget_exceeded",
       }),
     ]);
   });

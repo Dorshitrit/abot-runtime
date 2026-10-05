@@ -14,6 +14,7 @@ import { LocalRuntimeClientRequests } from "./local-host/client-requests.js";
 import { createLocalMemoryClient } from "./local-host/client-memory.js";
 import { createLocalServiceClients } from "./local-host/client-services.js";
 import { createLocalLearningClient } from "./local-host/client-learning.js";
+import { createLocalNativePermissionClient } from "./local-host/client-native-permissions.js";
 
 export type LocalRuntimeApplicationOptions = Readonly<{
   scheduledRequestOptions?: (run: SchedulerRun) => RuntimeRequestOptions;
@@ -49,6 +50,10 @@ export function createLocalRuntimeApplication(
     config.longTermMemory?.enabled === true,
   );
   const learning = createLocalLearningClient(call);
+  const nativePermissions = createLocalNativePermissionClient((method, args) => {
+    if (stopped || !connection) return Promise.reject(new Error("local_runtime_not_started"));
+    return connection.call(method, args);
+  });
   const services = Object.freeze({
     config,
     ...createLocalServiceClients(call),
@@ -112,6 +117,7 @@ export function createLocalRuntimeApplication(
     services,
     requests: client.requests as RuntimeRequestHandler,
     approvals: client.approvals,
+    nativePermissions,
     start,
     async stop(): Promise<void> {
       stopped = true;

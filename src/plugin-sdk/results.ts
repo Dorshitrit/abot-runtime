@@ -1,4 +1,13 @@
 import type { ToolImplementationOutput } from "../plugin-contract/entrypoint.js";
+import { hasValidToolContextText } from "../capabilities/tool-context-text.js";
+import {
+  CAPABILITY_RESULT_ENVELOPE_MAX_BYTES,
+  type ToolResultBudget,
+} from "../capabilities/result-budget.js";
+export type {
+  ToolResultBudget,
+  ToolResultBudgetAssessment,
+} from "../capabilities/result-budget.js";
 
 import {
   isPluginParameterError,
@@ -8,10 +17,18 @@ import { runtimeToolPathErrorCode } from "./paths.js";
 
 type ResultCommon = Pick<
   ToolImplementationOutput,
-  "actions" | "data" | "exitCode" | "progress" | "stderr" | "stdout" | "media"
+  | "actions"
+  | "data"
+  | "exitCode"
+  | "progress"
+  | "stderr"
+  | "stdout"
+  | "media"
 >;
 
-export const PLUGIN_RESULT_SERIALIZED_MAX_BYTES = 128 * 1024;
+/** Legacy standalone SDK bound; invocation-aware producers also pass the host assessor. */
+export const PLUGIN_RESULT_SERIALIZED_MAX_BYTES =
+  CAPABILITY_RESULT_ENVELOPE_MAX_BYTES;
 
 function resultBoundsFailure(code: string, message: string) {
   return {
@@ -25,9 +42,29 @@ function resultBoundsFailure(code: string, message: string) {
 
 export function enforcePluginResultByteBudget(
   result: ToolImplementationOutput,
+  resultBudget?: ToolResultBudget,
 ): ToolImplementationOutput {
-  let serialized: string;
+  let requiresContextTextHost = false;
+  let serializedBytes: number;
+  let envelopeBytes: number;
+  let maxBytes = PLUGIN_RESULT_SERIALIZED_MAX_BYTES;
+  let fitsDeclaredBudget = true;
   try {
+    if (!hasValidToolContextText(result)) {
+      return resultBoundsFailure(
+        "plugin_context_text_invalid",
+        "The plugin declared invalid context text fields.",
+      );
+    }
+    requiresContextTextHost = result.contextTextFields !== undefined;
+    const lacksContextTextHost =
+      requiresContextTextHost && resultBudget?.acceptsContextText !== true;
+    if (lacksContextTextHost) {
+      return resultBoundsFailure(
+        "plugin_context_text_unavailable",
+        "The host does not support context-managed tool text.",
+      );
+    }
     const candidate = JSON.stringify(result);
     if (candidate === undefined) {
       return resultBoundsFailure(
@@ -35,20 +72,25 @@ export function enforcePluginResultByteBudget(
         "The plugin produced a result that is not JSON-safe.",
       );
     }
-    serialized = candidate;
+    const assessment = resultBudget?.assess(result);
+    serializedBytes =
+      assessment?.serializedBytes ?? Buffer.byteLength(candidate, "utf8");
+    envelopeBytes = assessment?.envelopeBytes ?? serializedBytes;
+    maxBytes = Math.min(assessment?.maxBytes ?? maxBytes, maxBytes);
+    fitsDeclaredBudget = assessment?.fits ?? true;
   } catch {
     return resultBoundsFailure(
       "plugin_result_not_json_safe",
       "The plugin produced a result that is not JSON-safe.",
     );
   }
-  if (
-    Buffer.byteLength(serialized, "utf8") > PLUGIN_RESULT_SERIALIZED_MAX_BYTES
-  ) {
-    return resultBoundsFailure(
-      "plugin_result_too_large",
-      `The plugin result exceeds the ${PLUGIN_RESULT_SERIALIZED_MAX_BYTES}-byte safety limit.`,
-    );
+  const hasResultDeliveryHeadroom =
+    fitsDeclaredBudget && envelopeBytes <= maxBytes;
+  if (!hasResultDeliveryHeadroom) {
+    const message = requiresContextTextHost
+      ? `The plugin result envelope is ${envelopeBytes} bytes (${serializedBytes} total bytes) and exceeds the ${maxBytes}-byte delivery limit.`
+      : `The plugin result is ${serializedBytes} bytes and exceeds the ${maxBytes}-byte delivery limit.`;
+    return resultBoundsFailure("plugin_result_too_large", message);
   }
   return result;
 }
@@ -61,23 +103,28 @@ export type SuccessResultInput = ResultCommon &
 
 export function successResult(
   input: SuccessResultInput,
+  resultBudget?: ToolResultBudget,
 ): ToolImplementationOutput {
-  return enforcePluginResultByteBudget({
-    ok: true,
-    ...(input.media !== undefined ? { media: input.media } : {}),
-    output: input.output,
-    producedNewInformation: input.producedNewInformation ?? true,
-    ...(input.progress !== undefined ? { progress: input.progress } : {}),
-    ...(input.actions !== undefined ? { actions: input.actions } : {}),
-    ...(input.exitCode !== undefined ? { exitCode: input.exitCode } : {}),
-    ...(input.stdout !== undefined ? { stdout: input.stdout } : {}),
-    ...(input.stderr !== undefined ? { stderr: input.stderr } : {}),
-    ...(input.data !== undefined ? { data: input.data } : {}),
-  });
+  return enforcePluginResultByteBudget(
+    {
+      ok: true,
+      ...(input.media !== undefined ? { media: input.media } : {}),
+      output: input.output,
+      producedNewInformation: input.producedNewInformation ?? true,
+      ...(input.progress !== undefined ? { progress: input.progress } : {}),
+      ...(input.actions !== undefined ? { actions: input.actions } : {}),
+      ...(input.exitCode !== undefined ? { exitCode: input.exitCode } : {}),
+      ...(input.stdout !== undefined ? { stdout: input.stdout } : {}),
+      ...(input.stderr !== undefined ? { stderr: input.stderr } : {}),
+      ...(input.data !== undefined ? { data: input.data } : {}),
+    },
+    resultBudget,
+  );
 }
 
 export type FailureResultInput = ResultCommon &
   Readonly<{
+    interruption?: ToolImplementationOutput["interruption"];
     errorCode: string;
     message: string;
     output?: string;
@@ -85,21 +132,26 @@ export type FailureResultInput = ResultCommon &
 
 export function failureResult(
   input: FailureResultInput,
+  resultBudget?: ToolResultBudget,
 ): ToolImplementationOutput {
-  return enforcePluginResultByteBudget({
-    ok: false,
-    ...(input.media !== undefined ? { media: input.media } : {}),
-    output: input.output ?? input.message,
-    producedNewInformation: false,
-    ...(input.progress !== undefined ? { progress: input.progress } : {}),
-    ...(input.actions !== undefined ? { actions: input.actions } : {}),
-    ...(input.exitCode !== undefined ? { exitCode: input.exitCode } : {}),
-    ...(input.stdout !== undefined ? { stdout: input.stdout } : {}),
-    ...(input.stderr !== undefined ? { stderr: input.stderr } : {}),
-    ...(input.data !== undefined ? { data: input.data } : {}),
-    error: input.message,
-    errorCode: input.errorCode,
-  });
+  return enforcePluginResultByteBudget(
+    {
+      ok: false,
+      ...(input.interruption ? { interruption: input.interruption } : {}),
+      ...(input.media !== undefined ? { media: input.media } : {}),
+      output: input.output ?? input.message,
+      producedNewInformation: false,
+      ...(input.progress !== undefined ? { progress: input.progress } : {}),
+      ...(input.actions !== undefined ? { actions: input.actions } : {}),
+      ...(input.exitCode !== undefined ? { exitCode: input.exitCode } : {}),
+      ...(input.stdout !== undefined ? { stdout: input.stdout } : {}),
+      ...(input.stderr !== undefined ? { stderr: input.stderr } : {}),
+      ...(input.data !== undefined ? { data: input.data } : {}),
+      error: input.message,
+      errorCode: input.errorCode,
+    },
+    resultBudget,
+  );
 }
 
 export function failureFromError(

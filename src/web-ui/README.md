@@ -11,6 +11,16 @@ It is intentionally a client/transport layer only:
 - Runtime core orchestration is not changed for the web UI.
 - Existing external bridge clients remain unchanged.
 
+The context indicator describes the latest measured model attempt in the
+selected request, including its step and profile. Input count, percentage and
+remaining capacity use the same valid provider measurement, or an explicitly
+labelled estimate when no valid measurement is available. A rejected attempt
+can still have a measurement; the indicator does not establish model execution.
+Provider usage is a separate fact associated with the same invocation.
+Compaction status and before/after details come from that invocation's lifecycle
+events. A smaller snapshot or a different model step cannot complete a cycle.
+Live events and trusted session replay use the same scoped state reducer.
+
 Native schedules are available only with the local Runtime backend. The browser
 uses the existing `/web-config` backend identity to expose the Schedules
 workspace after bootstrap. Bridge mode hides its navigation and blocks schedule
@@ -40,6 +50,18 @@ Configuration saves hold the canonical Runtime-file lock while resolving and
 writing linked model or request-runner files. The linked file keeps its own
 revision check; another cooperating save cannot redirect the reference between
 target resolution and commit.
+
+Completing onboarding starts a fresh model-catalog read even when an earlier
+read is pending. Older catalog results and superseded refresh failures cannot
+replace the current environment's availability. Manual checks still coalesce
+while a check is in progress.
+
+A successful onboarding Embedding save enables native memory and disables the
+separate Memory plugin in the same revision-checked configuration write. Failed
+probes, cancelled saves and skipped setup leave plugin selection unchanged.
+Stored plugin data is retained, and the Plugins step reloads the saved selection
+when revisited. Other Memory settings and CLI configuration keep their existing
+plugin policy.
 
 When a scheduled request finishes outside the displayed conversation, its
 correlated terminal event refreshes the session list from the backend. The
@@ -78,6 +100,33 @@ Persisted user messages and steering updates emit `session.messages.updated`.
 Delete failures also invalidate because cleanup can fail after deletion commits.
 These frames invalidate projections; they never recreate sessions or pending
 approvals from event history and never appear as conversation activity.
+
+## ABot Studio editing and reports
+
+Timeline cards expose a compact step preview. Editing opens a body-mounted modal
+with its own reading width, focus boundary and unsaved-change guard. The configured
+tool and operation remain distinct from the user-authored step title. Zoom is
+locked while a card or its editor is open; closing the card restores it.
+Previous/next controls follow the current workflow order and guard
+unsaved edits before switching steps. Tool input fields use the catalog's declared
+types and bounds, including individual list items. Switching input sources keeps
+the typed draft and schema; unsupported saved values remain visible for repair.
+
+Step changes and workflow moves save directly to the draft; general settings use
+Save draft. Undo move keeps up to 20 revision-guarded inverse moves during the
+current session, including leaving and reopening the automation. Another edit or
+an external draft revision invalidates that history. Reset draft to published
+requires confirmation and creates a new draft revision from the displayed
+published revision; publication, schedules, permissions and run records stay
+unchanged. Both draft and published revisions are checked atomically.
+
+Saved runs lead with retained final-step outputs. Markdown and structured values
+are rendered through the shared safe text renderer; raw output, input bindings,
+tool receipts and configuration are secondary disclosures. The selected-step
+reader keeps a stable height. Same-run refreshes preserve the workspace scroll
+and disclosures; selecting another step resets only that reader's scroll.
+Execution status is separate from the saved content's claims. The UI does not
+infer publication or file creation from model-authored JSON keys or text.
 
 ## Workspace addresses
 

@@ -1,18 +1,24 @@
 import type {
-  SchedulerJob,
-  SchedulerRun,
   SchedulerSnapshot,
+  SchedulerStoredJob,
+  SchedulerStoredRun,
 } from "./contracts.js";
 import { parseStoredJob, parseStoredRun } from "./snapshot-validation.js";
+import {
+  hasAutomationTransactionChanges,
+  parseAutomationTransaction,
+  type AutomationTransaction,
+} from "./journal-automation-transaction.js";
 
 export interface SchedulerTransaction {
-  version: 1;
-  jobs: SchedulerJob[];
-  runs: SchedulerRun[];
+  version: 1 | 2;
+  jobs: SchedulerStoredJob[];
+  runs: SchedulerStoredRun[];
   deletedJobs: string[];
   deletedRuns: string[];
   jobOrder?: string[];
   runOrder?: string[];
+  automation?: AutomationTransaction;
 }
 
 export function parseSchedulerTransaction(
@@ -24,7 +30,7 @@ export function parseSchedulerTransaction(
   if (!hasSchedulerTransactionCollections(raw))
     throw new Error("scheduler_store_corrupt");
   const transaction: SchedulerTransaction = {
-    version: 1,
+    version: raw.version as 1 | 2,
     jobs: raw.jobs.map(parseStoredJob),
     runs: raw.runs.map(parseStoredRun),
     deletedJobs: requireJournalIds(raw.deletedJobs),
@@ -35,6 +41,9 @@ export function parseSchedulerTransaction(
     ...(raw.runOrder === undefined
       ? {}
       : { runOrder: requireJournalIds(raw.runOrder) }),
+    ...(raw.version === 2
+      ? { automation: parseAutomationTransaction(raw.automation ?? {}) }
+      : {}),
   };
   assertJournalTransactionIds(transaction);
   return transaction;
@@ -50,8 +59,9 @@ function isSchedulerTransactionRecord(
 function hasSchedulerTransactionCollections(
   value: Record<string, unknown>,
 ): value is Record<string, unknown> & { jobs: unknown[]; runs: unknown[] } {
-  if (value.version !== 1) return false;
+  if (value.version !== 1 && value.version !== 2) return false;
   if (!Array.isArray(value.jobs)) return false;
+  if (value.version === 1 && value.automation !== undefined) return false;
   return Array.isArray(value.runs);
 }
 
@@ -140,7 +150,7 @@ function hasJournalOrderChanged(
 
 function shouldPersistRunOrder(
   view: "active" | undefined,
-  before: SchedulerRun[],
+  before: SchedulerStoredRun[],
   order: string[],
 ): boolean {
   if (view === "active") return false;
@@ -151,5 +161,14 @@ export function hasSchedulerTransactionChanges(
 ): boolean {
   if (value.jobs.length || value.runs.length) return true;
   if (value.deletedJobs.length || value.deletedRuns.length) return true;
+  if (value.automation && hasAutomationTransactionChanges(value.automation))
+    return true;
   return value.jobOrder !== undefined || value.runOrder !== undefined;
+}
+
+export function withAutomationTransaction(
+  scheduler: SchedulerTransaction,
+  automation: AutomationTransaction,
+): SchedulerTransaction {
+  return { ...scheduler, version: 2, automation };
 }

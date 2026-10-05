@@ -3,6 +3,9 @@ import type {
   LearningKnowledgeEntry,
 } from "../../long-term-memory/maturation/contracts.js";
 import type { CoWorkerReviewProgress, ReviewProgressPort } from "../review-progress.js";
+import { isSparkHandoffBrief } from "../../../sessions/spark-handoff-brief.js";
+
+import type { ProactiveConversationStyleReference } from "./conversation-style-reference.js";
 
 export const MAX_PROACTIVE_RECEIPTS = 100;
 export const MAX_PROACTIVE_STATE_BYTES = 2 * 1024 * 1024;
@@ -17,6 +20,7 @@ export type ProactiveDecision = Readonly<{
   kind: "none" | "proposal";
   title: string | null;
   message: string | null;
+  handoffBrief: string | null;
   reason: string;
   sources: readonly ProactiveSourceReference[];
   expiresAt: string | null;
@@ -29,6 +33,7 @@ export type ProactiveProposal = Readonly<{
   knowledgeRevision: number;
   title: string;
   message: string;
+  handoffBrief?: string;
   reason: string;
   sources: readonly ProactiveSourceReference[];
   createdAt: string;
@@ -74,6 +79,7 @@ export type ProactiveReviewInput = Readonly<{
   recentProposals: readonly ProactiveProposal[];
   signal: AbortSignal;
   progress?: ReviewProgressPort;
+  styleReference?: ProactiveConversationStyleReference;
 }>;
 
 /** Cadence, window and budget remain separate admission gates. */
@@ -150,6 +156,7 @@ export function validateProactiveDecision(
   value: unknown,
   entries: readonly ProactiveSourceReference[],
   now: number,
+  options: Readonly<{ allowLegacyProposalWithoutBrief?: boolean }> = {},
 ): ProactiveDecision {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("proactive_decision_invalid");
@@ -181,6 +188,7 @@ export function validateProactiveDecision(
     if (
       decision.title !== null ||
       decision.message !== null ||
+      decision.handoffBrief !== null ||
       decision.expiresAt !== null ||
       sources.length
     )
@@ -189,6 +197,7 @@ export function validateProactiveDecision(
       kind: decision.kind,
       title: null,
       message: null,
+      handoffBrief: null,
       reason: decision.reason,
       sources,
       expiresAt: null,
@@ -199,6 +208,9 @@ export function validateProactiveDecision(
     throw new Error("proactive_title_invalid");
   if (!isBoundedProactiveText(decision.message, 4000))
     throw new Error("proactive_message_invalid");
+  const legacyWithoutBrief = options.allowLegacyProposalWithoutBrief === true && decision.handoffBrief === undefined;
+  if (!legacyWithoutBrief && !isSparkHandoffBrief(decision.handoffBrief))
+    throw new Error("proactive_handoff_brief_invalid");
   if (!sources.length) throw new Error("proactive_sources_required");
   if (decision.expiresAt === null) throw new Error("proactive_expiry_required");
   validateProactiveFutureInstant(decision.expiresAt, now);
@@ -206,6 +218,7 @@ export function validateProactiveDecision(
     kind: decision.kind,
     title: decision.title,
     message: decision.message,
+    handoffBrief: decision.handoffBrief ?? null,
     reason: decision.reason,
     sources,
     expiresAt: decision.expiresAt,

@@ -1,10 +1,12 @@
 import { createNotificationRequests } from "./runtime-web-client/notifications.js";
+import { createSparkChatRequests } from "./runtime-web-client/spark-chat.js";
 import { createProjectRequests } from "./runtime-web-client/projects.js";
 import { createSystemHostRequests } from "./runtime-web-client/system-host.js";
 import { toolPermissionRequestError } from "../lib/tool-permission-mode.js";
 import { createConversationFileRequests } from "./runtime-web-client/conversation-files.js";
 import { createConfigurationRequests } from "./runtime-web-client/configuration.js";
 import { createScheduleRequests } from "./runtime-web-client/schedules.js";
+import { createAutomationRequests } from "./runtime-web-client/automations.js";
 import { createLongTermMemoryRequests } from "./runtime-web-client/memory.js";
 import { createPassiveLearningRequests } from "./runtime-web-client/learning.js";
 import { createToolApprovalRequests } from "./runtime-web-client/tool-approvals.js";
@@ -355,7 +357,7 @@ export function createRuntimeWebClient({
       getConfig,
     }),
     ...createConfigurationRequests({ requestApi, environmentQuery }),
-    ...createSystemHostRequests({ requestApi, getConfig }),
+    ...createSystemHostRequests({ requestApi, getConfig, getEnvironmentId }),
     ...longTermMemoryRequests,
     ...createPassiveLearningRequests({
       requestApi,
@@ -363,8 +365,10 @@ export function createRuntimeWebClient({
       environmentQuery,
     }),
     ...createScheduleRequests({ requestApi, getEnvironmentId, getConfig }),
+    ...createAutomationRequests({ requestApi, getEnvironmentId, getConfig }),
     ...createProjectRequests({ requestApi, getEnvironmentId, getConfig }),
     ...createToolApprovalRequests({ requestApi, getEnvironmentId, getConfig }),
     ...createNotificationRequests({ requestApi, getEnvironmentId, getConfig }),
+    ...createSparkChatRequests({ requestApi, getEnvironmentId, getConfig }),
   };
 }

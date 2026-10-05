@@ -24,6 +24,12 @@ export function uniqueHits(
   );
 }
 
+function isSourceRetrievalInterrupted(error: unknown, abortSignal: AbortSignal): boolean {
+  if (!isWebPluginError(error)) return false;
+  if (error.code === "web_request_aborted") return true;
+  return error.code === "web_request_timed_out" && abortSignal.aborted;
+}
+
 export async function fetchSources(
   hits: readonly SearchHit[],
   fetchService: WebFetchService,
@@ -52,13 +58,7 @@ export async function fetchSources(
             page: await fetchService.fetchPage(hit.url, abortSignal),
           });
         } catch (error) {
-          if (
-            isWebPluginError(error) &&
-            (error.code === "web_request_aborted" ||
-              error.code === "web_request_timed_out")
-          ) {
-            throw error;
-          }
+          if (isSourceRetrievalInterrupted(error, abortSignal)) throw error;
           return Object.freeze({
             hit,
             errorCode: isWebPluginError(error)

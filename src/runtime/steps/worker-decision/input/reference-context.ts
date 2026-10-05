@@ -1,3 +1,4 @@
+import { buildRuntimeFilesystemScopeMessage } from "../../../context/runtime-filesystem-scope.js";
 import { buildRequestTemporalContextMessage } from "../../../context/request-temporal-context.js";
 import {
   buildRequestSourceMessage,
@@ -101,7 +102,13 @@ export function prepareWorkerReferenceContext(
         }
       : {}),
   });
+  const filesystemMessage = buildRuntimeFilesystemScopeMessage({
+    scope: request.workerCapabilities?.filesystemScope,
+    workingDirectory: options.call.workingDirectory,
+    capabilities: session.capabilitySelection.capabilities,
+  });
   const baseReferenceMessages = Object.freeze([
+    ...(filesystemMessage ? [filesystemMessage] : []),
     ...(request.temporalContext
       ? [buildRequestTemporalContextMessage(request.temporalContext)]
       : []),

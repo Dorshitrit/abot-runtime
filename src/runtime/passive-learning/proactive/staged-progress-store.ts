@@ -1,6 +1,6 @@
+import { MAX_PROACTIVE_REVIEW_PROGRESS_AGE_MS } from "./staged-contract.js";
 import { readCoWorkerReviewProgress, type CoWorkerReviewProgress } from "../review-progress.js";
 import type { ProactiveState } from "./contracts.js";
-import { decodeStagedProactiveTiming, hasCurrentStagedProactiveTiming } from "./staged-output.js";
 
 type ProactiveStateUpdate = (change: (current: ProactiveState) => ProactiveState) => Promise<ProactiveState>;
 
@@ -16,7 +16,7 @@ export function createProactiveReviewProgressStore(update: ProactiveStateUpdate)
         if (current.revision !== input.expectedRevision) throw new Error("proactive_revision_conflict");
         if (current.reviewAttempt?.reviewId !== input.reviewId) throw new Error("proactive_review_attempt_conflict");
         if (current.reviewAttempt.status !== "running") throw new Error("proactive_review_attempt_conflict");
-        const progress = readCoWorkerReviewProgress(input.progress);
+        const progress = readCoWorkerReviewProgress(input.progress, MAX_PROACTIVE_REVIEW_PROGRESS_AGE_MS);
         if (progress === undefined) return withoutProactiveReviewProgress(current);
         return { ...current, reviewProgress: progress };
       });
@@ -48,17 +48,6 @@ function withoutProactiveReviewProgress(state: ProactiveState): ProactiveState {
 export function canResumeStagedProactiveAttempt(state: ProactiveState): boolean {
   if (state.reviewAttempt?.method !== "super-v2") return false;
   return state.reviewAttempt?.status === "running";
-}
-
-export function hasCompletedStagedProactiveProgress(state: ProactiveState, now: number): boolean {
-  if (!canResumeStagedProactiveAttempt(state)) return false;
-  if (hasExpiredStagedProactiveProgress(state, now)) return false;
-  const timing = state.reviewProgress?.stages.at(-1);
-  if (timing?.key !== "timing") return false;
-  const hasProposal = state.reviewProgress!.stages.some(stage => stage.key === "message");
-  try {
-    return hasCurrentStagedProactiveTiming(decodeStagedProactiveTiming(timing.response, hasProposal, timing.acceptedAt), now);
-  } catch { return false; }
 }
 
 export function hasExpiredStagedProactiveProgress(state: ProactiveState, now: number): boolean {

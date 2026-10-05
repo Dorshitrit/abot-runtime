@@ -3,6 +3,7 @@ import type {
   ToolDevelopmentRole,
   ToolEventPresentation,
   ToolNormalInvocationApproval,
+  ToolNormalInvocationAttachmentInput,
   ToolNormalInvocationEffect,
   ToolNormalInvocationFixedValue,
   ToolNormalInvocationInput,
@@ -24,6 +25,7 @@ export type AgentPluginOperationManifest = Readonly<{
   approval: ToolNormalInvocationApproval;
   fixedParams?: Readonly<Record<string, ToolNormalInvocationFixedValue>>;
   payload?: ToolNormalInvocationPayload;
+  attachmentInput?: ToolNormalInvocationAttachmentInput;
 }>;
 
 export type AgentPluginCapabilityManifest = Readonly<{

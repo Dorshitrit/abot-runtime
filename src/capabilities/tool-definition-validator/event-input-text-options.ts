@@ -1,4 +1,5 @@
 import type { ToolEventMetadataProjection } from "../tool-types.js";
+import { TOOL_EVENT_INPUT_TEXT_MAX_LENGTH } from "../tool-event-input-text.js";
 
 type InputTextOptions = Pick<
   ToolEventMetadataProjection,
@@ -19,7 +20,9 @@ export function parseEventInputTextOptions(
     throw new Error(`${path}.maxLength requires kind string`);
   }
   if (!hasSupportedInputTextLength(maxLength)) {
-    throw new Error(`${path}.maxLength must be an integer from 1 to 4096`);
+    throw new Error(
+      `${path}.maxLength must be an integer from 1 to ${TOOL_EVENT_INPUT_TEXT_MAX_LENGTH}`,
+    );
   }
   if (!hasSupportedWhitespaceOption(preserveWhitespace)) {
     throw new Error(`${path}.preserveWhitespace must be a boolean`);
@@ -35,7 +38,7 @@ function hasSupportedInputTextLength(
 ): value is number | undefined {
   if (value === undefined) return true;
   if (typeof value !== "number" || !Number.isInteger(value)) return false;
-  return value >= 1 && value <= 4_096;
+  return value >= 1 && value <= TOOL_EVENT_INPUT_TEXT_MAX_LENGTH;
 }
 
 function hasSupportedWhitespaceOption(

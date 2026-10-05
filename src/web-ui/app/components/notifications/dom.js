@@ -19,7 +19,7 @@ export function mountNotificationsDom(dom, documentRoot = document) {
   panel.setAttribute("aria-labelledby", "notificationsWorkspaceTitle");
   panel.setAttribute("aria-hidden", "true");
   panel.innerHTML = `<header class="workspace-page-header">
-    <div class="workspace-page-heading"><h2 id="notificationsWorkspaceTitle">Notifications</h2><p>Updates from your assistant, in one place.</p></div>
+    <div class="workspace-page-heading"><h2 id="notificationsWorkspaceTitle">Notifications</h2></div>
     <button type="button" class="workspace-page-back notification-close">Back to chat</button>
     </header><div class="workspace-page-body" data-notifications-root></div>`;
   dom.app.append(panel);

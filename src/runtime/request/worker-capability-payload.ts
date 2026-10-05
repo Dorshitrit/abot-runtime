@@ -1,18 +1,20 @@
+import {
+  buildRuntimeFilesystemScopeMessage,
+  type RuntimeFilesystemScope,
+} from "../context/runtime-filesystem-scope.js";
+import { quarantineOwnedSuperPayloadCheckpoint } from "./super-payload-context-failure.js";
+import { assertSuperWorkerCompactionSidecarBinding } from "../context/super-worker-compaction-sidecar.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { ModelStep } from "../../shared/model-steps.js";
 import { projectRequestContext } from "../context/request-context.js";
 import { createModelStepCompactionController } from "../context/model-step-compaction.js";
-import { projectCurrentRequestToolResults } from "../context/request-tool-results.js";
-import {
-  createSemanticCompactionSha256Fingerprint,
-  type SemanticCompactionSource,
-} from "../context/semantic-compaction/index.js";
+import { type SemanticCompactionSource } from "../context/semantic-compaction/index.js";
 import {
   buildRequestSourceMessage,
   projectRequestSource,
 } from "../context/request-source.js";
 import { resolveModelContextBudget } from "../model/model-context-budget.js";
-import { validateJsonSchemaValue } from "../model/json-schema-value.js";
+import { normalizePayloadBody } from "../orchestration/worker-capabilities/payload-body-normalization.js";
 import {
   invokeRepairableRawModelStep,
   RawModelValidationError,
@@ -36,6 +38,7 @@ import type {
   RequestExecutionSeed,
 } from "./contracts.js";
 import { buildWorkerCapabilityPayloadRepairHint } from "./worker-capability-payload-prompts.js";
+import { projectExecutionPayloadCompactedEvidence } from "./execution-payload-compacted-evidence.js";
 
 type RequestWorkerCapabilityPayloadContext =
   BoundRequestModelInvocationContext &
@@ -83,31 +86,68 @@ type SettledResultProjectionDiagnostics = Readonly<{
 export function createRequestWorkerCapabilityPayloadAuthor(
   request: RequestWorkerCapabilityPayloadContext,
   capabilityAuthorities?: readonly ExecutionPolicyCapabilityAuthority[],
+  filesystemScope?: RuntimeFilesystemScope,
 ): WorkerCapabilityPayloadAuthor {
-  return createWorkerCapabilityPayloadAuthor({
-    requestId: request.requestId,
-    abortSignal: request.abortSignal,
-    ...(capabilityAuthorities ? { capabilityAuthorities } : {}),
-    model: Object.freeze({
-      invoke: (input: WorkerCapabilityPayloadModelRequest) =>
-        invokePayloadModel(request, input),
-    }),
+  const frozenAuthorities = capabilityAuthorities
+    ? Object.freeze([...capabilityAuthorities])
+    : undefined;
+  return Object.freeze({
+    author: (
+      authorInput: Parameters<WorkerCapabilityPayloadAuthor["author"]>[0],
+    ) => {
+      return createWorkerCapabilityPayloadAuthor({
+        requestId: request.requestId,
+        abortSignal: request.abortSignal,
+        ...(frozenAuthorities
+          ? { capabilityAuthorities: frozenAuthorities }
+          : {}),
+        model: Object.freeze({
+          invoke: (input: WorkerCapabilityPayloadModelRequest) =>
+            invokePayloadModel(
+              request,
+              input,
+              buildRuntimeFilesystemScopeMessage({
+                scope: filesystemScope,
+                workingDirectory: authorInput.call.workingDirectory,
+                capabilities: [authorInput.descriptor],
+              }),
+            ),
+        }),
+      }).author(authorInput);
+    },
   });
 }
 
 async function invokePayloadModel(
   request: RequestWorkerCapabilityPayloadContext,
   input: WorkerCapabilityPayloadModelRequest,
+  filesystemMessage?: ChatMessage,
 ): Promise<string> {
   const compactionOptions = payloadCompactionOptions(input);
+  if (input.superWorkerCompaction)
+    assertSuperWorkerCompactionSidecarBinding(input.superWorkerCompaction, {
+      requestId: request.requestId,
+      callId: payloadContextCallId(input.context),
+    });
   try {
+    const projection = payloadMessages(request, input, filesystemMessage);
     return await invokeRepairableRawModelStep({
       request,
       modelStep: input.modelStep,
-      messages: payloadMessages(request, input),
+      messages: projection.messages,
       contextCompaction: createModelStepCompactionController(request, {
+        consumer: input.modelStep,
+        hasVerifiedCompactedEvidence: projection.hasVerifiedCompactedEvidence,
         call: payloadCompactionCall(request.prompt, input.context),
-        sourceRevision: payloadCompactionSourceRevision(input.context),
+        sourceRevision:
+          input.superWorkerCompaction?.sourceRevision ??
+          payloadCompactionSourceRevision(input.context),
+        ...(input.superWorkerCompaction
+          ? {
+              superWorkerCompaction: input.superWorkerCompaction,
+              requireSuperWorkerSources: true,
+            }
+          : {}),
         allowedConsumers: compactionOptions.allowedConsumers,
         scopeId: compactionOptions.scopeId,
         ...(compactionOptions.resultSourceOverrides
@@ -129,6 +169,7 @@ async function invokePayloadModel(
       buildRepairHint: buildWorkerCapabilityPayloadRepairHint,
     });
   } catch (error: unknown) {
+    quarantineOwnedSuperPayloadCheckpoint(request, input, error);
     const code = payloadValidationCode(error);
     if (code) {
       throw new WorkerCapabilityPayloadValidationError(code);
@@ -150,26 +191,14 @@ function validatePayloadModelOutput(
   maxBytes: number,
   responseFormat: WorkerCapabilityPayloadResponseFormat | undefined,
 ): RawModelValidationResult {
-  let normalized = text;
-  if (responseFormat) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      return invalidStructuredPayload(
-        "output",
-        "Return one valid JSON value matching the frozen response format.",
-      );
-    }
-    if (responseFormat !== "json") {
-      const schemaIssue = validateJsonSchemaValue(responseFormat, parsed);
-      if (schemaIssue) {
-        return invalidStructuredPayload(schemaIssue.path, schemaIssue.message);
-      }
-    }
-    normalized = JSON.stringify(parsed);
+  const normalized = normalizePayloadBody(text, responseFormat);
+  if (!normalized.ok) {
+    return invalidStructuredPayload(
+      normalized.issue.path,
+      normalized.issue.message,
+    );
   }
-  const payloadBytes = Buffer.byteLength(normalized, "utf8");
+  const payloadBytes = Buffer.byteLength(normalized.body, "utf8");
   if (payloadBytes >= minBytes && payloadBytes <= maxBytes) {
     return Object.freeze({ ok: true as const, value: text });
   }
@@ -230,7 +259,11 @@ function payloadValidationCode(
 function payloadMessages(
   request: RequestWorkerCapabilityPayloadContext,
   input: WorkerCapabilityPayloadModelRequest,
-): ChatMessage[] {
+  filesystemMessage?: ChatMessage,
+): Readonly<{
+  messages: ChatMessage[];
+  hasVerifiedCompactedEvidence(messages: readonly ChatMessage[]): boolean;
+}> {
   const callId = payloadContextCallId(input.context);
   const budget = resolveModelContextBudget({
     runnerConfig: request.runnerConfig,
@@ -251,12 +284,13 @@ function payloadMessages(
           historyMessages: request.historyMessages,
         })
       : undefined;
-  const projectedContext = projectPayloadContext(input.context);
+  const projectedContext = projectPayloadContext(input.context, request);
   traceDebug("runtime.worker_capability_payload_context", "projected", {
     requestId: request.requestId,
     modelStep: input.modelStep,
     callId,
     contextScope: projectedContext.contextScope,
+    reusedCompactedSourceCount: projectedContext.reusedCompactedSourceCount,
     settledCapabilityResultCount: input.context.settledCapabilityResults.length,
     ...projectedContext.settledResultDiagnostics,
     relatedArtifactContextCount:
@@ -266,12 +300,14 @@ function payloadMessages(
     hasTargetContext: input.context.targetContext !== undefined,
     requestSourceProjection: input.requestSourceProjection,
   });
+  const canonicalContext = `Canonical runtime context:\n${JSON.stringify(projectedContext.metadata)}`;
   try {
-    return projectRequestContext({
+    const messages = projectRequestContext({
       instructions: input.instructions,
       historyMessages: [],
-      prompt: `Canonical runtime context:\n${JSON.stringify(projectedContext.metadata)}`,
+      prompt: canonicalContext,
       referenceMessages: [
+        ...(filesystemMessage ? [filesystemMessage] : []),
         ...(requestSource ? [buildRequestSourceMessage(requestSource)] : []),
         ...projectedContext.relatedArtifactMessages,
       ],
@@ -287,6 +323,16 @@ function payloadMessages(
       onEvent: request.onEvent,
       deferCompactionFailure: true,
     }).messages;
+    return Object.freeze({
+      messages,
+      hasVerifiedCompactedEvidence(candidateMessages: readonly ChatMessage[]) {
+        if (projectedContext.reusedCompactedSourceCount === 0) return false;
+        return candidateMessages.some(
+          (message) =>
+            message.role === "user" && message.content === canonicalContext,
+        );
+      },
+    });
   } catch (error: unknown) {
     if (
       error instanceof Error &&
@@ -347,7 +393,9 @@ function payloadCompactionOptions(
       scopeId: workerCapabilityContextCompactionScopeId(
         input.context.worker.callId,
       ),
-      resultSourceOverrides: createWorkerPayloadResultSources(input.context),
+      ...(input.superWorkerCompaction
+        ? { resultSourceOverrides: input.superWorkerCompaction.sources }
+        : {}),
     });
   }
   return Object.freeze({
@@ -361,29 +409,16 @@ function payloadCompactionOptions(
   });
 }
 
-function createWorkerPayloadResultSources(
+function projectPayloadContext(
   context: PayloadContext,
-): readonly SemanticCompactionSource[] {
-  return Object.freeze(
-    projectCurrentRequestToolResults(context.settledCapabilityResults).map(
-      (result) => {
-        const content = JSON.stringify(result);
-        return Object.freeze({
-          sourceRef: result.executionId,
-          sourceFingerprint: createSemanticCompactionSha256Fingerprint(content),
-          content,
-        });
-      },
-    ),
-  );
-}
-
-function projectPayloadContext(context: PayloadContext): Readonly<{
+  request: RequestWorkerCapabilityPayloadContext,
+): Readonly<{
   metadata: Readonly<Record<string, unknown>>;
   relatedArtifactMessages: readonly ChatMessage[];
   targetContentMessage?: ChatMessage;
   contextScope: PayloadContext["contextScope"];
   settledResultDiagnostics: SettledResultProjectionDiagnostics;
+  reusedCompactedSourceCount: number;
 }> {
   const contextScope = context.contextScope;
   const targetProjection = context.targetContext
@@ -399,13 +434,21 @@ function projectPayloadContext(context: PayloadContext): Readonly<{
     context,
     contextScope,
   );
+  const compactedEvidence = projectExecutionPayloadCompactedEvidence(
+    request,
+    context,
+    settledResultProjection.results,
+  );
   const baseMetadata: Record<string, unknown> = { ...context };
   delete baseMetadata.targetContext;
   delete baseMetadata.relatedArtifactContexts;
   return Object.freeze({
     metadata: Object.freeze({
       ...baseMetadata,
-      settledCapabilityResults: settledResultProjection.results,
+      settledCapabilityResults: compactedEvidence.results,
+      ...(compactedEvidence.evidence
+        ? { compactedSourceEvidence: compactedEvidence.evidence }
+        : {}),
       ...(targetProjection ? { targetContext: targetProjection.metadata } : {}),
       ...(relatedArtifactProjections.length > 0
         ? {
@@ -423,6 +466,7 @@ function projectPayloadContext(context: PayloadContext): Readonly<{
       : {}),
     contextScope,
     settledResultDiagnostics: settledResultProjection.diagnostics,
+    reusedCompactedSourceCount: compactedEvidence.evidence?.sources.length ?? 0,
   });
 }
 

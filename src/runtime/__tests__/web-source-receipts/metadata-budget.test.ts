@@ -63,7 +63,7 @@ describe("optional source receipt byte budget", () => {
   });
 
   test("removes last receipt entries and reports exactly how many metadata entries were omitted", () => {
-    const input = inputWithBytes(127_500);
+    const input = inputWithBytes(PLUGIN_RESULT_SERIALIZED_MAX_BYTES - 3_572);
     const result = successWithSourceReceipts(input, receipt());
     const webSources = (
       result.data?.eventMeta as { webSources: WebSourcesReceipt }
@@ -79,10 +79,13 @@ describe("optional source receipt byte budget", () => {
   });
 
   test("preserves prior omission counts when the envelope requires further trimming", () => {
-    const result = successWithSourceReceipts(inputWithBytes(127_500), {
-      ...receipt(),
-      omittedSourceCount: 2,
-    });
+    const result = successWithSourceReceipts(
+      inputWithBytes(PLUGIN_RESULT_SERIALIZED_MAX_BYTES - 3_572),
+      {
+        ...receipt(),
+        omittedSourceCount: 2,
+      },
+    );
     const webSources = (
       result.data?.eventMeta as { webSources: WebSourcesReceipt }
     ).webSources;
@@ -92,7 +95,7 @@ describe("optional source receipt byte budget", () => {
 
   test("can report an entirely omitted receipt list while preserving success", () => {
     const result = successWithSourceReceipts(
-      inputWithBytes(130_500),
+      inputWithBytes(PLUGIN_RESULT_SERIALIZED_MAX_BYTES - 572),
       receipt(),
     );
     expect(result).toMatchObject({

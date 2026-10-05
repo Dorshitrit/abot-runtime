@@ -1,3 +1,4 @@
+import { buildDegradedFinalizationFallback } from "../steps/degraded-finalization/fallback.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { resolveRoleCallTransactions } from "../orchestration/role-calls/index.js";
 import { StructuredModelInvalidOutputError } from "../model/invoke-structured-step.js";
@@ -205,8 +206,14 @@ describe.each(ROOT_OUTPUT_POLICIES)(
         runRootExecutionKernel({ request, ledger }),
       ).rejects.toMatchObject({
         name: "StructuredModelInvalidOutputError",
-        message: "invalid_degraded_finalization_output",
-        modelStep: "degraded.finalization",
+        message:
+          policy.policyId === "supervisor-worker-v1"
+            ? policy.invalidDecision
+            : "invalid_degraded_finalization_output",
+        modelStep:
+          policy.policyId === "supervisor-worker-v1"
+            ? policy.decisionStep
+            : "degraded.finalization",
         repairAttempts: 2,
       });
       expect(ledger.current()).toBe(initialHead);
@@ -218,7 +225,9 @@ describe.each(ROOT_OUTPUT_POLICIES)(
       });
       expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
         ...Array<string>(3).fill(policy.decisionStep),
-        ...Array<string>(3).fill("degraded.finalization"),
+        ...Array<string>(
+          policy.policyId === "supervisor-worker-v1" ? 0 : 3,
+        ).fill("degraded.finalization"),
       ]);
       expect(request.onAnswerToken).not.toHaveBeenCalled();
     });
@@ -233,6 +242,22 @@ describe.each(ROOT_OUTPUT_POLICIES)(
       });
       const request = createRootInvalidOutputRequest(invoke, policy.policyId);
 
+      if (policy.policyId === "supervisor-worker-v1") {
+        const expected = buildDegradedFinalizationFallback({
+          problem: { stage: policy.decisionStep, code: policy.invalidDecision },
+          progress: null,
+        });
+        await expect(
+          runRootExecutionKernel({ request, ledger }),
+        ).resolves.toMatchObject({ output: expected, disposition: "blocked" });
+        expect(ledger.current().state.rootResponse).toBe(expected);
+        expect(
+          invoke.mock.calls.filter(
+            ([input]) => input.modelStep === "degraded.finalization",
+          ),
+        ).toHaveLength(1);
+        return;
+      }
       await expect(runRootExecutionKernel({ request, ledger })).rejects.toBe(
         failure,
       );

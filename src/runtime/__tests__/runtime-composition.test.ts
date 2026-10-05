@@ -157,6 +157,7 @@ describe("runtime composition", () => {
         createSession: expect.any(Function),
       },
       scheduler: expect.any(Object),
+      automations: expect.any(Object),
       startScheduler: expect.any(Function),
       stopScheduler: expect.any(Function),
       requestAdmission: expect.any(Object),

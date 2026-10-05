@@ -12,6 +12,7 @@ import { DEFAULT_ANALYSIS_TRIGGER, DEFAULT_ANALYSIS_OBSERVATION_COUNT } from "./
 import { readObservationReviewPass } from "./processing-pass.js";
 import { readCoWorkerReviewProgress } from "./review-progress.js";
 import { normalizeLearningActivityControls } from "./activity-permissions.js";
+import { readSparkToolPermissionMode } from "./spark-chat-preferences.js";
 
 export type LearningState = Readonly<{
   schemaVersion: 1;
@@ -31,6 +32,7 @@ export const DEFAULT_LEARNING_PREFERENCES: PassiveLearningPreferences =
     analysisWindow: null,
     collectionWindow: null,
     proactiveEnabled: false,
+    sparkToolPermissionMode: "ask",
     proactiveIntervalMinutes: 60,
     proactiveWindow: null,
     proactiveMessagesPerDay: 2,
@@ -125,6 +127,8 @@ export function normalizeLearningPreferences(
     processingExcludedApplications: processingExcluded,
     ...schedule,
     ...normalizeIndependentLearningPreferences(input, previous),
+    sparkToolPermissionMode: readSparkToolPermissionMode(input.sparkToolPermissionMode === undefined
+      ? previous.sparkToolPermissionMode : input.sparkToolPermissionMode),
     ...normalizeLearningActivityControls(input, previous),
     maturation: Object.freeze({ ...maturation }),
     resourceLimits: Object.freeze({ ...resourceLimits }),

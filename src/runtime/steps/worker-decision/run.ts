@@ -1,3 +1,10 @@
+import { completeWorkerHandoffEvidence } from "./worker-handoff-compaction.js";
+import {
+  workerCompactionIntegrityInput,
+  assertWorkerCheckpointApplicable,
+  readWorkerCompactionCheckpoint,
+} from "./compaction-integrity.js";
+import { readSuperWorkerCompactionSidecar } from "../../context/super-worker-compaction-sidecar.js";
 import { bindRoleApprovalWait } from "../../orchestration/role-executors/approval-continuation.js";
 import { isWorkerCapabilityApprovalWait } from "../../orchestration/worker-capabilities/approval-contracts.js";
 import {
@@ -9,12 +16,7 @@ import {
   projectRequestToolResults,
   type RequestToolResultsView,
 } from "../../context/request-tool-results.js";
-import {
-  SEMANTIC_COMPACTION_CONTEXT_LANE,
-  createSemanticCompactionSha256Fingerprint,
-  projectSemanticCompactionDependencyResults,
-  sameSemanticCompactionCheckpointBinding,
-} from "../../context/semantic-compaction/index.js";
+import { projectSemanticCompactionDependencyResults } from "../../context/semantic-compaction/index.js";
 import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
 import { emitRuntimeStatus } from "../../events/runtime-status.js";
 import type { RoleCallFrame } from "../../orchestration/role-calls/index.js";
@@ -44,7 +46,6 @@ import {
   type WorkerDecisionDiagnosticContext,
   type WorkerInvokeCapabilitiesDecision,
   type WorkerInvokeCapabilityDecision,
-  type WorkerResultAuthorSource,
   WORKER_DECISION_MODEL_STEP,
 } from "./contracts.js";
 import {
@@ -319,8 +320,15 @@ async function runWorkerDecisionPhase(
       format: input.format,
       messages: input.context.messages,
       contextCompaction: createModelStepCompactionController(request, {
+        consumer: input.modelStep,
         call: options.call,
         sourceRevision: options.requestToolResults.sourceRevision,
+        superWorkerCompaction: readSuperWorkerCompactionSidecar(
+          options.requestToolResults,
+        ),
+        requireSuperWorkerSources:
+          workerCompactionIntegrityInput(request, options.capabilitySource) !==
+          undefined,
         allowedConsumers:
           WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS,
         scopeId: workerCapabilityContextCompactionScopeId(options.call.callId),
@@ -381,54 +389,20 @@ async function runWorkerDecisionPhase(
   });
 }
 
-async function completeWorkerHandoffEvidence(
-  request: RequestExecutionScope,
-  options: Parameters<typeof buildWorkerDecisionInput>[1],
-  input: ReturnType<typeof buildWorkerDecisionInput>,
-): Promise<WorkerResultAuthorSource> {
-  const store = request.contextCompactionStore;
-  if (!store) return input.resultAuthorSource;
-  const scopeId = workerCapabilityContextCompactionScopeId(options.call.callId);
-  const checkpoint = store.get(scopeId);
-  if (!checkpoint) return input.resultAuthorSource;
-  assertWorkerCheckpointApplicable(request, options.call, checkpoint);
-
-  const immediatePresentationEvidence =
-    input.resultAuthorSource.operationSupervisionEvidenceContextMessage;
-  const handoffCompactionMessages = immediatePresentationEvidence
-    ? input.context.messages.filter(
-        (message) => message !== immediatePresentationEvidence,
-      )
-    : input.context.messages;
-  const prepared = await createModelStepCompactionController(request, {
-    call: options.call,
-    sourceRevision: options.requestToolResults.sourceRevision,
-    allowedConsumers: WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS,
-    scopeId,
-  }).prepare(handoffCompactionMessages);
-  prepared.commit();
-
-  const refreshedCheckpoint = store.get(scopeId);
-  if (!refreshedCheckpoint) {
-    throw new Error("context_compaction_handoff_checkpoint_missing");
-  }
-  assertWorkerCheckpointApplicable(request, options.call, refreshedCheckpoint);
-  return buildWorkerDecisionInput(request, {
-    ...options,
-    requestToolResultsContextMessage: buildCompactedRequestToolResultsMessage(
-      options.requestToolResults,
-      refreshedCheckpoint,
-    ),
-  }).resultAuthorSource;
-}
-
 async function prepareWorkerDecisionInput(
   request: RequestExecutionScope,
   options: Parameters<typeof buildWorkerDecisionInput>[1],
 ): Promise<ReturnType<typeof buildWorkerDecisionInput>> {
   const store = request.contextCompactionStore;
   const scopeId = workerCapabilityContextCompactionScopeId(options.call.callId);
-  const previous = store?.get(scopeId);
+  const previous = store
+    ? readWorkerCompactionCheckpoint(
+        store,
+        options.requestToolResults,
+        scopeId,
+        WORKER_DECISION_MODEL_STEP,
+      )
+    : undefined;
   if (previous) {
     assertWorkerCheckpointApplicable(request, options.call, previous);
   }
@@ -440,47 +414,13 @@ async function prepareWorkerDecisionInput(
             buildCompactedRequestToolResultsMessage(
               options.requestToolResults,
               previous,
+              workerCompactionIntegrityInput(request, options.capabilitySource),
             ),
         }
       : {}),
   });
 }
 
-function createWorkerCompactionBinding(
-  request: RequestExecutionScope,
-  call: RoleCallFrame,
-) {
-  return Object.freeze({
-    requestId: request.requestId,
-    currentRequestFingerprint: createSemanticCompactionSha256Fingerprint(
-      request.prompt,
-    ),
-    roleId: "worker",
-    callId: call.callId,
-    objectiveFingerprint: createSemanticCompactionSha256Fingerprint(
-      call.objective!,
-    ),
-    contextLane: SEMANTIC_COMPACTION_CONTEXT_LANE,
-    allowedConsumers: WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS,
-  });
-}
-
-function assertWorkerCheckpointApplicable(
-  request: RequestExecutionScope,
-  call: RoleCallFrame,
-  checkpoint: Parameters<
-    NonNullable<RequestExecutionScope["contextCompactionStore"]>["commit"]
-  >[0],
-): void {
-  if (
-    !sameSemanticCompactionCheckpointBinding(
-      checkpoint,
-      createWorkerCompactionBinding(request, call),
-    )
-  ) {
-    throw new Error("context_compaction_checkpoint_not_applicable");
-  }
-}
 export const GENERIC_WORKER_EXECUTOR: RoleExecutor<
   RequestExecutionScope,
   RequestRoleExecutionHandoff

@@ -1,3 +1,5 @@
+import { hasSuperContextContract } from "../../context/super-context-policy.js";
+import { assertSuperCompactionCheckpointIntegrity } from "../../context/semantic-compaction/super-source-integrity.js";
 import type {
   RoleCallFrame,
   RoleCallLedger,
@@ -293,6 +295,9 @@ function projectReviewerCompactedReferenceData(
   });
   const projected = new Map<string, string>();
   for (const checkpoint of store.findByCallIds(callIds)) {
+    if (hasSuperContextContract(params.head.policy.authority, "supervisor")) {
+      assertSuperCompactionCheckpointIntegrity({ requestId: params.requestId, prompt: params.requestObjective, head: params.head, store, checkpoint });
+    }
     const call = callsById.get(checkpoint.callId);
     if (
       !call?.objective ||

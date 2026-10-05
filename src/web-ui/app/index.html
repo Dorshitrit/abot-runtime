@@ -77,12 +77,12 @@
             aria-controls="learningWorkspacePanel"
             title="ABot Spark"
           >
-            <span class="rail-icon rail-icon-coworker" aria-hidden="true"><svg viewBox="0 0 24 24">
-              <path d="M12 3c0 6-3 9-9 9 6 0 9 3 9 9 0-6 3-9 9-9-6 0-9-3-9-9Z" />
-              <path d="M18 3v4m-2-2h4" />
-            </svg></span>
+            <span class="rail-icon rail-icon-coworker" aria-hidden="true"><img src="/spark-mascot.svg" width="23" height="23" alt="" /></span>
             <span class="rail-button-label">ABot Spark</span>
           </button>
+          <button
+            id="automationsWorkspaceButton" class="rail-button" type="button" aria-label="Open ABot Studio" aria-controls="automationsWorkspacePanel" title="ABot Studio"
+          ><span class="rail-icon rail-icon-studio" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h6v5H4zM14 3h6v5h-6zM14 16h6v5h-6zM10 8h3m1 0v10m-4-7h3m0 7h1" /></svg></span><span class="rail-button-label">ABot Studio</span></button>
           <button
             id="memoryWorkspaceButton"
             class="rail-button"
@@ -490,6 +490,14 @@
         </div>
       </main>
 
+      <main id="automationChatRunPanel" class="chat-panel automation-chat-run-panel" aria-label="Read-only automation run" hidden></main>
+
+      <section id="automationsWorkspacePanel" class="workspace-page-panel automations-workspace-panel" aria-labelledby="automationsWorkspaceTitle" hidden>
+        <header class="workspace-page-header"><div class="workspace-page-heading"><p class="eyebrow">Build and run</p><h2 id="automationsWorkspaceTitle">ABot Studio</h2></div>
+          <button id="closeAutomationsWorkspaceButton" class="workspace-page-back" type="button">Back to chat</button></header>
+        <div id="automationsRoot" class="workspace-page-body automations-workspace-body"></div>
+      </section>
+
       <section
         id="schedulesWorkspacePanel"
         class="workspace-page-panel schedules-workspace-panel"
@@ -500,7 +508,6 @@
           <div class="workspace-page-heading">
             <p class="eyebrow">Automations</p>
             <h2 id="schedulesWorkspaceTitle">Schedules</h2>
-            <p>Tasks that return to the conversation, right on time.</p>
           </div>
           <button
             id="closeSchedulesWorkspaceButton"
@@ -526,7 +533,6 @@
           <div class="workspace-page-heading">
             <p class="eyebrow">Computer activity</p>
             <h2 id="learningWorkspaceTitle">ABot Spark</h2>
-            <p>What ABot learns from your computer activity.</p>
           </div>
           <button
             id="closeLearningWorkspaceButton"
@@ -551,9 +557,6 @@
           <div class="workspace-page-heading config-workspace-heading">
             <p class="eyebrow">Long-term memory</p>
             <h2 id="memoryWorkspaceTitle">Memory</h2>
-            <p>
-              Review and manage what ABot can remember across conversations.
-            </p>
           </div>
           <div class="toolbar-actions">
             <button
@@ -638,7 +641,6 @@
           <div class="workspace-page-heading config-workspace-heading">
             <p class="eyebrow">Runtime workspace</p>
             <h2 id="configWorkspaceTitle">System</h2>
-            <p id="configWorkspaceDescription">Inspect runtime status, logs and health, and apply saved settings.</p>
           </div>
           <div class="toolbar-actions">
             <button

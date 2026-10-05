@@ -96,13 +96,21 @@ test("assesses the latest base projection and preserves the replacement brief po
 
 test("delegates prepare receipts and observes the controller's live compaction scope", async () => {
   const fixture = createReadmissionFixture();
-  expect(fixture.wrapped.compactionScope).toBe("session_history");
-  const result = await fixture.wrapped.prepare(fixture.messages);
+  expect(fixture.wrapped.getStages()[0]!.compactionScope).toBe(
+    "session_history",
+  );
+  const outcome = await fixture.wrapped
+    .getStages()[0]!
+    .prepare(fixture.messages);
+  if (outcome.kind !== "prepared") throw new Error("fixture stage unavailable");
+  const result = outcome.preparation;
   expect(result).toBe(fixture.receipt);
   expect(fixture.prepare).toHaveBeenCalledExactlyOnceWith(fixture.messages);
   expect(fixture.project).not.toHaveBeenCalled();
   await result.commit();
-  expect(fixture.wrapped.compactionScope).toBe("active_request");
+  expect(fixture.wrapped.getStages()[0]!.compactionScope).toBe(
+    "active_request",
+  );
   expect(fixture.receipt.commit).toHaveBeenCalledOnce();
 });
 

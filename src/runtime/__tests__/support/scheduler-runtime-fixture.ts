@@ -10,7 +10,7 @@ import {
 } from "../../composition.js";
 import type { RequestExecutionPolicyId } from "../../config/model-execution-policy.js";
 import { processDebugLogger } from "../../observability/debug-logger.js";
-import type { ModelGatewayClient, RuntimeConfig } from "../../ports.js";
+import type { ModelGatewayClient, RuntimeConfig, ToolRegistry } from "../../ports.js";
 import type { SchedulerRun } from "../../scheduler/contracts.js";
 import { directRespondText } from "./supervisor-direct-respond.js";
 
@@ -31,6 +31,7 @@ export function createSchedulerTestGate() {
 export async function createSchedulerRuntimeFixture(
   policy: RequestExecutionPolicyId = "supervisor-worker-v1",
   beforeModel?: (input: ScheduledModelInput) => Promise<void>,
+  tools?: ToolRegistry,
 ) {
   const rootDir = await mkdtemp(
     join(tmpdir(), "scheduler-runtime-integration-"),
@@ -119,6 +120,7 @@ export async function createSchedulerRuntimeFixture(
   try {
     application = createRuntimeApplication(config, {
       models: { invoke, invokeRaw },
+      ...(tools ? { tools } : {}),
     });
     application.subscribeScheduledEvents((event) => events.push(event));
     await application.start();

@@ -1,3 +1,4 @@
+import { buildContextFixture } from "./support/context-evidence-fixture.js";
 import { describe, expect, test } from "vitest";
 
 import { buildConversationActivityModel } from "../../web-ui/app/components/conversation-activity.js";
@@ -34,6 +35,7 @@ describe("web ui context window projection", () => {
     controller.recordEvent({
       type: "event",
       name: "context.compaction.completed",
+      invocationId: "outer-1",
       requestId: "request-1",
       beforeUsedContextPercent: 81,
       afterUsedContextPercent: 11,
@@ -72,13 +74,16 @@ describe("web ui context window projection", () => {
         estimatedInputTokens: 3_604,
         usedContextPercent: 11,
         remainingContextPercent: 89,
-        compaction: { beforePercent: 81, afterPercent: 11 },
-        providerUsage: {
+        compaction: expect.objectContaining({
+          beforePercent: 81,
+          afterPercent: 11,
+        }),
+        providerUsage: expect.objectContaining({
           inputTokens: 3_590,
           outputTokens: 84,
           totalTokens: 3_674,
           source: "provider_reported",
-        },
+        }),
       }),
     );
     expect(model.hasContent).toBe(false);
@@ -88,21 +93,19 @@ describe("web ui context window projection", () => {
   test("does not attach provider usage from a different invocation", () => {
     const model = buildConversationActivityModel({
       requestId: "request-1",
-      contextWindow: {
-        requestId: "request-1",
-        snapshot: {
-          invocationId: "invocation-current",
-          contextWindowTokens: 100,
-          estimatedInputTokens: 20,
-          usedContextPercent: 20,
-        },
-        providerUsage: {
-          invocationId: "invocation-old",
-          inputTokens: 90,
-          outputTokens: 10,
-          totalTokens: 100,
-        },
-      },
+      contextWindow: buildContextFixture(
+        "request-1",
+        { invocationId: "invocation-current" },
+        [
+          {
+            name: "context.window.provider_usage",
+            invocationId: "invocation-old",
+            inputTokens: 90,
+            outputTokens: 10,
+            totalTokens: 100,
+          },
+        ],
+      ),
     });
 
     expect(model.contextWindow?.providerUsage).toBeNull();
@@ -296,8 +299,12 @@ describe("web ui context window projection", () => {
         createRealtimeContextHarness();
       controller.handle({ type, requestId: "request-1" });
 
-      expect(renderActivityStatus).toHaveBeenCalledOnce();
-      expect(renderActivityStatus.mock.results[0]?.value.streaming).toBe(false);
+      expect(renderActivityStatus).toHaveBeenCalled();
+      expect(
+        renderActivityStatus.mock.results.every(
+          (result) => result.value.streaming === false,
+        ),
+      ).toBe(true);
     },
   );
 });

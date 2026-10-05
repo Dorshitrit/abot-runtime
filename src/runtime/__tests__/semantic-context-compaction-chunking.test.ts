@@ -1,6 +1,9 @@
+import { semanticCompactionReplacementSlots } from "./support/semantic-compaction-replacement-fixture.js";
+import {
+  readModelMessages,
+  semanticCompactionDigestSlots,
+} from "./support/semantic-compaction-model-fixture.js";
 import { describe, expect, test, vi } from "vitest";
-
-import type { RequestStepInstructionBlock } from "../config/runner/contracts.js";
 import type { ModelGatewayClient } from "../ports.js";
 import { createModelStepCompactionController } from "../context/model-step-compaction.js";
 import { OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND } from "../context/operation-supervision-evidence.js";
@@ -19,30 +22,7 @@ import {
   projectSemanticCompactionUtf8Boundaries,
 } from "../context/semantic-compaction/chunking.js";
 import { WORKER_DECISION_MODEL_STEP } from "../steps/worker-decision/index.js";
-import { createTestRequestExecutionScope } from "./support/request-execution-scope.js";
-
-type TestModelMessage = Readonly<{ role: string; content: string }>;
-
-function readModelMessages(value: unknown): readonly TestModelMessage[] {
-  if (!Array.isArray(value)) {
-    throw new TypeError("Expected model messages to be an array.");
-  }
-  const messages = value.filter(
-    (message): message is TestModelMessage =>
-      typeof message === "object" &&
-      message !== null &&
-      "role" in message &&
-      typeof message.role === "string" &&
-      "content" in message &&
-      typeof message.content === "string",
-  );
-  if (messages.length !== value.length) {
-    throw new TypeError(
-      "Expected every model message to contain text content.",
-    );
-  }
-  return messages;
-}
+import { createCompactionRequest } from "./support/compaction-chunking-request-fixture.js";
 
 function createContinuation(
   evidenceRefs: readonly string[],
@@ -76,97 +56,6 @@ function createSource(
   });
 }
 
-function createCompactionRequest(
-  params: Readonly<{
-    requestId: string;
-    prompt: string;
-    invoke: ModelGatewayClient["invoke"];
-    countInputTokens?: ModelGatewayClient["countInputTokens"];
-    instructionBlocks?: readonly RequestStepInstructionBlock[];
-    store?: ReturnType<typeof createRequestContextCompactionStore>;
-    asciiCharactersPerToken?: number;
-  }>,
-) {
-  return createTestRequestExecutionScope({
-    requestId: params.requestId,
-    sessionId: `${params.requestId}-session`,
-    prompt: params.prompt,
-    historyMessages: [],
-    shouldGenerateSessionTitle: false,
-    runnerConfig: {
-      models: {
-        defaults: {
-          profileId: "compact-test-profile",
-          steps: {
-            [CONTEXT_COMPACTION_MODEL_STEP]: "compact-test-profile",
-          },
-        },
-      },
-      context: {
-        outputReserveTokens: 2_048,
-        safetyReserveTokens: 500,
-        attachmentReserveTokens: 100,
-      },
-      steps: {
-        [CONTEXT_COMPACTION_MODEL_STEP]: {
-          timeoutMs: 20_000,
-          ...(params.instructionBlocks
-            ? { instructionBlocks: params.instructionBlocks }
-            : {}),
-        },
-      },
-    },
-    agentMode: "reasoning",
-    modelPolicy: {
-      providers: { test: { type: "ollama" } },
-      profiles: {
-        "compact-test-profile": {
-          provider: "test",
-          model: "compact-test-model",
-          contextWindowTokens: 16_000,
-          ...(params.asciiCharactersPerToken
-            ? {
-                context: {
-                  tokenEstimation: {
-                    asciiCharactersPerToken: params.asciiCharactersPerToken,
-                    nonAsciiBytesPerToken: 2,
-                    messageOverheadTokens: 6,
-                  },
-                },
-              }
-            : {}),
-        },
-      },
-      defaults: {
-        profileId: "compact-test-profile",
-        steps: {
-          [CONTEXT_COMPACTION_MODEL_STEP]: "compact-test-profile",
-        },
-      },
-    },
-    modelGatewayClient: {
-      invoke: params.invoke,
-      invokeRaw: vi.fn(),
-      ...(params.countInputTokens
-        ? { countInputTokens: params.countInputTokens }
-        : {}),
-    },
-    ...(params.store ? { contextCompactionStore: params.store } : {}),
-    abortSignal: new AbortController().signal,
-    onThinkingDelta: vi.fn(),
-    onThinkingTrace: vi.fn(),
-    workerCapabilityProvider: {
-      getDescriptors: () => Object.freeze([]),
-      getAdapters: () => Object.freeze([]),
-    },
-    toolPermissionMode: "full_access",
-    onAcknowledgement: vi.fn(),
-    onSessionTitle: vi.fn(async () => undefined),
-    onAnswerToken: vi.fn(),
-    onEvent: vi.fn(),
-  });
-}
-
 describe("semantic context compaction chunking", () => {
   test("slices and digests an oversized operation-supervision evidence capsule", async () => {
     const requestId = "oversized-operation-supervision-evidence";
@@ -187,7 +76,9 @@ describe("semantic context compaction chunking", () => {
       return {
         text: JSON.stringify({
           continuation: createContinuation([sourceRef]),
-          sourceDigests: ["Preserved exact supervised operation evidence."],
+          sourceDigests: semanticCompactionDigestSlots([
+            "Preserved exact supervised operation evidence.",
+          ]),
         }),
         meta: {},
       };
@@ -256,8 +147,9 @@ describe("semantic context compaction chunking", () => {
       scopeId: "worker:call-supervised:request-tool-results",
     });
 
-    const prepared = await controller.prepare([capsule]);
-
+    const outcome = await controller.getStages()[0]!.prepare([capsule]);
+    if (outcome.kind !== "prepared") throw new Error("compaction unavailable");
+    const prepared = outcome.preparation;
     expect(invokedSlices.length).toBeGreaterThan(0);
     expect(invokedSlices.map(({ content }) => content).join("")).toContain(
       marker,
@@ -354,7 +246,8 @@ describe("semantic context compaction chunking", () => {
       return {
         text: JSON.stringify({
           continuation: createContinuation(sourceRefs),
-          sourceDigests: sourceRefs.map(
+          sourceDigests: semanticCompactionReplacementSlots(
+            payload,
             (sourceRef) => `Semantic facts for ${sourceRef}.`,
           ),
         }),
@@ -417,7 +310,8 @@ describe("semantic context compaction chunking", () => {
       return {
         text: JSON.stringify({
           continuation: createContinuation(coveredSourceRefs),
-          sourceDigests: sourceRefs.map(
+          sourceDigests: semanticCompactionReplacementSlots(
+            payload,
             (sourceRef) => `Semantic facts for ${sourceRef}.`,
           ),
         }),
@@ -429,7 +323,8 @@ describe("semantic context compaction chunking", () => {
     const countInputTokens = vi.fn<
       NonNullable<ModelGatewayClient["countInputTokens"]>
     >(async (input) => {
-      countedMessageBodies.push(JSON.stringify(input.messages));
+      if (input.modelStep === CONTEXT_COMPACTION_MODEL_STEP)
+        countedMessageBodies.push(JSON.stringify(input.messages));
       const payload = JSON.parse(
         (input.messages as readonly { content: string }[]).at(-1)!.content,
       ) as { newSources?: readonly unknown[] };
@@ -521,7 +416,8 @@ describe("semantic context compaction chunking", () => {
             ...(payload.previousContinuation?.evidenceRefs ?? []),
             ...sourceRefs,
           ]),
-          sourceDigests: sourceRefs.map(
+          sourceDigests: semanticCompactionReplacementSlots(
+            payload,
             (sourceRef) => `Semantic facts for ${sourceRef}.`,
           ),
         }),
@@ -620,7 +516,9 @@ describe("semantic context compaction chunking", () => {
       return {
         text: JSON.stringify({
           continuation: createContinuation([payload.sourceSlice.sourceRef]),
-          sourceDigests: ["Cumulative semantic facts for source-a."],
+          sourceDigests: semanticCompactionDigestSlots([
+            "Cumulative semantic facts for source-a.",
+          ]),
         }),
         meta: {},
       };
@@ -734,7 +632,9 @@ describe("semantic context compaction chunking", () => {
       return {
         text: JSON.stringify({
           continuation: createContinuation([payload.sourceSlice.sourceRef]),
-          sourceDigests: ["Cumulative semantic facts for source-a."],
+          sourceDigests: semanticCompactionDigestSlots([
+            "Cumulative semantic facts for source-a.",
+          ]),
         }),
         meta: {},
       };
@@ -924,7 +824,10 @@ describe("semantic context compaction chunking", () => {
               priorSource.sourceRef,
               "source-a",
             ]),
-            sourceDigests: ["Source A digest."],
+            sourceDigests: semanticCompactionReplacementSlots(
+              payload,
+              () => "Source A digest.",
+            ),
           }),
           meta: {},
         };
@@ -935,7 +838,21 @@ describe("semantic context compaction chunking", () => {
       prompt,
       invoke,
       store,
-      asciiCharactersPerToken: 1,
+      countInputTokens: async (input) => ({
+        inputTokens:
+          JSON.parse(
+            readModelMessages(input.messages).find(
+              ({ role }) => role === "user",
+            )!.content,
+          ).newSources?.length === 2
+            ? 14_000
+            : 1_000,
+        profileId: "compact-test-profile",
+        provider: "ollama",
+        model: "compact-test-model",
+        contextWindowTokens: 16_000,
+        source: "provider_input_token_count",
+      }),
     });
     const sources = Object.freeze([
       createSource("source-a", `New exact evidence A:${"a".repeat(7_000)}`),

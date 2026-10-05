@@ -35,7 +35,10 @@ import {
   type WorkerCapabilityCatalogGroup,
   type WorkerCapabilityExecutionFreshness,
 } from "../orchestration/worker-capabilities/index.js";
-import { runDegradedFinalization } from "../steps/degraded-finalization/run.js";
+import {
+  runPolicyDegradedFinalization,
+  projectPolicyDegradedResult,
+} from "./policy-degraded-finalization.js";
 import {
   type CompiledRequestExecutionPolicy,
   type RequestExecutionScope,
@@ -554,6 +557,9 @@ class RootExecutionSession {
           ? await binding.execute({
               capabilityId: decision.capabilityId,
               intent: decision.intent,
+              ...(decision.authoringObjective
+                ? { authoringObjective: decision.authoringObjective }
+                : {}),
               controls: decision.controls,
             })
           : await binding.executeBatch({ invocations: decision.invocations });
@@ -599,8 +605,9 @@ class RootExecutionSession {
       return CONTINUE_ROOT_EXECUTION;
     }
     params.attempt.failureStage = "compose_response";
-    const response = await runDegradedFinalization({
+    const response = await runPolicyDegradedFinalization({
       request: this.request,
+      maxResponseChars: params.head.policy.limits.maxResponseChars,
       input: Object.freeze({
         problem: params.problem,
         progress: null,
@@ -626,12 +633,7 @@ class RootExecutionSession {
     });
     return Object.freeze({
       kind: "complete" as const,
-      result: Object.freeze({
-        output,
-        ...(this.policy.authority.terminalTextMode === "exact"
-          ? { outputTextMode: "exact" as const }
-          : {}),
-      }),
+      result: Object.freeze(projectPolicyDegradedResult(this.request, output)),
     });
   }
 
@@ -655,28 +657,28 @@ class RootExecutionSession {
     attempt.publishDeferredTitle = () =>
       this.publishDeferredTitle(activation, attempt);
     attempt.failureStage = "compose_response";
-    const authoredResponse =
-      decision.action === "blocked"
-        ? createPlainRootAuthoredResponse(decision.response)
-        : await this.policy.rootContract.authorResponse(this.request, {
-            responseRecommendation: decision.responseRecommendation,
-            memoryRecallMessage: projectRootMemoryRecallMessage({
-              head: activation.head,
-              callId: activation.call.callId,
-              steeringVersion: activation.decisionSteeringVersion,
-            }),
+    const isBlockedCompletion = decision.action === "blocked";
+    const authoredResponse = isBlockedCompletion
+      ? createPlainRootAuthoredResponse(decision.response)
+      : await this.policy.rootContract.authorResponse(this.request, {
+          responseRecommendation: decision.responseRecommendation,
+          memoryRecallMessage: projectRootMemoryRecallMessage({
             head: activation.head,
-            callFrame: activation.call,
+            callId: activation.call.callId,
             steeringVersion: activation.decisionSteeringVersion,
-            call: activation.callIdentity,
-            toolResults: projectRequestToolResults({
-              ledger: this.ledger,
-              head: activation.head,
-              modelStep: this.policy.rootContract.responseModelStep,
-              callId: activation.call.callId,
-            }),
-            ...(this.resume ? { resume: this.resume } : {}),
-          });
+          }),
+          head: activation.head,
+          callFrame: activation.call,
+          steeringVersion: activation.decisionSteeringVersion,
+          call: activation.callIdentity,
+          toolResults: projectRequestToolResults({
+            ledger: this.ledger,
+            head: activation.head,
+            modelStep: this.policy.rootContract.responseModelStep,
+            callId: activation.call.callId,
+          }),
+          ...(this.resume ? { resume: this.resume } : {}),
+        });
     if (
       !this.isResponseCurrent(
         activation.decisionSteeringVersion,
@@ -706,6 +708,7 @@ class RootExecutionSession {
         ...(this.policy.authority.terminalTextMode === "exact"
           ? { outputTextMode: "exact" as const }
           : {}),
+        ...(isBlockedCompletion ? { disposition: "blocked" as const } : {}),
         ...(finalObservation ? { finalObservation } : {}),
         ...(authoredResponse.memoryCandidates.length > 0
           ? { memoryCandidates: authoredResponse.memoryCandidates }

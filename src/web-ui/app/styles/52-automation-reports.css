@@ -1,0 +1,84 @@
+/* Saved run results use the reading width; configuration stays secondary. */
+.automation-workspace[data-automation-view="run"] { overflow-anchor: none; }
+.automation-run-report { margin-bottom: 0; padding: clamp(18px, 2.4vw, 28px); }
+.automation-report-heading { border-bottom: 0; padding-bottom: 0; }
+.automation-report-goal { color: var(--muted); font-size: var(--font-size-sm); }
+.automation-failure-notice { margin: 20px 0; padding: 16px 18px; border-inline-start: 3px solid var(--amber); background: var(--panel); font-size: var(--font-size-sm); line-height: 1.55; }
+.automation-failure-notice h4 { margin: 0 0 8px; color: var(--amber); font-size: var(--font-size-lg); }
+.automation-failure-notice p { margin: 8px 0 0; }
+.automation-failure-step, .automation-failure-action { color: var(--muted); }
+.automation-failure-usage { color: var(--text); font-weight: 600; }
+.automation-report-stats { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+.automation-report-results { margin-top: 24px; min-width: 0; }
+.automation-report-results > h4 { font-size: var(--font-size-3xl); font-weight: 600; }
+.automation-report-result { min-width: 0; margin-top: 16px; padding-bottom: 20px; }
+.automation-report-result + .automation-report-result { border-top: 1px solid var(--line); padding-top: 20px; }
+.automation-result-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 16px; }
+.automation-result-heading h5 { margin: 0; color: var(--text); font-size: var(--font-size-xl); font-weight: 600; }
+.automation-result-status { color: var(--muted); font-size: var(--font-size-sm); }
+.automation-result-status[data-outcome="failed"], .automation-result-status[data-outcome="interrupted"] { color: var(--danger); }
+.automation-result-status[data-outcome="skipped"], .automation-result-status[data-outcome="cancelled"] { color: var(--amber); }
+.automation-result-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; margin-top: 16px; }
+.automation-result-footer button, .automation-output-more { min-height: 34px; padding: 6px 12px; font-size: var(--font-size-sm); }
+.automation-result-footer .automation-report-warning { font-size: var(--font-size-sm); }
+.automation-saved-output { min-width: 0; color: var(--text); font-size: var(--font-size-xl); line-height: 1.65; }
+.automation-output-part + .automation-output-part { margin-top: 20px; }
+.automation-output-prose { max-width: 90ch; overflow-wrap: anywhere; }
+.automation-output-prose > :first-child { margin-top: 0; }
+.automation-output-prose > :last-child { margin-bottom: 0; }
+.automation-saved-output .automation-output-fields { display: block; margin: 0; font-size: inherit; }
+.automation-output-fields > div { display: grid; grid-template-columns: minmax(110px, 160px) minmax(0, 1fr); gap: 6px 20px; padding: 10px 0; }
+.automation-output-fields > div:first-child { padding-top: 0; }
+.automation-output-fields > div:last-child { border-bottom: 0; padding-bottom: 0; }
+.automation-output-fields dt { color: var(--muted); font-size: var(--font-size-sm); line-height: 1.65; overflow-wrap: anywhere; }
+.automation-output-fields dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.automation-output-fields .automation-output-fields > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.automation-output-value { display: inline-block; color: var(--text); font-family: var(--font-mono); font-size: var(--font-size-md); }
+.automation-output-empty, .automation-output-value[data-value-type="null"] { color: var(--muted-2); }
+.automation-saved-output .automation-output-list { margin: 0; padding-inline-start: 24px; }
+.automation-output-list > li { padding: 4px 0 8px; }
+.automation-output-list > li::marker { color: var(--muted); font-size: var(--font-size-sm); }
+.automation-output-notice { margin: 12px 0 0; color: var(--muted); font-size: var(--font-size-sm); line-height: 1.55; }
+.automation-output-source { margin-top: 18px; color: var(--muted); font-size: var(--font-size-sm); }
+.automation-output-source > summary, .automation-report-execution > summary, .automation-step-disclosure > summary, .automation-run-workflow > summary { cursor: pointer; width: fit-content; padding: 6px 0; }
+.automation-output-source h6 { margin: 12px 0 6px; color: var(--muted); font-size: var(--font-size-xs); }
+.automation-output-source pre, .automation-saved-output .automation-output-json-preview { max-height: 360px; padding: 14px; margin: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); font: var(--font-size-sm)/1.6 var(--font-mono); white-space: pre-wrap; overflow: auto; overflow-wrap: anywhere; }
+.automation-report-outputs { padding: 16px 0; margin-top: 0; }
+.automation-report-execution { padding-top: 12px; border-top: 1px solid var(--line); }
+.automation-report-execution > summary { font-size: var(--font-size-sm); }
+.automation-report-execution .automation-run-diagnostics { margin-top: 8px; }
+.automation-run-layout { grid-template-columns: minmax(0, 1fr); }
+.automation-run-explorer { display: grid; grid-template-columns: 250px minmax(0, 1fr); align-items: start; gap: 24px; min-width: 0; }
+.automation-run-steps { min-width: 0; }
+.automation-run-steps h4 { margin: 0 0 8px; font-size: var(--font-size-lg); }
+.automation-run-steps > p { margin: 0 0 14px; line-height: 1.5; font-size: var(--font-size-sm); }
+.automation-run-step-list { display: grid; align-content: start; gap: 6px; max-height: min(72vh, 800px); margin: 0; padding: 0; overflow: auto; list-style: none; }
+.automation-run-step-list button { display: grid; grid-template-columns: 20px minmax(0, 1fr) 12px; align-items: center; gap: 10px; min-height: 58px; width: 100%; padding: 10px 12px; border-color: transparent; background: transparent; text-align: start; font-size: var(--font-size-sm); }
+.automation-run-step-list button[aria-pressed="true"], .automation-run-step-list button[aria-current="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.automation-run-step-index, .automation-run-step-open, .automation-run-step-copy small { color: var(--muted); }
+.automation-run-step-copy { display: grid; gap: 5px; min-width: 0; }
+.automation-run-step-copy strong { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
+.automation-run-step-copy small { font-size: var(--font-size-xs); }
+.automation-run-detail { min-width: 0; width: 100%; block-size: min(72vh, 800px); min-block-size: 360px; overflow: auto; scrollbar-gutter: stable; padding: clamp(18px, 2.4vw, 28px); }
+.automation-run-detail .automation-step-evidence { margin-top: 0; padding-top: 0; border-top: 0; font-size: var(--font-size-sm); }
+.automation-run-detail .automation-step-evidence > h4 { margin-bottom: 18px; font-size: var(--font-size-2xl); }
+.automation-step-disclosure { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+.automation-step-disclosure > summary { color: var(--muted); }
+.automation-step-disclosure .automation-input-notice { max-width: 90ch; }
+.automation-step-disclosure .automation-step-inputs { margin-top: 12px; }
+.automation-step-disclosure .automation-step-inputs > li { padding: 14px 0; border: 0; border-radius: 0; background: transparent; }
+.automation-step-disclosure .automation-step-inputs > li > span { color: var(--muted); font-size: var(--font-size-xs); }
+.automation-step-disclosure .automation-step-inputs .automation-saved-output { margin-top: 12px; }
+.automation-step-disclosure .automation-step-effects { margin-top: 8px; }
+.automation-run-workflow { min-width: 0; padding: 16px 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.automation-run-workflow > summary { color: var(--muted); font-size: var(--font-size-sm); }
+.automation-run-workflow .automation-canvas { margin-top: 16px; overflow: auto; }
+@media (max-width: 700px) {
+  .automation-run-explorer { grid-template-columns: minmax(0, 1fr); }
+  .automation-output-fields > div, .automation-output-fields .automation-output-fields > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .automation-output-fields > div { padding: 14px 0; }
+  .automation-output-fields dt { font-weight: 600; }
+  .automation-run-step-list { max-height: 220px; }
+  .automation-run-detail { min-block-size: 320px; }
+  .automation-run-workflow { padding-inline: 14px; }
+}

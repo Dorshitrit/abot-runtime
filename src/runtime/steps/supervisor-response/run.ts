@@ -6,6 +6,7 @@ import {
 } from "../../model/invoke-raw-step.js";
 import type { RequestToolResultsView } from "../../context/request-tool-results.js";
 import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
+import { superCompactionFailureOwner } from "../../context/super-compaction-failure-owner.js";
 import { createSessionMemoryAwareCompactionController } from "../../context/session-memory/index.js";
 import type { RequestExecutionScope } from "../../request/execution-scope.js";
 import {
@@ -32,11 +33,18 @@ import {
 import { retrieveResponseLongTermMemory } from "../../long-term-memory/response-context.js";
 import type { RootAuthoredResponse } from "../../long-term-memory/contracts.js";
 import { authorSupervisorMemoryCandidates } from "./memory-authoring.js";
-import { canAuthorConversationMemory, prepareConversationMemoryAuthoring } from "../../long-term-memory/conversation-authoring/context.js";
+import {
+  canAuthorConversationMemory,
+  prepareConversationMemoryAuthoring,
+} from "../../long-term-memory/conversation-authoring/context.js";
 import {
   assertBoundModelStepSteeringCurrent,
   isModelStepSteeringSuperseded,
 } from "../../model/model-step-steering.js";
+import {
+  automationResponseFormat,
+  validateAutomationResponse,
+} from "../../request/automation-output-contract.js";
 
 const SUPERVISOR_RESPONSE_MAX_REPAIR_ATTEMPTS = 1;
 
@@ -66,9 +74,13 @@ export async function runSupervisorAuthoredResponse(
   }>,
 ): Promise<RootAuthoredResponse> {
   const requestSteering = resolveRequestSteeringInbox(request.requestSteering);
-  const steeringSnapshot = options.steeringSnapshot ?? requestSteering.snapshot();
+  const steeringSnapshot =
+    options.steeringSnapshot ?? requestSteering.snapshot();
   const memoryEnabled = request.longTermMemory?.enabled === true;
-  const memoryAuthoringVersion = memoryEnabled && request.longTermMemory?.learning ? steeringSnapshot.version : undefined;
+  const memoryAuthoringVersion =
+    memoryEnabled && request.longTermMemory?.learning
+      ? steeringSnapshot.version
+      : undefined;
   const boundSteeringVersion =
     resolveMemoryRecallSteeringVersion(
       options.memoryRecallMessage,
@@ -76,7 +88,9 @@ export async function runSupervisorAuthoredResponse(
       options.call.callId,
     ) ??
     memoryAuthoringVersion ??
-    (options.responseRecommendation !== undefined ? options.steeringSnapshot?.version : undefined);
+    (options.responseRecommendation !== undefined
+      ? options.steeringSnapshot?.version
+      : undefined);
   assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
   const memoryMessage =
     options.memoryRecallMessage ??
@@ -92,23 +106,33 @@ export async function runSupervisorAuthoredResponse(
     ? await prepareConversationMemoryAuthoring(request, steeringSnapshot)
     : undefined;
   assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
-  const memoryCandidates = canAuthorConversationMemory(request, memoryAuthoringContext)
+  const memoryCandidates = canAuthorConversationMemory(
+    request,
+    memoryAuthoringContext,
+  )
     ? await authorSupervisorMemoryCandidates({
         request,
         boundSteeringVersion,
         ...(memoryAuthoringContext ? { memoryAuthoringContext } : {}),
         messages: buildSupervisorMemoryAuthoringInput(request, {
           ...inputOptions,
-          ...(memoryAuthoringContext ? { memoryAuthoringMessage: memoryAuthoringContext.message } : {}),
-        })
-          .context.messages,
+          ...(memoryAuthoringContext
+            ? { memoryAuthoringMessage: memoryAuthoringContext.message }
+            : {}),
+        }).context.messages,
         contextCompaction: createSupervisorResponseCompaction(request, options),
       })
     : Object.freeze([]);
   const input = buildSupervisorResponseInput(request, {
     ...inputOptions,
     ...(memoryEnabled ? { memoryCandidateCount: memoryCandidates.length } : {}),
-    ...(memoryEnabled ? { hasDirectMemorySaveRequest: memoryCandidates.some((candidate) => candidate.assessment?.explicitlyRequested) } : {}),
+    ...(memoryEnabled
+      ? {
+          hasDirectMemorySaveRequest: memoryCandidates.some(
+            (candidate) => candidate.assessment?.explicitlyRequested,
+          ),
+        }
+      : {}),
   });
   const diagnostic: SupervisorResponseDiagnosticContext = {
     requestId: request.requestId,
@@ -133,10 +157,19 @@ export async function runSupervisorAuthoredResponse(
       messages: input.context.messages,
       contextCompaction: createSupervisorResponseCompaction(request, options),
       timeoutReason: "supervisor_response_timeout",
+      ...(request.automationOutputContract
+        ? { format: automationResponseFormat(request.automationOutputContract) }
+        : {}),
       boundSteeringVersion,
       maxRepairAttempts: SUPERVISOR_RESPONSE_MAX_REPAIR_ATTEMPTS,
-      validate: validateSupervisorResponse,
-      buildRepairHint: buildSupervisorResponseRepairHint,
+      validate: request.automationOutputContract
+        ? (text) =>
+            validateAutomationResponse(request.automationOutputContract!, text)
+        : validateSupervisorResponse,
+      buildRepairHint: request.automationOutputContract
+        ? () =>
+            "Return one JSON object matching the requested schema, with no surrounding text."
+        : buildSupervisorResponseRepairHint,
     });
     const authored: RootAuthoredResponse = Object.freeze({
       finalResponse,
@@ -170,6 +203,21 @@ function createSupervisorResponseCompaction(
   return createSessionMemoryAwareCompactionController(
     request,
     createModelStepCompactionController(request, {
+      consumer: SUPERVISOR_RESPONSE_MODEL_STEP,
+      superFailureOwner: superCompactionFailureOwner(
+        request.executionPolicy.authority,
+        {
+          requestId: request.requestId,
+          callId: options.call.callId,
+          parentCallId: options.call.parentCallId,
+          contractId: "supervisor",
+          invocationAttempt: options.call.invocationAttempt,
+          sourceRevision: options.toolResults.sourceRevision,
+          modelStep: SUPERVISOR_RESPONSE_MODEL_STEP,
+          phase: "compaction",
+          scopeId: `role:supervisor:${options.call.callId}:continuation`,
+        },
+      ),
       call: {
         roleId: "supervisor",
         callId: options.call.callId,

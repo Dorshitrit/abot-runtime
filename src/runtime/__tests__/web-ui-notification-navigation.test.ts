@@ -56,7 +56,7 @@ function createFixture(backend: string | undefined = "runtime") {
   shell.bind();
   return {
     ...harness, client, shell, feature, assign,
-    open: () => workspace.create.mock.calls.at(-1)![0].actions.openSource(notice),
+    open: (item = notice) => workspace.create.mock.calls.at(-1)![0].actions.openSource(item),
     environment: () => environment,
     setBackend(value: string) {
       available = value === "runtime";
@@ -128,6 +128,37 @@ describe("notification backend navigation", () => {
 });
 
 describe("notification source opening", () => {
+  test("opens a committed SPARK initiative at its exact message reference", async () => {
+    const f = createFixture();
+    (window.location as unknown as { href: string }).href = "http://localhost/home";
+    await f.feature.setReady();
+    f.shell.activateWorkspace("notifications");
+    const openSession = vi.fn(async () => true);
+    f.feature.setCompanionChat({ openSession });
+    await f.open({ ...notice, kind: "proposal", sessionId: "spark-companion",
+      sourceUrl: "/home?environment=dev&spark=1&message=initiative%3Aproposal-1&messageCreatedAt=1000" });
+    expect(openSession).toHaveBeenCalledWith("spark-companion", "initiative:proposal-1", { createdAt: 1000, requestId: null });
+    expect(f.assign).not.toHaveBeenCalled();
+  });
+
+  test.each(["environment", "navigation"])("does not follow a stale ordinary fallback after %s changes during companion lookup", async (change) => {
+    const f = createFixture();
+    (window.location as unknown as { href: string }).href = "http://localhost/home";
+    await f.feature.setReady();
+    f.shell.activateWorkspace("notifications");
+    let resolveOpen!: (opened: boolean) => void;
+    const openSession = vi.fn(() => new Promise<boolean>((resolve) => { resolveOpen = resolve; }));
+    f.feature.setCompanionChat({ openSession });
+    const pending = f.open({ ...notice, sourceUrl: "/home?environment=dev&spark=1&message=2&messageCreatedAt=100&request=r" });
+    await vi.waitFor(() => expect(openSession).toHaveBeenCalled());
+    expect(openSession).toHaveBeenCalledWith(notice.sessionId, "2", { createdAt: 100, requestId: "r" });
+    if (change === "environment") f.setEnvironment("prod");
+    else f.shell.activateWorkspace("home");
+    resolveOpen(false);
+    await pending;
+    expect(f.assign).not.toHaveBeenCalled();
+  });
+
   test("opens its source even when marking the notification read rejects", async () => {
     const f = createFixture();
     await f.feature.setReady();

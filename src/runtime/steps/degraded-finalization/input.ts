@@ -1,5 +1,6 @@
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { RequestExecutionSeed } from "../../request/contracts.js";
+import { SPARK_COMPANION_VOICE_INSTRUCTIONS } from "../../context/spark-conversation-policy.js";
 import {
   createDegradedFinalizationFormat,
   type DegradedFinalizationInput,
@@ -21,7 +22,7 @@ export function buildDegradedFinalizationModelInput(params: {
     messages: [
       {
         role: "system",
-        content: DEGRADED_FINALIZATION_INSTRUCTIONS,
+        content: buildDegradedPresentationInstructions(params.request.sessionKind),
       },
       {
         role: "user",
@@ -33,4 +34,13 @@ export function buildDegradedFinalizationModelInput(params: {
     ],
     format: createDegradedFinalizationFormat(),
   };
+}
+
+function buildDegradedPresentationInstructions(sessionKind: "spark" | undefined): string {
+  if (sessionKind !== "spark") return DEGRADED_FINALIZATION_INSTRUCTIONS;
+  return [
+    ...SPARK_COMPANION_VOICE_INSTRUCTIONS,
+    "For this failure response, identity and voice affect only the wording of failureNotice and nextStep. Keep the following neutral framing, language, factual limits and output schema exactly; do not add conversation, playfulness, proposals, work claims or action authority.",
+    DEGRADED_FINALIZATION_INSTRUCTIONS,
+  ].join("\n");
 }

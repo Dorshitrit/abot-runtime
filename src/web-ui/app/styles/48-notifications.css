@@ -1,11 +1,14 @@
 .notifications-content {
+  --config-line: var(--line);
+  --config-copy: var(--text);
+  --config-muted: var(--muted);
   min-width: 0;
-  padding: 20px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel);
   color: var(--text);
 }
+.notifications-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .notifications-toolbar,
 .notification-toolbar-actions,
 .notification-filters,
@@ -13,7 +16,7 @@
 .notification-item-actions { display: flex; align-items: center; gap: 12px; }
 .notifications-toolbar { justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
 .notification-filters { gap: 4px; }
-.notifications-content button,
+.notifications-content button:not(.config-category-tab),
 .notification-item-actions a {
   min-height: 32px;
   padding: 5px 8px;
@@ -26,13 +29,18 @@
   text-decoration: none;
   box-shadow: none;
 }
-.notifications-content button:hover:not(:disabled),
+.notifications-content button:not(.config-category-tab):hover:not(:disabled),
 .notification-item-actions a:hover { background: var(--control-bg); color: var(--text); }
 .notifications-workspace-panel :is(button, a, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .notification-filters button[aria-pressed="true"] { background: var(--control-bg); color: var(--text); }
 .notification-feedback { color: var(--muted); font-size: var(--font-size-sm); line-height: 1.6; }
 .notification-feedback:empty { display: none; }
 .notification-feedback.is-error { color: var(--danger); }
+.notification-empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 230px; padding: 36px 20px; text-align: center; }
+.notification-empty-icon { display: grid; place-items: center; width: 52px; height: 52px; margin-bottom: 16px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-strong); }
+.notification-empty-icon svg { width: 26px; height: 26px; }
+.notification-empty-state h3 { margin: 0; color: var(--text-strong); font-size: var(--font-size-xl); font-weight: 500; line-height: 1.4; }
+.notification-empty-state p { max-width: 38ch; margin: 8px 0 0; color: var(--muted); font-size: var(--font-size-sm); line-height: 1.6; }
 .notification-list { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
 .notification-item { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: start; gap: 6px 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
 .notification-item.is-unread { border-inline-start: 3px solid var(--accent); padding-inline-start: 12px; background: color-mix(in srgb, var(--accent) 3%, var(--panel)); }
@@ -64,9 +72,7 @@
 .notification-item-actions a { border-color: var(--line); color: var(--text); }
 .notification-load-more { display: block; margin: 22px auto; }
 .notification-load-more[hidden] { display: none; }
-.notification-settings { margin-top: 8px; }
-.notification-settings summary { padding: 10px 8px; cursor: pointer; color: var(--muted); font-size: var(--font-size-sm); }
-.notification-settings-body { padding: 0 8px 8px; }
+.notification-settings-body { padding: 0; }
 .notification-setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; padding: 5px 0; font-size: var(--font-size-sm); cursor: pointer; }
 .notification-setting strong { font-weight: 500; }
 .notification-setting small { display: block; color: var(--muted); margin-top: 3px; line-height: 1.4; }
@@ -79,10 +85,10 @@
 .notification-rail-count { position: absolute; top: 3px; left: 24px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 9px; background: var(--accent-strong); color: var(--bg); font-size: 10px; line-height: 16px; text-align: center; }
 .notification-rail-count[hidden] { display: none; }
 @media (max-width: 980px) {
-  .notifications-content { padding: 22px; }
+  .notifications-content .config-category-panel { padding: 22px; }
 }
 @media (max-width: 760px) {
-  .notifications-content { padding: 20px; }
+  .notifications-content .config-category-panel { padding: 20px; }
   .notification-item { grid-template-columns: 28px minmax(0, 1fr); gap: 6px 9px; padding: 10px; }
   .notification-item.is-unread { padding-inline-start: 8px; }
   .notification-kind-icon { width: 28px; height: 28px; }

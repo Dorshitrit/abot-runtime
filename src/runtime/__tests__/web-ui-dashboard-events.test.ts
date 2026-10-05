@@ -12,8 +12,10 @@ function fixture() {
   let environmentId = "dev";
   const client = {
     supportsSchedules: () => true,
+    supportsAutomations: () => true,
     supportsToolApprovals: () => true,
     listRecentScheduleRuns: vi.fn(async () => ({ runs: [] })),
+    listAutomations: vi.fn(async () => ({ automations: [] as Array<Record<string, string>> })),
     listToolApprovals: vi.fn(async () => ({ approvals: [] })),
   };
   const render = vi.fn();
@@ -68,12 +70,14 @@ describe("Home server-driven reads", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(f.loadSessions).toHaveBeenCalledTimes(1);
     expect(f.client.listRecentScheduleRuns).toHaveBeenCalledTimes(1);
+    expect(f.client.listAutomations).toHaveBeenCalledTimes(1);
     expect(f.client.listToolApprovals).toHaveBeenCalledTimes(1);
     for (let index = 0; index < 10; index++) f.event(["approvals"]);
     await vi.advanceTimersByTimeAsync(100);
     expect(f.client.listToolApprovals).toHaveBeenCalledTimes(2);
     expect(f.loadSessions).toHaveBeenCalledTimes(1);
     expect(f.client.listRecentScheduleRuns).toHaveBeenCalledTimes(1);
+    expect(f.client.listAutomations).toHaveBeenCalledTimes(1);
     f.controller.handleRealtime({
       type: "event",
       name: "scheduler.changed",
@@ -82,7 +86,66 @@ describe("Home server-driven reads", () => {
     await vi.advanceTimersByTimeAsync(100);
     expect(f.loadSessions).toHaveBeenCalledTimes(2);
     expect(f.client.listRecentScheduleRuns).toHaveBeenCalledTimes(2);
+    expect(f.client.listAutomations).toHaveBeenCalledTimes(2);
     expect(f.client.listToolApprovals).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows a running automation and clears it after the committed terminal change", async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    await f.start();
+    f.client.listAutomations.mockResolvedValueOnce({ automations: [{
+      id: "automation-one", title: "Daily brief", latestRunId: "run-one",
+      latestRunStatus: "running",
+    }] });
+    f.controller.handleRealtime({ type: "event", name: "scheduler.changed", environment: "dev" });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(f.controller.snapshot().activeAutomations).toMatchObject([{
+      title: "Daily brief", latestRunStatus: "running",
+    }]);
+    f.client.listAutomations.mockResolvedValueOnce({ automations: [{
+      id: "automation-one", title: "Daily brief", latestRunId: "run-one",
+      latestRunStatus: "succeeded",
+    }] });
+    f.controller.handleRealtime({ type: "event", name: "scheduler.changed", environment: "dev" });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(f.controller.snapshot().activeAutomations).toEqual([]);
+  });
+
+  it("shows a queued automation before execution begins", async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    f.client.listAutomations.mockResolvedValueOnce({ automations: [{
+      id: "automation-one", title: "Daily brief", latestRunId: "run-one",
+      latestRunStatus: "pending",
+    }] });
+    await f.start();
+    expect(f.controller.snapshot().activeAutomations).toMatchObject([{
+      latestRunId: "run-one", latestRunStatus: "pending",
+    }]);
+  });
+
+  it("marks automation status unavailable without dropping the last known run", async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    f.client.listAutomations.mockResolvedValueOnce({ automations: [{
+      id: "automation-one", title: "Daily brief", latestRunId: "run-one",
+      latestRunStatus: "running",
+    }] });
+    await f.start();
+    f.client.listAutomations.mockRejectedValueOnce(new Error("temporary failure"));
+    f.controller.handleRealtime({ type: "event", name: "scheduler.changed", environment: "dev" });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(f.controller.snapshot()).toMatchObject({
+      automationStatusUnavailable: true,
+      activeAutomations: [{ latestRunId: "run-one", latestRunStatus: "running" }],
+    });
+    f.client.listAutomations.mockResolvedValueOnce({ automations: [] });
+    await f.controller.refresh();
+    expect(f.controller.snapshot()).toMatchObject({
+      automationStatusUnavailable: false,
+      activeAutomations: [],
+    });
   });
 
   it("ignores unrelated, foreign, hidden and inactive events; refreshes on return", async () => {

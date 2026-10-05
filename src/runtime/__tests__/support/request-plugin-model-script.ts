@@ -92,6 +92,7 @@ function directDecision(index: number, capabilityId: string) {
       capabilityId,
       intent: "Observe the requested fixture.",
       operationObjective: "Observe the requested fixture.",
+      controlsEvidenceExecutionIds: [],
       workingDirectory: ".",
     };
   expect(index).toBe(3);

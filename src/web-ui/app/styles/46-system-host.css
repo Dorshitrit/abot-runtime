@@ -30,6 +30,7 @@
   white-space: nowrap;
 }
 .system-host-summary-action { margin-left: auto; color: var(--accent); white-space: nowrap; }
+.system-host-summary-permissions { color: var(--muted); font-size: var(--font-size-xs); }
 .system-host-summary-action > span { display: inline-block; transition: transform 150ms ease; }
 .system-host-compact[open] .system-host-summary-action > span { transform: rotate(180deg); }
 .system-host-summary:hover { background: var(--control-bg); }
@@ -60,6 +61,22 @@
   justify-content: space-between;
   gap: 16px;
 }
+
+.system-host-permissions { margin-block: 20px; border-block: 1px solid var(--line); padding-block: 16px; }
+.system-host-permission-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.system-host-permission-heading h3 { margin: 0; font-size: var(--font-size-base); font-weight: 500; }
+.system-host-permission-heading h4 { margin: 0; font-size: var(--font-size-sm); font-weight: 500; }
+.system-host-permission-route { margin-block: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.system-host-permission-row > strong { flex: 1 1 160px; font-weight: 400; }
+.system-host-permission-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding-block: 12px; border-top: 1px solid var(--line); }
+.system-host-permission-row > div { flex: 1 1 240px; }
+.system-host-permission-row p { margin: 2px 0 0; color: var(--muted); }
+.system-host-permission-row button { flex-shrink: 0; }
+.system-host-permission-state { color: var(--muted); }
+.system-host-permission-state[data-granted="true"] { color: var(--success, #79d7a7); }
+.system-host-permission-path { display: block; padding: 10px; border-radius: 6px; background: var(--control-bg); overflow-wrap: anywhere; user-select: text; }
+.system-host-native-permissions { margin-top: 16px; }
+.system-host-native-permissions pre { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 
 .system-host-heading h2 {
   margin: 0 0 6px;

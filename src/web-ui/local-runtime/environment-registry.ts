@@ -53,6 +53,11 @@ export class RuntimeEnvironmentRegistry {
     return this.configuredEnvironments;
   }
 
+  existingNativePermissions(environmentId: string) {
+    if (this.stopped || this.applying) return undefined;
+    return this.environments.get(environmentId)?.nativePermissions;
+  }
+
   applyConfiguration(): Promise<RuntimeSetupActivation> {
     if (this.stopped) return Promise.reject(new Error("web_runtime_stopped"));
     if (this.applying) return this.applying;

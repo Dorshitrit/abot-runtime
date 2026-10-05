@@ -1,5 +1,5 @@
 /** Pairing is shared by this ABot installation, independent of environments. */
-export function createSystemHostRequests({ requestApi, getConfig }) {
+export function createSystemHostRequests({ requestApi, getConfig, getEnvironmentId }) {
   const supportsSystemHostConnection = () => getConfig()?.backend === "runtime";
 
   async function requestSystemHost(path = "", options) {
@@ -13,7 +13,9 @@ export function createSystemHostRequests({ requestApi, getConfig }) {
 
   return {
     supportsSystemHostConnection,
-    getSystemHostConnection: () => requestSystemHost(),
+    getSystemHostConnection: () => requestSystemHost(`?environment=${encodeURIComponent(getEnvironmentId())}`),
+    requestSystemHostPermissions: (input) =>
+      requestSystemHost("/permissions", { method: "POST", body: JSON.stringify(input) }),
     connectLocalSystemHost: () =>
       requestSystemHost("/connect-local", { method: "POST", body: "{}" }),
     downloadSystemHostSetup: (platform, options = {}) =>

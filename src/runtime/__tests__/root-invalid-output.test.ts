@@ -1,3 +1,4 @@
+import { buildDegradedFinalizationFallback } from "../steps/degraded-finalization/fallback.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -68,7 +69,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
       expect(request.modelGatewayClient.invokeRaw).not.toHaveBeenCalled();
     });
 
-    test("preserves raw-response repairs and repairs degraded phrasing before publishing the model's answer", async () => {
+    test("preserves response repairs and each policy's degraded attempt budget", async () => {
       const phrasing = {
         failureNotice: "I could not produce a reliable final answer.",
         nextStep: "Continue using the established state.",
@@ -88,13 +89,20 @@ describe.each(ROOT_OUTPUT_POLICIES)(
       });
       const request = createRootInvalidOutputRequest(invoke, policy.policyId);
       const result = await runRequestRunner(request);
-      const expected = `${phrasing.failureNotice}\n\n${phrasing.nextStep}`;
+      const expected =
+        policy.policyId === "supervisor-worker-v1"
+          ? buildDegradedFinalizationFallback({
+              problem: { stage: "raw_response", code: policy.invalidResponse },
+              progress: null,
+            })
+          : `${phrasing.failureNotice}\n\n${phrasing.nextStep}`;
 
       expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
         policy.decisionStep,
         ...Array<string>(policy.responseAttempts).fill(policy.responseStep),
-        "degraded.finalization",
-        "degraded.finalization",
+        ...Array<string>(
+          policy.policyId === "supervisor-worker-v1" ? 1 : 2,
+        ).fill("degraded.finalization"),
       ]);
       expect(result.output).toBe(expected);
       expect(result.finalObservation).toBeUndefined();

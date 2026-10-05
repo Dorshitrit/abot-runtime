@@ -1,12 +1,16 @@
 import type { SessionMessage, SessionRecord } from "./types.js";
 import { assertValidSessionId } from "./record/rules.js";
 import { deleteSessionFile, ensureSessionsDir, loadSessionFile, saveSessionFile } from "./session-store.js";
+import { isSparkHandoffBrief } from "./spark-handoff-brief.js";
 
 export type AssistantInitiative = Readonly<{
   kind: "proactive_proposal_v1";
   proposalId: string;
   reason: string;
   sources: readonly Readonly<{ kind: "candidate" | "memory"; id: string; version: string }>[];
+  /** Optional only for legacy initiatives authored before context handoffs. */
+  handoffBrief?: string;
+  handoffTitle?: string;
 }>;
 
 export type CreateAssistantConversationInput = Readonly<{
@@ -56,11 +60,16 @@ export function isAssistantInitiativeMessage(message: SessionMessage): boolean {
   return typeof message.initiative.proposalId === "string" && message.initiative.proposalId.length > 0;
 }
 
-function assertAssistantInitiative(input: CreateAssistantConversationInput): void {
+export function assertAssistantInitiative(input: CreateAssistantConversationInput): void {
   if (!input.title.trim() || input.title.length > 160) throw new Error("assistant_initiative_title_invalid");
   if (!input.content.trim() || input.content.length > 4000) throw new Error("assistant_initiative_content_invalid");
   if (input.initiative.kind !== "proactive_proposal_v1" || !input.initiative.proposalId.trim()) throw new Error("assistant_initiative_binding_invalid");
   if (!input.initiative.reason.trim() || input.initiative.reason.length > 1000) throw new Error("assistant_initiative_reason_invalid");
+  if (input.initiative.handoffBrief !== undefined && !isSparkHandoffBrief(input.initiative.handoffBrief))
+    throw new Error("assistant_initiative_handoff_brief_invalid");
+  if (input.initiative.handoffTitle !== undefined &&
+    (typeof input.initiative.handoffTitle !== "string" || !input.initiative.handoffTitle.trim() || input.initiative.handoffTitle.length > 160))
+    throw new Error("assistant_initiative_handoff_title_invalid");
   if (!input.initiative.sources.length || input.initiative.sources.length > 12) throw new Error("assistant_initiative_sources_invalid");
   for (const source of input.initiative.sources) {
     if (source.kind !== "candidate" && source.kind !== "memory") throw new Error("assistant_initiative_sources_invalid");

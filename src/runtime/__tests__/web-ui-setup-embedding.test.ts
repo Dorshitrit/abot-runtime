@@ -92,7 +92,7 @@ describe("setup embedding connection and canonical memory save", () => {
     const after = await readConfig();
     expect(after.models.providers).toEqual(before.models.providers);
     expect(after.models.profiles).toEqual(before.models.profiles);
-    expect(after.plugins).toEqual(before.plugins);
+    expect(after.plugins).toEqual({ ...before.plugins, deny: ["memory"] });
     expect(after.requestRunner).toEqual(before.requestRunner);
     expect(embed).toHaveBeenCalledOnce();
     expect(embed.mock.calls[0][0].texts).toEqual([
@@ -196,6 +196,7 @@ describe("setup embedding connection and canonical memory save", () => {
     expect(String(result)).not.toContain(key);
     const failed = await readConfig();
     expect(failed.longTermMemory).toEqual(before.longTermMemory);
+    expect(failed.plugins).toEqual(before.plugins);
     expect(failed.models.embeddingProfiles).toEqual(
       before.models.embeddingProfiles,
     );
@@ -207,6 +208,90 @@ describe("setup embedding connection and canonical memory save", () => {
         signal(),
       ),
     ).resolves.toMatchObject({ status: { enabled: true } });
+  });
+
+  test.each([
+    { enabled: false, allow: ["filesystem"], deny: ["web"] },
+    { enabled: true, allow: ["memory", "filesystem:read_file"], deny: ["web"] },
+    { enabled: true, allow: ["*"], deny: [" memory ", "web"] },
+  ])(
+    "preserves plugin policy and disables memory idempotently: %j",
+    async (plugins) => {
+      const config = await readConfig();
+      config.plugins = plugins;
+      await writeFile(configPath!, JSON.stringify(config));
+      const expectedDeny = plugins.deny.some((id) => id.trim() === "memory")
+        ? plugins.deny
+        : [...plugins.deny, "memory"];
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        await service.enable(
+          { providerId: "ollama", model: "fixture-embedding" },
+          signal(),
+        );
+        expect((await readConfig()).plugins).toEqual({
+          ...plugins,
+          deny: expectedDeny,
+        });
+      }
+    },
+  );
+
+  test("retains saved legacy plugin memory data when embedding is enabled", async () => {
+    const directory = join(rootDir, "memory");
+    await mkdir(directory);
+    const path = join(directory, "memory.json");
+    const contents = JSON.stringify({
+      entries: [{ text: "saved user memory" }],
+    });
+    await writeFile(path, contents);
+    const before = await stat(path);
+    await service.enable(
+      { providerId: "ollama", model: "fixture-embedding" },
+      signal(),
+    );
+    expect((await readConfig()).plugins.deny).toContain("memory");
+    expect(await readFile(path, "utf8")).toBe(contents);
+    expect((await stat(path)).mtimeMs).toBe(before.mtimeMs);
+  });
+
+  test("does not change memory or plugin selection if the probe is aborted", async () => {
+    const before = await readFile(configPath!, "utf8");
+    const controller = new AbortController();
+    embed.mockImplementationOnce(async ({ texts }) => {
+      controller.abort();
+      return {
+        kind: "embedded",
+        modelFingerprint: "fixture:aborted",
+        vectors: texts.map(() => [0.2, 0.8]),
+      };
+    });
+    await expect(
+      service.enable(
+        { providerId: "ollama", model: "fixture-embedding" },
+        controller.signal,
+      ),
+    ).rejects.toThrow();
+    expect(await readFile(configPath!, "utf8")).toBe(before);
+  });
+
+  test("a concurrent config edit prevents both memory enablement and plugin disabling", async () => {
+    const concurrent = await readConfig();
+    concurrent.plugins.deny = ["web"];
+    embed.mockImplementationOnce(async ({ texts }) => {
+      await writeFile(configPath!, JSON.stringify(concurrent));
+      return {
+        kind: "embedded",
+        modelFingerprint: "fixture:concurrent",
+        vectors: texts.map(() => [0.2, 0.8]),
+      };
+    });
+    await expect(
+      service.enable(
+        { providerId: "ollama", model: "fixture-embedding" },
+        signal(),
+      ),
+    ).rejects.toThrow();
+    expect(await readConfig()).toEqual(concurrent);
   });
 
   test.each([

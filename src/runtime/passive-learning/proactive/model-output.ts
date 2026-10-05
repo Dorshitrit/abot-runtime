@@ -2,11 +2,12 @@ import { traceDebug } from "../../observability/debug-logger.js";
 import { validateProactiveDecision, type ProactiveDecision, type ProactiveReviewInput } from "./contracts.js";
 
 /** Explanation is optional model metadata, not evidence or permission to act. */
-export function decodeProactiveModelDecision(text: string, input: ProactiveReviewInput): ProactiveDecision {
+export function decodeProactiveModelDecision(text: string, input: ProactiveReviewInput, emitDiagnostics = true): ProactiveDecision {
+  const trace = emitDiagnostics ? traceDebug : () => {};
   let value: unknown;
   try { value = JSON.parse(text); }
   catch {
-    traceDebug("runtime.passive_learning", "proactive.output_rejected", {
+    trace("runtime.passive_learning", "proactive.output_rejected", {
       requestId: `proactive:${input.reviewId}`, reviewId: input.reviewId, modelProfileId: input.modelProfileId,
       outputCharacters: text.length, reason: "proactive_output_invalid_json",
     });
@@ -22,12 +23,12 @@ export function decodeProactiveModelDecision(text: string, input: ProactiveRevie
   try {
     const decision = validateProactiveDecision(object ? { ...object, reason: explanation.text } : value,
       input.context.entries, Date.parse(input.context.referenceTime));
-    traceDebug("runtime.passive_learning", "proactive.output_accepted", { ...diagnostics, kind: decision.kind });
+    trace("runtime.passive_learning", "proactive.output_accepted", { ...diagnostics, kind: decision.kind });
     return decision;
   } catch (error) {
     const reason = error instanceof Error && /^proactive_[a-z_]+$/u.test(error.message)
       ? error.message : "proactive_decision_invalid";
-    traceDebug("runtime.passive_learning", "proactive.output_rejected", { ...diagnostics, reason });
+    trace("runtime.passive_learning", "proactive.output_rejected", { ...diagnostics, reason });
     throw error;
   }
 }

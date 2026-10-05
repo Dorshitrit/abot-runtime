@@ -769,6 +769,16 @@ describe("public snapshot builder and verifier", () => {
       stdout: expect.stringContaining("readiness ok"),
     });
 
+    await writeFixtureFile(outputRoot, ".codex/artifacts/local.txt", "scratch\n");
+    await expect(
+      execFileAsync(tsxPath, [checkerPath], { cwd: outputRoot }),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        "publication-forbidden file: .codex/artifacts/local.txt",
+      ),
+    });
+    await rm(join(outputRoot, ".codex"), { recursive: true });
+
     await rm(
       join(outputRoot, "docs/tool-execution-result-evidence-contract.md"),
     );

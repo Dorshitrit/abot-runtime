@@ -131,9 +131,12 @@ describe("extended onboarding HTTP boundary", () => {
     expect(config.plugins).toMatchObject({
       enabled: true,
       allow: ["*"],
-      deny: [],
+      deny: ["memory"],
     });
-    expect((await get("runtime/plugins")).ok).toBe(true);
+    expect(await get("runtime/plugins")).toMatchObject({
+      ok: true,
+      selection: { enabled: true, allow: ["*"], deny: ["memory"] },
+    });
     expect(activate).not.toHaveBeenCalled();
   });
 

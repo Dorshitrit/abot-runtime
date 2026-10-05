@@ -11,8 +11,9 @@ const input: ProactiveReviewInput = { reviewId: "test-review", modelProfileId: "
     referenceTime: new Date(now).toISOString(), omitted: 0, entries: [{ ...source, content: "private-knowledge",
       tags: [], score: 40, reason: "private-reason", certainty: "inferred", mutable: true,
       lastReinforcedAt: null, reconsiderAt: null }] } };
-const none = { kind: "none", title: null, message: null, sources: [], expiresAt: null, reconsiderAt: null };
+const none = { kind: "none", title: null, message: null, handoffBrief: null, sources: [], expiresAt: null, reconsiderAt: null };
 const proposal = { kind: "proposal", title: "private-title", message: "private-message", sources: [source],
+  handoffBrief: "private-background",
   expiresAt: new Date(now + 3600000).toISOString(), reconsiderAt: null };
 beforeEach(() => { vi.spyOn(logger, "traceDebug").mockImplementation(() => {}); });
 afterEach(() => { vi.restoreAllMocks(); });

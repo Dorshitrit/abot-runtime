@@ -8,7 +8,10 @@ export type SessionProject = Readonly<{
   directory: string;
 }>;
 
-export type SessionCreationOptions = Readonly<{ project?: SessionProject }>;
+export type SessionCreationOptions = Readonly<{
+  project?: SessionProject;
+  kind?: import("./spark-session.js").SessionKind;
+}>;
 
 function isSessionProjectRecord(
   value: unknown,

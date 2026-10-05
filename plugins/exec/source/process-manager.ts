@@ -1,15 +1,21 @@
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
-import { StringDecoder } from "node:string_decoder";
-
-import { CappedTextBuffer } from "./process-output-buffer.js";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ExecTerminalDelivery } from "./terminal-delivery.js";
+import { createExecProcessOutput } from "./process-output.js";
+import { createExecOutputStore } from "./output-store.js";
+import {
+  execOutputOwner,
+  materializeExecOutput,
+  type ExecOutputStore,
+} from "./output-snapshot.js";
 
 import { ExecPluginError } from "./errors.js";
 import { assertSupportedShell, EXEC_SHELL } from "./shell-platform.js";
 import type { ExecProcessSnapshot, ExecTerminationReason } from "./types.js";
 
-const COMPLETED_PROCESS_RETENTION_MS = 5 * 60_000;
 const MAX_ACTIVE_PROCESSES_PER_SCOPE = 4;
 
 type ExecChild = ChildProcessByStdio<null, Readable, Readable>;
@@ -20,10 +26,8 @@ type ManagedExecProcess = {
   child: ExecChild;
   startedAt: number;
   cursor: number;
-  stdout: CappedTextBuffer;
-  stderr: CappedTextBuffer;
-  stdoutDecoder: StringDecoder;
-  stderrDecoder: StringDecoder;
+  output: Awaited<ReturnType<typeof createExecProcessOutput>>;
+  settling: boolean;
   settled: boolean;
   exitCode?: number;
   terminationReason?: ExecTerminationReason;
@@ -31,12 +35,11 @@ type ManagedExecProcess = {
   resolveSettled: () => void;
   hardTimeout?: ReturnType<typeof setTimeout>;
   idleTimeout?: ReturnType<typeof setTimeout>;
-  retentionTimeout?: ReturnType<typeof setTimeout>;
   abortSignal?: AbortSignal;
   abortListener?: () => void;
   onDisposed?: (processId: string) => void;
   transitionTail: Promise<void>;
-  terminalSnapshotClaimed: boolean;
+  terminalDelivery: ExecTerminalDelivery;
   waitInFlight: boolean;
 };
 
@@ -46,7 +49,6 @@ export type ExecProcessManager = Readonly<{
       scope: string;
       shellCommand: string;
       cwd: string;
-      outputMaxChars: number;
       yieldAfterMs: number | null;
       idleTimeoutMs: number;
       hardTimeoutMs: number;
@@ -76,8 +78,19 @@ export type ExecProcessManager = Readonly<{
   ): Readonly<{ cursor: number; snapshot: ExecProcessSnapshot }>;
 }>;
 
-export function createExecProcessManager(): ExecProcessManager {
+export type ExecProcessDeliveryManager = ExecProcessManager &
+  Readonly<{
+    accept(snapshot: ExecProcessSnapshot, scope: string): Promise<void>;
+    reject(snapshot: ExecProcessSnapshot, scope: string): Promise<void>;
+  }>;
+
+export function createExecProcessManager(
+  store: ExecOutputStore = createExecOutputStore({
+    stateDir: join(tmpdir(), "abot-exec"),
+  }),
+): ExecProcessDeliveryManager {
   const processes = new Map<string, ManagedExecProcess>();
+  const opening = new Map<string, number>();
 
   const unknownProcess = (): ExecPluginError =>
     new ExecPluginError(
@@ -86,7 +99,6 @@ export function createExecProcessManager(): ExecProcessManager {
     );
 
   const dispose = (managed: ManagedExecProcess): void => {
-    if (managed.retentionTimeout) clearTimeout(managed.retentionTimeout);
     processes.delete(managed.processId);
     managed.onDisposed?.(managed.processId);
   };
@@ -94,7 +106,7 @@ export function createExecProcessManager(): ExecProcessManager {
   const activeProcessCount = (scope: string): number =>
     [...processes.values()].filter(
       (managed) => managed.scope === scope && !managed.settled,
-    ).length;
+    ).length + (opening.get(scope) ?? 0);
 
   const killProcessTree = (managed: ManagedExecProcess): void => {
     const pid = managed.child.pid;
@@ -116,12 +128,18 @@ export function createExecProcessManager(): ExecProcessManager {
     if (managed.settled || managed.terminationReason) return;
     managed.terminationReason = reason;
     killProcessTree(managed);
+    if (reason === "output_storage_failed") {
+      // A failed sink cannot drain the pipes; close them so child close settles.
+      managed.child.stdout.destroy();
+      managed.child.stderr.destroy();
+    }
   };
 
   const scheduleIdleTimeout = (
     managed: ManagedExecProcess,
     idleTimeoutMs: number,
   ): void => {
+    if (managed.settling || managed.settled) return;
     if (managed.idleTimeout) clearTimeout(managed.idleTimeout);
     managed.idleTimeout = setTimeout(
       () => requestTermination(managed, "idle_timeout"),
@@ -130,13 +148,19 @@ export function createExecProcessManager(): ExecProcessManager {
     managed.idleTimeout.unref?.();
   };
 
-  const settle = (
+  const settle = async (
     managed: ManagedExecProcess,
     exitCode: number,
     fallbackReason: ExecTerminationReason,
-  ): void => {
-    if (managed.settled) return;
+  ): Promise<void> => {
+    if (managed.settling || managed.settled) return;
+    managed.settling = true;
+    if (managed.hardTimeout) clearTimeout(managed.hardTimeout);
+    if (managed.idleTimeout) clearTimeout(managed.idleTimeout);
+    await managed.output.finish();
     managed.settled = true;
+    if (managed.output.checkpoint().outputFailure)
+      managed.terminationReason = "output_storage_failed";
     managed.terminationReason ??= fallbackReason;
     managed.exitCode =
       managed.terminationReason === "hard_timeout" ||
@@ -145,7 +169,9 @@ export function createExecProcessManager(): ExecProcessManager {
         : managed.terminationReason === "cancelled" ||
             managed.terminationReason === "aborted"
           ? 130
-          : exitCode;
+          : managed.terminationReason === "output_storage_failed"
+            ? -1
+            : exitCode;
     if (managed.hardTimeout) clearTimeout(managed.hardTimeout);
     if (managed.idleTimeout) clearTimeout(managed.idleTimeout);
     if (managed.abortSignal && managed.abortListener) {
@@ -156,32 +182,42 @@ export function createExecProcessManager(): ExecProcessManager {
       dispose(managed);
       return;
     }
-    managed.retentionTimeout = setTimeout(
-      () => dispose(managed),
-      COMPLETED_PROCESS_RETENTION_MS,
-    );
-    managed.retentionTimeout.unref?.();
   };
 
-  const consumeSnapshot = (
+  const peekSnapshot = async (
     managed: ManagedExecProcess,
-  ): ExecProcessSnapshot => {
-    if (managed.settled) {
-      if (managed.terminalSnapshotClaimed) throw unknownProcess();
-      managed.terminalSnapshotClaimed = true;
+  ): Promise<ExecProcessSnapshot> => {
+    managed.terminalDelivery.assertAvailable();
+    const status = managed.settled ? "settled" : "running";
+    const output = await managed.output.peek();
+    if (output.outputFailure && !managed.settled) {
+      requestTermination(managed, "output_storage_failed");
+      await managed.settlePromise;
+      return peekSnapshot(managed);
     }
-    return Object.freeze({
-      processId: managed.processId,
-      status: managed.settled ? "settled" : "running",
-      ...(!managed.settled ? { nextCursor: managed.cursor } : {}),
-      ...(managed.exitCode === undefined ? {} : { exitCode: managed.exitCode }),
-      stdout: managed.stdout.consume(),
-      stderr: managed.stderr.consume(),
-      ...(managed.terminationReason
-        ? { terminationReason: managed.terminationReason }
-        : {}),
-      elapsedMs: Date.now() - managed.startedAt,
-    });
+    const snapshot = await materializeExecOutput(
+      store,
+      managed.scope,
+      Object.freeze({
+        processId: managed.processId,
+        status,
+        nextCursor: managed.cursor,
+        ...(managed.exitCode === undefined
+          ? {}
+          : { exitCode: managed.exitCode }),
+        ...output,
+        ...(managed.terminationReason
+          ? { terminationReason: managed.terminationReason }
+          : {}),
+        elapsedMs: Date.now() - managed.startedAt,
+      }),
+    );
+    if (snapshot.outputFailure && !managed.settled) {
+      requestTermination(managed, "output_storage_failed");
+      await managed.settlePromise;
+      return peekSnapshot(managed);
+    }
+    return managed.terminalDelivery.reserve(snapshot);
   };
 
   const waitForSettlement = async (
@@ -238,6 +274,24 @@ export function createExecProcessManager(): ExecProcessManager {
           `The session already has ${MAX_ACTIVE_PROCESSES_PER_SCOPE} active exec processes.`,
         );
       }
+      opening.set(params.scope, (opening.get(params.scope) ?? 0) + 1);
+      const processId = `exec_${randomUUID()}`;
+      let output: ManagedExecProcess["output"];
+      try {
+        await store.cleanupExpired();
+        output = await createExecProcessOutput(
+          store,
+          execOutputOwner(params.scope, processId),
+        );
+        if (params.abortSignal?.aborted) {
+          await output.dispose();
+          params.abortSignal.throwIfAborted();
+        }
+      } finally {
+        const count = opening.get(params.scope)! - 1;
+        if (count) opening.set(params.scope, count);
+        else opening.delete(params.scope);
+      }
       let resolveSettled: () => void = () => undefined;
       const settlePromise = new Promise<void>((resolve) => {
         resolveSettled = resolve;
@@ -250,26 +304,25 @@ export function createExecProcessManager(): ExecProcessManager {
           stdio: ["ignore", "pipe", "pipe"],
         });
       } catch {
+        await output.dispose();
         throw new ExecPluginError(
           "exec_spawn_failed",
           "The runtime could not start the configured non-interactive shell.",
         );
       }
       const managed: ManagedExecProcess = {
-        processId: `exec_${randomUUID()}`,
+        processId,
         scope: params.scope,
         child,
         startedAt: Date.now(),
         cursor: 1,
-        stdout: new CappedTextBuffer(params.outputMaxChars),
-        stderr: new CappedTextBuffer(params.outputMaxChars),
-        stdoutDecoder: new StringDecoder("utf8"),
-        stderrDecoder: new StringDecoder("utf8"),
+        output,
+        settling: false,
         settled: false,
         settlePromise,
         resolveSettled,
         transitionTail: Promise.resolve(),
-        terminalSnapshotClaimed: false,
+        terminalDelivery: new ExecTerminalDelivery(),
         waitInFlight: false,
         ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
         ...(params.onDisposed ? { onDisposed: params.onDisposed } : {}),
@@ -277,23 +330,16 @@ export function createExecProcessManager(): ExecProcessManager {
       processes.set(managed.processId, managed);
       params.onStarted?.(managed.processId, managed.settlePromise);
 
-      const observe = (stream: "stdout" | "stderr", chunk: string): void => {
-        if (managed.settled || !chunk) return;
-        if (stream === "stdout") managed.stdout.append(chunk);
-        else managed.stderr.append(chunk);
-        scheduleIdleTimeout(managed, params.idleTimeoutMs);
-      };
-      child.stdout.on("data", (chunk: Buffer) =>
-        observe("stdout", managed.stdoutDecoder.write(chunk)),
+      output.attach(
+        child,
+        () => scheduleIdleTimeout(managed, params.idleTimeoutMs),
+        () => requestTermination(managed, "output_storage_failed"),
       );
-      child.stderr.on("data", (chunk: Buffer) =>
-        observe("stderr", managed.stderrDecoder.write(chunk)),
-      );
-      child.on("error", () => settle(managed, -1, "spawn_failed"));
+      child.on("error", () => {
+        void settle(managed, -1, "spawn_failed");
+      });
       child.on("close", (code) => {
-        observe("stdout", managed.stdoutDecoder.end());
-        observe("stderr", managed.stderrDecoder.end());
-        settle(managed, typeof code === "number" ? code : -1, "completed");
+        void settle(managed, typeof code === "number" ? code : -1, "completed");
       });
       managed.hardTimeout = setTimeout(
         () => requestTermination(managed, "hard_timeout"),
@@ -319,13 +365,13 @@ export function createExecProcessManager(): ExecProcessManager {
       } else {
         await waitForSettlement(managed, params.yieldAfterMs);
       }
-      return consumeSnapshot(managed);
+      return peekSnapshot(managed);
     },
 
     async wait(params) {
       const managed = getScopedProcess(params.processId, params.scope);
       await withProcessTransition(managed, () => {
-        if (managed.terminalSnapshotClaimed) throw unknownProcess();
+        managed.terminalDelivery.assertAvailable();
         if (managed.waitInFlight) {
           throw new ExecPluginError(
             "exec_wait_in_progress",
@@ -344,20 +390,20 @@ export function createExecProcessManager(): ExecProcessManager {
       await waitForSettlement(managed, params.waitMs);
       return withProcessTransition(managed, () => {
         managed.waitInFlight = false;
-        if (managed.terminalSnapshotClaimed) throw unknownProcess();
-        return consumeSnapshot(managed);
+        managed.terminalDelivery.assertAvailable();
+        return peekSnapshot(managed);
       });
     },
 
     async cancel(params) {
       const managed = getScopedProcess(params.processId, params.scope);
       return withProcessTransition(managed, async () => {
-        if (managed.terminalSnapshotClaimed) throw unknownProcess();
+        managed.terminalDelivery.assertAvailable();
         if (!managed.settled) {
           requestTermination(managed, "cancelled");
           await managed.settlePromise;
         }
-        return consumeSnapshot(managed);
+        return peekSnapshot(managed);
       });
     },
 
@@ -366,7 +412,7 @@ export function createExecProcessManager(): ExecProcessManager {
       if (
         !managed.settled ||
         managed.waitInFlight ||
-        managed.terminalSnapshotClaimed
+        managed.terminalDelivery.isClaimed
       )
         throw new Error("exec_snapshot_not_quiescent");
       return Object.freeze({
@@ -377,13 +423,39 @@ export function createExecProcessManager(): ExecProcessManager {
           ...(managed.exitCode === undefined
             ? {}
             : { exitCode: managed.exitCode }),
-          stdout: managed.stdout.peek(),
-          stderr: managed.stderr.peek(),
+          ...managed.output.checkpoint(),
           ...(managed.terminationReason
             ? { terminationReason: managed.terminationReason }
             : {}),
           elapsedMs: Date.now() - managed.startedAt,
         }),
+      });
+    },
+    async accept(snapshot, scope) {
+      // Abort already releases its process; preserve its terminal receipt.
+      const wasReleasedAfterAbort =
+        snapshot.terminationReason === "aborted" &&
+        !processes.has(snapshot.processId);
+      if (wasReleasedAfterAbort) return;
+      const managed = getScopedProcess(snapshot.processId, scope);
+      await withProcessTransition(managed, async () => {
+        managed.terminalDelivery.assertOwner(snapshot);
+        if (snapshot.nextCursor !== managed.cursor) {
+          throw new ExecPluginError(
+            "stale_exec_process_cursor",
+            "The output receipt no longer matches the current exec cursor.",
+          );
+        }
+        await managed.output.accept(snapshot);
+        managed.terminalDelivery.accept(snapshot);
+      });
+    },
+    async reject(snapshot, scope) {
+      const managed = processes.get(snapshot.processId);
+      if (!managed) return;
+      if (managed.scope !== scope) throw unknownProcess();
+      await withProcessTransition(managed, () => {
+        managed.terminalDelivery.reject(snapshot);
       });
     },
     async release(processId, scope) {

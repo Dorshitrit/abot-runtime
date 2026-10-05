@@ -17,6 +17,7 @@ import { LocalRuntimeOwnerActivity } from "./owner-activity.js";
 import { dispatchLocalLearningCall } from "./app-learning-dispatch.js";
 import { projectLearningChangedEvent } from "./learning-events.js";
 import { SavedRequestApprovals } from "./saved-approvals.js";
+import { isLocalNativePermissionMethod, LocalNativePermissions } from "./app-native-permissions.js";
 
 export async function createLocalRuntimeOwner(
   config: RuntimeConfig,
@@ -34,6 +35,7 @@ export async function createLocalRuntimeOwner(
   };
   const controls = new LocalRequestControls(publish);
   const activity = new LocalRuntimeOwnerActivity();
+  const nativePermissions = new LocalNativePermissions();
   const application = createRuntimeApplication(config, {
     ...overrides,
     scheduledRequestOptions: (run) => controls.scheduled(run),
@@ -71,6 +73,8 @@ export async function createLocalRuntimeOwner(
   return {
     call(method, args, peer) {
       return activity.run(async () => {
+        if (isLocalNativePermissionMethod(method))
+          return nativePermissions.call(method, args, peer);
         if (method === "controls.register") return controls.register(peer);
         if (method === "request.active")
           return controls.hasActiveRequest(args[0], args[1]);
@@ -88,7 +92,14 @@ export async function createLocalRuntimeOwner(
           if (await savedApprovals.attach(args[0], args[1], peer)) return;
           return controls.attach(args[0], args[1], peer);
         }
-        if (method === "request.steer") return controls.steer(args[0], args[1]);
+        if (method === "request.steer") {
+          const sessionId = controls.activeSessionId(args[0]);
+          if (sessionId)
+            await application.services.sessions.assertInteractiveSession?.(
+              sessionId,
+            );
+          return controls.steer(args[0], args[1]);
+        }
         if (method === "request.cancel") {
           if (await savedApprovals.cancel(args[0], args[1], args[2]))
             return { accepted: true };
@@ -136,6 +147,7 @@ export async function createLocalRuntimeOwner(
     stop() {
       if (shutdown) return shutdown;
       activity.stop();
+      nativePermissions.stop();
       application.services.requestAdmission?.close();
       memory.stop();
       controls.stop();
@@ -169,6 +181,10 @@ async function runPeerRequest(
   const message = args[0] as RunRequestMessage | undefined;
   if (!message || typeof message.requestId !== "string")
     throw new Error("local_runtime_request_invalid");
+  if (typeof message.sessionId === "string")
+    await application.services.sessions.assertInteractiveSession?.(
+      message.sessionId,
+    );
   const options = controls.ordinary(
     message.requestId,
     peer,

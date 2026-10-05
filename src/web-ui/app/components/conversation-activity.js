@@ -1,3 +1,4 @@
+import { projectContextWindowDisplay } from "../lib/context-window-state.js";
 import {
   buildEventTimelineEntries,
   eventTone,
@@ -39,8 +40,12 @@ function progressStatus(value) {
 
 function presentEvent(event) {
   const isPresentedEvent = Boolean(event?.eventName || event?.key);
-  const eventName = textOf(event?.eventName || event?.name || event?.rawType || event?.type);
-  let name = isPresentedEvent ? textOf(event.name, "Event") : formatEventLabel(event);
+  const eventName = textOf(
+    event?.eventName || event?.name || event?.rawType || event?.type,
+  );
+  let name = isPresentedEvent
+    ? textOf(event.name, "Event")
+    : formatEventLabel(event);
   let tone = textOf(event?.tone) || eventTone(event);
   if (isUncompletedToolEvent(event)) {
     name = formatEventLabel({ ...event, name: eventName });
@@ -96,59 +101,6 @@ function normalizeProgress(taskProgress, requestId) {
   };
 }
 
-function normalizeContextWindow(contextWindow, requestId) {
-  if (!contextWindow || textOf(contextWindow.requestId) !== requestId) {
-    return null;
-  }
-  const snapshot = contextWindow.snapshot;
-  const contextWindowTokens = countOf(snapshot?.contextWindowTokens);
-  const estimatedInputTokens = countOf(snapshot?.estimatedInputTokens);
-  const usedContextPercent = countOf(snapshot?.usedContextPercent, -1);
-  if (contextWindowTokens <= 0 || usedContextPercent < 0) return null;
-  const providerUsage = contextWindow.providerUsage;
-  const providerUsageMatches =
-    providerUsage &&
-    textOf(providerUsage.invocationId) === textOf(snapshot.invocationId);
-  const compaction = contextWindow.lastCompaction;
-  return {
-    invocationId: textOf(snapshot.invocationId),
-    modelStep: textOf(snapshot.modelStep),
-    profileId: textOf(snapshot.profileId),
-    measurement: textOf(snapshot.measurement, "estimated"),
-    source: textOf(snapshot.source, "runtime_token_estimator"),
-    admissionOutcome: textOf(snapshot.admissionOutcome),
-    contextWindowTokens,
-    estimatedInputTokens,
-    remainingContextTokens: countOf(snapshot.remainingContextTokens),
-    usedContextPercent,
-    remainingContextPercent: countOf(
-      snapshot.remainingContextPercent,
-      Math.max(0, 100 - usedContextPercent),
-    ),
-    compactionTriggerPercent: countOf(snapshot.compactionTriggerPercent, 70),
-    outputReserveTokens: countOf(snapshot.outputReserveTokens),
-    safetyReserveTokens: countOf(snapshot.safetyReserveTokens),
-    attachmentReserveTokens: countOf(snapshot.attachmentReserveTokens),
-    formatReserveTokens: countOf(snapshot.formatReserveTokens),
-    providerUsage: providerUsageMatches
-      ? {
-          inputTokens: countOf(providerUsage.inputTokens),
-          outputTokens: countOf(providerUsage.outputTokens),
-          totalTokens: countOf(providerUsage.totalTokens),
-          source: textOf(providerUsage.source, "provider_reported"),
-        }
-      : null,
-    compaction:
-      Number.isFinite(compaction?.beforePercent) &&
-      Number.isFinite(compaction?.afterPercent)
-        ? {
-            beforePercent: compaction.beforePercent,
-            afterPercent: compaction.afterPercent,
-          }
-        : null,
-  };
-}
-
 export function buildConversationActivityModel({
   requestId,
   events = [],
@@ -184,7 +136,7 @@ export function buildConversationActivityModel({
   const toolCount = countToolInvocations(scopedEvents);
   const timeline = buildEventTimelineEntries(scopedEvents);
   const progress = normalizeProgress(taskProgress, normalizedRequestId);
-  const contextWindowModel = normalizeContextWindow(
+  const contextWindowModel = projectContextWindowDisplay(
     contextWindow,
     normalizedRequestId,
   );
@@ -314,7 +266,9 @@ export function createConversationActivity({
     const hasFailures = model.failureCount > 0;
     const hasRoleCards = model.roleCards.length > 0;
 
-    const details = documentRoot.createElement(hasRoleCards ? "section" : "details");
+    const details = documentRoot.createElement(
+      hasRoleCards ? "section" : "details",
+    );
     details.className = "conversation-activity";
     details.classList.toggle("is-inline-agents", hasRoleCards);
     details.dataset.requestId = model.requestId;
@@ -324,13 +278,20 @@ export function createConversationActivity({
         : manuallyExpandedCompletedRequests.has(model.requestId);
     }
 
-    const summary = documentRoot.createElement(hasRoleCards ? "header" : "summary");
+    const summary = documentRoot.createElement(
+      hasRoleCards ? "header" : "summary",
+    );
     summary.className = "conversation-activity-summary";
     if (hasRoleCards) summary.setAttribute("tabindex", "-1");
     const heading = documentRoot.createElement("span");
     heading.className = "conversation-activity-heading";
     if (!hasRoleCards)
-      appendTextNode(documentRoot, heading, "conversation-activity-chevron", "");
+      appendTextNode(
+        documentRoot,
+        heading,
+        "conversation-activity-chevron",
+        "",
+      );
     const activityTitle = hasRoleCards ? "Agents" : "Activity";
     appendTextNode(
       documentRoot,
@@ -418,7 +379,9 @@ export function createConversationActivity({
       if (!showsTimeline) return false;
       return pinConversationActivityToLatest({
         details: hasRoleCards ? { open: true } : details,
-        body: hasRoleCards ? body.querySelector(".conversation-role-panel") : body,
+        body: hasRoleCards
+          ? body.querySelector(".conversation-role-panel")
+          : body,
         streaming: model.openByDefault && showsTimeline,
       });
     };

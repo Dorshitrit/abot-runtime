@@ -152,9 +152,23 @@ the Responses API and reads the API key from the configured env var.
 Set `apiKeyEnv` to an environment variable name such as `OPENAI_API_KEY`, not
 to the API key value.
 New external-provider profiles do not inherit Ollama sampling defaults.
-For OpenAI reasoning profiles, the gateway sends the resolved
+`supportsThinking` declares support for explicit reasoning controls; it is not
+the user's reasoning preference. An omitted declaration does not disable reasoning.
+`agentMode`, `reasoningOverride`, and calibrated `generation.reasoningEffort`
+select the requested effort. Without declared control support, the adapter leaves
+reasoning to the provider rather than claiming that it disabled it.
+For OpenAI profiles with declared reasoning controls, the gateway sends the resolved
 `reasoning.effort`, including explicit `none`, and omits `temperature`/`top_p`
 unless reasoning is disabled with `none`.
+OpenAI's `max_output_tokens` counts both reasoning and visible output. When
+reasoning is enabled or left to the provider's default, including profiles with
+`supportsThinking` omitted or `false`,
+the gateway does not project the short core-decision limit into this combined
+budget; the provider enforces output capacity and the input context guard remains
+unchanged. Only an explicitly projected `reasoning.effort=none` retains the
+core-decision limit, clamped to remaining physical context. Configured sampling
+controls keep their existing semantics; this policy does not discover model
+capabilities or assume support for a particular effort level.
 Each `/chat` or `/raw` call writes `model.invocation.resolved` to the runtime
 debug log with the selected `profileId`, `provider`, concrete provider `model`,
 and reasoning level. This is the authoritative log event for identifying which

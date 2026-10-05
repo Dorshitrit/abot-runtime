@@ -1,8 +1,10 @@
+import { projectExecutionCompactionObjective } from "../../context/execution-compaction-objective.js";
 import type {
   RoleCallFrame,
   RoleCallLedgerHead,
 } from "../../orchestration/role-calls/index.js";
 import type { RequestExecutionSeed } from "../../request/contracts.js";
+import { resolveExecutionCompactedSources } from "../../context/execution-compacted-evidence.js";
 import { projectRequestSteeringSnapshot } from "../../request/request-steering.js";
 import { traceDebug } from "../../observability/debug-logger.js";
 import { projectAuditorInputState } from "./audit-input-state.js";
@@ -33,6 +35,28 @@ export function projectAuditorAssignment(
     objective.requestSteeringVersion,
   );
   const evidence = projectAuditorWorkEvidence(head, caller!.callId);
+  const compactedSourceEvidence = resolveExecutionCompactedSources({
+    requestId: request.requestId,
+    prompt: request.prompt,
+    objective: projectExecutionCompactionObjective(
+      request.prompt,
+      steering.updates,
+    ),
+    callId: caller!.callId,
+    store: request.contextCompactionStore,
+    results: head.state.capabilityExecutions
+      .filter(
+        (execution) =>
+          execution.callId === caller!.callId && execution.status === "settled",
+      )
+      .map((execution) => ({
+        executionId: execution.executionId,
+        callId: execution.callId,
+        invocationAttempt: execution.invocationAttempt,
+        capabilityId: execution.capabilityId,
+        adapterResult: execution.exactResult,
+      })),
+  });
   const state = projectAuditorInputState(
     head,
     caller!.callId,
@@ -44,6 +68,7 @@ export function projectAuditorAssignment(
     head,
     caller!.callId,
     evidence,
+    compactedSourceEvidence,
   );
   traceDebug("runtime.auditor", "assignment.created", {
     requestId: request.requestId,
@@ -85,6 +110,7 @@ export function projectAuditorAssignment(
     reviewedEvidenceBundles: state.reviewedEvidenceBundles,
     selectedEvidenceIds: Object.freeze([]),
     evidence: Object.freeze([]),
+    ...(compactedSourceEvidence ? { compactedSourceEvidence } : {}),
     availableEvidenceCount: inventory.length,
     omittedEvidenceCount: 0,
   });

@@ -9,7 +9,10 @@ export interface RuntimeOnboardingControllerDependencies {
     runtimeAvailability: RuntimeAvailability;
   };
   readonly guide: Readonly<{
-    bind(options?: { onCheckAgain?: () => void | Promise<void> }): void;
+    bind(options?: {
+      onCheckAgain?: () => void | Promise<void>;
+      onApplied?: () => void | Promise<void>;
+    }): void;
     focusAction(): void;
     render(setup: RuntimeAvailability): void;
   }>;

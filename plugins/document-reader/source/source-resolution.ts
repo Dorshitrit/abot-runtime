@@ -83,7 +83,7 @@ function resolveRuntimePathDocument(
   if (!mimeType) {
     failDocument(
       "document_type_unsupported",
-      "The requested path has an unsupported document type.",
+      "Unsupported document format. This reader accepts PDF, DOCX, XLSX, PPTX, TXT, CSV, MD, JSON and RTF. For source code or other text files, use read_one_file or inspect_target when available. Changing source_mode does not change supported formats.",
     );
   }
   return Object.freeze({

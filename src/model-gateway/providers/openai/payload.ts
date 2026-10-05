@@ -11,7 +11,7 @@ import {
   resolveModelGatewayFormat,
   type OpenAISchemaProjectionDiagnostic,
 } from "../../structured-output/projection.js";
-import type { ModelGatewayRequest } from "../../types.js";
+import type { ModelGatewayRequest, ResolvedModelInvocation } from "../../types.js";
 import type { ModelProviderInputTokenMeasurement } from "../contracts.js";
 import { resolveProviderEnvelopeInputTokens } from "../envelope-budget.js";
 
@@ -102,6 +102,12 @@ function readFiniteNumber(value: unknown): number | undefined {
     : undefined;
 }
 
+function hasExplicitlyDisabledOpenAIReasoning(
+  invocation: ResolvedModelInvocation,
+): boolean {
+  return invocation.profile.supportsThinking === true && invocation.think === "none";
+}
+
 export function buildOpenAIResponsesPayload(
   requestBody: ModelGatewayRequest,
   payloadOptions: OpenAIPayloadBuildOptions = {},
@@ -148,6 +154,11 @@ export function buildOpenAIResponsesPayload(
     payload.text = { format: formatProjection.format };
   }
 
+  // Without an explicit provider disable, hidden reasoning may consume output.
+  // A missing or false control declaration does not disable provider defaults.
+  if (!hasExplicitlyDisabledOpenAIReasoning(invocation)) {
+    return payload;
+  }
   const outputTokenLimit = resolveModelStepOutputTokenLimit(
     requestBody.modelStep,
   );

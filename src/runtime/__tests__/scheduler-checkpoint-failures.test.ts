@@ -5,6 +5,7 @@ import type {
   SchedulerSnapshot,
   SchedulerStore,
 } from "../scheduler/contracts.js";
+import { requireRequestSchedulerJob } from "../scheduler/scheduler-target.js";
 import {
   checkpointTransactionPath,
   committedCheckpointPath,
@@ -81,7 +82,7 @@ async function ownCheckpointAtRollover(
   await seedCheckpointJobRevisions(
     fixture.directory,
     Array.from({ length: 255 }, (_, index) => ({
-      ...fixture.snapshot.jobs[1],
+      ...requireRequestSchedulerJob(fixture.snapshot.jobs[1]),
       title: `revision-${index}`,
     })),
   );
@@ -206,7 +207,7 @@ test.each([
   const owner = await f.own();
   await changeTitle(owner.store, "committed tail");
   const manifest = await readCheckpointManifest(f.directory);
-  expect(manifest.schemaVersion).toBe(3);
+  expect(manifest.schemaVersion).toBe(4);
   const path =
     part === "checkpoint"
       ? committedCheckpointPath(f.directory, manifest)
@@ -256,7 +257,7 @@ test("corrupt old terminal payload is validated only when that history is reques
   const f = await createCheckpointFixture(cleanups);
   const owner = await f.own();
   const manifest = await readCheckpointManifest(f.directory);
-  expect(manifest.schemaVersion).toBe(3);
+  expect(manifest.schemaVersion).toBe(4);
   await owner.close();
   await fs.writeFile(
     checkpointTransactionPath(f.directory, manifest.generation, 2),

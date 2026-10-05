@@ -14,6 +14,7 @@ import type {
   ToolRegistry,
 } from "../../ports.js";
 import type { RegisteredToolStagedPayloadPlan } from "../registered-tool-payload-plan.js";
+import type { RegisteredToolEffectPersistence } from "../registered-tool-normal-invocations/shared/contracts.js";
 
 export type RegisteredToolWorkerCapabilityProviderParams = Readonly<{
   toolResources?: RequestToolResources;
@@ -33,6 +34,7 @@ export type RegisteredToolWorkerCapabilityProviderParams = Readonly<{
   loadActionSkillContext?(toolName: string): Promise<string>;
   nextApprovalId(): string;
   onEvent?(name: string, payload: Record<string, unknown>): void;
+  effectPersistence?: RegisteredToolEffectPersistence;
 }>;
 
 export type SelectedOperation = Readonly<{

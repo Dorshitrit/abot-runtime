@@ -65,7 +65,10 @@ export async function invokeStructuredModelStep<T>(params: {
   invalidOutputReason: string;
   contextRetention?: "exact";
   contextCompaction?: ModelStepContextCompactionController;
-  parse: (text: string) => StructuredModelParseResult<T>;
+  parse: (
+    text: string,
+    abortSignal: AbortSignal,
+  ) => StructuredModelParseResult<T> | Promise<StructuredModelParseResult<T>>;
 }): Promise<T> {
   const modelStepInvoker = resolveRequestModelStepInvoker(params.request);
   let messages = params.messages;
@@ -87,7 +90,7 @@ export async function invokeStructuredModelStep<T>(params: {
       ...(params.contextCompaction
         ? { contextCompaction: params.contextCompaction }
         : {}),
-      accept(text, outputDiagnostics) {
+      async accept(text, outputDiagnostics, abortSignal) {
         const incompleteError = resolveOutputIncompleteError(
           outputDiagnostics,
           params.modelStep,
@@ -103,7 +106,8 @@ export async function invokeStructuredModelStep<T>(params: {
           });
           throw incompleteError;
         }
-        const parsed = params.parse(text);
+        const parsed = await params.parse(text, abortSignal);
+        abortSignal.throwIfAborted();
         if (parsed.ok) {
           return Object.freeze({ ok: true as const, value: parsed.decision });
         }

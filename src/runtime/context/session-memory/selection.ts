@@ -29,7 +29,6 @@ export function selectSessionMemoryProjection(params: {
   const uncoveredMessageIds = new Set(uncoveredTurns.flatMap(({ userMessages, assistant }) =>
     [...userMessages, assistant].map(({ id }) => id)));
   const historyMessages = params.source.historyMessages.filter(function retainsOriginalHistoryMessage(message) {
-    if (isAssistantInitiativeMessage(message)) return true;
     return uncoveredMessageIds.has(message.id);
   });
   const compactableTurnCount = Math.max(

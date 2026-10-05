@@ -1,14 +1,11 @@
 import { createConversationView } from "../components/conversation-view.js";
 import { createConversationFilePreviewFeature } from "./conversation-file-preview-feature.js";
-import { createSparkConversationActions } from "../components/spark-conversation-actions.js";
 
 export function createConversationViewFeature({
   filePreviewClient,
   getFileEnvironmentId,
   getFileSessionId,
-  preferences,
-  archiveSession,
-  onSparkArchived,
+  sparkActions = { createNode: () => null },
   ...viewOptions
 }) {
   const {
@@ -27,16 +24,6 @@ export function createConversationViewFeature({
     scrollRoot: dom.messagesList,
     documentRoot,
     viewport,
-  });
-  const sparkActions = createSparkConversationActions({
-    getScope: () => ({ environmentId: getFileEnvironmentId?.(), sessionId: getFileSessionId?.() }),
-    getMessages: viewOptions.getMessages,
-    getActiveRequestId,
-    preferences,
-    archiveSession,
-    onArchived: onSparkArchived,
-    notify: viewOptions.notify,
-    documentRoot,
   });
   return createConversationView({ ...viewOptions, filePreview, sparkActions });
 }

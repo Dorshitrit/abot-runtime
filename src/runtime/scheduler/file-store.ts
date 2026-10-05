@@ -69,13 +69,38 @@ export function createFileSchedulerStore(
       };
     },
     read: (view) => enqueue(() => readJournal((store) => store.snapshot(view))),
-    readRuns: (jobId, query) =>
-      enqueue(() => readJournal((store) => store.readRuns(jobId, query))),
+    readRuns: (jobId, query, target) =>
+      enqueue(() => readJournal((store) => store.readRuns(jobId, query, target))),
+    readRun: (runId) =>
+      enqueue(() => readJournal((store) => store.readRun(runId))),
+    readAutomationRunByKey: (automationId, idempotencyKey) =>
+      enqueue(() =>
+        readJournal((store) =>
+          store.readAutomationRunByKey(automationId, idempotencyKey),
+        ),
+      ),
+    countAutomationRunsOnDay: (automationId, timeZone, at) =>
+      enqueue(() => readJournal((store) =>
+        store.countAutomationRunsOnDay(automationId, timeZone, at))),
+    readAutomations: () =>
+      enqueue(() => readJournal((store) => store.readAutomations())),
     update: (mutate, view) =>
       enqueue(async () => {
         if (!releaseOwner || !journal)
           throw new Error("scheduler_store_not_owned");
         return journal.update(mutate, view);
+      }),
+    updateAutomations: (mutate) =>
+      enqueue(async () => {
+        if (!releaseOwner || !journal)
+          throw new Error("scheduler_store_not_owned");
+        return journal.updateAutomations(mutate);
+      }),
+    updateWithAutomations: (mutate, view) =>
+      enqueue(async () => {
+        if (!releaseOwner || !journal)
+          throw new Error("scheduler_store_not_owned");
+        return journal.updateWithAutomations(mutate, view);
       }),
   };
 }

@@ -2,7 +2,14 @@ import type {
   SchedulerJob,
   SchedulerRun,
   SchedulerSnapshot,
+  SchedulerStoredJob,
+  SchedulerStoredRun,
 } from "./contracts.js";
+import {
+  parseStoredAutomationJob,
+  parseStoredAutomationRun,
+} from "./automation-snapshot-validation.js";
+import { sameSchedulerTarget } from "./scheduler-target.js";
 import {
   normalizeStoredSchedulerSchedule,
   validateSchedulerJobInput,
@@ -25,8 +32,10 @@ function requireSnapshotInstant(value: unknown): void {
   if (typeof value !== "string") failSnapshot();
   if (!Number.isFinite(Date.parse(value))) failSnapshot();
 }
-export function parseStoredJob(value: unknown): SchedulerJob {
+export function parseStoredJob(value: unknown): SchedulerStoredJob {
   if (!isRecord(value)) failSnapshot();
+  if (isAutomationTarget(value.target)) return parseStoredAutomationJob(value);
+  if (!isRequestTarget(value.target)) failSnapshot();
   const job = value as unknown as SchedulerJob;
   validateSchedulerJobInput(job);
   if (!job.id || !job.environmentId) failSnapshot();
@@ -42,10 +51,13 @@ export function parseStoredJob(value: unknown): SchedulerJob {
   if (job.schedule?.kind === "interval" && !job.schedule.anchorAt)
     failSnapshot();
   const normalized = normalizeStoredSchedulerSchedule(job.schedule);
-  return { ...job, schedule: normalized };
+  if (normalized.kind === "manual") failSnapshot();
+  return { ...job, schedule: normalized as SchedulerJob["schedule"] };
 }
-export function parseStoredRun(value: unknown): SchedulerRun {
+export function parseStoredRun(value: unknown): SchedulerStoredRun {
   if (!isRecord(value)) failSnapshot();
+  if (isAutomationTarget(value.target)) return parseStoredAutomationRun(value);
+  if (!isRequestTarget(value.target)) failSnapshot();
   for (const field of [
     "id",
     "jobId",
@@ -93,9 +105,18 @@ export function parseSchedulerSnapshot(value: unknown): SchedulerSnapshot {
   for (const run of runs) {
     const owner = jobs.find((job) => job.id === run.jobId);
     if (!owner) failSnapshot();
-    if (owner.sessionId !== run.sessionId) failSnapshot();
+    if (!sameSchedulerTarget(owner, run)) failSnapshot();
     if (owner.environmentId !== run.environmentId) failSnapshot();
     if (run.jobRevision > owner.revision) failSnapshot();
   }
   return { schemaVersion: 1, jobs, runs };
+}
+
+function isAutomationTarget(value: unknown): boolean {
+  return isRecord(value) && value.kind === "automation";
+}
+
+function isRequestTarget(value: unknown): boolean {
+  if (value === undefined) return true;
+  return isRecord(value) && value.kind === "request";
 }

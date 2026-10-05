@@ -11,10 +11,10 @@ import { loadPublicRuntimeConfig } from "./public-runtime-config-fixture.js";
 import { ContextElement } from "./support/composer-context-window-dom.js";
 import { createPlanLifecycleHarness } from "./support/web-ui-plan-lifecycle-harness.js";
 
-function fullLengthText(prefix: string): string {
-  return prefix + "x".repeat(4096 - prefix.length - 2) + " \t";
+function fullLengthText(prefix: string, length = 4096): string {
+  return prefix + "x".repeat(length - prefix.length - 2) + " \t";
 }
-const command = fullLengthText("  printf '<unsafe>'\n");
+const command = fullLengthText("  printf '<unsafe>'\n", 8192);
 const cwd = fullLengthText(" /outside configured roots/project ");
 const processId = "exec_" + "p".repeat(123);
 const cases: {
@@ -66,7 +66,7 @@ describe("sensitive EXEC exact action approval display", () => {
           commandTruncated: false,
           cwdTruncated: false,
         });
-        expect(command).toHaveLength(4096);
+        expect(command).toHaveLength(8192);
         expect(cwd).toHaveLength(4096);
       }
       const event = {

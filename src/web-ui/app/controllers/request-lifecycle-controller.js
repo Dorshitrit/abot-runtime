@@ -6,6 +6,7 @@ import {
 export function createRequestLifecycleController(options) {
   const {
     state,
+    onAcceptedLifecycle = () => {},
     addOrMergeMessage,
     normalizeChatMessage,
     activeAssistantForRequest,
@@ -21,6 +22,7 @@ export function createRequestLifecycleController(options) {
     if (message.name !== "request.lifecycle.changed") return false;
     const lifecycle = message.lifecycle;
     if (!rememberRequestLifecycle(state, lifecycle)) return true;
+    onAcceptedLifecycle(message);
     const requestId = lifecycle.requestId;
     const waiting = lifecycle.status === "awaiting_approval";
     if (waiting) removeStreamingPlaceholder(state, requestId);

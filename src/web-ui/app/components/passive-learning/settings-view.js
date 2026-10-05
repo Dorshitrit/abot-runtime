@@ -47,9 +47,9 @@ export function learningSettingsMarkup(timeZone = "UTC") {
         <p class="co-worker-setting-note">Runs only when there is eligible work. Pausing keeps pending observations within their retention limit.</p>
       </section>
       <section class="co-worker-settings-card" data-learning-settings-axis="proactive">
-        <h4>Proactive mode</h4><p>Start a conversation when there is something useful to offer.</p>
+        <h4>Proactive mode</h4><p>Send a message in SPARK chat when there is something useful to offer.</p>
         ${toggle("proactiveEnabled", "Allow proactive mode", "proactive-enabled")}
-        ${field("proactiveModelProfileId", "Proactive model", { type: "select", legacy: "proactive-model" })}
+        ${field("proactiveModelProfileId", "Chat and proactive model", { type: "select", legacy: "proactive-model" })}
         ${field("proactiveIntervalMinutes", "Check interval (minutes)", { value: 60, max: 1440, legacy: "proactive-interval" })}
         ${windowFields("proactive", timeZone)}
         <p class="co-worker-setting-note">Can use existing knowledge while collection is off. Messages only; actions need your approval.</p>

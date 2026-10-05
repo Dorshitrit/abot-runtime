@@ -1,4 +1,5 @@
 import { hasLinuxNotificationActions } from "./notification-linux.js";
+import { assertMacNotificationBundle } from "./notification-macos-bundle.js";
 import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { HostIdentity } from "./protocol.js";
@@ -35,9 +36,7 @@ export async function hasDesktopNotificationSupport(
     if (ready !== expected) return false;
     if (platform === "windows") return true;
     if (platform === "macos") {
-      await access(
-        join(macNotificationAppPath(locations), "Contents", "MacOS", "applet"),
-      );
+      await assertMacNotificationBundle(macNotificationAppPath(locations), run, signal);
       return true;
     }
     if (!process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) return false;

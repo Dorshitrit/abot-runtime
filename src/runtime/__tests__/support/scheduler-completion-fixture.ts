@@ -41,7 +41,7 @@ export async function schedulerCompletionFixture() {
           if (!running.has(run.id)) continue;
           if (run.status !== "succeeded" && run.status !== "failed") continue;
           terminalAttempts(run.id);
-          if (failingSessions.has(run.sessionId)) {
+          if ("sessionId" in run && failingSessions.has(run.sessionId)) {
             throw new Error("terminal_write_failed");
           }
         }

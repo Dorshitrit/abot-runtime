@@ -2,12 +2,15 @@ import { downloadHostSetup } from "./download.js";
 import { hostSetupIsReady, renderSystemHostConnection } from "./rendering.js";
 import { createSystemHostVisibility } from "./visibility.js";
 import { createMacConnectionActions } from "./macos-connection-actions.js";
+import { createMacPermissionPreparation } from "./macos-permission-preparation.js";
 
 export function createSystemHostConnectionManager({
   loadConnection,
   downloadSetup,
   connectLocal,
   createPairing,
+  requestPermissions,
+  getEnvironmentId = () => "",
   getRuntimeOrigin = () => globalThis.location?.origin,
   revokeConnection,
   supportsConnection = () => true,
@@ -30,6 +33,10 @@ export function createSystemHostConnectionManager({
     downloaded: null,
     manualMac: null,
     managementOpen: false,
+    macPermissions: null,
+    macPermissionError: "",
+    nativeMacPermissions: null,
+    nativeMacPermissionError: "",
   };
   let revision = 0;
   let pollTimer;
@@ -56,6 +63,11 @@ export function createSystemHostConnectionManager({
     getSurfaceRevision: () => surfaceRevision,
     isVisible: () => visibility.isVisible(),
   });
+  const permissions = createMacPermissionPreparation({
+    state, requestPermissions, beginRequest, finishRequest, isCurrentResponse, getEnvironmentId,
+    getSurfaceRevision: () => surfaceRevision,
+    isVisible: () => visibility.isVisible(),
+  });
   function markup() {
     return renderSystemHostConnection({
       ...state,
@@ -65,6 +77,7 @@ export function createSystemHostConnectionManager({
     });
   }
   function afterPaint(root = state.root) {
+    permissions.afterPaint(root);
     const management = root?.querySelector("[data-system-host-management]");
     management?.addEventListener("toggle", () => {
       if (management !== state.root?.querySelector("[data-system-host-management]")) return;
@@ -124,6 +137,7 @@ export function createSystemHostConnectionManager({
     wasVisible = visible;
     if (!visible) {
       state.manualMac = null;
+      permissions.clear();
       notify();
       stopPolling();
       return;
@@ -159,10 +173,13 @@ export function createSystemHostConnectionManager({
       return false;
     }
     const operation = beginRequest(background);
+    const environment = getEnvironmentId();
     try {
       const snapshot = await loadConnection();
       if (!isCurrentResponse(operation)) return false;
+      if (environment !== getEnvironmentId()) return false;
       state.snapshot = snapshot;
+      permissions.reconcile();
       state.statusUnavailable = false;
       state.error = "";
       if (hostSetupIsReady(snapshot)) {
@@ -175,6 +192,7 @@ export function createSystemHostConnectionManager({
     } catch {
       if (!isCurrentResponse(operation)) return false;
       state.statusUnavailable = true;
+      permissions.clear();
       state.error = state.downloaded?.restartRequired
         ? "Waiting for WSL and ABot to return after setup."
         : "Could not check this computer. Refresh to try again.";
@@ -232,6 +250,7 @@ export function createSystemHostConnectionManager({
       const snapshot = await revokeConnection();
       if (!isCurrentResponse(operation)) return false;
       state.snapshot = snapshot;
+      permissions.clear();
       state.downloaded = null;
       state.manualMac = null;
       state.statusUnavailable = false;
@@ -263,6 +282,7 @@ export function createSystemHostConnectionManager({
     state.actionError = "";
     state.message = "";
     state.managementOpen = false;
+    permissions.clear();
     stopPolling();
     wasVisible = false;
     render();
@@ -272,6 +292,20 @@ export function createSystemHostConnectionManager({
     load,
     install,
     ...mac,
+    checkPermissions: permissions.checkPermissions,
+    requestPermission: permissions.requestPermission,
+    checkNativePermissions: permissions.checkNativePermissions,
+    requestNativePermission: permissions.requestNativePermission,
+    environmentChanged() {
+      revision += 1;
+      surfaceRevision += 1;
+      state.busy = false;
+      backgroundPending = false;
+      state.snapshot = null;
+      permissions.clear();
+      notify();
+      if (visibility.isVisible()) void load();
+    },
     revoke,
     markup,
     afterPaint,

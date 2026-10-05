@@ -23,16 +23,22 @@ afterEach(() => disposers.splice(0).forEach((dispose) => dispose()));
 test("the setup guide forwards Mac connection and pairing through its shared Computer step", async () => {
   const connectLocalHost = vi.fn(async () => ({ ok: true }));
   const createHostPairing = vi.fn(async () => ({ code: "A".repeat(43) }));
+  const requestHostPermissions = vi.fn(async () => ({}));
   const h = createGuideHarness({
     loadHostConnection: vi.fn(async () => ({})),
     connectLocalHost,
     createHostPairing,
+    requestHostPermissions,
   });
   disposers.push(h.guide.dispose);
   expect(connectLocalHost).not.toHaveBeenCalled();
   expect(createHostPairing).not.toHaveBeenCalled();
+  expect(requestHostPermissions).not.toHaveBeenCalled();
   await captured.options.connectLocal();
   await captured.options.createPairing();
   expect(connectLocalHost).toHaveBeenCalledOnce();
   expect(createHostPairing).toHaveBeenCalledOnce();
+  const permissionCheck = { hostId: "mac", connectionId: "socket", action: "check" };
+  await captured.options.requestPermissions(permissionCheck);
+  expect(requestHostPermissions).toHaveBeenCalledExactlyOnceWith(permissionCheck);
 });

@@ -23,14 +23,14 @@ export const SEMANTIC_COMPACTION_BATCH_VALIDATION = Object.freeze({
   stage: "semantic_compaction" as const,
   path: "checkpoint" as const,
   message:
-    "Return one valid replacement continuation and one semantic digest for every supplied source, in input order.",
+    "Return one valid source-scoped replacement continuation and a sourceDigests object with exactly one semantic digest under each supplied sourceKey.",
 });
 
 export const SEMANTIC_COMPACTION_SLICE_VALIDATION = Object.freeze({
   stage: "semantic_compaction_slice" as const,
   path: "checkpoint" as const,
   message:
-    "Return one cumulative continuation and semantic digest for the supplied source.",
+    "Return one cumulative source-scoped continuation and a sourceDigests object with the cumulative semantic digest under the supplied sourceKey.",
 });
 
 export type SemanticCompactionRepairHeadroom = Readonly<{
@@ -38,9 +38,16 @@ export type SemanticCompactionRepairHeadroom = Readonly<{
   repairReserveTokens: number;
 }>;
 
+export function buildSemanticCompactionTokenBudgetIssue(
+  inputTokens: number,
+  allowance: number,
+): string {
+  return `The projected checkpoint uses ${inputTokens} input tokens; its budget is ${allowance}. Shorten sourceDigests and continuation together to fit this shared token budget, including source-reference metadata. Keep required source keys and task-relevant facts.`;
+}
+
 /**
  * Reserves input capacity for the largest repair envelope that the semantic
- * compaction parser can produce. Provider input counting remains unchanged;
+ * compaction validation can produce. Provider input counting remains unchanged;
  * only the additional bounded repair message is estimated locally.
  */
 export function assessSemanticCompactionRepairHeadroom(params: {
@@ -53,9 +60,7 @@ export function assessSemanticCompactionRepairHeadroom(params: {
     repairMessage,
     params.tokenEstimation,
   );
-  const inputTokens = resolveRequestBudgetInputTokens(
-    params.assessment.budget,
-  );
+  const inputTokens = resolveRequestBudgetInputTokens(params.assessment.budget);
   return Object.freeze({
     fits:
       params.assessment.fits &&
@@ -77,7 +82,13 @@ function createRepairReserveMessage(
         Object.freeze({
           code: longestSemanticCompactionIssueCode(),
           path: validation.path,
-          message: validation.message,
+          message: [
+            validation.message,
+            buildSemanticCompactionTokenBudgetIssue(
+              Number.MAX_SAFE_INTEGER,
+              Number.MAX_SAFE_INTEGER,
+            ),
+          ].join(" "),
         }),
       ]),
       repeatedInvalidOutput: true,

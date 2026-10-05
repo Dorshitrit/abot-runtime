@@ -9,6 +9,11 @@ import type {
 } from "../scheduler/contracts.js";
 import { createFileSchedulerStore } from "../scheduler/file-store.js";
 import { makeSchedulerRun } from "../scheduler/run-records.js";
+import {
+  isRequestSchedulerJob,
+  isRequestSchedulerRun,
+  requireRequestSchedulerRun,
+} from "../scheduler/scheduler-target.js";
 
 const faults = vi.hoisted(() => ({ manifest: false, removal: "" }));
 vi.mock("node:fs/promises", async (original) => {
@@ -103,8 +108,12 @@ async function generations(directory: string) {
 }
 function deleteSession(store: SchedulerStore) {
   return store.update((state) => {
-    state.jobs = state.jobs.filter((job) => job.sessionId !== "deleted");
-    state.runs = state.runs.filter((run) => run.sessionId !== "deleted");
+    state.jobs = state.jobs.filter(
+      (job) => !isRequestSchedulerJob(job) || job.sessionId !== "deleted",
+    );
+    state.runs = state.runs.filter(
+      (run) => !isRequestSchedulerRun(run) || run.sessionId !== "deleted",
+    );
   }, "active");
 }
 async function expectOnlyRetainedFiles(directory: string) {
@@ -225,20 +234,20 @@ test("active/full reads and mutation results are detached while terminal transit
   const active = await store.read("active");
   const complete = await store.read();
   active.jobs[0].title = "outside mutation";
-  active.runs[0].prompt = "outside mutation";
-  complete.runs[1].resultText = "outside mutation";
+  requireRequestSchedulerRun(active.runs[0]).prompt = "outside mutation";
+  requireRequestSchedulerRun(complete.runs[1]).resultText = "outside mutation";
   expect(await store.read()).toEqual(f.snapshot);
-  let captured!: SchedulerSnapshot["runs"][number];
+  let captured!: ReturnType<typeof requireRequestSchedulerRun>;
   const committedPending = { ...f.snapshot.runs[0], title: "Committed title" };
   await store.update((state) => {
-    captured = state.runs[0];
+    captured = requireRequestSchedulerRun(state.runs[0]);
     captured.title = committedPending.title;
   }, "active");
   captured.prompt = "escaped callback mutation";
   captured.status = "succeeded";
   expect((await store.read("active")).runs).toEqual([committedPending]);
   const returned = await store.update((state) => {
-    const run = state.runs[0];
+    const run = requireRequestSchedulerRun(state.runs[0]);
     run.status = "succeeded";
     run.resultText = "terminal result";
     return run;
@@ -256,7 +265,7 @@ test("active/full reads and mutation results are detached while terminal transit
   ]);
   const page = await store.readRuns!("deleted", { limit: 1 });
   expect(page).toEqual([expected]);
-  page[0].prompt = "outside mutation";
+  requireRequestSchedulerRun(page[0]).prompt = "outside mutation";
   expect((await store.readRuns!("deleted", { limit: 1 }))[0]).toEqual(expected);
   await deleteSession(store);
   expect((await store.read()).runs).toEqual([f.snapshot.runs[1]]);

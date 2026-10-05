@@ -87,9 +87,13 @@ test("connected status exposes a UUID incarnation without changing the native ex
   expect(active.received[0]).not.toHaveProperty("connectionId");
 });
 
-test.each([undefined, "not-a-uuid", randomUUID()])(
-  "missing or stale connection binding %s never dispatches",
-  async (connectionId) => {
+test.each([
+  { label: "missing", connectionId: undefined },
+  { label: "malformed", connectionId: "not-a-uuid" },
+  { label: "stale", connectionId: randomUUID() },
+])(
+  "$label connection binding never dispatches",
+  async ({ connectionId }) => {
     const { fixture, grant, active } = await setup();
     const result = await executeHostOperation(
       fixture.rootDir,

@@ -1,3 +1,4 @@
+import { finalizeSuperRootFailure } from "./super-root-failure-finalization.js";
 import { projectInvalidOutputProgress } from "./root-invalid-output-progress.js";
 import type { DegradedFinalizationInput } from "../steps/degraded-finalization/contract.js";
 import {
@@ -13,6 +14,7 @@ import type {
 } from "../orchestration/role-calls/index.js";
 import { RUNTIME_ROOT_ROLE_ID } from "../orchestration/roles.js";
 import { runModelAuthoredDegradedFinalization } from "../steps/degraded-finalization/model-authored.js";
+import { projectOutputLimitCause } from "../steps/degraded-finalization/output-limit-cause.js";
 import type { RequestExecutionScope } from "./execution-scope.js";
 import type { RequestRunnerResult } from "./result.js";
 import { resolveRequestSteeringInbox } from "./request-steering.js";
@@ -37,6 +39,16 @@ export async function finalizeInvalidRootOutput(params: {
   publishDeferredTitle?: (() => Promise<void>) | undefined;
   error: unknown;
 }): Promise<InvalidRootOutputResult | undefined> {
+  if (params.request.superFailureFinalization) {
+    const recognized = isRootModelOutputStage(params.failureStage)
+      ? resolveRootModelOutputFailure(params.request, params.error)
+      : undefined;
+    const failure =
+      recognized && isRootModelOutputStep(params.request, recognized.modelStep)
+        ? recognized
+        : undefined;
+    return finalizeSuperRootFailure({ ...params, failure });
+  }
   if (!isRootModelOutputStage(params.failureStage)) return undefined;
   const failure = resolveRootModelOutputFailure(params.request, params.error);
   if (!failure) return undefined;
@@ -64,7 +76,11 @@ export async function finalizeInvalidRootOutput(params: {
     steeringVersion,
   });
   const input: DegradedFinalizationInput = {
-    problem: { stage: failure.validationStage, code: failure.code },
+    problem: {
+      stage: failure.validationStage,
+      code: failure.code,
+      ...projectOutputLimitCause(params.error),
+    },
     progress: projectInvalidOutputProgress(head),
   };
   let response: string;

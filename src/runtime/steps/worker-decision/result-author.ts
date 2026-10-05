@@ -1,3 +1,4 @@
+import { readSuperWorkerCompactionSidecar } from "../../context/super-worker-compaction-sidecar.js";
 import { projectRequestContext } from "../../context/request-context.js";
 import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
 import { isRequestToolResultsMessageBoundToView } from "../../context/request-tool-results-message-binding.js";
@@ -140,12 +141,17 @@ export async function runWorkerResultAuthor(
       modelStep: WORKER_RESULT_MODEL_STEP,
       messages: context.messages,
       contextCompaction: createModelStepCompactionController(request, {
+        consumer: WORKER_RESULT_MODEL_STEP,
         call: {
           roleId: "worker",
           callId: options.source.callId,
+          activationCount: options.source.invocationAttempt,
           objective: options.source.objective,
         },
         sourceRevision: options.source.requestToolResults.sourceRevision,
+        superWorkerCompaction: readSuperWorkerCompactionSidecar(
+          options.source.requestToolResults,
+        ),
         allowedConsumers:
           WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS,
         scopeId: workerCapabilityContextCompactionScopeId(

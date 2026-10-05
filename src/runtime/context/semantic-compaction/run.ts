@@ -1,3 +1,8 @@
+import type {
+  SemanticCompactionGenerationParams,
+  SemanticCompactionRequest,
+} from "./generation-contracts.js";
+import { registerSemanticCompactionSources } from "./generation-source-registration.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import { projectConfiguredStepMessages } from "../../config/runner/step-instructions.js";
 import {
@@ -9,14 +14,8 @@ import { countModelInputTokens } from "../../model/input-token-count.js";
 import { resolveModelContextAdmission } from "../../model/model-context-budget.js";
 import { ModelOutputIncompleteError } from "../../model/provider-completion.js";
 import { traceDebug } from "../../observability/debug-logger.js";
-import type {
-  BoundRequestModelInvocationContext,
-  RequestExecutionSeed,
-} from "../../request/contracts.js";
 import {
   CONTEXT_COMPACTION_MODEL_STEP,
-  SEMANTIC_COMPACTION_DIGEST_MAX_LENGTH,
-  SEMANTIC_COMPACTION_DIGEST_TOTAL_MAX_LENGTH,
   assertValidSemanticCompactionCheckpoint,
   assertValidSemanticCompactionCheckpointBinding,
   createSemanticCompactionSha256Fingerprint,
@@ -34,29 +33,27 @@ import {
   projectSemanticCompactionUtf8Boundaries,
   type SemanticCompactionSourceSlice,
 } from "./chunking.js";
-import { createSemanticCompactionFormat } from "./format.js";
-import { parseSemanticCompactionOutput } from "./parser.js";
-import { SEMANTIC_COMPACTION_INSTRUCTIONS } from "./prompt.js";
+import {
+  createSemanticCompactionFormat,
+  SEMANTIC_COMPACTION_BATCH_SOURCE_MAX_COUNT,
+} from "./format.js";
+import { validateSemanticCompactionOutput } from "./output-validation.js";
+import { prepareReplacementCompactionBudget } from "./replacement-budget.js";
+import {
+  buildSemanticCompactionMessages,
+  buildSemanticCompactionSliceMessages,
+  type SemanticCompactionFoldState,
+} from "./generation-input.js";
 import {
   SEMANTIC_COMPACTION_BATCH_VALIDATION,
   SEMANTIC_COMPACTION_SLICE_VALIDATION,
   assessSemanticCompactionRepairHeadroom,
 } from "./repair-headroom.js";
 
-export type SemanticCompactionGenerationParams = Readonly<{
-  request: SemanticCompactionRequest;
-  scopeId: string;
-  binding: SemanticCompactionCheckpointBinding;
-  sourceRevision: number;
-  preservationObjective: string;
-  previous?: SemanticCompactionCheckpoint;
-  /** Reserves at least one digest character for each later source. */
-  futureSourceCount?: number;
-  sources: readonly SemanticCompactionSource[];
-}>;
-
-export type SemanticCompactionRequest = BoundRequestModelInvocationContext &
-  Pick<RequestExecutionSeed, "prompt" | "contextCompactionStore">;
+export type {
+  SemanticCompactionGenerationParams,
+  SemanticCompactionRequest,
+} from "./generation-contracts.js";
 
 export function assessSemanticCompactionInput(
   params: SemanticCompactionGenerationParams,
@@ -90,7 +87,7 @@ export async function generateSemanticCompactionCandidate(
     });
     throw new Error("context_compaction_input_exceeds_budget");
   }
-  params.request.contextCompactionStore?.registerSources(params.sources);
+  registerSemanticCompactionSources(params);
   const startedAt = Date.now();
   traceDebug("runtime.context.compaction", "model.started", {
     requestId: params.request.requestId,
@@ -118,51 +115,21 @@ export async function generateSemanticCompactionCandidate(
       format: prepared.format,
       timeoutReason: "context_compaction_timeout",
       invalidOutputReason: "invalid_context_compaction_output",
-      parse(text) {
-        const parsed = parseSemanticCompactionOutput(
+      parse: (text, abortSignal) =>
+        validateSemanticCompactionOutput(
           text,
-          prepared.expectedSources,
-          prepared.remainingDigestLength,
-        );
-        if (!parsed.ok) {
-          traceDebug("runtime.context.compaction", "model.rejected", {
-            requestId: params.request.requestId,
-            modelStep: CONTEXT_COMPACTION_MODEL_STEP,
-            scopeId: params.scopeId,
-            sourceRevision: params.sourceRevision,
-            issueCode: parsed.issueCode,
-            outputLength: text.length,
-          });
-          return Object.freeze({
-            ok: false as const,
-            stage: SEMANTIC_COMPACTION_BATCH_VALIDATION.stage,
-            issues: Object.freeze([
-              Object.freeze({
-                code: parsed.issueCode,
-                path: SEMANTIC_COMPACTION_BATCH_VALIDATION.path,
-                message: SEMANTIC_COMPACTION_BATCH_VALIDATION.message,
-              }),
-            ]),
-          });
-        }
-        return Object.freeze({
-          ok: true as const,
-          decision: Object.freeze({
-            continuation: parsed.continuation,
-            sourceDigests: parsed.sourceDigests,
-          }),
-        });
-      },
+          params,
+          prepared.checkpointBudget,
+          SEMANTIC_COMPACTION_BATCH_VALIDATION,
+          abortSignal,
+        ),
     });
     const candidate = Object.freeze({
       kind: "runtime_semantic_compaction_checkpoint_v2" as const,
       scopeId: params.scopeId,
       ...params.binding,
       sourceRevision: params.sourceRevision,
-      sourceDigests: Object.freeze([
-        ...(params.previous?.sourceDigests ?? []),
-        ...generated.sourceDigests,
-      ]),
+      sourceDigests: generated.sourceDigests,
       continuation: generated.continuation,
     });
     assertValidSemanticCompactionCheckpoint(candidate);
@@ -173,6 +140,13 @@ export async function generateSemanticCompactionCandidate(
       sourceRevision: params.sourceRevision,
       coveredSourceCount: candidate.sourceDigests.length,
       replacementCheckpoint: true,
+      digestMode: "rolling_replacement",
+      previousDigestCharacters: semanticCompactionDigestTotalLength(
+        params.previous?.sourceDigests ?? [],
+      ),
+      replacementDigestCharacters: semanticCompactionDigestTotalLength(
+        candidate.sourceDigests,
+      ),
       durationMs: Date.now() - startedAt,
     });
     return candidate;
@@ -197,13 +171,16 @@ export async function generateSemanticCompactionCandidate(
 export async function generateSemanticCompactionCandidateBatched(
   params: SemanticCompactionGenerationParams,
 ): Promise<SemanticCompactionCandidate> {
-  params.request.contextCompactionStore?.registerSources(params.sources);
+  registerSemanticCompactionSources(params);
   let candidate = params.previous;
   let nextSourceIndex = 0;
   while (nextSourceIndex < params.sources.length) {
     let selectedParams: SemanticCompactionGenerationParams | undefined;
     for (
-      let endSourceIndex = params.sources.length;
+      let endSourceIndex = Math.min(
+        params.sources.length,
+        nextSourceIndex + SEMANTIC_COMPACTION_BATCH_SOURCE_MAX_COUNT,
+      );
       endSourceIndex > nextSourceIndex;
       endSourceIndex -= 1
     ) {
@@ -213,10 +190,6 @@ export async function generateSemanticCompactionCandidateBatched(
       const batchParams: SemanticCompactionGenerationParams = Object.freeze({
         ...params,
         ...(candidate ? { previous: candidate } : { previous: undefined }),
-        futureSourceCount:
-          (params.futureSourceCount ?? 0) +
-          params.sources.length -
-          endSourceIndex,
         sources: batch,
       });
       if ((await assessSemanticCompactionInputForAdmission(batchParams)).fits) {
@@ -233,11 +206,6 @@ export async function generateSemanticCompactionCandidateBatched(
     const slicedParams: SemanticCompactionGenerationParams = Object.freeze({
       ...params,
       ...(candidate ? { previous: candidate } : { previous: undefined }),
-      futureSourceCount:
-        (params.futureSourceCount ?? 0) +
-        params.sources.length -
-        nextSourceIndex -
-        1,
       sources: Object.freeze([source]),
     });
     candidate = await generateSemanticCompactionSlicedSource(
@@ -251,12 +219,6 @@ export async function generateSemanticCompactionCandidateBatched(
   }
   return candidate;
 }
-
-type SemanticCompactionFoldState = Readonly<{
-  continuation: SemanticCompactionContinuation;
-  digest: SemanticCompactionDigest;
-  coveredThroughByte: number;
-}>;
 
 async function generateSemanticCompactionSlicedSource(
   params: SemanticCompactionGenerationParams,
@@ -334,7 +296,7 @@ async function generateSemanticCompactionSlicedSource(
     }
     state = Object.freeze({
       continuation: generated.continuation,
-      digest: generated.sourceDigests[0]!,
+      sourceDigests: generated.sourceDigests,
       coveredThroughByte: selected.slice.range.endByteExclusive,
     });
     startBoundaryIndex = selected.endBoundaryIndex;
@@ -349,10 +311,7 @@ async function generateSemanticCompactionSlicedSource(
     scopeId: params.scopeId,
     ...params.binding,
     sourceRevision: params.sourceRevision,
-    sourceDigests: Object.freeze([
-      ...(params.previous?.sourceDigests ?? []),
-      state.digest,
-    ]),
+    sourceDigests: state.sourceDigests,
     continuation: state.continuation,
   });
   assertValidSemanticCompactionCheckpoint(candidate);
@@ -383,68 +342,22 @@ function prepareSemanticCompactionSliceInput(
   slice: SemanticCompactionSourceSlice,
   state: SemanticCompactionFoldState | undefined,
 ) {
-  const expectedSources = Object.freeze([
-    Object.freeze({
-      sourceRef: slice.sourceRef,
-      sourceFingerprint: slice.sourceFingerprint,
-    }),
-  ]);
-  const remainingDigestLength = resolveRemainingDigestLength(params, 1);
+  const checkpointBudget = prepareReplacementCompactionBudget(params, [slice]);
+  const { expectedSources, checkpointTokenAllowance } = checkpointBudget;
   const format = createSemanticCompactionFormat(
     expectedSources,
-    Math.min(SEMANTIC_COMPACTION_DIGEST_MAX_LENGTH, remainingDigestLength),
+    checkpointTokenAllowance,
   );
-  const messages: ChatMessage[] = [
-    Object.freeze({
-      role: "system" as const,
-      content: [
-        SEMANTIC_COMPACTION_INSTRUCTIONS,
-        "The supplied source is one exact contiguous UTF-8 range of a larger canonical source.",
-        "Return a cumulative replacement continuation and cumulative digest covering every prior range plus this range; do not treat ranges as separate sources.",
-      ].join("\n"),
-    }),
-    Object.freeze({
-      role: "user" as const,
-      content: JSON.stringify({
-        kind: "runtime_semantic_compaction_slice_input_v1",
-        currentRequest: params.request.prompt,
-        active: {
-          roleId: params.binding.roleId,
-          callId: params.binding.callId,
-          preservationObjective: params.preservationObjective,
-          allowedConsumers: params.binding.allowedConsumers,
-        },
-        ...(params.previous
-          ? {
-              previousCheckpoint: {
-                continuation: params.previous.continuation,
-                sourceDigests: params.previous.sourceDigests,
-              },
-            }
-          : {}),
-        ...(state
-          ? {
-              partialSourceFold: {
-                coveredThroughByte: state.coveredThroughByte,
-                continuation: state.continuation,
-                digest: state.digest.digest,
-              },
-            }
-          : {}),
-        sourceSlice: slice,
-      }),
-    }),
-  ];
+  const messages = buildSemanticCompactionSliceMessages(params, slice, state);
   const assessment = assessSemanticCompactionMessages(
     params.request,
     messages,
     format,
   );
   return Object.freeze({
-    expectedSources,
     messages,
     format,
-    remainingDigestLength,
+    checkpointBudget,
     assessment,
   });
 }
@@ -492,51 +405,15 @@ async function invokeSemanticCompactionSlice(
     format: prepared.format,
     timeoutReason: "context_compaction_timeout",
     invalidOutputReason: "invalid_context_compaction_output",
-    parse(text) {
-      const parsed = parseSemanticCompactionOutput(
+    parse: (text, abortSignal) =>
+      validateSemanticCompactionOutput(
         text,
-        prepared.expectedSources,
-        prepared.remainingDigestLength,
-      );
-      return parsed.ok
-        ? Object.freeze({
-            ok: true as const,
-            decision: Object.freeze({
-              continuation: parsed.continuation,
-              sourceDigests: parsed.sourceDigests,
-            }),
-          })
-        : Object.freeze({
-            ok: false as const,
-            stage: SEMANTIC_COMPACTION_SLICE_VALIDATION.stage,
-            issues: Object.freeze([
-              Object.freeze({
-                code: parsed.issueCode,
-                path: SEMANTIC_COMPACTION_SLICE_VALIDATION.path,
-                message: SEMANTIC_COMPACTION_SLICE_VALIDATION.message,
-              }),
-            ]),
-          });
-    },
+        params,
+        prepared.checkpointBudget,
+        SEMANTIC_COMPACTION_SLICE_VALIDATION,
+        abortSignal,
+      ),
   });
-}
-
-function resolveRemainingDigestLength(
-  params: SemanticCompactionGenerationParams,
-  currentSourceCount: number,
-): number {
-  const futureSourceCount = params.futureSourceCount ?? 0;
-  if (!Number.isSafeInteger(futureSourceCount) || futureSourceCount < 0) {
-    throw new Error("context_compaction_future_source_count_invalid");
-  }
-  const remaining =
-    SEMANTIC_COMPACTION_DIGEST_TOTAL_MAX_LENGTH -
-    semanticCompactionDigestTotalLength(params.previous?.sourceDigests ?? []) -
-    futureSourceCount;
-  if (remaining < currentSourceCount) {
-    throw new Error("context_compaction_digest_allowance_exhausted");
-  }
-  return remaining;
 }
 
 function prepareSemanticCompactionInput(
@@ -584,64 +461,12 @@ function prepareSemanticCompactionInput(
       throw new Error("context_compaction_checkpoint_not_applicable");
     }
   }
-  const expectedSources = Object.freeze(
-    params.sources.map(({ sourceRef, sourceFingerprint }) =>
-      Object.freeze({ sourceRef, sourceFingerprint }),
-    ),
-  );
-  const messages: ChatMessage[] = [
-    Object.freeze({
-      role: "system" as const,
-      content: SEMANTIC_COMPACTION_INSTRUCTIONS,
-    }),
-    Object.freeze({
-      role: "user" as const,
-      content: JSON.stringify({
-        kind: "runtime_semantic_compaction_input_v2",
-        currentRequest: params.request.prompt,
-        active: {
-          roleId: params.binding.roleId,
-          callId: params.binding.callId,
-          preservationObjective: params.preservationObjective,
-          allowedConsumers: params.binding.allowedConsumers,
-        },
-        ...(params.previous
-          ? {
-              previousContinuation: params.previous.continuation,
-              previousSourceDigests: params.previous.sourceDigests.map(
-                ({ sourceRef, sourceFingerprint, digest }) => ({
-                  sourceRef,
-                  sourceFingerprint,
-                  digest,
-                }),
-              ),
-            }
-          : {}),
-        newSources: params.sources,
-      }),
-    }),
-  ];
-  const previousDigestLength = semanticCompactionDigestTotalLength(
-    params.previous?.sourceDigests ?? [],
-  );
-  const futureSourceCount = params.futureSourceCount ?? 0;
-  if (!Number.isSafeInteger(futureSourceCount) || futureSourceCount < 0) {
-    throw new Error("context_compaction_future_source_count_invalid");
-  }
-  const remainingDigestLength =
-    SEMANTIC_COMPACTION_DIGEST_TOTAL_MAX_LENGTH -
-    previousDigestLength -
-    futureSourceCount;
-  if (remainingDigestLength < expectedSources.length) {
-    throw new Error("context_compaction_digest_allowance_exhausted");
-  }
-  const digestMaxLength = Math.min(
-    SEMANTIC_COMPACTION_DIGEST_MAX_LENGTH,
-    Math.floor(remainingDigestLength / expectedSources.length),
-  );
+  const checkpointBudget = prepareReplacementCompactionBudget(params);
+  const { expectedSources, checkpointTokenAllowance } = checkpointBudget;
+  const messages = buildSemanticCompactionMessages(params);
   const format = createSemanticCompactionFormat(
     expectedSources,
-    digestMaxLength,
+    checkpointTokenAllowance,
   );
   const assessment = assessSemanticCompactionMessages(
     params.request,
@@ -649,10 +474,9 @@ function prepareSemanticCompactionInput(
     format,
   );
   return Object.freeze({
-    expectedSources,
     messages,
     format,
-    remainingDigestLength,
+    checkpointBudget,
     assessment,
   });
 }

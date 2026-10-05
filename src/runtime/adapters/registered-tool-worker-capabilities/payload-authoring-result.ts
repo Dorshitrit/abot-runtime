@@ -1,5 +1,5 @@
 import type { WorkerCapabilityPayloadAuthoringResult } from "../../orchestration/worker-capabilities/index.js";
-import { validateJsonSchemaValue } from "../../model/json-schema-value.js";
+import { normalizePayloadBody } from "../../orchestration/worker-capabilities/payload-body-normalization.js";
 import { isPlainRecord } from "./values.js";
 
 export function normalizePayloadAuthoringResult(
@@ -17,13 +17,14 @@ export function normalizePayloadAuthoringResult(
     });
   }
   if (input.status === "authored" && typeof input.body === "string") {
-    const body = normalizeAdapterAuthoredBody(input.body, responseFormat);
-    if (body === undefined) {
+    const normalized = normalizePayloadBody(input.body, responseFormat);
+    if (!normalized.ok) {
       return Object.freeze({
         status: "failed" as const,
         code: "payload_model_output_invalid" as const,
       });
     }
+    const body = normalized.body;
     const payloadBytes = Buffer.byteLength(body, "utf8");
     if (payloadBytes < minBytes) {
       return Object.freeze({
@@ -42,25 +43,6 @@ export function normalizePayloadAuthoringResult(
     status: "failed" as const,
     code: "payload_author_result_invalid" as const,
   });
-}
-
-function normalizeAdapterAuthoredBody(
-  body: string,
-  responseFormat: "json" | Readonly<Record<string, unknown>> | undefined,
-): string | undefined {
-  if (!responseFormat) return body;
-  try {
-    const parsed = JSON.parse(body);
-    if (
-      responseFormat !== "json" &&
-      validateJsonSchemaValue(responseFormat, parsed)
-    ) {
-      return undefined;
-    }
-    return JSON.stringify(parsed);
-  } catch {
-    return undefined;
-  }
 }
 
 function isPayloadAuthorFailureCode(

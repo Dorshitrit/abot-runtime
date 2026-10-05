@@ -41,13 +41,16 @@ function hasPendingRequestCompaction(contextWindow, requestId) {
 
 function hasAcceptedRequestSnapshot(contextWindow, requestId) {
   if (!hasMatchingContextRequest(contextWindow, requestId)) return false;
-  const snapshot = contextWindow.snapshot;
+  const snapshot =
+    contextWindow.latestSnapshotObservation || contextWindow.snapshot;
   if (!snapshot) return false;
   if (textOf(snapshot.requestId) !== requestId) return false;
   return snapshot.admissionOutcome === "accepted";
 }
 
 function isSettledToolAfterSnapshot(event, snapshot) {
+  if (snapshot.contextScope && event.contextScope !== snapshot.contextScope)
+    return false;
   const name = textOf(
     event.toolActivity?.name ||
       event.eventName ||
@@ -60,7 +63,9 @@ function isSettledToolAfterSnapshot(event, snapshot) {
 }
 
 function hasUsageForCurrentInvocation(contextWindow) {
-  const invocationId = textOf(contextWindow.snapshot?.invocationId);
+  const snapshot =
+    contextWindow.latestSnapshotObservation || contextWindow.snapshot;
+  const invocationId = textOf(snapshot?.invocationId);
   if (!invocationId) return false;
   return textOf(contextWindow.providerUsage?.invocationId) === invocationId;
 }
@@ -105,12 +110,19 @@ export function buildConversationStatus({
   if (!hasAcceptedRequestSnapshot(contextWindow, activeRequestId)) {
     return activeStatus("Working");
   }
-  const snapshot = contextWindow.snapshot;
+  const snapshot =
+    contextWindow.latestSnapshotObservation || contextWindow.snapshot;
   const settledAfterSnapshot = scopedEvents.some((event) =>
     isSettledToolAfterSnapshot(event, snapshot),
   );
   if (settledAfterSnapshot) return activeStatus("Working");
   if (hasUsageForCurrentInvocation(contextWindow))
     return activeStatus("Working");
+  if (
+    snapshot.modelStep === "context.compact" &&
+    contextWindow.cycles instanceof Map
+  ) {
+    return activeStatus("Working");
+  }
   return activeStatus(modelStepLabel(snapshot.modelStep));
 }

@@ -1,3 +1,5 @@
+import { assertBoundModelStepSteeringCurrent } from "../../model/model-step-steering.js";
+import { resolveRequestSteeringInbox } from "../../request/request-steering.js";
 import { resolveMemoryRecallSteeringVersion } from "../../long-term-memory/recall-binding.js";
 import {
   invokeStructuredModelStep,
@@ -43,21 +45,27 @@ export async function runExecutionAgentDecision(
   request: RequestExecutionScope,
   options: RunExecutionAgentDecisionOptions,
 ): Promise<ExecutionAgentDecisionOutcome> {
-  const input = buildExecutionAgentInput(request, options);
-  const accepted = await invokeStructuredModelStep({
-    request,
-    boundSteeringVersion: resolveMemoryRecallSteeringVersion(
+  assertBoundModelStepSteeringCurrent(
+    resolveRequestSteeringInbox(request.requestSteering),
+    resolveMemoryRecallSteeringVersion(
       options.memoryRecallMessage,
       request.requestId,
       options.call.callId,
     ),
+  );
+  const input = buildExecutionAgentInput(request, options);
+  const accepted = await invokeStructuredModelStep({
+    request,
+    boundSteeringVersion: options.steeringSnapshot.version,
     modelStep: input.modelStep,
     format: input.format,
     messages: input.messages,
     contextCompaction: createSessionMemoryAwareCompactionController(
       request,
       createExecutionAgentCompactionController(request, {
+        consumer: input.modelStep,
         call: options.call,
+        steeringSnapshot: options.steeringSnapshot,
         sourceRevision: options.head.revision,
         allowedConsumers: Object.freeze([
           EXECUTION_AGENT_DECISION_MODEL_STEP,
@@ -119,6 +127,8 @@ async function refineDecision(
     refined = await refineExecutionCapabilityInvocations(request, {
       head: options.head,
       call: options.call,
+      workingDirectory:
+        options.call.workingDirectory ?? decision.workingDirectory,
       capabilities,
       eligibleSessionArtifactPaths,
       invocations,
@@ -134,11 +144,14 @@ async function refineDecision(
     );
   }
   if (decision.action === "invoke_capability") {
-    const { operationObjective: _operationObjective, ...resolvedDecision } =
-      decision;
+    const {
+      operationObjective: _operationObjective,
+      controlsEvidenceExecutionIds: _controlsEvidenceExecutionIds,
+      ...resolvedDecision
+    } = decision;
     return Object.freeze({
       ...resolvedDecision,
-      controls: refined.invocations[0]!.controls,
+      ...refined.invocations[0]!,
     });
   }
   return Object.freeze({

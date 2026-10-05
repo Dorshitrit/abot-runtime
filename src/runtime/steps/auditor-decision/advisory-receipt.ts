@@ -14,6 +14,7 @@ export type AuditorAdvisoryReceipt = Readonly<{
     kind: typeof EVIDENCE_BINDING_KIND;
     workFingerprint: string;
     selectedEvidenceIds: readonly string[];
+    compactedEvidenceIds?: readonly string[];
     bundleFingerprint: string | null;
   }>;
 }>;
@@ -90,6 +91,12 @@ export function readAuditorAdvisoryReceipt(
     return undefined;
   if (typeof source.workFingerprint !== "string") return undefined;
   if (!isStringArray(source.selectedEvidenceIds)) return undefined;
+  if (source.compactedEvidenceIds !== undefined) {
+    if (!isStringArray(source.compactedEvidenceIds)) return undefined;
+    const selected = new Set(source.selectedEvidenceIds);
+    if (source.compactedEvidenceIds.some((id) => !selected.has(id)))
+      return undefined;
+  }
   const expectedBundle =
     source.selectedEvidenceIds.length > 0
       ? fingerprintAuditorBundle(
@@ -104,10 +111,21 @@ export function readAuditorAdvisoryReceipt(
 function binding(
   assignment: AuditorAssignment,
 ): AuditorAdvisoryReceipt["evidenceBinding"] {
+  const compactedIds = new Set(
+    assignment.compactedSourceEvidence?.sources.map(
+      (source) => source.executionId,
+    ),
+  );
+  const compactedEvidenceIds = assignment.selectedEvidenceIds.filter((id) =>
+    compactedIds.has(id),
+  );
   return Object.freeze({
     kind: EVIDENCE_BINDING_KIND,
     workFingerprint: assignment.workFingerprint,
     selectedEvidenceIds: assignment.selectedEvidenceIds,
+    ...(compactedEvidenceIds.length > 0
+      ? { compactedEvidenceIds: Object.freeze(compactedEvidenceIds) }
+      : {}),
     bundleFingerprint:
       assignment.selectedEvidenceIds.length > 0
         ? fingerprintAuditorBundle(

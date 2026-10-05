@@ -191,17 +191,14 @@ export function createComposerQueueController({
     activateRequestForScope(scope, requestId);
   }
 
-  function suspendRecoveryForNavigation() {
+  function prepareRecoveryForNavigation() {
     const active = state.activeComposerQueueRecovery;
-    if (!active) return true;
+    if (!active) return () => {};
     try {
       const blockedRelease = queue.getBlockedRelease(active.scope);
-      if (
-        !blockedRelease ||
-        blockedRelease.releaseToken !== active.releaseToken
-      ) {
-        clearRecovery(active.scope);
-        return true;
+      const hasMatchingRecoveryRelease = blockedRelease?.releaseToken === active.releaseToken;
+      if (!hasMatchingRecoveryRelease) {
+        return () => clearRecovery(active.scope);
       }
       const updated = queue.updateBlockedRelease(
         active.scope,
@@ -223,10 +220,18 @@ export function createComposerQueueController({
       );
       return false;
     }
-    dom.composerInput.value = "";
-    resizeComposer();
-    attachments.clear({ cleanup: false });
-    clearRecovery(active.scope);
+    return () => {
+      dom.composerInput.value = "";
+      resizeComposer();
+      attachments.clear({ cleanup: false });
+      clearRecovery(active.scope);
+    };
+  }
+
+  function suspendRecoveryForNavigation() {
+    const commit = prepareRecoveryForNavigation();
+    if (!commit) return false;
+    commit();
     return true;
   }
 
@@ -270,6 +275,7 @@ export function createComposerQueueController({
     enqueue,
     isCurrentDraining,
     isCurrentScope,
+    prepareRecoveryForNavigation,
     queuedCount,
     recoverForManualSend,
     reportFailure,

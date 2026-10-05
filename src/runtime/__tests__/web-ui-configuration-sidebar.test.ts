@@ -45,7 +45,6 @@ describe("standalone configuration sidebar pages", () => {
       expect(panel.inert).toBe(false);
       expect(panel.getAttribute("aria-hidden")).toBe("false");
       expect(f.dom.configWorkspaceTitle.textContent).toBe(page.title);
-      expect(f.dom.configWorkspaceDescription.textContent).not.toBe("");
       expect(f.setCategory).toHaveBeenLastCalledWith(page.category);
       expect(f.documentRoot.activeElement).toBe(f.dom.closeConfigWorkspaceButton);
       expect(f.dom.homeWorkspacePanel.hidden).toBe(true);

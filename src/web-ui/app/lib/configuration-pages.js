@@ -1,7 +1,7 @@
 const pages = Object.freeze({
-  models: { category: "models", title: "Models", description: "Choose and configure the models available to your agents." },
-  plugins: { category: "plugins", title: "Plugins", description: "Manage the capabilities available to your agents." },
-  config: { category: "operations", title: "System", description: "Inspect runtime status, logs and health, and apply saved settings." },
+  models: { category: "models", title: "Models" },
+  plugins: { category: "plugins", title: "Plugins" },
+  config: { category: "operations", title: "System" },
 });
 
 export function isConfigurationWorkspace(workspace) {
@@ -25,7 +25,5 @@ export function renderConfigurationPageHeading(panel, workspace) {
   const page = pages[workspace];
   if (!panel || !page) return;
   const title = panel.querySelector("#configWorkspaceTitle");
-  const description = panel.querySelector("#configWorkspaceDescription");
   if (title) title.textContent = page.title;
-  if (description) description.textContent = page.description;
 }

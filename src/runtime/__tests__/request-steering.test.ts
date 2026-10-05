@@ -142,7 +142,11 @@ describe("request steering inbox", () => {
     await expect(resultPromise).resolves.toBe("fresh");
     expect(invoke).toHaveBeenCalledTimes(2);
     expect(accept).toHaveBeenCalledTimes(1);
-    expect(accept).toHaveBeenCalledWith("fresh", expect.any(Object));
+    expect(accept).toHaveBeenCalledWith(
+      "fresh",
+      expect.any(Object),
+      invoke.mock.calls[1]?.[0]?.abortSignal,
+    );
     const secondMessages = invoke.mock.calls[1]?.[0]?.messages as
       | { role: string; content: string }[]
       | undefined;

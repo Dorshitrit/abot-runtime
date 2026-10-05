@@ -11,7 +11,7 @@ export function createNotificationsController({
 }) {
   const state = {
     items: [], unreadCount: 0, nextCursor: null, preferences: null,
-    desktop: null, loading: false, busy: false, error: "", filter: "all",
+    desktop: null, loading: false, busy: false, error: "", filter: "unread",
   };
   let ready = false;
   let environmentRevision = 0;

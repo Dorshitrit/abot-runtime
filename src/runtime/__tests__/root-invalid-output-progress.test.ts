@@ -4,6 +4,7 @@ import {
   configureDebugLogger,
   resetDebugLoggerConfig,
 } from "../observability/debug-logger.js";
+import { buildDegradedFinalizationFallback } from "../steps/degraded-finalization/fallback.js";
 import { runRootExecutionKernel } from "../request/root-execution-kernel.js";
 import { projectInvalidOutputProgress } from "../request/root-invalid-output-progress.js";
 import {
@@ -13,6 +14,7 @@ import {
 import {
   createRootInvalidOutputRequest,
   createRootInvalidOutputLedger,
+  ROOT_OUTPUT_POLICIES,
 } from "./support/root-invalid-output-fixture.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
@@ -97,33 +99,45 @@ test("empty plans do not manufacture progress", async () => {
   expect(ledger.current().state.plans).toEqual([]);
 });
 
-test("repairs overlong degraded phrasing into model-authored text within the existing ceiling", async () => {
-  const ledger = await createRootInvalidOutputLedger();
-  const maxResponseChars = ledger.current().policy.limits.maxResponseChars;
-  let degradedAttempts = 0;
-  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-    if (input.modelStep !== "degraded.finalization")
-      return { text: "invalid", meta: {} };
-    degradedAttempts += 1;
-    return {
-      text: JSON.stringify({
-        failureNotice:
-          degradedAttempts === 1
-            ? "x".repeat(maxResponseChars + 1)
-            : "I could not finish this request.",
-        nextStep: "Continue from the established state.",
-      }),
-      meta: {},
-    };
-  });
-  const request = createRootInvalidOutputRequest(invoke);
-  const result = await runRootExecutionKernel({ request, ledger });
-  expect(result.output).toBe(
-    "I could not finish this request.\n\nContinue from the established state.",
-  );
-  expect(degradedAttempts).toBe(2);
-  expect(ledger.current().state.rootResponse).toBe(result.output);
-  expect(ledger.current().policy.limits.maxResponseChars).toBe(
-    maxResponseChars,
-  );
-});
+test.each(ROOT_OUTPUT_POLICIES)(
+  "$policyId bounds overlong degraded phrasing with its own attempt policy",
+  async (policy) => {
+    const ledger = await createRootInvalidOutputLedger(policy.policyId);
+    const maxResponseChars = ledger.current().policy.limits.maxResponseChars;
+    let degradedAttempts = 0;
+    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      if (input.modelStep !== "degraded.finalization")
+        return { text: "invalid", meta: {} };
+      degradedAttempts += 1;
+      return {
+        text: JSON.stringify({
+          failureNotice:
+            degradedAttempts === 1
+              ? "x".repeat(maxResponseChars + 1)
+              : "I could not finish this request.",
+          nextStep: "Continue from the established state.",
+        }),
+        meta: {},
+      };
+    });
+    const request = createRootInvalidOutputRequest(invoke, policy.policyId);
+    const result = await runRootExecutionKernel({ request, ledger });
+    const superPolicy = policy.policyId === "supervisor-worker-v1";
+    expect(result.output).toBe(
+      superPolicy
+        ? buildDegradedFinalizationFallback({
+            problem: {
+              code: policy.invalidDecision,
+              stage: policy.decisionStep,
+            },
+            progress: null,
+          })
+        : "I could not finish this request.\n\nContinue from the established state.",
+    );
+    expect(degradedAttempts).toBe(superPolicy ? 1 : 2);
+    expect(ledger.current().state.rootResponse).toBe(result.output);
+    expect(ledger.current().policy.limits.maxResponseChars).toBe(
+      maxResponseChars,
+    );
+  },
+);

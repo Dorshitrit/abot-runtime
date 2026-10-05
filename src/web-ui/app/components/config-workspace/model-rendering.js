@@ -209,10 +209,10 @@ export function createConfigModelRendering({
               <strong>Model defaults</strong>
               ${renderConfigInput(model, ["supportsThinking"], {
                 type: "boolean",
-                label: "Thinking",
+                label: "Supports reasoning controls",
               })}
             </div>
-            <span>Provider, generation, and base context limits.</span>
+            <span>Unchecked uses the provider’s default reasoning; it does not disable thinking. When supported, the request mode and reasoning settings choose the effort.</span>
           </div>
           <div class="config-field-grid model-basics">
             <label><span>Label</span>${renderConfigInput(model, ["label"])}</label>

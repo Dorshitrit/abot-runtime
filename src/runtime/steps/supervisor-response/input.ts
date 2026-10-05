@@ -1,3 +1,4 @@
+import { buildSparkConversationInstructions } from "../../context/spark-conversation-policy.js";
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
 import type {
   ChatMessage,
@@ -26,18 +27,21 @@ import {
   buildSupervisorMemoryAuthoringInstructions,
   buildSupervisorResponseInstructions,
 } from "./prompt.js";
+import { automationResponseFormat } from "../../request/automation-output-contract.js";
 
 export type SupervisorResponseInputRequest = Pick<
   RequestExecutionSeed,
   | "requestId"
   | "prompt"
   | "historyMessages"
+  | "sessionKind"
   | "runnerConfig"
   | "attachments"
   | "agentMode"
   | "modelPreference"
   | "modelPolicy"
   | "scheduledExecution"
+  | "automationOutputContract"
 > &
   Partial<Pick<RequestExecutionSeed, "onEvent" | "sessionMemory">>;
 
@@ -52,17 +56,22 @@ export function buildSupervisorResponseInput(
     buildSupervisorResponseRecommendationMessage(options);
   const scheduledExecution = projectScheduledExecutionContext(
     request,
-    buildSupervisorResponseInstructions({
+    [buildSupervisorResponseInstructions({
       hasResponseRecommendation: responseRecommendationMessage !== undefined,
       hasCompletedChildResult: options.resume !== undefined,
       hasRequestToolResults: options.toolResults.results.length > 0,
       ...(options.memoryCandidateCount !== undefined ? { memoryCandidateCount: options.memoryCandidateCount } : {}),
       ...(options.hasDirectMemorySaveRequest !== undefined ? { hasDirectMemorySaveRequest: options.hasDirectMemorySaveRequest } : {}),
-    }),
+    }), ...buildSparkConversationInstructions(request.sessionKind), ...(request.automationOutputContract
+      ? ["Return one JSON object matching the automation result schema, with no surrounding text."]
+      : [])].join("\n"),
     "response",
   );
   return buildSupervisorInput(request, options, {
     ...scheduledExecution,
+    ...(request.automationOutputContract
+      ? { format: automationResponseFormat(request.automationOutputContract) }
+      : {}),
     responseRecommendationMessage,
   });
 }

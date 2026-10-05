@@ -1,4 +1,5 @@
 import { MODEL_STEPS } from "../../../shared/model-steps.js";
+import type { ExecutionCompactedSources } from "../../context/execution-compacted-evidence.js";
 import type { CapabilityAdapterResult } from "../../orchestration/capability-adapters/index.js";
 
 export const AUDITOR_DECISION_MODEL_STEP = MODEL_STEPS.AUDITOR_DECISION;
@@ -55,6 +56,8 @@ export type AuditorEvidenceInventoryEntry = Readonly<{
   referenceCount: number;
   omittedReferencePreviewCount: number;
   exactEvidenceChars: number;
+  evidencePresentation?: "compacted";
+  projectedEvidenceChars?: number;
   evidenceFingerprint: string;
 }>;
 
@@ -72,6 +75,7 @@ export type AuditorAssignment = Readonly<{
   reviewedEvidenceBundles: readonly (readonly string[])[];
   pendingEvidenceIds: readonly string[] | null;
   evidence: readonly AuditorEvidence[];
+  compactedSourceEvidence?: ExecutionCompactedSources;
   availableEvidenceCount: number;
   omittedEvidenceCount: number;
 }>;

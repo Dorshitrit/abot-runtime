@@ -1,4 +1,6 @@
 import WebSocket from "ws";
+import { assertInteractiveSession as assertGlobalInteractiveSession } from "../sessions/index.js";
+import { isAutomationSessionLockedError } from "../sessions/automation-session-origin.js";
 
 import { handleRunRequest } from "../runtime/request/handler.js";
 import type {
@@ -467,7 +469,26 @@ export function startAgentBridge(
         return;
       }
       if (msg.type !== "run_request") return;
+      const sessionId = getString(msg.sessionId).trim();
       const requestId = getString(msg.requestId).trim();
+      try {
+        if (sessionId) {
+          if (options.sessionStore)
+            await options.sessionStore.assertInteractiveSession?.(sessionId);
+          else await assertGlobalInteractiveSession(sessionId);
+        }
+      } catch (error) {
+        if (!isAutomationSessionLockedError(error)) throw error;
+        currentWs.send(
+          JSON.stringify({
+            type: "failed",
+            requestId,
+            sessionId,
+            error: "automation_session_locked",
+          }),
+        );
+        return;
+      }
       const steeringInbox = requestSteering.open(requestId);
       try {
         await requestHandler.handle(currentWs, msg as RunRequestMessage, {

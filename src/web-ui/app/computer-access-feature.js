@@ -5,6 +5,7 @@ import { createSystemHostSetupNotice } from "./components/system-host/setup-noti
 export function createComputerAccessFeature({
   dom,
   runtimeClient,
+  getEnvironmentId = () => "",
   onChange = () => {},
 }) {
   const documentRoot = dom.homeDashboardRoot?.ownerDocument;
@@ -13,9 +14,11 @@ export function createComputerAccessFeature({
   const connection = createSystemHostConnectionManager({
     documentRoot,
     compact: true,
+    getEnvironmentId,
     loadConnection: () => runtimeClient.getSystemHostConnection(),
     connectLocal: () => runtimeClient.connectLocalSystemHost(),
     createPairing: () => runtimeClient.createSystemHostPairing(),
+    requestPermissions: (input) => runtimeClient.requestSystemHostPermissions(input),
     downloadSetup: (platform) =>
       runtimeClient.downloadSystemHostSetup(platform),
     revokeConnection: () => runtimeClient.revokeSystemHostConnection(),
@@ -54,11 +57,13 @@ export function createComputerAccessFeature({
     connection.mount(root);
     connection.setActive(true);
   }
+  dom.environmentSelect?.addEventListener("change", connection.environmentChanged);
   return {
     state: connection.state,
     load: connection.load,
     open,
     dispose() {
+      dom.environmentSelect?.removeEventListener("change", connection.environmentChanged);
       notice.dispose();
       connection.dispose();
       root?.remove();

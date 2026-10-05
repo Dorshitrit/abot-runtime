@@ -1,5 +1,6 @@
 export const TOOL_NORMAL_INVOCATION_VERSION = 1 as const;
 export const TOOL_NORMAL_INVOCATION_IDENTIFIER_MAX_LENGTH = 64;
+export const TOOL_NORMAL_INVOCATION_STRING_MAX_LENGTH = 8_192;
 export const TOOL_NORMAL_INVOCATION_PAYLOAD_MAX_BYTES = 16 * 1_024 * 1_024;
 
 export type ToolNormalInvocationEffect = "read_only" | "mutating" | "mixed";
@@ -72,6 +73,13 @@ export type ToolNormalInvocationPayload = Readonly<{
   maxBytes: number;
 }>;
 
+/** A declared operation input that can resolve a request-owned attachment ID. */
+export type ToolNormalInvocationAttachmentInput = Readonly<{
+  param: string;
+  acceptedMimeTypes: readonly string[];
+  mode?: Readonly<{ param: string; value: string }>;
+}>;
+
 export type ToolNormalInvocationOperation = Readonly<{
   operationId: string;
   summary: string;
@@ -79,6 +87,7 @@ export type ToolNormalInvocationOperation = Readonly<{
   selectionControlIds?: readonly string[];
   fixedParams?: Readonly<Record<string, ToolNormalInvocationFixedValue>>;
   payload?: ToolNormalInvocationPayload;
+  attachmentInput?: ToolNormalInvocationAttachmentInput;
   effect: ToolNormalInvocationEffect;
   approval: ToolNormalInvocationApproval;
 }>;

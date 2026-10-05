@@ -1,4 +1,8 @@
 import { createNotificationFocus } from "./focus.js";
+import { createNotificationTabs } from "./tabs.js";
+import { canLoadOlderNotifications } from "./pagination.js";
+import { renderNotificationFeedback } from "./feedback.js";
+export { notificationFeedback } from "./feedback.js";
 import {
   renderNotificationItem,
   renderNotificationSettings,
@@ -8,21 +12,30 @@ export function createNotificationsWorkspace({ root, button, badge, actions }) {
   let snapshot;
   const focus = createNotificationFocus(root);
   root.innerHTML = `<div class="notifications-content">
+    <nav class="config-category-nav notifications-nav" role="tablist" aria-label="Notification views">
+      <button id="notificationsInboxTab" class="config-category-tab active" type="button" role="tab" data-notification-tab="notifications" aria-controls="notificationsInboxPanel" aria-selected="true">Notifications</button>
+      <button id="notificationsSettingsTab" class="config-category-tab" type="button" role="tab" data-notification-tab="settings" aria-controls="notificationsSettingsPanel" aria-selected="false" tabindex="-1">Settings</button>
+    </nav>
+    <div class="config-category-panels">
+    <div id="notificationsInboxPanel" class="config-category-panel" role="tabpanel" aria-labelledby="notificationsInboxTab" tabindex="0" data-notification-panel="notifications">
     <div class="notifications-toolbar">
       <div class="notification-filters" role="group" aria-label="Filter notifications">
-        <button type="button" data-notification-filter="all" aria-pressed="true">All</button>
-        <button type="button" data-notification-filter="unread" aria-pressed="false">Unread</button>
+        <button type="button" data-notification-filter="all" aria-pressed="false">All</button>
+        <button type="button" data-notification-filter="unread" aria-pressed="true">Unread</button>
       </div>
       <div class="notification-toolbar-actions">
         <button type="button" data-notification-action="refresh">Refresh</button>
         <button type="button" data-notification-action="read-all">Mark all read</button>
       </div>
     </div>
-    <p class="notification-feedback" role="status" aria-live="polite"></p>
+    <div class="notification-feedback" role="status" aria-live="polite"></div>
     <ul class="notification-list" aria-label="Notification history"></ul>
     <button type="button" class="notification-load-more" data-notification-action="more" hidden>Load older notifications</button>
-    <div class="notification-settings-root"></div>
+    </div>
+    <div id="notificationsSettingsPanel" class="config-category-panel notification-settings-root" role="tabpanel" aria-labelledby="notificationsSettingsTab" tabindex="0" data-notification-panel="settings" hidden inert></div>
+    </div>
   </div>`;
+  createNotificationTabs(root);
   const list = root.querySelector(".notification-list");
   const feedback = root.querySelector(".notification-feedback");
   const settings = root.querySelector(".notification-settings-root");
@@ -85,31 +98,11 @@ export function createNotificationsWorkspace({ root, button, badge, actions }) {
     for (const details of list.querySelectorAll("details"))
       details.open = expandedItems.has(details.dataset.notificationId);
     list.setAttribute("aria-busy", String(next.loading));
-    feedback.textContent = notificationFeedback(next, items);
+    feedback.innerHTML = renderNotificationFeedback(next, items);
     feedback.classList.toggle("is-error", Boolean(next.error));
-    more.hidden = !next.nextCursor;
-    const expanded = settings.querySelector("details")?.open;
+    more.hidden = !canLoadOlderNotifications(next);
     settings.innerHTML = renderNotificationSettings(next);
-    const disclosure = settings.querySelector("details");
-    if (disclosure) disclosure.open = Boolean(expanded);
     focus.restore(next.busy || next.loading);
   }
   return { render };
-}
-
-export function notificationFeedback(snapshot, items) {
-  if (snapshot.error) return snapshot.error;
-  if (!snapshot.supported) return "Notifications are unavailable with this backend.";
-  if (items.length) return "";
-  if (snapshot.loading) return "Loading notifications…";
-  if (hasOlderUnreadNotifications(snapshot))
-    return "Unread notifications are in older history. Load older notifications to view them.";
-  if (snapshot.filter === "unread") return "You're all caught up.";
-  return "No notifications yet.";
-}
-
-function hasOlderUnreadNotifications(snapshot) {
-  if (snapshot.filter !== "unread") return false;
-  if (snapshot.unreadCount <= 0) return false;
-  return Boolean(snapshot.nextCursor);
 }

@@ -1,8 +1,10 @@
 import {
   TOOL_NORMAL_INVOCATION_IDENTIFIER_MAX_LENGTH,
+  TOOL_NORMAL_INVOCATION_STRING_MAX_LENGTH as MAX_STRING_LENGTH_BOUND,
   TOOL_NORMAL_INVOCATION_PAYLOAD_MAX_BYTES,
   TOOL_NORMAL_INVOCATION_VERSION,
   type ToolNormalInvocationArrayInput,
+  type ToolNormalInvocationAttachmentInput,
   type ToolNormalInvocationContract,
   type ToolNormalInvocationFixedValue,
   type ToolNormalInvocationInput,
@@ -17,7 +19,6 @@ const MAX_SUMMARY_LENGTH = 512;
 const MAX_INSTRUCTIONS_LENGTH = 1_024;
 const MAX_PROPERTIES = 16;
 const MAX_FIXED_PARAMS = 16;
-const MAX_STRING_LENGTH_BOUND = 4_096;
 const MAX_ENUM_VALUES = 64;
 const MAX_ENUM_VALUE_LENGTH = 256;
 const MAX_ARRAY_ITEMS_BOUND = 64;
@@ -491,6 +492,46 @@ function parsePayload(
   });
 }
 
+function parseAttachmentInput(
+  toolName: string,
+  path: string,
+  input: ToolNormalInvocationInput,
+  value: unknown,
+): ToolNormalInvocationAttachmentInput | undefined {
+  if (value === undefined) return undefined;
+  if (!isPlainObject(value) ||
+      !hasExactKeys(value, ["param", "acceptedMimeTypes"], ["mode"]))
+    fail(toolName, path, "expected param, acceptedMimeTypes and optional mode");
+  const param = identifier(toolName, `${path}.param`, value.param);
+  const source = input.properties[param];
+  if (!source || source.type !== "string")
+    fail(toolName, `${path}.param`, "expected a string input property");
+  const rawTypes = value.acceptedMimeTypes;
+  if (!Array.isArray(rawTypes) || rawTypes.length < 1 || rawTypes.length > 32 ||
+      rawTypes.some((mime) => typeof mime !== "string" ||
+        !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/u.test(mime)) ||
+      new Set(rawTypes).size !== rawTypes.length)
+    fail(toolName, `${path}.acceptedMimeTypes`, "expected 1-32 distinct MIME types");
+  let mode: ToolNormalInvocationAttachmentInput["mode"];
+  if (value.mode !== undefined) {
+    if (!isPlainObject(value.mode) ||
+        !hasExactKeys(value.mode, ["param", "value"]))
+      fail(toolName, `${path}.mode`, "expected param and value");
+    const modeParam = identifier(toolName, `${path}.mode.param`, value.mode.param);
+    const modeValue = identifier(toolName, `${path}.mode.value`, value.mode.value);
+    const modeInput = input.properties[modeParam];
+    if (!modeInput || modeInput.type !== "string" ||
+        ("enum" in modeInput && !modeInput.enum.includes(modeValue)))
+      fail(toolName, `${path}.mode`, "expected a permitted string input value");
+    mode = Object.freeze({ param: modeParam, value: modeValue });
+  }
+  return Object.freeze({
+    param,
+    acceptedMimeTypes: Object.freeze([...rawTypes] as string[]),
+    ...(mode ? { mode } : {}),
+  });
+}
+
 function parseOperation(
   toolName: string,
   path: string,
@@ -501,13 +542,13 @@ function parseOperation(
     !hasExactKeys(
       raw,
       ["operationId", "summary", "input", "effect", "approval"],
-      ["selectionControlIds", "fixedParams", "payload"],
+      ["selectionControlIds", "fixedParams", "payload", "attachmentInput"],
     )
   ) {
     fail(
       toolName,
       path,
-      "operation must contain operationId/summary/input/effect/approval and optional selectionControlIds/fixedParams/payload",
+      "operation must contain operationId/summary/input/effect/approval and optional selectionControlIds/fixedParams/payload/attachmentInput",
     );
   }
   if (
@@ -533,6 +574,9 @@ function parseOperation(
     raw.fixedParams,
   );
   const payload = parsePayload(toolName, `${path}.payload`, raw.payload);
+  const attachmentInput = parseAttachmentInput(
+    toolName, `${path}.attachmentInput`, input, raw.attachmentInput,
+  );
   const overlaps = new Set(Object.keys(input.properties));
   for (const fixedName of Object.keys(fixedParams ?? {})) {
     if (overlaps.has(fixedName)) {
@@ -563,6 +607,7 @@ function parseOperation(
     ...(selectionControlIds ? { selectionControlIds } : {}),
     ...(fixedParams ? { fixedParams } : {}),
     ...(payload ? { payload } : {}),
+    ...(attachmentInput ? { attachmentInput } : {}),
     effect: raw.effect,
     approval: raw.approval,
   });

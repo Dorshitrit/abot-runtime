@@ -6,7 +6,6 @@ import type {
 import type { ObservationMemoryProposal } from "../long-term-memory/observation-contracts.js";
 import type { LearningCandidateRecord, LearningKnowledgeContext, LearningMemoryDecision, LearningReviewCause, MaturationPolicy } from "../long-term-memory/maturation/contracts.js";
 import type { CoWorkerResourceLimits, CoWorkerResourceUsage } from "./resources/contracts.js";
-import type { ProactiveProposal } from "./proactive/contracts.js";
 import type { LearningApplicationSummary } from "./application-catalog.js";
 import type { CoWorkerReviewProgress, ReviewProgressPort } from "./review-progress.js";
 
@@ -28,6 +27,8 @@ export type PassiveLearningPreferences = Readonly<{
   proactiveEnabled?: boolean;
   /** Absent inherits the learning model; null explicitly clears an override. */
   proactiveModelProfileId?: string | null;
+  /** Explicit companion-chat permissions, independent of collection authorization. */
+  sparkToolPermissionMode?: "ask" | "full_access" | "full_plus";
   proactiveIntervalMinutes?: number;
   proactiveWindow?: LearningAnalysisWindow | null;
   proactiveMessagesPerDay?: number;
@@ -116,7 +117,6 @@ export type ProactiveStatus = Readonly<{
   deliveredToday?: number;
   nextReviewAt?: string;
   reason?: string;
-  proposals: readonly ProactiveProposal[];
 }>;
 export type LearningChangedEvent = Readonly<{
   type: "proposal_delivered";
@@ -176,7 +176,6 @@ export type PassiveLearningService = Readonly<{
   flush(): Promise<void>;
   beginInteractive(): () => void;
   subscribe(listener: (event?: LearningChangedEvent) => void): () => void;
-  dismissProposal?(id: string): Promise<void>;
   sessionDeleted?(sessionId: string): Promise<void>;
   notifyKnowledgeChanged?(): void;
   candidates?(): Promise<readonly Omit<LearningCandidateRecord, "embedding">[]>;

@@ -10,7 +10,6 @@ import { handleActivityControlClick, renderActivityControls } from "./activity-c
 import { createLearningApplications } from "./applications-view.js";
 import { renderResourceUsage } from "./usage-view.js";
 import { renderLearningKnowledge, handleKnowledgeClick } from "./knowledge-view.js";
-import { renderLearningProposals, handleProposalClick } from "./proposal-view.js";
 import { escapeAttribute, escapeHtml } from "../../lib/text-format.js";
 import { learningBatchStatusLabel, renderLearningBatchDetail } from "./batch-detail.js";
 import { learningWorkspaceMarkup, navigateLearningTabs, selectLearningView } from "./workspace-view.js";
@@ -78,7 +77,6 @@ export function createPassiveLearningMemory({
     if (handleActivityControlClick(root, event, actions, () => selectLearningView(root, "settings"))) return;
     if (handleMacCollectionRestartClick(root, event, actions)) return;
     if (handleKnowledgeClick(root, event)) return;
-    if (handleProposalClick(root, event, actions)) return;
     if (event.target.closest("[data-learning-open-settings]")) {
       selectLearningView(root, "settings", true);
       return;
@@ -222,7 +220,6 @@ export function createPassiveLearningMemory({
     renderBatches(snapshot);
     renderBatchDetail(snapshot);
     renderLearningKnowledge(root, snapshot);
-    renderLearningProposals(root, snapshot);
     renderResourceUsage(root, snapshot);
   }
 

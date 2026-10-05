@@ -7,6 +7,7 @@ import {
 } from "../../model/invoke-structured-step.js";
 import type { RequestToolResultsView } from "../../context/request-tool-results.js";
 import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
+import { superCompactionFailureOwner } from "../../context/super-compaction-failure-owner.js";
 import { createSessionMemoryAwareCompactionController } from "../../context/session-memory/index.js";
 import type { ModelStepContextCompactionController } from "../../model/model-step-port.js";
 import type { RequestExecutionScope } from "../../request/execution-scope.js";
@@ -126,6 +127,21 @@ export async function runSupervisorDecision(
   const contextCompaction = createSessionMemoryAwareCompactionController(
     request,
     createModelStepCompactionController(request, {
+      consumer: SUPERVISOR_DECISION_MODEL_STEP,
+      superFailureOwner: superCompactionFailureOwner(
+        request.executionPolicy.authority,
+        {
+          requestId: request.requestId,
+          callId: options.call.callId,
+          parentCallId: options.call.parentCallId,
+          contractId: "supervisor",
+          invocationAttempt: options.call.invocationAttempt,
+          sourceRevision: options.toolResults.sourceRevision,
+          modelStep: SUPERVISOR_DECISION_MODEL_STEP,
+          phase: "compaction",
+          scopeId: `role:supervisor:${options.call.callId}:continuation`,
+        },
+      ),
       call: {
         roleId: "supervisor",
         callId: options.call.callId,
@@ -183,6 +199,7 @@ export async function runSupervisorDecision(
       input.context,
       {
         frozenDecision: routing.decision,
+        filesystemScope: request.workerCapabilities.filesystemScope,
         diagnostic: workingDirectoryDiagnostic,
       },
     );

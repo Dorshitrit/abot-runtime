@@ -83,6 +83,13 @@ export class RequestActivationEvents {
       cause: SessionRequestTerminalCause;
       message: SessionTerminalMessage;
       error: string;
+      prepareFailure?: () => Promise<
+        Readonly<{
+          cause: SessionRequestTerminalCause;
+          message: SessionTerminalMessage;
+          error: string;
+        }>
+      >;
     }>,
   ): Promise<SessionRequestLifecycleSnapshot> {
     this.sealed = true;
@@ -110,14 +117,15 @@ export class RequestActivationEvents {
       return this.acceptTerminalMutation(cancelled);
     }
     if (current.status !== "streaming") return current;
+    const failure = input.prepareFailure ? await input.prepareFailure() : input;
     return this.acceptTerminalMutation(
       await this.store.commitTerminal(current.sessionId, {
         expected: this.expectation(),
         commandId: input.commandId,
         status: "failed",
-        cause: input.cause,
-        message: input.message,
-        error: input.error,
+        cause: failure.cause,
+        message: failure.message,
+        error: failure.error,
       }),
     );
   }

@@ -169,7 +169,6 @@ describe("approval resource capsules", () => {
       },
       hardTimeoutMs: 2000,
       idleTimeoutMs: 1000,
-      outputMaxChars: 1000,
     };
     const first = new RequestToolResources();
     const pending = new Map([["exec-one", execution]]);
@@ -207,7 +206,24 @@ describe("approval resource capsules", () => {
     expect(() => restored.terminal("exec-one", "session-one", 2)).toThrow(
       "stale",
     );
-    expect(restored.terminal("exec-one", "session-one", 3)).toEqual(terminal);
+    const observation = restored.terminal("exec-one", "session-one", 3)!;
+    expect(observation).toEqual({
+      ...terminal,
+      nextCursor: 3,
+      deliveryId: expect.any(String),
+    });
+    expect(() => restored.terminal("exec-one", "session-one", 3)).toThrow(
+      "claimed",
+    );
+    restored.rejectTerminal(observation);
+    const retry = restored.terminal("exec-one", "session-one", 3)!;
+    expect(retry).toEqual({ ...observation, deliveryId: expect.any(String) });
+    expect(retry.deliveryId).not.toBe(observation.deliveryId);
+    restored.rejectTerminal(observation);
+    expect(() => restored.terminal("exec-one", "session-one", 3)).toThrow(
+      "claimed",
+    );
+    restored.forget("exec-one");
     expect(restored.terminal("exec-one", "session-one", 3)).toBeUndefined();
     expect(manager.start).not.toHaveBeenCalled();
     expect(manager.wait).not.toHaveBeenCalled();

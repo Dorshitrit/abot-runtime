@@ -31,6 +31,9 @@ import type {
   SessionMemoryCompactor,
 } from "../context/session-memory/index.js";
 import type { LongTermMemoryService } from "../long-term-memory/contracts.js";
+import type { RegisteredToolEffectPersistence } from "../adapters/registered-tool-normal-invocations/shared/contracts.js";
+import type { ToolNormalInvocationInput } from "../../capabilities/normal-invocation/contracts.js";
+import type { ToolRequestAttachment } from "../../capabilities/tool-types.js";
 
 export type RunRequestMessage = {
   type: string;
@@ -59,6 +62,12 @@ export type RequestHandlerOptions = {
   toolRegistry?: ToolRegistry;
   toolApprovalController?: ToolApprovalController;
   requestSteering?: RequestSteeringInbox;
+  /** Trusted automation-only receipt boundary; never accepted from client JSON. */
+  effectPersistence?: RegisteredToolEffectPersistence;
+  /** Internal Agent-node result shape; never accepted from client JSON. */
+  automationOutputContract?: ToolNormalInvocationInput;
+  /** Validated run-manifest handles for an Automation Agent; never accepted from client JSON. */
+  automationInputAttachments?: readonly ToolRequestAttachment[];
   sessionMemoryCompactor?: SessionMemoryCompactor;
   longTermMemory?: LongTermMemoryService;
 };
@@ -74,6 +83,8 @@ export type RequestExecutionSeed = Readonly<{
   prompt: string;
   temporalContext?: RequestTemporalContext;
   scheduledExecution?: ScheduleMessageReference;
+  /** Trusted persisted session identity; controls root presentation only. */
+  sessionKind?: "spark";
   historyMessages: readonly RequestHistoryMessage[];
   sessionArtifactPaths?: readonly string[];
   shouldGenerateSessionTitle: boolean;
@@ -94,6 +105,8 @@ export type RequestExecutionSeed = Readonly<{
   /** Frozen request-local availability limit for explicit memory recall. */
   memoryRecallLimit?: number;
   requestSteering?: RequestSteeringInbox;
+  effectPersistence?: RegisteredToolEffectPersistence;
+  automationOutputContract?: ToolNormalInvocationInput;
   toolPermissionMode: ToolPermissionMode;
   toolApprovalController?: ToolApprovalController;
   abortSignal: AbortSignal;
@@ -117,11 +130,13 @@ export type AcceptedRequestInput = Readonly<{
   temporalContext?: RequestExecutionSeed["temporalContext"];
   scheduledExecution?: RequestExecutionSeed["scheduledExecution"];
   attachments?: RequestExecutionSeed["attachments"];
+  automationOutputContract?: RequestExecutionSeed["automationOutputContract"];
   agentMode: RequestExecutionSeed["agentMode"];
 }>;
 
 /** Immutable session snapshot captured before request execution begins. */
 export type RequestSessionSnapshot = Readonly<{
+  sessionKind?: RequestExecutionSeed["sessionKind"];
   historyMessages: RequestExecutionSeed["historyMessages"];
   sessionArtifactPaths?: RequestExecutionSeed["sessionArtifactPaths"];
   shouldGenerateSessionTitle: RequestExecutionSeed["shouldGenerateSessionTitle"];
@@ -149,6 +164,7 @@ export type RequestMemoryRuntime = Readonly<{
 export type RequestLifecycleRuntime = Readonly<{
   approvalGate?: RequestExecutionSeed["approvalGate"];
   requestSteering?: RequestExecutionSeed["requestSteering"];
+  effectPersistence?: RequestExecutionSeed["effectPersistence"];
   toolPermissionMode: RequestExecutionSeed["toolPermissionMode"];
   toolApprovalController?: RequestExecutionSeed["toolApprovalController"];
   abortSignal: RequestExecutionSeed["abortSignal"];

@@ -23,6 +23,7 @@ import {
 } from "../config/model-execution-policy.js";
 import { SUPERVISOR_ROOT_CONTRACT } from "./supervisor-root-execution.js";
 import { EXECUTION_AGENT_ROOT_CONTRACT } from "./execution-agent-root-execution.js";
+import { containSuperContextFailures } from "./super-context-failure-executor.js";
 
 type RequestRoleExecutor = RoleExecutor<
   RequestExecutionScope,
@@ -32,15 +33,15 @@ type RequestRoleExecutor = RoleExecutor<
 const REQUEST_ROLE_EXECUTOR_CATALOG = sealRequestRoleExecutorCatalog([
   {
     contractId: "delegated.planner",
-    executor: GENERIC_PLANNER_EXECUTOR,
+    executor: containSuperContextFailures(GENERIC_PLANNER_EXECUTOR, "delegated.planner"),
   },
   {
     contractId: "delegated.worker",
-    executor: GENERIC_WORKER_EXECUTOR,
+    executor: containSuperContextFailures(GENERIC_WORKER_EXECUTOR, "delegated.worker"),
   },
   {
     contractId: "delegated.reviewer",
-    executor: GENERIC_REVIEWER_EXECUTOR,
+    executor: containSuperContextFailures(GENERIC_REVIEWER_EXECUTOR, "delegated.reviewer"),
   },
   {
     contractId: "direct.planner_advisory",

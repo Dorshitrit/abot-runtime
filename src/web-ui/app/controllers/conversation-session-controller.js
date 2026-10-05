@@ -1,10 +1,19 @@
+import {
+  captureContextReplayScope,
+  bindContextReplayEvents,
+  isContextReplayCurrent,
+} from "../lib/context-window-replay.js";
+import { synchronizeContextRequestLifecycle } from "../lib/context-window-state.js";
 import { mergeSessionListReadState } from "../lib/session-read-state.js";
 import { createConversationReadStateController } from "./conversation-read-state-controller.js";
 import { normalizeScheduleReference } from "../lib/schedule-message.js";
 import { createWebSessionId, escapeHtml, textOf } from "../lib/text-format.js";
 import { insertRequestUserMessageBeforeAssistant } from "../ui-behavior.js";
 import { normalizeRealtimeMessage } from "../lib/realtime-message.js";
-import { sparkProposalId } from "../lib/spark-proposal-message.js";
+import {
+  sparkProposalId,
+  sparkHandoffAvailable,
+} from "../lib/spark-proposal-message.js";
 import {
   isStoppedRequest,
   restoreStoppedResponses,
@@ -31,6 +40,7 @@ export function normalizeConversationMessage(raw, fallbackIndex = 0) {
     streaming: false,
     schedule: normalizeScheduleReference(message?.schedule),
     sparkProposalId: sparkProposalId(message),
+    sparkHandoffAvailable: sparkHandoffAvailable(message),
     events: Array.isArray(message?.events)
       ? message.events.map((event) => textOf(event)).filter(Boolean)
       : [],
@@ -189,11 +199,7 @@ export function createConversationSessionController({
 
   function shouldAcceptRealtimeMessage(message) {
     const sessionId = textOf(message.sessionId);
-    if (
-      sessionId &&
-      state.currentSessionId &&
-      sessionId !== state.currentSessionId
-    ) {
+    if (sessionId && sessionId !== state.currentSessionId) {
       return false;
     }
     const requestId = textOf(message.requestId);
@@ -254,20 +260,29 @@ export function createConversationSessionController({
     const requestEvents = [];
     for (const request of requests) {
       if (!Array.isArray(request.events)) continue;
-      const normalizedEvents = request.events.map(normalizeRealtimeMessage);
-      normalizedEvents.sort((left, right) => {
-        const leftTime =
-          typeof left.timestamp === "number" ? left.timestamp : 0;
-        const rightTime =
-          typeof right.timestamp === "number" ? right.timestamp : 0;
-        return (left.seqNo || 0) - (right.seqNo || 0) || leftTime - rightTime;
-      });
+      const replayScope = captureContextReplayScope(
+        state,
+        selectedEnvironmentId(),
+        request.requestId,
+      );
+      const normalizedEvents = bindContextReplayEvents(
+        request.events,
+        replayScope,
+      );
       requestEvents.push(...normalizedEvents);
     }
     hydrateThinkingTextFromEvents(requestEvents, hydrateRequestIds);
     for (const event of requestEvents) {
       if (hydrateRequestIds.has(event.requestId)) handleRealtimeMessage(event);
       else recordEvent(event);
+    }
+    for (const request of requests) {
+      if (!request.lifecycle) continue;
+      synchronizeContextRequestLifecycle(
+        state,
+        { name: "request.lifecycle.changed", lifecycle: request.lifecycle },
+        selectedEnvironmentId(),
+      );
     }
     if (requestEvents.length === 0) {
       for (const message of state.messages) {
@@ -324,6 +339,11 @@ export function createConversationSessionController({
   }
 
   async function replayRequestEvents(requestId, viewVersion) {
+    const replayScope = captureContextReplayScope(
+      state,
+      selectedEnvironmentId(),
+      requestId,
+    );
     const afterSeq = state.lastSeqByRequest.get(requestId) || 0;
     let events = [];
     try {
@@ -345,8 +365,11 @@ export function createConversationSessionController({
     ) {
       return;
     }
+    if (!isContextReplayCurrent(replayScope, state, selectedEnvironmentId()))
+      return;
     if (afterSeq === 0) resetAssistantForReplay(requestId);
-    for (const event of events) handleRealtimeMessage(event);
+    for (const event of bindContextReplayEvents(events, replayScope))
+      handleRealtimeMessage(event);
   }
 
   async function loadSessions() {

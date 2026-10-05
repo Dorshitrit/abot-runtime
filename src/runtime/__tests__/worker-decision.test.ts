@@ -23,6 +23,7 @@ import type {
   RequestExecutionScope,
 } from "../request/execution-scope.js";
 import { createTestRequestExecutionScope } from "./support/request-execution-scope.js";
+import { createSuperCompactionSourceFixture } from "./support/super-compaction-source.js";
 import {
   buildWorkerDecisionInput,
   CAPABILITY_CONTROLS_MODEL_STEP,
@@ -1775,12 +1776,11 @@ describe("generic Worker no-tool decision contract", () => {
   test("does not defer or refine when every newest registry path is already in current results", async () => {
     configureDebugLogger({ enabled: true });
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-    const ledger = await createWorkerLedger();
-    const head = ledger.current();
-    const call = head.state.calls.find(
-      (candidate) => candidate.callId === head.state.activeCallId,
-    );
-    if (!call) throw new Error("canonical Worker call missing");
+    const { ledger, head, call, view: currentResults } =
+      await createSuperCompactionSourceFixture(
+        "worker-request",
+        "artifact-current.txt",
+      );
     const canonicalIntent = "Reuse the current request target.";
     const descriptor = Object.freeze({
       capabilityId: "write_complete_file",
@@ -1802,27 +1802,6 @@ describe("generic Worker no-tool decision contract", () => {
       selectionControlIds: Object.freeze(["path"]),
       runtimePathControlIds: Object.freeze(["path"]),
       catalogGroups: Object.freeze(["write" as const]),
-    });
-    const currentResults: RequestToolResultsView = Object.freeze({
-      sourceRevision: head.revision,
-      results: Object.freeze([
-        Object.freeze({
-          executionId: "capability-execution-existing",
-          callId: call.callId,
-          invocationAttempt: 1,
-          capabilityId: "example.existing",
-          declaredEffect: "observation" as const,
-          outcome: "succeeded" as const,
-          observedEffect: "observation" as const,
-          summary: "The current request already carries the exact target.",
-          references: Object.freeze([
-            Object.freeze({
-              kind: "tool_target" as const,
-              target: "artifact-current.txt",
-            }),
-          ]),
-        }),
-      ]),
     });
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
       expect(JSON.stringify(modelFormatSchema(input.format))).toContain(
@@ -2131,6 +2110,7 @@ describe("generic Worker no-tool decision contract", () => {
     );
     const request = createTestRequestExecutionScope({
       ...createRequest(invoke),
+      modelPolicy: operationSupervisionModelPolicy,
       sessionArtifactPaths: Object.freeze([
         "AbotMarketScopeLuna20260810T1624Z/products.json",
       ]),
@@ -2141,7 +2121,6 @@ describe("generic Worker no-tool decision contract", () => {
         getAdapters: () => Object.freeze([jsonAdapter, projectAdapter]),
       },
     });
-
     const firstResult = await GENERIC_WORKER_EXECUTOR.execute({
       context: request,
       call: firstCall,

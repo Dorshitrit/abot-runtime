@@ -145,6 +145,10 @@ export class LocalRuntimeWebBackend {
     return this.environments.environmentConfig();
   }
 
+  nativePermissions(environmentId: string) {
+    return this.environments.existingNativePermissions(environmentId);
+  }
+
   async stop(): Promise<void> {
     await this.notifications.stop();
     await this.environments.stop();

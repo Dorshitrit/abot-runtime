@@ -1,3 +1,9 @@
+import { isSparkSession } from "../../sessions/spark-session.js";
+import type { AgentMode } from "../../shared/types.js";
+import {
+  createSuperFailureFinalization,
+  type SuperFailureFinalization,
+} from "./super-failure-explanation.js";
 import type WebSocket from "ws";
 import type { SessionRequestLifecycleSnapshot } from "../../sessions/request-lifecycle/contracts.js";
 import type { ToolRequestAttachment } from "../../capabilities/tool-types.js";
@@ -30,11 +36,14 @@ import {
   createRequestCallbacks,
 } from "../streaming/request-callbacks.js";
 import { createRequestContextCompactionStore } from "../context/semantic-compaction/index.js";
-import { restoreRequestContextCompaction } from "../context/semantic-compaction/snapshot.js";
+import { restoreApprovalCompaction } from "./approval-wait/super-compaction-restore.js";
 import { createRequestSessionMemory } from "../context/session-memory/index.js";
 import { restoreRequestSessionMemory } from "../context/session-memory/snapshot.js";
 import { snapshotSessionArtifactPathTargets } from "./session-artifact-path-persistence.js";
-import { createRequestExecutionScope } from "./execution-scope.js";
+import {
+  createRequestExecutionScope,
+  type CompiledRequestExecutionPolicy,
+} from "./execution-scope.js";
 import { createRequestWorkerCapabilityProvider } from "./worker-capability-composition.js";
 import { withToolApprovalWait } from "./tool-approval-wait.js";
 import { RequestActivationEvents } from "./approval-wait/activation-events.js";
@@ -50,6 +59,9 @@ export type RequestPreparationInput = Readonly<{
   steering: RequestSteeringInbox;
   temporalContext: RequestTemporalContext;
   initialEvents: EventSink;
+  onFailurePolicyReady?(policy: CompiledRequestExecutionPolicy): void;
+  onSessionAdmitted?(agentMode: AgentMode): void;
+  onFailureFinalizationReady?(finalization: SuperFailureFinalization): void;
   onEventsReady(
     events: EventSink,
     callbacks: ReturnType<typeof createRequestCallbacks>,
@@ -78,6 +90,7 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
     resume?.snapshot.seed.executionPolicySelection?.policy ??
       selection.execution.policy,
   );
+  params.onFailurePolicyReady?.(executionPolicy);
   const opened = resume
     ? undefined
     : await openRequestSession({
@@ -137,6 +150,8 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
         sessionStore,
         attachmentStore: dependencies.attachmentStore,
         events,
+        onUserMessagePersisted: () =>
+          params.onSessionAdmitted?.(selection.agentMode),
         ...(schedule ? { schedule } : {}),
       });
   const requestWorkingDirectory =
@@ -144,8 +159,11 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
     resolveSessionWorkingDirectory(opened!.session) ??
     options.runtimeConfig?.paths.agentWorkDir ??
     process.cwd();
-  const toolAttachments: readonly ToolRequestAttachment[] =
-    resume?.snapshot.toolAttachments ?? initialized!.toolAttachments;
+  const toolAttachments: readonly ToolRequestAttachment[] = resume?.snapshot
+    .toolAttachments ?? [
+    ...initialized!.toolAttachments,
+    ...(options.automationInputAttachments ?? []),
+  ];
   if (resume) resources.restore(resume.snapshot.resources);
   let controller = dependencies.toolApprovalController;
   if (controller && !options.approvalExecution) {
@@ -160,6 +178,7 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
     sessionId,
     prompt: initialized!.prompt,
     temporalContext: params.temporalContext,
+    ...(isSparkSession(opened!.session) ? { sessionKind: "spark" as const } : {}),
     historyMessages,
     shouldGenerateSessionTitle: generateSessionTitle,
     runnerConfig: loaded.runnerConfig,
@@ -171,12 +190,18 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
       : {}),
     ...(selection.modelPolicy ? { modelPolicy: selection.modelPolicy } : {}),
     toolPermissionMode: input.toolPermissionMode,
+    ...(options.effectPersistence
+      ? { effectPersistence: options.effectPersistence }
+      : {}),
+    ...(options.automationOutputContract
+      ? { automationOutputContract: options.automationOutputContract }
+      : {}),
     sessionArtifactPaths: snapshotSessionArtifactPathTargets(
       opened!.session.artifactPaths,
     ),
     ...(memoryRecallLimit !== undefined ? { memoryRecallLimit } : {}),
   };
-  const seed: RequestExecutionSeed = {
+  const preparedSeed: RequestExecutionSeed = {
     ...baseSeed,
     ...(schedule ? { scheduledExecution: schedule } : {}),
     toolResources: resources,
@@ -184,9 +209,7 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
     longTermMemory,
     requestSteering: steering,
     sessionMemory,
-    contextCompactionStore: resume
-      ? restoreRequestContextCompaction(resume.snapshot.compaction)
-      : createRequestContextCompactionStore(),
+    contextCompactionStore: createRequestContextCompactionStore(),
     ...(controller ? { toolApprovalController: controller } : {}),
     ...(options.approvalExecution
       ? {
@@ -219,6 +242,25 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
       events.event(name, extra);
     },
   };
+  const superFailureFinalization = createSuperFailureFinalization({
+    request: preparedSeed,
+    executionPolicy,
+    readBudgets: () => lifecycle.snapshotBudgets(),
+  });
+  if (superFailureFinalization)
+    params.onFailureFinalizationReady?.(superFailureFinalization);
+  const seed: RequestExecutionSeed = resume
+    ? {
+        ...preparedSeed,
+        contextCompactionStore: restoreApprovalCompaction({
+          snapshot: resume.snapshot.compaction,
+          ledgerCheckpoint: resume.snapshot.runner.ledger,
+          requestId,
+          prompt: baseSeed.prompt,
+          executionPolicy,
+        }),
+      }
+    : preparedSeed;
   const toolRegistry = options.toolRegistry?.prepareRequest
     ? await options.toolRegistry.prepareRequest({
         requestState: resources.state,
@@ -229,11 +271,14 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
   resources.assertRestoredStateClaimed();
   const request = createRequestExecutionScope({
     seed,
+    requestWorkingDirectory,
     executionPolicy,
-    createWorkerCapabilities: (view) =>
+    ...(superFailureFinalization ? { superFailureFinalization } : {}),
+    createWorkerCapabilities: (view, filesystemScope) =>
       createRequestWorkerCapabilityProvider({
         request: view,
         requestWorkingDirectory,
+        ...(filesystemScope ? { filesystemScope } : {}),
         executionPolicyAuthority: executionPolicy.authority,
         requestAttachments: toolAttachments,
         ...(options.runtimeConfig

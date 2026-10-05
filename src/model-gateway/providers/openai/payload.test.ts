@@ -10,6 +10,7 @@ import {
 function createLargeDecisionRequest(): ModelGatewayRequest {
   return {
     modelStep: "execution.decision",
+    agentMode: "fast",
     messages: [{ role: "user", content: "x".repeat(520_000) }],
     modelPolicy: {
       providers: { remote: { type: "openai" } },
@@ -18,6 +19,7 @@ function createLargeDecisionRequest(): ModelGatewayRequest {
           provider: "remote",
           model: "gpt-test-luna",
           contextWindowTokens: 128_000,
+          supportsThinking: true,
         },
       },
       defaults: { profileId: "luna" },

@@ -5,6 +5,7 @@ import { deleteSessionAttachmentsIfSupported } from "./attachment-routes.js";
 import { WebSessionReadStates } from "../session-read-state/service.js";
 import { sendJson } from "./http.js";
 import type { WorkspaceChangeNotifier } from "./workspace-notifications.js";
+import { isSparkSession, SPARK_SESSION_ID } from "../../sessions/spark-session.js";
 
 type SessionRouteRequest = {
   method: string;
@@ -14,6 +15,17 @@ type SessionRouteRequest = {
   environment: RuntimeEnvironment;
   response: ServerResponse;
 };
+
+async function isProtectedSparkSession(environment: RuntimeEnvironment, sessionId: string): Promise<boolean> {
+  if (sessionId !== SPARK_SESSION_ID) return false;
+  const session = await environment.services.sessions.getSessionById(sessionId);
+  if (!session) return false;
+  return isSparkSession(session);
+}
+
+function isSparkChatBusy(error: unknown): boolean {
+  return error instanceof Error && error.message === "spark_chat_busy";
+}
 
 export class WebSessionRoutes {
   constructor(
@@ -71,14 +83,25 @@ export class WebSessionRoutes {
       return true;
     }
     if (method === "DELETE" && action === "messages") {
-      const result = await sessions.clearSessionMessages(sessionId);
+      const protectedSpark = await isProtectedSparkSession(environment, sessionId);
+      let result;
+      try {
+        result = await sessions.clearSessionMessages(sessionId);
+      } catch (error) {
+        if (!isSparkChatBusy(error)) throw error;
+        sendJson(response, 409, {
+          ok: false, error: "spark_chat_busy",
+          message: "Stop the active request or resolve its approval before clearing SPARK chat.",
+        });
+        return true;
+      }
       if (!result) {
         sendJson(response, 404, { ok: false, error: "session_not_found" });
         return true;
       }
       try {
         await this.readStates.reset(environmentId, sessionId);
-        await deleteSessionAttachmentsIfSupported(environment, sessionId);
+        if (!protectedSpark) await deleteSessionAttachmentsIfSupported(environment, sessionId);
       } finally {
         this.notifyChanged?.(environmentId, ["sessions"]);
       }
@@ -86,6 +109,10 @@ export class WebSessionRoutes {
       return true;
     }
     if (method === "DELETE" && !action) {
+      if (await isProtectedSparkSession(environment, sessionId)) {
+        sendJson(response, 409, { ok: false, error: "spark_session_requires_clear" });
+        return true;
+      }
       try {
         const result = await deleteSessionWithAttachments(
           sessions,

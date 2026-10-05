@@ -1,3 +1,4 @@
+import type { SuperFailureFinalization } from "./super-failure-explanation.js";
 import type { RequestModelStepPort } from "../model/model-step-port.js";
 import {
   BOUND_REQUEST_MODEL_INVOCATION,
@@ -77,6 +78,13 @@ export function createCapabilityCompositionView(
           ),
         }
       : {}),
+    ...(facets.lifecycle.effectPersistence !== undefined
+      ? {
+          effectPersistence: enumerableGetter(
+            () => facets.lifecycle.effectPersistence!,
+          ),
+        }
+      : {}),
     onEvent: enumerableGetter(() => facets.lifecycle.onEvent),
     ...(facets.session.contextCompactionStore !== undefined
       ? {
@@ -108,15 +116,26 @@ export function createScopeSurface(
     modelInvocation: RequestModelInvocationView;
     modelSteps: RequestModelStepPort;
     capabilities: RequestWorkerCapabilities;
+    superFailureFinalization?: SuperFailureFinalization | undefined;
   }>,
 ): RequestExecutionScope {
   const { facets, policy, modelInvocation, modelSteps, capabilities } = input;
   return createFrozenSurface<RequestExecutionScope>({
     ...requestSeedDescriptors(facets, policy.selection, true),
+    ...(facets.session.sessionKind
+      ? { sessionKind: enumerableGetter(() => facets.session.sessionKind!) }
+      : {}),
     ...(facets.input.scheduledExecution !== undefined
       ? {
           scheduledExecution: enumerableGetter(
             () => facets.input.scheduledExecution!,
+          ),
+        }
+      : {}),
+    ...(facets.input.automationOutputContract !== undefined
+      ? {
+          automationOutputContract: enumerableGetter(
+            () => facets.input.automationOutputContract!,
           ),
         }
       : {}),
@@ -150,6 +169,11 @@ export function createScopeSurface(
     policy: hiddenValue(policy),
     modelInvocation: hiddenValue(modelInvocation),
     capabilities: hiddenValue(capabilities),
+    ...(input.superFailureFinalization
+      ? {
+          superFailureFinalization: hiddenValue(input.superFailureFinalization),
+        }
+      : {}),
     [BOUND_REQUEST_MODEL_INVOCATION]: hiddenValue(true),
     [REQUEST_EXECUTION_SCOPE]: hiddenValue(true),
   });
@@ -208,6 +232,13 @@ function requestSeedDescriptors(
       ? { attachments: enumerableGetter(() => facets.input.attachments!) }
       : {}),
     agentMode: enumerableGetter(() => facets.input.agentMode),
+    ...(facets.input.automationOutputContract !== undefined
+      ? {
+          automationOutputContract: enumerableGetter(
+            () => facets.input.automationOutputContract!,
+          ),
+        }
+      : {}),
     ...(facets.model.modelPreference !== undefined
       ? {
           modelPreference: enumerableGetter(
@@ -240,6 +271,13 @@ function requestSeedDescriptors(
       ? {
           toolApprovalController: enumerableGetter(
             () => facets.lifecycle.toolApprovalController!,
+          ),
+        }
+      : {}),
+    ...(facets.lifecycle.effectPersistence !== undefined
+      ? {
+          effectPersistence: enumerableGetter(
+            () => facets.lifecycle.effectPersistence!,
           ),
         }
       : {}),

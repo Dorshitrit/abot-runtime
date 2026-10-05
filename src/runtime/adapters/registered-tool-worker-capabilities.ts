@@ -180,6 +180,7 @@ export function createRegisteredToolWorkerCapabilityProvider<TContext>(
             : {}),
           nextApprovalId: params.nextApprovalId,
           ...(params.onEvent ? { onEvent: params.onEvent } : {}),
+          ...(params.effectPersistence ? { effectPersistence: params.effectPersistence } : {}),
         });
         adapters = projectWorkerAdapters<TContext>({
           operationIds: resolvedCatalog.operationIds,

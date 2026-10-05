@@ -3,6 +3,7 @@ import type { SessionDeletionListener } from "./session-deletion-cleanup.js";
 import { createSessionDeletionBoundary } from "./session-deletion-boundary.js";
 import type { SessionDeletionFinalizer } from "./session-deletion-finalization.js";
 import { createSessionMutationQueue } from "./session-mutation-queue.js";
+import type { SessionClearBoundary } from "./spark-session-clear.js";
 export type { SessionDeletionListener } from "./session-deletion-cleanup.js";
 
 export class SessionDeletedError extends Error {
@@ -34,12 +35,16 @@ export type SessionLifecycleStore = Readonly<{
 export function createSessionLifecycleStore(
   base: SessionStore,
   finalizeDeletion?: SessionDeletionFinalizer,
+  /** Runs inside the deletion queue after the tombstone, before the transcript is removed. */
+  beforeDelete?: (sessionId: string) => Promise<void>,
+  clearBoundary?: SessionClearBoundary,
 ): SessionLifecycleStore {
   const enqueueSessionMutation = createSessionMutationQueue();
   const deletion = createSessionDeletionBoundary(
     base,
     enqueueSessionMutation,
     finalizeDeletion,
+    beforeDelete,
   );
 
   function assertSessionNotDeleted(sessionId: string): void {
@@ -61,6 +66,23 @@ export function createSessionLifecycleStore(
   }
 
   const store: SessionStore = {
+    ...(base.assertInteractiveSession
+      ? { assertInteractiveSession: base.assertInteractiveSession.bind(base) }
+      : {}),
+    ...(base.createAutomationSession
+      ? {
+          createAutomationSession: wrapSessionMutation(
+            base.createAutomationSession,
+          ),
+        }
+      : {}),
+    ...(base.runAsAutomationSession
+      ? { runAsAutomationSession: base.runAsAutomationSession.bind(base) }
+      : {}),
+    ...(base.releaseAutomationSession
+      ? { releaseAutomationSession: base.releaseAutomationSession.bind(base) } : {}),
+    ...(base.reconcileAutomationSessions
+      ? { reconcileAutomationSessions: base.reconcileAutomationSessions.bind(base) } : {}),
     ...(base.requestLifecycle
       ? {
           requestLifecycle: {
@@ -93,6 +115,9 @@ export function createSessionLifecycleStore(
         }
       : {}),
     getAllSessions: base.getAllSessions.bind(base),
+    ...(base.appendAssistantInitiative
+      ? { appendAssistantInitiative: wrapSessionMutation(base.appendAssistantInitiative) }
+      : {}),
     listSessions: base.listSessions.bind(base),
     getSessionById: base.getSessionById.bind(base),
     getSessionSnapshot: base.getSessionSnapshot.bind(base),
@@ -105,8 +130,8 @@ export function createSessionLifecycleStore(
     compareAndSwapSessionMemoryCheckpoint: wrapSessionMutation(
       base.compareAndSwapSessionMemoryCheckpoint,
     ),
-    resetSession: wrapSessionMutation(base.resetSession),
-    clearSessionMessages: wrapSessionMutation(base.clearSessionMessages),
+    resetSession: wrapSessionClear(base.resetSession),
+    clearSessionMessages: wrapSessionClear(base.clearSessionMessages),
     deleteMessage: wrapSessionMutation(base.deleteMessage),
     deleteMessageWithStats: wrapSessionMutation(base.deleteMessageWithStats),
     deleteSession: async (sessionId) =>
@@ -132,4 +157,12 @@ export function createSessionLifecycleStore(
     isDeleted: deletion.isDeleted,
     onDeleted: deletion.onDeleted,
   };
+
+  function wrapSessionClear<T>(operation: (sessionId: string) => Promise<T>) {
+    const mutate = wrapSessionMutation(operation);
+    return (sessionId: string): Promise<T> => {
+      if (!clearBoundary) return mutate(sessionId);
+      return clearBoundary(sessionId, () => mutate(sessionId));
+    };
+  }
 }

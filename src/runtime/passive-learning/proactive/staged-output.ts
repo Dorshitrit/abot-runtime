@@ -1,6 +1,7 @@
 import type { LearningKnowledgeEntry } from "../../long-term-memory/maturation/contracts.js";
 import { isBoundedProactiveText } from "./contracts.js";
 import type { StagedProactiveReferences } from "./staged-context.js";
+import { isSparkHandoffBrief } from "../../../sessions/spark-handoff-brief.js";
 
 function decodeStageObject(text: string, keys: readonly string[]): Record<string, unknown> {
   let value: unknown;
@@ -39,11 +40,19 @@ export function decodeStagedProactiveObjective(text: string): string | null {
   return objective;
 }
 
-export function decodeStagedProactiveMessage(text: string): Readonly<{ title: string; message: string }> {
-  const value = decodeStageObject(text, ["title", "message"]);
-  if (!isBoundedProactiveText(value.title, 160)) throw new Error("proactive_title_invalid");
-  if (!isBoundedProactiveText(value.message, 4000)) throw new Error("proactive_message_invalid");
-  return { title: value.title, message: value.message };
+export function decodeStagedProactiveMessage(text: string): string {
+  if (!isBoundedProactiveText(text, 4000)) throw new Error("proactive_message_invalid");
+  return text;
+}
+
+export function decodeStagedProactiveTitle(text: string): string {
+  if (!isBoundedProactiveText(text, 160)) throw new Error("proactive_title_invalid");
+  return text;
+}
+
+export function decodeStagedProactiveHandoffBrief(text: string): string {
+  if (!isSparkHandoffBrief(text)) throw new Error("proactive_handoff_brief_invalid");
+  return text;
 }
 
 export function decodeStagedProactiveTiming(text: string, hasProposal: boolean, acceptedAt: string) {

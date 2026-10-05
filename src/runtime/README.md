@@ -154,14 +154,21 @@ isolation boundaries.
   `reviewer_verdict_v1` receipt to its exact caller. The receipt is passive
   canonical evidence; it does not choose remediation or finalization.
 - **Auditor** receives typed criteria and a complete canonical work inventory
-  in the direct policy. It independently selects whole original evidence,
+  in the direct policy. It independently selects evidence by execution ID,
   then returns a passive pass/gaps/needs_evidence advisory. A request for more
   evidence identifies the complete next bundle; the next root invocation of
   the same criteria binds those exact records without rerunning tools. Pass
-  requires full inventory classification and all needed originals in the
-  current bundle. Previews and prior advisory summaries are not proof.
-  Exact evidence is never compacted or truncated to fit. The configured model
-  context budget controls admission, with no separate fixed evidence-count or
+  requires full inventory classification and sufficient facts from all needed
+  entries in the current bundle. Previews and prior advisory summaries are not
+  proof. A verified existing EA source digest replaces the corresponding raw
+  adapter result, using the same source identity check as payload authoring;
+  new or uncompacted results retain their original representation. The audit
+  retains its own criteria and receives no EA continuation or decisions.
+  Summary omissions do not prove absence: missing material detail returns as
+  `gaps` for the EA to collect focused fresh evidence. `needs_evidence` selects
+  other existing representations, not hidden originals behind summaries.
+  Selected representations are never compacted again or truncated to fit. The
+  configured model context budget controls admission, with no separate fixed evidence-count or
   character ceiling. Exact duplicate receipt supplements use explicit paths
   into the same unchanged original adapter result. Capacity failures return a
   failed advisory instead of requesting repair of a valid evidence selection;
@@ -226,14 +233,33 @@ overall completion, or write the final response.
 Worker-owned and root-owned capabilities use the same `tool_payload.raw`
 payload author. The author validates the active principal against the frozen
 policy authority. The delegated Worker keeps its established assignment
-capsule; a direct root payload binds the exact request source, ordered steering,
-and immutable controls. Capability `intent` is bounded client-facing
+capsule; a direct root payload carries its selected bounded `operationObjective`
+through the same `authoringObjective` channel, bound to the exact request source,
+ordered steering and immutable controls. Fully selected controls need no extra
+model round. Controls-only objectives do not enter payload authoring.
+Capability `intent` is bounded client-facing
 presentation metadata and is never projected as payload authority or execution
 evidence. Before Worker payload or result authoring, dependency results are
 narrowed to their existing result fields and optional `semanticCheckpoints`;
 work receipts and derived lineage do not cross either raw authoring boundary.
 There is no second payload or adapter pipeline for
 `execution-agent-v1`.
+
+When an Execution Agent operation has remaining controls, its decision selects
+`controlsEvidenceExecutionIds` from the settled executions of that same root
+call. The decision state exposes eligible IDs even after root compaction. An
+empty selection supplies no prior tool-result bodies to Controls. Selected
+results use the canonical evidence projection once per batch; each slot retains
+its own evidence bindings and bounded operation objective. Results already
+covered by the same EA call's verified checkpoint use their source digests;
+fresh or uncovered results retain their original representation. Reuse uses
+the shared source identity check and transfers neither the EA continuation nor
+unselected sources. The canonical ledger and selected-result binding stay exact;
+only the model-visible bodies change. Controls compaction
+is bound to that frozen assignment and steering version. The selection field
+ends at refinement and never enters adapter controls or prepared approvals.
+The delegated Supervisor workflow retains its shared Worker evidence scope and
+staged decision, Controls, payload, result and review contracts.
 
 When direct capability controls refinement exhausts structured-output
 validation, the kernel commits the canonical
@@ -393,14 +419,44 @@ output-token limit.
 
 Current-session conversation continuity is core-owned. The raw transcript stays
 canonical, while root decision and response steps receive one passive session
-checkpoint plus every uncovered complete turn. At the shared 70 percent
-context threshold, the runtime summarizes only the old settled prefix and
-keeps the latest ten complete user-agent turns raw. The checkpoint is persisted
-with exact message fingerprints and an optimistic source revision; it is not
+checkpoint plus every uncovered settled turn. A standalone assistant initiative
+is a settled turn with no user message; it stays in ordinary chronological history
+and follows the same retention policy. At the shared 70 percent context threshold,
+the runtime summarizes only the old settled prefix and keeps the latest ten turns
+raw. The checkpoint is persisted with exact message fingerprints and an optimistic
+source revision; it is not
 projected to Planner, Worker, Reviewer, Auditor, payload authors, or tools.
 Profiles cannot cap conversation messages independently. Client lifecycle uses
 the existing `context.compaction.*` events, with `session_history` retained as
 diagnostic scope metadata.
+
+Active-request semantic checkpoints retain their separate source scope. The
+compactor receives invocation-local source keys, and each returned digest is
+bound to that key before the runtime stores the existing v2 checkpoint. Every
+checkpoint projection identifies its contents as passive evidence from the
+listed sources; an omitted fact does not establish absence or change the active
+assignment, tool authority, approval state, or completion status.
+
+The complete active-request checkpoint (source digests, continuation, and its
+reference envelope) has a shared token budget of 30 percent of the consuming
+model's configured context window. Generation validates the projected checkpoint
+using provider input counting when available, otherwise the configured estimator.
+There is no aggregate 8,000-character quota. Structural identity and per-field
+continuation constraints remain enforced; full-message admission separately
+accounts for instructions, other retained input, and response headroom. Oversized
+checkpoint output uses the existing repair path with measured usage and allowance.
+
+Immediate operation-supervision evidence is bound to the current request, call,
+activation and ledger revision. After checkpoint projection, EA decision/response
+and SUPER Worker decision/result inputs retain an exact action/result reference
+when that lane remains present. If the same owner's verified checkpoint covers
+the canonical result, the notice keeps its accepted action and outcome receipt
+and refers to that checkpoint's partial source digest instead of restoring the
+raw result. The binding uses registered source bytes and fingerprints, never
+model-authored envelope labels. Uncovered and cross-call evidence keeps its
+canonical original. The final input, including this evidence, passes ordinary
+context admission before a new checkpoint is committed. Controls and payload
+authors do not receive this current supervision capsule.
 
 Every tool and skill binding is declared once by a package under root
 `plugins/`. Runtime config only applies `plugins.enabled`, `plugins.allow`, and
@@ -408,6 +464,39 @@ Every tool and skill binding is declared once by a package under root
 registered operations generically for an authorized Worker or root. Adding,
 removing, or renaming a tool must not require a request-runner or role prompt
 branch.
+
+ABot Studio draft authoring uses the same capability engine. The
+`automation_builder` capability creates a draft from optional `settings` and
+ordered `steps`. Each step has a local `key`; explicit `$key` result bindings
+connect steps, and parallel steps contain arrays of branch steps. A focused
+compiler generates the canonical mutation envelopes, parent references and
+positions, with the same defaults as individual edits. Updating an existing
+draft still uses the canonical mutation batch and expected revision; legacy
+batch creation remains supported. Both routes commit in one transaction.
+The draft manager owns generated node IDs,
+local-reference resolution, graph validation, revision checks, and the single
+commit. A rejected group persists none of its changes. The model-facing
+authoring surface offers connected writes, discovery, reads,
+validation and saved-agent reuse. Granular editing actions remain supported by
+the direct adapter API but are not offered as competing model capabilities. Neither
+authoring capability can grant permission, publish, activate, or run a draft,
+and neither is selectable as a step within an automation.
+
+Model-facing `browse_catalog` reads the compact global index without requiring
+a draft. `prepare_draft` resolves a bounded set of exact operation references
+from that canonical catalog and returns their schemas plus the complete
+authoring reference. That passive reference includes structured agent results,
+bindings, settings and their limits; it grants no authority to execute future
+steps. Discovery controls are selected completely so no extra controls-model
+round is required. Legacy direct catalog and granular-edit contracts remain
+available for compatibility.
+The builder declares one structured payload stage through the existing generic
+tool metadata. Its bounded generation schema reaches both root and Worker
+payload models and is projected by each provider adapter. Canonical parsers
+still enforce field limits, references and graph semantics before persistence;
+the generation format neither repairs invalid output nor retries it.
+Authoring changes do not alter context-window capacity, compaction, role
+authority, or the shared request loop.
 
 Environment profiles under `environment.profiles` isolate generated runtime
 data roots. Model profiles under `models.profiles` select providers,

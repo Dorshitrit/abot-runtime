@@ -9,6 +9,8 @@ import type {
   ExecFilesystemSnapshot,
 } from "./types.js";
 import { ExecPluginError } from "./errors.js";
+import { ExecTerminalDelivery } from "./terminal-delivery.js";
+import { isExecOutputBody } from "./output-files.js";
 
 type SavedExecution = Readonly<{
   processId: string;
@@ -28,6 +30,7 @@ type SavedExecution = Readonly<{
 export class ExecRequestResources {
   private readonly owned = new Map<string, string>();
   private readonly restored = new Map<string, SavedExecution>();
+  private readonly deliveries = new Map<string, ExecTerminalDelivery>();
   constructor(
     private readonly manager: ExecProcessManager,
     private readonly pending: Map<string, PendingExecExecution>,
@@ -54,6 +57,10 @@ export class ExecRequestResources {
   forget(processId: string) {
     this.owned.delete(processId);
     this.restored.delete(processId);
+    this.deliveries.delete(processId);
+  }
+  isRestored(processId: string): boolean {
+    return this.restored.has(processId);
   }
   terminal(
     processId: string,
@@ -72,10 +79,16 @@ export class ExecRequestResources {
         "stale_exec_process_cursor",
         "The saved exec cursor is stale.",
       );
-    this.restored.delete(processId);
-    return structuredClone(entry.snapshot);
+    return this.deliveries.get(processId)!.reserve({
+      ...structuredClone(entry.snapshot),
+      nextCursor: entry.cursor,
+    });
+  }
+  rejectTerminal(snapshot: ExecProcessSnapshot): void {
+    this.deliveries.get(snapshot.processId)?.reject(snapshot);
   }
   private snapshot() {
+    for (const delivery of this.deliveries.values()) delivery.assertAvailable();
     const executions: SavedExecution[] = [...this.restored.values()];
     for (const [processId, scope] of this.owned) {
       const execution = this.pending.get(processId);
@@ -94,12 +107,13 @@ export class ExecRequestResources {
         },
       });
     }
-    return { kind: "exec_terminal_state_v1", executions };
+    return { kind: "exec_terminal_state_v2", executions };
   }
   private restore(value: unknown) {
     if (
       !isRecord(value) ||
-      value.kind !== "exec_terminal_state_v1" ||
+      (value.kind !== "exec_terminal_state_v1" &&
+        value.kind !== "exec_terminal_state_v2") ||
       !Array.isArray(value.executions)
     )
       throw invalid();
@@ -108,6 +122,7 @@ export class ExecRequestResources {
         throw invalid();
       const before = entry.execution.filesystemStateBefore;
       this.restored.set(entry.processId, structuredClone(entry));
+      this.deliveries.set(entry.processId, new ExecTerminalDelivery());
       this.pending.set(entry.processId, {
         ...structuredClone(entry.execution),
         filesystemStateBefore: before
@@ -129,6 +144,7 @@ export class ExecRequestResources {
     for (const id of this.restored.keys()) this.pending.delete(id);
     this.owned.clear();
     this.restored.clear();
+    this.deliveries.clear();
   }
 }
 function isSavedExecution(value: unknown): value is SavedExecution {
@@ -141,8 +157,8 @@ function isSavedExecution(value: unknown): value is SavedExecution {
     !isRecord(value.snapshot) ||
     value.snapshot.processId !== value.processId ||
     value.snapshot.status !== "settled" ||
-    !isStream(value.snapshot.stdout) ||
-    !isStream(value.snapshot.stderr) ||
+    !isStream(value.snapshot.stdout, "stdout") ||
+    !isStream(value.snapshot.stderr, "stderr") ||
     !Number.isFinite(value.snapshot.elapsedMs) ||
     !isRecord(value.execution) ||
     typeof value.execution.commandPreview !== "string" ||
@@ -152,11 +168,9 @@ function isSavedExecution(value: unknown): value is SavedExecution {
   )
     return false;
   if (
-    ![
-      value.execution.hardTimeoutMs,
-      value.execution.idleTimeoutMs,
-      value.execution.outputMaxChars,
-    ].every(Number.isFinite)
+    ![value.execution.hardTimeoutMs, value.execution.idleTimeoutMs].every(
+      Number.isFinite,
+    )
   )
     return false;
   const before = value.execution.filesystemStateBefore;
@@ -181,11 +195,13 @@ function isSavedExecution(value: unknown): value is SavedExecution {
       ))
   );
 }
-function isStream(value: unknown): boolean {
+function isStream(value: unknown, stream: "stdout" | "stderr"): boolean {
   return (
     isRecord(value) &&
     typeof value.text === "string" &&
     typeof value.sawOutput === "boolean" &&
+    (value.body === undefined ||
+      (isExecOutputBody(value.body) && value.body.stream === stream)) &&
     isRecord(value.metadata) &&
     typeof value.metadata.truncated === "boolean" &&
     [

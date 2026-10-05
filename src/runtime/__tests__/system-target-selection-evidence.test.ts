@@ -1,11 +1,53 @@
 import { describe, expect, test } from "vitest";
+import { parseToolNormalInvocationContract } from "../../capabilities/normal-invocation/index.js";
 import {
+  linuxNativeTarget,
   requestConnectionId,
   requestHostId,
   systemRequestPluginFixture,
 } from "./support/system-request-plugin-fixture.js";
 
 describe("request-effective system capabilities omit connection selection", () => {
+  test.each([1, 2, 3])(
+    "prepared contracts remain valid with %i available OS targets",
+    async (targetCount) => {
+      const nativeTargets =
+        targetCount === 3
+          ? [
+              linuxNativeTarget,
+              {
+                id: "macos" as const,
+                transport: "native" as const,
+                shell: "/bin/zsh",
+              },
+            ]
+          : [linuxNativeTarget];
+      const h = systemRequestPluginFixture(nativeTargets);
+      const expectedTargets = [
+        ...nativeTargets.map(({ id }) => id),
+        ...(targetCount > 1 ? ["windows"] : []),
+      ];
+      if (targetCount === 1)
+        h.readHostStatus.mockResolvedValue({ paired: false, connected: false });
+      const modules = await h.prepare();
+      expect(modules.length).toBeGreaterThan(0);
+      for (const module of modules) {
+        const parsed = parseToolNormalInvocationContract(
+          module.definition.name,
+          module.normalInvocation,
+        );
+        expect(parsed).toEqual(module.normalInvocation);
+        for (const operation of parsed!.operations) {
+          const target = operation.input.properties.target;
+          if (target)
+            expect(target).toEqual({ type: "string", enum: expectedTargets });
+        }
+      }
+      expect(h.native).not.toHaveBeenCalled();
+      expect(h.executeHostOperation).not.toHaveBeenCalled();
+    },
+  );
+
   test("Docker offers native Linux and connected Windows without connection identity", async () => {
     const h = systemRequestPluginFixture();
     const modules = await h.prepare();

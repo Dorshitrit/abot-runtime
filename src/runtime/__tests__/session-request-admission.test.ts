@@ -10,6 +10,22 @@ function createGate() {
 }
 
 describe("shared session request admission", () => {
+  test("a reservation acquired during the saved-approval read still excludes the request", async () => {
+    const checking = createGate(); const checked = createGate();
+    const hasSavedWait = vi.fn(async () => { checking.open(); await checked.waiting; return false; });
+    const admission = new SessionRequestAdmission(() => false, hasSavedWait);
+    const execute = vi.fn(async () => "after reservation");
+    const running = admission.run("session", execute);
+    await checking.waiting;
+    const release = admission.tryReserve("session")!;
+    expect(release).toBeTypeOf("function");
+    checked.open();
+    await Promise.resolve(); await Promise.resolve();
+    try { expect(execute).not.toHaveBeenCalled(); }
+    finally { release(); await running; }
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
   test("closing admission rejects queued work immediately while idle waits for actual reservations and requests", async () => {
     const admission = new SessionRequestAdmission(() => false);
     const release = admission.tryReserve("scheduled")!;

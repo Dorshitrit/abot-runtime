@@ -57,7 +57,7 @@ describe("context window replay freshness", () => {
         contextWindow,
       }),
     ).toEqual(completedStatus);
-    expect(renderActivityStatus).toHaveBeenCalledTimes(2);
+    expect(renderActivityStatus).toHaveBeenCalledTimes(3);
   });
 
   test.each(["completed", "failed"])(
@@ -67,6 +67,7 @@ describe("context window replay freshness", () => {
       const terminal = {
         type: "event",
         name: `context.compaction.${phase}`,
+        invocationId: "outer-1",
         requestId: "request-1",
         eventSequence: 12,
         seqNo: 12,
@@ -90,6 +91,7 @@ describe("context window replay freshness", () => {
       const started = {
         type: "event",
         name: "context.compaction.started",
+        invocationId: "outer-1",
         requestId: "request-1",
         eventSequence: 11,
         seqNo: 21,
@@ -101,7 +103,7 @@ describe("context window replay freshness", () => {
 
       const contextWindow = state.contextWindowByRequest.get("request-1");
       expect(contextWindow?.pendingCompaction).toBeNull();
-      expect(contextWindow?.lastCompactionEvent).toEqual({
+      expect(contextWindow?.lastCompactionEvent).toMatchObject({
         eventSequence: 12,
         seqNo: 12,
       });
@@ -129,6 +131,7 @@ describe("context window replay freshness", () => {
       controller.handle({
         type: "event",
         name: "context.compaction.started",
+        invocationId: "outer-1",
         requestId: "request-1",
         eventSequence: 10,
         seqNo: 10,
@@ -154,6 +157,7 @@ describe("context window replay freshness", () => {
       controller.handle({
         type: "event",
         name: `context.compaction.${phase}`,
+        invocationId: "outer-1",
         requestId: "request-1",
         eventSequence: 20,
         seqNo: 31,
@@ -163,7 +167,7 @@ describe("context window replay freshness", () => {
 
       const contextWindow = state.contextWindowByRequest.get("request-1");
       expect(contextWindow?.pendingCompaction).toBeNull();
-      expect(contextWindow?.lastCompactionEvent).toEqual({
+      expect(contextWindow?.lastCompactionEvent).toMatchObject({
         eventSequence: 20,
         seqNo: 31,
       });

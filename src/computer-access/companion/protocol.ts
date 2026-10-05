@@ -4,6 +4,7 @@ import type { PassiveCollectorEvent } from "../../shared/passive-observation.js"
 import type { companionReleaseStatus } from "./release-version.js";
 
 export const DESKTOP_NOTIFICATION_OPERATION = "desktop_notification";
+export const MACOS_PERMISSION_OPERATION = "macos_permissions";
 export const HOST_PROTOCOL_VERSION = 1;
 export const HOST_SOCKET_PATH = "/system-host/connect";
 export const HOST_WIRE_MAX_BYTES = 256 * 1024;
@@ -21,6 +22,7 @@ export const COMPUTER_HOST_OPERATIONS = [
 export type HostOperation =
   | (typeof HOST_OPERATIONS)[number]
   | (typeof COMPUTER_HOST_OPERATIONS)[number]
+  | typeof MACOS_PERMISSION_OPERATION
   | typeof DESKTOP_NOTIFICATION_OPERATION;
 export type HostIdentity = Readonly<{
   name: string;
@@ -84,6 +86,7 @@ export function isHostOperation(value: unknown): value is HostOperation {
 export function isHostWireOperation(value: unknown): value is HostOperation {
   if (isHostOperation(value)) return true;
   if (value === DESKTOP_NOTIFICATION_OPERATION) return true;
+  if (value === MACOS_PERMISSION_OPERATION) return true;
   return COMPUTER_HOST_OPERATIONS.some((operation) => operation === value);
 }
 export function isHostRecord(value: unknown): value is Record<string, unknown> {

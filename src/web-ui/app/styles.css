@@ -15,7 +15,6 @@
 @import url("./styles/27-conversation-tools.css");
 @import url("./styles/28-conversation-status.css");
 @import url("./styles/29-conversation-file-preview.css");
-@import url("./styles/29-spark-conversation.css");
 @import url("./styles/30-inspector-config.css");
 @import url("./styles/40-config-workspace.css");
 @import url("./styles/41-plugin-management.css");
@@ -34,6 +33,7 @@
 @import url("./styles/90-responsive.css");
 @import url("./styles/91-schedules-responsive.css");
 @import url("./styles/18-dashboard.css");
+@import url("./styles/19-dashboard-automations.css");
 @import url("./styles/19-dashboard-approvals.css");
 @import url("./styles/19-home-guidance.css");
 @import url("./styles/92-dashboard-responsive.css");
@@ -49,3 +49,11 @@
 @import url("./styles/43-co-worker-applications.css");
 @import url("./styles/48-notifications.css");
 @import url("./styles/49-macos-permission.css");
+@import url("./styles/50-automations.css");
+@import url("./styles/51-automation-editor-actions.css");
+@import url("./styles/51-automation-templates.css");
+@import url("./styles/52-automation-step-editor.css");
+@import url("./styles/52-automation-reports.css");
+@import url("./styles/53-automation-schema-inputs.css");
+@import url("./styles/54-spark-chat.css");
+@import url("./styles/94-automations-responsive.css");

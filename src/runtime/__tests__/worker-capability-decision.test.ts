@@ -10,6 +10,7 @@ import {
   type RequestToolResultsView,
 } from "../context/request-tool-results.js";
 import { OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND } from "../context/operation-supervision-evidence.js";
+import { readSuperWorkerCompactionSidecar } from "../context/super-worker-compaction-sidecar.js";
 import {
   SEMANTIC_COMPACTION_CONTEXT_LANE,
   assertValidSemanticCompactionCheckpoint,
@@ -1701,6 +1702,11 @@ describe("generic Worker capability decision boundary", () => {
       workingDirectory: "project",
     });
 
+    await createBinding(ledger, requireActiveWorkerCall(ledger)).execute({
+      capabilityId: "example.observe",
+      intent: "Read independent current-call evidence.",
+      controls: {},
+    });
     const secondCallBeforeIntervention = requireActiveWorkerCall(ledger);
     const intervention = await createBinding(
       ledger,
@@ -1729,14 +1735,8 @@ describe("generic Worker capability decision boundary", () => {
     expect(originResult).not.toHaveProperty("adapterResult");
     expect(originResult).not.toHaveProperty("referenceData");
 
-    const uncompactedMessage = buildRequestToolResultsMessage(results);
-    const uncompactedProjection = JSON.parse(uncompactedMessage.content) as {
-      results: readonly Record<string, unknown>[];
-    };
-    const compactedSource = uncompactedProjection.results.find(
-      ({ executionId }) => executionId === "capability-execution-2",
-    );
-    if (!compactedSource) throw new Error("supervision origin result missing");
+    const compactedSource =
+      readSuperWorkerCompactionSidecar(results)!.sources[0]!;
     const checkpoint = Object.freeze({
       kind: "runtime_semantic_compaction_checkpoint_v2" as const,
       scopeId: `worker:${intervenedCall.callId}:request-tool-results`,
@@ -1754,18 +1754,16 @@ describe("generic Worker capability decision boundary", () => {
       sourceRevision: results.sourceRevision,
       sourceDigests: Object.freeze([
         Object.freeze({
-          sourceRef: "capability-execution-2",
-          sourceFingerprint: createSemanticCompactionSha256Fingerprint(
-            JSON.stringify(compactedSource),
-          ),
-          digest: "The prior Worker observed the exact requested value.",
+          sourceRef: compactedSource.sourceRef,
+          sourceFingerprint: compactedSource.sourceFingerprint,
+          digest: "The current Worker read independent evidence.",
         }),
       ]),
       continuation: Object.freeze({
         completed: Object.freeze(["Observed the exact requested value."]),
         currentState: "The exact requested value is established.",
         findings: Object.freeze(["The prior observation succeeded."]),
-        evidenceRefs: Object.freeze(["capability-execution-2"]),
+        evidenceRefs: Object.freeze([compactedSource.sourceRef]),
         artifacts: Object.freeze([]),
         decisions: Object.freeze([]),
         failedApproaches: Object.freeze([]),
@@ -1799,6 +1797,7 @@ describe("generic Worker capability decision boundary", () => {
           };
     });
     const request = createRequest(invoke, { contextWindowTokens: 32_000 });
+    request.contextCompactionStore?.registerSourcesAtomically!([compactedSource]);
     request.contextCompactionStore?.commit(checkpoint);
     const decision = await runWorkerDecision(request, {
       call: intervenedCall,
@@ -3641,7 +3640,7 @@ describe("generic Worker capability decision boundary", () => {
     await expect(
       runWorkerDecision(request, {
         call,
-        requestToolResults: EMPTY_REQUEST_TOOL_RESULTS,
+        requestToolResults: requestToolResults(ledger, ledger.current(), call),
         capabilitySource: capabilitySource(ledger, binding),
       }),
     ).resolves.toEqual({
@@ -3714,7 +3713,7 @@ describe("generic Worker capability decision boundary", () => {
     await expect(
       runWorkerDecision(createRequest(invoke), {
         call,
-        requestToolResults: EMPTY_REQUEST_TOOL_RESULTS,
+        requestToolResults: requestToolResults(ledger, ledger.current(), call),
         capabilitySource: capabilitySource(ledger, binding),
       }),
     ).resolves.toEqual({
@@ -3862,7 +3861,7 @@ describe("generic Worker capability decision boundary", () => {
     await expect(
       runWorkerDecision(createRequest(invoke), {
         call,
-        requestToolResults: EMPTY_REQUEST_TOOL_RESULTS,
+        requestToolResults: requestToolResults(ledger, ledger.current(), call),
         capabilitySource: capabilitySource(ledger, binding),
       }),
     ).resolves.toEqual({
@@ -3966,7 +3965,7 @@ describe("generic Worker capability decision boundary", () => {
     await expect(
       runWorkerDecision(createRequest(invoke), {
         call,
-        requestToolResults: EMPTY_REQUEST_TOOL_RESULTS,
+        requestToolResults: requestToolResults(ledger, ledger.current(), call),
         capabilitySource: capabilitySource(ledger, binding),
       }),
     ).resolves.toEqual({
@@ -4161,7 +4160,7 @@ describe("generic Worker capability decision boundary", () => {
     await expect(
       runWorkerDecision(request, {
         call,
-        requestToolResults: EMPTY_REQUEST_TOOL_RESULTS,
+        requestToolResults: requestToolResults(ledger, ledger.current(), call),
         capabilitySource: Object.freeze({
           binding,
           ledger,
@@ -4313,7 +4312,7 @@ describe("generic Worker capability decision boundary", () => {
     await expect(
       runWorkerDecision(createRequest(invoke), {
         call,
-        requestToolResults: EMPTY_REQUEST_TOOL_RESULTS,
+        requestToolResults: requestToolResults(ledger, ledger.current(), call),
         capabilitySource: Object.freeze({
           binding,
           ledger,
@@ -4445,7 +4444,7 @@ describe("generic Worker capability decision boundary", () => {
     await expect(
       runWorkerDecision(createRequest(invoke), {
         call,
-        requestToolResults: EMPTY_REQUEST_TOOL_RESULTS,
+        requestToolResults: requestToolResults(ledger, ledger.current(), call),
         capabilitySource: Object.freeze({
           binding,
           ledger,
@@ -4527,7 +4526,7 @@ describe("generic Worker capability decision boundary", () => {
     await expect(
       runWorkerDecision(request, {
         call,
-        requestToolResults: EMPTY_REQUEST_TOOL_RESULTS,
+        requestToolResults: requestToolResults(ledger, ledger.current(), call),
         capabilitySource: capabilitySource(ledger, binding),
       }),
     ).resolves.toEqual({
@@ -4603,7 +4602,7 @@ describe("generic Worker capability decision boundary", () => {
     await expect(
       runWorkerDecision(createRequest(invoke), {
         call,
-        requestToolResults: EMPTY_REQUEST_TOOL_RESULTS,
+        requestToolResults: requestToolResults(ledger, ledger.current(), call),
         capabilitySource: capabilitySource(ledger, binding),
       }),
     ).resolves.toEqual({
@@ -4739,7 +4738,7 @@ describe("generic Worker capability decision boundary", () => {
 
     const firstDecision = await runWorkerDecision(request, {
       call: firstCall,
-      requestToolResults: EMPTY_REQUEST_TOOL_RESULTS,
+      requestToolResults: requestToolResults(ledger, ledger.current(), firstCall),
       capabilitySource: capabilitySource(ledger, firstBinding),
     });
     expect(firstDecision).toEqual({
@@ -4838,7 +4837,7 @@ describe("generic Worker capability decision boundary", () => {
     await expect(
       runWorkerDecision(createRequest(invoke), {
         call,
-        requestToolResults: EMPTY_REQUEST_TOOL_RESULTS,
+        requestToolResults: requestToolResults(ledger, ledger.current(), call),
         capabilitySource: capabilitySource(ledger, binding),
       }),
     ).rejects.toThrow("model invocation failed");

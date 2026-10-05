@@ -1,3 +1,5 @@
+import { immutableSnapshot } from "./payload-context-snapshot.js";
+import { projectWorkerPayloadCompactionInput } from "./payload-compaction-transport.js";
 import {
   isRoleCapabilityId,
   isRoleCallResultText,
@@ -36,7 +38,7 @@ import {
   WORKER_CAPABILITY_STAGED_RAW_PAYLOAD_INSTRUCTIONS,
   WORKER_CAPABILITY_STRUCTURED_PAYLOAD_INSTRUCTIONS,
 } from "./payload-instructions.js";
-import { validateJsonSchemaValue } from "../../model/json-schema-value.js";
+import { normalizePayloadBody } from "./payload-body-normalization.js";
 import { isRuntimeDelegateRoleId } from "../roles.js";
 import { projectWorkerPayloadRequestSourceProjection } from "./payload-source-provenance.js";
 import { isWorkerCapabilityPayloadAssignmentValid } from "./payload-assignment-validation.js";
@@ -174,6 +176,7 @@ export function createWorkerCapabilityPayloadAuthor(params: {
       let output: unknown;
       try {
         output = await params.model.invoke({
+          ...projectWorkerPayloadCompactionInput(input, params.requestId),
           executionId: input.executionId,
           requestSourceProjection:
             "root" in context
@@ -205,10 +208,11 @@ export function createWorkerCapabilityPayloadAuthor(params: {
       if (typeof output !== "string") {
         return failure(diagnostic, "payload_model_output_invalid");
       }
-      const body = normalizeAuthoredBody(output, input.contract.responseFormat);
-      if (body === undefined) {
+      const normalized = normalizePayloadBody(output, input.contract.responseFormat);
+      if (!normalized.ok) {
         return failure(diagnostic, "payload_model_output_invalid");
       }
+      const body = normalized.body;
       const payloadBytes = Buffer.byteLength(body, "utf8");
       if (payloadBytes < input.contract.minBytes) {
         return failure(diagnostic, "payload_body_too_small");
@@ -305,6 +309,7 @@ function capturePayloadContext(
         acceptedCapability: {
           capabilityId: input.descriptor.capabilityId,
           summary: input.descriptor.summary,
+          authoringObjective: input.authoringObjective!,
           controls: input.controls,
         },
         ...sharedContext,
@@ -507,31 +512,6 @@ function normalizePayloadContextScope(
     : undefined;
 }
 
-function normalizeAuthoredBody(
-  output: string,
-  responseFormat:
-    | Parameters<
-        WorkerCapabilityPayloadAuthor["author"]
-      >[0]["contract"]["responseFormat"]
-    | undefined,
-): string | undefined {
-  if (!responseFormat) {
-    return output;
-  }
-  try {
-    const parsed = JSON.parse(output);
-    if (
-      responseFormat !== "json" &&
-      validateJsonSchemaValue(responseFormat, parsed)
-    ) {
-      return undefined;
-    }
-    return JSON.stringify(parsed);
-  } catch {
-    return undefined;
-  }
-}
-
 function validResponseFormat(
   input:
     | Parameters<
@@ -550,7 +530,7 @@ function validPayloadStage(
     (Number.isSafeInteger(input.index) &&
       input.index > 0 &&
       Number.isSafeInteger(input.count) &&
-      input.count > 1 &&
+      input.count >= 1 &&
       input.index <= input.count &&
       typeof input.outputParam === "string" &&
       input.outputParam.trim().length > 0 &&
@@ -854,10 +834,6 @@ function failure(
   return Object.freeze({ status: "failed" as const, code });
 }
 
-function immutableSnapshot<T>(value: T): T {
-  return deepFreeze(structuredClone(value));
-}
-
 function payloadAbort(reason: unknown): Error {
   const error =
     reason instanceof Error
@@ -865,15 +841,4 @@ function payloadAbort(reason: unknown): Error {
       : new Error("Worker capability payload authoring aborted.");
   error.name = "AbortError";
   return error;
-}
-
-function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
-  if (typeof value !== "object" || value === null || seen.has(value)) {
-    return value;
-  }
-  seen.add(value);
-  for (const child of Object.values(value)) {
-    deepFreeze(child, seen);
-  }
-  return Object.freeze(value);
 }

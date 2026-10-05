@@ -32,7 +32,7 @@ export const WORKER_CAPABILITY_STRUCTURED_PAYLOAD_INSTRUCTIONS = [
 ].join("\n");
 
 const ROOT_ASSIGNMENT_OBJECTIVE_INSTRUCTION =
-  "The exact current user request in runtime_request_source_v1.currentRequest and root.updates through the frozen root.steeringVersion define the complete bounded assignment objective. Apply root.updates in sequence. acceptedCapability.controls are the immutable execution parameters for that objective. Do not expand, replace, or reinterpret the objective sources, updates, or controls.";
+  "acceptedCapability.authoringObjective is the complete bounded content-authoring assignment for this invocation. It is constrained by the exact current user request in runtime_request_source_v1.currentRequest and root.updates through the frozen root.steeringVersion. Apply root.updates in sequence. Use precedingTurn only to resolve references in the current request, never as independent work or authorization. acceptedCapability.controls are the immutable execution parameters for that objective. Do not expand, replace, or reinterpret the assignment, objective sources, updates, or controls.";
 
 export const ROOT_CAPABILITY_PAYLOAD_INSTRUCTIONS = [
   "Author only the raw body required by the immutable capability payload assignment.",

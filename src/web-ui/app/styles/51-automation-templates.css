@@ -1,0 +1,39 @@
+.automation-templates { display: grid; gap: 28px; min-width: 0; }
+.automation-template-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; }
+.automation-template-heading h4 { margin: 5px 0 4px; color: var(--text-strong); font-size: var(--font-size-2xl); font-weight: 600; }
+.automation-template-heading p { max-width: 740px; margin: 0; color: var(--muted); font-size: var(--font-size-sm); line-height: 1.5; }
+.automation-template-count { flex: none; color: var(--muted); font-size: var(--font-size-xs); }
+.automation-template-section { display: grid; gap: 14px; min-width: 0; }
+.automation-template-section + .automation-template-section { padding-top: 24px; border-top: 1px solid var(--line); }
+.automation-template-section-heading h5 { margin: 0; color: var(--text-strong); font-size: var(--font-size-lg); font-weight: 600; }
+.automation-template-section-heading p { margin: 5px 0 0; color: var(--muted); font-size: var(--font-size-sm); line-height: 1.5; }
+.automation-template-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); gap: 12px; }
+.automation-template-grid-advanced { grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 16px; }
+.automation-template-card { display: flex; flex-direction: column; align-items: stretch; min-width: 0; min-height: 200px; padding: 17px 18px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--text); text-align: start; transition: border-color .16s ease, background .16s ease, transform .16s ease; }
+.automation-template-card-advanced { padding: 21px 22px; border-top: 2px solid var(--accent); }
+.automation-template-card:hover, .automation-template-card:focus-visible { border-color: var(--accent); background: var(--panel-soft); transform: translateY(-2px); }
+.automation-template-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.automation-template-meta { color: var(--accent); font-size: var(--font-size-xs); letter-spacing: .02em; }
+.automation-template-card strong { margin-top: 12px; color: var(--text-strong); font-size: var(--font-size-lg); font-weight: 600; }
+.automation-template-description { margin-top: 6px; color: var(--muted); font-size: var(--font-size-sm); line-height: 1.5; }
+.automation-template-facts { display: flex; flex-wrap: wrap; gap: 5px 12px; margin-top: 12px; color: var(--text); font-size: var(--font-size-xs); }
+.automation-template-facts:empty { display: none; }
+.automation-template-facts > span + span { padding-inline-start: 12px; border-inline-start: 1px solid var(--line-strong); }
+.automation-template-detail { display: grid; gap: 5px; margin-top: 16px; color: var(--muted); font-size: var(--font-size-sm); line-height: 1.4; }
+.automation-template-detail-label { display: block; margin-bottom: 2px; color: var(--text); font-size: var(--font-size-xs); font-weight: 600; }
+.automation-template-learning .automation-template-detail-item { position: relative; padding-inline-start: 13px; }
+.automation-template-learning .automation-template-detail-item::before { position: absolute; inset-inline-start: 0; content: "·"; color: var(--accent); }
+.automation-template-outputs .automation-template-detail-item { color: var(--accent-strong); font-size: var(--font-size-xs); }
+.automation-template-detail-item, .automation-template-tools, .automation-template-description { overflow-wrap: anywhere; }
+.automation-template-setup { display: block; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--font-size-xs); line-height: 1.5; }
+.automation-template-tools { margin-top: auto; padding-top: 18px; color: var(--muted-2); font-size: var(--font-size-xs); }
+.automation-template-action { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--accent-strong); font-size: var(--font-size-sm); }
+.automation-template-action > span { font-size: 18px; line-height: 1; }
+.automation-template-empty { margin: 0; padding: 18px; border: 1px dashed var(--line-strong); border-radius: 8px; color: var(--muted); font-size: var(--font-size-sm); }
+@media (max-width: 600px) {
+  .automation-template-heading { align-items: start; flex-direction: column; gap: 8px; }
+  .automation-template-card { min-height: 170px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .automation-template-card { transition: none; }
+}

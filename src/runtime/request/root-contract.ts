@@ -59,6 +59,7 @@ type RootContractAction =
       action: "invoke_capability";
       capabilityId: string;
       intent: string;
+      authoringObjective?: string;
       controls: WorkerCapabilityControls;
       workingDirectory?: string;
       acknowledgement?: string;
@@ -69,6 +70,7 @@ type RootContractAction =
       invocations: readonly Readonly<{
         capabilityId: string;
         intent: string;
+        authoringObjective?: string;
         controls: WorkerCapabilityControls;
       }>[];
       workingDirectory?: string;

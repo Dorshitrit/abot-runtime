@@ -57,6 +57,11 @@ describe("schedule workspace entry parity", () => {
     const expectedIds = rail.jobs.filter((job) => job.state === "active").map((job) => job.id);
     expect(rail.visibleIds()).toEqual(expectedIds);
     expect(restored.visibleIds()).toEqual(expectedIds);
+    for (const { controller } of [rail, restored]) {
+      expect(controller.snapshot()).toMatchObject({
+        selectedId: expectedIds[0] || "", editor: null,
+      });
+    }
     rail.controller.setActive(false);
     restored.controller.setActive(false);
   });

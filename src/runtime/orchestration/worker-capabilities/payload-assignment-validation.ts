@@ -8,14 +8,13 @@ export function isWorkerCapabilityPayloadAssignmentValid(
   principalKind: "worker" | "root",
   requestId: string,
 ): boolean {
-  if (principalKind === "root") {
-    return (
-      input.assignmentProvenance === undefined &&
-      !Object.hasOwn(input, "authoringObjective") &&
-      hasExecutionId(input.executionId)
-    );
-  }
   if (!hasExecutionId(input.executionId)) return false;
+  if (input.descriptor.requiresPayloadAuthoringObjective !== true) return false;
+  if (!Object.hasOwn(input, "authoringObjective")) return false;
+  if (!isValidAuthoringObjective(input.authoringObjective)) return false;
+  if (principalKind === "root") {
+    return input.assignmentProvenance === undefined;
+  }
   if (
     !isWorkerCapabilityPayloadSourceProvenanceValid(
       input.assignmentProvenance,
@@ -25,9 +24,7 @@ export function isWorkerCapabilityPayloadAssignmentValid(
   ) {
     return false;
   }
-  if (input.descriptor.requiresPayloadAuthoringObjective !== true) return false;
-  if (!Object.hasOwn(input, "authoringObjective")) return false;
-  return isValidAuthoringObjective(input.authoringObjective);
+  return true;
 }
 
 function hasExecutionId(executionId: string): boolean {

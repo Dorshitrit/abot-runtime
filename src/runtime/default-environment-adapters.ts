@@ -36,6 +36,9 @@ import type {
   WorkspaceProvider,
 } from "./ports.js";
 import { createSchedulingToolModule } from "./capabilities/scheduling/tool-module.js";
+import { createAutomationDraftToolModule } from "./capabilities/automations/tool-module.js";
+import { createAutomationBuilderToolModule } from "./capabilities/automation-builder/tool-module.js";
+import type { AutomationService } from "./automations/service.js";
 import type { SchedulerService } from "./scheduler/contracts.js";
 import { createFileLongTermMemoryRepository } from "./adapters/long-term-memory/file-repository.js";
 import { createInMemoryLongTermMemoryRepository } from "./adapters/long-term-memory/in-memory-repository.js";
@@ -71,6 +74,7 @@ export function createDefaultConversationContextProvider(): ConversationContextP
 export function createDefaultToolRegistry(
   config?: RuntimeConfig,
   scheduling?: { service: SchedulerService; ready: () => Promise<void> },
+  authoring?: { getService: () => AutomationService; ready: () => Promise<void> },
 ): ToolRegistry {
   const plugins = loadRuntimeCapabilityPlugins(config);
   return createConfiguredToolRegistry(config, [
@@ -83,6 +87,10 @@ export function createDefaultToolRegistry(
             scheduling.ready,
           ),
         ]
+      : []),
+    ...(config && authoring
+      ? [createAutomationDraftToolModule(authoring.getService, authoring.ready),
+          createAutomationBuilderToolModule(authoring.getService, authoring.ready)]
       : []),
   ]);
 }

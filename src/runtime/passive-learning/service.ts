@@ -77,7 +77,6 @@ export function createPassiveLearningService(
     flush: () => service.flush(),
     beginInteractive: () => service.beginInteractive(),
     subscribe: (listener) => service.subscribe(listener),
-    dismissProposal: (id) => service.dismissProposal(id),
     sessionDeleted: (id) => service.sessionDeleted(id),
     notifyKnowledgeChanged: () => service.notifyKnowledgeChanged(),
     candidates: () => service.candidates(),
@@ -478,10 +477,6 @@ class LearningService {
       this.preferences.analysisWindow,
       this.processingCycle.deferral?.until,
     );
-  }
-  async dismissProposal(id: string): Promise<void> {
-    if (!this.background.proactive) throw new Error("proactive_unavailable");
-    await this.background.proactive.dismiss(id);
   }
   notifyKnowledgeChanged(): void {
     this.backgroundLifecycle.knowledgeChanged();

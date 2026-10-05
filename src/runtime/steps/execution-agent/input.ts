@@ -1,3 +1,8 @@
+import {
+  buildRuntimeFilesystemScopeMessage,
+  canEstablishRuntimeWorkingDirectory,
+} from "../../context/runtime-filesystem-scope.js";
+import { buildSparkConversationInstructions } from "../../context/spark-conversation-policy.js";
 import type {
   ChatMessage,
   ModelGatewayJsonSchemaFormat,
@@ -37,7 +42,14 @@ import {
   EXECUTION_AGENT_DECISION_MODEL_STEP,
   type ExecutionAgentDecisionContractOptions,
 } from "./contracts.js";
-import { createExecutionAgentDecisionFormat } from "./format.js";
+import {
+  projectEligibleControlsEvidenceExecutionIds,
+  requiresControlsEvidenceSelection,
+} from "./controls-evidence-contract.js";
+import {
+  createExecutionAgentDecisionFormat,
+  prepareExecutionAgentDecisionContract,
+} from "./format.js";
 import { projectExecutionWorkPlanOptions } from "./work-plan-sources.js";
 import { buildExecutionAgentInstructions } from "./prompt.js";
 import {
@@ -134,6 +146,8 @@ export function buildExecutionAgentInput(
       maxRecallCallsPerRequest: request.memoryRecallLimit,
     }),
     capabilities,
+    eligibleControlsEvidenceExecutionIds:
+      projectEligibleControlsEvidenceExecutionIds(options.head, options.call),
     capabilityCatalogGroupIds: knownGroupIds,
     activeCapabilityCatalogGroupIds,
     maxBatchCapabilityExecutions: Math.min(
@@ -148,13 +162,27 @@ export function buildExecutionAgentInput(
     availableAuditCriterionIds,
     includeWorkingDirectory: options.call.workingDirectory === undefined,
   } satisfies ExecutionAgentDecisionContractOptions);
+  const preparedContract = prepareExecutionAgentDecisionContract(contract);
+  const hasControlsEvidenceSelection = preparedContract.capabilities.some(
+    ({ partition }) => requiresControlsEvidenceSelection(partition),
+  );
   const format = createExecutionAgentDecisionFormat(contract);
+  const filesystemMessage = buildRuntimeFilesystemScopeMessage({
+    scope: request.workerCapabilities.filesystemScope,
+    workingDirectory: options.call.workingDirectory,
+    capabilities,
+    canSelectWorkingDirectory: canEstablishRuntimeWorkingDirectory(
+      options.call.workingDirectory,
+      preparedContract.capabilities.length > 0,
+    ),
+  });
   const instructions = [
     buildExecutionAgentInstructions({
       allowWorkPlan: workPlan !== undefined,
       allowMemoryRecall: contract.allowMemoryRecall,
       hasMemoryRecallContext: memoryRecallMessage !== undefined,
       hasCapabilities: capabilities.length > 0,
+      hasControlsEvidenceSelection,
       hasCapabilityCatalogGroups: capabilityCatalogGroups.length > 0,
       capabilityScopeAction,
       allowPlanner: options.allowPlanner,
@@ -164,7 +192,10 @@ export function buildExecutionAgentInput(
       includeTitle: options.includeTitle,
       includeWorkingDirectory: options.call.workingDirectory === undefined,
     }),
-    ...buildConversationMemoryAvailabilityInstructions(request.longTermMemory?.enabled === true),
+    ...buildConversationMemoryAvailabilityInstructions(
+      request.longTermMemory?.enabled === true,
+    ),
+    ...buildSparkConversationInstructions(request.sessionKind),
   ].join("\n");
   const scheduledExecution = projectScheduledExecutionContext(
     request,
@@ -186,6 +217,7 @@ export function buildExecutionAgentInput(
       options.call,
     );
   const referenceMessages = [
+    ...(filesystemMessage ? [filesystemMessage] : []),
     ...scheduledExecution.referenceMessages,
     ...(request.temporalContext
       ? [buildRequestTemporalContextMessage(request.temporalContext)]
@@ -194,6 +226,9 @@ export function buildExecutionAgentInput(
       options.head,
       options.call,
       options.steeringSnapshot.version,
+      hasControlsEvidenceSelection
+        ? contract.eligibleControlsEvidenceExecutionIds
+        : undefined,
     ),
     ...(operationSupervisionEvidenceMessage
       ? [operationSupervisionEvidenceMessage]

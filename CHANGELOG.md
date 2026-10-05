@@ -4,6 +4,255 @@ All notable changes to this project should be documented in this file.
 
 This project follows semantic versioning after the first public release.
 
+## 1.6.0 - 2026-10-05
+
+ABot 1.6.0 introduces ABot Studio for reusable automations and a persistent
+SPARK conversation. It improves tool execution, context compaction, setup, and
+macOS computer access.
+
+### Added
+
+- ABot Studio combines tool and agent steps in sequential and parallel workflows,
+  with connected inputs, structured results, reusable saved agents, and starter
+  templates for research, documents, development, and operations. Agent steps
+  support text or validated JSON results, required tools, acceptance checks,
+  and stop-or-skip failure handling.
+- Automations support manual runs, schedules, and folder polling with file
+  filters and per-file or batch processing. Runs capture the published workflow,
+  selected inputs, source snapshots, and resource limits for later inspection.
+- Studio provides a visual workflow editor, draft validation, revision checks,
+  explicit publication and activation, Full or FULL+ tool permissions, pause and
+  stop controls, and archive/restore. Restored automations remain paused.
+- Conversations can create and edit connected automation drafts through the
+  configured tool catalog. Draft authoring does not grant permissions, publish,
+  activate, or run a draft.
+- Run views retain step outputs, tool receipts, reports, and recorded effects,
+  with source links from Home, conversations, and notifications. Explicit reruns
+  use the retained run definition and inputs after confirmation, and recheck
+  current permissions and dependencies.
+- SPARK has one persistent companion conversation per environment, with its own
+  popup, attachments, permissions, and Fast/Reasoning/Deep chat settings. It uses
+  the selected Proactive model and starts with Ask permissions. Ordinary
+  conversations and their drafts remain independent.
+- Proactive suggestions appear in the SPARK conversation. Saved suggestions can
+  open a regular work conversation with their retained context. Repeated opens
+  reuse the same conversation; opening it does not start work automatically.
+- The SPARK launcher can be moved with a pointer or keyboard, and its position is
+  saved in the browser. The popup stays within the viewport and respects reduced
+  motion settings.
+- Computer setup and Home provide separate Screen Recording and Accessibility
+  checks and explicit permission requests for the Mac Companion and the active
+  Runtime's native SYSTEM route. The CLI adds `abot host permissions` with
+  optional requests for each permission. Checks do not start Spark collection.
+- Plugin results can declare text fields for context admission separately from
+  metadata, with invocation-aware result budgeting. Declared text still follows
+  model context limits. The ordinary SDK result allowance increases from 128 KiB
+  to 256 KiB, and metadata for declared text remains bounded to 256 KiB.
+- Plugin operations can declare `attachmentInput` parameters and accepted MIME
+  types for Studio file sources. Explicit single-stage payload schemas reach
+  both root and Worker payload authors. Plugin failure results can report
+  `interruption: "aborted"` while retaining their original error code.
+
+### Changed
+
+- Web UI workspaces use consistent headers. Notifications opens on Unread and
+  separates its inbox and settings into tabs, with paging and clearer empty,
+  loading, and error states.
+- Studio editing separates draft, execution, and management actions. Step editors
+  preserve unsaved changes, support schema-aware inputs, and provide guarded move
+  undo and reset-to-published controls. Live updates preserve the selected run,
+  expanded details, and scroll position across background refreshes.
+- The automation library separates Published automations from Drafts, displays
+  each automation's last edit time, and sorts each group and the archive by the
+  most recent edit first.
+- Schedule opens the first visible job's details and action buttons. Editing
+  remains an explicit action.
+- SPARK suggestions are read in the companion conversation. The old Home and
+  Spark suggestion cards and Keep/Not interested actions have been removed.
+  The shared mint spark mascot reflects active work and settles while
+  disconnected or awaiting approval; Jobs identifies the persistent conversation
+  as **SPARK Chat**. The compact popup hides scheduled-task invocation cards
+  while retaining task replies and the normal conversation's schedule view.
+- Successful Embedding setup in Web onboarding enables native memory and
+  disables the separate Memory plugin in the same configuration save, retaining
+  existing plugin data and unrelated preferences. Skipped or failed setup leaves
+  plugin selection unchanged.
+- Run reports initially open the first step and its evidence. Conversation
+  Activity shows Studio authoring actions with automation identity and relevant
+  revision, step, and tool details.
+- Automation start and terminal notifications link to saved run reports.
+  Internal agent sessions do not generate duplicate conversation-reply alerts.
+- Model settings label reasoning support as **Supports reasoning controls**.
+  Disabling these controls leaves the provider's reasoning defaults in effect.
+
+### Fixed
+
+- Automation authoring preserves connected payloads and agent assignments,
+  validates complete draft batches and their receipts before saving, and prevents
+  partial writes or stale draft updates. Drafts whose complete authoring receipt
+  exceeds capacity save no changes.
+- Automation runs retain specific failure causes, resource-limit explanations,
+  blocked outcomes, and uncertain tool effects. Reports distinguish an attempted
+  tool invocation from confirmed execution, including cancellation and timeout;
+  late tool evidence is retained without rewriting a settled uncertain outcome.
+- Automation agent steps use isolated sessions with their selected tools and
+  result schema. Temporary transcripts and attachments are cleaned up after
+  execution; restart reconciles abandoned sessions and source preparations while
+  preserving run evidence. Interrupted runs are not automatically replayed.
+- Republishing an automation without changing its timing preserves timer
+  deadlines and interval or folder-polling cadence. New or changed one-shot
+  schedules in the past are rejected before publication.
+- Run now and Run again show **Starting** and prevent duplicate starts while the
+  request and navigation complete. Delayed responses after changing environments
+  or views cannot replace the current selection.
+- Folder intake retains bounded deduplication history and reports capacity
+  exhaustion instead of forgetting old file versions and processing them again.
+- Studio authoring catalogs distinguish permissions for future workflow runs
+  from the current conversation's authority. They identify whether the catalog
+  is for a new automation or a specified automation's permission scope. Draft
+  authoring does not grant execution permissions.
+- File operations reject foreign or ambiguous path namespaces, including after
+  dot-segment normalization, before preparing or writing a target. Execution
+  Agent and Supervisor workflows receive the request-bound filesystem root when
+  selecting directories and file paths.
+- EXEC retains complete stdout and stderr on disk with bounded pipe buffers.
+  Declared text is admitted through runtime context budgets separately from
+  delivery metadata. Tool catalogs describe the 8,192-character command limit
+  and file payload semantics.
+- EXEC retains unaccepted output and process receipts across approval waits
+  within its configured retention period. Periodic cleanup expires abandoned
+  output while protecting active readers and writers. Concurrent waits and
+  cancellations claim terminal delivery once; rejected presentation leaves
+  output available for a later observation. Storage and expired-output failures
+  retain the process identity and do not replay the command.
+- Tool payload authoring preserves the selected operation objective during direct
+  Execution Agent execution, including batches. Structured JSON payloads reject
+  duplicate member names before tool execution.
+- Supervisor workflows preserve canonical tool and delegated-role evidence
+  through compaction and saved approvals. Invalid checkpoints are isolated
+  without discarding healthy evidence.
+- Context admission can compact conversation history and then active-request
+  context when the first reduction is insufficient, including with smaller model
+  windows. The final input must satisfy existing context limits before retained
+  reductions are committed, while preserving cancellation and steering behavior.
+- Execution Agent selects the canonical tool results needed to complete an
+  operation's remaining parameters, including batched invocations. Unselected
+  earlier results stay out of Controls input, and compaction remains bound to
+  the selected assignment.
+- Semantic compaction rebalances earlier summaries as evidence arrives while
+  preserving source identities. Its instructions prioritize unfinished
+  comparisons, exact record/value associations, and explicit omitted details.
+- Complete semantic checkpoints use a shared token allowance of 30% of each
+  consuming model's context window, including summaries, continuation, and
+  reference metadata. Provider token counts are used when available; otherwise
+  the configured estimator applies. Full input still reserves response headroom
+  and must fit its hard context limit.
+- Execution Agent Controls, payload authors, and Auditor reviews reuse verified
+  source summaries within the same request, call, and accepted objective.
+  Unmatched evidence
+  and independent supplements remain available; changed objectives or steering
+  cannot reuse stale summaries.
+- Operation-supervision notices retain their accepted action and result through
+  compaction, using exact evidence or a verified summary marked as partial.
+- Compacted inputs can proceed above the compaction trigger only when they fit
+  the hard input budget and every eligible history and active-request source
+  has a complete exhaustion proof. New reductions must also reduce input;
+  discarded history cannot supply an exhaustion proof.
+- Compacted tool receipts replace duplicate summaries only when they exactly
+  cover the output. Summaries that differ from the output, including in
+  whitespace, remain unchanged.
+- Compaction output validation and provider token counting obey the model
+  attempt's deadline and cancellation while asynchronous validation is pending.
+- Context indicators consistently use a measured input count or a labeled
+  estimate. Measurements and compaction remain tied to the correct model
+  invocation across step changes, initial request events, and session replay.
+- After request admission, Supervisor failures persist one bounded explanation
+  while retaining the original failure cause. Cancellation, newer steering, and
+  terminal delivery failures cannot create a second terminal response.
+- Execution Agent and Worker guidance uses saved scripts for long programs,
+  requires complete commands, and distinguishes failed parsing from zero matches
+  or completed analysis. Advisory plans include script creation before execution.
+- OpenAI core decisions leave room for reasoning when it is enabled or left to
+  provider defaults. The short decision-output cap applies only when reasoning
+  is explicitly disabled. Output-limit failures explain exhaustion and suggest
+  reviewing the model and reasoning settings.
+- Document-reading tools explain supported formats and direct source-code reads
+  to the available file readers, including unsupported-format errors.
+- Brave search retains retrieved results when an optional source-page fetch times
+  out and reports incomplete coverage. Cancellation and overall deadlines still
+  stop the search.
+- Project inspection, code outlines, JSON inspection, local search, and disk
+  probes resolve relative paths against the current request's working directory.
+  Project trees, manifests, and reusable search-result paths retain that same
+  directory across concurrent project requests.
+- Supervisor-based SPARK initiatives author the message, title, and handoff
+  background in separate raw-text stages. Source selection, objectives, and
+  timing remain structured, and accepted stage progress is preserved. Raw
+  authoring avoids conflicting calibration instructions and reports its text
+  contract in diagnostics.
+- Proactive SPARK progress remains valid for up to six days from admission
+  across restarts and shared daily quota deferrals. At exhausted quota,
+  completion requires successful replay of all required stages without a new
+  model call. Changed or incomplete progress waits for available quota.
+- Proactive suggestions are recorded once, in order, as assistant messages in
+  SPARK history and follow normal context compaction. Recent human messages can
+  guide the language and tone of suggestions, without changing initiative
+  eligibility, learned facts, or permissions.
+- Clearing SPARK messages coordinates with active requests, saved approvals, and
+  proactive delivery. Transcript attachment cleanup can resume after a failure
+  or restart. Environment navigation preserves drafts and queued messages until
+  navigation checks have passed.
+- SPARK notifications are retained and open the correct environment and
+  conversation, targeting the exact retained message when available. Companion
+  accepts these links for replies, suggestions, approvals, and failures, and
+  rejects malformed targets.
+- SPARK keeps unread state across reconnects and marks only visible messages
+  as read.
+- Projects, Spark, and the model catalog refresh when onboarding makes the
+  Runtime ready. Older responses and setup errors cannot overwrite refreshed
+  state. SPARK guides users to model settings when configuration is missing and
+  disables unavailable actions.
+- macOS screen capture preserves numeric geometry across native observations,
+  avoiding false desktop-change failures before capture.
+- Mac notification setup preserves the compiler-generated app executable and
+  verifies the installed bundle before advertising notification support.
+- Mac key combinations accept case-insensitive key names and the Cmd alias;
+  the tool contract documents supported modifier and navigation names.
+
+### Upgrade notes
+
+- The scheduler journal upgrades automatically to schema version 4 while
+  preserving existing Jobs and run history. ABot 1.5.0 cannot read the upgraded
+  journal; back up scheduler data before upgrading if a downgrade may be needed.
+- Update the installed Companion to release 10 through **Home → Computer access**
+  for Studio and SPARK notification links and the Mac capture, notification,
+  keyboard, and permission fixes. On macOS, check the Companion and active
+  Runtime permissions separately; a grant for one route does not grant the other.
+- Previously delivered SPARK suggestions remain in their historical
+  conversations. Suggestions without a saved handoff brief cannot open a new
+  work conversation. Clearing SPARK messages preserves the conversation's
+  identity, permissions, and long-term memory.
+- EXEC's former `outputMaxChars` setting no longer clips output.
+  `outputRetentionMs` defaults to seven days after capture writers close;
+  reading or restoring saved output does not renew this period. Retention limits
+  output age and does not impose a disk-space quota.
+- Older SPARK progress can reuse compatible review stages; changed JSON authoring
+  stages are regenerated under the current quota. Learning and reassessment
+  keep their existing 24-hour progress lifetime.
+- Automation step details are retained for 30 days and reports for 90 days.
+  Source snapshots remain while referenced by retained reports; unresolved
+  effects delay cleanup. Reruns require their retained source snapshots.
+  Ordinary Job history keeps its existing retention behavior.
+
+### Development
+
+- CI runs tests in parallel shards and verifies complete, non-duplicated test
+  coverage before passing validation. The separate macOS Companion checks were
+  expanded, and asynchronous tests wait for completion signals.
+- A private combined-compaction smoke covers history and active-request
+  reduction, context-window changes, canonical handoffs, generated report
+  evidence, subsequent recall, and unrelated follow-up requests.
+
 ## 1.5.0 - 2026-09-28
 
 ABot 1.5.0 introduces ABot Spark, desktop observation and control, native

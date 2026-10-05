@@ -1,0 +1,35 @@
+.automation-editor-actionbar { display: grid; gap: 14px; min-width: 0; padding-block: 16px; border-block: 1px solid var(--line); }
+.automation-editor-action-groups { display: flex; flex-wrap: wrap; gap: 20px 32px; align-items: stretch; }
+.automation-editor-action-group { display: grid; gap: 8px; min-width: 0; align-content: start; }
+.automation-editor-action-label { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: var(--font-size-xs); font-weight: 600; letter-spacing: .04em; }
+.automation-editor-actionbar .automation-actions { justify-content: flex-start; gap: 8px; }
+.automation-editor-actionbar .automation-editor-action { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; max-width: 100%; padding: 7px 11px; line-height: 1.4; }
+.automation-editor-action-icon { flex: none; width: 16px; height: 16px; }
+.automation-editor-actionbar .automation-editor-action:focus-visible,
+.automation-editor-management > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.automation-editor-actionbar .automation-editor-action:disabled { opacity: .45; }
+.automation-editor-actionbar .automation-editor-action:disabled:hover { background: var(--control-fill); }
+.automation-editor-execution { border-inline-start: 1px solid var(--line); padding-inline-start: 32px; }
+.automation-editor-state { font-weight: 400; letter-spacing: 0; color: var(--amber); }
+.automation-editor-state[data-state="active"] { color: var(--accent-strong); }
+.automation-editor-actionbar .automation-editor-activate { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+.automation-editor-actionbar .automation-editor-activate:hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); }
+.automation-editor-actionbar .automation-editor-activate:disabled:hover { background: var(--accent); }
+.automation-editor-actionbar .automation-editor-pause { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 45%, var(--line)); background: color-mix(in srgb, var(--amber) 8%, var(--panel)); }
+.automation-editor-management { min-width: 0; }
+.automation-editor-management > summary { display: flex; align-items: center; gap: 7px; width: fit-content; max-width: 100%; padding: 6px 8px; margin-inline-start: -8px; border-radius: 6px; list-style: none; cursor: pointer; color: var(--muted); font-size: var(--font-size-sm); }
+.automation-editor-management > summary::-webkit-details-marker { display: none; }
+.automation-editor-management > summary::after { content: ""; width: 6px; height: 6px; margin-inline-start: 5px; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: rotate(45deg); }
+.automation-editor-management[open] > summary::after { transform: rotate(225deg); }
+.automation-editor-management > summary:hover { color: var(--text); background: var(--panel-soft); }
+.automation-editor-management-body { display: flex; flex-wrap: wrap; gap: 18px 32px; padding-top: 14px; }
+.automation-editor-archive-group { display: grid; align-content: start; gap: 8px; flex: 1 1 260px; min-width: 0; padding-inline-start: 24px; border-inline-start: 1px solid var(--line); }
+.automation-editor-archive-group p { margin: 0; max-width: 48ch; color: var(--muted); font-size: var(--font-size-xs); line-height: 1.5; }
+.automation-editor-actionbar .automation-editor-archive { color: var(--amber); background: transparent; border-color: color-mix(in srgb, var(--amber) 35%, var(--line)); }
+.automation-editor-actionbar .automation-editor-archive:hover { background: color-mix(in srgb, var(--amber) 8%, var(--panel)); }
+@media (max-width: 800px) {
+  .automation-editor-action-groups { flex-direction: column; gap: 16px; }
+  .automation-editor-execution { border-inline-start: 0; padding-inline-start: 0; border-top: 1px solid var(--line); padding-top: 14px; }
+  .automation-editor-management-body { flex-direction: column; }
+  .automation-editor-archive-group { flex-basis: auto; padding-inline-start: 0; border-inline-start: 0; padding-top: 14px; border-top: 1px solid var(--line); }
+}

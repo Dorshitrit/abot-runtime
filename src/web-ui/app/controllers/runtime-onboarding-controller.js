@@ -44,9 +44,10 @@ export function createRuntimeOnboardingController({
   onStateChange = () => {},
 }) {
   let checkPromise = null;
+  let checkRevision = 0;
 
   function bind() {
-    guide.bind({ onCheckAgain: checkAgain });
+    guide.bind({ onCheckAgain: checkAgain, onApplied: startCatalogCheck });
     render();
   }
 
@@ -95,11 +96,21 @@ export function createRuntimeOnboardingController({
     if (checkPromise || state.runtimeAvailability?.status === "checking") {
       return checkPromise || Promise.resolve();
     }
+    return startCatalogCheck();
+  }
+
+  function startCatalogCheck() {
+    const revision = ++checkRevision;
+    const availability = state.runtimeAvailability;
     const run = Promise.resolve()
       .then(() => reloadModels())
-      .catch((error) => catalogUnavailable(error));
+      .catch((error) => {
+        if (revision !== checkRevision) return;
+        if (availability !== state.runtimeAvailability) return;
+        catalogUnavailable(error);
+      });
     checkPromise = run.finally(() => {
-      checkPromise = null;
+      if (revision === checkRevision) checkPromise = null;
     });
     return checkPromise;
   }

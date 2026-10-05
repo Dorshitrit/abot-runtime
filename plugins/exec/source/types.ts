@@ -1,3 +1,5 @@
+import type { ExecOutputBody } from "./output-contracts.js";
+
 export type ExecActionSummary = Readonly<{
   type: string;
   target?: string;
@@ -10,6 +12,7 @@ export type ExecTerminationReason =
   | "completed"
   | "hard_timeout"
   | "idle_timeout"
+  | "output_storage_failed"
   | "spawn_failed";
 
 export type ExecStreamMetadata = Readonly<{
@@ -23,17 +26,26 @@ export type ExecStreamSnapshot = Readonly<{
   text: string;
   metadata: ExecStreamMetadata;
   sawOutput: boolean;
+  /** Plugin-private disk receipt; never projected as model instructions. */
+  body?: ExecOutputBody;
 }>;
 
 export type ExecProcessSnapshot = Readonly<{
   processId: string;
   status: "running" | "settled";
   nextCursor?: number;
+  /** Plugin-private terminal presentation reservation; never persisted. */
+  deliveryId?: string;
   exitCode?: number;
   stdout: ExecStreamSnapshot;
   stderr: ExecStreamSnapshot;
   terminationReason?: ExecTerminationReason;
   elapsedMs: number;
+  outputFailure?: Readonly<{
+    code: string;
+    stdoutBytes: number;
+    stderrBytes: number;
+  }>;
 }>;
 
 export type ExecFilesystemEntry = Readonly<{
@@ -75,5 +87,4 @@ export type PendingExecExecution = Readonly<{
   filesystemStateBefore: ExecFilesystemSnapshot | null;
   hardTimeoutMs: number;
   idleTimeoutMs: number;
-  outputMaxChars: number;
 }>;

@@ -81,7 +81,7 @@ export function createExecApprovalScript(
           ...(policy === "execution-agent-v1"
             ? {
                 ...(requiresAuthoredControls(action)
-                  ? { operationObjective: "Perform the exact fixture action." }
+                  ? { operationObjective: "Perform the exact fixture action.", controlsEvidenceExecutionIds: [] }
                   : {}),
                 ...(selectedActions === 0 ? { workingDirectory: "." } : {}),
               }

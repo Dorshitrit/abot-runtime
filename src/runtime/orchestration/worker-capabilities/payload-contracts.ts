@@ -1,4 +1,5 @@
 import { MODEL_STEPS, type ModelStep } from "../../../shared/model-steps.js";
+import type { SuperWorkerCompactionSidecar } from "../../context/super-worker-compaction-sidecar.js";
 import type {
   RoleCallDependencyResult,
   RoleCallFrame,
@@ -119,12 +120,15 @@ export type WorkerCapabilityPayloadContext =
         acceptedCapability: Readonly<{
           capabilityId: string;
           summary: string;
+          authoringObjective: string;
           controls: WorkerCapabilityControls;
         }>;
       } & WorkerCapabilityPayloadSharedContext
     >;
 
 export type WorkerCapabilityPayloadModelRequest = Readonly<{
+  /** Internal SUPER evidence; never copied into context or tool parameters. */
+  superWorkerCompaction?: SuperWorkerCompactionSidecar;
   /** Runtime-only binding; it is not projected into the model payload. */
   executionId: string;
   /** Runtime-only selection of reference context for this assignment. */
@@ -165,7 +169,7 @@ export type WorkerCapabilityPayloadAuthor = Readonly<{
       assignmentProvenance?: WorkerCapabilityPayloadSourceProvenance;
       executionId: string;
       descriptor: WorkerCapabilityDescriptor;
-      /** Required for Worker payloads and forbidden for direct-root payloads. */
+      /** Required bounded assignment for Worker and direct-root payloads. */
       authoringObjective?: string;
       controls: WorkerCapabilityControls;
       contextScope?: WorkerCapabilityPayloadContextScope;

@@ -1,11 +1,13 @@
+import { projectCurrentRequestToolResults } from "./request-tool-results-supersession.js";
+export { projectCurrentRequestToolResults } from "./request-tool-results-supersession.js";
+import { bindSuperWorkerCompactionSources } from "./super-worker-compaction-sidecar.js";
+import { projectSingleCopyCapabilityResult } from "./capability-result-compaction-source.js";
+import { projectCanonicalRequestToolResult } from "./canonical-capability-result.js";
+import { projectSuperCompactedRequestToolResults } from "./super-request-tool-results-checkpoint.js";
+import type { SuperCompactionIntegrityInput } from "./semantic-compaction/super-source-integrity.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { ModelStep } from "../../shared/model-steps.js";
 import {
-  isRoleCapabilityId,
-  ROLE_CAPABILITY_REFERENCE_DATA_MAX_LENGTH,
-  ROLE_CAPABILITY_RESULT_REFERENCE_LIMIT_MAX,
-  ROLE_CAPABILITY_RESULT_REFERENCE_TARGET_MAX_LENGTH,
-  ROLE_CALL_RESULT_MAX_LENGTH,
   type RoleCallLedger,
   type RoleCallLedgerHead,
   type RoleCapabilityDeclaredEffect,
@@ -15,21 +17,14 @@ import {
 } from "../orchestration/role-calls/index.js";
 import { projectWorkerCapabilityPlannerItemBinding } from "../orchestration/worker-capabilities/assignment-provenance.js";
 import { traceDebug } from "../observability/debug-logger.js";
-import {
-  normalizeCapabilityAdapterResult,
-  type CapabilityAdapterResult,
-  type CapabilityJsonObject,
-  type CapabilityJsonValue,
-} from "../orchestration/capability-adapters/result.js";
+import { type CapabilityAdapterResult } from "../orchestration/capability-adapters/result.js";
 import { bindRequestToolResultsMessage } from "./request-tool-results-message-binding.js";
 import {
   createSemanticCompactionSha256Fingerprint,
   type SemanticCompactionCheckpoint,
 } from "./semantic-compaction/index.js";
-import {
-  projectAcceptedCapabilityAction,
-  type AcceptedCapabilityAction,
-} from "./accepted-capability-action.js";
+import { type AcceptedCapabilityAction } from "./accepted-capability-action.js";
+import { SEMANTIC_COMPACTION_EVIDENCE_SCOPE } from "./semantic-compaction/evidence-scope.js";
 
 export const REQUEST_TOOL_RESULTS_MESSAGE_KIND =
   "runtime_request_tool_results_v1" as const;
@@ -98,53 +93,10 @@ export function projectRequestToolResults(
         runningExecutionCount += 1;
         continue;
       }
-      const exactResult = normalizeCapabilityAdapterResult(
-        execution.exactResult,
+      const sourceResult = projectCanonicalRequestToolResult(
+        params.head,
+        execution,
       );
-      if (
-        execution.status !== "settled" ||
-        typeof execution.executionId !== "string" ||
-        execution.executionId.length === 0 ||
-        typeof execution.callId !== "string" ||
-        execution.callId.length === 0 ||
-        !Number.isSafeInteger(execution.invocationAttempt) ||
-        execution.invocationAttempt < 1 ||
-        !isRoleCapabilityId(execution.capabilityId) ||
-        !isDeclaredEffect(execution.declaredEffect) ||
-        !isOutcome(execution.outcome) ||
-        !isObservedEffect(execution.observedEffect) ||
-        !isBoundedSummary(execution.summary) ||
-        !isOptionalBoundedReferenceData(execution.referenceData) ||
-        !isValidReferences(execution.references) ||
-        !exactResult.ok
-      ) {
-        throw new Error("request_tool_results_execution_invalid");
-      }
-      const sourceResult = Object.freeze({
-        executionId: execution.executionId,
-        callId: execution.callId,
-        invocationAttempt: execution.invocationAttempt,
-        capabilityId: execution.capabilityId,
-        declaredEffect: execution.declaredEffect,
-        outcome: execution.outcome,
-        observedEffect: execution.observedEffect,
-        summary: execution.summary,
-        ...(execution.referenceData
-          ? { referenceData: execution.referenceData }
-          : {}),
-        ...(execution.references
-          ? { references: Object.freeze([...execution.references]) }
-          : {}),
-        ...(execution.actionFingerprint
-          ? {
-              acceptedAction: projectAcceptedCapabilityAction(
-                params.head,
-                execution,
-              ),
-            }
-          : {}),
-        adapterResult: exactResult.value,
-      });
       sourceProjected.push(sourceResult);
       if (plannerItemScoped && execution.callId !== params.callId) continue;
       if (execution.callId !== params.callId) {
@@ -161,18 +113,22 @@ export function projectRequestToolResults(
     }
 
     const currentResults = projectCurrentRequestToolResults(projected);
-    const view = Object.freeze({
-      sourceRevision: params.head.revision,
-      results: Object.freeze(currentResults),
-      ...(plannerItemScoped
-        ? {
-            scope: Object.freeze({
-              kind: "call" as const,
-              callId: params.callId,
-            }),
-          }
-        : {}),
-    });
+    const view = bindSuperWorkerCompactionSources(
+      {
+        sourceRevision: params.head.revision,
+        results: Object.freeze(currentResults),
+        ...(plannerItemScoped
+          ? {
+              scope: Object.freeze({
+                kind: "call" as const,
+                callId: params.callId,
+              }),
+            }
+          : {}),
+      },
+      params.head,
+      params.callId,
+    );
     traceProjection(
       "projected",
       params,
@@ -213,7 +169,15 @@ export function buildRequestToolResultsMessage(
 export function buildCompactedRequestToolResultsMessage(
   view: RequestToolResultsView,
   checkpoint: SemanticCompactionCheckpoint,
+  integrity?: SuperCompactionIntegrityInput,
 ): ChatMessage {
+  if (integrity)
+    return projectSuperCompactedRequestToolResults(
+      view,
+      checkpoint,
+      integrity,
+      buildRequestToolResultsMessage(view),
+    );
   const modelVisibleResults = projectModelVisibleRequestToolResults(
     view.results,
   );
@@ -268,6 +232,7 @@ export function buildCompactedRequestToolResultsMessage(
       ...(view.scope ? { coverage: view.scope } : {}),
       semanticCheckpoint: {
         kind: checkpoint.kind,
+        evidenceScope: SEMANTIC_COMPACTION_EVIDENCE_SCOPE,
         scopeId: checkpoint.scopeId,
         roleId: checkpoint.roleId,
         callId: checkpoint.callId,
@@ -300,37 +265,7 @@ export function buildCompactedRequestToolResultsMessage(
 function projectModelVisibleRequestToolResults(
   results: readonly RequestToolResult[],
 ): readonly RequestToolResult[] {
-  return Object.freeze(
-    results.map((result) => {
-      if (!isReferenceDataRepresentedByAdapterResult(result)) return result;
-      const { referenceData: _referenceData, ...singleCopyResult } = result;
-      return Object.freeze(singleCopyResult);
-    }),
-  );
-}
-
-function isReferenceDataRepresentedByAdapterResult(
-  result: RequestToolResult,
-): boolean {
-  const referenceData = result.referenceData;
-  const adapterResult = result.adapterResult;
-  if (!referenceData || !adapterResult) return false;
-  if (adapterResult.kind === "registered_tool_execution_result_v1") {
-    return adapterResult.result.output === referenceData;
-  }
-  if (
-    adapterResult.kind === "generic_capability_result_v1" &&
-    isCapabilityJsonObject(adapterResult.payload)
-  ) {
-    return adapterResult.payload.referenceData === referenceData;
-  }
-  return false;
-}
-
-function isCapabilityJsonObject(
-  value: CapabilityJsonValue,
-): value is CapabilityJsonObject {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return Object.freeze(results.map(projectSingleCopyCapabilityResult));
 }
 
 function traceProjection(
@@ -397,164 +332,6 @@ function traceProjection(
     runningExecutionCount,
     ...(issueCode ? { issueCode } : {}),
   });
-}
-
-/**
- * Keeps every canonical execution record while replacing stale successful
- * observations with a small, explicit supersession marker. A mutation makes
- * earlier observations of the same target stale. An exact later observation
- * makes an identical earlier observation redundant. Different observations of
- * one target remain visible because they may cover complementary regions.
- */
-export function projectCurrentRequestToolResults(
-  results: readonly RequestToolResult[],
-): RequestToolResult[] {
-  const latestMutationByTarget = new Map<string, string>();
-  const latestEquivalentObservation = new Map<string, string>();
-  const projected = new Array<RequestToolResult>(results.length);
-
-  for (let index = results.length - 1; index >= 0; index -= 1) {
-    const result = results[index]!;
-    const targets = result.references?.map(({ target }) => target) ?? [];
-    const isSuccessfulObservation =
-      result.outcome === "succeeded" &&
-      result.observedEffect === "observation" &&
-      targets.length > 0;
-    const isSuccessfulMutation =
-      result.outcome === "succeeded" &&
-      result.observedEffect === "mutation" &&
-      targets.length > 0;
-    const supersedingMutationExecutionIds = isSuccessfulObservation
-      ? targets
-          .map((target) => latestMutationByTarget.get(target))
-          .filter((executionId): executionId is string => Boolean(executionId))
-      : [];
-    const observationKey = isSuccessfulObservation
-      ? equivalentObservationKey(result, targets)
-      : undefined;
-    const equivalentObservationExecutionId = observationKey
-      ? latestEquivalentObservation.get(observationKey)
-      : undefined;
-    const isSupersededByMutation =
-      isSuccessfulObservation &&
-      supersedingMutationExecutionIds.length === targets.length;
-    const isSupersededObservation =
-      isSupersededByMutation || Boolean(equivalentObservationExecutionId);
-    const supersedingExecutionIds = isSupersededByMutation
-      ? supersedingMutationExecutionIds
-      : equivalentObservationExecutionId
-        ? [equivalentObservationExecutionId]
-        : [];
-
-    if (isSupersededObservation) {
-      const {
-        referenceData: _referenceData,
-        adapterResult: _adapterResult,
-        ...receipt
-      } = result;
-      projected[index] = Object.freeze({
-        ...receipt,
-        summary:
-          "Earlier successful observation superseded by later settled evidence for the same target.",
-        summaryProjection: "superseded_target_evidence" as const,
-        supersededByExecutionIds: Object.freeze([
-          ...new Set(supersedingExecutionIds),
-        ]),
-      });
-    } else {
-      projected[index] = result;
-    }
-
-    if (isSuccessfulMutation) {
-      for (const target of targets) {
-        if (!latestMutationByTarget.has(target)) {
-          latestMutationByTarget.set(target, result.executionId);
-        }
-      }
-    }
-    if (
-      isSuccessfulObservation &&
-      observationKey &&
-      !latestEquivalentObservation.has(observationKey)
-    ) {
-      latestEquivalentObservation.set(observationKey, result.executionId);
-    }
-  }
-
-  return projected;
-}
-
-function equivalentObservationKey(
-  result: RequestToolResult,
-  targets: readonly string[],
-): string {
-  const acceptedAction = result.acceptedAction;
-  return JSON.stringify([
-    result.capabilityId,
-    [...targets].sort(),
-    ...(acceptedAction
-      ? [acceptedAction.controls, acceptedAction.workingDirectory]
-      : [result.summary]),
-  ]);
-}
-
-function isDeclaredEffect(
-  value: unknown,
-): value is RoleCapabilityDeclaredEffect {
-  return value === "observation" || value === "mutation" || value === "mixed";
-}
-
-function isOutcome(value: unknown): value is RoleCapabilityExecutionOutcome {
-  return value === "succeeded" || value === "failed";
-}
-
-function isObservedEffect(
-  value: unknown,
-): value is RoleCapabilityObservedEffect {
-  return (
-    value === "none" ||
-    value === "observation" ||
-    value === "mutation" ||
-    value === "indeterminate"
-  );
-}
-
-function isBoundedSummary(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    value.trim().length > 0 &&
-    value.length <= ROLE_CALL_RESULT_MAX_LENGTH
-  );
-}
-
-function isOptionalBoundedReferenceData(
-  value: unknown,
-): value is string | undefined {
-  return (
-    value === undefined ||
-    (typeof value === "string" &&
-      value.trim().length > 0 &&
-      value.length <= ROLE_CAPABILITY_REFERENCE_DATA_MAX_LENGTH)
-  );
-}
-
-function isValidReferences(
-  value: RoleCallLedgerHead["state"]["capabilityExecutions"][number]["references"],
-): boolean {
-  return (
-    value === undefined ||
-    (Array.isArray(value) &&
-      value.length <= ROLE_CAPABILITY_RESULT_REFERENCE_LIMIT_MAX &&
-      value.every(
-        (reference) =>
-          reference.kind === "tool_target" &&
-          typeof reference.target === "string" &&
-          reference.target.trim().length > 0 &&
-          reference.target.length <=
-            ROLE_CAPABILITY_RESULT_REFERENCE_TARGET_MAX_LENGTH,
-      ) &&
-      new Set(value.map(({ target }) => target)).size === value.length)
-  );
 }
 
 function projectionIssueCode(error: unknown): string {

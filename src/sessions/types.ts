@@ -119,6 +119,7 @@ export type SessionRequestReplay = {
 };
 
 export type SessionListItem = {
+  kind?: import("./spark-session.js").SessionKind;
   project?: SessionProject;
   id: string;
   title: string;
@@ -166,6 +167,7 @@ export type SessionSnapshotRequest = {
 };
 
 export type SessionSnapshot = {
+  kind?: import("./spark-session.js").SessionKind;
   project?: SessionProject;
   sessionId: string;
   title: string;
@@ -221,7 +223,10 @@ export type SessionMessage = {
 };
 
 export type SessionRecord = {
+  kind?: import("./spark-session.js").SessionKind;
+  assistantInitiativeReceipts?: readonly string[];
   project?: SessionProject;
+  automationOrigin?: import("./automation-session-origin.js").AutomationSessionOrigin;
   id: string;
   title: string;
   createdAt: string;

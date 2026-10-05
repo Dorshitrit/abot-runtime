@@ -1,0 +1,111 @@
+.spark-companion { position: fixed; left: calc(var(--workspace-rail-width, 166px) + 12px); bottom: 70px; z-index: 45; color: var(--text); }
+.spark-companion button, .spark-companion select, .spark-companion textarea { font: inherit; }
+.spark-pet { --pet-size: 43px; display: block; width: var(--pet-size); height: var(--pet-size); flex-shrink: 0; transform: rotate(-3deg); filter: drop-shadow(0 3px 4px #0002); }
+.spark-launcher { position: relative; display: grid; place-items: center; width: 60px; height: 60px; padding: 0; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); box-shadow: var(--shadow); }
+.spark-launcher:hover { background: var(--panel); border-color: var(--line-strong); }
+.spark-rail-launcher { width: 100%; flex: none; }
+.spark-rail-launcher:empty { display: none; }
+.spark-launcher { touch-action: none; user-select: none; }
+.spark-launcher-dragging { cursor: grabbing; }
+.workspace-rail button.spark-launcher { display: flex; width: 100%; height: 52px; padding: 5px 10px; gap: 14px; border-radius: 8px; }
+.spark-launcher-floating { position: fixed; z-index: 45; touch-action: none; }
+.spark-launcher-floating .spark-launcher-label { display: none; }
+.spark-rail-launcher .spark-pet { --pet-size: 34px; }
+.spark-launcher-label { font-size: 12px; }
+.spark-rail-launcher .spark-unread { top: 3px; right: 5px; }
+.spark-unread { position: absolute; right: -5px; top: -5px; min-width: 22px; height: 22px; display: grid; place-items: center; padding: 0 5px; background: #c0c7cd; color: #15191e; border: 2px solid var(--bg); border-radius: 20px; font-size: 11px; font-weight: 600; }
+.spark-chat-panel { position: absolute; left: 0; bottom: 0; width: 390px; height: min(560px, calc(100dvh - 32px)); min-height: 250px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: 0 12px 40px #0005; display: flex; flex-direction: column; overflow: hidden; }
+.spark-chat-header { display: flex; align-items: center; gap: 11px; padding: 12px 13px; border-bottom: 1px solid var(--line); }
+.spark-chat-header .spark-pet { --pet-size: 29px; }
+.spark-chat-header .spark-header-mascot { width: 30px; height: 30px; overflow: visible; }
+.spark-chat-header strong { flex: 1; font-size: 13px; font-weight: 550; }
+.spark-chat-header button { display: grid; place-items: center; border: 0; box-shadow: none; background: transparent; color: var(--muted); width: 28px; height: 28px; padding: 0; border-radius: 6px; }
+.spark-chat-header button:hover { background: var(--control-bg); color: var(--text); }
+.spark-chat-content { position: relative; display: flex; flex: 1; min-height: 0; }
+.spark-companion .jump-to-latest { position: absolute; top: auto; right: auto; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 2; width: auto; min-height: 28px; padding: 5px 10px; font-size: 11px; }
+.spark-companion .spark-messages { width: 100%; min-width: 0; padding: 16px 12px; margin: 0; gap: 0; overflow-y: auto; overflow-anchor: none; scroll-behavior: auto; }
+.spark-companion .message-row { width: 100%; max-width: none; margin: 0 0 14px; gap: 0; }
+.spark-companion .schedule-message-row { display: none; }
+.spark-companion .message-avatar { display: none; }
+.spark-companion .message-row.assistant .message-bubble, .spark-companion .message-bubble { position: relative; width: auto; max-width: 94%; min-width: 0; padding: 9px 11px; border: 1px solid #c5c9cf14; border-radius: 10px; background: #1c2228; box-shadow: none; }
+.spark-companion .message-row.user .message-bubble { padding: 9px 11px; background: #32373e; border: 1px solid #d0d3d920; border-radius: 10px; color: #eceef1; }
+.spark-companion .message-status-outside { flex-direction: column; gap: 5px; }
+.spark-companion .message-status-outside > .conversation-status { padding: 3px 2px; font-size: 12px; }
+.spark-companion .message-row.user .markdown-body:not(:empty) { width: auto; margin: 0; padding: 0; border-radius: 0; background: transparent; }
+.spark-companion .message-link-preview { background: #ffffff04; border-color: #c9d1d919; box-shadow: none; }
+.spark-companion .message-meta { font-size: 10px; margin-bottom: 5px; }
+.spark-companion .message-meta > span:first-child { display: none; }
+.spark-companion .message-timestamp::before { content: none; }
+.spark-companion .message-row.assistant .message-meta { min-height: 18px; padding-right: 35px; }
+.spark-companion .markdown-body { font-size: 13px; line-height: 1.65; }
+.spark-companion .markdown-body pre { max-width: 100%; overflow: auto; }
+.spark-companion .message-actions { position: absolute; right: 7px; top: 7px; margin: 0; }
+.spark-companion .message-action-button { min-height: 20px; padding: 0 4px; font-size: 10px; line-height: 18px; }
+.spark-companion .chat-empty-state { margin: 0; padding: 10px 8px; min-height: 0; text-align: start; align-items: start; }
+.spark-companion .mode-empty-title { font-size: 15px; }
+.spark-companion .mode-empty-copy { font-size: 12px; }
+.spark-chat-composer-dock { flex-shrink: 0; padding: 8px 10px; border-top: 1px solid var(--line); }
+.spark-compose { margin: 0; padding: 0; }
+.spark-input-row { display: flex; align-items: center; gap: 6px; padding: 7px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); }
+.spark-input-row:focus-within { border-color: #727b84; }
+.spark-companion .spark-input-icon { display: grid; place-items: center; flex: 0 0 32px; align-self: flex-end; width: 32px; min-height: 32px; height: 32px; padding: 0; border: 0; border-radius: 7px; background: transparent; box-shadow: none; color: var(--muted); font-size: 20px; }
+.spark-companion .spark-input-icon:hover { background: #ffffff09; color: var(--text); }
+.spark-companion .spark-input-icon[hidden] { display: none; }
+.spark-companion .spark-stop { font-size: 13px; color: var(--text); }
+.spark-companion .spark-input-row textarea { display: block; box-sizing: border-box; flex: 1; min-width: 0; width: 100%; min-height: 32px; height: 32px; max-height: 168px; padding: 6px 3px; margin: 0; resize: none; border: 0; border-radius: 0; outline: 0; box-shadow: none; background: transparent; color: var(--text); font-size: 13px; line-height: 20px; }
+.spark-companion .spark-input-row textarea:hover, .spark-companion .spark-input-row textarea:focus { border: 0; outline: 0; box-shadow: none; background: transparent; }
+.spark-companion .composer-submit-control { align-self: flex-end; flex-shrink: 0; gap: 0; border: 1px solid #ffffff12; border-radius: 9px; background: #30363d; }
+.spark-companion .send-button, .spark-companion .composer-submit-control.split .send-button { display: grid; place-items: center; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #edf0f3; box-shadow: none; }
+.spark-companion .composer-submit-control.split .send-button { border-radius: 8px 0 0 8px; }
+.spark-companion .send-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.spark-companion .send-button:hover, .spark-companion .composer-submit-control.split .send-button:hover { border: 0; background: #ffffff0c; }
+.spark-companion .send-button:disabled, .spark-companion .composer-submit-control.split .send-button:disabled { background: transparent; color: var(--muted-2); opacity: .6; }
+.spark-companion .send-next-menu-button { width: 26px; min-width: 26px; height: 32px; min-height: 32px; padding: 0; border: 0; border-left: 1px solid #ffffff12; border-radius: 0 8px 8px 0; background: transparent; color: #d1d6dc; }
+.spark-companion .send-next-menu-button svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.spark-companion .send-next-menu-button:hover, .spark-companion .send-next-menu-button.open { border-color: #ffffff12; background: #ffffff0c; color: #fff; }
+.spark-companion .send-next-menu-button[data-count]::after { background: #d3d7dc; color: #252a30; }
+.spark-companion .send-next-menu { bottom: 42px; right: 0; min-width: 200px; padding: 5px; border-color: #ffffff20; background: #252b32; box-shadow: 0 8px 24px #0005; }
+.spark-companion .send-next-menu button { padding: 8px 9px 3px; min-height: 32px; font-size: 12px; }
+.spark-companion .send-next-menu p { margin: 0; padding: 0 9px 7px; color: #acb4bf; font-size: 11px; line-height: 1.5; }
+.spark-chat-status { min-height: 0; margin: 0; font-size: 10px; color: var(--muted); }
+.spark-chat-status:empty { display: none; }
+.spark-message-notice { position: absolute; left: 0; bottom: 0; width: 260px; display: flex; align-items: flex-start; gap: 6px; padding: 10px 8px 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow); }
+.spark-message-notice button { background: none; border: none; box-shadow: none; padding: 0; color: var(--text); font-size: 12px; }
+.spark-message-notice [data-spark="noticeButton"] { flex: 1; text-align: start; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.spark-message-notice [data-spark="dismissNoticeButton"] { color: var(--muted); width: 18px; }
+.spark-new-messages { display: flex; align-items: center; gap: 8px; color: #bec5cc; font-size: 10px; margin: 0 0 12px; }
+.spark-new-messages::before, .spark-new-messages::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+.spark-chat-panel .conversation-file-preview { position: absolute; inset: 0; z-index: 5; width: auto; max-width: none; }
+.spark-chat-panel .conversation-file-backdrop { display: none; }
+.spark-chat-results:empty { display: none; }
+.spark-handoff-actions { margin-top: 10px; }
+.spark-handoff-button { min-height: 30px; padding: 5px 9px; border: 1px solid #ffffff14; border-radius: 7px; background: #ffffff08; color: var(--text); font-size: 11px; box-shadow: none; }
+.spark-handoff-actions p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
+.spark-chat-results .conversation-tool-file-action { max-width: 100%; font-size: 12px; }
+.spark-result-warning { margin: 6px 0; color: var(--amber); font-size: 12px; }
+.spark-chat-settings { margin: 0 0 18px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 10px; }
+.spark-chat-settings h4 { margin: 0; font-size: 14px; }
+.spark-chat-settings p, .spark-chat-settings label > span { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.spark-settings-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 16px; }
+.spark-settings-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 14px 0; border-top: 1px solid var(--line); }
+.spark-settings-row strong { display: block; font-size: 12px; font-weight: 550; }
+.spark-chat-settings-controls label { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
+.spark-settings-actions { display: flex; align-items: center; gap: 8px; }
+.spark-chat-settings button, .spark-chat-settings select { min-height: 32px; padding: 6px 10px; font-size: 12px; white-space: nowrap; }
+.spark-chat-settings-controls select { width: 104px; }
+.spark-chat-settings [data-spark-clear] { color: var(--muted); background: transparent; }
+.spark-chat-settings .spark-settings-model-note { padding-top: 12px; border-top: 1px solid var(--line); }
+.spark-chat-settings [data-spark-settings-feedback]:empty { display: none; }
+.spark-is-working .spark-pet { filter: drop-shadow(0 0 5px #76cbb077); }
+@keyframes spark-mascot-working {
+  0%, 100% { transform: translateX(0) rotate(-3deg); }
+  20%, 35% { transform: translateX(-2px) rotate(-8deg); }
+  65%, 80% { transform: translateX(2px) rotate(4deg); }
+}
+@keyframes spark-chat-enter { from { opacity: 0; transform: translateY(var(--spark-open-shift, 10px)); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: no-preference) {
+  .spark-chat-panel:not([hidden]) { animation: spark-chat-enter .22s cubic-bezier(.2,.8,.2,1); }
+  .spark-launcher .spark-pet { transition: transform .18s ease; }
+  .spark-launcher:hover .spark-pet { transform: rotate(4deg) translateY(-2px); }
+  .spark-is-working .spark-pet { animation: spark-mascot-working 2.8s ease-in-out infinite; }
+}

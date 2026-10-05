@@ -52,6 +52,7 @@ export function resolveModelContextAdmission(params: {
   const invocation = resolveModelInvocation({
     agentMode: params.agentMode,
     modelStep: params.modelStep,
+    ...(params.requestFormat === undefined ? {} : { format: params.requestFormat }),
     ...(params.modelPreference
       ? { modelPreference: params.modelPreference }
       : {}),

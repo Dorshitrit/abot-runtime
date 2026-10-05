@@ -71,7 +71,7 @@ function history(
     environmentId,
     preferences: {
       desktopEnabled: true,
-      kinds: { reply: true, failure: false, approval: true, proposal: false },
+      kinds: { reply: true, failure: false, approval: true, proposal: false, automation: true },
     },
     items: Array.from({ length: 601 }, (_, index) => ({
       ...projectNotificationEvent(reply(index, environmentId), 1_000 + index)!,
@@ -92,6 +92,8 @@ async function fixture(state = history()) {
   const root = await mkdtemp(join(artifacts, "reconciliation-"));
   roots.push(root);
   const paths = { runtimeDir: root, sessionsDir: join(root, "sessions") };
+  await mkdir(paths.sessionsDir, { recursive: true });
+  await writeFile(join(paths.sessionsDir, "chat.json"), JSON.stringify({ id: "chat" }));
   const path = notificationStorePath({ ...paths, environmentId: "dev" });
   const otherPath = notificationStorePath({ ...paths, environmentId: "prod" });
   const otherState = JSON.stringify(history("prod"));

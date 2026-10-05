@@ -16,6 +16,7 @@ export function createSetupOptionalSteps({
   loadHostConnection,
   connectLocalHost,
   createHostPairing,
+  requestHostPermissions,
   downloadHostSetup,
   revokeHostConnection,
   onChange,
@@ -29,7 +30,10 @@ export function createSetupOptionalSteps({
     discoverModels: discoverEmbeddingModels,
     saveEmbedding,
     onChange,
-    onComplete: () => goToStep(3),
+    onComplete: () => {
+      plugins.reset();
+      goToStep(3);
+    },
   });
   const plugins = createSetupPluginStep({
     container,
@@ -40,9 +44,11 @@ export function createSetupOptionalSteps({
   });
   const computer = loadHostConnection
     ? createSystemHostConnectionManager({
+        getEnvironmentId,
         loadConnection: loadHostConnection,
         connectLocal: connectLocalHost,
         createPairing: createHostPairing,
+        requestPermissions: requestHostPermissions,
         downloadSetup: downloadHostSetup,
         revokeConnection: revokeHostConnection,
         onChange,

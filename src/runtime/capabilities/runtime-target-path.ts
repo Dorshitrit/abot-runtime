@@ -16,10 +16,16 @@ import type {
   RuntimeToolPathResolver,
   ToolExecutionSharedState,
 } from "../../capabilities/tool-types.js";
+import {
+  isRuntimePathNamespaceCompatible,
+  isRuntimePathWithinRoot,
+  normalizeRuntimePathForScope,
+} from "./runtime-path-namespace.js";
 
 export const RUNTIME_TOOL_PATH_ERROR_CODES = Object.freeze({
   REQUIRED: "runtime_tool_path_required",
   NULL_BYTE: "runtime_tool_path_null_byte",
+  NAMESPACE_INVALID: "runtime_tool_path_namespace_invalid",
   LOCATION_REQUIRED: "runtime_tool_path_location_required",
   ROOT_UNAVAILABLE: "runtime_tool_path_root_unavailable",
   WORKSPACE_UNAVAILABLE: "runtime_tool_path_workspace_unavailable",
@@ -53,9 +59,10 @@ function configuredRoot(value: string | undefined): string | undefined {
   return trimmed ? resolve(trimmed) : undefined;
 }
 
-function isWithinRoot(target: string, root: string): boolean {
-  const rel = relative(root, target);
-  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`));
+function assertRuntimePathNamespace(value: string): void {
+  if (!isRuntimePathNamespaceCompatible(value)) {
+    throwRuntimeToolPathError(RUNTIME_TOOL_PATH_ERROR_CODES.NAMESPACE_INVALID);
+  }
 }
 
 /**
@@ -72,6 +79,7 @@ export function scopeRuntimeTargetPath(
     sharedState: ToolExecutionSharedState;
   }>,
 ): string {
+  assertRuntimePathNamespace(params.rawPath.trim());
   const workingDirectory = params.workingDirectory?.trim();
   if (!workingDirectory) {
     return params.rawPath;
@@ -84,6 +92,7 @@ export function scopeRuntimeTargetPath(
       "runtime_target_path_missing",
     );
   }
+  assertRuntimePathNamespace(workingDirectory);
   const normalizedTarget = normalizeLogicalPath(requested);
   const normalizedWorkingDirectory = normalizeLogicalPath(workingDirectory);
   if (
@@ -97,7 +106,7 @@ export function scopeRuntimeTargetPath(
     );
   }
 
-  const normalized = posix.normalize(normalizedTarget);
+  const normalized = normalizeRuntimePathForScope(requested);
   const scoped =
     isAbsolute(normalized) ||
     normalized === "workspace" ||
@@ -114,7 +123,7 @@ export function scopeRuntimeTargetPath(
     params.sharedState,
   );
   const resolvedTarget = resolveRuntimeTargetPath(scoped, params.sharedState);
-  if (!isWithinRoot(resolvedTarget, resolvedWorkingDirectory)) {
+  if (!isRuntimePathWithinRoot(resolvedTarget, resolvedWorkingDirectory)) {
     throwRuntimeToolPathError(
       RUNTIME_TOOL_PATH_ERROR_CODES.OUTSIDE_WORKING_DIRECTORY,
       "runtime_target_path_outside_working_directory",
@@ -264,6 +273,7 @@ function resolveRuntimeToolPath(
   if (requested.includes("\0")) {
     throwRuntimeToolPathError(RUNTIME_TOOL_PATH_ERROR_CODES.NULL_BYTE);
   }
+  assertRuntimePathNamespace(requested);
   const allowed = Object.freeze(
     [...(options.allowedLocations ?? DEFAULT_TOOL_PATH_LOCATIONS)].filter(
       (location, index, values) => values.indexOf(location) === index,
@@ -292,6 +302,8 @@ function resolveRuntimeToolPath(
   let lexicalTarget: string;
 
   if (workspaceRelative !== undefined) {
+    // Validate the alias payload before root resolution can hide its namespace.
+    assertRuntimePathNamespace(requested.slice("workspace/".length));
     const workspace = availableRoots.find(
       ({ location }) => location === "workspace",
     );
@@ -305,7 +317,7 @@ function resolveRuntimeToolPath(
   } else if (isAbsolute(requested)) {
     lexicalTarget = resolve(requested);
     const rootedMatch = availableRoots
-      .filter(({ root }) => isWithinRoot(lexicalTarget, root))
+      .filter(({ root }) => isRuntimePathWithinRoot(lexicalTarget, root))
       .sort((left, right) => right.root.length - left.root.length)[0];
     if (rootedMatch) {
       selected = rootedMatch;
@@ -330,14 +342,14 @@ function resolveRuntimeToolPath(
     );
   }
 
-  if (!isWithinRoot(lexicalTarget, selected.root)) {
+  if (!isRuntimePathWithinRoot(lexicalTarget, selected.root)) {
     throwRuntimeToolPathError(
       RUNTIME_TOOL_PATH_ERROR_CODES.OUTSIDE_CONFIGURED_ROOTS,
     );
   }
   const absolutePath = resolveThroughExistingAncestor(lexicalTarget);
   const canonicalRoot = resolveThroughExistingAncestor(selected.root);
-  if (!isWithinRoot(absolutePath, canonicalRoot)) {
+  if (!isRuntimePathWithinRoot(absolutePath, canonicalRoot)) {
     throwRuntimeToolPathError(RUNTIME_TOOL_PATH_ERROR_CODES.SYMLINK_ESCAPE);
   }
   const relativePath = relative(canonicalRoot, absolutePath).replaceAll(

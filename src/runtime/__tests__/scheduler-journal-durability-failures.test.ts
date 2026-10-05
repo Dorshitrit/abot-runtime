@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import type { SchedulerStore } from "../scheduler/contracts.js";
+import { requireRequestSchedulerJob } from "../scheduler/scheduler-target.js";
 import {
   committedCheckpointPath,
   createCheckpointFixture,
@@ -163,7 +164,7 @@ test.skipIf(process.platform === "win32")(
     await seedCheckpointJobRevisions(
       f.directory,
       Array.from({ length: 255 }, (_, index) => ({
-        ...f.snapshot.jobs[1],
+        ...requireRequestSchedulerJob(f.snapshot.jobs[1]),
         title: `revision-${index}`,
       })),
     );

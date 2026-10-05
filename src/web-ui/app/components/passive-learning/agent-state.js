@@ -3,10 +3,6 @@ import { isObservationReviewActive, observationReviewSummary } from "./processin
 
 const failures = new Set(["failed", "unavailable", "disconnected", "permission_required"]);
 
-export function latestVisibleProposal(status) {
-  return [...(status?.proactive?.proposals ?? [])].reverse().find((item) => item.status === "delivered");
-}
-
 function isReviewing(status) {
   if (isObservationReviewActive(status)) return true;
   if (status.reassessment?.state === "reviewing") return true;
@@ -42,7 +38,6 @@ export function coWorkerAgentState(snapshot) {
   if (!status) return { mode: "quiet", label: "Connecting", title: "ABot Spark", description: "Checking the current activity…" };
   if (snapshot.statusError) return { mode: "attention", label: "Connection interrupted", title: "Waiting to reconnect.", description: "The last known activity is shown below. Refresh to check the connection." };
   if (isReviewing(status)) return { mode: "reviewing", label: "Working now", title: "Finding what matters.", description: status.proactive?.state === "reviewing" ? "Considering whether there’s something useful to offer you." : "Reviewing activity and refining what’s worth remembering." };
-  if (latestVisibleProposal(status)) return { mode: "suggestion", label: "Something to share", title: "A thought for your next step.", description: "A conversation is ready. Read it when it suits you." };
   if (hasActivityFailure(status)) return { mode: "attention", label: "Needs attention",
     title: (status.processingReason || status.reason) === "learning_model_request_failed" ? "Let’s check the learning model." : "One activity needs attention.",
     description: hasLearningProcessingFailure(status) ? "Learning could not finish its review. Check learning settings; saved knowledge is still here." : "Your saved knowledge is still here. Check the activity details below." };

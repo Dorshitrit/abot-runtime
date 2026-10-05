@@ -1,19 +1,10 @@
 import { createHash } from "node:crypto";
+import { isSparkSession } from "../../sessions/spark-session.js";
+import { hasAutomationSessionOrigin } from "../../sessions/automation-session-origin.js";
 import type { WebNotification, NotificationKind } from "./contracts.js";
-
-function eventText(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function hasNotificationIdentity(value: string): boolean {
-  if (!value.trim() || value.length > 512) return false;
-  return !/[\u0000-\u001f\u007f]/u.test(value);
-}
-
-function notificationBody(value: string): string {
-  const readable = value.replace(/[\u0000-\u001f\u007f]/gu, " ");
-  return [...readable.replace(/\s+/gu, " ").trim()].slice(0, 600).join("");
-}
+import { projectAutomationRunNotificationEvent } from "./automation-event-projection.js";
+import { eventText, hasNotificationIdentity, notificationBody } from "./event-fields.js";
+import { conversationNotificationSource, type NotificationSession } from "./conversation-source.js";
 
 function stoppedResponse(event: Record<string, unknown>): string {
   const details = event.details;
@@ -29,8 +20,17 @@ function isCancelledRequestEvent(event: Record<string, unknown>): boolean {
   return event.error === "request_cancelled";
 }
 
+function isAutomationChildReply(
+  event: Record<string, unknown>,
+  persistedSession?: NotificationSession | null,
+): boolean {
+  if (event.type !== "completed") return false;
+  if (!persistedSession) return false;
+  return hasAutomationSessionOrigin(persistedSession);
+}
+
 type ProjectedNotification = {
-  kind: NotificationKind;
+  kind: Exclude<NotificationKind, "automation">;
   key: string;
   title: string;
   body: string;
@@ -96,8 +96,8 @@ function readNotificationEvent(
     kind: "proposal",
     key: eventText(proposal.proposalId),
     sessionId: eventText(proposal.sessionId),
-    title: "New Co-worker suggestion",
-    body: "Co-worker has a new suggestion for you. Open the conversation to review it.",
+    title: "New SPARK suggestion",
+    body: "SPARK has a new suggestion for you. Open the conversation to review it.",
   };
 }
 
@@ -105,8 +105,12 @@ function readNotificationEvent(
 export function projectNotificationEvent(
   event: Record<string, unknown>,
   now: number,
+  persistedSession?: NotificationSession | null,
 ): WebNotification | undefined {
   if (event.sessionDeleted === true) return;
+  if (isAutomationChildReply(event, persistedSession)) return;
+  const automation = projectAutomationRunNotificationEvent(event, now);
+  if (automation) return automation;
   const environmentId =
     eventText(event.environment) || eventText(event.environmentId);
   if (!hasNotificationIdentity(environmentId)) return;
@@ -117,10 +121,6 @@ export function projectNotificationEvent(
   const id = createHash("sha256")
     .update(JSON.stringify([environmentId, projected.kind, projected.key]))
     .digest("hex");
-  const parameters = new URLSearchParams({
-    environment: environmentId,
-    session: projected.sessionId,
-  });
   const requestId = eventText(event.requestId);
   return {
     id,
@@ -131,8 +131,9 @@ export function projectNotificationEvent(
     readAt: null,
     environmentId,
     sessionId: projected.sessionId,
+    ...(persistedSession && isSparkSession(persistedSession) ? { sessionKind: "spark" as const } : {}),
     ...(hasNotificationIdentity(requestId) ? { requestId } : {}),
-    sourceUrl: `/chat?${parameters}`,
+    sourceUrl: conversationNotificationSource(environmentId, projected.sessionId, event, persistedSession),
     delivery: { status: "pending" },
   };
 }

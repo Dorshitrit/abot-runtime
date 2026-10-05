@@ -16,11 +16,11 @@ export function dashboardRefreshResources(rawMessage, environmentId) {
   if (message.type === "workspace_changed") {
     const resources = Array.isArray(message.resources) ? message.resources : [];
     return resources.filter(
-      (resource) => resource === "sessions" || resource === "approvals",
+      (resource) => ["sessions", "approvals", "automations"].includes(resource),
     );
   }
   if (message.type === "event" && message.name === "scheduler.changed")
-    return ["activity", "sessions"];
+    return ["activity", "sessions", "automations"];
   if (message.type === "completed" || message.type === "failed")
     return ["sessions", "approvals"];
   if (message.type === "chat_message" || message.type === "chat_read_state")

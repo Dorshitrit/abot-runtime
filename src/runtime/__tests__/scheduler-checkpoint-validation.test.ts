@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { afterEach, expect, test } from "vitest";
+import { requireRequestSchedulerRun } from "../scheduler/scheduler-target.js";
 import {
   committedCheckpointPath,
   createCheckpointFixture,
@@ -17,11 +18,12 @@ test("checkpoint reopen retains full pending/running payloads and independent jo
     snapshot.runs[0].status = "pending";
     snapshot.runs[1].status = "running";
     snapshot.runs[1].startedAt = "2026-09-06T09:00:01.000Z";
-    for (const run of snapshot.runs) delete run.resultText;
+    for (const run of snapshot.runs)
+      delete requireRequestSchedulerRun(run).resultText;
   });
   const owner = await f.own();
   const head = await readCheckpointManifest(f.directory);
-  expect(head.schemaVersion).toBe(3);
+  expect(head.schemaVersion).toBe(4);
   expect(head.sequence).toBe(head.checkpoint!.sequence);
   expect(await owner.store.read("active")).toEqual(f.snapshot);
   await owner.close();
@@ -30,7 +32,7 @@ test("checkpoint reopen retains full pending/running payloads and independent jo
   expect(await reopened.store.read()).toEqual(f.snapshot);
   expect(await reopened.store.read("active")).toEqual(f.snapshot);
   const detached = await reopened.store.read("active");
-  detached.runs[0].prompt = "outside mutation";
+  requireRequestSchedulerRun(detached.runs[0]).prompt = "outside mutation";
   expect(await reopened.store.read("active")).toEqual(f.snapshot);
 });
 
@@ -82,7 +84,7 @@ test.each(malformedMetadata)(
 test("checkpoint active payload must match its indexed request identity", async () => {
   const f = await createCheckpointFixture(cleanups, (snapshot) => {
     snapshot.runs[0].status = "pending";
-    delete snapshot.runs[0].resultText;
+    delete requireRequestSchedulerRun(snapshot.runs[0]).resultText;
   });
   const owner = await f.own();
   const path = committedCheckpointPath(

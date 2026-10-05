@@ -1,10 +1,16 @@
+import { assessResultEnvelopeBytes, CAPABILITY_RESULT_ENVELOPE_MAX_BYTES } from "../../../capabilities/result-budget.js";
+import {
+  hasValidToolContextText,
+  measureToolContextTextBytes,
+  type ToolContextTextField,
+} from "../../../capabilities/tool-context-text.js";
 import { isToolResultMedia, type ToolImageEvidence } from "../../../capabilities/tool-media.js";
 import {
   ROLE_CAPABILITY_RESULT_REFERENCE_LIMIT_MAX,
   ROLE_CAPABILITY_RESULT_REFERENCE_TARGET_MAX_LENGTH,
 } from "../role-calls/contracts.js";
 
-export const CAPABILITY_ADAPTER_RESULT_SERIALIZED_MAX_BYTES = 256 * 1024;
+export const CAPABILITY_ADAPTER_RESULT_SERIALIZED_MAX_BYTES = CAPABILITY_RESULT_ENVELOPE_MAX_BYTES;
 
 export type CapabilityJsonPrimitive = string | number | boolean | null;
 export type CapabilityJsonValue =
@@ -22,6 +28,7 @@ export type CapabilityResultReference = Readonly<{
 }>;
 
 export type CanonicalToolExecutionResult = Readonly<{
+  contextTextFields?: readonly ToolContextTextField[];
   media?: readonly ToolImageEvidence[];
   ok: boolean;
   tool: string;
@@ -85,7 +92,8 @@ export type CapabilityAdapterResultNormalization =
 /**
  * Captures one typed exact result without truncating or semantically rewriting
  * plugin-authored content. Bounds come from the explicit envelope schema and
- * the hard serialized-result producer limit.
+ * the metadata envelope limit. Declared text stays exact and is budgeted at
+ * model invocation, where the existing context compactor can see it.
  */
 export function normalizeCapabilityAdapterResult(
   input: unknown,
@@ -280,6 +288,7 @@ function captureToolExecutionResult(
         "error",
         "errorCode",
         "media",
+        "contextTextFields",
       ],
     ) ||
     typeof input.ok !== "boolean" ||
@@ -297,6 +306,7 @@ function captureToolExecutionResult(
     (input.errorCode !== undefined && typeof input.errorCode !== "string") ||
     !validActions(input.actions) ||
     !isToolResultMedia(input.media) ||
+    !hasValidToolContextText(input) ||
     !validToolData(input.data)
   ) {
     return undefined;
@@ -462,12 +472,10 @@ function invalid(
 function acceptBoundedResult(
   value: CapabilityAdapterResult,
 ): CapabilityAdapterResultNormalization {
-  const serialized = JSON.stringify(value);
-  if (serialized === undefined) return invalid("result_not_json_safe");
-  if (
-    Buffer.byteLength(serialized, "utf8") >
-    CAPABILITY_ADAPTER_RESULT_SERIALIZED_MAX_BYTES
-  ) {
+  const contextTextBytes = value.kind === "registered_tool_execution_result_v1"
+    ? measureToolContextTextBytes(value.result)
+    : 0;
+  if (!assessResultEnvelopeBytes(value, contextTextBytes).fits) {
     return invalid("result_too_large");
   }
   return Object.freeze({ ok: true as const, value });

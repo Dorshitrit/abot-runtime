@@ -89,6 +89,11 @@ export function projectOpenAIResponsesFormat(
   if (!isPlainObject(format)) {
     return emptyProjection(undefined);
   }
+  const requestsPlainTextOutput = format.type === "text";
+  if (requestsPlainTextOutput) {
+    rejectMisplacedProjectionMetadata(format);
+    return emptyProjection(undefined);
+  }
   if (isModelGatewayJsonSchemaFormat(format)) {
     return hasUnsupportedRootUnion(format.schema)
       ? rootUnionFallback(format.name, format.schema)

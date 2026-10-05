@@ -77,6 +77,7 @@ describe("Agent Plugins manifest loader", () => {
       },
     ]);
     expect(loaded?.capabilities[0]?.definition.catalogGroups).toEqual(["read"]);
+    expect(loaded?.capabilities[0]?.definition.pluginName).toBe(manifest.name);
     expect(loaded?.capabilitySkills).toEqual({
       example_lookup: ["example_lookup_skill"],
     });
@@ -112,6 +113,7 @@ describe("Agent Plugins manifest loader", () => {
     expect(alpha.capabilities[0]).toMatchObject({
       definition: {
         name: "alpha_lookup",
+        pluginName: "alpha-plugin",
         description: "alpha-plugin capability",
         catalogGroups: ["alpha-plugin"],
       },

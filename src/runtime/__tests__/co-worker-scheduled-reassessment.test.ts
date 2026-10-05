@@ -13,10 +13,31 @@ import { validateJsonSchemaValue } from "../model/json-schema-value.js";
 import { createReassessmentStateStore, learningReassessmentFingerprint } from "../passive-learning/reassessment-state.js";
 import { DEFAULT_MATURATION_POLICY } from "../long-term-memory/maturation/retention.js";
 
+const filesystemHooks = vi.hoisted(() => ({
+  beforeOpen: undefined as undefined | ((target: string) => Promise<void>),
+  afterRename: undefined as undefined | ((target: string) => Promise<void>),
+}));
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, open: async (...args: Parameters<typeof actual.open>) => {
+    await filesystemHooks.beforeOpen?.(String(args[0]));
+    return actual.open(...args);
+  }, rename: async (...args: Parameters<typeof actual.rename>) => {
+    await actual.rename(...args);
+    await filesystemHooks.afterRename?.(String(args[1]));
+  } };
+});
+
 const NOW = Date.parse("2026-09-25T12:00:00Z");
 const cleanup: (() => Promise<void>)[] = [];
+const reviewCompletion = new WeakMap<ScheduledLearningReassessment, () => Promise<void>>();
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); });
-afterEach(async () => { for (const close of cleanup.splice(0)) await close(); vi.useRealTimers(); });
+afterEach(async () => {
+  filesystemHooks.beforeOpen = undefined;
+  filesystemHooks.afterRename = undefined;
+  for (const close of cleanup.splice(0)) await close();
+  vi.useRealTimers();
+});
 
 async function fixture() {
   const parent = join(process.cwd(), ".codex/artifacts/co-worker-reassessment-tests");
@@ -52,7 +73,12 @@ async function fixture() {
     reconsiderationContext: async (input?: Parameters<typeof available>[0]) => ({ ...context(),
       entries: available(input).filter(({ reconsiderAt }) => Date.parse(reconsiderAt!) <= Date.now()) }),
     reviewAdmission: async () => admission, receipt: async () => undefined, apply } as unknown as LearningMemoryService;
-  const changed = vi.fn();
+  let notifyChanged!: () => void;
+  let nextChange = new Promise<void>((resolve) => { notifyChanged = resolve; });
+  const changed = vi.fn().mockImplementation(() => {
+    notifyChanged();
+    nextChange = new Promise<void>((resolve) => { notifyChanged = resolve; });
+  });
   const resourceUsage = vi.fn(async () => ({ schemaVersion: 1 as const, timeZone: "UTC", startedAt: NOW, resetsAt: NOW + 3_600_000,
     modelCalls: calls, embeddingCalls: 0, embeddingCharacters: 0, activeCalls: 0 }));
   const build = () => {
@@ -61,10 +87,27 @@ async function fixture() {
       context: { preferences: () => preferences, changed, isStarted: () => true, isInteractiveBusy: () => busy,
         isProcessingBusy: () => queued, assertProcessingAllowed() {} },
       resourceUsage });
+    reviewCompletion.set(runner, async () => {
+      while (true) {
+        // Capture before reading status so a concurrent completion cannot be missed.
+        const changed = nextChange;
+        const isReviewing = runner.status().state === "reviewing";
+        if (!isReviewing) return;
+        await changed;
+      }
+    });
     cleanup.unshift(() => runner.stop()); return runner;
   };
   const runner = build();
+  const waitForNextReview = async () => {
+    while (true) {
+      const changed = nextChange;
+      if (runner.status().nextReviewAt) return;
+      await changed;
+    }
+  };
   return { directory, runner, build, context, review, apply, memory, resourceUsage, changed,
+    waitForNextReview,
     setDue: (next: string | null) => { due = next; }, setVersion: (next: string) => { version = next; },
     setExtra: (entries: readonly LearningKnowledgeEntry[]) => { extra = entries; },
     setAdmission: (next: LearningReviewAdmission) => { admission = next; }, setCalls: (next: number) => { calls = next; },
@@ -73,10 +116,42 @@ async function fixture() {
 }
 async function tick(runner: ScheduledLearningReassessment, milliseconds = 60_001) {
   await vi.advanceTimersByTimeAsync(milliseconds);
-  await vi.waitFor(() => expect(runner.status().state).not.toBe("reviewing"));
+  const waitForReviewCompletion = reviewCompletion.get(runner);
+  if (!waitForReviewCompletion) throw new Error("reassessment_test_runner_not_registered");
+  await waitForReviewCompletion();
 }
 
 describe("scheduled knowledge reassessment", () => {
+  test("waits for filesystem completion without advancing the scheduler clock", async () => {
+    const f = await fixture();
+    let release!: () => void; let entered!: () => void; let inspected!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const writing = new Promise<void>((resolve) => { entered = resolve; });
+    const inspecting = new Promise<void>((resolve) => { inspected = resolve; });
+    filesystemHooks.afterRename = async (target) => {
+      if (target !== join(f.directory, "knowledge-reassessment.json")) return;
+      entered(); await held;
+    };
+    let completion: Promise<void> | undefined;
+    try {
+      await f.runner.start(); await vi.advanceTimersByTimeAsync(60_001);
+      await writing;
+      const now = Date.now(); const status = f.runner.status.bind(f.runner);
+      vi.spyOn(f.runner, "status").mockImplementationOnce(() => {
+        const result = status(); inspected(); return result;
+      });
+      let settled = false;
+      completion = tick(f.runner, 0).then(() => { settled = true; });
+      await inspecting;
+      expect(settled).toBe(false);
+      expect(Date.now()).toBe(now);
+      release(); await completion;
+      expect(f.runner.status().state).not.toBe("reviewing");
+      expect(f.review).toHaveBeenCalledOnce();
+      expect(Date.now()).toBe(now);
+    } finally { release(); await completion; }
+  });
+
   test("releases expired resumed progress and retries fresh at the normal interval", async () => {
     const f = await fixture(); const store = createReassessmentStateStore(f.directory);
     const fingerprint = learningReassessmentFingerprint(f.context());
@@ -121,13 +196,32 @@ describe("scheduled knowledge reassessment", () => {
 
   test("a temporary memory outage does not permanently block scheduled knowledge review", async () => {
     const f = await fixture();
+    let releaseRearm!: () => void; let enteredRearm!: () => void;
+    const rearmHeld = new Promise<void>((resolve) => { releaseRearm = resolve; });
+    const rearming = new Promise<void>((resolve) => { enteredRearm = resolve; });
+    filesystemHooks.beforeOpen = async (target) => {
+      if (target !== join(f.directory, "knowledge-reassessment.json")) return;
+      if (f.review.mock.calls.length !== 1 || f.runner.status().state === "reviewing") return;
+      filesystemHooks.beforeOpen = undefined;
+      enteredRearm(); await rearmHeld;
+    };
     f.review.mockRejectedValueOnce(new Error("learning_memory_unavailable"));
-    await f.runner.start(); await tick(f.runner);
-    expect(f.review).toHaveBeenCalledOnce(); expect(f.apply).not.toHaveBeenCalled();
-    expect((await createReassessmentStateStore(f.directory).read()).blockedEntries).toEqual([]);
-    await tick(f.runner);
-    expect(f.review).toHaveBeenCalledTimes(2); expect(f.apply).toHaveBeenCalledOnce();
-    expect(f.runner.status().reason).toBeUndefined();
+    try {
+      await f.runner.start(); await tick(f.runner); await rearming;
+      expect(f.review).toHaveBeenCalledOnce(); expect(f.apply).not.toHaveBeenCalled();
+      const state = await createReassessmentStateStore(f.directory).read();
+      expect(state.blockedEntries).toEqual([]);
+      const now = Date.now(); let scheduled = false;
+      const scheduling = f.waitForNextReview().then(() => { scheduled = true; });
+      await Promise.resolve();
+      expect(scheduled).toBe(false); expect(Date.now()).toBe(now);
+      releaseRearm(); await scheduling;
+      expect(Date.now()).toBe(now);
+      expect(Date.parse(f.runner.status().nextReviewAt!)).toBe(state.attemptedAt + 60_000);
+      await tick(f.runner);
+      expect(f.review).toHaveBeenCalledTimes(2); expect(f.apply).toHaveBeenCalledOnce();
+      expect(f.runner.status().reason).toBeUndefined();
+    } finally { releaseRearm(); }
   });
 
   test.each(["profile", "resume"])("preserves explicit %s retry after a transient retry-state failure", async (change) => {

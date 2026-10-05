@@ -55,6 +55,8 @@ import { LongTermMemoryManagementRoutes } from "./memory-management-routes.js";
 import { LongTermMemoryOnboardingRoutes } from "./memory-onboarding-routes.js";
 import { ScheduleManagementRoutes } from "./schedule-management-routes.js";
 import { PassiveLearningRoutes } from "./learning-routes.js";
+import { AutomationRoutes } from "./automation-routes.js";
+import { SparkChatRoutes } from "./spark-chat-routes.js";
 
 function sendRuntimeSetupRequired(
   res: ServerResponse,
@@ -83,6 +85,8 @@ export class LocalRuntimeApiRouter {
   private readonly projects = new ProjectRoutes();
   private readonly toolApprovals: ToolApprovalRoutes;
   private readonly learning: PassiveLearningRoutes;
+  private readonly automations: AutomationRoutes;
+  private readonly sparkChat: SparkChatRoutes;
 
   constructor(
     private readonly options: ResolvedLocalRuntimeBackendOptions,
@@ -96,6 +100,7 @@ export class LocalRuntimeApiRouter {
     this.learning = new PassiveLearningRoutes(
       (id) => this.environments.get(id).services.passiveLearning,
     );
+    this.automations = new AutomationRoutes((id) => this.environments.get(id));
     this.conversationFiles = new ConversationFileRoutes(
       environments,
       requests,
@@ -145,6 +150,7 @@ export class LocalRuntimeApiRouter {
       this.readStates,
       notifyWorkspaceChanged,
     );
+    this.sparkChat = new SparkChatRoutes((id) => this.environments.get(id), this.readStates, notifyWorkspaceChanged);
     this.schedules = new ScheduleManagementRoutes((id) =>
       this.environments.get(id),
     );
@@ -275,6 +281,7 @@ export class LocalRuntimeApiRouter {
       await cancelWebRequest({ request: req, response: res, body, environment: this.environments.get(environmentId) });
       return;
     }
+    if (await this.sparkChat.handle({ method, route, body, environmentId, request: req, response: res })) return;
 
     if (
       await this.learning.handle({
@@ -289,6 +296,18 @@ export class LocalRuntimeApiRouter {
       })
     )
       return;
+
+    if (
+      await this.automations.handle({
+        method,
+        segments,
+        url,
+        body,
+        environmentId,
+        request: req,
+        response: res,
+      })
+    ) return;
 
     if (
       await this.toolApprovals.handle({

@@ -25,7 +25,7 @@ function harness(backend = "runtime") {
   };
 }
 
-test("host pairing uses shared routes without session, environment or tool-selection writes", async () => {
+test("host reads scope native metadata by environment while pairing writes remain shared", async () => {
   const { client, fetchImpl, changeEnvironment } = harness();
   await client.getSystemHostConnection();
   changeEnvironment("dev");
@@ -35,8 +35,8 @@ test("host pairing uses shared routes without session, environment or tool-selec
   await client.downloadSystemHostSetup("windows");
   await client.revokeSystemHostConnection();
   expect(fetchImpl.mock.calls).toEqual([
-    ["/web-api/runtime/system-host", { headers: {} }],
-    ["/web-api/runtime/system-host", { headers: {} }],
+    ["/web-api/runtime/system-host?environment=prod", { headers: {} }],
+    ["/web-api/runtime/system-host?environment=dev", { headers: {} }],
     [
       "/web-api/runtime/system-host/pairing",
       {
@@ -78,6 +78,7 @@ test("bridge backend rejects host configuration locally", async () => {
   await expect(client.getSystemHostConnection()).rejects.toThrow(
     "local Runtime backend",
   );
+  await expect(client.requestSystemHostPermissions({ action: "check" })).rejects.toThrow("local Runtime backend");
   await expect(client.createSystemHostPairing()).rejects.toThrow(
     "local Runtime backend",
   );
@@ -91,4 +92,14 @@ test("bridge backend rejects host configuration locally", async () => {
     "local Runtime backend",
   );
   expect(fetchImpl).not.toHaveBeenCalled();
+});
+
+test("permission preparation uses the shared POST route with explicit live host binding", async () => {
+  const { client, fetchImpl } = harness();
+  const input = { hostId: "mac", connectionId: "socket", action: "request", permission: "screen_recording" };
+  await client.requestSystemHostPermissions(input);
+  expect(fetchImpl.mock.calls).toEqual([[
+    "/web-api/runtime/system-host/permissions",
+    { method: "POST", body: JSON.stringify(input), headers: { "content-type": "application/json" } },
+  ]]);
 });

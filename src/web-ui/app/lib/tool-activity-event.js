@@ -1,6 +1,7 @@
 import { getRecord, titleCaseEventValue } from "./event-presentation.js";
 import { projectConversationFileReference } from "./conversation-file-reference.js";
 import { computerInputFields } from "./tool-computer-activity-fields.js";
+import { automationActivityFields } from "./tool-automation-activity-fields.js";
 import {
   processInputFields,
   processResultFields,
@@ -192,8 +193,10 @@ export function projectToolActivityEvent(message) {
   const params = getRecord(meta.params);
   const inputMeta = { ...meta, params };
   const fileReference = projectConversationFileReference(message);
+  const automation = automationActivityFields(meta, tool);
   return {
     ...(fileReference ? { fileReference } : {}),
+    ...(automation?.activityTitle ? { activityTitle: automation.activityTitle } : {}),
     name,
     tool,
     executionId: boundedText(message.executionId, 200).trim(),
@@ -203,7 +206,8 @@ export function projectToolActivityEvent(message) {
     beforeExternalExecution: message.stage === "before_external_execution",
     intent: boundedText(message.intent || meta.intent),
     target: boundedText(
-      meta.source ||
+      automation?.target ||
+        meta.source ||
         meta.displayTarget ||
         meta.path ||
         meta.searchRoot ||
@@ -211,7 +215,7 @@ export function projectToolActivityEvent(message) {
         meta.id ||
         meta.savedId,
     ),
-    sent: inputFields(inputMeta, completed, tool),
+    sent: [...inputFields(inputMeta, completed, tool), ...(automation?.sent || [])],
     received: terminal ? resultFields(meta, tool, message.ok) : [],
     preview: terminal ? boundedText(meta.outputPreview, 1_200) : "",
     previewTruncated: terminal && hasClippedPreview(meta),

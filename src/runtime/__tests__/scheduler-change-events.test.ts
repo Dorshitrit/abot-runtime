@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { createFileSchedulerStore } from "../scheduler/file-store.js";
-import type { SchedulerRun } from "../scheduler/contracts.js";
+import type { SchedulerStoredRun } from "../scheduler/contracts.js";
 import { createSchedulerRuntimeFixture } from "./support/scheduler-runtime-fixture.js";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -15,7 +15,7 @@ test("the existing scheduled stream announces job writes and the final committed
   const reader = createFileSchedulerStore(
     join(f.config.paths.runtimeDir, "scheduler"),
   );
-  const committedReads: Promise<SchedulerRun[]>[] = [];
+  const committedReads: Promise<SchedulerStoredRun[]>[] = [];
   f.application.subscribeScheduledEvents((event) => {
     if (event.name === "scheduler.changed")
       committedReads.push(reader.readRuns!());

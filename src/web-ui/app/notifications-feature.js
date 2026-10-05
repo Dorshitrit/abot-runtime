@@ -4,6 +4,7 @@ import { createNotificationsController } from "./controllers/notifications-contr
 import { createNotificationPresence } from "./controllers/notification-presence.js";
 import { createHomeNotificationsEntry } from "./components/notifications/home-entry.js";
 import { notificationSourceUrl } from "./components/notifications/presentation.js";
+import { sparkNotificationReference } from "./lib/spark-chat-address.js";
 
 function isNotificationSummaryWorkspace(workspace) {
   return ["notifications", "home"].includes(workspace);
@@ -12,6 +13,7 @@ function isNotificationSummaryWorkspace(workspace) {
 export function createNotificationsFeature({ dom, state, client, shell, getEnvironmentId, send }) {
   mountNotificationsDom(dom);
   let view;
+  let companionChat;
   let environmentRevision = 0;
   const homeEntry = createHomeNotificationsEntry({
     homePanel: dom.homeWorkspacePanel,
@@ -39,6 +41,12 @@ export function createNotificationsFeature({ dom, state, client, shell, getEnvir
     if (item.environmentId !== getEnvironmentId()) return false;
     return shell.activeWorkspace() === "notifications";
   }
+  async function openCompanionSource(item, source) {
+    if (!companionChat) return false;
+    const address = new URL(source, window.location.href);
+    if (address.searchParams.get("spark") !== "1") return false;
+    return companionChat.openSession(item.sessionId, address.searchParams.get("message"), sparkNotificationReference(address));
+  }
   async function openNotificationSource(item) {
     if (!canOpenNotificationSource(item)) return;
     const source = notificationSourceUrl(item);
@@ -46,6 +54,10 @@ export function createNotificationsFeature({ dom, state, client, shell, getEnvir
     const environmentVersion = environmentRevision;
     const navigationVersion = shell.navigationRevision();
     await controller.markRead(item.id, true);
+    if (!canOpenNotificationSource(item)) return;
+    if (environmentVersion !== environmentRevision) return;
+    if (navigationVersion !== shell.navigationRevision()) return;
+    if (await openCompanionSource(item, source)) return;
     if (!canOpenNotificationSource(item)) return;
     if (environmentVersion !== environmentRevision) return;
     if (navigationVersion !== shell.navigationRevision()) return;
@@ -68,6 +80,7 @@ export function createNotificationsFeature({ dom, state, client, shell, getEnvir
   controller.publish();
   return {
     ...controller,
+    setCompanionChat(companion) { companionChat = companion; },
     refreshAvailability,
     isWorkspaceAvailable(destination) {
       if (destination !== "notifications") return true;

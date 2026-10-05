@@ -135,6 +135,24 @@ describe("tool execution flow", () => {
     expect(executed.errorCode).toBe("tool_execution_failed");
   });
 
+  test("reports only bounded outcome metadata when an aborted implementation settles later", async () => {
+    const controller = new AbortController();
+    let finish!: (value: { ok: boolean; output: string; producedNewInformation: boolean }) => void;
+    const implementation = new Promise<{ ok: boolean; output: string; producedNewInformation: boolean }>(
+      (resolve) => { finish = resolve; },
+    );
+    let settlement: Promise<unknown> | undefined;
+    const publicResult = executeToolCall({ tool: "write_file", params: {} }, {
+      abortSignal: controller.signal,
+      implementations: { write_file: async () => implementation },
+      onUnderlyingSettlement: (observed) => { settlement = observed; },
+    });
+    controller.abort();
+    expect((await publicResult).errorCode).toBe("request_aborted");
+    finish({ ok: true, output: "private file contents", producedNewInformation: true });
+    expect(await settlement).toEqual({ status: "fulfilled", ok: true });
+  });
+
   test("rejects an implementation result that omits the mandatory contract", async () => {
     const executed = await executeToolCall(
       { tool: "invalid_tool", params: {} },

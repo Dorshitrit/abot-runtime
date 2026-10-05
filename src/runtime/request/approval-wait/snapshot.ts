@@ -21,6 +21,7 @@ export type PersistedRequestSeed = Pick<
   RequestExecutionSeed,
   | "requestId"
   | "sessionId"
+  | "sessionKind"
   | "prompt"
   | "temporalContext"
   | "historyMessages"
@@ -67,6 +68,7 @@ export function snapshotRequestSeed(
   return captureApprovalSnapshotData({
     requestId: seed.requestId,
     sessionId: seed.sessionId,
+    sessionKind: seed.sessionKind,
     prompt: seed.prompt,
     temporalContext: seed.temporalContext,
     historyMessages: seed.historyMessages,

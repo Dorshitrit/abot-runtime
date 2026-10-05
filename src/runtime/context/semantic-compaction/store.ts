@@ -6,6 +6,12 @@ import {
   type SemanticCompactionSource,
 } from "./contracts.js";
 import type { RequestContextCompactionSnapshot } from "./snapshot.js";
+import { prepareAtomicCompactionSources } from "./source-registration.js";
+import {
+  freezeCompactionInvalidation,
+  InvalidatedCompactionScopeError,
+  type InvalidatedCompactionScope,
+} from "./scope-quarantine.js";
 
 export type RequestContextCompactionStore = Readonly<{
   snapshot?(): RequestContextCompactionSnapshot;
@@ -14,6 +20,10 @@ export type RequestContextCompactionStore = Readonly<{
     callIds: readonly string[],
   ): readonly SemanticCompactionCheckpoint[];
   registerSources(sources: readonly SemanticCompactionSource[]): void;
+  registerSourcesAtomically?(
+    sources: readonly SemanticCompactionSource[],
+  ): void;
+  quarantineScope?(record: InvalidatedCompactionScope): void;
   materializeSource(
     sourceRef: string,
     sourceFingerprint: string,
@@ -21,18 +31,37 @@ export type RequestContextCompactionStore = Readonly<{
   commit(checkpoint: SemanticCompactionCheckpoint): void;
 }>;
 
-export function createRequestContextCompactionStore(): RequestContextCompactionStore {
+export function createRequestContextCompactionStore(
+  options?: Readonly<{
+    invalidatedScopes?: readonly InvalidatedCompactionScope[];
+  }>,
+): RequestContextCompactionStore {
   const checkpoints = new Map<string, SemanticCompactionCheckpoint>();
   const sources = new Map<string, SemanticCompactionSource>();
+  const invalidated = new Map<string, InvalidatedCompactionScope>();
+  for (const record of options?.invalidatedScopes ?? []) {
+    if (invalidated.has(record.scopeId))
+      throw new Error("context_compaction_invalidation_duplicate");
+    invalidated.set(record.scopeId, freezeCompactionInvalidation(record));
+  }
   return Object.freeze({
     snapshot() {
       return Object.freeze({
         kind: "request_context_compaction_v1" as const,
-        checkpoints: Object.freeze([...checkpoints.values()]),
+        checkpoints: Object.freeze(
+          [...checkpoints.values()].filter(
+            (checkpoint) => !invalidated.has(checkpoint.scopeId),
+          ),
+        ),
         sources: Object.freeze([...sources.values()]),
+        ...(invalidated.size
+          ? { invalidatedScopes: Object.freeze([...invalidated.values()]) }
+          : {}),
       });
     },
     get(scopeId) {
+      const record = invalidated.get(scopeId);
+      if (record) throw new InvalidatedCompactionScopeError(record);
       return checkpoints.get(scopeId);
     },
     findByCallIds(callIds) {
@@ -46,6 +75,7 @@ export function createRequestContextCompactionStore(): RequestContextCompactionS
       const selected: SemanticCompactionCheckpoint[] = [];
       for (const callId of callIds) {
         for (const checkpoint of checkpoints.values()) {
+          if (invalidated.has(checkpoint.scopeId)) continue;
           if (checkpoint.callId === callId) selected.push(checkpoint);
         }
       }
@@ -71,6 +101,25 @@ export function createRequestContextCompactionStore(): RequestContextCompactionS
         sources.set(source.sourceRef, Object.freeze({ ...source }));
       }
     },
+    registerSourcesAtomically(nextSources) {
+      const prepared = prepareAtomicCompactionSources(sources, nextSources);
+      for (const source of prepared) sources.set(source.sourceRef, source);
+    },
+    quarantineScope(record) {
+      const frozen = freezeCompactionInvalidation(record);
+      const previous = invalidated.get(frozen.scopeId);
+      if (previous) {
+        if (JSON.stringify(previous) !== JSON.stringify(frozen))
+          throw new Error("context_compaction_invalidation_conflict");
+        return;
+      }
+      const checkpoint = checkpoints.get(frozen.scopeId);
+      if (!checkpoint)
+        throw new Error("context_compaction_invalidation_checkpoint_missing");
+      if (!sameSemanticCompactionCheckpointBinding(checkpoint, frozen.binding))
+        throw new Error("context_compaction_invalidation_binding_invalid");
+      invalidated.set(frozen.scopeId, frozen);
+    },
     materializeSource(sourceRef, sourceFingerprint) {
       const source = sources.get(sourceRef);
       return source?.sourceFingerprint === sourceFingerprint
@@ -78,25 +127,31 @@ export function createRequestContextCompactionStore(): RequestContextCompactionS
         : undefined;
     },
     commit(checkpoint) {
+      const invalidation = invalidated.get(checkpoint.scopeId);
+      if (invalidation) throw new InvalidatedCompactionScopeError(invalidation);
       assertValidSemanticCompactionCheckpoint(checkpoint);
       const previous = checkpoints.get(checkpoint.scopeId);
       if (
         previous &&
-        (!sameSemanticCompactionCheckpointBinding(previous, checkpoint) ||
-          checkpoint.sourceRevision < previous.sourceRevision ||
-          previous.sourceDigests.some(
-            (previousDigest, index) =>
-              checkpoint.sourceDigests[index]?.sourceRef !==
-                previousDigest.sourceRef ||
-              checkpoint.sourceDigests[index]?.sourceFingerprint !==
-                previousDigest.sourceFingerprint ||
-              checkpoint.sourceDigests[index]?.digest !== previousDigest.digest,
-          ))
+        !preservesCompactionSourceCoverage(previous, checkpoint)
       ) {
         throw new Error("context_compaction_checkpoint_regression");
       }
       checkpoints.set(checkpoint.scopeId, freezeCheckpoint(checkpoint));
     },
+  });
+}
+
+function preservesCompactionSourceCoverage(
+  previous: SemanticCompactionCheckpoint,
+  next: SemanticCompactionCheckpoint,
+): boolean {
+  if (!sameSemanticCompactionCheckpointBinding(previous, next)) return false;
+  if (next.sourceRevision < previous.sourceRevision) return false;
+  return previous.sourceDigests.every((source, index) => {
+    const replacement = next.sourceDigests[index];
+    if (replacement?.sourceRef !== source.sourceRef) return false;
+    return replacement.sourceFingerprint === source.sourceFingerprint;
   });
 }
 

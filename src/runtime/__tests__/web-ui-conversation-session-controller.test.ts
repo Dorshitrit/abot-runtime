@@ -158,6 +158,14 @@ function createHarness() {
 }
 
 describe("web ui conversation session controller", () => {
+  test("an empty ordinary view rejects background SPARK messages without a request ID", () => {
+    const harness = createHarness();
+    expect(harness.controller.shouldAcceptRealtimeMessage({ sessionId: "spark", type: "chat_message" })).toBe(false);
+    harness.state.currentSessionId = "ordinary";
+    expect(harness.controller.shouldAcceptRealtimeMessage({ sessionId: "spark", type: "chat_message" })).toBe(false);
+    expect(harness.controller.shouldAcceptRealtimeMessage({ sessionId: "ordinary", type: "chat_message" })).toBe(true);
+  });
+
   test("empty composer displays the same remembered mode that implicit creation captures", () => {
     const harness = createHarness();
     const control = {

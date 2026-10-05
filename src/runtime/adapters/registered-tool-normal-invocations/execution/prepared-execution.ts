@@ -1,3 +1,9 @@
+import type { CapabilityResultReference } from "../../../orchestration/capability-adapters/result.js";
+import {
+  createRegisteredToolResultBudget,
+  assertRegisteredToolResultMetadataFits,
+} from "./result-budget.js";
+import { randomUUID } from "node:crypto";
 import { requiresToolActionApproval } from "../../../../capabilities/tool-permission-mode.js";
 import {
   buildToolCompletedEventActions,
@@ -21,6 +27,7 @@ import {
   buildToolIntentEventMetadata,
   type ToolEventExecutorIdentity,
 } from "../shared/event-metadata.js";
+import { rejectNormalInvocation } from "../shared/rejection.js";
 import { requestNormalInvocationApproval } from "./approval.js";
 import { createPreparedInvocationRejectionEmitter } from "./rejection-event.js";
 import { createFileOutputPresentation } from "./file-output-presentation.js";
@@ -105,9 +112,11 @@ export function createPreparedNormalInvocation(params: {
     execute: (
       executionId?: string,
       executorIdentity?: ToolEventExecutorIdentity,
+      selectedReferences?: readonly CapabilityResultReference[],
     ) =>
       executePreparedNormalInvocation({
         ...params,
+        selectedReferences,
         ...(approvalRequest ? { approvalRequest } : {}),
         ...(decision ? { decision, decisionRecorded } : {}),
         ...(executionId ? { executionId } : {}),
@@ -117,12 +126,14 @@ export function createPreparedNormalInvocation(params: {
 }
 
 async function executePreparedNormalInvocation(params: {
+  selectedReferences?: readonly CapabilityResultReference[];
   executionId?: string;
   executorIdentity?: ToolEventExecutorIdentity;
   executor: RegisteredToolNormalInvocationExecutorParams;
   source: BoundOperation;
   target: BoundOperation;
   call: ToolCall;
+  actionFingerprint: string;
   eventMeta?: ReturnType<typeof buildToolIntentEventMetadata>;
   executionMetadata?: Readonly<Record<string, unknown>>;
   intent?: string;
@@ -130,6 +141,12 @@ async function executePreparedNormalInvocation(params: {
   decision?: ToolApprovalDecision;
   decisionRecorded?: boolean;
 }): Promise<RegisteredToolNormalInvocationResult> {
+  const resultBudget = createRegisteredToolResultBudget({
+    call: params.call,
+    definition: params.target.registration.definition,
+    selectedReferences: params.selectedReferences,
+  });
+  assertRegisteredToolResultMetadataFits(resultBudget);
   const approval = await requestNormalInvocationApproval({
     ...(params.approvalRequest
       ? { preparedRequest: params.approvalRequest }
@@ -157,6 +174,32 @@ async function executePreparedNormalInvocation(params: {
   });
   if (!approval.ok) return approval.rejection;
   params.executor.abortSignal.throwIfAborted();
+  const effectExecutionId = params.executionId ?? randomUUID();
+  const identity = (binding: BoundOperation) => ({
+    toolName: binding.registration.toolName,
+    operationId: binding.operation.operationId,
+    contractVersion: binding.registration.contract.version,
+  });
+  const effectAdmission = await params.executor.effectPersistence?.beforeEffect(
+    {
+      executionId: effectExecutionId,
+      actionFingerprint: params.actionFingerprint,
+      source: identity(params.source),
+      target: identity(params.target),
+      effect: params.target.operation.effect,
+    },
+  );
+  const abortedBeforeDispatch = params.executor.abortSignal.aborted;
+  if (abortedBeforeDispatch) {
+    await params.executor.effectPersistence?.afterEffect({
+      executionId: effectExecutionId,
+      outcome: rejectNormalInvocation(
+        "request_aborted",
+        "The operation was stopped before it began.",
+      ),
+    });
+  }
+  params.executor.abortSignal.throwIfAborted();
 
   const startedCopy = buildToolLifecycleEventCopy(
     params.target.registration.definition,
@@ -173,26 +216,40 @@ async function executePreparedNormalInvocation(params: {
   const fileOutputPresentation = createFileOutputPresentation(
     params.executor.sharedState?.runtimePaths,
   );
-  const result = await executeWithToolResources({
-    registry: params.executor.toolRegistry,
-    call: params.call,
-    resources: params.executor.toolResources,
-    ...(params.executionId && params.executorIdentity
-      ? {
-          owner: {
-            executionId: params.executionId,
-            callId: params.executorIdentity.callId,
-          },
-        }
-      : {}),
-    options: {
-      abortSignal: params.executor.abortSignal,
-      reportFileOutput: fileOutputPresentation.report,
-      ...(params.executor.sharedState
-        ? { sharedState: params.executor.sharedState }
+  let result;
+  try {
+    result = await executeWithToolResources({
+      registry: params.executor.toolRegistry,
+      call: params.call,
+      resources: params.executor.toolResources,
+      ...(params.executionId && params.executorIdentity
+        ? {
+            owner: {
+              executionId: params.executionId,
+              callId: params.executorIdentity.callId,
+            },
+          }
         : {}),
-    },
-  });
+      options: {
+        abortSignal: params.executor.abortSignal,
+        resultBudget,
+        ...(effectAdmission ? { trustedEffectAdmission: effectAdmission } : {}),
+        reportFileOutput: fileOutputPresentation.report,
+        ...(params.executor.sharedState
+          ? { sharedState: params.executor.sharedState }
+          : {}),
+      },
+    });
+  } catch (error) {
+    await params.executor.effectPersistence?.afterEffect({
+      executionId: effectExecutionId,
+      outcome: {
+        status: "uncertain",
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+    throw error;
+  }
   const completionActions = Object.freeze(
     buildToolCompletedEventActions(
       params.call,
@@ -216,6 +273,16 @@ async function executePreparedNormalInvocation(params: {
   const completedEventMeta = params.executionMetadata
     ? { ...completedMeta, ...params.executionMetadata }
     : completedMeta;
+  const settled = Object.freeze({
+    status: "executed" as const,
+    effect: params.target.operation.effect,
+    result,
+    completionActions,
+  });
+  await params.executor.effectPersistence?.afterEffect({
+    executionId: effectExecutionId,
+    outcome: settled,
+  });
   params.executor.onEvent?.("tool.completed", {
     ...buildToolExecutorEventMetadata(params.executorIdentity),
     ...(params.executionId ? { executionId: params.executionId } : {}),
@@ -225,10 +292,5 @@ async function executePreparedNormalInvocation(params: {
     ...(completedEventMeta ? { meta: completedEventMeta } : {}),
     ...(completedCopy ?? {}),
   });
-  return Object.freeze({
-    status: "executed" as const,
-    effect: params.target.operation.effect,
-    result,
-    completionActions,
-  });
+  return settled;
 }

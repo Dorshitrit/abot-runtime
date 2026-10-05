@@ -13,6 +13,11 @@ export function createRealtimeContextHarness() {
   const state = {
     activeRequestId: "request-1",
     currentSessionId: "session-1",
+    sessionViewVersion: 1,
+    requestLifecycles: new Map<string, Record<string, unknown>>(),
+    requestMessages: new Map([["request-1", assistant.id]]),
+    messages: [assistant],
+    submittedToolApprovalIds: new Set<string>(),
     contextWindowByRequest: new Map<string, Record<string, unknown>>(),
     taskProgressByRequest: new Map(),
     lastSeqByRequest: new Map(),
@@ -54,6 +59,7 @@ export function createRealtimeContextHarness() {
     loadSessions: vi.fn(),
   });
   return {
+    assistant,
     state,
     controller,
     renderMessages,

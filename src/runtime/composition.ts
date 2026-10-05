@@ -26,6 +26,7 @@ import type { SchedulerRun, SchedulerService } from "./scheduler/contracts.js";
 import { SessionRequestAdmission } from "./request/session-admission.js";
 import type { RequestSteeringAppendResult } from "./request/request-steering.js";
 import type { PassiveLearningService } from "./passive-learning/contracts.js";
+import type { AutomationService } from "./automations/service.js";
 
 export type RuntimeEnvironmentServices = Readonly<{
   config: RuntimeConfig;
@@ -38,6 +39,7 @@ export type RuntimeEnvironmentServices = Readonly<{
   sessionMemoryCompactor: SessionMemoryCompactor;
   longTermMemory: LongTermMemoryService;
   passiveLearning?: PassiveLearningService;
+  automations?: AutomationService;
   scheduler?: SchedulerService;
   startScheduler?: () => Promise<void>;
   stopScheduler?: () => Promise<void>;
@@ -52,6 +54,7 @@ export type RuntimeRequestOptions = Pick<
   | "claimFinalization"
   | "durableApprovals"
   | "approvalExecution"
+  | "effectPersistence"
 >;
 
 export type RuntimeRequestHandler = Readonly<{
@@ -93,6 +96,7 @@ export type RuntimeDependencies = {
   sessionMemoryCompactor: SessionMemoryCompactor;
   longTermMemory: LongTermMemoryService;
   passiveLearning?: PassiveLearningService;
+  automations?: AutomationService;
   scheduler?: SchedulerService;
   startScheduler?: () => Promise<void>;
   stopScheduler?: () => Promise<void>;
@@ -104,6 +108,7 @@ export type RuntimeDependencyOverrides = Partial<
     RuntimeDependencies,
     | "config"
     | "scheduler"
+    | "automations"
     | "startScheduler"
     | "stopScheduler"
     | "requestAdmission"

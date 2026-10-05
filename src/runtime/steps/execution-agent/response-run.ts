@@ -23,9 +23,16 @@ import { retrieveResponseLongTermMemory } from "../../long-term-memory/response-
 import type { RootAuthoredResponse } from "../../long-term-memory/contracts.js";
 import { createPlainRootAuthoredResponse } from "../../orchestration/final-response/authoring-contract.js";
 import { invokeRootAuthoredResponse } from "../../orchestration/final-response/invoke.js";
-import { canAuthorConversationMemory, prepareConversationMemoryAuthoring } from "../../long-term-memory/conversation-authoring/context.js";
+import {
+  canAuthorConversationMemory,
+  prepareConversationMemoryAuthoring,
+} from "../../long-term-memory/conversation-authoring/context.js";
 import { assertBoundModelStepSteeringCurrent } from "../../model/model-step-steering.js";
 import { resolveRequestSteeringInbox } from "../../request/request-steering.js";
+import {
+  automationResponseFormat,
+  validateAutomationResponse,
+} from "../../request/automation-output-contract.js";
 
 const EXECUTION_AGENT_RESPONSE_MAX_REPAIR_ATTEMPTS = 2;
 
@@ -52,12 +59,16 @@ export async function runExecutionAgentAuthoredResponse(
   }>,
 ): Promise<RootAuthoredResponse> {
   const memoryEnabled = request.longTermMemory?.enabled === true;
-  const boundSteeringVersion = resolveMemoryRecallSteeringVersion(
-    options.memoryRecallMessage,
-    request.requestId,
-    options.call.callId,
-  ) ?? (memoryEnabled && request.longTermMemory?.learning ? options.steeringSnapshot.version : undefined);
+  const boundSteeringVersion = options.steeringSnapshot.version;
   const requestSteering = resolveRequestSteeringInbox(request.requestSteering);
+  assertBoundModelStepSteeringCurrent(
+    requestSteering,
+    resolveMemoryRecallSteeringVersion(
+      options.memoryRecallMessage,
+      request.requestId,
+      options.call.callId,
+    ),
+  );
   assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
   const memoryMessage =
     options.memoryRecallMessage ??
@@ -69,22 +80,32 @@ export async function runExecutionAgentAuthoredResponse(
     options.head.policy.limits.maxResponseChars,
   );
   const memoryAuthoringContext = memoryEnabled
-    ? await prepareConversationMemoryAuthoring(request, options.steeringSnapshot)
+    ? await prepareConversationMemoryAuthoring(
+        request,
+        options.steeringSnapshot,
+      )
     : undefined;
   assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
-  const memoryAuthoringEnabled = canAuthorConversationMemory(request, memoryAuthoringContext);
+  const memoryAuthoringEnabled = canAuthorConversationMemory(
+    request,
+    memoryAuthoringContext,
+  );
   const input = buildExecutionAgentResponseInput(request, {
     ...options,
     ...(memoryAuthoringEnabled
       ? { memoryAuthoringMaxResponseChars: maxResponseChars }
       : {}),
     ...(memoryMessage ? { longTermMemoryMessage: memoryMessage } : {}),
-    ...(memoryAuthoringContext ? { memoryAuthoringMessage: memoryAuthoringContext.message } : {}),
+    ...(memoryAuthoringContext
+      ? { memoryAuthoringMessage: memoryAuthoringContext.message }
+      : {}),
   });
   const contextCompaction = createSessionMemoryAwareCompactionController(
     request,
     createExecutionAgentCompactionController(request, {
+      consumer: input.modelStep,
       call: options.call,
+      steeringSnapshot: options.steeringSnapshot,
       sourceRevision: options.head.revision,
       allowedConsumers: Object.freeze([
         EXECUTION_AGENT_DECISION_MODEL_STEP,
@@ -107,14 +128,23 @@ export async function runExecutionAgentAuthoredResponse(
   }
   const output = await invokeRepairableRawModelStep({
     request,
+    boundSteeringVersion,
     modelStep: input.modelStep,
     messages: input.messages,
     contextCompaction,
     timeoutReason: "execution_agent_response_timeout",
+    ...(request.automationOutputContract
+      ? { format: automationResponseFormat(request.automationOutputContract) }
+      : {}),
     maxRepairAttempts: EXECUTION_AGENT_RESPONSE_MAX_REPAIR_ATTEMPTS,
     validate: (text) =>
-      validateExecutionAgentResponseText(text, maxResponseChars),
-    buildRepairHint: buildExecutionAgentResponseRepairHint,
+      request.automationOutputContract
+        ? validateAutomationResponse(request.automationOutputContract, text)
+        : validateExecutionAgentResponseText(text, maxResponseChars),
+    buildRepairHint: request.automationOutputContract
+      ? () =>
+          "Return one JSON object matching the requested schema, with no surrounding text."
+      : buildExecutionAgentResponseRepairHint,
   });
   return createPlainRootAuthoredResponse(output);
 }

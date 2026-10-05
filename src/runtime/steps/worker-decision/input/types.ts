@@ -1,3 +1,4 @@
+import type { RequestWorkerCapabilities } from "../../../request/execution-scope.js";
 import type {
   ChatMessage,
   ModelGatewayJsonSchemaFormat,
@@ -43,6 +44,9 @@ export type WorkerDecisionInputRequest = Pick<
   | "modelPreference"
   | "modelPolicy"
 > &
+  Readonly<{
+    workerCapabilities?: Pick<RequestWorkerCapabilities, "filesystemScope">;
+  }> &
   Partial<
     Pick<
       RequestExecutionSeed,

@@ -5,6 +5,15 @@ providers. A trimmed, non-empty `braveSearchApiKey` selects Brave. An absent or
 blank key selects Light. Provider selection happens when the plugin loads;
 Brave failures never trigger a second search through Light.
 
+## Brave source retrieval
+
+Brave results remain available when an optional source-page fetch times out.
+The failed page is recorded in `sourceFetchErrors` and its source receipt;
+coverage reports the evidence actually retrieved, including weak coverage when
+only search snippets are available. Caller cancellation and the overall search
+deadline still fail the request. Brave API timeouts and direct `web_fetch`
+timeouts remain failures; no retry or provider fallback is added.
+
 ## Light search
 
 Light retrieves public origin pages, publisher feeds, and sitemaps from a

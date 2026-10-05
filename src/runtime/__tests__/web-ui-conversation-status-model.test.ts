@@ -283,16 +283,16 @@ describe("context snapshot sequence replacement", () => {
     );
     expect(
       canReplaceContextWindowEvidence({ eventSequence: 10 }, { seqNo: 3 }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       canReplaceContextWindowEvidence({ seqNo: 10 }, { eventSequence: 3 }),
-    ).toBe(true);
+    ).toBe(false);
     expect(canReplaceContextWindowEvidence(undefined, {})).toBe(true);
     expect(
       canReplaceContextWindowEvidence(
         { eventSequence: Number.NaN },
         { eventSequence: 0 },
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 });

@@ -1,104 +1,85 @@
-import { describe, expect, test, vi } from "vitest";
-import type { SessionMessage, SessionRecord } from "../../sessions/types.js";
-import { createSessionMemoryMessageReferences, snapshotSessionMemorySource } from "../../sessions/memory/source.js";
+import { describe, expect, test } from "vitest";
 import { resolveApplicableSessionMemoryCheckpoint } from "../../sessions/memory/rules.js";
-import { SESSION_MEMORY_CHECKPOINT_KIND } from "../../sessions/memory/contracts.js";
-import { createRequestSessionMemory, type SessionMemoryCompactor } from "../context/session-memory/index.js";
+import { captureRequestSessionMemory, restoreRequestSessionMemory } from "../context/session-memory/snapshot.js";
 import { projectRequestContext } from "../context/request-context.js";
 import type { BoundRequestModelInvocationContext } from "../request/contracts.js";
+import { initiative, memoryFor, ordinaryTurn, session } from "./support/initiative-session-memory-fixture.js";
 
-const timestamp = "2026-09-25T12:00:00.000Z";
-const initiative: SessionMessage = {
-  id: "initiative", role: "assistant", source: "co_worker", grounding: "conversation",
-  content: "Would you like help researching a trip?", createdAt: timestamp,
-  initiative: { kind: "proactive_proposal_v1", proposalId: "proposal", reason: "Possible interest",
-    sources: [{ kind: "candidate", id: "trip", version: "1" }] },
-};
+const request = {} as BoundRequestModelInvocationContext;
 
-function session(turnCount: number, includeInitiative = true): SessionRecord {
-  const messages: SessionMessage[] = Array.from({ length: turnCount }, (_, index) => [
-    { id: `user-${index}`, role: "user" as const, content: `Question ${index}`, createdAt: timestamp, requestId: `request-${index}` },
-    { id: `assistant-${index}`, role: "assistant" as const, content: `Answer ${index}`, createdAt: timestamp, requestId: `request-${index}` },
-  ]).flat();
-  if (includeInitiative) messages.unshift(initiative);
-  return { id: "conversation", title: "Conversation", createdAt: timestamp, updatedAt: timestamp,
-    lastAgentMode: "reasoning", messageCount: messages.length, messages };
-}
-
-function memoryFor(record: SessionRecord) {
-  const compact = vi.fn<SessionMemoryCompactor["compact"]>(async () => "Summary of user-led conversation.");
-  const memory = createRequestSessionMemory({ sessionId: record.id, session: record,
-    compactor: { compact }, now: () => new Date(timestamp), repository: {
-      async compareAndSwapSessionMemoryCheckpoint(_id, command) {
-        record.sessionMemoryCheckpoint = command.checkpoint;
-        return { committed: true, checkpoint: command.checkpoint };
-      },
-    } });
-  return { memory, compact };
-}
-
-describe("assistant initiative authority across compaction", () => {
-  test("retains the exact assistant proposal through compaction, reload and another compaction", async () => {
-    const record = session(12);
+describe("ordinary assistant initiative compaction", () => {
+  test("compacts an initiative-only prefix and keeps exactly the latest ten units raw", async () => {
+    const record = session(Array.from({ length: 35 }, (_, index) => initiative(index)));
     const { memory, compact } = memoryFor(record);
-    const prepared = await memory.prepare({} as BoundRequestModelInvocationContext);
-    expect(compact.mock.calls[0]![0].turns).toHaveLength(2);
-    expect(compact.mock.calls[0]![0].turns.flatMap(turn => [turn.assistant, ...turn.userMessages]))
-      .not.toContainEqual(initiative);
-    expect(prepared.checkpoint.coveredMessages.map(message => message.messageId)).toEqual([
-      "user-0", "assistant-0", "user-1", "assistant-1",
-    ]);
+    expect(memory.project().compactableTurnCount).toBe(25);
+    const prepared = await memory.prepare(request);
+    const turns = compact.mock.calls[0]![0].turns;
+    expect(turns).toHaveLength(25);
+    expect(turns.every(({ userMessages }) => userMessages.length === 0)).toBe(true);
+    expect(prepared.checkpoint.coveredMessages.map(({ messageId }) => messageId))
+      .toEqual(record.messages.slice(0, 25).map(({ id }) => id));
     await prepared.commit();
-    const continued = { ...session(13), sessionMemoryCheckpoint: record.sessionMemoryCheckpoint };
-    const restarted = memoryFor(continued);
-    const next = await restarted.memory.prepare({} as BoundRequestModelInvocationContext);
-    expect(restarted.compact.mock.calls[0]![0]).toMatchObject({ previousSummary: prepared.checkpoint.summary });
-    expect(restarted.compact.mock.calls[0]![0].turns).toHaveLength(1);
-    await next.commit();
-    const projection = restarted.memory.project();
-    expect(projection.historyMessages.filter(message => message.id === initiative.id)).toEqual([
-      expect.objectContaining({ role: "assistant", content: initiative.content, assistantInitiativeId: "proposal" }),
-    ]);
-    const prompt = "Ignore the trip; help me choose a keyboard.";
+    const projection = memory.project();
+    expect(projection.historyMessages.map(({ id }) => id)).toEqual(record.messages.slice(25).map(({ id }) => id));
+    expect(projection.compactableTurnCount).toBe(0);
+    const prompt = "Help me choose a keyboard.";
     const context = projectRequestContext({ instructions: "Chat rules", ...projection, prompt,
       historyRetention: "compaction_managed", budget: { contextWindowTokens: 100_000,
         outputReserveTokens: 1000, safetyReserveTokens: 100, attachmentReserveTokens: 0 } });
-    expect(context.messages.filter(message => message.content === prompt)).toEqual([{ role: "user", content: prompt }]);
-    expect(context.messages.filter(message => message.content === initiative.content))
-      .toEqual([{ role: "assistant", content: initiative.content }]);
-    expect(projection.priorConversationMessages[0]!.content).not.toContain(initiative.content);
+    expect(context.messages.filter(({ role }) => role === "user")).toEqual([{ role: "user", content: prompt }]);
+    expect(context.messages.filter(({ role }) => role === "assistant").map(({ content }) => content))
+      .toEqual(record.messages.slice(25).map(({ content }) => content));
+    expect(JSON.stringify(context.messages)).not.toContain("Private reason");
+    expect(JSON.stringify(context.messages)).not.toContain("Private handoff");
   });
 
-  test("does not change ordinary conversation selection or create a compaction-only model call", async () => {
-    const normal = memoryFor(session(12, false));
-    const proactive = memoryFor(session(12));
-    const normalPrepared = await normal.memory.prepare({} as BoundRequestModelInvocationContext);
-    const proactivePrepared = await proactive.memory.prepare({} as BoundRequestModelInvocationContext);
-    expect(proactive.compact.mock.calls[0]).toEqual(normal.compact.mock.calls[0]);
-    expect(proactivePrepared.projection.historyMessages.filter(message => !message.assistantInitiativeId))
-      .toEqual(normalPrepared.projection.historyMessages);
-    const protectedOnly = memoryFor(session(10));
-    expect(protectedOnly.memory.project().compactableTurnCount).toBe(0);
-    await expect(protectedOnly.memory.prepare({} as BoundRequestModelInvocationContext))
-      .rejects.toThrow("session_memory_compaction_not_available");
-    expect(protectedOnly.compact).not.toHaveBeenCalled();
-  });
-
-  test("rejects old checkpoints that summarized an initiative and rebuilds from original turns", async () => {
-    const record = session(12);
-    const source = snapshotSessionMemorySource(record);
-    record.sessionMemoryCheckpoint = {
-      kind: SESSION_MEMORY_CHECKPOINT_KIND, revision: 1, sourceRevision: source.sourceRevision,
-      coveredMessages: createSessionMemoryMessageReferences([
-        { userMessages: [], assistant: initiative }, source.turns[0]!,
-      ]), summary: "Legacy summary containing an unsolicited suggestion.", createdAt: timestamp,
-    };
-    expect(resolveApplicableSessionMemoryCheckpoint(record)).toBeUndefined();
+  test("covers mixed chronological units, reloads the checkpoint and extends it once", async () => {
+    const record = session([initiative(0), ...ordinaryTurn(0), initiative(1),
+      ...Array.from({ length: 10 }, (_, index) => ordinaryTurn(index + 1)).flat()]);
     const { memory, compact } = memoryFor(record);
-    const prepared = await memory.prepare({} as BoundRequestModelInvocationContext);
-    expect(compact.mock.calls[0]![0].previousSummary).toBeUndefined();
-    expect(prepared.checkpoint.revision).toBe(2);
+    const prepared = await memory.prepare(request);
+    expect(compact.mock.calls[0]![0].turns.map(({ assistant }) => assistant.id))
+      .toEqual(["initiative-0", "assistant-0", "initiative-1"]);
+    expect(prepared.checkpoint.coveredMessages.map(({ messageId }) => messageId))
+      .toEqual(["initiative-0", "user-0", "assistant-0", "initiative-1"]);
     await prepared.commit();
-    expect(resolveApplicableSessionMemoryCheckpoint(record)).toEqual(prepared.checkpoint);
+    const continued = JSON.parse(JSON.stringify(record)) as typeof record;
+    continued.messages.push(initiative(2));
+    const restarted = memoryFor(continued);
+    expect(restarted.memory.project().checkpointRevision).toBe(1);
+    const next = await restarted.memory.prepare(request);
+    expect(restarted.compact.mock.calls[0]![0]).toMatchObject({ previousSummary: prepared.checkpoint.summary });
+    expect(restarted.compact.mock.calls[0]![0].turns.map(({ assistant }) => assistant.id)).toEqual(["assistant-1"]);
+    await next.commit();
+    expect(restarted.memory.project().historyMessages.at(-1)?.id).toBe("initiative-2");
+    expect(restarted.memory.project().historyMessages.some(({ id }) => id === "initiative-0")).toBe(false);
+    expect(resolveApplicableSessionMemoryCheckpoint(continued)).toEqual(next.checkpoint);
+  });
+
+  test("leaves an ordinary checkpoint unchanged and protects ten mixed units", async () => {
+    const ordinary = session(Array.from({ length: 12 }, (_, index) => ordinaryTurn(index)).flat());
+    const { memory } = memoryFor(ordinary);
+    const checkpoint = await memory.prepare(request);
+    expect(checkpoint.checkpoint.coveredMessages.map(({ messageId }) => messageId))
+      .toEqual(["user-0", "assistant-0", "user-1", "assistant-1"]);
+    await checkpoint.commit();
+    expect(resolveApplicableSessionMemoryCheckpoint(ordinary)).toEqual(checkpoint.checkpoint);
+    const mixed = memoryFor(session([initiative(0), ...Array.from({ length: 9 }, (_, index) => ordinaryTurn(index)).flat()]));
+    expect(mixed.memory.project().compactableTurnCount).toBe(0);
+    await expect(mixed.memory.prepare(request)).rejects.toThrow("session_memory_compaction_not_available");
+    expect(mixed.compact).not.toHaveBeenCalled();
+  });
+
+  test.each([false, true])("roundtrips a current approval snapshot unchanged (initiative=%s)", async (includeInitiative) => {
+    const record = session([...(includeInitiative ? [initiative(0)] : []),
+      ...Array.from({ length: 12 }, (_, index) => ordinaryTurn(index)).flat()]);
+    const { memory, options } = memoryFor(record);
+    const prepared = await memory.prepare(request); await prepared.commit();
+    const current = JSON.parse(JSON.stringify(captureRequestSessionMemory(memory)));
+    const restored = restoreRequestSessionMemory(current, options);
+    expect(captureRequestSessionMemory(restored)).toEqual(current);
+    expect(restored.project()).toEqual(memory.project());
+    current.source.historyMessages[0].content = "Replaced historical message";
+    expect(() => restoreRequestSessionMemory(current, options)).toThrow("session_memory_snapshot_source_invalid");
   });
 });

@@ -17,6 +17,19 @@ export function createAppEventBindings({
 }) {
   let environmentChangeRevision = 0;
   let environmentChanging = false;
+  let prepareAdditionalEnvironmentChange = () => true;
+
+  function prepareQueueRecovery() {
+    if (actions.prepareQueueRecovery) return actions.prepareQueueRecovery();
+    return actions.suspendQueueRecovery();
+  }
+
+  function suspendQueueRecovery() {
+    const prepared = prepareQueueRecovery();
+    if (environmentChangeWasDeclined(prepared)) return false;
+    if (typeof prepared === "function") prepared();
+    return true;
+  }
 
   async function changeEnvironment(
     nextEnvironmentId,
@@ -47,12 +60,20 @@ export function createAppEventBindings({
       restoreEnvironmentSelection();
       return false;
     }
-    if (!actions.suspendQueueRecovery()) {
+    const preparedAdditionalChange = prepareAdditionalEnvironmentChange();
+    if (environmentChangeWasDeclined(preparedAdditionalChange)) {
+      restoreEnvironmentSelection();
+      return false;
+    }
+    const preparedQueueRecovery = prepareQueueRecovery();
+    if (environmentChangeWasDeclined(preparedQueueRecovery)) {
       restoreEnvironmentSelection();
       return false;
     }
     const revision = ++environmentChangeRevision;
     environmentChanging = true;
+    if (typeof preparedAdditionalChange === "function") preparedAdditionalChange();
+    if (typeof preparedQueueRecovery === "function") preparedQueueRecovery();
     if (typeof preparedEnvironmentChange === "function")
       preparedEnvironmentChange();
     actions.invalidateSessionLoads?.();
@@ -108,7 +129,7 @@ export function createAppEventBindings({
         { focus: false },
       );
       if (!preparedWorkspaceActivation) return;
-      if (!actions.suspendQueueRecovery()) return;
+      if (!suspendQueueRecovery()) return;
       if (preparedWorkspaceActivation() === false) return;
       state.currentSessionId = createWebSessionId();
       onSessionCreated(state.currentSessionId);
@@ -343,6 +364,7 @@ export function createAppEventBindings({
   return {
     bind,
     changeEnvironment,
+    setEnvironmentChangePreparation(prepare) { prepareAdditionalEnvironmentChange = prepare; },
     isEnvironmentChanging: () => environmentChanging,
   };
 }

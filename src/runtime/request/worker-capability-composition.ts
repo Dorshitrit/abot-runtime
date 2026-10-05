@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { RuntimeFilesystemScope } from "../context/runtime-filesystem-scope.js";
 
 import {
   createBundledPluginSkillProvider,
@@ -29,6 +30,7 @@ import type {
 type RequestWorkerCapabilityProviderParams<TRequest> = Readonly<{
   request: TRequest;
   requestWorkingDirectory?: string;
+  filesystemScope?: RuntimeFilesystemScope;
   executionPolicyAuthority?: ExecutionPolicyAuthoritySnapshot;
   requestAttachments?: readonly ToolRequestAttachment[];
   runtimeConfig?: RuntimeConfig;
@@ -100,11 +102,15 @@ export function createRequestWorkerCapabilityProvider(
         payloadAuthor: createRequestWorkerCapabilityPayloadAuthor(
           params.request,
           params.executionPolicyAuthority?.capabilityAuthorities,
+          params.filesystemScope,
         ),
         loadActionSkillContext: (toolName) =>
           getRequestSkillProvider().getActionContext(toolName),
         nextApprovalId: () => `approval:${randomUUID()}`,
         onEvent: params.request.onEvent,
+        ...(params.request.effectPersistence
+          ? { effectPersistence: params.request.effectPersistence }
+          : {}),
       },
     );
   return Object.freeze({

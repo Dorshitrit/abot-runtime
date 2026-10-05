@@ -48,6 +48,7 @@ import type {
   ToolExecutionResult,
   ToolExecutionSharedState,
   ToolImplementation,
+  ToolUnderlyingSettlement,
   RegisteredToolNormalInvocation,
 } from "../capabilities/tool-types.js";
 import type { RequestLifecycleState } from "./orchestration/lifecycle/request-lifecycle.js";
@@ -169,7 +170,27 @@ export type AppendSessionContextEntryOptions = {
 
 export type SessionStore = SessionMemoryRepository & {
   requestLifecycle?: import("../sessions/request-lifecycle/contracts.js").SessionRequestLifecycleStore;
+  assertInteractiveSession?: (sessionId: string) => Promise<void>;
+  createAutomationSession?: (
+    sessionId: string,
+    origin: import("../sessions/automation-session-origin.js").AutomationSessionOrigin,
+  ) => Promise<import("../sessions/automation-session-origin.js").AutomationSessionHandle>;
+  runAsAutomationSession?: <T>(
+    handle: import("../sessions/automation-session-origin.js").AutomationSessionHandle,
+    task: () => Promise<T>,
+  ) => Promise<T>;
+  /** Trusted attempt ownership; never exposed by interactive session routes. */
+  releaseAutomationSession?: (handle: import("../sessions/automation-session-origin.js").AutomationSessionHandle) => void;
+  /** Adapter-owned cleanup of abandoned internal transcripts only. */
+  reconcileAutomationSessions?: (
+    cleanupAttachments: (sessionId: string) => Promise<void>,
+    onError: (sessionId: string, error: unknown) => void,
+  ) => Promise<void>;
   createAssistantConversation?: (
+    sessionId: string,
+    input: import("../sessions/assistant-initiative.js").CreateAssistantConversationInput,
+  ) => Promise<SessionRecord>;
+  appendAssistantInitiative?: (
     sessionId: string,
     input: import("../sessions/assistant-initiative.js").CreateAssistantConversationInput,
   ) => Promise<SessionRecord>;
@@ -258,9 +279,14 @@ export type ConversationContextProvider = {
 };
 
 export type ToolExecutionOptions = {
+  /** Opaque internal admission from the normal-invocation boundary. */
+  trustedEffectAdmission?: object;
+  /** Trusted lifecycle observer; abort may settle the result before the implementation. */
+  onUnderlyingSettlement?: (settled: Promise<ToolUnderlyingSettlement>) => void;
   requestWork?: ToolExecutionContext["requestWork"];
   requestState?: ToolExecutionContext["requestState"];
   media?: ToolExecutionContext["media"];
+  resultBudget?: ToolExecutionContext["resultBudget"];
   onRequestDispose?: ToolExecutionContext["onRequestDispose"];
   /** Trusted request snapshot, never parsed from a model tool payload. */
   requestWorkingDirectory?: string;

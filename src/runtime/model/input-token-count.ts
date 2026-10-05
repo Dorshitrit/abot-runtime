@@ -13,7 +13,10 @@ export async function countModelInputTokens(params: {
   modelStep: ModelStep;
   messages: readonly ChatMessage[];
   format?: ModelGatewayFormat;
+  abortSignal?: AbortSignal;
 }): Promise<number | undefined> {
+  const abortSignal = params.abortSignal ?? params.request.abortSignal;
+  abortSignal.throwIfAborted();
   const countInputTokens = params.request.modelGatewayClient.countInputTokens;
   if (!countInputTokens) {
     return undefined;
@@ -29,10 +32,11 @@ export async function countModelInputTokens(params: {
     ...(params.request.modelPolicy
       ? { modelPolicy: params.request.modelPolicy }
       : {}),
-    abortSignal: params.request.abortSignal,
+    abortSignal,
     debugRequestId: params.request.requestId,
     ...(params.format !== undefined ? { format: params.format } : {}),
   });
+  abortSignal.throwIfAborted();
   if (!result) {
     return undefined;
   }

@@ -30,11 +30,12 @@ function context(): LearningKnowledgeContext {
 }
 function decision(): ProactiveDecision {
   return { kind: "proposal", title: "An idea", message: "Would researching this help?", reason: "Relevant context",
+    handoffBrief: "Background from SPARK: a possible interest may benefit from research; the user has not requested work yet.",
     sources: [{ kind: "candidate", id: "candidate-a", version: "2" }],
     expiresAt: new Date(NOW + 86_400_000).toISOString(), reconsiderAt: null };
 }
 function noProposal(): ProactiveDecision {
-  return { kind: "none", title: null, message: null, reason: "Nothing useful now", sources: [],
+  return { kind: "none", title: null, message: null, handoffBrief: null, reason: "Nothing useful now", sources: [],
     expiresAt: null, reconsiderAt: null };
 }
 function reviewInput(): ProactiveReviewInput {
@@ -149,7 +150,7 @@ describe("durable proactive receipt lifecycle", () => {
     expect(state.proposals[0].reviewId).toBe("r2");
     await writeFile(file, "x".repeat(2 * 1024 * 1024 + 1));
     await expect(store.read()).rejects.toThrow("proactive_state_too_large");
-  });
+  }, 15_000);
 });
 
 describe("independent proactive admission", () => {

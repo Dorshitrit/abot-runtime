@@ -1,3 +1,7 @@
+import {
+  buildRuntimeFilesystemScopeMessage,
+  canEstablishRuntimeWorkingDirectory,
+} from "../../context/runtime-filesystem-scope.js";
 import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
 import {
   projectCapabilityBrief,
@@ -177,7 +181,16 @@ export function buildPlannerDecisionInput(
     callId: callIdentity.callId,
   });
   const toolResultsProjection = projectPlannerToolResults(options.toolResults);
+  const filesystemMessage = buildRuntimeFilesystemScopeMessage({
+    scope: request.workerCapabilities.filesystemScope,
+    workingDirectory: inheritedWorkingDirectory,
+    canSelectWorkingDirectory: canEstablishRuntimeWorkingDirectory(
+      inheritedWorkingDirectory,
+      childInvocationAvailable,
+    ),
+  });
   const referenceMessages = [
+    ...(filesystemMessage ? [filesystemMessage] : []),
     ...(request.temporalContext
       ? [buildRequestTemporalContextMessage(request.temporalContext)]
       : []),

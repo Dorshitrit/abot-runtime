@@ -45,8 +45,13 @@ function fileNameMatches(
 
 export default defineRuntimePlugin((context) => ({
   handlers: {
-    async local_search(params, executionContext) {
+    async local_search(params, executionContext = undefined) {
       let root: SearchRoot | undefined;
+      const pathContext = {
+        ...context,
+        runtimePathResolver:
+          executionContext?.runtimePathResolver ?? context.runtimePathResolver,
+      };
       try {
         const query = readRequiredString(params.query, {
           name: "query",
@@ -71,7 +76,7 @@ export default defineRuntimePlugin((context) => ({
           maximum: MAX_RESULTS,
           name: "max_results",
         });
-        root = await resolveSearchRoot(context, params.path);
+        root = await resolveSearchRoot(pathContext, params.path);
         const candidates: SearchEntry[] = [];
         let sourceTruncated = false;
         if (mode === "names" || mode === "both") {
@@ -104,7 +109,7 @@ export default defineRuntimePlugin((context) => ({
           for (const rawPath of names.items) {
             candidates.push({
               kind: "name",
-              value: qualifyMatchPath(context, root, rawPath),
+              value: qualifyMatchPath(pathContext, root, rawPath),
             });
           }
         }
@@ -141,7 +146,7 @@ export default defineRuntimePlugin((context) => ({
               kind: "content",
               value: {
                 ...match,
-                path: qualifyMatchPath(context, root, match.path),
+                path: qualifyMatchPath(pathContext, root, match.path),
               },
             });
           }

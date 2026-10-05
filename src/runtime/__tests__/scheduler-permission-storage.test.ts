@@ -4,6 +4,10 @@ import {
   parseStoredRun,
 } from "../scheduler/snapshot-validation.js";
 import { makeSchedulerRun } from "../scheduler/run-records.js";
+import {
+  requireRequestSchedulerJob,
+  requireRequestSchedulerRun,
+} from "../scheduler/scheduler-target.js";
 import type { SchedulerJob } from "../scheduler/contracts.js";
 
 const job: SchedulerJob = {
@@ -28,10 +32,12 @@ describe("scheduler persisted permission", () => {
   test("reads legacy runs without deriving permission from the current FULL+ job", () => {
     const run = makeSchedulerRun(job, "2026-09-24T09:00:00Z", "schedule");
     delete run.toolPermissionMode;
-    const restored = parseStoredRun(run);
+    const restored = requireRequestSchedulerRun(parseStoredRun(run));
     expect(restored.toolPermissionMode).toBeUndefined();
     expect(restored.toolPermissionMode ?? "full_access").toBe("full_access");
-    expect(parseStoredJob(job).toolPermissionMode).toBe("full_plus");
+    expect(requireRequestSchedulerJob(parseStoredJob(job)).toolPermissionMode).toBe(
+      "full_plus",
+    );
   });
   test.each(["ask", "FULL+", null])(
     "rejects unsupported stored run authority %s",

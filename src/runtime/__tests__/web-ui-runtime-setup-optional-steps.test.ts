@@ -89,6 +89,54 @@ describe("optional onboarding steps", () => {
     expect(harness.applySetup).toHaveBeenCalledOnce();
   });
 
+  test("reloads plugin selection after returning to embedding and saving it", async () => {
+    let memoryEnabled = true;
+    const loadPlugins = vi.fn(async () => ({
+      ...pluginSnapshot,
+      selection: {
+        ...pluginSnapshot.selection,
+        deny: memoryEnabled ? [] : ["memory"],
+      },
+      plugins: [
+        ...pluginSnapshot.plugins,
+        {
+          id: "memory",
+          description: "Saved memory",
+          pluginEnabled: memoryEnabled,
+          capabilityCount: 0,
+          selectedCapabilityCount: 0,
+          capabilities: [],
+        },
+      ],
+    }));
+    const saveEmbedding = vi.fn(async () => {
+      memoryEnabled = false;
+      return {
+        status: {
+          enabled: true,
+          providerId: "ollama",
+          model: "embedding-model",
+          providers: [{ id: "ollama", type: "ollama" }],
+        },
+      };
+    });
+    const harness = resumed({ loadPlugins, saveEmbedding });
+    const memoryInput = () =>
+      harness.container
+        .querySelectorAll("[data-runtime-plugin-toggle]")
+        .find((input) => input.dataset.runtimePluginToggle === "memory")!;
+    await openPlugins(harness);
+    expect(memoryInput().checked).toBe(true);
+    harness.click("back");
+    harness.inputEmbeddingModel("embedding-model");
+    harness.submit();
+    await harness.ready();
+    expect(saveEmbedding).toHaveBeenCalledOnce();
+    expect(loadPlugins).toHaveBeenCalledTimes(2);
+    expect(memoryInput().checked).toBe(false);
+    expect(pluginInput(harness).checked).toBe(true);
+  });
+
   test("uses a new provider for embedding, clears its key during the explicit probe and never applies early", async () => {
     const pending = deferred<any>();
     const requests: any[] = [];

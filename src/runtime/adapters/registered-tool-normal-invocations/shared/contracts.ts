@@ -1,3 +1,4 @@
+import type { CapabilityResultReference } from "../../../orchestration/capability-adapters/result.js";
 import type { BoundApprovalDecision } from "../../../orchestration/worker-capabilities/approval-contracts.js";
 import type { ToolEventExecutorIdentity } from "./event-metadata.js";
 import type { RequestToolResources } from "../../../capabilities/request-tool-resources.js";
@@ -78,6 +79,7 @@ export type RegisteredToolPreparedNormalInvocation = Readonly<{
   execute(
     executionId?: string,
     executorIdentity?: ToolEventExecutorIdentity,
+    selectedReferences?: readonly CapabilityResultReference[],
   ): Promise<RegisteredToolNormalInvocationResult>;
 }>;
 
@@ -189,6 +191,21 @@ export type BoundOperation = Readonly<{
   stagedPayloadPlan?: RegisteredToolStagedPayloadPlan;
 }>;
 
+/** Opt-in durable effect boundary used by non-interactive automation runs. */
+export type RegisteredToolEffectPersistence = Readonly<{
+  beforeEffect(input: Readonly<{
+    executionId: string;
+    actionFingerprint: string;
+    source: Readonly<{ toolName: string; operationId: string; contractVersion: number }>;
+    target: Readonly<{ toolName: string; operationId: string; contractVersion: number }>;
+    effect: ToolNormalInvocationEffect;
+  }>): Promise<object | void>;
+  afterEffect(input: Readonly<{
+    executionId: string;
+    outcome: RegisteredToolNormalInvocationResult | Readonly<{ status: "uncertain"; error: string }>;
+  }>): Promise<void>;
+}>;
+
 export type RegisteredToolNormalInvocationExecutorParams = Readonly<{
   toolResources?: RequestToolResources;
   registrations: readonly RegisteredToolNormalInvocation[];
@@ -200,6 +217,7 @@ export type RegisteredToolNormalInvocationExecutorParams = Readonly<{
   toolApprovalController?: ToolApprovalController;
   nextApprovalId(): string;
   onEvent?(name: string, payload: Record<string, unknown>): void;
+  effectPersistence?: RegisteredToolEffectPersistence;
 }>;
 
 export type RegisteredToolNormalInvocationPayloadLifecycleInput = Parameters<

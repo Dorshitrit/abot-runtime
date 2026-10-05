@@ -9,6 +9,7 @@ export function createProjectsFeature({
   client,
   shell,
   selectedEnvironmentId,
+  isRuntimeReady = () => true,
   conversationSession,
   renderSessions,
   prepareConversation,
@@ -23,6 +24,7 @@ export function createProjectsFeature({
   const controller = createProjectsController({
     client,
     getEnvironmentId: selectedEnvironmentId,
+    isRuntimeReady,
     getConversationRevision: () =>
       `${state.currentSessionId}:${state.sessionViewVersion}`,
     prepareConversation,
@@ -31,11 +33,11 @@ export function createProjectsFeature({
     notify: shell.showToast,
     onSessionCreated,
     onChange: (snapshot) => {
-      const open = Boolean(snapshot.draft);
+      const open = Boolean(snapshot.draft) && isRuntimeReady();
       dom.chatPanel.classList.toggle("project-creation-open", open);
       dom.messagesList.inert = open;
       dom.composerForm.inert = open;
-      view?.render(snapshot.draft);
+      view?.render(open ? snapshot.draft : null);
       renderSessions();
       if (open && !wasOpen)
         dom.projectCreationRoot.querySelector("input")?.focus();
@@ -100,17 +102,26 @@ export function createProjectsFeature({
     expandedProjectSessionIds.delete(projectId);
   }
 
+  function canUseProjects() {
+    if (!isRuntimeReady()) return false;
+    return client.supportsProjects();
+  }
+
   function refreshAvailability() {
-    const available = client.supportsProjects();
+    const available = canUseProjects();
     dom.newProjectButton.disabled = !available;
     dom.newProjectButton.title = available
       ? "Create a project"
-      : "Projects are unavailable on this server";
+      : "Projects are currently unavailable";
   }
 
   return {
     load: controller.load,
     refreshAvailability,
+    runtimeAvailabilityChanged() {
+      refreshAvailability();
+      return controller.runtimeAvailabilityChanged();
+    },
     renderSessionGroups({ root, sessions, createSessionItem }) {
       syncProjectGroupEnvironment();
       const project = state.sessions.find(
@@ -141,7 +152,7 @@ export function createProjectsFeature({
     },
     bind() {
       dom.newProjectButton.addEventListener("click", () => {
-        if (!client.supportsProjects()) return;
+        if (!canUseProjects()) return;
         if (!shell.activateWorkspace("chat", { focus: false })) return;
         shell.setSessionsDrawerOpen(false);
         closeFilePreview();

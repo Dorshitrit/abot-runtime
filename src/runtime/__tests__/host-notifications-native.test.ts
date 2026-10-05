@@ -68,6 +68,21 @@ test.each([
   expect(() => resolveNotificationSourceUrl(url, origin)).toThrow();
 });
 
+test("accepts only a bound Automation run destination for desktop alerts", () => {
+  const runUrl = "/automations?environment=dev&automation=flow-1&run=run-1";
+  expect(resolveNotificationSourceUrl(runUrl, origin)).toBe(
+    "http://abot-notify.localhost:5987" + runUrl,
+  );
+  for (const unsafe of [
+    "/automations?environment=dev&automation=flow-1",
+    "/automations?environment=dev&automation=flow-1&run=run-1&run=run-2",
+    "/automations?environment=dev&automation=flow-1&run=run-1&redirect=other",
+    "/automations?environment=dev&automation=&run=run-1",
+  ]) expect(() => resolveNotificationSourceUrl(unsafe, origin)).toThrow();
+  expect(readDesktopNotification({ ...notification, url: runUrl }, "windows", origin).url)
+    .toBe("http://abot-notify.localhost:5987" + runUrl);
+});
+
 test.each([
   { notificationId: "bad" },
   { notificationId: "A".repeat(64) },

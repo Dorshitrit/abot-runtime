@@ -36,10 +36,15 @@ export default defineRuntimePlugin((context) => {
 
   return {
     handlers: {
-      async inspect_project(params) {
+      async inspect_project(params, executionContext = undefined) {
+        const pathContext = {
+          ...context,
+          runtimePathResolver:
+            executionContext?.runtimePathResolver ?? context.runtimePathResolver,
+        };
         try {
           const requestedPath = readOptionalString(params.path) ?? ".";
-          const target = resolvePluginPath(context, requestedPath, {
+          const target = resolvePluginPath(pathContext, requestedPath, {
             defaultPath: ".",
             allowedLocations: ["agent_work", "workspace"],
           });
@@ -63,8 +68,8 @@ export default defineRuntimePlugin((context) => {
             name: "maxEntries",
           });
           const [tree, manifests] = await Promise.all([
-            collectProjectTree(context, target, depth, maxEntries),
-            readProjectManifests(context, target),
+            collectProjectTree(pathContext, target, depth, maxEntries),
+            readProjectManifests(pathContext, target),
           ]);
           const packageManifest = manifests.find(
             ({ file }) => file === "package.json",

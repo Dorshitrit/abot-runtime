@@ -34,7 +34,7 @@ export function buildPlannerChildContinuationMessages(params: {
 
   return Object.freeze(
     params.resume.completedChildren.flatMap((child) =>
-      buildCompletedChildMessages(
+      buildPlannerCompletedChildMessages(
         child,
         params.currentCallId,
         params.planContext !== undefined,
@@ -63,13 +63,13 @@ export function buildPlannerChildContinuationPart(params: {
     compactMessages: Object.freeze(
       params.resume.completedChildren.map(
         (child) =>
-          buildCompletedChildMessages(child, params.currentCallId, true)[0]!,
+          buildPlannerCompletedChildMessages(child, params.currentCallId, true)[0]!,
       ),
     ),
   });
 }
 
-function buildCompletedChildMessages(
+export function buildPlannerCompletedChildMessages(
   child: CompletedRoleChildResult,
   currentCallId: string,
   hasCanonicalPlanContext: boolean,

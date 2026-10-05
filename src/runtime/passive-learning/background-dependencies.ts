@@ -18,7 +18,6 @@ export type LearningProactiveLifecycle = Readonly<{
   knowledgeChanged(): void;
   beginInteractive(): () => void;
   status(): Promise<ProactiveStatus>;
-  dismiss(id: string): Promise<void>;
   sessionDeleted?(sessionId: string): Promise<void>;
 }>;
 

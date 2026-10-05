@@ -1,4 +1,4 @@
-/** Leaves room for JSON-string escaping and result metadata in the SDK's 128 KiB envelope. */
+/** Leaves room for JSON-string escaping and result metadata in the SDK's 256 KiB envelope. */
 export const COMPUTER_OBSERVATION_OUTPUT_MAX_BYTES = 48 * 1024;
 
 type Observation = Record<string, unknown>;

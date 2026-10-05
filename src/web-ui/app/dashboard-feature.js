@@ -32,7 +32,6 @@ export function createDashboardFeature({
     isRuntimeReady: isComposerAvailable,
     approvalData: approvals,
     render: (snapshot) => {
-      passiveLearning?.updateSessions?.({ environmentId: selectedEnvironmentId(), sessions: snapshot.sessions });
       const sessions = filterSessionsByArchiveState(snapshot.sessions,
         preferences?.loadSessionSidebar?.(selectedEnvironmentId())?.archivedSessionIds);
       view?.render({ ...snapshot, sessions, composerAvailable: isComposerAvailable() });

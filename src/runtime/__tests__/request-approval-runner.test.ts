@@ -232,6 +232,7 @@ describe("request runner approval boundary", () => {
         result: {
           output: `Finished: ${approved ? "succeeded" : "failed"}.`,
           outputTextMode: "exact",
+          disposition: "blocked",
         },
       });
       expect(f.prepare).toHaveBeenCalledOnce();

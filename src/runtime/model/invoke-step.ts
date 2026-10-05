@@ -1,10 +1,5 @@
 import type { ChatMessage } from "../../model-gateway/types.js";
-import { projectToolMediaMessages } from "../context/tool-media-projection.js";
 import { resolveModelInvocationStep } from "../../shared/model-step-registry.js";
-import {
-  assessRequestMessagesBudget,
-  resolveRequestBudgetInputTokens,
-} from "../context/request-context-budget.js";
 import { projectConfiguredStepMessages } from "../config/runner/step-instructions.js";
 import { traceDebug } from "../observability/debug-logger.js";
 import { classifyRuntimeErrorType } from "../observability/error-type.js";
@@ -19,7 +14,8 @@ import {
 } from "../request/request-steering.js";
 import { appendRequestSteeringContext } from "../request/request-steering-context.js";
 import { createModelStepAbort } from "../steps/model-step-timeout.js";
-import { countModelInputTokens } from "./input-token-count.js";
+import { acceptModelStepOutput } from "./model-step-acceptance.js";
+import { createModelContextAssessment } from "./model-context-assessment.js";
 import {
   isModelStepCompactionEligible,
   resolveModelContextAdmission,
@@ -36,6 +32,8 @@ import type {
 import {
   assertBoundModelStepSteeringCurrent,
   isModelStepSteeringSuperseded,
+  assertModelStepAdmissionCurrent,
+  ModelStepAdmissionSuperseded,
 } from "./model-step-steering.js";
 
 export type {
@@ -45,6 +43,10 @@ export type {
 } from "./model-step-port.js";
 
 import { createModelInvocationIdentity } from "./invocation-identity.js";
+import {
+  admitCompactedContext,
+  requiresContextCompaction,
+} from "./context-compaction-admission.js";
 
 /** Binds the immutable request services used by every model step in a request. */
 export class RequestModelStepInvoker implements RequestModelStepPort {
@@ -138,18 +140,27 @@ class ModelStepInvocation<T> {
 
   async run(): Promise<T> {
     for (;;) {
+      this.input.request.abortSignal.throwIfAborted();
       assertBoundModelStepSteeringCurrent(
         this.input.requestSteering,
         this.input.params.boundSteeringVersion,
       );
-      const attempt = await this.beginAttempt();
+      const beginning = await this.beginAttempt();
+      if (beginning.kind === "superseded") {
+        this.resolveOutputDisposition(beginning.steeringSnapshot);
+        continue;
+      }
+      const attempt = beginning.attempt;
       let outputDiagnostics: ModelStepOutputDiagnostics | undefined;
 
       try {
-        assertBoundModelStepSteeringCurrent(
-          this.input.requestSteering,
-          this.input.params.boundSteeringVersion,
-        );
+        assertModelStepAdmissionCurrent({
+          abortSignal: this.input.request.abortSignal,
+          requestSteering: this.input.requestSteering,
+          boundSteeringVersion: this.input.params.boundSteeringVersion,
+          ownsRequestSteering: this.input.ownsRequestSteering,
+          steeringSnapshot: attempt.steeringSnapshot,
+        });
         const response = await attempt.invokeProvider();
         this.input.request.abortSignal.throwIfAborted();
         attempt.signal.throwIfAborted();
@@ -171,13 +182,38 @@ class ModelStepInvocation<T> {
         ) {
           continue;
         }
-        const accepted = this.input.params.accept(
-          response.text,
-          outputDiagnostics,
+        const acceptedDiagnostics = outputDiagnostics;
+        const accepted = await acceptModelStepOutput(
+          () =>
+            this.input.params.accept(
+              response.text,
+              acceptedDiagnostics,
+              attempt.signal,
+            ),
+          attempt.signal,
         );
+        this.input.request.abortSignal.throwIfAborted();
+        attempt.signal.throwIfAborted();
+        assertBoundModelStepSteeringCurrent(
+          this.input.requestSteering,
+          this.input.params.boundSteeringVersion,
+        );
+        if (
+          this.resolveOutputDisposition(
+            attempt.steeringSnapshot,
+            outputDiagnostics,
+          ) === "superseded"
+        )
+          continue;
         this.recordCompletion(attempt.steeringSnapshot, outputDiagnostics);
         return accepted;
       } catch (error: unknown) {
+        if (error instanceof ModelStepAdmissionSuperseded) {
+          this.input.request.abortSignal.throwIfAborted();
+          attempt.signal.throwIfAborted();
+          this.resolveOutputDisposition(error.steeringSnapshot);
+          continue;
+        }
         if (isModelStepSteeringSuperseded(error)) throw error;
         this.recordFailure(attempt, error, outputDiagnostics);
         this.input.request.abortSignal.throwIfAborted();
@@ -189,10 +225,37 @@ class ModelStepInvocation<T> {
     }
   }
 
-  private async beginAttempt(): Promise<ModelStepAttempt> {
+  private async beginAttempt(): Promise<
+    | Readonly<{ kind: "ready"; attempt: ModelStepAttempt }>
+    | Readonly<{
+        kind: "superseded";
+        steeringSnapshot: RequestSteeringSnapshot;
+      }>
+  > {
+    try {
+      return { kind: "ready", attempt: await this.prepareAttempt() };
+    } catch (error: unknown) {
+      this.input.request.abortSignal.throwIfAborted();
+      if (error instanceof ModelStepAdmissionSuperseded) {
+        return { kind: "superseded", steeringSnapshot: error.steeringSnapshot };
+      }
+      throw error;
+    }
+  }
+
+  private async prepareAttempt(): Promise<ModelStepAttempt> {
     const { request, params } = this.input;
     request.abortSignal.throwIfAborted();
     const steeringSnapshot = this.input.requestSteering.snapshot();
+    const assertCurrent = () =>
+      assertModelStepAdmissionCurrent({
+        abortSignal: request.abortSignal,
+        requestSteering: this.input.requestSteering,
+        boundSteeringVersion: params.boundSteeringVersion,
+        ownsRequestSteering: this.input.ownsRequestSteering,
+        steeringSnapshot,
+      });
+    assertCurrent();
     const configuredInstructionProjection = projectConfiguredStepMessages({
       runnerConfig: request.runnerConfig,
       modelStep: params.modelStep,
@@ -220,135 +283,41 @@ class ModelStepInvocation<T> {
       ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),
       ...(params.format ? { requestFormat: params.format } : {}),
     });
-    const calibrationInstructions = (admission.invocation.instructions ?? [])
-      .map((instruction) => instruction.trim())
-      .filter((instruction) => instruction.length > 0);
-    const effectiveFormat = admission.effectiveFormat;
-    const projectMedia = (candidate: readonly ChatMessage[]) =>
-      projectToolMediaMessages({
-        messages: candidate,
-        store: request.toolResources?.media,
-        modelStep: params.modelStep,
-        supportsImages:
-          admission.invocation.profile.capabilities.inputModalities.includes(
-            "image",
-          ),
-      });
-    const assess = async (candidateMessages: readonly ChatMessage[]) => {
-      const projected = projectMedia(candidateMessages);
-      const measuredInputTokens = await countModelInputTokens({
-        request,
-        invocation: admission.invocation,
-        modelStep: params.modelStep,
-        messages: projected,
-        ...(params.format !== undefined ? { format: params.format } : {}),
-      });
-      return assessRequestMessagesBudget({
-        messages:
-          calibrationInstructions.length > 0
-            ? [
-                {
-                  role: "system" as const,
-                  content: calibrationInstructions.join("\n"),
-                },
-                ...projected,
-              ]
-            : projected,
-        ...(isSchemaFormat(effectiveFormat)
-          ? { format: { schema: effectiveFormat.schema } }
-          : {}),
-        budget: admission.budget,
-        ...(measuredInputTokens !== undefined ? { measuredInputTokens } : {}),
-      });
-    };
+    const { assess, projectMedia } = createModelContextAssessment({
+      request,
+      params,
+      admission,
+      assertCurrent,
+    });
     let assessment = await assess(messages);
     const invocationId = this.input.nextInvocationId();
-    const compactionRequired =
-      compactionTriggerEligible &&
-      (!assessment.fits ||
-        resolveRequestBudgetInputTokens(assessment.budget) >=
-          assessment.budget.compactionTriggerInputTokens);
-
-    if (compactionRequired) {
-      const before = assessment;
-      const compactionScope = contextCompaction?.compactionScope;
-      this.input.onContextEvent?.("context.compaction.started", {
-        stage: "context_compaction",
-        phase: "started",
-        requestId: request.requestId,
-        invocationId,
-        modelStep: params.modelStep,
-        profileId: admission.invocation.profile.id,
-        reason: "context_window_threshold",
-        compactionScope,
-        contextWindowTokens: before.budget.contextWindowTokens,
-        beforeInputTokens: resolveRequestBudgetInputTokens(before.budget),
-        beforeUsedContextPercent: before.budget.usedContextPercent,
-        triggerInputTokens: before.budget.compactionTriggerInputTokens,
+    if (requiresContextCompaction(compactionTriggerEligible, assessment)) {
+      const admitted = await admitCompactedContext({
+        messages,
+        assessment,
+        controller: contextCompaction,
+        assess,
+        assertCurrent,
+        abortSignal: request.abortSignal,
+        identity: {
+          requestId: request.requestId,
+          invocationId,
+          modelStep: params.modelStep,
+          profileId: admission.invocation.profile.id,
+          provider: admission.invocation.profile.provider,
+          model: admission.invocation.model,
+          ...(request.modelInvocationScope
+            ? { modelInvocationScope: request.modelInvocationScope }
+            : {}),
+        },
+        ...(this.input.onContextEvent
+          ? { onEvent: this.input.onContextEvent }
+          : {}),
       });
-      if (!contextCompaction) {
-        this.input.onContextEvent?.("context.compaction.failed", {
-          stage: "context_compaction",
-          phase: "failed",
-          requestId: request.requestId,
-          invocationId,
-          modelStep: params.modelStep,
-          profileId: admission.invocation.profile.id,
-          reason: "context_compaction_controller_unavailable",
-          beforeInputTokens: resolveRequestBudgetInputTokens(before.budget),
-        });
-        throw new Error("request_context_compaction_required");
-      }
-      try {
-        const prepared = await contextCompaction.prepare(messages);
-        const compactedAssessment = await assess(prepared.messages);
-        if (
-          !compactedAssessment.fits ||
-          resolveRequestBudgetInputTokens(compactedAssessment.budget) >=
-            compactedAssessment.budget.compactionTriggerInputTokens ||
-          resolveRequestBudgetInputTokens(compactedAssessment.budget) >=
-            resolveRequestBudgetInputTokens(before.budget)
-        ) {
-          throw new Error("context_compaction_projection_not_reduced");
-        }
-        await prepared.commit();
-        messages = prepared.messages;
-        assessment = compactedAssessment;
-        this.input.onContextEvent?.("context.compaction.completed", {
-          stage: "context_compaction",
-          phase: "completed",
-          requestId: request.requestId,
-          invocationId,
-          modelStep: params.modelStep,
-          profileId: admission.invocation.profile.id,
-          reason: "context_window_threshold",
-          compactionScope,
-          scopeId: prepared.scopeId,
-          sourceRevision: prepared.sourceRevision,
-          coveredSourceCount: prepared.coveredSourceCount,
-          contextWindowTokens: assessment.budget.contextWindowTokens,
-          beforeInputTokens: resolveRequestBudgetInputTokens(before.budget),
-          beforeUsedContextPercent: before.budget.usedContextPercent,
-          afterInputTokens: resolveRequestBudgetInputTokens(assessment.budget),
-          afterUsedContextPercent: assessment.budget.usedContextPercent,
-          triggerInputTokens: assessment.budget.compactionTriggerInputTokens,
-        });
-      } catch (error: unknown) {
-        this.input.onContextEvent?.("context.compaction.failed", {
-          stage: "context_compaction",
-          phase: "failed",
-          requestId: request.requestId,
-          invocationId,
-          modelStep: params.modelStep,
-          profileId: admission.invocation.profile.id,
-          reason: "semantic_checkpoint_rejected",
-          compactionScope,
-          beforeInputTokens: resolveRequestBudgetInputTokens(before.budget),
-          issueCode: error instanceof Error ? error.message : "unknown_error",
-        });
-        throw error;
-      }
+      messages = [...admitted.messages];
+      assessment = admitted.assessment;
     }
+    assertCurrent();
     traceDebug("runtime.context", "budget.assessed", {
       requestId: request.requestId,
       modelStep: params.modelStep,
@@ -451,7 +420,7 @@ class ModelStepInvocation<T> {
 
   private resolveOutputDisposition(
     steeringSnapshot: RequestSteeringSnapshot,
-    outputDiagnostics: ModelStepOutputDiagnostics,
+    outputDiagnostics?: ModelStepOutputDiagnostics,
   ): "accepted" | "superseded" {
     const { request, params, requestSteering, ownsRequestSteering } =
       this.input;
@@ -617,16 +586,6 @@ class ModelStepAttempt {
   }
 }
 
-function isSchemaFormat(
-  format: "json" | Record<string, unknown> | undefined,
-): format is Record<string, unknown> & { schema: unknown } {
-  return (
-    typeof format === "object" &&
-    format !== null &&
-    Object.prototype.hasOwnProperty.call(format, "schema")
-  );
-}
-
 function projectOutputDiagnostics(
   text: string,
   meta: Record<string, unknown>,
@@ -670,7 +629,8 @@ function projectOutputDiagnostics(
 function projectFormatDiagnostics(
   format: "json" | Record<string, unknown> | undefined,
 ): Record<string, unknown> {
-  if (format === undefined) {
+  const requestsPlainText = format === undefined || (typeof format === "object" && format.type === "text");
+  if (requestsPlainText) {
     return {
       outputContract: "text",
       schemaCharacterCount: 0,

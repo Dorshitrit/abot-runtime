@@ -5,6 +5,7 @@ import {
 import { emitRuntimeStatus } from "../../events/runtime-status.js";
 import { classifyRuntimeErrorType } from "../../observability/error-type.js";
 import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
+import { superCompactionFailureOwner } from "../../context/super-compaction-failure-owner.js";
 import type { RoleExecutor } from "../../orchestration/role-executors/index.js";
 import type { RequestExecutionScope } from "../../request/execution-scope.js";
 import type { RequestRoleExecutionHandoff } from "../../request/result.js";
@@ -61,7 +62,22 @@ export async function runReviewerDecision(
       format: input.format,
       messages: input.context.messages,
       contextCompaction: createModelStepCompactionController(request, {
+        consumer: REVIEWER_DECISION_MODEL_STEP,
         call: options.call,
+        superFailureOwner: superCompactionFailureOwner(
+          request.executionPolicy.authority,
+          {
+            requestId: request.requestId,
+            callId: options.call.callId,
+            parentCallId: options.call.parentCallId,
+            contractId: "delegated.reviewer",
+            invocationAttempt: options.call.activationCount,
+            sourceRevision: options.snapshot.sourceRevision,
+            modelStep: REVIEWER_DECISION_MODEL_STEP,
+            phase: "compaction",
+            scopeId: `role:reviewer:${options.call.callId}:continuation`,
+          },
+        ),
         sourceRevision: options.snapshot.sourceRevision,
         allowedConsumers: Object.freeze([REVIEWER_DECISION_MODEL_STEP]),
       }),

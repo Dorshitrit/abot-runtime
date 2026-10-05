@@ -29,11 +29,13 @@ export type WebPluginDependencies = Readonly<{
   httpClient?: PublicHttpClient;
 }>;
 
-function failure(error: unknown, operation: string) {
+function failure(error: unknown, operation: string, signal?: AbortSignal) {
   const lightFailure = lightSearchFailureResult(error);
   if (lightFailure) return lightFailure;
   if (isWebPluginError(error)) {
+    const abortedByCaller = signal?.aborted === true && error.code === "web_request_aborted";
     return failureResult({
+      ...(abortedByCaller ? { interruption: "aborted" as const } : {}),
       errorCode: error.code,
       message: error.message,
       output: `${operation} failed: ${error.message}`,
@@ -99,7 +101,7 @@ export function createWebPlugin(
           { version: 1, operation: "fetch", sources: presentation.sources },
         );
       } catch (error) {
-        return failure(error, "web_fetch");
+        return failure(error, "web_fetch", executionContext?.abortSignal);
       }
     },
     async web_search(params, executionContext) {
@@ -151,7 +153,7 @@ export function createWebPlugin(
           search.webSources,
         );
       } catch (error) {
-        return failure(error, "web_search");
+        return failure(error, "web_search", executionContext?.abortSignal);
       }
     },
   };

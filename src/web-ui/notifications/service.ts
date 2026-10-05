@@ -1,4 +1,6 @@
 import type { RuntimeConfig } from "../../runtime/ports.js";
+import { assertValidSessionId } from "../../sessions/record/rules.js";
+import { loadSessionFile } from "../../sessions/session-store.js";
 import type {
   NotificationDelivery,
   NotificationDesktopState,
@@ -31,6 +33,23 @@ function isSuppressedReply(
 ): boolean {
   if (item.kind !== "reply") return false;
   return options.isViewing(item.environmentId, item.sessionId);
+}
+
+function hasValidPersistedSessionReference(sessionId: string): boolean {
+  try {
+    assertValidSessionId(sessionId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isCompletedConversationNotification(
+  event: Record<string, unknown>,
+  item: WebNotification,
+): item is WebNotification & { sessionId: string } {
+  if (event.type !== "completed") return false;
+  return item.kind !== "automation";
 }
 
 function permitsDesktopNotification(
@@ -82,11 +101,22 @@ export class WebNotificationService {
 
   observe(event: Record<string, unknown>): void {
     if (this.abort.signal.aborted) return;
-    const item = projectNotificationEvent(event, this.now());
+    const observedAt = this.now();
+    const item = projectNotificationEvent(event, observedAt);
     if (!item || isSuppressedReply(item, this.options)) return;
     if (!this.hasEnvironment(item.environmentId)) return;
+    if (item.kind !== "automation" &&
+        !hasValidPersistedSessionReference(item.sessionId)) return;
     this.queue = this.queue
-      .then(() => this.record(item))
+      .then(async () => {
+        if (item.kind === "automation") return this.record(item);
+        const { sessionsDir } = this.options.environment(item.environmentId).services.config.paths;
+        const persisted = await loadSessionFile(sessionsDir, item.sessionId);
+        const hasPersistedConversation = persisted !== null;
+        if (!hasPersistedConversation && isCompletedConversationNotification(event, item)) return;
+        const projected = projectNotificationEvent(event, observedAt, persisted);
+        if (projected) await this.record(projected);
+      })
       .catch((error) => this.reportFailure(item.environmentId, error));
   }
 

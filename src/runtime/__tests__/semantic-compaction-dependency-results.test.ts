@@ -1,3 +1,4 @@
+import { projectCanonicalCapabilityResultCompactionSources } from "../context/capability-result-compaction-source.js";
 import { describe, expect, test, vi } from "vitest";
 
 import {
@@ -53,9 +54,7 @@ describe("semantic compaction dependency continuity", () => {
       rootCallId,
       "Collect evidence for an unrelated sibling outcome.",
     );
-    store.commit(
-      checkpoint(irrelevant, "scope:irrelevant", "irrelevant-source"),
-    );
+    await registerCheckpoint(ledger, store, irrelevant, "irrelevant-source");
     const irrelevantResultRef = await returnWorker(
       ledger,
       rootCallId,
@@ -68,7 +67,7 @@ describe("semantic compaction dependency continuity", () => {
       rootCallId,
       "Collect the exact evidence required by the final artifact.",
     );
-    store.commit(checkpoint(producer, "scope:producer", "required-source"));
+    await registerCheckpoint(ledger, store, producer, "required-source");
     const producerResultRef = await returnWorker(
       ledger,
       rootCallId,
@@ -109,13 +108,15 @@ describe("semantic compaction dependency continuity", () => {
         resultRef: intermediateResultRef,
         semanticCheckpoints: [
           expect.objectContaining({
-            scopeId: "scope:producer",
+            scopeId: `worker:${producer.callId}:request-tool-results`,
             callId: producer.callId,
           }),
         ],
       }),
     ]);
-    expect(JSON.stringify(dependencyResults)).not.toContain("scope:irrelevant");
+    expect(JSON.stringify(dependencyResults)).not.toContain(
+      `worker:${irrelevant.callId}:request-tool-results`,
+    );
     expect(JSON.stringify(dependencyResults)).not.toContain(
       irrelevantResultRef,
     );
@@ -184,50 +185,90 @@ describe("semantic compaction dependency continuity", () => {
         authoringObjective: AUTHORING_OBJECTIVE,
         controls: {},
       }),
-    ).resolves.toEqual({ executionId: "capability-execution-1" });
+    ).resolves.toEqual({ executionId: "capability-execution-3" });
     expect(adapterExecute).toHaveBeenCalledOnce();
     expect(payloadModel).toHaveBeenCalledOnce();
   });
 });
 
-function checkpoint(call: RoleCallFrame, scopeId: string, sourceRef: string) {
-  const sourceFingerprint = createSemanticCompactionSha256Fingerprint(
-    `${sourceRef}: exact source body`,
-  );
-  return Object.freeze({
-    kind: "runtime_semantic_compaction_checkpoint_v2" as const,
-    scopeId,
-    requestId: REQUEST_ID,
-    currentRequestFingerprint:
-      createSemanticCompactionSha256Fingerprint(PROMPT),
-    roleId: call.roleId,
+async function registerCheckpoint(
+  ledger: RoleCallLedger,
+  store: ReturnType<typeof createRequestContextCompactionStore>,
+  call: RoleCallFrame,
+  marker: string,
+) {
+  await commit(ledger, {
+    authority: "active_role",
+    type: "begin_capability_execution",
     callId: call.callId,
-    objectiveFingerprint: createSemanticCompactionSha256Fingerprint(
-      call.objective!,
-    ),
-    contextLane: SEMANTIC_COMPACTION_CONTEXT_LANE,
-    allowedConsumers: WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS,
-    sourceRevision: 1,
-    sourceDigests: Object.freeze([
-      Object.freeze({
-        sourceRef,
-        sourceFingerprint,
-        digest: `${sourceRef} task-relevant fact.`,
-      }),
-    ]),
-    continuation: Object.freeze({
-      completed: Object.freeze([`Compacted ${sourceRef}.`]),
-      currentState: `${sourceRef} evidence is available.`,
-      findings: Object.freeze([`${sourceRef} task-relevant fact.`]),
-      evidenceRefs: Object.freeze([sourceRef]),
-      artifacts: Object.freeze([]),
-      decisions: Object.freeze([]),
-      failedApproaches: Object.freeze([]),
-      openWork: Object.freeze(["Create the final grounded artifact."]),
-      blockers: Object.freeze([]),
-      nextStep: "Continue through the canonical dependency result.",
-    }),
+    invocationAttempt: call.activationCount,
+    capabilityId: "example.observe",
+    declaredEffect: "observation",
+    intent: "Observe bounded evidence.",
+    controlsJson: "{}",
   });
+  const executionId = ledger
+    .current()
+    .state.capabilityExecutions.at(-1)!.executionId;
+  await commit(ledger, {
+    authority: "runtime",
+    type: "settle_capability_execution",
+    callId: call.callId,
+    executionId,
+    outcome: "succeeded",
+    observedEffect: "observation",
+    summary: marker,
+    exactResult: {
+      kind: "generic_capability_result_v1",
+      authority: "capability_adapter",
+      status: "executed",
+      ok: true,
+      payload: { marker },
+    },
+  });
+  const sources = projectCanonicalCapabilityResultCompactionSources({
+    head: ledger.current(),
+    callId: call.callId,
+  });
+  store.registerSources(sources);
+  const { sourceRef, sourceFingerprint } = sources[0]!;
+  const scopeId = `worker:${call.callId}:request-tool-results`;
+  store.commit(
+    Object.freeze({
+      kind: "runtime_semantic_compaction_checkpoint_v2" as const,
+      scopeId,
+      requestId: REQUEST_ID,
+      currentRequestFingerprint:
+        createSemanticCompactionSha256Fingerprint(PROMPT),
+      roleId: call.roleId,
+      callId: call.callId,
+      objectiveFingerprint: createSemanticCompactionSha256Fingerprint(
+        call.objective!,
+      ),
+      contextLane: SEMANTIC_COMPACTION_CONTEXT_LANE,
+      allowedConsumers: WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS,
+      sourceRevision: ledger.current().revision,
+      sourceDigests: Object.freeze([
+        Object.freeze({
+          sourceRef,
+          sourceFingerprint,
+          digest: `${sourceRef} task-relevant fact.`,
+        }),
+      ]),
+      continuation: Object.freeze({
+        completed: Object.freeze([`Compacted ${sourceRef}.`]),
+        currentState: `${sourceRef} evidence is available.`,
+        findings: Object.freeze([`${sourceRef} task-relevant fact.`]),
+        evidenceRefs: Object.freeze([sourceRef]),
+        artifacts: Object.freeze([]),
+        decisions: Object.freeze([]),
+        failedApproaches: Object.freeze([]),
+        openWork: Object.freeze(["Create the final grounded artifact."]),
+        blockers: Object.freeze([]),
+        nextStep: "Continue through the canonical dependency result.",
+      }),
+    }),
+  );
 }
 
 function createLedger(): RoleCallLedger {

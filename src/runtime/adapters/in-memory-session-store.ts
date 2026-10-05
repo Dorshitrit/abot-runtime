@@ -58,6 +58,9 @@ import type {
   SessionMemoryCheckpointCommitResult,
 } from "../../sessions/memory/contracts.js";
 import { resolveSessionMemoryCheckpointCommit } from "../../sessions/memory/rules.js";
+import { assertSessionKindUnchanged, sessionKindCreationFields } from "../../sessions/spark-session.js";
+import { appendSparkInitiativeRecord } from "../../sessions/assistant-initiative-append.js";
+import type { CreateAssistantConversationInput } from "../../sessions/assistant-initiative.js";
 import type { SessionStore } from "../ports.js";
 
 export type InMemorySessionStoreOptions = {
@@ -72,6 +75,7 @@ export function createInMemorySessionStore(
   const store = new InMemorySessionStore(options);
   return {
     getOrCreateSession: store.getOrCreateSession.bind(store),
+    appendAssistantInitiative: store.appendAssistantInitiative.bind(store),
     getAllSessions: store.getAllSessions.bind(store),
     listSessions: store.listSessions.bind(store),
     getSessionById: store.getSessionById.bind(store),
@@ -121,6 +125,7 @@ class InMemorySessionStore {
     const existing = this.sessions.get(sessionId);
     if (existing) {
       assertSessionProjectUnchanged(existing, options.project);
+      assertSessionKindUnchanged(existing, options.kind);
       return cloneSession(existing);
     }
 
@@ -130,7 +135,7 @@ class InMemorySessionStore {
       ...(options.project
         ? { project: copySessionProject(options.project) }
         : {}),
-      title: sessionId,
+      ...sessionKindCreationFields(sessionId, options),
       createdAt: timestamp,
       updatedAt: timestamp,
       lastAgentMode: "reasoning",
@@ -145,6 +150,15 @@ class InMemorySessionStore {
     return [...this.sessions.values()]
       .map(cloneSession)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  async appendAssistantInitiative(sessionId: string, input: CreateAssistantConversationInput): Promise<SessionRecord> {
+    return this.runSessionMutation(sessionId, async () => {
+      const record = appendSparkInitiativeRecord(this.sessions.get(sessionId) ?? null, sessionId, input, this.now());
+      input.assertCurrent?.();
+      this.saveSession(record);
+      return cloneSession(record);
+    });
   }
 
   async listSessions(
@@ -183,6 +197,7 @@ class InMemorySessionStore {
     }
     return {
       sessionId,
+      ...(session.kind ? { kind: session.kind } : {}),
       ...(session.project ? { project: session.project } : {}),
       title: session.title,
       messages: filterMessagesAfter(

@@ -23,6 +23,10 @@ export function getOrCreateSession(sessionId: string) {
   return sessionService.getOrCreateSession(sessionId);
 }
 
+export function assertInteractiveSession(sessionId: string) {
+  return sessionService.assertInteractiveSession(sessionId);
+}
+
 export function getAllSessions() {
   return sessionService.getAllSessions();
 }

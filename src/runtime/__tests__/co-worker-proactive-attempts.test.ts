@@ -44,6 +44,7 @@ const NONE: ProactiveDecision = {
   kind: "none",
   title: null,
   message: null,
+  handoffBrief: null,
   reason: "Nothing to propose",
   sources: [],
   expiresAt: null,

@@ -12,12 +12,29 @@ import {
 import { createBoundRuntimeRequestHandler } from "./request/bound-runtime-handler.js";
 import { createModelSessionMemoryCompactor } from "./context/session-memory/index.js";
 import { createSessionLifecycleStore } from "./session/session-lifecycle-store.js";
+import { createSparkSessionClearBoundary } from "./session/spark-session-clear.js";
 import {
   bindManagedSessionAttachmentDeletion,
   deleteSessionAttachmentsIfSupported,
 } from "./session/session-attachment-deletion.js";
 import { SessionRequestAdmission } from "./request/session-admission.js";
 import { createRuntimeScheduler } from "./adapters/scheduler-runtime.js";
+import type { SchedulerAutomationExecutor } from "./scheduler/contracts.js";
+import { createAutomationPersistence } from "./automations/persistence.js";
+import { createAutomationResultStore } from "./automations/result-store.js";
+import { createAutomationNodeTransactions } from "./automations/node-transactions.js";
+import { createAutomationService, type AutomationService } from "./automations/service.js";
+import { createAutomationRuntimeExecutor } from "./automations/runtime-executor.js";
+import { compileAutomationGraph } from "./automations/graph-validation.js";
+import { executeAutomationGraph } from "./automations/graph-executor.js";
+import { createAutomationStepRunner } from "./automations/step-runner.js";
+import { createAutomationAgentStepExecutor } from "./automations/agent-step-executor.js";
+import { createAutomationReportService } from "./automations/run-report.js";
+import { readAutomationCatalog } from "./automations/catalog.js";
+import { fingerprintAutomationDependencies } from "./automations/dependency-fingerprint.js";
+import { validateAutomationWorkingDirectory } from "./automations/working-directory.js";
+import { createAutomationModelCapacity } from "./automations/model-capacity.js";
+import { createAutomationToolLifetimes } from "./automations/tool-lifetimes.js";
 import type { EventSinkFactory, RuntimeConfig } from "./ports.js";
 import type {
   RuntimeApplicationOverrides,
@@ -46,6 +63,8 @@ export function createRuntimeEnvironment(
     backingSessions,
     (result) =>
       deleteSessionAttachmentsIfSupported(attachments, result.sessionId),
+    undefined,
+    createSparkSessionClearBoundary(backingSessions, () => admission, attachments, config.paths.runtimeDir),
   );
   bindManagedSessionAttachmentDeletion(sessionLifecycle.store, attachments);
   const admission = new SessionRequestAdmission(
@@ -56,6 +75,11 @@ export function createRuntimeEnvironment(
           ?.length,
       ),
   );
+  let boundAutomationExecutor: Omit<SchedulerAutomationExecutor, "tryReserve"> | undefined;
+  function requireAutomationExecutor(): Omit<SchedulerAutomationExecutor, "tryReserve"> {
+    if (!boundAutomationExecutor) throw new Error("automation_executor_not_ready");
+    return boundAutomationExecutor;
+  }
   const scheduling = createRuntimeScheduler({
     config,
     sessions: sessionLifecycle.store,
@@ -63,18 +87,154 @@ export function createRuntimeEnvironment(
     isDeleted: sessionLifecycle.isDeleted,
     handle: (ws, message, options) => rawRequests.handle(ws, message, options),
     requestOptions: overrides.scheduledRequestOptions,
+    automationExecutor: {
+      prepare: (...args) => requireAutomationExecutor().prepare(...args),
+      prepareReplay: (...args) => requireAutomationExecutor().prepareReplay!(...args),
+      start: (...args) => requireAutomationExecutor().start(...args),
+      stop: (...args) => requireAutomationExecutor().stop(...args),
+      recover: (...args) => requireAutomationExecutor().recover(...args),
+      reconcileSessions: () => requireAutomationExecutor().reconcileSessions!(),
+      settle: (...args) => requireAutomationExecutor().settle(...args),
+      cancelPending: (...args) => requireAutomationExecutor().cancelPending(...args),
+      maintainRetention: (...args) => requireAutomationExecutor().maintainRetention!(...args),
+    },
   });
   sessionLifecycle.onDeleted(async (sessionId) => {
     await scheduling.ensureStarted();
     await scheduling.scheduler.deleteSession(sessionId);
   });
+  let automations: AutomationService | undefined;
+  function requireAutomations(): AutomationService {
+    if (!automations) throw new Error("automation_service_not_ready");
+    return automations;
+  }
   const tools =
     overrides.tools ??
     createDefaultToolRegistry(config, {
       service: scheduling.scheduler,
       ready: scheduling.ensureStarted,
+    }, {
+      getService: requireAutomations,
+      ready: scheduling.ensureStarted,
     });
   const models = overrides.models ?? createDefaultModelGatewayClient(config);
+  const automationPersistence = createAutomationPersistence(scheduling.store);
+  const automationResults = createAutomationResultStore(config.paths.runtimeDir);
+  const automationTransactions = createAutomationNodeTransactions({
+    persistence: automationPersistence,
+  });
+  const automationModelCapacity = createAutomationModelCapacity();
+  const automationToolLifetimes = createAutomationToolLifetimes();
+  automations = createAutomationService({
+    config,
+    scheduler: scheduling.scheduler,
+    persistence: automationPersistence,
+    results: automationResults,
+    tools,
+  });
+  const automationReports = createAutomationReportService({
+    persistence: automationPersistence,
+    results: automationResults,
+  });
+  boundAutomationExecutor = createAutomationRuntimeExecutor({
+    config,
+    sessions: backingSessions,
+    persistence: automationPersistence,
+    attachments,
+    results: automationResults,
+    toolLifetimes: automationToolLifetimes,
+    async execute(_job, run, signal) {
+      const state = await automationPersistence.read();
+      const published = state.definitions.find((entry) =>
+        entry.automationId === run.target.automationId &&
+        entry.revision === run.target.definitionRevision);
+      const definition = published?.definition;
+      if (!definition) return {
+        status: "failed", error: "automation_definition_not_found",
+        reportRef: `derived:${run.id}`,
+      };
+      const workingDirectoryIssue = validateAutomationWorkingDirectory(definition.workingDirectory);
+      if (workingDirectoryIssue) return {
+        status: "failed", error: workingDirectoryIssue.code,
+        reportRef: `derived:${run.id}`,
+      };
+      const compiled = compileAutomationGraph(definition);
+      if (!compiled.ok) return {
+        status: "failed", error: "automation_graph_invalid",
+        reportRef: `derived:${run.id}`,
+      };
+      if (published.dependencyFingerprint) {
+        const available = await readAutomationCatalog({
+          automationId: run.target.automationId,
+          environmentId: config.runtimeId,
+          config, tools, persistence: automationPersistence,
+        });
+        if (fingerprintAutomationDependencies({
+          definition, config, operations: available.operations,
+        }) !== published.dependencyFingerprint) return {
+          status: "failed", error: "automation_contract_changed",
+          reportRef: `derived:${run.id}`,
+        };
+      }
+      const agent = createAutomationAgentStepExecutor({
+        // Agent attempts own their deletion guard; user-session tombstones are permanent.
+        config, sessions: backingSessions, attachments, models, tools,
+        modelCapacity: automationModelCapacity,
+        toolLifetimes: automationToolLifetimes,
+        persistence: automationPersistence, results: automationResults,
+        transactions: automationTransactions, grants: { get: automations.getGrant },
+        automationId: run.target.automationId, runId: run.id, definition,
+      });
+      const steps = createAutomationStepRunner({
+        runId: run.id, automationId: run.target.automationId,
+        definition, graph: compiled.graph, config, tools, attachments,
+        persistence: automationPersistence, results: automationResults,
+        transactions: automationTransactions, grants: { get: automations.getGrant },
+        toolLifetimes: automationToolLifetimes,
+        executeAgent: ({ step, inputs, sourceAttachments, signal: stepSignal }) => {
+          if (step.node.kind !== "agent")
+            throw new Error("automation_node_kind_invalid");
+          return agent.execute({ node: step.node, inputs, sourceAttachments, signal: stepSignal });
+        },
+      });
+      try {
+        const outcome = await executeAutomationGraph({
+          runId: run.id, automationId: run.target.automationId,
+          definition, inputIds: state.executions.find((entry) => entry.id === run.id)?.inputIds ?? [],
+          graph: compiled.graph, transactions: automationTransactions,
+          abortSignal: signal, executeStep: steps.run,
+        });
+        const current = await automationTransactions.get(run.id);
+        if (!current || current.nodes.some((node) =>
+          node.status === "pending" || node.status === "ready" || node.status === "running"))
+          throw new Error("automation_run_not_settled");
+        let reportRef: string;
+        try {
+          const report = await automationReports.create({
+            run,
+            definition,
+            outcome: outcome.status,
+          });
+          reportRef = report.record.id;
+        } catch (error) {
+          if (!(error instanceof Error) ||
+              error.message !== "automation_artifact_budget_exhausted") throw error;
+          // The durable node state can still project a compact report at capacity.
+          reportRef = `derived:${run.id}`;
+        }
+        return {
+          status: outcome.status,
+          ...(outcome.errorCode ? { error: outcome.errorCode } : {}),
+          reportRef,
+        };
+      } catch (error) {
+        return {
+          status: "failed", error: error instanceof Error ? error.message : "automation_run_failed",
+          reportRef: `derived:${run.id}`,
+        };
+      }
+    },
+  });
   const longTermMemory =
     overrides.longTermMemory ??
     createDefaultLongTermMemoryService(config, models);
@@ -85,6 +245,7 @@ export function createRuntimeEnvironment(
       models,
       memory: longTermMemory,
       sessions: sessionLifecycle.store,
+      deliveryAdmission: admission,
     });
   sessionLifecycle.onDeleted(async (sessionId) => {
     try {
@@ -111,6 +272,7 @@ export function createRuntimeEnvironment(
       overrides.sessionMemoryCompactor ?? createModelSessionMemoryCompactor(),
     longTermMemory,
     passiveLearning,
+    automations,
     scheduler: scheduling.scheduler,
     startScheduler: scheduling.start,
     stopScheduler: scheduling.stop,

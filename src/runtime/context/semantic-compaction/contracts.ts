@@ -6,8 +6,6 @@ import {
 } from "../../../shared/model-steps.js";
 
 export const CONTEXT_COMPACTION_MODEL_STEP = MODEL_STEPS.CONTEXT_COMPACTION;
-export const SEMANTIC_COMPACTION_DIGEST_MAX_LENGTH = 2_000;
-export const SEMANTIC_COMPACTION_DIGEST_TOTAL_MAX_LENGTH = 8_000;
 export const SEMANTIC_COMPACTION_TEXT_MAX_LENGTH = 2_000;
 export const SEMANTIC_COMPACTION_LIST_MAX_COUNT = 24;
 export const SEMANTIC_COMPACTION_ID_MAX_LENGTH = 256;
@@ -139,26 +137,6 @@ export function semanticCompactionDigestTotalLength(
   );
 }
 
-export function semanticCompactionContinuationTotalLength(
-  continuation: SemanticCompactionContinuation,
-): number {
-  return (
-    continuation.currentState.length +
-    continuation.nextStep.length +
-    continuation.completed.reduce((total, entry) => total + entry.length, 0) +
-    continuation.findings.reduce((total, entry) => total + entry.length, 0) +
-    continuation.evidenceRefs.reduce((total, entry) => total + entry.length, 0) +
-    continuation.artifacts.reduce((total, entry) => total + entry.length, 0) +
-    continuation.decisions.reduce((total, entry) => total + entry.length, 0) +
-    continuation.failedApproaches.reduce(
-      (total, entry) => total + entry.length,
-      0,
-    ) +
-    continuation.openWork.reduce((total, entry) => total + entry.length, 0) +
-    continuation.blockers.reduce((total, entry) => total + entry.length, 0)
-  );
-}
-
 export function assertValidSemanticCompactionCheckpoint(
   checkpoint: SemanticCompactionCheckpoint,
 ): void {
@@ -181,22 +159,13 @@ export function assertValidSemanticCompactionCheckpoint(
       !isSemanticCompactionSha256Fingerprint(
         sourceDigest.sourceFingerprint,
       ) ||
-      !isBoundedText(
-        sourceDigest.digest,
-        SEMANTIC_COMPACTION_DIGEST_MAX_LENGTH,
-      )
+      !isSemanticCompactionDigestText(sourceDigest.digest)
     ) {
       throw new Error("context_compaction_checkpoint_source_invalid");
     }
     sourceRefs.add(sourceDigest.sourceRef);
   }
-  if (
-    semanticCompactionDigestTotalLength(checkpoint.sourceDigests) >
-      SEMANTIC_COMPACTION_DIGEST_TOTAL_MAX_LENGTH ||
-    !isValidContinuation(checkpoint.continuation) ||
-    semanticCompactionContinuationTotalLength(checkpoint.continuation) >
-      SEMANTIC_COMPACTION_DIGEST_TOTAL_MAX_LENGTH
-  ) {
+  if (!isValidContinuation(checkpoint.continuation)) {
     throw new Error("context_compaction_checkpoint_content_invalid");
   }
 }
@@ -273,4 +242,10 @@ function isBoundedId(
   maxLength = SEMANTIC_COMPACTION_ID_MAX_LENGTH,
 ): boolean {
   return isBoundedText(value, maxLength);
+}
+
+function isSemanticCompactionDigestText(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  if (value.trim().length === 0) return false;
+  return value === value.trim();
 }

@@ -523,16 +523,14 @@ describe("Single Execution Agent structured decision", () => {
       capabilityId: "write_file",
       intent: "Write the requested file.",
       operationObjective: "Write only the requested content to index.html.",
+      controlsEvidenceExecutionIds: [],
       selectionControls: { path: "index.html" },
     } as const;
-    const requiresRefinement = parseExecutionAgentDecisionOutput(
+    const parsed = parseExecutionAgentDecisionOutput(
       JSON.stringify({ decision: refinementInvocation }),
       { capabilities: [observeFile, writeFile] },
     );
-    expect(requiresRefinement).toEqual({
-      ok: true,
-      decision: refinementInvocation,
-    });
+    expect(parsed).toEqual({ ok: true, decision: refinementInvocation });
 
     const invalid = parseExecutionAgentDecisionOutput(
       JSON.stringify({

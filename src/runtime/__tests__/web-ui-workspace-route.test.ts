@@ -72,6 +72,27 @@ describe("Web UI workspace addresses", () => {
     });
   });
 
+  test("round-trips ABot Studio draft and run identities without leaking chat state", () => {
+    const address = workspaceRouteUrl({
+      workspace: "automations", environment: "dev", automation: "draft/a", run: "run:b",
+      session: "unrelated-chat", job: "unrelated-job",
+    });
+    expect(address).toBe("/automations?environment=dev&automation=draft%2Fa&run=run%3Ab");
+    expect(readWorkspaceRoute(new URL(address, "http://localhost"))).toMatchObject({
+      workspace: "automations", environment: "dev", automation: "draft/a", run: "run:b", session: "",
+    });
+  });
+
+  test("gives a locked chat run its own address instead of a conversation session", () => {
+    const address = workspaceRouteUrl({
+      workspace: "chat", environment: "dev", automationRun: "run/one", session: "ordinary-session",
+    });
+    expect(address).toBe("/chat?environment=dev&automationRun=run%2Fone");
+    expect(readWorkspaceRoute(new URL(`${address}&session=forged`, "http://localhost"))).toMatchObject({
+      workspace: "chat", environment: "dev", automationRun: "run/one", session: "",
+    });
+  });
+
   test("uses Home for a root or unknown path without accepting oversized identifiers", () => {
     expect(readWorkspaceRoute(new URL("http://localhost/"))).toMatchObject({
       workspace: "home",

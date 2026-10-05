@@ -159,19 +159,51 @@ loopback; a remote Runtime needs a local port forward. Direct connections to a
 remote network address are not supported. Mac desktop tools and Spark collection
 still require local Swift tools and the relevant macOS privacy permissions.
 
-**Spark permissions on macOS:** Computer access **Ready** confirms the connection;
-collection additionally needs Accessibility permission. Companion setup keeps a
+**Prepare macOS permissions before chatting:** The optional Computer setup step
+and **Home → Computer access** show separate preparation for desktop tools through
+the **Companion** and direct **SYSTEM commands through the active Runtime**.
+Connection status and operating-system permission status are separate; grants
+for one route do not establish access for the other. Check Screen Recording and
+Accessibility in each available route, then request its missing permission from
+that section and follow macOS settings. Checking does not capture a screen,
+read window content, type, or start Spark collection. Recheck after granting
+access; if macOS requires a restart, finish it before starting a conversation.
+
+Companion setup keeps a
 private copy of its Node executable at `~/.abot/host-companion/runtime/node` and
-uses that same path at sign-in, independently of NVM version paths. Start Spark
-collection to request consent, then authorize that executable in **System
+uses that same path at sign-in, independently of NVM version paths. Authorize
+the executable identified by the permission panel in **System
 Settings → Privacy & Security → Accessibility** (called **Device Control & Data
 Access** on some macOS versions). Use **+**, **Command–Shift–G**, and the path above
 if needed. The entry may be named `node`; verify the path before approving it.
-The collector checks approval for at most two minutes without reading content.
-After granting access, choose **Restart collection** in Home or Spark to check
-again. Setup reuses identical runtime bytes; replacing the runtime can require
-consent again. Screen recording and input permissions for other desktop tools
-are separate.
+Setup reuses identical runtime bytes; replacing the runtime can require consent
+again. Spark collection remains separately controlled and does not start when
+permissions are prepared.
+
+Native SYSTEM commands launched by ABot through Terminal or another application
+have that caller's permission identity, separate from the Companion. Their panel
+checks the process owning the selected Runtime environment, even when the Web
+server is attached to a different process. Inspect the displayed computer and
+executable, follow the macOS prompt for that route, and recheck after changing
+access. A replaced Runtime or a different environment requires a new check.
+If macOS asks to reopen Terminal or ABot, do that before starting a conversation.
+Permission preparation does not restart either process automatically.
+
+This Runtime preparation is available from a local Web connection on the Mac;
+unsupported or unavailable routes are shown explicitly. The CLI remains useful
+for setup before ABot starts or for diagnosis from the same Terminal/application:
+
+```bash
+abot host permissions
+abot host permissions --request screen-recording
+abot host permissions --request accessibility
+```
+
+The first command only checks. The request commands may show an operating-system
+prompt; approve the identity shown by macOS and check again afterward. They do
+not change Computer access pairing or send a model request. Application-specific
+Automation/Apple Events and protected-file access may still require separate
+consent for the applications or locations used by a later SYSTEM command.
 
 For Windows or Linux, download setup and run it in that computer's graphical
 login. Windows setup installs the companion and a private Node runtime; Linux

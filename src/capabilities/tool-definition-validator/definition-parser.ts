@@ -17,6 +17,7 @@ export function parseToolDefinition(raw: unknown): ToolDefinition {
     throw new Error("Invalid tool definition entry (not an object)");
   }
   const name = raw.name;
+  const pluginName = raw.pluginName;
   const description = raw.description;
   const routingCapability = raw.routingCapability;
   const controlsRefinement = raw.controlsRefinement;
@@ -32,6 +33,10 @@ export function parseToolDefinition(raw: unknown): ToolDefinition {
 
   if (description !== undefined && typeof description !== "string") {
     throw new Error(`Invalid tool definition for ${name} (description)`);
+  }
+  if (pluginName !== undefined &&
+      (typeof pluginName !== "string" || pluginName.trim().length === 0)) {
+    throw new Error(`Invalid tool definition for ${name} (pluginName)`);
   }
   if (!isRoutingCapability(routingCapability)) {
     throw new Error(`Invalid tool definition for ${name} (routingCapability)`);
@@ -76,6 +81,7 @@ export function parseToolDefinition(raw: unknown): ToolDefinition {
 
   return {
     name,
+    ...(typeof pluginName === "string" ? { pluginName } : {}),
     requiredPermissionMode: parseRequiredToolPermissionMode(
       raw.requiredPermissionMode,
       `${name}.requiredPermissionMode`,

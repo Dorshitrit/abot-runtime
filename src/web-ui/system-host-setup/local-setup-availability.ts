@@ -1,8 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import { isIP } from "node:net";
 import { hostname } from "node:os";
-import { isNativeLoopbackAddress } from "../../computer-access/companion/native-address.js";
-import { hasLoopbackRequestAuthority } from "../request-authority.js";
+import { hasLocalRuntimeRequestAuthority } from "./local-request-authority.js";
 import type { HostReadiness } from "./readiness.js";
 
 /** Local setup controls the Runtime's computer, never an inferred browser OS. */
@@ -15,13 +14,7 @@ export function canSetUpLocalMac(
   if (readiness.environment !== "native") return false;
   if (!readiness.platforms.includes("macos")) return false;
   if (readiness.ready) return false;
-  if (!hasLoopbackRequestAuthority(request)) return false;
-  if (!isNativeLoopbackAddress(request.socket.remoteAddress ?? "")) return false;
-  if (!isNativeLoopbackAddress(request.socket.localAddress ?? "")) return false;
-  const encrypted = "encrypted" in request.socket && request.socket.encrypted;
-  const authority = new URL(`${encrypted ? "https" : "http"}://${request.headers.host}`);
-  const port = Number(authority.port || (encrypted ? 443 : 80));
-  return port === request.socket.localPort;
+  return hasLocalRuntimeRequestAuthority(request);
 }
 
 /** Use only after eligibility validates the loopback listener and authority. */

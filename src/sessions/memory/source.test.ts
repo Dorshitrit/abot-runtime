@@ -61,6 +61,27 @@ describe("session memory source", () => {
       snapshotSessionMemorySource(changed).sourceRevision,
     );
   });
+
+  it("covers standalone assistant units in conversation order without inventing users", () => {
+    const initiative: SessionMessage = {
+      id: "initiative", role: "assistant", content: "A suggestion", source: "co_worker",
+      grounding: "conversation", createdAt: "2026-10-02T00:00:00.000Z",
+      initiative: { kind: "proactive_proposal_v1", proposalId: "proposal", reason: "Relevant topic",
+        sources: [{ kind: "candidate", id: "candidate", version: "1" }] },
+    };
+    const session = createSession([
+      message("user-1", "user", "first", "request-1"),
+      message("assistant-1", "assistant", "answer", "request-1"),
+      initiative,
+      message("user-2", "user", "follow-up", "request-2"),
+      message("assistant-2", "assistant", "response", "request-2"),
+    ]);
+    const source = snapshotSessionMemorySource(session);
+    expect(source.turns).toHaveLength(3);
+    expect(source.turns[1]).toEqual({ userMessages: [], assistant: initiative });
+    expect(source.historyMessages).toEqual(session.messages);
+    expect(source.messageReferences.map(({ messageId }) => messageId)).toEqual(session.messages.map(({ id }) => id));
+  });
 });
 
 function createSession(messages: SessionMessage[]): SessionRecord {

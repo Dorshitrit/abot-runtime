@@ -1,5 +1,7 @@
 import type { ToolEventMetadataProjection } from "./tool-types.js";
 
+export const TOOL_EVENT_INPUT_TEXT_MAX_LENGTH = 8_192;
+
 /** Opt-in exact text stays display-only and never replaces the accepted input. */
 export function projectDeclaredInputText(
   raw: unknown,
@@ -8,7 +10,10 @@ export function projectDeclaredInputText(
   if (typeof raw !== "string") return undefined;
   const text = projection.preserveWhitespace === true ? raw : raw.trim();
   if (text.length === 0) return undefined;
-  const limit = Math.min(4_096, projection.maxLength ?? 500);
+  const limit = Math.min(
+    TOOL_EVENT_INPUT_TEXT_MAX_LENGTH,
+    projection.maxLength ?? 500,
+  );
   let end = Math.min(text.length, limit);
   if (splitsInputTextSurrogatePair(text, end)) end -= 1;
   return { text: text.slice(0, end), truncated: end < text.length };

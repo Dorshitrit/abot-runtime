@@ -137,7 +137,7 @@ describe("Co-worker application preference patches", () => {
 
 test("Applications participates in keyboard tab navigation and exposes one selected panel", () => {
   const root = rootElement(learningWorkspaceMarkup("UTC"));
-  expect(root.querySelectorAll("[data-learning-tab]")).toHaveLength(5);
+  expect(root.querySelectorAll("[data-learning-tab]")).toHaveLength(6);
   const event = { target: root.querySelector('[data-learning-tab="activity"]'), key: "ArrowRight", preventDefault: vi.fn() };
   navigateLearningTabs(root, event);
   const tab = root.querySelector('[data-learning-tab="applications"]')!;
@@ -146,5 +146,9 @@ test("Applications participates in keyboard tab navigation and exposes one selec
   expect(root.querySelectorAll("[data-learning-panel]").filter(panel => !panel.hidden)).toHaveLength(1);
   expect(root.querySelector('[data-learning-panel="applications"]')?.hidden).toBe(false);
   navigateLearningTabs(root, { ...event, target: tab, key: "ArrowRight" });
+  const chatTab = root.querySelector('[data-learning-tab="chat"]')!;
+  expect(chatTab.attributes.get("aria-selected")).toBe("true");
+  expect(root.querySelector('[data-learning-panel="chat"]')?.hidden).toBe(false);
+  navigateLearningTabs(root, { ...event, target: chatTab, key: "ArrowRight" });
   expect(root.querySelector('[data-learning-tab="settings"]')?.attributes.get("aria-selected")).toBe("true");
 });

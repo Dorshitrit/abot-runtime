@@ -21,6 +21,19 @@ settling into a restarted generation. Startup marks previously running requests
 Jobs to their next future occurrence. It never retries an interrupted or failed
 request or backfills missed occurrences.
 
+Automation session reconciliation runs after startup recovery under the same
+exclusive ownership, before dispatch is enabled; lazy service startup uses this
+boundary too. The file adapter retires only complete persisted `automationOrigin`
+records whose exact session ID has no issued active handle. Each pass scans at
+most 256 regular JSON records and retires at most 64 internal sessions, advancing
+a cursor through ordinary records and failed candidates. Attachments are removed
+before the transcript so failed cleanup keeps its durable ownership marker.
+Attempt deletion first installs its existing tombstone, blocking late transcript
+writes while attachment cleanup waits. Cleanup failures are reported without
+disabling scheduled work, and existing five-minute maintenance can try later.
+Ordinary conversations, canonical run results and source snapshots are untouched;
+injected adapters participate only through the optional trusted recovery hook.
+
 A session deletion reserves its start barrier synchronously, including while
 startup is queued. Passing the running-state check confirms deletion; a rejected
 lifecycle call releases only its own reservation. A storage failure after
@@ -45,6 +58,9 @@ is uncertain. The owned store rejects further cached reads, writes and cleanup
 until explicitly released and reacquired; it does not retry a mutation or dispatch
 an unconfirmed claim. Both old and new files remain available. Reacquisition validates
 and syncs the visible head and its directory dependencies before cleanup.
+Automation result files follow the same boundary: uncertain publication preserves
+their bytes, and existing retention maintenance reclaims unreferenced owned files
+only after reading a durable journal head. In-flight publications remain protected.
 These barriers rely on the filesystem and device honoring fsync; they are not a
 backup or repair mechanism for pre-existing corruption.
 
@@ -112,6 +128,17 @@ interval cannot block another Job or startup recovery. The Web editor retains
 the exact saved interval anchor when its displayed field is unchanged, including
 seconds, milliseconds and the selected occurrence of a repeated local time.
 
+Automation draft readiness uses the same next-occurrence and interval-range
+checks as scheduler admission, including the publication clock and time zone.
+New or changed elapsed one-shot dates produce a normal validation issue before
+publication; unchanged authored timing keeps its published timer deadline or
+implicit interval/folder polling anchor across title and graph edits. Actual
+duration, anchor or trigger-kind edits establish new timing. Time-zone metadata
+changes reschedule calendar forms only. The exact retained publication identifies
+unchanged timing, and a concurrent Job revision change rejects publication atomically.
+Manually replaying a frozen run validates its schedule shape without requiring
+a new future scheduled occurrence.
+
 Calendar conversion uses `Intl.DateTimeFormat` from the host's IANA time-zone data.
 Missing wall times/days are skipped; repeated local times select their first
 occurrence once. Intervals preserve elapsed-time cadence across DST.
@@ -170,3 +197,39 @@ admission and reject a deleted session before executing its request.
 
 The model and Web layers share this service. Natural-language interpretation,
 model choice, conversation projection, and UI rendering do not belong here.
+
+## Automation folder retention and capacity
+
+Folder input history, including baseline exclusions and consumed-version dedup
+records, is bounded to 32 MiB of metadata per automation across all of its source
+IDs and roots. Reaching that bound stops intake for that automation; changing a
+source ID does not reset it, and unrelated automations can continue. History is
+preserved rather than silently making old file versions eligible again. This
+does not promise indefinite intake for one automation without a capacity stop.
+Retained input snapshots additionally share environment limits of 1,000 records,
+32 MiB of snapshot-record metadata and 256 MiB of file bytes.
+
+Snapshots, including held failed/interrupted inputs, can retire after every
+referencing report expires at 90 days and no unresolved effect remains. Fulfilled
+late settlements (`succeeded` or `failed`) resolve that retention blocker while
+the original uncertain outcome remains historical evidence. Missing or rejected
+late settlements continue protecting the affected payloads. A newer
+replay or active execution keeps its input snapshot. Root-specific baseline
+exclusions preserve the original snapshot and replay identity when a source
+changes to an overlapping directory. A batch searches for a feasible minimum
+file count within its 32 MiB byte limit; oversized candidates remain pending.
+
+New source snapshots are preceded by a durable preparation marker. Existing
+scheduler maintenance and source preparation reconcile these markers: a committed
+input/run preserves its snapshots, an active preparation is protected, and a
+marker abandoned by a crashed process authorizes removal of only that candidate's
+attachments. Unmarked attachment owners are never inferred to be automation
+orphans; ordinary conversation attachments remain outside this cleanup.
+
+Automation run reads add a transient output summary from the frozen graph's
+terminal producers, including separate parallel tails. At most four saved
+outputs are previewed with an explicit omitted count and the existing 4,000
+character limit per text/data part; full step evidence remains a separate read.
+These previews preserve step status and distinguish available, expired and
+unavailable output. They neither infer a business outcome from model text nor
+extend retention by copying output into the persisted compact report.

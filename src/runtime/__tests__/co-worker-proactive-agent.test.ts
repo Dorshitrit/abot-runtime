@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { CoWorkerProactiveAgent } from "../passive-learning/proactive/agent.js";
 import { createProactiveStateStore } from "../passive-learning/proactive/store.js";
 import { createFileSessionStore } from "../adapters/file-session-store.js";
+import { ensureSparkSession, SPARK_SESSION_ID } from "../../sessions/spark-session.js";
 import { CoWorkerResourceBudget } from "../passive-learning/resources/budget.js";
 import { DEFAULT_CO_WORKER_RESOURCE_LIMITS } from "../passive-learning/resources/contracts.js";
 import type { LearningMemoryService, LearningKnowledgeContext } from "../long-term-memory/maturation/contracts.js";
@@ -22,6 +23,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 const NOW = Date.parse("2026-09-25T12:00:00Z");
 const roots: string[] = [];
 const agents: CoWorkerProactiveAgent[] = [];
+const reviewCompletion = new WeakMap<CoWorkerProactiveAgent, () => Promise<void>>();
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); });
 afterEach(async () => {
   filesystemHooks.afterRename = undefined;
@@ -37,10 +39,11 @@ function knowledge(): LearningKnowledgeContext {
       score: 40, reason: "Tentative", certainty: "inferred", mutable: true, lastReinforcedAt: null, reconsiderAt: null }] };
 }
 function none(): ProactiveDecision {
-  return { kind: "none", title: null, message: null, reason: "Nothing useful", sources: [], expiresAt: null, reconsiderAt: null };
+  return { kind: "none", title: null, message: null, handoffBrief: null, reason: "Nothing useful", sources: [], expiresAt: null, reconsiderAt: null };
 }
 function proposal(): ProactiveDecision {
   return { kind: "proposal", title: "An idea", message: "Would you like me to look into this?", reason: "A possible interest",
+    handoffBrief: "Background from SPARK: a possible ongoing interest suggests a focused review may help. The user's next request is pending.",
     sources: [{ kind: "candidate", id: "one", version: "1" }], expiresAt: new Date(Date.now() + 86_400_000).toISOString(), reconsiderAt: null };
 }
 async function fixture() {
@@ -52,7 +55,12 @@ async function fixture() {
     proactiveMessagesPerDay: 2, resourceLimits: DEFAULT_CO_WORKER_RESOURCE_LIMITS };
   let context = knowledge();
   let busy = false;
-  const changed = vi.fn();
+  let notifyChanged!: () => void;
+  let nextChange = new Promise<void>((resolve) => { notifyChanged = resolve; });
+  const changed = vi.fn().mockImplementation(() => {
+    notifyChanged();
+    nextChange = new Promise<void>((resolve) => { notifyChanged = resolve; });
+  });
   const review = vi.fn<(input: ProactiveReviewInput) => Promise<ProactiveDecision>>(async () => none());
   const overview = vi.fn(async () => ({ ...context, referenceTime: new Date(Date.now()).toISOString() }));
   const memory = { overview, sourceVersions: async () => context.entries } as unknown as LearningMemoryService;
@@ -62,6 +70,15 @@ async function fixture() {
     const agent = new CoWorkerProactiveAgent({ directory: root, memory, sessions, budget, model: { review, validateProfile() {} },
       context: { preferences: () => preferences, changed, assertProcessingAllowed() { throw new Error("processing_off"); },
         isInteractiveBusy: () => busy, isStarted: () => true } });
+    reviewCompletion.set(agent, async () => {
+      while (true) {
+        // Capture before reading status so a concurrent completion cannot be missed.
+        const changed = nextChange;
+        const isReviewing = (await agent.status()).state === "reviewing";
+        if (!isReviewing) return;
+        await changed;
+      }
+    });
     agents.push(agent); return agent;
   };
   const agent = build();
@@ -72,7 +89,9 @@ async function fixture() {
 }
 async function tick(agent: CoWorkerProactiveAgent, milliseconds = 60_001) {
   await vi.advanceTimersByTimeAsync(milliseconds);
-  await vi.waitFor(async () => { expect((await agent.status()).state).not.toBe("reviewing"); });
+  const waitForReviewCompletion = reviewCompletion.get(agent);
+  if (!waitForReviewCompletion) throw new Error("proactive_test_agent_not_registered");
+  await waitForReviewCompletion();
 }
 async function persistPending(root: string, reviewId: string, expiresAt = Date.now() + 86_400_000) {
   const store = createProactiveStateStore(root);
@@ -83,6 +102,90 @@ async function persistPending(root: string, reviewId: string, expiresAt = Date.n
 }
 
 describe("proactive background work", () => {
+  test("a cleared delivery with a pending receipt settles without restoring or notifying the message", async () => {
+    const h = await fixture(); const pending = await persistPending(h.root, "already-appended");
+    await h.sessions.appendAssistantInitiative!(SPARK_SESSION_ID, {
+      title: pending.title, content: pending.message,
+      initiative: { kind: "proactive_proposal_v1", proposalId: pending.id, reason: pending.reason, sources: pending.sources },
+    });
+    await h.sessions.clearSessionMessages(SPARK_SESSION_ID);
+    await h.agent.start(); await tick(h.agent, 1);
+    expect((await h.sessions.getSessionById(SPARK_SESSION_ID))?.messages).toEqual([]);
+    expect((await createProactiveStateStore(h.root).read()).proposals[0]?.status).toBe("delivered");
+    expect(h.changed.mock.calls.some(([event]) => event?.type === "proposal_delivered")).toBe(false);
+    expect(h.review).not.toHaveBeenCalled();
+  });
+
+  test("successive proposals append to the same conversation without changing review cadence", async () => {
+    const h = await fixture();
+    await ensureSparkSession(h.sessions);
+    await h.sessions.appendMessage(SPARK_SESSION_ID, "user", "Hello SPARK");
+    h.review.mockImplementation(async () => proposal());
+    await h.agent.start(); await tick(h.agent);
+    h.knowledge({ ...knowledge(), knowledgeRevision: 2 });
+    await vi.waitFor(async () => expect((await h.agent.status()).nextReviewAt).toBeDefined());
+    await tick(h.agent);
+    expect(h.review).toHaveBeenCalledTimes(2);
+    expect((await h.sessions.listSessions()).sessions).toMatchObject([{ id: SPARK_SESSION_ID, kind: "spark" }]);
+    const messages = (await h.sessions.getSessionById(SPARK_SESSION_ID))!.messages;
+    expect(messages.map(({ role }) => role)).toEqual(["user", "assistant", "assistant"]);
+    for (const message of messages.slice(1)) expect(message.initiative).toMatchObject({
+      handoffBrief: proposal().handoffBrief, handoffTitle: proposal().title, sources: proposal().sources,
+    });
+    expect(new Set(messages.map(({ id }) => id)).size).toBe(3);
+    expect(h.changed.mock.calls.filter(([event]) => event?.type === "proposal_delivered")
+      .map(([event]) => event.sessionId)).toEqual([SPARK_SESSION_ID, SPARK_SESSION_ID]);
+  });
+
+  test("an undelivered legacy proposal targets SPARK while historical sessions remain untouched", async () => {
+    const h = await fixture();
+    await persistPending(h.root, "pending-before-upgrade");
+    const statePath = join(h.root, "proactive.json");
+    const state = JSON.parse(await readFile(statePath, "utf8"));
+    state.proposals[0].sessionId = "co-worker-old-target";
+    delete state.proposals[0].handoffBrief;
+    await writeFile(statePath, JSON.stringify(state));
+    const old = await h.sessions.appendMessage("legacy-history", "assistant", "An old proposal", { source: "co_worker" });
+    await h.agent.start(); await tick(h.agent, 1);
+    expect((await createProactiveStateStore(h.root).read()).proposals[0]).toMatchObject({
+      sessionId: SPARK_SESSION_ID, status: "delivered" });
+    expect((await h.sessions.getSessionById(SPARK_SESSION_ID))?.messages).toHaveLength(1);
+    expect((await h.sessions.getSessionById(SPARK_SESSION_ID))?.messages[0]?.initiative).not.toHaveProperty("handoffBrief");
+    expect(await h.sessions.getSessionById("co-worker-old-target")).toBeNull();
+    expect(await h.sessions.getSessionById("legacy-history")).toEqual(old);
+    expect(h.review).not.toHaveBeenCalled();
+  });
+
+  test("waits for filesystem completion without advancing the scheduler clock", async () => {
+    const f = await fixture();
+    let release!: () => void; let entered!: () => void; let inspected!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const writing = new Promise<void>((resolve) => { entered = resolve; });
+    const inspecting = new Promise<void>((resolve) => { inspected = resolve; });
+    filesystemHooks.afterRename = async (target) => {
+      if (target !== join(f.root, "proactive.json")) return;
+      entered(); await held;
+    };
+    await f.agent.start(); await vi.advanceTimersByTimeAsync(60_001);
+    let completion: Promise<void> | undefined;
+    try {
+      await writing;
+      const now = Date.now(); const status = f.agent.status.bind(f.agent);
+      vi.spyOn(f.agent, "status").mockImplementationOnce(async () => {
+        const result = await status(); inspected(); return result;
+      });
+      let settled = false;
+      completion = tick(f.agent, 0).then(() => { settled = true; });
+      await inspecting;
+      expect(settled).toBe(false);
+      expect(Date.now()).toBe(now);
+      release(); await completion;
+      expect((await f.agent.status()).state).not.toBe("reviewing");
+      expect(f.review).toHaveBeenCalledOnce();
+      expect(Date.now()).toBe(now);
+    } finally { release(); await completion; }
+  });
+
   test.each(["updated", "removed", "disabled"])("rolls back a conversation when %s during its filesystem commit", async (change) => {
     const f = await fixture(); const pending = await persistPending(f.root, "commit-race");
     const existing = await f.sessions.getOrCreateSession("unrelated");
@@ -269,7 +372,7 @@ describe("proactive background work", () => {
 
   test("a recovered delivery failure retains retry backoff", async () => {
     const h = await fixture(); await persistPending(h.root, "delivery-retry");
-    const delivery = vi.spyOn(h.sessions, "createAssistantConversation").mockRejectedValueOnce(new Error("proactive_session_delivery_unavailable"));
+    const delivery = vi.spyOn(h.sessions, "appendAssistantInitiative").mockRejectedValueOnce(new Error("proactive_session_delivery_unavailable"));
     await h.agent.start(); await tick(h.agent, 1);
     await vi.waitFor(async () => expect((await h.agent.status()).reason).toBe("proactive_session_delivery_unavailable"));
     const retryAt = Date.parse((await h.agent.status()).nextReviewAt!);
@@ -360,8 +463,8 @@ describe("proactive background work", () => {
     const h = await fixture(); const pending = await persistPending(h.root, "pending-source-change");
     let release!: () => void;
     const held = new Promise<void>((resolve) => { release = resolve; });
-    const create = h.sessions.createAssistantConversation!.bind(h.sessions);
-    const delivery = vi.spyOn(h.sessions, "createAssistantConversation").mockImplementationOnce(async (...args) => {
+    const create = h.sessions.appendAssistantInitiative!.bind(h.sessions);
+    const delivery = vi.spyOn(h.sessions, "appendAssistantInitiative").mockImplementationOnce(async (...args) => {
       await held;
       return create(...args);
     });
@@ -386,7 +489,8 @@ describe("proactive background work", () => {
     await vi.waitFor(async () => expect((await h.agent.status()).state).toBe("budget_limited"));
     await tick(h.agent, 60 * 60_000);
     expect(h.review).toHaveBeenCalledTimes(1);
-    await h.agent.dismiss((await h.agent.status()).proposals[0]!.id);
+    expect(await h.agent.status()).not.toHaveProperty("proposals");
+    await h.agent.dismiss((await createProactiveStateStore(h.root).read()).proposals[0]!.id);
     expect((await createProactiveStateStore(h.root).read()).deliveryUsage?.deliveredCount).toBe(1);
     expect((await h.agent.status()).deliveredToday).toBe(1);
   });

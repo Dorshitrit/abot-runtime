@@ -128,6 +128,12 @@ export class LocalRequestControls {
     });
   }
 
+  activeSessionId(requestId: unknown): string | undefined {
+    return typeof requestId === "string"
+      ? this.active.get(requestId)?.sessionId
+      : undefined;
+  }
+
   finish(requestId: string): void {
     const entry = this.active.get(requestId);
     this.active.delete(requestId);

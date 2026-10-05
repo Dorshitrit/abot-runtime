@@ -26,6 +26,10 @@ import {
   requireRunningScheduler,
   type SchedulerContext,
 } from "./service-context.js";
+import {
+  isRequestSchedulerJob,
+  isRequestSchedulerRun,
+} from "./scheduler-target.js";
 
 export function createSchedulerJob(
   context: SchedulerContext,
@@ -240,8 +244,12 @@ export function deleteSchedulerSession(
       requireRunningScheduler(context);
       context.deletedSessions.add(sessionId);
       await context.store.update((state) => {
-        state.jobs = state.jobs.filter((job) => job.sessionId !== sessionId);
-        state.runs = state.runs.filter((run) => run.sessionId !== sessionId);
+        state.jobs = state.jobs.filter(
+          (job) => !isRequestSchedulerJob(job) || job.sessionId !== sessionId,
+        );
+        state.runs = state.runs.filter(
+          (run) => !isRequestSchedulerRun(run) || run.sessionId !== sessionId,
+        );
       });
     })
     .finally(releaseIntent);

@@ -1,4 +1,5 @@
 import { scheduleTimeLabel } from "./schedule-message.js";
+import { scheduleConversationLabel } from "./schedule-conversation-presentation.js";
 export { scheduleErrorMessage } from "./schedule-errors.js";
 
 export const SCHEDULE_WEEKDAYS = [
@@ -47,12 +48,11 @@ export function matchesScheduleFilter(job, query, state, sessions = []) {
     .trim()
     .toLocaleLowerCase();
   if (!needle) return true;
-  const session = sessions.find((item) => item.id === job.sessionId);
   return [
     job.title,
     job.prompt,
     job.sessionId,
-    session?.title,
+    scheduleConversationLabel(job.sessionId, sessions),
     job.modelProfileId,
     scheduleDescription(job),
   ].some((value) =>

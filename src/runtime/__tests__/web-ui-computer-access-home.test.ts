@@ -53,6 +53,7 @@ afterEach(() => {
 
 function homeHarness({ hidden = false, supported = true, snapshot = ready as typeof setupNeeded } = {}) {
   vi.useFakeTimers();
+  let environment = "prod";
   const observers: Array<{ callback: () => void; observe: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> }> = [];
   class Observer {
     observe = vi.fn();
@@ -81,6 +82,7 @@ function homeHarness({ hidden = false, supported = true, snapshot = ready as typ
   const homeWorkspacePanel = documentRoot.createElement("main") as HomeElement;
   const homeDashboardRoot = documentRoot.createElement("div") as HomeElement;
   const homeWorkspaceButton = documentRoot.createElement("button") as HomeElement;
+  const environmentSelect = documentRoot.createElement("select") as HomeElement;
   documentRoot.body.append(homeWorkspacePanel);
   homeWorkspacePanel.append(homeDashboardRoot);
   function setHomeVisible(visible: boolean) {
@@ -96,18 +98,24 @@ function homeHarness({ hidden = false, supported = true, snapshot = ready as typ
     supportsSystemHostConnection: vi.fn(() => supported),
     createSystemHostPairing: vi.fn(async () => ({ code: "p".repeat(43), expiresAt: "2099-01-01T00:00:00Z" })),
     connectLocalSystemHost: vi.fn(async () => ({ ok: true })),
+    requestSystemHostPermissions: vi.fn(async (input: Record<string, unknown>) => ({
+      ...input, ok: true, scope: "companion", executablePath: "/fixture/host-companion/runtime/node",
+      permissions: { screenRecording: "required", accessibility: "granted" }, restartMayBeRequired: false,
+    })),
     downloadSystemHostSetup: vi.fn(),
     revokeSystemHostConnection: vi.fn(async () => setupNeeded),
   };
   const onChange = vi.fn();
   const feature = createComputerAccessFeature({
-    dom: { homeDashboardRoot, homeWorkspacePanel, homeWorkspaceButton },
+    dom: { homeDashboardRoot, homeWorkspacePanel, homeWorkspaceButton, environmentSelect },
     runtimeClient,
+    getEnvironmentId: () => environment,
     onChange,
   });
   disposers.push(feature.dispose);
   const card = homeWorkspacePanel.querySelector(".home-computer-access") as HomeElement;
-  return { feature, card, homeWorkspacePanel, homeDashboardRoot, homeWorkspaceButton, documentRoot, runtimeClient, onChange, setHomeVisible, observers, listeners };
+  return { feature, card, homeWorkspacePanel, homeDashboardRoot, homeWorkspaceButton, documentRoot, runtimeClient, onChange, setHomeVisible, observers, listeners,
+    setEnvironment(value: string) { environment = value; environmentSelect.dispatch("change"); } };
 }
 
 const settle = () => vi.advanceTimersByTimeAsync(0);
@@ -203,6 +211,43 @@ test("bridge backend keeps a visible unavailable card without unsupported reques
   expect(h.runtimeClient.getSystemHostConnection).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(9000);
   expect(h.runtimeClient.getSystemHostConnection).not.toHaveBeenCalled();
+});
+
+test("Home exposes an explicit permission check before chat without checking on discovery", async () => {
+  const snapshot = { ...ready, connectionId: "socket-home", capabilities: ["macos_permission_preflight_v1"] };
+  const h = homeHarness({ snapshot });
+  await settle();
+  expect(h.runtimeClient.requestSystemHostPermissions).not.toHaveBeenCalled();
+  h.card.querySelector("[data-mac-permissions-check]")!.dispatch("click");
+  await settle();
+  expect(h.runtimeClient.requestSystemHostPermissions).toHaveBeenCalledExactlyOnceWith({
+    hostId: "home-computer", connectionId: "socket-home", action: "check",
+  });
+  expect(h.card.querySelector('[data-mac-permission-request="screen_recording"]')).not.toBeNull();
+  expect(h.card.querySelector('[data-mac-permission-request="accessibility"]')).toBeNull();
+});
+
+test("Home environment changes invalidate pending native permission checks even after switching back", async () => {
+  const native = { available: true, scope: "native_runtime", environmentId: "prod", ownerId: "runtime-prod", computerName: "Runtime Mac", executablePath: "/usr/local/bin/node" };
+  const snapshot = { ...ready, nativePermissions: native };
+  const h = homeHarness({ snapshot });
+  await settle();
+  let finish!: (value: any) => void;
+  h.runtimeClient.requestSystemHostPermissions.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  h.card.querySelector("[data-native-mac-permissions-check]")!.dispatch("click");
+  expect(h.runtimeClient.requestSystemHostPermissions).toHaveBeenCalledOnce();
+  const devSnapshot = { ...snapshot, nativePermissions: { ...native, environmentId: "dev", ownerId: "runtime-dev" } };
+  h.runtimeClient.getSystemHostConnection.mockResolvedValueOnce(devSnapshot);
+  h.setEnvironment("dev");
+  await settle();
+  h.setEnvironment("prod");
+  await settle();
+  finish({ ok: true, scope: "native_runtime", environmentId: "prod", ownerId: "runtime-prod", executablePath: native.executablePath,
+    permissions: { screenRecording: "granted", accessibility: "granted" }, restartMayBeRequired: false });
+  await settle();
+  expect(h.feature.state.nativeMacPermissions).toBeNull();
+  expect(h.card.querySelector(".system-host-summary-permissions")?.textContent).toContain("SYSTEM · not checked");
+  expect(h.runtimeClient.getSystemHostConnection).toHaveBeenCalledTimes(3);
 });
 
 test("a failed refresh keeps the card visible and reports unavailable status", async () => {

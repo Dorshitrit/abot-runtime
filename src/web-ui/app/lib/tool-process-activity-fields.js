@@ -1,6 +1,6 @@
 import { titleCaseEventValue } from "./event-presentation.js";
 
-const INPUT_TEXT_LIMIT = 4_096;
+const INPUT_TEXT_LIMIT = 8_192;
 
 function textField(fields, label, value, limit = 500) {
   if (typeof value !== "string" || value.length === 0) return;

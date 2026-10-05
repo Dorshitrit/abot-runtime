@@ -43,7 +43,6 @@ async function harness() {
   const service = {
     configure: vi.fn(async () => status),
     candidates: vi.fn(async () => []),
-    dismissProposal: vi.fn(async () => undefined),
     status: vi.fn(async () => status),
   } as unknown as PassiveLearningService;
   const call = vi.fn(async (method: string, args: readonly unknown[]) =>
@@ -112,7 +111,7 @@ describe("Co-worker management boundaries", () => {
     expect(preferences.proactiveModelProfileId).toBe("cloud-2");
   });
 
-  test("browser candidate reads and dismissal retain exact environment and proposal identity across RPC", async () => {
+  test("browser candidate reads retain the exact environment across RPC", async () => {
     const { browser, service, call, resolveService } = await harness();
     expect(await browser.listPassiveLearningCandidates("prod")).toEqual({
       ok: true,
@@ -120,16 +119,17 @@ describe("Co-worker management boundaries", () => {
     });
     expect(call).toHaveBeenLastCalledWith("learning.candidates", []);
     expect(resolveService).toHaveBeenLastCalledWith("prod");
-    expect(
-      await browser.dismissPassiveLearningProposal("proposal-1", "prod"),
-    ).toEqual({ ok: true });
-    expect(call).toHaveBeenLastCalledWith("learning.dismissProposal", [
-      "proposal-1",
-    ]);
-    expect(service.dismissProposal).toHaveBeenCalledExactlyOnceWith(
-      "proposal-1",
-    );
     expect(service.configure).not.toHaveBeenCalled();
+  });
+
+  test("does not expose the retired proposal-dismissal HTTP or client operation", async () => {
+    const { origin, resolveService } = await harness();
+    const response = await fetch(`${origin}/runtime/learning/proposals/id?environment=prod`, {
+      method: "DELETE", headers: { "content-type": "application/json" }, body: "{}",
+    });
+    expect(response.status).toBe(404);
+    expect(resolveService).not.toHaveBeenCalled();
+    expect(createLocalLearningClient(vi.fn()).service).not.toHaveProperty("dismissProposal");
   });
 
   test.each([
@@ -140,16 +140,16 @@ describe("Co-worker management boundaries", () => {
     ],
     [{ "content-type": "text/plain" }, 415],
   ] as const)(
-    "dismissal rejects unauthorized metadata before resolving the environment",
+    "configuration rejects unauthorized metadata before resolving the environment",
     async (headers, expected) => {
       const { origin, service, resolveService } = await harness();
       const response = await fetch(
-        `${origin}/runtime/learning/proposals/id?environment=prod`,
-        { method: "DELETE", headers, body: "{}" },
+        `${origin}/runtime/learning?environment=prod`,
+        { method: "PUT", headers, body: "{}" },
       );
       expect(response.status).toBe(expected);
       expect(resolveService).not.toHaveBeenCalled();
-      expect(service.dismissProposal).not.toHaveBeenCalled();
+      expect(service.configure).not.toHaveBeenCalled();
     },
   );
 
@@ -240,13 +240,11 @@ describe("Co-worker management boundaries", () => {
       "learning.subscribe",
       "learning.promote",
       "learning.propose",
+      "learning.dismissProposal",
     ])
       expect(() => dispatchLocalLearningCall(service, method, [])).toThrow(
         "local_runtime_method_unknown",
       );
-    expect(() =>
-      dispatchLocalLearningCall(service, "learning.dismissProposal", ["", {}]),
-    ).toThrow("passive_learning_proposal_invalid");
     expect(() =>
       dispatchLocalLearningCall(service, "learning.candidates", [
         { content: "injected" },

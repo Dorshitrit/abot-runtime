@@ -4,7 +4,8 @@ export const NOTIFICATION_KIND_LABELS = Object.freeze({
   reply: "Assistant replies",
   failure: "Failures",
   approval: "Approval requests",
-  proposal: "Co-worker suggestions",
+  proposal: "SPARK suggestions",
+  automation: "Automation runs",
 });
 
 const DELIVERY_LABELS = Object.freeze({
@@ -21,6 +22,7 @@ const NOTIFICATION_KIND_ICONS = Object.freeze({
   failure: '<path d="m12 3 10 18H2L12 3Z" /><path d="M12 9v5M12 17h.01" />',
   approval: '<path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6l-8-3Z" /><path d="m8 12 3 3 5-6" />',
   proposal: '<path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z" />',
+  automation: '<rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 8h10M8 12l3 2 4-4" />',
 });
 
 function renderNotificationTimestamp(createdAt) {
@@ -36,6 +38,24 @@ function notificationBodyRepeatsTitle(item) {
   return item.body.trim() === item.title.trim();
 }
 
+function hasBoundAutomationSource(item, url) {
+  if (!item.sourceUrl.startsWith("/automations?")) return false;
+  if (url.pathname !== "/automations" || url.hash) return false;
+  if (typeof item.automationId !== "string" || !item.automationId) return false;
+  if (typeof item.runId !== "string" || !item.runId) return false;
+  if (item.sessionId !== undefined || item.requestId !== undefined) return false;
+  const expected = {
+    environment: item.environmentId,
+    automation: item.automationId,
+    run: item.runId,
+  };
+  for (const [key, value] of Object.entries(expected)) {
+    if (url.searchParams.getAll(key).length !== 1) return false;
+    if (url.searchParams.get(key) !== value) return false;
+  }
+  return [...url.searchParams.keys()].every((key) => Object.hasOwn(expected, key));
+}
+
 export function notificationSourceUrl(item) {
   if (typeof item?.sourceUrl !== "string") return "";
   if (!item.sourceUrl.startsWith("/")) return "";
@@ -46,6 +66,8 @@ export function notificationSourceUrl(item) {
     return "";
   }
   if (url.origin !== "https://abot.invalid") return "";
+  if (item.kind === "automation")
+    return hasBoundAutomationSource(item, url) ? `${url.pathname}${url.search}` : "";
   if (!["/chat", "/learning", "/home", "/notifications"].includes(url.pathname)) return "";
   if (url.searchParams.get("environment") !== item.environmentId) return "";
   return `${url.pathname}${url.search}${url.hash}`;
@@ -107,8 +129,7 @@ export function renderNotificationSettings(snapshot) {
   const status = desktop.message || (desktop.available
     ? "Computer access is connected. Alerts can arrive while your browser is closed."
     : "Connect Computer access to receive desktop alerts.");
-  return `<details class="notification-settings"><summary>Notification settings</summary>
-    <div class="notification-settings-body">
+  return `<div class="notification-settings-body">
       <label class="notification-setting"><span><strong>Desktop notifications</strong>
         <small>Show ABot alerts on this computer.</small></span>
         <input type="checkbox" data-notification-preference="desktopEnabled" ${preferences.desktopEnabled ? "checked" : ""} ${disabled}></label>
@@ -119,5 +140,5 @@ export function renderNotificationSettings(snapshot) {
         ).join("")}
       </div></div>
       <p class="notification-settings-note">History is always saved. Replies in the active conversation stay silent. System notification settings apply.</p>
-    </div></details>`;
+    </div>`;
 }

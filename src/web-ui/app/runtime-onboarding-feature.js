@@ -52,6 +52,7 @@ export function createRuntimeOnboardingFeature({
       loadHostConnection: () => runtimeClient.getSystemHostConnection(),
       connectLocalHost: () => runtimeClient.connectLocalSystemHost(),
       createHostPairing: () => runtimeClient.createSystemHostPairing(),
+      requestHostPermissions: (input) => runtimeClient.requestSystemHostPermissions(input),
       downloadHostSetup: (platform) =>
         runtimeClient.downloadSystemHostSetup(platform),
       revokeHostConnection: () => runtimeClient.revokeSystemHostConnection(),

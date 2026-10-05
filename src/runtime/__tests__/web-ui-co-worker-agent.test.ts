@@ -61,13 +61,15 @@ describe("Co-worker state and motion", () => {
     snapshot.status.preferences.proactiveEnabled = false;
     expect(coWorkerAgentState(snapshot).mode).toBe("quiet");
   });
-  test("unsettled or dismissed proposals do not masquerade as a ready conversation", () => {
+  test("proposal history does not override the current proactive status", () => {
     const snapshot = { status: { ...status(), proactive: { state: "waiting", proposals: [{ status: "pending" }] } } };
     expect(coWorkerAgentState(snapshot).mode).toBe("waiting");
     snapshot.status.proactive.proposals[0]!.status = "delivered";
-    expect(coWorkerAgentState(snapshot).mode).toBe("suggestion");
+    expect(coWorkerAgentState(snapshot).mode).toBe("waiting");
     snapshot.status.proactive.proposals[0]!.status = "dismissed";
     expect(coWorkerAgentState(snapshot).mode).toBe("waiting");
+    snapshot.status.proactive.state = "failed";
+    expect(coWorkerAgentState(snapshot).mode).toBe("attention");
   });
   test("repeated renders retain the agent DOM instead of restarting animations", () => {
     const { root } = rootFixture();

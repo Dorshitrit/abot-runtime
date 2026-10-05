@@ -1,0 +1,21 @@
+.automation-schema-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.automation-schema-heading strong { color: var(--text); font-size: var(--font-size-sm); overflow-wrap: anywhere; }
+.automation-schema-heading small { flex-basis: 100%; color: var(--muted); line-height: 1.5; }
+.automation-schema-binding .automation-required { color: var(--muted); font-size: var(--font-size-xs); }
+.automation-step-dialog-content .automation-schema-heading, .automation-step-dialog-content .automation-schema-literal { grid-column: 1 / -1; }
+.automation-schema-literal { min-width: 0; }
+.automation-schema-literal :is(input, select, textarea) { width: 100%; min-width: 0; }
+.automation-schema-literal textarea { min-height: 76px; resize: vertical; }
+.automation-schema-items { display: grid; gap: 8px; }
+.automation-schema-item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: start; gap: 8px; }
+.automation-schema-item-number { color: var(--muted); font-size: var(--font-size-xs); padding-top: 10px; text-align: center; }
+.automation-schema-item > button, .automation-schema-list-actions > button { min-height: 34px; padding: 6px 10px; }
+.automation-schema-item > button { color: var(--muted); }
+.automation-schema-list-actions { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.automation-schema-list-actions small, .automation-schema-invalid small { color: var(--muted); font-size: var(--font-size-xs); line-height: 1.5; }
+.automation-schema-invalid { display: grid; gap: 6px; min-width: 0; }
+.automation-schema-invalid small { color: var(--warning); }
+@media (max-width: 560px) {
+  .automation-schema-item { grid-template-columns: 18px minmax(0, 1fr); }
+  .automation-schema-item > button { grid-column: 2; justify-self: end; }
+}

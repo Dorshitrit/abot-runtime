@@ -14,6 +14,7 @@ export function createSessionDeletionBoundary(
   base: Pick<SessionStore, "deleteSessionWithStats">,
   enqueue: SessionMutationQueue,
   finalize?: SessionDeletionFinalizer,
+  beforeDelete?: (sessionId: string) => Promise<void>,
 ) {
   const cleanup = createSessionDeletionCleanup();
   const receipts = createSessionDeletionReceipts(base);
@@ -21,6 +22,11 @@ export function createSessionDeletionBoundary(
     ? createSessionDeletionFinalization(finalize)
     : undefined;
   if (finalization) cleanup.onDeleted(finalization.finalizeDeletedSession);
+
+  async function removePhysicalSession(sessionId: string): Promise<SessionDeleteResult> {
+    await beforeDelete?.(sessionId);
+    return receipts.remove(sessionId);
+  }
 
   async function deleteSessionWithStats(
     sessionId: string,
@@ -30,7 +36,7 @@ export function createSessionDeletionBoundary(
     let notification!: Promise<PromiseSettledResult<void>[]>;
     // Reserve before invoking listeners: synchronous reentry must queue behind us.
     const result = enqueue(sessionId, async () => {
-      const [deletion] = await Promise.allSettled([receipts.remove(sessionId)]);
+      const [deletion] = await Promise.allSettled([removePhysicalSession(sessionId)]);
       settlePhysical?.(deletion);
       const [notified] = await notification;
       if (deletion.status === "rejected") throw deletion.reason;

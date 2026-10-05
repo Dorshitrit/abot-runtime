@@ -70,6 +70,7 @@ export type ModelGatewayJsonSchemaFormat = {
   }>[];
 };
 
+/** Text requests may set calibrationInstructions: "omit" to retain only caller-owned instructions. */
 export type ModelGatewayFormat =
   | "json"
   | ModelGatewayJsonSchemaFormat
@@ -89,6 +90,7 @@ export type ModelGatewayProfileConfig = {
   model: string;
   /** Declared physical context capacity. Required after profile materialization. */
   contextWindowTokens?: number;
+  /** Explicit reasoning-control support, not a request to enable or disable thinking. */
   supportsThinking?: boolean;
   capabilities?: ModelGatewayProfileCapabilities;
   options?: Record<string, unknown>;
@@ -258,6 +260,7 @@ export type ModelProfile = {
   providerConfig?: ModelGatewayProviderConfig;
   model: string;
   contextWindowTokens: number;
+  /** Declared control support; false does not disable provider-default reasoning. */
   supportsThinking: boolean;
   capabilities: Required<ModelGatewayProfileCapabilities>;
   options: Record<string, unknown>;

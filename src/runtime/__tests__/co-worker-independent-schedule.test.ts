@@ -43,7 +43,7 @@ async function fixture(maintenance?: Partial<LearningMemoryService>, retention?:
   const released = vi.fn();
   const proactive = { start: vi.fn(async () => {}), stop: vi.fn(async () => {}),
     preferencesChanged: vi.fn(async () => {}), knowledgeChanged: vi.fn(), beginInteractive: vi.fn(() => released),
-    status: vi.fn(async () => ({ state: "waiting" as const, proposals: [] })), dismiss: vi.fn(async () => {}),
+    status: vi.fn(async () => ({ state: "waiting" as const })),
     sessionDeleted: vi.fn(async () => {}),
   } satisfies LearningProactiveLifecycle;
   const service = createPassiveLearningService({ directory: root, ownerId: "owner", memory, model, connect,
@@ -187,8 +187,6 @@ describe("independent Co-worker schedules", () => {
     release(); release();
     expect(f.released).toHaveBeenCalledOnce();
     expect(f.context().isInteractiveBusy()).toBe(false);
-    await f.service.dismissProposal!("proposal");
-    expect(f.proactive.dismiss).toHaveBeenCalledWith("proposal");
     await f.service.sessionDeleted!("session");
     expect(f.proactive.sessionDeleted).toHaveBeenCalledWith("session");
     f.service.notifyKnowledgeChanged!();

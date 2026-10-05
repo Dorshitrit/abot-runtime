@@ -296,7 +296,7 @@ describe("model gateway invocation policy", () => {
   test("enforces the fixed output limit only for registered core decisions in OpenAI", () => {
     const buildPayload = (modelStep: string, contextWindowTokens = 32_768) =>
       buildOpenAIResponsesPayload({
-        modelStep,
+        modelStep, agentMode: "fast",
         messages: [{ role: "user", content: "Choose the next action." }],
         modelPolicy: {
           providers: OPENAI_TEST_PROVIDERS,
@@ -304,7 +304,7 @@ describe("model gateway invocation policy", () => {
             "test-openai": {
               provider: "openai",
               model: "gpt-test",
-              contextWindowTokens,
+              contextWindowTokens, supportsThinking: true,
             },
           },
           defaults: {

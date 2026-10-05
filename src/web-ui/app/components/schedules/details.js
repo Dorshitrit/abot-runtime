@@ -3,6 +3,7 @@ import { updateLiveRegion } from "../../lib/live-region.js";
 import { escapeHtml } from "../../lib/text-format.js";
 import { scheduleTimeLabel } from "../../lib/schedule-message.js";
 import { scheduleErrorMessage } from "../../lib/schedule-errors.js";
+import { scheduleConversationLabel } from "../../lib/schedule-conversation-presentation.js";
 import {
   canManageSchedule,
   canRunScheduleNow,
@@ -63,11 +64,11 @@ export function renderScheduleDetails({ root, snapshot, actions }) {
     return;
   }
   root.classList.remove("schedule-details-placeholder");
-  const session = snapshot.sessions.find((item) => item.id === job.sessionId);
+  const conversationLabel = scheduleConversationLabel(job.sessionId, snapshot.sessions);
   const markup = `<div class="schedule-detail-heading"><span class="schedule-eyebrow">Scheduled task</span><h3 dir="auto">${escapeHtml(job.title)}</h3><span class="schedule-badge" data-state="${job.state}">${job.state}</span></div>
     <div class="schedule-action-row">${actionsMarkup(job, snapshot.mutation)}</div>
     <dl class="schedule-facts">${fact("Schedule", scheduleDescription(job))}${fact("Next run", scheduleTimeLabel(job.nextRunAt, job.timeZone))}${fact("Time zone", job.timeZone)}${fact("Model", job.modelProfileId)}${fact("Mode", job.agentMode)}${fact("Tool access", toolPermissionModeMeta(job.toolPermissionMode).label)}${fact("Created", scheduleTimeLabel(job.createdAt, job.timeZone))}${fact("Updated", scheduleTimeLabel(job.updatedAt, job.timeZone))}</dl>
-    <button type="button" class="schedule-conversation-link" data-open-conversation>↗ <span dir="auto">${escapeHtml(session?.title || job.sessionId)}</span></button>
+    <button type="button" class="schedule-conversation-link" data-open-conversation>↗ <span dir="auto">${escapeHtml(conversationLabel)}</span></button>
     <details class="schedule-prompt-disclosure" data-disclosure-id="job:${escapeHtml(job.id)}"><summary>View task prompt</summary><pre dir="auto">${escapeHtml(job.prompt)}</pre></details>
     <small class="schedule-id">Job ${escapeHtml(job.id)} · Revision ${job.revision}</small>
     <section class="schedule-history"><div class="schedule-section-heading"><h3>Run history</h3><span>${snapshot.runs.length} runs on this page</span></div>

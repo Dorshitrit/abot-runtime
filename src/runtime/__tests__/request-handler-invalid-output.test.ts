@@ -1,3 +1,4 @@
+import { buildDegradedFinalizationFallback } from "../steps/degraded-finalization/fallback.js";
 import { writeFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type WebSocket from "ws";
@@ -137,7 +138,10 @@ describe.each(ROOT_OUTPUT_POLICIES)(
           },
         );
 
-        if (degradedOutcome !== "valid") {
+        if (
+          degradedOutcome !== "valid" &&
+          policy.policyId === "execution-agent-v1"
+        ) {
           expect(events.filter(({ type }) => type === "failed")).toHaveLength(
             1,
           );
@@ -161,7 +165,16 @@ describe.each(ROOT_OUTPUT_POLICIES)(
           return;
         }
 
-        const expected = `${phrasing.failureNotice}\n\n${phrasing.nextStep}`;
+        const expected =
+          degradedOutcome === "valid"
+            ? `${phrasing.failureNotice}\n\n${phrasing.nextStep}`
+            : buildDegradedFinalizationFallback({
+                problem: {
+                  stage: policy.decisionStep,
+                  code: policy.invalidDecision,
+                },
+                progress: null,
+              });
         expect(events.filter(({ type }) => type === "failed")).toEqual([]);
         expect(events.filter(({ type }) => type === "completed")).toEqual([
           expect.objectContaining({

@@ -75,7 +75,6 @@ const longRunningSettings = Object.freeze({
   timeoutMs: 5_000,
   yieldAfterMs: 20,
   idleTimeoutMs: 5_000,
-  outputMaxChars: 8_000,
 });
 
 describe("exec plugin process lifecycle", () => {
@@ -253,7 +252,6 @@ describe("exec plugin process lifecycle", () => {
       scope,
       shellCommand: "sleep 4",
       cwd: runtimePaths.agentWorkDir,
-      outputMaxChars: 512,
       yieldAfterMs: 10,
       idleTimeoutMs: 5_000,
       hardTimeoutMs: 5_000,
@@ -292,13 +290,12 @@ describe("exec plugin process lifecycle", () => {
     await manager.release(running.processId, scope);
   });
 
-  test("bounds stdout, stderr, and rendered output with explicit metadata", async () => {
+  test("preserves complete stdout and stderr with exact output metadata", async () => {
     const runtimePaths = await createRuntimePaths();
     const { handlers } = loadPlugin(runtimePaths, {
       timeoutMs: 5_000,
       yieldAfterMs: 5_000,
       idleTimeoutMs: 5_000,
-      outputMaxChars: 128,
     });
     const result = await handlers.exec?.({
       command:
@@ -310,25 +307,35 @@ describe("exec plugin process lifecycle", () => {
       ok: true,
       data: {
         outputBounds: {
-          maxChars: 128,
-          stdout: { truncated: true, originalChars: 500 },
-          stderr: { truncated: true, originalChars: 500 },
-          rendered: { truncated: true },
+          maxChars: null,
+          stdout: {
+            truncated: false,
+            originalChars: 500,
+            returnedChars: 500,
+            omittedChars: 0,
+          },
+          stderr: {
+            truncated: false,
+            originalChars: 500,
+            returnedChars: 500,
+            omittedChars: 0,
+          },
+          rendered: { truncated: false },
         },
       },
     });
-    expect(result?.output.length).toBeLessThanOrEqual(128);
-    expect(result?.stdout?.length).toBeLessThanOrEqual(128);
-    expect(result?.stderr?.length).toBeLessThanOrEqual(128);
+    expect(result?.stdout).toBe("x".repeat(500));
+    expect(result?.stderr).toBe("y".repeat(500));
+    expect(result?.output).not.toContain("x".repeat(500));
+    expect(result?.output).not.toContain("y".repeat(500));
   });
 
-  test("keeps the complete maximum-output result below the runtime boundary", async () => {
+  test("preserves multi-byte evidence that fits the serialized result budget", async () => {
     const runtimePaths = await createRuntimePaths();
     const { handlers } = loadPlugin(runtimePaths, {
       timeoutMs: 5_000,
       yieldAfterMs: 5_000,
       idleTimeoutMs: 5_000,
-      outputMaxChars: 8_000,
     });
     const result = await handlers.exec?.({
       command:
@@ -340,14 +347,8 @@ describe("exec plugin process lifecycle", () => {
     expect(Buffer.byteLength(JSON.stringify(result), "utf8")).toBeLessThan(
       CAPABILITY_ADAPTER_RESULT_SERIALIZED_MAX_BYTES,
     );
-    expect(() =>
-      loadPlugin(runtimePaths, {
-        timeoutMs: 5_000,
-        yieldAfterMs: 5_000,
-        idleTimeoutMs: 5_000,
-        outputMaxChars: 8_001,
-      }),
-    ).toThrow();
+    expect(result?.stdout).toBe("\u{1F600}".repeat(20000));
+    expect(result?.stderr).toBe("\u{1F6A8}".repeat(20000));
   });
 
   test("reports hard and idle timeouts with stable failure codes", async () => {
@@ -356,7 +357,6 @@ describe("exec plugin process lifecycle", () => {
       timeoutMs: 60,
       yieldAfterMs: 500,
       idleTimeoutMs: 500,
-      outputMaxChars: 512,
     });
     await expect(
       hardTimeoutPlugin.handlers.exec?.({
@@ -373,7 +373,6 @@ describe("exec plugin process lifecycle", () => {
       timeoutMs: 1_000,
       yieldAfterMs: 1_000,
       idleTimeoutMs: 40,
-      outputMaxChars: 512,
     });
     await expect(
       idleTimeoutPlugin.handlers.exec?.({ command: "sleep 2", cwd: "." }),
@@ -390,13 +389,12 @@ describe("exec plugin process lifecycle", () => {
       timeoutMs: 5_000,
       yieldAfterMs: 5_000,
       idleTimeoutMs: 5_000,
-      outputMaxChars: 512,
     });
     const controller = new AbortController();
-    controller.abort();
     const context: ToolExecutionContext = {
       abortSignal: controller.signal,
       sharedState: { currentSessionId: "aborted-process" },
+      requestWork: { trackUntil: () => controller.abort() },
     };
     const aborted = await handlers.exec?.(
       { command: "sleep 2", cwd: "." },
@@ -406,6 +404,7 @@ describe("exec plugin process lifecycle", () => {
       ok: false,
       exitCode: 130,
       errorCode: "exec_aborted",
+      data: { processId: expect.any(String) },
     });
     await expect(
       handlers.exec_wait?.(

@@ -6,6 +6,8 @@ import type { AddressInfo } from "node:net";
 import WebSocket, { WebSocketServer } from "ws";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { waitForWsJson, waitForWsOpen } from "./support/local-runtime-websocket.js";
+
 import type { handleRunRequest as handleRunRequestType } from "../request/handler.js";
 import type { RequestSteeringInbox } from "../request/request-steering.js";
 import {
@@ -51,26 +53,6 @@ function closeServer(server: Server): Promise<void> {
       if (error) reject(error);
       else resolve();
     });
-  });
-}
-
-function waitForWsOpen(ws: WebSocket): Promise<void> {
-  return new Promise((resolve, reject) => {
-    ws.once("open", () => resolve());
-    ws.once("error", reject);
-  });
-}
-
-function waitForWsJson(ws: WebSocket): Promise<Record<string, unknown>> {
-  return new Promise((resolve, reject) => {
-    ws.once("message", (data) => {
-      try {
-        resolve(JSON.parse(data.toString()) as Record<string, unknown>);
-      } catch (error) {
-        reject(error);
-      }
-    });
-    ws.once("error", reject);
   });
 }
 
@@ -916,29 +898,41 @@ describe("local runtime web backend", () => {
       rootDir,
       defaultEnvironmentId: "prod",
     });
+    wss = new WebSocketServer({ noServer: true });
+    wss.on("connection", (client) => backend.handleRealtimeConnection(client));
     server = createServer((req, res) => {
       const pathname = new URL(req.url || "/", "http://localhost").pathname;
       void backend.handleHttp(req, res, pathname);
     });
+    server.on("upgrade", (req, socket, head) => {
+      wss?.handleUpgrade(req, socket, head, (client) => {
+        wss?.emit("connection", client, req);
+      });
+    });
     const port = await listen(server);
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/web-realtime`);
+    await waitForWsOpen(ws);
+    const nextMessage = waitForWsJson(ws);
 
-    const response = await fetch(
-      `http://127.0.0.1:${port}/web-api/chat/messages`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          text: "hello",
-          sessionId: "session-active",
-          environment: "dev",
-          taskType: "development",
-        }),
-      },
-    );
-    const payload = (await response.json()) as Record<string, unknown>;
-    const requestId = String(payload.requestId);
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:${port}/web-api/chat/messages`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            text: "hello",
+            sessionId: "session-active",
+            environment: "dev",
+            taskType: "development",
+          }),
+        },
+      );
+      const payload = (await response.json()) as Record<string, unknown>;
+      const requestId = String(payload.requestId);
 
-    await vi.waitFor(async () => {
+      // HTTP acceptance precedes RPC delivery; realtime receipt follows replay capture.
+      expect(await nextMessage).toMatchObject({ requestId, eventSequence: 1 });
       const eventsResponse = await fetch(
         `http://127.0.0.1:${port}/web-api/requests/${requestId}/events?environment=dev`,
       );
@@ -958,8 +952,9 @@ describe("local runtime web backend", () => {
           eventSequence: 1,
         }),
       ]);
-    });
-
-    release.resolve();
+    } finally {
+      release.resolve();
+      ws.close();
+    }
   });
 });

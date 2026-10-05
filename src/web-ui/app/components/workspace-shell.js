@@ -28,6 +28,12 @@ export function createWorkspaceShell({
     bound: false,
   };
   let navigationRevision = 0;
+  const workspaceListeners = new Set();
+  const workspaceGuards = new Set();
+  function notifyWorkspaceListeners(workspace) {
+    onWorkspaceChange(workspace);
+    for (const listener of workspaceListeners) listener(workspace);
+  }
   function noteShellNavigation() {
     navigationRevision += 1;
     onNavigationChange();
@@ -64,6 +70,7 @@ export function createWorkspaceShell({
     const chatWorkspace = shellState.workspace === "chat";
     const configWorkspace = isConfigurationWorkspace(shellState.workspace);
     const schedulesWorkspace = shellState.workspace === "schedules";
+    const automationsWorkspace = shellState.workspace === "automations";
     const learningWorkspace = shellState.workspace === "learning";
     const memoryWorkspace = shellState.workspace === "memory";
     const notificationsWorkspace = shellState.workspace === "notifications";
@@ -81,6 +88,7 @@ export function createWorkspaceShell({
       );
     }
     dom.app.classList.toggle("schedules-workspace", schedulesWorkspace);
+    dom.app.classList.toggle("automations-workspace", automationsWorkspace);
     dom.app.classList.toggle("sessions-open", sessions.drawerOpen);
     dom.app.classList.toggle("sessions-docked", sessions.docked);
 
@@ -101,6 +109,11 @@ export function createWorkspaceShell({
         "aria-hidden",
         String(!schedulesWorkspace),
       );
+    }
+    if (dom.automationsWorkspacePanel) {
+      dom.automationsWorkspacePanel.hidden = !automationsWorkspace;
+      dom.automationsWorkspacePanel.inert = !automationsWorkspace;
+      dom.automationsWorkspacePanel.setAttribute("aria-hidden", String(!automationsWorkspace));
     }
     dom.learningWorkspacePanel.hidden = !learningWorkspace;
     dom.learningWorkspacePanel.inert = !learningWorkspace;
@@ -143,6 +156,7 @@ export function createWorkspaceShell({
     setCurrentPage(dom.modelsWorkspaceButton, shellState.workspace === "models");
     setCurrentPage(dom.pluginsWorkspaceButton, shellState.workspace === "plugins");
     setCurrentPage(dom.schedulesWorkspaceButton, schedulesWorkspace);
+    setCurrentPage(dom.automationsWorkspaceButton, automationsWorkspace);
     setCurrentPage(dom.learningWorkspaceButton, learningWorkspace);
     setCurrentPage(dom.memoryWorkspaceButton, memoryWorkspace);
 
@@ -183,7 +197,7 @@ export function createWorkspaceShell({
     const wasSessionsDrawerOpen = shellState.activeSheet === "sessions";
     shellState.activeSheet = "";
     syncShell();
-    if (wasSessionsDrawerOpen) onWorkspaceChange(shellState.workspace);
+    if (wasSessionsDrawerOpen) notifyWorkspaceListeners(shellState.workspace);
     const sessions = sidebarLayout();
     if (!sidebarFocusNeedsRestoration(activeElement, sessions)) return;
     if (sessions.docked) {
@@ -207,10 +221,18 @@ export function createWorkspaceShell({
       to: nextWorkspace,
     });
     if (preparedChange === false || preparedChange === null) return null;
+    const additionalChanges = [];
+    for (const guard of workspaceGuards) {
+      const change = guard({ from: shellState.workspace, to: nextWorkspace });
+      if (change === false || change === null) return null;
+      if (typeof change === "function") additionalChanges.push(change);
+    }
     return {
       nextWorkspace,
-      commitBeforeChange:
-        typeof preparedChange === "function" ? preparedChange : () => {},
+      commitBeforeChange() {
+        if (typeof preparedChange === "function") preparedChange();
+        for (const change of additionalChanges) change();
+      },
     };
   }
 
@@ -223,7 +245,7 @@ export function createWorkspaceShell({
     shellState.workspace = nextWorkspace;
     shellState.activeSheet = "";
     syncShell();
-    onWorkspaceChange(nextWorkspace);
+    notifyWorkspaceListeners(nextWorkspace);
     noteShellNavigation();
 
     if (options.focus === false) return true;
@@ -237,6 +259,7 @@ export function createWorkspaceShell({
         const closeButtons = {
           notifications: dom.closeNotificationsWorkspaceButton,
           schedules: dom.closeSchedulesWorkspaceButton,
+          automations: dom.closeAutomationsWorkspaceButton,
           learning: dom.closeLearningWorkspaceButton,
           memory: dom.closeMemoryWorkspaceButton,
           config: dom.closeConfigWorkspaceButton,
@@ -279,7 +302,7 @@ export function createWorkspaceShell({
     const useDrawer = open && sidebarViewport?.matches !== true;
     shellState.activeSheet = useDrawer ? "sessions" : "";
     syncShell();
-    onWorkspaceChange("chat");
+    notifyWorkspaceListeners("chat");
     noteShellNavigation();
 
     if (options.focus === false) return true;
@@ -318,7 +341,7 @@ export function createWorkspaceShell({
       setSessionsDrawerOpen(false, { restoreFocus: true });
       return true;
     }
-    if (["config", "models", "plugins", "schedules", "learning", "memory", "notifications"].includes(shellState.workspace)) {
+    if (["config", "models", "plugins", "schedules", "automations", "learning", "memory", "notifications"].includes(shellState.workspace)) {
       return activateWorkspace("chat");
     }
     return false;
@@ -343,6 +366,8 @@ export function createWorkspaceShell({
     dom.schedulesWorkspaceButton?.addEventListener("click", () =>
       activateWorkspace("schedules"),
     );
+    dom.automationsWorkspaceButton?.addEventListener("click", () => activateWorkspace("automations"));
+    dom.closeAutomationsWorkspaceButton?.addEventListener("click", () => activateWorkspace("chat"));
     dom.learningWorkspaceButton.addEventListener("click", () =>
       activateWorkspace("learning"),
     );
@@ -396,6 +421,14 @@ export function createWorkspaceShell({
     runtimeAvailabilityChanged,
     workspaceUnavailableMessage: workspaceAccess.unavailableMessage,
     navigationRevision: () => navigationRevision,
+    subscribeWorkspaceChange(listener) {
+      workspaceListeners.add(listener);
+      return () => workspaceListeners.delete(listener);
+    },
+    addWorkspaceGuard(guard) {
+      workspaceGuards.add(guard);
+      return () => workspaceGuards.delete(guard);
+    },
     activeOperationsTab: operationsSection.activeTab,
     activateOperationsTab: operationsSection.activateTab,
     activateWorkspace,

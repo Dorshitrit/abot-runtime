@@ -1,7 +1,9 @@
 import type { NotificationRequests } from "./runtime-web-client/notifications.js";
+import type { SparkChatRequests } from "./runtime-web-client/spark-chat.js";
 import type { ProjectRequests } from "./runtime-web-client/projects.js";
 import type { ToolApprovalRequests } from "./runtime-web-client/tool-approvals.js";
 import type { ConversationFileClient } from "./runtime-web-client/conversation-files.js";
+import type { AutomationRequests } from "./runtime-web-client/automations.js";
 import type { ModelRemovalInput } from "../../local-runtime/model-removal.js";
 import type { ModelSetupInput } from "../../local-runtime/model-setup-input.js";
 import type { SetupEmbeddingInput } from "../../local-runtime/setup-embedding-input.js";
@@ -83,6 +85,11 @@ export declare function createRuntimeWebClient(options: {
   fetchImpl?: typeof fetch;
   origin?: string;
 }): {
+  supportsSparkChat: SparkChatRequests["supportsSparkChat"];
+  loadSparkChat: SparkChatRequests["loadSparkChat"];
+  configureSparkChat: SparkChatRequests["configureSparkChat"];
+  createSparkHandoffSession: SparkChatRequests["createSparkHandoffSession"];
+  markSparkMessagesRead: SparkChatRequests["markSparkMessagesRead"];
   supportsNotifications: NotificationRequests["supportsNotifications"];
   listNotifications: NotificationRequests["listNotifications"];
   markNotificationsRead: NotificationRequests["markNotificationsRead"];
@@ -92,6 +99,7 @@ export declare function createRuntimeWebClient(options: {
   decideToolApproval: ToolApprovalRequests["decideToolApproval"];
   supportsSystemHostConnection(): boolean;
   getSystemHostConnection(): Promise<Record<string, unknown>>;
+  requestSystemHostPermissions(input: Record<string, unknown>): Promise<Record<string, unknown>>;
   connectLocalSystemHost(): Promise<Record<string, unknown>>;
   downloadSystemHostSetup(
     platform: "windows" | "macos" | "linux",
@@ -128,6 +136,22 @@ export declare function createRuntimeWebClient(options: {
     environmentId?: string,
   ): Promise<Record<string, unknown>>;
   supportsSchedules(): boolean;
+  supportsAutomations: AutomationRequests["supportsAutomations"];
+  listAutomations: AutomationRequests["listAutomations"];
+  createAutomation: AutomationRequests["createAutomation"];
+  getAutomationDraft: AutomationRequests["getAutomationDraft"];
+  mutateAutomationDraft: AutomationRequests["mutateAutomationDraft"];
+  deleteAutomationDraft: AutomationRequests["deleteAutomationDraft"];
+  validateAutomation: AutomationRequests["validateAutomation"];
+  publishAutomation: AutomationRequests["publishAutomation"];
+  setAutomationActive: AutomationRequests["setAutomationActive"];
+  setAutomationPermission: AutomationRequests["setAutomationPermission"];
+  getAutomationCatalog: AutomationRequests["getAutomationCatalog"];
+  startAutomationRun: AutomationRequests["startAutomationRun"];
+  listAutomationRuns: AutomationRequests["listAutomationRuns"];
+  getAutomationRun: AutomationRequests["getAutomationRun"];
+  stopAutomationRun: AutomationRequests["stopAutomationRun"];
+  rerunAutomationRun: AutomationRequests["rerunAutomationRun"];
   listSchedules(environmentId?: string): Promise<{ jobs: SchedulerJob[] }>;
   getSchedule(
     jobId: string,
@@ -316,10 +340,6 @@ export declare function createRuntimeWebClient(options: {
     environmentId?: string,
     options?: { signal?: AbortSignal },
   ): Promise<{ ok: true; items: Omit<LearningCandidateRecord, "embedding">[] }>;
-  dismissPassiveLearningProposal(
-    id: string,
-    environmentId?: string,
-  ): Promise<{ ok: true }>;
   listPassiveLearningBatches(
     environmentId?: string,
     options?: { signal?: AbortSignal },

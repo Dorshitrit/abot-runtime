@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import type WebSocket from "ws";
@@ -26,6 +26,11 @@ const deliver = vi.fn(async () => ({ status: "submitted" as const }));
 beforeEach(async () => {
   await mkdir(artifacts, { recursive: true });
   directory = await mkdtemp(join(artifacts, "service-test-"));
+  for (const id of ["dev", "prod"]) {
+    const sessionsDir = environment(id).services.config.paths.sessionsDir;
+    await mkdir(sessionsDir, { recursive: true });
+    await writeFile(join(sessionsDir, "session-1.json"), JSON.stringify({ id: "session-1" }));
+  }
   now = 1_000;
   presence = new NotificationPresence(() => now);
   changed.mockClear();
@@ -72,6 +77,17 @@ function reply(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function automationChange(
+  phase: "started" | "finished",
+  status: string,
+  runId = "run-1",
+) {
+  return {
+    type: "event", name: `automation.run.${phase}`, environment: "dev",
+    automationId: "workflow", runId, title: "Daily report", status,
+  };
+}
+
 test("attention is scoped to a visible conversation and expires without a browser heartbeat", async () => {
   const client = {};
   presence.update(client, {
@@ -90,6 +106,85 @@ test("attention is scoped to a visible conversation and expires without a browse
   await service.flush();
   expect((await service.list("dev")).items).toHaveLength(1);
   expect(deliver).toHaveBeenCalledTimes(2);
+});
+
+test("a persisted automation child has no ordinary reply notification", async () => {
+  const sessionsDir = environment("dev").services.config.paths.sessionsDir;
+  await mkdir(sessionsDir, { recursive: true });
+  const origin = {
+    kind: "automation_node_v1", automationId: "workflow", runId: "run",
+    nodeId: "agent", attemptId: "attempt",
+  };
+  await writeFile(join(sessionsDir, "session-1.json"), JSON.stringify({
+    id: "session-1", automationOrigin: origin,
+  }));
+  await writeFile(join(sessionsDir, "automation-looking-ordinary.json"), JSON.stringify({
+    id: "automation-looking-ordinary",
+  }));
+  const service = createService();
+  service.observe(reply({ automationOrigin: null }));
+  service.observe(reply({ requestId: "request-2", sessionId: "automation-looking-ordinary",
+    automationOrigin: origin }));
+  await service.flush();
+  const items = (await service.list("dev")).items;
+  expect(items).toHaveLength(1);
+  expect(items[0].sessionId).toBe("automation-looking-ordinary");
+  expect(deliver).toHaveBeenCalledTimes(1);
+  expect(projectNotificationEvent(reply(), now, { automationOrigin: origin })).toBeUndefined();
+  expect(projectNotificationEvent(reply({ type: "failed" }), now,
+    { automationOrigin: origin })?.kind).toBe("failure");
+});
+
+test("committed run start and finish create deduplicated run-linked notifications", async () => {
+  const service = createService();
+  const started = automationChange("started", "running");
+  const finished = automationChange("finished", "completed_with_skips");
+  service.observe(started);
+  service.observe(started);
+  service.observe(finished);
+  service.observe(automationChange("finished", "running", "invalid"));
+  await service.flush();
+  const page = await service.list("dev");
+  expect(page.items).toHaveLength(2);
+  expect(page.preferences.kinds.automation).toBe(true);
+  expect(page.items.map((item) => item.title).sort()).toEqual([
+    "Automation completed with skipped steps", "Automation started",
+  ]);
+  expect(page.items.every((item) => item.kind === "automation" &&
+    item.automationId === "workflow" && item.runId === "run-1" &&
+    item.sourceUrl === "/automations?environment=dev&automation=workflow&run=run-1" &&
+    item.sessionId === undefined)).toBe(true);
+  expect(deliver).toHaveBeenCalledTimes(2);
+  const restarted = createService();
+  restarted.observe(started);
+  restarted.observe(finished);
+  await restarted.flush();
+  expect((await restarted.list("dev")).items).toHaveLength(2);
+  expect(deliver).toHaveBeenCalledTimes(2);
+});
+
+test("automation history is retained when desktop alerts are globally disabled", async () => {
+  const service = createService();
+  const preferences = (await service.list("dev")).preferences;
+  await service.setPreferences("dev", { ...preferences, desktopEnabled: false });
+  service.observe(automationChange("finished", "failed", "run-2"));
+  await service.flush();
+  const page = await service.list("dev");
+  expect(page.items).toHaveLength(1);
+  expect(page.items[0].delivery.status).toBe("disabled");
+  expect(deliver).not.toHaveBeenCalled();
+});
+
+test.each([
+  ["succeeded", "Automation completed"],
+  ["completed_with_skips", "Automation completed with skipped steps"],
+  ["failed", "Automation failed"],
+  ["cancelled", "Automation stopped"],
+  ["interrupted", "Automation interrupted"],
+  ["missed", "Automation run missed"],
+])("projects terminal outcome %s as %s", (status, title) => {
+  expect(projectNotificationEvent(automationChange("finished", status), now)?.title)
+    .toBe(title);
 });
 
 test("history, read state and desktop preferences survive a restart, without resending", async () => {

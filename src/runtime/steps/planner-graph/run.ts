@@ -27,6 +27,7 @@ export async function runPlannerGraph(
     format: input.format,
     messages: input.context.messages,
     contextCompaction: createModelStepCompactionController(request, {
+      consumer: PLANNER_GRAPH_MODEL_STEP,
       call,
       sourceRevision: call.activationCount,
       allowedConsumers: Object.freeze([

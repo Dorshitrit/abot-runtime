@@ -1,3 +1,4 @@
+import { buildSparkConversationInstructions } from "../../context/spark-conversation-policy.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
 import { projectRequestContext } from "../../context/request-context.js";
@@ -15,6 +16,7 @@ import { appendRequestSteeringContext } from "../../request/request-steering-con
 import type { RequestSteeringSnapshot } from "../../request/request-steering.js";
 import { EXECUTION_AGENT_RESPONSE_MODEL_STEP } from "./contracts.js";
 import { buildExecutionAgentResponseInstructions } from "./response-prompt.js";
+import { automationResponseFormat } from "../../request/automation-output-contract.js";
 import {
   buildExecutionContinuationMessages,
   buildExecutionResponseStateMessage,
@@ -66,17 +68,22 @@ export function buildExecutionAgentResponseInput(
       options.call,
     );
   const sessionMemory = projectRootSessionMemory(request);
+  const automationFormat = automationResponseFormat(request.automationOutputContract);
   const scheduledExecution = projectScheduledExecutionContext(
     request,
-    buildExecutionAgentResponseInstructions(
+    [buildExecutionAgentResponseInstructions(
       options.memoryAuthoringMaxResponseChars !== undefined,
-    ),
+    ), ...buildSparkConversationInstructions(request.sessionKind), ...(automationFormat
+      ? ["Return one JSON object matching the automation result schema, with no surrounding text."]
+      : [])].join("\n"),
     "response",
   );
   const context = projectRequestContext({
     instructions: scheduledExecution.instructions,
     ...sessionMemory,
-    ...(options.memoryAuthoringMaxResponseChars !== undefined
+    ...(automationFormat
+      ? { format: automationFormat }
+      : options.memoryAuthoringMaxResponseChars !== undefined
       ? {
           format: createRootAuthoredResponseFormat(
             options.memoryAuthoringMaxResponseChars,

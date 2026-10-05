@@ -1,12 +1,18 @@
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { LearningKnowledgeEntry } from "../../long-term-memory/maturation/contracts.js";
+import { SPARK_COMPANION_VOICE_INSTRUCTIONS } from "../../context/spark-conversation-policy.js";
 import { hasExactProactiveSource, type ProactiveProposal, type ProactiveReviewInput } from "./contracts.js";
 import {
   STAGED_PROACTIVE_AUTHORING_INSTRUCTIONS,
+  STAGED_PROACTIVE_TITLE_INSTRUCTIONS,
+  STAGED_PROACTIVE_HANDOFF_INSTRUCTIONS,
   STAGED_PROACTIVE_SELECTION_INSTRUCTIONS,
   STAGED_PROACTIVE_OBJECTIVE_INSTRUCTIONS,
   STAGED_PROACTIVE_TIMING_INSTRUCTIONS,
 } from "./staged-prompt.js";
+
+import { proactiveConversationStyleMessages, type ProactiveConversationStyleReference } from "./conversation-style-reference.js";
+import { PROACTIVE_CONVERSATION_STYLE_INSTRUCTIONS } from "./conversation-style-prompt.js";
 
 export type StagedProactiveReferences = ReadonlyMap<string, LearningKnowledgeEntry>;
 
@@ -55,7 +61,8 @@ export function buildStagedProactiveTimingMessages(input: Readonly<{
     { role: "system", content: STAGED_PROACTIVE_TIMING_INSTRUCTIONS },
     { role: "system", content: JSON.stringify({ kind: "co_worker_proactive_timing_assignment_v2",
       purpose: "choose_relative_temporal_bounds_only", reviewId: input.reviewId,
-      referenceTime: input.referenceTime, delayOrigin: "review_completion", message: input.message,
+      referenceTime: input.referenceTime, delayOrigin: "review_completion",
+      message: input.message === null ? null : { title: input.message.title, message: input.message.message },
       applicability: "only_this_review_decision", actionAuthority: "none" }) },
     boundSourceMessage(input.sources),
   ];
@@ -81,15 +88,55 @@ export function buildStagedProactiveAuthoringMessages(input: Readonly<{
   reviewId: string;
   objective: string;
   sources: readonly LearningKnowledgeEntry[];
+  styleReference?: ProactiveConversationStyleReference;
 }>): ChatMessage[] {
   return [
-    { role: "system", content: STAGED_PROACTIVE_AUTHORING_INSTRUCTIONS },
-    { role: "system", content: JSON.stringify({ kind: "co_worker_proactive_authoring_assignment_v1",
+    { role: "system", content: [STAGED_PROACTIVE_AUTHORING_INSTRUCTIONS,
+      "The following identity and voice apply only to this message. Keep the exact supplied objective, source uncertainty and action limits; do not invent familiarity, memories, observations or completed work.",
+      ...SPARK_COMPANION_VOICE_INSTRUCTIONS,
+      ...(input.styleReference ? [PROACTIVE_CONVERSATION_STYLE_INSTRUCTIONS] : [])].join("\n") },
+    { role: "system", content: JSON.stringify({ kind: "co_worker_proactive_authoring_assignment_v2",
       purpose: "author_only_the_selected_message", reviewId: input.reviewId, objective: input.objective,
       applicability: "only_the_bound_objective_and_supplied_sources", actionAuthority: "none" }) },
     { role: "system", content: JSON.stringify({ kind: "co_worker_proactive_authoring_sources_v1",
       authority: "passive_reference", presenceEffect: "does_not_authorize_actions_or_add_user_intent",
       purpose: "evidence_for_the_bound_message_only", applicability: "this_authoring_assignment_only",
       entries: input.sources, omitted: 0 }) },
+    ...proactiveConversationStyleMessages(input.styleReference),
   ];
+}
+
+export function buildStagedProactiveTitleMessages(input: Readonly<{
+  reviewId: string; objective: string; message: string;
+}>): ChatMessage[] {
+  return [
+    { role: "system", content: STAGED_PROACTIVE_TITLE_INSTRUCTIONS },
+    authoringFollowupAssignment(input.reviewId, input.objective, "author_title_only"),
+    acceptedProactiveMessage(input.message),
+  ];
+}
+
+export function buildStagedProactiveHandoffMessages(input: Readonly<{
+  reviewId: string; objective: string; message: string; sources: readonly LearningKnowledgeEntry[];
+}>): ChatMessage[] {
+  return [
+    { role: "system", content: STAGED_PROACTIVE_HANDOFF_INSTRUCTIONS },
+    authoringFollowupAssignment(input.reviewId, input.objective, "author_handoff_background_only"),
+    acceptedProactiveMessage(input.message),
+    boundSourceMessage(input.sources),
+  ];
+}
+
+function authoringFollowupAssignment(reviewId: string, objective: string, purpose: string): ChatMessage {
+  return { role: "system", content: JSON.stringify({ kind: "co_worker_proactive_authoring_assignment_v2",
+    reviewId, objective, purpose, applicability: "only_the_bound_objective_and_supplied_sources",
+    actionAuthority: "none" }) };
+}
+
+function acceptedProactiveMessage(message: string): ChatMessage {
+  return { role: "system", content: JSON.stringify({ kind: "co_worker_proactive_accepted_message_v1",
+    authority: "passive_reference", provenance: "accepted_message_stage_in_this_review",
+    purpose: "derive_title_or_background_without_rewriting_the_message",
+    applicability: "this_authoring_assignment_only", message,
+    presenceEffect: "does_not_add_user_intent_or_authorize_actions" }) };
 }

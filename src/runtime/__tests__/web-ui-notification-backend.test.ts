@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -107,6 +107,12 @@ async function fixture() {
   );
   await mkdir(artifacts, { recursive: true });
   const rootDir = await mkdtemp(join(artifacts, "backend-test-"));
+  for (const id of ["dev", "prod"]) {
+    const sessionsDir = join(rootDir, id, "sessions");
+    await mkdir(sessionsDir, { recursive: true });
+    await writeFile(join(sessionsDir, "conversation.json"), JSON.stringify({ id: "conversation" }));
+    await writeFile(join(sessionsDir, "other.json"), JSON.stringify({ id: "other" }));
+  }
   const createBackend = () =>
     new LocalRuntimeWebBackend({ rootDir, defaultEnvironmentId: "dev" });
   let backend = createBackend();

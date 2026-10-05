@@ -23,8 +23,11 @@ export async function loadCheckpointJournalIndex(
     "checkpoints",
     head.checkpoint.file,
   );
+  const checkpoint = JSON.parse(await readFile(checkpointPath, "utf8"));
+  if (checkpoint?.version !== head.schemaVersion - 2)
+    throw new Error("scheduler_store_corrupt");
   const state = parseJournalIndexState(
-    JSON.parse(await readFile(checkpointPath, "utf8")),
+    checkpoint,
     generationDirectory,
     head.generation,
     head.checkpoint.sequence,
@@ -67,7 +70,7 @@ export async function writeJournalCheckpoint(
   );
   await writeJournalJson(join(checkpointDirectory, file), state);
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     generation,
     sequence,
     checkpoint: { file, sequence },

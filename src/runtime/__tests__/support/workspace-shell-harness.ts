@@ -141,7 +141,6 @@ export function createWorkspaceShellHarness(
     sessionsPanel: element("sessionsPanel"),
     configWorkspacePanel: element("configWorkspacePanel"),
     configWorkspaceTitle: element("configWorkspaceTitle"),
-    configWorkspaceDescription: element("configWorkspaceDescription"),
     schedulesWorkspacePanel: element("schedulesWorkspacePanel"),
     learningWorkspacePanel: element("learningWorkspacePanel"),
     memoryWorkspacePanel: element("memoryWorkspacePanel"),
@@ -175,10 +174,8 @@ export function createWorkspaceShellHarness(
   dom.sessionSearchInput.parentElement = dom.sessionsPanel;
   dom.refreshSessionsButton.parentElement = dom.sessionsPanel;
   dom.closeConfigWorkspaceButton.parentElement = dom.configWorkspacePanel;
-  for (const heading of [dom.configWorkspaceTitle, dom.configWorkspaceDescription]) {
-    heading.parentElement = dom.configWorkspacePanel;
-    dom.configWorkspacePanel.children.push(heading);
-  }
+  dom.configWorkspaceTitle.parentElement = dom.configWorkspacePanel;
+  dom.configWorkspacePanel.children.push(dom.configWorkspaceTitle);
   dom.closeSchedulesWorkspaceButton.parentElement = dom.schedulesWorkspacePanel;
   dom.closeLearningWorkspaceButton.parentElement = dom.learningWorkspacePanel;
   dom.closeMemoryWorkspaceButton.parentElement = dom.memoryWorkspacePanel;

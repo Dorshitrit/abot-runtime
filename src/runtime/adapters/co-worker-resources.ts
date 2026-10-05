@@ -9,12 +9,14 @@ import { createRuntimeProactiveModel } from "../passive-learning/proactive/model
 import { CoWorkerProactiveAgent } from "../passive-learning/proactive/agent.js";
 import { isWithinAnalysisWindow } from "../passive-learning/analysis-schedule.js";
 import { ScheduledLearningReassessment } from "../passive-learning/scheduled-reassessment.js";
+import type { SessionRequestAdmission } from "../request/session-admission.js";
 
 /** The environment shares one budget; foreground chat keeps its original clients. */
 export function createCoWorkerResourceDependencies(options: {
   config: RuntimeConfig; models: ModelGatewayClient; memory: LongTermMemoryService;
   directory: string; ownerId: string; context: LearningBackgroundContext;
   sessions?: SessionStore;
+  deliveryAdmission?: Pick<SessionRequestAdmission, "run">;
 }): LearningBackgroundDependencies {
   const { context } = options;
   const budget = new CoWorkerResourceBudget({ directory: options.directory, limits: () => {
@@ -63,8 +65,8 @@ export function createCoWorkerResourceDependencies(options: {
     supportsParallel: () => original.supportsParallelBatches?.(context.preferences().proactiveModelProfileId ?? context.preferences().modelProfileId ?? "") ?? false,
   });
   const proactive = learning && options.sessions ? new CoWorkerProactiveAgent({ directory: options.directory,
-    context, memory: learning, sessions: options.sessions, budget,
-    model: createRuntimeProactiveModel({ config: options.config, models: proactiveGateway }) }) : undefined;
+    context, memory: learning, sessions: options.sessions, budget, deliveryAdmission: options.deliveryAdmission,
+    model: createRuntimeProactiveModel({ config: options.config, models: proactiveGateway, sessions: options.sessions }) }) : undefined;
   const model = createRuntimePassiveLearningModel({ ...options, models: gateway });
   const reassessment = memory.learning ? new ScheduledLearningReassessment({ directory: options.directory,
     environmentId: options.ownerId, context, memory: memory.learning, model,

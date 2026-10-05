@@ -39,7 +39,7 @@ async function fixture(failedActivity?: "proactive" | "reassessment") {
     resetsAt: Date.now() + 86_400_000, modelCalls: 0, embeddingCalls: 0, embeddingCharacters: 0, activeCalls: 0 }));
   const proactive = { start: vi.fn(async () => {}), stop: vi.fn(async () => {}),
     preferencesChanged: vi.fn(async () => {}), knowledgeChanged: vi.fn(), beginInteractive: () => () => {},
-    status: vi.fn(async () => ({ state: "waiting" as const, proposals: [] })), dismiss: vi.fn(async () => {}),
+    status: vi.fn(async () => ({ state: "waiting" as const })),
   };
   const reassessment = { start: vi.fn(async () => {}), stop: vi.fn(async () => {}),
     preferencesChanged: vi.fn(async () => {}), knowledgeChanged: vi.fn(), beginInteractive: () => () => {},

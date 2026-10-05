@@ -277,6 +277,7 @@ function invokeCapabilityDecision(includeWorkingDirectory: boolean) {
     capabilityId: descriptor.capabilityId,
     intent: "Apply the exact requested update.",
     operationObjective: OPERATION_OBJECTIVE,
+    controlsEvidenceExecutionIds: [],
     selectionControls: { path: TARGET_PATH },
     ...(includeWorkingDirectory ? { workingDirectory: null } : {}),
   });

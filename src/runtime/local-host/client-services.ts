@@ -2,6 +2,7 @@ import type { SessionStore } from "../ports.js";
 import type { RuntimeProjectService } from "../projects/contracts.js";
 import type { RuntimeAttachmentStore } from "../attachments/store.js";
 import type { SchedulerService } from "../scheduler/contracts.js";
+import type { AutomationService } from "../automations/service.js";
 import type { LocalRuntimeCallHandler } from "./contracts.js";
 import { bindManagedSessionAttachmentDeletion } from "../session/session-attachment-deletion.js";
 import {
@@ -9,6 +10,7 @@ import {
   LOCAL_PROJECT_METHODS,
   LOCAL_ATTACHMENT_METHODS,
   LOCAL_SCHEDULER_METHODS,
+  LOCAL_AUTOMATION_METHODS,
 } from "./app-service-dispatch.js";
 
 /** Projections of owner APIs; lifecycle remains with the managed application. */
@@ -29,10 +31,14 @@ export function createLocalServiceClients(call: LocalRuntimeCallHandler) {
     "scheduler",
     LOCAL_SCHEDULER_METHODS,
   );
+  const automations = service<AutomationService>(
+    "automations",
+    LOCAL_AUTOMATION_METHODS,
+  );
   bindManagedSessionAttachmentDeletion(sessions, attachments);
   const projects = service<RuntimeProjectService>(
     "projects",
     LOCAL_PROJECT_METHODS,
   );
-  return { sessions, attachments, scheduler, projects };
+  return { sessions, attachments, scheduler, automations, projects };
 }

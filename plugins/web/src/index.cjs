@@ -170,8 +170,28 @@ function defineRuntimePlugin(definition) {
   return definition;
 }
 
+// src/capabilities/tool-context-text.ts
+function hasValidToolContextText(carrier) {
+  const fields = carrier.contextTextFields;
+  if (fields === void 0) return true;
+  if (!Array.isArray(fields) || fields.length === 0 || fields.length > 3)
+    return false;
+  if (new Set(fields).size !== fields.length) return false;
+  for (const field of fields) {
+    if (!isContextTextField(field)) return false;
+    if (typeof carrier[field] !== "string") return false;
+  }
+  return true;
+}
+function isContextTextField(value) {
+  return value === "output" || value === "stdout" || value === "stderr";
+}
+
+// src/capabilities/result-budget.ts
+var CAPABILITY_RESULT_ENVELOPE_MAX_BYTES = 256 * 1024;
+
 // src/plugin-sdk/results.ts
-var PLUGIN_RESULT_SERIALIZED_MAX_BYTES = 128 * 1024;
+var PLUGIN_RESULT_SERIALIZED_MAX_BYTES = CAPABILITY_RESULT_ENVELOPE_MAX_BYTES;
 function resultBoundsFailure(code, message) {
   return {
     ok: false,
@@ -181,9 +201,27 @@ function resultBoundsFailure(code, message) {
     errorCode: code
   };
 }
-function enforcePluginResultByteBudget(result) {
-  let serialized;
+function enforcePluginResultByteBudget(result, resultBudget) {
+  let requiresContextTextHost = false;
+  let serializedBytes;
+  let envelopeBytes;
+  let maxBytes = PLUGIN_RESULT_SERIALIZED_MAX_BYTES;
+  let fitsDeclaredBudget = true;
   try {
+    if (!hasValidToolContextText(result)) {
+      return resultBoundsFailure(
+        "plugin_context_text_invalid",
+        "The plugin declared invalid context text fields."
+      );
+    }
+    requiresContextTextHost = result.contextTextFields !== void 0;
+    const lacksContextTextHost = requiresContextTextHost && resultBudget?.acceptsContextText !== true;
+    if (lacksContextTextHost) {
+      return resultBoundsFailure(
+        "plugin_context_text_unavailable",
+        "The host does not support context-managed tool text."
+      );
+    }
     const candidate = JSON.stringify(result);
     if (candidate === void 0) {
       return resultBoundsFailure(
@@ -191,50 +229,60 @@ function enforcePluginResultByteBudget(result) {
         "The plugin produced a result that is not JSON-safe."
       );
     }
-    serialized = candidate;
+    const assessment = resultBudget?.assess(result);
+    serializedBytes = assessment?.serializedBytes ?? Buffer.byteLength(candidate, "utf8");
+    envelopeBytes = assessment?.envelopeBytes ?? serializedBytes;
+    maxBytes = Math.min(assessment?.maxBytes ?? maxBytes, maxBytes);
+    fitsDeclaredBudget = assessment?.fits ?? true;
   } catch {
     return resultBoundsFailure(
       "plugin_result_not_json_safe",
       "The plugin produced a result that is not JSON-safe."
     );
   }
-  if (Buffer.byteLength(serialized, "utf8") > PLUGIN_RESULT_SERIALIZED_MAX_BYTES) {
-    return resultBoundsFailure(
-      "plugin_result_too_large",
-      `The plugin result exceeds the ${PLUGIN_RESULT_SERIALIZED_MAX_BYTES}-byte safety limit.`
-    );
+  const hasResultDeliveryHeadroom = fitsDeclaredBudget && envelopeBytes <= maxBytes;
+  if (!hasResultDeliveryHeadroom) {
+    const message = requiresContextTextHost ? `The plugin result envelope is ${envelopeBytes} bytes (${serializedBytes} total bytes) and exceeds the ${maxBytes}-byte delivery limit.` : `The plugin result is ${serializedBytes} bytes and exceeds the ${maxBytes}-byte delivery limit.`;
+    return resultBoundsFailure("plugin_result_too_large", message);
   }
   return result;
 }
-function successResult(input) {
-  return enforcePluginResultByteBudget({
-    ok: true,
-    ...input.media !== void 0 ? { media: input.media } : {},
-    output: input.output,
-    producedNewInformation: input.producedNewInformation ?? true,
-    ...input.progress !== void 0 ? { progress: input.progress } : {},
-    ...input.actions !== void 0 ? { actions: input.actions } : {},
-    ...input.exitCode !== void 0 ? { exitCode: input.exitCode } : {},
-    ...input.stdout !== void 0 ? { stdout: input.stdout } : {},
-    ...input.stderr !== void 0 ? { stderr: input.stderr } : {},
-    ...input.data !== void 0 ? { data: input.data } : {}
-  });
+function successResult(input, resultBudget) {
+  return enforcePluginResultByteBudget(
+    {
+      ok: true,
+      ...input.media !== void 0 ? { media: input.media } : {},
+      output: input.output,
+      producedNewInformation: input.producedNewInformation ?? true,
+      ...input.progress !== void 0 ? { progress: input.progress } : {},
+      ...input.actions !== void 0 ? { actions: input.actions } : {},
+      ...input.exitCode !== void 0 ? { exitCode: input.exitCode } : {},
+      ...input.stdout !== void 0 ? { stdout: input.stdout } : {},
+      ...input.stderr !== void 0 ? { stderr: input.stderr } : {},
+      ...input.data !== void 0 ? { data: input.data } : {}
+    },
+    resultBudget
+  );
 }
-function failureResult(input) {
-  return enforcePluginResultByteBudget({
-    ok: false,
-    ...input.media !== void 0 ? { media: input.media } : {},
-    output: input.output ?? input.message,
-    producedNewInformation: false,
-    ...input.progress !== void 0 ? { progress: input.progress } : {},
-    ...input.actions !== void 0 ? { actions: input.actions } : {},
-    ...input.exitCode !== void 0 ? { exitCode: input.exitCode } : {},
-    ...input.stdout !== void 0 ? { stdout: input.stdout } : {},
-    ...input.stderr !== void 0 ? { stderr: input.stderr } : {},
-    ...input.data !== void 0 ? { data: input.data } : {},
-    error: input.message,
-    errorCode: input.errorCode
-  });
+function failureResult(input, resultBudget) {
+  return enforcePluginResultByteBudget(
+    {
+      ok: false,
+      ...input.interruption ? { interruption: input.interruption } : {},
+      ...input.media !== void 0 ? { media: input.media } : {},
+      output: input.output ?? input.message,
+      producedNewInformation: false,
+      ...input.progress !== void 0 ? { progress: input.progress } : {},
+      ...input.actions !== void 0 ? { actions: input.actions } : {},
+      ...input.exitCode !== void 0 ? { exitCode: input.exitCode } : {},
+      ...input.stdout !== void 0 ? { stdout: input.stdout } : {},
+      ...input.stderr !== void 0 ? { stderr: input.stderr } : {},
+      ...input.data !== void 0 ? { data: input.data } : {},
+      error: input.message,
+      errorCode: input.errorCode
+    },
+    resultBudget
+  );
 }
 function failureFromError(error, options) {
   const pathCode = runtimeToolPathErrorCode(error);
@@ -1594,6 +1642,11 @@ function uniqueHits(results) {
     })
   );
 }
+function isSourceRetrievalInterrupted(error, abortSignal) {
+  if (!isWebPluginError(error)) return false;
+  if (error.code === "web_request_aborted") return true;
+  return error.code === "web_request_timed_out" && abortSignal.aborted;
+}
 async function fetchSources(hits, fetchService, abortSignal) {
   const candidates = hits.slice(0, WEB_LIMITS.searchSourceFetches);
   const results = [];
@@ -1612,9 +1665,7 @@ async function fetchSources(hits, fetchService, abortSignal) {
             page: await fetchService.fetchPage(hit.url, abortSignal)
           });
         } catch (error) {
-          if (isWebPluginError(error) && (error.code === "web_request_aborted" || error.code === "web_request_timed_out")) {
-            throw error;
-          }
+          if (isSourceRetrievalInterrupted(error, abortSignal)) throw error;
           return Object.freeze({
             hit,
             errorCode: isWebPluginError(error) ? error.code : "web_response_invalid",
@@ -4770,11 +4821,13 @@ function successWithSourceReceipts(input, receipt) {
 }
 
 // plugins/web/source/plugin.ts
-function failure(error, operation) {
+function failure(error, operation, signal) {
   const lightFailure = lightSearchFailureResult(error);
   if (lightFailure) return lightFailure;
   if (isWebPluginError(error)) {
+    const abortedByCaller = signal?.aborted === true && error.code === "web_request_aborted";
     return failureResult({
+      ...abortedByCaller ? { interruption: "aborted" } : {},
       errorCode: error.code,
       message: error.message,
       output: `${operation} failed: ${error.message}`
@@ -4833,7 +4886,7 @@ function createWebPlugin(context, dependencies = {}) {
           { version: 1, operation: "fetch", sources: presentation.sources }
         );
       } catch (error) {
-        return failure(error, "web_fetch");
+        return failure(error, "web_fetch", executionContext?.abortSignal);
       }
     },
     async web_search(params, executionContext) {
@@ -4882,7 +4935,7 @@ function createWebPlugin(context, dependencies = {}) {
           search.webSources
         );
       } catch (error) {
-        return failure(error, "web_search");
+        return failure(error, "web_search", executionContext?.abortSignal);
       }
     }
   };

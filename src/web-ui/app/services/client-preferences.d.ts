@@ -11,8 +11,6 @@ export declare function createClientPreferences(storage: Pick<
   Storage, "getItem" | "setItem" | "removeItem"
 >): {
   loadSessionSidebar(environmentId: string): SessionSidebarPreferences;
-  hasKeptSparkConversation(environmentId: string, sessionId: string): boolean;
-  keepSparkConversation(environmentId: string, sessionId: string): void;
   saveSessionSidebar(environmentId: string, value: SessionSidebarPreferences): void;
   loadPinnedSessions(): string[];
   savePinnedSessions(sessionIds: readonly string[]): void;

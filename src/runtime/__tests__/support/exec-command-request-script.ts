@@ -17,6 +17,7 @@ function executionDecision(turn: number) {
       capabilityId: "execute_command",
       intent: "Verify the project.",
       operationObjective: "Verify the project.",
+      controlsEvidenceExecutionIds: [],
       workingDirectory: ".",
     };
   expect(turn).toBe(3);

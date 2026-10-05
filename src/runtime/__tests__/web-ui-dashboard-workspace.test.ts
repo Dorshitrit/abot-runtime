@@ -1,6 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
 // @ts-expect-error Browser-only module has no declaration surface.
 import { createDashboardWorkspace } from "../../web-ui/app/components/dashboard/workspace.js";
+// @ts-expect-error Browser-only module has no declaration surface.
+import { renderDashboardAutomations } from "../../web-ui/app/components/dashboard/automations.js";
 import { ContextElement } from "./support/composer-context-window-dom.js";
 
 function dashboardHarness(passiveLearning?: { mountHome: ReturnType<typeof vi.fn> }) {
@@ -16,6 +18,7 @@ function dashboardHarness(passiveLearning?: { mountHome: ReturnType<typeof vi.fn
   const refs = {
     learning: element(),
     learningContent: element(),
+    automations: element(),
     overview: element(),
     activity: element(),
     conversations: element(),
@@ -29,6 +32,7 @@ function dashboardHarness(passiveLearning?: { mountHome: ReturnType<typeof vi.fn
   const nodes: Record<string, ReturnType<typeof element>> = {
     "[data-dashboard-learning]": refs.learning,
     "[data-dashboard-learning-content]": refs.learningContent,
+    "[data-dashboard-automations]": refs.automations,
     ".home-overview": refs.overview,
     "[data-dashboard-activity]": refs.activity,
     "[data-dashboard-conversations]": refs.conversations,
@@ -90,6 +94,31 @@ const loaded = {
 };
 
 describe("dashboard presentation interactions", () => {
+  test("shows only active automation runs with a direct Studio link", () => {
+    const markup = renderDashboardAutomations([{ id: "automation-one", title: "Daily brief",
+      latestRunId: "run-one", latestRunStatus: "running" }], "dev");
+    expect(markup).toContain("Daily brief");
+    expect(markup).toContain("Running · View live timeline");
+    expect(markup).toContain("/automations?environment=dev&amp;automation=automation-one&amp;run=run-one");
+    expect(renderDashboardAutomations([{ id: "automation-one", title: "Daily brief",
+      latestRunId: "run-one", latestRunStatus: "pending" }], "dev"))
+      .toContain("Queued · View live timeline");
+    const unavailable = renderDashboardAutomations([{ id: "automation-one", title: "Daily brief",
+      latestRunId: "run-one", latestRunStatus: "running" }], "dev", true);
+    expect(unavailable).toContain("Automation status unavailable");
+    expect(unavailable).toContain("Last seen Running · Open run");
+    expect(unavailable).toContain('data-dashboard-action="refresh"');
+    const { workspace, refs } = dashboardHarness();
+    workspace.render({ ...loaded, environmentId: "dev", activeAutomations: [{
+      id: "automation-one", title: "Daily brief", latestRunId: "run-one",
+      latestRunStatus: "running",
+    }] });
+    expect(refs.automations.hidden).toBe(false);
+    expect(refs.automations.innerHTML).toContain("Daily brief");
+    workspace.render(loaded);
+    expect(refs.automations.hidden).toBe(true);
+  });
+
   test("keeps pending approvals beside the composer and removes the dock when they resolve", () => {
     const { workspace, refs } = dashboardHarness();
     refs.composer.innerHTML = "<form>Unsent draft</form>";

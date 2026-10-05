@@ -367,6 +367,7 @@ describe("root capability-selection supervision terminal behavior", () => {
     expect(result).toEqual({
       output: "Fresh steered response.",
       outputTextMode: "exact",
+      disposition: "blocked",
     });
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(decisionCount).toBe(5);

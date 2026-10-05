@@ -18,6 +18,8 @@ export function nextSchedulerOccurrence(
   after: number,
 ): string | null {
   switch (schedule.kind) {
+    case "manual":
+      return null;
     case "timer":
     case "once":
       return Date.parse(schedule.at) > after ? schedule.at : null;

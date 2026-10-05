@@ -240,8 +240,16 @@ export function resolveModelInvocation(
     ...(selectedInvocationProfile?.format
       ? { format: selectedInvocationProfile.format }
       : {}),
-    ...(calibration.instructions
+    ...(calibration.instructions && !omitsCalibrationInstructions(requestBody.format)
       ? { instructions: calibration.instructions }
       : {}),
   };
+}
+
+/** A caller-owned text contract may isolate itself from the selected slot's prose. */
+function omitsCalibrationInstructions(format: unknown): boolean {
+  if (!format || typeof format !== "object" || Array.isArray(format)) return false;
+  const requested = format as Record<string, unknown>;
+  if (requested.type !== "text") return false;
+  return requested.calibrationInstructions === "omit";
 }

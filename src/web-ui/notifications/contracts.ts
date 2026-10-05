@@ -1,4 +1,11 @@
-export type NotificationKind = "reply" | "failure" | "approval" | "proposal";
+import type { SessionKind } from "../../sessions/spark-session.js";
+
+export type NotificationKind =
+  | "reply"
+  | "failure"
+  | "approval"
+  | "proposal"
+  | "automation";
 
 export type NotificationDelivery = {
   status:
@@ -11,19 +18,37 @@ export type NotificationDelivery = {
   error?: string;
 };
 
-export type WebNotification = {
+type NotificationDetails = {
   id: string;
-  kind: NotificationKind;
   title: string;
   body: string;
   createdAt: number;
   readAt: number | null;
   environmentId: string;
-  sessionId: string;
-  requestId?: string;
   sourceUrl: string;
   delivery: NotificationDelivery;
 };
+
+export type WebNotification = NotificationDetails &
+  (
+    | {
+        kind: "automation";
+        automationId: string;
+        runId: string;
+        sessionId?: never;
+        sessionKind?: never;
+        requestId?: never;
+      }
+    | {
+        kind: Exclude<NotificationKind, "automation">;
+        sessionId: string;
+        /** Copied only from the canonical persisted session. */
+        sessionKind?: SessionKind;
+        requestId?: string;
+        automationId?: never;
+        runId?: never;
+      }
+  );
 
 export type NotificationPreferences = {
   desktopEnabled: boolean;
@@ -52,6 +77,12 @@ export class NotificationInputError extends Error {}
 export function defaultNotificationPreferences(): NotificationPreferences {
   return {
     desktopEnabled: true,
-    kinds: { reply: true, failure: true, approval: true, proposal: true },
+    kinds: {
+      reply: true,
+      failure: true,
+      approval: true,
+      proposal: true,
+      automation: true,
+    },
   };
 }

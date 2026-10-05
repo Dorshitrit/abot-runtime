@@ -1,7 +1,6 @@
 import { hostSetupIsReady } from "../system-host/rendering.js";
 import { agentMarkup, renderAgent } from "./agent-view.js";
 import { createAgentMotion } from "./agent-motion.js";
-import { renderLearningProposals, handleProposalClick } from "./proposal-view.js";
 import { learningFailurePresentation } from "./presentation.js";
 import { homeActivityStartPatch, readActivityPermissions } from "./activity-controls.js";
 import { computerUpdateNoticeMarkup, renderComputerUpdateNotice } from "./computer-update-notice.js";
@@ -51,7 +50,6 @@ export function createPassiveLearningHome({
       compact: true,
       actionMarkup: '<button type="button" class="home-text-button" data-learning-open>Open ABot Spark</button>',
     })}</div>
-    <div class="co-worker-proposals" data-learning-proposals></div>
     <p class="home-learning-status" data-learning-status hidden></p>`;
     root.addEventListener("click", handleClick);
     motion = createAgentMotion(root);
@@ -64,7 +62,6 @@ export function createPassiveLearningHome({
       openComputerAccess();
       return;
     }
-    if (handleProposalClick(root, event, actions)) return;
     const button = event.target.closest("[data-learning-open]");
     if (!button || !root.contains(button) || button.disabled) return;
     const snapshot = actions?.snapshot?.() ?? renderedSnapshot;
@@ -86,7 +83,6 @@ export function createPassiveLearningHome({
     renderComputerUpdateNotice(root, snapshot);
     renderMacCollectionRestartNotice(root, snapshot);
     renderAgent(root, snapshot);
-    renderLearningProposals(root, snapshot, { limit: 1 });
     motion?.update(snapshot);
     root.hidden = false;
     const action = root.querySelector("[data-learning-open]");

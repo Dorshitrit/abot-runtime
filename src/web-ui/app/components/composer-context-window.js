@@ -28,7 +28,19 @@ export function buildComposerContextWindowModel({
 }
 
 function compactNumber(value) {
-  return new Intl.NumberFormat("en", { notation: "compact" }).format(value);
+  return new Intl.NumberFormat("en", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+function providerUsageText(usage) {
+  if (!usage) return "";
+  const parts = ["input", "output", "total"].flatMap((kind) => {
+    const value = usage[`${kind}Tokens`];
+    return value === undefined ? [] : [`${compactNumber(value)} ${kind}`];
+  });
+  return parts.length ? `Provider reported ${parts.join(" · ")} tokens` : "";
 }
 
 function formatPercent(value) {
@@ -58,7 +70,7 @@ export function createComposerContextWindow({
   const header = documentRoot.createElement("div");
   header.className = "composer-context-window-header";
   const title = documentRoot.createElement("span");
-  title.textContent = "Context window";
+  title.textContent = "Latest measured model attempt";
   const percentage = documentRoot.createElement("span");
   percentage.className = "composer-context-window-percentage";
   header.append(title, percentage);
@@ -114,7 +126,9 @@ export function createComposerContextWindow({
     percentage.textContent = "";
     detail.textContent = "";
     compaction.textContent = "";
+    compaction.hidden = true;
     provider.textContent = "";
+    provider.hidden = true;
   }
 
   function render(model) {
@@ -129,25 +143,22 @@ export function createComposerContextWindow({
       model.admissionOutcome === "rejected",
     );
     const usedPercent = formatPercent(model.usedContextPercent);
-    button.setAttribute("aria-label", `Context window: ${usedPercent} used`);
+    button.setAttribute(
+      "aria-label",
+      `Latest measured model attempt: ${model.inputTokens.toLocaleString("en")} / ${model.contextWindowTokens.toLocaleString("en")} ${model.measurementKind} input tokens, ${usedPercent} used, ${formatPercent(model.remainingContextPercent)} left, ${model.modelStep}, ${model.profileId}`,
+    );
     ring.style.setProperty(
       "--context-used",
       `${Math.max(0, Math.min(100, model.usedContextPercent))}%`,
     );
     percentage.textContent = usedPercent;
-    detail.textContent = `${compactNumber(model.estimatedInputTokens)} / ${compactNumber(
-      model.contextWindowTokens,
-    )} estimated input tokens · ${formatPercent(model.remainingContextPercent)} left · ${
-      model.modelStep || model.profileId
-    }`;
+    detail.textContent = `${compactNumber(model.inputTokens)} / ${compactNumber(model.contextWindowTokens)} ${model.measurementKind} input tokens · ${formatPercent(model.remainingContextPercent)} left · ${model.modelStep} · ${model.profileId}`;
     compaction.hidden = !model.compaction;
     compaction.textContent = model.compaction
-      ? `Compaction ${formatPercent(model.compaction.beforePercent)} → ${formatPercent(model.compaction.afterPercent)}`
+      ? `Last compaction (${model.compaction.modelStep} · ${model.compaction.profileId}) ${formatPercent(model.compaction.beforePercent)} → ${formatPercent(model.compaction.afterPercent)}`
       : "";
-    provider.hidden = !model.providerUsage;
-    provider.textContent = model.providerUsage
-      ? `Provider reported ${compactNumber(model.providerUsage.inputTokens)} input · ${compactNumber(model.providerUsage.outputTokens)} output tokens`
-      : "";
+    provider.textContent = providerUsageText(model.providerUsage);
+    provider.hidden = !provider.textContent;
   }
 
   reset();

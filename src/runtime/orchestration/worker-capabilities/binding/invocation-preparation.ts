@@ -63,7 +63,6 @@ export class CapabilityInvocationPreparer<TContext> {
     WorkerCapabilityAdapter<TContext>
   >;
   readonly #diagnostic: WorkerCapabilityDiagnosticContext;
-  readonly #workerPrincipal: boolean;
 
   constructor(params: {
     boundCall: RoleCallFrame;
@@ -76,9 +75,6 @@ export class CapabilityInvocationPreparer<TContext> {
     this.#byCapabilityId = params.byCapabilityId;
     this.#capabilityScope = params.capabilityScope;
     this.#diagnostic = params.diagnostic;
-    this.#workerPrincipal =
-      params.boundCall.roleId === "worker" &&
-      params.boundCall.parentCallId !== null;
   }
 
   prepareSingle(
@@ -102,7 +98,6 @@ export class CapabilityInvocationPreparer<TContext> {
     const authoringObjective = normalizeAuthoringObjective({
       input,
       descriptor: adapter.descriptor,
-      workerPrincipal: this.#workerPrincipal,
     });
     if (!authoringObjective.ok) {
       this.#rejectSelection(authoringObjective.issueCode, input.capabilityId);
@@ -163,7 +158,6 @@ export class CapabilityInvocationPreparer<TContext> {
     const authoringObjective = normalizeAuthoringObjective({
       input: candidate,
       descriptor: adapter.descriptor,
-      workerPrincipal: this.#workerPrincipal,
     });
     if (!authoringObjective.ok) {
       this.#rejectSelection(
@@ -251,12 +245,9 @@ function normalizeCapabilityIntent(input: unknown): NormalizedText {
 function normalizeAuthoringObjective(input: {
   input: Readonly<{ authoringObjective?: unknown }>;
   descriptor: WorkerCapabilityDescriptor;
-  workerPrincipal: boolean;
 }): NormalizedAuthoringObjective {
   const supplied = Object.hasOwn(input.input, "authoringObjective");
-  const required =
-    input.workerPrincipal &&
-    input.descriptor.requiresPayloadAuthoringObjective === true;
+  const required = input.descriptor.requiresPayloadAuthoringObjective === true;
   if (!required && supplied) {
     return { ok: false, issueCode: "authoring_objective_forbidden" };
   }

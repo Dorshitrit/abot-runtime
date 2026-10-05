@@ -13,17 +13,18 @@ export function createConversationStatus({
   getActiveRequestId,
   getActivityForMessage,
   isConnected = () => true,
+  present = (model) => model,
   documentRoot = document,
 }) {
   const entries = new Map();
 
   function refresh(message, node) {
-    const model = buildConversationStatus({
+    const model = present(buildConversationStatus({
       ...getActivityForMessage(message),
       requestId: message.requestId,
       streaming: isActiveAssistant(message, getActiveRequestId()),
       connected: isConnected(),
-    });
+    }));
     node.hidden = !model;
     const label = model?.label || "";
     if (node.textContent !== label) node.textContent = label;

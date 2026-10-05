@@ -15,10 +15,8 @@ export const STAGED_PROACTIVE_OBJECTIVE_FORMAT = stageFormat("co_worker_proactiv
   objective: { type: ["string", "null"], maxLength: 1000 },
 }, ["objective"]);
 
-export const STAGED_PROACTIVE_AUTHORING_FORMAT = stageFormat("co_worker_proactive_message_v2", {
-  title: { type: "string", maxLength: 160 },
-  message: { type: "string", maxLength: 4000 },
-}, ["title", "message"]);
+/** Explicit plain text overrides the learning.batch JSON calibration at the provider boundary. */
+export const STAGED_PROACTIVE_AUTHORING_FORMAT = Object.freeze({ type: "text" as const, calibrationInstructions: "omit" as const });
 
 export function createStagedProactiveTimingFormat(hasProposal: boolean): ModelGatewayJsonSchemaFormat {
   return stageFormat("co_worker_proactive_timing_v2", {

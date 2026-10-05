@@ -1,3 +1,4 @@
+import { buildContextFixture } from "./support/context-evidence-fixture.js";
 import { describe, expect, test, vi } from "vitest";
 
 import {
@@ -10,20 +11,9 @@ function metricRecord(
   requestId: string,
   snapshot: Record<string, unknown> = {},
 ) {
-  return {
+  return buildContextFixture(
     requestId,
-    snapshot: {
-      invocationId: `invocation-${requestId}`,
-      modelStep: "worker.decision",
-      profileId: "local",
-      measurement: "estimated",
-      source: "runtime_token_estimator",
-      admissionOutcome: "accepted",
-      contextWindowTokens: 10_000,
-      estimatedInputTokens: 3_120,
-      remainingContextTokens: 6_880,
-      usedContextPercent: 31.2,
-      remainingContextPercent: 68.8,
+    {
       compactionTriggerPercent: 70,
       outputReserveTokens: 1_000,
       safetyReserveTokens: 100,
@@ -31,15 +21,24 @@ function metricRecord(
       formatReserveTokens: 20,
       ...snapshot,
     },
-    providerUsage: {
-      invocationId: `invocation-${requestId}`,
-      inputTokens: 3_100,
-      outputTokens: 84,
-      totalTokens: 3_184,
-      source: "provider_reported",
-    },
-    lastCompaction: { beforePercent: 81, afterPercent: 31.2 },
-  };
+    [
+      {
+        name: "context.compaction.completed",
+        invocationId: `outer-${requestId}`,
+        modelStep: "worker.decision",
+        profileId: "local",
+        beforeUsedContextPercent: 81,
+        afterUsedContextPercent: 31.2,
+      },
+      {
+        name: "context.window.provider_usage",
+        invocationId: `invocation-${requestId}`,
+        inputTokens: 3_100,
+        outputTokens: 84,
+        totalTokens: 3_184,
+      },
+    ],
+  );
 }
 
 function modelFor(
@@ -62,7 +61,7 @@ function modelFor(
 describe("composer context request selection", () => {
   test("prioritizes a matching active assistant over message or map insertion order", () => {
     const older = metricRecord("older");
-    const active = metricRecord("active", { usedContextPercent: 60 });
+    const active = metricRecord("active", { estimatedInputTokens: 6_000 });
     const messages = [
       { role: "assistant", requestId: "active" },
       { role: "assistant", requestId: "older" },
@@ -122,7 +121,7 @@ describe("composer context request selection", () => {
     messages.push({ role: "assistant", requestId: "new-request" });
     expect(modelFor(records, messages, "new-request")).toBeNull();
 
-    records.push(metricRecord("new-request", { usedContextPercent: 12 }));
+    records.push(metricRecord("new-request", { estimatedInputTokens: 1_200 }));
     expect(modelFor(records, messages, "new-request")).toMatchObject({
       requestId: "new-request",
       usedContextPercent: 12,
@@ -178,8 +177,13 @@ describe("composer context request selection", () => {
   });
 
   test("rejects mismatched request data and excludes another invocation's provider usage", () => {
-    const record = metricRecord("current");
-    record.providerUsage.invocationId = "old-invocation";
+    const record = buildContextFixture("current", {}, [
+      {
+        name: "context.window.provider_usage",
+        invocationId: "old-invocation",
+        inputTokens: 90,
+      },
+    ]);
     expect(modelFor([record])?.providerUsage).toBeNull();
     expect(
       buildComposerContextWindowModel({
@@ -194,8 +198,8 @@ describe("composer context request selection", () => {
   test.each([
     { contextWindowTokens: 0 },
     { contextWindowTokens: Number.NaN },
-    { usedContextPercent: -1 },
-    { usedContextPercent: Number.NaN },
+    { estimatedInputTokens: -1 },
+    { estimatedInputTokens: Number.NaN },
   ])("omits invalid context metrics: %j", (snapshot) => {
     expect(modelFor([metricRecord("current", snapshot)])).toBeNull();
   });
@@ -225,15 +229,15 @@ describe("compact composer context presentation", () => {
     expect(button?.getAttribute("aria-describedby")).toBe(tooltip?.id);
     expect(tooltip?.getAttribute("role")).toBe("tooltip");
     expect(ring?.style.getPropertyValue("--context-used")).toBe("31.2%");
-    expect(tooltip?.textContent).toContain("Context window");
+    expect(tooltip?.textContent).toContain("Latest measured model attempt");
     expect(tooltip?.textContent).toContain("31.2%");
     expect(tooltip?.textContent).toContain("68.8%");
     expect(tooltip?.textContent).toContain("3.1K / 10K estimated input tokens");
     expect(tooltip?.textContent).toContain("worker.decision");
     expect(tooltip?.textContent).toContain(
-      "Provider reported 3.1K input · 84 output tokens",
+      "Provider reported 3.1K input · 84 output · 3.2K total tokens",
     );
-    expect(tooltip?.textContent).toContain("Compaction");
+    expect(tooltip?.textContent).toContain("Last compaction");
     expect(tooltip?.textContent).toContain("81%");
   });
 

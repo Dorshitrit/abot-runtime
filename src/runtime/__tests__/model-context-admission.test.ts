@@ -12,7 +12,10 @@ import {
 import { invokeRepairableRawModelStep } from "../model/invoke-raw-step.js";
 import { RequestModelStepInvoker } from "../model/invoke-step.js";
 import { resolveModelContextBudget } from "../model/model-context-budget.js";
-import type { ModelStepContextCompactionController } from "../model/model-step-port.js";
+import type {
+  ModelStepContextCompactionController,
+  ModelStepCompactionScope,
+} from "../model/model-step-port.js";
 import type { ModelGatewayClient } from "../ports.js";
 import {
   BOUND_REQUEST_MODEL_INVOCATION,
@@ -56,8 +59,7 @@ describe("final model context admission", () => {
       },
     });
     const commit = vi.fn();
-    let currentCompactionScope: ModelStepContextCompactionController["compactionScope"] =
-      "session_history";
+    let currentCompactionScope: ModelStepCompactionScope = "session_history";
     const controller = createController({
       compactedMessages: [asciiMessage(5)],
       commit() {
@@ -226,9 +228,17 @@ describe("final model context admission", () => {
       }),
     );
     const controller: ModelStepContextCompactionController = Object.freeze({
-      compactionScope: "active_request",
       project: (messages: readonly ChatMessage[]) => [...messages],
-      prepare,
+      getStages: () => [
+        {
+          compactionScope: "active_request",
+          scopeId: "role:worker:call-1:continuation",
+          prepare: async (messages) => ({
+            kind: "prepared",
+            preparation: await prepare(messages),
+          }),
+        },
+      ],
     });
 
     await expect(
@@ -398,8 +408,8 @@ function asciiMessage(contentLength: number): ChatMessage {
 function createController(params: {
   compactedMessages: ChatMessage[];
   commit: () => void;
-  compactionScope?: ModelStepContextCompactionController["compactionScope"];
-  resolveCompactionScope?: () => ModelStepContextCompactionController["compactionScope"];
+  compactionScope?: ModelStepCompactionScope;
+  resolveCompactionScope?: () => ModelStepCompactionScope;
 }): ModelStepContextCompactionController & {
   prepare: ReturnType<typeof vi.fn>;
 } {
@@ -413,13 +423,19 @@ function createController(params: {
     }),
   );
   return Object.freeze({
-    get compactionScope() {
-      return (
-        params.resolveCompactionScope?.() ??
-        params.compactionScope ??
-        "active_request"
-      );
-    },
+    getStages: () => [
+      {
+        compactionScope:
+          params.resolveCompactionScope?.() ??
+          params.compactionScope ??
+          "active_request",
+        scopeId: "role:worker:call-1:continuation",
+        prepare: async () => ({
+          kind: "prepared" as const,
+          preparation: await prepare(),
+        }),
+      },
+    ],
     project: (messages: readonly ChatMessage[]) => [...messages],
     prepare,
   });

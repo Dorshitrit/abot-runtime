@@ -15,7 +15,7 @@ export function createLearningChangeNotifier(
         ...(event ? { event } : {}),
       });
     } catch {
-      // Persisted conversations and proposal status are fetched on reconnect.
+      // Persisted conversations and learning status are fetched on reconnect.
     }
     if (event) notifyWorkspace(environmentId, ["sessions"]);
   };

@@ -45,7 +45,70 @@ function notification(id: string, createdAt = 1000): WebNotification {
   };
 }
 
+function automationNotification(id: string): WebNotification {
+  return {
+    id,
+    kind: "automation",
+    title: "Automation completed",
+    body: "The run completed",
+    createdAt: 1000,
+    readAt: null,
+    environmentId: "dev",
+    automationId: "flow-a",
+    runId: "run-a",
+    sourceUrl: "/automations?environment=dev&automation=flow-a&run=run-a",
+    delivery: { status: "pending" },
+  };
+}
+
 describe("persistent Web UI notification history", () => {
+  test("reads v1 preferences without an automation setting as enabled", async () => {
+    const { path, store } = await fixture();
+    const legacyPreferences = {
+      desktopEnabled: false,
+      kinds: { reply: false, failure: true, approval: false, proposal: true },
+    };
+    await store.initialize();
+    await writeFile(path, JSON.stringify({
+      version: 1, environmentId: "dev", items: [], preferences: legacyPreferences,
+    }));
+    expect(await store.getPreferences()).toEqual({
+      desktopEnabled: false,
+      kinds: { ...legacyPreferences.kinds, automation: true },
+    });
+    await store.setPreferences({
+      desktopEnabled: false,
+      kinds: { ...legacyPreferences.kinds, automation: false },
+    });
+    expect(JSON.parse(await readFile(path, "utf8")).preferences.kinds.automation)
+      .toBe(false);
+  });
+
+  test("accepts only automation links bound to the stored automation and run", async () => {
+    const { store } = await fixture();
+    const item = automationNotification("automation-run-a");
+    expect((await store.upsert(item)).created).toBe(true);
+    const invalid = [
+      { ...item, automationId: "other" },
+      { ...item, runId: "other" },
+      { ...item, sessionId: "fake-session" },
+      { ...item, requestId: "fake-request" },
+      { ...item, sourceUrl: "/automations?environment=dev&run=run-a" },
+      { ...item, sourceUrl: "/automations?environment=dev&automation=flow-a" },
+      { ...item, sourceUrl: "/automations?environment=prod&automation=flow-a&run=run-a" },
+      { ...item, sourceUrl: "/automations?environment=dev&automation=flow-a&run=run-a&extra=1" },
+      { ...item, sourceUrl: "/automations?environment=dev&automation=flow-a&run=run-a&run=run-a" },
+      { ...item, sourceUrl: "/automations?environment=dev&automation=flow-a&run=run-a#details" },
+      { ...item, sourceUrl: "//elsewhere.test/automations?environment=dev&automation=flow-a&run=run-a" },
+      { ...notification("reply-a"), automationId: "flow-a" },
+      { ...notification("reply-a"), sourceUrl: item.sourceUrl },
+    ];
+    for (const malformed of invalid)
+      expect(() => store.upsert(malformed as WebNotification)).toThrow(
+        "Invalid notification",
+      );
+  });
+
   test("deduplicates by identity across restart without resetting read or delivery state", async () => {
     const { path, store } = await fixture();
     expect((await store.upsert(notification("reply-1"))).created).toBe(true);

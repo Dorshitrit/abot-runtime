@@ -84,6 +84,7 @@ export function projectManifestRuntimeContract(
     declarations.push({
       definition: {
         name: capabilityId,
+        pluginName: manifest.name,
         ...(capability.requiredPermissionMode
           ? { requiredPermissionMode: capability.requiredPermissionMode }
           : {}),
@@ -125,6 +126,9 @@ export function projectManifestRuntimeContract(
               ? { fixedParams: operation.fixedParams }
               : {}),
             ...(operation.payload ? { payload: operation.payload } : {}),
+            ...(operation.attachmentInput
+              ? { attachmentInput: operation.attachmentInput }
+              : {}),
           }),
         ),
       },

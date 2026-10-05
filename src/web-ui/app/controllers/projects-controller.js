@@ -5,6 +5,7 @@ function errorMessage(error) {
 export function createProjectsController({
   client,
   getEnvironmentId,
+  isRuntimeReady = () => true,
   getConversationRevision,
   prepareConversation,
   openSession,
@@ -15,6 +16,7 @@ export function createProjectsController({
 }) {
   let revision = 0;
   let currentEnvironment = getEnvironmentId();
+  let runtimeReady = isRuntimeReady();
   let browseRevision = 0;
   let listRevision = 0;
   let activationRevision = 0;
@@ -27,8 +29,16 @@ export function createProjectsController({
   };
   const snapshot = () => state;
   const publish = () => onChange(snapshot());
-  const isCurrentEnvironment = (environmentId, token) =>
-    environmentId === getEnvironmentId() && token === revision;
+  function canUseProjects() {
+    if (!isRuntimeReady()) return false;
+    return client.supportsProjects();
+  }
+
+  function isCurrentEnvironment(environmentId, token) {
+    if (!canUseProjects()) return false;
+    if (environmentId !== getEnvironmentId()) return false;
+    return token === revision;
+  }
   const hasCurrentDraft = (environmentId, token, draft) =>
     isCurrentEnvironment(environmentId, token) && state.draft === draft;
 
@@ -38,6 +48,7 @@ export function createProjectsController({
   }
 
   function canApplyFolderListing(environmentId, token, draft) {
+    if (!canUseProjects()) return false;
     if (state.draft !== draft) return false;
     if (token !== browseRevision) return false;
     if (!draft.pickerOpen) return false;
@@ -50,12 +61,14 @@ export function createProjectsController({
   }
 
   function canCreateProject(draft) {
+    if (!canUseProjects()) return false;
     if (!canEditProjectDraft(draft)) return false;
     if (draft.pickerOpen) return false;
     return !draft.loading;
   }
 
   function canBrowseProjectFolders(draft) {
+    if (!canUseProjects()) return false;
     if (!canEditProjectDraft(draft)) return false;
     return draft.pickerOpen;
   }
@@ -72,17 +85,17 @@ export function createProjectsController({
   }
 
   async function load() {
+    synchronizeProjectRuntime();
     const environmentId = getEnvironmentId();
-    currentEnvironment = environmentId;
     const token = revision;
     const listToken = ++listRevision;
-    state = { ...state, loading: true, error: "" };
-    publish();
-    if (!client.supportsProjects()) {
-      state = { ...state, projects: [], loading: false };
+    if (!canUseProjects()) {
+      state = { ...state, projects: [], loading: false, error: "" };
       publish();
       return;
     }
+    state = { ...state, loading: true, error: "" };
+    publish();
     try {
       const result = await client.listProjects(environmentId);
       if (!canApplyProjectList(environmentId, token, listToken)) return;
@@ -131,6 +144,7 @@ export function createProjectsController({
   }
 
   function openFolderPicker() {
+    if (!canUseProjects()) return Promise.resolve();
     const draft = state.draft;
     if (!canEditProjectDraft(draft)) return Promise.resolve();
     draft.pickerOpen = true;
@@ -156,6 +170,7 @@ export function createProjectsController({
   }
 
   function openCreate() {
+    if (!canUseProjects()) return;
     activationRevision += 1;
     state = {
       ...state,
@@ -213,6 +228,7 @@ export function createProjectsController({
   }
 
   async function newConversation(projectId) {
+    if (!canUseProjects()) return;
     if (state.busyProjectId) return;
     if (!prepareConversation()) return;
     const environmentId = getEnvironmentId();
@@ -244,27 +260,46 @@ export function createProjectsController({
     }
   }
 
-  function environmentChanged() {
-    if (currentEnvironment === getEnvironmentId()) return Promise.resolve();
-    currentEnvironment = getEnvironmentId();
+  function retainedProjectDraft(environmentChanged) {
+    if (environmentChanged) return null;
+    if (!state.draft) return null;
+    return { ...state.draft, loading: false, saving: false, error: "",
+      pickerOpen: false, listing: null };
+  }
+
+  function hasProjectRuntimeChanged(environmentId, ready) {
+    if (currentEnvironment !== environmentId) return true;
+    return runtimeReady !== ready;
+  }
+
+  function synchronizeProjectRuntime() {
+    const environmentId = getEnvironmentId();
+    const ready = isRuntimeReady();
+    const environmentChanged = currentEnvironment !== environmentId;
+    if (!hasProjectRuntimeChanged(environmentId, ready)) return false;
+    const draft = retainedProjectDraft(environmentChanged);
+    currentEnvironment = environmentId;
+    runtimeReady = ready;
     revision += 1;
     listRevision += 1;
     browseRevision += 1;
-    state = {
-      projects: [],
-      loading: false,
-      error: "",
-      draft: null,
-      busyProjectId: "",
-    };
+    activationRevision += 1;
+    state = { projects: [], loading: false, error: "", draft, busyProjectId: "" };
     publish();
+    return true;
+  }
+
+  function runtimeAvailabilityChanged() {
+    if (!synchronizeProjectRuntime()) return Promise.resolve();
+    if (!canUseProjects()) return Promise.resolve();
     return load();
   }
 
   return {
     snapshot,
     load,
-    environmentChanged,
+    environmentChanged: runtimeAvailabilityChanged,
+    runtimeAvailabilityChanged,
     openCreate,
     closeCreate,
     updateDraft,

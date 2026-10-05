@@ -3,7 +3,10 @@ import {
   executeEmbeddingRequest,
   type ModelProviderAdapterRegistry,
 } from "../../../model-gateway/index.js";
-import type { LongTermMemoryOnboardingService } from "../../long-term-memory/onboarding/contracts.js";
+import type {
+  LongTermMemoryOnboardingConfigRepository,
+  LongTermMemoryOnboardingService,
+} from "../../long-term-memory/onboarding/contracts.js";
 import { createLongTermMemoryOnboardingService } from "../../long-term-memory/onboarding/service.js";
 import { createFileLongTermMemoryOnboardingConfigRepository } from "./onboarding-config-repository.js";
 
@@ -15,11 +18,14 @@ export function createLocalLongTermMemoryOnboardingService(params: {
   providerAdapters: ModelProviderAdapterRegistry;
   configPath?: string;
   fetchImpl?: typeof fetch;
+  repository?: LongTermMemoryOnboardingConfigRepository;
 }): LongTermMemoryOnboardingService {
-  const repository = createFileLongTermMemoryOnboardingConfigRepository({
-    rootDir: params.rootDir,
-    ...(params.configPath ? { configPath: params.configPath } : {}),
-  });
+  const repository =
+    params.repository ??
+    createFileLongTermMemoryOnboardingConfigRepository({
+      rootDir: params.rootDir,
+      ...(params.configPath ? { configPath: params.configPath } : {}),
+    });
   return createLongTermMemoryOnboardingService({
     repository,
     probe: async (input) => {

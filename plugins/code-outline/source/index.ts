@@ -32,10 +32,15 @@ export default defineRuntimePlugin((context) => {
 
   return {
     handlers: {
-      async inspect_code_outline(params) {
+      async inspect_code_outline(params, executionContext = undefined) {
+        const pathContext = {
+          ...context,
+          runtimePathResolver:
+            executionContext?.runtimePathResolver ?? context.runtimePathResolver,
+        };
         try {
           const requestedPath = readRequiredString(params.path, "path");
-          const target = resolvePluginPath(context, requestedPath, {
+          const target = resolvePluginPath(pathContext, requestedPath, {
             requirePath: true,
             allowedLocations: ["agent_work", "workspace"],
           });

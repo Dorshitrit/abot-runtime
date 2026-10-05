@@ -6,8 +6,8 @@ import { learningApplicationsMarkup } from "./applications-view.js";
 import { computerUpdateNoticeMarkup } from "./computer-update-notice.js";
 import { macCollectionRestartNoticeMarkup } from "./macos-collection-restart-notice.js";
 
-const sections = ["insights", "activity", "applications", "settings", "usage"];
-const labels = { insights: "Knowledge", activity: "Activity", applications: "Applications", settings: "Settings", usage: "Resources" };
+const sections = ["insights", "activity", "applications", "chat", "settings", "usage"];
+const labels = { insights: "Knowledge", activity: "Activity", applications: "Applications", chat: "Chat", settings: "Settings", usage: "Resources" };
 
 export function learningWorkspaceMarkup(timeZone) {
   const tabs = sections.map((key, index) => `<button type="button" role="tab" id="learning-${key}-tab" data-learning-tab="${key}" aria-controls="learning-${key}-panel" aria-selected="${index === 0}" tabindex="${index === 0 ? "0" : "-1"}">${labels[key]}</button>`).join("");
@@ -21,7 +21,6 @@ export function learningWorkspaceMarkup(timeZone) {
     </div>
     <div class="passive-learning-attention" data-learning-attention role="status" hidden><p data-learning-attention-text></p><button type="button" data-learning-open-setup hidden>Connect computer</button></div>
     <p class="passive-learning-feedback" data-learning-feedback role="status" aria-live="polite"></p>
-    <div class="co-worker-proposals" data-learning-proposals></div>
     <div class="passive-learning-tabs" role="tablist" aria-label="ABot Spark views">${tabs}</div>
     <section class="passive-learning-panel" id="learning-insights-panel" role="tabpanel" tabindex="0" aria-labelledby="learning-insights-tab" data-learning-panel="insights">${learningKnowledgeMarkup()}</section>
     <section class="passive-learning-panel" id="learning-activity-panel" role="tabpanel" tabindex="0" aria-labelledby="learning-activity-tab" data-learning-panel="activity" hidden>
@@ -34,6 +33,7 @@ export function learningWorkspaceMarkup(timeZone) {
       <div class="passive-learning-review-layout"><div class="passive-learning-detail" data-learning-detail hidden></div><section class="passive-learning-review-list" aria-label="Recent reviews"><h5>Recent reviews</h5><div class="passive-learning-batches" data-learning-batches></div></section></div>
     </section>
     <section class="passive-learning-panel" id="learning-applications-panel" role="tabpanel" tabindex="0" aria-labelledby="learning-applications-tab" data-learning-panel="applications" hidden>${learningApplicationsMarkup()}</section>
+    <section class="passive-learning-panel" id="learning-chat-panel" role="tabpanel" tabindex="0" aria-labelledby="learning-chat-tab" data-learning-panel="chat" hidden></section>
     <section class="passive-learning-panel" id="learning-settings-panel" role="tabpanel" tabindex="0" aria-labelledby="learning-settings-tab" data-learning-panel="settings" hidden>
       ${learningSettingsMarkup(timeZone)}
       <details class="passive-learning-setup" data-learning-setup><summary>Computer connection</summary>

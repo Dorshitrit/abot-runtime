@@ -39,6 +39,7 @@ export function normalizeWorkspaceDestination(value) {
     .toLowerCase();
   if (destination === "notifications") return "notifications";
   if (destination === "schedules") return "schedules";
+  if (destination === "automations") return "automations";
   if (destination === "learning") return "learning";
   if (destination === "memory") return "memory";
   if (destination === "home") return "home";

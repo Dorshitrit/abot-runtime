@@ -335,6 +335,10 @@ function plannerReferences(
       invocationAttempt: WORKER_CALL.activationCount,
     },
     objective: WORKER_CALL.objective,
+    capabilitySelection: Object.freeze({
+      capabilities: Object.freeze([]),
+      executionPending: false,
+    }),
     canonicalState: {
       canonicalSource: undefined,
       assignmentScope: PLANNER_ASSIGNMENT_SCOPE,

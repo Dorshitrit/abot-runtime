@@ -258,12 +258,12 @@ test("remote browser origins require an explicit local forward and shell-sensiti
 });
 
 
-test("ready Mac connection includes separate permission guidance for its installed runtime", async () => {
+test("connected Mac with no permission capability shows preparation guidance without implying granted access", async () => {
   const h = harness({ ...ready, identity: { os: "macos" }, companion: { installedVersion: 6 } });
   await h.activate();
-  expect(h.root.innerHTML).toContain(">Ready<");
+  expect(h.root.innerHTML).toContain(">Connected<");
   expect(h.root.innerHTML).toContain("data-system-host-mac-permissions");
-  expect(h.root.innerHTML).toContain("~/.abot/host-companion/runtime/node");
+  expect(h.root.innerHTML).not.toContain("data-mac-permissions-check");
   expect(h.root.innerHTML).not.toContain("data-system-host-mac=\"local\"");
 });
 
@@ -271,7 +271,7 @@ test.each([undefined, 5])("does not show a managed permission path to an old Mac
   const h = harness({ ...ready, identity: { os: "macos" }, companion: { installedVersion: version } });
   await h.activate();
   expect(h.root.innerHTML).not.toContain("~/.abot/host-companion/runtime/node");
-  expect(h.root.innerHTML).not.toContain("data-system-host-mac-permissions");
+  expect(h.root.innerHTML).not.toContain("data-mac-permissions-check");
 });
 
 test.each(["windows", "linux"])("does not add Mac permission guidance to %s", async os => {

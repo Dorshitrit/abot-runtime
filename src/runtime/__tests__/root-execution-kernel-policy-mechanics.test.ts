@@ -129,6 +129,7 @@ describe("root execution kernel policy mechanics", () => {
     expect(result).toEqual({
       output: "  Fresh exact response.\n\t",
       outputTextMode: "exact",
+      disposition: "blocked",
     });
     expect(decisionCount).toBe(2);
     expect(onSessionTitle).not.toHaveBeenCalled();

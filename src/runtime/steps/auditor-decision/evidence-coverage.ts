@@ -30,11 +30,11 @@ export function validateAuditorEvidenceCoverage(
       "Only needs_evidence may request another bundle.",
     );
   }
-  if (!requiresCurrentOriginalEvidence(value.verdict)) return [];
+  if (!requiresCurrentEvidence(value.verdict)) return [];
   if (!projectAuditorEvidenceProjectionStatus(assignment).complete) {
     return issue(
       `auditor_${value.verdict}_evidence_incomplete`,
-      "Conclusive verdicts require all selected original evidence without omissions.",
+      "Conclusive verdicts require all selected evidence representations to be present.",
     );
   }
   if (
@@ -42,7 +42,7 @@ export function validateAuditorEvidenceCoverage(
   ) {
     return issue(
       `auditor_${value.verdict}_needed_evidence_missing`,
-      "Every needed evidence ID must be present in the current exact bundle; previews and prior reviews are not proof.",
+      "Every needed evidence ID must be present in the current admitted bundle; previews and prior reviews are not proof.",
     );
   }
   return [];
@@ -63,7 +63,7 @@ function hasExactInventoryCoverage(
   return ids.every((id) => typeof id === "string" && inventoryIds.has(id));
 }
 
-function requiresCurrentOriginalEvidence(
+function requiresCurrentEvidence(
   verdict: unknown,
 ): verdict is "pass" | "gaps" {
   if (verdict === "pass") return true;
@@ -106,7 +106,7 @@ function validateRequestedBundle(
   if (!hasRequestedNeededEvidence(needed, ids as string[]))
     return issue(
       "auditor_requested_needed_evidence_missing",
-      "The requested next bundle must include every needed evidence ID, including originals already read in the current bundle.",
+      "The requested next bundle must include every needed evidence ID, including representations already read in the current bundle.",
     );
   return [];
 }

@@ -30,18 +30,21 @@ export const EXECUTION_CAPABILITY_TOOL_NAME = "runtime_capability" as const;
 type ExecutionStateNoticeProjection = Readonly<{
   includeCapabilitySelectionReconsideration: boolean;
   includeOperationSupervision: boolean;
+  capabilityEvidenceLane: "native" | "selected";
 }>;
 
 const NON_DECISION_NOTICE_PROJECTION: ExecutionStateNoticeProjection =
   Object.freeze({
     includeCapabilitySelectionReconsideration: false,
     includeOperationSupervision: false,
+    capabilityEvidenceLane: "native",
   });
 
 const DECISION_NOTICE_PROJECTION: ExecutionStateNoticeProjection =
   Object.freeze({
     includeCapabilitySelectionReconsideration: true,
     includeOperationSupervision: true,
+    capabilityEvidenceLane: "native",
   });
 
 export function buildExecutionStateMessage(
@@ -59,12 +62,14 @@ export function buildExecutionDecisionStateMessage(
   head: RoleCallLedgerHead,
   call: RoleCallFrame = requireActiveRootCall(head),
   steeringVersion?: number,
+  eligibleControlsEvidenceExecutionIds?: readonly string[],
 ): ChatMessage {
   return buildExecutionStateMessageForConsumer(
     head,
     call,
     DECISION_NOTICE_PROJECTION,
     steeringVersion,
+    eligibleControlsEvidenceExecutionIds,
   );
 }
 
@@ -72,7 +77,10 @@ export function buildExecutionRefinementStateMessage(
   head: RoleCallLedgerHead,
   call: RoleCallFrame = requireActiveRootCall(head),
 ): ChatMessage {
-  return buildExecutionStateMessage(head, call);
+  return buildExecutionStateMessageForConsumer(head, call, {
+    ...NON_DECISION_NOTICE_PROJECTION,
+    capabilityEvidenceLane: "selected",
+  });
 }
 
 export function buildExecutionResponseStateMessage(
@@ -87,6 +95,7 @@ function buildExecutionStateMessageForConsumer(
   call: RoleCallFrame,
   projection: ExecutionStateNoticeProjection,
   steeringVersion?: number,
+  eligibleControlsEvidenceExecutionIds?: readonly string[],
 ): ChatMessage {
   assertExecutionRoot(head, call);
   const immediateReconsideration =
@@ -106,6 +115,9 @@ function buildExecutionStateMessageForConsumer(
       activationCount: call.activationCount,
       ...(steeringVersion !== undefined
         ? { workPlan: projectExecutionWorkPlanContext(head, call) }
+        : {}),
+      ...(eligibleControlsEvidenceExecutionIds !== undefined
+        ? { eligibleControlsEvidenceExecutionIds }
         : {}),
       workingDirectory: call.workingDirectory ?? null,
       activeCapabilityScope: call.workerCapabilityScope ?? null,
@@ -143,7 +155,15 @@ function buildExecutionStateMessageForConsumer(
       ...(operationSupervision.length > 0 ? { operationSupervision } : {}),
       omissionSemantics: {
         capabilityResults:
-          "Accepted capability actions and exact canonical adapter results are supplied only in the chronological native tool lane after the current request.",
+          projection.capabilityEvidenceLane === "selected"
+            ? "Only evidence explicitly selected for the frozen Controls assignment is supplied in the canonical runtime_request_tool_results_v1 reference lane. Omitted executions add no assignment or result evidence."
+            : "Accepted capability actions and exact canonical adapter results are supplied only in the chronological native tool lane after the current request.",
+        ...(eligibleControlsEvidenceExecutionIds !== undefined
+          ? {
+              controlsEvidenceSelection:
+                "eligibleControlsEvidenceExecutionIds lists settled executions owned by this exact request and root call that may be selected for remaining-controls evidence. Eligibility alone adds no intent, pending work, authorization or completion evidence.",
+            }
+          : {}),
         subordinateResults:
           "A listed subordinate result is passive evidence and never selects the next action.",
         ...(projection.includeCapabilitySelectionReconsideration

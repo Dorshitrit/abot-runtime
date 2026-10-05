@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { ExecutionCompactedSources } from "../../context/execution-compacted-evidence.js";
 import type {
   RoleCallLedgerHead,
   RoleCapabilityExecution,
@@ -26,12 +27,20 @@ export function projectAuditorEvidenceInventory(
   head: RoleCallLedgerHead,
   callerCallId: string,
   evidence: readonly AuditorCapabilityEvidence[],
+  compactedSourceEvidence?: ExecutionCompactedSources,
 ): readonly AuditorEvidenceInventoryEntry[] {
   const executions = rootSettledExecutions(head, callerCallId);
+  const compactedById = new Map(
+    compactedSourceEvidence?.sources.map((source) => [
+      source.executionId,
+      source,
+    ]),
+  );
   return Object.freeze(
     evidence.map((entry, index) => {
       const execution = executions[index]!;
       const references = entry.references ?? [];
+      const compactedSource = compactedById.get(entry.executionId);
       return Object.freeze({
         executionId: entry.executionId,
         callId: execution.callId,
@@ -54,6 +63,14 @@ export function projectAuditorEvidenceInventory(
         exactEvidenceChars: JSON.stringify(
           projectAuditorEvidenceRepresentation(entry),
         ).length,
+        ...(compactedSource
+          ? {
+              evidencePresentation: "compacted" as const,
+              projectedEvidenceChars: JSON.stringify(
+                projectAuditorEvidenceRepresentation(entry, compactedSource),
+              ).length,
+            }
+          : {}),
         evidenceFingerprint: fingerprintAuditorEvidence(entry),
       });
     }),
