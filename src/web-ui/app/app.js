@@ -68,6 +68,7 @@ let projectsFeature;
 let workspaceRoutes;
 let notifications;
 const operationsController = createOperationsController({
+  onSummaryChange: () => configWorkspace?.syncSummary(),
   dom,
   client: runtimeClient,
   getEnvironmentId: selectedEnvironmentId,
@@ -100,7 +101,7 @@ const steerController = createSteerController({
 
 const shell = createWorkspaceShell({
   dom,
-  onNavigationChange: () => workspaceRoutes?.sync(),
+  onNavigationChange: () => { configWorkspace?.syncSummary(); workspaceRoutes?.sync(); },
   isWorkspaceAvailable: (destination) => {
     if (!notifications?.isWorkspaceAvailable(destination)) return false;
     return schedulesFeature?.isWorkspaceAvailable(destination) ?? false;
@@ -166,7 +167,7 @@ schedulesFeature = createSchedulesFeature({
   getCurrentSessionId: () => state.currentSessionId,
   getAgentModes: () => state.supportedAgentModes,
   isRuntimeReady: runtimeOnboarding.isReady,
-  openSession: (sessionId) => conversationSession.openSession(sessionId),
+  openSession: (sessionId, options) => conversationSession.openSession(sessionId, options),
 });
 passiveLearning = createPassiveLearningFeature({
   isRuntimeReady: runtimeOnboarding.isReady,
@@ -190,7 +191,7 @@ dashboardFeature = createDashboardFeature({
   schedules: schedulesFeature,
   selectedEnvironmentId,
   loadSessions,
-  openSession: (sessionId) => conversationSession.openSession(sessionId),
+  openSession: (sessionId, options) => conversationSession.openSession(sessionId, options),
   isComposerAvailable: runtimeOnboarding.isReady,
   passiveLearning,
 });
@@ -563,8 +564,10 @@ const appEventBindings = createAppEventBindings({
 });
 
 configWorkspace = createConfigurationFeature({
+  getOperationsSummary: () => operationsController.summary(shell.activeOperationsTab()),
   getLearningSnapshot: () => passiveLearning?.snapshot(),
   isRuntimeReady: runtimeOnboarding.isReady,
+  isComputerAccessAvailable: () => shell.isWorkspaceAvailable("config"),
   onNavigationChange: () => workspaceRoutes?.sync(),
   state,
   selection: runtimeSelection,

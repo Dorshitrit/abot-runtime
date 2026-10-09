@@ -82,7 +82,9 @@ describe("shared config writer transactions", () => {
     expect((await fixture.readModelProfile("added")).model).toBe(
       "fixture-added",
     );
-    expect(current.plugins).toMatchObject({ deny: ["system-probe"] });
+    expect(current.plugins).toMatchObject({
+      disabledPluginIds: ["system-probe"],
+    });
   });
 
   test("a model writer waits for a plugin candidate and preserves its committed selection", async () => {
@@ -104,7 +106,9 @@ describe("shared config writer transactions", () => {
     expect((await fixture.readModelProfile("added")).model).toBe(
       "fixture-added",
     );
-    expect(current.plugins).toMatchObject({ deny: ["system-probe"] });
+    expect(current.plugins).toMatchObject({
+      disabledPluginIds: ["system-probe"],
+    });
   });
 
   test("a memory probe snapshot conflicts after a model commit and cannot discard that model", async () => {
@@ -178,7 +182,7 @@ describe("shared config writer transactions", () => {
       ).rejects.toBeInstanceOf(ConfigFileConflictError);
     }
     expect((await fixture.readConfig()).plugins).toMatchObject({
-      deny: ["system-probe"],
+      disabledPluginIds: ["system-probe"],
     });
     const fresh = await dashboard.getConfigDashboardSnapshot(options);
     const model = fresh.files.models.find((entry) => entry.id === "added")!;
@@ -191,7 +195,7 @@ describe("shared config writer transactions", () => {
     });
     expect(saved.file.revision).not.toBe(model.revision);
     expect((await fixture.readConfig()).plugins).toMatchObject({
-      deny: ["system-probe"],
+      disabledPluginIds: ["system-probe"],
     });
   });
 

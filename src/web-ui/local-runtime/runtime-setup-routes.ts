@@ -5,6 +5,7 @@ import {
 } from "./config-mutation-request.js";
 import { readBody, readJsonBody, sendJson } from "./http.js";
 import { RuntimeSetupError } from "./runtime-setup-input.js";
+import { runtimeSetupContextWindowErrorDetails } from "./runtime-setup-context-window.js";
 import { RuntimeSetupService } from "./runtime-setup-service.js";
 
 export class RuntimeSetupRoutes {
@@ -55,6 +56,7 @@ export class RuntimeSetupRoutes {
         error instanceof ConfigMutationRequestError;
       sendJson(params.response, isPublicError ? error.statusCode : 400, {
         ok: false,
+        ...runtimeSetupContextWindowErrorDetails(error),
         error:
           error instanceof RuntimeSetupError
             ? error.code

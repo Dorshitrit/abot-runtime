@@ -1,4 +1,4 @@
-import type { ToolNormalInvocationPropertyInput } from "../../../capabilities/normal-invocation/contracts.js";
+import type { ToolNormalInvocationOutputChannelRole, ToolNormalInvocationPropertyInput } from "../../../capabilities/normal-invocation/contracts.js";
 import type { AgentNode, AutomationTrigger, FolderSource, ToolNode, ValueBinding } from "../../automations/definition-contracts.js";
 import { AUTOMATION_DRAFT_BATCH_LIMITS } from "../../automations/draft-batch.js";
 import type { DraftMutation } from "../../automations/draft-mutations.js";
@@ -67,10 +67,10 @@ export const AUTOMATION_AUTHORING_REFERENCE = {
   },
   bounds: { batch: AUTOMATION_DRAFT_BATCH_LIMITS, recipe: AUTOMATION_CREATION_RECIPE_LIMITS, graph: AUTOMATION_GRAPH_LIMITS },
   createPlanExample: { version: 1, settings: { objective: "Requested workflow outcome" }, steps: [
-    { key: "evidence", kind: "tool", title: "Read structured evidence", operation },
+    { key: "evidence", kind: "tool", title: "Read text evidence", operation },
     { key: "analysis", kind: "agent", title: "Analyze evidence", modelProfileId: "catalog_model_id",
       prompt: "Analyze the supplied evidence.",
-      inputs: { evidence: { kind: "node_result", nodeId: "$evidence", select: "data" } } },
+      inputs: { evidence: { kind: "node_result", nodeId: "$evidence", select: "text" } } },
   ] },
   creationRules: "New drafts use settings + ordered steps with unique keys and node shapes below. Runtime fills IDs, parents, indices and commands. Defaults: onFailure=stop; tool controls={}; agentMode=fast, roleInstructions='', inputs={}, tools=[], result={kind:'text'}. Override explicitly. Bind earlier results via $key. Parallel: {key,kind:'parallel',branches:[[steps],[steps]]}; branches are ordered and nonempty. Edit with commands; never mix commands and steps.",
   creationCapacity: `Budget ${AUTOMATION_CREATION_RECIPE_LIMITS.compiledCommands}: leaf=1, parallel group=1, nonempty settings=1; total across all branches. With settings, max ${AUTOMATION_CREATION_RECIPE_LIMITS.compiledCommands - 1} flat steps. Oversize rejects atomically: automation_recipe_capacity_exceeded. Expand with later draft edits.`,
@@ -114,9 +114,11 @@ export const AUTOMATION_AUTHORING_REFERENCE = {
     acceptancePolicy: "Optional acceptance compares required scalar JSON fields to string/number/boolean values of the same type. A mismatch fails the step under onFailure, not a conditional branch. Use [] to clear. No if/else graph construct exists.",
   },
   bindings: { examples: bindings,
-    channels: { text: "Tool display output; may be counts/status only, not serialized data.",
-      data: "Structured tool output, when provided. Omit pointer to pass it whole, without knowing field names." },
-    policy: "Use literal for constants, run_input for definition.inputs. node_result needs a succeeded earlier node; no implicit output. Select the operation's documented channel: data for records/ids, text when sufficient. Optional data-only RFC6901 pointer: /field, /items/0; escape ~ as ~0 and / as ~1. Never invent fields or execute future steps to inspect output.",
+    channels: { text: "Saved text.", data: "Separate optional JSON; no implicit Text channel." },
+    outputChannels: { content: "Substantive output; may be bounded/summarized.",
+      metadata: "IDs, status, counts or receipts; no content body.",
+      conditional: "Depends on operation inputs; do not assume content." } satisfies Record<ToolNormalInvocationOutputChannelRole, string>,
+    policy: "literal=constants; run_input=definition.inputs; node_result needs prior success. Follow operation.outputChannels; absent=unknown. Whole data needs no pointer. RFC6901 pointers need documented fields (/items/0; ~ as ~0, / as ~1). Never execute steps for output discovery.",
     files: "run_file resolves a new file for each run under its working directory; fileName is one portable filename, no path. source_files requires a configured source and an agent consumer. source_file index selects the frozen batch entry; field=snapshot_path|original_path|version.",
     parallel: "branch_results is agent-only after the referenced parallel join; it supplies each branch's settled tail output/status. A failed/skipped source has no successful node_result for downstream bindings.",
   },

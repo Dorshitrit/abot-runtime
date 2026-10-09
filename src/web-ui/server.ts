@@ -1,4 +1,7 @@
-import type { RuntimeSetupGatewayRestorePoint } from "./runtime-setup-gateway.js";
+import type {
+  AppliedGatewayConfigurations,
+  RuntimeSetupGatewayRestorePoint,
+} from "./runtime-setup-gateway.js";
 import { RuntimeSetupGateway } from "./runtime-setup-gateway.js";
 import type { RuntimeSetupActivation } from "./local-runtime/runtime-setup-input.js";
 import { createReadStream } from "node:fs";
@@ -259,7 +262,9 @@ export function startWebUiServer(
     providerAdapters: options.providerAdapters,
   });
   const activateSetup =
-    overrides.onRuntimeSetup ?? ((path: string) => setupGateway.activate(path));
+    overrides.onRuntimeSetup ??
+    ((path: string, applied?: AppliedGatewayConfigurations) =>
+      setupGateway.activate(path, applied));
   const wss = new WebSocketServer({ noServer: true });
   const localRuntimeBackend =
     options.backend === "runtime"
@@ -281,6 +286,9 @@ export function startWebUiServer(
             };
           },
           onRuntimeSetup: activateSetup,
+          captureRuntimeSetupConfiguration: overrides.onRuntimeSetup
+            ? undefined
+            : (path) => setupGateway.captureConfiguration(path),
           createRuntimeSetupRestorePoint:
             overrides.createRuntimeSetupRestorePoint ??
             (overrides.onRuntimeSetup
@@ -290,7 +298,7 @@ export function startWebUiServer(
             overrides.checkRuntimeSetupActivation ??
             (overrides.onRuntimeSetup
               ? undefined
-              : (path) => setupGateway.checkActivation(path)),
+              : (path, applied) => setupGateway.checkActivation(path, applied)),
           ...(options.providerAdapters
             ? { providerAdapters: options.providerAdapters }
             : {}),

@@ -169,6 +169,10 @@ export const RUNTIME_CONFIG_SCHEMA_FIELDS: readonly RuntimeConfigSchemaField[] =
       description: field.description,
     })),
     {
+      path: "webUi.pageSize", type: "positive-number", defaultValue: "20",
+      description: "Sessions and messages per Web UI history page, including SPARK.",
+    },
+    {
       path: "webUi.openOnRuntimeServiceStart",
       type: "boolean",
       defaultValue: "false",
@@ -224,6 +228,13 @@ export const RUNTIME_CONFIG_SCHEMA_FIELDS: readonly RuntimeConfigSchemaField[] =
         "Installed plugin or capability ids denied after applying the allow-list.",
     },
     {
+      path: "plugins.disabledPluginIds",
+      type: "string-array",
+      defaultValue: "[]",
+      description:
+        "Exact plugin ids disabled independently of tool selectors. Entries are literal ids, not wildcards.",
+    },
+    {
       path: "models.providers",
       type: "object-map",
       description:
@@ -252,6 +263,12 @@ export const RUNTIME_CONFIG_SCHEMA_FIELDS: readonly RuntimeConfigSchemaField[] =
       type: "object-map",
       description:
         "Per-model calibration slots keyed by semantic slot id. Runtime step config maps modelStep names to these slot ids. Slots may tune timeout, generation, context, format, and short model-specific instructions.",
+    },
+    {
+      path: "models.profiles.<profileId>.plugins.deny",
+      type: "string-array",
+      description:
+        "Additional denied plugin or capability selectors for requests selected by this model profile, including configRef profiles. Global plugin restrictions still apply.",
     },
     {
       path: "models.profiles.<profileId>.execution.policy",

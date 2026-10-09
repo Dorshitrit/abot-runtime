@@ -48,6 +48,7 @@
           "operations": {
             "search_one": {
               "summary": "Search real public Internet domains for one current or external query; never use this operation for local files, configured work paths, or project state.",
+              "outputChannels": {"text": "content", "data": "metadata"},
               "input": {
                 "type": "object",
                 "additionalProperties": false,
@@ -65,6 +66,7 @@
             },
             "search_many": {
               "summary": "Search real public Internet domains for up to five distinct external queries in parallel; never use this operation for local files, configured work paths, or project state.",
+              "outputChannels": {"text": "content", "data": "metadata"},
               "input": {
                 "type": "object",
                 "additionalProperties": false,
@@ -101,6 +103,7 @@
           "operations": {
             "fetch_one": {
               "summary": "Fetch readable content from one real public http(s) domain URL; never use this operation for local files, configured work paths, localhost, or private-network targets.",
+              "outputChannels": {"text": "content", "data": "metadata"},
               "input": {
                 "type": "object",
                 "additionalProperties": false,
@@ -118,6 +121,7 @@
             },
             "fetch_many": {
               "summary": "Fetch readable content from up to three real public http(s) domain URLs; never use this operation for local files, configured work paths, localhost, or private-network targets.",
+              "outputChannels": {"text": "content", "data": "metadata"},
               "input": {
                 "type": "object",
                 "additionalProperties": false,

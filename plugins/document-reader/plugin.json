@@ -42,6 +42,7 @@
           "operations": {
             "read_document": {
               "summary": "Extract document text, not source code. For .js, .ts, .html, .css and other code files, use read_one_file or inspect_target when available. Accepts only PDF, DOCX, XLSX, PPTX, TXT, CSV, MD, JSON and RTF; returns one bounded character window.",
+              "outputChannels": {"text": "content", "data": "metadata"},
               "attachmentInput": {
                 "param": "source",
                 "acceptedMimeTypes": [

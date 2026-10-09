@@ -10,9 +10,7 @@ import {
   upsertSessionArtifactPaths,
 } from "../../sessions/artifact-paths.js";
 import {
-  clientVisibleMessages,
   compactRequestEvents,
-  filterMessagesAfter,
   getRequestFinalState,
   getSessionRequest,
   isSameMessageId,
@@ -23,9 +21,8 @@ import {
   toClientReplayEvent,
   toEpochMs,
   toSessionListItem,
-  toSnapshotMessage,
-  toSnapshotRequest,
 } from "../../sessions/record/projection.js";
+import { projectSessionSnapshot, type SessionSnapshotOptions } from "../../sessions/snapshot.js";
 import {
   assertValidRequestId,
   assertValidSessionId,
@@ -186,32 +183,12 @@ class InMemorySessionStore {
 
   async getSessionSnapshot(
     sessionId: string,
-    options: {
-      afterMessageId?: string | number | null;
-      includeRequests?: boolean;
-    } = {},
+    options: SessionSnapshotOptions = {},
   ): Promise<SessionSnapshot | null> {
-    const session = await this.getSessionById(sessionId);
-    if (!session) {
-      return null;
-    }
-    return {
-      sessionId,
-      ...(session.kind ? { kind: session.kind } : {}),
-      ...(session.project ? { project: session.project } : {}),
-      title: session.title,
-      messages: filterMessagesAfter(
-        clientVisibleMessages(session.messages),
-        options.afterMessageId,
-      ).map((message) =>
-        toSnapshotMessage(sessionId, message, session.requests ?? []),
-      ),
-      requests:
-        options.includeRequests === false
-          ? []
-          : (session.requests ?? []).map(toSnapshotRequest),
-      nextCursor: null,
-    };
+    assertValidSessionId(sessionId);
+    const session = this.sessions.get(sessionId);
+    // Copy only the projection; identities-only reads never clone history bodies/events.
+    return session ? structuredClone(projectSessionSnapshot(session, options)) : null;
   }
 
   async getRequestReplayById(

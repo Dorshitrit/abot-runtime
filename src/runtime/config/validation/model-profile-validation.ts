@@ -1,3 +1,4 @@
+import { validateModelPluginConfig } from "../model-plugin-config.js";
 import {
   isRequestExecutionPolicyId,
   REQUEST_EXECUTION_POLICY_IDS,
@@ -219,6 +220,8 @@ export function validateModelProfileConfig(
   if (context) {
     validateModelContextConfig(issues, context, `${displayKey}.context`);
   }
+
+  validateModelPluginConfig(issues, profile, displayKey);
 
   const execution = validateOptionalObject(
     issues,

@@ -44,7 +44,7 @@ describe("background scheduled conversation updates", () => {
       await Promise.resolve();
 
       expect(loadSessions).toHaveBeenCalledTimes(1);
-      expect(client.listSessions).toHaveBeenCalledWith("dev");
+      expect(client.listSessions).toHaveBeenCalledWith("dev", { query: "", cursor: null });
       expect(state.sessions).toEqual([background]);
       expect({ ...state, sessions: before.sessions }).toEqual(before);
       expect(harness.renderMessages).not.toHaveBeenCalled();

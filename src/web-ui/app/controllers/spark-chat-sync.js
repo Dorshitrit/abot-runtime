@@ -1,15 +1,20 @@
 import { normalizeConversationMessage } from "./conversation-session-controller.js";
 import { rememberRequestLifecycle, sameConversationMessage } from "../lib/request-lifecycle-view.js";
 
-export function mergeSparkSnapshotMessages(snapshot, current) {
+export function mergeSparkSnapshotMessages(snapshot, current, hasNewer = false) {
   const canonical = (snapshot.messages || []).map(normalizeConversationMessage);
+  if (hasNewer) return current.map((message) => canonical.find((entry) => sameConversationMessage(message, entry)) || message);
   const activeRequestIds = new Set((snapshot.requests || []).filter((request) => request.status === "streaming").map((request) => request.requestId));
   const unsettled = current.filter((message) => {
     if (!message.streaming) return false;
     if (activeRequestIds.has(message.requestId)) return true;
     return !canonical.some((entry) => sameConversationMessage(message, entry));
   });
-  return [...canonical, ...unsettled];
+  if (snapshot.newerCursor === undefined) return [...canonical, ...unsettled];
+  const settled = current.filter((message) => !message.streaming);
+  const firstIndex = canonical.length ? settled.findIndex((message) => sameConversationMessage(message, canonical[0])) : -1;
+  const older = firstIndex >= 0 ? settled.slice(0, firstIndex) : [];
+  return [...older, ...canonical, ...unsettled];
 }
 
 function needsRequestLifecycleHydration(snapshot, state) {
@@ -64,6 +69,18 @@ export function createSparkChatSync({
     if (environmentId !== getEnvironmentId()) return false;
     return readRevision === revision;
   }
+  function canRetainTargetWindow(sessionId) {
+    if (!initialized || state.currentSessionId !== sessionId) return false;
+    return conversation.session.history?.hasNewer() === true;
+  }
+  async function hydrateConversation(result) {
+    if (!canRetainTargetWindow(result.sessionId)) {
+      await conversation.session.openSession(result.sessionId, { snapshot: { ...result.snapshot, readState: result.readState } });
+      return true;
+    }
+    state.messages = mergeSparkSnapshotMessages(result.snapshot, state.messages, true);
+    return conversation.session.rehydrateRequests(result.snapshot.requests || []);
+  }
   async function drain() {
     if (!canRefresh()) return;
     queued = false;
@@ -98,13 +115,15 @@ export function createSparkChatSync({
       onReadState(result.readState);
       const snapshot = result.snapshot;
       if (shouldHydrateSparkConversation(initialized, rehydrate, snapshot, state)) {
-        initialized = false; hydrating = true;
-        await conversation.session.openSession(result.sessionId);
+        hydrating = true;
+        const restored = await hydrateConversation(result);
         hydrating = false;
+        if (!restored) return;
         if (!isCurrentRead(environmentId, readRevision)) return;
         initialized = true;
       } else {
-        state.messages = mergeSparkSnapshotMessages(snapshot, state.messages);
+        conversation.session.history?.refresh(snapshot);
+        state.messages = mergeSparkSnapshotMessages(snapshot, state.messages, conversation.session.history?.hasNewer());
         for (const request of snapshot.requests || []) rememberRequestLifecycle(state, request.lifecycle);
         for (const message of state.messages) {
           if (message.role !== "assistant" || !message.requestId) continue;

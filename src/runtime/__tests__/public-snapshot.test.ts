@@ -193,6 +193,7 @@ async function createFixture(extraFiles: readonly string[] = []): Promise<{
     "scripts/public-snapshot/fixture.ts",
     "export {};\n",
   );
+  await writeFixtureFile(sourceRoot, "scripts/internal-canary.ts", "export {};\n");
   await writeFixtureFile(sourceRoot, "src/fixture.ts", "export {};\n");
   for (const pluginId of PUBLIC_PLUGIN_IDS) {
     await writeFixtureFile(
@@ -308,17 +309,8 @@ describe("public package transform", () => {
     );
     expect(PUBLIC_PACKAGE_FILES).not.toContain("plugins/");
     expect(PUBLIC_PACKAGE_FILES).not.toContain("plugins/internal-canary/");
-    expect([...PUBLIC_PACKAGE_SCRIPT_NAMES]).not.toContain(
-      "e2e:session-history-memory",
-    );
-    for (const privateSmokeFile of [
-      "scripts/session-history-memory/contract.ts",
-      "scripts/session-history-memory/oracle.ts",
-      "scripts/session-history-memory/run.ts",
-    ]) {
-      expect([...PUBLIC_SCRIPT_FILES]).not.toContain(privateSmokeFile);
-      expect([...REQUIRED_PUBLIC_SOURCE_FILES]).not.toContain(privateSmokeFile);
-    }
+    expect([...PUBLIC_SCRIPT_FILES]).not.toContain("scripts/internal-canary.ts");
+    expect([...REQUIRED_PUBLIC_SOURCE_FILES]).not.toContain("scripts/internal-canary.ts");
   });
 
   it("refuses to build a public package from an unguarded source package", () => {
@@ -443,6 +435,7 @@ describe("public snapshot builder and verifier", () => {
     });
 
     expect(recordA).toEqual(recordB);
+    expect(recordA.files.map(({ path }) => path)).not.toContain("scripts/internal-canary.ts");
     expect(recordA.treeSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(
       await readFile(join(outputA, PUBLIC_SNAPSHOT_FILE_NAME), "utf-8"),

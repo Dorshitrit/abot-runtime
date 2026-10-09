@@ -20,7 +20,15 @@ import { PendingToolApprovals } from "./pending-tool-approvals.js";
 import { createWorkspaceChangeNotifier } from "./workspace-notifications.js";
 import type { LocalPendingToolApproval } from "../../runtime/local-host/request-approval-contracts.js";
 import { attachApprovalRequest } from "./approval-request-attachment.js";
-import { publicSparkChatAdmissionFailure, resolveSparkChatRequest } from "./spark-chat-admission.js";
+import {
+  publicSparkChatAdmissionFailure,
+  resolveSparkChatRequest,
+} from "./spark-chat-admission.js";
+import {
+  traceWebProjection,
+  webSteerRoute,
+  WebSteerObservation,
+} from "./request-control-observation.js";
 
 function createRequestId(): string {
   const random = Math.random().toString(36).slice(2, 8);
@@ -46,6 +54,7 @@ export class LocalRequestExecution {
   scheduledRequestOptions(run: SchedulerRun): RuntimeRequestOptions {
     const requestSteering = createRequestSteeringInbox({
       requestId: run.requestId,
+      diagnostics: { origin: "web_projection" },
     });
     this.activeRequests.set(run.requestId, {
       requestId: run.requestId,
@@ -58,6 +67,12 @@ export class LocalRequestExecution {
       finalState: null,
       requestSteering,
     });
+    traceWebProjection(
+      "projection.opened",
+      run.requestId,
+      this.activeRequests.get(run.requestId),
+      "schedule",
+    );
     return {
       toolApprovalController: this.toolApprovals,
       requestSteering,
@@ -73,7 +88,16 @@ export class LocalRequestExecution {
         : payload;
     if (payload.sessionDeleted !== true) this.publish(outbound);
     if (isTerminal) {
-      this.activeRequests.delete(getString(payload.requestId));
+      const requestId = getString(payload.requestId);
+      const active = this.activeRequests.get(requestId);
+      const removed = this.activeRequests.delete(requestId);
+      traceWebProjection(
+        "projection.removed",
+        requestId,
+        active,
+        "published_terminal",
+        removed,
+      );
     }
   }
 
@@ -103,10 +127,16 @@ export class LocalRequestExecution {
     try {
       body = await resolveSparkChatRequest(environment, sessionId, body);
     } catch (error) {
-      sendJson(res, 409, { ok: false, ...publicSparkChatAdmissionFailure(error) });
+      sendJson(res, 409, {
+        ok: false,
+        ...publicSparkChatAdmissionFailure(error),
+      });
       return;
     }
-    const requestSteering = createRequestSteeringInbox({ requestId });
+    const requestSteering = createRequestSteeringInbox({
+      requestId,
+      diagnostics: { origin: "web_projection" },
+    });
     const request: RunRequestMessage = {
       type: "run_request",
       requestId,
@@ -128,6 +158,12 @@ export class LocalRequestExecution {
       finalState: null,
       requestSteering,
     });
+    traceWebProjection(
+      "projection.opened",
+      requestId,
+      this.activeRequests.get(requestId),
+      "ordinary",
+    );
     void this.run(
       environment,
       request,
@@ -144,7 +180,17 @@ export class LocalRequestExecution {
           error: error instanceof Error ? error.message : String(error),
         });
       })
-      .finally(() => this.activeRequests.delete(requestId));
+      .finally(() => {
+        const active = this.activeRequests.get(requestId);
+        const removed = this.activeRequests.delete(requestId);
+        traceWebProjection(
+          "projection.removed",
+          requestId,
+          active,
+          "run_handle_settled",
+          removed,
+        );
+      });
     sendJson(res, 200, { ok: true, requestId, sessionId });
   }
 
@@ -192,44 +238,65 @@ export class LocalRequestExecution {
     const steerId = getString(message.steerId).trim();
     const text = getString(message.text).trim();
     const active = requestId ? this.activeRequests.get(requestId) : undefined;
-    if (active) {
-      const sessions = resolveEnvironment(active.environmentId).services.sessions;
-      try {
-        await sessions.assertInteractiveSession?.(active.sessionId);
-      } catch (error) {
-        if (!isAutomationSessionLockedError(error)) throw error;
-        return {
-          type: "steer_ack",
-          requestId,
-          steerId,
-          accepted: false,
-          reason: "automation_session_locked",
-        };
-      }
-    }
-    const steer = active
-      ? resolveEnvironment(active.environmentId).requests.steer
-      : undefined;
-    const result =
-      (steer
-        ? await steer(requestId, { steerId, text })
-        : active?.requestSteering.append({ steerId, text })) ??
-      ({ ok: false, reason: "request_not_active" } as const);
-    return result.ok
-      ? {
-          type: "steer_ack",
-          requestId,
-          steerId,
-          accepted: true,
-          acceptedSequence: result.update.sequence,
+    const observation = new WebSteerObservation(
+      requestId,
+      steerId,
+      getString(message.environment),
+      text.length,
+      active,
+      () => this.activeRequests.get(requestId),
+    );
+    try {
+      if (active) {
+        observation.selectRoute("interactive_session_check");
+        const sessions = resolveEnvironment(active.environmentId).services
+          .sessions;
+        try {
+          await sessions.assertInteractiveSession?.(active.sessionId);
+        } catch (error) {
+          if (!isAutomationSessionLockedError(error)) throw error;
+          const acknowledgement = {
+            type: "steer_ack",
+            requestId,
+            steerId,
+            accepted: false,
+            reason: "automation_session_locked",
+          };
+          observation.result(acknowledgement);
+          return acknowledgement;
         }
-      : {
-          type: "steer_ack",
-          requestId,
-          steerId,
-          accepted: false,
-          reason: result.reason,
-        };
+      }
+      observation.selectRoute("environment_resolution");
+      const steer = active
+        ? resolveEnvironment(active.environmentId).requests.steer
+        : undefined;
+      observation.selectRoute(webSteerRoute(active, steer));
+      const result =
+        (steer
+          ? await steer(requestId, { steerId, text })
+          : active?.requestSteering.append({ steerId, text })) ??
+        ({ ok: false, reason: "request_not_active" } as const);
+      const acknowledgement = result.ok
+        ? {
+            type: "steer_ack",
+            requestId,
+            steerId,
+            accepted: true,
+            acceptedSequence: result.update.sequence,
+          }
+        : {
+            type: "steer_ack",
+            requestId,
+            steerId,
+            accepted: false,
+            reason: result.reason,
+          };
+      observation.result(acknowledgement);
+      return acknowledgement;
+    } catch (error) {
+      observation.failed(error);
+      throw error;
+    }
   }
 
   resolveToolApproval(message: JsonObject): void {

@@ -39,7 +39,6 @@ export function createPassiveLearningFeature({
   home = createPassiveLearningHome({
     actions,
     openLearning,
-    openComputerAccess,
     openSetup: () => {
       if (openLearning() === false) return;
       if (learningRoot) selectLearningView(learningRoot, "settings");

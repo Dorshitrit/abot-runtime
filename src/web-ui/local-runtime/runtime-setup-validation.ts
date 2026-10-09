@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loadRuntimeConfig } from "../../runtime/config.js";
 import { isRecord } from "../../runtime/config/utils.js";
+import { throwRuntimeSetupValidationError } from "./runtime-setup-context-window.js";
 
 /** Validate complete effective configuration in isolation before replacing local files. */
 export async function validateRuntimeSetupPlan(params: {
@@ -35,8 +36,13 @@ export async function validateRuntimeSetupPlan(params: {
       ? Object.keys(environment.profiles)
       : [];
     const environments = profileIds.length ? profileIds : [undefined];
-    for (const profileId of environments)
-      loadRuntimeConfig({ rootDir: params.rootDir, configPath, profileId });
+    for (const profileId of environments) {
+      try {
+        loadRuntimeConfig({ rootDir: params.rootDir, configPath, profileId });
+      } catch (error) {
+        throwRuntimeSetupValidationError(error, profileId);
+      }
+    }
   } finally {
     await rm(staging, { recursive: true, force: true });
   }

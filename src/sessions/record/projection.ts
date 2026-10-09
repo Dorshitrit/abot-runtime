@@ -1,4 +1,4 @@
-import { isAssistantInitiativeMessage } from "../assistant-initiative.js";
+import { isAssistantInitiativeMessage } from "../assistant-initiative-message.js";
 import { projectSessionRequestLifecycle } from "../request-lifecycle/projection.js";
 import type {
   SessionMessageSource,
@@ -124,7 +124,7 @@ export function getRequestFinalState(
   return null;
 }
 
-function toMessageIdForUi(id: string): string | number {
+export function toMessageIdForUi(id: string): string | number {
   const match = /^msg-(\d+)$/.exec(id);
   if (match) {
     return Number(match[1]);
@@ -210,6 +210,7 @@ export function toSnapshotMessage(
   sessionId: string,
   message: SessionRecord["messages"][number],
   requests: SessionRequestRecord[],
+  resolveRequestId = createMessageRequestIdResolver(requests),
 ): SessionSnapshotMessage {
   return {
     ...(message.kind ? { kind: message.kind } : {}),
@@ -222,7 +223,7 @@ export function toSnapshotMessage(
     text: message.content,
     source: messageSource(message),
     createdAt: toEpochMs(message.createdAt),
-    requestId: message.requestId ?? inferMessageRequestId(message, requests),
+    requestId: resolveRequestId(message),
     cronJobId: message.cronJobId ?? null,
     ...(message.initiative ? { initiative: message.initiative } : {}),
     ...(message.schedule ? { schedule: message.schedule } : {}),
@@ -234,26 +235,26 @@ export function toSnapshotMessage(
   };
 }
 
-function inferMessageRequestId(
-  message: SessionRecord["messages"][number],
-  requests: SessionRequestRecord[],
-): string | null {
-  if (isAssistantInitiativeMessage(message)) return null;
-  if (message.role !== "assistant") {
-    return null;
-  }
-  for (let index = requests.length - 1; index >= 0; index -= 1) {
-    const request = requests[index];
+export function createMessageRequestIdResolver(requests: SessionRequestRecord[]) {
+  let completedOutputs: Map<string, string> | undefined;
+  return (message: SessionRecord["messages"][number]): string | null => {
+    if (message.requestId != null) return message.requestId;
+    if (isAssistantInitiativeMessage(message)) return null;
+    if (message.role !== "assistant") return null;
+    completedOutputs ??= indexCompletedRequestOutputs(requests);
+    return completedOutputs.get(message.content) ?? null;
+  };
+}
+
+function indexCompletedRequestOutputs(requests: SessionRequestRecord[]): Map<string, string> {
+  const outputs = new Map<string, string>();
+  for (const request of requests) {
     const finalState = getRequestFinalState(request);
-    if (
-      finalState?.status === "completed" &&
-      typeof finalState.output === "string" &&
-      finalState.output === message.content
-    ) {
-      return request.requestId;
-    }
+    if (finalState?.status !== "completed") continue;
+    if (typeof finalState.output !== "string") continue;
+    outputs.set(finalState.output, request.requestId);
   }
-  return null;
+  return outputs;
 }
 
 export function toSnapshotRequest(

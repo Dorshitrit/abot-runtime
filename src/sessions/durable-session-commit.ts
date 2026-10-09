@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { open, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { SessionRecord } from "./types.js";
+import { currentSourceStamp, sessionSourceStamp, updateSessionMetadata } from "./metadata/store.js";
+import type { SessionMetadataChange } from "./metadata/source-receipt.js";
 
 export class SessionCommitOutcomeUnknownError extends Error {
   readonly code = "session_commit_outcome_unknown";
@@ -34,15 +36,19 @@ export async function saveDurableSessionFile(
   sessionsDir: string,
   session: SessionRecord,
   assertCurrent?: () => void,
+  metadataChange: SessionMetadataChange = "projection",
 ): Promise<void> {
   const target = join(sessionsDir, `${session.id}.json`);
+  const previousSource = metadataChange === "request-only" ? await currentSourceStamp(target) : undefined;
   const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
   let replaced = false;
+  let source: string;
   try {
     const handle = await open(temporary, "wx", 0o600);
     try {
       await handle.writeFile(JSON.stringify(session, null, 2), "utf8");
       await handle.sync();
+      source = sessionSourceStamp(await handle.stat({ bigint: true }));
     } finally {
       await handle.close();
     }
@@ -56,4 +62,5 @@ export async function saveDurableSessionFile(
       throw new SessionCommitOutcomeUnknownError(session.id, { cause: error });
     throw error;
   }
+  await updateSessionMetadata(sessionsDir, session, source, previousSource);
 }

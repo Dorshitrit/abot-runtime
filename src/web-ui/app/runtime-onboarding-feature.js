@@ -17,6 +17,7 @@ export function createRuntimeOnboardingFeature({
   const usesBridgeBackend = () => state.config?.backend === "bridge";
   let selectedGuide = null;
   let bindings = {};
+  shell?.runtimeAvailabilityChanged(state.runtimeAvailability);
 
   function createConfiguredGuide() {
     const common = {
@@ -52,6 +53,7 @@ export function createRuntimeOnboardingFeature({
       loadHostConnection: () => runtimeClient.getSystemHostConnection(),
       connectLocalHost: () => runtimeClient.connectLocalSystemHost(),
       createHostPairing: () => runtimeClient.createSystemHostPairing(),
+      requestHostStoreConnection: () => runtimeClient.requestSystemHostStoreConnection(),
       requestHostPermissions: (input) => runtimeClient.requestSystemHostPermissions(input),
       downloadHostSetup: (platform) =>
         runtimeClient.downloadSystemHostSetup(platform),
@@ -87,6 +89,7 @@ export function createRuntimeOnboardingFeature({
   };
   const controller = createRuntimeOnboardingController({
     state,
+    getEnvironmentId: selectedEnvironmentId,
     guide,
     reloadModels: () =>
       usesBridgeBackend() ? reloadCatalog() : reloadModels(),

@@ -104,7 +104,8 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
     updateLiveRegion(
       conversations,
       renderDashboardConversations({
-        sessions: snapshot.sessions,
+        sessions: snapshot.sessionOverview?.sessions ?? snapshot.sessions,
+        overview: snapshot.sessionOverview,
         loading: snapshot.loadingSessions,
         error: snapshot.sessionsError,
       }),

@@ -1,3 +1,4 @@
+import { parseOptionalToolOutputChannels } from "./output-channels.js";
 import {
   TOOL_NORMAL_INVOCATION_IDENTIFIER_MAX_LENGTH,
   TOOL_NORMAL_INVOCATION_STRING_MAX_LENGTH as MAX_STRING_LENGTH_BOUND,
@@ -542,13 +543,13 @@ function parseOperation(
     !hasExactKeys(
       raw,
       ["operationId", "summary", "input", "effect", "approval"],
-      ["selectionControlIds", "fixedParams", "payload", "attachmentInput"],
+      ["selectionControlIds", "fixedParams", "payload", "attachmentInput", "outputChannels"],
     )
   ) {
     fail(
       toolName,
       path,
-      "operation must contain operationId/summary/input/effect/approval and optional selectionControlIds/fixedParams/payload/attachmentInput",
+      "operation must contain operationId/summary/input/effect/approval and optional selectionControlIds/fixedParams/payload/attachmentInput/outputChannels",
     );
   }
   if (
@@ -597,12 +598,8 @@ function parseOperation(
   }
   return Object.freeze({
     operationId: identifier(toolName, `${path}.operationId`, raw.operationId),
-    summary: boundedText(
-      toolName,
-      `${path}.summary`,
-      raw.summary,
-      MAX_SUMMARY_LENGTH,
-    ),
+    summary: boundedText(toolName, `${path}.summary`, raw.summary, MAX_SUMMARY_LENGTH),
+    ...parseOptionalToolOutputChannels(raw.outputChannels, `${toolName}.${path}.outputChannels`),
     input,
     ...(selectionControlIds ? { selectionControlIds } : {}),
     ...(fixedParams ? { fixedParams } : {}),

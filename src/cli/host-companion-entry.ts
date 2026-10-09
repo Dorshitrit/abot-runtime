@@ -7,31 +7,14 @@ import {
   isHostRecord,
 } from "../computer-access/companion/protocol.js";
 import { runHostCompanionCli } from "./host-companion.js";
-
-const SETUP_INPUT_LIMIT_BYTES = 16_384;
-const SETUP_INPUT_TIMEOUT_MS = 10_000;
+import { readHostCompanionInput } from "./host-companion-input.js";
 
 async function readSetupInput(input: Readable): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  let length = 0;
-  const deadline = setTimeout(() => {
-    input.destroy(new Error("Host setup input timed out."));
-  }, SETUP_INPUT_TIMEOUT_MS);
+  const text = await readHostCompanionInput(input);
   try {
-    for await (const chunk of input) {
-      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      length += bytes.length;
-      if (length > SETUP_INPUT_LIMIT_BYTES)
-        throw new Error("Host setup input exceeds the size limit.");
-      chunks.push(bytes);
-    }
-    try {
-      return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
-    } catch {
-      throw new Error("Host setup requires a JSON object on standard input.");
-    }
-  } finally {
-    clearTimeout(deadline);
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new Error("Host setup requires a JSON object on standard input.");
   }
 }
 

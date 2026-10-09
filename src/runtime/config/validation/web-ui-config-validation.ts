@@ -1,12 +1,13 @@
 import type { RuntimeConfigFile } from "../types.js";
 import {
   validateOptionalBoolean,
+  validateOptionalPositiveInteger,
   validateOptionalObject,
 } from "./runtime-config-field-validation.js";
 import { RuntimeConfigValidationError } from "./runtime-config-validation-contract.js";
 
 function isUnsupportedWebUiField(key: string): boolean {
-  return key !== "openOnRuntimeServiceStart";
+  return !["openOnRuntimeServiceStart", "pageSize"].includes(key);
 }
 
 function validateWebUiConfig(
@@ -19,6 +20,7 @@ function validateWebUiConfig(
     "openOnRuntimeServiceStart",
     "webUi.openOnRuntimeServiceStart",
   );
+  validateOptionalPositiveInteger(issues, webUi, "pageSize", "webUi.pageSize");
   for (const key of Object.keys(webUi)) {
     if (isUnsupportedWebUiField(key)) {
       issues.push(`webUi.${key} is not a supported configuration field`);

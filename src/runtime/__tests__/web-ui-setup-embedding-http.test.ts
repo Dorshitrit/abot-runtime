@@ -131,11 +131,24 @@ describe("extended onboarding HTTP boundary", () => {
     expect(config.plugins).toMatchObject({
       enabled: true,
       allow: ["*"],
-      deny: ["memory"],
+      deny: [],
+      disabledPluginIds: ["memory"],
     });
     expect(await get("runtime/plugins")).toMatchObject({
       ok: true,
-      selection: { enabled: true, allow: ["*"], deny: ["memory"] },
+      selection: {
+        enabled: true,
+        allow: ["*"],
+        deny: [],
+        disabledPluginIds: ["memory"],
+      },
+      plugins: expect.arrayContaining([
+        expect.objectContaining({
+          id: "memory",
+          state: "disabled",
+          pluginEnabled: false,
+        }),
+      ]),
     });
     expect(activate).not.toHaveBeenCalled();
   });

@@ -1,6 +1,7 @@
 import { configRequiresRawRepair } from "./raw-config-repair.js";
 import { escapeAttribute, escapeHtml, textOf } from "../../lib/text-format.js";
 import { isConfigObject } from "./config-model.js";
+import { renderModelPluginPermissions } from "./model-plugin-permissions.js";
 
 function modelListStatus(model, hasImage) {
   if (model.registered === false) return "Not registered";
@@ -15,6 +16,7 @@ function renderModelRegistrationAction(model) {
 }
 
 export function createConfigModelRendering({
+  modelPluginViewState,
   state,
   calibrationProfileLabel,
   configFileKey,
@@ -240,6 +242,7 @@ export function createConfigModelRendering({
           </div>
           ${renderExecutionRoute(model)}
         </div>
+        ${renderModelPluginPermissions(model, state.modelPluginCatalog, modelPluginViewState)}
         <details
           class="config-calibration-section"
           data-calibration-section-key="${escapeAttribute(calibrationSectionKey)}"

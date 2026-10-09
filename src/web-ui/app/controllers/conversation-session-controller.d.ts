@@ -47,10 +47,11 @@ export interface ConversationSessionClient {
     readThroughMessageId: number | string | null;
     readThroughRequestId?: string;
   }): Promise<Record<string, unknown>>;
-  listSessions(environmentId: string): Promise<Record<string, unknown>>;
+  listSessions(environmentId: string, page?: Record<string, unknown>): Promise<Record<string, unknown>>;
   loadSession(
     sessionId: string,
     environmentId: string,
+    page?: Record<string, unknown>,
   ): Promise<Record<string, unknown>>;
   fetchRequestEvents(options: {
     requestId: string;
@@ -125,6 +126,7 @@ export declare function normalizeConversationMessage(
 export declare function createConversationSessionController(
   options: ConversationSessionControllerOptions,
 ): {
+  history: { load(direction?: "older" | "newer"): Promise<void>; latest(): Promise<void>; hasNewer(): boolean };
   activateRequestForScope(
     scope: { environmentId: string; sessionId: string },
     requestId: string,
@@ -150,12 +152,16 @@ export declare function createConversationSessionController(
   invalidateEnvironmentLoads(): void;
   loadSessions(): Promise<ConversationSession[]>;
   markCurrentSessionReadSoon(): void;
+  rehydrateRequests(requests: Record<string, unknown>[]): Promise<boolean>;
   normalizeMessage(raw: unknown): ConversationMessage;
   openSession(
     sessionId: string,
     options?: {
-      isRouteCurrent(): boolean;
-      commitRouteNavigation(): boolean;
+      isRouteCurrent?(): boolean;
+      commitRouteNavigation?(): boolean;
+      snapshot?: Record<string, unknown>;
+      page?: Record<string, unknown>;
+      preserveCurrentWindow?: boolean;
     },
   ): Promise<void>;
   requestBelongsToCurrentView(requestId: string): boolean;

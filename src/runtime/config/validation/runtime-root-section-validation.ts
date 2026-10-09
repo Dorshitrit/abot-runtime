@@ -40,12 +40,22 @@ export function validatePluginConfig(
   validateOptionalBoolean(issues, plugins, "enabled", "plugins.enabled");
   validateOptionalStringArray(issues, plugins, "allow", "plugins.allow");
   validateOptionalStringArray(issues, plugins, "deny", "plugins.deny");
+  validateOptionalStringArray(
+    issues,
+    plugins,
+    "disabledPluginIds",
+    "plugins.disabledPluginIds",
+  );
+  const supportedPluginFields = [
+    "enabled",
+    "allow",
+    "deny",
+    "disabledPluginIds",
+  ];
   for (const key of Object.keys(plugins)) {
-    const isUnsupportedPluginField =
-      key !== "enabled" && key !== "allow" && key !== "deny";
-    if (isUnsupportedPluginField) {
-      issues.push(`plugins.${key} is not a supported configuration field`);
-    }
+    const isSupportedPluginField = supportedPluginFields.includes(key);
+    if (isSupportedPluginField) continue;
+    issues.push(`plugins.${key} is not a supported configuration field`);
   }
 }
 

@@ -3,20 +3,22 @@ import {
   configRequiresRawRepair,
 } from "./raw-config-repair.js";
 import { renderModelSetupEntry } from "./model-setup-entry.js";
-import { escapeHtml, textOf } from "../../lib/text-format.js";
+import { textOf } from "../../lib/text-format.js";
 import { CONFIG_CATEGORIES } from "./config-model.js";
+import { modelSummary } from "./model-summary.js";
+import { renderConfigurationSummary, syncConfigurationSummary } from "./summary-rendering.js";
 
 export function createConfigWorkspaceView({
+  modelPluginViewState,
   onNavigationChange = () => {},
   state,
   dom,
   eventTarget,
   pluginManagement,
+  getOperationsSummary = () => ({ label: "System summary", items: [{ label: "System", value: "Not loaded" }] }),
   configFileEntries,
   configFileKey,
-  countObjectKeys,
   dashboardIsBusy,
-  dirtyFiles,
   ensureRawSelection,
   fileStatusText,
   hasPendingFileChanges,
@@ -53,17 +55,6 @@ export function createConfigWorkspaceView({
     return requestRunner?.config?.schemaVersion === 2;
   }
 
-  function configuredStepTargetCountLabel(count, sparseOverrides) {
-    const noun = sparseOverrides ? "override" : "mapping";
-    return `${count} ${count === 1 ? noun : `${noun}s`}`;
-  }
-
-  function configChangeSummary(count) {
-    if (count === 0) return "All saved";
-    const fileLabel = count === 1 ? "file" : "files";
-    return `${count} unsaved ${fileLabel}`;
-  }
-
   function requestPipelineContent(requestRunner) {
     if (!requestRunner) {
       return '<div class="empty-state compact">No request runner config found</div>';
@@ -95,6 +86,7 @@ export function createConfigWorkspaceView({
     const unavailable =
       '<div class="empty-state">No config dashboard data</div>';
     dom.configDashboard.innerHTML =
+      renderConfigurationSummary(currentSummary()) +
       '<div class="config-category-panels">' +
       CONFIG_CATEGORIES.map((category) =>
         renderCategoryPanel(
@@ -129,16 +121,17 @@ export function createConfigWorkspaceView({
     }
     dom.configDashboard.setAttribute("aria-busy", busy ? "true" : "false");
     dom.refreshConfigButton.disabled = busy;
+    syncDashboardSummary();
   }
 
   function renderConfigDashboard() {
+    modelPluginViewState?.capture();
     const dashboard = state.configDashboard;
     if (!dashboard?.files) {
       renderUnavailableDashboard();
       return;
     }
     const runtime = dashboard.files.runtime;
-    const requestRunner = dashboard.files.requestRunner;
     const models = Array.isArray(dashboard.files.models)
       ? dashboard.files.models
       : [];
@@ -146,18 +139,6 @@ export function createConfigWorkspaceView({
       state.selectedConfigModelId = models[0]?.id || "";
     }
     ensureRawSelection();
-    const registeredStepCount = Array.isArray(dashboard.modelSteps)
-      ? dashboard.modelSteps.length
-      : 0;
-    const configuredStepTargetCount = requestRunner
-      ? countObjectKeys(requestRunner.config?.models?.defaults?.steps)
-      : 0;
-    const sparseOverrides = requestRunnerUsesSparseOverrides(requestRunner);
-    const configuredStepTargetLabel = configuredStepTargetCountLabel(
-      configuredStepTargetCount,
-      sparseOverrides,
-    );
-    const dirtyCount = dirtyFiles().length;
     const repairNeeded = configFileEntries().some((file) =>
       configRequiresRawRepair(
         file,
@@ -165,39 +146,7 @@ export function createConfigWorkspaceView({
       ),
     );
     dom.configDashboard.innerHTML = `
-      <dl class="config-summary" aria-label="Configuration summary">
-        <div class="config-summary-item">
-          <dt>Runtime</dt>
-          <dd class="config-summary-value">${escapeHtml(
-            runtime?.exists ? "Ready" : "Missing",
-          )}</dd>
-        </div>
-        <div class="config-summary-item">
-          <dt>Pipeline</dt>
-          <dd class="config-summary-value">
-            <span data-config-registered-step-count>${escapeHtml(
-              `${registeredStepCount} registered`,
-            )}</span>
-            <span aria-hidden="true"> · </span>
-            <span data-config-step-target-count>${escapeHtml(
-              configuredStepTargetLabel,
-            )}</span>
-          </dd>
-        </div>
-        <div class="config-summary-item">
-          <dt>Models</dt>
-          <dd class="config-summary-value">${escapeHtml(String(models.length))}</dd>
-        </div>
-        <div class="config-summary-item config-summary-changes">
-          <dt>Changes</dt>
-          <dd
-            class="config-summary-value ${dirtyCount ? "dirty" : ""}"
-            data-config-summary-status
-            role="status"
-            aria-live="polite"
-          >${escapeHtml(configChangeSummary(dirtyCount))}</dd>
-        </div>
-      </dl>
+      ${renderConfigurationSummary(currentSummary())}
       ${
         repairNeeded
           ? `<section class="config-category-panel" aria-label="Repair configuration file">${renderConfigMap()}</section>`
@@ -224,6 +173,7 @@ export function createConfigWorkspaceView({
     );
     syncDirtyPresentation({ syncRawEditor: true });
     syncDashboardInteractivity();
+    modelPluginViewState?.restore();
   }
 
   function syncActiveCategory() {
@@ -240,6 +190,7 @@ export function createConfigWorkspaceView({
     if (!CONFIG_CATEGORIES.includes(category)) return;
     state.activeCategory = category;
     syncActiveCategory();
+    syncDashboardSummary();
     onNavigationChange();
   }
 
@@ -300,14 +251,18 @@ export function createConfigWorkspaceView({
     }
   }
 
+  function currentSummary() {
+    if (state.activeCategory === "plugins") {
+      return pluginManagement?.summary?.() ?? {
+        label: "Plugins summary", items: [{ label: "Plugins", value: "Not loaded" }],
+      };
+    }
+    if (state.activeCategory === "operations") return getOperationsSummary();
+    return modelSummary(state, hasPendingFileChanges);
+  }
+
   function syncDashboardSummary() {
-    const status = dom.configDashboard.querySelector(
-      "[data-config-summary-status]",
-    );
-    if (!status) return;
-    const count = dirtyFiles().length;
-    status.textContent = configChangeSummary(count);
-    status.classList.toggle("dirty", count > 0);
+    syncConfigurationSummary(dom.configDashboard, currentSummary());
   }
 
   function syncRawControls(options = {}) {
@@ -365,6 +320,7 @@ export function createConfigWorkspaceView({
     renderConfigDashboard,
     setWorkspaceStatus,
     syncDashboardInteractivity,
+    syncDashboardSummary,
     syncDirtyPresentation,
   };
 }

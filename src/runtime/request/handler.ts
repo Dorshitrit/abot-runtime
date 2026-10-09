@@ -9,6 +9,7 @@ import { isRequestCancelled, REQUEST_CANCELLED } from "./cancellation.js";
 import { isRequestInterrupted, REQUEST_INTERRUPTED } from "./interruption.js";
 import { RequestToolResources } from "../capabilities/request-tool-resources.js";
 import { traceDebug } from "../observability/debug-logger.js";
+import { traceRequestControl } from "../observability/request-control-diagnostics.js";
 import { RequestLifecycle } from "../orchestration/lifecycle/request-lifecycle.js";
 import { ROLE_CALL_RESPONSE_MAX_LENGTH } from "../orchestration/role-calls/index.js";
 import { runModelAuthoredDegradedFinalization } from "../steps/degraded-finalization/model-authored.js";
@@ -158,6 +159,13 @@ class RequestHandlingSession {
   }
 
   private async execute(): Promise<InternalRequestHandlerOutcome> {
+    traceRequestControl("runtime.request_control", "request.entered", {
+      requestId: this.input.requestId,
+      sessionId: this.input.sessionId,
+      environmentId: this.options.runtimeConfig?.runtimeId,
+      toolPermissionMode: this.input.toolPermissionMode,
+      resumed: Boolean(this.options.approvalExecution?.resume),
+    });
     const prepared = await prepareRequestExecution({
       ws: this.ws,
       options: this.options,

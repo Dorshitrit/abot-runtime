@@ -27,6 +27,7 @@ export function createSessionController({
   confirmAction = window.confirm.bind(window),
   copyText = (value) => navigator.clipboard.writeText(value),
 }) {
+  let pagination;
   const titleOf = (session) =>
     textOf(session?.displayName || session?.title || session?.id);
   const byId = (sessionId) =>
@@ -34,7 +35,8 @@ export function createSessionController({
   const isPinned = (sessionId) => state.pinnedSessionIds.includes(sessionId);
   const sidebar = createSessionSidebarController({
     state, preferences, selectedEnvironmentId, showToast: shell?.showToast,
-    render: onSidebarChange ?? render, getFilteredSessions: filtered,
+    render: () => { (onSidebarChange ?? render)(); void pagination?.load(); }, getFilteredSessions: filtered,
+    getPageInfo: () => pagination?.info(),
   });
 
   function filtered() {
@@ -51,11 +53,14 @@ export function createSessionController({
   }
 
   function render() {
+    const scrollTop = dom.sessionsList.scrollTop;
     sessionActionsMenu.reset();
     dom.sessionsList.innerHTML = "";
     const sessions = filtered();
-    dom.sessionsCount.textContent = String(sessions.length);
+    dom.sessionsCount.textContent = String(pagination?.info().total ?? sessions.length);
     sidebar.renderSections({ root: dom.sessionsList, sessions, createSessionItem, renderGroups });
+    pagination?.renderFooter();
+    dom.sessionsList.scrollTop = scrollTop;
   }
 
   function createSessionItem(session, sessionIndex) {
@@ -229,6 +234,7 @@ export function createSessionController({
       : [sessionId, ...state.pinnedSessionIds];
     preferences.savePinnedSessions(state.pinnedSessionIds);
     render();
+    void pagination?.load();
   }
 
   async function copyFilename(sessionId) {
@@ -310,6 +316,8 @@ export function createSessionController({
   }
 
   return {
+    setPagination: (value) => { pagination = value; },
+    paginationQuery: sidebar.paginationQuery,
     archiveSession: (sessionId) => sidebar.archiveSession(sessionId),
     applyReadState,
     applyTitle,

@@ -58,7 +58,7 @@ export function renderMacSetupAction(snapshot, disabled) {
     : "Connect this Mac";
   const label = local ? localLabel : "Connect a Mac";
   const action = local ? "local" : "manual";
-  return `<button type="button" data-system-host-mac="${action}" ${disabled ? "disabled" : ""}>${label}</button>`;
+  return `<button type="button" class="system-host-card-primary" data-system-host-mac="${action}" ${disabled ? "disabled" : ""}>${label}</button>`;
 }
 
 export function renderMacSetupNotice(snapshot) {

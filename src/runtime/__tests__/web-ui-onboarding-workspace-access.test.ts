@@ -93,6 +93,19 @@ function routeFixture(path: string) {
 }
 
 describe("initial onboarding workspace access", () => {
+  test("availability subscribers observe updated access even while Home stays selected and can detach", () => {
+    const f = fixture();
+    const observed: boolean[] = [];
+    const detach = f.shell.subscribeRuntimeAvailabilityChange(() => observed.push(f.shell.isWorkspaceAvailable("learning")));
+    f.shell.runtimeAvailabilityChanged({ status: "loading" });
+    f.shell.runtimeAvailabilityChanged({ status: "ready" });
+    expect(observed).toEqual([false, true]);
+    expect(f.onWorkspaceChange).not.toHaveBeenCalled();
+    detach();
+    f.shell.runtimeAvailabilityChanged({ status: "setup_required" });
+    expect(observed).toEqual([false, true]);
+  });
+
   test.each(["loading", "setup_required", "checking", "error"])(
     "%s before readiness leaves only Home available and hides Spark", (status) => {
       const f = fixture();

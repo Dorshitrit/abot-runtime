@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { buildWebUiConfig } from "./config/web-ui.js";
 
 import {
   DEFAULT_RUNTIME_ID,
@@ -246,6 +247,7 @@ export function loadRuntimeConfig(
       compiledDir,
       traceFile,
     },
+    webUi: buildWebUiConfig(fileConfig),
     logging: loggingConfig,
     ...(timeouts ? { timeouts } : {}),
     ...(pluginConfig ? { plugins: pluginConfig } : {}),

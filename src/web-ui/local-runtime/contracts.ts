@@ -1,4 +1,7 @@
-import type { RuntimeSetupGatewayRestorePoint } from "../runtime-setup-gateway.js";
+import type {
+  AppliedGatewayConfigurations,
+  RuntimeSetupGatewayRestorePoint,
+} from "../runtime-setup-gateway.js";
 import type { WebUiEnvironmentConfig } from "../environment-config.js";
 import type { RuntimeSetupActivation } from "./runtime-setup-input.js";
 import type { LocalRuntimeApplication } from "../../runtime/local-application.js";
@@ -13,10 +16,15 @@ export type LocalRuntimeBackendOptions = {
   defaultEnvironmentId: string;
   resolveEnvironmentConfig?: (configPath?: string) => WebUiEnvironmentConfig;
   providerAdapters?: ModelProviderAdapterRegistry;
-  onRuntimeSetup?: (configPath: string) => Promise<RuntimeSetupActivation>;
+  captureRuntimeSetupConfiguration?: (configPath?: string) => string | null;
+  onRuntimeSetup?: (
+    configPath: string,
+    applied?: AppliedGatewayConfigurations,
+  ) => Promise<RuntimeSetupActivation>;
   createRuntimeSetupRestorePoint?: () => RuntimeSetupGatewayRestorePoint;
   checkRuntimeSetupActivation?: (
     configPath: string,
+    applied?: AppliedGatewayConfigurations,
   ) => Promise<RuntimeSetupActivation>;
 };
 

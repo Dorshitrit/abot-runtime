@@ -234,6 +234,21 @@ function failureFromError(error, options) {
   });
 }
 
+// src/plugin-sdk/context-text-result.ts
+function deliverPluginTextResult(result, fields, budget) {
+  const assessed = enforcePluginResultByteBudget(result, budget);
+  if (!canHandOffContextText(result, assessed, budget)) return assessed;
+  return enforcePluginResultByteBudget(
+    { ...result, contextTextFields: Object.freeze([...fields]) },
+    budget
+  );
+}
+function canHandOffContextText(original, assessed, budget) {
+  if (budget?.acceptsContextText !== true) return false;
+  if (assessed === original) return false;
+  return assessed.errorCode === "plugin_result_too_large";
+}
+
 // src/capabilities/tool-media.ts
 var TOOL_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
@@ -255,25 +270,25 @@ function hostStateDirectory(rootDir) {
 }
 function ensureHostStateDirectory(directory) {
   (0, import_node_fs.mkdirSync)(directory, { recursive: true, mode: 448 });
-  const stat2 = (0, import_node_fs.lstatSync)(directory);
-  if (!stat2.isDirectory()) throw new Error("host_state_directory_invalid");
+  const stat4 = (0, import_node_fs.lstatSync)(directory);
+  if (!stat4.isDirectory()) throw new Error("host_state_directory_invalid");
   if (process.platform === "win32") return;
-  if (stat2.uid !== process.getuid?.())
+  if (stat4.uid !== process.getuid?.())
     throw new Error("host_state_owner_invalid");
-  if ((stat2.mode & 63) !== 0)
+  if ((stat4.mode & 63) !== 0)
     throw new Error("host_state_directory_not_private");
 }
 function readHostPrivateJson(path) {
   try {
-    const stat2 = (0, import_node_fs.lstatSync)(path);
-    if (!stat2.isFile()) throw new Error("host_state_file_invalid");
+    const stat4 = (0, import_node_fs.lstatSync)(path);
+    if (!stat4.isFile()) throw new Error("host_state_file_invalid");
     if (process.platform !== "win32") {
-      if (stat2.uid !== process.getuid?.())
+      if (stat4.uid !== process.getuid?.())
         throw new Error("host_state_owner_invalid");
-      if ((stat2.mode & 63) !== 0)
+      if ((stat4.mode & 63) !== 0)
         throw new Error("host_state_file_not_private");
     }
-    if (stat2.size > 16384) throw new Error("host_state_file_too_large");
+    if (stat4.size > 16384) throw new Error("host_state_file_too_large");
     return JSON.parse((0, import_node_fs.readFileSync)(path, "utf8"));
   } catch (error) {
     if (error.code === "ENOENT") return void 0;
@@ -4259,7 +4274,7 @@ var import_node_path4 = require("node:path");
 // src/computer-access/process-runner.ts
 var import_node_child_process4 = require("node:child_process");
 var STREAM_MAX_CHARS = 16e3;
-function runSystemProcess(input) {
+function runSystemProcess(input, capture) {
   if (input.abortSignal?.aborted)
     return Promise.resolve({
       exitCode: null,
@@ -4287,6 +4302,7 @@ function runSystemProcess(input) {
       if (timeout) clearTimeout(timeout);
       if (stopGrace) clearTimeout(stopGrace);
       input.abortSignal?.removeEventListener("abort", abort);
+      capture?.end();
       resolve(
         Object.freeze({
           exitCode,
@@ -4330,18 +4346,25 @@ function runSystemProcess(input) {
       stopGrace.unref();
     };
     const abort = () => stop("aborted");
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => {
-      const remaining = streamMaxChars - stdout.length;
-      truncated ||= chunk.length > remaining;
-      stdout += chunk.slice(0, remaining);
-    });
-    child.stderr.on("data", (chunk) => {
-      const remaining = streamMaxChars - stderr.length;
-      truncated ||= chunk.length > remaining;
-      stderr += chunk.slice(0, remaining);
-    });
+    const attachOutput = () => {
+      if (capture) {
+        capture.attach(child.stdout, child.stderr, () => stop("output_failed"));
+        return;
+      }
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
+      child.stdout.on("data", (chunk) => {
+        const remaining = streamMaxChars - stdout.length;
+        truncated ||= chunk.length > remaining;
+        stdout += chunk.slice(0, remaining);
+      });
+      child.stderr.on("data", (chunk) => {
+        const remaining = streamMaxChars - stderr.length;
+        truncated ||= chunk.length > remaining;
+        stderr += chunk.slice(0, remaining);
+      });
+    };
+    attachOutput();
     child.once("error", (error) => {
       status = "spawn_failed";
       stderr = error.message.slice(0, STREAM_MAX_CHARS);
@@ -4963,7 +4986,7 @@ async function executeSystemCommand(input) {
     );
   await requireNativeWorkingDirectory(target, cwd);
   const plan = params.elevated === true ? await elevatedSystemCommand({ target, command, cwd, run }) : unprivilegedSystemCommand(target, command, cwd);
-  return run({
+  return (input.runCommand ?? run)({
     ...plan,
     timeoutMs,
     ...input.abortSignal ? { abortSignal: input.abortSignal } : {}
@@ -5007,6 +5030,11 @@ var LEGACY_EVIDENCE_LABELS = {
   launch_request_dispatch: "application launch request dispatch"
 };
 function systemProcessResult(target, result, evidenceScope, application) {
+  return enforcePluginResultByteBudget(
+    buildSystemProcessResult(target, result, evidenceScope, application)
+  );
+}
+function buildSystemProcessResult(target, result, evidenceScope, application) {
   const stdoutOmittedChars = Math.max(
     0,
     result.stdout.length - STREAM_EXCERPT_CHARS
@@ -5049,24 +5077,28 @@ function systemProcessResult(target, result, evidenceScope, application) {
     `Summary omitted characters: stdout=${stdoutOmittedChars}, stderr=${stderrOmittedChars}. Raw stream capture truncated: ${result.outputTruncated}.`
   ].join("\n");
   if (hasSuccessfulSystemObservation(result)) {
-    return successResult({
+    return {
+      ok: true,
+      producedNewInformation: true,
       output,
       stdout: result.stdout,
       stderr: result.stderr,
       exitCode: 0,
       data
-    });
+    };
   }
   const errorCode = result.status === "completed" ? "system_command_failed" : `system_${result.status}`;
-  return failureResult({
+  return {
+    ok: false,
+    producedNewInformation: false,
     errorCode,
-    message: hasUncertainDescendantState(result) ? "System command observation stopped. External or detached descendants may remain; inspect the target before retrying." : "The target did not report successful command completion.",
+    error: hasUncertainDescendantState(result) ? "System command observation stopped. External or detached descendants may remain; inspect the target before retrying." : "The target did not report successful command completion.",
     output,
     stdout: result.stdout,
     stderr: result.stderr,
     ...result.exitCode !== null ? { exitCode: result.exitCode } : {},
     data
-  });
+  };
 }
 function hasSuccessfulSystemObservation(result) {
   if (result.status !== "completed") return false;
@@ -5103,7 +5135,7 @@ function withSystemOperationErrors(operation) {
     }
   };
 }
-function createSystemHandlers(run = runSystemProcess, resolveTarget = (id) => resolveSystemTarget(id, run)) {
+function createSystemHandlers(run = runSystemProcess, resolveTarget = (id) => resolveSystemTarget(id, run), commandOutput) {
   const targets = async () => {
     const observation = await observeSystemTargets(run);
     return successResult({
@@ -5116,12 +5148,15 @@ function createSystemHandlers(run = runSystemProcess, resolveTarget = (id) => re
   };
   const command = async (params, context) => {
     const target = await resolveTarget(readSystemTargetId(params.target));
+    const output = commandOutput?.(context);
     const result = await executeSystemCommand({
       target,
       params,
       run,
+      ...output ? { runCommand: output.run } : {},
       ...context?.abortSignal ? { abortSignal: context.abortSignal } : {}
     });
+    if (output) return output.present(target, result);
     return systemProcessResult(target, result, "command_process_completion");
   };
   const applications = async (params) => {
@@ -5167,6 +5202,255 @@ function createSystemHandlers(run = runSystemProcess, resolveTarget = (id) => re
     system_command: withSystemOperationErrors(command),
     system_applications: withSystemOperationErrors(applications),
     system_launch: withSystemOperationErrors(launch)
+  };
+}
+
+// src/computer-access/command-output-capture.ts
+var import_node_crypto6 = require("node:crypto");
+var import_node_events = require("node:events");
+var import_node_fs5 = require("node:fs");
+var import_promises6 = require("node:fs/promises");
+var import_node_path8 = require("node:path");
+var import_promises7 = require("node:stream/promises");
+
+// src/computer-access/command-output-retention.ts
+var import_promises5 = require("node:fs/promises");
+var import_node_path7 = require("node:path");
+var DEFAULT_SYSTEM_OUTPUT_RETENTION_MS = 7 * 24 * 60 * 6e4;
+var activeSystemCaptures = /* @__PURE__ */ new Set();
+var jobs = /* @__PURE__ */ new Map();
+var CAPTURE_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+async function cleanupSystemOutput(root, retentionMs) {
+  const entries = await (0, import_promises5.readdir)(root, { withFileTypes: true }).catch((error) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !CAPTURE_ID.test(entry.name)) continue;
+    const directory = (0, import_node_path7.join)(root, entry.name);
+    if (activeSystemCaptures.has(directory)) continue;
+    const files = await (0, import_promises5.readdir)(directory);
+    const times = await Promise.all(files.map(async (file) => (await (0, import_promises5.stat)((0, import_node_path7.join)(directory, file))).mtimeMs));
+    const completedAt = Math.max((await (0, import_promises5.stat)(directory)).mtimeMs, ...times);
+    const captureRetentionMs = await readCaptureRetention(directory, entry.name, retentionMs);
+    if (Date.now() - completedAt < captureRetentionMs) continue;
+    if (activeSystemCaptures.has(directory)) continue;
+    await (0, import_promises5.rm)(directory, { recursive: true });
+    removed += 1;
+  }
+  return removed;
+}
+async function readCaptureRetention(directory, id, fallbackMs) {
+  let receipt;
+  try {
+    receipt = JSON.parse(await (0, import_promises5.readFile)((0, import_node_path7.join)(directory, "receipt.json"), "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return fallbackMs;
+    if (error instanceof SyntaxError) return fallbackMs;
+    throw error;
+  }
+  if (receipt === null || typeof receipt !== "object") return fallbackMs;
+  if (!("kind" in receipt) || receipt.kind !== "system_command_output_v1") return fallbackMs;
+  if (!("id" in receipt) || receipt.id !== id) return fallbackMs;
+  if (!("retentionMs" in receipt) || typeof receipt.retentionMs !== "number") return fallbackMs;
+  if (!Number.isSafeInteger(receipt.retentionMs) || receipt.retentionMs < 1) return fallbackMs;
+  return receipt.retentionMs;
+}
+function scheduleSystemOutputCleanup(root, retentionMs) {
+  const previous = jobs.get(root);
+  if (previous) {
+    previous.retentionMs = retentionMs;
+    previous.requested = true;
+    return;
+  }
+  const job = { retentionMs, requested: false };
+  jobs.set(root, job);
+  const sweep = async () => {
+    job.requested = false;
+    let empty = false;
+    try {
+      await cleanupSystemOutput(root, job.retentionMs);
+      empty = (await (0, import_promises5.readdir)(root).catch((error) => {
+        if (error.code === "ENOENT") return [];
+        throw error;
+      })).length === 0;
+    } catch {
+      process.emitWarning("SYSTEM output cleanup failed; retained output was not confirmed removed.", { code: "SYSTEM_OUTPUT_CLEANUP_FAILED" });
+    }
+    if (empty && !job.requested) {
+      jobs.delete(root);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void sweep();
+    }, Math.max(1, Math.min(job.retentionMs, 60 * 6e4)));
+    timer.unref();
+  };
+  void sweep();
+}
+
+// src/computer-access/command-output-capture.ts
+var OUTPUT_IO_CHUNK_BYTES = 64 * 1024;
+async function createSystemOutputCapture(root, retentionMs) {
+  const id = (0, import_node_crypto6.randomUUID)();
+  const directory = (0, import_node_path8.join)(root, id);
+  activeSystemCaptures.add(directory);
+  try {
+    await (0, import_promises6.mkdir)(directory, { recursive: true, mode: 448 });
+  } catch {
+    activeSystemCaptures.delete(directory);
+    throw new SystemOperationError("system_output_storage_failed", "Output storage could not be prepared. The command was not dispatched.");
+  }
+  let failure;
+  let stop;
+  let ended = false;
+  let retained = false;
+  const sources = [];
+  const streams = ["stdout", "stderr"].map((name) => {
+    const path = (0, import_node_path8.join)(directory, name + ".bytes");
+    const sink = (0, import_node_fs5.createWriteStream)(path, { flags: "wx", mode: 384, highWaterMark: OUTPUT_IO_CHUNK_BYTES, flush: true });
+    const completion = (0, import_promises7.finished)(sink).catch(() => {
+      failure ??= "write_failed";
+      stop?.();
+    });
+    return { name, path, sink, completion, hash: (0, import_node_crypto6.createHash)("sha256") };
+  });
+  try {
+    await Promise.all(streams.map(({ sink }) => (0, import_node_events.once)(sink, "open")));
+  } catch {
+    for (const { sink } of streams) sink.destroy();
+    await Promise.all(streams.map(({ completion }) => completion));
+    activeSystemCaptures.delete(directory);
+    scheduleSystemOutputCleanup(root, retentionMs);
+    throw new SystemOperationError("system_output_storage_failed", "Output files could not be opened. The command was not dispatched.");
+  }
+  scheduleSystemOutputCleanup(root, retentionMs);
+  const capture = {
+    attach(stdout, stderr, onFailure) {
+      stop = onFailure;
+      sources.push(stdout, stderr);
+      stdout.on("data", (bytes) => streams[0].hash.update(bytes));
+      stderr.on("data", (bytes) => streams[1].hash.update(bytes));
+      stdout.pipe(streams[0].sink);
+      stderr.pipe(streams[1].sink);
+      if (failure) onFailure();
+    },
+    end() {
+      if (ended) return;
+      ended = true;
+      for (const source of sources) {
+        source.unpipe();
+        source.destroy();
+      }
+      for (const { sink } of streams) if (!sink.destroyed && !sink.writableEnded) sink.end();
+    }
+  };
+  let receipt;
+  return {
+    capture,
+    get receipt() {
+      return receipt;
+    },
+    get failure() {
+      return failure;
+    },
+    retain() {
+      retained = true;
+      activeSystemCaptures.add(directory);
+    },
+    release() {
+      retained = false;
+      activeSystemCaptures.delete(directory);
+    },
+    async read(stream, offset, length) {
+      const path = streams.find((entry) => entry.name === stream).path;
+      const file = await (0, import_promises6.open)(path, "r");
+      try {
+        const bytes = Buffer.alloc(length);
+        const { bytesRead } = await file.read(bytes, 0, length, offset);
+        return bytes.subarray(0, bytesRead);
+      } finally {
+        await file.close();
+      }
+    },
+    async finish(result, materialize = true) {
+      capture.end();
+      try {
+        await Promise.all(streams.map(({ completion }) => completion));
+        const sizes = await Promise.all(streams.map(async ({ path }) => {
+          try {
+            return (await (0, import_promises6.stat)(path)).size;
+          } catch {
+            failure ??= "read_failed";
+            return 0;
+          }
+        }));
+        let stdout = "", stderr = "";
+        if (!failure && materialize) {
+          try {
+            [stdout, stderr] = await Promise.all(streams.map(({ path }) => (0, import_promises6.readFile)(path, "utf8")));
+          } catch {
+            failure = "read_failed";
+          }
+        }
+        const completedAt = Date.now();
+        receipt = {
+          id,
+          stdoutBytes: sizes[0],
+          stderrBytes: sizes[1],
+          completedAt: new Date(completedAt).toISOString(),
+          retentionMs,
+          complete: !failure,
+          ...!materialize ? { stdoutSha256: streams[0].hash.digest("hex"), stderrSha256: streams[1].hash.digest("hex") } : {}
+        };
+        try {
+          const temporary = (0, import_node_path8.join)(directory, "receipt.tmp");
+          await (0, import_promises6.writeFile)(temporary, JSON.stringify({
+            kind: "system_command_output_v1",
+            ...receipt,
+            processStatus: result?.status,
+            exitCode: result?.exitCode,
+            spawnedProcess: result?.spawnedProcess,
+            ...failure ? { storageFailure: failure } : {}
+          }), { flag: "wx", mode: 384, flush: true });
+          await (0, import_promises6.rename)(temporary, (0, import_node_path8.join)(directory, "receipt.json"));
+        } catch {
+          failure ??= "receipt_write_failed";
+          receipt = { ...receipt, complete: false };
+        }
+        return { stdout, stderr };
+      } finally {
+        if (!retained) activeSystemCaptures.delete(directory);
+      }
+    }
+  };
+}
+
+// src/computer-access/companion/command-output-protocol.ts
+var SYSTEM_OUTPUT_CAPABILITY = "system_command_output_v1";
+var SYSTEM_OUTPUT_CHUNK_BYTES = 64 * 1024;
+function isStreamByteCount(value) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+function isStreamDigest(value) {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
+function readSystemOutputTransfer(value) {
+  if (!isHostRecord(value)) throw new Error("system_output_receipt_invalid");
+  if (value.kind !== SYSTEM_OUTPUT_CAPABILITY) throw new Error("system_output_receipt_invalid");
+  if (!isHostIdentifier(value.id)) throw new Error("system_output_receipt_invalid");
+  if (!isStreamByteCount(value.stdoutBytes)) throw new Error("system_output_receipt_invalid");
+  if (!isStreamByteCount(value.stderrBytes)) throw new Error("system_output_receipt_invalid");
+  if (!isStreamDigest(value.stdoutSha256)) throw new Error("system_output_receipt_invalid");
+  if (!isStreamDigest(value.stderrSha256)) throw new Error("system_output_receipt_invalid");
+  return {
+    kind: SYSTEM_OUTPUT_CAPABILITY,
+    id: value.id,
+    stdoutBytes: value.stdoutBytes,
+    stderrBytes: value.stderrBytes,
+    stdoutSha256: value.stdoutSha256,
+    stderrSha256: value.stderrSha256
   };
 }
 
@@ -5332,7 +5616,7 @@ function fits(value) {
 }
 
 // plugins/system/source/computer/request-computers.ts
-var import_node_crypto7 = require("node:crypto");
+var import_node_crypto8 = require("node:crypto");
 
 // plugins/system/source/request-target-snapshot.ts
 async function captureSystemTargetSnapshot(input) {
@@ -5449,14 +5733,14 @@ function modelSafeRouteObservation(route) {
 }
 
 // plugins/system/source/computer/desktop-bindings.ts
-var import_node_crypto6 = require("node:crypto");
+var import_node_crypto7 = require("node:crypto");
 var DesktopBindings = class {
   current;
   windows = /* @__PURE__ */ new Map();
   observe(result) {
     this.windows.clear();
     const windows = result.windows.map((window) => {
-      const id2 = (0, import_node_crypto6.randomUUID)();
+      const id2 = (0, import_node_crypto7.randomUUID)();
       this.windows.set(id2, window.binding);
       const { binding: _binding, ...details } = window;
       return {
@@ -5472,7 +5756,7 @@ var DesktopBindings = class {
         observation_ref: void 0,
         coordinateSpace: result.desktop.coordinateSpace ?? "native_desktop"
       };
-    const id = (0, import_node_crypto6.randomUUID)();
+    const id = (0, import_node_crypto7.randomUUID)();
     this.current = {
       id,
       issuedAt: Date.now(),
@@ -5657,7 +5941,7 @@ var RequestComputers = class {
     this.connection = connection;
     this.nativeFactory = nativeFactory;
     this.entries = snapshot === void 0 ? routes.map((route) => ({
-      ref: (0, import_node_crypto7.randomUUID)(),
+      ref: (0, import_node_crypto8.randomUUID)(),
       route,
       bindings: new DesktopBindings()
     })) : restoreComputers(routes, snapshot);
@@ -6026,6 +6310,77 @@ function prepareComputerModules(rootDir, modules, routes, connection, preparatio
   }));
 }
 
+// plugins/system/source/companion-command-output.ts
+var import_node_crypto9 = require("node:crypto");
+var import_node_string_decoder = require("node:string_decoder");
+function supportsCompanionCommandOutput(route) {
+  return route.capabilities?.includes(SYSTEM_OUTPUT_CAPABILITY) === true;
+}
+async function executeCompanionCommand(input) {
+  const { route, context } = input;
+  const call = (operation, params, signal) => input.connection.executeHostOperation(input.rootDir, {
+    hostId: route.hostId,
+    connectionId: route.connectionId,
+    operation,
+    params: { ...params, target: route.target },
+    ...signal ? { abortSignal: signal } : {}
+  });
+  const receipt = await call("system_command_capture", {
+    ...input.params,
+    ...input.outputRetentionMs !== void 0 ? { outputRetentionMs: input.outputRetentionMs } : {}
+  }, context?.abortSignal);
+  if (!receipt.data?.outputTransfer && !receipt.ok) return receipt;
+  let transfer;
+  try {
+    transfer = readSystemOutputTransfer(receipt.data?.outputTransfer);
+    const stdout = await readStream(call, transfer, "stdout", context?.abortSignal);
+    const stderr = await readStream(call, transfer, "stderr", context?.abortSignal);
+    const { outputTransfer: _transfer, ...data } = receipt.data ?? {};
+    const delivered = deliverPluginTextResult({
+      ...receipt,
+      stdout,
+      stderr: stderr || receipt.stderr,
+      data: { ...data, outputDelivery: "complete", summaryOmittedChars: { stdout: stdout.length, stderr: stderr.length } }
+    }, ["stdout", "stderr"], context?.resultBudget);
+    if (delivered.errorCode === "plugin_result_too_large") return transferFailure(receipt, context);
+    return delivered;
+  } catch {
+    return transferFailure(receipt, context);
+  } finally {
+    if (transfer) await call("system_command_output_close", { captureId: transfer.id }, AbortSignal.timeout(3e3)).catch(() => void 0);
+  }
+}
+async function readStream(call, transfer, stream, signal) {
+  const size = stream === "stdout" ? transfer.stdoutBytes : transfer.stderrBytes;
+  const digest = stream === "stdout" ? transfer.stdoutSha256 : transfer.stderrSha256;
+  const hash = (0, import_node_crypto9.createHash)("sha256");
+  const decoder = new import_node_string_decoder.StringDecoder("utf8");
+  let text = "";
+  for (let offset = 0; offset < size; offset += SYSTEM_OUTPUT_CHUNK_BYTES) {
+    signal?.throwIfAborted();
+    const part = await call("system_command_output", { captureId: transfer.id, stream, offset }, signal);
+    if (!part.ok) throw new Error("system_output_transfer_failed");
+    const data = part.data;
+    if (data?.captureId !== transfer.id || data.stream !== stream || data.offset !== offset) throw new Error("system_output_chunk_binding_invalid");
+    if (typeof data.bytes !== "string" || data.bytes.length > SYSTEM_OUTPUT_CHUNK_BYTES * 2) throw new Error("system_output_chunk_invalid");
+    const bytes = Buffer.from(data.bytes, "base64");
+    if (bytes.toString("base64") !== data.bytes) throw new Error("system_output_chunk_invalid");
+    if (bytes.length !== Math.min(SYSTEM_OUTPUT_CHUNK_BYTES, size - offset)) throw new Error("system_output_chunk_size_invalid");
+    hash.update(bytes);
+    text += decoder.write(bytes);
+  }
+  if (hash.digest("hex") !== digest) throw new Error("system_output_digest_invalid");
+  return text + decoder.end();
+}
+function transferFailure(receipt, context) {
+  return failureResult({
+    errorCode: "system_output_delivery_pending",
+    message: "The command settled, but its retained output could not be delivered completely. Process receipt is preserved; the command was not replayed.",
+    ...receipt.exitCode !== void 0 ? { exitCode: receipt.exitCode } : {},
+    data: { ...receipt.data, outputDelivery: "pending", commandOk: receipt.ok, commandErrorCode: receipt.errorCode ?? null }
+  }, context?.resultBudget);
+}
+
 // plugins/system/source/host-dispatch.ts
 var defaultSystemHostConnection = {
   readHostStatus,
@@ -6060,6 +6415,8 @@ function boundOperation(input, operation) {
       const route = requireSystemRequestRoute(input.snapshot, params.target);
       if (route.kind === "native")
         return await input.nativeHandlers[operation](params, context);
+      if (operation === "system_command" && supportsCompanionCommandOutput(route))
+        return await executeCompanionCommand({ ...input, route, params, context });
       return await input.connection.executeHostOperation(input.rootDir, {
         hostId: route.hostId,
         connectionId: route.connectionId,
@@ -6112,7 +6469,8 @@ async function prepareSystemRequestModules(rootDir, modules, dependencies = {}, 
     rootDir,
     snapshot,
     connection,
-    nativeHandlers
+    nativeHandlers,
+    outputRetentionMs: dependencies.outputRetentionMs
   });
   return Object.freeze([
     ...modules.filter((module2) => !isComputerTool(module2.definition.name)).map((module2) => projectSystemRequestModule(module2, snapshot, handlers)),
@@ -6173,8 +6531,85 @@ function systemExecutionBinding(snapshot) {
   };
 }
 
+// plugins/system/source/local-command-output.ts
+var import_node_path9 = require("node:path");
+var CONTEXT_STREAMS = Object.freeze(["stdout", "stderr"]);
+function createLocalSystemCommandOutput(plugin) {
+  const root = (0, import_node_path9.join)(plugin.stateDir, "command-output");
+  const retentionMs = systemCommandOutputRetentionMs(plugin);
+  scheduleSystemOutputCleanup(root, retentionMs);
+  return (context) => {
+    let captured;
+    return {
+      async run(input) {
+        if (input.abortSignal?.aborted) return runSystemProcess(input);
+        captured = await createSystemOutputCapture(root, retentionMs);
+        let result;
+        try {
+          result = await runSystemProcess(input, captured.capture);
+        } catch (error) {
+          await captured.finish();
+          throw error;
+        }
+        const streams = await captured.finish(result);
+        return {
+          ...result,
+          stdout: streams.stdout,
+          stderr: streams.stderr || result.stderr,
+          outputTruncated: Boolean(captured.failure)
+        };
+      },
+      async present(target, result) {
+        if (captured?.failure) return outputFailure(target, result, context, captured.receipt, captured.failure);
+        const receipt = buildSystemProcessResult(target, result, "command_process_completion");
+        const delivered = deliverPluginTextResult({
+          ...receipt,
+          data: { ...receipt.data, ...captured?.receipt ? { outputCapture: captured.receipt } : {} }
+        }, CONTEXT_STREAMS, context?.resultBudget);
+        if (delivered.errorCode === "plugin_result_too_large")
+          return outputFailure(target, result, context, captured?.receipt);
+        return delivered;
+      }
+    };
+  };
+}
+function outputFailure(target, result, context, capture, storageFailure) {
+  return failureResult({
+    errorCode: storageFailure ? "system_output_storage_failed" : "system_output_delivery_pending",
+    message: "The command was dispatched. Its output could not be delivered completely; do not repeat the command just to retrieve output. Inspect the process receipt and retained capture.",
+    ...result.exitCode !== null ? { exitCode: result.exitCode } : {},
+    data: {
+      target: target.id,
+      transport: target.transport,
+      processStatus: result.status,
+      spawnedProcess: result.spawnedProcess ?? null,
+      exitCode: result.exitCode,
+      outputCapture: capture ?? null,
+      ...storageFailure ? { storageFailure } : {},
+      outputDelivery: "pending",
+      evidenceScope: "command_process_completion",
+      independentOutcomeCheck: "not_performed",
+      observationMeta: { kind: "volatile_external", carryPolicy: "never" }
+    }
+  }, context?.resultBudget);
+}
+function systemCommandOutputRetentionMs(plugin) {
+  return readBoundedInteger(plugin.config?.outputRetentionMs, {
+    name: "outputRetentionMs",
+    defaultValue: DEFAULT_SYSTEM_OUTPUT_RETENTION_MS,
+    minimum: 1,
+    maximum: Number.MAX_SAFE_INTEGER
+  });
+}
+
 // plugins/system/source/index.ts
-var index_default = defineRuntimePlugin(({ rootDir }) => ({
-  handlers: { ...createSystemHandlers(), ...unboundComputerHandlers() },
-  prepareRequest: (modules, preparation) => prepareSystemRequestModules(rootDir, modules, {}, preparation)
-}));
+var index_default = defineRuntimePlugin((context) => {
+  const output = createLocalSystemCommandOutput(context);
+  return {
+    handlers: { ...createSystemHandlers(void 0, void 0, output), ...unboundComputerHandlers() },
+    prepareRequest: (modules, preparation) => prepareSystemRequestModules(context.rootDir, modules, {
+      outputRetentionMs: systemCommandOutputRetentionMs(context),
+      createNativeHandlers: (resolve) => createSystemHandlers(void 0, resolve, output)
+    }, preparation)
+  };
+});

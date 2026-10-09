@@ -246,6 +246,7 @@ jobs:
           src/runtime/__tests__/host-companion-native-loopback-tls.test.ts
           src/runtime/__tests__/host-companion-managed-startup.test.ts
           src/runtime/__tests__/host-companion-setup.test.ts
+          src/runtime/__tests__/host-companion-install-links.test.ts
           src/runtime/__tests__/host-macos-observation-permission.test.ts
           src/runtime/__tests__/host-macos-capture-geometry.test.ts
           src/runtime/__tests__/host-macos-keyboard-contract.test.ts

@@ -92,7 +92,10 @@ describe("setup embedding connection and canonical memory save", () => {
     const after = await readConfig();
     expect(after.models.providers).toEqual(before.models.providers);
     expect(after.models.profiles).toEqual(before.models.profiles);
-    expect(after.plugins).toEqual({ ...before.plugins, deny: ["memory"] });
+    expect(after.plugins).toEqual({
+      ...before.plugins,
+      disabledPluginIds: ["memory"],
+    });
     expect(after.requestRunner).toEqual(before.requestRunner);
     expect(embed).toHaveBeenCalledOnce();
     expect(embed.mock.calls[0][0].texts).toEqual([
@@ -220,9 +223,6 @@ describe("setup embedding connection and canonical memory save", () => {
       const config = await readConfig();
       config.plugins = plugins;
       await writeFile(configPath!, JSON.stringify(config));
-      const expectedDeny = plugins.deny.some((id) => id.trim() === "memory")
-        ? plugins.deny
-        : [...plugins.deny, "memory"];
       for (let attempt = 0; attempt < 2; attempt += 1) {
         await service.enable(
           { providerId: "ollama", model: "fixture-embedding" },
@@ -230,7 +230,7 @@ describe("setup embedding connection and canonical memory save", () => {
         );
         expect((await readConfig()).plugins).toEqual({
           ...plugins,
-          deny: expectedDeny,
+          disabledPluginIds: ["memory"],
         });
       }
     },
@@ -249,7 +249,7 @@ describe("setup embedding connection and canonical memory save", () => {
       { providerId: "ollama", model: "fixture-embedding" },
       signal(),
     );
-    expect((await readConfig()).plugins.deny).toContain("memory");
+    expect((await readConfig()).plugins.disabledPluginIds).toContain("memory");
     expect(await readFile(path, "utf8")).toBe(contents);
     expect((await stat(path)).mtimeMs).toBe(before.mtimeMs);
   });

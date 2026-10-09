@@ -17,6 +17,7 @@ import {
   type SystemTarget,
   type SystemTargetId,
 } from "./contracts.js";
+import type { SystemCommandOutputFactory } from "./command-output.js";
 import { runSystemProcess } from "./process-runner.js";
 import { systemProcessResult } from "./process-result.js";
 import { readSystemTargetId, resolveSystemTarget } from "./targets.js";
@@ -49,6 +50,7 @@ export function createSystemHandlers(
   run: SystemProcessRunner = runSystemProcess,
   resolveTarget: (id: SystemTargetId) => Promise<SystemTarget> = (id) =>
     resolveSystemTarget(id, run),
+  commandOutput?: SystemCommandOutputFactory,
 ): Record<string, ToolImplementation> {
   const targets: ToolImplementation = async () => {
     const observation = await observeSystemTargets(run);
@@ -62,12 +64,15 @@ export function createSystemHandlers(
   };
   const command: ToolImplementation = async (params, context) => {
     const target = await resolveTarget(readSystemTargetId(params.target));
+    const output = commandOutput?.(context);
     const result = await executeSystemCommand({
       target,
       params,
       run,
+      ...(output ? { runCommand: output.run } : {}),
       ...(context?.abortSignal ? { abortSignal: context.abortSignal } : {}),
     });
+    if (output) return output.present(target, result);
     return systemProcessResult(target, result, "command_process_completion");
   };
   const applications: ToolImplementation = async (params) => {

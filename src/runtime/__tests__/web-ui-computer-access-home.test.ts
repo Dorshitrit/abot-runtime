@@ -1,6 +1,8 @@
 import { afterEach, expect, test, vi } from "vitest";
 // @ts-expect-error Browser composition module has no declaration surface.
 import { createComputerAccessFeature } from "../../web-ui/app/computer-access-feature.js";
+// @ts-expect-error Browser onboarding policy has no declaration surface.
+import { createOnboardingWorkspaceAccess } from "../../web-ui/app/components/onboarding-workspace-access.js";
 import { FakeElement } from "./support/model-setup-wizard-harness.js";
 
 const setupNeeded = {
@@ -51,9 +53,11 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function homeHarness({ hidden = false, supported = true, snapshot = ready as typeof setupNeeded } = {}) {
+function homeHarness({ hidden = false, supported = true, runtimeReady = true, snapshot = ready as typeof setupNeeded } = {}) {
   vi.useFakeTimers();
   let environment = "prod";
+  const workspaceAccess = createOnboardingWorkspaceAccess({ dom: {}, backendAllows: () => true });
+  workspaceAccess.update({ status: runtimeReady ? "ready" : "setup_required" });
   const observers: Array<{ callback: () => void; observe: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> }> = [];
   class Observer {
     observe = vi.fn();
@@ -110,12 +114,19 @@ function homeHarness({ hidden = false, supported = true, snapshot = ready as typ
     dom: { homeDashboardRoot, homeWorkspacePanel, homeWorkspaceButton, environmentSelect },
     runtimeClient,
     getEnvironmentId: () => environment,
+    isComputerAccessAvailable: () => workspaceAccess.isAvailable("config"),
     onChange,
   });
+  function setRuntimeAvailability(availability: { status: string; recovery?: string }) {
+    workspaceAccess.update(availability);
+    feature.runtimeAvailabilityChanged();
+  }
   disposers.push(feature.dispose);
   const card = homeWorkspacePanel.querySelector(".home-computer-access") as HomeElement;
   return { feature, card, homeWorkspacePanel, homeDashboardRoot, homeWorkspaceButton, documentRoot, runtimeClient, onChange, setHomeVisible, observers, listeners,
-    setEnvironment(value: string) { environment = value; environmentSelect.dispatch("change"); } };
+    setEnvironment(value: string) { environment = value; environmentSelect.dispatch("change"); },
+    setRuntimeAvailability,
+    setRuntimeReady(value: boolean) { setRuntimeAvailability({ status: value ? "ready" : "setup_required" }); } };
 }
 
 const settle = () => vi.advanceTimersByTimeAsync(0);
@@ -140,7 +151,7 @@ test("mounts the computer card before Home content and keeps it stable when guid
 test("ready status and unpairing use the existing shared connection API", async () => {
   const h = homeHarness();
   await settle();
-  expect(h.card.querySelector(".system-host-status")?.dataset.tone).toBe("ready");
+  expect(h.card.querySelector(".system-host-card-status")?.dataset.tone).toBe("ready");
 
   h.card.querySelector("[data-system-host-revoke]")!.dispatch("click");
   await settle();
@@ -151,12 +162,15 @@ test("ready status and unpairing use the existing shared connection API", async 
   expect(h.onChange).toHaveBeenCalled();
 });
 
-test("Home starts compact and keeps management disclosure stable across status refreshes", async () => {
+test("Home hides connected permissions until management is opened explicitly", async () => {
   const h = homeHarness();
   await settle();
+  expect(h.card.querySelector("[data-system-host-management]")).toBeNull();
+  h.feature.open();
+  await settle();
   const disclosure = h.card.querySelector("[data-system-host-management]")!;
-  expect(disclosure.attributes.has("open")).toBe(false);
-  expect(disclosure.querySelector("summary")?.textContent).toContain("Computer access");
+  expect(disclosure.attributes.has("open")).toBe(true);
+  expect(disclosure.querySelector(".system-host-summary-permissions")).not.toBeNull();
   expect(disclosure.querySelector("summary")?.textContent).not.toContain("Unpairing disconnects");
 
   disclosure.open = true;
@@ -168,7 +182,7 @@ test("Home starts compact and keeps management disclosure stable across status r
   refreshed.open = false;
   refreshed.dispatch("toggle");
   await h.feature.load();
-  expect(h.card.querySelector("[data-system-host-management]")?.attributes.has("open")).toBe(false);
+  expect(h.card.querySelector("[data-system-host-management]")).toBeNull();
 });
 
 test("manual Mac pairing uses the existing pairing API from the Home card", async () => {
@@ -197,7 +211,7 @@ test("local Mac connection refreshes readiness using the same manager", async ()
   expect(h.runtimeClient.connectLocalSystemHost).toHaveBeenCalledExactlyOnceWith();
   expect(h.runtimeClient.getSystemHostConnection).toHaveBeenCalledTimes(2);
   expect(h.feature.state.snapshot).toBe(ready);
-  expect(h.card.querySelector(".system-host-status")?.dataset.tone).toBe("ready");
+  expect(h.card.querySelector(".system-host-card-status")?.dataset.tone).toBe("ready");
 });
 
 test("bridge backend keeps a visible unavailable card without unsupported requests", async () => {
@@ -206,7 +220,7 @@ test("bridge backend keeps a visible unavailable card without unsupported reques
 
   expect(h.card.parentElement).toBe(h.homeWorkspacePanel);
   expect(h.card.hidden).toBe(false);
-  expect(h.card.querySelector(".system-host-status")?.dataset.tone).toBe("unavailable");
+  expect(h.card.querySelector(".system-host-card-status")?.dataset.tone).toBe("unavailable");
   expect(h.card.querySelector("[data-system-host-refresh]")?.disabled).toBe(true);
   expect(h.runtimeClient.getSystemHostConnection).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(9000);
@@ -218,6 +232,8 @@ test("Home exposes an explicit permission check before chat without checking on 
   const h = homeHarness({ snapshot });
   await settle();
   expect(h.runtimeClient.requestSystemHostPermissions).not.toHaveBeenCalled();
+  h.feature.open();
+  await settle();
   h.card.querySelector("[data-mac-permissions-check]")!.dispatch("click");
   await settle();
   expect(h.runtimeClient.requestSystemHostPermissions).toHaveBeenCalledExactlyOnceWith({
@@ -231,6 +247,8 @@ test("Home environment changes invalidate pending native permission checks even 
   const native = { available: true, scope: "native_runtime", environmentId: "prod", ownerId: "runtime-prod", computerName: "Runtime Mac", executablePath: "/usr/local/bin/node" };
   const snapshot = { ...ready, nativePermissions: native };
   const h = homeHarness({ snapshot });
+  await settle();
+  h.feature.open();
   await settle();
   let finish!: (value: any) => void;
   h.runtimeClient.requestSystemHostPermissions.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
@@ -258,7 +276,7 @@ test("a failed refresh keeps the card visible and reports unavailable status", a
   await h.feature.load();
 
   expect(h.card.parentElement).toBe(h.homeWorkspacePanel);
-  expect(h.card.querySelector(".system-host-status")?.dataset.tone).toBe("unavailable");
+  expect(h.card.querySelector(".system-host-card-status")?.dataset.tone).toBe("unavailable");
   expect(h.feature.state.statusUnavailable).toBe(true);
 });
 
@@ -332,4 +350,81 @@ test("disposing the Home feature removes visibility listeners and scheduled poll
   expect(vi.getTimerCount()).toBe(0);
   expect(h.listeners.has("visibilitychange")).toBe(false);
   expect(h.observers[0].disconnect).toHaveBeenCalled();
+});
+
+
+test.each(["loading", "checking", "error", "setup_required"])("initial %s hides computer access and blocks polling, refresh and opening", async (status) => {
+  const h = homeHarness({ runtimeReady: false });
+  h.setRuntimeAvailability({ status });
+  await settle();
+  expect(h.card.hidden).toBe(true);
+  expect(h.feature.state.active).toBe(false);
+  expect(await h.feature.load()).toBe(false);
+  expect(h.feature.open()).toBe(false);
+  expect(h.homeWorkspaceButton.click).not.toHaveBeenCalled();
+  h.setEnvironment("dev");
+  await vi.advanceTimersByTimeAsync(9000);
+  expect(h.runtimeClient.getSystemHostConnection).not.toHaveBeenCalled();
+});
+
+test("finishing onboarding shows Home computer access and returning to setup stops polling", async () => {
+  const h = homeHarness({ runtimeReady: false });
+  await settle();
+  h.setRuntimeReady(true);
+  await settle();
+  expect(h.card.hidden).toBe(false);
+  expect(h.feature.state.active).toBe(true);
+  expect(h.runtimeClient.getSystemHostConnection).toHaveBeenCalledOnce();
+  h.setRuntimeReady(true);
+  await settle();
+  expect(h.runtimeClient.getSystemHostConnection).toHaveBeenCalledOnce();
+
+  h.setRuntimeReady(false);
+  expect(h.card.hidden).toBe(true);
+  await vi.advanceTimersByTimeAsync(9000);
+  expect(h.runtimeClient.getSystemHostConnection).toHaveBeenCalledOnce();
+  h.setRuntimeReady(true);
+  await settle();
+  expect(h.card.hidden).toBe(false);
+  expect(h.runtimeClient.getSystemHostConnection).toHaveBeenCalledTimes(2);
+});
+
+test("a pending connection response cannot show the Home card after onboarding starts", async () => {
+  const h = homeHarness();
+  await settle();
+  let finish!: (value: typeof ready) => void;
+  h.runtimeClient.getSystemHostConnection.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const pending = h.feature.load();
+  h.setRuntimeReady(false);
+  finish(ready);
+  await pending;
+  await vi.advanceTimersByTimeAsync(9000);
+  expect(h.card.hidden).toBe(true);
+  expect(h.feature.state.active).toBe(false);
+  expect(h.runtimeClient.getSystemHostConnection).toHaveBeenCalledTimes(2);
+});
+
+
+test("configured catalog refresh and recovery preserve Home computer access and polling", async () => {
+  const h = homeHarness();
+  await settle();
+  for (const availability of [
+    { status: "checking" }, { status: "error" },
+    { status: "setup_required", recovery: "configuration" },
+  ]) {
+    const reads = h.runtimeClient.getSystemHostConnection.mock.calls.length;
+    h.setRuntimeAvailability(availability);
+    await settle();
+    expect(h.card.hidden).toBe(false);
+    expect(h.feature.state.active).toBe(true);
+    expect(h.runtimeClient.getSystemHostConnection).toHaveBeenCalledTimes(reads);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(h.runtimeClient.getSystemHostConnection).toHaveBeenCalledTimes(reads + 1);
+    await h.feature.load();
+    expect(h.runtimeClient.getSystemHostConnection).toHaveBeenCalledTimes(reads + 2);
+    expect(h.feature.open()).toBe(true);
+    expect(h.documentRoot.activeElement).toBe(h.card);
+    expect(h.card.querySelector("[data-system-host-management]")?.attributes.has("open")).toBe(true);
+  }
+  expect(h.homeWorkspaceButton.click).toHaveBeenCalledTimes(3);
 });

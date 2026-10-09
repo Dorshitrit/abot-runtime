@@ -63,7 +63,7 @@ test("a companion update navigates to Computer access without changing collectio
   expect(root.querySelector("[data-learning-update]")?.hidden).toBe(true);
 });
 
-test("Home and Co-worker share the update notice and clear it when the companion changes", async () => {
+test("Home omits the duplicate update notice while Spark keeps its update action", async () => {
   vi.stubGlobal("document", { visibilityState: "visible" });
   const home = createRoot();
   const learning = createRoot();
@@ -80,22 +80,25 @@ test("Home and Co-worker share the update notice and clear it when the companion
   });
   feature.mountHome(home);
   feature.setWorkspace("home");
-  const notices = [home, learning].map((root) => root.querySelector("[data-learning-update]")!);
+  const notice = learning.querySelector("[data-learning-update]")!;
+  expect(home.querySelector("[data-learning-update]")).toBeNull();
   try {
     await vi.waitFor(() => expect(client.getSystemHostConnection).toHaveBeenCalledOnce());
-    expect(notices.every((notice) => notice.hidden)).toBe(true);
+    expect(notice.hidden).toBe(true);
     client.getSystemHostConnection.mockResolvedValue({ companion: { updateAvailable: true } });
     feature.handleRealtime({ type: "system-host.changed" });
-    await vi.waitFor(() => expect(notices.every((notice) => !notice.hidden)).toBe(true));
-    for (const root of [home, learning])
-      root.querySelector("[data-learning-open-update]")!.dispatch("click");
-    expect(openComputerAccess).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(notice.hidden).toBe(false));
+    expect(home.querySelector("[data-learning-update]")).toBeNull();
+    expect(home.querySelector("[data-learning-open-update]")).toBeNull();
+    learning.querySelector("[data-learning-open-update]")!.dispatch("click");
+    expect(openComputerAccess).toHaveBeenCalledTimes(1);
     expect(openLearning).not.toHaveBeenCalled();
     expect(client.configurePassiveLearning).not.toHaveBeenCalled();
 
     client.getSystemHostConnection.mockResolvedValue({ companion: { updateAvailable: false } });
     feature.handleRealtime({ type: "system-host.changed" });
-    await vi.waitFor(() => expect(notices.every((notice) => notice.hidden)).toBe(true));
+    await vi.waitFor(() => expect(notice.hidden).toBe(true));
+    expect(home.querySelector("[data-learning-update]")).toBeNull();
   } finally {
     feature.setWorkspace("config");
   }

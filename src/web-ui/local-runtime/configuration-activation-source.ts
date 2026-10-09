@@ -1,4 +1,8 @@
-import { withConfigFileTransaction } from "../../runtime/adapters/config-file-transaction.js";
+import { withPluginConfigurationLock } from "../../runtime/plugins/configuration-write.js";
+import {
+  ConfigFileConflictError,
+  withConfigFileTransaction,
+} from "../../runtime/adapters/config-file-transaction.js";
 import { resolveRequestRunnerConfigReference } from "../../runtime/config/request-runner-config.js";
 import { invalidateRequestRunnerConfig } from "../../runtime/config/runner/loader.js";
 import type { RuntimeSetupActivation } from "./runtime-setup-input.js";
@@ -22,8 +26,15 @@ export function withConfigurationActivationSource(
   operation: (
     preparation: ConfigurationActivationPreparation,
   ) => Promise<RuntimeSetupActivation>,
+  expectedRevision?: string,
+  pluginRootDir?: string,
 ): Promise<RuntimeSetupActivation> {
   return withConfigFileTransaction(configPath, async (transaction) => {
+    if (
+      expectedRevision !== undefined &&
+      transaction.snapshot.revision !== expectedRevision
+    )
+      throw new ConfigFileConflictError();
     const runner = resolveRequestRunnerConfigReference({
       fileConfig: transaction.snapshot.config,
       mainConfigPath: configPath,
@@ -39,7 +50,11 @@ export function withConfigurationActivationSource(
       },
     };
     try {
-      const activation = await operation(preparation);
+      const activation = await (pluginRootDir
+        ? withPluginConfigurationLock(pluginRootDir, () =>
+            operation(preparation),
+          )
+        : operation(preparation));
       restoreUnappliedRequestRunner(activation, preparation);
       return activation;
     } catch (error) {

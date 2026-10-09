@@ -23,6 +23,8 @@ const CONTENT = [MESSAGE.message, MESSAGE.title, MESSAGE.handoffBrief];
 const TIMING = { expiresInMinutes: 60, reconsiderInMinutes: null };
 const roots: string[] = [];
 const agents: CoWorkerProactiveAgent[] = [];
+const reviewCompletion = new WeakMap<CoWorkerProactiveAgent, () => Promise<void>>();
+const reviewScheduled = new WeakMap<CoWorkerProactiveAgent, () => Promise<void>>();
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); });
 afterEach(async () => {
   for (const agent of agents.splice(0)) await agent.stop();
@@ -65,9 +67,31 @@ async function fixture(modelCallsPerDay = 24) {
   const sessions = createFileSessionStore({ sessionsDir: join(root, "sessions") });
   const model = createRuntimeProactiveModel({ config, models: gateway, sessions });
   const build = () => {
+    let notifyChanged!: () => void;
+    let nextChange = new Promise<void>(resolve => { notifyChanged = resolve; });
+    const changed = () => {
+      notifyChanged();
+      nextChange = new Promise<void>(resolve => { notifyChanged = resolve; });
+    };
     const agent = new CoWorkerProactiveAgent({ directory: root, memory, model, sessions, budget,
       context: { preferences: () => preferences, isStarted: () => true, isInteractiveBusy: () => busy,
-        changed() {}, assertProcessingAllowed() { throw new Error("processing_off"); } } });
+        changed, assertProcessingAllowed() { throw new Error("processing_off"); } } });
+    reviewCompletion.set(agent, async () => {
+      while (true) {
+        // Capture before reading status so a concurrent completion cannot be missed.
+        const changed = nextChange;
+        if ((await agent.status()).state !== "reviewing") return;
+        await changed;
+      }
+    });
+    reviewScheduled.set(agent, async () => {
+      while (true) {
+        // Interactive release rearms asynchronously; observe admission before advancing time.
+        const changed = nextChange;
+        if ((await agent.status()).nextReviewAt !== undefined) return;
+        await changed;
+      }
+    });
     agents.push(agent); return agent;
   };
   let agent = build();
@@ -84,7 +108,9 @@ async function fixture(modelCallsPerDay = 24) {
 
 async function tick(agent: CoWorkerProactiveAgent, milliseconds = 60_001) {
   await vi.advanceTimersByTimeAsync(milliseconds);
-  await vi.waitFor(async () => { expect((await agent.status()).state).not.toBe("reviewing"); });
+  const waitForReviewCompletion = reviewCompletion.get(agent);
+  if (!waitForReviewCompletion) throw new Error("proactive_test_agent_not_registered");
+  await waitForReviewCompletion();
 }
 function queue(f: Awaited<ReturnType<typeof fixture>>, values: readonly unknown[]) {
   for (const value of values) f.invoke.mockResolvedValueOnce(response(value));
@@ -193,10 +219,13 @@ describe("SUPER proactive durable stage lifecycle", () => {
     queue(f, [OBJECTIVE, ...CONTENT, TIMING]);
     if (control === "stop") await f.restart();
     if (control === "off") await f.update({ proactiveEnabled: true });
-    if (control === "interactive") { f.setBusy(false); release!(); }
+    if (control === "interactive") {
+      f.setBusy(false); release!();
+      await reviewScheduled.get(f.agent)!();
+    }
     await tick(f.agent);
-    await vi.waitFor(() => expect(f.invoke).toHaveBeenCalledTimes(7));
-    await vi.waitFor(async () => expect((await f.store.read()).proposals).toMatchObject([{ status: "delivered" }]));
+    expect(f.invoke).toHaveBeenCalledTimes(7);
+    expect((await f.store.read()).proposals).toMatchObject([{ status: "delivered" }]);
   });
 
   test("terminal model failure remains blocked across restart until an explicit control resume", async () => {

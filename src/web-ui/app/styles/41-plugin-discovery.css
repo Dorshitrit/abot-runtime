@@ -1,0 +1,132 @@
+.plugin-workspace {
+  width: 100%;
+}
+.plugin-workspace > .config-category-nav {
+  grid-template-columns: repeat(2, minmax(0, 180px));
+  margin-bottom: 4px;
+}
+.plugin-discovery {
+  display: grid;
+  gap: 28px;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 12px 0 24px;
+}
+.plugin-marketplace-card,
+.plugin-source-card {
+  padding: 0;
+  background: transparent;
+}
+.plugin-source-card {
+  border-top: 1px solid var(--config-line);
+  padding-top: 28px;
+}
+.plugin-marketplace-card h2,
+.plugin-source-card h2 {
+  margin: 0 0 10px;
+  font-size: 20px;
+  font-weight: 400;
+}
+.plugin-marketplace-card p,
+.plugin-source-card > p {
+  color: var(--muted);
+  line-height: 1.6;
+  max-width: 66ch;
+}
+.plugin-marketplace-card a {
+  display: inline-block;
+  color: var(--text);
+}
+.plugin-source-card form,
+.plugin-source-card label {
+  display: grid;
+  gap: 8px;
+}
+.plugin-source-card form {
+  gap: 16px;
+  margin-top: 20px;
+}
+.plugin-source-card input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.plugin-source-card form > button {
+  justify-self: start;
+}
+.plugin-source-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.plugin-source-card small {
+  color: var(--muted);
+  font-weight: normal;
+}
+.plugin-install-review {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--config-line);
+}
+.plugin-install-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.plugin-install-heading h3 {
+  margin: 0;
+}
+.plugin-install-heading p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.plugin-install-review dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+  font-size: 12px;
+}
+.plugin-install-review dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.plugin-install-review dt {
+  color: var(--muted);
+}
+.plugin-install-capabilities {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.plugin-install-capabilities li {
+  border-bottom: 1px solid var(--config-line);
+  padding: 12px 0;
+}
+.plugin-install-capabilities p {
+  margin: 6px 0;
+  color: var(--muted);
+}
+.plugin-install-capabilities span {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.plugin-install-trust {
+  padding: 8px 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+@media (max-width: 620px) {
+  .plugin-source-options {
+    grid-template-columns: 1fr;
+  }
+  .plugin-marketplace-card a {
+    display: block;
+    margin: 16px 0 0;
+  }
+  .plugin-install-review dl {
+    grid-template-columns: 1fr;
+  }
+}

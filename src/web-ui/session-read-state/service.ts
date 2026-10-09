@@ -1,15 +1,13 @@
+import { sessionListOverview } from "./overview.js";
+import { sessionMetadataPage, type SessionPageQuery } from "./pagination.js";
+import { webPageSize } from "../local-runtime/history-pagination.js";
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import type { RuntimeConfig, SessionStore } from "../../runtime/ports.js";
 import type { SessionSnapshot } from "../../sessions/types.js";
-import { SessionService } from "../../sessions/session-service.js";
+import { listSessionMetadata } from "../../sessions/metadata/store.js";
 import { isSparkSession } from "../../sessions/spark-session.js";
 import { markVisibleAssistantMessages, projectVisibleSessionReadState, visibleReadMessageIds, visibleReadObservations } from "./visible-messages.js";
-import {
-  clientVisibleMessages,
-  toSessionListItem,
-  toSnapshotMessage,
-} from "../../sessions/record/projection.js";
 import { WebReadStateStore } from "./store.js";
 import {
   captureReadStateAvailability,
@@ -71,8 +69,8 @@ export class WebSessionReadStates {
     const result = await captureReadStateAvailability(() =>
       this.store(environmentId).transaction((state) =>
         isSparkSession(snapshot)
-          ? projectVisibleSessionReadState(state, snapshot.sessionId, snapshot.messages)
-          : projectSessionReadState(state, snapshot.sessionId, snapshot.messages),
+          ? projectVisibleSessionReadState(state, snapshot.sessionId, (snapshot.messageIndex ?? snapshot.messages))
+          : projectSessionReadState(state, snapshot.sessionId, (snapshot.messageIndex ?? snapshot.messages)),
       ),
     );
     if (result.readStateStatus === "unavailable")
@@ -86,19 +84,19 @@ export class WebSessionReadStates {
     const sessions = this.getEnvironment(environmentId).services.sessions;
     return store.transaction(async (state) => {
       const snapshot = await sessions.getSessionSnapshot(sessionId, {
-        includeRequests: false,
+        includeRequests: false, identitiesOnly: true,
       });
       if (!snapshot) return null;
       if (isSparkSession(snapshot))
-        return projectVisibleSessionReadState(state, sessionId, snapshot.messages);
+        return projectVisibleSessionReadState(state, sessionId, (snapshot.messageIndex ?? snapshot.messages));
       advanceReadCursor(
         state,
         sessionId,
-        snapshot.messages,
+        (snapshot.messageIndex ?? snapshot.messages),
         boundary,
         this.now(),
       );
-      return projectSessionReadState(state, sessionId, snapshot.messages);
+      return projectSessionReadState(state, sessionId, (snapshot.messageIndex ?? snapshot.messages));
     });
   }
 
@@ -107,43 +105,41 @@ export class WebSessionReadStates {
     const observations = visibleReadObservations(ids, visibleMessages);
     const sessions = this.getEnvironment(environmentId).services.sessions;
     return this.store(environmentId).transaction(async (state) => {
-      const snapshot = await sessions.getSessionSnapshot(sessionId, { includeRequests: false });
+      const snapshot = await sessions.getSessionSnapshot(sessionId, { includeRequests: false, identitiesOnly: true });
       if (!snapshot || !isSparkSession(snapshot)) return null;
-      markVisibleAssistantMessages(state, sessionId, snapshot.messages, observations, generation, this.now());
-      return projectVisibleSessionReadState(state, sessionId, snapshot.messages);
+      markVisibleAssistantMessages(state, sessionId, (snapshot.messageIndex ?? snapshot.messages), observations, generation, this.now());
+      return projectVisibleSessionReadState(state, sessionId, (snapshot.messageIndex ?? snapshot.messages));
     });
   }
 
-  async list(environmentId: string) {
+  async list(environmentId: string, query?: SessionPageQuery) {
     const { sessionsDir } =
       this.getEnvironment(environmentId).services.config.paths;
-    // One canonical disk enumeration avoids mutable offset pages and sending
-    // every request event across the managed Runtime's bounded RPC transport.
-    const records = await new SessionService({ sessionsDir }).getAllSessions();
-    const projectedSessions = records.filter((record) => !isSparkSession(record)).map((record) => ({
-      summary: toSessionListItem(record),
-      messages: clientVisibleMessages(record.messages).map((message) =>
-        toSnapshotMessage(record.id, message, record.requests ?? []),
-      ),
-    }));
+    const records = await listSessionMetadata(sessionsDir);
+    const projectedSessions = records.filter((record) => record.interactive)
+      .filter((record) => !isSparkSession(record.summary));
+    const page = query ? sessionMetadataPage(projectedSessions, query, webPageSize(this.getEnvironment(environmentId).services.config))
+      : { records: projectedSessions, nextCursor: null };
+    const { records: selected, ...pageInfo } = page;
     const result = await captureReadStateAvailability(() =>
       this.store(environmentId).transaction((state) => {
-        const sessions = projectedSessions.map(({ summary, messages }) => {
+        const sessions = selected.map(({ summary, messages }) => {
           return {
             ...summary,
             ...projectSessionReadState(state, summary.id, messages),
           };
         });
-        return { sessions, nextCursor: null };
+        return { sessions, ...pageInfo, ...(query && !query.cursor ? { overview: sessionListOverview(projectedSessions, query.archivedSessionIds, state) } : {}) };
       }),
     );
     if (result.readStateStatus === "unavailable")
       return {
-        sessions: projectedSessions.map(({ summary }) => ({
+        sessions: selected.map(({ summary }) => ({
           ...summary,
           ...unavailableSessionReadState(summary.id),
         })),
-        nextCursor: null,
+        ...pageInfo,
+        ...(query && !query.cursor ? { overview: sessionListOverview(projectedSessions, query.archivedSessionIds) } : {}),
       };
     return result.value;
   }

@@ -11,6 +11,28 @@ It is intentionally a client/transport layer only:
 - Runtime core orchestration is not changed for the web UI.
 - Existing external bridge clients remain unchanged.
 
+The local conversation list reads the session layer's persisted `.metadata/`
+index. Each session has its own atomically replaced projection: list fields and
+visible message identities/timestamps for unread counts, without transcript or
+request-event bodies. Message changes update only that session's projection;
+request-only events update a small `.json.source` receipt binding the new source
+stamp and activity time to the unchanged projection. They do not scan or rewrite
+the message metadata, in either legacy streaming or durable lifecycle events.
+Read cursors remain in the existing Web UI store. Session JSON remains canonical.
+
+Existing sessions are indexed on the first list read that needs them. A complete
+projection is its own backfill receipt, so restarts and interrupted backfills
+reuse completed entries. Source file stamps detect missing/stale projections,
+including a crash after the session commit, and rebuild only those entries.
+Listing reads at most four entries concurrently, including the initial backfill.
+Projection publication and deletion share a per-session file lock, including
+backfills in a separate process; source stamps are checked again before rename.
+Index failures do not reverse successful session commits or prevent listing a
+readable canonical session, and emit a `SESSION_METADATA_WRITE_FAILED` warning.
+An unavailable index may require rereading that session until it is writable.
+The list still enumerates all session
+metadata; pagination and changes to message/event loading are separate work.
+
 The context indicator describes the latest measured model attempt in the
 selected request, including its step and profile. Input count, percentage and
 remaining capacity use the same valid provider measurement, or an explicitly
@@ -45,6 +67,16 @@ owned gateway's in-memory policy and recreates the previous environments from
 their applied configuration. Saved edits remain on disk for a later explicit
 Apply. A failed restoration is reported as unavailable, and shutdown never
 restarts a gateway or environment during rollback.
+
+An external local gateway is retained when its effective configuration inputs
+are unchanged from every active Runtime environment's startup snapshot. Plugin
+selection alone does not require replacing that gateway. Changed model policy,
+linked runner model defaults, gateway address or logging still require the
+external gateway's configuration to be applied separately. Unknown snapshots
+(including custom provider adapters) retain the existing restart requirement.
+Snapshots follow successfully applied environments and their rollback; this
+comparison does not inspect the external gateway's live policy or claim ownership.
+Plugin changes still require all Runtime owners to be idle and owned by this Web UI.
 
 Configuration saves hold the canonical Runtime-file lock while resolving and
 writing linked model or request-runner files. The linked file keeps its own

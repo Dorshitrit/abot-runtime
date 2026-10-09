@@ -17,6 +17,21 @@ local paths, and profile choices there. The provider, concrete model id, and
 default profile are required configuration; the runtime does not supply a
 built-in model choice.
 
+## Web UI history pages
+
+`webUi.pageSize` controls the number of sessions or messages loaded per page in
+ordinary conversations and SPARK. It defaults to `20` and accepts a positive integer:
+
+```json
+{ "webUi": { "pageSize": 20 } }
+```
+
+The Web UI loads more sessions while scrolling down and older messages while
+scrolling up. Message activity travels with the corresponding message page.
+Read state and active requests remain independent of the displayed page.
+Pagination does not truncate model history or change the session file format;
+opening a conversation still reads its canonical JSON file before projecting a page.
+
 ## Secrets
 
 Do not put secret values in JSON config. Store them in `.env`, service
@@ -426,6 +441,37 @@ selects the installed catalog. Tool contracts, implementation defaults,
 secrets declarations, and skill bindings remain in each plugin package.
 Runtime orchestration does not hardcode concrete tool names or use the catalog
 to classify the user request.
+
+
+A model profile can further restrict that catalog with `plugins.deny`, including
+inside its linked `models/<profile>.config.json` file:
+
+```json
+{
+  "plugins": {
+    "deny": ["filesystem.read_file", "memory"]
+  }
+}
+```
+
+These selectors use the same matching rules as the global deny list. They can
+only remove globally available capabilities. Omission or an empty list adds no
+model restriction. The effective primary profile selected for the request owns
+the restriction for the entire request, including delegated roles, per-step
+model overrides and approval resumes. Both Supervisor/Worker and Execution
+Agent use the same filtered catalog and execution guard. This metadata stays in
+the Runtime and is not sent to the model provider. Plugin loading and
+`prepareRequest` hooks remain part of the existing shared plugin lifecycle.
+
+In the Web UI **Models** workspace, expand **Plugin access** to allow or block
+plugins for the selected model. Expand a plugin to control its individual tools.
+The switches edit exact plugin IDs and qualified `plugin.tool` deny selectors;
+turning a plugin off and on preserves its individual tool restrictions. Counts
+show the tools available after global and model restrictions. Save the model
+file, then apply configuration changes. Global restrictions still apply and
+cannot be lifted here. Shared bare-tool rules, wildcards, missing-plugin IDs and
+selectors that affect another plugin remain unchanged; review them under
+**Saved rules** and edit them in the displayed model configuration file.
 
 For public or multi-model installs, keep each model's detailed calibration in a
 separate model profile file instead of expanding the main runtime config:

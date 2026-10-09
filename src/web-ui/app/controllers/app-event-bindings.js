@@ -115,9 +115,12 @@ export function createAppEventBindings({
   }
 
   function bind() {
+    let searchTimer;
     dom.sessionSearchInput.addEventListener("input", () => {
       state.sessionQuery = dom.sessionSearchInput.value;
       actions.renderSessions();
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => void actions.loadSessions(), 200);
     });
     dom.refreshSessionsButton.addEventListener(
       "click",
@@ -153,7 +156,7 @@ export function createAppEventBindings({
       void changeEnvironment(dom.environmentSelect.value, {
         notifyEnvironmentChange: false,
       });
-    });
+    }, true);
     dom.agentPickerButton.addEventListener("click", (event) => {
       event.stopPropagation();
       state.agentPickerOpen = !state.agentPickerOpen;

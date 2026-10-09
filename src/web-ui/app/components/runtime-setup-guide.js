@@ -13,7 +13,7 @@ import {
   hasSetupConnectionChanges,
   receiveSetupConnection,
   selectSetupProvider,
-  setupConnectionSaveError,
+  receiveSetupConnectionSaveError,
   setupConnectionSubmitLabel,
   updateSetupConnectionField,
 } from "./runtime-setup/connection-state.js";
@@ -23,6 +23,10 @@ import {
   validateConnectionFields,
   showConnectionFieldError,
 } from "./runtime-setup/connection-form.js";
+import {
+  clearSetupContextWindowFeedback,
+  focusSetupContextWindowFeedback,
+} from "./runtime-setup/context-window-feedback.js";
 import {
   DEFAULT_OLLAMA_BASE_URL,
   normalizeProvider,
@@ -48,6 +52,7 @@ export function createRuntimeSetupGuide({
   loadHostConnection,
   connectLocalHost,
   createHostPairing,
+  requestHostStoreConnection,
   requestHostPermissions,
   downloadHostSetup,
   revokeHostConnection,
@@ -82,12 +87,13 @@ export function createRuntimeSetupGuide({
   const optionalSteps = createSetupOptionalSteps({
     container, getEnvironmentId, getPreferredProvider: () => state.provider,
     loadEmbeddingStatus, discoverEmbeddingModels, saveEmbedding, loadPlugins,
-    setPlugin, loadHostConnection, connectLocalHost, createHostPairing, requestHostPermissions, downloadHostSetup, revokeHostConnection,
+    setPlugin, loadHostConnection, connectLocalHost, createHostPairing, requestHostStoreConnection, requestHostPermissions, downloadHostSetup, revokeHostConnection,
     onChange: paint, goToStep,
   });
   const { embedding, plugins, readyStep } = optionalSteps;
 
   function goToStep(step) {
+    clearSetupContextWindowFeedback(state, container);
     state.step = step;
     state.error = "";
     paint({ focus: true });
@@ -100,6 +106,7 @@ export function createRuntimeSetupGuide({
   }
 
   function reset() {
+    clearSetupContextWindowFeedback(state, container);
     revision += 1;
     optionalSteps.reset();
     viewState.reset();
@@ -153,6 +160,7 @@ export function createRuntimeSetupGuide({
 
   async function loadOptions() {
     if (state.loading) return;
+    clearSetupContextWindowFeedback(state, container);
     const operationRevision = ++revision;
     const operationEnvironment = getEnvironmentId();
     state.loading = true;
@@ -217,6 +225,7 @@ export function createRuntimeSetupGuide({
   async function submitConnection() {
     const input = connectionInput();
     if (!input) return;
+    clearSetupContextWindowFeedback(state, container);
     const connectionChanged = hasSetupConnectionChanges(state);
     const operationRevision = ++revision;
     const operationEnvironment = getEnvironmentId();
@@ -247,12 +256,13 @@ export function createRuntimeSetupGuide({
       state.step = 2;
     } catch (error) {
       if (!operationIsCurrent(operationRevision, operationEnvironment)) return;
-      state.error = setupConnectionSaveError(error);
+      receiveSetupConnectionSaveError(state, error);
     } finally {
       delete input.apiKey;
       if (operationIsCurrent(operationRevision, operationEnvironment)) {
         state.saving = false;
         paint({ focus: true });
+        focusSetupContextWindowFeedback(container, state.contextWindowFeedback, viewState.canRestoreFocus());
         if (state.step === 2) void embedding.load();
       }
     }
@@ -392,6 +402,7 @@ export function createRuntimeSetupGuide({
       embedding.input(field.dataset.runtimeSetupField, textOf(field.value));
       return;
     }
+    clearSetupContextWindowFeedback(state, container);
     field.removeAttribute?.("aria-invalid");
     updateSetupConnectionField(
       state,
@@ -420,6 +431,7 @@ export function createRuntimeSetupGuide({
       field?.dataset.runtimeSetupField !== "provider"
     )
       return;
+    clearSetupContextWindowFeedback(state, container);
     selectSetupProvider(state, field.value);
     state.error = "";
     paint();

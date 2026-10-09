@@ -216,6 +216,20 @@ The server checks synchronous owner admission, refuses busy or externally owned
 environments, and refreshes its gateway through the owning lifecycle callback.
 Browser reload and saved selection are not evidence of live activation.
 
+Plugin configuration uses the existing manifest defaults and secret declarations.
+`components/plugins/configuration-fields.js` owns the shared install/edit form;
+`configuration-editor.js` keeps an editing dialog outside dashboard replacement.
+Installation drafts move their existing controls during rendering rather than
+serializing password values. Environment/workspace navigation respects unfinished
+configuration, and writes keep the existing external mutation guard.
+
+`plugin-configuration-service.ts` owns saved-value validation and the redacted
+projection. Its private store is installation-scoped, outside plugin packages,
+and survives removal. Saves and Apply acquire the canonical Runtime-file lock
+then the private-store lock. The plugin loader captures local values once per
+compiled configuration lifetime, preserving previous-owner rollback without
+changing plugin SDK or manifest contracts. No process environment is mutated.
+
 ### Additive model setup
 
 Configuration composes a separate Provider / Model / Ready dialog in

@@ -81,6 +81,9 @@ describe("Web runtime configuration lifecycle", () => {
     registry.get("prod");
     const applying = registry.applyConfiguration();
     expect(registry.applyConfiguration()).toBe(applying);
+    await expect(
+      registry.applyConfiguration("removal-revision"),
+    ).rejects.toMatchObject({ code: "config_changed" });
     await checked.promise;
     const stopping = registry.stop();
     gate.resolve({ status: "ready" });

@@ -107,7 +107,7 @@ describe("bundled system tools use ordinary plugin management", () => {
     ).toEqual(options.config);
     expect(await readConfig(options.configPath)).toEqual({
       ...options.config,
-      plugins: { deny: ["system"] },
+      plugins: { disabledPluginIds: ["system"] },
     });
     expect(otherPlugins(disabled)).toEqual(otherPlugins(before));
     expect(system(getRuntimePluginSnapshot(options))).toEqual(system(disabled));
@@ -124,7 +124,7 @@ describe("bundled system tools use ordinary plugin management", () => {
     expect(otherPlugins(enabled)).toEqual(otherPlugins(before));
     expect(await readConfig(options.configPath)).toEqual({
       ...options.config,
-      plugins: { deny: [] },
+      plugins: {},
     });
     expect(JSON.stringify(enabled)).not.toContain("fixture-private-value");
   });

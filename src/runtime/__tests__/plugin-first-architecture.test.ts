@@ -25,8 +25,17 @@ function asRecord(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function isPluginDependencyDirectory(entry: {
+  name: string;
+  isDirectory(): boolean;
+}): boolean {
+  if (!entry.isDirectory()) return false;
+  return entry.name === "node_modules";
+}
+
 function collectFiles(root: string): string[] {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    if (isPluginDependencyDirectory(entry)) return [];
     const path = join(root, entry.name);
     return entry.isDirectory() ? collectFiles(path) : [path];
   });

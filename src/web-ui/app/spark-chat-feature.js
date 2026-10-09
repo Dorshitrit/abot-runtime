@@ -15,11 +15,26 @@ export function createSparkChatFeature({ dom, state: appState, client, shell, re
   let configuration;
   let readState;
   let environmentId = "";
+  let available = false;
+  let accessRevision = 0;
   let sync;
   let settings;
   let conversation;
   let awaitingOpening = false;
-  const isAvailable = () => client.supportsSparkChat?.() === true;
+  let restoringOpen = false;
+  function isSparkAvailable() {
+    if (client.supportsSparkChat?.() !== true) return false;
+    return shell.isWorkspaceAvailable("learning");
+  }
+  function canCompleteSparkOpening(scope, revision) {
+    if (!isSparkAvailable()) return false;
+    if (scope !== getEnvironmentId()) return false;
+    return revision === accessRevision;
+  }
+  function hasSparkAccessChanged(nextEnvironment, nextAvailable) {
+    if (environmentId !== nextEnvironment) return true;
+    return available !== nextAvailable;
+  }
   const getSubmissionBlock = () => {
     if (!configuration?.sessionId) return { message: "SPARK conversation is loading." };
     if (isSparkModelUnavailable(configuration)) return { message: "Choose a model under Proactive mode in SPARK settings." };
@@ -68,7 +83,7 @@ export function createSparkChatFeature({ dom, state: appState, client, shell, re
     onComposerStateChange: (sending) => sync?.composerChanged(sending),
   });
   sync = createSparkChatSync({
-    client, getEnvironmentId, conversation, isAvailable,
+    client, getEnvironmentId, conversation, isAvailable: isSparkAvailable,
     onConfiguration: (next) => {
       const changedModel = configuration?.modelProfileId !== next.modelProfileId;
       configuration = next; settings?.render(next, getEnvironmentId());
@@ -108,37 +123,75 @@ export function createSparkChatFeature({ dom, state: appState, client, shell, re
   panel.dom.settingsButton.addEventListener("click", openSettings);
   panel.onToggle((opened) => {
     if (!opened) { conversation.view.closeFilePreview(); return; }
-    if (!configuration) { awaitingOpening = true; void sync.refresh(); return; }
-    reading.open(); conversation.render(); conversation.update();
-    void sync.refresh();
+    if (!isSparkAvailable()) { panel.setOpen(false, { focus: false }); return; }
+    if (!restoringOpen) void open();
   });
 
   async function open(messageId, reference) {
-    if (!isAvailable()) return false;
+    if (!isSparkAvailable()) return false;
     const scope = getEnvironmentId();
-    try { if (!configuration || reference !== undefined) await sync.refresh({ wait: true }); }
-    catch (error) { shell.showToast(`SPARK could not be opened: ${error.message}`, "failed"); return false; }
-    if (scope !== getEnvironmentId()) return false;
+    const revision = accessRevision;
+    try { await sync.refresh({ wait: true }); }
+    catch (error) {
+      if (!canCompleteSparkOpening(scope, revision)) return false;
+      shell.showToast(`SPARK could not be opened: ${error.message}`, "failed");
+      return false;
+    }
+    if (!canCompleteSparkOpening(scope, revision)) return false;
     if (!configuration) return false;
-    panel.setOpen(true);
-    const target = resolveSparkMessageTarget(configuration.snapshot?.messages, messageId, reference);
-    reading.open(target); conversation.render(); conversation.update();
+    const requestedTarget = messageId ?? readState?.unreadMessageIds?.[0];
+    if (!await ensureSparkTargetHistory(requestedTarget, reference, scope, revision)) return false;
+    if (!canCompleteSparkOpening(scope, revision)) return false;
+    const target = resolveSparkMessageTarget(conversation.state.messages, requestedTarget, reference);
+    reading.open(target); restoringOpen = true; panel.setOpen(true); restoringOpen = false;
+    conversation.render(); conversation.update();
     return true;
+  }
+  async function ensureSparkTargetHistory(target, reference, scope, revision) {
+    if (target == null) return true;
+    if (reference === null) return true;
+    if (resolveSparkMessageTarget(conversation.state.messages, target, reference)) return true;
+    try {
+      await conversation.session.openSession(configuration.sessionId, { preserveCurrentWindow: true, page: {
+        targetMessageId: String(target), targetCreatedAt: reference?.createdAt,
+        targetRequestId: reference?.requestId ?? undefined,
+      } });
+    } catch (error) {
+      if (!canCompleteSparkOpening(scope, revision)) return false;
+      shell.showToast(`SPARK history unavailable: ${error.message}`, "failed");
+      return false;
+    }
+    return canCompleteSparkOpening(scope, revision);
+  }
+  function shouldRestoreUnavailableSparkFocus(nextAvailable) {
+    if (nextAvailable) return false;
+    const home = dom.homeWorkspaceButton;
+    if (!home) return false;
+    if (home.disabled) return false;
+    if (home.hidden) return false;
+    if (home.inert) return false;
+    if (home.closest?.("[hidden], [inert]")) return false;
+    const focused = document.activeElement;
+    if (!focused) return false;
+    if (panel.root?.contains(focused)) return true;
+    return panel.dom.launcherButton?.contains(focused) === true;
   }
   function environmentChanged() {
     const next = getEnvironmentId();
-    panel.setAvailable(isAvailable());
-    if (environmentId === next) return;
-    environmentId = next;
+    const nextAvailable = isSparkAvailable();
+    if (shouldRestoreUnavailableSparkFocus(nextAvailable)) dom.homeWorkspaceButton.focus({ preventScroll: true });
+    panel.setAvailable(nextAvailable);
+    if (!hasSparkAccessChanged(next, nextAvailable)) return;
+    environmentId = next; available = nextAvailable; accessRevision += 1;
     configuration = undefined; readState = undefined;
     awaitingOpening = panel.isOpen();
     sync.reset(); reading.reset(); notices.reset(); conversation.reset(); panel.hideNotice();
     settings.render(undefined, next);
-    if (isAvailable()) void sync.refresh({ consolidated: true });
+    if (isSparkAvailable()) void sync.refresh({ consolidated: true });
   }
   function handleRealtime(message) {
     environmentChanged();
-    if (!isAvailable()) return;
+    if (!isSparkAvailable()) return;
     const environment = message.environmentId || message.environment;
     if (environment && environment !== getEnvironmentId()) return;
     if (message.type === "learning.changed") { sync.modelChanged(); return; }
@@ -160,14 +213,17 @@ export function createSparkChatFeature({ dom, state: appState, client, shell, re
     open, environmentChanged,
     prepareEnvironmentChange: conversation.prepareEnvironmentChange,
     async openSession(sessionId, messageId, reference) {
-      if (!isAvailable() || !sessionId) return false;
+      if (!isSparkAvailable()) return false;
+      if (!sessionId) return false;
       const scope = getEnvironmentId();
+      const revision = accessRevision;
       try { if (!configuration) await sync.refresh({ wait: true }); }
       catch (error) {
+        if (!canCompleteSparkOpening(scope, revision)) return false;
         shell.showToast(`SPARK could not be opened: ${error.message}`, "failed");
         return true;
       }
-      if (scope !== getEnvironmentId()) return true;
+      if (!canCompleteSparkOpening(scope, revision)) return true;
       if (sessionId !== configuration?.sessionId) return false;
       return open(messageId, reference);
     },
@@ -177,6 +233,7 @@ export function createSparkChatFeature({ dom, state: appState, client, shell, re
       realtime.subscribeConnectionChanged?.(() => conversation.update());
       realtime.subscribeConnected(() => { environmentChanged(); void sync.refresh({ consolidated: true, rehydrate: true }); });
       dom.environmentSelect.addEventListener("change", () => queueMicrotask(environmentChanged));
+      shell.subscribeRuntimeAvailabilityChange(environmentChanged);
       shell.subscribeWorkspaceChange(() => { environmentChanged(); if (panel.isOpen()) reading.scheduleRead(); });
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") void sync.refresh({ consolidated: true });

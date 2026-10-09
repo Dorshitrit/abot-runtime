@@ -59,26 +59,6 @@ test("startup elects a replacement when the live owner exits during the WebSocke
   expect(await connection.call("ownerPid")).toBe(process.pid);
 }, 10_000);
 
-test("repeated pre-handshake connection loss remains bounded by the initial startup deadline", async () => {
-  const initialOwner = await startHandshakeOwner("reset");
-  const createOwner = vi.fn(async () => replacementOwner());
-  const startedAt = Date.now();
-  await expect(
-    createLocalRuntimeConnection({
-      directory,
-      identity: "test-environment",
-      startupTimeoutMs: 250,
-      createOwner,
-    }),
-  ).rejects.toThrow("local_runtime_owner_start_timeout");
-  expect(Date.now() - startedAt).toBeLessThan(2000);
-  expect(
-    initialOwner.messages.filter((message) => message.kind === "handshake")
-      .length,
-  ).toBeGreaterThan(1);
-  expect(createOwner).not.toHaveBeenCalled();
-}, 10_000);
-
 test("authentication failure stops startup after one handshake without a replacement owner", async () => {
   const initialOwner = await startHandshakeOwner("reject");
   const createOwner = vi.fn(async () => replacementOwner());

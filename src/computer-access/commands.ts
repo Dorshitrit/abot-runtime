@@ -18,6 +18,7 @@ export async function executeSystemCommand(input: {
   target: SystemTarget;
   params: Record<string, unknown>;
   run: SystemProcessRunner;
+  runCommand?: SystemProcessRunner;
   abortSignal?: AbortSignal;
 }): Promise<SystemProcessResult> {
   const { target, params, run } = input;
@@ -59,7 +60,7 @@ export async function executeSystemCommand(input: {
     params.elevated === true
       ? await elevatedSystemCommand({ target, command, cwd, run })
       : unprivilegedSystemCommand(target, command, cwd);
-  return run({
+  return (input.runCommand ?? run)({
     ...plan,
     timeoutMs,
     ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),

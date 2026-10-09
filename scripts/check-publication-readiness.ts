@@ -122,7 +122,6 @@ function assertRequiredFiles(): void {
     "docs/bridge-compatibility.md",
     "docs/known-limitations.md",
     "docs/plugins.md",
-    "docs/publishing.md",
     "docs/running-locally.md",
     "docs/tool-execution-result-evidence-contract.md",
     "docs/troubleshooting.md",

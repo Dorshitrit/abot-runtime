@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -31,7 +32,7 @@ function session(index: number): SessionRecord {
 }
 
 describe("Web UI read-state session listing", () => {
-  test("includes an unread conversation beyond 500 through one canonical disk read without session RPC", async () => {
+  test("includes an unread conversation beyond 500 through metadata without session RPC", async () => {
     const root = await mkdtemp(join(tmpdir(), "web-read-list-"));
     roots.push(root);
     const sessionsDir = join(root, "sessions");
@@ -106,8 +107,49 @@ describe("Web UI read-state session listing", () => {
       unreadCount: 1,
     });
     expect(result.sessions.filter((value) => value.hasUnread)).toHaveLength(1);
-    expect(readAll).toHaveBeenCalledTimes(1);
+    expect(readAll).not.toHaveBeenCalled();
+    expect(await service.list("prod")).toEqual(result);
     for (const method of Object.values(managedSessions))
       expect(method).not.toHaveBeenCalled();
+  });
+
+  test("backfill preserves existing read cursors and history across restart and keeps internal sessions hidden", async () => {
+    const root = await mkdtemp(join(tmpdir(), "web-read-backfill-"));
+    roots.push(root);
+    const sessionsDir = join(root, "sessions");
+    await mkdir(sessionsDir);
+    const record = session(1);
+    record.messages = [
+      { id: "msg-1", role: "assistant", content: "Before tracking", createdAt: iso(900) },
+      { id: "msg-2", role: "user", content: "Question", createdAt: iso(1100) },
+      { id: "msg-3", role: "assistant", content: "Read answer", createdAt: iso(1200) },
+      { id: "msg-4", role: "assistant", content: "Unread answer", createdAt: iso(1300) },
+    ];
+    record.messageCount = record.messages.length;
+    const bytes = JSON.stringify(record);
+    await writeFile(join(sessionsDir, `${record.id}.json`), bytes);
+    await writeFile(join(sessionsDir, "spark-companion.json"), JSON.stringify({ ...record, id: "spark-companion", kind: "spark" }));
+    await writeFile(join(sessionsDir, "internal.json"), JSON.stringify({
+      ...record, id: "internal", automationOrigin: { kind: "automation_node_v1" },
+    }));
+    const environment = () => ({ services: {
+      config: { paths: { runtimeDir: root, sessionsDir } } as RuntimeConfig,
+      sessions: new SessionService({ sessionsDir }),
+    } });
+    const service = new WebSessionReadStates(environment, () => 1000);
+    await service.mark("prod", record.id, { readThroughMessageId: 3 });
+    const key = createHash("sha256").update(JSON.stringify(["prod", sessionsDir])).digest("hex");
+    const readStatePath = join(root, "web-ui", "read-state", `${key}.json`);
+    const readStateBefore = await readFile(readStatePath, "utf8");
+
+    const first = await service.list("prod");
+    expect(first.sessions).toHaveLength(1);
+    expect(first.sessions[0]).toMatchObject({
+      id: record.id, unreadCount: 1, lastReadMessageId: "3", latestAssistantMessageId: 4,
+    });
+    const restarted = new WebSessionReadStates(environment, () => 9000);
+    expect(await restarted.list("prod")).toEqual(first);
+    expect(await readFile(readStatePath, "utf8")).toBe(readStateBefore);
+    expect(await readFile(join(sessionsDir, `${record.id}.json`), "utf8")).toBe(bytes);
   });
 });

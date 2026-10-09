@@ -10,7 +10,7 @@ const setupNeeded = {
     ready: false,
     route: "setup_required",
     environment: "container",
-    platforms: ["windows", "macos"],
+    platforms: ["windows", "macos", "linux"],
     restartRequired: false,
   },
 };
@@ -28,7 +28,7 @@ const ready = {
   },
 };
 const receipt = {
-  filename: "abot-setup.cmd",
+  filename: "abot-setup.sh",
   mimeType: "text/plain",
   contentBase64: "c2VjcmV0",
   expiresAt: "2099-01-01T00:00:00Z",
@@ -99,7 +99,7 @@ describe("computer setup GUI", () => {
   test("offers explicit unpairing and returns to setup after revocation", async () => {
     const { manager, root, dependencies, activate } = harness({ loadConnection: async () => ready });
     await activate();
-    expect(root.innerHTML).toContain("Unpair computer");
+    expect(root.innerHTML).toContain("data-system-host-revoke");
     expect(root.innerHTML).toContain("Saved insights are kept");
     expect(await manager.revoke()).toBe(true);
     expect(dependencies.revokeConnection).toHaveBeenCalledOnce();
@@ -107,15 +107,15 @@ describe("computer setup GUI", () => {
     expect(root.innerHTML).not.toContain("My Mac");
     expect(root.innerHTML).toContain("Computer unpaired");
   });
-  test("a connected Windows companion needing an update keeps its installer until capability readiness returns", async () => {
-    const windowsReady = { ...ready, identity: { ...ready.identity, os: "windows" } };
+  test("a connected Linux companion needing an update keeps its installer until capability readiness returns", async () => {
+    const linuxReady = { ...ready, identity: { ...ready.identity, os: "linux" } };
     const updateNeeded = {
-      ...windowsReady,
+      ...linuxReady,
       readiness: {
         ...ready.readiness,
         ready: false,
         companionUpdateRequired: true,
-        platforms: ["windows"],
+        platforms: ["linux"],
       },
     };
     const { manager, root, dependencies, activate } = harness({
@@ -124,13 +124,13 @@ describe("computer setup GUI", () => {
     await activate();
     expect(root.innerHTML).toContain("Update needed");
     expect(root.innerHTML).not.toContain("Paired · offline");
-    expect(root.innerHTML).toContain('data-system-host-install="windows"');
+    expect(root.innerHTML).toContain('data-system-host-install="linux"');
     expect(root.innerHTML).not.toContain('data-system-host-install="macos"');
-    expect(await manager.install("windows")).toBe(true);
-    expect(dependencies.downloadSetup).toHaveBeenCalledWith("windows");
+    expect(await manager.install("linux")).toBe(true);
+    expect(dependencies.downloadSetup).toHaveBeenCalledWith("linux");
     expect(root.innerHTML).toContain("Downloaded:");
     expect(root.innerHTML).toContain("Update needed");
-    dependencies.loadConnection.mockResolvedValueOnce(windowsReady as never);
+    dependencies.loadConnection.mockResolvedValueOnce(linuxReady as never);
     await manager.load();
     expect(root.innerHTML).toContain("Ready");
     expect(root.innerHTML).not.toContain("data-system-host-install=");
@@ -150,11 +150,11 @@ describe("computer setup GUI", () => {
   test("downloads the selected platform without exposing authorization or claiming readiness", async () => {
     const { manager, root, dependencies, activate } = harness();
     await activate();
-    expect(await manager.install("windows")).toBe(true);
-    expect(dependencies.downloadSetup).toHaveBeenCalledWith("windows");
+    expect(await manager.install("linux")).toBe(true);
+    expect(dependencies.downloadSetup).toHaveBeenCalledWith("linux");
     expect(dependencies.saveDownload).toHaveBeenCalledWith(receipt);
     expect(root.innerHTML).toContain("Downloaded:");
-    expect(root.innerHTML).toContain("Setup needed");
+    expect(root.innerHTML).toContain('data-system-host-store-stage="start"');
     expect(root.innerHTML).not.toContain("c2VjcmV0");
     expect(root.innerHTML).not.toContain("abot host");
     expect(root.innerHTML).not.toContain("pairing code");
@@ -180,35 +180,28 @@ describe("computer setup GUI", () => {
       expect(root.innerHTML).not.toContain("data-system-host-install=");
     },
   );
-  test("announces a WSL restart before download and preserves pending state during downtime", async () => {
+  test("keeps Linux setup downloaded when connection status becomes unavailable", async () => {
     const snapshot = {
       ...setupNeeded,
-      readiness: {
-        ...setupNeeded.readiness,
-        environment: "wsl",
-        platforms: ["windows"],
-        restartRequired: true,
-      },
+      readiness: { ...setupNeeded.readiness, platforms: ["linux"] },
     };
     const { manager, root, dependencies, activate } = harness({
       loadConnection: vi.fn(async () => snapshot),
-      downloadSetup: async () => ({ ...receipt, restartRequired: true }),
     });
     await activate();
-    expect(root.innerHTML).toContain('class="system-host-restart" role="note"');
-    expect(root.innerHTML).not.toContain('data-system-host-install="macos"');
-    await manager.install("windows");
+    expect(await manager.install("linux")).toBe(true);
     dependencies.loadConnection.mockRejectedValueOnce(new Error("offline"));
     await manager.load();
-    expect(root.innerHTML).toContain("Waiting for WSL");
+    expect(root.innerHTML).toContain("Status unavailable");
     expect(root.innerHTML).toContain("Downloaded:");
+    expect(manager.state.downloaded?.filename).toBe(receipt.filename);
   });
   test("polls only while visible and refreshes when returning without revoking the installer", async () => {
     vi.useFakeTimers();
     const { manager, dependencies, documentRoot, listeners, activate } =
       harness({ schedulePoll: setTimeout, cancelPoll: clearTimeout });
     await activate();
-    await manager.install("windows");
+    await manager.install("linux");
     const initial = dependencies.loadConnection.mock.calls.length;
     documentRoot.hidden = true;
     listeners.get("visibilitychange")?.();
@@ -230,7 +223,7 @@ describe("computer setup GUI", () => {
       downloadSetup: () => pending.promise,
     });
     await activate();
-    const installing = manager.install("windows");
+    const installing = manager.install("linux");
     manager.setActive(false);
     manager.setActive(true);
     pending.resolve(receipt);
@@ -244,7 +237,7 @@ describe("computer setup GUI", () => {
       },
     });
     await activate();
-    expect(await manager.install("windows")).toBe(false);
+    expect(await manager.install("linux")).toBe(false);
     await manager.load(true);
     expect(root.innerHTML).toContain(
       "Use HTTPS for this setup &lt;address&gt;",
@@ -328,7 +321,7 @@ describe("computer setup GUI", () => {
     {
       action: "install",
       dependency: "downloadSetup",
-      args: ["windows"],
+      args: ["linux"],
       result: receipt,
     },
     {
@@ -357,7 +350,7 @@ describe("computer setup GUI", () => {
       foreground.resolve(result as never);
       expect(await acting).toBe(true);
       expect(manager.state.busy).toBe(false);
-      expect(root.innerHTML).toContain("Setup needed");
+      expect(root.innerHTML).toContain('data-system-host-store-stage="start"');
     },
   );
   test("keeps the paired identity when revoke fails and does not expose backend payloads", async () => {

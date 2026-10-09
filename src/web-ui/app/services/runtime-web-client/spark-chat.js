@@ -1,16 +1,16 @@
 export function createSparkChatRequests({ requestApi, getEnvironmentId, getConfig }) {
   const supportsSparkChat = () => getConfig()?.backend === "runtime";
-  function path(environmentId) {
+  function path(environmentId, paged = false) {
     if (!supportsSparkChat()) throw new Error("SPARK chat is unavailable with this backend.");
-    return `/runtime/spark/chat?${new URLSearchParams({ environment: environmentId })}`;
+    return `/runtime/spark/chat?${new URLSearchParams({ environment: environmentId, ...(paged ? { page: "1" } : {}) })}`;
   }
   return {
     supportsSparkChat,
     loadSparkChat(environmentId = getEnvironmentId()) {
-      return requestApi(path(environmentId));
+      return requestApi(path(environmentId, true));
     },
     configureSparkChat(input, environmentId = getEnvironmentId()) {
-      return requestApi(path(environmentId), {
+      return requestApi(path(environmentId, true), {
         method: "PUT", body: JSON.stringify(input),
       });
     },

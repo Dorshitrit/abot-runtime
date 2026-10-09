@@ -75,12 +75,13 @@ async function harness(modelProfileId: string | null, profiles = [{ id: "model" 
   const ordinary = { connected: true, runtimeAvailability: { status: "ready" }, currentSessionId: "ordinary", agentMode: "deep",
     messages: [{ id: "ordinary-message" }], config: { embedding: { enabled: false }, learning: { proactiveEnabled: false } } };
   const unchanged = structuredClone(ordinary);
-  const shell = { showToast: vi.fn(), subscribeWorkspaceChange: vi.fn(), activateWorkspace: vi.fn(() => true) };
+  const shell = { isWorkspaceAvailable: () => true, subscribeRuntimeAvailabilityChange: vi.fn(), showToast: vi.fn(), subscribeWorkspaceChange: vi.fn(), activateWorkspace: vi.fn(() => true) };
   const listeners: any = {};
   const feature = createSparkChatFeature({ dom, state: ordinary, client, shell, getEnvironmentId: () => dom.environmentSelect.value,
     realtime: { subscribeMessages: (fn: any) => { listeners.message = fn; }, subscribeConnected: vi.fn(), send: () => true } });
   feature.bind(); feature.environmentChanged();
-  await vi.waitFor(() => expect(client.loadSession).toHaveBeenCalledOnce());
+  await vi.waitFor(() => expect(capture.conversation.state.currentSessionId).toBe("spark-companion"));
+  expect(client.loadSession).not.toHaveBeenCalled();
   await feature.open();
   panelDom.composerInput.value = "My draft";
   panelDom.composerInput.dispatchEvent(new Event("input"));

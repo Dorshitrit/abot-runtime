@@ -55,6 +55,6 @@ describe("session-store", () => {
       session,
     );
     const files = await readdir(sessionsDir);
-    expect(files).toEqual(["sess-atomic.json"]);
+    expect(files).toEqual([".metadata", "sess-atomic.json"]);
   });
 });

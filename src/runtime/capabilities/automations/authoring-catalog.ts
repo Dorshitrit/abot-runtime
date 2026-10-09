@@ -172,7 +172,7 @@ export async function readAutomationAuthoringCatalogOperation(
     operation.contractVersion === contractVersion;
   const selected = catalog.grantableOperations.find(matchesReference);
   if (!selected) throw new Error("automation_catalog_operation_not_found");
-  const { fixedParams: _fixedParams, ...operation } = selected;
+  const { fixedParams: _fixedParams, outputChannels: _outputChannels, ...operation } = selected;
   return {
     kind: "automation_authoring_catalog_operation_v1" as const,
     catalogScope: automationAuthoringCatalogScope(automationId),

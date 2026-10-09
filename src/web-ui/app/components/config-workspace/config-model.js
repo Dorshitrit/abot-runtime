@@ -126,6 +126,8 @@ export function formattedConfig(config) {
 export function createConfigWorkspaceModel() {
   const state = {
     configDashboard: null,
+    configDashboardError: false,
+    modelPluginCatalog: null,
     baselinesByKey: new Map(),
     rawDraftsByKey: new Map(),
     appliedJsonRepairKeys: new Set(),

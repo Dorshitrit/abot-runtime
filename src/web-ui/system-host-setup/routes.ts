@@ -9,15 +9,18 @@ import type { HostReadiness, HostSetupPlatform } from "./readiness.js";
 import {
   renderCompanionInstaller,
 } from "./installers.js";
-import { InstallerInputError } from "./installer-contract.js";
+import { InstallerInputError, type CompanionInstallerInput } from "./installer-contract.js";
+import { WINDOWS_COMPANION_STORE_URL } from "../../computer-access/companion/windows-store/identity.js";
 import { readInstallerCompanionBundle } from "./companion-bundle.js";
 import { LocalHostConnection, LOCAL_HOST_SETUP_PATH } from "./local-connection.js";
+import { handleWindowsStoreConnection, WINDOWS_STORE_CONNECTION_PATH } from "./windows-store-route.js";
+import { HostSetupMutation } from "./setup-mutation.js";
 
 const setupPath = "/web-api/runtime/system-host/setup";
 const bundlePath = "/web-api/runtime/system-host/bundle";
 
 export function isHostSetupRoute(pathname: string): boolean {
-  return [setupPath, bundlePath, LOCAL_HOST_SETUP_PATH].includes(pathname);
+  return [setupPath, bundlePath, LOCAL_HOST_SETUP_PATH, WINDOWS_STORE_CONNECTION_PATH].includes(pathname);
 }
 
 export function sendHostSetupInputError(
@@ -47,6 +50,12 @@ function isSetupPlatformRequest(
   return platform === "windows" || platform === "macos";
 }
 
+function canDownloadCompanionInstaller(
+  platform: HostSetupPlatform,
+): platform is CompanionInstallerInput["platform"] {
+  return platform === "macos" || platform === "linux";
+}
+
 function requestRuntimeOrigin(request: IncomingMessage): string {
   const encrypted = "encrypted" in request.socket && request.socket.encrypted;
   return new URL(`${encrypted ? "https" : "http"}://${request.headers.host}`)
@@ -62,16 +71,17 @@ export type HostSetupRouteDependencies = {
 
 /** GUI writes use same-origin JSON; native code downloads use the expiring setup grant. */
 export class HostSetupRoutes {
+  private readonly mutation = new HostSetupMutation();
   private readonly local: LocalHostConnection;
   constructor(private readonly dependencies: HostSetupRouteDependencies) {
-    this.local = new LocalHostConnection({ ...dependencies, bundle: () => this.bundle() });
+    this.local = new LocalHostConnection({ ...dependencies, mutation: this.mutation, bundle: () => this.bundle() });
   }
 
   rejectConcurrentMutation(response: ServerResponse): boolean {
-    return this.local.rejectConcurrentMutation(response);
+    return this.mutation.rejectConcurrentMutation(response);
   }
 
-  async close(): Promise<void> { await this.local.close(); }
+  async close(): Promise<void> { await this.mutation.close(); }
 
   private async bundle(): Promise<Buffer> {
     if (this.dependencies.bundleFile)
@@ -84,6 +94,13 @@ export class HostSetupRoutes {
     response: ServerResponse,
     pathname: string,
   ): Promise<void> {
+    if (pathname === WINDOWS_STORE_CONNECTION_PATH) {
+      await handleWindowsStoreConnection(request, response, {
+        ...this.dependencies,
+        mutation: this.mutation,
+      });
+      return;
+    }
     if (pathname === LOCAL_HOST_SETUP_PATH) {
       await this.local.handle(request, response);
       return;
@@ -111,9 +128,26 @@ export class HostSetupRoutes {
       });
       return;
     }
-    if (this.rejectConcurrentMutation(response)) return;
+    const platform = input.platform;
+    if (!canDownloadCompanionInstaller(platform)) {
+      sendJson(response, 410, {
+        ok: false,
+        error: "windows_store_required",
+        message: "Install or update ABot AI Companion through Microsoft Store.",
+        storeUrl: WINDOWS_COMPANION_STORE_URL,
+      });
+      return;
+    }
+    await this.mutation.run(response, () => this.issueSetupInstaller(request, response, platform));
+  }
+
+  private async issueSetupInstaller(
+    request: IncomingMessage,
+    response: ServerResponse,
+    platform: CompanionInstallerInput["platform"],
+  ): Promise<void> {
     const readiness = await this.dependencies.readiness();
-    if (!readiness.platforms.includes(input.platform)) {
+    if (!readiness.platforms.includes(platform)) {
       sendJson(response, 409, {
         ok: false,
         error: "host_setup_not_required",
@@ -124,13 +158,12 @@ export class HostSetupRoutes {
     // Read and hash the exact running build before creating a setup grant.
     const bundle = await this.bundle();
     await this.dependencies.prepareCompanion();
-    if (this.rejectConcurrentMutation(response)) return;
     const upgrading = Boolean(this.dependencies.store.host());
     const pairing = upgrading
       ? this.dependencies.store.beginBundleUpgrade()
       : this.dependencies.store.begin(15 * 60_000);
     const installer = await renderCompanionInstaller({
-      platform: input.platform,
+      platform,
       url: requestRuntimeOrigin(request),
       code: pairing.code,
       expiresAt: pairing.expiresAt,

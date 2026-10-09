@@ -71,6 +71,14 @@ export function sameConversationMessage(existing, incoming) {
   return !existing.persistedMessageId || !incoming.persistedMessageId;
 }
 
+export function mergeConversationMessage(existing, incoming) {
+  return {
+    ...existing, ...incoming,
+    text: incoming.text || existing.text,
+    thinkingText: incoming.thinkingText || existing.thinkingText,
+  };
+}
+
 export function removeStreamingPlaceholder(state, requestId) {
   state.messages = state.messages.filter((message) => {
     if (message.requestId !== requestId || message.role !== "assistant")

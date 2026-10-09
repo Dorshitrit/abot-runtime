@@ -22,7 +22,7 @@ export type SystemProcessResult = Readonly<{
   exitCode: number | null;
   stdout: string;
   stderr: string;
-  status: "completed" | "timeout" | "aborted" | "spawn_failed";
+  status: "completed" | "timeout" | "aborted" | "spawn_failed" | "output_failed";
   outputTruncated: boolean;
   spawnedProcess?: SystemSpawnObservation;
 }>;

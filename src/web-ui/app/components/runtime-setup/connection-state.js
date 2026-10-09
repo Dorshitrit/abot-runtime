@@ -1,5 +1,6 @@
 import { textOf } from "../../lib/text-format.js";
 import { normalizeProvider } from "./validation.js";
+import { readSetupContextWindowFeedback } from "./context-window-feedback.js";
 
 export function selectSetupProvider(state, value) {
   const provider = normalizeProvider(value);
@@ -36,7 +37,14 @@ export function setupConnectionSubmitLabel(state, apiKey = "") {
     : "Save connection";
 }
 
-export function setupConnectionSaveError(error) {
+export function receiveSetupConnectionSaveError(state, error) {
+  state.contextWindowFeedback = readSetupContextWindowFeedback(error);
+  state.error = "";
+  if (state.contextWindowFeedback) return;
+  state.error = setupConnectionSaveError(error);
+}
+
+function setupConnectionSaveError(error) {
   if (error?.payload?.error === "setup_configuration_changed")
     return "Your connection changed in another window. Refresh this page before editing it again.";
   return "Could not save your connection. Check the model and connection details, then try again.";

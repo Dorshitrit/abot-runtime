@@ -34,6 +34,8 @@ export type {
   ToolNormalInvocationInputValidation,
   ToolNormalInvocationNumberInput,
   ToolNormalInvocationOperation,
+  ToolNormalInvocationOutputChannels,
+  ToolNormalInvocationOutputChannelRole,
   ToolNormalInvocationPayload,
   ToolNormalInvocationPropertyInput,
   ToolNormalInvocationScalarInput,

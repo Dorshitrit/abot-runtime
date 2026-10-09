@@ -4,6 +4,101 @@ All notable changes to this project should be documented in this file.
 
 This project follows semantic versioning after the first public release.
 
+## 1.7.0 - 2026-10-09
+
+ABot 1.7.0 adds community plugin installation and configuration, per-model tool
+access controls, paginated conversations, and guided Windows computer connection
+through ABot AI Companion on Microsoft Store.
+
+### Added
+
+- Install community plugins from public GitHub repositories through Plugins.
+  Review resolves the chosen source to an exact commit and shows its tools and
+  configuration before installation. Discover links to the ABot Marketplace;
+  Companion can open `abot://install` links in Discover with the plugin source
+  ready for review.
+- Configure declared plugin settings and secrets during installation and later
+  from Plugins. Values stay local, are shared across environments, and are
+  retained after Remove. Apply loads saved values into idle Runtime owners.
+- Remove plugins installed through the GitHub installation flow after disabling
+  and applying the change to idle Runtime owners. Settings, secrets and plugin
+  data stored outside the installed package are retained.
+- Restrict plugins and individual tools for each model profile from Models.
+  The selected primary profile's restrictions apply throughout the request,
+  including delegated roles and approval resumes. Global restrictions still
+  apply; toggling a plugin preserves its individual tool choices.
+- Paginate session lists, conversation history and SPARK, with
+  `webUi.pageSize` defaulting to 20. Older history remains accessible while
+  active requests continue.
+- Connect Windows computers through
+  [ABot AI Companion on Microsoft Store](https://apps.microsoft.com/detail/9PK2FDQQLQS9).
+  The guided flow opens Companion with a temporary invitation and requires
+  explicit consent before pairing. Paired computers can reopen their saved
+  connection or start a confirmed setup again.
+
+### Changed
+
+- Conversation lists use a metadata index instead of loading every conversation's
+  full history. Streaming updates maintain the index with bounded writes.
+- Computer Access uses shared compact connection cards across Windows, macOS
+  and Linux, with clearer connection status and explicit Microsoft Store
+  installation and update buttons on Windows.
+- Models, Plugins and Operations show summaries specific to the selected page
+  and environment, with explicit loading and unavailable states. Configuration
+  controls and SPARK action buttons use consistent styling.
+- The Web UI and documentation link to the official ABot website at
+  `abot-ai.com`; security reports use `security@abot-ai.com`.
+- STEER lifecycle diagnostics correlate request-control activity across Web UI,
+  Bridge and Runtime without changing steering behavior.
+
+### Fixed
+
+- Local SYSTEM commands retain complete stdout and stderr on disk and deliver
+  large text through the existing context admission contract. Output failures
+  preserve the process receipt.
+- Updated Companion installations transfer large SYSTEM command output in
+  verified chunks without repeating execution after transfer failure. Captures
+  preserve their configured retention across reconnects.
+- Paged conversations preserve saved sidebar order, links to older runs, active
+  request activity, live reply order and visible-page read tracking. Failed
+  Latest loads keep the current page; programmatic scrolling does not fetch
+  extra pages, and direct links work beyond the first session page.
+- Web setup reports the effective context-window requirement when model capacity
+  cannot cover configured reserves, with actionable feedback on the context field.
+- Runtime configuration status and edits resolve absolute configuration paths
+  consistently with loading, including paths saved by Web onboarding.
+- Computer Access and SPARK wait until onboarding completes. Late responses
+  cannot reopen them after returning to setup, while ordinary refreshes of a
+  configured environment preserve computer access and the open SPARK conversation.
+- Whole-plugin disable and removal use exact plugin IDs independently of tool
+  selectors. Reinstall clears only the target plugin's exact disable while
+  preserving existing tool restrictions and other plugins' policies.
+- Plugin installation, selection saving, removal and rollback coordinate with
+  Apply. Removal preserves directories replaced during deletion; reinstall
+  clears package-local module caches. The UI reflects active environments and
+  pending changes after a partially completed removal.
+- Plugin configuration preserves retained values and inherited defaults.
+  Failed installation keeps editable settings, changing the source clears secret
+  drafts, and redundant default resets do not create unsaved changes. On POSIX,
+  local plugin credential files require owner-only permissions. Secret values
+  are not returned to the UI.
+- Plugin-only Apply can retain an externally managed local model gateway when
+  its configuration matches every active Runtime snapshot. Changed or unknown
+  gateway configuration still requires explicit service activation.
+- Companion pairing serializes invitation setup, requires consent before a new
+  grant is consumed, and preserves the matching saved host identity during an
+  upgrade. Existing pairings can register Marketplace install links by updating
+  Companion without unpairing.
+- Studio draft authoring distinguishes substantive text from structured output
+  and metadata through compact declarations for selected operations, without
+  repeating Studio guidance in ordinary tool descriptions.
+- Update `source-map-js` from 1.2.1 to 1.2.2.
+
+### Development
+
+- Synchronize SPARK proactive tests with review and filesystem completion to
+  avoid timing-dependent failures.
+
 ## 1.6.0 - 2026-10-05
 
 ABot 1.6.0 introduces ABot Studio for reusable automations and a persistent
@@ -249,9 +344,9 @@ macOS computer access.
 - CI runs tests in parallel shards and verifies complete, non-duplicated test
   coverage before passing validation. The separate macOS Companion checks were
   expanded, and asynchronous tests wait for completion signals.
-- A private combined-compaction smoke covers history and active-request
-  reduction, context-window changes, canonical handoffs, generated report
-  evidence, subsequent recall, and unrelated follow-up requests.
+- Regression coverage includes history and active-request reduction,
+  context-window changes, canonical handoffs, generated report evidence,
+  subsequent recall, and unrelated follow-up requests.
 
 ## 1.5.0 - 2026-09-28
 

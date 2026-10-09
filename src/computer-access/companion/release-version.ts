@@ -1,5 +1,5 @@
 /** Increment when installed companions should be offered an update. Independent of the wire protocol. */
-export const COMPANION_RELEASE_VERSION = 10;
+export const COMPANION_RELEASE_VERSION = 12;
 
 export function companionReleaseStatus(version: unknown) {
   const installedVersion =

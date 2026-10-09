@@ -18,7 +18,7 @@ import {
 
 vi.mock("../../web-ui/system-host-setup/installers.js", () => ({
   renderCompanionInstaller: vi.fn(async () => ({
-    filename: "setup.cmd",
+    filename: "setup.command",
     mimeType: "application/octet-stream",
     contentBase64: "Zml4dHVyZQ==",
   })),
@@ -79,7 +79,7 @@ async function fixture() {
     await rm(root, { recursive: true, force: true });
   });
   const setup = (
-    body: unknown = { platform: "windows" },
+    body: unknown = { platform: "macos" },
     headers: Record<string, string> = {},
   ) =>
     fetch(`${base}/web-api/runtime/system-host/setup`, {
@@ -116,7 +116,7 @@ describe("GUI installation routes", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body).toMatchObject({
-      filename: "setup.cmd",
+      filename: "setup.command",
       restartRequired: false,
     });
     expect(body.code).toBeUndefined();
@@ -176,7 +176,7 @@ describe("GUI installation routes", () => {
     expect(renderCompanionInstaller).not.toHaveBeenCalled();
   });
 
-  test.each(["windows", "macos", "linux"] as const)(
+  test.each(["macos", "linux"] as const)(
     "legacy learning setup uses the same %s upgrade and preserves the pairing",
     async (platform) => {
       const f = await fixture();
@@ -238,9 +238,9 @@ describe("GUI installation routes", () => {
       const pairing = f.store.begin();
       const identity = {
         name: "fixture",
-        os: "windows" as const,
+        os: "macos" as const,
         user: "owner",
-        homeDir: "C:\\Users\\owner",
+        homeDir: "/Users/owner",
       };
       const existing = f.store.consume(pairing.code, identity);
       const host = f.store.host();
@@ -260,19 +260,19 @@ describe("GUI installation routes", () => {
           },
           {
             facts: {
-              platform: environment === "native" ? "win32" : "linux",
+              platform: environment === "native" ? "darwin" : "linux",
               kernelRelease: "microsoft-standard-WSL2",
               containerMarker: environment === "container",
             },
           },
         ),
       );
-      expect((await f.setup({ platform: "macos" })).status).toBe(409);
+      expect((await f.setup({ platform: "linux" })).status).toBe(409);
       const response = await f.setup();
       expect(response.status).toBe(200);
       expect(await response.json()).toMatchObject({
         restartRequired: false,
-        filename: "setup.cmd",
+        filename: "setup.command",
       });
       const installer = vi
         .mocked(renderCompanionInstaller)
@@ -324,7 +324,7 @@ describe("GUI installation routes", () => {
     expect(renderCompanionInstaller).not.toHaveBeenCalled();
   });
 
-  test.each(["windows", "macos", "linux"] as const)(
+  test.each(["macos", "linux"] as const)(
     "direct %s access uses the shared installer, including legacy learning clients",
     async (platform) => {
       const f = await fixture();
@@ -347,26 +347,6 @@ describe("GUI installation routes", () => {
     },
   );
 
-  test("learning on WSL requests a companion without changing interop or restarting the distribution", async () => {
-    const f = await fixture();
-    f.readiness.mockResolvedValue({
-      ready: false,
-      environment: "wsl",
-      route: "setup_required",
-      platforms: ["windows"],
-      restartRequired: true,
-      distribution: "Ubuntu-fixture",
-    });
-    const response = await f.setup({
-      platform: "windows",
-      purpose: "learning",
-    });
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ restartRequired: false });
-    expect(renderCompanionInstaller).toHaveBeenCalledOnce();
-    expect(renderWslInteropInstaller).not.toHaveBeenCalled();
-  });
-
   test("learning setup retains same-origin validation and rejects unknown purposes", async () => {
     const f = await fixture();
     expect(
@@ -381,27 +361,6 @@ describe("GUI installation routes", () => {
       (await f.setup({ platform: "windows", purpose: "other" })).status,
     ).toBe(400);
     expect(renderCompanionInstaller).not.toHaveBeenCalled();
-  });
-
-  test("Computer access on WSL pairs one companion without interop repair or restart", async () => {
-    const f = await fixture();
-    f.readiness.mockResolvedValue({
-      ready: false,
-      environment: "wsl",
-      route: "setup_required",
-      platforms: ["windows"],
-      restartRequired: true,
-      distribution: "Ubuntu-fixture",
-    });
-    const response = await f.setup();
-    expect(await response.json()).toMatchObject({
-      restartRequired: false,
-      filename: "setup.cmd",
-    });
-    expect(renderWslInteropInstaller).not.toHaveBeenCalled();
-    expect(f.prepareCompanion).toHaveBeenCalledOnce();
-    expect(renderCompanionInstaller).toHaveBeenCalledOnce();
-    expect((await f.setup({ platform: "macos" })).status).toBe(409);
   });
 
   test("missing packaged companion cannot create a usable pairing grant", async () => {

@@ -92,7 +92,7 @@ test.each(["model", "plugin", "runner"] as const)(
     expect(settledBeforeRelease!).toBe(false);
     const config = await fixture.readConfig();
     if (kind === "model") expect(config.models.profiles).toHaveProperty("queued");
-    if (kind === "plugin") expect(config.plugins.deny).toContain("filesystem");
+    if (kind === "plugin") expect(config.plugins.disabledPluginIds).toContain("filesystem");
     if (kind === "runner")
       expect((await fixture.readRunner()).stepDefaults.timeoutMs).toBe(12345);
   },

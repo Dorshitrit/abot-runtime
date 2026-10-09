@@ -18,6 +18,8 @@ export function createSystemHostRequests({ requestApi, getConfig, getEnvironment
       requestSystemHost("/permissions", { method: "POST", body: JSON.stringify(input) }),
     connectLocalSystemHost: () =>
       requestSystemHost("/connect-local", { method: "POST", body: "{}" }),
+    requestSystemHostStoreConnection: () =>
+      requestSystemHost("/store-connect", { method: "POST", body: "{}" }),
     downloadSystemHostSetup: (platform, options = {}) =>
       requestSystemHost("/setup", {
         method: "POST",

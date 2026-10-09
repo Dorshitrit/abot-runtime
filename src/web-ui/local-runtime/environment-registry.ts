@@ -1,3 +1,11 @@
+import type { AppliedGatewayConfigurations } from "../runtime-setup-gateway.js";
+import { requirePluginOwnersIdle } from "./plugin-mutation-admission.js";
+import { ConfigFileConflictError } from "../../runtime/adapters/config-file-transaction.js";
+import { PluginManagementError } from "../plugin-management-service.js";
+import {
+  isPluginToolSelected,
+  normalizePluginSelection,
+} from "../../runtime/plugins/selection.js";
 import type { RuntimeConfig } from "../../runtime/ports.js";
 import type { WebUiEnvironmentConfig } from "../environment-config.js";
 import type { RuntimeSetupActivation } from "./runtime-setup-input.js";
@@ -26,6 +34,10 @@ import type { LearningChangedEvent } from "../../runtime/passive-learning/contra
 
 export class RuntimeEnvironmentRegistry {
   private readonly environments = new Map<string, RuntimeEnvironment>();
+  private readonly gatewayConfigurations = new WeakMap<
+    RuntimeEnvironment,
+    string | null
+  >();
   private stopped = false;
   private readonly desiredEnvironmentIds = new Set<string>();
   private applying: Promise<RuntimeSetupActivation> | undefined;
@@ -58,15 +70,62 @@ export class RuntimeEnvironmentRegistry {
     return this.environments.get(environmentId)?.nativePermissions;
   }
 
-  applyConfiguration(): Promise<RuntimeSetupActivation> {
+  requirePluginInactive(
+    pluginId: string,
+    capabilityIds: readonly string[],
+  ): void {
+    this.requireEnvironmentIntakeOpen();
+    if (this.setupActivationPending || this.environments.size === 0)
+      throw new PluginManagementError(
+        "plugin_runtime_unavailable",
+        "Apply Runtime configuration before removing plugins.",
+        409,
+      );
+    for (const environment of this.environments.values()) {
+      const selection = normalizePluginSelection(
+        environment.services.config.plugins,
+      );
+      if (
+        environment.getOwnership() !== "owner" ||
+        capabilityIds.some((toolName) =>
+          isPluginToolSelected({ pluginId, toolName, selection }),
+        )
+      )
+        throw new PluginManagementError(
+          "plugin_still_active",
+          "The plugin is still available in a Runtime environment. Apply its disable before removing it.",
+          409,
+        );
+    }
+  }
+
+  requirePluginMutationIdle(hasAcknowledgedRequests = false): void {
+    requirePluginOwnersIdle({
+      environments: this.environments.values(),
+      unavailable: this.stopped || this.setupActivationPending,
+      busy: hasAcknowledgedRequests || !!this.applying,
+    });
+  }
+
+  applyConfiguration(
+    expectedRevision?: string,
+  ): Promise<RuntimeSetupActivation> {
     if (this.stopped) return Promise.reject(new Error("web_runtime_stopped"));
-    if (this.applying) return this.applying;
+    if (this.applying) {
+      // A coalesced Apply may have loaded a different revision from this removal.
+      if (expectedRevision !== undefined)
+        return Promise.reject(new ConfigFileConflictError());
+      return this.applying;
+    }
     const configPath = inspectRuntimeConfigFileWithMeta(
       this.options.rootDir ?? process.cwd(),
       this.options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
     ).path;
-    const apply = withConfigurationActivationSource(configPath, (prepare) =>
-      this.applySavedConfiguration(configPath, prepare),
+    const apply = withConfigurationActivationSource(
+      configPath,
+      (prepare) => this.applySavedConfiguration(configPath, prepare),
+      expectedRevision,
+      this.options.rootDir ?? process.cwd(),
     );
     this.applying = apply.finally(() => {
       this.applying = undefined;
@@ -80,6 +139,7 @@ export class RuntimeEnvironmentRegistry {
   ): Promise<RuntimeSetupActivation> {
     const nextEnvironments =
       this.options.resolveEnvironmentConfig?.(configPath);
+    let appliedGatewayConfigurations: AppliedGatewayConfigurations | undefined;
     return applyRuntimeConfiguration({
       environments: this.environments,
       defaultEnvironmentId:
@@ -89,18 +149,36 @@ export class RuntimeEnvironmentRegistry {
         ...this.desiredEnvironmentIds,
       ],
       createEnvironment: (id) =>
-        this.createEnvironment(id, this.loadConfig(id, configPath)),
+        this.createEnvironment(
+          id,
+          this.loadConfig(id, configPath),
+          this.captureGatewayConfiguration(configPath),
+        ),
       recreateEnvironment: (id, previous) =>
-        this.createEnvironment(id, previous.services.config),
+        this.createEnvironment(
+          id,
+          previous.services.config,
+          this.gatewayConfigurations.get(previous) ?? null,
+        ),
       createGatewayRestorePoint: this.options.createRuntimeSetupRestorePoint,
       onRestorationFailure: () => {
         this.setupActivationPending = true;
       },
       ...preparation,
-      checkGateway: () => this.checkGatewayActivation(configPath),
+      checkGateway: () => {
+        appliedGatewayConfigurations = [...this.environments.values()].map(
+          (environment) => this.gatewayConfigurations.get(environment) ?? null,
+        );
+        return this.checkGatewayActivation(
+          configPath,
+          appliedGatewayConfigurations,
+        );
+      },
       activateGateway: () =>
-        this.options.onRuntimeSetup?.(configPath) ??
-        Promise.resolve({ status: "ready" }),
+        this.options.onRuntimeSetup?.(
+          configPath,
+          appliedGatewayConfigurations,
+        ) ?? Promise.resolve({ status: "ready" }),
       canContinue: () => !this.stopped,
     }).then((result) => {
       if (result.status !== "ready") return result;
@@ -119,9 +197,10 @@ export class RuntimeEnvironmentRegistry {
 
   private checkGatewayActivation(
     configPath: string,
+    applied: AppliedGatewayConfigurations,
   ): Promise<RuntimeSetupActivation> {
     if (this.options.checkRuntimeSetupActivation)
-      return this.options.checkRuntimeSetupActivation(configPath);
+      return this.options.checkRuntimeSetupActivation(configPath, applied);
     if (this.options.onRuntimeSetup)
       return Promise.resolve({ status: "ready" });
     return Promise.resolve({
@@ -202,13 +281,30 @@ export class RuntimeEnvironmentRegistry {
     return environment;
   }
 
+  private captureGatewayConfiguration(configPath?: string): string | null {
+    try {
+      return (
+        this.options.captureRuntimeSetupConfiguration?.(configPath) ?? null
+      );
+    } catch {
+      // An unavailable gateway snapshot cannot block an otherwise valid Runtime.
+      // Apply still refuses external reuse when any owner's snapshot is unknown.
+      return null;
+    }
+  }
+
   private createEnvironment(
     environmentId: string,
     config: RuntimeConfig = this.loadConfig(environmentId),
+    gatewayConfiguration = this.captureGatewayConfiguration(
+      this.options.configPath,
+    ),
   ): RuntimeEnvironment {
     const environment = createLocalRuntimeApplication(config, {
       scheduledRequestOptions: this.schedulerBindings.requestOptions,
     });
+    // Capture before startup; restored owners keep their prior immutable snapshot.
+    this.gatewayConfigurations.set(environment, gatewayConfiguration);
     if (this.schedulerBindings.publish) {
       environment.subscribeScheduledEvents(this.schedulerBindings.publish);
     }

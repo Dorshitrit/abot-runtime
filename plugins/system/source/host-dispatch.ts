@@ -1,3 +1,4 @@
+import { executeCompanionCommand, supportsCompanionCommandOutput } from "./companion-command-output.js";
 import type { ComputerAccessConnection } from "../../../src/plugin-sdk/computer-access.js";
 import {
   failureResult,
@@ -32,6 +33,7 @@ export function createBoundSystemHandlers(
     snapshot: SystemTargetSnapshot;
     nativeHandlers: Readonly<Record<string, ToolImplementation>>;
     connection: SystemHostConnection;
+    outputRetentionMs?: number;
   }>,
 ): Record<string, ToolImplementation> {
   return Object.fromEntries(
@@ -67,6 +69,8 @@ function boundOperation(
       const route = requireSystemRequestRoute(input.snapshot, params.target);
       if (route.kind === "native")
         return await input.nativeHandlers[operation]!(params, context);
+      if (operation === "system_command" && supportsCompanionCommandOutput(route))
+        return await executeCompanionCommand({ ...input, route, params, context });
       return await input.connection.executeHostOperation(input.rootDir, {
         hostId: route.hostId,
         connectionId: route.connectionId,

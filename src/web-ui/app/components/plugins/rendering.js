@@ -56,7 +56,13 @@ function renderCapabilities(plugin, busy, open) {
   </section>`;
 }
 
-function renderPluginCard(plugin, busy, openPluginIds) {
+function renderPluginCard(
+  plugin,
+  busy,
+  openPluginIds,
+  canRemove,
+  canConfigure,
+) {
   const toolsOpen = openPluginIds.has(plugin.id);
   const selected = pluginMasterIsEnabled(plugin);
   const disabled = busy || plugin.blockedByGlobalPolicy;
@@ -74,8 +80,12 @@ function renderPluginCard(plugin, busy, openPluginIds) {
       <p class="plugin-description" title="${escapeAttribute(plugin.description || "Installed Runtime plugin.")}">${escapeHtml(plugin.description || "Installed Runtime plugin.")}</p>
       <div class="plugin-card-footer">
         <span>${plugin.selectedCapabilityCount} of ${plugin.capabilityCount} capabilities selected</span>
+        <div class="plugin-card-actions">
+        ${canConfigure && plugin.configurable ? `<button type="button" data-plugin-configure="${escapeAttribute(plugin.id)}" ${busy ? "disabled" : ""}>Configure</button>` : ""}
+        ${canRemove && plugin.removable ? `<button type="button" data-plugin-remove="${escapeAttribute(plugin.id)}" aria-label="${escapeAttribute(`Remove ${plugin.id}`)}" ${busy ? "disabled" : ""}>Remove</button>` : ""}
         <button type="button" data-plugin-toggle="${escapeAttribute(plugin.id)}" data-plugin-enabled="${selected ? "false" : "true"}"
           aria-label="${escapeAttribute(`${action} ${plugin.id}`)}" ${disabled ? "disabled" : ""}>${action}</button>
+        </div>
       </div>
       <button type="button" class="plugin-tools-open" data-plugin-tools-open="${escapeAttribute(plugin.id)}" aria-controls="${escapeAttribute(`plugin-tools-${encodeURIComponent(plugin.id)}`)}" aria-expanded="${toolsOpen}" aria-label="${escapeAttribute(`Manage tools in ${plugin.id}`)}">
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
@@ -103,6 +113,8 @@ export function renderPluginManager({
   message,
   error,
   openPluginIds = new Set(),
+  canRemove = false,
+  canConfigure = false,
 }) {
   const plugins = snapshot?.plugins || [];
   const globalMessage = globalPolicyMessage(snapshot?.selection);
@@ -119,6 +131,6 @@ export function renderPluginManager({
       <p class="plugin-application-note">This list shows saved configuration. Apply changes or restart Runtime to use a new selection.</p>
       ${globalMessage ? `<p class="plugin-policy-note">${escapeHtml(globalMessage)}</p>` : ""}
       <div class="plugin-manager-status ${error ? "error-text" : ""}" role="${error ? "alert" : "status"}" aria-live="polite">${escapeHtml(status)}</div>
-      ${plugins.length ? `<div class="plugin-grid">${plugins.map((plugin) => renderPluginCard(plugin, busy, openPluginIds)).join("")}</div>` : `<div class="empty-state compact">${busy ? "Loading installed plugins..." : "No installed plugins found."}</div>`}
+      ${plugins.length ? `<div class="plugin-grid">${plugins.map((plugin) => renderPluginCard(plugin, busy, openPluginIds, canRemove, canConfigure)).join("")}</div>` : `<div class="empty-state compact">${busy ? "Loading installed plugins..." : "No installed plugins found."}</div>`}
     </section>`;
 }

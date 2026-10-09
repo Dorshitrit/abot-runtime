@@ -16,6 +16,9 @@ the same physical directory, the catalog is discovered only once.
 Open **Plugins** to see installed manifests, capability counts,
 and enabled, partially enabled or disabled selections. Switches save the selected
 plugin's configuration while preserving capability-specific allow/deny rules.
+Whole-plugin switches use `plugins.disabledPluginIds`, an exact list of plugin
+IDs independent of capability names and qualified selectors. The list does not
+interpret wildcards; legacy `allow` and `deny` rules keep their existing meaning.
 Choose **Manage tools** on a plugin to manage its declared tools inside the same card.
 The card keeps its size; the tool list scrolls when needed. Use **Back** or Escape
 to return to the plugin overview. For example, disabling filesystem.read_file
@@ -26,14 +29,164 @@ tools switched off.
 Global, parent-plugin and broad tool deny rules remain explicit blockers.
 A child switch does not silently remove those rules or enable sibling tools.
 
+Install, configuration saves, enable/disable and Remove require every owning Runtime to be idle.
+While a conversation or Job is running, these actions return a clear message
+without saving the requested change. Open but idle conversations do not block
+changes; browsing and reviewing repositories remain available. If another process
+owns an environment, use the owning Web UI so its activity can be verified.
+
 Choose **Apply changes** to activate saved settings. The Web process replaces
 only its own idle environments and preserves session and Job files. If any
 environment is working, or another process owns it, changes remain saved and
 the UI explains why they cannot yet be applied. Saving a switch alone does not
 change tools available to an already running agent.
 
-This screen manages packages already installed on disk; it does not install
-plugins from a marketplace.
+## Configure Plugin Values
+
+Choose **Configure** on an installed plugin, or use the same form during its
+installation review. Fields come from the existing `settings.defaults` and
+`secrets` declarations. Strings, numbers and booleans use ordinary controls;
+objects, arrays and null defaults use JSON. The host checks declared setting
+names and top-level default types. A null default supplies no type information;
+semantic checks such as URL validity remain the plugin's responsibility.
+The form shows whether each setting uses the plugin default or a local value.
+Saving credentials alone leaves inherited defaults unchanged. Editing a setting
+creates a local override, even when its value equals today's default; **Use plugin
+default** removes that override when saved. Existing saved values stay local until
+explicitly reset, so no upgrade automatically rewrites a user's configuration.
+No manifest schema or SDK changes are required. If an upgraded plugin changes a
+setting's default type, an incompatible retained value blocks loading with an
+explicit configuration error. Configure remains available to correct the value;
+the host does not silently replace it with a default.
+
+**Save changes** persists values locally; **Apply changes** loads them into new
+idle Runtime owners. Existing owners retain their loaded values, including when
+activation fails and restores the previous configuration. GET returns settings
+and credential-presence flags, never secret values. Passwords remain in their
+mounted controls until submitted, and are cleared after submission.
+
+Values are shared across environments of the same consumer root and are stored
+in `<consumer-root>/.runtime/plugin-configuration.json`, outside plugin packages,
+with owner-only file permissions. On POSIX, an existing file with any group or
+other-user permission is rejected before its contents are read. Restore its
+permissions with `chmod 600 .runtime/plugin-configuration.json` from the installation
+root; the host does not change permissions automatically. They are local plaintext
+configuration, not an
+encrypted vault. This file must not be committed, published, or shared with a
+plugin repository. The existing `.runtime/` exclusion also keeps it out of Git
+and packages. Settings override declared defaults; undeclared settings are not
+passed to plugins. A locally configured secret is bound to its declared name
+and environment-variable name and is delivered through `context.secrets.get`.
+Without a local override, the existing process environment remains the source.
+Saving plugin values does not write `.env` or change `process.env`. Browser revision
+tokens use a private process key rather than an unkeyed digest of secret-bearing
+content. Reload an open form after restarting its Web UI process.
+
+Keys removed from the current manifest, or whose environment binding changed,
+appear under **Keys no longer used by this plugin** without exposing their values.
+They remain saved until the user selects **Delete saved key** and saves. Ordinary
+settings edits do not delete them. A changed binding under the same key name
+requires explicitly deleting the old saved key before setting or clearing its
+replacement; both choices can be submitted in one save. Configure remains
+available for these keys even when the plugin has no current settings or secrets.
+
+For each secret, keep the current value, replace it, or explicitly clear it.
+Clear suppresses an inherited value for this plugin without deleting a shared
+environment variable. Clearing a required secret prevents the plugin from
+loading on the next Apply until the key is configured again. Remove retains
+local settings and secrets; a later installation review shows the retained
+settings and presence flags. Required secrets are checked before installation
+commits, and failed selection saves roll back the local configuration and package.
+
+## Install Community Plugins
+
+The **Installed** tab manages the existing catalog. **Discover** links to the
+[ABot Marketplace](https://abot-ai.com/marketplace/) and installs public GitHub packages independently of that directory.
+The Marketplace is a directory of community-owned repositories; listing approval
+does not grant a repository permission to run on a user's machine.
+
+Paste a repository URL in **Discover**, optionally choosing a branch, tag or
+commit and a folder inside the repository. **Review plugin** resolves the source
+to an exact commit, validates the manifest and its declared files without
+executing plugin code, and displays its tools and configuration form.
+Fill in required secrets before confirming installation.
+**Install and enable** downloads the same commit, checks the reviewed content
+digest, and installs it at `<consumer-root>/plugins/<manifest.name>`. Existing
+plugin IDs and capability IDs are rejected; this flow never replaces a plugin.
+Package publication and selection saving share the configuration lock with Apply;
+a failed save removes the uncommitted package before Apply can discover it.
+The normal configuration controls and global restrictions still apply.
+The review offers **Install and enable** at both ends. After installation, the
+UI returns to **Installed** with a status message. Choose **Apply changes** to
+load the plugin into the Runtime.
+
+Publishers must commit a complete package: `plugin.json`, its built CommonJS
+`.cjs` entrypoint, referenced skills and all required assets. Bundle dependencies
+that are not supplied by the public plugin SDK. Installation does not execute
+`npm install`, build commands, lifecycle scripts or repository code. Public HTTPS
+repositories on `github.com` are supported; private repositories, updates and
+Studio packages are outside this first installation flow. Repository ZIPs are
+limited to 25 MiB and 2,000 entries, with at most 16 MiB per extracted file and
+64 MiB total. Symlinks, traversal and non-portable filenames are rejected.
+
+### Install In ABot Links
+
+Computer Access setup registers the `abot:` URL scheme on Windows, macOS and
+Linux desktops. Existing installations can use **Update** in Computer Access
+to install Companion release 12 and register links while keeping their pairing.
+A website can render an ordinary link using this contract:
+
+```js
+const link = new URL("abot://install");
+link.searchParams.set("kind", "plugin");
+link.searchParams.set("repo", "https://github.com/owner/plugin");
+link.searchParams.set("ref", "v1.0.0"); // optional; a commit is recommended
+link.searchParams.set("path", "plugins/example"); // optional repository folder
+installAnchor.href = link.toString();
+```
+
+Clicking the link opens **Discover** in the Runtime saved in the local Computer
+Access pairing, with the source ready for review. A link cannot choose another
+Runtime address or bypass local installation confirmation. The browser may ask
+to open ABot. Without Computer Access, users can paste the same repository URL.
+Companion disconnect/uninstall removes its owned protocol registration.
+
+The local API uses `POST /runtime/plugins/inspect` with
+`{ repository, ref?, path? }`, returning `{ ok, review }`.
+Installation uses `POST /runtime/plugins/install` with
+`{ source: review.source, digest: review.digest }`. Both require same-origin
+JSON requests and completed Runtime setup. These APIs operate on the configured
+consumer root and configuration file; they do not depend on the Marketplace.
+
+## Remove Community Plugins
+
+**Remove** is available in the ongoing Plugins screen for packages installed by
+this GitHub flow. After confirmation, it saves a disable, applies configuration
+through the existing idle-owner checks, and only then deletes the installed
+folder. Built-in plugins and manually copied folders without an installation
+receipt do not offer Remove. Removal adds only the target's exact ID to
+`plugins.disabledPluginIds`, so names shared with other tools or qualified
+selectors cannot change another plugin's selection.
+
+If work starts after the disable was saved but before Apply, the files remain.
+Finish the active work, then choose **Remove** again. A failed Apply or any
+concurrent configuration change also prevents deletion. Removal verifies the
+moved directory before deleting it and retires its cached CommonJS modules so
+a later installation loads the new entrypoint and package-local dependencies.
+Selection rules remain in the configuration so removal cannot widen another
+plugin's allow policy. Installing the same plugin again clears its exact disabled
+ID and preserves other disabled IDs and capability-specific deny rules. Existing
+qualified denies are not inferred to be removal-generated; review such legacy
+rules explicitly in Advanced settings if they still disable the tools.
+
+`POST /runtime/plugins/remove` accepts `{ pluginId }`, with the same origin,
+JSON and completed-setup requirements as installation. It returns `removed`,
+`activation`, a status message and the refreshed plugin snapshot. This removes
+the installed plugin folder, including data the plugin kept inside it; files
+stored elsewhere are retained. If Apply succeeds but a later removal check fails,
+the error retains its HTTP status and code and includes `activation` with status
+`ready`. The UI refreshes the active environments; `config_changed` still marks
+the newer saved configuration as pending activation.
 
 ## Package Shape
 
@@ -142,6 +295,16 @@ principal. A capability owns its skill bindings, and each operation owns its
 input, effect, and approval. Optional capability metadata such as client event
 presentation, payload authoring, development roles, and selection grounding
 belongs here as well—not in runtime orchestration.
+
+An operation may declare `outputChannels` alongside `summary`, for example
+`{"text":"content","data":"metadata"}`. Both fields are required when declared:
+`content` can carry substantive output (possibly bounded or summarized),
+`metadata` contains only identifiers/status/counts/receipts, and `conditional`
+depends on the operation inputs. Omission means unknown, not metadata. This
+passive declaration describes the saved Studio channels, not every field in a
+chat tool result; it changes no execution or binding behavior. Only selected
+Studio `prepare_draft` operations expose it to models; ordinary tool summaries
+and discovery stay concise. Whole Data bindings do not need field pointers.
 
 A plugin declares sensitive operations with `approval: "always"` in its
 manifest, as the bundled EXEC and SYSTEM plugins do. Apply that policy to every

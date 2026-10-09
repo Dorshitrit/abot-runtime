@@ -125,6 +125,7 @@ export function createSparkChatReading({
   documentRoot.addEventListener("visibilitychange", scheduleRead);
   viewport.addEventListener("focus", scheduleRead);
   return {
+    preservePosition() { follow = false; top = dom.messagesList.scrollTop; },
     afterRender,
     onLayoutChange() {
       if (!isOpen()) return;

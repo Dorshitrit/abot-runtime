@@ -1,3 +1,4 @@
+import { createModelPluginViewState } from "./config-workspace/model-plugin-view-state.js";
 import { createConfigCalibrationDisclosure } from "./config-workspace/calibration-disclosure.js";
 import { createConfigDashboardRendering } from "./config-workspace/dashboard-rendering.js";
 import { createConfigFieldRendering } from "./config-workspace/field-rendering.js";
@@ -22,10 +23,12 @@ export {
 export function createConfigWorkspace({
   dom,
   loadDashboard,
+  loadModelPlugins,
   saveFile,
   memorySetup,
   memoryManagement,
   pluginManagement,
+  getOperationsSummary,
   onAddModel,
   onRemoveModel,
   onNavigationChange = () => {},
@@ -35,6 +38,7 @@ export function createConfigWorkspace({
 }) {
   const workspaceModel = createConfigWorkspaceModel();
   const { state } = workspaceModel;
+  const modelPluginViewState = createModelPluginViewState(dom.configDashboard);
   const calibrationDisclosure = createConfigCalibrationDisclosure({
     state,
     root: dom.configDashboard,
@@ -61,6 +65,7 @@ export function createConfigWorkspace({
   });
 
   const modelRendering = createConfigModelRendering({
+    modelPluginViewState,
     state,
     calibrationProfileLabel: fieldRendering.calibrationProfileLabel,
     configFileKey: workspaceModel.configFileKey,
@@ -87,6 +92,7 @@ export function createConfigWorkspace({
   });
 
   const workspaceView = createConfigWorkspaceView({
+    modelPluginViewState,
     onNavigationChange: () => {
       navigationRevision += 1;
       onNavigationChange();
@@ -95,11 +101,10 @@ export function createConfigWorkspace({
     dom,
     eventTarget,
     pluginManagement,
+    getOperationsSummary,
     configFileEntries: workspaceModel.configFileEntries,
     configFileKey: workspaceModel.configFileKey,
-    countObjectKeys: fieldRendering.countObjectKeys,
     dashboardIsBusy: workspaceModel.dashboardIsBusy,
-    dirtyFiles: workspaceModel.dirtyFiles,
     ensureRawSelection: workspaceModel.ensureRawSelection,
     fileStatusText: fieldRendering.fileStatusText,
     hasPendingFileChanges: workspaceModel.hasPendingFileChanges,
@@ -115,6 +120,7 @@ export function createConfigWorkspace({
   });
 
   const workspaceMutations = createConfigWorkspaceMutations({
+    modelPluginViewState,
     state,
     dom,
     confirmDiscard,
@@ -137,6 +143,7 @@ export function createConfigWorkspace({
     state,
     dom,
     loadDashboard,
+    loadModelPlugins,
     saveFile,
     memorySetup,
     memoryManagement,
@@ -160,6 +167,7 @@ export function createConfigWorkspace({
   });
 
   const workspaceEvents = createConfigWorkspaceEvents({
+    modelPluginViewState,
     onAddModel,
     onRemoveModel,
     state,
@@ -190,6 +198,7 @@ export function createConfigWorkspace({
 
   return {
     activeCategory: () => state.activeCategory,
+    syncSummary: workspaceView.syncDashboardSummary,
     setActive: calibrationDisclosure.setActive,
     setWorkspace: (workspace) => {
       const category = configurationCategoryForWorkspace(workspace);

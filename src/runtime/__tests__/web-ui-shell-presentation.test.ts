@@ -20,6 +20,12 @@ const allStyles = readdirSync(fileURLToPath(stylesUrl))
   .join("\n");
 
 describe("web ui shell presentation", () => {
+  test("makes the ordinary conversation scroll region reachable by keyboard", () => {
+    const messageRegion = markup.match(/<section\b[^>]*\bid="messagesList"[^>]*>/)?.[0];
+    expect(messageRegion).toMatch(/\btabindex="0"/);
+    expect(messageRegion).toMatch(/\baria-label="[^"]+"/);
+  });
+
   test("uses the single conversations control as the rail-leading action", () => {
     expect(markup.match(/id="sessionsToggleButton"/g)).toHaveLength(1);
     expect(markup).not.toContain('class="rail-brand"');

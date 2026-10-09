@@ -459,11 +459,21 @@ context admission before a new checkpoint is committed. Controls and payload
 authors do not receive this current supervision capsule.
 
 Every tool and skill binding is declared once by a package under root
-`plugins/`. Runtime config only applies `plugins.enabled`, `plugins.allow`, and
-`plugins.deny`. The request-scoped capability provider projects the effective
+`plugins/`. Runtime config applies `plugins.enabled`, `plugins.allow`,
+`plugins.deny`, and the exact-ID `plugins.disabledPluginIds` block list.
+Exact disabled plugin IDs do not match capability names or qualified selectors. The request-scoped capability provider projects the effective
 registered operations generically for an authorized Worker or root. Adding,
 removing, or renaming a tool must not require a request-runner or role prompt
 branch.
+
+
+A model profile may further narrow this catalog through `plugins.deny`.
+The request captures these selectors from its effective primary profile in the
+existing execution selection, including the saved approval continuation.
+The shared request Tool Registry applies them alongside permission-mode
+restrictions to discovery and execution for both root policies. Per-step model
+overrides cannot change the captured restriction; other requests retain their
+own profile selection. The metadata is not projected to the model gateway.
 
 ABot Studio draft authoring uses the same capability engine. The
 `automation_builder` capability creates a draft from optional `settings` and

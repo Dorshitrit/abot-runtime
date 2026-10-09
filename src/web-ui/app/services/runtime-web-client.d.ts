@@ -101,6 +101,7 @@ export declare function createRuntimeWebClient(options: {
   getSystemHostConnection(): Promise<Record<string, unknown>>;
   requestSystemHostPermissions(input: Record<string, unknown>): Promise<Record<string, unknown>>;
   connectLocalSystemHost(): Promise<Record<string, unknown>>;
+  requestSystemHostStoreConnection(): Promise<Record<string, unknown>>;
   downloadSystemHostSetup(
     platform: "windows" | "macos" | "linux",
     options?: { purpose?: "learning" },
@@ -128,6 +129,9 @@ export declare function createRuntimeWebClient(options: {
     environmentId?: string,
   ): Promise<Record<string, unknown>>;
   getRuntimePlugins(environmentId?: string): Promise<Record<string, unknown>>;
+  inspectRuntimePlugin(input: Record<string, unknown>, environmentId?: string): Promise<Record<string, unknown>>;
+  installRuntimePlugin(input: Record<string, unknown>, environmentId?: string): Promise<Record<string, unknown>>;
+  removeRuntimePlugin(input: { pluginId: string }, environmentId?: string): Promise<Record<string, unknown>>;
   setRuntimePlugin(
     input: { pluginId: string; capabilityId?: string; enabled: boolean },
     environmentId?: string,
@@ -217,10 +221,11 @@ export declare function createRuntimeWebClient(options: {
     file: Blob;
   }): Promise<Record<string, unknown>>;
   loadWebConfig(): Promise<Record<string, unknown>>;
-  listSessions(environmentId?: string): Promise<Record<string, unknown>>;
+  listSessions(environmentId?: string, page?: Record<string, unknown>): Promise<Record<string, unknown>>;
   loadSession(
     sessionId: string,
     environmentId?: string,
+    page?: Record<string, unknown>,
   ): Promise<Record<string, unknown>>;
   markSessionRead(options: {
     sessionId: string;

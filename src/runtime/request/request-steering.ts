@@ -1,4 +1,7 @@
-import { traceDebug } from "../observability/debug-logger.js";
+import {
+  createRequestControlDiagnosticId,
+  traceRequestControl,
+} from "../observability/request-control-diagnostics.js";
 
 export const REQUEST_STEERING_FEATURE = "request_steering_v1" as const;
 export const REQUEST_STEERING_MESSAGE_KIND =
@@ -85,7 +88,13 @@ export function projectRequestSteeringSnapshot(
 
 export function createRequestSteeringInbox(params: {
   requestId: string;
+  diagnostics?: Readonly<{ inboxId?: string; origin?: string }>;
 }): RequestSteeringInbox {
+  const diagnosticIdentity = {
+    inboxId:
+      params.diagnostics?.inboxId ?? createRequestControlDiagnosticId("inbox"),
+    inboxOrigin: params.diagnostics?.origin ?? "request",
+  };
   const updates: RequestSteeringUpdate[] = [];
   const bySteerId = new Map<string, RequestSteeringUpdate>();
   let closed = false;
@@ -96,20 +105,27 @@ export function createRequestSteeringInbox(params: {
     | undefined;
   let persistenceTail = Promise.resolve();
 
+  traceRequestControl(LOG_SCOPE, "inbox.opened", {
+    ...diagnosticIdentity,
+    requestId: params.requestId,
+  });
+
   function schedulePersistence(update: RequestSteeringUpdate): void {
     if (!persistUpdate) return;
     const persist = persistUpdate;
     persistenceTail = persistenceTail.then(async () => {
       try {
         await persist(update);
-        traceDebug(LOG_SCOPE, "update.persisted", {
+        traceRequestControl(LOG_SCOPE, "update.persisted", {
+          ...diagnosticIdentity,
           requestId: params.requestId,
           steerId: update.steerId,
           sequence: update.sequence,
           textLength: update.text.length,
         });
       } catch (error: unknown) {
-        traceDebug(LOG_SCOPE, "update.persistence_failed", {
+        traceRequestControl(LOG_SCOPE, "update.persistence_failed", {
+          ...diagnosticIdentity,
           requestId: params.requestId,
           steerId: update.steerId,
           sequence: update.sequence,
@@ -125,8 +141,10 @@ export function createRequestSteeringInbox(params: {
       const steerId = input.steerId.trim();
       const text = input.text.trim();
       if (!steerId || !text) {
-        traceDebug(LOG_SCOPE, "update.rejected", {
+        traceRequestControl(LOG_SCOPE, "update.rejected", {
+          ...diagnosticIdentity,
           requestId: params.requestId,
+          steerId,
           reason: "invalid_steer_request",
           steerIdLength: steerId.length,
           textLength: text.length,
@@ -139,7 +157,8 @@ export function createRequestSteeringInbox(params: {
       const existing = bySteerId.get(steerId);
       if (existing) {
         if (existing.text !== text) {
-          traceDebug(LOG_SCOPE, "update.rejected", {
+          traceRequestControl(LOG_SCOPE, "update.rejected", {
+            ...diagnosticIdentity,
             requestId: params.requestId,
             steerId,
             reason: "steer_id_conflict",
@@ -149,7 +168,8 @@ export function createRequestSteeringInbox(params: {
             reason: "steer_id_conflict" as const,
           });
         }
-        traceDebug(LOG_SCOPE, "update.duplicate", {
+        traceRequestControl(LOG_SCOPE, "update.duplicate", {
+          ...diagnosticIdentity,
           requestId: params.requestId,
           steerId,
           sequence: existing.sequence,
@@ -161,7 +181,8 @@ export function createRequestSteeringInbox(params: {
         });
       }
       if (closed || sealed) {
-        traceDebug(LOG_SCOPE, "update.rejected", {
+        traceRequestControl(LOG_SCOPE, "update.rejected", {
+          ...diagnosticIdentity,
           requestId: params.requestId,
           steerId,
           reason: "request_not_active",
@@ -182,7 +203,8 @@ export function createRequestSteeringInbox(params: {
       updates.push(update);
       bySteerId.set(steerId, update);
       schedulePersistence(update);
-      traceDebug(LOG_SCOPE, "update.accepted", {
+      traceRequestControl(LOG_SCOPE, "update.accepted", {
+        ...diagnosticIdentity,
         requestId: params.requestId,
         steerId,
         sequence: update.sequence,
@@ -204,7 +226,8 @@ export function createRequestSteeringInbox(params: {
       for (const update of updates) {
         schedulePersistence(update);
       }
-      traceDebug(LOG_SCOPE, "persistence.bound", {
+      traceRequestControl(LOG_SCOPE, "persistence.bound", {
+        ...diagnosticIdentity,
         requestId: params.requestId,
         queuedUpdateCount: updates.length,
       });
@@ -216,8 +239,14 @@ export function createRequestSteeringInbox(params: {
       }
       closed = true;
       sealed = true;
+      traceRequestControl(LOG_SCOPE, "inbox.closing", {
+        ...diagnosticIdentity,
+        requestId: params.requestId,
+        updateCount: updates.length,
+      });
       await persistenceTail;
-      traceDebug(LOG_SCOPE, "inbox.closed", {
+      traceRequestControl(LOG_SCOPE, "inbox.closed", {
+        ...diagnosticIdentity,
         requestId: params.requestId,
         updateCount: updates.length,
       });
@@ -227,7 +256,8 @@ export function createRequestSteeringInbox(params: {
     },
     seal(version) {
       if (closed || sealed || updates.length !== version) {
-        traceDebug(LOG_SCOPE, "finalization.rejected", {
+        traceRequestControl(LOG_SCOPE, "finalization.rejected", {
+          ...diagnosticIdentity,
           requestId: params.requestId,
           expectedVersion: version,
           currentVersion: updates.length,
@@ -237,7 +267,8 @@ export function createRequestSteeringInbox(params: {
         return false;
       }
       sealed = true;
-      traceDebug(LOG_SCOPE, "finalization.sealed", {
+      traceRequestControl(LOG_SCOPE, "finalization.sealed", {
+        ...diagnosticIdentity,
         requestId: params.requestId,
         version,
       });

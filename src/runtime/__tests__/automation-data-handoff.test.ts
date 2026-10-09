@@ -136,11 +136,15 @@ async function grantAndPublish(studio: Studio, draft: AutomationDraftRecord) {
   await studio.publish(draft.automationId, draft.revision);
 }
 
-async function runToStatus(studio: Studio, automationId: string,
+async function runToStatus(fixture: Fixture, automationId: string,
   status: "succeeded" | "completed_with_skips" | "failed") {
+  const studio = fixture.application.services.automations!;
   const launched = await studio.runNow(automationId);
-  await expect.poll(async () => (await studio.getRun(launched.id)).status,
-    { timeout: 8_000, interval: 10 }).toBe(status);
+  await expect.poll(async () => {
+    // Drive real scheduler work without waiting for its wall-clock interval.
+    await fixture.scheduler.tick();
+    return (await studio.getRun(launched.id)).status;
+  }, { timeout: 8_000, interval: 10 }).toBe(status);
   return studio.getRun(launched.id);
 }
 
@@ -179,7 +183,7 @@ test.each([
   });
   await grantAndPublish(studio, draft);
   const rejectedRunStatus = onFailure === "skip" ? "completed_with_skips" : "failed";
-  const run = await runToStatus(studio, draft.automationId, ready ? "succeeded" : rejectedRunStatus);
+  const run = await runToStatus(fixture, draft.automationId, ready ? "succeeded" : rejectedRunStatus);
   const evidence = await studio.getStepEvidence(run.id, agentId, true);
   const expectedOutput = { ready, summary: "Result from the bound source" };
   expect(evidence.output).toMatchObject({ full: true,
@@ -212,8 +216,8 @@ test("sends a different run-owned file path to a direct tool on each run", async
     payload: { kind: "literal", value: "Verified content" },
   });
   await grantAndPublish(studio, draft);
-  const first = await runToStatus(studio, draft.automationId, "succeeded");
-  const second = await runToStatus(studio, draft.automationId, "succeeded");
+  const first = await runToStatus(fixture, draft.automationId, "succeeded");
+  const second = await runToStatus(fixture, draft.automationId, "succeeded");
   expect(first.id).not.toBe(second.id);
   expect(tools.execute.mock.calls.map(([call]) => call.params)).toEqual([first, second].map((run) => ({
     label: `automation-output/${run.id}/brief.md`, body: "Verified content",
@@ -242,7 +246,7 @@ test.each([false, 0, null])("retains a tool's present %j structured output throu
     tools: [], result: { kind: "text" },
   });
   await grantAndPublish(studio, draft);
-  await runToStatus(studio, draft.automationId, "succeeded");
+  await runToStatus(fixture, draft.automationId, "succeeded");
   expect(observed).toHaveLength(2);
   expect(observed.every((call) => call.inputs.source === data)).toBe(true);
 });
@@ -285,7 +289,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     });
     await grantAndPublish(studio, draft);
 
-    await runToStatus(studio, draft.automationId, "succeeded");
+    await runToStatus(fixture, draft.automationId, "succeeded");
     expect(observed).toHaveLength(2);
     for (const call of observed) {
       expect(call.inputs.source).toEqual(sourceIds.map((nodeId) => ({
@@ -334,7 +338,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     });
     await grantAndPublish(studio, draft);
 
-    const run = await runToStatus(studio, draft.automationId, "succeeded");
+    const run = await runToStatus(fixture, draft.automationId, "succeeded");
     expect(run.report?.nodeResults.map((node) => node.status))
       .toEqual(["succeeded", "succeeded", "succeeded", "succeeded"]);
     expect(tools.execute.mock.calls.map(([call]) => call)).toEqual([
@@ -384,7 +388,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     });
     await grantAndPublish(studio, draft);
 
-    const run = await runToStatus(studio, draft.automationId, "completed_with_skips");
+    const run = await runToStatus(fixture, draft.automationId, "completed_with_skips");
     expect(run.report?.nodeResults.map((node) => node.status))
       .toEqual(["skipped", "skipped", "skipped", "succeeded"]);
     expect(tools.execute.mock.calls.map(([call]) => call.tool))

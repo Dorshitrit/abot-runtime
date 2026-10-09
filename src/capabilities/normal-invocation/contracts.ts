@@ -1,3 +1,6 @@
+import type { ToolNormalInvocationOutputChannels } from "./output-channels.js";
+export type { ToolNormalInvocationOutputChannels, ToolNormalInvocationOutputChannelRole } from "./output-channels.js";
+
 export const TOOL_NORMAL_INVOCATION_VERSION = 1 as const;
 export const TOOL_NORMAL_INVOCATION_IDENTIFIER_MAX_LENGTH = 64;
 export const TOOL_NORMAL_INVOCATION_STRING_MAX_LENGTH = 8_192;
@@ -83,6 +86,7 @@ export type ToolNormalInvocationAttachmentInput = Readonly<{
 export type ToolNormalInvocationOperation = Readonly<{
   operationId: string;
   summary: string;
+  outputChannels?: ToolNormalInvocationOutputChannels;
   input: ToolNormalInvocationInput;
   selectionControlIds?: readonly string[];
   fixedParams?: Readonly<Record<string, ToolNormalInvocationFixedValue>>;

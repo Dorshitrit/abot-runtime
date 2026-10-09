@@ -14,7 +14,7 @@ const fixtures = vi.hoisted(() => ({
   activation: { markPending: vi.fn(), markApplied: vi.fn() },
   memory: { load: vi.fn(), mount: vi.fn() },
   memoryOptions: {} as Record<string, any>,
-  plugins: { markApplied: vi.fn() },
+  plugins: { markApplied: vi.fn(), hasConfigurationDraft: vi.fn() },
   workspaceOptions: {} as Record<string, any>,
   wizardOptions: {} as Record<string, any>,
 }));
@@ -272,4 +272,13 @@ test("model removal passes the loaded root revision and remains pending explicit
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+test("plugin configuration drafts block navigation until finished", () => {
+  const { feature } = setup();
+  fixtures.plugins.hasConfigurationDraft.mockReturnValue(true);
+  expect(feature.prepareDiscardChanges("change environment")).toBeNull();
+  expect(fixtures.workspace.prepareDiscardChanges).not.toHaveBeenCalled();
+  fixtures.plugins.hasConfigurationDraft.mockReturnValue(false);
+  expect(feature.prepareDiscardChanges("change environment")).not.toBeNull();
 });

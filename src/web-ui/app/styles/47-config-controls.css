@@ -135,6 +135,7 @@
   border-top: 1px solid var(--config-line);
 }
 
+.model-plugin-permissions > summary,
 .config-calibration-section-title {
   display: flex;
   align-items: center;
@@ -147,27 +148,38 @@
   cursor: pointer;
 }
 
+.model-plugin-permissions > summary:focus-visible,
+.config-calibration-section-title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.model-plugin-permissions > summary::-webkit-details-marker,
 .config-calibration-section-title::-webkit-details-marker {
   display: none;
 }
 
+.model-plugin-permissions > summary::before,
 .config-calibration-section-title::before {
   content: "";
   width: 6px;
   height: 6px;
   flex: none;
-  border-right: 1px solid var(--config-muted);
+  border-inline-end: 1px solid var(--config-muted);
   border-bottom: 1px solid var(--config-muted);
   transform: rotate(-45deg);
 }
 
+.model-plugin-permissions[open] > summary::before,
 .config-calibration-section[open] > .config-calibration-section-title::before {
   transform: rotate(45deg);
 }
 
+.model-plugin-summary-count,
 .config-calibration-section-title small {
   margin-inline-start: auto;
   color: var(--config-muted);
+  font-size: var(--font-size-xs);
   font-weight: 400;
 }
 

@@ -15,11 +15,13 @@ export function createConfigurationFeature({
   runtimeClient,
   selectedEnvironmentId,
   recordControlEvent,
+  getOperationsSummary,
   onNavigationChange = () => {},
   onConfigurationApplied = async () => {},
   onConfigurationSettled = () => true,
   getLearningSnapshot = () => null,
   isRuntimeReady = () => true,
+  isComputerAccessAvailable = () => true,
 }) {
   let configWorkspace;
   let activation;
@@ -72,9 +74,26 @@ export function createConfigurationFeature({
   });
 
   const pluginManager = createPluginManager({
+    onSummaryChange: () => configWorkspace?.syncSummary(),
     getEnvironmentId: selectedEnvironmentId,
+    loadConfiguration: (id, environment) =>
+      runtimeClient.getPluginConfiguration(id, environment),
+    saveConfiguration: (id, input, environment) =>
+      runtimeClient.savePluginConfiguration(id, input, environment),
     onConfigurationSaved: () => activation?.markPending(),
+    onConfigurationSettled,
     loadPlugins: () => runtimeClient.getRuntimePlugins(),
+    inspectPlugin: (input, environment) =>
+      runtimeClient.inspectRuntimePlugin(input, environment),
+    removePlugin: (input, environment) =>
+      runtimeClient.removeRuntimePlugin(input, environment),
+    onConfigurationApplied: async () => {
+      activation?.markApplied();
+      await onConfigurationApplied();
+    },
+    installPlugin: (input, environment) =>
+      runtimeClient.installRuntimePlugin(input, environment),
+    onNavigationChange,
     setPlugin: (input) => runtimeClient.setRuntimePlugin(input),
     beginRuntimeMutation: (subject) =>
       configWorkspace?.beginExternalRuntimeMutation(subject) ?? false,
@@ -90,6 +109,7 @@ export function createConfigurationFeature({
     dom,
     runtimeClient,
     getEnvironmentId: selectedEnvironmentId,
+    isComputerAccessAvailable,
     onChange: () => homeSetupSuggestion?.render(),
   });
   homeSetupSuggestion = createHomeGuidance({
@@ -99,7 +119,7 @@ export function createConfigurationFeature({
     getEnvironmentId: selectedEnvironmentId,
     getLearningSnapshot,
     isRuntimeReady,
-    // Computer access is permanently visible above the Home suggestions.
+    // Configured Home owns computer access above the suggestions.
     getConnectionState: () => null,
     supportsConnection: () => false,
     refreshConnection: () => {},
@@ -115,6 +135,7 @@ export function createConfigurationFeature({
     },
   });
   configWorkspace = createConfigWorkspace({
+    getOperationsSummary,
     onNavigationChange,
     onRemoveModel: (model) => {
       if (modelSetup?.isOpen()) return;
@@ -127,6 +148,8 @@ export function createConfigurationFeature({
     },
     loadDashboard: () =>
       runtimeClient.loadConfigDashboard(selectedEnvironmentId()),
+    loadModelPlugins: () =>
+      runtimeClient.getRuntimePlugins(selectedEnvironmentId()),
     saveFile: async ({ kind, id, config, expectedRevision }) => {
       const result = await runtimeClient.saveConfigFile({
         environmentId: selectedEnvironmentId(),
@@ -231,15 +254,25 @@ export function createConfigurationFeature({
   const prepareDiscardChanges = configWorkspace.prepareDiscardChanges;
   return {
     ...configWorkspace,
+    activePluginTab: pluginManager.activeTab,
+    openPluginRoute: pluginManager.openRoute,
     openComputerSetup: computerAccess.open,
     refreshComputerAccess: computerAccess.load,
-    renderHomeGuidance: () => homeSetupSuggestion.render(),
+    renderHomeGuidance: () => {
+      computerAccess.runtimeAvailabilityChanged();
+      homeSetupSuggestion.render();
+    },
     showActivityMemories: () => {
       memoryWorkspace.activate("memories");
       void longTermMemoryController.setOriginFilter("passive_observation");
       longTermMemoryManager.focus();
     },
     prepareDiscardChanges: (...args) => {
+      if (pluginManager.hasConfigurationDraft()) {
+        dom.configStatus.textContent =
+          "Finish or cancel plugin configuration before leaving.";
+        return null;
+      }
       if (modelSetup.isOpen()) {
         dom.configStatus.textContent =
           "Finish or cancel model setup before leaving configuration.";

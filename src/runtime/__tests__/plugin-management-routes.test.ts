@@ -91,9 +91,9 @@ describe("plugin management routes", () => {
       restartRequired: true,
       application: "restart_required",
     });
-    expect(JSON.parse(await readFile(configPath, "utf8")).plugins.deny).toEqual(
-      ["system-probe"],
-    );
+    expect(
+      JSON.parse(await readFile(configPath, "utf8")).plugins.disabledPluginIds,
+    ).toEqual(["system-probe"]);
     expect(result.payload).not.toHaveProperty("file");
   });
 

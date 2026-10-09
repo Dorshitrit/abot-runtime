@@ -17,7 +17,17 @@ import { LocalRuntimeOwnerActivity } from "./owner-activity.js";
 import { dispatchLocalLearningCall } from "./app-learning-dispatch.js";
 import { projectLearningChangedEvent } from "./learning-events.js";
 import { SavedRequestApprovals } from "./saved-approvals.js";
-import { isLocalNativePermissionMethod, LocalNativePermissions } from "./app-native-permissions.js";
+import {
+  isLocalNativePermissionMethod,
+  LocalNativePermissions,
+} from "./app-native-permissions.js";
+import {
+  steeringInputDiagnosticFields,
+  steeringResultDiagnosticFields,
+  traceLocalRequest,
+  traceLocalRequestFailure,
+} from "./local-request-diagnostics.js";
+import type { RequestSteeringAppendResult } from "../request/request-steering.js";
 
 export async function createLocalRuntimeOwner(
   config: RuntimeConfig,
@@ -50,7 +60,10 @@ export async function createLocalRuntimeOwner(
   const unsubscribe = application.subscribeScheduledEvents((event) => {
     publish({ type: "scheduled.event", event });
     if (event.type === "completed" || event.type === "failed")
-      controls.finish(String(event.requestId));
+      controls.finish(
+        String(event.requestId),
+        event.type === "completed" ? "scheduled_completed" : "scheduled_failed",
+      );
   });
   const unsubscribeLearning = application.services.passiveLearning?.subscribe(
     (change) => {
@@ -94,11 +107,31 @@ export async function createLocalRuntimeOwner(
         }
         if (method === "request.steer") {
           const sessionId = controls.activeSessionId(args[0]);
-          if (sessionId)
-            await application.services.sessions.assertInteractiveSession?.(
-              sessionId,
-            );
-          return controls.steer(args[0], args[1]);
+          const fields = {
+            ...steeringInputDiagnosticFields(args[0], args[1]),
+            sessionId,
+            peerId: peer.id,
+            ownerEpoch: savedApprovals.ownerEpoch,
+            environmentId: config.runtimeId,
+          };
+          traceLocalRequest("steer.owner_received", fields);
+          try {
+            if (sessionId)
+              await application.services.sessions.assertInteractiveSession?.(
+                sessionId,
+              );
+            const result = controls.steer(args[0], args[1]);
+            traceLocalRequest("steer.owner_result", {
+              ...fields,
+              ...steeringResultDiagnosticFields(
+                result as RequestSteeringAppendResult,
+              ),
+            });
+            return result;
+          } catch (error) {
+            traceLocalRequestFailure("steer.owner_failed", fields, error);
+            throw error;
+          }
         }
         if (method === "request.cancel") {
           if (await savedApprovals.cancel(args[0], args[1], args[2]))
@@ -181,6 +214,15 @@ async function runPeerRequest(
   const message = args[0] as RunRequestMessage | undefined;
   if (!message || typeof message.requestId !== "string")
     throw new Error("local_runtime_request_invalid");
+  const diagnosticFields = {
+    requestId: message.requestId,
+    sessionId:
+      typeof message.sessionId === "string" ? message.sessionId : undefined,
+    peerId: peer.id,
+    ownerEpoch: savedApprovals.ownerEpoch,
+    environmentId: application.services.config.runtimeId,
+  };
+  traceLocalRequest("run.received", diagnosticFields);
   if (typeof message.sessionId === "string")
     await application.services.sessions.assertInteractiveSession?.(
       message.sessionId,
@@ -195,18 +237,37 @@ async function runPeerRequest(
     (args[1] as LocalRequestRunOptions | undefined)?.durableApprovals === true;
   if (durable)
     options.approvalExecution = { activation: savedApprovals.activation() };
+  traceLocalRequest("run.control_ready", {
+    ...diagnosticFields,
+    activationId: options.approvalExecution?.activation.activationId,
+  });
   const socket = {
     send(data: string) {
       controls.send(message.requestId, JSON.parse(data));
     },
   } as WebSocket;
+  let diagnosticStage = "acceptance";
   try {
     await peer.callClient("request.accepted", [message.requestId]);
     activity.assertAcceptingRequests();
+    diagnosticStage = "execution";
+    traceLocalRequest("run.execution_started", diagnosticFields);
     const result = await application.requests.handle(socket, message, options);
+    traceLocalRequest("run.handler_settled", {
+      ...diagnosticFields,
+      awaitingApproval: result?.kind === "awaiting_approval",
+    });
+    diagnosticStage = "delivery_drain";
     await controls.drain(message.requestId);
     return result;
+  } catch (error) {
+    traceLocalRequestFailure(
+      "run.failed",
+      { ...diagnosticFields, stage: diagnosticStage },
+      error,
+    );
+    throw error;
   } finally {
-    controls.finish(message.requestId);
+    controls.finish(message.requestId, "ordinary_handler_finally");
   }
 }

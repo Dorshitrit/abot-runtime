@@ -1,4 +1,6 @@
 import { beforeEach, expect, test, vi } from "vitest";
+// @ts-expect-error Browser onboarding policy has no declaration surface.
+import { createOnboardingWorkspaceAccess } from "../../web-ui/app/components/onboarding-workspace-access.js";
 
 const state = vi.hoisted(() => ({
   options: {} as Record<string, any>,
@@ -50,7 +52,7 @@ vi.mock("../../web-ui/app/components/long-term-memory-setup.js", () => ({
   createLongTermMemorySetup: () => ({ mount: vi.fn() }),
 }));
 vi.mock("../../web-ui/app/components/plugins/manager.js", () => ({
-  createPluginManager: () => ({}),
+  createPluginManager: () => ({ hasConfigurationDraft: () => false }),
 }));
 vi.mock("../../web-ui/app/components/long-term-memory/manager.js", () => ({
   createLongTermMemoryManager: () => ({ mount: vi.fn() }),
@@ -67,8 +69,10 @@ beforeEach(() => {
   state.prepare.mockReturnValue(state.commit);
 });
 
-function harness() {
+function harness(runtimeReady = true) {
   let environmentId = "prod";
+  const workspaceAccess = createOnboardingWorkspaceAccess({ dom: {}, backendAllows: () => true });
+  workspaceAccess.update({ status: runtimeReady ? "ready" : "setup_required" });
   const client = {
     getSystemHostConnection: vi.fn(),
     connectLocalSystemHost: vi.fn(),
@@ -91,12 +95,21 @@ function harness() {
     },
     runtimeClient: client,
     selectedEnvironmentId: () => environmentId,
+    isRuntimeReady: () => runtimeReady,
+    isComputerAccessAvailable: () => workspaceAccess.isAvailable("config"),
   });
+  function setRuntimeAvailability(availability: { status: string; recovery?: string }) {
+    runtimeReady = availability.status === "ready";
+    workspaceAccess.update(availability);
+    feature.renderHomeGuidance();
+  }
   return {
     feature,
     client,
     openHome,
     openPlugins,
+    setRuntimeAvailability,
+    setRuntimeReady(value: boolean) { setRuntimeAvailability({ status: value ? "ready" : "setup_required" }); },
     changeEnvironment: () => {
       environmentId = "dev";
     },
@@ -120,17 +133,18 @@ test("rejected navigation retains the visible setup flow", () => {
 
 test("configuration composes one shared connection across environment switches", async () => {
   const { feature, client, changeEnvironment } = harness();
-  expect(feature.refreshComputerAccess).toBe(state.host.load);
+  await feature.refreshComputerAccess();
+  expect(state.host.load).toHaveBeenCalledOnce();
   expect(state.options).not.toHaveProperty("hostConnection");
   await state.hostOptions.loadConnection();
   changeEnvironment();
   await state.hostOptions.loadConnection();
-  await state.hostOptions.downloadSetup("windows");
+  await state.hostOptions.downloadSetup("linux");
   await state.hostOptions.connectLocal();
   await state.hostOptions.createPairing();
   await state.hostOptions.revokeConnection();
   expect(client.getSystemHostConnection.mock.calls).toEqual([[], []]);
-  expect(client.downloadSystemHostSetup).toHaveBeenCalledWith("windows");
+  expect(client.downloadSystemHostSetup).toHaveBeenCalledWith("linux");
   expect(client.connectLocalSystemHost).toHaveBeenCalledWith();
   expect(client.createSystemHostPairing).toHaveBeenCalledWith();
   expect(client.revokeSystemHostConnection).toHaveBeenCalledWith();
@@ -181,4 +195,50 @@ test("Home plugin suggestion opens the independent Plugins workspace", () => {
   state.homeOptions.onOpen("plugins");
   expect(openPlugins).toHaveBeenCalledOnce();
   expect(state.activateCategory).not.toHaveBeenCalled();
+});
+
+
+test("configuration forwards initial onboarding access to Home and its chat notice", async () => {
+  const { feature, openHome, setRuntimeReady } = harness(false);
+  expect(state.noticeOptions.supportsConnection()).toBe(false);
+  expect(await feature.refreshComputerAccess()).toBe(false);
+  expect(feature.openComputerSetup()).toBe(false);
+  expect(state.host.load).not.toHaveBeenCalled();
+  expect(openHome).not.toHaveBeenCalled();
+
+  setRuntimeReady(true);
+  expect(state.host.setActive).toHaveBeenLastCalledWith(true);
+  expect(state.noticeOptions.supportsConnection()).toBe(true);
+  await feature.refreshComputerAccess();
+  expect(state.host.load).toHaveBeenCalledOnce();
+
+  setRuntimeReady(false);
+  expect(state.host.setActive).toHaveBeenLastCalledWith(false);
+  expect(state.noticeOptions.supportsConnection()).toBe(false);
+  expect(state.homeRender).toHaveBeenCalledTimes(2);
+});
+
+
+test("computer access and notice stay eligible during catalog recovery while Home guidance sees exact readiness", async () => {
+  const { feature, openHome, setRuntimeAvailability } = harness();
+  expect(state.homeOptions.isRuntimeReady()).toBe(true);
+  for (const availability of [
+    { status: "checking" }, { status: "error" },
+    { status: "setup_required", recovery: "configuration" },
+  ]) {
+    setRuntimeAvailability(availability);
+    expect(state.homeOptions.isRuntimeReady()).toBe(false);
+    expect(state.host.setActive).toHaveBeenLastCalledWith(true);
+    expect(state.noticeOptions.supportsConnection()).toBe(true);
+    const loads = state.host.load.mock.calls.length;
+    await feature.refreshComputerAccess();
+    expect(state.host.load).toHaveBeenCalledTimes(loads + 1);
+    await state.noticeOptions.refreshConnection();
+    expect(state.host.load).toHaveBeenLastCalledWith(true);
+    expect(state.host.load).toHaveBeenCalledTimes(loads + 2);
+    feature.openComputerSetup();
+    state.noticeOptions.onOpen();
+  }
+  expect(openHome).toHaveBeenCalledTimes(6);
+  expect(state.host.setActive).not.toHaveBeenCalledWith(false);
 });

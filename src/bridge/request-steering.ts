@@ -1,15 +1,21 @@
 import type WebSocket from "ws";
 
-import { traceDebug } from "../runtime/observability/debug-logger.js";
+import {
+  createRequestControlDiagnosticId,
+  diagnosticErrorType,
+  traceRequestControl,
+} from "../runtime/observability/request-control-diagnostics.js";
 import type { RuntimeRequestHandler } from "../runtime/composition.js";
 import {
   createRequestSteeringInbox,
+  type RequestSteeringAppendResult,
   type RequestSteeringInbox,
 } from "../runtime/request/request-steering.js";
 
 type ActiveSteeringRequest = Readonly<{
   inbox: RequestSteeringInbox;
   requestId: string;
+  inboxId: string;
 }>;
 
 export type BridgeRequestSteeringRegistry = Readonly<{
@@ -33,10 +39,16 @@ export function createBridgeRequestSteeringRegistry(
       const current = active.get(requestId);
       if (current?.inbox === inbox) {
         active.delete(requestId);
+        traceRequestControl(LOG_SCOPE, "request.removed", {
+          requestId,
+          inboxId: current.inboxId,
+          source: "bridge_handler_settled",
+        });
       }
       await inbox.close();
-      traceDebug(LOG_SCOPE, "request.closed", {
+      traceRequestControl(LOG_SCOPE, "request.closed", {
         requestId,
+        inboxId: current?.inboxId,
         activeRequestCount: active.size,
       });
     },
@@ -48,14 +60,32 @@ export function createBridgeRequestSteeringRegistry(
       const steerId = readString(message.steerId).trim();
       const text = readString(message.text).trim();
       const current = active.get(requestId);
-      const result =
-        (steer && current
-          ? await steer(requestId, { steerId, text })
-          : current?.inbox.append({ steerId, text })) ??
-        Object.freeze({
-          ok: false as const,
-          reason: "request_not_active" as const,
+      const diagnosticScope = {
+        requestId,
+        steerId,
+        inboxId: current?.inboxId,
+        registryPresent: Boolean(current),
+        ownerSteerAvailable: Boolean(steer),
+        textLength: text.length,
+      };
+      traceRequestControl(LOG_SCOPE, "message.received", diagnosticScope);
+      let result: RequestSteeringAppendResult;
+      try {
+        result =
+          (steer && current
+            ? await steer(requestId, { steerId, text })
+            : current?.inbox.append({ steerId, text })) ??
+          Object.freeze({
+            ok: false as const,
+            reason: "request_not_active" as const,
+          });
+      } catch (error) {
+        traceRequestControl(LOG_SCOPE, "message.failed", {
+          ...diagnosticScope,
+          errorType: diagnosticErrorType(error),
         });
+        throw error;
+      }
 
       const response = result.ok
         ? {
@@ -72,13 +102,12 @@ export function createBridgeRequestSteeringRegistry(
             accepted: false,
             reason: result.reason,
           };
-      await sendJson(ws, response);
-      traceDebug(
+      traceRequestControl(
         LOG_SCOPE,
         result.ok ? "message.accepted" : "message.rejected",
         {
-          requestId,
-          steerId,
+          ...diagnosticScope,
+          registryUnchanged: active.get(requestId) === current,
           accepted: result.ok,
           ...(result.ok
             ? {
@@ -89,6 +118,20 @@ export function createBridgeRequestSteeringRegistry(
             : { reason: result.reason }),
         },
       );
+      traceRequestControl(LOG_SCOPE, "ack.dispatch_attempted", {
+        ...diagnosticScope,
+        accepted: result.ok,
+        readyState: ws.readyState,
+      });
+      try {
+        await sendJson(ws, response);
+      } catch (error) {
+        traceRequestControl(LOG_SCOPE, "ack.dispatch_failed", {
+          ...diagnosticScope,
+          errorType: diagnosticErrorType(error),
+        });
+        throw error;
+      }
       return true;
     },
     open(requestId) {
@@ -98,10 +141,15 @@ export function createBridgeRequestSteeringRegistry(
       if (active.has(requestId)) {
         throw new Error("request_steering_request_already_active");
       }
-      const inbox = createRequestSteeringInbox({ requestId });
-      active.set(requestId, Object.freeze({ inbox, requestId }));
-      traceDebug(LOG_SCOPE, "request.opened", {
+      const inboxId = createRequestControlDiagnosticId("inbox");
+      const inbox = createRequestSteeringInbox({
         requestId,
+        diagnostics: { inboxId, origin: "bridge_projection" },
+      });
+      active.set(requestId, Object.freeze({ inbox, requestId, inboxId }));
+      traceRequestControl(LOG_SCOPE, "request.opened", {
+        requestId,
+        inboxId,
         activeRequestCount: active.size,
       });
       return inbox;

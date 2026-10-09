@@ -11,6 +11,7 @@ export type AutomationCatalogOperation = Readonly<{
   operationId: string;
   contractVersion: number;
   label: string;
+  outputChannels?: ToolNormalInvocationOperation["outputChannels"];
   pluginName?: string;
   catalogGroups: readonly ToolCatalogGroup[];
   toolDescription?: string;
@@ -47,6 +48,7 @@ export async function readAutomationCatalog(input: {
         operationId: operation.operationId,
         contractVersion: registration.contract.version,
         label: operation.summary,
+        ...(operation.outputChannels ? { outputChannels: operation.outputChannels } : {}),
         ...(registration.definition.pluginName
           ? { pluginName: registration.definition.pluginName }
           : {}),

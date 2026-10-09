@@ -35,6 +35,7 @@ function unreadAvailabilityNotice({ conversations, hasUnavailableReadState }) {
 
 export function renderDashboardConversations({
   sessions = [],
+  overview,
   loading = false,
   error = "",
 }) {
@@ -43,7 +44,7 @@ export function renderDashboardConversations({
     recentConversations: conversations,
     unreadCount,
     hasUnavailableReadState,
-  } = projection;
+  } = { ...projection, ...(overview ? { unreadCount: overview.unreadCount, hasUnavailableReadState: overview.hasUnavailableReadState } : {}) };
   const badge =
     unreadCount > 0 && !hasUnavailableReadState
       ? `<span class="home-unread-count" aria-label="${unreadCount} unread messages">${unreadCount}</span>`

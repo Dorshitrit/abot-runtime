@@ -172,8 +172,14 @@
     },
     "webUi": {
       "type": "object",
-      "description": "Local Web UI startup behavior.",
+      "description": "Local Web UI behavior.",
       "properties": {
+        "pageSize": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 20,
+          "description": "Sessions and messages per Web UI history page, including SPARK."
+        },
         "openOnRuntimeServiceStart": {
           "type": "boolean",
           "default": false,
@@ -328,6 +334,12 @@
           "type": "array",
           "default": [],
           "description": "Installed plugin or capability ids denied after applying the allow-list.",
+          "items": { "type": "string" }
+        },
+        "disabledPluginIds": {
+          "type": "array",
+          "default": [],
+          "description": "Exact plugin ids disabled independently of tool selectors. Entries are literal ids, not wildcards.",
           "items": { "type": "string" }
         }
       },
@@ -500,6 +512,18 @@
                     }
                   }
                 }
+              },
+              "plugins": {
+                "type": "object",
+                "description": "Runtime-only restrictions applied to the entire request selected by this model profile. Global plugin restrictions still apply.",
+                "properties": {
+                  "deny": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Denied plugin IDs, capability names, plugin.capability selectors, or *. These restrictions do not depend on per-step model overrides."
+                  }
+                },
+                "additionalProperties": false
               },
               "execution": {
                 "type": "object",

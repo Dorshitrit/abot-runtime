@@ -168,17 +168,26 @@ export function createRuntimeWebClient({
       return request("/web-config", "Web configuration");
     },
 
-    listSessions(environmentId = getEnvironmentId()) {
+    listSessions(environmentId = getEnvironmentId(), page) {
+      if (page && getConfig()?.backend === "runtime") return requestApi(
+        `/chat/sessions/page?environment=${environmentQuery(environmentId)}`,
+        { method: "POST", body: JSON.stringify(page) },
+      );
       return requestApi(
         `/chat/sessions?environment=${environmentQuery(environmentId)}`,
       );
     },
 
-    loadSession(sessionId, environmentId = getEnvironmentId()) {
+    loadSession(sessionId, environmentId = getEnvironmentId(), page = {}) {
+      const query = new URLSearchParams({ environment: environmentId });
+      if (getConfig()?.backend === "runtime") {
+        query.set("page", "1");
+        for (const [key, value] of Object.entries(page)) if (value != null) query.set(key, String(value));
+      }
       return requestApi(
         `/chat/sessions/${encodeURIComponent(
           sessionId,
-        )}/messages?environment=${environmentQuery(environmentId)}`,
+        )}/messages?${query}`,
       );
     },
 

@@ -35,6 +35,7 @@
           "operations": {
             "inspect_target": {
               "summary": "Read a bounded line-numbered window from source code or another text file, or inspect a directory sample. Choose a locator or numeric lines; locator takes precedence. Results declare truncation explicitly.",
+              "outputChannels": {"text": "content", "data": "conditional"},
               "input": {
                 "type": "object",
                 "additionalProperties": false,
@@ -194,6 +195,7 @@
           "operations": {
             "read_one_file": {
               "summary": "Read one source-code or text file, including JS, TS, Python, HTML and CSS. Returns complete content within the read budget or an explicitly truncated head/tail view.",
+              "outputChannels": {"text": "content", "data": "metadata"},
               "input": {
                 "type": "object",
                 "additionalProperties": false,

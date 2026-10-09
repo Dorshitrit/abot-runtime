@@ -1,3 +1,4 @@
+import * as gatewayAddress from "../../web-ui/runtime-setup-gateway-address.js";
 import { createServer, Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { readFile, writeFile } from "node:fs/promises";
@@ -167,11 +168,13 @@ test("shutdown during the address check cannot start a new gateway", async () =>
   const proceed = new Promise<void>((resolve) => {
     release = resolve;
   });
-  vi.spyOn(gateway, "checkActivation").mockImplementationOnce(async () => {
-    entered();
-    await proceed;
-    return { status: "ready" };
-  });
+  vi.spyOn(gatewayAddress, "hasGatewayListener").mockImplementationOnce(
+    async () => {
+      entered();
+      await proceed;
+      return false;
+    },
+  );
   const listens = vi.spyOn(Server.prototype, "listen");
   const activation = gateway.activate(fixture.configPath);
   await checking;

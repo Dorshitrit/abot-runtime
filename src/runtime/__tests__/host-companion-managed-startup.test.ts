@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   registration: vi.fn(async () => false),
   install: vi.fn(async () => ({ started: true })),
   notify: vi.fn(async () => {}),
+  links: vi.fn(async () => {}),
   spawn: vi.fn(),
 }));
 
@@ -35,6 +36,9 @@ vi.mock("../../computer-access/companion/autostart.js", () => ({
 }));
 vi.mock("../../computer-access/companion/notification-installation.js", () => ({
   installDesktopNotificationIdentity: mocks.notify,
+}));
+vi.mock("../../computer-access/companion/install-link-registration.js", () => ({
+  installCompanionInstallLinks: mocks.links,
 }));
 vi.mock("node:child_process", () => ({ spawn: mocks.spawn }));
 
@@ -92,6 +96,7 @@ test("prepares after verified stop and uses managed options for notification/sta
     mocks.install.mock.invocationCallOrder[0]!,
   );
   expect(mocks.notify).toHaveBeenCalledWith(managedOptions, paired.url);
+  expect(mocks.links).toHaveBeenCalledWith(managedOptions);
   expect(mocks.install).toHaveBeenCalledWith(managedOptions);
   expect(state.isConnected).toHaveBeenCalledWith(
     paired.hostId,

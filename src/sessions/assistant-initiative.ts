@@ -1,7 +1,8 @@
-import type { SessionMessage, SessionRecord } from "./types.js";
+import type { SessionRecord } from "./types.js";
 import { assertValidSessionId } from "./record/rules.js";
 import { deleteSessionFile, ensureSessionsDir, loadSessionFile, saveSessionFile } from "./session-store.js";
 import { isSparkHandoffBrief } from "./spark-handoff-brief.js";
+export { isAssistantInitiativeMessage } from "./assistant-initiative-message.js";
 
 export type AssistantInitiative = Readonly<{
   kind: "proactive_proposal_v1";
@@ -52,12 +53,6 @@ export async function createAssistantConversationRecord(options: {
     throw error;
   }
   return record;
-}
-
-export function isAssistantInitiativeMessage(message: SessionMessage): boolean {
-  if (message.role !== "assistant" || message.source !== "co_worker") return false;
-  if (message.initiative?.kind !== "proactive_proposal_v1") return false;
-  return typeof message.initiative.proposalId === "string" && message.initiative.proposalId.length > 0;
 }
 
 export function assertAssistantInitiative(input: CreateAssistantConversationInput): void {

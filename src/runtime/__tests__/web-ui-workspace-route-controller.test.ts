@@ -526,11 +526,12 @@ describe("Web UI route restoration", () => {
     expect(f.address()).toBe("/chat?environment=dev&session=session-a");
   });
 
-  test("missing conversations never call openSession or replace the visible workspace", async () => {
+  test("missing conversations are checked directly without replacing the visible workspace", async () => {
     const f = createHarness();
     await f.start();
+    f.openSession.mockRejectedValueOnce(Object.assign(new Error("Missing conversation"), { code: "session_not_found" }));
     await f.visit("/chat?environment=dev&session=missing");
-    expect(f.openSession).not.toHaveBeenCalled();
+    expect(f.openSession).toHaveBeenCalledExactlyOnceWith("missing", expect.any(Object));
     expect(f.shell.activeWorkspace()).toBe("home");
   });
 });

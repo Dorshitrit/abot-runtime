@@ -34,6 +34,7 @@ import {
 export type SystemRequestDependencies = Readonly<{
   observeTargets?: () => Promise<SystemTargetObservation>;
   connection?: SystemHostConnection;
+  outputRetentionMs?: number;
   createNativeHandlers?: (
     resolveTarget: (id: SystemTargetId) => Promise<SystemTarget>,
   ) => Record<string, ToolImplementation>;
@@ -76,6 +77,7 @@ export async function prepareSystemRequestModules(
     snapshot,
     connection,
     nativeHandlers,
+    outputRetentionMs: dependencies.outputRetentionMs,
   });
   return Object.freeze([
     ...modules

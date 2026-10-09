@@ -1,14 +1,13 @@
 import { homedir } from "node:os";
-import { uninstallDesktopNotificationIdentity } from "../computer-access/companion/notification-installation.js";
+import {
+  openPluginInstallLink,
+  parsePluginInstallArguments,
+} from "../computer-access/companion/install-link.js";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { fileURLToPath } from "node:url";
-import {
-  nativeAutostartFile,
-  uninstallNativeAutostart,
-  type NativeAutostartOptions,
-} from "../computer-access/companion/autostart.js";
+import type { NativeAutostartOptions } from "../computer-access/companion/autostart.js";
 import {
   normalizeNativeRuntimeUrl,
   resolveNativeRuntimeAddress,
@@ -27,8 +26,17 @@ import {
 import { acquireFileLock } from "../runtime/adapters/long-term-memory/file-lock/acquisition.js";
 import { ensurePrivateRuntimeDirectory } from "../runtime/local-host/private-directory.js";
 import { assertPrivateRuntimeAccess } from "../runtime/local-host/private-access.js";
-import { completeHostCompanionStartup } from "./host-companion-startup.js";
-import { resolveHostCompanionSetupUrl } from "./host-companion-setup-target.js";
+import {
+  defaultHostCompanionLifecycle,
+  type HostCompanionLifecycle,
+} from "./host-companion-lifecycle.js";
+import {
+  assertFreshHostPairingGrant,
+  canResumeHostCompanionPairing,
+  resolveHostCompanionSetupUrl,
+  requiresFreshHostPairing,
+} from "./host-companion-setup-target.js";
+import { stopOwnedNativeCompanion } from "../computer-access/companion/native-replacement.js";
 import { readNativeCompanionBuildId } from "../computer-access/companion/native-build-identity.js";
 import { runHostPermissionsCli } from "./host-permissions.js";
 
@@ -42,6 +50,7 @@ function printHostHelp(): void {
       "  abot host disconnect",
       "  abot host uninstall",
       "  abot host run",
+      "  abot host open-link <abot://install link>",
       "",
       "Connect asks for a one-time code from ABot Settings, saves a private credential,",
       "and starts the companion now and at future Windows/macOS/Linux desktop logins.",
@@ -52,7 +61,7 @@ function printHostHelp(): void {
   );
 }
 
-function nativeState(): NativeHostState {
+export function createHostCompanionState(): NativeHostState {
   return createNativeHostState(join(homedir(), ".abot", "host-companion"), {
     ensureDirectory: ensurePrivateRuntimeDirectory,
     assertFile: (path, stat) =>
@@ -68,6 +77,9 @@ export type HostCompanionCliOptions = Readonly<{
   cliPath?: string;
   pairingCode?: string;
   upgradeHostId?: string;
+  /** Store fresh connection consent must consume its new grant even with stale state. */
+  pairingMode?: "fresh-grant";
+  lifecycle?: HostCompanionLifecycle;
 }>;
 
 function autostartOptions(
@@ -119,7 +131,11 @@ async function connectHost(
   if (args.length !== 2 || args[0] !== "--url")
     throw new Error("Usage: abot host connect --url http://localhost:5177");
   const startup = autostartOptions(state, options);
-  nativeAutostartFile(startup);
+  const lifecycle = options.lifecycle ?? defaultHostCompanionLifecycle;
+  await lifecycle.assertStartupSupported(startup);
+  assertFreshHostPairingGrant(
+    options.pairingMode, options.pairingCode, options.upgradeHostId,
+  );
   const saved = await state.read();
   const url = resolveHostCompanionSetupUrl(
     saved,
@@ -127,10 +143,14 @@ async function connectHost(
     options.upgradeHostId,
   );
   await resolveNativeRuntimeAddress(url);
-  if (saved) {
-    await completeHostCompanionStartup(state, startup, saved.hostId);
+  if (canResumeHostCompanionPairing(saved, options.pairingMode)) {
+    await lifecycle.completeStartup(state, startup, saved.hostId);
     return;
   }
+  // The old process must exit before its credential is replaced; its in-flight
+  // authorization failure must not race with the new saved connection.
+  if (requiresFreshHostPairing(options.pairingMode))
+    await stopOwnedNativeCompanion(state.directory);
   const code = options.pairingCode ?? (await readPairingCode());
   let pairedHostId: string | undefined;
   let interrupted = false;
@@ -166,14 +186,15 @@ async function connectHost(
     throw new Error(
       "Pairing did not complete. Check ABot Settings and use a fresh pairing code.",
     );
-  await completeHostCompanionStartup(state, startup, pairedHostId);
+  await lifecycle.completeStartup(state, startup, pairedHostId);
 }
 
 async function runHost(
   state: NativeHostState,
   options: HostCompanionCliOptions,
 ): Promise<void> {
-  if (!(await state.read())) return;
+  const saved = await state.read();
+  if (!saved) return;
   const buildId = await readNativeCompanionBuildId(
     autostartOptions(state, options).cliPath,
   );
@@ -195,34 +216,25 @@ async function runHost(
     throw error;
   }
   try {
-    await withStopSignals((signal) =>
+    await withStopSignals(async (signal) =>
       runNativeHostSupervisor({
         state,
         identity: readNativeHostIdentity(),
         signal,
         buildId,
+        ...(options.lifecycle?.createNotifications
+          ? {
+              notifications: await options.lifecycle.createNotifications(
+                saved.url,
+                signal,
+              ),
+            }
+          : {}),
       }),
     );
   } finally {
     await release();
   }
-}
-
-async function disconnectHost(state: NativeHostState): Promise<void> {
-  await state.remove();
-  await uninstallNativeAutostart(autostartOptions(state));
-  await uninstallDesktopNotificationIdentity(autostartOptions(state));
-  const ownerIdentity = await requireCurrentProcessOwnerIdentity();
-  const release = await acquireFileLock(join(state.directory, "agent"), {
-    waitMs: 5_000,
-    releaseMode: "synchronous",
-    ownerIdentity,
-    processIsAlive: isProcessOwnerAlive,
-  });
-  await release();
-  console.log(
-    "Host companion stopped. Login startup and the saved credential were removed.",
-  );
 }
 
 export async function runHostCompanionCli(
@@ -238,9 +250,13 @@ export async function runHostCompanionCli(
     await runHostPermissionsCli(rest);
     return;
   }
-  const state = nativeState();
+  const state = createHostCompanionState();
   if (command === "connect") {
     await connectHost(rest, state, options);
+    return;
+  }
+  if (command === "open-link") {
+    await openPluginInstallLink(state, parsePluginInstallArguments(rest));
     return;
   }
   if (rest.length > 0) throw new Error(`Unknown host argument: ${rest[0]}`);
@@ -249,7 +265,10 @@ export async function runHostCompanionCli(
     return;
   }
   if (command === "disconnect" || command === "uninstall") {
-    await disconnectHost(state);
+    await (options.lifecycle ?? defaultHostCompanionLifecycle).uninstall(
+      state,
+      autostartOptions(state, options),
+    );
     return;
   }
   if (command === "status") {

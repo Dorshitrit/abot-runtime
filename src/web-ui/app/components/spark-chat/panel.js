@@ -48,6 +48,7 @@ export function createSparkChatPanel({ documentRoot = document, launcherAnchor }
   dom.launcherButton.insertAdjacentHTML("beforeend", '<span class="spark-launcher-label">SPARK</span>');
   const panel = root.querySelector(".spark-chat-panel");
   const notice = root.querySelector(".spark-message-notice");
+  dom.launcherButton.hidden = true;
   const placement = createSparkChatPlacement({ root, launcher: dom.launcherButton, panel, notice, dockAnchor: launcherSlot });
   dom.launcherButton.title = "Open SPARK · Drag to move · Alt + arrows to move · Alt + Home to return to sidebar";
   let timer;

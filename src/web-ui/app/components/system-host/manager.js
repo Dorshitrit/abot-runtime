@@ -3,10 +3,12 @@ import { hostSetupIsReady, renderSystemHostConnection } from "./rendering.js";
 import { createSystemHostVisibility } from "./visibility.js";
 import { createMacConnectionActions } from "./macos-connection-actions.js";
 import { createMacPermissionPreparation } from "./macos-permission-preparation.js";
+import { createWindowsStoreConnectionActions, windowsStoreSetupIsAvailable } from "./windows-store-setup.js";
 
 export function createSystemHostConnectionManager({
   loadConnection,
   downloadSetup,
+  requestStoreConnection,
   connectLocal,
   createPairing,
   requestPermissions,
@@ -32,6 +34,8 @@ export function createSystemHostConnectionManager({
     statusUnavailable: false,
     downloaded: null,
     manualMac: null,
+    windowsStoreInvitation: null,
+    windowsStoreAttempt: null,
     managementOpen: false,
     macPermissions: null,
     macPermissionError: "",
@@ -68,6 +72,12 @@ export function createSystemHostConnectionManager({
     getSurfaceRevision: () => surfaceRevision,
     isVisible: () => visibility.isVisible(),
   });
+  const windowsStore = createWindowsStoreConnectionActions({
+    state, requestStoreConnection, canInstallOnPlatform, beginRequest, finishRequest,
+    revokeConnection, receiveUnpairedConnection, getEnvironmentId,
+    isCurrentResponse, getSurfaceRevision: () => surfaceRevision,
+    isVisible: () => visibility.isVisible(), notify,
+  });
   function markup() {
     return renderSystemHostConnection({
       ...state,
@@ -78,6 +88,16 @@ export function createSystemHostConnectionManager({
   }
   function afterPaint(root = state.root) {
     permissions.afterPaint(root);
+    root?.querySelector("[data-system-host-store-connect]")
+      ?.addEventListener("click", () => void windowsStore.connectWindowsStore());
+    root?.querySelector("[data-system-host-store-launch]")
+      ?.addEventListener("click", windowsStore.markLaunchRequested);
+    root?.querySelector("[data-system-host-store-repair]")
+      ?.addEventListener("click", windowsStore.beginWindowsStoreRepair);
+    root?.querySelector("[data-system-host-store-repair-confirm]")
+      ?.addEventListener("click", () => void windowsStore.confirmWindowsStoreRepair());
+    root?.querySelector("[data-system-host-store-repair-cancel]")
+      ?.addEventListener("click", windowsStore.cancelWindowsStoreRepair);
     const management = root?.querySelector("[data-system-host-management]");
     management?.addEventListener("toggle", () => {
       if (management !== state.root?.querySelector("[data-system-host-management]")) return;
@@ -137,6 +157,7 @@ export function createSystemHostConnectionManager({
     wasVisible = visible;
     if (!visible) {
       state.manualMac = null;
+      windowsStore.clear({ preserveWaiting: true });
       permissions.clear();
       notify();
       stopPolling();
@@ -147,8 +168,9 @@ export function createSystemHostConnectionManager({
   function isCurrentResponse(operation) {
     return operation === revision;
   }
-  function beginRequest(background = false) {
+  function beginRequest(background = false, preserveStoreWaiting = false) {
     stopPolling();
+    if (!background) windowsStore.clear({ preserveWaiting: preserveStoreWaiting });
     state.busy = !background;
     backgroundPending = background;
     if (!background) state.error = "";
@@ -172,17 +194,19 @@ export function createSystemHostConnectionManager({
       notify();
       return false;
     }
-    const operation = beginRequest(background);
+    const operation = beginRequest(background, true);
     const environment = getEnvironmentId();
     try {
       const snapshot = await loadConnection();
       if (!isCurrentResponse(operation)) return false;
       if (environment !== getEnvironmentId()) return false;
       state.snapshot = snapshot;
+      if (!windowsStoreSetupIsAvailable(snapshot)) windowsStore.clear();
       permissions.reconcile();
       state.statusUnavailable = false;
       state.error = "";
       if (hostSetupIsReady(snapshot)) {
+        windowsStore.clear();
         state.manualMac = null;
         state.downloaded = null;
         state.message = "";
@@ -191,11 +215,10 @@ export function createSystemHostConnectionManager({
       return true;
     } catch {
       if (!isCurrentResponse(operation)) return false;
+      windowsStore.clear();
       state.statusUnavailable = true;
       permissions.clear();
-      state.error = state.downloaded?.restartRequired
-        ? "Waiting for WSL and ABot to return after setup."
-        : "Could not check this computer. Refresh to try again.";
+      state.error = "Could not check this computer. Refresh to try again.";
       return false;
     } finally {
       finishRequest(operation);
@@ -216,6 +239,7 @@ export function createSystemHostConnectionManager({
   }
   async function install(platform) {
     if (platform === "macos") return false;
+    if (platform === "windows") return windowsStore.connectWindowsStore();
     if (!canInstallOnPlatform(platform)) return false;
     state.manualMac = null;
     const operation = beginRequest();
@@ -229,7 +253,6 @@ export function createSystemHostConnectionManager({
       state.downloaded = {
         filename: receipt.filename,
         expiresAt: receipt.expiresAt,
-        restartRequired: receipt.restartRequired === true,
       };
       state.message =
         "Setup downloaded. Open the downloaded file and follow its instructions. Waiting for verification…";
@@ -242,19 +265,23 @@ export function createSystemHostConnectionManager({
       finishRequest(operation);
     }
   }
+  function receiveUnpairedConnection(snapshot) {
+    state.snapshot = snapshot;
+    permissions.clear();
+    state.downloaded = null;
+    state.manualMac = null;
+    state.statusUnavailable = false;
+    state.message = "Computer unpaired.";
+  }
   async function revoke() {
     if (state.busy) return false;
     if (!supportsConnection()) return false;
+    windowsStore.clear();
     const operation = beginRequest();
     try {
       const snapshot = await revokeConnection();
       if (!isCurrentResponse(operation)) return false;
-      state.snapshot = snapshot;
-      permissions.clear();
-      state.downloaded = null;
-      state.manualMac = null;
-      state.statusUnavailable = false;
-      state.message = "Computer unpaired.";
+      receiveUnpairedConnection(snapshot);
       return true;
     } catch {
       if (isCurrentResponse(operation))
@@ -278,6 +305,7 @@ export function createSystemHostConnectionManager({
     state.statusUnavailable = false;
     state.downloaded = null;
     state.manualMac = null;
+    windowsStore.clear();
     state.error = "";
     state.actionError = "";
     state.message = "";
@@ -291,6 +319,10 @@ export function createSystemHostConnectionManager({
     state,
     load,
     install,
+    connectWindowsStore: windowsStore.connectWindowsStore,
+    beginWindowsStoreRepair: windowsStore.beginWindowsStoreRepair,
+    cancelWindowsStoreRepair: windowsStore.cancelWindowsStoreRepair,
+    confirmWindowsStoreRepair: windowsStore.confirmWindowsStoreRepair,
     ...mac,
     checkPermissions: permissions.checkPermissions,
     requestPermission: permissions.requestPermission,
@@ -302,6 +334,7 @@ export function createSystemHostConnectionManager({
       state.busy = false;
       backgroundPending = false;
       state.snapshot = null;
+      windowsStore.clear();
       permissions.clear();
       notify();
       if (visibility.isVisible()) void load();

@@ -8,6 +8,7 @@ import type {
   ToolNormalInvocationFixedValue,
   ToolNormalInvocationInput,
   ToolNormalInvocationPayload,
+  ToolNormalInvocationOutputChannels,
   ToolPayloadChannelSpec,
   ToolRoutingCapability,
   ToolRuntimePathBinding,
@@ -19,6 +20,7 @@ export const ABOT_RUNTIME_EXTENSION_VERSION = 1 as const;
 
 export type AgentPluginOperationManifest = Readonly<{
   summary: string;
+  outputChannels?: ToolNormalInvocationOutputChannels;
   input: ToolNormalInvocationInput;
   selectionControlIds?: readonly string[];
   effect: ToolNormalInvocationEffect;

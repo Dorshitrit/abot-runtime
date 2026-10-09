@@ -1,6 +1,7 @@
 import type { RuntimePluginConfig } from "../runtime/ports.js";
 import {
   isPluginToolSelected,
+  isPluginDisabledById,
   normalizePluginSelection,
   type PluginSelection,
 } from "../runtime/plugins/selection.js";
@@ -12,6 +13,8 @@ export function pluginParentBlockReason(
   if (!selection.enabled) return "Plugins are disabled globally.";
   if (selection.deny.includes("*"))
     return "The global deny rule blocks all plugins.";
+  if (isPluginDisabledById(pluginId, selection))
+    return "Enable this plugin before changing its capabilities.";
   if (selection.deny.includes(pluginId))
     return "Enable this plugin before changing its capabilities.";
   return undefined;
@@ -45,6 +48,7 @@ function isCapabilityAllowed(params: {
       ...params.current,
       enabled: true,
       deny: [],
+      disabledPluginIds: [],
     }),
   });
 }

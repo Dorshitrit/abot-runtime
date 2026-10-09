@@ -1,8 +1,22 @@
+import { createPluginConfigurationEditor } from "./configuration-editor.js";
+import { createPluginRemoval } from "./removal.js";
 import { renderPluginManager } from "./rendering.js";
 import { createPluginViewState } from "./view-state.js";
+import { createPluginInstallation } from "./installation.js";
+import { renderPluginTabs, bindPluginTabs } from "./tabs.js";
+import { projectPluginSummary } from "./summary.js";
 
 export function createPluginManager({
   loadPlugins,
+  loadConfiguration,
+  saveConfiguration,
+  inspectPlugin,
+  installPlugin,
+  removePlugin,
+  confirmRemoval,
+  onConfigurationApplied = async () => {},
+  onConfigurationSettled = () => true,
+  onNavigationChange = () => {},
   getEnvironmentId = () => "",
   setPlugin,
   beginRuntimeMutation = () => true,
@@ -10,10 +24,12 @@ export function createPluginManager({
   endRuntimeMutation = () => {},
   recordControlEvent = () => {},
   onConfigurationSaved = () => {},
+  onSummaryChange = () => {},
 }) {
   const viewState = createPluginViewState();
   const state = {
     root: null,
+    activeTab: "installed",
     snapshot: null,
     busy: false,
     message: "",
@@ -23,13 +39,116 @@ export function createPluginManager({
     environmentId: getEnvironmentId(),
   };
 
+  const configurationEditor = createPluginConfigurationEditor({
+    loadConfiguration,
+    saveConfiguration,
+    getEnvironmentId,
+    beginRuntimeMutation,
+    endRuntimeMutation,
+    onConfigurationSaved,
+    onClosed: onConfigurationSettled,
+  });
+
+  const installation = createPluginInstallation({
+    inspectPlugin,
+    installPlugin,
+    getEnvironmentId,
+    beginRuntimeMutation,
+    endRuntimeMutation,
+    refreshRuntimeConfig,
+    onConfigurationSaved,
+    onInstalled: (snapshot) => {
+      state.snapshot = snapshot;
+      state.error = "";
+      state.message = "";
+      removal.state.message = "";
+      removal.state.error = "";
+      activateTab("installed", true);
+    },
+    render,
+  });
+
+  const removal = createPluginRemoval({
+    removePlugin,
+    confirmRemoval,
+    getEnvironmentId,
+    beginRuntimeMutation,
+    endRuntimeMutation,
+    refreshRuntimeConfig,
+    onConfigurationSaved,
+    onConfigurationApplied,
+    onConfigurationSettled,
+    render,
+    onSnapshot: (snapshot) => {
+      state.snapshot = snapshot;
+    },
+  });
+
+  async function remove(pluginId) {
+    if (state.busy || installation.state.busy || removal.state.busy)
+      return false;
+    if (
+      !state.snapshot?.plugins?.some(
+        (plugin) => plugin.id === pluginId && plugin.removable,
+      )
+    )
+      return false;
+    installation.state.installedPluginId = null;
+    state.message = "";
+    state.error = "";
+    return removal.remove(pluginId);
+  }
+
+  function activateTab(name, focus = false) {
+    if (!["installed", "discover"].includes(name)) return;
+    if (installation.state.dirty && name !== state.activeTab) return;
+    state.activeTab = name;
+    render();
+    if (focus)
+      state.root?.querySelector(`[data-plugin-tab="${name}"]`)?.focus();
+    onNavigationChange();
+  }
+
   function render({ capture = true } = {}) {
+    installation.resetEnvironment();
+    removal.resetEnvironment();
+    onSummaryChange();
     if (!state.root) return;
     if (capture) viewState.capture(state.root);
-    state.root.innerHTML = renderPluginManager({
-      ...state,
-      openPluginIds: viewState.openPluginIds,
-    });
+    installation.captureFields(state.root);
+    state.root.innerHTML = renderPluginTabs(
+      renderPluginManager({
+        ...state,
+        busy: state.busy || installation.state.busy || removal.state.busy,
+        canRemove: typeof removePlugin === "function",
+        canConfigure: typeof loadConfiguration === "function",
+        message:
+          removal.state.message ||
+          (installation.state.installedPluginId
+            ? installation.state.message
+            : state.message),
+        error:
+          state.error ||
+          removal.state.error ||
+          (installation.state.installedPluginId
+            ? installation.state.error
+            : ""),
+        openPluginIds: viewState.openPluginIds,
+      }),
+      installation.state,
+      state.activeTab,
+    );
+    for (const button of state.root.querySelectorAll("[data-plugin-configure]"))
+      button.addEventListener(
+        "click",
+        () =>
+          void configurationEditor.open(
+            button.dataset.pluginConfigure,
+            state.root,
+          ),
+      );
+    bindPluginTabs(state.root, activateTab);
+    installation.bind(state.root);
     viewState.bind(state.root, () => render({ capture: false }));
     state.root
       .querySelector("[data-plugin-refresh]")
@@ -53,7 +172,15 @@ export function createPluginManager({
         ),
       );
     }
-    viewState.restore(state.root, state.busy);
+    for (const button of state.root.querySelectorAll("[data-plugin-remove]"))
+      button.addEventListener(
+        "click",
+        () => void remove(button.dataset.pluginRemove),
+      );
+    viewState.restore(
+      state.root,
+      state.busy || installation.state.busy || removal.state.busy,
+    );
   }
 
   function mount(root) {
@@ -104,6 +231,7 @@ export function createPluginManager({
   }
 
   function markApplied() {
+    installation.markApplied();
     state.message = "Plugin selection applied to this environment.";
     state.error = "";
     render();
@@ -124,7 +252,8 @@ export function createPluginManager({
   }
 
   async function toggle(pluginId, enabled, capabilityId) {
-    if (state.busy) return false;
+    if (state.busy || installation.state.busy || removal.state.busy)
+      return false;
     if (!canChangePluginSelection(pluginId, capabilityId)) return false;
     if (!beginRuntimeMutation("plugin settings")) {
       render();
@@ -136,6 +265,9 @@ export function createPluginManager({
     state.busy = true;
     state.error = "";
     state.message = "";
+    installation.state.installedPluginId = null;
+    removal.state.message = "";
+    removal.state.error = "";
     let saved = false;
     render();
     try {
@@ -190,10 +322,32 @@ export function createPluginManager({
   }
 
   return {
+    summary: () =>
+      projectPluginSummary(
+        {
+          ...state,
+          busy: state.busy || installation.state.busy || removal.state.busy,
+        },
+        getEnvironmentId(),
+      ),
+    hasConfigurationDraft: () =>
+      configurationEditor.isOpen() || installation.state.dirty,
+    activeTab: () => state.activeTab,
+    openRoute: (route) => {
+      activateTab(route.pluginSource ? "discover" : route.tab || "installed");
+      if (!route.pluginSource) return true;
+      void installation.inspect({
+        repository: route.pluginSource,
+        ref: route.pluginRef || "",
+        path: route.pluginPath || "",
+      });
+      return true;
+    },
     load,
     markApplied,
     mount,
     toggle,
+    remove,
     toggleCapability: (pluginId, capabilityId, enabled) =>
       toggle(pluginId, enabled, capabilityId),
   };

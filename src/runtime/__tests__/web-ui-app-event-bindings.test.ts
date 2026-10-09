@@ -12,16 +12,17 @@ function deferred<T>() {
 }
 
 function fakeEventElement() {
-  const listeners = new Map<string, Array<(event: unknown) => void>>();
+  const listeners = new Map<string, Array<{ listener: (event: unknown) => void; capture: boolean }>>();
   return {
     value: "",
     textContent: "",
-    addEventListener(type: string, listener: (event: unknown) => void) {
-      listeners.set(type, [...(listeners.get(type) || []), listener]);
+    addEventListener(type: string, listener: (event: unknown) => void, capture = false) {
+      listeners.set(type, [...(listeners.get(type) || []), { listener, capture }]);
     },
     contains: () => false,
     dispatch(type: string, event: Record<string, unknown> = {}) {
-      for (const listener of listeners.get(type) || []) {
+      const ordered = [...(listeners.get(type) || [])].sort((left, right) => Number(right.capture) - Number(left.capture));
+      for (const { listener } of ordered) {
         listener({
           target: this,
           preventDefault: vi.fn(),
@@ -51,7 +52,10 @@ function createDom() {
   ) as Record<string, ReturnType<typeof fakeEventElement>>;
 }
 
-function createHarness(overrides: Record<string, unknown> = {}) {
+function createHarness(
+  overrides: Record<string, unknown> = {},
+  beforeBind: (dom: ReturnType<typeof createDom>) => void = () => {},
+) {
   const dom = createDom();
   dom.environmentSelect.value = "dev";
   const state = {
@@ -98,6 +102,7 @@ function createHarness(overrides: Record<string, unknown> = {}) {
     actions,
     documentRoot: fakeEventElement(),
   });
+  beforeBind(dom);
   controller.bind();
   return { actions, dom, shell, state, onSessionCreated, controller };
 }
@@ -123,8 +128,11 @@ describe("web ui environment transitions", () => {
   });
 
   test("restores the committed environment when config changes veto navigation", () => {
+    const observedEnvironments: string[] = [];
     const harness = createHarness({
       beforeEnvironmentChange: vi.fn(() => false),
+    }, (dom) => {
+      dom.environmentSelect.addEventListener("change", () => { observedEnvironments.push(dom.environmentSelect.value); });
     });
 
     harness.dom.environmentSelect.value = "prod";
@@ -135,6 +143,7 @@ describe("web ui environment transitions", () => {
       to: "prod",
     });
     expect(harness.dom.environmentSelect.value).toBe("dev");
+    expect(observedEnvironments).toEqual(["dev"]);
     expect(harness.actions.suspendQueueRecovery).not.toHaveBeenCalled();
     expect(harness.actions.saveEnvironmentId).not.toHaveBeenCalled();
     expect(harness.actions.loadRuntimeConfig).not.toHaveBeenCalled();
@@ -156,6 +165,24 @@ describe("web ui environment transitions", () => {
     expect(harness.dom.environmentSelect.value).toBe("dev");
     expect(harness.actions.saveEnvironmentId).not.toHaveBeenCalled();
     expect(harness.state.currentSessionId).toBe("session-1");
+  });
+
+  test("a direct environment event starts catalog loading before earlier feature listeners", async () => {
+    const pendingModels = deferred<void>();
+    const loadModels = vi.fn(() => pendingModels.promise);
+    const observedCatalogLoads: number[] = [];
+    const harness = createHarness({ loadModels }, (dom) => {
+      dom.environmentSelect.addEventListener("change", () => { observedCatalogLoads.push(loadModels.mock.calls.length); });
+    });
+
+    harness.dom.environmentSelect.value = "prod";
+    harness.dom.environmentSelect.dispatch("change");
+
+    expect(observedCatalogLoads).toEqual([1]);
+    expect(harness.controller.isEnvironmentChanging()).toBe(true);
+    expect(harness.actions.restoreLastSession).not.toHaveBeenCalled();
+    pendingModels.resolve();
+    await vi.waitFor(() => expect(harness.controller.isEnvironmentChanging()).toBe(false));
   });
 
   test("starts all environment-scoped loads without waiting for the model catalog", async () => {

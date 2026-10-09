@@ -8,6 +8,9 @@ export interface WorkspaceRoute {
   job: string;
   automation: string;
   run: string;
+  pluginSource?: string;
+  pluginRef?: string;
+  pluginPath?: string;
 }
 
 export function readWorkspaceRoute(

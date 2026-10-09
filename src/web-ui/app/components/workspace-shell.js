@@ -29,6 +29,7 @@ export function createWorkspaceShell({
   };
   let navigationRevision = 0;
   const workspaceListeners = new Set();
+  const runtimeAvailabilityListeners = new Set();
   const workspaceGuards = new Set();
   function notifyWorkspaceListeners(workspace) {
     onWorkspaceChange(workspace);
@@ -406,6 +407,7 @@ export function createWorkspaceShell({
     workspaceAccess.update(availability);
     if (!workspaceAccess.isAvailable(shellState.workspace))
       activateWorkspace("home", { focus: false });
+    for (const listener of runtimeAvailabilityListeners) listener();
   }
 
   function load() {
@@ -421,6 +423,10 @@ export function createWorkspaceShell({
     runtimeAvailabilityChanged,
     workspaceUnavailableMessage: workspaceAccess.unavailableMessage,
     navigationRevision: () => navigationRevision,
+    subscribeRuntimeAvailabilityChange(listener) {
+      runtimeAvailabilityListeners.add(listener);
+      return () => runtimeAvailabilityListeners.delete(listener);
+    },
     subscribeWorkspaceChange(listener) {
       workspaceListeners.add(listener);
       return () => workspaceListeners.delete(listener);

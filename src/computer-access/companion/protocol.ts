@@ -22,6 +22,9 @@ export const COMPUTER_HOST_OPERATIONS = [
 export type HostOperation =
   | (typeof HOST_OPERATIONS)[number]
   | (typeof COMPUTER_HOST_OPERATIONS)[number]
+  | "system_command_capture"
+  | "system_command_output"
+  | "system_command_output_close"
   | typeof MACOS_PERMISSION_OPERATION
   | typeof DESKTOP_NOTIFICATION_OPERATION;
 export type HostIdentity = Readonly<{
@@ -85,6 +88,9 @@ export function isHostOperation(value: unknown): value is HostOperation {
 }
 export function isHostWireOperation(value: unknown): value is HostOperation {
   if (isHostOperation(value)) return true;
+  if (value === "system_command_capture") return true;
+  if (value === "system_command_output") return true;
+  if (value === "system_command_output_close") return true;
   if (value === DESKTOP_NOTIFICATION_OPERATION) return true;
   if (value === MACOS_PERMISSION_OPERATION) return true;
   return COMPUTER_HOST_OPERATIONS.some((operation) => operation === value);

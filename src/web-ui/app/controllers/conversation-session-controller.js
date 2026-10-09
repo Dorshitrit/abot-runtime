@@ -4,10 +4,12 @@ import {
   isContextReplayCurrent,
 } from "../lib/context-window-replay.js";
 import { synchronizeContextRequestLifecycle } from "../lib/context-window-state.js";
-import { mergeSessionListReadState } from "../lib/session-read-state.js";
+import { createSessionListPagination } from "./session-list-pagination.js";
+import { createHistoryPagination, canRestoreSnapshotQueue } from "./history-pagination.js";
 import { createConversationReadStateController } from "./conversation-read-state-controller.js";
+import { createConversationRequestHydration } from "./conversation-request-hydration.js";
 import { normalizeScheduleReference } from "../lib/schedule-message.js";
-import { createWebSessionId, escapeHtml, textOf } from "../lib/text-format.js";
+import { createWebSessionId, textOf } from "../lib/text-format.js";
 import { insertRequestUserMessageBeforeAssistant } from "../ui-behavior.js";
 import { normalizeRealtimeMessage } from "../lib/realtime-message.js";
 import {
@@ -15,14 +17,11 @@ import {
   sparkHandoffAvailable,
 } from "../lib/spark-proposal-message.js";
 import {
-  isStoppedRequest,
-  restoreStoppedResponses,
-} from "../lib/request-stop-state.js";
-import {
   isApprovalPresentation,
   requestLifecycles,
   rememberRequestLifecycle,
   sameConversationMessage,
+  mergeConversationMessage,
 } from "../lib/request-lifecycle-view.js";
 
 export function normalizeConversationMessage(raw, fallbackIndex = 0) {
@@ -82,12 +81,19 @@ export function createConversationSessionController({
   onSessionCreated = () => {},
 }) {
   let environmentLoadRevision = 0;
-  let sessionListRevision = 0;
+  const listPagination = createSessionListPagination({ state, dom, client, sessions, selectedEnvironmentId, renderSessions, onSessionListState });
+  const history = createHistoryPagination({ state, dom, client, selectedEnvironmentId,
+    normalizeMessage: normalizeConversationMessage, renderMessages, conversationView, applyReadState: sessions.applyReadState,
+    onRequests: (requests) => restoreSessionEventState(requests, new Set(), true),
+    loadLatest: () => openSession(state.currentSessionId, { preserveCurrentWindow: true }),
+    onNewerPage: (messages) => markDisplayedMessagesReadSoon(messages),
+  });
   let sessionRestoreRevision = 0;
 
   function invalidateEnvironmentLoads() {
     environmentLoadRevision += 1;
-    sessionListRevision += 1;
+    listPagination.invalidate();
+    history.reset();
     sessionRestoreRevision += 1;
     state.sessions = [];
     onSessionListState({ status: "loading", sessions: [] });
@@ -98,7 +104,7 @@ export function createConversationSessionController({
     return normalizeConversationMessage(raw, state.messages.length);
   }
 
-  const { markCurrentSessionReadSoon } = createConversationReadStateController({
+  const { markCurrentSessionReadSoon, markDisplayedMessagesReadSoon } = createConversationReadStateController({
     state,
     client,
     selectedEnvironmentId,
@@ -106,6 +112,11 @@ export function createConversationSessionController({
     recordControlEvent,
     isConversationVisible,
     scheduleTask,
+  });
+  const requestHydration = createConversationRequestHydration({
+    state, client, selectedEnvironmentId, sessionQueue, applyConversationChrome, renderSessions,
+    updateComposerSendState, reportQueueFailure, activeAssistantForRequest, restoreSessionEventState,
+    subscribeSession, subscribeRequest, replayRequestEvents, resumeRequest, recoverBlockedQueue, drainQueuedMessage, renderMessages,
   });
 
   function addOrMergeMessage(message) {
@@ -115,13 +126,7 @@ export function createConversationSessionController({
       sameConversationMessage(item, message),
     );
     if (existingIndex >= 0) {
-      state.messages[existingIndex] = {
-        ...state.messages[existingIndex],
-        ...message,
-        text: message.text || state.messages[existingIndex].text,
-        thinkingText:
-          message.thinkingText || state.messages[existingIndex].thinkingText,
-      };
+      state.messages[existingIndex] = mergeConversationMessage(state.messages[existingIndex], message);
     } else {
       state.messages.push(message);
     }
@@ -156,6 +161,7 @@ export function createConversationSessionController({
   }
 
   function resetLiveRequestView() {
+    history.reset();
     state.events = [];
     state.taskProgressByRequest.clear();
     state.contextWindowByRequest.clear();
@@ -253,12 +259,16 @@ export function createConversationSessionController({
   function restoreSessionEventState(
     requests = [],
     hydrateRequestIds = new Set(),
+    append = false,
   ) {
-    state.events = [];
-    state.taskProgressByRequest.clear();
-    state.contextWindowByRequest.clear();
+    if (!append) {
+      state.events = [];
+      state.taskProgressByRequest.clear();
+      state.contextWindowByRequest.clear();
+    }
     const requestEvents = [];
     for (const request of requests) {
+      rememberRequestLifecycle(state, request.lifecycle);
       if (!Array.isArray(request.events)) continue;
       const replayScope = captureContextReplayScope(
         state,
@@ -372,46 +382,7 @@ export function createConversationSessionController({
       handleRealtimeMessage(event);
   }
 
-  async function loadSessions() {
-    const environmentRevision = environmentLoadRevision;
-    const requestRevision = ++sessionListRevision;
-    const environmentId = selectedEnvironmentId();
-    onSessionListState({ status: "loading", sessions: state.sessions });
-    try {
-      const payload = await client.listSessions(environmentId);
-      if (
-        environmentRevision !== environmentLoadRevision ||
-        requestRevision !== sessionListRevision ||
-        environmentId !== selectedEnvironmentId()
-      ) {
-        return [];
-      }
-      state.sessions = mergeSessionListReadState(
-        Array.isArray(payload.sessions) ? payload.sessions : [],
-        state.sessions,
-      );
-      onSessionListState({ status: "ready", sessions: state.sessions });
-      renderSessions();
-      return state.sessions;
-    } catch (error) {
-      if (
-        environmentRevision !== environmentLoadRevision ||
-        requestRevision !== sessionListRevision ||
-        environmentId !== selectedEnvironmentId()
-      ) {
-        return [];
-      }
-      onSessionListState({
-        status: "error",
-        sessions: state.sessions,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      dom.sessionsList.innerHTML = `<div class="empty-state error-text">${escapeHtml(
-        error instanceof Error ? error.message : String(error),
-      )}</div>`;
-      return [];
-    }
-  }
+  const loadSessions = () => listPagination.load();
 
   async function restoreLastSession() {
     const environmentRevision = environmentLoadRevision;
@@ -422,33 +393,38 @@ export function createConversationSessionController({
       environmentRevision !== environmentLoadRevision ||
       restoreRevision !== sessionRestoreRevision ||
       environmentId !== selectedEnvironmentId() ||
-      availableSessions.length === 0 ||
       state.currentSessionId
     ) {
       return;
     }
     const savedSessionId = preferences.sessionIdForEnvironment(environmentId);
-    const targetSession =
-      availableSessions.find((session) => session.id === savedSessionId) ||
-      availableSessions[0];
-    if (targetSession?.id) await openSession(targetSession.id);
+    const targetId = savedSessionId || availableSessions[0]?.id;
+    if (!targetId) return;
+    try { await openSession(targetId); }
+    catch (error) {
+      if (error.code !== "session_not_found") throw error;
+      if (availableSessions[0]?.id && availableSessions[0].id !== targetId) await openSession(availableSessions[0].id);
+    }
   }
 
   async function openSession(
     sessionId,
-    { isRouteCurrent, commitRouteNavigation } = {},
+    { isRouteCurrent, commitRouteNavigation, snapshot, page, preserveCurrentWindow = false } = {},
   ) {
     const routeOwned = typeof commitRouteNavigation === "function";
+    const loadBeforeReset = routeOwned || preserveCurrentWindow;
     let payload;
-    if (routeOwned) {
+    const pageOptions = { ...page, waitingRequestId: sessionQueue.peek({ environmentId: selectedEnvironmentId(), sessionId })?.waitForRequestId };
+    const prefetched = canRestoreSnapshotQueue(snapshot, pageOptions.waitingRequestId) ? snapshot : undefined;
+    if (loadBeforeReset) {
       const environmentId = selectedEnvironmentId();
       const viewVersion = state.sessionViewVersion;
       const currentSessionId = state.currentSessionId;
-      payload = await client.loadSession(sessionId, environmentId);
+      payload = prefetched ?? await client.loadSession(sessionId, environmentId, pageOptions);
       if (environmentId !== selectedEnvironmentId()) return;
       if (viewVersion !== state.sessionViewVersion) return;
       if (currentSessionId !== state.currentSessionId) return;
-      if (isRouteCurrent?.() !== true) return;
+      if (routeOwned && isRouteCurrent?.() !== true) return;
     }
     if (
       state.currentSessionId &&
@@ -474,8 +450,8 @@ export function createConversationSessionController({
     renderMessages();
     subscribeSession(sessionId);
 
-    if (!routeOwned) {
-      payload = await client.loadSession(sessionId, selectedEnvironmentId());
+    if (!loadBeforeReset) {
+      payload = prefetched ?? await client.loadSession(sessionId, selectedEnvironmentId(), pageOptions);
     }
     if (
       state.currentSessionId !== sessionId ||
@@ -483,87 +459,17 @@ export function createConversationSessionController({
     ) {
       return;
     }
+    history.adopt(payload);
     const rawMessages = Array.isArray(payload.messages) ? payload.messages : [];
-    const scope = { environmentId: selectedEnvironmentId(), sessionId };
     state.messages = rawMessages.map((message, index) =>
       normalizeConversationMessage(message, index),
     );
+    const displayedPage = [...state.messages];
     sessions.applyTitle(sessionId, payload.title);
     sessions.applyReadState(sessionId, payload.readState);
-    for (const message of state.messages) {
-      if (
-        message.role === "assistant" &&
-        message.requestId &&
-        !isApprovalPresentation(message)
-      ) {
-        state.requestMessages.set(message.requestId, message.id);
-      }
-    }
     const requests = Array.isArray(payload.requests) ? payload.requests : [];
-    for (const request of requests)
-      rememberRequestLifecycle(state, request.lifecycle);
-    applyConversationChrome();
-    renderSessions();
-    const streamingRequestIds = new Set(
-      requests
-        .filter(
-          (request) => request.status === "streaming" && request.requestId,
-        )
-        .map((request) => textOf(request.requestId)),
-    );
-    if (streamingRequestIds.size === 1) {
-      const [streamingRequestId] = streamingRequestIds;
-      try {
-        sessionQueue.rebindBlocked(scope, streamingRequestId);
-      } catch (error) {
-        reportQueueFailure(
-          scope,
-          `The active request was restored, but the remaining Send next queue is paused: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-    }
-    state.activeRequestId = [...streamingRequestIds][0] || "";
-    updateComposerSendState();
-    for (const requestId of streamingRequestIds) {
-      activeAssistantForRequest(requestId);
-    }
-    restoreStoppedResponses(state.messages, requests);
-    restoreSessionEventState(requests, streamingRequestIds);
-    for (const request of requests) {
-      if (request.status === "streaming" && request.requestId) {
-        subscribeRequest(request.requestId);
-        await replayRequestEvents(request.requestId, viewVersion);
-        if (
-          state.currentSessionId !== sessionId ||
-          state.sessionViewVersion !== viewVersion
-        ) {
-          return;
-        }
-        resumeRequest(request.requestId);
-      }
-    }
-    if (!state.activeRequestId) {
-      recoverBlockedQueue(scope);
-      const queued = sessionQueue.peek(scope);
-      const terminal = queued
-        ? requests.find(
-            (request) =>
-              textOf(request.requestId) === queued.waitForRequestId &&
-              (request.status === "completed" || request.status === "failed"),
-          )
-        : null;
-      if (terminal) {
-        await drainQueuedMessage({
-          ...scope,
-          terminalRequestId: terminal.requestId,
-          cancelled: isStoppedRequest(terminal),
-        });
-      }
-    }
-    renderMessages();
-    markCurrentSessionReadSoon();
+    if (!await requestHydration.restore(requests)) return;
+    markDisplayedMessagesReadSoon(displayedPage);
   }
 
   function ensureSession() {
@@ -628,6 +534,7 @@ export function createConversationSessionController({
   }
 
   return {
+    history,
     activateRequestForScope,
     activeAssistantForRequest,
     addOrMergeMessage,
@@ -642,6 +549,7 @@ export function createConversationSessionController({
     invalidateEnvironmentLoads,
     loadSessions,
     markCurrentSessionReadSoon,
+    rehydrateRequests: requestHydration.rehydrate,
     normalizeMessage,
     openSession,
     requestBelongsToCurrentView,

@@ -8,6 +8,8 @@ plugins, model routing, persisted events, and a local graphical interface. It
 does not choose a model for you or hide model-provider behavior behind
 hardcoded defaults.
 
+[Website](https://abot-ai.com/) · [Documentation](#documentation) · [GitHub](https://github.com/Dorshitrit/abot-runtime)
+
 ## Features
 
 - Configurable local and hosted model providers

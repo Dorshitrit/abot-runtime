@@ -7,6 +7,7 @@ import type {
   RuntimeEnvironment,
 } from "./contracts.js";
 import type { PendingToolApprovals } from "./pending-tool-approvals.js";
+import { traceWebProjection } from "./request-control-observation.js";
 
 type ApprovalAttachmentInput = {
   environmentId: string;
@@ -46,9 +47,18 @@ export async function attachApprovalRequest(
       lastEventName: "tool.approval.required",
       events: [...input.events],
       finalState: null,
-      requestSteering: createRequestSteeringInbox({ requestId }),
+      requestSteering: createRequestSteeringInbox({
+        requestId,
+        diagnostics: { origin: "web_projection" },
+      }),
     };
     activeRequests.set(requestId, active);
+    traceWebProjection(
+      "projection.opened",
+      requestId,
+      active,
+      "approval_attachment",
+    );
   }
   if (pending.run) return;
   const projection = active;
@@ -66,8 +76,16 @@ export async function attachApprovalRequest(
         },
       )
       .catch((error: unknown) => {
-        if (createdProjection && activeRequests.get(requestId) === projection)
-          activeRequests.delete(requestId);
+        if (createdProjection && activeRequests.get(requestId) === projection) {
+          const removed = activeRequests.delete(requestId);
+          traceWebProjection(
+            "projection.removed",
+            requestId,
+            projection,
+            "attachment_error",
+            removed,
+          );
+        }
         if (accepted)
           input.publish(
             JSON.stringify({
@@ -81,8 +99,16 @@ export async function attachApprovalRequest(
       })
       .finally(() => {
         if (!projection.finalState) return;
-        if (activeRequests.get(requestId) === projection)
-          activeRequests.delete(requestId);
+        if (activeRequests.get(requestId) === projection) {
+          const removed = activeRequests.delete(requestId);
+          traceWebProjection(
+            "projection.removed",
+            requestId,
+            projection,
+            "attachment_terminal_settled",
+            removed,
+          );
+        }
       });
   });
 }

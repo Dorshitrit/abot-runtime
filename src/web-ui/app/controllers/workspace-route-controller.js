@@ -37,7 +37,7 @@ export function createWorkspaceRouteController({
       session: getSessionId(),
       automationRun: automations?.chatRunId() || "",
       category: configurationCategoryForWorkspace(shell.activeWorkspace()),
-      tab: shell.activeOperationsTab(),
+      tab: shell.activeWorkspace() === "plugins" ? configuration.activePluginTab?.() || "installed" : shell.activeOperationsTab(),
       job: schedules.selectedJobId(),
       automation: automations?.selectedAutomationId() || "",
       run: automations?.selectedRunId() || "",
@@ -136,24 +136,24 @@ export function createWorkspaceRouteController({
       return true;
     }
     if (route.session === getSessionId()) return true;
-    const sessions = await loadSessions();
+    await loadSessions();
     if (!routeActivationIsCurrent()) return false;
     if (environmentId !== getEnvironmentId()) return false;
-    if (!routeSessionIsListed(route, sessions)) {
-      shell.showToast(
-        "This conversation is unavailable in the selected environment.",
-        "failed",
-      );
+    let routeCommitted = false;
+    try {
+      await openSession(route.session, {
+        isRouteCurrent: routeActivationIsCurrent,
+        commitRouteNavigation: () => {
+          routeCommitted = commitLinkedConversationRoute();
+          return routeCommitted;
+        },
+      });
+    } catch (error) {
+      if (error.code !== "session_not_found") throw error;
+      if (!routeActivationIsCurrent()) return false;
+      shell.showToast("This conversation is unavailable in the selected environment.", "failed");
       return false;
     }
-    let routeCommitted = false;
-    await openSession(route.session, {
-      isRouteCurrent: routeActivationIsCurrent,
-      commitRouteNavigation: () => {
-        routeCommitted = commitLinkedConversationRoute();
-        return routeCommitted;
-      },
-    });
     if (!routeCommitted) return false;
     if (!routeActivationIsCurrent()) return false;
     if (environmentId !== getEnvironmentId()) return false;
@@ -223,6 +223,9 @@ export function createWorkspaceRouteController({
     if (route.workspace === "config") {
       shell.activateOperationsTab(route.tab || "runtime");
     }
+    if (route.workspace === "plugins") {
+      return configuration.openPluginRoute?.(route) ?? true;
+    }
     if (route.workspace === "schedules") {
       return await schedules.openJob(route.job || "");
     }
@@ -251,6 +254,9 @@ export function createWorkspaceRouteController({
         route.job = "";
         route.automation = "";
         route.run = "";
+        route.pluginSource = "";
+        route.pluginRef = "";
+        route.pluginPath = "";
       }
       await applyRoute(route, { initial: true });
     } catch (error) {
@@ -344,10 +350,6 @@ function existingWorkspaceHistoryIndex(state) {
 function routeChangesEnvironment(route, selectedEnvironment) {
   if (!route.environment) return false;
   return route.environment !== selectedEnvironment;
-}
-
-function routeSessionIsListed(route, sessions) {
-  return sessions.some((session) => session.id === route.session);
 }
 
 function initialRouteWasSuperseded(initial, pendingHistory) {

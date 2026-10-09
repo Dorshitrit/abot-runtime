@@ -2,6 +2,7 @@ import type { ToolPermissionMode } from "../../capabilities/tool-permission-mode
 import { restrictToolRegistryToRequestMode } from "./request-permission-tool-registry.js";
 import { createRequestToolModelInvoker } from "../adapters/request-tool-model-invoker.js";
 import type { RuntimeConfig, ToolRegistry } from "../ports.js";
+import type { RuntimeModelPluginConfig } from "../config/model-plugin-config.js";
 import type { BoundRequestModelInvocationContext } from "../request/contracts.js";
 import type { ToolRequestAttachment } from "../../capabilities/tool-types.js";
 import { createConfiguredToolRegistry } from "./configured-tool-registry.js";
@@ -16,6 +17,7 @@ export function createRequestRuntimeToolRegistry(
   params: Readonly<{
     request: BoundRequestModelInvocationContext;
     toolPermissionMode?: ToolPermissionMode;
+    modelPlugins?: RuntimeModelPluginConfig;
     requestAttachments?: readonly ToolRequestAttachment[];
     runtimeConfig?: RuntimeConfig;
     requestWorkingDirectory?: string;
@@ -26,6 +28,7 @@ export function createRequestRuntimeToolRegistry(
     params.toolRegistryOverride ??
       createConfiguredToolRegistry(params.runtimeConfig, []),
     params.toolPermissionMode ?? "ask",
+    params.modelPlugins,
   );
   return bindRequestToolRegistry({
     registry,

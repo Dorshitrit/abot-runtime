@@ -25,6 +25,7 @@ export function renderConnectionField({
   value = "",
   placeholder = "",
   help = "",
+  error = "",
   required = true,
   readonly = false,
   min = "",
@@ -32,8 +33,9 @@ export function renderConnectionField({
   idPrefix = "runtimeSetup",
 }) {
   return `<label class="runtime-setup-field"><span>${label}</span>
-    <input type="${type}" data-runtime-setup-field="${field}" value="${escapeAttribute(value)}" placeholder="${escapeAttribute(placeholder)}" autocomplete="${type === "password" ? "new-password" : "off"}" spellcheck="false" ${min ? `min="${escapeAttribute(min)}"` : ""} ${step ? `step="${escapeAttribute(step)}"` : ""} ${required ? "required" : ""} ${readonly ? "readonly" : ""} aria-describedby="${idPrefix}Help-${field}" />
+    <input type="${type}" data-runtime-setup-field="${field}" value="${escapeAttribute(value)}" placeholder="${escapeAttribute(placeholder)}" autocomplete="${type === "password" ? "new-password" : "off"}" spellcheck="false" ${min ? `min="${escapeAttribute(min)}"` : ""} ${step ? `step="${escapeAttribute(step)}"` : ""} ${required ? "required" : ""} ${readonly ? "readonly" : ""} ${error ? 'aria-invalid="true"' : ""} aria-describedby="${idPrefix}Help-${field}${error ? ` ${idPrefix}Error-${field}` : ""}" />
     <small id="${idPrefix}Help-${field}">${help}</small>
+    ${error ? `<small id="${idPrefix}Error-${field}" class="runtime-setup-feedback error" role="alert">${escapeHtml(error)}</small>` : ""}
   </label>`;
 }
 
@@ -60,7 +62,8 @@ export function renderConnectionFields(state) {
       label: "Context window (tokens)",
       type: "number",
       value: state.contextWindowTokens,
-      min: "1",
+      min: state.contextWindowFeedback?.minimumTokens || "1",
+      error: state.contextWindowFeedback?.message,
       step: "1",
       readonly: !canEditSetupConnection(state),
       help: "Use a value supported by your model. Larger windows need more memory with Ollama. You can change this later in Models.",

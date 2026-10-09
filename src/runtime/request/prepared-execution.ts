@@ -178,7 +178,9 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
     sessionId,
     prompt: initialized!.prompt,
     temporalContext: params.temporalContext,
-    ...(isSparkSession(opened!.session) ? { sessionKind: "spark" as const } : {}),
+    ...(isSparkSession(opened!.session)
+      ? { sessionKind: "spark" as const }
+      : {}),
     historyMessages,
     shouldGenerateSessionTitle: generateSessionTitle,
     runnerConfig: loaded.runnerConfig,
@@ -280,6 +282,9 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
         requestWorkingDirectory,
         ...(filesystemScope ? { filesystemScope } : {}),
         executionPolicyAuthority: executionPolicy.authority,
+        ...(seed.executionPolicySelection?.plugins
+          ? { modelPlugins: seed.executionPolicySelection.plugins }
+          : {}),
         requestAttachments: toolAttachments,
         ...(options.runtimeConfig
           ? { runtimeConfig: options.runtimeConfig }

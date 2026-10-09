@@ -34,7 +34,7 @@ export function createDashboardFeature({
     render: (snapshot) => {
       const sessions = filterSessionsByArchiveState(snapshot.sessions,
         preferences?.loadSessionSidebar?.(selectedEnvironmentId())?.archivedSessionIds);
-      view?.render({ ...snapshot, sessions, composerAvailable: isComposerAvailable() });
+      view?.render({ ...snapshot, sessions, sessionOverview: state.sessionOverview, composerAvailable: isComposerAvailable() });
     },
   });
   view = createDashboardWorkspace({
@@ -52,7 +52,7 @@ export function createDashboardFeature({
       openConversation: async (sessionId, requestId) => {
         if (!shell.activateWorkspace("chat")) return;
         try {
-          await openSession(sessionId);
+          await openSession(sessionId, { page: { targetRequestId: requestId } });
           if (state.currentSessionId !== sessionId) return;
           if (!requestId) return;
           requestAnimationFrame(() => {

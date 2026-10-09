@@ -9,6 +9,49 @@ configuration. Ask and Full retain exact-action approvals; Full+ retains its nor
 approval policy. OS accessibility, screen-recording and portal permissions still
 apply. An available shell or connected companion does not prove desktop readiness.
 
+## Local command output
+
+Local `system_command` execution, including Windows through WSL interop, writes
+stdout and stderr to private files under the plugin state directory. Capture
+uses bounded stream buffers with disk backpressure. The completed observation is
+then loaded for delivery; full text is still materialized in memory at that point.
+The existing SDK context-text contract lets the Runtime admit or compact that
+text using its normal model-context budget. Small-result text is unchanged.
+
+`extensions["ai.abot.runtime"].settings.defaults.outputRetentionMs` in the plugin's
+`plugin.json` controls retention; the default is seven days after capture completes. Cleanup protects active captures and removes expired
+captures during plugin initialization and periodic maintenance. Reads do not renew
+retention. Completed captures keep the retention recorded at creation across
+Companion reconnects and later configuration changes. Each capture has an opaque
+ID, byte counts and a saved process receipt;
+files are private implementation storage, not user-authored artifacts or model
+instructions. No wait/cancel operation or automatic command replay is added.
+
+A storage failure before dispatch prevents the command from starting. A capture
+write failure stops observation of that command and reports incomplete output;
+external descendants are not assumed terminated. Delivery failures retain the
+capture receipt, recorded helper PID, process status and exit code when available.
+This does not grant a new model-facing operation for reading retained captures.
+
+Application launch, target probes and desktop images retain their existing behavior.
+
+## Companion command output
+
+Updated companions advertise `system_command_output_v1`. SYSTEM then uses private
+capture/read/close operations over the existing connection: the Companion stores
+both streams in its private state directory using the same capture implementation,
+returns the process receipt, and serves 64 KiB byte chunks. SYSTEM verifies the
+capture ID, stream, offset, byte count and SHA-256 before delivering text through
+the existing context-text contract. UTF-8 characters may cross chunk boundaries.
+The model receives one tool result; transport chunks do not invoke a model.
+
+Output references belong to the authenticated Companion connection. Transfers
+protect their captures from expiry until closed or disconnected; the configured
+SYSTEM retention then continues on disk. A failed transfer preserves the command
+receipt and never repeats execution. Old companions keep their existing bounded
+command path. This transfer does not add model-facing tools or change screenshot
+handling, and final text delivery still materializes the streams in memory.
+
 ## Shared connection
 
 Use **Home → Computer access** for one installation shared
@@ -108,6 +151,3 @@ source compilation where available. They prove transport, identity, cancellation
 image lifetime and projection invariants. Interactive acceptance on each actual OS,
 permission configuration, compositor and provider remains a distinct live check;
 unit checks alone do not establish all native integrations work on a user's machine.
-The Windows helper has been compiled on Windows; its interactive behavior has not
-been exercised. macOS native compilation and interactive Linux/macOS checks remain
-unverified in this Windows/WSL development environment.

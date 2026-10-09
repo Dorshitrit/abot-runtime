@@ -112,7 +112,7 @@ function fixture(render = true) {
     dom,
     eventTarget: { document: { activeElement: null } },
     configFileEntries: () => [],
-    dirtyFiles: () => [],
+    hasPendingFileChanges: () => false,
     dashboardIsBusy: () => state.loading,
     ensureRawSelection: vi.fn(),
     renderModelList: () => "",

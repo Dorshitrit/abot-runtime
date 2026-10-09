@@ -5,23 +5,32 @@ import type {
   ToolImplementation,
 } from "../../capabilities/tool-types.js";
 import type { ToolRegistry } from "../ports.js";
+import type { RuntimeModelPluginConfig } from "../config/model-plugin-config.js";
 
 /** Captures user authority once; all discovery and execution use the same gate. */
 export function restrictToolRegistryToRequestMode(
   registry: ToolRegistry,
   mode: ToolPermissionMode,
+  modelPlugins?: RuntimeModelPluginConfig,
 ): ToolRegistry {
-  const catalog = captureRequestPermissionCatalog(registry, mode);
+  const catalog = captureRequestPermissionCatalog(registry, mode, modelPlugins);
   const isRequestToolAvailable = catalog.isRequestToolAvailable;
-  const rejectUnavailableTool = (tool: string) => ({
-    ok: false,
-    tool,
-    output:
-      "This tool is unavailable for the captured request permission mode.",
-    producedNewInformation: false,
-    error: "This tool is unavailable for the captured request permission mode.",
-    errorCode: "tool_permission_mode_required",
-  });
+  const rejectUnavailableTool = (tool: string) => {
+    const blockedForModel = catalog.isRequestToolBlockedForModel(tool);
+    const message = blockedForModel
+      ? "This tool is blocked for the selected request model profile."
+      : "This tool is unavailable for the captured request permission mode.";
+    return {
+      ok: false,
+      tool,
+      output: message,
+      producedNewInformation: false,
+      error: message,
+      errorCode: blockedForModel
+        ? "tool_model_policy_denied"
+        : "tool_permission_mode_required",
+    };
+  };
   const bindAuthority = (
     state?: ToolExecutionSharedState,
   ): ToolExecutionSharedState => ({

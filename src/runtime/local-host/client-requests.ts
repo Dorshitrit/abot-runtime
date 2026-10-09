@@ -6,6 +6,12 @@ import type { SchedulerRun } from "../scheduler/contracts.js";
 import type { ToolApprovalRequest } from "../ports.js";
 import type { LocalRuntimeCallHandler } from "./contracts.js";
 import type { RequestSteeringAppendResult } from "../request/request-steering.js";
+import {
+  steeringInputDiagnosticFields,
+  steeringResultDiagnosticFields,
+  traceLocalRequest,
+  traceLocalRequestFailure,
+} from "./local-request-diagnostics.js";
 import type {
   LocalPendingToolApproval,
   LocalToolApprovalDecisionInput,
@@ -96,11 +102,36 @@ export class LocalRuntimeClientRequests {
       return outcome;
     },
     steer: async (requestId, input) => {
-      await this.active.get(requestId)?.accepted;
-      return (await this.call("request.steer", [
-        requestId,
-        input,
-      ])) as RequestSteeringAppendResult;
+      const state = this.active.get(requestId);
+      const fields = {
+        ...steeringInputDiagnosticFields(requestId, input),
+        sessionId: state?.sessionId,
+        clientStatePresentAtEntry: Boolean(state),
+        detachedAtEntry: state?.detached,
+      };
+      traceLocalRequest("steer.client_requested", fields);
+      await state?.accepted;
+      const current = this.active.get(requestId);
+      const dispatchFields = {
+        ...fields,
+        clientStatePresentAtDispatch: Boolean(current),
+        clientStateUnchanged: current === state,
+      };
+      traceLocalRequest("steer.client_dispatch_attempted", dispatchFields);
+      try {
+        const result = (await this.call("request.steer", [
+          requestId,
+          input,
+        ])) as RequestSteeringAppendResult;
+        traceLocalRequest("steer.client_result", {
+          ...dispatchFields,
+          ...steeringResultDiagnosticFields(result),
+        });
+        return result;
+      } catch (error) {
+        traceLocalRequestFailure("steer.client_failed", dispatchFields, error);
+        throw error;
+      }
     },
   };
 

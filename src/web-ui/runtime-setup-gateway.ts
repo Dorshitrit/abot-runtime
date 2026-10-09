@@ -7,6 +7,7 @@ import {
   createModelGatewayServer,
   type ModelGatewayHandlerOptions,
 } from "../model-gateway/server.js";
+import { captureModelGatewayConfiguration } from "../model-gateway/server/configuration.js";
 import { loadRuntimeConfig } from "../runtime/config.js";
 import { closeHttpServerImmediately } from "../shared/http-server-shutdown.js";
 import type { RuntimeSetupActivation } from "./local-runtime/runtime-setup-input.js";
@@ -14,6 +15,12 @@ import type { RuntimeSetupActivation } from "./local-runtime/runtime-setup-input
 export type RuntimeSetupGatewayRestorePoint = {
   restore(): Promise<void>;
 };
+
+export type AppliedGatewayConfigurations = readonly (string | null)[];
+
+type GatewayActivationPlan =
+  | { status: "ready"; retainExternal: boolean }
+  | (RuntimeSetupActivation & { status: "restart_required" });
 
 type OwnedGateway = { server: Server; host: string; port: number };
 type GatewayCheckpoint = {
@@ -61,7 +68,34 @@ export class RuntimeSetupGateway {
     return { url, host, port };
   }
 
-  async checkActivation(configPath?: string): Promise<RuntimeSetupActivation> {
+  captureConfiguration(configPath?: string): string | null {
+    return captureModelGatewayConfiguration({ ...this.options, configPath });
+  }
+
+  private matchesAppliedConfiguration(
+    configPath: string | undefined,
+    applied: AppliedGatewayConfigurations | undefined,
+  ): boolean {
+    if (this.owned) return false;
+    if (!applied?.length) return false;
+    const candidate = this.captureConfiguration(configPath);
+    return (
+      candidate !== null && applied.every((previous) => previous === candidate)
+    );
+  }
+
+  async checkActivation(
+    configPath?: string,
+    applied?: AppliedGatewayConfigurations,
+  ): Promise<RuntimeSetupActivation> {
+    const plan = await this.planActivation(configPath, applied);
+    return plan.status === "ready" ? { status: "ready" } : plan;
+  }
+
+  private async planActivation(
+    configPath?: string,
+    applied?: AppliedGatewayConfigurations,
+  ): Promise<GatewayActivationPlan> {
     this.requireGatewayOpen();
     const { url, host, port } = this.configuredBinding(configPath);
     if (!isLoopbackGateway(url)) {
@@ -77,14 +111,14 @@ export class RuntimeSetupGateway {
     const ownedHost = ownsTargetPort ? ownAddress.address : undefined;
     const externalListener = await hasGatewayListener(port, host, ownedHost);
     this.requireGatewayOpen();
-    if (externalListener) {
-      return {
-        status: "restart_required",
-        message:
-          "Configuration saved. An existing model gateway owns this address; restart that gateway to load its new configuration.",
-      };
-    }
-    return { status: "ready" };
+    if (!externalListener) return { status: "ready", retainExternal: false };
+    if (this.matchesAppliedConfiguration(configPath, applied))
+      return { status: "ready", retainExternal: true };
+    return {
+      status: "restart_required",
+      message:
+        "Configuration saved. An existing model gateway owns this address; restart that gateway to load its new configuration.",
+    };
   }
 
   private captureGatewayCheckpoint(): GatewayCheckpoint {
@@ -176,14 +210,19 @@ export class RuntimeSetupGateway {
     throw error;
   }
 
-  activate(configPath?: string): Promise<RuntimeSetupActivation> {
+  activate(
+    configPath?: string,
+    applied?: AppliedGatewayConfigurations,
+  ): Promise<RuntimeSetupActivation> {
     return this.runGatewayTransition(async () => {
       const checkpoint = this.captureGatewayCheckpoint();
       this.checkpoint = undefined;
       try {
-        const allowed = await this.checkActivation(configPath);
+        const allowed = await this.planActivation(configPath, applied);
         this.requireGatewayOpen();
         if (allowed.status !== "ready") return allowed;
+        // Unchanged requirements do not grant ownership of the external listener.
+        if (allowed.retainExternal) return { status: "ready" };
         const { host, port } = this.configuredBinding(configPath);
         const server = createModelGatewayServer({
           ...this.options,

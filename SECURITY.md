@@ -11,7 +11,7 @@ Do not open a public issue with secrets, exploit details, credentials, private
 URLs, or live service tokens.
 
 Report suspected vulnerabilities privately to
-[security@dorshitrit.com](mailto:security@dorshitrit.com). Include:
+[security@abot-ai.com](mailto:security@abot-ai.com). Include:
 
 - affected version or commit
 - a concise reproduction

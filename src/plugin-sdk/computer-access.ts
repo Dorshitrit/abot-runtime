@@ -49,3 +49,13 @@ export type {
   ComputerAccessConnection,
   CompanionTarget,
 } from "../computer-access/client.js";
+
+export { runSystemProcess } from "../computer-access/process-runner.js";
+export { buildSystemProcessResult } from "../computer-access/process-result.js";
+export type { SystemCommandOutputFactory } from "../computer-access/command-output.js";
+export type { SystemProcessCapture } from "../computer-access/process-capture.js";
+export type { SystemProcessResult } from "../computer-access/contracts.js";
+
+export { createSystemOutputCapture, type SystemOutputReceipt } from "../computer-access/command-output-capture.js";
+export { DEFAULT_SYSTEM_OUTPUT_RETENTION_MS, scheduleSystemOutputCleanup } from "../computer-access/command-output-retention.js";
+export { SYSTEM_OUTPUT_CAPABILITY, SYSTEM_OUTPUT_CHUNK_BYTES, readSystemOutputTransfer } from "../computer-access/companion/command-output-protocol.js";

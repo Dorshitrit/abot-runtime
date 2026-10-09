@@ -42,6 +42,7 @@
           "operations": {
             "execute_command": {
               "summary": "Execute one trusted non-interactive /bin/bash command in an explicit existing directory. This sensitive operation requires exact-action approval in Ask/Full and runs automatically in FULL+. The OS user permissions still apply; the selected folder is not a sandbox.",
+              "outputChannels": {"text": "metadata", "data": "metadata"},
               "input": {
                 "type": "object",
                 "additionalProperties": false,
@@ -75,6 +76,7 @@
           "operations": {
             "wait_for_process": {
               "summary": "Wait for the next bounded observation from one running exec process without restarting it.",
+              "outputChannels": {"text": "metadata", "data": "metadata"},
               "input": {
                 "type": "object",
                 "additionalProperties": false,
@@ -111,6 +113,7 @@
           "operations": {
             "cancel_process": {
               "summary": "Stop one active exec process and report its final state.",
+              "outputChannels": {"text": "metadata", "data": "metadata"},
               "input": {
                 "type": "object",
                 "additionalProperties": false,

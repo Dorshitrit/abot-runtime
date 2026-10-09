@@ -140,6 +140,11 @@ export class LocalRuntimeApiRouter {
     );
     this.plugins = new PluginManagementRoutes({
       rootDir: options.rootDir ?? process.cwd(),
+      requireMutationIdle: () => this.environments.requirePluginMutationIdle(this.requests.healthDetails().length > 0),
+      removalRuntime: {
+        applyConfiguration: (revision) => this.applyWhenRequestsIdle(revision),
+        requireInactive: (pluginId, capabilities) => this.environments.requirePluginInactive(pluginId, capabilities),
+      },
       getConfigPath: () =>
         options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
     });
@@ -167,7 +172,7 @@ export class LocalRuntimeApiRouter {
     );
   }
 
-  private async applyWhenRequestsIdle() {
+  private async applyWhenRequestsIdle(expectedRevision?: string) {
     const hasAcknowledgedRequests = this.requests.healthDetails().length > 0;
     if (hasAcknowledgedRequests) {
       return {
@@ -176,7 +181,7 @@ export class LocalRuntimeApiRouter {
           "Your agent is working. Wait for active conversations and Jobs to finish, then apply again.",
       };
     }
-    return this.environments.applyConfiguration();
+    return this.environments.applyConfiguration(expectedRevision);
   }
 
   async initializeSessionReadState(
@@ -321,7 +326,7 @@ export class LocalRuntimeApiRouter {
     )
       return;
 
-    if (await this.plugins.handle({ method, route, body, response: res }))
+    if (await this.plugins.handle({ method, route, body, request: req, response: res }))
       return;
 
     if (segments[0] === "schedules")
@@ -432,12 +437,12 @@ export class LocalRuntimeApiRouter {
     }
 
     if (
-      (method === "GET" && route === "chat/sessions") ||
+      ((method === "GET" && route === "chat/sessions") || (method === "POST" && route === "chat/sessions/page")) ||
       (method === "POST" && route === "chat/messages")
     ) {
       const setupRequirement =
         this.environments.setupRequirement(environmentId);
-      if (setupRequirement && method === "GET") {
+      if (setupRequirement && route !== "chat/messages") {
         sendJson(res, 200, {
           ok: true,
           sessions: [],
@@ -469,7 +474,7 @@ export class LocalRuntimeApiRouter {
       await this.sessions.handle({
         method,
         segments,
-        body,
+        url, body,
         environmentId,
         environment,
         response: res,

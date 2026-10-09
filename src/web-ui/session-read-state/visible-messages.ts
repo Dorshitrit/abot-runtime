@@ -1,4 +1,4 @@
-import type { SessionSnapshotMessage } from "../../sessions/types.js";
+import type { SessionMessageIdentity } from "../../sessions/snapshot.js";
 import type { WebReadState } from "./store.js";
 import { randomUUID } from "node:crypto";
 
@@ -76,7 +76,7 @@ export function visibleReadObservations(ids: readonly string[], input: unknown):
 }
 
 export function markVisibleAssistantMessages(
-  state: WebReadState, sessionId: string, messages: SessionSnapshotMessage[], observations: readonly VisibleMessageReceipt[], generation: unknown, now: number,
+  state: WebReadState, sessionId: string, messages: SessionMessageIdentity[], observations: readonly VisibleMessageReceipt[], generation: unknown, now: number,
 ): void {
   const previous = ensureVisibleReadState(state, sessionId);
   if (generation !== previous.generation) throw new Error("read_generation_changed");
@@ -99,12 +99,12 @@ export function markVisibleAssistantMessages(
 }
 
 export function projectVisibleSessionReadState(
-  state: WebReadState, sessionId: string, messages: SessionSnapshotMessage[],
+  state: WebReadState, sessionId: string, messages: SessionMessageIdentity[],
 ) {
   const saved = ensureVisibleReadState(state, sessionId);
   const assistants = messages.filter((message) => message.role === "assistant");
   const identities = new Set(saved.messages.map((receipt) => receiptIdentity(receipt.messageId, receipt.createdAt, receipt.requestId)));
-  const wasRead = (message: SessionSnapshotMessage) => identities.has(receiptIdentity(message.id, message.createdAt, message.requestId));
+  const wasRead = (message: SessionMessageIdentity) => identities.has(receiptIdentity(message.id, message.createdAt, message.requestId));
   const unread = assistants.filter((message) => !wasRead(message));
   const lastRead = [...assistants].reverse().find(wasRead);
   return {

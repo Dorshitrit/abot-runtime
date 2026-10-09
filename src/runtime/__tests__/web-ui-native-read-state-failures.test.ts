@@ -225,7 +225,7 @@ describe("native HTTP behavior when the Web UI read-state sidecar fails", () => 
     expect(await readFile(sidecar, "utf8")).toBe(malformedSidecar);
   });
 
-  test("canonical projection errors from valid JSON are not mislabeled as unavailable read tracking", async () => {
+  test("request projection errors fail full history reads without blocking the metadata list", async () => {
     const { fixture, sidecar } = await seededFixture();
     const originalReadState = await readFile(sidecar, "utf8");
     const sessionPath = join(fixture.paths().sessionsDir, "conversation.json");
@@ -240,7 +240,10 @@ describe("native HTTP behavior when the Web UI read-state sidecar fails", () => 
     const invalidRequestMetadata = JSON.stringify(record);
     await writeFile(sessionPath, invalidRequestMetadata);
 
-    await expectFailed(await fixture.request("GET"));
+    const list = await body<SessionList>(await fixture.request("GET"));
+    expect(list.sessions[0]).toMatchObject({
+      id: "conversation", lastMessagePreview: "Answer", readStateStatus: "available", unreadCount: 1,
+    });
     await expectFailed(await fixture.request("GET", "/conversation/messages"));
     expect(await readFile(sessionPath, "utf8")).toBe(invalidRequestMetadata);
     expect(await readFile(sidecar, "utf8")).toBe(originalReadState);

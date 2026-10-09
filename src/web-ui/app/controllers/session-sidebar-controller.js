@@ -6,7 +6,7 @@ import { renderSessionSidebarSections } from "../components/session-sidebar-sect
 import { filterSessionsByArchiveState } from "../lib/session-archive-visibility.js";
 
 export function createSessionSidebarController({
-  state, preferences, selectedEnvironmentId = () => "", render, showToast, getFilteredSessions,
+  state, preferences, selectedEnvironmentId = () => "", render, showToast, getFilteredSessions, getPageInfo = () => undefined,
 }) {
   let showingArchived = false;
   let environmentId = selectedEnvironmentId();
@@ -67,8 +67,10 @@ export function createSessionSidebarController({
       return;
     }
     const saved = savedPreferences();
+    const rankedIds = new Set(saved.orderedSessionIds);
+    const unrankedIds = orderedSessions().map((session) => session.id).filter((id) => !rankedIds.has(id));
     saved.orderedSessionIds = moveSidebarSession(
-      orderedSessions().map((session) => session.id), sourceId, targetId, placement,
+      [...unrankedIds, ...saved.orderedSessionIds], sourceId, targetId, placement,
     );
     if (saveSidebar(saved)) render();
   }
@@ -143,7 +145,7 @@ export function createSessionSidebarController({
     const saved = savedPreferences();
     renderSessionSidebarSections({
       ...options,
-      archivedCount: filterSessionsByArchiveState(state.sessions, saved.archivedSessionIds, true).length,
+      archivedCount: getPageInfo()?.archivedCount ?? filterSessionsByArchiveState(state.sessions, saved.archivedSessionIds, true).length,
       showingArchived,
       onToggleArchived: () => {
         showingArchived = !showingArchived;
@@ -155,5 +157,5 @@ export function createSessionSidebarController({
     });
   }
 
-  return { archiveSession, bindItem, renderSections, visibleSessions, isArchiveView: () => showingArchived };
+  return { paginationQuery: () => ({ ...savedPreferences(), archived: showingArchived, pinnedSessionIds: state.pinnedSessionIds }), archiveSession, bindItem, renderSections, visibleSessions, isArchiveView: () => showingArchived };
 }

@@ -6,6 +6,9 @@ const { createAppliedEnvironmentProjection, createConfigurationFeature } =
 // @ts-expect-error Browser component has no declaration.
 import { createRuntimeConfigActivation } from "../../web-ui/app/components/runtime-config-activation.js";
 
+// @ts-expect-error Browser module.
+import { createPluginRemoval } from "../../web-ui/app/components/plugins/removal.js";
+
 const composed = vi.hoisted(() => ({
   options: {} as Record<string, any>,
   load: vi.fn(async () => true),
@@ -110,7 +113,7 @@ function activation(
     setAttribute: vi.fn(),
     querySelector: (name: string) => (name === "p" ? status : button),
   };
-  createRuntimeConfigActivation({
+  const controller = createRuntimeConfigActivation({
     root: { ownerDocument: { createElement: () => panel }, append: vi.fn() },
     apply,
     refresh: composed.options.onConfigurationApplied,
@@ -126,7 +129,7 @@ function activation(
       },
     }),
   });
-  return { click: () => click(), status };
+  return { click: () => click(), status, controller };
 }
 
 function feature(h: ReturnType<typeof harness>) {
@@ -254,3 +257,45 @@ describe("applied environment projection", () => {
     expect(h.transitions).toEqual([]);
   });
 });
+
+test.each(["plugin_changed", "config_changed"])(
+  "Remove %s after Apply updates the actual selector and activation banner",
+  async (code) => {
+    const h = harness();
+    feature(h);
+    const feedback = activation(h, async () => ({}));
+    const removal = createPluginRemoval({
+      removePlugin: async () => {
+        throw Object.assign(new Error("Removal incomplete."), {
+          status: 409,
+          code,
+          payload: { activation: { status: "ready" } },
+        });
+      },
+      getEnvironmentId: h.selection.selectedEnvironmentId,
+      confirmRemoval: () => true,
+      beginRuntimeMutation: () => {
+        h.lock(true);
+        return true;
+      },
+      endRuntimeMutation: () => h.lock(false),
+      onConfigurationApplied: async () => {
+        feedback.controller.markApplied();
+        await composed.options.onConfigurationApplied();
+        expect(h.transitions).toEqual([]);
+      },
+      onConfigurationSaved: () => feedback.controller.markPending(),
+      onConfigurationSettled: composed.options.onConfigurationSettled,
+      refreshRuntimeConfig: async () => true,
+      onSnapshot: vi.fn(),
+      render: vi.fn(),
+    });
+    expect(await removal.remove("example")).toBe(false);
+    expect(h.dom.environmentSelect.value).toBe("qa");
+    expect(h.transitions).toEqual(["qa"]);
+    expect(h.state.config).toEqual(config(["prod", "qa"], "qa"));
+    expect(feedback.status.textContent).toContain(
+      code === "config_changed" ? "Restart to apply" : "now active",
+    );
+  },
+);

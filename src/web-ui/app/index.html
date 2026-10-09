@@ -25,7 +25,10 @@
     </section>
     <div id="app" class="app-shell" data-startup-pending aria-busy="true" inert>
       <nav class="workspace-rail" aria-label="Workspace navigation">
-        <div class="workspace-brand"><img src="/favicon.svg" width="28" height="28" alt="ABot" /></div>
+        <div class="workspace-brand">
+          <img src="/favicon.svg" width="28" height="28" alt="ABot" />
+          <a class="product-site-link" href="https://abot-ai.com/" target="_blank" rel="noopener noreferrer" aria-label="abot-ai.com — ABot website (opens in a new tab)">abot-ai.com <span aria-hidden="true">↗</span></a>
+        </div>
         <button
           id="sessionsToggleButton"
           class="rail-button rail-history-button"
@@ -314,6 +317,7 @@
           id="messagesList"
           class="messages-list"
           aria-label="Conversation messages"
+          tabindex="0"
         ></section>
         <div
           id="messageStatusRegion"
@@ -639,7 +643,7 @@
       >
         <header class="workspace-page-header config-workspace-header">
           <div class="workspace-page-heading config-workspace-heading">
-            <p class="eyebrow">Runtime workspace</p>
+            <a class="product-site-link" href="https://abot-ai.com/" target="_blank" rel="noopener noreferrer" aria-label="abot-ai.com — ABot website (opens in a new tab)">abot-ai.com <span aria-hidden="true">↗</span></a>
             <h2 id="configWorkspaceTitle">System</h2>
           </div>
           <div class="toolbar-actions">

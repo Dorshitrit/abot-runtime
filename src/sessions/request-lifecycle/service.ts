@@ -1,6 +1,7 @@
 import type { SessionRecord } from "../types.js";
 import { assertValidSessionId } from "../record/rules.js";
 import { saveDurableSessionFile } from "../durable-session-commit.js";
+import type { SessionMetadataChange } from "../metadata/source-receipt.js";
 import {
   collectSessionContinuationBlobs,
   cleanupConsumedSessionContinuations,
@@ -57,6 +58,7 @@ export function createSessionRequestLifecycle(
     ) =>
       | SessionLifecycleMutationResult
       | Promise<SessionLifecycleMutationResult>,
+    metadataChange: SessionMetadataChange = "projection",
   ): Promise<SessionLifecycleMutationResult> {
     assertValidSessionId(sessionId);
     return dependencies.enqueue(sessionId, async () => {
@@ -69,7 +71,7 @@ export function createSessionRequestLifecycle(
         createMessageId: dependencies.createMessageId,
       });
       if (!result.accepted || result.duplicate) return result;
-      await saveDurableSessionFile(dependencies.sessionsDir, session);
+      await saveDurableSessionFile(dependencies.sessionsDir, session, undefined, metadataChange);
       await cleanupConsumedSessionContinuations(
         dependencies.sessionsDir,
         session,
@@ -132,7 +134,7 @@ export function createSessionRequestLifecycle(
         return acceptedLifecycle(request!, [
           appendLifecycleEvent(context, request!, command.payload),
         ]);
-      }),
+      }, "request-only"),
     async get(sessionId, requestId) {
       const request = await readRequest(sessionId, requestId);
       return request ? (projectSessionRequestLifecycle(request) ?? null) : null;

@@ -207,7 +207,8 @@ describe("scheduled knowledge reassessment", () => {
     };
     f.review.mockRejectedValueOnce(new Error("learning_memory_unavailable"));
     try {
-      await f.runner.start(); await tick(f.runner); await rearming;
+      // Keep the clock at the due instant throughout asynchronous filesystem work.
+      await f.runner.start(); await tick(f.runner, 60_000); await rearming;
       expect(f.review).toHaveBeenCalledOnce(); expect(f.apply).not.toHaveBeenCalled();
       const state = await createReassessmentStateStore(f.directory).read();
       expect(state.blockedEntries).toEqual([]);

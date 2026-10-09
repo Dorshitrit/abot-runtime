@@ -98,7 +98,7 @@ describe("scheduled completion after Web attaches during a run", () => {
       await Promise.resolve();
 
       expect(browser.loadSessions).toHaveBeenCalledTimes(1);
-      expect(browser.client.listSessions).toHaveBeenCalledWith("dev");
+      expect(browser.client.listSessions).toHaveBeenCalledWith("dev", { query: "", cursor: null });
       expect(browser.state.sessions).toEqual([updated]);
       expect({ ...browser.state, sessions: before.sessions }).toEqual(before);
       expect(browser.renderMessages).not.toHaveBeenCalled();

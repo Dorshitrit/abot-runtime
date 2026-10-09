@@ -2,6 +2,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RuntimeEnvironment } from "./contracts.js";
 import { acceptConfigMutationRequest } from "./config-mutation-request.js";
 import { getString, sendJson } from "./http.js";
+import { diagnosticErrorType } from "../../runtime/observability/request-control-diagnostics.js";
+import { traceWebRequestControl } from "./request-control-observation.js";
 
 export async function cancelWebRequest(input: {
   request: IncomingMessage;
@@ -37,6 +39,30 @@ export async function cancelWebRequest(input: {
           commandId: getString(body.commandId),
         }
       : undefined;
-  const result = await cancel(requestId, sessionId, wait);
+  const fields = {
+    requestId,
+    sessionId,
+    environmentId: input.environment.services?.config?.runtimeId,
+    hasWaitIdentity: wait !== undefined,
+  };
+  const startedAt = Date.now();
+  traceWebRequestControl("cancel.received", fields);
+  let result;
+  try {
+    result = await cancel(requestId, sessionId, wait);
+  } catch (error) {
+    traceWebRequestControl("cancel.failed", {
+      ...fields,
+      errorType: diagnosticErrorType(error),
+      elapsedMs: Date.now() - startedAt,
+    });
+    throw error;
+  }
+  traceWebRequestControl("cancel.result", {
+    ...fields,
+    accepted: result.accepted,
+    reason: result.accepted ? undefined : result.reason,
+    elapsedMs: Date.now() - startedAt,
+  });
   sendJson(input.response, 200, { ok: true, ...result });
 }

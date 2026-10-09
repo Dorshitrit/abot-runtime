@@ -32,6 +32,7 @@ test("host reads scope native metadata by environment while pairing writes remai
   await client.getSystemHostConnection();
   await client.createSystemHostPairing();
   await client.connectLocalSystemHost();
+  await client.requestSystemHostStoreConnection();
   await client.downloadSystemHostSetup("windows");
   await client.revokeSystemHostConnection();
   expect(fetchImpl.mock.calls).toEqual([
@@ -47,6 +48,14 @@ test("host reads scope native metadata by environment while pairing writes remai
     ],
     [
       "/web-api/runtime/system-host/connect-local",
+      {
+        method: "POST",
+        body: "{}",
+        headers: { "content-type": "application/json" },
+      },
+    ],
+    [
+      "/web-api/runtime/system-host/store-connect",
       {
         method: "POST",
         body: "{}",
@@ -85,6 +94,7 @@ test("bridge backend rejects host configuration locally", async () => {
   await expect(client.connectLocalSystemHost()).rejects.toThrow(
     "local Runtime backend",
   );
+  await expect(client.requestSystemHostStoreConnection()).rejects.toThrow("local Runtime backend");
   await expect(client.downloadSystemHostSetup("macos")).rejects.toThrow(
     "local Runtime backend",
   );

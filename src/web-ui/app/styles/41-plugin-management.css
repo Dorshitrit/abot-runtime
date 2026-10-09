@@ -375,3 +375,9 @@
     padding: 16px;
   }
 }
+
+.plugin-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

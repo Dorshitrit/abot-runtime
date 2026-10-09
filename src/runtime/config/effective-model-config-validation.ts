@@ -1,7 +1,8 @@
-import type {
-  ModelContextConfig,
-  ModelGatewayPolicyConfig,
-} from "../../model-gateway/types.js";
+import type { ModelGatewayPolicyConfig } from "../../model-gateway/types.js";
+import {
+  validateProfileContextCapacity,
+  type ModelContextCapacityIssue,
+} from "./model-context-capacity.js";
 import type { RequestRunnerConfig } from "./runner/contracts.js";
 import { RuntimeConfigValidationError } from "./validation.js";
 
@@ -30,64 +31,6 @@ function hasConfiguredCalibrationSlot(
   );
 }
 
-function readPositiveSafeInteger(value: unknown): number | undefined {
-  return typeof value === "number" &&
-    Number.isSafeInteger(value) &&
-    value > 0
-    ? value
-    : undefined;
-}
-
-function validateProfileContextCapacity(params: {
-  issues: string[];
-  profileId: string;
-  profile: NonNullable<ModelGatewayPolicyConfig["profiles"]>[string];
-  providerType?: string;
-  runnerConfig: RequestRunnerConfig;
-  defaultContext?: ModelContextConfig;
-}): void {
-  const field = `models.profiles.${params.profileId}.contextWindowTokens`;
-  const declared = readPositiveSafeInteger(
-    params.profile.contextWindowTokens,
-  );
-  if (declared === undefined) {
-    params.issues.push(
-      `${field} must declare the physical context-window capacity as a positive safe integer`,
-    );
-    return;
-  }
-
-  let effective = declared;
-  if (
-    params.providerType === "ollama" &&
-    Object.hasOwn(params.profile.options ?? {}, "num_ctx")
-  ) {
-    const allocated = readPositiveSafeInteger(params.profile.options?.num_ctx);
-    if (allocated === undefined) {
-      params.issues.push(
-        `models.profiles.${params.profileId}.options.num_ctx must be a positive safe integer when configured`,
-      );
-      return;
-    }
-    effective = Math.min(effective, allocated);
-  }
-
-  const profileFormatReserve =
-    params.profile.context?.formatTokenAccounting?.fixedOverheadTokens ?? 0;
-  const defaultFormatReserve =
-    params.defaultContext?.formatTokenAccounting?.fixedOverheadTokens ?? 0;
-  const configuredReserve =
-    params.runnerConfig.context.outputReserveTokens +
-    params.runnerConfig.context.safetyReserveTokens +
-    params.runnerConfig.context.attachmentReserveTokens +
-    Math.max(profileFormatReserve, defaultFormatReserve);
-  if (configuredReserve >= effective) {
-    params.issues.push(
-      `models.profiles.${params.profileId} effective context window ${effective} must exceed configured output, safety, attachment, and format reserves ${configuredReserve}`,
-    );
-  }
-}
-
 function validateProfileReference(params: {
   issues: string[];
   field: string;
@@ -112,10 +55,7 @@ function validateInvocationTarget(params: {
 }): void {
   if (
     !hasConfiguredProfile(params.profiles, params.targetId) &&
-    !hasConfiguredInvocationProfile(
-      params.invocationProfiles,
-      params.targetId,
-    )
+    !hasConfiguredInvocationProfile(params.invocationProfiles, params.targetId)
   ) {
     params.issues.push(
       `${params.field} references unknown model or invocation profile ${params.targetId}`,
@@ -172,6 +112,7 @@ export function validateEffectiveRuntimeModelConfig(params: {
   runnerConfig: RequestRunnerConfig;
 }): void {
   const issues: string[] = [];
+  const capacityIssues: ModelContextCapacityIssue[] = [];
   const providers = params.modelPolicy?.providers ?? {};
   const profiles = params.modelPolicy?.profiles ?? {};
   const invocationProfiles = params.modelPolicy?.invocationProfiles ?? {};
@@ -197,6 +138,7 @@ export function validateEffectiveRuntimeModelConfig(params: {
 
     validateProfileContextCapacity({
       issues,
+      capacityIssues,
       profileId,
       profile,
       ...(providerId && providers[providerId]
@@ -289,6 +231,10 @@ export function validateEffectiveRuntimeModelConfig(params: {
   }
 
   if (issues.length > 0) {
-    throw new RuntimeConfigValidationError(params.configPath, issues);
+    throw new RuntimeConfigValidationError(
+      params.configPath,
+      issues,
+      capacityIssues,
+    );
   }
 }

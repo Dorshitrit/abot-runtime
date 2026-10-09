@@ -83,6 +83,14 @@ async function fixture() {
   };
   const agent = build();
   return { root, agent, build, review, changed, overview, sessions, budget,
+    waitForScheduledReview: async () => {
+      while (true) {
+        const changed = nextChange;
+        const hasScheduledReview = (await agent.status()).nextReviewAt !== undefined;
+        if (hasScheduledReview) return;
+        await changed;
+      }
+    },
     update: async (input: Partial<PassiveLearningPreferences>) => { preferences = { ...preferences, ...input }; await agent.preferencesChanged(); },
     knowledge: (input: LearningKnowledgeContext) => { context = input; agent.knowledgeChanged(); },
     busy: (value: boolean) => { busy = value; } };
@@ -189,21 +197,26 @@ describe("proactive background work", () => {
   test.each(["updated", "removed", "disabled"])("rolls back a conversation when %s during its filesystem commit", async (change) => {
     const f = await fixture(); const pending = await persistPending(f.root, "commit-race");
     const existing = await f.sessions.getOrCreateSession("unrelated");
-    let release!: () => void;
+    let release!: () => void; let entered!: () => void;
     const held = new Promise<void>((resolve) => { release = resolve; });
-    let renamed = false;
+    const writing = new Promise<void>((resolve) => { entered = resolve; });
     filesystemHooks.afterRename = async (target) => {
       if (target !== join(f.root, "sessions", `${pending.sessionId}.json`)) return;
-      renamed = true; await held;
+      entered(); await held;
     };
     try {
       await f.agent.start(); await vi.advanceTimersByTimeAsync(1);
-      await vi.waitFor(() => expect(renamed).toBe(true));
+      await writing;
       const disabling = change === "disabled" ? f.update({ proactiveEnabled: false }) : Promise.resolve();
       if (change !== "disabled") f.knowledge({ ...knowledge(), knowledgeRevision: 2,
         entries: change === "removed" ? [] : knowledge().entries.map((entry) => ({ ...entry, version: "2" })) });
-      release(); await disabling;
-      await vi.waitFor(async () => expect((await createProactiveStateStore(f.root).read()).proposals[0]?.status).toBe("cancelled"));
+      release(); await disabling; await tick(f.agent, 0);
+      const needsCancellationDispatch = change !== "disabled";
+      if (needsCancellationDispatch) {
+        await f.waitForScheduledReview();
+        await tick(f.agent, 1);
+      }
+      expect((await createProactiveStateStore(f.root).read()).proposals[0]?.status).toBe("cancelled");
       expect(await f.sessions.getSessionById(pending.sessionId)).toBeNull();
       expect(await f.sessions.getSessionById(existing.id)).toEqual(existing);
       expect(f.changed.mock.calls.some(([event]) => event?.type === "proposal_delivered")).toBe(false);

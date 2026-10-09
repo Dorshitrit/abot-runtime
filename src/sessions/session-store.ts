@@ -4,6 +4,7 @@ import {
   readFile,
   rename,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -15,6 +16,8 @@ import {
   syncSessionDirectory,
 } from "./durable-session-commit.js";
 import { cleanupSessionContinuations } from "./request-lifecycle/continuation-cleanup.js";
+import { currentSourceStamp, deleteSessionMetadata, sessionSourceStamp, updateSessionMetadata } from "./metadata/store.js";
+import type { SessionMetadataChange } from "./metadata/source-receipt.js";
 
 function getSessionFilePath(sessionsDir: string, sessionId: string): string {
   return join(sessionsDir, `${sessionId}.json`);
@@ -44,20 +47,25 @@ export async function saveSessionFile(
   sessionsDir: string,
   session: SessionRecord,
   assertCurrent?: () => void,
+  metadataChange: SessionMetadataChange = "projection",
 ): Promise<void> {
   if (session.requests?.some((request) => request.lifecycle)) {
-    return saveDurableSessionFile(sessionsDir, session, assertCurrent);
+    return saveDurableSessionFile(sessionsDir, session, assertCurrent, metadataChange);
   }
   const filePath = getSessionFilePath(sessionsDir, session.id);
+  const previousSource = metadataChange === "request-only" ? await currentSourceStamp(filePath) : undefined;
   const tempPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  let source: string;
   try {
     await writeFile(tempPath, JSON.stringify(session, null, 2), "utf-8");
+    source = sessionSourceStamp(await stat(tempPath, { bigint: true }));
     assertCurrent?.();
     await rename(tempPath, filePath);
   } catch (error) {
     await rm(tempPath, { force: true }).catch(() => undefined);
     throw error;
   }
+  await updateSessionMetadata(sessionsDir, session, source, previousSource);
 }
 
 export async function deleteSessionFile(
@@ -68,6 +76,7 @@ export async function deleteSessionFile(
   try {
     await rm(filePath);
     await syncSessionDirectory(sessionsDir);
+    await deleteSessionMetadata(sessionsDir, sessionId);
     await cleanupSessionContinuations(sessionsDir, sessionId);
     return true;
   } catch (error: any) {

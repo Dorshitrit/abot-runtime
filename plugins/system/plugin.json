@@ -7,6 +7,11 @@
     "ai.abot.runtime": {
       "version": 1,
       "entrypoint": "./src/index.cjs",
+      "settings": {
+        "defaults": {
+          "outputRetentionMs": 604800000
+        }
+      },
       "catalogGroups": [
         "system"
       ],

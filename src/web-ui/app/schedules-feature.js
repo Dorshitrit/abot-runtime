@@ -32,7 +32,7 @@ export function createSchedulesFeature({
       if (!shell.activateWorkspace("chat")) return;
       if (!sessionId) return;
       try {
-        await openSession(sessionId);
+        await openSession(sessionId, { page: { targetRequestId: requestId } });
         if (!requestId) return;
         requestAnimationFrame(() => {
           const messages = [

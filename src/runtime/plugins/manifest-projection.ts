@@ -116,6 +116,7 @@ export function projectManifestRuntimeContract(
           ([operationId, operation]) => ({
             operationId,
             summary: operation.summary,
+            ...(operation.outputChannels ? { outputChannels: operation.outputChannels } : {}),
             input: operation.input,
             ...(operation.selectionControlIds
               ? { selectionControlIds: operation.selectionControlIds }

@@ -1,3 +1,4 @@
+import { parseOptionalToolOutputChannels } from "../../capabilities/normal-invocation/output-channels.js";
 import { parseRequiredToolPermissionMode } from "../../capabilities/tool-permission-mode.js";
 import type {
   AgentPluginCapabilityManifest,
@@ -383,6 +384,7 @@ function parseOperation(value: unknown, path: string): ParsedOperation {
     operation,
     [
       "summary",
+      "outputChannels",
       "input",
       "selectionControlIds",
       "effect",
@@ -427,6 +429,7 @@ function parseOperation(value: unknown, path: string): ParsedOperation {
   return {
     manifest: {
       summary: operation.summary.trim(),
+      ...parseOptionalToolOutputChannels(operation.outputChannels, `${path}.outputChannels`),
       input: input as AgentPluginOperationManifest["input"],
       ...(selectionControlIds ? { selectionControlIds } : {}),
       effect: operation.effect as AgentPluginOperationManifest["effect"],

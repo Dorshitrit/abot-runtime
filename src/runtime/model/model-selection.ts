@@ -1,3 +1,4 @@
+import { captureModelPluginConfig } from "../config/model-plugin-config.js";
 import type {
   ModelGatewayPolicyConfig,
   ModelGatewayProfileConfig,
@@ -71,11 +72,13 @@ function resolveRequestExecutionPolicy(params: {
   const configuredExecution = primary
     ? params.modelExecutionPolicies?.[primary.profileId]
     : undefined;
+  const plugins = captureModelPluginConfig(configuredExecution?.plugins);
 
   return Object.freeze({
     policy: configuredExecution?.policy ?? DEFAULT_REQUEST_EXECUTION_POLICY_ID,
     ...(primary ? { primaryProfileId: primary.profileId } : {}),
-    source: configuredExecution ? "model_profile" : "default",
+    ...(plugins ? { plugins } : {}),
+    source: configuredExecution?.policy ? "model_profile" : "default",
   });
 }
 

@@ -206,12 +206,8 @@ system action. Cancellation or revocation attempts to stop an in-flight command,
 but effects already performed are not rolled back. If a connection is lost during
 execution, inspect the actual host state before trying the action again.
 
-## Validation status
+## Platform validation
 
-Implementation and validation progress are recorded in the task journal. Native
-Mac QA is performed separately with the owner; mocked platform tests are not a
-claim that an actual Mac was tested. No release or installation update is implied
-by changes in a development worktree.
 Native Windows/macOS companion installation, login startup and visible-application
-QA remain separate checks on the real desktop systems; Linux protocol and package
+behavior require checks on the target systems; Linux protocol and package
 tests do not establish those results.

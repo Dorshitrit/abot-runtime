@@ -22,7 +22,7 @@ export function renderLinuxCompanionScript(
 set -euo pipefail
 umask 077
 if [ "$(uname -s)" != 'Linux' ]; then echo 'Run this setup on the Linux desktop host.' >&2; exit 1; fi
-if [ -n "\${WSL_DISTRO_NAME:-}" ]; then echo 'For a Windows desktop, use the Windows companion installer outside WSL.' >&2; exit 1; fi
+if [ -n "\${WSL_DISTRO_NAME:-}" ]; then echo 'For a Windows desktop, install ABot AI Companion from Microsoft Store on Windows.' >&2; exit 1; fi
 if [ -z "\${DISPLAY:-}" ] && [ -z "\${WAYLAND_DISPLAY:-}" ]; then echo 'Run this setup from your graphical desktop session.' >&2; exit 1; fi
 NODE=$(command -v node || true)
 if [ -z "$NODE" ] || [ ! -x "$NODE" ]; then echo 'Node.js 20.19+ or 22.12+ must already be installed on this computer.' >&2; exit 1; fi

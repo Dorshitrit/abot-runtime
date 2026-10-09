@@ -59,11 +59,12 @@ async function harness() {
     deleteAttachment: vi.fn(async () => {}),
   };
   const ordinaryState = { connected: true, runtimeAvailability: { status: "ready" }, currentSessionId: "ordinary", messages: [{ id: "ordinary-answer" }] };
-  const shell = { showToast: vi.fn(), subscribeWorkspaceChange: vi.fn(), prepareWorkspaceActivation: () => () => true };
+  const shell = { isWorkspaceAvailable: () => true, subscribeRuntimeAvailabilityChange: vi.fn(), showToast: vi.fn(), subscribeWorkspaceChange: vi.fn(), prepareWorkspaceActivation: () => () => true };
   const feature = createSparkChatFeature({ dom, state: ordinaryState, client, shell,
     realtime: { subscribeMessages: vi.fn(), subscribeConnected: vi.fn(), send: () => true }, getEnvironmentId: () => dom.environmentSelect.value });
   feature.bind(); feature.environmentChanged();
-  await vi.waitFor(() => expect(client.loadSession).toHaveBeenCalledOnce());
+  await vi.waitFor(() => expect(capture.conversation.state.currentSessionId).toBe("spark-companion"));
+  expect(client.loadSession).not.toHaveBeenCalled();
   const conversation = capture.conversation;
   const ordinaryCommit = vi.fn();
   const actions = {

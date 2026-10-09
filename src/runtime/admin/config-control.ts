@@ -6,6 +6,7 @@ import { loadRuntimeConfig } from "../config.js";
 import { DEFAULT_RUNTIME_CONFIG_FILE } from "../config/constants.js";
 import { loadRuntimeConfigFile } from "../config/loader.js";
 import { RUNTIME_CONFIG_JSON_SCHEMA } from "../config/schema.js";
+import { resolveRuntimePath } from "../config/utils.js";
 import type {
   RuntimeConfigFile,
   RuntimeConfigJsonSchema,
@@ -66,7 +67,7 @@ function isRecord(value: unknown): value is JsonRecord {
 
 function resolveConfigPath(rootDir: string, configPath?: string): string {
   return configPath
-    ? join(rootDir, configPath)
+    ? resolveRuntimePath(rootDir, configPath)
     : join(rootDir, DEFAULT_RUNTIME_CONFIG_FILE);
 }
 

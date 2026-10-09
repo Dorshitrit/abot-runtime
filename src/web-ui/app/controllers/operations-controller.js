@@ -1,5 +1,7 @@
 import { escapeHtml, formatTime, shortId, textOf } from "../lib/text-format.js";
-import { getNumber } from "../lib/event-presentation.js";
+import { formatDurationMs, latestHealthEvent, projectOperationsSummary } from "../components/operations-summary.js";
+
+export { formatDurationMs, latestHealthEvent } from "../components/operations-summary.js";
 
 function renderRuntimeRows(rows) {
   return `
@@ -18,34 +20,27 @@ function renderRuntimeRows(rows) {
   `;
 }
 
-export function formatDurationMs(value) {
-  const ms = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(ms) || ms < 0) return "-";
-  const seconds = Math.round(ms / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 90) return `${minutes}m`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours}h`;
-  return `${Math.round(hours / 24)}d`;
-}
-
-export function latestHealthEvent(details) {
-  return [...details].sort(
-    (left, right) =>
-      getNumber(right.lastEventAt, 0) - getNumber(left.lastEventAt, 0),
-  )[0];
-}
-
-export function createOperationsController({ dom, client, getEnvironmentId = () => undefined }) {
+export function createOperationsController({ dom, client, getEnvironmentId = () => undefined, onSummaryChange = () => {} }) {
   let statusRevision = 0;
   let logsRevision = 0;
+  let healthRevision = 0;
   let displayedEnvironment = getEnvironmentId();
+  const reads = { runtime: { phase: "idle" }, logs: { phase: "idle" }, health: { phase: "idle" } };
+  function updateSummaryRead(tab, read) {
+    reads[tab] = read;
+    onSummaryChange();
+  }
   function isCurrentOperationsRead(environmentId, revision, currentRevision) {
     if (environmentId !== getEnvironmentId()) return false;
     return revision === currentRevision;
   }
+  function isCurrentHealthRead(revision) {
+    return revision === healthRevision;
+  }
   const controller = {
+    summary(tab) {
+      return projectOperationsSummary(tab, reads, getEnvironmentId());
+    },
     environmentChanged() {
       const environmentId = getEnvironmentId();
       if (displayedEnvironment === environmentId) return;
@@ -57,6 +52,7 @@ export function createOperationsController({ dom, client, getEnvironmentId = () 
       const environmentId = getEnvironmentId();
       const revision = ++statusRevision;
       dom.runtimeStatus.textContent = "Loading...";
+      updateSummaryRead("runtime", { phase: "loading", environmentId });
       try {
         const payload = await client.getRuntimeStatus(environmentId);
         if (!isCurrentOperationsRead(environmentId, revision, statusRevision)) return;
@@ -70,11 +66,13 @@ export function createOperationsController({ dom, client, getEnvironmentId = () 
             <div class="runtime-row"><span>Trace</span><strong>${escapeHtml(status.config?.traceFile || "-")}</strong></div>
           </div>
         `;
+        updateSummaryRead("runtime", { phase: "ready", environmentId, payload });
       } catch (error) {
         if (!isCurrentOperationsRead(environmentId, revision, statusRevision)) return;
         dom.runtimeStatus.innerHTML = `<span class="error-text">${escapeHtml(
           error instanceof Error ? error.message : String(error),
         )}</span>`;
+        updateSummaryRead("runtime", { phase: "error", environmentId });
       }
     },
 
@@ -82,6 +80,7 @@ export function createOperationsController({ dom, client, getEnvironmentId = () 
       const environmentId = getEnvironmentId();
       const revision = ++logsRevision;
       dom.runtimeLogs.textContent = "Loading...";
+      updateSummaryRead("logs", { phase: "loading", environmentId });
       try {
         const payload = await client.getRuntimeLogs(100, environmentId);
         if (!isCurrentOperationsRead(environmentId, revision, logsRevision)) return;
@@ -91,17 +90,22 @@ export function createOperationsController({ dom, client, getEnvironmentId = () 
         dom.runtimeLogs.textContent = lines.length
           ? lines.join("\n")
           : "No runtime log lines returned.";
+        updateSummaryRead("logs", { phase: "ready", environmentId, payload, refreshedAt: Date.now() });
       } catch (error) {
         if (!isCurrentOperationsRead(environmentId, revision, logsRevision)) return;
         dom.runtimeLogs.textContent =
           error instanceof Error ? error.message : String(error);
+        updateSummaryRead("logs", { phase: "error", environmentId });
       }
     },
 
     async loadSystemHealth() {
+      const revision = ++healthRevision;
       dom.healthStatus.textContent = "Loading...";
+      updateSummaryRead("health", { phase: "loading" });
       try {
         const payload = await client.getSystemHealth();
+        if (!isCurrentHealthRead(revision)) return;
         const details = Array.isArray(payload.activeStreamingRequestDetails)
           ? payload.activeStreamingRequestDetails
           : [];
@@ -149,10 +153,13 @@ export function createOperationsController({ dom, client, getEnvironmentId = () 
               : '<div class="empty-state compact">No active streaming requests</div>'
           }
         `;
+        updateSummaryRead("health", { phase: "ready", payload });
       } catch (error) {
+        if (!isCurrentHealthRead(revision)) return;
         dom.healthStatus.innerHTML = `<span class="error-text">${escapeHtml(
           error instanceof Error ? error.message : String(error),
         )}</span>`;
+        updateSummaryRead("health", { phase: "error" });
       }
     },
   };

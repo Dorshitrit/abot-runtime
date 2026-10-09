@@ -5,6 +5,7 @@ import { acceptConfigMutationRequest } from "../local-runtime/config-mutation-re
 import { readBody, sendJson } from "../local-runtime/http.js";
 import { canSetUpLocalMac, localMacSetupRuntimeUrl } from "./local-setup-availability.js";
 import type { HostReadiness } from "./readiness.js";
+import { HostSetupMutation } from "./setup-mutation.js";
 
 export const LOCAL_HOST_SETUP_PATH = "/web-api/runtime/system-host/connect-local";
 
@@ -13,7 +14,7 @@ function isEmptyLocalSetupRequest(body: unknown): boolean {
 }
 
 export class LocalHostConnection {
-  private pending?: Promise<void>;
+  private readonly mutation: HostSetupMutation;
 
   constructor(private readonly dependencies: {
     store: HostPairingStore;
@@ -21,15 +22,15 @@ export class LocalHostConnection {
     prepareCompanion(): Promise<void>;
     bundle(): Promise<Buffer>;
     install?: typeof installLocalMacCompanion;
-  }) {}
+    mutation?: HostSetupMutation;
+  }) {
+    this.mutation = dependencies.mutation ?? new HostSetupMutation();
+  }
 
-  get busy(): boolean { return this.pending !== undefined; }
+  get busy(): boolean { return this.mutation.busy; }
 
   rejectConcurrentMutation(response: ServerResponse): boolean {
-    if (!this.busy) return false;
-    sendJson(response, 409, { ok: false, error: "host_setup_in_progress",
-      message: "Computer access is being connected. Wait for setup to finish." });
-    return true;
+    return this.mutation.rejectConcurrentMutation(response);
   }
 
   async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -45,23 +46,22 @@ export class LocalHostConnection {
       sendJson(response, 400, { ok: false, error: "unexpected_host_configuration_fields" });
       return;
     }
+    await this.mutation.run(response, () => this.completeConnection(request, response));
+  }
+
+  private async completeConnection(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const readiness = await this.dependencies.readiness();
     if (!canSetUpLocalMac(request, readiness)) {
       sendJson(response, 409, { ok: false, error: "host_local_setup_unavailable",
         message: "Direct setup requires ABot running natively on this Mac through its local address. Use a pairing code on the Mac for Docker or a forwarded Runtime." });
       return;
     }
-    if (this.rejectConcurrentMutation(response)) return;
-    const pending = this.connect(localMacSetupRuntimeUrl(request));
-    this.pending = pending;
     try {
-      await pending;
+      await this.connect(localMacSetupRuntimeUrl(request));
       sendJson(response, 200, { ok: true });
     } catch (error) {
       if (!(error instanceof LocalCompanionSetupError)) throw error;
       sendJson(response, 503, { ok: false, error: error.code, message: error.message });
-    } finally {
-      if (this.pending === pending) this.pending = undefined;
     }
   }
 
@@ -78,5 +78,5 @@ export class LocalHostConnection {
     });
   }
 
-  async close(): Promise<void> { await this.pending?.catch(() => undefined); }
+  async close(): Promise<void> { await this.mutation.close(); }
 }

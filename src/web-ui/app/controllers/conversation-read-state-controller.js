@@ -66,14 +66,14 @@ export function createConversationReadStateController({
     }
   }
 
-  function markCurrentSessionReadSoon() {
+  function markDisplayedMessagesReadSoon(messages) {
     const scope = {
       environmentId: selectedEnvironmentId(),
       sessionId: state.currentSessionId,
       viewVersion: state.sessionViewVersion,
     };
     if (!canMarkConversationRead(scope)) return;
-    const boundary = displayedAssistantReadBoundary(state.messages);
+    const boundary = displayedAssistantReadBoundary(messages);
     if (!boundary) return;
     scheduleTask(() => {
       if (!canMarkConversationRead(scope)) return;
@@ -81,5 +81,9 @@ export function createConversationReadStateController({
     });
   }
 
-  return { markCurrentSessionReadSoon };
+  function markCurrentSessionReadSoon() {
+    markDisplayedMessagesReadSoon(state.messages);
+  }
+
+  return { markCurrentSessionReadSoon, markDisplayedMessagesReadSoon };
 }

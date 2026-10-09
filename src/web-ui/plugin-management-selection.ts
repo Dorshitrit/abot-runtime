@@ -1,9 +1,11 @@
 import { ABOT_RUNTIME_EXTENSION } from "../plugin-contract/manifest.js";
 import type { DiscoveredAgentPluginManifest } from "../runtime/plugins/discovered-manifest.js";
+import { updatePluginDisabledIds } from "./plugin-disabled-selection.js";
 import { updatePluginCapabilitySelection } from "./plugin-capability-selection.js";
 import type { RuntimePluginConfig } from "../runtime/ports.js";
 import {
   isPluginToolSelected,
+  isPluginDisabledById,
   normalizePluginSelection,
   type PluginSelection,
 } from "../runtime/plugins/selection.js";
@@ -22,13 +24,15 @@ export function updatePluginSelection(params: {
     });
   }
   const { current, pluginId } = params;
-  if (!params.enabled) {
-    const deny = [...(current.deny ?? [])];
-    if (!deny.some((id) => id.trim() === pluginId)) deny.push(pluginId);
-    return { ...current, deny };
-  }
+  const selection = updatePluginDisabledIds(params);
+  if (!params.enabled) return selection;
+  const wasDisabledById = isPluginDisabledById(
+    pluginId,
+    normalizePluginSelection(current),
+  );
+  if (wasDisabledById) return selection;
   const deny = current.deny?.filter((id) => id.trim() !== pluginId);
-  const next = { ...current, ...(deny ? { deny } : {}) };
+  const next = { ...selection, ...(deny ? { deny } : {}) };
   if (hasAllowedPluginCapability(params)) return next;
   return { ...next, allow: [...(current.allow ?? []), pluginId] };
 }
@@ -42,6 +46,7 @@ function hasAllowedPluginCapability(params: {
     ...params.current,
     enabled: true,
     deny: [],
+    disabledPluginIds: [],
   });
   return params.capabilityIds.some((toolName) =>
     isPluginToolSelected({ pluginId: params.pluginId, toolName, selection }),
@@ -86,7 +91,7 @@ function selectorMatchesOtherCapability(params: {
     isPluginToolSelected({
       pluginId: params.pluginId,
       toolName: params.toolName,
-      selection: { enabled: true, allow: [entry], deny: [] },
+      selection: normalizePluginSelection({ allow: [entry] }),
     }),
   );
 }
@@ -100,6 +105,7 @@ export function pluginSelectionEscapesRequestedScope(params: {
 }): boolean {
   const before = normalizePluginSelection(params.before);
   const after = normalizePluginSelection(params.after);
+  if (hasUnrequestedPluginDisableChange(params, before, after)) return true;
   const changedEntries = changedSelectionEntries(before, after);
   return params.manifests.some((plugin) => {
     const pluginId = plugin.manifest.name;
@@ -119,4 +125,21 @@ export function pluginSelectionEscapesRequestedScope(params: {
       );
     });
   });
+}
+
+function hasUnrequestedPluginDisableChange(
+  params: { pluginId: string; capabilityId?: string },
+  before: PluginSelection,
+  after: PluginSelection,
+): boolean {
+  const changedIds = [
+    ...before.disabledPluginIds.filter(
+      (id) => !after.disabledPluginIds.includes(id),
+    ),
+    ...after.disabledPluginIds.filter(
+      (id) => !before.disabledPluginIds.includes(id),
+    ),
+  ];
+  if (params.capabilityId !== undefined) return changedIds.length > 0;
+  return changedIds.some((id) => id !== params.pluginId);
 }

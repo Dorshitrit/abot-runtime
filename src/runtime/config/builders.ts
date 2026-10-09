@@ -27,7 +27,7 @@ import {
 } from "./constants.js";
 import type { RuntimeConfigFile, RuntimeEnv } from "./types.js";
 import type { RuntimeModelExecutionPolicies } from "./model-execution-policy.js";
-import { isRequestExecutionPolicyId } from "./model-execution-policy.js";
+import { buildRuntimeModelExecutionPolicy } from "./model-execution-policy.js";
 import {
   RuntimeConfigValidationError,
   validateModelProfileConfig,
@@ -119,7 +119,12 @@ export function buildPluginConfig(
   const enabled = readOptionalBoolean(config.plugins, "enabled");
   const allow = readNestedConfigStringArray(config.plugins, "allow");
   const deny = readNestedConfigStringArray(config.plugins, "deny");
+  const disabledPluginIds = readNestedConfigStringArray(
+    config.plugins,
+    "disabledPluginIds",
+  );
   const pluginConfig: RuntimePluginConfig = {
+    ...(disabledPluginIds ? { disabledPluginIds } : {}),
     ...(enabled !== undefined ? { enabled } : {}),
     ...(allow ? { allow } : {}),
     ...(deny ? { deny } : {}),
@@ -617,10 +622,8 @@ function buildModelProfiles(
     if (modelProfile) {
       gatewayEntries.push([profileId, modelProfile]);
     }
-    const execution = isRecord(source.execution) ? source.execution : undefined;
-    if (execution && isRequestExecutionPolicyId(execution.policy)) {
-      executionEntries.push([profileId, { policy: execution.policy }]);
-    }
+    const execution = buildRuntimeModelExecutionPolicy(source);
+    if (execution) executionEntries.push([profileId, execution]);
   }
   return {
     ...(gatewayEntries.length > 0

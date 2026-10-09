@@ -1,3 +1,4 @@
+import { historyPageOptions, publicHistorySnapshot } from "./history-pagination.js";
 import type { ServerResponse } from "node:http";
 import type { RuntimeEnvironment, JsonObject } from "./contracts.js";
 import { deleteSessionWithAttachments } from "../../runtime/session/session-attachment-deletion.js";
@@ -8,6 +9,7 @@ import type { WorkspaceChangeNotifier } from "./workspace-notifications.js";
 import { isSparkSession, SPARK_SESSION_ID } from "../../sessions/spark-session.js";
 
 type SessionRouteRequest = {
+  url?: URL;
   method: string;
   segments: string[];
   body: JsonObject | null;
@@ -46,12 +48,20 @@ export class WebSessionRoutes {
       });
       return true;
     }
+    if (method === "POST" && sessionId === "page" && !action) {
+      sendJson(response, 200, { ok: true, ...(await this.readStates.list(environmentId, body ?? {})) });
+      return true;
+    }
     if (!sessionId) return false;
     const sessions = environment.services.sessions;
     if (method === "GET" && action === "messages") {
-      const snapshot = await sessions.getSessionSnapshot(sessionId, {
-        includeRequests: true,
-      });
+      let snapshot;
+      try { snapshot = await sessions.getSessionSnapshot(sessionId, historyPageOptions(request.url, environment.services.config)); }
+      catch (error) {
+        if (!(error instanceof Error) || error.message !== "history_cursor_stale") throw error;
+        sendJson(response, 409, { ok: false, error: error.message });
+        return true;
+      }
       if (!snapshot) {
         sendJson(response, 404, {
           ok: false,
@@ -63,7 +73,7 @@ export class WebSessionRoutes {
       }
       sendJson(response, 200, {
         ok: true,
-        ...snapshot,
+        ...publicHistorySnapshot(snapshot),
         readState: await this.readStates.project(environmentId, snapshot),
       });
       return true;

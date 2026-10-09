@@ -1,4 +1,6 @@
 import WebSocket from "ws";
+import { CompanionCommandOutput } from "./command-output.js";
+import { SYSTEM_OUTPUT_CAPABILITY } from "./command-output-protocol.js";
 import { createNativePermissionHandlers } from "./native-permissions.js";
 import { MACOS_PERMISSION_CAPABILITY } from "./permission-protocol.js";
 import { nativeLoopbackSocketOptions } from "./native-loopback-lookup.js";
@@ -54,6 +56,7 @@ export type NativeSessionOptions = Readonly<{
   onReady(hostId: string): void | Promise<void>;
   resolveHost?: NativeHostResolver;
   handlers?: Record<string, ToolImplementation>;
+  commandOutputStateDir?: string;
   heartbeatMs?: number;
   operationLimit?: number;
   observationCollector?: ObservationCollectorFactory;
@@ -103,7 +106,10 @@ export async function connectNativeHost(
     await ownedNotifications?.close();
     options.signal.throwIfAborted();
   }
+  const commandOutput = options.commandOutputStateDir && !options.handlers
+    ? new CompanionCommandOutput(options.commandOutputStateDir) : undefined;
   const handlers = options.handlers ?? {
+    ...commandOutput?.handlers(),
     ...createSystemHandlers(),
     ...computers.handlers(),
     ...notifications.handlers(),
@@ -159,6 +165,7 @@ export async function connectNativeHost(
       if (retirement) clearTimeout(retirement);
       observations.close();
       void computers.close();
+      commandOutput?.close();
       if (!options.notifications) void notifications.close();
       for (const controller of active.values()) controller.abort();
       socket.terminate();
@@ -206,6 +213,7 @@ export async function connectNativeHost(
       if (pendingInbound !== 0) return false;
       if (active.size !== 0) return false;
       if (computers.hasActiveSessions()) return false;
+      if (commandOutput?.hasTransfers()) return false;
       if (advertisedNotificationReady) return false;
       return notifications.ready;
     }
@@ -223,11 +231,13 @@ export async function connectNativeHost(
         throw new Error("Unbound native operation.");
       if (seen.has(message.id))
         throw new Error("Repeated native operation identity.");
-      if (seen.size >= (options.operationLimit ?? 4_096)) {
+      const readsCommandOutput = message.operation === "system_command_output" || message.operation === "system_command_output_close";
+      if (!readsCommandOutput && seen.size >= (options.operationLimit ?? 4_096)) {
         retireConnection(message.id);
         return;
       }
-      seen.add(message.id);
+      // Reading stored bytes is idempotent and must not retire a large transfer.
+      if (!readsCommandOutput) seen.add(message.id);
       if (active.size >= 4) {
         sendResult(
           message.id,
@@ -312,6 +322,7 @@ export async function connectNativeHost(
         capabilities: [
           OBSERVATION_CAPABILITY,
           COMPUTER_CAPABILITY,
+          ...(commandOutput ? [SYSTEM_OUTPUT_CAPABILITY] : []),
           ...(options.identity.os === "macos" ? [MACOS_PERMISSION_CAPABILITY] : []),
           ...(advertisedNotificationReady
             ? [DESKTOP_NOTIFICATION_CAPABILITY]

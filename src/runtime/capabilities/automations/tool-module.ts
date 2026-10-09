@@ -121,7 +121,7 @@ async function execute(
     return { kind: "automation_authoring_catalog_v1", grantsPermissions: false,
       catalogScope: automationAuthoringCatalogScope(automationId),
       permissions: AUTOMATION_AUTHORING_REFERENCE.permissions,
-      operations: catalog.grantableOperations.map(({ fixedParams: _fixedParams, ...operation }) => operation),
+      operations: catalog.grantableOperations.map(({ fixedParams: _fixedParams, outputChannels: _outputChannels, ...operation }) => operation),
       grantedOperations: catalog.operations.map(({ toolName, operationId, contractVersion }) =>
         ({ toolName, operationId, contractVersion })),
       models: catalog.models,

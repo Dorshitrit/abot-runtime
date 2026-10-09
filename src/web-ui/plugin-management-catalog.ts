@@ -1,3 +1,6 @@
+import { readPluginConfigurationStore } from "../runtime/plugins/configuration-store.js";
+import { hasConfigurablePluginValues } from "./plugin-configuration-view.js";
+import { installedPluginPackage } from "../runtime/plugins/installation/installed-package.js";
 import { ABOT_RUNTIME_EXTENSION } from "../plugin-contract/manifest.js";
 import type { RuntimePluginConfig } from "../runtime/ports.js";
 import type { DiscoveredAgentPluginManifest } from "../runtime/plugins/discovered-manifest.js";
@@ -26,6 +29,8 @@ export type RuntimePluginSnapshot = {
     description?: string;
     version?: string;
     pluginEnabled: boolean;
+    removable: boolean;
+    configurable: boolean;
     capabilities: RuntimePluginCapabilitySnapshot[];
     capabilityCount: number;
     selectedCapabilityCount: number;
@@ -75,8 +80,12 @@ function projectPluginCapabilities(
 export function projectPluginSnapshot(
   manifests: readonly DiscoveredAgentPluginManifest[],
   config: RuntimePluginConfig,
+  consumerRoot?: string,
 ): RuntimePluginSnapshot {
   const selection = normalizePluginSelection(config);
+  const local = consumerRoot
+    ? readPluginConfigurationStore(consumerRoot).plugins
+    : {};
   return {
     selection,
     plugins: manifests.map((plugin) => {
@@ -88,6 +97,14 @@ export function projectPluginSnapshot(
       ).length;
       return {
         id: manifest.name,
+        configurable: hasConfigurablePluginValues(
+          manifest.extensions[ABOT_RUNTIME_EXTENSION],
+          Object.hasOwn(local, manifest.name)
+            ? local[manifest.name]
+            : undefined,
+        ),
+        removable:
+          !!consumerRoot && !!installedPluginPackage(consumerRoot, plugin),
         ...(manifest.description ? { description: manifest.description } : {}),
         ...(manifest.version ? { version: manifest.version } : {}),
         pluginEnabled:

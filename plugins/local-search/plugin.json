@@ -37,6 +37,7 @@
           "operations": {
             "search_local_files": {
               "summary": "Find bounded filename or exact-content matches beneath the current Worker root. Omit path or use '.' for that root; use only relative subpaths (or workspace/... when configured).",
+              "outputChannels": {"text": "content", "data": "metadata"},
               "input": {
                 "type": "object",
                 "additionalProperties": false,

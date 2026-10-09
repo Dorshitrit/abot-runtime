@@ -19,15 +19,24 @@ function add(as: string, index: number, node: Omit<AgentNode, "id"> | Omit<ToolN
 }
 
 describe("canonical automation authoring reference", () => {
-  it("compiles the creation example with defaults and a bound result", () => {
+  it("compiles the creation example and passes substantive text instead of result metadata", () => {
     const result = applyAutomationDraftBatch(createEmptyAutomationDefinition("example", "Example"),
       compileAutomationCreationRecipe(reference.createPlanExample), 1);
     expect(compileAutomationGraph(result.definition).ok).toBe(true);
     expect(result.definition.body.children).toHaveLength(2);
     expect(result.definition.body.children[1]).toMatchObject({ kind: "agent", onFailure: "stop",
       agentMode: "fast", result: { kind: "text" }, inputs: {
-        evidence: { kind: "node_result", nodeId: result.aliases.evidence, select: "data" },
+        evidence: { kind: "node_result", nodeId: result.aliases.evidence, select: "text" },
       } });
+    const consumer = result.definition.body.children[1] as AgentNode;
+    const sourceText = "The source describes the measured change and its supporting evidence.\n" +
+      "The next section records the limitation that qualifies the conclusion.";
+    const context = { runInputs: {}, sourceFiles: [], branchResults: new Map(), nodeResults: new Map([
+      [result.aliases.evidence!, { status: "succeeded" as const, text: sourceText,
+        data: { path: "source.txt", lineCount: 2 } }],
+    ]) };
+    expect(resolveAutomationBinding(consumer.inputs.evidence!, context))
+      .toEqual({ ok: true, value: sourceText });
   });
 
   it("is a bounded, serializable passive contract with canonical limits", () => {

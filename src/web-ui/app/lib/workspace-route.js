@@ -39,6 +39,7 @@ export function readWorkspaceRoute(location) {
     job: routeParameter(parameters, "job"),
     automation: routeParameter(parameters, "automation"),
     run: routeParameter(parameters, "run"),
+    ...(workspace === "plugins" && parameters.has("pluginSource") ? { pluginSource: routeParameter(parameters, "pluginSource"), pluginRef: routeParameter(parameters, "pluginRef"), pluginPath: routeParameter(parameters, "pluginPath") } : {}),
   };
 }
 
@@ -53,6 +54,9 @@ export function workspaceRouteUrl(route) {
     parameters.set("automationRun", route.automationRun);
   else if (workspace === "chat" && route.session)
     parameters.set("session", route.session);
+  if (workspace === "plugins") {
+    if (route.tab === "discover") parameters.set("tab", "discover");
+  }
   if (workspace === "config") {
     if (route.tab) parameters.set("tab", route.tab);
   }

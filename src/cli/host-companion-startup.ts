@@ -1,3 +1,4 @@
+import { installCompanionInstallLinks } from "../computer-access/companion/install-link-registration.js";
 import { spawn } from "node:child_process";
 import { installDesktopNotificationIdentity } from "../computer-access/companion/notification-installation.js";
 import { setTimeout as delay } from "node:timers/promises";
@@ -12,7 +13,7 @@ import { readNativeCompanionBuildId } from "../computer-access/companion/native-
 import { stopOwnedNativeCompanion } from "../computer-access/companion/native-replacement.js";
 import { prepareNativeCompanionRuntime } from "../computer-access/companion/native-runtime-installation.js";
 
-async function startDetachedCompanion(
+export async function startDetachedCompanion(
   options: NativeAutostartOptions,
 ): Promise<void> {
   const child = spawn(options.nodePath, [options.cliPath, "host", "run"], {
@@ -28,7 +29,7 @@ async function startDetachedCompanion(
   child.unref();
 }
 
-async function waitForNativeConnection(
+export async function waitForNativeConnection(
   state: NativeHostState,
   hostId: string,
   buildId: string,
@@ -63,6 +64,12 @@ export async function completeHostCompanionStartup(
           (error instanceof Error ? error.message : String(error)),
       );
     });
+  await installCompanionInstallLinks(managedStartup).catch((error: unknown) => {
+    console.warn(
+      "Plugin installation links need attention: " +
+        (error instanceof Error ? error.message : String(error)),
+    );
+  });
   const connectedAfter = Date.now();
   const installed = await installNativeAutostart(managedStartup);
   if (!installed.started) await startDetachedCompanion(managedStartup);

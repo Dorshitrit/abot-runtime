@@ -15,6 +15,10 @@ vi.mock("../../computer-access/companion/notification-installation.js", () => ({
   installDesktopNotificationIdentity: vi.fn(async () => {}),
   uninstallDesktopNotificationIdentity: vi.fn(async () => {}),
 }));
+vi.mock("../../computer-access/companion/install-link-registration.js", () => ({
+  installCompanionInstallLinks: vi.fn(async () => {}),
+  uninstallCompanionInstallLinks: vi.fn(async () => {}),
+}));
 const mocks = vi.hoisted(() => ({
   state: {
     directory: "/fixture/private-host",
@@ -53,6 +57,7 @@ vi.mock("node:readline/promises", () => ({
     close: mocks.closePrompt,
   }),
 }));
+import { installCompanionInstallLinks } from "../../computer-access/companion/install-link-registration.js";
 import { installDesktopNotificationIdentity } from "../../computer-access/companion/notification-installation.js";
 import { runHostCompanionCli } from "../../cli/host-companion.js";
 
@@ -255,4 +260,31 @@ test("notification setup failure preserves the existing computer connection and 
   expect(warning).toHaveBeenCalledWith(
     expect.stringContaining("notify-send unavailable"),
   );
+});
+
+test("upgrading the paired Companion registers install links without a new pairing", async () => {
+  const saved: NativeHostConnection = {
+    version: 1,
+    url: "ws://abot.localhost:5184",
+    hostId: randomUUID(),
+    credential: "a".repeat(43),
+  };
+  mocks.state.read.mockResolvedValue(saved);
+  await runHostCompanionCli(
+    ["connect", "--url", "http://abot.localhost:5184"],
+    {
+      cliPath: "/fixture/native/companion.mjs",
+      upgradeHostId: saved.hostId,
+    },
+  );
+  expect(installCompanionInstallLinks).toHaveBeenCalledWith(
+    expect.objectContaining({
+      cliPath: "/fixture/native/companion.mjs",
+      stateDir: mocks.state.directory,
+    }),
+  );
+  expect(mocks.connect).not.toHaveBeenCalled();
+  expect(mocks.state.write).not.toHaveBeenCalled();
+  expect(mocks.question).not.toHaveBeenCalled();
+  expect(await mocks.state.read()).toEqual(saved);
 });

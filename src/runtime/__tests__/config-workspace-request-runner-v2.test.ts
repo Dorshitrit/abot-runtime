@@ -166,7 +166,7 @@ describe("Config Workspace request-runner v2", () => {
     });
   });
 
-  test("shows registered step and override counts independently", () => {
+  test("keeps pipeline metadata out of the model summary", () => {
     const runtime = {
       exists: true,
       kind: "runtime",
@@ -186,7 +186,7 @@ describe("Config Workspace request-runner v2", () => {
       },
     };
     const state = {
-      activeCategory: "pipeline",
+      activeCategory: "models",
       appliedJsonRepairKeys: new Set(),
       configDashboard: {
         modelSteps: [
@@ -243,10 +243,10 @@ describe("Config Workspace request-runner v2", () => {
     view.renderConfigDashboard();
 
     expect(configDashboard.innerHTML).toContain(
-      "data-config-registered-step-count>3 registered",
+      'aria-label="Models summary"',
     );
-    expect(configDashboard.innerHTML).toContain(
-      "data-config-step-target-count>1 override",
+    expect(configDashboard.innerHTML).not.toContain(
+      "data-config-step-target-count",
     );
     expect(renderStepsEditor).not.toHaveBeenCalled();
     expect(configDashboard.innerHTML).not.toContain('data-config-category="pipeline"');

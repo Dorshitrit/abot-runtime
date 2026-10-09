@@ -6,6 +6,8 @@ import { getNumber, getString, requestEnvironmentId } from "./http.js";
 import { RealtimeClientHub } from "./realtime-hub.js";
 import { LocalRequestExecution } from "./request-execution.js";
 import { ManagedWebToolApprovals } from "./managed-tool-approvals.js";
+import { diagnosticErrorType } from "../../runtime/observability/request-control-diagnostics.js";
+import { traceWebRequestControl } from "./request-control-observation.js";
 
 export class LocalRealtimeController {
   private readonly approvals: ManagedWebToolApprovals;
@@ -58,16 +60,30 @@ export class LocalRealtimeController {
       return;
     }
     if (message.type === "steer_request") {
-      this.clients.send(
-        client,
-        await this.requests.handleSteer(message, (id) =>
-          this.environments.get(id),
-        ),
+      const acknowledgement = await this.requests.handleSteer(message, (id) =>
+        this.environments.get(id),
       );
+      traceWebRequestControl("steer.ack_dispatch_attempted", {
+        requestId: getString(acknowledgement.requestId),
+        steerId: getString(acknowledgement.steerId),
+        accepted: acknowledgement.accepted === true,
+        reason: getString(acknowledgement.reason) || undefined,
+        socketReadyState: client.readyState,
+      });
+      this.clients.send(client, acknowledgement);
       return;
     }
     if (message.type !== "resume_request") return;
-    await this.resume(client, message);
+    try {
+      await this.resume(client, message);
+    } catch (error) {
+      traceWebRequestControl("resume.failed", {
+        requestId: getString(message.requestId),
+        requestedEnvironment: getString(message.environment),
+        errorType: diagnosticErrorType(error),
+      });
+      throw error;
+    }
   }
 
   private async resume(client: WebSocket, message: JsonObject): Promise<void> {
@@ -78,6 +94,12 @@ export class LocalRealtimeController {
       message,
       this.options.defaultEnvironmentId,
     );
+    const startedAt = Date.now();
+    traceWebRequestControl("resume.received", {
+      requestId,
+      environmentId,
+      afterSeq: getNumber(message.afterSeq),
+    });
     const environment = this.environments.get(environmentId);
     let replay = await environment.services.sessions.getRequestReplayById(
       requestId,
@@ -111,5 +133,18 @@ export class LocalRealtimeController {
         error: replay.finalState.error,
       });
     }
+    // A returned send call is not a browser delivery acknowledgement.
+    traceWebRequestControl("resume.dispatch_returned", {
+      requestId,
+      environmentId,
+      afterSeq: getNumber(message.afterSeq),
+      replayFound: replay !== null && replay !== undefined,
+      sessionId: replay?.sessionId,
+      eventCount: replay?.events.length ?? 0,
+      lifecycleStatus: replay?.lifecycle?.status,
+      finalStateStatus: replay?.finalState?.status,
+      socketReadyState: client.readyState,
+      elapsedMs: Date.now() - startedAt,
+    });
   }
 }

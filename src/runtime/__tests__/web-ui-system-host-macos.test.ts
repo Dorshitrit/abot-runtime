@@ -45,7 +45,7 @@ function harness(snapshot: unknown = setup) {
     loadConnection: vi.fn(async (): Promise<unknown> => snapshot),
     connectLocal: vi.fn(async (): Promise<unknown> => ({ ok: true })),
     createPairing: vi.fn(async (): Promise<unknown> => pairing),
-    downloadSetup: vi.fn(async () => ({ filename: "abot.cmd" })),
+    downloadSetup: vi.fn(async () => ({ filename: "abot.sh" })),
     revokeConnection: vi.fn(async () => setup),
     saveDownload: vi.fn(),
     getRuntimeOrigin: () => "http://localhost:5184",
@@ -98,7 +98,7 @@ test("local repair reuses the connect endpoint without revocation or a browser p
   expect(h.dependencies.createPairing).not.toHaveBeenCalled();
 });
 
-test("manual Mac pairing shows a separate code and exact loopback command while preserving other platform downloads", async () => {
+test("manual Mac pairing preserves Linux downloads and does not fall back to Windows downloads", async () => {
   const h = harness({
     ...setup,
     readiness: {
@@ -108,7 +108,7 @@ test("manual Mac pairing shows a separate code and exact loopback command while 
     },
   });
   await h.activate();
-  expect(h.root.innerHTML).toContain('data-system-host-install="windows"');
+  expect(h.root.innerHTML).not.toContain('data-system-host-install="windows"');
   expect(h.root.innerHTML).toContain('data-system-host-install="linux"');
   expect(h.root.innerHTML).not.toContain('data-system-host-install="macos"');
   expect(await h.manager.connectMac()).toBe(false);
@@ -124,14 +124,13 @@ test("manual Mac pairing shows a separate code and exact loopback command while 
   expect(h.root.innerHTML).toContain("Code expires");
   expect(h.dependencies.createPairing).toHaveBeenCalledOnce();
   expect(h.dependencies.downloadSetup).not.toHaveBeenCalled();
-  expect(await h.manager.install("windows")).toBe(true);
+  expect(await h.manager.install("windows")).toBe(false);
+  expect(h.manager.state.manualMac?.code).toBe(pairing.code);
+  expect(h.dependencies.downloadSetup).not.toHaveBeenCalled();
+  expect(await h.manager.install("linux")).toBe(true);
   expect(h.manager.state.manualMac).toBeNull();
   expect(h.root.innerHTML).not.toContain(pairing.code);
-  expect(await h.manager.install("linux")).toBe(true);
-  expect(h.dependencies.downloadSetup.mock.calls).toEqual([
-    ["windows"],
-    ["linux"],
-  ]);
+  expect(h.dependencies.downloadSetup.mock.calls).toEqual([["linux"]]);
 });
 
 test("manual repair uses saved credentials and never creates a grant or unpairs the existing Mac", async () => {

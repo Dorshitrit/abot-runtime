@@ -130,5 +130,5 @@ discovery of a URL absent from the catalog. It does not require a search key,
 external network, or model invocation.
 
 Run `npm run build:plugins` followed by `npm run validate` from the repository
-root. Actual source availability is a separate bounded direct-HTTP check;
-model/client acceptance uses the maintained, separately authorized live smoke.
+root. These offline checks do not establish availability of external sources or
+model behavior in a live client session.

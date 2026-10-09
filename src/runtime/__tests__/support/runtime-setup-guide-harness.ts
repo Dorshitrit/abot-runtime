@@ -131,6 +131,15 @@ export function createGuideHarness(
     querySelector: vi.fn((selector: string) => {
       if (selector === '[data-runtime-setup-action="check"]') return action;
       if (selector === "[data-runtime-setup-title]") return title;
+      if (selector === "#runtimeSetupError-context-window")
+        return {
+          remove: () => {
+            markup = markup.replace(
+              /<small id="runtimeSetupError-context-window"[^>]*>[^<]*<\/small>/,
+              "",
+            );
+          },
+        };
       const field = selector.match(/data-runtime-setup-field="([^"]+)"/)?.[1];
       if (field) return fields[field];
       return null;

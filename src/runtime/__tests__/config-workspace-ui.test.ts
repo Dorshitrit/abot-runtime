@@ -622,7 +622,7 @@ describe("config workspace ui behavior", () => {
     expect(harness.memoryManagement.load).toHaveBeenCalledTimes(2);
     expect(harness.configDashboard.getAttribute("aria-busy")).toBe("true");
     expect(harness.configDashboard.innerHTML).toContain(
-      "data-config-registered-step-count>0 registered",
+      'aria-label="Models summary"',
     );
 
     harness.workspace.endExternalRuntimeMutation();

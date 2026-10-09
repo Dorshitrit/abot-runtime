@@ -1,5 +1,4 @@
 import { execFileSync } from "node:child_process";
-
 import { PUBLIC_PLUGIN_IDS } from "./public-snapshot/contracts.js";
 import { assertExactPublicPluginPackagePaths } from "./public-snapshot/package-transform.js";
 
@@ -541,6 +540,7 @@ const requiredPaths = [
   "LICENSE",
   "docs/architecture.md",
   "docs/installation.md",
+  "docs/windows-companion-store.md",
   "docs/configuration.md",
   "docs/running-locally.md",
   "docs/bridge-compatibility.md",
@@ -548,7 +548,6 @@ const requiredPaths = [
   "docs/long-term-memory.md",
   "docs/plugins.md",
   "docs/troubleshooting.md",
-  "docs/publishing.md",
   "docs/runtime-library.md",
   "docs/runtime-public-contracts.md",
   "docs/tool-execution-result-evidence-contract.md",
@@ -579,219 +578,9 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // Keep this as a tight publication guardrail, not an exact architecture
 // contract. Each emitted runtime module contributes both .js and .d.ts files,
 // so legitimate production modules can move the count by more than one.
-// The model-gateway topic split adds 55 emitted modules. TypeScript publishes
-// both JavaScript and declaration files, so preserve the existing guardrail
-// headroom while accounting for those 110 intentional package artifacts. The
-// session-memory feature adds 17 focused modules, or 34 emitted artifacts.
-// Passive long-term memory adds 41 focused production modules. TypeScript emits
-// JavaScript and declarations for each, while the Web UI and documentation add
-// three package assets. Canonical memory management then adds seven net
-// production modules (14 emitted artifacts), and its management API/UI adds six
-// emitted artifacts plus ten browser assets. Capability reconsideration adds
-// nine focused production modules, or 18 emitted artifacts. Generic operation
-// supervision then replaces four production modules with 14 focused modules,
-// for a net 10 modules or 20 emitted package artifacts. Preserve the existing
-// 24-file guardrail headroom after accounting for those intentional additions.
-// Runtime config validation then replaces one module with 11 focused modules,
-// adding 10 net modules or 20 emitted artifacts. The Execution Agent control
-// contract adds one further packaged module. Worker decision parsing now keeps
-// its existing facade and adds eight responsibility-owned modules, or 16 exact
-// emitted artifacts. Tool definition validation likewise keeps its facade and
-// adds eight responsibility-owned modules, or 16 exact emitted artifacts, so
-// keep the bound at the resulting 1,403-file baseline. Config Workspace then
-// keeps its browser facade and adds nine focused browser modules, which are
-// copied as nine package assets. Role-call command dispatch then keeps its
-// facade and adds 12 focused production modules, or 24 emitted artifacts.
-// Worker capability execution and binding retain both facades and add 15
-// responsibility-owned modules, or 30 exact emitted artifacts.
-// Request Runner Config v2 keeps the loader facade and adds three focused
-// modules, or six exact JavaScript and declaration artifacts.
-// Planner and Reviewer stabilization adds nine focused production modules,
-// or 18 exact JavaScript and declaration artifacts. Worker payload source
-// provenance adds one focused module, or two exact emitted artifacts. Planner
-// capability-catalog context adds one focused module, or two emitted artifacts.
-// PR1 provenance: 1,502 files / 4,798,102 bytes, with roughly 8 KiB headroom.
-// Composer context adds five assets; capability brief adds 12 emitted files.
-// Those changes preserve the one-file margin; the brief adds 10,000 size bytes.
-// The Planner drawer adds seven browser assets (three modules with declarations
-// and one stylesheet). Its net browser delta is 16,223 bytes. Account only for
-// that measured growth, retaining the existing size and one-file margins.
-// Review fixes add 2,827 measured browser bytes for replay reconciliation and
-// request-bound restoration, with no additional packaged files.
-// Readable typography, history separators and RTL add 3,182 CSS bytes.
-// Preserve the existing package margins; no packaged files are added.
-// Independent Light search adds 29 source files, one selector, and its README:
-// 31 package files. The approved sources, bundle, docs, and metadata add exactly
-// 193,248 unpacked bytes to the 1,525-file / 4,838,543-byte measured baseline.
-// Preserve the existing one-file and 689-byte margins.
-// Light review fixes add three source modules for robots directives, charsets,
-// and HTTP freshness. The measured package has 1,559 files; retain the same
-// one-file and 689-byte margins after including this guard's annotation.
-// Compact role activity adds five browser assets. Include only their measured
-// net browser growth, preserving the one-file and 689-byte package margins.
-// Collapsed role avatars add 2,002 browser bytes with no additional assets.
-// Web source receipts add five plugin source modules and nine browser assets.
-// Include their measured package growth, retaining one file and 689 bytes of headroom.
-// Supervisor recommendations and steering binding add three runtime modules.
-// Measured growth from f68dbcfa is six files and 11,691 unpacked bytes.
-// Preserve that baseline's actual one-file and 29-byte margins.
-// Memory-preparation steering binding adds 764 bytes with no new package files.
-// Root memory recall adds eighteen bounded runtime modules (36 compiled files).
-// Preserve the existing one-file and 29-byte margins after measured package growth.
-// Recall review fixes add 1,816 measured bytes with no new packaged files.
-// Preserve the current 342-byte and one-file margins.
-// Rich message rendering and previews add 36 packaged files, including the
-// locally bundled Markdown parser and shared HTTP transport. The measured
-// package is 1,656 files / 5,358,521 bytes; retain one file and 342 bytes of margin.
-// Tool activity adds 13 intentional artifacts and 54,772 measured net bytes.
-// The package is 1,669 files / 5,413,293 bytes; retain the same margins.
-// Review fixes add the rejection-event module's two artifacts and 6,986 net bytes.
-// The package is 1,671 files / 5,420,279 bytes; retain the same margins.
-// Core scheduling adds 44 emitted module artifacts, 14 browser assets and a README.
-// The measured package is 1,730 files / 5,567,616 bytes; preserve the existing
-// one-file and 342-byte margins. No private scheduling plugin is included.
-// Shared local ownership adds 36 emitted artifacts, three workspace assets and
-// a README. The measured package is 1,770 files / 5,640,877 bytes; preserve the
-// same one-file and 342-byte margins, with no private or test artifacts.
-// Review fixes extract nine focused modules for host composition/lifecycle,
-// startup handshakes and schedule validation. Measured: 1,788 files / 5,656,165
-// bytes; retain one file and 342 bytes of headroom.
-// Owner retirement adds two focused modules (four artifacts). Measured:
-// 1,792 files / 5,663,327 bytes; preserve one file and 342 bytes of headroom.
-// Verified scheduled outcomes add one focused module (two artifacts). Measured:
-// 1,794 files / 5,669,029 bytes; preserve one file and 342 bytes of headroom.
-// Synchronous owner-lease cleanup adds two artifacts. Measured: 1,796 files /
-// 5,672,004 bytes; preserve one file and 342 bytes of headroom.
-// Incremental scheduling and reviewed lifecycle boundaries add 24 artifacts.
-// Measured: 1,840 files / 5,745,498 bytes; retain the same existing margins.
-// Environment paths and timing/deletion owners add eight artifacts. Measured:
-// 1,848 files / 5,757,694 bytes; retain one file and 342 bytes of headroom.
-// Conversation activity adds six browser assets. Measured: 1,870 files /
-// 5,806,096 bytes; retain one file and 342 bytes of headroom.
-// Dashboard and Web UI read state add 24 browser assets and 12 emitted artifacts.
-// Compared with the rebuilt 485186dc package (1,870 files / 5,812,022 bytes),
-// measured growth is 36 files / 84,539 bytes. The package is 1,906 files /
-// 5,896,561 bytes; preserve the existing one-file and 342-byte margins.
-// Read-state failure isolation adds two emitted availability artifacts and
-// 6,531 net bytes. Measured: 1,908 files / 5,903,092 bytes; retain one file
-// and 342 bytes of headroom.
-// Guided onboarding, plugin controls and additive models: 2,011 files / 6,175,878 bytes.
-// Preserve one file and 512 bytes of measured package headroom.
-// Editable onboarding connection: 2,075 files / 6,312,952 bytes.
-// Preserve one file and 512 bytes of measured package headroom.
-// Conversation file preview: 2,102 files / 6,382,231 bytes, including 26 new
-// presentation/API outputs. Preserve one file and 512 bytes of headroom.
-// File-preview review fixes: 2,106 files / 6,395,664 bytes, including root
-// identity and anchored marker creation. Preserve one file and 512 bytes.
-// Mutation-root binding: 2,106 files / 6,400,727 bytes. Preserve the same
-// one-file and 512-byte margins; no additional package files.
-// Mac file opening and inline filename action: 2,114 files / 6,418,156 bytes.
-// Includes four new backend modules; retain one file and 512 bytes of headroom.
-// Projects and FULL+ add 54 audited files: 24 core outputs, 16 Web UI/API
-// assets, 13 bundled system-plugin files and one feature doc. Measured:
-// 2,168 files / 6,570,090 bytes; retain one file and 512 bytes of headroom.
-// System evidence adds two sources; generic selection removes two intrinsic outputs.
-// Measured: 2,168 files / 6,586,770 bytes. Preserve the preceding measured
-// one-file and 189-byte headroom after the catalog-capacity correction.
-// Docker host companion adds the native handler import closure, companion sources,
-// CLI/Web owners and connection UI. Audited: 2,257 files / 6,850,985 bytes.
-// Retain one file and 512 bytes of headroom; no private or test artifacts.
-// GUI computer setup adds the exact-build native bundle, bounded installer and
-// readiness owners, and shared onboarding assets. Audited: 2,287 files /
-// 7,110,430 bytes. Preserve one file and 512 bytes of headroom.
-// Luna audit and model-owned plan progress add 17 runtime modules (34 outputs)
-// plus two exec source modules: 36 audited package files. Measured: 2,341 files /
-// 7,234,011 bytes. Preserve one file and 512 bytes of headroom; all exact-path,
-// public-plugin and forbidden-artifact checks above remain unchanged.
-// Planner binding/Auditor budgeting and Dev View retain their audited outputs.
-// Trusted EXEC removes three lexical-parser sources; exact-action metadata and
-// UI disclosure reuse existing owners. Supervisor semantic availability adds
-// four emitted artifacts; routing readmission adds two. Planner now shares that
-// admission and replaces its old catalog module: two net emitted artifacts.
-// Worker intent and system launch guidance reuse existing files; no added paths.
-// INVALID boundaries add six runtime modules (12 emitted artifacts).
-// Exact Auditor admission: 2,367 files / 7,274,934 bytes; retain one file/512 bytes.
-// Web navigation, Home approvals, favicon and startup add 17 audited assets/outputs.
-// Compact composer sizing adds one asset; unread grouping reuses existing owners.
-// Event-driven workspace updates add three browser modules and two notifier outputs.
-// Web route restore, activity replay, route-owned loading and broadcast
-// isolation reuse existing outputs. Sub-workspace route revisions and schedule
-// session-event refresh reuse the same outputs. Measured: 2,390 files /
-// 7,336,038 bytes; retain one file and 512 bytes of headroom.
-// Model reference storage and declaration removal add five audited outputs/assets.
-// Measured: 2,395 files / 7,353,262 bytes; retain one file and 512 bytes of headroom.
-// Model config review fixes and browser content guidance retain the same paths.
-// Measured: 2,395 files / 7,364,880 bytes; retain one file and 512 bytes of headroom.
-// Passive learning adds 77 audited runtime, Companion and Web UI outputs/assets.
-// Includes installer cache upgrades and explicit learning setup feedback.
-// Measured: 2,472 files / 7,671,080 bytes; retain one file and 512 bytes of headroom.
-// The standalone Learning workspace reuses the existing browser assets.
-// Measured: 2,472 files / 7,672,956 bytes; retain one file and 512 bytes of headroom.
-// Learning review details and the Memory workspace add three browser assets.
-// Measured: 2,475 files / 7,696,007 bytes; retain one file and 512 bytes of headroom.
-// Independent learning controls and review fixes add five focused modules.
-// Measured: 2,485 files / 7,721,829 bytes; retain one file and 512 bytes of headroom.
-// Verified Companion replacement adds two native source modules and four outputs.
-// Schedule permission and visible rail labels add three audited outputs/assets.
-// Measured with learning review fixes: 2,494 files / 7,749,119 bytes.
-// Co-worker cadence and Companion release metadata add two source modules,
-// each with its JavaScript and declaration output. Includes the updated bundle.
-// Includes watcher recovery, stable Windows ownership, host events and X11 activation recovery.
-// Measured: 2,500 files / 7,776,819 bytes; retain one file and 512 bytes of headroom.
-// Web UI navigation and schedule styling add 2,115 bytes with no new files.
-// Main measured in CI: 2,500 files / 7,778,934 bytes.
-// Computer control adds 120 audited paths: 39 SYSTEM sources, 62 native companion
-// outputs, 18 generic media/runtime outputs and one plugin guide. Measured:
-// After integrating Co-worker resource guards and Companion version 3:
-// PR review corrections add one approval-display asset and update existing
-// computer, companion-readiness and media-error outputs. Audited against the
-// preceding 2,620-file / 8,504,418-byte package: +1 file / +24,502 bytes.
-// Measured before the second review: 2,621 files / 8,528,920 bytes.
-// Topology/source guards and paired-origin setup add 14 audited paths and
-// 73,485 bytes; integrated main UI changes account for the remaining 2,115 bytes.
-// Focus, post-action source and offline-release fixes add 7,036 audited bytes,
-// with no new package files. Measured: 2,635 files / 8,611,556 bytes.
-// Shared Computer access removes duplicated plugin infrastructure; audited 2,564 files / 8,252,589 bytes.
-// Web UI workspace styling and controls: audited 2,567 files / 8,273,941 bytes.
-// Composer cancellation adds seven audited outputs/assets: two runtime control
-// outputs, two HTTP route outputs, two browser controllers/projections and CSS.
-// Measured: 2,574 files / 8,287,525 bytes.
-// Stop lifecycle review fixes, title eligibility and shutdown finalization reuse
-// existing outputs. After removing the cancelled-history experiments:
-// 2,574 files / 8,288,739 bytes (+1,214 audited bytes).
-// Merged Web UI follow-ups add one audited Home readiness module and 8,483 bytes.
-// Combined package: 2,575 files / 8,297,222 bytes.
-// Persisted cancellation responses add two runtime outputs; the handler, title
-// eligibility and live response display reuse existing outputs (+4,074 bytes).
-// Co-worker candidate gating and Applications: audited 2,717 files / 8,663,550 bytes.
-// Burst capacity reservation and confirmed preference reconciliation reuse outputs (+1,317 bytes).
-// Measured: 2,728 files / 8,701,720 bytes.
-// Shared memory admission and core retention replace the legacy candidate writer.
-// Net: 26 compiled paths; the standalone memory plugin remains unchanged.
-// Audited: 2,754 files / 8,743,266 bytes.
-// Conversation authoring binds direct saves/protected core writes; Co-worker adds content-free JSON failure diagnostics. Audited: 2,754 files / 8,754,288 bytes.
-// Candidate supersession/override notifications: 2,754 files / 8,756,344 bytes.
-// Home guidance and session organization: 2,739 files / 8,736,865 bytes.
-// Shared core memory admission: 2,765 files / 8,791,657 bytes.
-// Home guidance polish: 2,766 files / 8,793,927 bytes; review-state fixes add 564 bytes.
-// Budgets retain one file and 512 bytes of headroom above the audited package.
-// Audited: 2,766 files / 8,794,491 bytes.
-// Staged Co-worker reviews and bounded progress add 17 runtime modules (34 emitted files).
-// Audited: 2,800 files / 8,878,710 bytes.
-// Shared Web UI reasoning disclosure: 2,804 files / 8,883,862 bytes; one file and 512 bytes of headroom.
-// ASK approval continuity adds eight runtime/Web modules (16 emitted files).
-// Audited: 2,820 files / 8,930,071 bytes; retain one file and 512 bytes of headroom.
-// Notification history, native delivery and Companion redaction: 2,881 files / 9,147,131 bytes; one file and 512 bytes headroom.
-// Windows notification identity and owned legacy cleanup: 2,881 files / 9,148,512 bytes; one file and 512 bytes headroom.
-// Spark conversation choices and project previews: 2,886 files / 9,159,498 bytes.
-// Saved ASK approvals, activation reconciliation and release docs: 2,997 files / 9,432,446 bytes.
-// Native Mac broker, safe startup and Spark setup: 2,999 files / 9,435,320 bytes.
-// Local Mac setup and manual pairing reuse the companion: 3,009 files / 9,465,100 bytes; one file and 512 bytes headroom.
-// Mac permission gating and fixed private runtime: audited 3,014 files / 9,488,513 bytes, one file and 512 bytes headroom.
-// Dual-stack loopback pinning and Mac consent: audited 3,019 files / 9,505,744 bytes, one file and 512 bytes headroom.
-// SPARK review fixes, approved mascot and schedule visibility: 3,549 files / 11,353,641 bytes; one file and 512 bytes headroom.
-const maxFileCount = 3_550;
-const maxUnpackedSizeBytes = 11_354_153;
+// These ceilings bound the approved public package inventory and unpacked size.
+const maxFileCount = 3_712;
+const maxUnpackedSizeBytes = 12_036_932;
 
 if (paths.length > maxFileCount) {
   fail(`package includes too many files: ${paths.length} > ${maxFileCount}`);

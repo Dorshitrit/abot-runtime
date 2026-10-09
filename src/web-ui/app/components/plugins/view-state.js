@@ -10,6 +10,8 @@ export function createPluginViewState() {
     if (element.dataset.pluginCapabilityToggle) {
       return { kind: "capability", pluginId: element.dataset.pluginParent, capabilityId: element.dataset.pluginCapabilityToggle };
     }
+    if (element.dataset.pluginTab) return { kind: "tab", pluginId: element.dataset.pluginTab };
+    if (element.dataset.pluginRemove) return { kind: "remove", pluginId: element.dataset.pluginRemove };
     if (element.dataset.pluginToggle) return { kind: "plugin", pluginId: element.dataset.pluginToggle };
     if (element.dataset.pluginToolsOpen) return { kind: "open", pluginId: element.dataset.pluginToolsOpen };
     if (element.dataset.pluginToolsBack) return { kind: "back", pluginId: element.dataset.pluginToolsBack };
@@ -72,7 +74,7 @@ export function createPluginViewState() {
     restoreToolScroll(root);
     if (!focusedControl) return;
     if (busy && !isCardNavigationFocus()) return;
-    const controls = root.querySelectorAll("[data-plugin-toggle], [data-plugin-capability-toggle], [data-plugin-tools-open], [data-plugin-tools-back], [data-plugin-refresh]");
+    const controls = root.querySelectorAll("[data-plugin-tab], [data-plugin-remove], [data-plugin-toggle], [data-plugin-capability-toggle], [data-plugin-tools-open], [data-plugin-tools-back], [data-plugin-refresh]");
     let target = [...controls].find((element) => matchesIdentity(element, focusedControl));
     if (target?.disabled) {
       target = [...controls].find((element) => element.dataset.pluginToolsBack === focusedControl.pluginId);

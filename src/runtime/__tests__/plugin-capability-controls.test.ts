@@ -337,7 +337,7 @@ describe("individual plugin capability controls", () => {
     expect(await readFile(options.configPath, "utf8")).toBe(before);
   });
 
-  test("whole plugin updates reject ID collisions that would change another plugin", async () => {
+  test("whole plugin updates use exact IDs without changing a colliding tool", async () => {
     const options = await fixture({ allow: ["*"] });
     const manifest = JSON.parse(
       await readFile(
@@ -353,13 +353,24 @@ describe("individual plugin capability controls", () => {
     const directory = join(options.rootDir, "plugins", manifest.name);
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, "plugin.json"), JSON.stringify(manifest));
-    const before = await readFile(options.configPath, "utf8");
-    await expect(
-      setRuntimePluginEnabled(options, {
-        pluginId: "filesystem",
-        enabled: false,
-      }),
-    ).rejects.toMatchObject({ code: "plugin_selection_conflict" });
-    expect(await readFile(options.configPath, "utf8")).toBe(before);
+    const before = getRuntimePluginSnapshot(options);
+    const disabled = await setRuntimePluginEnabled(options, {
+      pluginId: "filesystem",
+      enabled: false,
+    });
+    expect(
+      disabled.plugins.find((plugin) => plugin.id === "filesystem"),
+    ).toMatchObject({ state: "disabled", pluginEnabled: false });
+    expect(
+      disabled.plugins.filter((plugin) => plugin.id !== "filesystem"),
+    ).toEqual(before.plugins.filter((plugin) => plugin.id !== "filesystem"));
+    const enabled = await setRuntimePluginEnabled(options, {
+      pluginId: "filesystem",
+      enabled: true,
+    });
+    expect(enabled.plugins).toEqual(before.plugins);
+    expect(
+      JSON.parse(await readFile(options.configPath, "utf8")).plugins,
+    ).toEqual({ allow: ["*"] });
   });
 });

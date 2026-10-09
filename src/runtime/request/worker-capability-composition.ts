@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { RuntimeModelPluginConfig } from "../config/model-plugin-config.js";
 import type { RuntimeFilesystemScope } from "../context/runtime-filesystem-scope.js";
 
 import {
@@ -32,6 +33,7 @@ type RequestWorkerCapabilityProviderParams<TRequest> = Readonly<{
   requestWorkingDirectory?: string;
   filesystemScope?: RuntimeFilesystemScope;
   executionPolicyAuthority?: ExecutionPolicyAuthoritySnapshot;
+  modelPlugins?: RuntimeModelPluginConfig;
   requestAttachments?: readonly ToolRequestAttachment[];
   runtimeConfig?: RuntimeConfig;
   toolRegistryOverride?: ToolRegistry;
@@ -53,6 +55,7 @@ export function createRequestWorkerCapabilityProvider(
       request: params.request,
       requestWorkingDirectory: params.requestWorkingDirectory,
       toolPermissionMode: params.request.toolPermissionMode,
+      ...(params.modelPlugins ? { modelPlugins: params.modelPlugins } : {}),
       ...(params.requestAttachments
         ? { requestAttachments: params.requestAttachments }
         : {}),
@@ -83,7 +86,9 @@ export function createRequestWorkerCapabilityProvider(
       {
         getRequestToolRegistry,
         requestId: params.request.requestId,
-        ...(params.request.toolResources ? { toolResources: params.request.toolResources } : {}),
+        ...(params.request.toolResources
+          ? { toolResources: params.request.toolResources }
+          : {}),
         sessionId: params.request.sessionId,
         requestContext: Object.freeze({
           agentMode: params.request.agentMode,

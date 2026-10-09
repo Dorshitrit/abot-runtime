@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 import { loadRuntimeConfig } from "../../runtime/config.js";
@@ -5,7 +6,10 @@ import { RUNTIME_LOGS_DIR_NAME } from "../../runtime/config/layout.js";
 import { loadRequestRunnerConfig } from "../../runtime/config/runner/loader.js";
 import { createRequestModelPolicy } from "../../runtime/config/runner/model-policy.js";
 import { configureDebugLogger } from "../../runtime/observability/debug-logger.js";
-import { DEFAULT_MODEL_GATEWAY_URL } from "../../shared/constants.js";
+import {
+  DEFAULT_MODEL_GATEWAY_URL,
+  DEFAULT_OLLAMA_URL,
+} from "../../shared/constants.js";
 import { configureModelIoTrace } from "../model-io-trace.js";
 import type { ModelGatewayPolicyConfig } from "../types.js";
 import type { ModelGatewayHandlerOptions } from "./contracts.js";
@@ -46,9 +50,7 @@ export function resolveModelGatewayPort(
   return Number(parsedUrl.port || "80");
 }
 
-export function configureModelGateway(
-  options: ModelGatewayHandlerOptions,
-): ModelGatewayPolicyConfig {
+function resolveModelGatewayConfiguration(options: ModelGatewayHandlerOptions) {
   const runtimeConfig = loadRuntimeConfig({
     rootDir: options.rootDir ?? process.cwd(),
     configPath: options.configPath,
@@ -62,26 +64,94 @@ export function configureModelGateway(
       }),
     });
 
-  configureDebugLogger({
-    traceFile: resolveTraceFile({
-      configuredPath: resolveConfiguredTraceFile("MODEL_GATEWAY_TRACE_FILE"),
-      sharedDir: runtimeConfig.paths.sharedDir,
-      segments: MODEL_GATEWAY_TRACE_FILE_SEGMENTS,
-    }),
-    enabled: runtimeConfig.logging?.enabled,
-    rotation: runtimeConfig.logging?.rotation,
-  });
-  configureModelIoTrace({
-    traceFile: resolveTraceFile({
-      configuredPath: resolveConfiguredTraceFile(
-        "MODEL_GATEWAY_MODEL_IO_TRACE_FILE",
-      ),
-      sharedDir: runtimeConfig.paths.sharedDir,
-      segments: MODEL_IO_TRACE_FILE_SEGMENTS,
-    }),
-    enabled: runtimeConfig.logging?.enabled,
-    rotation: runtimeConfig.logging?.rotation,
-  });
+  return {
+    modelGatewayUrl: runtimeConfig.modelGatewayUrl,
+    modelPolicy,
+    debugLogging: {
+      traceFile: resolveTraceFile({
+        configuredPath: resolveConfiguredTraceFile("MODEL_GATEWAY_TRACE_FILE"),
+        sharedDir: runtimeConfig.paths.sharedDir,
+        segments: MODEL_GATEWAY_TRACE_FILE_SEGMENTS,
+      }),
+      enabled: runtimeConfig.logging?.enabled,
+      rotation: runtimeConfig.logging?.rotation,
+    },
+    modelIoLogging: {
+      traceFile: resolveTraceFile({
+        configuredPath: resolveConfiguredTraceFile(
+          "MODEL_GATEWAY_MODEL_IO_TRACE_FILE",
+        ),
+        sharedDir: runtimeConfig.paths.sharedDir,
+        segments: MODEL_IO_TRACE_FILE_SEGMENTS,
+      }),
+      enabled: runtimeConfig.logging?.enabled,
+      rotation: runtimeConfig.logging?.rotation,
+    },
+  };
+}
 
-  return modelPolicy;
+function canonicalConfiguration(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalConfiguration);
+  if (value && typeof value === "object")
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalConfiguration(entry)]),
+    );
+  return value;
+}
+
+function providerEnvironment(
+  options: ModelGatewayHandlerOptions,
+  policy: ModelGatewayPolicyConfig,
+) {
+  const credentialNames = new Set(["OPENAI_API_KEY"]);
+  for (const provider of Object.values(policy.providers ?? {})) {
+    if (provider.type !== "openai") continue;
+    const configuredName = provider.apiKeyEnv?.trim();
+    if (configuredName && /^[A-Za-z_][A-Za-z0-9_]*$/.test(configuredName))
+      credentialNames.add(configuredName);
+  }
+  const numPredict = Number(process.env.OLLAMA_NUM_PREDICT);
+  return {
+    ollamaUrl:
+      options.ollamaUrl ?? (process.env.OLLAMA_URL || DEFAULT_OLLAMA_URL),
+    openAIBaseUrl: process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
+    ollamaNumPredict:
+      Number.isFinite(numPredict) && numPredict > 0
+        ? Math.trunc(numPredict)
+        : null,
+    credentials: Object.fromEntries(
+      [...credentialNames].map((name) => [name, process.env[name] || null]),
+    ),
+  };
+}
+
+/** Captures gateway inputs without changing its loggers or retaining credentials. */
+export function captureModelGatewayConfiguration(
+  options: ModelGatewayHandlerOptions,
+): string | null {
+  if (options.providerAdapters || options.additionalProviderAdapters?.length)
+    return null;
+  const configuration = resolveModelGatewayConfiguration(options);
+  const snapshot = {
+    ...configuration,
+    modelGatewayUrl: new URL(configuration.modelGatewayUrl).href,
+    providerEnvironment: providerEnvironment(
+      options,
+      configuration.modelPolicy,
+    ),
+  };
+  return createHash("sha256")
+    .update(JSON.stringify(canonicalConfiguration(snapshot)))
+    .digest("hex");
+}
+
+export function configureModelGateway(
+  options: ModelGatewayHandlerOptions,
+): ModelGatewayPolicyConfig {
+  const configuration = resolveModelGatewayConfiguration(options);
+  configureDebugLogger(configuration.debugLogging);
+  configureModelIoTrace(configuration.modelIoLogging);
+  return configuration.modelPolicy;
 }

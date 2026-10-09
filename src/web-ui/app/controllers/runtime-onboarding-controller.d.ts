@@ -17,6 +17,7 @@ export interface RuntimeOnboardingControllerDependencies {
     render(setup: RuntimeAvailability): void;
   }>;
   readonly reloadModels: () => void | Promise<void>;
+  readonly getEnvironmentId?: () => string;
   readonly setMessageStatus: (message: string) => void;
   readonly onStateChange?: () => void;
 }

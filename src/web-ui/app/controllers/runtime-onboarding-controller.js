@@ -40,11 +40,13 @@ export function createRuntimeOnboardingController({
   state,
   guide,
   reloadModels,
+  getEnvironmentId = () => "",
   setMessageStatus,
   onStateChange = () => {},
 }) {
   let checkPromise = null;
   let checkRevision = 0;
+  let catalogEnvironmentId = getEnvironmentId();
 
   function bind() {
     guide.bind({ onCheckAgain: checkAgain, onApplied: startCatalogCheck });
@@ -55,7 +57,16 @@ export function createRuntimeOnboardingController({
     guide.render(state.runtimeAvailability);
   }
 
+  function resetCatalogEnvironment() {
+    const environmentId = getEnvironmentId();
+    if (catalogEnvironmentId === environmentId) return;
+    catalogEnvironmentId = environmentId;
+    state.runtimeAvailability = { status: "loading" };
+    render();
+  }
+
   function beginCatalogLoad() {
+    resetCatalogEnvironment();
     state.runtimeAvailability = {
       status: "checking",
       showGuide: guideWasVisible(state.runtimeAvailability),

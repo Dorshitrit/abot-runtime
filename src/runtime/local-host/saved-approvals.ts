@@ -21,6 +21,10 @@ import type {
 } from "./request-approval-contracts.js";
 import type { ToolApprovalRequest } from "../ports.js";
 import { traceDebug } from "../observability/debug-logger.js";
+import {
+  traceLocalRequest,
+  traceLocalRequestFailure,
+} from "./local-request-diagnostics.js";
 
 type DurableDecision = LocalToolApprovalDecisionInput & {
   generation: string;
@@ -344,6 +348,18 @@ export class SavedRequestApprovals {
     peer: LocalRuntimePeer,
   ): Promise<void> {
     const { requestId, sessionId } = current;
+    const diagnosticFields = {
+      requestId,
+      sessionId,
+      ownerEpoch: current.activation?.ownerEpoch,
+      environmentId: this.application.services.config.runtimeId,
+      activationId: current.activation?.activationId,
+      generation: consumedWait.generation,
+      waitId: consumedWait.waitId,
+      revision: consumedWait.revision,
+      peerId: peer.id,
+    };
+    traceLocalRequest("run.resume_attempted", diagnosticFields);
     const options = this.controls.ordinary(
       requestId,
       peer,
@@ -376,7 +392,7 @@ export class SavedRequestApprovals {
       send: (data: string) => this.emit([JSON.parse(data)], sessionId),
     } as WebSocket;
     try {
-      await this.application.requests.handle(
+      const outcome = await this.application.requests.handle(
         ws,
         {
           type: "run_request",
@@ -395,8 +411,15 @@ export class SavedRequestApprovals {
           },
         },
       );
+      traceLocalRequest("run.resumed_handler_settled", {
+        ...diagnosticFields,
+        awaitingApproval: outcome?.kind === "awaiting_approval",
+      });
+    } catch (error) {
+      traceLocalRequestFailure("run.resumed_failed", diagnosticFields, error);
+      throw error;
     } finally {
-      this.controls.finish(requestId);
+      this.controls.finish(requestId, "resumed_handler_finally");
     }
   }
 

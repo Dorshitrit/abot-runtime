@@ -23,45 +23,37 @@ const mocks = vi.hoisted(() => ({
   install: vi.fn(async () => ({ started: true })),
   stopOwned: vi.fn(async () => {}),
 }));
-vi.mock(
-  "../../computer-access/companion/native-state.js",
-  async (load) => ({
-    ...(await load<
-      typeof import("../../computer-access/companion/native-state.js")
-    >()),
-    createNativeHostState: () => mocks.state,
-  }),
-);
+vi.mock("../../computer-access/companion/native-state.js", async (load) => ({
+  ...(await load<
+    typeof import("../../computer-access/companion/native-state.js")
+  >()),
+  createNativeHostState: () => mocks.state,
+}));
 vi.mock("../../computer-access/companion/native-session.js", () => ({
   connectNativeHost: mocks.connect,
 }));
-vi.mock(
-  "../../computer-access/companion/native-build-identity.js",
-  () => ({ readNativeCompanionBuildId: async () => "upgraded-build" }),
-);
-vi.mock(
-  "../../computer-access/companion/native-replacement.js",
-  () => ({ stopOwnedNativeCompanion: mocks.stopOwned }),
-);
+vi.mock("../../computer-access/companion/native-build-identity.js", () => ({
+  readNativeCompanionBuildId: async () => "upgraded-build",
+}));
+vi.mock("../../computer-access/companion/native-replacement.js", () => ({
+  stopOwnedNativeCompanion: mocks.stopOwned,
+}));
 vi.mock("../../computer-access/companion/autostart.js", () => ({
   installNativeAutostart: mocks.install,
   nativeAutostartFile: vi.fn(),
   uninstallNativeAutostart: vi.fn(),
   existingOwnedRegistration: vi.fn(async () => false),
 }));
-vi.mock(
-  "../../computer-access/companion/native-address.js",
-  async (load) => {
-    const original =
-      await load<
-        typeof import("../../computer-access/companion/native-address.js")
-      >();
-    return {
-      ...original,
-      resolveNativeRuntimeAddress: vi.fn(original.resolveNativeRuntimeAddress),
-    };
-  },
-);
+vi.mock("../../computer-access/companion/native-address.js", async (load) => {
+  const original =
+    await load<
+      typeof import("../../computer-access/companion/native-address.js")
+    >();
+  return {
+    ...original,
+    resolveNativeRuntimeAddress: vi.fn(original.resolveNativeRuntimeAddress),
+  };
+});
 
 import { resolveNativeRuntimeAddress } from "../../computer-access/companion/native-address.js";
 import { runHostCompanionEntry } from "../../cli/host-companion-entry.js";
@@ -199,20 +191,6 @@ test.each(["macos", "linux"] as const)(
     expect(await mocks.state.read()).toBe(saved);
   },
 );
-
-test("Windows installer carries the bounded pairing identity in setup metadata and stdin", async () => {
-  const result = await renderCompanionInstaller({
-    ...installerInput,
-    platform: "windows",
-  });
-  const script = Buffer.from(result.contentBase64, "base64").toString("utf8");
-  const encoded = /FromBase64String\('([A-Za-z0-9+/=]+)'\)/u.exec(script)![1]!;
-  expect(
-    JSON.parse(Buffer.from(encoded, "base64").toString("utf8")),
-  ).toMatchObject(installerInput);
-  expect(script).toContain("$Setup.upgradeHostId = $Metadata.upgradeHostId");
-  expect(script).toContain("$Payload | & $Node $Bundle setup");
-});
 
 test.each(["different-host", "missing-state"])(
   "an upgrade with %s cannot replace registration, send credentials or begin pairing",

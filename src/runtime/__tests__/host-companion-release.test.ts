@@ -63,7 +63,7 @@ test.each([
   },
 );
 
-test.each([3, 4, 5, 6, 9])(
+test.each([3, 4, 5, 6, 9, 11])(
   "older release %s companions are offered the current companion fixes online and offline",
   async (installedVersion) => {
     const fixture = await hostCompanionFixture();

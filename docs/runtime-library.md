@@ -13,7 +13,6 @@ For invariant coverage, see
 [runtime-invariant-coverage.md](runtime-invariant-coverage.md).
 For bridge/runtime ownership, see [bridge-compatibility.md](bridge-compatibility.md).
 For current limitations, see [known-limitations.md](known-limitations.md).
-For package and publication gates, see [publishing.md](publishing.md).
 
 ## Basic Composition
 

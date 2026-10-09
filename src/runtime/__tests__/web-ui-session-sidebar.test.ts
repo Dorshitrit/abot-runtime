@@ -129,6 +129,34 @@ describe("conversation sidebar", () => {
     expect((f.row("two").querySelector(".session-open-button") as SidebarElement).focus).toHaveBeenCalledOnce();
   });
 
+  test.each(["menu", "drag"])("%s moves preserve the order of unloaded and archived sessions", (method) => {
+    const f = fixture([{ id: "one" }, { id: "two" }]);
+    f.preferences.saveSessionSidebar("prod", {
+      orderedSessionIds: ["before", "one", "between", "two", "archived", "after"],
+      archivedSessionIds: ["archived"],
+    });
+    f.controller.render();
+    if (method === "menu") f.row("two").querySelector(".move-up-action")!.dispatch("click");
+    else {
+      f.row("two").querySelector(".session-open-button")!.dispatch("dragstart", dragEvent());
+      f.row("one").dispatch("drop", dragEvent());
+    }
+    expect(f.preferences.loadSessionSidebar("prod")).toEqual({
+      orderedSessionIds: ["before", "two", "one", "between", "archived", "after"],
+      archivedSessionIds: ["archived"],
+    });
+    const reloaded = fixture(["before", "one", "between", "two", "archived", "after"].map((id) => ({ id })), [], f.saved);
+    expect(reloaded.ids()).toEqual(["before", "two", "one", "between", "after"]);
+  });
+
+  test("moving a new unranked session into a partial saved order preserves unloaded IDs", () => {
+    const f = fixture([{ id: "new" }, { id: "one" }]);
+    f.preferences.saveSessionSidebar("prod", { orderedSessionIds: ["one", "unloaded"], archivedSessionIds: [] });
+    f.controller.render();
+    f.row("new").querySelector(".move-down-action")!.dispatch("click");
+    expect(f.preferences.loadSessionSidebar("prod").orderedSessionIds).toEqual(["one", "new", "unloaded"]);
+  });
+
   test.each(["ordinary", "project", "pinned"])("keyboard moves skip search-hidden siblings in the %s group", (group) => {
     const sessions = ["hidden-before", "one", "hidden-between", "two", "hidden-after"].map((id) => ({
       id, title: ["one", "two"].includes(id) ? "match" : "hidden",

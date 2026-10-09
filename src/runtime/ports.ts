@@ -93,6 +93,8 @@ export type RuntimeRequestRunnerConfig = {
 };
 
 export type RuntimePluginConfig = {
+  /** Exact plugin IDs; never interpreted as capability IDs or wildcards. */
+  disabledPluginIds?: string[];
   enabled?: boolean;
   allow?: string[];
   deny?: string[];
@@ -111,6 +113,7 @@ export type RuntimeConfig = {
   agentBridgeToken?: string;
   modelGatewayUrl: string;
   paths: RuntimePaths;
+  webUi?: { pageSize: number };
   logging?: RuntimeLoggingConfig;
   timeouts?: RuntimeTimeouts;
   plugins?: RuntimePluginConfig;
@@ -206,10 +209,7 @@ export type SessionStore = SessionMemoryRepository & {
   getSessionById: (sessionId: string) => Promise<SessionRecord | null>;
   getSessionSnapshot: (
     sessionId: string,
-    options?: {
-      afterMessageId?: string | number | null;
-      includeRequests?: boolean;
-    },
+    options?: import("../sessions/snapshot.js").SessionSnapshotOptions,
   ) => Promise<SessionSnapshot | null>;
   getRequestReplayById: (
     requestId: string,

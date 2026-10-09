@@ -3,7 +3,7 @@ import { isHostIdentifier } from "../../computer-access/companion/protocol.js";
 
 export class InstallerInputError extends Error {}
 export type CompanionInstallerInput = Readonly<{
-  platform: "windows" | "macos" | "linux";
+  platform: "macos" | "linux";
   url: string;
   code: string;
   bundleSha256: string;
@@ -25,8 +25,8 @@ function hasLocalInstallerHost(hostname: string): boolean {
 export function validateCompanionInstaller(
   input: CompanionInstallerInput,
 ): CompanionInstallerInput {
-  if (!["windows", "macos", "linux"].includes(input.platform))
-    throw new InstallerInputError("Choose Windows, macOS or Linux.");
+  if (!["macos", "linux"].includes(input.platform))
+    throw new InstallerInputError("Choose macOS or Linux. Windows Companion is installed and updated through Microsoft Store.");
   if (/[\x00-\x1f\x7f]/u.test(input.url))
     throw new InstallerInputError(
       "The Runtime origin must not contain control characters.",

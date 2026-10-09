@@ -28,13 +28,13 @@ describe("ABot Studio agent tool picker", () => {
 
   test("groups operations under recognizable tool names and keeps details behind disclosure", () => {
     const search = operation("web_search", "search_web", "Search one public query", "web");
-    const publish = operation("abot_publisher", "list_current_resource_ids",
-      "List all current resource ids, versions, states, and summaries; omitted content is declared and available through read_resource.",
-      "ABot Publisher");
+    const catalog = operation("fixture_catalog", "list_sample_items",
+      "List sample items with identifiers and titles; inspect a selected item separately for more detail.",
+      "Fixture Catalog");
     const markup = renderAutomationNodeInspector(agent([{
       operation: { toolName: search.toolName, operationId: search.operationId, contractVersion: 1 },
       usage: "required",
-    }]), { grantableOperations: [search, publish], operations: [], models: [] });
+    }]), { grantableOperations: [search, catalog], operations: [], models: [] });
 
     expect(markup).toContain("Agent tools");
     expect(markup).toContain("Choose the operations this agent may use.");
@@ -43,29 +43,29 @@ describe("ABot Studio agent tool picker", () => {
     expect(markup).toContain('data-agent-tool-search');
     expect(markup).toContain("Web Search");
     expect(markup).toContain("Search Web");
-    expect(markup).toContain("ABot Publisher");
-    expect(markup).toContain("List Current Resource Ids");
+    expect(markup).toContain("Fixture Catalog");
+    expect(markup).toContain("List Sample Items");
     expect(markup).toMatch(/data-agent-tool="[^\"]+search_web[^\"]+" checked/);
-    expect(markup).toMatch(/data-agent-tool="[^\"]+list_current_resource_ids[^\"]+"/);
+    expect(markup).toMatch(/data-agent-tool="[^\"]+list_sample_items[^\"]+"/);
     expect(markup).toContain('value="required" selected');
     expect(markup).toContain("FULL+ permission needed when publishing");
     expect(markup).toMatch(/data-agent-tool-options hidden/);
-    expect(markup).toMatch(/<details class="automation-agent-operation-help"><summary>What this operation does<\/summary><p>List all current resource ids/);
-    expect(markup).not.toMatch(/<label class="automation-agent-operation-choice">[^<]*List all current resource ids/);
+    expect(markup).toMatch(/<details class="automation-agent-operation-help"><summary>What this operation does<\/summary><p>List sample items/);
+    expect(markup).not.toMatch(/<label class="automation-agent-operation-choice">[^<]*List sample items/);
   });
 
   test("search filters groups without changing selections and updates the selected count", () => {
     const searchCheckbox = { checked: true };
-    const publishCheckbox = { checked: false };
+    const catalogCheckbox = { checked: false };
     const searchOptions = { hidden: true };
-    const publishOptions = { hidden: false };
+    const catalogOptions = { hidden: false };
     const searchRow = {
       dataset: { agentSearchName: "search web search_web public query" }, hidden: false,
       querySelector: (selector: string) => selector === "[data-agent-tool]" ? searchCheckbox : searchOptions,
     };
-    const publishRow = {
-      dataset: { agentSearchName: "list current resource ids" }, hidden: false,
-      querySelector: (selector: string) => selector === "[data-agent-tool]" ? publishCheckbox : publishOptions,
+    const catalogRow = {
+      dataset: { agentSearchName: "list sample items" }, hidden: false,
+      querySelector: (selector: string) => selector === "[data-agent-tool]" ? catalogCheckbox : catalogOptions,
     };
     const tool = (name: string, row: typeof searchRow) => {
       const count = { textContent: "" };
@@ -76,14 +76,14 @@ describe("ABot Studio agent tool picker", () => {
       };
     };
     const searchTool = tool("web search", searchRow);
-    const publishTool = tool("abot publisher", publishRow);
+    const catalogTool = tool("fixture catalog", catalogRow);
     const plugin = (name: string, item: typeof searchTool) => ({
       dataset: { agentSearchName: name }, hidden: false,
       querySelectorAll: () => [item],
     });
     const webPlugin = plugin("web", searchTool);
-    const publisherPlugin = plugin("abot publisher", publishTool);
-    const search = { value: "resource" };
+    const catalogPlugin = plugin("fixture catalog", catalogTool);
+    const search = { value: "sample" };
     const selectedCount = { textContent: "" };
     const noResults = { hidden: true };
     const picker = {
@@ -93,30 +93,30 @@ describe("ABot Studio agent tool picker", () => {
         "[data-agent-tool-count]": selectedCount,
         "[data-agent-tool-no-results]": noResults,
       })[selector as "[data-agent-tool-search]"],
-      querySelectorAll: () => [webPlugin, publisherPlugin],
+      querySelectorAll: () => [webPlugin, catalogPlugin],
     };
     const form = { querySelector: () => picker };
 
     updateAgentToolPicker(form);
     expect(webPlugin.hidden).toBe(true);
-    expect(publisherPlugin.hidden).toBe(false);
-    expect(publishTool.open).toBe(true);
+    expect(catalogPlugin.hidden).toBe(false);
+    expect(catalogTool.open).toBe(true);
     expect(selectedCount.textContent).toBe("1 selected");
     expect(searchOptions.hidden).toBe(false);
-    expect(publishOptions.hidden).toBe(true);
+    expect(catalogOptions.hidden).toBe(true);
     expect(searchCheckbox.checked).toBe(true);
 
-    publishCheckbox.checked = true;
+    catalogCheckbox.checked = true;
     search.value = "no match";
     updateAgentToolPicker(form);
     expect(selectedCount.textContent).toBe("2 selected");
     expect(noResults.hidden).toBe(false);
-    expect(publishOptions.hidden).toBe(false);
+    expect(catalogOptions.hidden).toBe(false);
   });
 
   test("saves only checked operation references with their existing usage values", () => {
     const chosen = operation("web_search", "search_web", "Search one public query", "web");
-    const omitted = operation("abot_publisher", "list_current_resource_ids", "List resources", "ABot Publisher");
+    const omitted = operation("fixture_catalog", "list_sample_items", "List sample items", "Fixture Catalog");
     const chosenKey = JSON.stringify([chosen.toolName, chosen.operationId, chosen.contractVersion]);
     const omittedKey = JSON.stringify([omitted.toolName, omitted.operationId, omitted.contractVersion]);
     const form = {

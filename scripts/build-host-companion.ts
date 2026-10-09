@@ -28,7 +28,7 @@ async function companionLicenseNotice(rootDir: string): Promise<string> {
 
 /** Produce the same native companion for every OS, with no npm runtime dependencies. */
 export async function buildHostCompanionBundle(
-  options: Readonly<{ rootDir?: string; outputPath?: string }> = {},
+  options: Readonly<{ rootDir?: string; outputPath?: string; entryPoint?: string }> = {},
 ): Promise<
   Readonly<{ outputPath: string; bytes: number; inputPaths: string[] }>
 > {
@@ -39,7 +39,7 @@ export async function buildHostCompanionBundle(
   );
   const result = await build({
     absWorkingDir: rootDir,
-    entryPoints: ["src/cli/host-companion-entry.ts"],
+    entryPoints: [options.entryPoint ?? "src/cli/host-companion-entry.ts"],
     outfile: outputPath,
     bundle: true,
     platform: "node",

@@ -174,6 +174,8 @@ export type SessionSnapshot = {
   messages: SessionSnapshotMessage[];
   requests: SessionSnapshotRequest[];
   nextCursor: string | null;
+  newerCursor?: string | null;
+  messageIndex?: import("./snapshot.js").SessionMessageIdentity[];
 };
 
 export type SessionDeleteResult = {

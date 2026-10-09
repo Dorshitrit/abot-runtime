@@ -79,7 +79,39 @@
 .spark-chat-panel .conversation-file-backdrop { display: none; }
 .spark-chat-results:empty { display: none; }
 .spark-handoff-actions { margin-top: 10px; }
-.spark-handoff-button { min-height: 30px; padding: 5px 9px; border: 1px solid #ffffff14; border-radius: 7px; background: #ffffff08; color: var(--text); font-size: 11px; box-shadow: none; }
+.spark-companion :is(.spark-setup-button, .spark-handoff-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--control-bg);
+  color: var(--accent-strong);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: normal;
+  text-align: start;
+  box-shadow: none;
+}
+.spark-companion :is(.spark-setup-button, .spark-handoff-button):hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--control-bg-hover);
+}
+.spark-companion :is(.spark-setup-button, .spark-handoff-button):focus-visible {
+  border-color: var(--accent);
+}
+.spark-companion :is(.spark-setup-button, .spark-handoff-button):disabled {
+  background: var(--control-fill);
+  color: var(--muted-2);
+  opacity: .5;
+  cursor: not-allowed;
+}
+.spark-companion .spark-setup-button { margin-top: 12px; }
 .spark-handoff-actions p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
 .spark-chat-results .conversation-tool-file-action { max-width: 100%; font-size: 12px; }
 .spark-result-warning { margin: 6px 0; color: var(--amber); font-size: 12px; }

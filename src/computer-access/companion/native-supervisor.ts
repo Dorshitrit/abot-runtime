@@ -122,6 +122,7 @@ export async function runNativeHostSupervisor(
         url: initial.url,
         authorization: initial.credential,
         hostId: initial.hostId,
+        commandOutputStateDir: options.state.directory,
         identity: options.identity,
         signal: controller.signal,
         notifications: notificationSession,

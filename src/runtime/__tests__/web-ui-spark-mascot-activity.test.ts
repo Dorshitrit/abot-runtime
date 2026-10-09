@@ -60,13 +60,14 @@ async function harness(active = true) {
   };
   const appState = { connected: true, runtimeAvailability: { status: "ready" },
     currentSessionId: "ordinary", activeRequestId: "ordinary-request", messages: [{ id: "ordinary-answer" }] };
-  const shell = { showToast: vi.fn(), subscribeWorkspaceChange: vi.fn() };
+  const shell = { isWorkspaceAvailable: () => true, subscribeRuntimeAvailabilityChange: vi.fn(), showToast: vi.fn(), subscribeWorkspaceChange: vi.fn() };
   const realtime = createAppRealtimeTransport({ state: appState, getConfig: () => ({}), onMessage: vi.fn(),
     setConnectionLabel: vi.fn(), rejectPendingSteers: vi.fn(), recordControlEvent: vi.fn(), onConnected: vi.fn() });
   const feature = createSparkChatFeature({ dom, state: appState, client, shell, realtime,
     getEnvironmentId: () => dom.environmentSelect.value });
   feature.bind(); feature.environmentChanged();
-  await vi.waitFor(() => expect(client.loadSession).toHaveBeenCalledOnce());
+  await vi.waitFor(() => expect(capture.conversation.state.currentSessionId).toBe("spark-companion"));
+  expect(client.loadSession).not.toHaveBeenCalled();
   const conversation = capture.conversation;
   await vi.waitFor(() => expect(conversation.state.currentSessionId).toBe("spark-companion"));
   const expectWorking = (expected: boolean) => {

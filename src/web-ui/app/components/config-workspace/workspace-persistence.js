@@ -1,5 +1,6 @@
 import { configRepairSaveIsConfirmed } from "./raw-config-repair.js";
 import { textOf } from "../../lib/text-format.js";
+import { loadModelPluginCatalog } from "./model-plugin-permissions.js";
 import {
   cloneConfig,
   modelContextWindowValidationError,
@@ -10,6 +11,7 @@ export function createConfigWorkspacePersistence({
   state,
   dom,
   loadDashboard,
+  loadModelPlugins,
   saveFile,
   memorySetup,
   memoryManagement,
@@ -84,11 +86,16 @@ export function createConfigWorkspacePersistence({
     }
     const loadGeneration = ++state.loadGeneration;
     state.loading = true;
+    state.configDashboardError = false;
     setWorkspaceStatus("Loading…");
     syncDashboardInteractivity();
     try {
-      const payload = await loadDashboard();
+      const [payload, modelPluginCatalog] = await Promise.all([
+        loadDashboard(),
+        loadModelPluginCatalog(loadModelPlugins),
+      ]);
       if (configLoadIsStale(loadGeneration)) return false;
+      state.modelPluginCatalog = modelPluginCatalog;
       replaceDashboard(payload);
       const memoryLoads = [memoryManagement.load()];
       if (pluginManagement) memoryLoads.push(pluginManagement.load());
@@ -115,6 +122,7 @@ export function createConfigWorkspacePersistence({
       return true;
     } catch (error) {
       if (configLoadIsStale(loadGeneration)) return false;
+      state.configDashboardError = true;
       const failurePrefix = textOf(options.failurePrefix).trim();
       const summary = error instanceof Error ? error.message : String(error);
       setWorkspaceStatus(

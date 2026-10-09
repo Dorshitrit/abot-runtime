@@ -81,6 +81,8 @@ export function createConversationView({
       if (viewState.followMessages) scrollToEnd();
     },
   });
+  let historyPager;
+  let holdingPosition = false;
   const viewState = {
     followMessages: true,
     messageRenderTimer: 0,
@@ -92,7 +94,7 @@ export function createConversationView({
   function updateJumpToLatest() {
     const hasOverflow =
       dom.messagesList.scrollHeight > dom.messagesList.clientHeight + 24;
-    dom.jumpToLatestButton.hidden = viewState.followMessages || !hasOverflow;
+    dom.jumpToLatestButton.hidden = !historyPager?.hasNewer() && (viewState.followMessages || !hasOverflow);
   }
 
   function scrollToEnd() {
@@ -246,7 +248,7 @@ export function createConversationView({
     );
     const previousScrollTop = dom.messagesList.scrollTop;
     const shouldFollow =
-      viewState.followMessages || isNearScrollEnd(dom.messagesList);
+      !holdingPosition && !historyPager?.hasNewer() && (viewState.followMessages || isNearScrollEnd(dom.messagesList));
     const messages = preserveMessageHistory ? getMessages() : projectApprovalContinuations(getMessages());
     conversationReasoning.beginRender(messages);
     messageLinkPreviews.reset();
@@ -265,7 +267,12 @@ export function createConversationView({
     for (const pendingApproval of getPendingApprovals()) {
       dom.messagesList.appendChild(createApprovalCard(pendingApproval));
     }
-    if (scrollBehavior) return scrollBehavior.afterRender();
+    historyPager?.renderControls(dom.messagesList);
+    if (scrollBehavior) {
+      scrollBehavior.afterRender();
+      if (historyPager?.hasNewer()) dom.jumpToLatestButton.hidden = false;
+      return;
+    }
     if (shouldFollow) {
       scrollToEnd();
     } else {
@@ -303,7 +310,23 @@ export function createConversationView({
     viewState.thinkingRenderTimer = 0;
   }
 
+  function preserveScroll(change) {
+    const root = dom.messagesList;
+    const bounds = root.getBoundingClientRect();
+    const anchor = [...root.querySelectorAll("[data-message-id]")].find((node) => node.getBoundingClientRect().bottom > bounds.top);
+    const id = anchor?.dataset.messageId;
+    const offset = anchor?.getBoundingClientRect().top ?? 0;
+    const previousTop = root.scrollTop;
+    holdingPosition = true; viewState.followMessages = false; viewState.scrollSettleVersion += 1;
+    change();
+    const restored = [...root.querySelectorAll("[data-message-id]")].find((node) => node.dataset.messageId === id);
+    root.scrollTop = restored ? root.scrollTop + restored.getBoundingClientRect().top - offset : previousTop;
+    scrollBehavior?.preservePosition?.();
+    updateJumpToLatest();
+  }
+
   function reset() {
+    holdingPosition = false;
     filePreview.reset();
     viewState.followMessages = true;
     viewState.scrollSettleVersion += 1;
@@ -318,19 +341,27 @@ export function createConversationView({
     messageLinkPreviews.reset();
   }
 
+  function jumpToLatest() {
+    if (!historyPager?.hasNewer()) { scrollToEnd(); return; }
+    void historyPager.latest().then(scrollToEnd).catch(() => notify("Could not load latest messages", "failed"));
+  }
+
   function bind() {
     if (viewState.bound) return;
     viewState.bound = true;
-    dom.jumpToLatestButton.addEventListener("click", scrollToEnd);
+    dom.jumpToLatestButton.addEventListener("click", jumpToLatest);
     dom.messagesList.addEventListener("scroll", () => {
+      holdingPosition = false;
       if (scrollBehavior) return;
-      viewState.followMessages = isNearScrollEnd(dom.messagesList);
+      viewState.followMessages = !historyPager?.hasNewer() && isNearScrollEnd(dom.messagesList);
       if (!viewState.followMessages) viewState.scrollSettleVersion += 1;
       updateJumpToLatest();
     });
   }
 
   return {
+    preserveScroll,
+    setHistoryPager: (pager) => { historyPager = pager; },
     setWorkspace: filePreview.setWorkspace,
     closeFilePreview: filePreview.reset,
     bind,

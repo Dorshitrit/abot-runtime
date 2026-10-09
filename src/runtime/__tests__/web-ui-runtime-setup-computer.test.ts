@@ -57,10 +57,11 @@ test("inserts optional Computer after Plugins and keeps native readiness install
   await h.ready();
   expect(h.applySetup).toHaveBeenCalledOnce();
 });
-test("container setup offers both native platforms and can be skipped without side effects", async () => {
+test("container setup offers Windows Store and Mac connection and can be skipped without side effects", async () => {
   const h = harness(false);
   await openComputer(h);
-  expect(h.container.innerHTML).toContain('data-system-host-install="windows"');
+  expect(h.container.innerHTML).toContain("data-system-host-store-connect");
+  expect(h.container.innerHTML).not.toContain('data-system-host-install="windows"');
   expect(h.container.innerHTML).toContain('data-system-host-mac="manual"');
   expect(h.container.innerHTML).not.toContain('data-system-host-install="macos"');
   h.submit();

@@ -43,9 +43,10 @@ function harness(initial: unknown = snapshot) {
   const manager = createSystemHostConnectionManager(dependencies);
   manager.mount(root);
   disposers.push(manager.dispose);
-  async function activate() {
+  async function activate(showPermissions = true) {
     manager.setActive(true);
     await vi.waitFor(() => expect(manager.state.busy).toBe(false));
+    if (showPermissions) manager.openManagement();
   }
   return { root, dependencies, manager, activate,
     setEnvironment(value: string) { environment = value; manager.environmentChanged(); } };
@@ -53,13 +54,13 @@ function harness(initial: unknown = snapshot) {
 
 test("connection discovery and polling never check or request macOS permissions", async () => {
   const h = harness();
-  await h.activate();
+  await h.activate(false);
   await h.manager.load(true);
   expect(h.dependencies.requestPermissions).not.toHaveBeenCalled();
-  expect(h.root.querySelector("[data-mac-permissions-check]")).not.toBeNull();
+  expect(h.root.querySelector("[data-mac-permissions-check]")).toBeNull();
   expect(h.root.querySelectorAll("[data-mac-permission-request]")).toHaveLength(0);
   expect(h.root.innerHTML).not.toContain("Start collection in Spark");
-  expect(h.root.querySelector(".system-host-summary-permissions")?.textContent).not.toContain("granted");
+  expect(h.root.querySelector(".system-host-summary-permissions")).toBeNull();
 });
 
 test("explicit check binds the current connection and requests only missing permissions", async () => {

@@ -1,8 +1,13 @@
 import { rememberCalibrationDisclosure } from "./calibration-disclosure.js";
 import { textOf } from "../../lib/text-format.js";
 import { resolveModelExecutionRoute } from "./config-model.js";
+import {
+  setModelPluginEnabled,
+  setModelCapabilityEnabled,
+} from "./model-plugin-selection.js";
 
 export function createConfigWorkspaceEvents({
+  modelPluginViewState,
   state,
   dom,
   eventTarget,
@@ -91,6 +96,37 @@ export function createConfigWorkspaceEvents({
     const actionElement = element?.closest?.("[data-config-action]");
     if (!actionElement) return;
     const action = actionElement.dataset.configAction;
+    if (action === "model-plugin-enabled") {
+      mutateConfigFile(
+        "model",
+        actionElement.dataset.id,
+        (config) =>
+          setModelPluginEnabled(
+            config,
+            state.modelPluginCatalog?.plugins || [],
+            actionElement.dataset.pluginId,
+            actionElement.checked,
+          ),
+        { rerender: true },
+      );
+      return;
+    }
+    if (action === "model-plugin-capability-enabled") {
+      mutateConfigFile(
+        "model",
+        actionElement.dataset.id,
+        (config) =>
+          setModelCapabilityEnabled(
+            config,
+            state.modelPluginCatalog?.plugins || [],
+            actionElement.dataset.pluginId,
+            actionElement.dataset.capabilityId,
+            actionElement.checked,
+          ),
+        { rerender: true },
+      );
+      return;
+    }
     if (action === "step-value") {
       handleFieldMutation(actionElement);
       return;
@@ -106,6 +142,7 @@ export function createConfigWorkspaceEvents({
       state.rawPanelOpen = details.open;
       return;
     }
+    modelPluginViewState?.remember(details);
     rememberCalibrationDisclosure(state, details);
   }
 

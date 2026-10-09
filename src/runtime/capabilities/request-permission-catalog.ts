@@ -7,12 +7,19 @@ import type {
   ToolDefinition,
 } from "../../capabilities/tool-types.js";
 import type { ToolRegistry } from "../ports.js";
+import {
+  captureModelPluginConfig,
+  type RuntimeModelPluginConfig,
+} from "../config/model-plugin-config.js";
+import { matchesToolSelectionId } from "../../shared/tool-selection.js";
 
 /** One lazy registration snapshot; any declared restriction wins across projections. */
 export function captureRequestPermissionCatalog(
   registry: ToolRegistry,
   mode: ToolPermissionMode,
+  modelPlugins?: RuntimeModelPluginConfig,
 ) {
+  const modelDeniedSelectors = captureModelPluginConfig(modelPlugins)?.deny ?? [];
   const definitions = Object.freeze([...registry.listDefinitions()]);
   const definitionByName = new Map(
     definitions.map((definition) => [definition.name, definition]),
@@ -21,8 +28,19 @@ export function captureRequestPermissionCatalog(
   let resolvedRegistrations = false;
   const registeredAllowedNames = new Set<string>();
   const registeredDeniedNames = new Set<string>();
-  const permitsDefinition = (definition: ToolDefinition) =>
-    permitsRequiredToolMode(mode, definition.requiredPermissionMode);
+  const registeredModelDeniedNames = new Set<string>();
+  const isDefinitionBlockedForModel = (definition: ToolDefinition) =>
+    modelDeniedSelectors.some((selector) =>
+      matchesToolSelectionId(
+        definition.pluginName ?? "",
+        definition.name,
+        selector,
+      ),
+    );
+  const permitsDefinition = (definition: ToolDefinition) => {
+    if (isDefinitionBlockedForModel(definition)) return false;
+    return permitsRequiredToolMode(mode, definition.requiredPermissionMode);
+  };
   const permitsRegistration = (
     registration: RegisteredToolNormalInvocation,
   ) => {
@@ -40,6 +58,8 @@ export function captureRequestPermissionCatalog(
       return undefined;
     }
     for (const registration of source) {
+      if (isDefinitionBlockedForModel(registration.definition))
+        registeredModelDeniedNames.add(registration.toolName);
       const names = permitsRegistration(registration)
         ? registeredAllowedNames
         : registeredDeniedNames;
@@ -56,7 +76,14 @@ export function captureRequestPermissionCatalog(
     if (definition) return permitsDefinition(definition);
     return registeredAllowedNames.has(name);
   }
+  function isRequestToolBlockedForModel(name: string): boolean {
+    resolveRegistrations();
+    if (registeredModelDeniedNames.has(name)) return true;
+    const definition = definitionByName.get(name);
+    return definition !== undefined && isDefinitionBlockedForModel(definition);
+  }
   return Object.freeze({
+    isRequestToolBlockedForModel,
     listDefinitions: () =>
       definitions.filter(({ name }) => isRequestToolAvailable(name)),
     listNormalInvocations: resolveRegistrations,

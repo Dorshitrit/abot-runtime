@@ -40,3 +40,27 @@ export function resolveHostCompanionSetupUrl(
     );
   return saved.url;
 }
+
+/** Explicit fresh Store consent bypasses resume; other callers keep their saved pairing. */
+export function canResumeHostCompanionPairing(
+  saved: NativeHostConnection | undefined,
+  pairingMode?: "fresh-grant",
+): saved is NativeHostConnection {
+  if (!saved) return false;
+  return !requiresFreshHostPairing(pairingMode);
+}
+
+export function assertFreshHostPairingGrant(
+  pairingMode: "fresh-grant" | undefined,
+  pairingCode: string | undefined,
+  upgradeHostId: string | undefined,
+): void {
+  if (!requiresFreshHostPairing(pairingMode)) return;
+  if (!pairingCode) throw new Error("A fresh connection requires a pairing grant.");
+  if (upgradeHostId !== undefined)
+    throw new Error("A fresh connection cannot carry an upgrade identity.");
+}
+
+export function requiresFreshHostPairing(pairingMode?: "fresh-grant"): boolean {
+  return pairingMode === "fresh-grant";
+}

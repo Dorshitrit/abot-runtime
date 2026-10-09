@@ -1,10 +1,12 @@
 import { spawn } from "node:child_process";
+import type { SystemProcessCapture } from "./process-capture.js";
 import type { SystemProcessInput, SystemProcessResult } from "./contracts.js";
 
 const STREAM_MAX_CHARS = 16_000;
 /** Bounded process observation; exit zero proves command completion, not effects. */
 export function runSystemProcess(
   input: SystemProcessInput,
+  capture?: SystemProcessCapture,
 ): Promise<SystemProcessResult> {
   if (input.abortSignal?.aborted)
     return Promise.resolve({
@@ -33,6 +35,7 @@ export function runSystemProcess(
       if (timeout) clearTimeout(timeout);
       if (stopGrace) clearTimeout(stopGrace);
       input.abortSignal?.removeEventListener("abort", abort);
+      capture?.end();
       resolve(
         Object.freeze({
           exitCode,
@@ -59,7 +62,7 @@ export function runSystemProcess(
         identitySource: "spawn_arguments",
       };
     });
-    const stop = (reason: "timeout" | "aborted") => {
+    const stop = (reason: "timeout" | "aborted" | "output_failed") => {
       if (settled) return;
       status = reason;
       const pid = child.pid;
@@ -78,18 +81,25 @@ export function runSystemProcess(
       stopGrace.unref();
     };
     const abort = () => stop("aborted");
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
-      const remaining = streamMaxChars - stdout.length;
-      truncated ||= chunk.length > remaining;
-      stdout += chunk.slice(0, remaining);
-    });
-    child.stderr.on("data", (chunk: string) => {
-      const remaining = streamMaxChars - stderr.length;
-      truncated ||= chunk.length > remaining;
-      stderr += chunk.slice(0, remaining);
-    });
+    const attachOutput = () => {
+      if (capture) {
+        capture.attach(child.stdout, child.stderr, () => stop("output_failed"));
+        return;
+      }
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
+      child.stdout.on("data", (chunk: string) => {
+        const remaining = streamMaxChars - stdout.length;
+        truncated ||= chunk.length > remaining;
+        stdout += chunk.slice(0, remaining);
+      });
+      child.stderr.on("data", (chunk: string) => {
+        const remaining = streamMaxChars - stderr.length;
+        truncated ||= chunk.length > remaining;
+        stderr += chunk.slice(0, remaining);
+      });
+    };
+    attachOutput();
     child.once("error", (error) => {
       status = "spawn_failed";
       stderr = error.message.slice(0, STREAM_MAX_CHARS);

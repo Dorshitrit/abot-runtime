@@ -144,3 +144,41 @@ test("an owned gateway can be reapplied through a hostname alias at the same por
     profiles: [{ model: "gateway-test" }],
   });
 });
+
+test("retains an external listener for unchanged applied requirements without acquiring it", async () => {
+  external = createServer((_req, res) => res.end("external-gateway"));
+  await new Promise<void>((done) =>
+    external!.listen(Number(new URL(gatewayUrl).port), "127.0.0.1", done),
+  );
+  const applied = [gateway.captureConfiguration(configPath)];
+  expect(applied[0]).not.toBeNull();
+  const listens = vi.spyOn(Server.prototype, "listen");
+  const closes = vi.spyOn(Server.prototype, "close");
+  expect(await gateway.checkActivation(configPath, applied)).toEqual({
+    status: "ready",
+  });
+  expect(await gateway.activate(configPath, applied)).toEqual({
+    status: "ready",
+  });
+  await gateway.close();
+  expect(listens).not.toHaveBeenCalled();
+  expect(closes).not.toHaveBeenCalled();
+  expect(await (await fetch(gatewayUrl)).text()).toBe("external-gateway");
+});
+
+test.each([[], [null], ["different"], [null, "different"]])(
+  "refuses external reuse for an unknown or mismatched applied snapshot %j",
+  async (...applied) => {
+    external = createServer((_req, res) => res.end("external-gateway"));
+    await new Promise<void>((done) =>
+      external!.listen(Number(new URL(gatewayUrl).port), "127.0.0.1", done),
+    );
+    expect(await gateway.checkActivation(configPath, applied)).toMatchObject({
+      status: "restart_required",
+    });
+    expect(await gateway.activate(configPath, applied)).toMatchObject({
+      status: "restart_required",
+    });
+    expect(external.listening).toBe(true);
+  },
+);

@@ -1,8 +1,10 @@
+import { createPluginConfigurationRequests } from "./plugin-configuration.js";
 /** Configuration transport; credentials are sent once and never retained here. */
 export function createConfigurationRequests({ requestApi, environmentQuery }) {
   const scoped = (path, environmentId) =>
     path + "?environment=" + environmentQuery(environmentId);
   return {
+    ...createPluginConfigurationRequests({ requestApi, environmentQuery }),
     getRuntimeSetup(environmentId) {
       return requestApi(scoped("/runtime/setup", environmentId));
     },
@@ -39,6 +41,24 @@ export function createConfigurationRequests({ requestApi, environmentQuery }) {
     setRuntimePlugin(input, environmentId) {
       return requestApi(scoped("/runtime/plugins", environmentId), {
         method: "PUT",
+        body: JSON.stringify(input),
+      });
+    },
+    inspectRuntimePlugin(input, environmentId) {
+      return requestApi(scoped("/runtime/plugins/inspect", environmentId), {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    installRuntimePlugin(input, environmentId) {
+      return requestApi(scoped("/runtime/plugins/install", environmentId), {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    removeRuntimePlugin(input, environmentId) {
+      return requestApi(scoped("/runtime/plugins/remove", environmentId), {
+        method: "POST",
         body: JSON.stringify(input),
       });
     },

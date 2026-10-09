@@ -145,6 +145,42 @@ Computer access connection shared by SYSTEM tools, ABot Spark and compatible
 plugins. Direct native/WSL command access can already work; the shared companion
 adds desktop access and background collection without a second ABot Spark setup.
 
+#### Windows: Microsoft Store connection
+
+**ABot AI Companion** is available from
+[Microsoft Store](https://apps.microsoft.com/detail/9PK2FDQQLQS9).
+The product ID is `9PK2FDQQLQS9`.
+
+Start with the computer connection card on **Home**, or the optional **Computer**
+setup step:
+
+1. Choose **Install from Microsoft Store** to open **ABot AI Companion**.
+2. Install it once on the Windows computer you want to connect.
+3. Return to ABot and choose **I already have it**.
+4. Choose **Open Companion**. The browser may ask permission to open it.
+5. Check the Runtime address shown by Companion and approve the connection.
+6. Companion shows connection progress; this can take a few seconds. Wait for
+   **Your computer is ready** in the Web UI.
+
+If Companion is already installed, start at step 3. The short-lived connection
+link is a private invitation; do not share it. Request a new link if it expires.
+The Web UI confirms the live connection rather than guessing whether the app is
+installed.
+
+If the computer is already paired but offline, choose **Open Companion**, then
+start the saved connection in the app. If you disconnected inside Companion or
+removed its saved connection, choose **Set up again** in ABot. Confirm the
+reset, then open Companion and approve the new connection. Re-pairing revokes the
+previous computer connection; it does not erase saved insights.
+
+Store updates are intended to preserve the saved pairing. Computer actions and
+optional Spark collection retain their existing, separate permission controls.
+Computer content used by ABot may reach your selected model provider. Installation
+alone does not start Spark collection. See [Windows Companion Store delivery](windows-companion-store.md)
+for connection details and update compatibility.
+
+#### macOS
+
 When ABot runs natively on your Mac, open its local Web UI and choose **Connect
 this Mac**. ABot uses its installed Node runtime and companion bundle, pairs the
 computer and enables startup at sign-in. This path does not download a Finder
@@ -205,11 +241,15 @@ not change Computer access pairing or send a model request. Application-specific
 Automation/Apple Events and protected-file access may still require separate
 consent for the applications or locations used by a later SYSTEM command.
 
-For Windows or Linux, download setup and run it in that computer's graphical
-login. Windows setup installs the companion and a private Node runtime; Linux
-uses an existing Node.js installation. Setup pairs automatically and enables
-startup at sign-in. Wait for **Ready** in the Web UI; downloading alone does not
-establish a connection. WSL uses the same Windows companion setup, which does
+#### Linux and WSL
+
+For Linux, download setup and run it in that computer's graphical login. Setup
+uses an existing Node.js installation, pairs automatically and enables startup
+at sign-in. Wait for **Ready** in the Web UI; downloading alone does not establish
+a connection. This Linux flow is unchanged by the Windows Store integration.
+
+Running ABot in WSL and existing WSL interop access are unchanged. To connect the
+Windows desktop to a WSL Runtime, use the Windows Companion flow above; it does
 not require changing interop settings or restarting the distribution.
 
 Installation does not enable ABot Spark collection or disabled plugin tools.
@@ -355,22 +395,3 @@ profile without changing runtime policy or another model's settings.
 
 The repository ignores `.env`, `local/runtime.config.json`, `.runtime/`, and
 `dist/`. Do not commit local secrets or generated runtime state.
-
-## Verify Package Surface
-
-Before publishing or opening a release PR:
-
-```bash
-npm test -- --run
-npm run build
-npm run smoke:runtime-package
-npm run check:runtime-package
-npm run smoke:packed-runtime-package
-git diff --check
-```
-
-`npm run build` regenerates `runtime.config.schema.json`, clears stale `dist`,
-and compiles the published TypeScript declarations.
-
-For the full public release checklist, see
-[`docs/publishing.md`](publishing.md).

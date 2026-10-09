@@ -11,6 +11,7 @@ import {
 } from "./config-model.js";
 
 export function createConfigWorkspaceMutations({
+  modelPluginViewState,
   state,
   dom,
   confirmDiscard,
@@ -125,6 +126,7 @@ export function createConfigWorkspaceMutations({
   }
 
   function clearDashboardSnapshot() {
+    modelPluginViewState?.reset();
     state.configDashboard = null;
     state.baselinesByKey.clear();
     state.rawDraftsByKey.clear();

@@ -21,7 +21,9 @@ $Payload = [Console]::In.ReadToEnd() | ConvertFrom-Json
 [void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
 [void][Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications, ContentType = WindowsRuntime]
 [void][Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
-$Notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('${NOTIFICATION_APP_ID}')
+$ApplicationId = '${NOTIFICATION_APP_ID}'
+if ($Payload.appUserModelId) { $ApplicationId = [string]$Payload.appUserModelId }
+$Notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($ApplicationId)
 # Win32 Setting is unavailable until the first toast; Show honors Windows notification settings.
 $Xml = New-Object Windows.Data.Xml.Dom.XmlDocument
 $Xml.LoadXml('<toast activationType="protocol"><visual><binding template="ToastGeneric"><text/><text/></binding></visual><audio silent="true"/></toast>')
@@ -144,11 +146,15 @@ export async function sendWindowsNotification(
   notification: DesktopNotification,
   signal?: AbortSignal,
   run: NotificationProcessRunner = runNotificationProcess,
+  appUserModelId?: string,
 ): Promise<void> {
   await run({
     file: "powershell.exe",
     args: powershellNotificationArguments(WINDOWS_NOTIFICATION_SCRIPT),
-    input: JSON.stringify(notification),
+    input: JSON.stringify({
+      ...notification,
+      ...(appUserModelId ? { appUserModelId } : {}),
+    }),
     signal,
   });
 }

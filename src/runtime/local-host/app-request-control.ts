@@ -19,6 +19,14 @@ import {
   LocalRequestApprovals,
 } from "./app-request-approvals.js";
 import { LocalRequestDelivery } from "./app-request-delivery.js";
+import { createRequestControlDiagnosticId } from "../observability/request-control-diagnostics.js";
+import {
+  steeringInputDiagnosticFields,
+  steeringResultDiagnosticFields,
+  traceLocalRequest,
+  type LocalRequestDiagnosticFields,
+  type LocalRequestFinishSource,
+} from "./local-request-diagnostics.js";
 import type {
   LocalPendingToolApproval,
   LocalToolApprovalDecisionResult,
@@ -31,6 +39,7 @@ export type LocalRequestRunOptions = {
 };
 
 type ActiveRequestControl = {
+  readonly inboxId: string;
   resumedWait?: SessionWaitExpectation;
   sessionId: string;
   abort: AbortController;
@@ -77,16 +86,23 @@ export class LocalRequestControls {
         if (!accepted.ok) throw new Error(accepted.reason);
       }
     } catch (error) {
-      this.finish(requestId);
+      this.finish(requestId, "initial_steering_rejected");
       throw error;
     }
     const control = this.active.get(requestId)!;
     control.resumedWait = resumedWait;
     control.peer = peer;
     control.delivery.attach(peer);
+    traceLocalRequest("control.attached", {
+      ...this.diagnosticFields(requestId, control),
+      peerId: peer.id,
+      generation: resumedWait?.generation,
+      waitId: resumedWait?.waitId,
+      revision: resumedWait?.revision,
+    });
     return {
       abortSignal: control.abort.signal,
-      claimFinalization: () => this.claimFinalization(control),
+      claimFinalization: () => this.claimFinalization(requestId, control),
       requestSteering: steering,
       ...(options.approvalAvailable
         ? { toolApprovalController: this.approvals(requestId, control) }
@@ -103,7 +119,7 @@ export class LocalRequestControls {
       | undefined;
     return {
       abortSignal: control.abort.signal,
-      claimFinalization: () => this.claimFinalization(control),
+      claimFinalization: () => this.claimFinalization(run.requestId, control),
       requestSteering: steering,
       ...(peer
         ? { toolApprovalController: this.approvals(run.requestId, control) }
@@ -112,20 +128,55 @@ export class LocalRequestControls {
   }
 
   steer(requestId: unknown, update: unknown): unknown {
-    if (typeof requestId !== "string")
+    const inputFields = steeringInputDiagnosticFields(requestId, update);
+    if (typeof requestId !== "string") {
+      traceLocalRequest("steer.rejected", {
+        ...inputFields,
+        diagnosticReason: "invalid_request_id",
+        reason: "request_not_active",
+      });
       return { ok: false, reason: "request_not_active" };
+    }
     const control = this.active.get(requestId);
-    if (!control || control.abort.signal.aborted)
+    const fields = {
+      ...inputFields,
+      ...this.diagnosticFields(requestId, control),
+    };
+    if (!control || control.abort.signal.aborted) {
+      traceLocalRequest("steer.rejected", {
+        ...fields,
+        diagnosticReason: control ? "control_aborted" : "control_missing",
+        reason: "request_not_active",
+      });
       return { ok: false, reason: "request_not_active" };
-    if (!update || typeof update !== "object")
+    }
+    if (!update || typeof update !== "object") {
+      traceLocalRequest("steer.rejected", {
+        ...fields,
+        diagnosticReason: "invalid_update_shape",
+        reason: "invalid_steer_request",
+      });
       return { ok: false, reason: "invalid_steer_request" };
+    }
     const input = update as { steerId?: unknown; text?: unknown };
-    if (typeof input.steerId !== "string" || typeof input.text !== "string")
+    if (typeof input.steerId !== "string" || typeof input.text !== "string") {
+      traceLocalRequest("steer.rejected", {
+        ...fields,
+        diagnosticReason: "invalid_update_shape",
+        reason: "invalid_steer_request",
+      });
       return { ok: false, reason: "invalid_steer_request" };
-    return control.steering.append({
+    }
+    const result = control.steering.append({
       steerId: input.steerId,
       text: input.text,
     });
+    traceLocalRequest("steer.result", {
+      ...fields,
+      diagnosticReason: "inbox_result",
+      ...steeringResultDiagnosticFields(result),
+    });
+    return result;
   }
 
   activeSessionId(requestId: unknown): string | undefined {
@@ -134,9 +185,18 @@ export class LocalRequestControls {
       : undefined;
   }
 
-  finish(requestId: string): void {
+  finish(
+    requestId: string,
+    source: LocalRequestFinishSource = "unspecified",
+  ): void {
     const entry = this.active.get(requestId);
     this.active.delete(requestId);
+    traceLocalRequest("control.finished", {
+      ...this.diagnosticFields(requestId, entry),
+      controlPresent: false,
+      removed: Boolean(entry),
+      source,
+    });
     this.pendingApprovals.cancel(requestId);
     entry?.delivery.finish();
     void entry?.steering.close();
@@ -161,6 +221,10 @@ export class LocalRequestControls {
     if (!this.matchesResumedWaitCancellation(control, wait))
       return { accepted: false, reason: "request_not_active" };
     control.abort.abort(createRequestCancellationError());
+    traceLocalRequest(
+      "cancel.accepted",
+      this.diagnosticFields(String(requestId), control),
+    );
     return { accepted: true };
   }
 
@@ -180,10 +244,17 @@ export class LocalRequestControls {
     return command.revision === wait.revision;
   }
 
-  private claimFinalization(control: ActiveRequestControl): void {
+  private claimFinalization(
+    requestId: string,
+    control: ActiveRequestControl,
+  ): void {
     // In-flight requests retain this exact control until canonical finalization.
     control.abort.signal.throwIfAborted();
     control.finalizing = true;
+    traceLocalRequest(
+      "finalization.claimed",
+      this.diagnosticFields(requestId, control),
+    );
   }
 
   stop(): void {
@@ -191,6 +262,10 @@ export class LocalRequestControls {
     this.controlPeers.clear();
     for (const [requestId, control] of this.active) {
       control.abort.abort(createRequestInterruptionError());
+      traceLocalRequest(
+        "control.interrupted",
+        this.diagnosticFields(requestId, control),
+      );
     }
     // Accepted requests retain their controls and inboxes until finalization.
   }
@@ -203,8 +278,13 @@ export class LocalRequestControls {
     if (this.stopped) throw new Error("local_runtime_owner_stopped");
     if (!requestId || this.active.has(requestId))
       throw new Error("local_runtime_request_already_active");
-    const steering = createRequestSteeringInbox({ requestId });
+    const inboxId = createRequestControlDiagnosticId("owner_inbox");
+    const steering = createRequestSteeringInbox({
+      requestId,
+      diagnostics: { inboxId, origin: "local_owner" },
+    });
     this.active.set(requestId, {
+      inboxId,
       steering,
       sessionId,
       abort: new AbortController(),
@@ -212,7 +292,33 @@ export class LocalRequestControls {
       delivery: new LocalRequestDelivery(requestId),
       ...(run ? { run } : {}),
     });
+    traceLocalRequest("control.opened", {
+      requestId,
+      sessionId,
+      inboxId,
+      scheduled: Boolean(run),
+      activeControlCount: this.active.size,
+    });
     return steering;
+  }
+
+  private diagnosticFields(
+    requestId: string,
+    control: ActiveRequestControl | undefined,
+  ): LocalRequestDiagnosticFields {
+    return {
+      requestId,
+      sessionId: control?.sessionId,
+      inboxId: control?.inboxId,
+      controlPresent: Boolean(control),
+      aborted: control?.abort.signal.aborted,
+      finalizing: control?.finalizing,
+      ownerStopped: this.stopped,
+      activeControlCount: this.active.size,
+      generation: control?.resumedWait?.generation,
+      waitId: control?.resumedWait?.waitId,
+      revision: control?.resumedWait?.revision,
+    };
   }
 
   hasActiveRequest(requestId: unknown, sessionId: unknown): boolean {

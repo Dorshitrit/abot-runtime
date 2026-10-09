@@ -20,4 +20,5 @@ export declare function createConversationReadStateController(
   options: ConversationReadStateControllerOptions,
 ): {
   markCurrentSessionReadSoon(): void;
+  markDisplayedMessagesReadSoon(messages: ConversationSessionState["messages"]): void;
 };

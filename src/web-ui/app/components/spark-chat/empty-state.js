@@ -35,6 +35,7 @@ export function createSparkChatEmptyState({ getConfiguration, onOpenModelSetting
       if (model.needsModel) {
         const action = documentRoot.createElement("button");
         action.setAttribute("type", "button");
+        action.className = "spark-setup-button";
         action.textContent = "Choose model";
         action.addEventListener("click", onOpenModelSettings);
         empty.append(action);

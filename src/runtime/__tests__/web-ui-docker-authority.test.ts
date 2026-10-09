@@ -159,7 +159,7 @@ async function fixture(listenHost = "0.0.0.0", trustedPublish = "1") {
         "sec-fetch-site": "same-origin",
         ...headers,
       },
-      { platform: "windows" },
+      { platform: "linux" },
     );
   const upgrade = async (
     headers: Record<string, string> = {},

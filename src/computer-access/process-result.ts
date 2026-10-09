@@ -1,6 +1,5 @@
 import {
-  failureResult,
-  successResult,
+  enforcePluginResultByteBudget,
   type ToolImplementationOutput,
 } from "../plugin-sdk/index.js";
 import type {
@@ -20,6 +19,18 @@ const LEGACY_EVIDENCE_LABELS: Record<SystemEvidenceScope, string> = {
 };
 
 export function systemProcessResult(
+  target: SystemTarget,
+  result: SystemProcessResult,
+  evidenceScope: SystemEvidenceScope,
+  application?: SystemApplication,
+): ToolImplementationOutput {
+  return enforcePluginResultByteBudget(
+    buildSystemProcessResult(target, result, evidenceScope, application),
+  );
+}
+
+/** Unmeasured receipt for invocation-aware local delivery through the SDK. */
+export function buildSystemProcessResult(
   target: SystemTarget,
   result: SystemProcessResult,
   evidenceScope: SystemEvidenceScope,
@@ -71,21 +82,25 @@ export function systemProcessResult(
     `Summary omitted characters: stdout=${stdoutOmittedChars}, stderr=${stderrOmittedChars}. Raw stream capture truncated: ${result.outputTruncated}.`,
   ].join("\n");
   if (hasSuccessfulSystemObservation(result)) {
-    return successResult({
+    return {
+      ok: true,
+      producedNewInformation: true,
       output,
       stdout: result.stdout,
       stderr: result.stderr,
       exitCode: 0,
       data,
-    });
+    };
   }
   const errorCode =
     result.status === "completed"
       ? "system_command_failed"
       : `system_${result.status}`;
-  return failureResult({
+  return {
+    ok: false,
+    producedNewInformation: false,
     errorCode,
-    message: hasUncertainDescendantState(result)
+    error: hasUncertainDescendantState(result)
       ? "System command observation stopped. External or detached descendants may remain; inspect the target before retrying."
       : "The target did not report successful command completion.",
     output,
@@ -93,7 +108,7 @@ export function systemProcessResult(
     stderr: result.stderr,
     ...(result.exitCode !== null ? { exitCode: result.exitCode } : {}),
     data,
-  });
+  };
 }
 
 function hasSuccessfulSystemObservation(result: SystemProcessResult): boolean {

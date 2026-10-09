@@ -1,4 +1,5 @@
-import type { SessionSnapshotMessage } from "../../sessions/types.js";
+import type { SessionMessageIdentity } from "../../sessions/snapshot.js";
+import type { SessionMessageMetadata } from "../../sessions/metadata/projection.js";
 import type { WebReadCursor, WebReadState } from "./store.js";
 
 export type ReadBoundary = {
@@ -6,7 +7,7 @@ export type ReadBoundary = {
   readThroughRequestId?: unknown;
 };
 
-function messageTimestamp(message: SessionSnapshotMessage): number {
+function messageTimestamp(message: SessionMessageMetadata): number {
   const value =
     typeof message.createdAt === "number"
       ? message.createdAt
@@ -15,7 +16,7 @@ function messageTimestamp(message: SessionSnapshotMessage): number {
 }
 
 function cursorIndex(
-  messages: SessionSnapshotMessage[],
+  messages: SessionMessageMetadata[],
   cursor?: WebReadCursor,
 ): number {
   if (!cursor) return -1;
@@ -28,7 +29,7 @@ function cursorIndex(
 }
 
 function requestedAssistantIndex(
-  messages: SessionSnapshotMessage[],
+  messages: SessionMessageIdentity[],
   boundary: ReadBoundary,
 ): number {
   const id = boundary.readThroughMessageId;
@@ -55,7 +56,7 @@ function requestedAssistantIndex(
 export function advanceReadCursor(
   state: WebReadState,
   sessionId: string,
-  messages: SessionSnapshotMessage[],
+  messages: SessionMessageIdentity[],
   boundary: ReadBoundary,
   now: number,
 ): void {
@@ -82,7 +83,7 @@ export function advanceReadCursor(
 export function projectSessionReadState(
   state: WebReadState,
   sessionId: string,
-  messages: SessionSnapshotMessage[],
+  messages: SessionMessageMetadata[],
 ) {
   const cursor = new Map(state.cursors).get(sessionId);
   const readIndex = cursorIndex(messages, cursor);

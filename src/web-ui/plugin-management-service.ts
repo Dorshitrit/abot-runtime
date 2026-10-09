@@ -1,7 +1,6 @@
 import { realpathSync } from "node:fs";
 import {
   ConfigFileConflictError,
-  withConfigFileTransaction,
   type ConfigFileTransaction,
 } from "../runtime/adapters/config-file-transaction.js";
 import { inspectRuntimeConfigFileWithMeta } from "../runtime/config/loader.js";
@@ -18,6 +17,7 @@ import {
   type RuntimePluginSnapshot,
 } from "./plugin-management-catalog.js";
 export type { RuntimePluginSnapshot } from "./plugin-management-catalog.js";
+import { withConfigDashboardRootTransaction } from "./config-dashboard-save-transaction.js";
 import { saveConfigDashboardFile } from "./config-dashboard-backend.js";
 import {
   pluginSelectionEscapesRequestedScope,
@@ -27,6 +27,7 @@ import {
 export type PluginManagementOptions = {
   rootDir: string;
   configPath?: string;
+  requireMutationIdle?: () => void;
 };
 
 export class PluginManagementError extends Error {
@@ -68,6 +69,7 @@ export function getRuntimePluginSnapshot(
   return projectPluginSnapshot(
     discoverConfiguredRuntimePluginManifests(options.rootDir),
     readPluginSelection(source.config.plugins),
+    options.rootDir,
   );
 }
 
@@ -172,6 +174,7 @@ function configuredPluginSource(options: PluginManagementOptions) {
 export async function setRuntimePluginEnabled(
   options: PluginManagementOptions,
   input: unknown,
+  transaction?: ConfigFileTransaction,
 ) {
   const toggle = parsePluginToggle(input);
   const source = configuredPluginSource(options);
@@ -179,10 +182,14 @@ export async function setRuntimePluginEnabled(
   const canonicalOptions = {
     rootDir: realpathSync(options.rootDir),
     configPath,
+    requireMutationIdle: options.requireMutationIdle,
   };
   try {
-    return await withConfigFileTransaction(configPath, (transaction) =>
-      savePluginSelection(canonicalOptions, toggle, transaction),
+    return await withConfigDashboardRootTransaction(
+      configPath,
+      transaction,
+      (transaction) =>
+        savePluginSelection(canonicalOptions, toggle, transaction),
     );
   } catch (error) {
     if (error instanceof ConfigFileConflictError)
@@ -210,7 +217,7 @@ async function savePluginSelection(
   const current = readPluginSelection(source.config.plugins);
   const capabilityId = toggle.capabilityId;
   requireCapabilityUpdateAllowed(plugin, toggle, current);
-  const next = updatePluginSelection({
+  const selectionInput = {
     current,
     ...(capabilityId ? { capabilityId } : {}),
     pluginId: toggle.pluginId,
@@ -218,7 +225,8 @@ async function savePluginSelection(
       plugin.manifest.extensions[ABOT_RUNTIME_EXTENSION].capabilities,
     ),
     enabled: toggle.enabled,
-  });
+  };
+  const next = updatePluginSelection(selectionInput);
   const escapesRequestedScope = pluginSelectionEscapesRequestedScope({
     manifests,
     pluginId: toggle.pluginId,
@@ -233,6 +241,7 @@ async function savePluginSelection(
       409,
     );
   }
+  options.requireMutationIdle?.();
   const result = await saveConfigDashboardFile({
     ...options,
     kind: "runtime",
@@ -240,7 +249,7 @@ async function savePluginSelection(
     transaction,
   });
   return {
-    ...projectPluginSnapshot(manifests, next),
+    ...projectPluginSnapshot(manifests, next, options.rootDir),
     restartRequired: true,
     ...(result.backupPath ? { backupPath: result.backupPath } : {}),
   };

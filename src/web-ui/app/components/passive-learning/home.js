@@ -3,7 +3,6 @@ import { agentMarkup, renderAgent } from "./agent-view.js";
 import { createAgentMotion } from "./agent-motion.js";
 import { learningFailurePresentation } from "./presentation.js";
 import { homeActivityStartPatch, readActivityPermissions } from "./activity-controls.js";
-import { computerUpdateNoticeMarkup, renderComputerUpdateNotice } from "./computer-update-notice.js";
 import { macCollectionRestartNoticeMarkup, renderMacCollectionRestartNotice, handleMacCollectionRestartClick } from "./macos-collection-restart-notice.js";
 
 function canStartHomeLearning(snapshot) {
@@ -33,7 +32,6 @@ export function createPassiveLearningHome({
   actions,
   openLearning,
   openSetup = openLearning,
-  openComputerAccess = openSetup,
 }) {
   let root = null;
   let renderedSnapshot = {};
@@ -45,7 +43,7 @@ export function createPassiveLearningHome({
     root?.removeEventListener("click", handleClick);
     root = nextRoot;
     if (!root) return;
-    root.innerHTML = `${computerUpdateNoticeMarkup()}${macCollectionRestartNoticeMarkup()}
+    root.innerHTML = `${macCollectionRestartNoticeMarkup()}
     <div class="home-learning-agent">${agentMarkup({
       compact: true,
       actionMarkup: '<button type="button" class="home-text-button" data-learning-open>Open ABot Spark</button>',
@@ -57,11 +55,6 @@ export function createPassiveLearningHome({
 
   function handleClick(event) {
     if (handleMacCollectionRestartClick(root, event, actions)) return;
-    const update = event.target.closest("[data-learning-open-update]");
-    if (update && root.contains(update)) {
-      openComputerAccess();
-      return;
-    }
     const button = event.target.closest("[data-learning-open]");
     if (!button || !root.contains(button) || button.disabled) return;
     const snapshot = actions?.snapshot?.() ?? renderedSnapshot;
@@ -80,7 +73,6 @@ export function createPassiveLearningHome({
   function render(snapshot) {
     renderedSnapshot = snapshot;
     if (!root) return;
-    renderComputerUpdateNotice(root, snapshot);
     renderMacCollectionRestartNotice(root, snapshot);
     renderAgent(root, snapshot);
     motion?.update(snapshot);

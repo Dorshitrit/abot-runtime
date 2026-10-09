@@ -1,3 +1,4 @@
+import { modelPluginConfigSchema } from "./model-plugin-config.js";
 import { DEFAULT_MEMORY_RECALL_CALL_LIMIT } from "../long-term-memory/recall-policy.js";
 import {
   PATH_CONFIG_FIELDS,
@@ -335,6 +336,9 @@ function pluginsSchema(): Record<string, unknown> {
       deny: stringArraySchema(
         "Installed plugin or capability ids denied after applying the allow-list.",
       ),
+      disabledPluginIds: stringArraySchema(
+        "Exact plugin ids disabled independently of tool selectors. Entries are literal ids, not wildcards.",
+      ),
     },
     additionalProperties: false,
   };
@@ -386,8 +390,9 @@ export function createRuntimeConfigJsonSchema(): RuntimeConfigJsonSchema {
       },
       webUi: {
         type: "object",
-        description: "Local Web UI startup behavior.",
+        description: "Local Web UI behavior.",
         properties: {
+          pageSize: { type: "integer", minimum: 1, default: 20, description: "Sessions and messages per Web UI history page, including SPARK." },
           openOnRuntimeServiceStart: {
             type: "boolean",
             default: false,
@@ -550,6 +555,7 @@ export function createRuntimeConfigJsonSchema(): RuntimeConfigJsonSchema {
                 },
                 generation: modelGenerationSchema(),
                 context: modelContextSchema(),
+                plugins: modelPluginConfigSchema(),
                 execution: {
                   type: "object",
                   description:

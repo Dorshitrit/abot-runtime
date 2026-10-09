@@ -113,7 +113,7 @@ test("a newer incompatible companion is unavailable without offering a downgrade
 });
 
 test.each([
-  { os: "windows", action: 'data-system-host-install="windows"' },
+  { os: "windows", action: "data-system-host-store-open-existing" },
   { os: "macos", action: 'data-system-host-mac="manual"' },
   { os: "linux", action: 'data-system-host-install="linux"' },
 ] as const)(
@@ -140,7 +140,7 @@ test.each([
       snapshot: { ...status, readiness },
       supported: true,
     });
-    expect(html).toContain("Paired · offline");
+    expect(html).toContain('data-tone="unavailable"');
     expect(html).toContain(action);
     expect(resolveTarget).not.toHaveBeenCalled();
   },
@@ -168,14 +168,17 @@ test("known newer release metadata still prevents offering an offline downgrade"
   expect(readiness.companionUpdateRequired).not.toBe(true);
 });
 
-test("a failed replacement keeps setup downloadable without unpairing until a capable companion reconnects", async () => {
+test("a failed Windows replacement keeps Store connection available without unpairing until a capable companion reconnects", async () => {
   let status: HostStatus = companionStatus("windows", 2, [
     "passive-observations-v1",
   ]);
-  const downloadSetup = vi.fn(async () => ({
-    filename: "setup.cmd",
-    restartRequired: false,
+  const requestStoreConnection = vi.fn(async () => ({
+    ok: true,
+    launchUrl: "abot-companion://connect?invitation=private_test_invitation",
+    storeUrl: "https://apps.microsoft.com/detail/9PK2FDQQLQS9",
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
   }));
+  const downloadSetup = vi.fn();
   const revokeConnection = vi.fn();
   const root = {
     innerHTML: "",
@@ -190,6 +193,7 @@ test("a failed replacement keeps setup downloadable without unpairing until a ca
       }),
     }),
     downloadSetup,
+    requestStoreConnection,
     revokeConnection,
     saveDownload: vi.fn(),
     schedulePoll: vi.fn(),
@@ -206,12 +210,14 @@ test("a failed replacement keeps setup downloadable without unpairing until a ca
     await vi.waitFor(() => expect(manager.state.busy).toBe(false));
     expect(await manager.install("windows")).toBe(true);
     status = { paired: true, connected: false, identity: status.identity };
-    await manager.load();
-    expect(root.innerHTML).toContain("Paired · offline");
-    expect(root.innerHTML).toContain('data-system-host-install="windows"');
-    expect(manager.state.downloaded).not.toBeNull();
-    expect(await manager.install("windows")).toBe(true);
-    expect(downloadSetup).toHaveBeenCalledTimes(2);
+    await manager.load(true);
+    expect(root.innerHTML).toContain('data-system-host-store-stage="reconnect"');
+    expect(root.innerHTML).toContain("data-system-host-store-open-existing");
+    expect(manager.state.windowsStoreInvitation).not.toBeNull();
+    expect(manager.state.snapshot.readiness.ready).toBe(false);
+    expect(await manager.install("windows")).toBe(false);
+    expect(requestStoreConnection).toHaveBeenCalledOnce();
+    expect(downloadSetup).not.toHaveBeenCalled();
     expect(revokeConnection).not.toHaveBeenCalled();
 
     status = companionStatus("windows", COMPANION_RELEASE_VERSION, [
@@ -219,7 +225,8 @@ test("a failed replacement keeps setup downloadable without unpairing until a ca
     ]);
     await manager.load();
     expect(manager.state.snapshot.readiness.ready).toBe(true);
-    expect(manager.state.downloaded).toBeNull();
+    expect(manager.state.windowsStoreInvitation).toBeNull();
+    expect(root.innerHTML).not.toContain("data-system-host-store-connect");
     expect(root.innerHTML).not.toContain("data-system-host-install=");
   } finally {
     manager.dispose();

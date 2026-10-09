@@ -1,3 +1,8 @@
+import { pluginLoadConfiguration } from "./configuration-context.js";
+import {
+  readPluginConfigurationStore,
+  type PluginConfigurationStore,
+} from "./configuration-store.js";
 import { validateManifestEntrypoint } from "./entrypoint-validation.js";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -39,10 +44,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-function nonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
 function unwrapPluginExport(rawModule: unknown): unknown {
   if (
     isRecord(rawModule) &&
@@ -69,37 +70,7 @@ function compiledCapabilityFromDeclaration(
 type ManifestRuntimeHostContext = Pick<
   RuntimePluginLoadContext,
   "rootDir" | "runtimeId" | "agentBridgeUrl" | "runtimePaths"
->;
-
-function createManifestSecretAccessor(
-  pluginId: string,
-  declarations:
-    | Readonly<Record<string, Readonly<{ env: string; required: boolean }>>>
-    | undefined,
-): RuntimePluginLoadContext["secrets"] | undefined {
-  if (!declarations || Object.keys(declarations).length === 0) {
-    return undefined;
-  }
-  for (const [name, declaration] of Object.entries(declarations)) {
-    if (declaration.required && !nonEmptyString(process.env[declaration.env])) {
-      throw new Error(
-        `Runtime plugin ${pluginId} requires secret ${name} from environment variable ${declaration.env}`,
-      );
-    }
-  }
-  return Object.freeze({
-    get(name: string): string | undefined {
-      const declaration = declarations[name];
-      if (!declaration) {
-        throw new Error(
-          `Runtime plugin ${pluginId} requested undeclared secret ${name}`,
-        );
-      }
-      const value = process.env[declaration.env];
-      return nonEmptyString(value) ? value : undefined;
-    },
-  });
-}
+> & { pluginConfiguration: PluginConfigurationStore };
 
 function loadManifestRuntimePlugin(
   host: ManifestRuntimeHostContext,
@@ -113,9 +84,12 @@ function loadManifestRuntimePlugin(
     discovered,
     selectedCapabilityIds,
   );
-  const secrets = createManifestSecretAccessor(
+  const configuration = pluginLoadConfiguration(
     manifest.name,
-    extension.secrets,
+    extension,
+    Object.hasOwn(host.pluginConfiguration, manifest.name)
+      ? host.pluginConfiguration[manifest.name]
+      : undefined,
   );
   let loaded: unknown;
   try {
@@ -136,10 +110,7 @@ function loadManifestRuntimePlugin(
     runtimePaths: host.runtimePaths,
     runtimePathResolver: createRuntimeToolPathResolver(host.runtimePaths),
     pluginRoot: discovered.pluginRoot,
-    ...(extension.settings
-      ? { config: { ...extension.settings.defaults } }
-      : {}),
-    ...(secrets ? { secrets } : {}),
+    ...configuration,
   };
   const rawEntrypoint =
     typeof loaded === "function"
@@ -202,6 +173,8 @@ export function loadConfiguredRuntimePlugins(
   }
   const host: ManifestRuntimeHostContext = {
     rootDir: config.paths.rootDir,
+    pluginConfiguration: readPluginConfigurationStore(config.paths.rootDir)
+      .plugins,
     runtimeId: config.runtimeId,
     agentBridgeUrl: config.agentBridgeUrl,
     runtimePaths: config.paths,
@@ -209,7 +182,12 @@ export function loadConfiguredRuntimePlugins(
 
   const manifestPlugins = discoverConfiguredRuntimePluginManifests(
     config.paths.rootDir,
-    { excludedPluginIds: new Set(selection.deny) },
+    {
+      excludedPluginIds: new Set([
+        ...selection.deny,
+        ...selection.disabledPluginIds,
+      ]),
+    },
   )
     .map((plugin) => ({
       plugin,
@@ -274,6 +252,7 @@ export function loadBundledRuntimePlugins(): readonly CompiledRuntimePlugin[] {
   }
   const host: ManifestRuntimeHostContext = {
     rootDir,
+    pluginConfiguration: readPluginConfigurationStore(rootDir).plugins,
     runtimeId: "default",
     agentBridgeUrl: "",
     runtimePaths: createUnconfiguredRuntimePaths(rootDir),

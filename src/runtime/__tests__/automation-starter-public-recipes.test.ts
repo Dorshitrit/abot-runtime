@@ -7,6 +7,7 @@ import type { AgentNode, ToolNode, WorkflowNode } from "../automations/definitio
 import { createEmptyAutomationDefinition } from "../automations/draft-mutations.js";
 import { compileAutomationGraph } from "../automations/graph-validation.js";
 import { resolveAutomationBinding, type AutomationBindingContext } from "../automations/binding-resolution.js";
+import { AUTOMATION_STARTERS } from "../automations/starter-template-definitions.js";
 import { listAutomationStarters, prepareAutomationStarter } from "../automations/starter-templates.js";
 import { validateToolNormalInvocationInput } from "../../capabilities/normal-invocation/validator.js";
 
@@ -27,6 +28,18 @@ function publicOperations(): AutomationCatalogOperation[] {
   });
 }
 const operations = publicOperations();
+const EXPECTED_PUBLIC_RECIPE_IDS = [
+  "code-handoff",
+  "document-brief",
+  "document-comparison",
+  "json-review",
+  "local-search-brief",
+  "machine-health",
+  "project-map",
+  "research-studio",
+  "source-comparison",
+  "web-research",
+];
 
 function definition(id: string, available = operations) {
   return prepareAutomationStarter(id, available).buildDefinition(createEmptyAutomationDefinition("automation", "New automation"));
@@ -55,9 +68,13 @@ function resultContext(): AutomationBindingContext {
 }
 
 describe("public Studio starter recipes", () => {
+  test("defines only public recipes before catalog filtering or display limits", () => {
+    expect(AUTOMATION_STARTERS.map(({ id }) => id).sort()).toEqual(EXPECTED_PUBLIC_RECIPE_IDS);
+  });
+
   test("offers seven small and three advanced recipes using only public installed contracts", () => {
     const cards = listAutomationStarters(operations);
-    expect(cards).toHaveLength(10);
+    expect(cards.map((card) => card.id).sort()).toEqual(EXPECTED_PUBLIC_RECIPE_IDS);
     expect(cards.length).toBeLessThanOrEqual(10);
     expect(cards.filter((card) => card.level === "starter")).toHaveLength(7);
     expect(cards.filter((card) => card.level === "advanced").map((card) => card.id).sort())
@@ -157,8 +174,8 @@ describe("public Studio starter recipes", () => {
     },
   );
 
-  test("rejects the retired private-plugin recipe IDs", () => {
-    for (const id of ["technology-radar", "exchange-rates", "weather-outlook", "service-health", "git-change-brief"])
+  test("rejects unsupported recipe IDs", () => {
+    for (const id of ["fixture-recipe-one", "fixture-recipe-two", "fixture-recipe-three", "fixture-recipe-four", "fixture-recipe-five"])
       expect(() => definition(id)).toThrow("automation_template_unavailable");
   });
 
