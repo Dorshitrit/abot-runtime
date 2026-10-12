@@ -5,7 +5,6 @@ import {
   emitOpenAIMessageOutputDiagnostic,
   emitOpenAISchemaDiagnostics,
   emitOpenAIStreamTermination,
-  hasStructuredTextFormat,
   resolveOpenAIStreamFailureOutcome,
   type OpenAIStreamTerminationOutcome,
 } from "./diagnostics.js";
@@ -18,6 +17,9 @@ import {
   type OpenAIMessageOutputNormalizationDiagnostic,
 } from "./protocol.js";
 import { embedWithOpenAI } from "./embeddings.js";
+import { bindOpenAIResponseLifetime } from "./response-lifetime.js";
+import { resolveOpenAIFunctionOutputName } from "./function-output.js";
+import { requiresSingleMessageOutput } from "./message-output-policy.js";
 
 export function createOpenAIProviderAdapter(): ModelProviderAdapter {
   return Object.freeze({
@@ -42,12 +44,11 @@ export function createOpenAIProviderAdapter(): ModelProviderAdapter {
       const payload = buildOpenAIResponsesPayload(params.requestBody, {
         onFormatProjection: (diagnostics) =>
           emitOpenAISchemaDiagnostics(requestId, diagnostics),
-        ...(params.inputTokenMeasurement
-          ? { inputTokenMeasurement: params.inputTokenMeasurement }
-          : {}),
       });
+      const functionOutputName = resolveOpenAIFunctionOutputName(payload);
       const streamOptions = {
-        structuredOutput: hasStructuredTextFormat(payload),
+        functionOutputName,
+        structuredOutput: requiresSingleMessageOutput(params.requestBody, payload),
         onMessageOutputDiagnostic: (
           diagnostic: OpenAIMessageOutputNormalizationDiagnostic,
         ) => emitOpenAIMessageOutputDiagnostic(params, diagnostic),
@@ -56,14 +57,17 @@ export function createOpenAIProviderAdapter(): ModelProviderAdapter {
         endpoint: params.endpoint,
         requestBody: params.requestBody,
         invocation: params.invocation,
-        fetchImpl: params.fetchImpl,
+        fetchImpl: async (input, init) => bindOpenAIResponseLifetime(
+          await params.fetchImpl(input, init),
+          { functionOutputName },
+        ),
         url: `${settings.baseUrl}/responses`,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${settings.apiKey}`,
         },
         payload,
-        decodeResponse: (body) => collectOpenAIResponsesStream(body),
+        decodeResponse: (body) => collectOpenAIResponsesStream(body, { functionOutputName }),
       });
       if (!response.ok || !response.body) {
         const message = await response.text();

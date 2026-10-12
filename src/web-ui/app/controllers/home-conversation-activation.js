@@ -1,3 +1,5 @@
+import { createConversationWorkspaceActivation } from "./conversation-workspace-activation.js";
+
 export function createHomeConversationActivation({
   state,
   shell,
@@ -11,17 +13,13 @@ export function createHomeConversationActivation({
   setCurrentTitle,
   updateComposerSendState,
 }) {
-  return function activateHomeConversation(draft) {
+  const activate = createConversationWorkspaceActivation({ state, shell, composerQueue, selectedEnvironmentId });
+  return async function activateHomeConversation(draft) {
     if (draft.environmentId !== selectedEnvironmentId()) return false;
-    const activateChat = shell.prepareWorkspaceActivation("chat", {
-      focus: false,
-    });
-    if (!activateChat) return false;
-    if (!composerQueue.suspendRecoveryForNavigation()) return false;
-    if (!activateChat()) return false;
+    if (!await activate()) return false;
+    if (draft.environmentId !== selectedEnvironmentId()) return false;
     conversationSession.clearCurrentSessionView();
     state.currentSessionId = draft.sessionId;
-    state.pendingAttachments = draft.attachments;
     preferences.saveSessionIdForEnvironment(
       draft.environmentId,
       draft.sessionId,

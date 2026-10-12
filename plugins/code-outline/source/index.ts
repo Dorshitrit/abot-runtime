@@ -13,6 +13,7 @@ import {
 } from "../../../src/plugin-sdk/index.js";
 
 import { buildCodeOutline } from "./parser.js";
+import { codeOutlineReadFailure } from "./read-failure.js";
 
 const MAX_FILE_BYTES = 512 * 1024;
 const DEFAULT_MAX_SYMBOLS = 160;
@@ -36,7 +37,8 @@ export default defineRuntimePlugin((context) => {
         const pathContext = {
           ...context,
           runtimePathResolver:
-            executionContext?.runtimePathResolver ?? context.runtimePathResolver,
+            executionContext?.runtimePathResolver ??
+            context.runtimePathResolver,
         };
         try {
           const requestedPath = readRequiredString(params.path, "path");
@@ -47,26 +49,9 @@ export default defineRuntimePlugin((context) => {
           const file = await readBoundedRegularFile(target.absolutePath, {
             maxBytes: MAX_FILE_BYTES,
             rootPath: target.rootPath,
+            signal: executionContext?.abortSignal,
           });
-          if (!file.ok && file.reason === "not_regular_file") {
-            return failureResult({
-              errorCode: "code_outline_target_not_file",
-              message:
-                "The requested code-outline target is not a regular file.",
-            });
-          }
-          if (!file.ok && file.reason === "too_large") {
-            return failureResult({
-              errorCode: "code_outline_file_too_large",
-              message: `The requested file exceeds the ${MAX_FILE_BYTES}-byte outline limit.`,
-            });
-          }
-          if (!file.ok) {
-            return failureResult({
-              errorCode: "code_outline_file_changed",
-              message: "The requested file changed while it was being read.",
-            });
-          }
+          if (!file.ok) return codeOutlineReadFailure(file, MAX_FILE_BYTES);
           const source = file.bytes.toString("utf8");
           const maxSymbols = readBoundedInteger(params.maxSymbols, {
             defaultValue: defaultMaxSymbols,
@@ -118,6 +103,17 @@ export default defineRuntimePlugin((context) => {
             },
           });
         } catch (error) {
+          const readWasAborted =
+            executionContext?.abortSignal?.aborted &&
+            error instanceof Error &&
+            error.name === "AbortError";
+          if (readWasAborted) {
+            return failureResult({
+              errorCode: "code_outline_cancelled",
+              message: "Code outline inspection was cancelled.",
+              interruption: "aborted",
+            });
+          }
           return failureFromError(error, {
             fallbackCode: "code_outline_failed",
             fallbackMessage: "Code outline inspection failed.",

@@ -5,6 +5,8 @@ const { createAppliedEnvironmentProjection, createConfigurationFeature } =
   environmentProjection;
 // @ts-expect-error Browser component has no declaration.
 import { createRuntimeConfigActivation } from "../../web-ui/app/components/runtime-config-activation.js";
+// @ts-expect-error Browser transition owner.
+import { createEnvironmentTransition } from "../../web-ui/app/controllers/environment-transition.js";
 
 // @ts-expect-error Browser module.
 import { createPluginRemoval } from "../../web-ui/app/components/plugins/removal.js";
@@ -38,7 +40,6 @@ function harness() {
   };
   let values = ["prod", "dev"];
   let selected = "dev";
-  let saved = "dev";
   let locked = false;
   let refused = false;
   const transitions: string[] = [];
@@ -51,18 +52,11 @@ function harness() {
       selected = values.includes(value) ? value : "";
     },
     dispatchEvent() {
-      if (selected === saved) return true;
-      if (locked || refused) {
-        this.value = saved;
-        return true;
-      }
-      saved = selected;
       transitions.push(selected);
-      state.messages = [];
       return true;
     },
   };
-  const dom = { environmentSelect };
+  const dom = { environmentSelect, sessionTitle: { textContent: "" } };
   const selection = {
     selectedEnvironmentId: () => selected,
     renderEnvironmentOptions: () => {
@@ -70,14 +64,27 @@ function harness() {
       if (!values.includes(selected)) selected = values[0] || "";
     },
     environmentOptions: () => values.map((value) => ({ value })),
+    configuredEnvironmentOptions: (catalog: ReturnType<typeof config>) => catalog.environments.map(({ id }) => ({ value: id })),
     renderAgentPicker: vi.fn(),
   };
   const loadWebConfig = vi.fn(async () => config(["prod", "qa"], "qa"));
+  const transition = createEnvironmentTransition({
+    state, dom, prepareQueueRecovery: () => true, onNavigationChange: vi.fn(),
+    actions: {
+      beforeEnvironmentChange: () => !locked && !refused,
+      renderAgentPicker: selection.renderAgentPicker,
+      resetLiveRequestView: vi.fn(), applyConversationChrome: vi.fn(), renderMessages: vi.fn(),
+      saveEnvironmentId: vi.fn(), loadModels: vi.fn(async () => {}),
+      loadAgentMode: vi.fn(async () => {}), loadRuntimeConfig: vi.fn(async () => {}),
+      restoreLastSession: vi.fn(async () => {}),
+    },
+  });
+  const changeEnvironment = transition.changeEnvironment;
   const projection = createAppliedEnvironmentProjection({
     state,
     dom,
     selection,
-    loadWebConfig,
+    loadWebConfig, changeEnvironment,
   });
   return {
     state,
@@ -85,7 +92,7 @@ function harness() {
     selection,
     projection,
     loadWebConfig,
-    transitions,
+    transitions, changeEnvironment,
     lock: (value: boolean) => {
       locked = value;
     },
@@ -140,6 +147,7 @@ function feature(h: ReturnType<typeof harness>) {
     selection: h.selection,
     runtimeClient: { loadWebConfig: h.loadWebConfig },
     onConfigurationApplied: reloadModels,
+    changeEnvironment: h.changeEnvironment,
   });
   return { workspace, reloadModels };
 }
@@ -200,7 +208,7 @@ describe("applied environment projection", () => {
     expect(h.state.config).toBe(original);
     expect(h.transitions).toEqual([]);
     h.lock(false);
-    expect(h.projection.flush()).toBe("changed");
+    expect(await h.projection.flush()).toBe("changed");
     expect(h.transitions).toEqual(["qa"]);
   });
 
@@ -208,12 +216,12 @@ describe("applied environment projection", () => {
     const h = harness();
     h.refuse(true);
     await h.projection.prepare();
-    expect(h.projection.flush()).toBe("blocked");
+    expect(await h.projection.flush()).toBe("blocked");
     expect(h.dom.environmentSelect.value).toBe("dev");
     expect(h.state.config).toEqual(config(["prod", "dev"]));
     expect(h.state.messages).toEqual(["retained conversation"]);
     h.refuse(false);
-    expect(h.projection.flush()).toBe("changed");
+    expect(await h.projection.flush()).toBe("changed");
     expect(h.transitions).toEqual(["qa"]);
   });
 
@@ -221,11 +229,11 @@ describe("applied environment projection", () => {
     const h = harness();
     h.refuse(true);
     await h.projection.prepare();
-    expect(h.projection.flush()).toBe("blocked");
+    expect(await h.projection.flush()).toBe("blocked");
     h.loadWebConfig.mockRejectedValueOnce(new Error("refresh failed"));
     await expect(h.projection.prepare()).rejects.toThrow("refresh failed");
     h.refuse(false);
-    expect(h.projection.flush()).toBe("unchanged");
+    expect(await h.projection.flush()).toBe("unchanged");
     expect(h.state.config).toEqual(config(["prod", "dev"]));
     expect(h.transitions).toEqual([]);
   });
@@ -243,7 +251,7 @@ describe("applied environment projection", () => {
     await h.projection.prepare();
     finish(config(["prod", "old"], "old"));
     await first;
-    h.projection.flush();
+    await h.projection.flush();
     expect(h.dom.environmentSelect.value).toBe("new");
   });
 

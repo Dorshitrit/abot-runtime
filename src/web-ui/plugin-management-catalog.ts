@@ -1,3 +1,4 @@
+import { resolvePluginPlatformCompatibility } from "../runtime/plugins/platform-compatibility.js";
 import { readPluginConfigurationStore } from "../runtime/plugins/configuration-store.js";
 import { hasConfigurablePluginValues } from "./plugin-configuration-view.js";
 import { installedPluginPackage } from "../runtime/plugins/installation/installed-package.js";
@@ -29,6 +30,7 @@ export type RuntimePluginSnapshot = {
     description?: string;
     version?: string;
     pluginEnabled: boolean;
+    compatibility: ReturnType<typeof resolvePluginPlatformCompatibility>;
     removable: boolean;
     configurable: boolean;
     capabilities: RuntimePluginCapabilitySnapshot[];
@@ -81,6 +83,7 @@ export function projectPluginSnapshot(
   manifests: readonly DiscoveredAgentPluginManifest[],
   config: RuntimePluginConfig,
   consumerRoot?: string,
+  runtimePlatform: NodeJS.Platform = process.platform,
 ): RuntimePluginSnapshot {
   const selection = normalizePluginSelection(config);
   const local = consumerRoot
@@ -97,6 +100,10 @@ export function projectPluginSnapshot(
       ).length;
       return {
         id: manifest.name,
+        compatibility: resolvePluginPlatformCompatibility(
+          manifest,
+          runtimePlatform,
+        ),
         configurable: hasConfigurablePluginValues(
           manifest.extensions[ABOT_RUNTIME_EXTENSION],
           Object.hasOwn(local, manifest.name)

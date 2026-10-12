@@ -1,8 +1,10 @@
+import { createWorkspaceConversationOpener } from "./controllers/workspace-conversation-opener.js";
 import { createSchedulesController } from "./controllers/schedules-controller.js";
 import { createSchedulesWorkspace } from "./components/schedules/workspace.js";
 
 export function createSchedulesFeature({
   dom,
+  state = {},
   client,
   shell,
   selectedEnvironmentId,
@@ -13,6 +15,7 @@ export function createSchedulesFeature({
   documentRoot = globalThis.document,
   isRuntimeReady = () => true,
 }) {
+  const openConversation = createWorkspaceConversationOpener({ state, shell, openSession });
   let view;
   let active = false;
   let navigationRevision = 0;
@@ -29,10 +32,8 @@ export function createSchedulesFeature({
       onNavigationChange();
     },
     openConversation: async (sessionId, requestId) => {
-      if (!shell.activateWorkspace("chat")) return;
-      if (!sessionId) return;
       try {
-        await openSession(sessionId, { page: { targetRequestId: requestId } });
+        if (!await openConversation(sessionId, { page: { targetRequestId: requestId } })) return;
         if (!requestId) return;
         requestAnimationFrame(() => {
           const messages = [
@@ -78,6 +79,7 @@ export function createSchedulesFeature({
       return client.supportsSchedules();
     },
     prepareLeave: view.prepareLeave,
+    prepareEnvironmentChange: view.prepareEnvironmentChange,
     navigationRevision: () => navigationRevision,
     selectedJobId: () => controller.snapshot().selectedId,
     setActive(value) {

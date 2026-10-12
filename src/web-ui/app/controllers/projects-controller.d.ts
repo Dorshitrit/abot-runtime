@@ -24,7 +24,7 @@ export declare function createProjectsController(options: {
   getEnvironmentId: () => string;
   isRuntimeReady?: () => boolean;
   getConversationRevision: () => string | number;
-  prepareConversation: () => boolean;
+  prepareConversation: () => boolean | Promise<boolean>;
   openSession: (sessionId: string) => Promise<unknown>;
   loadSessions: () => Promise<unknown>;
   onChange: (state: ProjectsControllerState) => void;

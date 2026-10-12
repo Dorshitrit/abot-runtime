@@ -2,6 +2,7 @@ const genericMessage = "ABot Spark could not complete this review. No specific c
 
 // Exact content-free codes only. Never turn an arbitrary provider error into UI copy.
 const groups = [
+  ["Review and acknowledge Spark activity collection before starting it. No activity is collected until you continue.", ["collection_consent_required"]],
   ["macOS Accessibility permission is required. Open Computer access for the exact companion executable to approve. Spark waits up to two minutes for your consent.", ["macos_accessibility_permission_required"]],
   ["macOS Accessibility permission was removed. Re-enable access for the companion in Computer access, then stop and start collection.", ["macos_accessibility_permission_revoked"]],
   ["macOS Accessibility permission was not granted within two minutes. Complete permission setup in Computer access, then stop and start collection to check again.", ["macos_accessibility_permission_timeout"]],

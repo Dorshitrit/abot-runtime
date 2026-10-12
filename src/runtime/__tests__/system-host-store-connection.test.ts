@@ -13,7 +13,7 @@ import { WINDOWS_STORE_CONNECTION_PATH } from "../../web-ui/system-host-setup/wi
 import { HostSetupRoutes } from "../../web-ui/system-host-setup/routes.js";
 import { LOCAL_HOST_SETUP_PATH } from "../../web-ui/system-host-setup/local-connection.js";
 import { installLocalMacCompanion } from "../../computer-access/companion/local-installation.js";
-import type { HostReadiness } from "../../web-ui/system-host-setup/readiness.js";
+import { readHostReadiness, type HostReadiness } from "../../web-ui/system-host-setup/readiness.js";
 
 vi.mock("../../computer-access/companion/local-installation.js", async (original) => ({
   ...await original<typeof import("../../computer-access/companion/local-installation.js")>(),
@@ -137,6 +137,22 @@ test("same-origin JSON receives an expiring launch invitation without a download
     started + 15 * 60_000,
   );
   expect(f.begin).toHaveBeenCalledWith(15 * 60_000);
+  expect(f.prepareCompanion).toHaveBeenCalledOnce();
+});
+
+test.each([true, false])("native Windows retains explicit Companion setup for collection (direct access=%s)", async (directAccessReady) => {
+  const f = await fixture();
+  const resolveTarget = vi.fn(async () => ({ id: "windows", transport: "native", shell: "powershell.exe" } as const));
+  if (!directAccessReady) resolveTarget.mockRejectedValueOnce(new Error("missing shell"));
+  f.readiness.mockResolvedValue(await readHostReadiness({ paired: false, connected: false }, {
+    facts: { platform: "win32", kernelRelease: "Windows_NT" }, resolveTarget,
+  }));
+  const response = await f.request("{}", { origin: f.base, "sec-fetch-site": "same-origin" });
+  expect(response.status).toBe(200);
+  const invitation = parseStoreConnectionLink((await response.json()).launchUrl);
+  expect(invitation.url).toBe(f.base);
+  expect(f.store.authenticate(invitation.code)).toBe("pairing");
+  expect(f.begin).toHaveBeenCalledExactlyOnceWith(15 * 60_000);
   expect(f.prepareCompanion).toHaveBeenCalledOnce();
 });
 

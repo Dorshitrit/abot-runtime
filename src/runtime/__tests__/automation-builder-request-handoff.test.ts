@@ -40,7 +40,7 @@ function toolReceipt(messages: readonly ChatMessage[]): Receipt {
   const settled = [...messages].reverse().find((message) => message.role === "tool");
   if (!settled) throw new Error(`missing_builder_continuation:${messages.at(-1)?.content.slice(0, 1_200)}`);
   const envelope = JSON.parse(settled.content);
-  expect(envelope).toMatchObject({ authority: "capability_adapter_result",
+  expect(envelope).toMatchObject({ authority: "canonical_role_call_ledger",
     presenceEffect: "runtime_result_only_not_user_intent" });
   const adapterResult = envelope.result.adapterResult;
   expect(adapterResult.result.data).toEqual({ mutationEvidence: true, currentStateEvidence: true });
@@ -228,7 +228,7 @@ describe("automation builder request handoff", () => {
         const settled = messages.filter((message) => message.role === "tool");
         expect(settled).toHaveLength(1);
         const envelope = JSON.parse(settled[0]!.content);
-        expect(envelope).toMatchObject({ authority: "capability_adapter_result",
+        expect(envelope).toMatchObject({ authority: "canonical_role_call_ledger",
           presenceEffect: "runtime_result_only_not_user_intent" });
         const adapterResult = envelope.result.adapterResult;
         expect(adapterResult).toMatchObject({ kind: "registered_tool_execution_result_v1",

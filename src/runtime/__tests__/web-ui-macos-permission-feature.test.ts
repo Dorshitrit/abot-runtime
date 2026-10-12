@@ -35,6 +35,7 @@ async function fixture(entry: Entry, os = "macos", enabled = false) {
     recentMemories: [],
   };
   const host = {
+    collectionConsent: { accepted: true },
     paired: true,
     connected: true,
     hostId: "mac-1",

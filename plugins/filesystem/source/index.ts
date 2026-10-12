@@ -1,3 +1,4 @@
+import { prepareFilesystemRequest } from "./windows/request-availability.js";
 import {
   defineRuntimePlugin,
   failureFromError,
@@ -27,6 +28,10 @@ function settle(
           errorCode: error.code,
           message: error.message,
           data: error.data,
+          ...(error.code === "filesystem_windows_interrupted" &&
+          context?.abortSignal?.aborted
+            ? { interruption: "aborted" as const }
+            : {}),
         });
       }
       return failureFromError(error, {
@@ -42,6 +47,7 @@ export default defineRuntimePlugin((context) => {
   const paths = createFilesystemPathService(context.runtimePathResolver);
   const mutations = getProcessFilesystemMutationCoordinator();
   return Object.freeze({
+    prepareRequest: prepareFilesystemRequest,
     handlers: Object.freeze({
       dev_view: settle(createDevViewHandler(paths), "dev_view"),
       edit_file: settle(createEditFileHandler(paths, mutations), "edit_file"),

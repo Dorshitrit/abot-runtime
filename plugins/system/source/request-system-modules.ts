@@ -1,4 +1,6 @@
+import { createSystemCommandPathAdapter } from "./command-working-directory.js";
 import type {
+  RuntimeToolPathResolver,
   ToolCallAdapter,
   ToolImplementation,
   ToolModuleDeclaration,
@@ -82,7 +84,14 @@ export async function prepareSystemRequestModules(
   return Object.freeze([
     ...modules
       .filter((module) => !isComputerTool(module.definition.name))
-      .map((module) => projectSystemRequestModule(module, snapshot, handlers)),
+      .map((module) =>
+        projectSystemRequestModule(
+          module,
+          snapshot,
+          handlers,
+          preparation?.runtimePathResolver,
+        ),
+      ),
     ...computerModules,
   ]);
 }
@@ -108,6 +117,7 @@ function projectSystemRequestModule(
   module: ToolModuleDeclaration,
   snapshot: SystemTargetSnapshot,
   handlers: Readonly<Record<string, ToolImplementation>>,
+  resolver?: RuntimeToolPathResolver,
 ): ToolModuleDeclaration {
   const targets = Object.freeze(snapshot.map(routeTargetId));
   const availability = ` Available targets for this request: ${targets.join(", ")}.`;
@@ -131,7 +141,7 @@ function projectSystemRequestModule(
     },
     implementation: handlers[module.definition.name]!,
     adapter: {
-      ...module.adapter,
+      ...createSystemCommandPathAdapter(module.adapter, snapshot, resolver),
       executionBinding: systemExecutionBinding(snapshot),
     },
   });

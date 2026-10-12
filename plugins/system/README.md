@@ -9,18 +9,40 @@ configuration. Ask and Full retain exact-action approvals; Full+ retains its nor
 approval policy. OS accessibility, screen-recording and portal permissions still
 apply. An available shell or connected companion does not prove desktop readiness.
 
+## Command working directory
+
+On native Windows, `system_command.cwd` accepts the same logical paths as
+`filesystem`: `.` and ordinary relative paths use the request's agent-work root;
+`workspace/...` uses the configured workspace. The request-bound resolver checks
+these roots and resolves the full directory before exact-action approval. Approval,
+activity and execution use that same captured absolute path. Absolute paths retain
+their existing target-OS meaning and may be outside those roots.
+
+The request root is also retained across approval resume, even if the configured
+agent-work root changes. The adapter does not rewrite the command or choose a tool
+or execution strategy. Linux/macOS, WSL interop and Companion targeting retain the
+existing absolute-cwd contract; no guest-to-host directory mapping is performed.
+
 ## Local command output
 
-Local `system_command` execution, including Windows through WSL interop, writes
-stdout and stderr to private files under the plugin state directory. Capture
-uses bounded stream buffers with disk backpressure. The completed observation is
-then loaded for delivery; full text is still materialized in memory at that point.
-The existing SDK context-text contract lets the Runtime admit or compact that
-text using its normal model-context budget. Small-result text is unchanged.
+Local `system_command` execution, including Windows through WSL interop, captures
+stdout and stderr to private files under the plugin state directory. Temporary raw
+disk storage is allowed inside this boundary. Once both streams reach natural EOF,
+SYSTEM's independent secret detector checks their full text before any output read
+or delivery. Suspected streams are replaced with `[REDACTED]`. An incomplete check,
+invalid UTF-8 or scanner failure withholds output, attempts to remove raw stream
+files and retains a safe process receipt.
+
+There is no new total-output quota or truncation. Checking and final delivery still
+materialize text in memory. The existing SDK context-text contract lets the Runtime
+admit or compact the checked text using its normal model-context budget; even the
+compaction model receives only checked text. Small clean results are unchanged.
 
 `extensions["ai.abot.runtime"].settings.defaults.outputRetentionMs` in the plugin's
 `plugin.json` controls retention; the default is seven days after capture completes. Cleanup protects active captures and removes expired
-captures during plugin initialization and periodic maintenance. Reads do not renew
+captures during plugin initialization and periodic maintenance, including raw
+leftovers after a crash or interrupted cleanup. Removal is ordinary file cleanup,
+not guaranteed forensic erasure. Reads do not renew
 retention. Completed captures keep the retention recorded at creation across
 Companion reconnects and later configuration changes. Each capture has an opaque
 ID, byte counts and a saved process receipt;
@@ -33,13 +55,17 @@ external descendants are not assumed terminated. Delivery failures retain the
 capture receipt, recorded helper PID, process status and exit code when available.
 This does not grant a new model-facing operation for reading retained captures.
 
-Application launch, target probes and desktop images retain their existing behavior.
+Application/target descriptions and launch results are checked before excerpts.
+Sensitive actionable catalog identities are withheld instead of replaced by a
+fabricated executable identifier. Input receipts retain their mechanical meaning.
 
 ## Companion command output
 
-Updated companions advertise `system_command_output_v1`. SYSTEM then uses private
+Updated companions advertise `host_secret_protection_v1` and
+`system_command_output_v1`. SYSTEM then uses private
 capture/read/close operations over the existing connection: the Companion stores
-both streams in its private state directory using the same capture implementation,
+checked streams in its private state directory using its own detector with the
+capture implementation,
 returns the process receipt, and serves 64 KiB byte chunks. SYSTEM verifies the
 capture ID, stream, offset, byte count and SHA-256 before delivering text through
 the existing context-text contract. UTF-8 characters may cross chunk boundaries.
@@ -48,9 +74,10 @@ The model receives one tool result; transport chunks do not invoke a model.
 Output references belong to the authenticated Companion connection. Transfers
 protect their captures from expiry until closed or disconnected; the configured
 SYSTEM retention then continues on disk. A failed transfer preserves the command
-receipt and never repeats execution. Old companions keep their existing bounded
-command path. This transfer does not add model-facing tools or change screenshot
-handling, and final text delivery still materializes the streams in memory.
+receipt and never repeats execution. Companions missing protection or complete
+command capture fail before dispatch with an upgrade-required result; there is no
+unprotected legacy fallback. This transfer adds no model-facing tool, and final
+text delivery still materializes the streams in memory.
 
 ## Shared connection
 
@@ -137,9 +164,18 @@ request. Metadata remains within the ordinary tool-result budgets. A companion s
 64 KiB private chunks through the existing bounded local protocol; bytes never enter
 model-visible JSON output.
 
+Before frame/media retention, each owner checks desktop/window/accessibility text
+and diagnostic fields. Suspected text is masked and its associated image is
+withheld; input that already occurred retains its dispatch receipt. Ordinary
+images remain available. Pixel-only content is not inspected: OCR and additional
+installation dependencies are deferred. Version 1 is best-effort known-indicator
+protection, not a guarantee that an admitted image or text is free of secrets.
+
 The Runtime stores images in request-owned memory, projects them only to consumers
-of the original tool evidence, excludes them from history/provider traces, and
-disposes buffers and registered resources at request end or abort. A non-vision
+of the original tool evidence, and excludes them from history/provider traces.
+Approval-wait continuation snapshots may persist request-owned image bytes; the
+owner's checks therefore precede media admission, not merely model projection.
+Buffers and registered resources are disposed at request end or abort. A non-vision
 model receives an explicit image-input limitation and can still use available text
 observations. Companion frames are erased after transfer, replacement or close;
 abandoned native sessions have a bounded idle expiry and close on disconnection.

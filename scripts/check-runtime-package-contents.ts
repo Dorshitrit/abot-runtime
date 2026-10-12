@@ -97,6 +97,13 @@ const requiredPaths = [
     "web-ui/local-runtime/learning-routes",
     "web-ui/system-host-setup/companion-linux",
     "computer-access/companion/native-loopback-lookup",
+    "computer-access/command-output-protection",
+    "computer-access/companion/secret-protection-protocol",
+    "computer-access/security/desktop-result",
+    "computer-access/security/observed-error",
+    "computer-access/security/secret-text",
+    "computer-access/security/system-results",
+    "computer-access/system-result-protection",
   ].flatMap((name) => [
     "dist/src/" + name + ".js",
     "dist/src/" + name + ".d.ts",
@@ -579,8 +586,8 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // contract. Each emitted runtime module contributes both .js and .d.ts files,
 // so legitimate production modules can move the count by more than one.
 // These ceilings bound the approved public package inventory and unpacked size.
-const maxFileCount = 3_712;
-const maxUnpackedSizeBytes = 12_036_932;
+const maxFileCount = 3_899;
+const maxUnpackedSizeBytes = 12_441_048;
 
 if (paths.length > maxFileCount) {
   fail(`package includes too many files: ${paths.length} > ${maxFileCount}`);

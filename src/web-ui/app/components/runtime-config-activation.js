@@ -33,10 +33,30 @@ export function createRuntimeConfigActivation({
     const workspace = getWorkspace();
     if (!workspace?.beginExternalRuntimeMutation("saved configuration")) return;
     const environment = getEnvironmentId();
-    let activated = false;
     busy = true;
     button.disabled = true;
     status.textContent = "Restarting with saved settings…";
+    try {
+      const activated = await restartSavedConfiguration(workspace, environment);
+      if (!activated) return;
+      if (environment !== getEnvironmentId()) return;
+      const settled = await onAppliedSettled();
+      if (settled !== false) return;
+      if (environment !== getEnvironmentId()) return;
+      status.textContent =
+        "Runtime restarted. Finish your current edits, then refresh configuration to update environments.";
+    } catch {
+      if (environment !== getEnvironmentId()) return;
+      status.textContent =
+        "Runtime restarted. Refresh configuration to update this view.";
+    } finally {
+      busy = false;
+      button.disabled = false;
+    }
+  }
+
+  async function restartSavedConfiguration(workspace, environment) {
+    let activated = false;
     try {
       const result = await apply();
       if (environment !== getEnvironmentId()) return;
@@ -65,8 +85,6 @@ export function createRuntimeConfigActivation({
             : "The runtime could not restart. Try again.";
       }
     } finally {
-      busy = false;
-      button.disabled = false;
       if (activated) button.textContent = "Restart runtime";
       workspace.endExternalRuntimeMutation();
       if (environment !== getEnvironmentId()) {
@@ -75,11 +93,7 @@ export function createRuntimeConfigActivation({
         button.textContent = "Restart runtime";
       }
     }
-    if (!activated) return;
-    if (environment !== getEnvironmentId()) return;
-    if (onAppliedSettled() === false)
-      status.textContent =
-        "Runtime restarted. Finish your current edits, then refresh configuration to update environments.";
+    return activated;
   }
 
   button.addEventListener("click", applySavedConfiguration);

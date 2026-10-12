@@ -48,10 +48,29 @@ export function createSchedulesWorkspace({
   });
 
   function prepareLeave() {
-    if (!actions.snapshot().editor) return true;
-    if (!canDiscardScheduleDraft()) return false;
-    actions.cancelEdit();
+    const prepared = prepareEnvironmentChange();
+    if (!prepared) return false;
+    prepared();
     return true;
+  }
+
+  function prepareEnvironmentChange() {
+    const editor = actions.snapshot().editor;
+    if (editor && !canDiscardScheduleDraft()) return null;
+    const form = details.querySelector(".schedule-editor");
+    const fingerprint = scheduleDraftFingerprint(form);
+    const commit = () => { if (editor) actions.cancelEdit(); };
+    commit.canCommit = () => {
+      if (actions.snapshot().mutation) return false;
+      if (actions.snapshot().editor !== editor) return false;
+      if (details.querySelector(".schedule-editor") !== form) return false;
+      return scheduleDraftFingerprint(form) === fingerprint;
+    };
+    return commit;
+  }
+
+  function scheduleDraftFingerprint(form) {
+    return form ? JSON.stringify([...new FormData(form)]) : "";
   }
 
   function canDiscardScheduleDraft() {
@@ -156,5 +175,5 @@ export function createSchedulesWorkspace({
     editorIdentity = null;
     renderScheduleDetails({ root: details, snapshot, actions });
   }
-  return { render, prepareLeave };
+  return { render, prepareLeave, prepareEnvironmentChange };
 }

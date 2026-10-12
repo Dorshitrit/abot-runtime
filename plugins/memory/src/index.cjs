@@ -311,7 +311,7 @@ function searchMemory(entries, query, maximum) {
 
 // plugins/memory/source/store.ts
 var import_node_crypto2 = require("node:crypto");
-var import_promises2 = require("node:fs/promises");
+var import_promises6 = require("node:fs/promises");
 var import_node_path2 = require("node:path");
 
 // plugins/memory/source/types.ts
@@ -329,9 +329,122 @@ function isMemoryStoreError(error) {
 
 // plugins/memory/source/store-lock.ts
 var import_node_crypto = require("node:crypto");
-var import_node_fs = require("node:fs");
-var import_promises = require("node:fs/promises");
+var import_promises4 = require("node:fs/promises");
 var import_node_path = require("node:path");
+
+// plugins/memory/source/lock-owner-file.ts
+var import_node_fs = require("node:fs");
+var import_promises2 = require("node:fs/promises");
+
+// plugins/memory/source/lock-path-observation.ts
+var import_promises = require("node:fs/promises");
+function isWindowsLockObservationDenial(error) {
+  if (process.platform !== "win32") return false;
+  if (!error || typeof error !== "object" || !("code" in error)) return false;
+  return error.code === "EPERM";
+}
+function isMissingLockObservation(error) {
+  if (!error || typeof error !== "object" || !("code" in error)) return false;
+  return error.code === "ENOENT";
+}
+async function rethrowLockObservationError(path, error) {
+  if (!isWindowsLockObservationDenial(error)) throw error;
+  try {
+    await (0, import_promises.lstat)(path);
+  } catch (observationError) {
+    if (isMissingLockObservation(observationError)) throw observationError;
+  }
+  throw error;
+}
+
+// plugins/memory/source/lock-owner-file.ts
+function lockOwnerOpenError(code) {
+  return Object.assign(new Error("Memory lock owner is not a stable regular file."), {
+    code
+  });
+}
+function hasSameRegularOwnerIdentity(before, current) {
+  if (!current.isFile()) return false;
+  if (current.dev !== before.dev) return false;
+  return current.ino === before.ino;
+}
+async function openObservedLockOwner(path, flags, before) {
+  try {
+    return await (0, import_promises2.open)(path, flags);
+  } catch (error) {
+    if (!isWindowsLockObservationDenial(error)) throw error;
+    const named = await (0, import_promises2.lstat)(path, { bigint: true });
+    if (!hasSameRegularOwnerIdentity(before, named)) {
+      throw lockOwnerOpenError("EAGAIN");
+    }
+    throw error;
+  }
+}
+async function openLockOwnerFile(path) {
+  const before = await (0, import_promises2.lstat)(path, { bigint: true });
+  if (!before.isFile()) throw lockOwnerOpenError("ELOOP");
+  const noFollow = import_node_fs.constants.O_NOFOLLOW;
+  const flags = typeof noFollow === "number" ? import_node_fs.constants.O_RDONLY | noFollow : import_node_fs.constants.O_RDONLY;
+  const handle = await openObservedLockOwner(path, flags, before);
+  try {
+    const opened = await handle.stat({ bigint: true });
+    const named = await (0, import_promises2.lstat)(path, { bigint: true });
+    if (!hasSameRegularOwnerIdentity(before, opened)) {
+      throw lockOwnerOpenError("EAGAIN");
+    }
+    if (!hasSameRegularOwnerIdentity(before, named)) {
+      throw lockOwnerOpenError("EAGAIN");
+    }
+    return handle;
+  } catch (error) {
+    await handle.close().catch(() => void 0);
+    return rethrowLockObservationError(path, error);
+  }
+}
+
+// plugins/memory/source/lock-directory-claim.ts
+var import_promises3 = require("node:fs/promises");
+function isAbsentLockClaimEntry(error) {
+  if (!error || typeof error !== "object" || !("code" in error)) return false;
+  return error.code === "ENOENT";
+}
+async function observeLockClaimPath(path) {
+  try {
+    return { observed: true, entry: await (0, import_promises3.lstat)(path, { bigint: true }) };
+  } catch (error) {
+    return { observed: isAbsentLockClaimEntry(error) };
+  }
+}
+function hasObservedLockNameTransition(before, after) {
+  if (!before.observed || !after.observed) return false;
+  if (!before.entry) return after.entry !== void 0;
+  if (!after.entry) return true;
+  if (before.entry.dev !== after.entry.dev) return true;
+  if (before.entry.ino !== after.entry.ino) return true;
+  if (before.entry.isDirectory() !== after.entry.isDirectory()) return true;
+  if (before.entry.isFile() !== after.entry.isFile()) return true;
+  return before.entry.isSymbolicLink() !== after.entry.isSymbolicLink();
+}
+async function claimStoreLockDirectory(path) {
+  if (process.platform !== "win32") {
+    await (0, import_promises3.mkdir)(path, { mode: 448 });
+    return;
+  }
+  const before = await observeLockClaimPath(path);
+  try {
+    await (0, import_promises3.mkdir)(path, { mode: 448 });
+  } catch (error) {
+    if (!isWindowsLockObservationDenial(error)) throw error;
+    const after = await observeLockClaimPath(path);
+    if (!hasObservedLockNameTransition(before, after)) throw error;
+    throw Object.assign(new Error("Memory lock name changed during its directory claim."), {
+      code: "EEXIST",
+      cause: error
+    });
+  }
+}
+
+// plugins/memory/source/store-lock.ts
 var DEFAULT_WAIT_MS = 1e4;
 var DEFAULT_RETRY_MS = 10;
 var MAX_LOCK_BYTES = 1024;
@@ -379,9 +492,8 @@ function parseLockContents(raw, expectedToken) {
 async function readOwnerRecord(lockPath, entryName, expectedToken, directoryModifiedAtMs) {
   let handle;
   try {
-    handle = await (0, import_promises.open)(
-      (0, import_node_path.join)(lockPath, LEASE_DIRECTORY_NAME, entryName),
-      import_node_fs.constants.O_RDONLY | import_node_fs.constants.O_NOFOLLOW
+    handle = await openLockOwnerFile(
+      (0, import_node_path.join)(lockPath, LEASE_DIRECTORY_NAME, entryName)
     );
     const info = await handle.stat({ bigint: true });
     const modifiedAtMs = Math.max(directoryModifiedAtMs, Number(info.mtimeMs));
@@ -435,7 +547,7 @@ async function readOwnerRecord(lockPath, entryName, expectedToken, directoryModi
     });
   } catch (error) {
     const code = fileSystemErrorCode(error);
-    if (code === "ENOENT") {
+    if (code === "ENOENT" || code === "EAGAIN") {
       return Object.freeze({
         kind: "directory",
         modifiedAtMs: directoryModifiedAtMs,
@@ -460,7 +572,7 @@ async function readOwnerRecord(lockPath, entryName, expectedToken, directoryModi
 async function readLockSnapshot(lockPath) {
   let lockInfo;
   try {
-    lockInfo = await (0, import_promises.lstat)(lockPath);
+    lockInfo = await (0, import_promises4.lstat)(lockPath);
   } catch (error) {
     if (fileSystemErrorCode(error) === "ENOENT") return void 0;
     throw error;
@@ -470,7 +582,9 @@ async function readLockSnapshot(lockPath) {
   }
   let entries;
   try {
-    entries = await (0, import_promises.readdir)(lockPath, { withFileTypes: true });
+    entries = await (0, import_promises4.readdir)(lockPath, { withFileTypes: true }).catch(
+      (error) => rethrowLockObservationError(lockPath, error)
+    );
   } catch (error) {
     const code = fileSystemErrorCode(error);
     if (code === "ENOENT") return void 0;
@@ -497,7 +611,7 @@ async function readLockSnapshot(lockPath) {
   let leaseInfo;
   let leaseEntries;
   try {
-    leaseInfo = await (0, import_promises.lstat)(leasePath);
+    leaseInfo = await (0, import_promises4.lstat)(leasePath);
     if (!leaseInfo.isDirectory()) {
       return Object.freeze({
         kind: "directory",
@@ -506,7 +620,9 @@ async function readLockSnapshot(lockPath) {
         reclaimable: false
       });
     }
-    leaseEntries = await (0, import_promises.readdir)(leasePath, { withFileTypes: true });
+    leaseEntries = await (0, import_promises4.readdir)(leasePath, { withFileTypes: true }).catch(
+      (error) => rethrowLockObservationError(leasePath, error)
+    );
   } catch (error) {
     const code = fileSystemErrorCode(error);
     if (code === "ENOENT") {
@@ -550,7 +666,7 @@ async function readLockSnapshot(lockPath) {
 }
 async function removeDirectoryIfEmpty(path) {
   try {
-    await (0, import_promises.rmdir)(path);
+    await (0, import_promises4.rmdir)(path);
     return true;
   } catch (error) {
     const code = fileSystemErrorCode(error);
@@ -569,7 +685,7 @@ async function removeEmptyLockTree(lockPath, hasLeaseDirectory) {
 }
 async function removeObservedOwner(lockPath, observedOwnerFileName) {
   try {
-    await (0, import_promises.unlink)((0, import_node_path.join)(lockPath, LEASE_DIRECTORY_NAME, observedOwnerFileName));
+    await (0, import_promises4.unlink)((0, import_node_path.join)(lockPath, LEASE_DIRECTORY_NAME, observedOwnerFileName));
   } catch (error) {
     if (fileSystemErrorCode(error) === "ENOENT") return false;
     throw error;
@@ -603,12 +719,12 @@ function isLockConflict(error) {
 }
 async function removeStagingLock(stagingPath, stagingOwnerPath) {
   try {
-    await (0, import_promises.unlink)(stagingOwnerPath);
+    await (0, import_promises4.unlink)(stagingOwnerPath);
   } catch (error) {
     if (fileSystemErrorCode(error) !== "ENOENT") throw error;
   }
   try {
-    await (0, import_promises.rmdir)(stagingPath);
+    await (0, import_promises4.rmdir)(stagingPath);
   } catch (error) {
     if (fileSystemErrorCode(error) !== "ENOENT") throw error;
   }
@@ -620,8 +736,8 @@ async function installLockDirectory(lockPath, token) {
   let installed = false;
   let claimedLockPath = false;
   try {
-    await (0, import_promises.mkdir)(stagingPath, { mode: 448 });
-    handle = await (0, import_promises.open)(stagingOwnerPath, "wx", 384);
+    await (0, import_promises4.mkdir)(stagingPath, { mode: 448 });
+    handle = await (0, import_promises4.open)(stagingOwnerPath, "wx", 384);
     await handle.writeFile(
       JSON.stringify({
         pid: process.pid,
@@ -633,9 +749,9 @@ async function installLockDirectory(lockPath, token) {
     await handle.sync();
     await handle.close();
     handle = void 0;
-    await (0, import_promises.mkdir)(lockPath, { mode: 448 });
+    await claimStoreLockDirectory(lockPath);
     claimedLockPath = true;
-    await (0, import_promises.rename)(stagingPath, (0, import_node_path.join)(lockPath, LEASE_DIRECTORY_NAME));
+    await (0, import_promises4.rename)(stagingPath, (0, import_node_path.join)(lockPath, LEASE_DIRECTORY_NAME));
     installed = true;
   } finally {
     await handle?.close().catch(() => void 0);
@@ -653,7 +769,7 @@ async function acquireStoreLock(filePath, options = {}) {
   const retryMs = options.retryMs ?? DEFAULT_RETRY_MS;
   const processIsAlive = options.processIsAlive ?? defaultProcessIsAlive;
   const deadline = Date.now() + waitMs;
-  await (0, import_promises.mkdir)((0, import_node_path.dirname)(filePath), { recursive: true });
+  await (0, import_promises4.mkdir)((0, import_node_path.dirname)(filePath), { recursive: true });
   while (true) {
     const token = (0, import_node_crypto.randomUUID)();
     try {
@@ -688,6 +804,39 @@ async function acquireStoreLock(filePath, options = {}) {
         );
       }
       await delay(Math.min(retryMs, Math.max(deadline - Date.now(), 0)));
+    }
+  }
+}
+
+// plugins/memory/source/prepared-memory-replacement.ts
+var import_promises5 = require("node:fs/promises");
+var import_node_perf_hooks = require("node:perf_hooks");
+var WINDOWS_REPLACEMENT_WAIT_MS = 1e3;
+var WINDOWS_REPLACEMENT_DELAY_MS = 25;
+var MAX_REPLACEMENT_ATTEMPTS = 41;
+function isRetryableWindowsMemoryReplacementError(error) {
+  if (process.platform !== "win32") return false;
+  if (error === null || typeof error !== "object") return false;
+  return "code" in error && error.code === "EPERM";
+}
+function canWaitForMemoryReplacement(attempts, deadline) {
+  if (attempts >= MAX_REPLACEMENT_ATTEMPTS) return false;
+  return import_node_perf_hooks.performance.now() < deadline;
+}
+async function replacePreparedMemoryFile(temporary, target) {
+  const deadline = import_node_perf_hooks.performance.now() + WINDOWS_REPLACEMENT_WAIT_MS;
+  let attempts = 0;
+  for (; ; ) {
+    attempts += 1;
+    try {
+      await (0, import_promises5.rename)(temporary, target);
+      return;
+    } catch (error) {
+      if (!isRetryableWindowsMemoryReplacementError(error)) throw error;
+      if (!canWaitForMemoryReplacement(attempts, deadline)) throw error;
+      const delayMs = Math.min(WINDOWS_REPLACEMENT_DELAY_MS, deadline - import_node_perf_hooks.performance.now());
+      await new Promise((resolve) => setTimeout(resolve, Math.max(0, delayMs)));
+      if (import_node_perf_hooks.performance.now() >= deadline) throw error;
     }
   }
 }
@@ -792,13 +941,13 @@ async function atomicWrite(filePath, state) {
     );
   }
   try {
-    await (0, import_promises2.writeFile)(temporaryPath, serialized, {
+    await (0, import_promises6.writeFile)(temporaryPath, serialized, {
       encoding: "utf8",
       mode: 384
     });
-    await (0, import_promises2.rename)(temporaryPath, filePath);
+    await replacePreparedMemoryFile(temporaryPath, filePath);
   } finally {
-    await (0, import_promises2.rm)(temporaryPath, { force: true });
+    await (0, import_promises6.rm)(temporaryPath, { force: true });
   }
 }
 function nextSequenceAfter(entries) {
@@ -818,7 +967,7 @@ function fileSystemErrorCode2(error) {
   return error && typeof error === "object" && "code" in error ? String(error.code) : void 0;
 }
 async function readStoreFile(filePath) {
-  const handle = await (0, import_promises2.open)(filePath, "r");
+  const handle = await (0, import_promises6.open)(filePath, "r");
   try {
     const info = await handle.stat();
     if (!info.isFile()) {
@@ -869,9 +1018,9 @@ var MemoryStore = class {
     return initialization;
   }
   async #initialize() {
-    await (0, import_promises2.mkdir)((0, import_node_path2.dirname)(this.#filePath), { recursive: true });
+    await (0, import_promises6.mkdir)((0, import_node_path2.dirname)(this.#filePath), { recursive: true });
     try {
-      await (0, import_promises2.access)(this.#filePath);
+      await (0, import_promises6.access)(this.#filePath);
       return;
     } catch (error) {
       if (fileSystemErrorCode2(error) !== "ENOENT") {

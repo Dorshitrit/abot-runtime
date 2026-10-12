@@ -1,8 +1,10 @@
+import { beginConversationNavigation, canNavigateConversation } from "./conversation-navigation-intent.js";
 import {
   focusSelectedMenuItem,
   handleMenuNavigation,
 } from "../components/menu-navigation.js";
 import { createWebSessionId, textOf } from "../lib/text-format.js";
+import { createEnvironmentTransition, environmentChangeWasDeclined } from "./environment-transition.js";
 
 export function createAppEventBindings({
   state,
@@ -15,103 +17,44 @@ export function createAppEventBindings({
   onSessionCreated = () => {},
   onNavigationChange = () => {},
 }) {
-  let environmentChangeRevision = 0;
-  let environmentChanging = false;
-  let prepareAdditionalEnvironmentChange = () => true;
+  const environmentTransition = createEnvironmentTransition({
+    state, dom, actions, prepareQueueRecovery, onNavigationChange,
+    onFailure: (error) => shell.showToast?.(error instanceof Error ? error.message : String(error), "failed"),
+  });
 
   function prepareQueueRecovery() {
     if (actions.prepareQueueRecovery) return actions.prepareQueueRecovery();
     return actions.suspendQueueRecovery();
   }
 
-  function suspendQueueRecovery() {
-    const prepared = prepareQueueRecovery();
+  async function prepareCurrentQueueRecovery() {
+    if (!canNavigateConversation(state)) {
+      shell.showToast?.("Wait for the environment change to finish before starting a conversation.", "neutral");
+      return false;
+    }
+    const isCurrentNavigation = beginConversationNavigation(state);
+    const navigationRevision = shell.navigationRevision?.();
+    const environment = actions.selectedEnvironmentId?.();
+    const session = state.currentSessionId;
+    const prepared = await prepareQueueRecovery();
     if (environmentChangeWasDeclined(prepared)) return false;
-    if (typeof prepared === "function") prepared();
-    return true;
-  }
-
-  async function changeEnvironment(
-    nextEnvironmentId,
-    { restoreSession = true, notifyEnvironmentChange = true } = {},
-  ) {
-    const previousEnvironmentId = actions.savedEnvironmentId?.() || "";
-    const recoveryEnvironmentId =
-      state.activeComposerQueueRecovery?.scope.environmentId ?? "";
-    const restoreEnvironmentSelection = () => {
-      dom.environmentSelect.value =
-        previousEnvironmentId || recoveryEnvironmentId;
-      state.agentPickerOpen = false;
-      actions.renderAgentPicker();
-    };
-    if (nextEnvironmentId === previousEnvironmentId) {
-      state.agentPickerOpen = false;
-      actions.renderAgentPicker();
+    if (!canNavigateConversation(state)) return false;
+    if (!isCurrentNavigation()) return false;
+    if (prepared?.canCommit?.() === false) return false;
+    const hasCurrentWorkspaceNavigation = navigationRevision === shell.navigationRevision?.();
+    if (!hasCurrentWorkspaceNavigation) return false;
+    if (actions.selectedEnvironmentId?.() !== environment) return false;
+    if (state.currentSessionId !== session) return false;
+    return () => {
+      if (!canNavigateConversation(state)) return false;
+      if (!isCurrentNavigation()) return false;
+      if (navigationRevision !== shell.navigationRevision?.()) return false;
+      if (actions.selectedEnvironmentId?.() !== environment) return false;
+      if (state.currentSessionId !== session) return false;
+      if (prepared?.canCommit?.() === false) return false;
+      if (typeof prepared === "function") prepared();
       return true;
-    }
-    dom.environmentSelect.value = nextEnvironmentId;
-    const preparedEnvironmentChange = actions.beforeEnvironmentChange
-      ? actions.beforeEnvironmentChange({
-          from: previousEnvironmentId,
-          to: nextEnvironmentId,
-        })
-      : true;
-    if (environmentChangeWasDeclined(preparedEnvironmentChange)) {
-      restoreEnvironmentSelection();
-      return false;
-    }
-    const preparedAdditionalChange = prepareAdditionalEnvironmentChange();
-    if (environmentChangeWasDeclined(preparedAdditionalChange)) {
-      restoreEnvironmentSelection();
-      return false;
-    }
-    const preparedQueueRecovery = prepareQueueRecovery();
-    if (environmentChangeWasDeclined(preparedQueueRecovery)) {
-      restoreEnvironmentSelection();
-      return false;
-    }
-    const revision = ++environmentChangeRevision;
-    environmentChanging = true;
-    if (typeof preparedAdditionalChange === "function") preparedAdditionalChange();
-    if (typeof preparedQueueRecovery === "function") preparedQueueRecovery();
-    if (typeof preparedEnvironmentChange === "function")
-      preparedEnvironmentChange();
-    actions.invalidateSessionLoads?.();
-    state.agentPickerOpen = false;
-    actions.renderAgentPicker();
-    actions.saveEnvironmentId(nextEnvironmentId);
-    state.currentSessionId = "";
-    state.messages = [];
-    actions.clearAttachments();
-    actions.resetLiveRequestView();
-    dom.sessionTitle.textContent = "New conversation";
-    actions.applyConversationChrome();
-    actions.renderMessages();
-    try {
-      const loading = Promise.allSettled([
-        actions.loadModels(),
-        actions.loadAgentMode(),
-        actions.loadRuntimeConfig({
-          protectUnsaved: false,
-          clearBeforeLoad: true,
-        }),
-      ]);
-      if (notifyEnvironmentChange) {
-        const ChangeEvent =
-          dom.environmentSelect.ownerDocument?.defaultView?.Event ?? Event;
-        dom.environmentSelect.dispatchEvent(new ChangeEvent("change"));
-      }
-      await loading;
-      if (revision !== environmentChangeRevision) return false;
-      if (dom.environmentSelect.value !== nextEnvironmentId) return false;
-      if (restoreSession) await actions.restoreLastSession();
-      return dom.environmentSelect.value === nextEnvironmentId;
-    } finally {
-      if (revision === environmentChangeRevision) {
-        environmentChanging = false;
-        onNavigationChange();
-      }
-    }
+    };
   }
 
   function bind() {
@@ -126,13 +69,15 @@ export function createAppEventBindings({
       "click",
       () => void actions.loadSessions(),
     );
-    dom.newSessionButton.addEventListener("click", () => {
+    dom.newSessionButton.addEventListener("click", async () => {
+      const recovery = await prepareCurrentQueueRecovery();
+      if (!recovery) return;
       const preparedWorkspaceActivation = shell.prepareWorkspaceActivation(
         "chat",
         { focus: false },
       );
       if (!preparedWorkspaceActivation) return;
-      if (!suspendQueueRecovery()) return;
+      if (recovery() === false) return;
       if (preparedWorkspaceActivation() === false) return;
       state.currentSessionId = createWebSessionId();
       onSessionCreated(state.currentSessionId);
@@ -142,7 +87,6 @@ export function createAppEventBindings({
       );
       actions.rememberModelSelection();
       state.messages = [];
-      actions.clearAttachments();
       actions.resetLiveRequestView();
       actions.setCurrentSessionTitle(state.currentSessionId);
       actions.applyConversationChrome();
@@ -152,11 +96,7 @@ export function createAppEventBindings({
       shell.setSessionsDrawerOpen(false);
       dom.composerInput.focus();
     });
-    dom.environmentSelect.addEventListener("change", () => {
-      void changeEnvironment(dom.environmentSelect.value, {
-        notifyEnvironmentChange: false,
-      });
-    }, true);
+    dom.environmentSelect.addEventListener("change", environmentTransition.onSelectChange, true);
     dom.agentPickerButton.addEventListener("click", (event) => {
       event.stopPropagation();
       state.agentPickerOpen = !state.agentPickerOpen;
@@ -366,13 +306,6 @@ export function createAppEventBindings({
 
   return {
     bind,
-    changeEnvironment,
-    setEnvironmentChangePreparation(prepare) { prepareAdditionalEnvironmentChange = prepare; },
-    isEnvironmentChanging: () => environmentChanging,
+    ...environmentTransition,
   };
-}
-
-function environmentChangeWasDeclined(preparedChange) {
-  if (preparedChange === false) return true;
-  return preparedChange === null;
 }

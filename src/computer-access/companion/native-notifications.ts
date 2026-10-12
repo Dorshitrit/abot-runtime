@@ -4,6 +4,7 @@ import {
   type ToolImplementation,
 } from "../../plugin-sdk/index.js";
 import type { HostIdentity } from "./protocol.js";
+import { redactSecretText } from "../security/secret-text.js";
 import {
   readDesktopNotification,
   type DesktopNotification,
@@ -82,7 +83,7 @@ export function createNotificationSession(
               : "notification_native_failed",
             message:
               error instanceof Error
-                ? error.message.slice(0, 1000)
+                ? redactSecretText(error.message).slice(0, 1000)
                 : "Desktop notification submission failed.",
           });
         }
@@ -126,7 +127,7 @@ export async function createNativeNotificationSession(
             (error: unknown) => {
               console.warn(
                 "Desktop notification helper could not stop: " +
-                  (error instanceof Error ? error.message : String(error)),
+                  redactSecretText(error instanceof Error ? error.message : String(error)),
               );
             },
           );

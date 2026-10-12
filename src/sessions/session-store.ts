@@ -2,7 +2,6 @@ import {
   mkdir,
   readdir,
   readFile,
-  rename,
   rm,
   stat,
   writeFile,
@@ -11,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import type { SessionRecord } from "./types.js";
+import { replacePreparedSessionFile } from "./prepared-session-replacement.js";
 import {
   saveDurableSessionFile,
   syncSessionDirectory,
@@ -59,8 +59,7 @@ export async function saveSessionFile(
   try {
     await writeFile(tempPath, JSON.stringify(session, null, 2), "utf-8");
     source = sessionSourceStamp(await stat(tempPath, { bigint: true }));
-    assertCurrent?.();
-    await rename(tempPath, filePath);
+    await replacePreparedSessionFile(tempPath, filePath, assertCurrent);
   } catch (error) {
     await rm(tempPath, { force: true }).catch(() => undefined);
     throw error;

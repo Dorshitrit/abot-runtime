@@ -7,6 +7,9 @@ import { LocalRuntimeControlRoutes } from "./local-runtime/control-routes.js";
 import type { LocalRuntimeBackendOptions } from "./local-runtime/contracts.js";
 import { RuntimeEnvironmentRegistry } from "./local-runtime/environment-registry.js";
 import { sendJson } from "./local-runtime/http.js";
+import { RequestBodyInputError } from "./local-runtime/request-body-error.js";
+import { RuntimeSetupError } from "./local-runtime/runtime-setup-input.js";
+import { requireRuntimeSetupEditSettled } from "./local-runtime/runtime-setup-edit-recovery.js";
 import { LocalRealtimeController } from "./local-runtime/realtime-controller.js";
 import { RealtimeClientHub } from "./local-runtime/realtime-hub.js";
 import { LocalRequestExecution } from "./local-runtime/request-execution.js";
@@ -29,6 +32,7 @@ export class LocalRuntimeWebBackend {
   private readonly notificationRoutes: WebNotificationRoutes;
 
   constructor(options: LocalRuntimeBackendOptions) {
+    requireRuntimeSetupEditSettled(options.rootDir ?? process.cwd());
     const resolvedOptions = {
       ...options,
       providerAdapters: resolveProviderAdapters({
@@ -119,6 +123,17 @@ export class LocalRuntimeWebBackend {
       }
       return false;
     } catch (error) {
+      const requiresSetupRecovery =
+        error instanceof RuntimeSetupError &&
+        error.code === "setup_edit_recovery_required";
+      if (error instanceof RequestBodyInputError || requiresSetupRecovery) {
+        sendJson(res, error.statusCode, {
+          ok: false,
+          error: error.code,
+          message: error.message,
+        });
+        return true;
+      }
       sendJson(res, 500, {
         ok: false,
         error: "local_runtime_backend_error",

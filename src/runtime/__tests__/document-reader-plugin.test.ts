@@ -357,6 +357,7 @@ describe("document-reader plugin", () => {
     });
   });
 
+  // Nine sequential reads start native PowerShell readers on Windows.
   test("extracts every supported text and OOXML format", async () => {
     const fixture = await createFixture();
     const documents: ReadonlyArray<
@@ -427,7 +428,7 @@ describe("document-reader plugin", () => {
         expect(extraction, name).toEqual({ kind: "text" });
       }
     }
-  });
+  }, process.platform === "win32" ? 30_000 : 5_000);
 
   test("reports archive and input bounds without leaking filesystem errors", async () => {
     const fixture = await createFixture();

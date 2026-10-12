@@ -5,6 +5,7 @@ import {
   type PluginInstallSource,
 } from "../../../plugin-contract/install-source.js";
 import { ABOT_RUNTIME_EXTENSION } from "../../../plugin-contract/manifest.js";
+import { resolvePluginPlatformCompatibility } from "../platform-compatibility.js";
 import { parseAgentPluginManifest } from "../manifest-validator.js";
 import { projectManifestRuntimeContract } from "../manifest-projection.js";
 import { discoverConfiguredRuntimePluginManifests } from "../configured-manifests.js";
@@ -80,6 +81,7 @@ export async function preparePluginPackage(
         source: downloaded.source,
         digest,
         id: manifest.name,
+        compatibility: resolvePluginPlatformCompatibility(manifest),
         version: manifest.version ?? "",
         description: manifest.description ?? "",
         capabilities: capabilities.map((id) => ({

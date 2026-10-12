@@ -1,3 +1,5 @@
+import { ComposerSubmissionRefused } from "./composer-submission-lifecycle.js";
+
 function createSteerId() {
   const randomId = globalThis.crypto?.randomUUID?.();
   if (randomId) return `web-steer-${randomId}`;
@@ -28,7 +30,7 @@ export function createSteerController({
     if (message.accepted === true) pending.resolve(message);
     else {
       pending.reject(
-        new Error(String(message.reason || "Steer was not accepted.")),
+        new ComposerSubmissionRefused(String(message.reason || "Steer was not accepted.")),
       );
     }
     return true;
@@ -43,13 +45,13 @@ export function createSteerController({
     }
   }
 
-  async function steer(text) {
-    const { requestId, environmentId, sessionId } = getScope();
+  async function steer(text, captured = {}) {
+    const { requestId, environmentId, sessionId } = captured.scope ?? getScope();
     if (!requestId || !sessionId) {
-      throw new Error("There is no active request to steer.");
+      throw new ComposerSubmissionRefused("There is no active request to steer.");
     }
-    if (getPendingAttachmentCount() > 0) {
-      throw new Error("Attachments can only be sent with Send next.");
+    if ((captured.pendingAttachmentCount ?? getPendingAttachmentCount()) > 0) {
+      throw new ComposerSubmissionRefused("Attachments can only be sent with Send next.");
     }
     const steerId = createSteerId();
     const acknowledgement = new Promise((resolve, reject) => {
@@ -81,7 +83,7 @@ export function createSteerController({
       const pending = pendingSteers.get(steerId);
       pendingSteers.delete(steerId);
       if (pending) clearTimer(pending.timeoutId);
-      throw new Error("Realtime connection is not available.");
+      throw new ComposerSubmissionRefused("Realtime connection is not available.");
     }
     await acknowledgement;
     const current = getScope();

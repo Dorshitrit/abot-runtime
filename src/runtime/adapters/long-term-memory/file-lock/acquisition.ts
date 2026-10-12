@@ -11,6 +11,7 @@ import {
   type FileLockOptions,
 } from "./contracts.js";
 import { installLockDirectory } from "./install.js";
+import { isWindowsLockReadDenial } from "./path-observation.js";
 import { readLockSnapshot } from "./snapshot.js";
 import { removeObservedOwnerSynchronously } from "./synchronous-release.js";
 
@@ -30,7 +31,7 @@ export async function acquireFileLock(
       return createRelease(lockPath, token, options.releaseMode);
     } catch (error) {
       if (!isLockContention(error)) throw error;
-      const removed = await removeAbandonedLock(lockPath, processIsAlive);
+      const removed = await removeAbandonedLock(lockPath, processIsAlive, deadline, retryDelayMs);
       if (removed) continue;
       if (Date.now() >= deadline) {
         throw new Error("long_term_memory_store_lock_timeout");
@@ -67,8 +68,10 @@ function requiresSynchronousRelease(
 async function removeAbandonedLock(
   lockPath: string,
   processIsAlive: NonNullable<FileLockOptions["processIsAlive"]>,
+  deadline: number,
+  retryDelayMs: number,
 ): Promise<boolean> {
-  const snapshot = await readLockSnapshot(lockPath);
+  const snapshot = await readContendedSnapshot(lockPath, deadline, retryDelayMs);
   if (!snapshot) return true;
   if (snapshot.kind === "legacy_file" || !snapshot.reclaimable) return false;
   if (await hasLiveObservedOwner(snapshot, processIsAlive)) return false;
@@ -82,6 +85,20 @@ async function removeAbandonedLock(
     return removeObservedOwner(lockPath, snapshot.ownerFileName);
   }
   return removeEmptyLockTree(lockPath, snapshot.hasLeaseDirectory);
+}
+
+async function readContendedSnapshot(lockPath: string, deadline: number, retryDelayMs: number) {
+  for (;;) {
+    try {
+      return await readLockSnapshot(lockPath);
+    } catch (error) {
+      if (!isWindowsLockReadDenial(error)) throw error;
+      if (Date.now() >= deadline) throw error;
+      // Windows can deny a pending deletion while stat still sees the directory.
+      // Wait within the acquisition budget; an unreadable owner is never reclaimed.
+      await delay(Math.min(retryDelayMs, Math.max(deadline - Date.now(), 0)));
+    }
+  }
 }
 
 async function hasLiveObservedOwner(

@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { constants } from "node:fs";
 import {
   lstat,
   mkdir,
@@ -13,6 +12,9 @@ import {
 import { dirname, join } from "node:path";
 
 import { MemoryStoreError } from "./types.js";
+import { openLockOwnerFile } from "./lock-owner-file.js";
+import { rethrowLockObservationError } from "./lock-path-observation.js";
+import { claimStoreLockDirectory } from "./lock-directory-claim.js";
 
 const DEFAULT_WAIT_MS = 10_000;
 const DEFAULT_RETRY_MS = 10;
@@ -112,9 +114,8 @@ async function readOwnerRecord(
 ): Promise<DirectoryLockSnapshot> {
   let handle: FileHandle | undefined;
   try {
-    handle = await open(
+    handle = await openLockOwnerFile(
       join(lockPath, LEASE_DIRECTORY_NAME, entryName),
-      constants.O_RDONLY | constants.O_NOFOLLOW,
     );
     const info = await handle.stat({ bigint: true });
     const modifiedAtMs = Math.max(directoryModifiedAtMs, Number(info.mtimeMs));
@@ -179,7 +180,7 @@ async function readOwnerRecord(
     });
   } catch (error) {
     const code = fileSystemErrorCode(error);
-    if (code === "ENOENT") {
+    if (code === "ENOENT" || code === "EAGAIN") {
       return Object.freeze({
         kind: "directory",
         modifiedAtMs: directoryModifiedAtMs,
@@ -218,7 +219,9 @@ async function readLockSnapshot(
 
   let entries;
   try {
-    entries = await readdir(lockPath, { withFileTypes: true });
+    entries = await readdir(lockPath, { withFileTypes: true }).catch(
+      (error) => rethrowLockObservationError(lockPath, error),
+    );
   } catch (error) {
     const code = fileSystemErrorCode(error);
     if (code === "ENOENT") return undefined;
@@ -259,7 +262,9 @@ async function readLockSnapshot(
         reclaimable: false,
       });
     }
-    leaseEntries = await readdir(leasePath, { withFileTypes: true });
+    leaseEntries = await readdir(leasePath, { withFileTypes: true }).catch(
+      (error) => rethrowLockObservationError(leasePath, error),
+    );
   } catch (error) {
     const code = fileSystemErrorCode(error);
     if (code === "ENOENT") {
@@ -417,7 +422,7 @@ async function installLockDirectory(
     await handle.sync();
     await handle.close();
     handle = undefined;
-    await mkdir(lockPath, { mode: 0o700 });
+    await claimStoreLockDirectory(lockPath);
     claimedLockPath = true;
     await rename(stagingPath, join(lockPath, LEASE_DIRECTORY_NAME));
     installed = true;

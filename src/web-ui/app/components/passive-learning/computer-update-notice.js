@@ -1,3 +1,5 @@
+import { isNativeWindowsLocalAccess } from "../system-host/native-windows-access.js";
+
 export function computerUpdateNoticeMarkup() {
   return `<div class="co-worker-computer-update" data-learning-update hidden role="status">
     <span class="co-worker-computer-update-icon" aria-hidden="true">↑</span>
@@ -8,6 +10,10 @@ export function computerUpdateNoticeMarkup() {
 }
 
 export function renderComputerUpdateNotice(root, snapshot) {
+  if (isNativeWindowsLocalAccess(snapshot.hostConnection)) {
+    root.querySelector("[data-learning-update]").hidden = true;
+    return;
+  }
   root.querySelector("[data-learning-update]").hidden =
     !snapshot.hostConnection?.companion?.updateAvailable;
 }

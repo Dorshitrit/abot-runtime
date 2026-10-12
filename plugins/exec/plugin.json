@@ -2,8 +2,9 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "exec",
   "version": "1.0.0",
-  "description": "Execute, observe, and cancel trusted non-interactive /bin/bash processes on Linux and macOS with per-action approval in Ask/Full.",
+  "description": "Execute, observe, and cancel trusted non-interactive shell processes: Bash on Linux/macOS, Windows PowerShell on native Windows with per-action approval in Ask/Full.",
   "extensions": {
+    "ai.abot.compatibility": { "version": 1, "runtimePlatforms": ["linux", "darwin", "win32"] },
     "ai.abot.runtime": {
       "version": 1,
       "entrypoint": "./src/index.cjs",
@@ -19,7 +20,7 @@
       "capabilities": {
         "exec": {
           "catalogGroups": ["read", "write", "exec"],
-          "description": "Execute one trusted non-interactive /bin/bash command on Linux or macOS. Use an explicit existing directory: `.` and relative paths start at the agent-work root, `workspace/...` selects the workspace, and absolute host paths are accepted. Commands run with the runtime OS user permissions without parsing their contents for path or sensitivity restrictions. Ask/Full require approval of the exact action; FULL+ executes without that prompt. A command still running after the foreground window yields a process ID and cursor that exec_wait can resume without restarting it.",
+          "description": "Execute one trusted non-interactive shell command: /bin/bash on Linux/macOS, Windows PowerShell on native Windows. Use an explicit existing directory: `.` and relative paths start at the agent-work root, `workspace/...` selects the workspace, and absolute host paths are accepted. Commands run with the runtime OS user permissions without parsing their contents for path or sensitivity restrictions. Ask/Full require approval of the exact action; FULL+ executes without that prompt. A command still running after the foreground window yields a process ID and cursor that exec_wait can resume without restarting it.",
           "routingCapability": "filesystem_inspection",
           "developmentRoles": ["inspect", "establish", "mutate", "verify", "auxiliary"],
           "eventPresentation": {
@@ -41,7 +42,7 @@
           "skills": ["exec_skill"],
           "operations": {
             "execute_command": {
-              "summary": "Execute one trusted non-interactive /bin/bash command in an explicit existing directory. This sensitive operation requires exact-action approval in Ask/Full and runs automatically in FULL+. The OS user permissions still apply; the selected folder is not a sandbox.",
+              "summary": "Execute one trusted non-interactive command in an explicit existing directory: Bash on Linux/macOS, Windows PowerShell on native Windows. This sensitive operation requires exact-action approval in Ask/Full and runs automatically in FULL+. The OS user permissions still apply; the selected folder is not a sandbox.",
               "outputChannels": {"text": "metadata", "data": "metadata"},
               "input": {
                 "type": "object",

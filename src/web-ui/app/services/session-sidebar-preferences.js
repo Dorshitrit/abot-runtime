@@ -8,11 +8,11 @@ function sessionIds(value) {
 function readEnvironments(storage) {
   try {
     const value = JSON.parse(storage.getItem(storageKey) || "{}");
-    if (!value || typeof value !== "object") return {};
-    if (Array.isArray(value)) return {};
-    return value;
+    if (!value || typeof value !== "object") return Object.create(null);
+    if (Array.isArray(value)) return Object.create(null);
+    return Object.assign(Object.create(null), value);
   } catch {
-    return {};
+    return Object.create(null);
   }
 }
 
@@ -36,7 +36,7 @@ export function createSessionSidebarPreferences(storage) {
         configurable: true,
         writable: true,
       });
-      storage.setItem(storageKey, JSON.stringify(environments));
+      return storage.setItem(storageKey, JSON.stringify(environments));
     },
   };
 }

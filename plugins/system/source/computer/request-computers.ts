@@ -13,8 +13,12 @@ import { SystemOperationError } from "../../../../src/plugin-sdk/computer-access
 import type { NativeComputerBackend } from "../../../../src/plugin-sdk/computer-access.js";
 import { createNativeComputerBackend } from "../../../../src/plugin-sdk/computer-access.js";
 import { createCompanionComputerBackend } from "../../../../src/plugin-sdk/computer-access.js";
-import { COMPUTER_CAPABILITY } from "../../../../src/plugin-sdk/computer-access.js";
+import {
+  COMPUTER_CAPABILITY,
+  HOST_SECRET_PROTECTION_CAPABILITY,
+} from "../../../../src/plugin-sdk/computer-access.js";
 import { DesktopBindings } from "./desktop-bindings.js";
+import { protectNativeDesktopBackend } from "../security/desktop-result.js";
 
 export type RequestComputer = {
   ref: string;
@@ -80,7 +84,7 @@ export class RequestComputers {
     if (entry.backend) return entry.backend;
     entry.backend =
       entry.route.kind === "native"
-        ? this.nativeFactory(entry.route.target)
+        ? protectNativeDesktopBackend(this.nativeFactory(entry.route.target))
         : createCompanionComputerBackend(
             this.rootDir,
             entry.route,
@@ -110,7 +114,10 @@ export function computerQueueIdentity(entry: RequestComputer): string {
 }
 function supportsComputerRoute(route: SystemRequestRoute): boolean {
   if (route.kind === "native") return true;
-  return route.capabilities?.includes(COMPUTER_CAPABILITY) === true;
+  return (
+    route.capabilities?.includes(COMPUTER_CAPABILITY) === true &&
+    route.capabilities.includes(HOST_SECRET_PROTECTION_CAPABILITY)
+  );
 }
 
 function restoreComputers(

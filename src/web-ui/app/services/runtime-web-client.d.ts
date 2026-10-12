@@ -84,6 +84,7 @@ export declare function createRuntimeWebClient(options: {
   getEnvironmentId: () => string;
   fetchImpl?: typeof fetch;
   origin?: string;
+  onMemoryDeleted?: (environmentId: string, id: string) => Promise<unknown> | void;
 }): {
   supportsSparkChat: SparkChatRequests["supportsSparkChat"];
   loadSparkChat: SparkChatRequests["loadSparkChat"];
@@ -99,6 +100,7 @@ export declare function createRuntimeWebClient(options: {
   decideToolApproval: ToolApprovalRequests["decideToolApproval"];
   supportsSystemHostConnection(): boolean;
   getSystemHostConnection(): Promise<Record<string, unknown>>;
+  acceptSystemHostCollectionConsent(): Promise<Record<string, unknown>>;
   requestSystemHostPermissions(input: Record<string, unknown>): Promise<Record<string, unknown>>;
   connectLocalSystemHost(): Promise<Record<string, unknown>>;
   requestSystemHostStoreConnection(): Promise<Record<string, unknown>>;

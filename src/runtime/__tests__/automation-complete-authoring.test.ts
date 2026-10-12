@@ -25,7 +25,7 @@ function exactReceipt<T>(messages: readonly ChatMessage[], capabilityId: string)
   const message = [...messages].reverse().find((entry) => entry.role === "tool");
   expect(message).toBeDefined();
   const envelope = JSON.parse(message!.content);
-  expect(envelope, JSON.stringify(envelope)).toMatchObject({ authority: "capability_adapter_result",
+  expect(envelope, JSON.stringify(envelope)).toMatchObject({ authority: "canonical_role_call_ledger",
     presenceEffect: "runtime_result_only_not_user_intent", result: { capabilityId,
       adapterResult: { kind: "registered_tool_execution_result_v1", result: { ok: true } } } });
   return JSON.parse(envelope.result.adapterResult.result.output) as T;

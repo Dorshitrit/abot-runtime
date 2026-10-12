@@ -28,7 +28,7 @@ function readyMarkup(state, optional) {
     <div><dt>Model</dt><dd>${escapeHtml(state.modelId)}</dd></div>
     <div><dt>Context window</dt><dd>${escapeHtml(formatContextWindowTokens(state.contextWindowTokens))}</dd></div>
     <div><dt>Embedding</dt><dd>${escapeHtml(optional.memory?.enabled ? optional.memory.model || "Configured" : "Set up later")}</dd></div>
-    <div><dt>Plugins</dt><dd>${selectedPlugins} enabled</dd></div>
+    <div><dt>Plugins</dt><dd>${selectedPlugins} selected</dd></div>
   </dl></div>`;
 }
 
@@ -79,7 +79,7 @@ function footerMarkup(state, availability, optional) {
   if (state.step === 3)
     return `<button type="button" class="runtime-setup-secondary" data-runtime-setup-action="back" ${disabled}>Back</button><button type="submit" class="runtime-setup-action" ${busy || !optional.canContinue ? "disabled" : ""}>Continue</button>`;
   if (state.step === 4 && optional.hasComputerStep)
-    return `<button type="button" class="runtime-setup-secondary" data-runtime-setup-action="back">Back</button><div class="runtime-setup-footer-actions"><button type="button" class="runtime-setup-secondary" data-runtime-setup-action="skip-computer">Skip for now</button><button type="submit" class="runtime-setup-action" ${!optional.canContinue ? "disabled" : ""}>Continue</button></div>`;
+    return `<button type="button" class="runtime-setup-secondary" data-runtime-setup-action="back">Back</button><div class="runtime-setup-footer-actions">${optional.nativeWindowsAccess ? "" : '<button type="button" class="runtime-setup-secondary" data-runtime-setup-action="skip-computer">Skip for now</button>'}<button type="submit" class="runtime-setup-action" ${!optional.canContinue ? "disabled" : ""}>Continue</button></div>`;
   const secondary =
     state.step === 1 && canEditSetupConnection(state)
       ? `<button type="button" class="runtime-setup-secondary" data-runtime-setup-action="back" ${disabled}>Back</button>`
@@ -112,11 +112,13 @@ export function renderRuntimeSetup(state, availability, optional = {}) {
   const steps = [...STEP_LABELS];
   if (optional.hasComputerStep) {
     steps.splice(4, 0, "Computer");
-    titles.splice(4, 0, "Set up computer access");
+    titles.splice(4, 0, optional.nativeWindowsAccess ? "Your Windows computer" : "Set up computer access");
     descriptions.splice(
       4,
       0,
-      "Optional. Use applications on your computer, or set up access later in Settings.",
+      optional.nativeWindowsAccess
+        ? ""
+        : "Optional. Use applications on your computer, or set up access later in Settings.",
     );
   }
   const content =

@@ -149,6 +149,37 @@ test.each(["", MAC_INSTALL_LINK_BUNDLE_ID])(
   },
 );
 
+test("macOS repair replaces its owned legacy URL handler and registers the rebuilt app", async () => {
+  const options = await fixture("darwin");
+  await installCompanionInstallLinks(options);
+  const source = join(options.stateDir, "install-links", "handler.js");
+  await writeFile(
+    source,
+    renderMacInstallLinkHandler(options).replace(
+      "GURLGURL(url)",
+      "openLocation(url)",
+    ),
+  );
+  options.execute.mockClear();
+  processMocks.query.mockResolvedValue({
+    stdout: MAC_INSTALL_LINK_BUNDLE_ID + "\n",
+    stderr: "",
+  });
+
+  await installCompanionInstallLinks(options);
+
+  expect(await readFile(source, "utf8")).toBe(
+    renderMacInstallLinkHandler(options),
+  );
+  expect(await readFile(source, "utf8")).toContain("function GURLGURL(url)");
+  expect(options.execute.mock.calls.map(([file]) => file)).toEqual([
+    "/usr/bin/osacompile",
+    "/usr/bin/osascript",
+    "/usr/bin/codesign",
+    "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+  ]);
+});
+
 test("Linux preserves a different default handler without writing a desktop file", async () => {
   const options = await fixture("linux");
   processMocks.query.mockResolvedValue({

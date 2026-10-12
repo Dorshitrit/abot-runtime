@@ -10,6 +10,7 @@ import {
   type LockSnapshot,
 } from "./contracts.js";
 import { readOwnerRecord } from "./owner-record.js";
+import { observeLockReadFailure } from "./path-observation.js";
 
 export async function readLockSnapshot(
   lockPath: string,
@@ -23,7 +24,8 @@ export async function readLockSnapshot(
   let lockEntries;
   try {
     lockEntries = await readdir(lockPath, { withFileTypes: true });
-  } catch (error) {
+  } catch (readError) {
+    const error = await observeLockReadFailure(lockPath, readError);
     const code = fileSystemErrorCode(error);
     if (code === "ENOENT") return undefined;
     if (code === "ENOTDIR") {
@@ -55,7 +57,8 @@ export async function readLockSnapshot(
 async function readLockInfo(lockPath: string) {
   try {
     return await lstat(lockPath);
-  } catch (error) {
+  } catch (readError) {
+    const error = await observeLockReadFailure(lockPath, readError);
     if (fileSystemErrorCode(error) === "ENOENT") return undefined;
     throw error;
   }
@@ -74,7 +77,8 @@ async function readLeaseSnapshot(
       return invalidLeaseSnapshot(lockModifiedAtMs);
     }
     leaseEntries = await readdir(leasePath, { withFileTypes: true });
-  } catch (error) {
+  } catch (readError) {
+    const error = await observeLockReadFailure(leasePath, readError);
     if (fileSystemErrorCode(error) === "ENOENT") {
       return invalidLeaseSnapshot(lockModifiedAtMs);
     }

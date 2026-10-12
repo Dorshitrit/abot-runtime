@@ -91,4 +91,30 @@ describe("passive observation model trace policy", () => {
       expect.objectContaining({ event: "provider.response" }),
     );
   });
+
+  test("does not capture a failed response prefix or tail when content tracing is forbidden", async () => {
+    let chunks = 0;
+    const error = new Error("private stream failure");
+    const response = new Response(new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (chunks++ === 0) controller.enqueue(new TextEncoder().encode("private screen evidence"));
+        else controller.error(error);
+      },
+    }));
+    const clone = vi.spyOn(response, "clone");
+    const decodeResponse = vi.fn();
+    const result = await fetchProviderWithTrace({
+      endpoint: "chat", requestBody: { modelStep: "learning.batch" }, invocation,
+      fetchImpl: async () => response, url: "http://provider.test/chat", headers: {},
+      payload: { input: "private screen evidence" }, decodeResponse,
+    });
+    await expect(result.response.text()).rejects.toBe(error);
+    await result.responseTrace;
+    expect(clone).not.toHaveBeenCalled();
+    expect(decodeResponse).not.toHaveBeenCalled();
+    const events = vi.mocked(traceModelIo).mock.calls.map(([event]) => event);
+    expect(events.map((event) => event.event)).toEqual(["provider.request"]);
+    expect(JSON.stringify(events)).not.toContain("private");
+    expect(JSON.stringify(events)).not.toContain("partialBody");
+  });
 });

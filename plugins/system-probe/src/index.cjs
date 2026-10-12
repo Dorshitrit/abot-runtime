@@ -225,8 +225,39 @@ function failureFromError(error, options) {
 // src/capabilities/tool-media.ts
 var TOOL_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
+// plugins/system-probe/source/disk-path.ts
+function defaultDiskProbePath(runtimeRoot, platform = process.platform) {
+  if (platform === "win32") return runtimeRoot;
+  return "/";
+}
+
 // plugins/system-probe/source/metrics.ts
+var import_node_os2 = __toESM(require("node:os"), 1);
+
+// plugins/system-probe/source/machine-load.ts
 var import_node_os = __toESM(require("node:os"), 1);
+function supportsLoadAverage(platform) {
+  return platform !== "win32";
+}
+function classifyLoadPerCpu(loadAverage, cpuCount) {
+  const average = loadAverage[0] ?? 0;
+  const loadPerCpu = cpuCount > 0 ? average / cpuCount : average;
+  if (loadPerCpu < 0.5) return "low";
+  if (loadPerCpu < 1) return "moderate";
+  return "high";
+}
+function readMachineLoad(platform, cpuCount, readLoadAverage = () => import_node_os.default.loadavg()) {
+  if (!supportsLoadAverage(platform)) {
+    return Object.freeze({ loadAverage: null, loadLevel: "unsupported" });
+  }
+  const loadAverage = Object.freeze(readLoadAverage());
+  return Object.freeze({
+    loadAverage,
+    loadLevel: classifyLoadPerCpu(loadAverage, cpuCount)
+  });
+}
+
+// plugins/system-probe/source/metrics.ts
 function bytesToGiB(bytes) {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GiB`;
 }
@@ -242,19 +273,17 @@ function formatDuration(totalSeconds) {
   return parts.join(" ");
 }
 function readMachineMetrics() {
-  const memoryTotalBytes = import_node_os.default.totalmem();
-  const memoryFreeBytes = import_node_os.default.freemem();
-  const loadAverage = import_node_os.default.loadavg();
-  const cpuCount = import_node_os.default.cpus().length;
-  const loadPerCpu = cpuCount > 0 ? (loadAverage[0] ?? 0) / cpuCount : loadAverage[0] ?? 0;
-  const loadLevel = loadPerCpu < 0.5 ? "low" : loadPerCpu < 1 ? "moderate" : "high";
+  const memoryTotalBytes = import_node_os2.default.totalmem();
+  const memoryFreeBytes = import_node_os2.default.freemem();
+  const cpuCount = import_node_os2.default.cpus().length;
+  const platform = import_node_os2.default.platform();
+  const load = readMachineLoad(platform, cpuCount);
   return Object.freeze({
-    platform: import_node_os.default.platform(),
-    architecture: import_node_os.default.arch(),
-    uptimeSeconds: import_node_os.default.uptime(),
+    platform,
+    architecture: import_node_os2.default.arch(),
+    uptimeSeconds: import_node_os2.default.uptime(),
     cpuCount,
-    loadAverage: Object.freeze(loadAverage),
-    loadLevel,
+    ...load,
     memoryTotalBytes,
     memoryFreeBytes,
     memoryUsedBytes: Math.max(0, memoryTotalBytes - memoryFreeBytes)
@@ -281,10 +310,14 @@ var index_default = defineRuntimePlugin((context) => ({
         runtimePathResolver: executionContext?.runtimePathResolver ?? context.runtimePathResolver
       };
       try {
-        const target = resolvePluginPath(pathContext, explicitPath ?? "/", {
-          requirePath: true,
-          allowedLocations: ALLOWED_PATH_LOCATIONS
-        });
+        const target = resolvePluginPath(
+          pathContext,
+          explicitPath ?? defaultDiskProbePath(context.runtimePaths.rootDir),
+          {
+            requirePath: true,
+            allowedLocations: ALLOWED_PATH_LOCATIONS
+          }
+        );
         let disk;
         let diskStatus = "available";
         try {
@@ -328,7 +361,7 @@ var index_default = defineRuntimePlugin((context) => ({
           `uptime: ${formatDuration(machine.uptimeSeconds)}`,
           `cpu_count: ${machine.cpuCount}`,
           `load_level: ${machine.loadLevel}`,
-          `load_average: ${machine.loadAverage.map((value) => value.toFixed(2)).join(" ")}`,
+          `load_average: ${machine.loadAverage?.map((value) => value.toFixed(2)).join(" ") ?? "unsupported"}`,
           `memory_used: ${bytesToGiB(machine.memoryUsedBytes)} / ${bytesToGiB(machine.memoryTotalBytes)}`,
           `memory_free: ${bytesToGiB(machine.memoryFreeBytes)}`,
           `disk_path: ${target.logicalPath}`,

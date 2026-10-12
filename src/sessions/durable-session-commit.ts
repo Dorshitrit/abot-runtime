@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { open, rename, rm } from "node:fs/promises";
+import { open, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { SessionRecord } from "./types.js";
+import { replacePreparedSessionFile } from "./prepared-session-replacement.js";
 import { currentSourceStamp, sessionSourceStamp, updateSessionMetadata } from "./metadata/store.js";
 import type { SessionMetadataChange } from "./metadata/source-receipt.js";
 
@@ -52,8 +53,7 @@ export async function saveDurableSessionFile(
     } finally {
       await handle.close();
     }
-    assertCurrent?.();
-    await rename(temporary, target);
+    await replacePreparedSessionFile(temporary, target, assertCurrent);
     replaced = true;
     await syncSessionDirectory(sessionsDir);
   } catch (error) {

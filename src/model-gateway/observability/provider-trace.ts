@@ -7,6 +7,7 @@ import {
 import { isModelIoTraceEnabled, traceModelIo } from "./trace-store.js";
 import { permitsModelContentTrace } from "./content-trace-policy.js";
 import { toolMediaSafeError } from "./tool-media-privacy.js";
+import { captureProviderResponseBody } from "./provider-response-capture.js";
 
 export type ProviderResponseDecoder = (
   body: ReadableStream<Uint8Array>,
@@ -59,22 +60,43 @@ async function captureProviderResponse(
   context: ProviderTraceContext,
   response: Response,
   decodeResponse: ProviderResponseDecoder,
+  startedAt: number,
 ): Promise<void> {
   try {
     const rawResponse = response.clone();
     const decodedResponse = response.clone();
-    const [body, decodedCapture] = await Promise.all([
-      rawResponse.text(),
-      decodeProviderResponse(decodedResponse, decodeResponse),
-    ]);
+    const rawCapture = captureProviderResponseBody(rawResponse, startedAt);
+    const decodedCapture = decodeProviderResponse(decodedResponse, decodeResponse);
+    const capture = await rawCapture;
+    if (capture.outcome === "failed") {
+      await traceModelIo({
+        event: "provider.failure",
+        ...context,
+        stage: "response.capture",
+        error: serializeProviderError(capture.error),
+        response: {
+          status: response.status,
+          statusText: response.statusText,
+          partialBodyPrefix: capture.partialBodyPrefix,
+          partialBodyPrefixBytes: capture.partialBodyPrefixBytes,
+          partialBodyPrefixTruncated: capture.partialBodyPrefixTruncated,
+          partialBody: capture.partialBody,
+          partialBodyBytes: capture.partialBodyBytes,
+          bodyTruncated: capture.bodyTruncated,
+          stream: capture.stream,
+        },
+      });
+      return;
+    }
     await traceModelIo({
       event: "provider.response",
       ...context,
       response: {
         status: response.status,
         statusText: response.statusText,
-        ...decodedCapture,
-        body,
+        ...await decodedCapture,
+        body: capture.body,
+        stream: capture.stream,
       },
     });
   } catch (error) {
@@ -126,6 +148,7 @@ export async function fetchProviderWithTrace(params: {
     });
   }
 
+  const startedAt = Date.now();
   try {
     const response = await params.fetchImpl(params.url, {
       method: "POST",
@@ -136,7 +159,7 @@ export async function fetchProviderWithTrace(params: {
       response,
       responseTrace:
         traceEnabled && contentTraceEnabled
-          ? captureProviderResponse(context, response, params.decodeResponse)
+          ? captureProviderResponse(context, response, params.decodeResponse, startedAt)
           : Promise.resolve(),
     };
   } catch (error) {

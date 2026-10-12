@@ -107,6 +107,10 @@ function guidanceHarness({ ready = true, learning = false, memoryEnabled = true,
 test.each(["keep", "delete"])("hides the Home review entry after the final %s decision", async (action) => {
   const h = guidanceHarness({ ready: false, learning: true });
   h.client.listLongTermMemories.mockResolvedValue(memoryPage());
+  h.client.deleteLongTermMemory.mockImplementation(async () => {
+    h.client.listLongTermMemories.mockResolvedValue({ ...memoryPage(), total: 0, items: [] });
+    return { deleted: true };
+  });
   h.state.ready = true;
   h.guidance.render();
   await settle();

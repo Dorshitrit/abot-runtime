@@ -12,7 +12,7 @@ function sameSourceMessage(current, source) {
 
 export function createSparkHandoffActions({
   getScope, getMessages, client, captureNavigation, onOpened, onChange = () => {},
-  notify, documentRoot = document,
+  notify, documentRoot = document, canOpen = () => true,
 }) {
   const pending = new Set();
   function createNode(message) {
@@ -25,7 +25,12 @@ export function createSparkHandoffActions({
     button.type = "button";
     button.className = "spark-handoff-button";
     button.textContent = "Open a session about this";
-    button.disabled = !message.sparkHandoffAvailable || pending.has(identity);
+    function canStartHandoff() {
+      if (!canOpen()) return false;
+      if (!message.sparkHandoffAvailable) return false;
+      return !pending.has(identity);
+    }
+    button.disabled = !canStartHandoff();
     row.appendChild(button);
     if (!message.sparkHandoffAvailable) {
       const explanation = documentRoot.createElement("p");
@@ -39,7 +44,8 @@ export function createSparkHandoffActions({
       return getMessages().some((candidate) => sameSourceMessage(candidate, message));
     }
     async function open() {
-      if (button.disabled || pending.has(identity) || !sourceIsCurrent()) return;
+      if (!canStartHandoff()) return;
+      if (!sourceIsCurrent()) return;
       const navigate = captureNavigation();
       pending.add(identity); button.disabled = true;
       try {

@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Extract bounded text from PDF, Office and supported text documents. Use file readers for source code.",
   "extensions": {
+    "ai.abot.compatibility": { "version": 1, "runtimePlatforms": ["linux", "darwin", "win32"] },
     "ai.abot.runtime": {
       "version": 1,
       "entrypoint": "./src/index.cjs",

@@ -13,6 +13,7 @@ import {
 } from "../../../src/plugin-sdk/index.js";
 
 import { parseJsonErrorPosition, summarizeJsonShape } from "./shape.js";
+import { jsonReadFailure } from "./read-failure.js";
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_DEPTH = 6;
@@ -32,7 +33,8 @@ export default defineRuntimePlugin((context) => {
         const pathContext = {
           ...context,
           runtimePathResolver:
-            executionContext?.runtimePathResolver ?? context.runtimePathResolver,
+            executionContext?.runtimePathResolver ??
+            context.runtimePathResolver,
         };
         try {
           const requestedPath = readRequiredString(params.path, "path");
@@ -43,25 +45,9 @@ export default defineRuntimePlugin((context) => {
           const file = await readBoundedRegularFile(target.absolutePath, {
             maxBytes: MAX_FILE_BYTES,
             rootPath: target.rootPath,
+            signal: executionContext?.abortSignal,
           });
-          if (!file.ok && file.reason === "not_regular_file") {
-            return failureResult({
-              errorCode: "json_target_not_file",
-              message: "The requested JSON target is not a regular file.",
-            });
-          }
-          if (!file.ok && file.reason === "too_large") {
-            return failureResult({
-              errorCode: "json_file_too_large",
-              message: `The requested file exceeds the ${MAX_FILE_BYTES}-byte JSON inspection limit.`,
-            });
-          }
-          if (!file.ok) {
-            return failureResult({
-              errorCode: "json_file_changed",
-              message: "The requested JSON file changed while it was read.",
-            });
-          }
+          if (!file.ok) return jsonReadFailure(file, MAX_FILE_BYTES);
           let source: string;
           try {
             source = new TextDecoder("utf-8", { fatal: true }).decode(
@@ -138,6 +124,17 @@ export default defineRuntimePlugin((context) => {
             },
           });
         } catch (error) {
+          const readWasAborted =
+            executionContext?.abortSignal?.aborted &&
+            error instanceof Error &&
+            error.name === "AbortError";
+          if (readWasAborted) {
+            return failureResult({
+              errorCode: "json_inspection_cancelled",
+              message: "JSON inspection was cancelled.",
+              interruption: "aborted",
+            });
+          }
           return failureFromError(error, {
             fallbackCode: "json_inspection_failed",
             fallbackMessage: "JSON inspection failed.",

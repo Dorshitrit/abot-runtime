@@ -5,14 +5,14 @@ import { createHomeGuidancePreferences } from "../../services/home-guidance-pref
 import { createDailyMemoryReview } from "../../controllers/daily-memory-review.js";
 import { createDailyReviewDialog } from "./daily-review.js";
 import { createDailyReviewEntry } from "./daily-review-entry.js";
+import { workspaceStorage } from "../../services/workspace-state.js";
 
 export function createHomeGuidance({ container, homeRegion, client, getEnvironmentId,
   getLearningSnapshot, getConnectionState, supportsConnection, refreshConnection,
   onOpen, isRuntimeReady = () => true, storage }) {
   const documentRoot = container?.ownerDocument;
   if (!documentRoot) return { render() {}, dispose() {} };
-  let preferenceStorage = storage;
-  try { preferenceStorage ??= documentRoot.defaultView?.localStorage; } catch { /* Session-only preferences. */ }
+  const preferenceStorage = storage ?? workspaceStorage();
   const preferences = createHomeGuidancePreferences(preferenceStorage);
   const root = documentRoot.createElement("aside");
   root.className = "home-guidance";
@@ -42,16 +42,19 @@ export function createHomeGuidance({ container, homeRegion, client, getEnvironme
   });
   review = createDailyMemoryReview({ client, getEnvironmentId, preferences, render: (snapshot) => {
     dialog.render(snapshot);
-    if (canOfferDailyReview(snapshot) && dialog.canOpen() && review.markOffered()) dialog.open();
+    if (canOfferDailyReview(snapshot) && dialog.canOpen()) void offerReview();
     renderSuggestion();
   } });
   root.querySelector("[data-guidance-open]").addEventListener("click", () => {
     if (root.hidden || !selected) return;
     onOpen(selected.id);
   });
-  root.querySelector("[data-guidance-dismiss]").addEventListener("click", () => {
+  root.querySelector("[data-guidance-dismiss]").addEventListener("click", async () => {
     if (!selected) return;
-    preferences.dismiss(environment, selected.id);
+    const target = environment;
+    try { await preferences.dismiss(environment, selected.id); }
+    catch { return; }
+    if (target !== environment || disposed) return;
     hiddenThisVisit = true;
     renderSuggestion();
   });
@@ -105,6 +108,14 @@ export function createHomeGuidance({ container, homeRegion, client, getEnvironme
     if (!visible || reviewDismissed || !snapshot.remaining) return false;
     return hasCurrentLearningActivity();
   }
+  async function offerReview() {
+    const target = environment;
+    try {
+      if (!await review.markOffered()) return;
+      if (target !== getEnvironmentId() || !canOfferDailyReview(review.snapshot())) return;
+      if (dialog.canOpen()) dialog.open();
+    } catch { /* The shared storage failure remains visible; no success is claimed. */ }
+  }
   async function openMemoryReview() {
     if (openingReview || !canReviewSavedMemories() || !dialog.canOpen()) return;
     const operation = revision;
@@ -115,7 +126,10 @@ export function createHomeGuidance({ container, homeRegion, client, getEnvironme
     if (disposed || operation !== revision || target !== getEnvironmentId()) return;
     openingReview = false;
     if (loadedReview && canReviewSavedMemories() && dialog.canOpen()) {
-      review.markOffered();
+      try { await review.markOffered(); }
+      catch { return; }
+      if (disposed || operation !== revision || target !== getEnvironmentId()) return;
+      if (!canReviewSavedMemories() || !dialog.canOpen()) return;
       dialog.open();
     }
     renderSuggestion();

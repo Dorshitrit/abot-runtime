@@ -15,10 +15,10 @@ function parseObject(storage, key) {
     const raw = storage.getItem(key);
     const value = raw ? JSON.parse(raw) : {};
     return value && typeof value === "object" && !Array.isArray(value)
-      ? value
-      : {};
+      ? Object.assign(Object.create(null), value)
+      : Object.create(null);
   } catch {
-    return {};
+    return Object.create(null);
   }
 }
 
@@ -36,10 +36,15 @@ function restoreSessionMode(value, normalizeToolPermissionMode) {
 
 export function createClientPreferences(storage) {
   return {
+    subscribe: (listener) => storage.subscribe?.(listener),
+    flush: () => storage.flush?.(),
     ...createSessionSidebarPreferences(storage),
     loadPinnedSessions() {
       try {
-        const raw = storage.getItem(storageKeys.pinnedSessions);
+        const acknowledged = storage.snapshot?.();
+        const raw = acknowledged
+          ? acknowledged.preferences[storageKeys.pinnedSessions]
+          : storage.getItem(storageKeys.pinnedSessions);
         const value = raw ? JSON.parse(raw) : [];
         return Array.isArray(value)
           ? value.map((id) => String(id || "")).filter(Boolean)
@@ -50,7 +55,7 @@ export function createClientPreferences(storage) {
     },
 
     savePinnedSessions(sessionIds) {
-      storage.setItem(storageKeys.pinnedSessions, JSON.stringify(sessionIds));
+      return storage.setItem(storageKeys.pinnedSessions, JSON.stringify(sessionIds));
     },
 
     loadSessionModes(normalizeToolPermissionMode) {
@@ -61,24 +66,25 @@ export function createClientPreferences(storage) {
           return restored ? [[sessionId, restored]] : [];
         },
       ));
-      storage.setItem(storageKeys.sessionModes, JSON.stringify(modes));
-      return modes;
+      return Object.assign(Object.create(null), modes);
     },
 
     saveSessionModes(modes) {
-      storage.setItem(storageKeys.sessionModes, JSON.stringify(modes));
+      return storage.setItem(storageKeys.sessionModes, JSON.stringify(modes));
     },
 
     loadLastToolPermissionMode(normalizeToolPermissionMode) {
       try {
-        return normalizeToolPermissionMode(storage.getItem(storageKeys.lastToolPermissionMode));
+        const mode = storage.getItem(storageKeys.lastToolPermissionMode);
+        if (!["ask", "full_access", "full_plus"].includes(mode)) return "ask";
+        return normalizeToolPermissionMode(mode);
       } catch {
-        return "full_access";
+        return "ask";
       }
     },
 
     saveLastToolPermissionMode(mode) {
-      storage.setItem(storageKeys.lastToolPermissionMode, mode);
+      return storage.setItem(storageKeys.lastToolPermissionMode, mode);
     },
 
     loadModelPreferences() {
@@ -92,11 +98,14 @@ export function createClientPreferences(storage) {
     },
 
     saveModelPreferences(sessionModels, lastModelByEnvironment) {
-      storage.setItem(storageKeys.sessionModels, JSON.stringify(sessionModels));
-      storage.setItem(
+      const sessions = storage.setItem(storageKeys.sessionModels, JSON.stringify(sessionModels));
+      const environments = storage.setItem(
         storageKeys.lastModelByEnvironment,
         JSON.stringify(lastModelByEnvironment),
       );
+      const saved = Promise.all([sessions, environments]);
+      void saved.catch(() => {});
+      return saved;
     },
 
     environmentId() {
@@ -105,8 +114,8 @@ export function createClientPreferences(storage) {
 
     saveEnvironmentId(environmentId) {
       if (environmentId)
-        storage.setItem(storageKeys.environmentId, environmentId);
-      else storage.removeItem(storageKeys.environmentId);
+        return storage.setItem(storageKeys.environmentId, environmentId);
+      return storage.removeItem(storageKeys.environmentId);
     },
 
     sessionIdForEnvironment(environmentId) {
@@ -124,7 +133,7 @@ export function createClientPreferences(storage) {
       );
       if (sessionId) sessions[environmentId] = sessionId;
       else delete sessions[environmentId];
-      storage.setItem(
+      return storage.setItem(
         storageKeys.currentSessionByEnvironment,
         JSON.stringify(sessions),
       );

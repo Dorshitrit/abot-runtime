@@ -6,7 +6,7 @@ import { renderSessionSidebarSections } from "../components/session-sidebar-sect
 import { filterSessionsByArchiveState } from "../lib/session-archive-visibility.js";
 
 export function createSessionSidebarController({
-  state, preferences, selectedEnvironmentId = () => "", render, showToast, getFilteredSessions, getPageInfo = () => undefined,
+  state, preferences, updatePinnedSessions, selectedEnvironmentId = () => "", render, showToast, getFilteredSessions, getPageInfo = () => undefined,
 }) {
   let showingArchived = false;
   let environmentId = selectedEnvironmentId();
@@ -42,27 +42,25 @@ export function createSessionSidebarController({
     );
   }
 
-  function saveSidebar(value) {
+  async function saveSidebar(value) {
     try {
-      preferences.saveSessionSidebar(environmentId, value);
+      await preferences.saveSessionSidebar(environmentId, value);
       return true;
     } catch {
-      showToast?.("Could not save conversation preferences in this browser", "failed");
+      showToast?.("Could not save conversation preferences in ABot", "failed");
       return false;
     }
   }
 
-  function move(sourceId, targetId, placement) {
+  async function move(sourceId, targetId, placement) {
     if (!canMoveSidebarSession(sourceId, targetId)) return;
     if (state.pinnedSessionIds.includes(sourceId)) {
-      const pinned = moveSidebarSession(state.pinnedSessionIds, sourceId, targetId, placement);
       try {
-        preferences.savePinnedSessions(pinned);
+        await updatePinnedSessions((pins) => moveSidebarSession(pins, sourceId, targetId, placement));
       } catch {
         showToast?.("Could not save pinned conversation order", "failed");
         return;
       }
-      state.pinnedSessionIds = pinned;
       render();
       return;
     }
@@ -72,10 +70,10 @@ export function createSessionSidebarController({
     saved.orderedSessionIds = moveSidebarSession(
       [...unrankedIds, ...saved.orderedSessionIds], sourceId, targetId, placement,
     );
-    if (saveSidebar(saved)) render();
+    if (await saveSidebar(saved)) render();
   }
 
-  function moveInDirection(session, direction) {
+  async function moveInDirection(session, direction) {
     const group = sessionSidebarGroup(session, state.pinnedSessionIds);
     const siblings = getFilteredSessions().filter(isSessionVisibleInSidebar).filter((candidate) =>
       sessionSidebarGroup(candidate, state.pinnedSessionIds) === group,
@@ -84,7 +82,7 @@ export function createSessionSidebarController({
     if (index < 0) return;
     const target = siblings[index + direction];
     if (!target) return;
-    move(session.id, target.id, direction < 0 ? "before" : "after");
+    await move(session.id, target.id, direction < 0 ? "before" : "after");
     document.getElementById(`session-open-${encodeURIComponent(session.id)}`)?.focus();
   }
 
@@ -97,17 +95,17 @@ export function createSessionSidebarController({
     return true;
   }
 
-  function setSessionArchived(sessionId, archived) {
+  async function setSessionArchived(sessionId, archived) {
     if (!sessionId) return false;
     const saved = savedPreferences();
     if (saved.archivedSessionIds.includes(sessionId) === archived) return true;
     saved.archivedSessionIds = archived
       ? [...saved.archivedSessionIds, sessionId]
       : saved.archivedSessionIds.filter((id) => id !== sessionId);
-    if (!saveSidebar(saved)) return false;
+    if (!await saveSidebar(saved)) return false;
     render();
     sidebarRoot?.querySelector(".session-archive-toggle")?.focus();
-    showToast?.(archived ? "Conversation archived in this browser" : "Conversation restored");
+    showToast?.(archived ? "Conversation archived" : "Conversation restored");
     return true;
   }
 

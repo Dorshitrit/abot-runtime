@@ -5,6 +5,7 @@ import type {
   PassiveObservationSource,
 } from "../../shared/passive-observation.js";
 import { isHostRecord } from "./protocol.js";
+import { isOwnApplicationObservation } from "../../shared/passive-observation-self-exclusion.js";
 import {
   redactObservationSource,
   redactObservationText,
@@ -15,32 +16,6 @@ import {
   OBSERVATION_CONTENT_LIMIT,
   OBSERVATION_WIRE_LIMIT,
 } from "./observation-protocol.js";
-
-// Include the previous title so tabs opened before an update are also excluded.
-const OWN_WEB_UI_TITLES = ["ABot Runtime — Workspace", "ABot Runtime"];
-const BROWSER_WINDOW_NAMES = [
-  "Mozilla Firefox",
-  "Mozilla Firefox (Private Browsing)",
-  "Google Chrome",
-  "Chromium",
-  "Microsoft Edge",
-  "Brave",
-  "Safari",
-] as const;
-const BROWSER_WINDOW_SUFFIXES = BROWSER_WINDOW_NAMES.flatMap((browser) => [
-  ` — ${browser}`,
-  ` - ${browser}`,
-]);
-
-function isOwnWebUiWindowTitle(title: string | undefined): boolean {
-  if (typeof title !== "string") return false;
-  if (OWN_WEB_UI_TITLES.includes(title)) return true;
-  const suffix = BROWSER_WINDOW_SUFFIXES.find((candidate) =>
-    title.endsWith(candidate),
-  );
-  if (!suffix) return false;
-  return OWN_WEB_UI_TITLES.includes(title.slice(0, -suffix.length));
-}
 
 function hasBoundedSourceMetadata(source: PassiveObservationSource): boolean {
   if (!isObservationOwner(source.app)) return false;
@@ -131,7 +106,7 @@ export class ObservationFilter {
       url: value.source.url,
     } as PassiveObservationSource;
     if (!hasBoundedSourceMetadata(rawSource)) return undefined;
-    if (isOwnWebUiWindowTitle(rawSource.title)) {
+    if (isOwnApplicationObservation(rawSource)) {
       this.lastSource = undefined;
       return undefined;
     }

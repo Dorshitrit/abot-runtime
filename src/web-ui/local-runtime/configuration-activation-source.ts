@@ -1,3 +1,4 @@
+import { requireRuntimeSetupEditSettled } from "./runtime-setup-edit-recovery.js";
 import { withPluginConfigurationLock } from "../../runtime/plugins/configuration-write.js";
 import {
   ConfigFileConflictError,
@@ -30,6 +31,7 @@ export function withConfigurationActivationSource(
   pluginRootDir?: string,
 ): Promise<RuntimeSetupActivation> {
   return withConfigFileTransaction(configPath, async (transaction) => {
+    requireRuntimeSetupEditSettled(pluginRootDir ?? process.cwd());
     if (
       expectedRevision !== undefined &&
       transaction.snapshot.revision !== expectedRevision

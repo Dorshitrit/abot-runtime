@@ -1,79 +1,47 @@
-export function createChatRequestController({
-  state,
-  client,
-  sessionQueue,
-  conversationView,
-  conversationSession,
-  attachments,
-  currentComposerScope,
-  isCurrentComposerScope,
-  rememberModelSelection,
-  applyConversationChrome,
-  renderSessions,
-  renderAttachments,
-  getToolPermissionMode,
-  getModelPreference,
-  clearQueueRecovery,
-  reportQueueFailure,
-}) {
-  function postChatMessage(request) {
-    return client.postChatMessage(request);
-  }
+import { ComposerSubmissionRefused, isDefiniteSubmissionRefusal } from "./composer-submission-lifecycle.js";
 
-  async function sendMessage(text) {
-    conversationSession.ensureSession();
-    const scope = currentComposerScope();
+/** Request effects use an immutable captured payload, never the currently visible draft. */
+export function createChatRequestController({
+  client, conversationView, conversationSession, isCurrentComposerScope,
+  applyConversationChrome, renderSessions,
+}) {
+  const optimisticRows = new WeakMap();
+  function prepareView(attempt) {
+    if (!isCurrentComposerScope(attempt.payload.scope)) return;
     conversationView.reset();
-    rememberModelSelection();
     applyConversationChrome();
     renderSessions();
-
-    const submittedAttachments = [...state.pendingAttachments];
-    attachments.invalidateCompletions();
-    state.pendingAttachments = [];
-    renderAttachments();
-
-    conversationSession.appendLocalUserMessage({
-      text,
-      attachments: submittedAttachments,
-    });
-
-    let requestId;
-    try {
-      requestId = await postChatMessage({
-        text,
-        attachments: submittedAttachments,
-        environmentId: scope.environmentId,
-        sessionId: scope.sessionId,
-        agentMode: state.agentMode,
-        toolPermissionMode: getToolPermissionMode(),
-        modelPreference: getModelPreference(),
-      });
-    } catch (error) {
-      if (isCurrentComposerScope(scope)) {
-        state.pendingAttachments = [
-          ...submittedAttachments,
-          ...state.pendingAttachments,
-        ];
-        renderAttachments();
-      }
-      throw error;
-    }
-
-    try {
-      const rebound = sessionQueue.rebindBlocked(scope, requestId);
-      if (rebound) clearQueueRecovery(scope);
-    } catch (error) {
-      reportQueueFailure(
-        scope,
-        `The request started, but the remaining Send next queue is paused: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-
-    conversationSession.activateRequestForScope(scope, requestId);
+    optimisticRows.set(attempt, conversationSession.appendLocalUserMessage(attempt.payload));
   }
 
-  return { postChatMessage, sendMessage, stopRequest: (scope) => client.stopChatRequest(scope) };
+  async function postChatMessage(request) {
+    try { return await client.postChatMessage(request); }
+    catch (error) {
+      if (hasDefiniteChatRejection(error))
+        throw new ComposerSubmissionRefused(error.message, { cause: error });
+      throw error;
+    }
+  }
+
+  async function send(attempt) {
+    try { return await postChatMessage({ ...attempt.payload, ...attempt.payload.scope, ...attempt.settings }); }
+    catch (error) {
+      const removeLocalRow = optimisticRows.get(attempt);
+      if (isDefiniteSubmissionRefusal(error) && typeof removeLocalRow === "function") removeLocalRow();
+      throw error;
+    } finally { optimisticRows.delete(attempt); }
+  }
+
+  function hasDefiniteChatRejection(error) {
+    if (["unsupported_tool_permission_mode", "full_plus_not_supported"].includes(error?.code)) return true;
+    return Number.isFinite(error?.status) && error.status >= 400 && error.status < 500;
+  }
+
+  return {
+    prepareView,
+    postChatMessage,
+    send,
+    activate: (attempt, requestId) => conversationSession.activateRequestForScope(attempt.payload.scope, requestId),
+    stopRequest: (scope) => client.stopChatRequest(scope),
+  };
 }

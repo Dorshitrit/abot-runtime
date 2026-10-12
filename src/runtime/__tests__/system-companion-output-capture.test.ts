@@ -6,7 +6,16 @@ import { CompanionCommandOutput } from "../../computer-access/companion/command-
 import { readSystemOutputTransfer, SYSTEM_OUTPUT_CHUNK_BYTES } from "../../computer-access/companion/command-output-protocol.js";
 import { activeSystemCaptures } from "../../computer-access/command-output-retention.js";
 
-const failures = vi.hoisted(() => ({ receiptWrite: false }));
+const failures = vi.hoisted(() => ({ receiptWrite: false, processCheck: false }));
+vi.mock("../../computer-access/security/system-results.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../computer-access/security/system-results.js")>();
+  return { systemResultProtection: { ...actual.systemResultProtection,
+    protectProcess: (...args: Parameters<typeof actual.systemResultProtection.protectProcess>) => {
+      if (failures.processCheck) throw new Error("synthetic-check-failure");
+      return actual.systemResultProtection.protectProcess(...args);
+    },
+  } };
+});
 vi.mock("node:fs/promises", async importOriginal => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
   return { ...actual, writeFile: async (...args: Parameters<typeof actual.writeFile>) => {
@@ -21,12 +30,14 @@ afterEach(async () => {
   for (const controller of controllers.splice(0)) controller.abort();
   for (const connection of connections.splice(0)) connection.close();
   failures.receiptWrite = false;
+  failures.processCheck = false;
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
-async function fixture() {
-  const parent = join(process.cwd(), ".codex/artifacts/companion-output-review-20261006/capture");
+async function fixture(options: { blockedOutputDirectory?: boolean } = {}) {
+  const parent = join(process.cwd(), ".codex/artifacts/secret-protection-contract-20261010/capture");
   await mkdir(parent, { recursive: true });
   const root = await mkdtemp(join(parent, "case-")); roots.push(root);
+  if (options.blockedOutputDirectory) await writeFile(join(root, "command-output"), "blocked directory");
   const connection = new CompanionCommandOutput(root); connections.push(connection);
   const controller = new AbortController(); controllers.push(controller);
   const handlers = connection.handlers();
@@ -82,12 +93,16 @@ test.runIf(process.platform === "linux")("disconnect releases completed transfer
 });
 
 test.runIf(process.platform === "linux")("storage preparation failure does not dispatch the command", async () => {
-  const f = await fixture();
-  await writeFile(join(f.root, "command-output"), "blocked directory");
-  const result = await f.command('require("fs").writeFileSync("executed", "yes");');
-  expect(result).toMatchObject({ ok: false, errorCode: "system_output_storage_failed" });
-  expect(await readdir(f.root)).not.toContain("executed");
-  expect(f.connection.hasTransfers()).toBe(false);
+  const warning = vi.spyOn(process, "emitWarning").mockImplementation(() => undefined);
+  try {
+    const f = await fixture({ blockedOutputDirectory: true });
+    const result = await f.command('require("fs").writeFileSync("executed", "yes");');
+    expect(result).toMatchObject({ ok: false, errorCode: "system_output_storage_failed" });
+    expect(await readdir(f.root)).not.toContain("executed");
+    expect(f.connection.hasTransfers()).toBe(false);
+    await vi.waitFor(() => expect(warning).toHaveBeenCalledExactlyOnceWith(
+      "SYSTEM output cleanup failed; retained output was not confirmed removed.", { code: "SYSTEM_OUTPUT_CLEANUP_FAILED" }));
+  } finally { warning.mockRestore(); }
 });
 
 test.runIf(process.platform === "linux")("failure to save the final receipt preserves process identity and the captured bytes", async () => {
@@ -118,4 +133,34 @@ test.runIf(process.platform === "linux").each(["cancel", "disconnect"])("%s duri
     const capture = result.data!.outputCapture as { id: string };
     expect(activeSystemCaptures.has(join(f.root, "command-output", capture.id))).toBe(false);
   } finally { f.controller.abort(); await pending; }
+});
+
+test.runIf(process.platform === "linux")("both captured streams are rewritten before admitted wire transfer, including failed commands", async () => {
+  const f = await fixture();
+  const result = await f.command('process.stdout.write("ordinary prefix api_"); process.stdout.write("key=synthetic-out"); process.stderr.write("password=synthetic-err"); process.exitCode = 7;');
+  expect(result).toMatchObject({ ok: false, exitCode: 7, errorCode: "system_command_failed", stdout: "", stderr: "",
+    data: { processStatus: "completed", outputCapture: { complete: true, stdoutBytes: 10, stderrBytes: 10 } } });
+  const transfer = readSystemOutputTransfer(result.data!.outputTransfer);
+  const directory = join(f.root, "command-output", transfer.id);
+  for (const stream of ["stdout", "stderr"] as const) {
+    expect(await readFile(join(directory, stream + ".bytes"), "utf8")).toBe("[REDACTED]");
+    const chunk = await f.handlers.system_command_output!({ captureId: transfer.id, stream, offset: 0 });
+    expect(Buffer.from(chunk.data!.bytes as string, "base64").toString()).toBe("[REDACTED]");
+  }
+  expect(JSON.stringify(result)).not.toContain("synthetic-");
+});
+
+test.runIf(process.platform === "linux")("a failed post-capture check releases an unreachable transfer while preserving dispatch evidence", async () => {
+  const f = await fixture();
+  failures.processCheck = true;
+  const result = await f.command('require("fs").appendFileSync("dispatches", "once\\n"); process.stdout.write("saved");');
+  expect(result).toMatchObject({ ok: false, errorCode: "system_result_protection_failed", exitCode: 0,
+    data: { processStatus: "completed", spawnedProcess: { pid: expect.any(Number) } } });
+  expect(result.data).not.toHaveProperty("outputTransfer");
+  expect(f.connection.hasTransfers()).toBe(false);
+  const ids = await readdir(join(f.root, "command-output"));
+  expect(ids).toHaveLength(1);
+  expect(activeSystemCaptures.has(join(f.root, "command-output", ids[0]!))).toBe(false);
+  expect(await readFile(join(f.root, "dispatches"), "utf8")).toBe("once\n");
+  expect(JSON.stringify(result)).not.toContain("synthetic-check-failure");
 });

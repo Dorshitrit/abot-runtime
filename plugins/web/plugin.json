@@ -4,6 +4,10 @@
   "version": "0.1.0",
   "description": "Search the public web and fetch readable content from public URLs.",
   "extensions": {
+    "ai.abot.compatibility": {
+      "version": 1,
+      "runtimePlatforms": ["linux", "darwin", "win32"]
+    },
     "ai.abot.runtime": {
       "version": 1,
       "entrypoint": "./src/index.cjs",

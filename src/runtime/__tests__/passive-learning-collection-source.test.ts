@@ -68,6 +68,17 @@ function fixture() {
 }
 
 describe("passive collection source recovery", () => {
+  test("missing awareness acknowledgment never schedules a reconnect; explicit restart may reconnect after acknowledgment", async () => {
+    const f = fixture();
+    f.connect.mockRejectedValueOnce(new Error("collection_consent_required"));
+    await f.source.open();
+    expect(f.failed).toHaveBeenCalledWith(expect.objectContaining({ message: "collection_consent_required" }));
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(f.connect).toHaveBeenCalledOnce();
+    await f.source.open();
+    expect(f.connect).toHaveBeenCalledTimes(2);
+  });
+
   test.each([
     ["unavailable", "collector_stopped"],
     ["unavailable", "collector_start_failed"],

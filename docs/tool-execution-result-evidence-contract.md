@@ -96,6 +96,63 @@ secrets. Secret acquisition and redaction remain responsibilities of the
 owning tool/host boundary; core orchestration must not guess sensitive field
 semantics from arbitrary JSON keys.
 
+### Observed-content secret protection, version 1
+
+Companion and the internal passive collector own host-side protection. The same
+collector protects SPARK whether it runs inside Companion or locally in Runtime.
+SYSTEM owns a separate implementation for its independent native operations.
+The implementations share conformance cases, not a runtime detector dependency.
+
+Required text checks preserve the existing SPARK whole-field detector: credential
+labels, authorization/userinfo, supported provider tokens, private-key indicators
+and compact JOSE tokens, including the supported escaped and encoded forms.
+Successful checking means no known indicator was found; it is not a claim that
+the content contains no secrets. Unknown encodings and arbitrary unlabelled
+secrets remain outside detection. SPARK's existing collection semantics stay intact.
+
+Check full observed fields before excerpts or delivery. A suspected field is
+replaced with `[REDACTED]`; unchecked content must not reach logs, model evidence,
+continuation snapshots or cross-host transport. Desktop frame/media retention
+also follows these checks. Temporary local acquisition belongs inside the checking
+boundary; checking must not use a remote model.
+An incomplete required check, malformed encoding or scanner failure withholds
+the affected content and preserves only a non-sensitive technical receipt.
+
+Command capture may write unchecked bytes to private local files using the existing
+disk-backed capture mechanism. After natural EOF, both full streams must pass
+checking before any read or delivery is admitted. Suspected content is replaced
+with checked text; failed checking withholds output and attempts to remove the raw
+capture. Existing retention cleanup handles leftovers after failure or interruption.
+This permits temporary raw disk storage, not model access before checking; the
+compaction model must also receive only checked text. Deletion is ordinary file
+cleanup, not a claim of forensic erasure.
+
+There is no new logical total-output quota: admitted complete stdout/stderr retain
+the existing context-text handoff, canonical evidence and core compaction path.
+Full-text checking and delivery still materialize text in memory. Capture/storage
+failure does not erase an already dispatched action or justify replaying it for
+output. Published byte counts and digests describe admitted bytes only.
+
+Version 1 desktop checks cover descriptive metadata and accessibility text.
+Suspicion in those fields also withholds the associated image before frame or
+media retention. Control bindings, coordinates and dispatch receipts keep their
+mechanical meaning; sensitive actionable catalog identities are withheld rather
+than replaced by a synthetic actionable identifier. Pixel-only content is not
+inspected: OCR and its deployment requirements are explicitly deferred.
+
+SYSTEM requires `host_secret_protection_v1` before dispatching protected Companion
+operations, and the existing complete-output capability for commands. A missing
+capability is an upgrade-required failure before dispatch, not a fallback to an
+unprotected path. Installed Companion and independently distributed SYSTEM bundles
+must be validated separately; changing Runtime source does not update either.
+
+Conformance covers known indicators, ordinary text, encodings and chunk boundaries,
+late suspicion, scanner/transport failure, pre-admission storage and frame sinks,
+and preservation of exact clean large output and accepted action receipts. Both
+supported implementations must pass the same applicable cases before release.
+This contract does not sandbox an arbitrary third-party plugin's own filesystem
+or network access, nor retroactively remove previously retained observations.
+
 ## Canonical Lifecycle
 
 ```text

@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { ConfigFileKind } from "../config-dashboard-backend.js";
 import type { JsonObject } from "./contracts.js";
+import { RequestBodyInputError } from "./request-body-error.js";
 
 export function sendJson(
   res: ServerResponse,
@@ -69,9 +70,15 @@ export function getNumber(value: unknown): number {
 
 export function readJsonBody(body: Buffer): JsonObject {
   if (body.length === 0) return {};
-  const parsed = JSON.parse(body.toString("utf8")) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body.toString("utf8")) as unknown;
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    throw new RequestBodyInputError("invalid_json");
+  }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("JSON object body required");
+    throw new RequestBodyInputError("json_object_required");
   }
   return parsed as JsonObject;
 }

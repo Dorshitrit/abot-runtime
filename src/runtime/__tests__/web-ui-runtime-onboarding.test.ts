@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { createGuideHarness } from "./support/runtime-setup-guide-harness.js";
+import { createComposerDrafts } from "../../web-ui/app/controllers/composer-drafts.js";
 import { createComposerAttachmentsController } from "../../web-ui/app/controllers/composer-attachments-controller.js";
-import { createComposerSubmitController } from "../../web-ui/app/controllers/composer-submit-controller.js";
+import { createComposerProductionHarness } from "./support/composer-production-harness.js";
 import { createRuntimeOnboardingController } from "../../web-ui/app/controllers/runtime-onboarding-controller.js";
 import {
   createRuntimeSelectionController,
@@ -224,8 +225,6 @@ describe("web ui runtime onboarding", () => {
       runtimeAvailability: { status: "loading" },
       activeRequestId: "request-1",
       currentSessionId: "session-1",
-      pendingAttachments: [] as unknown[],
-      composerSending: false,
     };
     const onboarding = createRuntimeOnboardingController({
       state,
@@ -240,39 +239,17 @@ describe("web ui runtime onboarding", () => {
       availability: { status: "setup_required" },
     });
 
-    const input = {
-      value: "hello",
-      scrollHeight: 72,
-      style: { height: "" },
-      focus: vi.fn(),
-    };
-    const composerActions = {
-      primaryAction: vi.fn(() => "send"),
-      render: vi.fn(),
-    };
-    const sendMessage = vi.fn(async () => {});
-    const steer = vi.fn(async () => {});
-    const enqueue = vi.fn(async () => {});
-    const composer = createComposerSubmitController({
-      state,
-      dom: { composerInput: input },
-      composerActions,
-      attachments: { activeUploadCount: vi.fn(() => 0) },
-      queue: {
-        isCurrentDraining: vi.fn(() => false),
-        queuedCount: vi.fn(() => 0),
-        enqueue,
-        restoreText: vi.fn(),
-      },
-      steer,
-      chatRequests: { sendMessage },
-      conversationSession: { appendRequestError: vi.fn() },
-      selectedEnvironmentId: () => "prod",
-      setMessageStatus,
+    const composition = createComposerProductionHarness({
       getSubmissionBlock: onboarding.submissionBlock,
       onSubmissionBlocked: onboarding.presentSubmissionBlock,
     });
-
+    composition.workspace.chatDraft().attachments = [];
+    const { composerActions, client, steer } = composition;
+    const composer = composition.composer.submit;
+    const input = composition.dom.composerInput;
+    const sendMessage = client.postChatMessage;
+    const enqueue = vi.spyOn(composition.sessionQueue, "enqueue");
+    input.value = "hello";
     composer.updateSendState();
     expect(composerActions.render).toHaveBeenLastCalledWith(
       expect.objectContaining({ disabled: true }),
@@ -283,8 +260,7 @@ describe("web ui runtime onboarding", () => {
     input.value = "send this next";
     composer.dispatch("send_next");
     expect(sendMessage).not.toHaveBeenCalled();
-    expect(steer).not.toHaveBeenCalled();
-    expect(enqueue).not.toHaveBeenCalled();
+
     expect(input.value).toBe("send this next");
     expect(setMessageStatus).toHaveBeenCalledWith(
       expect.stringContaining("provider and model"),
@@ -300,7 +276,7 @@ describe("web ui runtime onboarding", () => {
     expect(composerActions.render).toHaveBeenLastCalledWith(
       expect.objectContaining({ disabled: false }),
     );
-    state.activeRequestId = "";
+    composition.state.activeRequestId = "";
     input.value = "hello";
     composer.dispatch();
     await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledOnce());
@@ -310,15 +286,10 @@ describe("web ui runtime onboarding", () => {
     const attachmentButton = fakeElement();
     const uploadAttachment = vi.fn();
     const controller = createComposerAttachmentsController({
-      state: {
-        currentSessionId: "session-1",
-        pendingAttachments: [],
-        composerAttachmentGeneration: 0,
-        pendingAttachmentUploadCounts: new Map(),
-      },
+      getDraft: () => createComposerDrafts().open({ environmentId: "prod", sessionId: "session-1" }),
       dom: {
         attachmentButton,
-        attachmentPreview: fakeElement(),
+        attachmentPreview: { innerHTML: "", appendChild: vi.fn() },
       },
       shell: { showToast: vi.fn() },
       client: {

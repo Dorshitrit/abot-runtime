@@ -1,6 +1,4 @@
-import { spawn, type ChildProcessByStdio } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import type { Readable } from "node:stream";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ExecTerminalDelivery } from "./terminal-delivery.js";
@@ -13,12 +11,15 @@ import {
 } from "./output-snapshot.js";
 
 import { ExecPluginError } from "./errors.js";
-import { assertSupportedShell, EXEC_SHELL } from "./shell-platform.js";
+import { assertSupportedShell } from "./shell-platform.js";
+import {
+  spawnExecShell,
+  killExecProcessTree,
+  type ExecChild,
+} from "./shell-process.js";
 import type { ExecProcessSnapshot, ExecTerminationReason } from "./types.js";
 
 const MAX_ACTIVE_PROCESSES_PER_SCOPE = 4;
-
-type ExecChild = ChildProcessByStdio<null, Readable, Readable>;
 
 type ManagedExecProcess = {
   processId: string;
@@ -108,26 +109,13 @@ export function createExecProcessManager(
       (managed) => managed.scope === scope && !managed.settled,
     ).length + (opening.get(scope) ?? 0);
 
-  const killProcessTree = (managed: ManagedExecProcess): void => {
-    const pid = managed.child.pid;
-    if (typeof pid === "number") {
-      try {
-        process.kill(-pid, "SIGKILL");
-        return;
-      } catch {
-        // Fall through to the direct child as a best-effort fallback.
-      }
-    }
-    managed.child.kill("SIGKILL");
-  };
-
   const requestTermination = (
     managed: ManagedExecProcess,
     reason: ExecTerminationReason,
   ): void => {
     if (managed.settled || managed.terminationReason) return;
     managed.terminationReason = reason;
-    killProcessTree(managed);
+    killExecProcessTree(managed.child);
     if (reason === "output_storage_failed") {
       // A failed sink cannot drain the pipes; close them so child close settles.
       managed.child.stdout.destroy();
@@ -298,11 +286,7 @@ export function createExecProcessManager(
       });
       let child: ExecChild;
       try {
-        child = spawn(EXEC_SHELL, ["-lc", params.shellCommand], {
-          cwd: params.cwd,
-          detached: true,
-          stdio: ["ignore", "pipe", "pipe"],
-        });
+        child = spawnExecShell(params.shellCommand, params.cwd);
       } catch {
         await output.dispose();
         throw new ExecPluginError(

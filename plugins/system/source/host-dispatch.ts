@@ -1,4 +1,5 @@
 import { executeCompanionCommand, supportsCompanionCommandOutput } from "./companion-command-output.js";
+import { redactSecretText } from "./security/secret-text.js";
 import type { ComputerAccessConnection } from "../../../src/plugin-sdk/computer-access.js";
 import {
   failureResult,
@@ -11,6 +12,7 @@ import {
 } from "../../../src/plugin-sdk/computer-access.js";
 import {
   HOST_OPERATIONS,
+  HOST_SECRET_PROTECTION_CAPABILITY,
   type HostOperation,
 } from "../../../src/plugin-sdk/computer-access.js";
 import { SystemOperationError } from "../../../src/plugin-sdk/computer-access.js";
@@ -69,7 +71,17 @@ function boundOperation(
       const route = requireSystemRequestRoute(input.snapshot, params.target);
       if (route.kind === "native")
         return await input.nativeHandlers[operation]!(params, context);
-      if (operation === "system_command" && supportsCompanionCommandOutput(route))
+      if (!supportsProtectedCompanionResults(route.capabilities))
+        return failureResult({
+          errorCode: "system_companion_protection_upgrade_required",
+          message: "Update Companion to enable protected system results. The operation was not dispatched.",
+        });
+      if (operation === "system_command" && !supportsCompanionCommandOutput(route))
+        return failureResult({
+          errorCode: "system_companion_protection_upgrade_required",
+          message: "Update Companion to enable protected complete command output. The command was not dispatched.",
+        });
+      if (operation === "system_command")
         return await executeCompanionCommand({ ...input, route, params, context });
       return await input.connection.executeHostOperation(input.rootDir, {
         hostId: route.hostId,
@@ -80,7 +92,7 @@ function boundOperation(
       });
     } catch (error) {
       if (error instanceof SystemOperationError)
-        return failureResult({ errorCode: error.code, message: error.message });
+        return failureResult({ errorCode: error.code, message: redactSecretText(error.message) });
       return failureResult({
         errorCode: "system_execution_route_failed",
         message:
@@ -88,6 +100,10 @@ function boundOperation(
       });
     }
   };
+}
+
+function supportsProtectedCompanionResults(capabilities?: readonly string[]): boolean {
+  return capabilities?.includes(HOST_SECRET_PROTECTION_CAPABILITY) === true;
 }
 
 function hasConnectionControl(params: Record<string, unknown>): boolean {

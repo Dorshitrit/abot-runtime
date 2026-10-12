@@ -1,3 +1,4 @@
+import { canChooseReasoning, reasoningModeOptions } from "../../lib/reasoning-controls.js";
 import { supportsFullPlus } from "../../lib/tool-permission-mode.js";
 
 export function createSparkChatSettings({ root, onSave, onClear, onOpen, onResetPosition, onOpenModelSettings, getAgentMode, onAgentModeChange, getWebConfig, documentRoot = document }) {
@@ -29,11 +30,12 @@ export function createSparkChatSettings({ root, onSave, onClear, onOpen, onReset
   const feedback = card.querySelector("[data-spark-settings-feedback]");
   let saved = "ask";
   let ready = false;
+  let reasoningEnabled = false;
   let busy = false;
   let environmentId;
   function controls() {
     select.disabled = busy || !ready;
-    agentModeSelect.disabled = !ready;
+    agentModeSelect.disabled = !ready || !reasoningEnabled;
     save.disabled = busy || !ready || select.value === saved;
     clear.disabled = busy || !ready;
   }
@@ -52,7 +54,7 @@ export function createSparkChatSettings({ root, onSave, onClear, onOpen, onReset
     finally { if (environment === environmentId) { busy = false; controls(); } }
   }
   select.addEventListener("change", controls);
-  agentModeSelect.addEventListener("change", () => onAgentModeChange(agentModeSelect.value));
+  agentModeSelect.addEventListener("change", () => { if (reasoningEnabled) onAgentModeChange(agentModeSelect.value); });
   card.querySelector("form").addEventListener("submit", (event) => {
     event.preventDefault();
     if (save.disabled) return;
@@ -73,7 +75,9 @@ export function createSparkChatSettings({ root, onSave, onClear, onOpen, onReset
         environmentId = nextEnvironmentId; busy = false; ready = false; feedback.textContent = "";
         select.value = configuration?.toolPermissionMode || "ask";
       }
-      agentModeSelect.value = getAgentMode();
+      reasoningEnabled = canChooseReasoning(configuration);
+      agentModeSelect.innerHTML = reasoningModeOptions(getAgentMode(), reasoningEnabled);
+      agentModeSelect.title = reasoningEnabled ? "Reasoning depth" : "Enable reasoning controls for this model in Models.";
       const next = configuration?.toolPermissionMode || "ask";
       if (!ready || select.value === saved || busy) select.value = next;
       saved = next; ready = Boolean(configuration?.sessionId);

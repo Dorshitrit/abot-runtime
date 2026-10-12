@@ -1,3 +1,4 @@
+import { renderReasoningModeField, syncReasoningModeField, retainedReasoningMode } from "../../lib/reasoning-controls.js";
 import { escapeHtml } from "../../lib/text-format.js";
 import { SCHEDULE_WEEKDAYS } from "../../lib/schedule-presentation.js";
 import { scheduleErrorMessage } from "../../lib/schedule-errors.js";
@@ -88,12 +89,7 @@ export function createScheduleForm({
     <label>Task prompt<textarea name="prompt" rows="5" required dir="auto" placeholder="What should ABot do when this schedule runs?">${escapeHtml(values.prompt || "")}</textarea></label>
     <div class="schedule-form-grid">${scheduleFields(values)}</div>
     <div class="schedule-form-grid"><label>Model<select name="modelProfileId" required><option value="">Choose a model</option>${options(modelOptions, values.modelProfileId)}</select></label>
-    <label>Mode<select name="agentMode">${options(
-      modes
-        .filter((mode) => mode !== "auto")
-        .map((mode) => ({ value: mode, label: mode })),
-      values.agentMode || "reasoning",
-    )}</select></label></div>
+    ${renderReasoningModeField(values.agentMode || "reasoning", models.find((model) => model.id === values.modelProfileId), modes.filter((mode) => mode !== "auto"))}</div>
     <label>Tool access<select name="toolPermissionMode">${options(
       [
         { value: "full_access", label: "Full" },
@@ -116,6 +112,12 @@ export function createScheduleForm({
     }
   }
 
+  const readInput = () => {
+    const data = new FormData(form);
+    data.set("agentMode", retainedReasoningMode(form, values.agentMode || "reasoning"));
+    return scheduleFormInput(data, job?.schedule);
+  };
+  fields.namedItem("modelProfileId").addEventListener("change", () => syncReasoningModeField(form, models, modes.filter((mode) => mode !== "auto")));
   let initialInput;
   form.querySelector("[data-cancel]").addEventListener("click", onCancel);
   fields.namedItem("kind").addEventListener("change", syncKind);
@@ -125,7 +127,7 @@ export function createScheduleForm({
     submit.disabled = true;
     feedback.hidden = true;
     try {
-      const currentInput = scheduleFormInput(new FormData(form), job?.schedule);
+      const currentInput = readInput();
       const input = job
         ? scheduleUpdateInput(currentInput, initialInput)
         : currentInput;
@@ -137,7 +139,7 @@ export function createScheduleForm({
     }
   });
   syncKind();
-  if (job) initialInput = scheduleFormInput(new FormData(form), job.schedule);
+  if (job) initialInput = readInput();
   const initialFields = JSON.stringify([...new FormData(form)]);
   function trackScheduleDraft() {
     form.dataset.dirty = String(

@@ -36,6 +36,37 @@ describe("bounded application metadata and preferences", () => {
     expect(result.applications.filter((row) => row.collectionExcluded || row.processingExcluded)).toHaveLength(200);
   });
 
+  it.each(["ABot", "abot", " ABOT "])("hides built-in application %s even when saved as a user rule without activity", (app) => {
+    const preferences = { ...DEFAULT_LEARNING_PREFERENCES,
+      excludedApplications: [app], processingExcludedApplications: [app] };
+    expect(learningApplicationCatalog([], [], preferences)).toEqual({ applications: [], applicationsOmitted: 0 });
+    expect(preferences.excludedApplications).toEqual([app]);
+    expect(preferences.processingExcludedApplications).toEqual([app]);
+  });
+
+  it("hides retained self observations while keeping browsers and similarly named apps configurable", () => {
+    const own = observation("own", "ABot");
+    const browser = { ...observation("browser", "Firefox"),
+      source: { app: "Firefox", windowId: "browser", title: "ABot Runtime — Workspace — Mozilla Firefox" } };
+    const result = learningApplicationCatalog([own, browser, observation("other", "ABot-helper")], [{
+      id: "history", generation: "generation", createdAt: own.timestamp, status: "saved", recordIds: [],
+      observations: [observation("old-own", "abot")],
+    }], DEFAULT_LEARNING_PREFERENCES);
+    expect(result.applications.map((row) => row.app)).toEqual(["Firefox", "ABot-helper"]);
+    expect(result.applications.every((row) => !row.collectionExcluded && !row.processingExcluded)).toBe(true);
+    expect(result.applicationsOmitted).toBe(0);
+  });
+
+  it("does not count a built-in application against the visible or omitted application limits", () => {
+    const queued = [observation("own", "ABot"),
+      ...Array.from({ length: 101 }, (_, index) => observation(String(index), `app-${index}`))];
+    const result = learningApplicationCatalog(queued, [], DEFAULT_LEARNING_PREFERENCES);
+    expect(result.applications).toHaveLength(100);
+    expect(result.applications[0].app).toBe("app-0");
+    expect(result.applications.at(-1)?.app).toBe("app-99");
+    expect(result.applicationsOmitted).toBe(1);
+  });
+
   it("defaults old preferences to no processing exclusions and preserves independent rules", () => {
     const previous = normalizeLearningPreferences({ enabled: true, excludedApplications: ["Editor"] }, DEFAULT_LEARNING_PREFERENCES);
     expect(previous.processingExcludedApplications).toEqual([]);

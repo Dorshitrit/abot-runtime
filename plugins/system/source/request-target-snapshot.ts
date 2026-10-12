@@ -10,6 +10,7 @@ import {
   type HostStatus,
 } from "../../../src/plugin-sdk/computer-access.js";
 import type { SystemTargetObservation } from "../../../src/plugin-sdk/computer-access.js";
+import { redactSecretText } from "./security/secret-text.js";
 
 export type SystemRequestRoute = Readonly<
   | { kind: "native"; target: SystemTarget }
@@ -140,7 +141,7 @@ export function systemRouteMetadata(
   return {
     displayTarget: route.target,
     transport: "host_companion",
-    computerName: route.identity.name,
+    computerName: redactSecretText(route.identity.name),
   };
 }
 

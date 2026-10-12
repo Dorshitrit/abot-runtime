@@ -140,12 +140,35 @@ See [Passive Long-Term Memory](long-term-memory.md) before enabling persistence.
 
 ### Computer Access During Setup
 
-The optional **Computer** step and **Home → Computer access** manage one
-Computer access connection shared by SYSTEM tools, ABot Spark and compatible
-plugins. Direct native/WSL command access can already work; the shared companion
-adds desktop access and background collection without a second ABot Spark setup.
+The **Computer** step and computer card on **Home** use the platform where the
+Runtime is running. Direct native/WSL command access can already work; compatible
+plugins still require their own permissions.
 
-#### Windows: Microsoft Store connection
+#### Native Windows
+
+When the Runtime runs directly on Windows, computer setup does not require
+Companion or a pairing link. Compatible tools run locally with their existing
+approval controls. Spark uses the same Windows collection implementation locally.
+Opening a WSL or Docker Runtime in a Windows browser still uses the Companion
+connection described below.
+
+#### Spark collection acknowledgment
+
+On every platform, Spark asks for an explicit, initially unchecked acknowledgment
+before granting collection permission or starting collection. It explains the
+application content collected and how the configured learning model may receive
+it, with links to the [Software Terms](https://abot-ai.com/terms/#software) and
+[Privacy Policy](https://abot-ai.com/privacy/#software).
+
+The acknowledgment is saved once per ABot installation, shared across environments,
+and retained across updates and computer re-pairing. Existing installations also
+need to acknowledge it once. This record does not enable collection or learning:
+activity permissions and Start/Stop remain separate. Previously enabled collection
+resumes after a Runtime restart according to its saved schedule and permissions.
+Where Companion is required, connect the computer as an additional step before
+starting collection.
+
+#### Windows computer connected to WSL or Docker: Microsoft Store connection
 
 **ABot AI Companion** is available from
 [Microsoft Store](https://apps.microsoft.com/detail/9PK2FDQQLQS9).
@@ -186,6 +209,22 @@ this Mac**. ABot uses its installed Node runtime and companion bundle, pairs the
 computer and enables startup at sign-in. This path does not download a Finder
 installer or require an Apple Developer account. Use **Repair Mac connection**
 to repair or update an existing connection while retaining its pairing.
+
+After updating and restarting Runtime, an already connected Mac may still have
+an older Marketplace installation-link handler. If **Repair Mac connection** is not
+offered, use the updated CLI on that Mac to refresh the connection:
+
+```sh
+abot host status
+abot host connect --url '<url from host status>'
+```
+
+For a project-local installation, run both commands as `npx --no-install abot ...`
+from that project instead. Use the exact saved `url` reported by `host status`,
+not a new address. This reuses the existing pairing, refreshes the managed
+Companion and link handler, and briefly reconnects Computer Access. Do not run
+`disconnect` first. Then retry the Marketplace link: it opens plugin review,
+not an automatic installation.
 
 For a Mac connecting to a Docker or forwarded Runtime, choose **Connect a Mac**.
 Install the ABot CLI on that Mac, run the displayed `abot host connect --url ...`

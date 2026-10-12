@@ -1,6 +1,9 @@
 import WebSocket from "ws";
 import { CompanionCommandOutput } from "./command-output.js";
 import { SYSTEM_OUTPUT_CAPABILITY } from "./command-output-protocol.js";
+import { HOST_SECRET_PROTECTION_CAPABILITY } from "./secret-protection-protocol.js";
+import { systemResultProtection } from "../security/system-results.js";
+import { redactSecretText } from "../security/secret-text.js";
 import { createNativePermissionHandlers } from "./native-permissions.js";
 import { MACOS_PERMISSION_CAPABILITY } from "./permission-protocol.js";
 import { nativeLoopbackSocketOptions } from "./native-loopback-lookup.js";
@@ -110,7 +113,7 @@ export async function connectNativeHost(
     ? new CompanionCommandOutput(options.commandOutputStateDir) : undefined;
   const handlers = options.handlers ?? {
     ...commandOutput?.handlers(),
-    ...createSystemHandlers(),
+    ...createSystemHandlers(undefined, undefined, undefined, systemResultProtection),
     ...computers.handlers(),
     ...notifications.handlers(),
     ...createNativePermissionHandlers(options.identity.os),
@@ -249,7 +252,7 @@ export async function connectNativeHost(
         assertNativeOperationTarget(message, options.identity.os);
       } catch (error) {
         if (!(error instanceof NativeOperationInputError)) throw error;
-        sendResult(message.id, operationFailure(error.message, error.code));
+        sendResult(message.id, operationFailure(redactSecretText(error.message), error.code));
         return;
       }
       const handler = handlers[message.operation];
@@ -320,6 +323,7 @@ export async function connectNativeHost(
         version: HOST_PROTOCOL_VERSION,
         identity: options.identity,
         capabilities: [
+          ...(options.handlers ? [] : [HOST_SECRET_PROTECTION_CAPABILITY]),
           OBSERVATION_CAPABILITY,
           COMPUTER_CAPABILITY,
           ...(commandOutput ? [SYSTEM_OUTPUT_CAPABILITY] : []),

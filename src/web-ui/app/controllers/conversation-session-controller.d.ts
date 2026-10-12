@@ -86,7 +86,6 @@ export interface ConversationSessionControllerOptions {
   };
   conversationView: { reset(): void };
   selectedEnvironmentId(): string;
-  clearPendingAttachments(): void;
   applyConversationChrome(): void;
   applyModelSelection(): void;
   renderSessions(): void;
@@ -137,7 +136,7 @@ export declare function createConversationSessionController(
     text: string;
     attachments: unknown[];
     requestId?: string;
-  }): void;
+  }): () => void;
   appendRequestError(error: unknown): void;
   applySessionReadState(sessionId: string, readState: unknown): void;
   applySessionTitleUpdate(sessionId: string, title: unknown): void;

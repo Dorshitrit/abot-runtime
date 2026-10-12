@@ -1,5 +1,6 @@
 import type { LearningBatch, LearningObservation, PassiveLearningPreferences } from "./contracts.js";
 import { isLearningApplicationExcluded, learningApplicationKey } from "./application-policy.js";
+import { isOwnObservationApplication } from "../../shared/passive-observation-self-exclusion.js";
 
 export type LearningApplicationSummary = Readonly<{
   app: string;
@@ -28,7 +29,8 @@ export function learningApplicationCatalog(
       row.lastObservedAt = observation.timestamp;
     rows.set(key, row);
   }
-  const summaries = [...rows.values()].map((row) => ({ ...row,
+  const configurable = [...rows.values()].filter((row) => !isOwnObservationApplication(learningApplicationKey(row.app)));
+  const summaries = configurable.map((row) => ({ ...row,
     collectionExcluded: isLearningApplicationExcluded(row.app, preferences.excludedApplications),
     processingExcluded: isLearningApplicationExcluded(row.app, preferences.processingExcludedApplications),
   }));

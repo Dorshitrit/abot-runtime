@@ -1,9 +1,13 @@
-import { createHash } from "node:crypto";
-import { constants, type Dirent, type Stats } from "node:fs";
-import { lstat, open, opendir, readlink } from "node:fs/promises";
+import type { Dirent } from "node:fs";
+import { lstat, opendir, readlink } from "node:fs/promises";
 import { join, posix } from "node:path";
 
 import { sanitizeJsonText } from "../../../src/plugin-sdk/index.js";
+
+import {
+  inspectExecRegularFile,
+  isMissingPathError,
+} from "./filesystem-file-observer.js";
 
 import type {
   ExecActionSummary,
@@ -14,21 +18,8 @@ import type {
 
 const SNAPSHOT_MAX_ENTRIES = 4_096;
 const SNAPSHOT_MAX_HASHED_BYTES = 16 * 1024 * 1024;
-const SNAPSHOT_MAX_HASHED_FILE_BYTES = 2 * 1024 * 1024;
 const DELTA_ACTION_LIMIT = 64;
 const ACTION_TARGET_MAX_CHARS = 96;
-
-function isMissingPathError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (error.code === "ENOENT" || error.code === "ENOTDIR")
-  );
-}
-
-function hashBuffer(content: Buffer): string {
-  return createHash("sha256").update(content).digest("hex");
-}
 
 async function readBoundedDirectory(
   absoluteDirectory: string,
@@ -68,68 +59,6 @@ async function readBoundedDirectory(
   }
   children.sort((left, right) => left.name.localeCompare(right.name));
   return Object.freeze({ children: Object.freeze(children), complete });
-}
-
-async function inspectRegularFile(
-  absolutePath: string,
-  remainingHashBytes: number,
-): Promise<
-  | Readonly<{
-      entry: ExecFilesystemEntry;
-      hashedBytes: number;
-    }>
-  | undefined
-> {
-  const noFollow = constants.O_NOFOLLOW;
-  if (!Number.isInteger(noFollow)) return undefined;
-  let file;
-  try {
-    file = await open(absolutePath, constants.O_RDONLY | noFollow);
-  } catch (error) {
-    if (
-      isMissingPathError(error) ||
-      (error instanceof Error && "code" in error && error.code === "ELOOP")
-    ) {
-      return undefined;
-    }
-    throw error;
-  }
-  try {
-    const info: Stats = await file.stat();
-    if (!info.isFile()) return undefined;
-    let contentHash: string | undefined;
-    let hashedBytes = 0;
-    if (
-      info.size <= SNAPSHOT_MAX_HASHED_FILE_BYTES &&
-      info.size <= remainingHashBytes
-    ) {
-      const length = Math.max(0, Math.floor(info.size));
-      const content = Buffer.alloc(length);
-      while (hashedBytes < length) {
-        const { bytesRead } = await file.read(
-          content,
-          hashedBytes,
-          length - hashedBytes,
-          hashedBytes,
-        );
-        if (bytesRead === 0) break;
-        hashedBytes += bytesRead;
-      }
-      contentHash = hashBuffer(content.subarray(0, hashedBytes));
-    }
-    return Object.freeze({
-      entry: Object.freeze({
-        kind: "file",
-        mode: info.mode,
-        size: info.size,
-        mtimeMs: info.mtimeMs,
-        ...(contentHash === undefined ? {} : { contentHash }),
-      }),
-      hashedBytes,
-    });
-  } finally {
-    await file.close();
-  }
 }
 
 export async function captureExecFilesystemSnapshot(
@@ -201,7 +130,7 @@ export async function captureExecFilesystemSnapshot(
         continue;
       }
       if (info.isFile()) {
-        const inspected = await inspectRegularFile(
+        const inspected = await inspectExecRegularFile(
           absolutePath,
           remainingHashBytes,
         );

@@ -6,6 +6,7 @@ function hasManagedMacPermissionRuntime(version) {
 }
 
 export function macCompanionPermissionPath(snapshot) {
+  if (snapshot?.collectionSource?.mode === "native") return "";
   if (!snapshot?.paired) return "";
   if (snapshot.identity?.os !== "macos") return "";
   if (!hasManagedMacPermissionRuntime(snapshot.companion?.installedVersion))
@@ -20,6 +21,7 @@ export function macCompanionPermissionPath(snapshot) {
 
 /** The managed companion keeps its macOS permission subject at one private path. */
 export function renderMacPermissionGuide(snapshot) {
+  if (snapshot?.collectionSource?.mode === "native") return "";
   if (!snapshot?.paired) return "";
   if (snapshot.identity?.os !== "macos") return "";
   const version = snapshot.companion?.installedVersion;

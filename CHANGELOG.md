@@ -4,6 +4,105 @@ All notable changes to this project should be documented in this file.
 
 This project follows semantic versioning after the first public release.
 
+## 1.8.0 - 2026-10-12
+
+ABot 1.8.0 adds native Windows support to the Runtime library and its bundled
+public plugins, installation-wide Web UI preferences and queues, and improvements
+to model output handling, tool evidence and conversation controls. Native Windows
+support is included in the library release; desktop and Microsoft Store packaging
+remain a separate release path.
+
+### Added
+
+- Run all bundled public plugins on native Windows, including filesystem access,
+  command execution, local search, document reading, code and project inspection,
+  memory and web access. Existing permissions and approvals still apply. SYSTEM
+  supports local commands and application listing/launching; native Windows
+  desktop observation and input (`computer_*`) remain unavailable. See
+  [native Windows plugin support](docs/plugins.md#native-windows-plugin-support)
+  for operation-specific requirements and limitations.
+- Declare plugin compatibility with the Runtime host's operating system. The
+  loader checks compatibility before loading plugin code, and plugin views explain
+  unsupported platforms while preserving saved selections and configuration.
+- Collect SPARK activity locally on native Windows without Companion pairing,
+  with explicit collection consent and the existing permission, schedule and
+  Start/Stop controls.
+- Save Web UI preferences and Send next queues with the ABot installation across
+  browsers and local server addresses. Ordinary unsent drafts remain local to
+  their window.
+- Extend the plugin SDK with bounded native Windows file reading and
+  `mutationSuccessResult()` for changes already confirmed by the owning plugin.
+
+### Changed
+
+- Reasoning selectors in Chat, Schedules, SPARK chat and Studio now reflect the
+  active model's reasoning-control permission. Chat offers a compact prompt to
+  enable it immediately when idle or save it for the next Runtime start.
+- OpenAI capability controls use native function calling with the existing
+  validation, permission checks and execution authority.
+- Execution Agent context avoids repeated capability descriptions and work-plan
+  schemas, with clearer capability selection and Planner handoff guidance.
+- Provider failure diagnostics retain bounded partial responses and stream
+  timing details, including when the provider fails before completing a response.
+- Memory review markers retain only the latest reviewed revision of each memory,
+  are bounded to 200 records per environment, and retire confirmed deletions.
+
+### Fixed
+
+- OpenAI decisions and file payloads use the final answer without preceding
+  commentary, reject incomplete responses, and finish at accepted completion
+  events without waiting for the connection to close. FAST mode no longer applies
+  a separate output limit that could truncate otherwise valid results.
+- Ollama provider errors and missing completion markers fail explicitly instead
+  of allowing partial output to be accepted as complete.
+- Execution Agent decisions and replies use the Runtime's recorded tool outcome
+  and exact result evidence. Pending approvals retain their original tool evidence
+  when restored after an upgrade.
+- Steering reaches the owning request after a saved approval wait, with consistent
+  conversation controls during request-state transitions.
+- Chat, Home and SPARK share ownership of complete drafts and submissions. Text
+  and files stay with their originating conversation during navigation or a
+  rejected send. Unconfirmed sends remain separate for explicit manual review;
+  ordinary sends do not wait for unrelated preference writes.
+- Model and connection setup recover interrupted configuration changes, and
+  context-window errors appear beside the relevant setup field.
+- Native Windows file operations preserve protected access and storage metadata,
+  coordinate writes across path case variants, and clean interrupted writes.
+  Memory operations handle Windows lock contention; EXEC cancellation contains
+  descendant processes and SYSTEM commands use the authorized working directory.
+- File creation guidance distinguishes files from directories and ordinary edits
+  from complete replacement. An existing file blocking a parent path reports a
+  clear directory error.
+- SYSTEM and Companion protect observed content before delivery by masking
+  detected secret indicators and withholding associated desktop images.
+- Closing SPARK cancels pending openings without late navigation or focus changes.
+  SPARK excludes the ABot desktop application from collection and its application
+  controls.
+- Marketplace installation links on macOS handle the native URL event and open
+  the paired Runtime's plugin review screen. Installation still requires review
+  and confirmation.
+
+### Upgrade notes
+
+- Existing browser-only preferences and Send next queues start fresh once;
+  conversations, memories, configuration and read status are retained. Tool
+  permissions default to Ask until explicitly changed.
+- Every installation, including existing installations on all platforms, needs a
+  one-time SPARK collection acknowledgment. The acknowledgment is retained across
+  updates and re-pairing; collection and learning remain separately controlled.
+- Update existing Companion installations before using SYSTEM operations that
+  require the new host-side secret protection. Unsupported Companion versions
+  are rejected before dispatch. Existing Mac connections also need their
+  installation-link handler refreshed; see the
+  [macOS connection instructions](docs/installation.md#macos).
+
+### Development
+
+- Add Windows compatibility CI and require explicit requests for private PR CI.
+- Add an internal native Windows desktop QA shell with startup diagnostics,
+  saved workspace state and managed process shutdown. The shell is not included
+  in the public snapshot or npm package; Store packaging remains separate.
+
 ## 1.7.0 - 2026-10-09
 
 ABot 1.7.0 adds community plugin installation and configuration, per-model tool

@@ -535,15 +535,11 @@ describe("Execution Agent bounded context", () => {
       capabilities: [
         {
           capabilityId: observePrimary.capabilityId,
-          summary: observePrimary.summary,
           effect: observePrimary.effect,
-          selectionControlIds: ["path"],
         },
         {
           capabilityId: observeSecondary.capabilityId,
-          summary: observeSecondary.summary,
           effect: observeSecondary.effect,
-          selectionControlIds: ["path"],
         },
       ],
     });
@@ -680,12 +676,11 @@ describe("Execution Agent bounded context", () => {
           : adapterResult;
       expect(JSON.parse(resultMessage.content)).toEqual({
         kind: EXECUTION_CAPABILITY_RESULT_MESSAGE_KIND,
-        authority: "capability_adapter_result",
-        presenceEffect: "runtime_result_only_not_user_intent",
-        invocationAttempt: 2,
+        authority: "canonical_role_call_ledger",
+        presenceEffect: "runtime_result_only_not_user_intent", invocationAttempt: 2,
         result: {
-          executionId: "capability-execution-1",
-          capabilityId: observePrimary.capabilityId,
+          executionId: "capability-execution-1", capabilityId: observePrimary.capabilityId,
+          outcome: adapterResult.outcome, observedEffect: adapterResult.observedEffect, summary: adapterResult.summary.trim(),
           adapterResult: {
             kind: "generic_capability_result_v1",
             authority: "capability_adapter",
@@ -801,6 +796,7 @@ describe("Execution Agent bounded context", () => {
         result: {
           executionId: "capability-execution-1",
           capabilityId: observePrimary.capabilityId,
+          outcome: primaryResult.outcome, observedEffect: primaryResult.observedEffect, summary: primaryResult.summary,
           adapterResult: {
             kind: "generic_capability_result_v1",
             authority: "capability_adapter",
@@ -813,8 +809,8 @@ describe("Execution Agent bounded context", () => {
       expect.objectContaining({
         invocationAttempt: 2,
         result: {
-          executionId: "capability-execution-2",
-          capabilityId: observeSecondary.capabilityId,
+          executionId: "capability-execution-2", capabilityId: observeSecondary.capabilityId,
+          outcome: secondaryEvidence.outcome, observedEffect: secondaryEvidence.observedEffect, summary: secondaryEvidence.summary,
           adapterResult: {
             kind: "generic_capability_result_v1",
             authority: "capability_adapter",

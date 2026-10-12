@@ -1,33 +1,11 @@
-export type ComposerAttachment = Record<string, unknown> & {
-  id?: string;
-  kind?: string;
-  name?: string;
-  mimeType?: string;
-  sessionId?: string;
-  storageRef?: string;
-  environment?: string;
-};
+import type { ComposerAttachment, ComposerDraft } from "./composer-drafts.js";
+export type { ComposerAttachment } from "./composer-drafts.js";
 
-export type ComposerUploadFile = Blob & {
-  name?: string;
-};
-
-export interface ComposerAttachmentsState {
-  currentSessionId: string;
-  pendingAttachments: ComposerAttachment[];
-  pendingAttachmentUploadCounts: Map<number, number>;
-  composerAttachmentGeneration: number;
-}
+export type ComposerUploadFile = Blob & { name?: string };
 
 export interface ComposerAttachmentsDom {
-  attachmentButton: {
-    disabled: boolean;
-    title: string;
-  };
-  attachmentPreview: {
-    innerHTML: string;
-    appendChild(child: unknown): unknown;
-  };
+  attachmentButton: { disabled: boolean; title: string };
+  attachmentPreview: { innerHTML: string; appendChild(child: HTMLElement): unknown };
 }
 
 export interface ComposerAttachmentsShell {
@@ -62,17 +40,18 @@ export interface ComposerAttachmentControlEvent {
 }
 
 export interface ComposerAttachmentsControllerOptions {
-  state: ComposerAttachmentsState;
+  getDraft(): ComposerDraft;
+  canDeleteAttachment?(attachment: ComposerAttachment): boolean;
   dom: ComposerAttachmentsDom;
   shell: ComposerAttachmentsShell;
   client: ComposerAttachmentsClient;
-  selectedEnvironmentId: () => string;
-  selectedModelSupportsImageInput: () => boolean;
-  ensureSession: () => void;
-  onSendStateChange: () => void;
-  onControlEvent: (event: ComposerAttachmentControlEvent) => void;
-  isComposerAvailable?: () => boolean;
-  isComposerVisible?: () => boolean;
+  selectedEnvironmentId(): string;
+  selectedModelSupportsImageInput(): boolean;
+  ensureSession(): void;
+  onSendStateChange(): void;
+  onControlEvent(event: ComposerAttachmentControlEvent): void;
+  isComposerAvailable?(): boolean;
+  isComposerVisible?(): boolean;
 }
 
 export interface ComposerAttachmentsController {
@@ -80,14 +59,10 @@ export interface ComposerAttachmentsController {
   clear(options?: { cleanup?: boolean }): void;
   cleanup(attachments: readonly ComposerAttachment[]): void;
   deletePending(attachment: ComposerAttachment): Promise<void>;
-  invalidateCompletions(): void;
   previewUrl(attachment: ComposerAttachment): string;
   removeUnsupportedImages(): void;
   render(): void;
-  setUploadInProgress(uploading: boolean, generation?: number): void;
   upload(file: ComposerUploadFile): Promise<void>;
 }
 
-export declare function createComposerAttachmentsController(
-  options: ComposerAttachmentsControllerOptions,
-): ComposerAttachmentsController;
+export declare function createComposerAttachmentsController(options: ComposerAttachmentsControllerOptions): ComposerAttachmentsController;

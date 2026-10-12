@@ -2,12 +2,41 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, reopened, synchronize, labeled]
   push:
     branches:
       - main
 
+# Only duplicate full validations of the same PR merge commit replace each other.
+# Waiting events and main commits stay isolated even when events arrive out of order.
+concurrency:
+  group: >-
+    ${{ format('{0}-{1}', github.workflow,
+      github.event_name == 'pull_request' &&
+      ((contains(fromJSON('["opened","reopened","synchronize"]'), github.event.action) &&
+          !(github.event.repository.private == true && vars.CI_MANUAL_PR == 'true')) ||
+        (github.event.repository.private == true && vars.CI_MANUAL_PR == 'true' &&
+          github.event.action == 'labeled' && github.event.label.name == 'run-ci'))
+      && format('pr-{0}-{1}', github.event.number, github.sha) || format('run-{0}', github.run_id)) }}
+  cancel-in-progress: >-
+    ${{ github.event_name == 'pull_request' &&
+      ((contains(fromJSON('["opened","reopened","synchronize"]'), github.event.action) &&
+          !(github.event.repository.private == true && vars.CI_MANUAL_PR == 'true')) ||
+        (github.event.repository.private == true && vars.CI_MANUAL_PR == 'true' &&
+          github.event.action == 'labeled' && github.event.label.name == 'run-ci')) }}
+
 jobs:
   checks:
+    # Private repositories may opt into one validation per fresh label request.
+    # Existing labels never authorize a new commit; public CI stays automatic.
+    if: &run-full-validation >-
+      ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'pull_request' &&
+          contains(fromJSON('["opened","reopened","synchronize"]'), github.event.action) &&
+          !(github.event.repository.private == true && vars.CI_MANUAL_PR == 'true')) ||
+        (github.event_name == 'pull_request' && github.event.repository.private == true &&
+          vars.CI_MANUAL_PR == 'true' && github.event.action == 'labeled' &&
+          github.event.label.name == 'run-ci') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -65,6 +94,7 @@ jobs:
         run: git diff --check
 
   tests:
+    if: *run-full-validation
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -115,34 +145,60 @@ jobs:
           overwrite: true
           retention-days: 14
 
-  # Preserve the required check name. A skipped or missing dependency is not a pass.
+  # Run the gate so GitHub evaluates its name even when all heavy jobs are skipped.
+  # The short waiting job never publishes the required validate check.
   validate:
+    name: >-
+      ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'pull_request' &&
+          contains(fromJSON('["opened","reopened","synchronize"]'), github.event.action) &&
+          !(github.event.repository.private == true && vars.CI_MANUAL_PR == 'true')) ||
+        (github.event_name == 'pull_request' && github.event.repository.private == true &&
+          vars.CI_MANUAL_PR == 'true' && github.event.action == 'labeled' &&
+          github.event.label.name == 'run-ci')) && 'validate' ||
+        (github.event.repository.private == true && vars.CI_MANUAL_PR == 'true' &&
+          'ci-awaiting-request' || 'ci-not-requested') }}
     if: always()
-    needs: [checks, tests, macos-companion]
+    needs: [checks, tests, macos-companion, windows-compatibility]
     runs-on: ubuntu-latest
+    env:
+      RUN_FULL_VALIDATION: *run-full-validation
     steps:
+      - name: Explain unrequested validation
+        if: env.RUN_FULL_VALIDATION != 'true'
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'MARKDOWN'
+          ## Full validation was not requested by this event
+          In private manual mode, add the `run-ci` label when ready. If it is already present, remove and re-add it.
+          A later commit needs a fresh request. Cancel obsolete runs manually when they are no longer needed.
+          Automatic repositories validate when a PR is opened, reopened, or updated; label changes do not request full validation.
+          MARKDOWN
       - name: Setup Node
+        if: env.RUN_FULL_VALIDATION == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Require every validation job
+        if: env.RUN_FULL_VALIDATION == 'true'
         env:
           VALIDATION_NEEDS: ${{ toJSON(needs) }}
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
           const needs = JSON.parse(process.env.VALIDATION_NEEDS);
-          assert.deepEqual(Object.keys(needs).sort(), ['checks', 'macos-companion', 'tests']);
+          assert.deepEqual(Object.keys(needs).sort(), ['checks', 'macos-companion', 'tests', 'windows-compatibility']);
           for (const [name, job] of Object.entries(needs)) {
             assert.equal(job.result, 'success', `Required job ${name}: ${job.result}`);
           }
           NODE
       - name: Download test evidence
+        if: env.RUN_FULL_VALIDATION == 'true'
         uses: actions/download-artifact@v8
         with:
           pattern: vitest-shard-*
           path: .codex/artifacts/ci-validation
       - name: Verify complete test inventory
+        if: env.RUN_FULL_VALIDATION == 'true'
         env:
           REPORT_DIR: .codex/artifacts/ci-validation
           SHARD_COUNT: 2
@@ -215,7 +271,155 @@ jobs:
           appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary + '\n');
           NODE
 
+  windows-compatibility:
+    if: *run-full-validation
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      # Generated-file checks compare LF bytes on every platform.
+      - name: Preserve checkout line endings
+        run: git config --global core.autocrlf false
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Check plugin build
+        run: npm run check:plugin-build
+      - name: Typecheck
+        run: npm run typecheck:all
+      - name: Build
+        run: npm run build
+      - name: Check plugins
+        run: npm run check:plugins
+      - name: Prepare test evidence
+        run: New-Item -ItemType Directory -Force .codex/artifacts/ci-windows-compatibility | Out-Null
+      - name: Validate plugin compatibility and loading
+        run: >-
+          npx vitest run
+          src/runtime/__tests__/plugin-platform-compatibility.test.ts
+          src/runtime/__tests__/plugin-platform-loading.test.ts
+          src/runtime/__tests__/plugin-platform-catalog.test.ts
+          src/runtime/__tests__/plugin-platform-ui.test.ts
+          src/runtime/__tests__/plugin-platform-installation.test.ts
+          src/runtime/__tests__/plugin-install-source.test.ts
+          src/runtime/__tests__/plugin-install-archive.test.ts
+          src/runtime/__tests__/plugin-output-channels-contract.test.ts
+          src/web-ui/client-state
+          --reporter=default --reporter=json
+          --outputFile.json=.codex/artifacts/ci-windows-compatibility/results.json
+      # Bound simultaneous PowerShell startup on shared Windows runners.
+      - name: Validate native collection and acknowledgment
+        run: >-
+          npx vitest run
+          src/runtime/__tests__/windows-private-access.test.ts
+          src/runtime/__tests__/collection-consent.test.ts
+          src/runtime/__tests__/collection-consent-service-lifecycle.test.ts
+          src/runtime/__tests__/system-host-collection-consent.test.ts
+          src/runtime/__tests__/native-observation-connection.test.ts
+          src/runtime/__tests__/native-observation-shutdown.test.ts
+          src/runtime/__tests__/native-observation-ownership.test.ts
+          src/runtime/__tests__/runtime-observation-connection.test.ts
+          src/runtime/__tests__/web-ui-collection-consent-dialog.test.ts
+          src/runtime/__tests__/web-ui-collection-consent-feature.test.ts
+          src/runtime/__tests__/web-ui-collection-consent-gate.test.ts
+          src/runtime/__tests__/web-ui-native-windows-access.test.ts
+          src/runtime/__tests__/web-ui-runtime-setup-native-windows.test.ts
+          src/runtime/__tests__/web-ui-system-host-transport.test.ts
+          --maxWorkers=2 --reporter=default --reporter=json
+          --outputFile.json=.codex/artifacts/ci-windows-compatibility/native-collection-results.json
+      - name: Validate native Windows public plugins
+        run: >-
+          npx vitest run
+          src/runtime/__tests__/windows-public-plugin-cohort.test.ts
+          src/runtime/__tests__/local-search-platform.test.ts
+          src/runtime/__tests__/windows-local-search-authority.test.ts
+          src/runtime/__tests__/windows-local-search-transport.test.ts
+          src/runtime/__tests__/code-outline-platform.test.ts
+          src/runtime/__tests__/code-outline-read-failures.test.ts
+          src/runtime/__tests__/document-reader-platform.test.ts
+          src/runtime/__tests__/document-reader-read-failures.test.ts
+          src/runtime/__tests__/document-reader-pdf-process.test.ts
+          src/runtime/__tests__/json-inspector-platform.test.ts
+          src/runtime/__tests__/json-inspector-read-failures.test.ts
+          src/runtime/__tests__/json-inspector-plugin.test.ts
+          src/runtime/__tests__/project-orientation-platform.test.ts
+          src/runtime/__tests__/project-orientation-read-failures.test.ts
+          src/runtime/__tests__/windows-sdk-file-reading.test.ts
+          src/runtime/__tests__/windows-sdk-file-transport.test.ts
+          src/runtime/__tests__/windows-filesystem-availability.test.ts
+          src/runtime/__tests__/windows-filesystem-creation-permissions.test.ts
+          src/runtime/__tests__/windows-filesystem-mutation-coordinator.test.ts
+          src/runtime/__tests__/windows-filesystem-named-streams.test.ts
+          src/runtime/__tests__/windows-filesystem-native.test.ts
+          src/runtime/__tests__/windows-filesystem-permissions.test.ts
+          src/runtime/__tests__/windows-filesystem-precommit-access.test.ts
+          src/runtime/__tests__/windows-filesystem-process.test.ts
+          src/runtime/__tests__/windows-filesystem-publication.test.ts
+          src/runtime/__tests__/windows-filesystem-storage-attributes.test.ts
+          src/runtime/__tests__/windows-portable-plugins-catalog.test.ts
+          src/runtime/__tests__/windows-portable-plugins-memory.test.ts
+          src/runtime/__tests__/memory-prepared-replacement.test.ts
+          src/runtime/__tests__/windows-memory-publication.test.ts
+          src/runtime/__tests__/memory-lock-owner-observation.test.ts
+          src/runtime/__tests__/windows-memory-owner-observation.test.ts
+          src/runtime/__tests__/windows-portable-plugins-lock-owner.test.ts
+          src/runtime/__tests__/windows-portable-plugins-lock-observation.test.ts
+          src/runtime/__tests__/windows-portable-plugins-lock-claim.test.ts
+          src/runtime/__tests__/windows-portable-plugins-web.test.ts
+          src/runtime/__tests__/windows-system-probe-metrics.test.ts
+          src/runtime/__tests__/windows-system-probe-native.test.ts
+          src/runtime/__tests__/exec-shell-platform.test.ts
+          src/runtime/__tests__/windows-exec-native.test.ts
+          src/runtime/__tests__/windows-exec-bootstrap.test.ts
+          src/runtime/__tests__/windows-exec-observer.test.ts
+          src/runtime/__tests__/exec-output-store.test.ts
+          src/runtime/__tests__/windows-exec-process-lifecycle.test.ts
+          src/runtime/__tests__/windows-system-plugin-platform.test.ts
+          src/runtime/__tests__/windows-system-plugin-commands.test.ts
+          src/runtime/__tests__/system-command-working-directory.test.ts
+          src/runtime/__tests__/windows-system-filesystem-handoff.test.ts
+          src/runtime/__tests__/windows-system-plugin-privacy.test.ts
+          src/runtime/__tests__/windows-system-plugin-initialization.test.ts
+          --maxWorkers=4 --reporter=default --reporter=json
+          --outputFile.json=.codex/artifacts/ci-windows-compatibility/public-plugins-results.json
+      - name: Validate native Windows private plugins
+        if: github.event.repository.private == true
+        run: >-
+          npx vitest run
+          tests/private/plugins/
+          tests/private/publication/distribution-boundary.test.ts
+          --maxWorkers=4 --reporter=default --reporter=json
+          --outputFile.json=.codex/artifacts/ci-windows-compatibility/private-plugins-results.json
+      - name: Validate session publication and resumed steering
+        run: >-
+          npx vitest run
+          src/sessions/prepared-session-replacement.test.ts
+          src/sessions/windows-session-publication.test.ts
+          src/runtime/__tests__/request-activation-commit-ordering.test.ts
+          src/runtime/__tests__/web-steering-owner-routing.test.ts
+          src/runtime/__tests__/web-request-control-diagnostics.test.ts
+          src/runtime/__tests__/web-saved-approval-steering.test.ts
+          --maxWorkers=4 --reporter=default --reporter=json
+          --outputFile.json=.codex/artifacts/ci-windows-compatibility/session-steering-results.json
+      - name: Upload Windows test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-compatibility-results
+          path: .codex/artifacts/ci-windows-compatibility/*.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
+
   macos-companion:
+    if: *run-full-validation
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -247,6 +451,7 @@ jobs:
           src/runtime/__tests__/host-companion-managed-startup.test.ts
           src/runtime/__tests__/host-companion-setup.test.ts
           src/runtime/__tests__/host-companion-install-links.test.ts
+          src/runtime/__tests__/host-companion-install-link-macos.test.ts
           src/runtime/__tests__/host-macos-observation-permission.test.ts
           src/runtime/__tests__/host-macos-capture-geometry.test.ts
           src/runtime/__tests__/host-macos-keyboard-contract.test.ts

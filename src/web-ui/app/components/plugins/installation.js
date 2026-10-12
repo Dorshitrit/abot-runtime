@@ -1,3 +1,4 @@
+import { pluginInstallationMessage } from "./installation-compatibility.js";
 import { createPluginConfigurationDraft } from "./configuration-draft.js";
 import {
   bindPluginConfigurationFields,
@@ -125,7 +126,7 @@ export function createPluginInstallation({
       state.dirty = false;
       state.review = null;
       state.installedPluginId = review.id;
-      state.message = `${review.id} installed. Apply changes to make it available.`;
+      state.message = pluginInstallationMessage(review);
       onInstalled(result);
       onConfigurationSaved();
       const refreshed = await refreshRuntimeConfig(

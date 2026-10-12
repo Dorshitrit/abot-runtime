@@ -251,24 +251,16 @@ export class LocalRequestExecution {
         observation.selectRoute("interactive_session_check");
         const sessions = resolveEnvironment(active.environmentId).services
           .sessions;
-        try {
-          await sessions.assertInteractiveSession?.(active.sessionId);
-        } catch (error) {
-          if (!isAutomationSessionLockedError(error)) throw error;
-          const acknowledgement = {
-            type: "steer_ack",
-            requestId,
-            steerId,
-            accepted: false,
-            reason: "automation_session_locked",
-          };
-          observation.result(acknowledgement);
-          return acknowledgement;
-        }
+        await sessions.assertInteractiveSession?.(active.sessionId);
       }
       observation.selectRoute("environment_resolution");
-      const steer = active
-        ? resolveEnvironment(active.environmentId).requests.steer
+      // Saved approval waits retire the Web view; their resumed owner remains
+      // authoritative. Never infer inactivity from a missing local projection.
+      const steeringEnvironmentId =
+        active?.environmentId ?? getString(message.environment).trim();
+      const hasSteeringEnvironment = steeringEnvironmentId.length > 0;
+      const steer = hasSteeringEnvironment
+        ? resolveEnvironment(steeringEnvironmentId).requests.steer
         : undefined;
       observation.selectRoute(webSteerRoute(active, steer));
       const result =
@@ -294,6 +286,17 @@ export class LocalRequestExecution {
       observation.result(acknowledgement);
       return acknowledgement;
     } catch (error) {
+      if (isAutomationSessionLockedError(error)) {
+        const acknowledgement = {
+          type: "steer_ack",
+          requestId,
+          steerId,
+          accepted: false,
+          reason: "automation_session_locked",
+        };
+        observation.result(acknowledgement);
+        return acknowledgement;
+      }
       observation.failed(error);
       throw error;
     }

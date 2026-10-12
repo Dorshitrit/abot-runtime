@@ -1,3 +1,4 @@
+import { createWorkspaceConversationOpener } from "./controllers/workspace-conversation-opener.js";
 import { createDashboardWorkspace } from "./components/dashboard/workspace.js";
 import { createDashboardController } from "./controllers/dashboard-controller.js";
 import { createDashboardApprovalsController } from "./controllers/dashboard-approvals-controller.js";
@@ -17,6 +18,7 @@ export function createDashboardFeature({
   isComposerAvailable,
   passiveLearning,
 }) {
+  const openConversation = createWorkspaceConversationOpener({ state, shell, openSession });
   let view;
   let controller;
   const approvals = createDashboardApprovalsController({
@@ -50,9 +52,8 @@ export function createDashboardFeature({
       refresh: controller.refresh,
       decideApproval: approvals.submit,
       openConversation: async (sessionId, requestId) => {
-        if (!shell.activateWorkspace("chat")) return;
         try {
-          await openSession(sessionId, { page: { targetRequestId: requestId } });
+          if (!await openConversation(sessionId, { page: { targetRequestId: requestId } })) return;
           if (state.currentSessionId !== sessionId) return;
           if (!requestId) return;
           requestAnimationFrame(() => {

@@ -62,6 +62,10 @@ export async function readBoundedRegularFile(
     throw new RangeError("maxBytes must be a non-negative safe integer");
   }
   throwIfAborted(options.signal);
+  if (process.platform === "win32") {
+    const { readWindowsBoundedRegularFile } = await import("./files-windows/read.js");
+    return readWindowsBoundedRegularFile(absolutePath, options);
+  }
   if (typeof constants.O_NOFOLLOW !== "number") {
     return Object.freeze({ ok: false, reason: "safe_open_unsupported" });
   }

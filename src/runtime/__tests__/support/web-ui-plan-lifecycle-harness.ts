@@ -66,7 +66,6 @@ export function createPlanLifecycleHarness(
   };
   const sendRealtime = vi.fn(() => true);
   const saveSessionPreference = vi.fn();
-  const clearPendingAttachments = vi.fn();
   const suspendQueueRecovery = vi.fn(() => true);
   const conversationSession = createConversationSessionController({
     state,
@@ -93,7 +92,6 @@ export function createPlanLifecycleHarness(
       },
     },
     selectedEnvironmentId,
-    clearPendingAttachments,
     applyConversationChrome: vi.fn(),
     applyModelSelection: vi.fn(),
     renderSessions: vi.fn(),
@@ -144,7 +142,6 @@ export function createPlanLifecycleHarness(
     renderMessages,
     sendRealtime,
     saveSessionPreference,
-    clearPendingAttachments,
     suspendQueueRecovery,
     loadSessions,
     markCurrentSessionReadSoon,

@@ -17,8 +17,8 @@ import { activeSystemCaptures } from "../../computer-access/command-output-reten
 import type { ToolImplementationOutput } from "../../plugin-sdk/index.js";
 
 // A real command crosses both transports; no model, service restart or installed companion is used.
-test.runIf(process.platform === "linux")("SYSTEM delivers durable output above the transport limit through the authenticated broker and native session", async () => {
-  const parent = join(process.cwd(), ".codex/artifacts/companion-output-review-20261006/transport");
+test.runIf(process.platform === "linux").each([false, true])("SYSTEM checks complete output before authenticated transport and context admission (late secret: %s)", async (containsSecret) => {
+  const parent = join(process.cwd(), ".codex/artifacts/secret-protection-contract-20261010/transport");
   await mkdir(parent, { recursive: true });
   const root = await mkdtemp(join(parent, "case-"));
   const identity = { os: "linux" as const, name: "Output transport test", user: "test", homeDir: root };
@@ -59,14 +59,17 @@ test.runIf(process.platform === "linux")("SYSTEM delivers durable output above t
     }).system_command!;
     const budget = { acceptsContextText: true as const,
       assess: (result: ToolImplementationOutput) => assessResultEnvelopeBytes({ result }, measureToolContextTextBytes(result)) };
-    const stdout = "a".repeat(65_535) + "שלום 🚀\\\"\n".repeat(50_000);
-    const stderr = "diagnostic".repeat(12_000);
+    const rawStdout = "a".repeat(65_535) + "שלום 🚀\\\"\n".repeat(50_000)
+      + (containsSecret ? "\napi_key=synthetic-transport-secret" : "");
+    const stdout = containsSecret ? "[REDACTED]" : rawStdout;
+    const stderr = "diagnostic".repeat(40_000);
     const script = join(root, "output.cjs");
-    await writeFile(script, `require("fs").appendFileSync("dispatches", "once\\n"); process.stdout.write(${JSON.stringify(stdout)}); process.stderr.write(${JSON.stringify(stderr)});`);
+    await writeFile(script, `require("fs").appendFileSync("dispatches", "once\\n"); process.stdout.write(${JSON.stringify(rawStdout)}); process.stderr.write(${JSON.stringify(stderr)});`);
     const result = await handler({ target: "linux", cwd: root, command: `'${process.execPath}' '${script}'` }, { resultBudget: budget });
     expect(result).toMatchObject({ ok: true, stdout, stderr, exitCode: 0, contextTextFields: ["stdout", "stderr"],
       data: { outputDelivery: "complete", spawnedProcess: { pid: expect.any(Number), pidNamespace: "companion_os" }, outputCapture: { retentionMs: 30 * 86_400_000 } } });
     expect(budget.assess(result).fits).toBe(true);
+    expect(JSON.stringify(result)).not.toContain("synthetic-transport-secret");
     const capture = result.data!.outputCapture as { id: string };
     const directory = join(root, "native/command-output", capture.id);
     expect(await readFile(join(directory, "stdout.bytes"))).toEqual(Buffer.from(stdout));

@@ -27,8 +27,14 @@ export {
 import { closeRuntimeSetupServices } from "./runtime-setup-shutdown.js";
 import type { ModelProviderAdapterRegistry } from "../model-gateway/index.js";
 import { loadDotEnvFile } from "../shared/load-dotenv.js";
+import { waitForWebUiListening } from "./server-readiness.js";
+import {
+  recoverRuntimeSetupEdit,
+  requireRuntimeSetupEditSettled,
+} from "./local-runtime/runtime-setup-edit-recovery.js";
 import { createWebUiShutdown } from "./server-shutdown.js";
 import { ExternalBridgeWebBackend } from "./external-bridge-backend.js";
+import { WebClientStateRoutes } from "./client-state/routes.js";
 import { LocalRuntimeWebBackend } from "./local-runtime-backend.js";
 import { resolveWebUiAddress } from "./web-ui-address.js";
 import { createLinkPreviewRouteHandler } from "./link-preview/routes.js";
@@ -74,6 +80,7 @@ type WebUiServerOptions = {
 };
 
 type WebUiServerHandle = {
+  ready: () => Promise<string>;
   close: () => Promise<void>;
 };
 
@@ -237,6 +244,11 @@ async function serveStatic(
 export function startWebUiServer(
   overrides: WebUiServerOptions = {},
 ): WebUiServerHandle {
+  const startupRoots = new Set([
+    process.cwd(),
+    overrides.rootDir ?? process.cwd(),
+  ]);
+  for (const rootDir of startupRoots) requireRuntimeSetupEditSettled(rootDir);
   const envOptions = getOptionsFromEnv();
   const rootDir = overrides.rootDir ?? envOptions.rootDir;
   const configPath = overrides.configPath ?? envOptions.configPath;
@@ -326,17 +338,33 @@ export function startWebUiServer(
   }
 
   const handleLinkPreview = createLinkPreviewRouteHandler();
+  const clientState = new WebClientStateRoutes(rootDir, () => {
+    for (const client of wss.clients) {
+      if (client.readyState === 1) client.send(JSON.stringify({ type: "workspace_changed", resources: ["client-state"] }));
+    }
+  });
   const systemHost = localRuntimeBackend
-    ? new WebSystemHostService(rootDir,
+    ? new WebSystemHostService(
+        rootDir,
         () => localRuntimeBackend.notifyHostConnectionChanged(),
-        (environmentId) => localRuntimeBackend.nativePermissions(environmentId))
+        (environmentId) => localRuntimeBackend.nativePermissions(environmentId),
+      )
     : null;
   const allowPublishedLoopback = allowsPublishedLoopbackAuthority(options.host);
   const server = createServer((req, res) => {
     void (async () => {
-      if (!acceptWebUiHttpAuthority(req, res, options.host, allowPublishedLoopback)) return;
+      if (
+        !acceptWebUiHttpAuthority(
+          req,
+          res,
+          options.host,
+          allowPublishedLoopback,
+        )
+      )
+        return;
       if (await handleLinkPreview(req, res)) return;
       const pathname = new URL(req.url || "/", "http://localhost").pathname;
+      if (await clientState.handle(req, res, pathname)) return;
       if (await systemHost?.handleHttp(req, res, pathname)) return;
       if (pathname === "/web-config") {
         const currentEnvironments =
@@ -413,7 +441,15 @@ export function startWebUiServer(
 
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     if (systemHost?.handleUpgrade(req, socket, head, options.host)) return;
-    if (!acceptWebUiUpgradeAuthority(req, socket, options.host, allowPublishedLoopback)) return;
+    if (
+      !acceptWebUiUpgradeAuthority(
+        req,
+        socket,
+        options.host,
+        allowPublishedLoopback,
+      )
+    )
+      return;
     const pathname = new URL(req.url || "/", "http://localhost").pathname;
     if (pathname !== "/web-realtime") {
       socket.destroy();
@@ -449,6 +485,7 @@ export function startWebUiServer(
   );
 
   return {
+    ready: () => waitForWebUiListening(server, listenAbort.signal),
     close: createWebUiShutdown(
       server,
       wss,
@@ -464,7 +501,14 @@ export function startWebUiServer(
   };
 }
 
+export async function startWebUiServerWithRecovery(
+  overrides: WebUiServerOptions = {},
+): Promise<WebUiServerHandle> {
+  await recoverRuntimeSetupEdit(overrides.rootDir ?? process.cwd());
+  return startWebUiServer(overrides);
+}
+
 const invokedPath = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
 if (import.meta.url === invokedPath) {
-  startWebUiServer();
+  await startWebUiServerWithRecovery();
 }

@@ -1,8 +1,7 @@
 import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
 import { createMemoryRecallDecisionSchema } from "../memory-recall-decision.js";
-import { withExecutionWorkPlanVariants } from "./work-plan-contract.js";
+import { createExecutionWorkPlanDecisionSchema } from "./work-plan-schema.js";
 import { isToolCatalogGroupId } from "../../../capabilities/tool-types.js";
-import { createStructuredDecisionEnvelopeSchema } from "../../model/structured-decision-envelope.js";
 import {
   CAPABILITY_COUNT_MAX,
   EXECUTION_WORKING_DIRECTORY_MAX_LENGTH,
@@ -173,8 +172,9 @@ export function createExecutionAgentDecisionFormat(
         ]
       : []),
   ];
-  const schema = createStructuredDecisionEnvelopeSchema(
-    withExecutionWorkPlanVariants(variants, options.workPlan),
+  const schema = createExecutionWorkPlanDecisionSchema(
+    variants,
+    options.workPlan,
   );
   return {
     type: "json_schema",

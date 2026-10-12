@@ -1,16 +1,16 @@
+import { canChooseReasoning } from "./lib/reasoning-controls.js";
+import { createComposerFeature } from "./controllers/composer-feature.js";
+import { createComposerDrafts } from "./controllers/composer-drafts.js";
+import { createComposerDraftView } from "./controllers/composer-draft-view.js";
+import { workspaceQueue } from "./services/workspace-state.js";
 import { createAppState } from "./app-state.js";
 import { createConversationViewFeature } from "./controllers/conversation-view-feature.js";
 import { createConversationSessionController } from "./controllers/conversation-session-controller.js";
-import { createChatRequestController } from "./controllers/chat-request-controller.js";
-import { createComposerQueueController } from "./controllers/composer-queue-controller.js";
-import { createComposerSubmitController } from "./controllers/composer-submit-controller.js";
-import { createComposerAttachmentsController } from "./controllers/composer-attachments-controller.js";
 import { createRealtimeEventController } from "./controllers/realtime-event-controller.js";
 import { createSteerController } from "./controllers/steer-controller.js";
 import { createToolApprovalController } from "./controllers/tool-approval-controller.js";
 import { createToolApprovalCard } from "./components/tool-approval-card.js";
 import { createComposerActions } from "./components/composer-actions.js";
-import { createSessionComposerQueue } from "./lib/session-composer-queue.js";
 import { normalizeRealtimeMessage } from "./lib/realtime-message.js";
 import { createSparkChatResults } from "./components/spark-chat/results.js";
 import { sparkMessageStatus, sparkWorkingStatus } from "./lib/spark-chat-presentation.js";
@@ -23,24 +23,29 @@ export function createSparkChatConversation({
   dom, client, shell, getEnvironmentId, getConfiguration, isOpen, isConnected,
   getSubmissionBlock, scrollBehavior, refresh, onReadState, onRender,
   onOpenSchedule = () => {}, onOpenModelSettings = () => {},
-  sendRealtime, onComposerStateChange = () => {}, storage = localStorage,
+  sendRealtime, onComposerStateChange = () => {}, sessionQueue = workspaceQueue(),
   captureHandoffNavigation, onHandoffOpened,
 }) {
   const state = createAppState();
-  const sessionQueue = createSessionComposerQueue({ storage });
+  const drafts = createComposerDrafts();
+  const draftView = createComposerDraftView({ input: dom.composerInput,
+    getDraft: () => drafts.open({ environmentId: getEnvironmentId(), sessionId: state.currentSessionId }), isVisible: isOpen });
+  drafts.subscribe(draftView.refresh);
+  draftView.display();
   const mascotActivity = createSparkMascotActivity({ state, dom, isConnected });
   let session;
   let view;
   let realtime;
   let queue;
   let submit;
+  let attachments;
   const status = (text, busy = false) => {
     dom.messagesList.setAttribute("aria-busy", String(busy));
     dom.messageStatusRegion.textContent = sparkMessageStatus(text);
   };
   const render = () => { view?.render(); mascotActivity.render(); onRender?.(); };
   const renderActivityStatus = () => { view?.renderActivityStatus(); mascotActivity.render(); };
-  const updateSendState = () => { submit?.updateSendState(); mascotActivity.render(); onComposerStateChange(state.composerSending); };
+  const updateSendState = () => { draftView.display(); submit?.updateSendState(); mascotActivity.render(); onComposerStateChange(state.composerSending); };
   const recordControlEvent = (event) => realtime?.recordControlEvent(event);
   const getToolPermissionMode = () => getConfiguration()?.toolPermissionMode || "ask";
   const getModelPreference = () => {
@@ -56,13 +61,6 @@ export function createSparkChatConversation({
     onAccepted: (message) => session.insertSteerMessage(message),
   });
   const actions = createComposerActions({ dom, onSendNext: () => submit.dispatch("send_next") });
-  const attachments = createComposerAttachmentsController({
-    state, dom, shell, client, selectedEnvironmentId: getEnvironmentId,
-    selectedModelSupportsImageInput: () => getConfiguration()?.supportsImageInput === true,
-    ensureSession: () => session.ensureSession(), onSendStateChange: updateSendState,
-    onControlEvent: recordControlEvent,
-    isComposerAvailable: () => !getSubmissionBlock(), isComposerVisible: isOpen,
-  });
   const approvals = createToolApprovalController({
     state, selectedEnvironmentId: getEnvironmentId, sendRealtime,
     renderMessages: render, recordControlEvent, createCard: createToolApprovalCard,
@@ -88,7 +86,7 @@ export function createSparkChatConversation({
     getPendingApproval: approvals.pendingEvent, getPendingApprovals: approvals.pendingEvents,
     createApprovalCard: approvals.createCard,
     copyText: (text) => navigator.clipboard.writeText(text),
-    notify: shell.showToast, resolveAttachmentUrl: attachments.previewUrl,
+    notify: shell.showToast, resolveAttachmentUrl: (file) => attachments.previewUrl(file),
     onOpenSchedule, canOpenSchedule: () => client.supportsSchedules?.() === true,
     scrollBehavior,
     sparkActions: createSparkHandoffActions({
@@ -113,41 +111,32 @@ export function createSparkChatConversation({
     sessionQueue, conversationView: view, selectedEnvironmentId: getEnvironmentId,
     // Reading belongs to actual visible rows in the popup, never to session activation.
     isConversationVisible: () => false,
-    clearPendingAttachments() {}, applyConversationChrome() {}, applyModelSelection() {}, renderSessions() {},
+    applyConversationChrome() {}, applyModelSelection() {}, renderSessions() {},
     renderMessages: render, updateComposerSendState: updateSendState, setMessageStatus: status,
     sendRealtime, handleRealtimeMessage: (message) => realtime.handle(message),
     recordEvent: (message) => realtime.recordEvent(message), recordControlEvent,
     reportQueueFailure: (...args) => queue.reportFailure(...args),
     drainQueuedMessage: (...args) => queue.drain(...args),
-    suspendQueueRecovery: () => queue.suspendRecoveryForNavigation(),
+    suspendQueueRecovery: (canNavigate) => queue.suspendRecoveryForNavigation(canNavigate),
     recoverBlockedQueue: (...args) => queue.recoverForManualSend(...args),
     isCurrentComposerScope: isScopeCurrent,
     createSessionId() { throw new Error("SPARK conversation is not ready yet."); },
   });
-  const requests = createChatRequestController({
-    state, client, sessionQueue, conversationView: view, conversationSession: session,
-    attachments, currentComposerScope: scope, isCurrentComposerScope: isScopeCurrent,
-    rememberModelSelection() {}, applyConversationChrome() {}, renderSessions() {},
-    renderAttachments: attachments.render, getToolPermissionMode, getModelPreference,
-    clearQueueRecovery: (...args) => queue.clearRecovery(...args),
-    reportQueueFailure: (...args) => queue.reportFailure(...args),
+  const composer = createComposerFeature({
+    state, dom: { ...dom, composerInput: draftView.surface }, shell, client, sessionQueue,
+    drafts, getDraft: draftView.current, conversationSession: session, conversationView: view,
+    getEnvironmentId, ensureSession: () => session.ensureSession(),
+    getSettings: () => ({ agentMode: state.agentMode, toolPermissionMode: getToolPermissionMode(), modelPreference: getModelPreference() }),
+    steer: steer.steer, composerActions: actions,
+    selectedModelSupportsImageInput: () => getConfiguration()?.supportsImageInput === true,
+    isComposerAvailable: () => !getSubmissionBlock(), getSubmissionBlock,
+    onSubmissionBlocked: (block) => shell.showToast(block.message || "SPARK is not ready.", "failed"),
+    isVisible: isOpen, renderSessions() {}, renderMessages: render, applyConversationChrome() {},
+    setMessageStatus: status, recordControlEvent, onChange: () => onComposerStateChange(state.composerSending),
   });
-  queue = createComposerQueueController({
-    state, dom, queue: sessionQueue, selectedEnvironmentId: getEnvironmentId,
-    getToolPermissionMode, getModelPreference, rememberModelSelection() {}, attachments,
-    updateSendState, postChatMessage: requests.postChatMessage,
-    appendLocalUserMessage: session.appendLocalUserMessage,
-    activateRequestForScope: session.activateRequestForScope,
-    renderMessages: render, setMessageStatus: status, recordControlEvent,
-    resizeComposer: () => submit.resize(),
-  });
-  submit = createComposerSubmitController({
-    state, dom, composerActions: actions, attachments, queue, steer: steer.steer,
-    chatRequests: requests, conversationSession: session,
-    selectedEnvironmentId: getEnvironmentId, setMessageStatus: status,
-    getSubmissionBlock, onSubmissionBlocked: (block) => shell.showToast(block.message || "SPARK is not ready.", "failed"),
-    isComposerVisible: isOpen,
-  });
+  attachments = composer.attachments;
+  queue = composer.queue;
+  submit = composer.submit;
   realtime = createRealtimeEventController({
     state, shell, selectedEnvironmentId: getEnvironmentId,
     handleSteerAcknowledgement: steer.handleAcknowledgement,
@@ -201,16 +190,16 @@ export function createSparkChatConversation({
   return {
     state, session, view, attachments, render, handleRealtime, bind, queue,
     prepareEnvironmentChange: () => queue.prepareRecoveryForNavigation(),
-    setAgentMode(mode) { state.agentMode = mode; },
+    setAgentMode(mode) { if (canChooseReasoning(getConfiguration())) state.agentMode = mode; },
     update() {
       state.connected = isConnected();
-      attachments.render(); updateSendState(); renderActivityStatus();
+      draftView.display(); composer.changed(); updateSendState(); renderActivityStatus();
       if (!state.messages.length) render();
     },
     reset() {
       steer.rejectAll("SPARK environment changed.");
-      attachments.clear(); session.invalidateEnvironmentLoads(); session.clearCurrentSessionView();
-      dom.composerInput.value = "";
+      draftView.saveDisplayed(); session.invalidateEnvironmentLoads(); session.clearCurrentSessionView();
+      draftView.display();
     },
     status,
   };

@@ -1,3 +1,4 @@
+import { beginConversationNavigation, canNavigateConversation } from "./conversation-navigation-intent.js";
 import {
   captureContextReplayScope,
   bindContextReplayEvents,
@@ -58,7 +59,6 @@ export function createConversationSessionController({
   sessionQueue,
   conversationView,
   selectedEnvironmentId,
-  clearPendingAttachments,
   applyConversationChrome,
   applyModelSelection,
   renderSessions,
@@ -95,6 +95,7 @@ export function createConversationSessionController({
     listPagination.invalidate();
     history.reset();
     sessionRestoreRevision += 1;
+    beginConversationNavigation(state);
     state.sessions = [];
     onSessionListState({ status: "loading", sessions: [] });
     renderSessions();
@@ -166,7 +167,6 @@ export function createConversationSessionController({
     state.taskProgressByRequest.clear();
     state.contextWindowByRequest.clear();
     state.activeRequestId = "";
-    state.composerSending = false;
     conversationView.reset();
     state.submittedToolApprovalIds.clear();
     state.requestMessages.clear();
@@ -178,9 +178,10 @@ export function createConversationSessionController({
   }
 
   function clearCurrentSessionView() {
+    sessionRestoreRevision += 1;
+    beginConversationNavigation(state);
     state.currentSessionId = "";
     state.messages = [];
-    clearPendingAttachments();
     resetLiveRequestView();
     dom.sessionTitle.textContent = "New conversation";
     applyConversationChrome();
@@ -189,7 +190,6 @@ export function createConversationSessionController({
 
   function clearSessionMessagesView() {
     state.messages = [];
-    clearPendingAttachments();
     resetLiveRequestView();
     applyConversationChrome();
     renderMessages();
@@ -411,34 +411,52 @@ export function createConversationSessionController({
     sessionId,
     { isRouteCurrent, commitRouteNavigation, snapshot, page, preserveCurrentWindow = false } = {},
   ) {
+    if (!canNavigateConversation(state)) {
+      setMessageStatus("Wait for the environment change to finish before opening a conversation.");
+      return false;
+    }
+    sessionRestoreRevision += 1;
+    const isCurrentOpen = beginConversationNavigation(state);
     const routeOwned = typeof commitRouteNavigation === "function";
     const loadBeforeReset = routeOwned || preserveCurrentWindow;
     let payload;
     const pageOptions = { ...page, waitingRequestId: sessionQueue.peek({ environmentId: selectedEnvironmentId(), sessionId })?.waitForRequestId };
-    const prefetched = canRestoreSnapshotQueue(snapshot, pageOptions.waitingRequestId) ? snapshot : undefined;
+    let prefetched = canRestoreSnapshotQueue(snapshot, pageOptions.waitingRequestId) ? snapshot : undefined;
     if (loadBeforeReset) {
       const environmentId = selectedEnvironmentId();
       const viewVersion = state.sessionViewVersion;
       const currentSessionId = state.currentSessionId;
       payload = prefetched ?? await client.loadSession(sessionId, environmentId, pageOptions);
-      if (environmentId !== selectedEnvironmentId()) return;
-      if (viewVersion !== state.sessionViewVersion) return;
-      if (currentSessionId !== state.currentSessionId) return;
-      if (routeOwned && isRouteCurrent?.() !== true) return;
+      if (!isCurrentOpen()) return false;
+      if (environmentId !== selectedEnvironmentId()) return false;
+      if (viewVersion !== state.sessionViewVersion) return false;
+      if (currentSessionId !== state.currentSessionId) return false;
+      if (routeOwned && isRouteCurrent?.() !== true) return false;
     }
-    if (
-      state.currentSessionId &&
-      state.currentSessionId !== sessionId &&
-      !suspendQueueRecovery()
-    ) {
-      return;
+    if (state.currentSessionId) {
+      const previousSessionId = state.currentSessionId;
+      const environmentId = selectedEnvironmentId();
+      const canSuspendRecovery = () => {
+        if (!canNavigateConversation(state)) return false;
+        if (!isCurrentOpen()) return false;
+        if (selectedEnvironmentId() !== environmentId) return false;
+        if (state.currentSessionId !== previousSessionId) return false;
+        if (routeOwned && isRouteCurrent?.() !== true) return false;
+        return true;
+      };
+      let prepared = suspendQueueRecovery(canSuspendRecovery);
+      if (typeof prepared?.then === "function") {
+        prepared = await prepared;
+        payload = undefined;
+        prefetched = undefined;
+      }
+      if (!prepared || !canSuspendRecovery()) return false;
     }
-    if (routeOwned && commitRouteNavigation() !== true) return;
+    if (routeOwned && commitRouteNavigation() !== true) return false;
     const viewVersion = state.sessionViewVersion + 1;
     state.currentSessionId = sessionId;
     preferences.saveSessionIdForEnvironment(selectedEnvironmentId(), sessionId);
     state.messages = [];
-    clearPendingAttachments();
     resetLiveRequestView();
     state.sessionViewVersion = viewVersion;
     sessions.setCurrentTitle(
@@ -450,14 +468,15 @@ export function createConversationSessionController({
     renderMessages();
     subscribeSession(sessionId);
 
-    if (!loadBeforeReset) {
+    if (!payload) {
       payload = prefetched ?? await client.loadSession(sessionId, selectedEnvironmentId(), pageOptions);
     }
     if (
+      !isCurrentOpen() ||
       state.currentSessionId !== sessionId ||
       state.sessionViewVersion !== viewVersion
     ) {
-      return;
+      return false;
     }
     history.adopt(payload);
     const rawMessages = Array.isArray(payload.messages) ? payload.messages : [];
@@ -468,8 +487,9 @@ export function createConversationSessionController({
     sessions.applyTitle(sessionId, payload.title);
     sessions.applyReadState(sessionId, payload.readState);
     const requests = Array.isArray(payload.requests) ? payload.requests : [];
-    if (!await requestHydration.restore(requests)) return;
+    if (!await requestHydration.restore(requests)) return false;
     markDisplayedMessagesReadSoon(displayedPage);
+    return true;
   }
 
   function ensureSession() {
@@ -486,7 +506,7 @@ export function createConversationSessionController({
   }
 
   function appendLocalUserMessage({ text, attachments, requestId = "" }) {
-    state.messages.push({
+    const message = {
       id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       role: "user",
       text,
@@ -494,8 +514,15 @@ export function createConversationSessionController({
       requestId,
       streaming: false,
       attachments,
-    });
+    };
+    state.messages.push(message);
     renderMessages();
+    return () => {
+      const index = state.messages.indexOf(message);
+      if (index < 0) return;
+      state.messages.splice(index, 1);
+      renderMessages();
+    };
   }
 
   function insertSteerMessage({ steerId, requestId, text }) {

@@ -1,7 +1,8 @@
 import { readBoundedRegularFile } from "../../../src/plugin-sdk/index.js";
 
 import { MAX_DOCUMENT_BYTES } from "./constants.js";
-import { failDocument, rethrowDocumentIoError } from "./errors.js";
+import { rethrowDocumentIoError } from "./errors.js";
+import { failDocumentRead } from "./read-failure.js";
 import { extractDocumentText } from "./extract.js";
 import type { DocumentReference, ExtractedDocument } from "./types.js";
 
@@ -21,24 +22,7 @@ export async function readDocument(
       rootPath: document.rootPath,
       ...(signal ? { signal } : {}),
     });
-    if (!file.ok && file.reason === "not_regular_file") {
-      failDocument(
-        "document_target_not_file",
-        "The requested document is not a regular file.",
-      );
-    }
-    if (!file.ok && file.reason === "too_large") {
-      failDocument(
-        "document_file_too_large",
-        `The requested document exceeds the ${MAX_DOCUMENT_BYTES}-byte parsing limit.`,
-      );
-    }
-    if (!file.ok) {
-      failDocument(
-        "document_changed_during_read",
-        "The requested document changed while it was being read.",
-      );
-    }
+    if (!file.ok) failDocumentRead(file, MAX_DOCUMENT_BYTES);
     const bytes = new Uint8Array(file.bytes);
     return Object.freeze({
       bytes: bytes.byteLength,

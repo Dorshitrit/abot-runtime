@@ -33,7 +33,7 @@ test.each(["dashboard", "schedules"])("%s links load and scroll to a run outside
     messagesList: { querySelectorAll: () => f.state.messages.map((message) => ({ dataset: { requestId: message.requestId }, scrollIntoView })) },
   };
   const client = { supportsSchedules: () => true, supportsToolApprovals: () => false };
-  const shared = { dom, client, shell: { activateWorkspace: () => true }, selectedEnvironmentId: () => "dev", openSession: f.conversationSession.openSession };
+  const shared = { dom, client, state: f.state, shell: { prepareWorkspaceActivation: () => () => true, showToast: vi.fn() }, selectedEnvironmentId: () => "dev", openSession: f.conversationSession.openSession };
   createSchedulesFeature({ ...shared, getCurrentSessionId: () => f.state.currentSessionId, getAgentModes: () => [] });
   createDashboardFeature({ ...shared, state: f.state, loadSessions: vi.fn(), isComposerAvailable: () => true });
   await views[surface]!.openConversation("session-1", "req-2");

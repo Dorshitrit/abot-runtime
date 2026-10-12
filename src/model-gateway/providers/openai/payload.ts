@@ -1,4 +1,3 @@
-import { resolveModelStepOutputTokenLimit } from "../../../shared/model-step-registry.js";
 import { openAIImageContents, projectOpenAIImageMessage } from "./image-content.js";
 import {
   isAssistantToolCallMessage,
@@ -11,15 +10,13 @@ import {
   resolveModelGatewayFormat,
   type OpenAISchemaProjectionDiagnostic,
 } from "../../structured-output/projection.js";
-import type { ModelGatewayRequest, ResolvedModelInvocation } from "../../types.js";
-import type { ModelProviderInputTokenMeasurement } from "../contracts.js";
-import { resolveProviderEnvelopeInputTokens } from "../envelope-budget.js";
+import { projectOpenAIFunctionOutput } from "./function-output.js";
+import type { ModelGatewayRequest } from "../../types.js";
 
 export type OpenAIPayloadBuildOptions = Readonly<{
   onFormatProjection?: (
     diagnostics: readonly OpenAISchemaProjectionDiagnostic[],
   ) => void;
-  inputTokenMeasurement?: ModelProviderInputTokenMeasurement;
 }>;
 
 function prependInstructionInput(params: {
@@ -102,12 +99,6 @@ function readFiniteNumber(value: unknown): number | undefined {
     : undefined;
 }
 
-function hasExplicitlyDisabledOpenAIReasoning(
-  invocation: ResolvedModelInvocation,
-): boolean {
-  return invocation.profile.supportsThinking === true && invocation.think === "none";
-}
-
 export function buildOpenAIResponsesPayload(
   requestBody: ModelGatewayRequest,
   payloadOptions: OpenAIPayloadBuildOptions = {},
@@ -150,35 +141,15 @@ export function buildOpenAIResponsesPayload(
   if (shouldProjectOpenAIReasoning) {
     payload.reasoning = { effort: reasoningEffort };
   }
+  const functionOutput = projectOpenAIFunctionOutput(requestBody.modelStep, formatProjection.format);
+  if (functionOutput) {
+    Object.assign(payload, functionOutput);
+    return payload;
+  }
   if (formatProjection.format) {
     payload.text = { format: formatProjection.format };
   }
 
-  // Without an explicit provider disable, hidden reasoning may consume output.
-  // A missing or false control declaration does not disable provider defaults.
-  if (!hasExplicitlyDisabledOpenAIReasoning(invocation)) {
-    return payload;
-  }
-  const outputTokenLimit = resolveModelStepOutputTokenLimit(
-    requestBody.modelStep,
-  );
-  if (outputTokenLimit === undefined) {
-    return payload;
-  }
-  const { inputTokens } = resolveProviderEnvelopeInputTokens({
-    payload,
-    tokenEstimation: invocation.profile.context.tokenEstimation,
-    ...(payloadOptions.inputTokenMeasurement
-      ? { measurement: payloadOptions.inputTokenMeasurement }
-      : {}),
-  });
-  payload.max_output_tokens = Math.max(
-    1,
-    Math.min(
-      outputTokenLimit,
-      invocation.profile.contextWindowTokens - inputTokens,
-    ),
-  );
   return payload;
 }
 
@@ -189,6 +160,5 @@ export function buildOpenAIInputTokenCountPayload(
   delete payload.stream;
   delete payload.temperature;
   delete payload.top_p;
-  delete payload.max_output_tokens;
   return payload;
 }

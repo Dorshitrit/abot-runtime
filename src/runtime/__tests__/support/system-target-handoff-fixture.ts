@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import { HOST_SECRET_PROTECTION_CAPABILITY } from "../../../computer-access/companion/secret-protection-protocol.js";
 import { join } from "node:path";
 import type { ModelGatewayClient, ToolPermissionMode } from "../../ports.js";
 import type { TestRequestSeed } from "./request-execution-scope.js";
@@ -61,6 +62,7 @@ export function createTargetHandoffFixture(root: string) {
       connected: true,
       hostId: selectedHost,
       connectionId: selectedConnection,
+      capabilities: [HOST_SECRET_PROTECTION_CAPABILITY],
       identity: {
         name: "Fixture computer",
         os: "windows",

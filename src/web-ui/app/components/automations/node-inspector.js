@@ -1,3 +1,4 @@
+import { renderReasoningModeField, retainedReasoningMode } from "../../lib/reasoning-controls.js";
 import { escapeHtml } from "../../lib/text-format.js";
 import { readBindingFields, renderBindingFields } from "./binding-fields.js";
 import { hasConnectedAutomationResultInput } from "../../lib/automation-binding-producers.js";
@@ -134,7 +135,7 @@ function renderAgentEditor(node, catalog, producers) {
   return `${producers.length ? `<p class="automation-input-notice" data-input-connection="${connected ? "connected" : "none"}"${connected ? " hidden" : ""}>No earlier step output is connected. Connect an output below if this agent should use it.</p>` : ""}
     ${renderBindingFields(node.inputs, null, { name: "inputs", allowAdd: true, producers })}
     ${renderModelChoice(node, catalog)}
-    <label>Mode<select name="agentMode"><option value="fast"${node.agentMode === "fast" ? " selected" : ""}>Fast</option><option value="reasoning"${node.agentMode === "reasoning" ? " selected" : ""}>Reasoning</option><option value="deep"${node.agentMode === "deep" ? " selected" : ""}>Deep</option></select></label>
+    ${renderReasoningModeField(node.agentMode || "fast", catalog?.models?.find((model) => model.id === node.modelProfileId))}
     <label>Role instructions<textarea name="roleInstructions" dir="auto">${escapeHtml(node.roleInstructions || "")}</textarea></label>
     <label>Prompt<textarea name="prompt" dir="auto" required>${escapeHtml(node.prompt || "")}</textarea></label>
     <details class="automation-node-contract"><summary>Result contract · ${node.result?.kind === "json" ? "Structured JSON" : "Text"}</summary>
@@ -217,7 +218,7 @@ export function readAutomationNodePatch(form, node, catalog) {
   };
   if (node.kind === "agent") {
     patch.modelProfileId = String(fields.get("modelProfileId") || "");
-    patch.agentMode = String(fields.get("agentMode") || "fast");
+    patch.agentMode = retainedReasoningMode(form, node.agentMode || "fast");
     patch.roleInstructions = String(fields.get("roleInstructions") || "");
     patch.prompt = String(fields.get("prompt") || "");
     patch.inputs = readBindingFields(form, "inputs");

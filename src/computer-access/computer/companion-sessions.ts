@@ -17,6 +17,8 @@ import {
   readNativeComputerResult,
 } from "./native-validation.js";
 import { withDesktopQueue } from "./desktop-action-queue.js";
+import { protectDesktopResult } from "../security/desktop-result.js";
+import { protectObservedError } from "../security/observed-error.js";
 
 type ComputerSession = {
   backend: NativeComputerBackend;
@@ -48,10 +50,10 @@ export class CompanionComputerSessions {
         } catch (error) {
           return failureResult({
             errorCode: "computer_native_operation_failed",
-            message:
-              error instanceof Error
-                ? error.message
-                : "The computer operation failed; observe before retrying.",
+            message: protectObservedError(
+              error,
+              "The computer operation failed; observe before retrying.",
+            ),
           });
         }
       };
@@ -122,13 +124,14 @@ export class CompanionComputerSessions {
         const session = await this.acquire(id);
         this.eraseFrame(session);
         const result = await session.backend.execute(request, signal);
-        const { image, ...metadata } = result;
+        const { image: rawImage, ...rawMetadata } = result;
         try {
-          readNativeComputerResult(metadata);
+          readNativeComputerResult(rawMetadata);
         } catch (error) {
-          image?.bytes.fill(0);
+          rawImage?.bytes.fill(0);
           throw error;
         }
+        const { image, ...metadata } = protectDesktopResult(result);
         if (!image)
           return successResult({
             output: "Native desktop observation.",

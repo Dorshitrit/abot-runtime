@@ -5,7 +5,8 @@ import {
 import { escapeHtml, textOf } from "../lib/text-format.js";
 
 export function createComposerAttachmentsController({
-  state,
+  getDraft,
+  canDeleteAttachment = () => true,
   dom,
   shell,
   client,
@@ -31,7 +32,7 @@ export function createComposerAttachmentsController({
     const storageRef = textOf(attachment.storageRef).trim();
     const id = textOf(attachment.id).trim();
     const mimeType = textOf(attachment.mimeType).trim().toLowerCase();
-    const sessionId = attachmentSessionId(attachment) || state.currentSessionId;
+    const sessionId = attachmentSessionId(attachment) || getDraft().scope.sessionId;
     if (!storageRef || !id || !mimeType || !sessionId) return "";
     return client.attachmentPreviewUrl({
       environmentId: attachmentEnvironmentId(attachment),
@@ -48,6 +49,7 @@ export function createComposerAttachmentsController({
     const mimeType = textOf(attachment.mimeType).trim();
     const sessionId = attachmentSessionId(attachment);
     if (!storageRef || !id || !mimeType || !sessionId) return;
+    if (!canDeleteAttachment(attachment)) return;
     try {
       await client.deleteAttachment({
         environmentId: attachmentEnvironmentId(attachment),
@@ -70,43 +72,7 @@ export function createComposerAttachmentsController({
     for (const attachment of attachments) void deletePending(attachment);
   }
 
-  function activeUploadCount() {
-    return (
-      state.pendingAttachmentUploadCounts.get(
-        state.composerAttachmentGeneration,
-      ) ?? 0
-    );
-  }
-
-  function pruneUploadCounts() {
-    for (const generation of state.pendingAttachmentUploadCounts.keys()) {
-      if (generation !== state.composerAttachmentGeneration) {
-        state.pendingAttachmentUploadCounts.delete(generation);
-      }
-    }
-  }
-
-  function invalidateCompletions() {
-    state.composerAttachmentGeneration += 1;
-    pruneUploadCounts();
-    onSendStateChange();
-  }
-
-  function setUploadInProgress(uploading, generation) {
-    const uploadGeneration =
-      Number.isFinite(generation) && generation >= 0
-        ? generation
-        : state.composerAttachmentGeneration;
-    const nextCount = Math.max(
-      0,
-      (state.pendingAttachmentUploadCounts.get(uploadGeneration) ?? 0) +
-        (uploading ? 1 : -1),
-    );
-    if (nextCount === 0)
-      state.pendingAttachmentUploadCounts.delete(uploadGeneration);
-    else state.pendingAttachmentUploadCounts.set(uploadGeneration, nextCount);
-    onSendStateChange();
-  }
+  function activeUploadCount() { return getDraft().uploading; }
 
   function render() {
     if (!isComposerVisible()) return;
@@ -118,7 +84,7 @@ export function createComposerAttachmentsController({
         ? "Attach a file or image"
         : "Attach a document (this model does not accept images)";
     dom.attachmentPreview.innerHTML = "";
-    for (const attachment of state.pendingAttachments) {
+    for (const attachment of getDraft().attachments) {
       const chip = document.createElement("span");
       chip.className = "attachment-chip";
       chip.innerHTML = `
@@ -126,7 +92,7 @@ export function createComposerAttachmentsController({
         <button type="button" aria-label="Remove attachment">×</button>
       `;
       chip.querySelector("button")?.addEventListener("click", () => {
-        state.pendingAttachments = state.pendingAttachments.filter(
+        getDraft().attachments = getDraft().attachments.filter(
           (item) => item.id !== attachment.id,
         );
         void deletePending(attachment);
@@ -139,7 +105,7 @@ export function createComposerAttachmentsController({
 
   function removeUnsupportedImages() {
     if (selectedModelSupportsImageInput()) return;
-    const unsupported = state.pendingAttachments.filter(
+    const unsupported = getDraft().attachments.filter(
       (attachment) =>
         attachment.kind === "image" ||
         isImageAttachmentMimeType(attachment.mimeType),
@@ -148,7 +114,7 @@ export function createComposerAttachmentsController({
     const unsupportedIds = new Set(
       unsupported.map((attachment) => attachment.id),
     );
-    state.pendingAttachments = state.pendingAttachments.filter(
+    getDraft().attachments = getDraft().attachments.filter(
       (attachment) => !unsupportedIds.has(attachment.id),
     );
     cleanup(unsupported);
@@ -158,19 +124,15 @@ export function createComposerAttachmentsController({
   }
 
   function clear(options = {}) {
-    invalidateCompletions();
-    if (state.pendingAttachments.length === 0) return;
-    const attachments = [...state.pendingAttachments];
-    state.pendingAttachments = [];
+    const draft = getDraft();
+    const attachments = draft.clearAttachments();
     render();
     if (options.cleanup !== false) cleanup(attachments);
   }
 
-  function canRetainUploadedAttachment(scope) {
-    if (state.currentSessionId !== scope.sessionId) return false;
-    if (selectedEnvironmentId() !== scope.environmentId) return false;
-    if (state.composerAttachmentGeneration !== scope.generation) return false;
-    if (!scope.imageAttachment) return true;
+  function canRetainUploadedAttachment(draft, imageAttachment) {
+    if (!imageAttachment) return true;
+    if (draft !== getDraft()) return true;
     return selectedModelSupportsImageInput();
   }
 
@@ -184,15 +146,14 @@ export function createComposerAttachmentsController({
     if (imageAttachment && !selectedModelSupportsImageInput()) {
       throw new Error("Selected model does not support image input");
     }
-    if (state.pendingAttachments.length >= 4) {
+    if (getDraft().attachments.length + getDraft().uploading >= 4) {
       throw new Error("You can attach up to 4 files to one request");
     }
     ensureSession();
-    const uploadEnvironmentId = selectedEnvironmentId();
-    const uploadSessionId = state.currentSessionId;
-    invalidateCompletions();
-    const uploadGeneration = state.composerAttachmentGeneration;
-    setUploadInProgress(true, uploadGeneration);
+    const draft = getDraft();
+    const uploadEnvironmentId = draft.scope.environmentId;
+    const uploadSessionId = draft.scope.sessionId;
+    const uploadGeneration = draft.startUpload();
     try {
       const uploadedAttachment = await client.uploadAttachment({
         environmentId: uploadEnvironmentId,
@@ -206,20 +167,18 @@ export function createComposerAttachmentsController({
         sessionId: uploadSessionId,
         environment: uploadEnvironmentId,
       };
-      const uploadScope = {
-        sessionId: uploadSessionId,
-        environmentId: uploadEnvironmentId,
-        generation: uploadGeneration,
-        imageAttachment,
-      };
-      if (!canRetainUploadedAttachment(uploadScope)) {
+      if (!canRetainUploadedAttachment(draft, imageAttachment)) {
         void deletePending(attachment);
         return;
       }
-      state.pendingAttachments = [...state.pendingAttachments, attachment];
+      if (!draft.acceptUpload(uploadGeneration, attachment)) {
+        void deletePending(attachment);
+        return;
+      }
       render();
     } finally {
-      setUploadInProgress(false, uploadGeneration);
+      draft.finishUpload(uploadGeneration);
+      onSendStateChange();
     }
   }
 
@@ -228,11 +187,9 @@ export function createComposerAttachmentsController({
     clear,
     cleanup,
     deletePending,
-    invalidateCompletions,
     previewUrl,
     removeUnsupportedImages,
     render,
-    setUploadInProgress,
     upload,
   };
 }

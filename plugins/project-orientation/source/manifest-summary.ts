@@ -12,6 +12,11 @@ import {
   sanitizeJsonText,
 } from "../../../src/plugin-sdk/index.js";
 
+import {
+  failProjectManifestRead,
+  throwIfProjectInspectionCancelled,
+} from "./inspection-failure.js";
+
 const PACKAGE_JSON_MAX_BYTES = 256 * 1024;
 const PACKAGE_SCRIPT_LIMIT = 100;
 const MANIFEST_IDENTITY_MAX_CHARS = 256;
@@ -83,9 +88,11 @@ async function existingChild(
 export async function readProjectManifests(
   context: RuntimePluginLoadContext,
   root: ResolvedRuntimeToolPath,
+  signal?: AbortSignal,
 ): Promise<readonly ProjectManifestSummary[]> {
   const summaries: ProjectManifestSummary[] = [];
   for (const name of KNOWN_MANIFESTS) {
+    throwIfProjectInspectionCancelled(signal);
     const target = await existingChild(context, root, name);
     if (!target) continue;
     if (name !== "package.json") {
@@ -95,6 +102,7 @@ export async function readProjectManifests(
     const file = await readBoundedRegularFile(target.absolutePath, {
       maxBytes: PACKAGE_JSON_MAX_BYTES,
       rootPath: target.rootPath,
+      ...(signal ? { signal } : {}),
     });
     if (!file.ok && file.reason === "too_large") {
       summaries.push(
@@ -102,8 +110,7 @@ export async function readProjectManifests(
       );
       continue;
     }
-    if (!file.ok)
-      throw new Error("Project manifest changed while it was being read.");
+    if (!file.ok) failProjectManifestRead(file);
     try {
       const parsed = JSON.parse(file.bytes.toString("utf8")) as unknown;
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {

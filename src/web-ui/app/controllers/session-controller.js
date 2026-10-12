@@ -1,3 +1,4 @@
+import { createSessionPinUpdates } from "./session-pin-updates.js";
 import {
   isOlderSessionReadState,
   isSessionReadStateUnavailable,
@@ -19,6 +20,7 @@ export function createSessionController({
   selectedEnvironmentId,
   onOpen,
   onClearCurrent,
+  onSessionAttachmentsCleared = () => {},
   onClearSessionMode,
   onSaveModelPreferences,
   onReload,
@@ -28,13 +30,14 @@ export function createSessionController({
   copyText = (value) => navigator.clipboard.writeText(value),
 }) {
   let pagination;
+  const updatePinnedSessions = createSessionPinUpdates({ state, preferences });
   const titleOf = (session) =>
     textOf(session?.displayName || session?.title || session?.id);
   const byId = (sessionId) =>
     state.sessions.find((session) => textOf(session.id) === sessionId);
   const isPinned = (sessionId) => state.pinnedSessionIds.includes(sessionId);
   const sidebar = createSessionSidebarController({
-    state, preferences, selectedEnvironmentId, showToast: shell?.showToast,
+    state, preferences, updatePinnedSessions, selectedEnvironmentId, showToast: shell?.showToast,
     render: () => { (onSidebarChange ?? render)(); void pagination?.load(); }, getFilteredSessions: filtered,
     getPageInfo: () => pagination?.info(),
   });
@@ -98,7 +101,7 @@ export function createSessionController({
           <button class="session-action pin-action" type="button" role="menuitem" tabindex="-1" title="${pinned ? "Unpin session" : "Pin session"}">${pinned ? "Unpin" : "Pin"}</button>
           <button class="session-action move-up-action" type="button" role="menuitem" tabindex="-1">Move up</button>
           <button class="session-action move-down-action" type="button" role="menuitem" tabindex="-1">Move down</button>
-          <button class="session-action archive-action" type="button" role="menuitem" tabindex="-1" title="Hide or restore this conversation in this browser and environment">${sidebar.isArchiveView() ? "Restore" : "Archive"}</button>
+          <button class="session-action archive-action" type="button" role="menuitem" tabindex="-1" title="Hide or restore this conversation in this ABot installation and environment">${sidebar.isArchiveView() ? "Restore" : "Archive"}</button>
           <button class="session-action copy-filename-action" type="button" role="menuitem" tabindex="-1" title="Copy session filename">Copy filename</button>
           <button class="session-action clear-action" type="button" role="menuitem" tabindex="-1" title="Reset messages">Reset</button>
           <button class="session-action delete-action" type="button" role="menuitem" tabindex="-1" title="Delete session">Delete</button>
@@ -227,12 +230,13 @@ export function createSessionController({
     render();
   }
 
-  function togglePinned(sessionId) {
+  async function togglePinned(sessionId) {
     if (!sessionId) return;
-    state.pinnedSessionIds = isPinned(sessionId)
-      ? state.pinnedSessionIds.filter((item) => item !== sessionId)
-      : [sessionId, ...state.pinnedSessionIds];
-    preferences.savePinnedSessions(state.pinnedSessionIds);
+    try {
+      await updatePinnedSessions((pins) => pins.includes(sessionId)
+        ? pins.filter((item) => item !== sessionId) : [sessionId, ...pins]);
+    }
+    catch { shell.showToast("Could not save pinned conversations", "failed"); return; }
     render();
     void pagination?.load();
   }
@@ -255,13 +259,17 @@ export function createSessionController({
       )
     )
       return;
+    const scope = { environmentId: selectedEnvironmentId(), sessionId };
     setBusy(sessionId, true);
     try {
-      await client.clearSessionMessages(sessionId, selectedEnvironmentId());
+      await client.clearSessionMessages(sessionId, scope.environmentId);
+      onSessionAttachmentsCleared(scope);
+      if (selectedEnvironmentId() !== scope.environmentId) return;
       onClearSessionMode(sessionId);
       if (state.currentSessionId === sessionId) onClearCurrent(false);
       await onReload();
     } catch (error) {
+      if (selectedEnvironmentId() !== scope.environmentId) return;
       onControlEvent({
         type: "control",
         name: "Session clear failed",
@@ -269,7 +277,8 @@ export function createSessionController({
         summary: error instanceof Error ? error.message : String(error),
       });
     } finally {
-      setBusy(sessionId, false);
+      state.busySessionIds.delete(sessionId);
+      if (selectedEnvironmentId() === scope.environmentId) render();
     }
   }
 
@@ -281,21 +290,26 @@ export function createSessionController({
       )
     )
       return;
+    const scope = { environmentId: selectedEnvironmentId(), sessionId };
     setBusy(sessionId, true);
     try {
-      await client.deleteSession(sessionId, selectedEnvironmentId());
-      state.pinnedSessionIds = state.pinnedSessionIds.filter(
-        (item) => item !== sessionId,
-      );
-      preferences.savePinnedSessions(state.pinnedSessionIds);
+      await client.deleteSession(sessionId, scope.environmentId);
+      onSessionAttachmentsCleared(scope);
+      if (selectedEnvironmentId() !== scope.environmentId) return;
+      void updatePinnedSessions((pins) => pins.filter((item) => item !== sessionId))
+        .then(() => { if (selectedEnvironmentId() === scope.environmentId) render(); })
+        .catch(() => {
+          if (selectedEnvironmentId() === scope.environmentId)
+            shell.showToast("Conversation deleted, but its saved pin could not be removed", "failed");
+        });
       onClearSessionMode(sessionId);
       delete state.sessionModels[sessionId];
       onSaveModelPreferences();
       if (
-        preferences.sessionIdForEnvironment(selectedEnvironmentId()) ===
+        preferences.sessionIdForEnvironment(scope.environmentId) ===
         sessionId
       ) {
-        preferences.saveSessionIdForEnvironment(selectedEnvironmentId(), "");
+        preferences.saveSessionIdForEnvironment(scope.environmentId, "");
       }
       state.sessions = state.sessions.filter(
         (session) => session.id !== sessionId,
@@ -304,6 +318,7 @@ export function createSessionController({
       render();
       await onReload();
     } catch (error) {
+      if (selectedEnvironmentId() !== scope.environmentId) return;
       onControlEvent({
         type: "control",
         name: "Session delete failed",
@@ -311,7 +326,8 @@ export function createSessionController({
         summary: error instanceof Error ? error.message : String(error),
       });
     } finally {
-      setBusy(sessionId, false);
+      state.busySessionIds.delete(sessionId);
+      if (selectedEnvironmentId() === scope.environmentId) render();
     }
   }
 

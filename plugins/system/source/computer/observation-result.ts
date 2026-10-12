@@ -10,6 +10,7 @@ import {
   type RequestComputer,
 } from "./request-computers.js";
 import { serializeComputerObservation } from "./observation-output.js";
+import { protectObservedError } from "../security/observed-error.js";
 
 export function describeDesktop(
   entry: RequestComputer,
@@ -45,8 +46,7 @@ export async function projectComputerResult(
         );
       media.push(image);
     } catch (error) {
-      imageFailure =
-        error instanceof Error ? error.message : "Image admission failed.";
+      imageFailure = protectObservedError(error, "Image admission failed.");
     } finally {
       result.image.bytes.fill(0);
     }
@@ -57,9 +57,14 @@ export async function projectComputerResult(
     description.observation_ref = undefined;
   }
   const hasPartialInputDispatch = result.dispatch?.status === "partial";
-  const operationError = result.error ?? (hasPartialInputDispatch
-    ? { code: "computer_input_partial", message: "Only part of the input was accepted." }
-    : undefined);
+  const operationError =
+    result.error ??
+    (hasPartialInputDispatch
+      ? {
+          code: "computer_input_partial",
+          message: "Only part of the input was accepted.",
+        }
+      : undefined);
   const data = {
     desktop_ref: entry.ref,
     ...(description.observation_ref

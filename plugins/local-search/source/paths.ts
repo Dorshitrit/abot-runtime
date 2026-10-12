@@ -8,6 +8,7 @@ import type {
 } from "../../../src/plugin-sdk/index.js";
 import { resolvePluginPath } from "../../../src/plugin-sdk/index.js";
 
+import { openWindowsSearchAuthority } from "./windows-authority.js";
 import { LocalSearchError } from "./errors.js";
 import type { SearchDirectoryAuthority } from "./ripgrep-process.js";
 
@@ -164,6 +165,8 @@ export async function resolveSearchRoot(
     requirePath: true,
     allowedLocations: ["agent_work", "workspace"],
   });
+  const needsWindowsSearchAuthority = process.platform === "win32";
+  if (needsWindowsSearchAuthority) return openWindowsSearchAuthority(target);
   return openSearchAuthority(target);
 }
 

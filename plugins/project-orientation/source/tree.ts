@@ -8,6 +8,8 @@ import type {
 import { resolvePluginPath } from "../../../src/plugin-sdk/index.js";
 import { sanitizeJsonText } from "../../../src/plugin-sdk/index.js";
 
+import { throwIfProjectInspectionCancelled } from "./inspection-failure.js";
+
 const IGNORED_NAMES = new Set([".git", "node_modules", "dist", "coverage"]);
 const DISPLAY_PATH_MAX_CHARS = 64;
 
@@ -61,6 +63,7 @@ export async function collectProjectTree(
   root: ResolvedRuntimeToolPath,
   depth: number,
   maxEntries: number,
+  signal?: AbortSignal,
 ): Promise<ProjectTree> {
   const directories: string[] = [];
   const files: string[] = [];
@@ -73,11 +76,13 @@ export async function collectProjectTree(
   }>[] = [{ target: root, remainingDepth: depth }];
 
   while (queue.length > 0 && entries < maxEntries) {
+    throwIfProjectInspectionCancelled(signal);
     const current = queue.shift();
     if (!current) break;
     const sampled: Readonly<{ name: string; isDirectory: boolean }>[] = [];
     const directory = await opendir(current.target.absolutePath);
     for await (const entry of directory) {
+      throwIfProjectInspectionCancelled(signal);
       if (entry.isDirectory() && IGNORED_NAMES.has(entry.name)) continue;
       if (entries + sampled.length >= maxEntries) {
         truncated = true;
@@ -87,6 +92,7 @@ export async function collectProjectTree(
     }
     sampled.sort((left, right) => left.name.localeCompare(right.name));
     for (const entry of sampled) {
+      throwIfProjectInspectionCancelled(signal);
       const child = resolvePluginPath(
         context,
         childLogicalPath(current.target, entry.name),

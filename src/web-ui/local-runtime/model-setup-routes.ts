@@ -4,6 +4,7 @@ import {
   ConfigMutationRequestError,
 } from "./config-mutation-request.js";
 import { readBody, readJsonBody, sendJson } from "./http.js";
+import { modelSetupContextWindowErrorDetails } from "./model-setup-context-window.js";
 import { ModelSetupError } from "./model-setup-input.js";
 import { ModelSetupService } from "./model-setup-service.js";
 
@@ -57,6 +58,7 @@ export class ModelSetupRoutes {
         error instanceof ConfigMutationRequestError;
       sendJson(params.response, known ? error.statusCode : 400, {
         ok: false,
+        ...modelSetupContextWindowErrorDetails(error),
         error:
           error instanceof ModelSetupError ? error.code : "model_setup_failed",
         message: known

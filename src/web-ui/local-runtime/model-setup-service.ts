@@ -187,7 +187,7 @@ export class ModelSetupService {
     };
     await validateModelAddition(
       mergeRuntimeModelAddition(source, addition).config,
-      options,
+      { ...options, modelProfileId: input.profileId },
     );
     const credential = await prepareModelCredential(
       options,
@@ -204,7 +204,10 @@ export class ModelSetupService {
           ...addition,
           profile: declaration,
         }).config;
-        await validateModelAddition(candidate, options);
+        await validateModelAddition(candidate, {
+          ...options,
+          modelProfileId: input.profileId,
+        });
         await assertProfileUnchanged();
         await this.commit(
           options,

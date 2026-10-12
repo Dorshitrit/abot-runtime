@@ -1,13 +1,10 @@
 import { createSparkPlacementMotion } from "./motion.js";
+import { workspaceStorage } from "../../services/workspace-state.js";
 
 const storageKey = "abot.spark.launcher.position.v1";
 const margin = 12;
 const dragThreshold = 5;
 const positionGrid = 16;
-
-function readBrowserStorage(windowRoot) {
-  try { return windowRoot.localStorage; } catch { return null; }
-}
 
 function readPosition(storage) {
   try {
@@ -31,9 +28,9 @@ function hasMovedPastDragThreshold(pointer, event) {
   return Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) >= dragThreshold;
 }
 
-/** Browser-only launcher placement; conversation and environment state stay untouched. */
+/** Installation-owned launcher placement, clamped to the current screen. */
 export function createSparkChatPlacement({ root, launcher, panel, notice, dockAnchor, storage, windowRoot = window }) {
-  const positionStorage = storage === undefined ? readBrowserStorage(windowRoot) : storage;
+  const positionStorage = storage === undefined ? workspaceStorage() : storage;
   let position = readPosition(positionStorage);
   let pointer = null;
   let suppressClick = false;
@@ -45,7 +42,7 @@ export function createSparkChatPlacement({ root, launcher, panel, notice, dockAn
     try {
       if (position) positionStorage?.setItem(storageKey, JSON.stringify(position));
       else positionStorage?.removeItem(storageKey);
-    } catch { /* Placement remains usable when browser storage is unavailable. */ }
+    } catch { /* The shared storage owner reports persistence failures. */ }
   }
 
   function placePopup(node, anchor) {

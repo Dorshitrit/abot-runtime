@@ -1,33 +1,11 @@
 import { escapeAttribute, escapeHtml, textOf } from "../lib/text-format.js";
 import { normalizeToolPermissionMode } from "../lib/tool-permission-mode.js";
+import { createReasoningModeController } from "./reasoning-mode-controller.js";
 import { createToolPermissionModeController } from "./tool-permission-mode-controller.js";
 
 export { normalizeToolPermissionMode } from "../lib/tool-permission-mode.js";
 
-export function normalizeAgentMode(mode) {
-  const normalized = textOf(mode).trim().toLowerCase();
-  return ["fast", "reasoning", "deep", "auto"].includes(normalized)
-    ? normalized
-    : "reasoning";
-}
-
-function agentModeMeta(mode) {
-  const modes = {
-    auto: { label: "Auto", description: "Lets the agent choose", icon: "*" },
-    fast: { label: "Fast", description: "Shorter and quicker", icon: "!" },
-    deep: {
-      label: "Deep analysis",
-      description: "More careful responses",
-      icon: "D",
-    },
-    reasoning: {
-      label: "Reasoning",
-      description: "Balanced speed and thinking",
-      icon: "R",
-    },
-  };
-  return modes[normalizeAgentMode(mode)] || modes.reasoning;
-}
+export { normalizeAgentMode } from "./reasoning-mode-controller.js";
 
 export function createRuntimeSelectionController({
   state,
@@ -41,18 +19,14 @@ export function createRuntimeSelectionController({
   onModelCatalogLoading = () => {},
   onModelCatalogLoaded = () => {},
   onModelCatalogUnavailable = () => {},
+  onReasoningConfigurationApplied,
 }) {
-  let agentModeLoadRevision = 0;
-  const agentModeMutationRevisions = new Map();
-  let agentModeMutationInFlight = false;
+  let modelCatalogEnvironmentId = null;
   let modelCatalogLoadRevision = 0;
 
-  const agentModeMutationRevisionFor = (environmentId) =>
-    agentModeMutationRevisions.get(environmentId) || 0;
-
-  function configuredEnvironmentOptions() {
-    const raw = Array.isArray(state.config?.environments)
-      ? state.config.environments
+  function configuredEnvironmentOptions(config = state.config) {
+    const raw = Array.isArray(config?.environments)
+      ? config.environments
       : [];
     const options = raw
       .map((entry) => {
@@ -63,7 +37,7 @@ export function createRuntimeSelectionController({
       })
       .filter(Boolean);
     if (options.length > 0) return options;
-    const fallback = textOf(state.config?.defaultEnvironmentId).trim();
+    const fallback = textOf(config?.defaultEnvironmentId).trim();
     return fallback ? [{ value: fallback, label: fallback }] : [];
   }
 
@@ -166,6 +140,7 @@ export function createRuntimeSelectionController({
   function applyModelSelection() {
     if (!dom.modelSelect.options.length) {
       modelSelector.sync();
+      renderAgentMode();
       return;
     }
     const target =
@@ -179,6 +154,7 @@ export function createRuntimeSelectionController({
       dom.modelSelect.value = target;
     }
     modelSelector.sync();
+    renderAgentMode();
   }
 
   function rememberModelSelection() {
@@ -188,6 +164,7 @@ export function createRuntimeSelectionController({
     if (getComposerSessionId())
       state.sessionModels[getComposerSessionId()] = profileId;
     saveModelPreferences();
+    renderAgentMode();
   }
 
   const {
@@ -197,127 +174,11 @@ export function createRuntimeSelectionController({
     state, dom, preferences, recordControlEvent, getComposerSessionId,
   });
 
-  function renderAgentMode() {
-    const meta = agentModeMeta(state.agentMode);
-    dom.agentModeButton.title = `Reasoning depth: ${meta.label}`;
-    dom.agentModeButton.setAttribute("aria-label", `Reasoning depth: ${meta.label}`);
-    dom.agentModeButton.disabled = agentModeMutationInFlight;
-    dom.agentModeButton.innerHTML = `
-      <span class="agent-mode-icon">${escapeHtml(meta.icon)}</span>
-      <span>${escapeHtml(meta.label)}</span>`;
-    dom.agentModeButton.classList.toggle("open", state.agentModeMenuOpen);
-    dom.agentModeButton.setAttribute(
-      "aria-expanded",
-      state.agentModeMenuOpen ? "true" : "false",
-    );
-    dom.agentModeMenu.classList.toggle("open", state.agentModeMenuOpen);
-    dom.agentModeMenu.hidden = !state.agentModeMenuOpen;
-    dom.agentModeMenu.setAttribute("role", "menu");
-    dom.agentModeMenu.innerHTML = state.supportedAgentModes
-      .map((mode) => {
-        const item = agentModeMeta(mode);
-        const selected = normalizeAgentMode(mode) === state.agentMode;
-        return `
-          <button class="agent-mode-option ${selected ? "selected" : ""}" type="button"
-            role="menuitemradio" aria-checked="${selected ? "true" : "false"}"
-            tabindex="${selected ? "0" : "-1"}" data-mode="${escapeAttribute(mode)}" ${agentModeMutationInFlight ? "disabled" : ""}>
-            <span class="agent-mode-option-icon">${escapeHtml(item.icon)}</span>
-            <span><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(item.description)}</small></span>
-          </button>`;
-      })
-      .join("");
-    dom.agentModeMenu
-      .querySelectorAll(".agent-mode-option")
-      .forEach((button) => {
-        button.addEventListener(
-          "click",
-          () => void setAgentMode(button.dataset.mode),
-        );
-      });
-  }
-
-  async function loadAgentMode() {
-    const revision = ++agentModeLoadRevision;
-    const environmentId = selectedEnvironmentId();
-    const mutationRevision = agentModeMutationRevisionFor(environmentId);
-    renderAgentMode();
-    try {
-      const payload = await client.getAgentMode(environmentId);
-      if (
-        revision !== agentModeLoadRevision ||
-        mutationRevision !== agentModeMutationRevisionFor(environmentId) ||
-        environmentId !== selectedEnvironmentId()
-      ) {
-        return false;
-      }
-      state.agentMode = normalizeAgentMode(payload.mode);
-      state.supportedAgentModes = Array.isArray(payload.supportedModes)
-        ? payload.supportedModes.map(normalizeAgentMode)
-        : state.supportedAgentModes;
-      renderAgentMode();
-      return true;
-    } catch {
-      if (
-        revision !== agentModeLoadRevision ||
-        mutationRevision !== agentModeMutationRevisionFor(environmentId) ||
-        environmentId !== selectedEnvironmentId()
-      ) {
-        return false;
-      }
-      state.agentMode = "reasoning";
-      renderAgentMode();
-      return false;
-    }
-  }
-
-  async function setAgentMode(mode) {
-    if (agentModeMutationInFlight) return false;
-    agentModeMutationInFlight = true;
-    const environmentId = selectedEnvironmentId();
-    const revision = agentModeMutationRevisionFor(environmentId) + 1;
-    agentModeMutationRevisions.set(environmentId, revision);
-    const loadRevisionAtStart = ++agentModeLoadRevision;
-    const previousMode = state.agentMode;
-    const requestedMode = normalizeAgentMode(mode);
-    state.agentMode = requestedMode;
-    state.agentModeMenuOpen = false;
-    renderAgentMode();
-    dom.agentModeButton.focus();
-    try {
-      const payload = await client.setAgentMode(requestedMode, environmentId);
-      if (
-        revision !== agentModeMutationRevisionFor(environmentId) ||
-        environmentId !== selectedEnvironmentId()
-      ) {
-        return false;
-      }
-      agentModeLoadRevision += 1;
-      state.agentMode = normalizeAgentMode(payload.mode);
-      renderAgentMode();
-      return true;
-    } catch (error) {
-      if (
-        revision !== agentModeMutationRevisionFor(environmentId) ||
-        environmentId !== selectedEnvironmentId()
-      ) {
-        return false;
-      }
-      if (agentModeLoadRevision === loadRevisionAtStart) {
-        state.agentMode = previousMode;
-        renderAgentMode();
-      }
-      recordControlEvent({
-        type: "control",
-        name: "Reasoning mode update failed",
-        tone: "failed",
-        summary: error instanceof Error ? error.message : String(error),
-      });
-      return false;
-    } finally {
-      agentModeMutationInFlight = false;
-      renderAgentMode();
-    }
-  }
+  const { renderAgentMode, loadAgentMode, setAgentMode } = createReasoningModeController({
+    state, dom, client, selectedEnvironmentId,
+    selectedModelProfile: () => modelCatalogEnvironmentId !== null && modelCatalogEnvironmentId !== selectedEnvironmentId() ? null : selectedModelProfile(),
+    reloadModels: onReasoningConfigurationApplied || loadModels, recordControlEvent,
+  });
 
   function renderModels() {
     dom.modelSelect.innerHTML = "";
@@ -328,6 +189,7 @@ export function createRuntimeSelectionController({
       option.textContent = "No models configured";
       dom.modelSelect.appendChild(option);
       modelSelector.sync();
+      renderAgentMode();
       return;
     }
     for (const profile of state.modelProfiles) {
@@ -345,6 +207,7 @@ export function createRuntimeSelectionController({
   async function loadModels() {
     const revision = ++modelCatalogLoadRevision;
     const environmentId = selectedEnvironmentId();
+    renderAgentMode();
     onModelCatalogLoading();
     let payload = null;
     try {
@@ -355,6 +218,7 @@ export function createRuntimeSelectionController({
       ) {
         return false;
       }
+      modelCatalogEnvironmentId = environmentId;
       state.defaultModelProfileId = textOf(payload.defaultProfileId);
       state.modelProfiles = Array.isArray(payload.profiles)
         ? payload.profiles
@@ -366,6 +230,7 @@ export function createRuntimeSelectionController({
       ) {
         return false;
       }
+      modelCatalogEnvironmentId = environmentId;
       state.defaultModelProfileId = "";
       state.modelProfiles = [];
       renderModels();

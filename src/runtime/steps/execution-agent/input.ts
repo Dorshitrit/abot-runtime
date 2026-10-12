@@ -233,7 +233,10 @@ export function buildExecutionAgentInput(
     ...(operationSupervisionEvidenceMessage
       ? [operationSupervisionEvidenceMessage]
       : []),
-    buildExecutionCapabilityGroupCatalogMessage(capabilityCatalogGroups),
+    buildExecutionCapabilityGroupCatalogMessage(
+      capabilityCatalogGroups,
+      allCapabilities,
+    ),
     ...(capabilities.length > 0
       ? [buildExecutionCapabilityCatalogMessage(capabilities)]
       : []),

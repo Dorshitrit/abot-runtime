@@ -6,6 +6,8 @@ import { learningApplicationPreferenceChange } from "../../web-ui/app/components
 // @ts-expect-error Browser-only workspace view has no declaration surface.
 import { learningWorkspaceMarkup, navigateLearningTabs } from "../../web-ui/app/components/passive-learning/workspace-view.js";
 import { FakeElement } from "./support/model-setup-wizard-harness.js";
+import { learningApplicationCatalog } from "../passive-learning/application-catalog.js";
+import { DEFAULT_LEARNING_PREFERENCES } from "../passive-learning/store.js";
 
 type Application = { app: string; observationCount: number; lastObservedAt?: string; collectionExcluded: boolean; processingExcluded: boolean };
 type Checkbox = FakeElement & { checked: boolean };
@@ -112,6 +114,27 @@ describe("Co-worker application controls", () => {
     expect(h.root.textContent).toContain("Excluded apps stay listed");
     h.view.render({ ...h.snapshot, status: null, statusError: "unavailable" });
     expect(h.root.textContent).toContain("Application history is unavailable");
+  });
+
+  test("a catalog refresh removes core-blocked application controls and rejects stale enable actions", () => {
+    const h = harness();
+    h.snapshot.status.applications.push(application("ABot", { collectionExcluded: true, processingExcluded: true }));
+    h.view.render(h.snapshot);
+    const oldInput = h.input("ABot", "collection");
+    const catalog = learningApplicationCatalog([], [], { ...DEFAULT_LEARNING_PREFERENCES,
+      excludedApplications: ["ABot", "Terminal"], processingExcludedApplications: ["ABot", "Firefox"] });
+    Object.assign(h.snapshot.status, catalog);
+    for (const axis of ["collection", "processing"]) {
+      expect(learningApplicationPreferenceChange(h.snapshot, {
+        app: "ABot", axis, allowed: true, environmentId: "dev",
+      })).toBeNull();
+    }
+    oldInput.checked = true;
+    h.view.handleChange({ type: "change", target: oldInput });
+    expect(h.actions.configure).not.toHaveBeenCalled();
+    expect(h.root.querySelector('[data-learning-application="ABot"]')).toBeNull();
+    expect(h.input("Terminal", "collection").disabled).toBe(false);
+    expect(h.input("Firefox", "processing").disabled).toBe(false);
   });
 });
 

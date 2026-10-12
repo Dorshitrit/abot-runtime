@@ -366,3 +366,19 @@
     display: none;
   }
 }
+
+/* The reasoning permission prompt shares the composer's anchored menu surface. */
+.agent-mode-menu.reasoning-override-menu {
+  width: min(340px, calc(100vw - 32px));
+  padding: 16px;
+}
+.reasoning-override-prompt { display: grid; gap: 12px; }
+.reasoning-override-prompt p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.reasoning-override-prompt strong { font-size: 13px; }
+.reasoning-override-prompt small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.reasoning-override-actions { display: grid; gap: 8px; }
+.reasoning-override-actions button { padding: 8px 12px; text-align: left; border: 1px solid var(--line); border-radius: 7px; background: transparent; color: var(--text); font: inherit; font-size: 12px; }
+.reasoning-override-actions button:first-child { color: var(--accent); }
+.reasoning-override-actions button:hover:not(:disabled) { background: var(--panel); }
+.reasoning-override-actions button:disabled { opacity: .5; cursor: default; }
+.reasoning-override-prompt .error-text { color: var(--danger); }

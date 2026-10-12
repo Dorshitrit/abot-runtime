@@ -8,6 +8,7 @@ export default defineConfig({
       "src/model-gateway/**/*.test.ts",
       "src/sessions/**/*.test.ts",
       "src/shared/**/*.test.ts",
+      "src/web-ui/**/*.test.ts",
       "tests/private/**/*.test.ts",
     ],
   },

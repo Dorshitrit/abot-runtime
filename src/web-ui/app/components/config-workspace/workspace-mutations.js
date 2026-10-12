@@ -95,7 +95,7 @@ export function createConfigWorkspaceMutations({
       return null;
     }
     const changed = dirtyFiles();
-    if (!changed.length) return () => {};
+    if (!changed.length) return prepareConfigDiscardCommit(false);
     const count = changed.length;
     const confirmed = confirmDiscard(
       `Discard unsaved changes in ${count} config ${
@@ -103,7 +103,27 @@ export function createConfigWorkspaceMutations({
       } and ${reason}?`,
     );
     if (!confirmed) return null;
-    return discardAllChanges;
+    return prepareConfigDiscardCommit(true);
+  }
+
+  function configDraftFingerprint() {
+    return JSON.stringify(configFileEntries().map((file) => {
+      const key = configFileKey(file);
+      return [key, file.config, state.rawDraftsByKey.get(key), state.baselinesByKey.get(key), state.appliedJsonRepairKeys.has(key)];
+    }));
+  }
+
+  function prepareConfigDiscardCommit(hasChanges) {
+    const dashboard = state.configDashboard;
+    const fingerprint = configDraftFingerprint();
+    const commit = () => { if (hasChanges) discardAllChanges(); };
+    commit.canCommit = () => {
+      if (state.externalRuntimeMutationInFlight) return false;
+      if (state.savingKeys.size > 0) return false;
+      if (state.configDashboard !== dashboard) return false;
+      return configDraftFingerprint() === fingerprint;
+    };
+    return commit;
   }
 
   function confirmDiscardChanges(reason = "leave configuration") {

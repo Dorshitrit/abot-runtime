@@ -8,6 +8,14 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res, err) => function __init() {
+  if (err) throw err[0];
+  try {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  } catch (e) {
+    throw err = [e], e;
+  }
+};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
@@ -29,6 +37,556 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+// src/shared/windows-file-io/native-script.ts
+var WINDOWS_FILESYSTEM_NATIVE;
+var init_native_script = __esm({
+  "src/shared/windows-file-io/native-script.ts"() {
+    "use strict";
+    WINDOWS_FILESYSTEM_NATIVE = String.raw`
+using System;
+using System.IO;
+using System.Text;
+using System.Linq;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
+using System.Web.Script.Serialization;
+using Microsoft.Win32.SafeHandles;
+
+public sealed class FsFault : Exception {
+  public readonly string Code;
+  public FsFault(string code) : base(code) { Code = code; }
+}
+public static partial class AbotFilesystem {
+  [StructLayout(LayoutKind.Sequential)] struct UnicodeString { public ushort Length, MaximumLength; public IntPtr Buffer; }
+  [StructLayout(LayoutKind.Sequential)] struct ObjectAttributes {
+    public int Length; public IntPtr Root, Name; public uint Attributes; public IntPtr Security, Qos;
+  }
+  [StructLayout(LayoutKind.Sequential)] struct IoStatus { public IntPtr Status, Information; }
+  [StructLayout(LayoutKind.Sequential)] struct BasicInfo {
+    public long Created, Accessed, Modified, Changed; public uint Attributes;
+  }
+  [StructLayout(LayoutKind.Sequential)] struct FileInfo {
+    public uint Attributes; public System.Runtime.InteropServices.ComTypes.FILETIME Created, Accessed, Modified;
+    public uint Volume, SizeHigh, SizeLow, Links, IndexHigh, IndexLow;
+  }
+  [DllImport("ntdll.dll")] static extern int NtCreateFile(out SafeFileHandle file, uint access,
+    ref ObjectAttributes attributes, out IoStatus status, IntPtr allocation, uint fileAttributes,
+    uint share, uint disposition, uint options, IntPtr ea, uint eaLength);
+  [DllImport("ntdll.dll")] static extern uint RtlNtStatusToDosError(int status);
+  [DllImport("ntdll.dll")] static extern int NtSetInformationFile(SafeFileHandle file,
+    out IoStatus status, IntPtr info, uint length, int kind);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileInformationByHandle(SafeFileHandle file, out FileInfo info);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileInformationByHandleEx(SafeFileHandle file, int kind, IntPtr data, uint length);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetFileInformationByHandle(SafeFileHandle file, int kind, ref BasicInfo info, uint length);
+  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern uint GetFinalPathNameByHandle(SafeFileHandle file, StringBuilder name, uint length, uint flags);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetFilePointerEx(SafeFileHandle file, long position, out long result, uint method);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool ReadFile(SafeFileHandle file, byte[] bytes, uint count, out uint read, IntPtr overlapped);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool WriteFile(SafeFileHandle file, byte[] bytes, uint count, out uint written, IntPtr overlapped);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool FlushFileBuffers(SafeFileHandle file);
+  [DllImport("advapi32.dll")] static extern uint GetSecurityInfo(SafeFileHandle file, int kind, uint information,
+    out IntPtr owner, out IntPtr group, out IntPtr dacl, out IntPtr sacl, out IntPtr descriptor);
+  [DllImport("advapi32.dll")] static extern uint SetSecurityInfo(SafeFileHandle file, int kind, uint information,
+    IntPtr owner, IntPtr group, IntPtr dacl, IntPtr sacl);
+  [DllImport("advapi32.dll", SetLastError=true)] static extern bool GetSecurityDescriptorControl(IntPtr descriptor, out ushort control, out uint revision);
+  [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr value);
+
+  static void Check(bool success) { if (!success) NativeFailure((uint)Marshal.GetLastWin32Error()); }
+  static bool IsNotDirectoryError(uint code) { return code == 267; } // ERROR_DIRECTORY
+  static void NativeFailure(uint code) {
+    if (IsNotDirectoryError(code)) throw new FsFault("not_a_directory");
+    if (code == 2 || code == 3) throw new FsFault("file_not_found");
+    if (code == 80 || code == 183) throw new FsFault("filesystem_target_changed");
+    if (code == 5 || code == 32 || code == 33) throw new FsFault("filesystem_access_denied");
+    throw new FsFault("filesystem_native_operation_failed");
+  }
+  static void CheckNt(int status) { if (status < 0) NativeFailure(RtlNtStatusToDosError(status)); }
+  static SafeFileHandle OpenHandle(SafeFileHandle root, string name, bool directory,
+    uint disposition, uint access, uint share, byte[] securityDescriptor = null, bool deleteOnClose = false) {
+    IntPtr text = Marshal.StringToHGlobalUni(name), unicodePointer = IntPtr.Zero, securityPointer = IntPtr.Zero;
+    try {
+      int length = Encoding.Unicode.GetByteCount(name);
+      if (length > 65532) throw new FsFault("filesystem_invalid_path");
+      UnicodeString unicode = new UnicodeString { Length=(ushort)length, MaximumLength=(ushort)(length+2), Buffer=text };
+      unicodePointer = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(UnicodeString)));
+      Marshal.StructureToPtr(unicode, unicodePointer, false);
+      if (securityDescriptor != null) {
+        securityPointer = Marshal.AllocHGlobal(securityDescriptor.Length);
+        Marshal.Copy(securityDescriptor, 0, securityPointer, securityDescriptor.Length);
+      }
+      ObjectAttributes attributes = new ObjectAttributes {
+        Length=Marshal.SizeOf(typeof(ObjectAttributes)), Root=root == null ? IntPtr.Zero : root.DangerousGetHandle(),
+        Name=unicodePointer, Attributes=0x40, Security=securityPointer
+      };
+      SafeFileHandle file;
+      IoStatus status;
+      int result = NtCreateFile(out file, access | 0x100000, ref attributes, out status,
+        IntPtr.Zero, 0x80, share, disposition, 0x200020u | (directory ? 1u : 0x40u) | (deleteOnClose ? 0x1000u : 0u), IntPtr.Zero, 0);
+      if (result < 0) { if (file != null) file.Dispose(); CheckNt(result); }
+      try {
+        FileInfo info; Check(GetFileInformationByHandle(file, out info));
+        if ((info.Attributes & 0x400) != 0) throw new FsFault("filesystem_path_changed");
+        if (((info.Attributes & 0x10) != 0) != directory) throw new FsFault("filesystem_path_changed");
+        return file;
+      } catch { file.Dispose(); throw; }
+    } finally {
+      if (securityPointer != IntPtr.Zero) Marshal.FreeHGlobal(securityPointer);
+      if (unicodePointer != IntPtr.Zero) Marshal.FreeHGlobal(unicodePointer);
+      Marshal.FreeHGlobal(text);
+    }
+  }
+  static BasicInfo Basic(SafeFileHandle file) {
+    IntPtr buffer = Marshal.AllocHGlobal(40);
+    try { Check(GetFileInformationByHandleEx(file, 0, buffer, 40)); return (BasicInfo)Marshal.PtrToStructure(buffer, typeof(BasicInfo)); }
+    finally { Marshal.FreeHGlobal(buffer); }
+  }
+  static Dictionary<string,object> Record(params object[] pairs) {
+    var result = new Dictionary<string,object>();
+    for (int i=0;i<pairs.Length;i+=2) result.Add((string)pairs[i], pairs[i+1]);
+    return result;
+  }
+  static string Text(Dictionary<string,object> request, string key) {
+    object value;
+    if (!request.TryGetValue(key, out value) || !(value is string)) throw new FsFault("filesystem_invalid_request");
+    return (string)value;
+  }
+  static int Limit(Dictionary<string,object> request, string key, int maximum) {
+    object value;
+    if (!request.TryGetValue(key, out value) || !(value is int)) throw new FsFault("filesystem_invalid_request");
+    int number = (int)value;
+    if (number < 0 || number > maximum) throw new FsFault("filesystem_invalid_request");
+    return number;
+  }
+}
+`;
+  }
+});
+
+// src/shared/windows-file-io/authority-script.ts
+var WINDOWS_FILESYSTEM_AUTHORITY;
+var init_authority_script = __esm({
+  "src/shared/windows-file-io/authority-script.ts"() {
+    "use strict";
+    WINDOWS_FILESYSTEM_AUTHORITY = String.raw`
+public static partial class AbotFilesystem {
+  static string NativePath(string path) {
+    string full = Path.GetFullPath(path);
+    if (full.StartsWith(@"\\?\") || full.StartsWith(@"\\.\")) throw new FsFault("filesystem_invalid_path");
+    if (full.StartsWith(@"\\")) return @"\??\UNC\" + full.Substring(2);
+    if (full.Length < 3 || full[1] != ':' || full[2] != '\\') throw new FsFault("filesystem_invalid_path");
+    return @"\??\" + full;
+  }
+  static string FinalPath(SafeFileHandle handle) {
+    var value = new StringBuilder(32768);
+    uint length = GetFinalPathNameByHandle(handle, value, (uint)value.Capacity, 0);
+    Check(length != 0);
+    if (length >= value.Capacity) throw new FsFault("filesystem_invalid_path");
+    string path = value.ToString();
+    if (path.StartsWith(@"\\?\UNC\")) return @"\\" + path.Substring(8);
+    if (path.StartsWith(@"\\?\")) return path.Substring(4);
+    throw new FsFault("filesystem_path_changed");
+  }
+  static SafeFileHandle OpenRoot(Dictionary<string,object> request) {
+    string path = Path.GetFullPath(Text(request, "rootPath"));
+    SafeFileHandle root = OpenHandle(null, NativePath(path), true, 1, 0x80000000, 7);
+    try {
+      if (!String.Equals(FinalPath(root).TrimEnd('\\'), path.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+        throw new FsFault("filesystem_path_changed");
+      var expected = request["rootIdentity"] as Dictionary<string,object>;
+      if (expected == null || !MatchesIdentity(Identity(root), expected)) throw new FsFault("filesystem_path_changed");
+      return root;
+    } catch { root.Dispose(); throw; }
+  }
+  static string[] Components(Dictionary<string,object> request) {
+    string relative = Text(request, "relativePath");
+    if (relative == "") return new string[0];
+    string[] parts = relative.Split('/');
+    foreach (string part in parts) ValidateComponent(part);
+    return parts;
+  }
+  static void ValidateComponent(string name) {
+    if (name.Length == 0 || name == "." || name == "..") throw new FsFault("filesystem_invalid_path");
+    if (name.EndsWith(".") || name.EndsWith(" ")) throw new FsFault("filesystem_invalid_path");
+    foreach (char c in name) {
+      if (c < 32 || "\\/:*?\"<>|".IndexOf(c) >= 0) throw new FsFault("filesystem_invalid_path");
+    }
+    string stem = name.Split('.')[0].ToUpperInvariant();
+    if (stem == "CON" || stem == "PRN" || stem == "AUX" || stem == "NUL" ||
+      stem == "CONIN$" || stem == "CONOUT$") throw new FsFault("filesystem_invalid_path");
+    if (stem.Length == 4 && (stem.StartsWith("COM") || stem.StartsWith("LPT")) &&
+      "123456789\u00b9\u00b2\u00b3".IndexOf(stem[3]) >= 0) throw new FsFault("filesystem_invalid_path");
+  }
+  sealed class DirectoryChain : IDisposable {
+    public readonly SafeFileHandle Root;
+    readonly List<SafeFileHandle> children = new List<SafeFileHandle>();
+    public SafeFileHandle Current { get { return children.Count == 0 ? Root : children[children.Count-1]; } }
+    public DirectoryChain(Dictionary<string,object> request) { Root = OpenRoot(request); }
+    public void Walk(string[] parts, int count, bool create) {
+      for (int i=0;i<count;i++) children.Add(OpenHandle(Current, parts[i], true, create ? 3u : 1u, 0x80000000, 7));
+    }
+    public void Dispose() { for (int i=children.Count-1;i>=0;i--) children[i].Dispose(); Root.Dispose(); }
+  }
+  static ulong FileId(FileInfo info) {
+    ulong id=((ulong)info.IndexHigh << 32) | info.IndexLow;
+    if (id == 0) throw new FsFault("filesystem_safe_io_unsupported");
+    return id;
+  }
+  static Dictionary<string,object> Identity(SafeFileHandle file) {
+    FileInfo info; Check(GetFileInformationByHandle(file, out info));
+    BasicInfo basic = Basic(file);
+    return Record("device", info.Volume.ToString(), "inode", FileId(info).ToString(),
+      "birthtimeNs", ((basic.Created - 116444736000000000L) * 100L).ToString());
+  }
+  static bool MatchesIdentity(Dictionary<string,object> left, Dictionary<string,object> right) {
+    foreach (string key in new [] {"device", "inode", "birthtimeNs"}) {
+      if (!right.ContainsKey(key) || !Object.Equals(left[key], right[key])) return false;
+    }
+    return true;
+  }
+  static Dictionary<string,object> Metadata(SafeFileHandle file) {
+    FileInfo info; Check(GetFileInformationByHandle(file, out info));
+    BasicInfo basic = Basic(file);
+    ulong size = ((ulong)info.SizeHigh << 32) | info.SizeLow;
+    if (size > 9007199254740991UL) throw new FsFault("file_too_large");
+    return Record("device", info.Volume.ToString(), "inode", FileId(info).ToString(),
+      "size", (long)size, "mode", (basic.Attributes & 1) != 0 ? 292 : 438,
+      "modifiedNs", ((basic.Modified - 116444736000000000L) * 100L).ToString(),
+      "changedNs", ((basic.Changed - 116444736000000000L) * 100L).ToString());
+  }
+  static bool SameMetadata(Dictionary<string,object> left, Dictionary<string,object> right) {
+    foreach (string key in new [] {"device", "inode", "size", "mode", "modifiedNs", "changedNs"}) {
+      if (!right.ContainsKey(key) || Convert.ToString(left[key]) != Convert.ToString(right[key])) return false;
+    }
+    return true;
+  }
+}
+`;
+  }
+});
+
+// src/shared/windows-file-io/read-bytes-script.ts
+var WINDOWS_FILE_READ_BYTES;
+var init_read_bytes_script = __esm({
+  "src/shared/windows-file-io/read-bytes-script.ts"() {
+    "use strict";
+    WINDOWS_FILE_READ_BYTES = String.raw`
+public static partial class AbotFilesystem {
+  static byte[] ReadBytes(SafeFileHandle file, long position, int length) {
+    long actual; Check(SetFilePointerEx(file, position, out actual, 0));
+    if (actual != position) throw new FsFault("filesystem_read_incomplete");
+    var bytes = new byte[length];
+    int offset = 0;
+    while (offset < length) {
+      var chunk = new byte[Math.Min(65536, length-offset)];
+      uint read; Check(ReadFile(file, chunk, (uint)chunk.Length, out read, IntPtr.Zero));
+      if (read == 0 || read > chunk.Length) throw new FsFault("filesystem_read_incomplete");
+      Buffer.BlockCopy(chunk, 0, bytes, offset, (int)read);
+      offset += (int)read;
+    }
+    return bytes;
+  }
+}
+`;
+  }
+});
+
+// src/plugin-sdk/files-windows/read-script.ts
+var BOUNDED_READ, WINDOWS_BOUNDED_READ_SOURCE;
+var init_read_script = __esm({
+  "src/plugin-sdk/files-windows/read-script.ts"() {
+    "use strict";
+    init_native_script();
+    init_authority_script();
+    init_read_bytes_script();
+    BOUNDED_READ = String.raw`
+public static partial class AbotFilesystem {
+  static object ReadBounded(Dictionary<string,object> request) {
+    long maximum;
+    if (!Int64.TryParse(Text(request, "maxBytes"), out maximum) || maximum < 0 ||
+        maximum > 9007199254740991L) throw new FsFault("filesystem_invalid_request");
+    string[] parts=Components(request);
+    if (parts.Length == 0) return Record("ok", false, "reason", "not_regular_file");
+    using (var chain=new DirectoryChain(request)) {
+      chain.Walk(parts, parts.Length-1, false);
+      using (var file=OpenHandle(chain.Current, parts[parts.Length-1], false, 1, 0x80000000, 1)) {
+        var expected=request["targetIdentity"] as Dictionary<string,object>;
+        if (expected == null || !MatchesIdentity(Identity(file), expected))
+          return Record("ok", false, "reason", "changed_during_read");
+        var before=Metadata(file);
+        long size=Convert.ToInt64(before["size"]);
+        // Both the byte array and the base64 JSON response must fit .NET strings.
+        if (size > maximum || size > (Int32.MaxValue-4096L)/4*3)
+          return Record("ok", false, "reason", "too_large", "byteCount", size);
+        var bytes=ReadBytes(file, 0, (int)size);
+        if (!SameMetadata(before, Metadata(file)))
+          return Record("ok", false, "reason", "changed_during_read");
+        return Record("ok", true, "bytes", Convert.ToBase64String(bytes), "byteCount", size);
+      }
+    }
+  }
+  public static string Run(string input) {
+    var json=new JavaScriptSerializer { MaxJsonLength=Int32.MaxValue };
+    try { return json.Serialize(ReadBounded(json.Deserialize<Dictionary<string,object>>(input))); }
+    catch (FsFault error) { return json.Serialize(Record("ok", false, "code", error.Code)); }
+    catch { return json.Serialize(Record("ok", false, "code", "filesystem_native_operation_failed")); }
+  }
+}
+`;
+    WINDOWS_BOUNDED_READ_SOURCE = [
+      WINDOWS_FILESYSTEM_NATIVE,
+      WINDOWS_FILESYSTEM_AUTHORITY,
+      WINDOWS_FILE_READ_BYTES,
+      BOUNDED_READ
+    ].join("\n");
+  }
+});
+
+// src/plugin-sdk/files-windows/result.ts
+function windowsReadError(code) {
+  const error = new Error(
+    "The Windows safe file read failed (" + code + "). No fallback read was attempted."
+  );
+  return Object.assign(error, { code });
+}
+function windowsReadAbortError() {
+  const error = new Error("The file read was cancelled.");
+  error.name = "AbortError";
+  return error;
+}
+function hasByteCount(value) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+function decodeNativeFailure(code) {
+  switch (code) {
+    case "filesystem_windows_policy_blocked":
+    case "filesystem_windows_helper_unavailable":
+    case "filesystem_safe_io_unsupported":
+      return Object.freeze({ ok: false, reason: "safe_open_unsupported" });
+    case "filesystem_path_changed":
+    case "filesystem_target_changed":
+    case "filesystem_read_changed":
+    case "filesystem_read_incomplete":
+      return Object.freeze({ ok: false, reason: "changed_during_read" });
+    case "file_too_large":
+      return Object.freeze({ ok: false, reason: "too_large" });
+    case "file_not_found":
+      throw windowsReadError("ENOENT");
+    case "filesystem_access_denied":
+      throw windowsReadError("EACCES");
+    default:
+      throw windowsReadError("EIO");
+  }
+}
+function decodeWindowsReadResult(raw, maxBytes) {
+  let value;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw windowsReadError("EIO");
+  }
+  if (value?.ok === false && typeof value.code === "string")
+    return decodeNativeFailure(value.code);
+  if (value?.ok === false && FAILURE_REASONS.has(value.reason)) {
+    if (value.byteCount !== void 0 && !hasByteCount(value.byteCount))
+      throw windowsReadError("EIO");
+    return Object.freeze({
+      ok: false,
+      reason: value.reason,
+      ...value.byteCount !== void 0 ? { byteCount: value.byteCount } : {}
+    });
+  }
+  if (value?.ok !== true || !hasByteCount(value.byteCount))
+    throw windowsReadError("EIO");
+  if (value.byteCount > maxBytes || typeof value.bytes !== "string")
+    throw windowsReadError("EIO");
+  if (value.bytes.length !== 4 * Math.ceil(value.byteCount / 3))
+    throw windowsReadError("EIO");
+  const bytes = Buffer.from(value.bytes, "base64");
+  if (bytes.length !== value.byteCount || bytes.toString("base64") !== value.bytes)
+    throw windowsReadError("EIO");
+  return Object.freeze({ ok: true, bytes, byteCount: value.byteCount });
+}
+var FAILURE_REASONS;
+var init_result = __esm({
+  "src/plugin-sdk/files-windows/result.ts"() {
+    "use strict";
+    FAILURE_REASONS = /* @__PURE__ */ new Set([
+      "not_regular_file",
+      "too_large",
+      "changed_during_read",
+      "outside_root",
+      "safe_open_unsupported"
+    ]);
+  }
+});
+
+// src/plugin-sdk/files-windows/process.ts
+async function runWindowsBoundedRead(request, maxBytes, signal, spawnProcess = import_node_child_process.spawn) {
+  if (signal?.aborted) throw windowsReadAbortError();
+  const input = JSON.stringify({
+    source: WINDOWS_BOUNDED_READ_SOURCE,
+    request: JSON.stringify(request)
+  });
+  if (Buffer.byteLength(input) > 2 * 1024 * 1024)
+    throw windowsReadError("EINVAL");
+  const outputLimit = 4 * Math.ceil(Math.min(maxBytes, 2147483647) / 3) + 4096;
+  const executable = (0, import_node_path.join)(
+    process.env.SystemRoot ?? "C:\\Windows",
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe"
+  );
+  return new Promise((resolve, reject) => {
+    const child = spawnProcess(
+      executable,
+      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", BOOTSTRAP],
+      { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
+    );
+    const chunks = [];
+    let byteCount = 0;
+    let failure;
+    let unavailable = false;
+    const stop = (error) => {
+      failure ??= error;
+      child.kill("SIGKILL");
+    };
+    const abort = () => stop(windowsReadAbortError());
+    const timer = setTimeout(() => stop(windowsReadError("ETIMEDOUT")), 15e3);
+    timer.unref();
+    signal?.addEventListener("abort", abort, { once: true });
+    child.stdout.on("data", (chunk) => {
+      if (failure) return;
+      byteCount += chunk.length;
+      if (byteCount > outputLimit) {
+        stop(windowsReadError("EOVERFLOW"));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    child.stderr.resume();
+    child.stdin.on("error", () => {
+      if (child.pid === void 0) return;
+      stop(windowsReadError("EIO"));
+    });
+    child.once("error", () => {
+      if (child.pid === void 0) {
+        unavailable = true;
+        return;
+      }
+      stop(windowsReadError("EIO"));
+    });
+    child.once("close", (code) => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+      if (failure) {
+        reject(failure);
+        return;
+      }
+      if (unavailable) {
+        resolve(UNAVAILABLE);
+        return;
+      }
+      if (code !== 0) {
+        reject(windowsReadError("EIO"));
+        return;
+      }
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    child.stdin.end(input, "utf8");
+  });
+}
+var import_node_child_process, import_node_path, BOOTSTRAP, UNAVAILABLE;
+var init_process = __esm({
+  "src/plugin-sdk/files-windows/process.ts"() {
+    "use strict";
+    import_node_child_process = require("node:child_process");
+    import_node_path = require("node:path");
+    init_read_script();
+    init_result();
+    BOOTSTRAP = [
+      "$ErrorActionPreference='Stop'",
+      `if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { Write-Output '{"ok":false,"code":"filesystem_windows_policy_blocked"}'; exit 0 }`,
+      "$env:PSModulePath=[IO.Path]::Combine($PSHOME,'Modules')",
+      "[Console]::InputEncoding=[Text.UTF8Encoding]::new($false)",
+      "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)",
+      "$started=$false",
+      "try {",
+      "$envelope=[Console]::In.ReadToEnd() | ConvertFrom-Json",
+      "Add-Type -ReferencedAssemblies @('System.Web.Extensions') -TypeDefinition $envelope.source",
+      "$started=$true",
+      "[Console]::Write([AbotFilesystem]::Run($envelope.request))",
+      `} catch { if ($started) { [Console]::Write('{"ok":false,"code":"filesystem_native_operation_failed"}') } else { [Console]::Write('{"ok":false,"code":"filesystem_windows_helper_unavailable"}') } }`
+    ].join(";");
+    UNAVAILABLE = '{"ok":false,"code":"filesystem_windows_helper_unavailable"}';
+  }
+});
+
+// src/plugin-sdk/files-windows/read.ts
+var read_exports = {};
+__export(read_exports, {
+  readWindowsBoundedRegularFile: () => readWindowsBoundedRegularFile
+});
+function isOutsideRoot(rootRelative) {
+  if (import_node_path2.win32.isAbsolute(rootRelative)) return true;
+  if (rootRelative === "..") return true;
+  return rootRelative.startsWith("..\\");
+}
+function identity(stats) {
+  return {
+    device: String(stats.dev),
+    inode: String(stats.ino),
+    birthtimeNs: String(stats.birthtimeNs)
+  };
+}
+async function readWindowsBoundedRegularFile(absolutePath, options) {
+  const relativePath = import_node_path2.win32.relative(options.rootPath, absolutePath);
+  if (isOutsideRoot(relativePath)) return Object.freeze({ ok: false, reason: "outside_root" });
+  if (relativePath === "") return Object.freeze({ ok: false, reason: "not_regular_file" });
+  let root;
+  try {
+    const canonicalRoot = await (0, import_promises.realpath)(options.rootPath);
+    root = await (0, import_promises.open)(canonicalRoot, "r");
+    const rootStats = await root.stat({ bigint: true });
+    if (!rootStats.isDirectory() || rootStats.ino <= 0n)
+      return Object.freeze({ ok: false, reason: "safe_open_unsupported" });
+    const targetPath = import_node_path2.win32.resolve(canonicalRoot, relativePath);
+    const target = await (0, import_promises.lstat)(targetPath, { bigint: true });
+    if (!target.isFile()) return Object.freeze({ ok: false, reason: "not_regular_file" });
+    const canonicalTarget = await (0, import_promises.realpath)(targetPath);
+    if (isOutsideRoot(import_node_path2.win32.relative(canonicalRoot, canonicalTarget)))
+      return Object.freeze({ ok: false, reason: "outside_root" });
+    if (options.signal?.aborted) throw windowsReadAbortError();
+    const raw = await runWindowsBoundedRead({
+      rootPath: canonicalRoot,
+      relativePath: relativePath.split(import_node_path2.win32.sep).join("/"),
+      rootIdentity: identity(rootStats),
+      targetIdentity: identity(target),
+      maxBytes: String(options.maxBytes)
+    }, options.maxBytes, options.signal);
+    if (options.signal?.aborted) throw windowsReadAbortError();
+    return decodeWindowsReadResult(raw, options.maxBytes);
+  } finally {
+    await root?.close();
+  }
+}
+var import_promises, import_node_path2;
+var init_read = __esm({
+  "src/plugin-sdk/files-windows/read.ts"() {
+    "use strict";
+    import_promises = require("node:fs/promises");
+    import_node_path2 = require("node:path");
+    init_process();
+    init_result();
+  }
+});
 
 // plugins/document-reader/source/index.ts
 var index_exports = {};
@@ -69,8 +627,8 @@ function sanitizeJsonText(value) {
 
 // src/plugin-sdk/files.ts
 var import_node_fs = require("node:fs");
-var import_promises = require("node:fs/promises");
-var import_node_path = require("node:path");
+var import_promises2 = require("node:fs/promises");
+var import_node_path3 = require("node:path");
 function throwIfAborted(signal) {
   if (!signal?.aborted) return;
   const error = new Error("The file read was cancelled.");
@@ -97,12 +655,16 @@ async function readBoundedRegularFile(absolutePath, options) {
     throw new RangeError("maxBytes must be a non-negative safe integer");
   }
   throwIfAborted(options.signal);
+  if (process.platform === "win32") {
+    const { readWindowsBoundedRegularFile: readWindowsBoundedRegularFile2 } = await Promise.resolve().then(() => (init_read(), read_exports));
+    return readWindowsBoundedRegularFile2(absolutePath, options);
+  }
   if (typeof import_node_fs.constants.O_NOFOLLOW !== "number") {
     return Object.freeze({ ok: false, reason: "safe_open_unsupported" });
   }
   let handle;
   try {
-    handle = await (0, import_promises.open)(
+    handle = await (0, import_promises2.open)(
       absolutePath,
       import_node_fs.constants.O_RDONLY | import_node_fs.constants.O_NOFOLLOW
     );
@@ -111,14 +673,14 @@ async function readBoundedRegularFile(absolutePath, options) {
       return Object.freeze({ ok: false, reason: "not_regular_file" });
     }
     const [canonicalRoot, canonicalTarget] = await Promise.all([
-      (0, import_promises.realpath)(options.rootPath),
-      (0, import_promises.realpath)(absolutePath)
+      (0, import_promises2.realpath)(options.rootPath),
+      (0, import_promises2.realpath)(absolutePath)
     ]);
-    const rootRelative = (0, import_node_path.relative)(canonicalRoot, canonicalTarget);
-    if (rootRelative === ".." || rootRelative.startsWith(`..${import_node_path.sep}`) || rootRelative.startsWith(import_node_path.sep)) {
+    const rootRelative = (0, import_node_path3.relative)(canonicalRoot, canonicalTarget);
+    if (rootRelative === ".." || rootRelative.startsWith(`..${import_node_path3.sep}`) || rootRelative.startsWith(import_node_path3.sep)) {
       return Object.freeze({ ok: false, reason: "outside_root" });
     }
-    const pathIdentity = await (0, import_promises.stat)(canonicalTarget, { bigint: true });
+    const pathIdentity = await (0, import_promises2.stat)(canonicalTarget, { bigint: true });
     if (pathIdentity.dev !== before.dev || pathIdentity.ino !== before.ino || !pathIdentity.isFile()) {
       return Object.freeze({ ok: false, reason: "changed_during_read" });
     }
@@ -453,6 +1015,8 @@ function documentReaderFailure(error) {
 // plugins/document-reader/source/pdf-worker.ts
 var import_node_module = require("node:module");
 var import_node_worker_threads = require("node:worker_threads");
+
+// plugins/document-reader/source/pdf-contract.ts
 var PDF_EXTRACTION_LIMITS = Object.freeze({
   maxPages: MAX_PDF_PAGES,
   pageBatchSize: PDF_PAGE_BATCH_SIZE,
@@ -462,14 +1026,9 @@ var PDF_EXTRACTION_LIMITS = Object.freeze({
   maxYoungGenerationSizeMb: PDF_MAX_YOUNG_GENERATION_MB,
   stackSizeMb: PDF_MAX_STACK_MB
 });
-var CONTROLLED_PDF_ERROR_CODES = /* @__PURE__ */ new Set([
-  "document_content_invalid",
-  "document_pdf_page_limit",
-  "document_pdf_resource_limit"
-]);
-function pdfExtractionWorkerMain() {
-  const { parentPort, workerData } = require("node:worker_threads");
-  const data = workerData;
+
+// plugins/document-reader/source/pdf-parser.ts
+async function runPdfParser(data, publish) {
   const fail = (code, message) => {
     const error = new Error(message);
     error.code = code;
@@ -479,145 +1038,119 @@ function pdfExtractionWorkerMain() {
     const message = value instanceof Error ? value.message : String(value);
     return message.slice(0, data.limits.maxErrorMessageCharacters);
   };
-  const run = async () => {
-    if (!parentPort) {
-      throw new Error("PDF extraction worker has no parent port.");
+  let parser;
+  try {
+    const { PDFParse } = require(data.pdfParseEntrypoint);
+    parser = new PDFParse({
+      data: new Uint8Array(data.bytes),
+      isEvalSupported: false,
+      stopAtErrors: true
+    });
+    const info = await parser.getInfo();
+    const totalPages = info.total;
+    if (!Number.isSafeInteger(totalPages) || totalPages < 0) {
+      fail("document_content_invalid", "The PDF page index is invalid.");
     }
-    let parser;
-    try {
-      const { PDFParse } = require(data.pdfParseEntrypoint);
-      parser = new PDFParse({
-        data: new Uint8Array(data.bytes),
-        isEvalSupported: false,
-        stopAtErrors: true
-      });
-      const info = await parser.getInfo();
-      const totalPages = info.total;
-      if (!Number.isSafeInteger(totalPages) || totalPages < 0) {
-        fail("document_content_invalid", "The PDF page index is invalid.");
-      }
-      if (totalPages > data.limits.maxPages) {
+    if (totalPages > data.limits.maxPages) {
+      fail(
+        "document_pdf_page_limit",
+        `The PDF exceeds the ${data.limits.maxPages}-page parsing limit.`
+      );
+    }
+    const retainedParts = [];
+    let retainedCharacters = 0;
+    let totalCharacters = 0;
+    let processedPages = 0;
+    let hasContent = false;
+    const append = (rawValue) => {
+      const value = rawValue.replaceAll("\0", "").trim();
+      if (value.length === 0) return;
+      const separator = hasContent ? "\n\n" : "";
+      hasContent = true;
+      const nextTotal = totalCharacters + separator.length + value.length;
+      if (!Number.isSafeInteger(nextTotal)) {
         fail(
-          "document_pdf_page_limit",
-          `The PDF exceeds the ${data.limits.maxPages}-page parsing limit.`
+          "document_pdf_resource_limit",
+          "The PDF text exceeds the supported character range."
         );
       }
-      const retainedParts = [];
-      let retainedCharacters = 0;
-      let totalCharacters = 0;
-      let processedPages = 0;
-      let hasContent = false;
-      const append = (rawValue) => {
-        const value = rawValue.replaceAll("\0", "").trim();
-        if (value.length === 0) return;
-        const separator = hasContent ? "\n\n" : "";
-        hasContent = true;
-        const nextTotal = totalCharacters + separator.length + value.length;
-        if (!Number.isSafeInteger(nextTotal)) {
-          fail(
-            "document_pdf_resource_limit",
-            "The PDF text exceeds the supported character range."
-          );
-        }
-        totalCharacters = nextTotal;
-        let remaining = data.limits.maxRetainedCharacters - retainedCharacters;
-        if (remaining <= 0) return;
-        if (separator.length > 0) {
-          const retainedSeparator = separator.slice(0, remaining);
-          retainedParts.push(retainedSeparator);
-          retainedCharacters += retainedSeparator.length;
-          remaining -= retainedSeparator.length;
-        }
-        if (remaining > 0) {
-          const retainedValue = value.slice(0, remaining);
-          retainedParts.push(retainedValue);
-          retainedCharacters += retainedValue.length;
-        }
-      };
-      for (let firstPage = 1; firstPage <= totalPages; firstPage += data.limits.pageBatchSize) {
-        const pageNumbers = Array.from(
-          {
-            length: Math.min(
-              data.limits.pageBatchSize,
-              totalPages - firstPage + 1
-            )
-          },
-          (_, index) => firstPage + index
-        );
-        const batch = await parser.getText({
-          partial: pageNumbers,
-          pageJoiner: ""
-        });
-        if (!Array.isArray(batch.pages)) {
-          fail(
-            "document_content_invalid",
-            "The PDF page set could not be extracted."
-          );
-        }
-        for (const page of batch.pages) {
-          if (typeof page?.text !== "string") {
-            fail("document_content_invalid", "The PDF page text is invalid.");
-          }
-          processedPages += 1;
-          append(page.text);
-        }
+      totalCharacters = nextTotal;
+      let remaining = data.limits.maxRetainedCharacters - retainedCharacters;
+      if (remaining <= 0) return;
+      if (separator.length > 0) {
+        const retainedSeparator = separator.slice(0, remaining);
+        retainedParts.push(retainedSeparator);
+        retainedCharacters += retainedSeparator.length;
+        remaining -= retainedSeparator.length;
       }
-      if (processedPages !== totalPages) {
+      if (remaining > 0) {
+        const retainedValue = value.slice(0, remaining);
+        retainedParts.push(retainedValue);
+        retainedCharacters += retainedValue.length;
+      }
+    };
+    for (let firstPage = 1; firstPage <= totalPages; firstPage += data.limits.pageBatchSize) {
+      const pageNumbers = Array.from(
+        {
+          length: Math.min(
+            data.limits.pageBatchSize,
+            totalPages - firstPage + 1
+          )
+        },
+        (_, index) => firstPage + index
+      );
+      const batch = await parser.getText({
+        partial: pageNumbers,
+        pageJoiner: ""
+      });
+      if (!Array.isArray(batch.pages)) {
         fail(
           "document_content_invalid",
-          "The PDF page set could not be extracted completely."
+          "The PDF page set could not be extracted."
         );
       }
-      parentPort.postMessage({
-        kind: "success",
-        text: retainedParts.join(""),
-        totalCharacters,
-        returnedCharacters: retainedCharacters,
-        totalPages,
-        processedPages
-      });
-    } catch (error) {
-      const candidateCode = error instanceof Error && typeof error.code === "string" ? error.code : void 0;
-      parentPort.postMessage({
-        kind: "failure",
-        ...candidateCode ? { code: candidateCode } : {},
-        message: boundedMessage(error)
-      });
-    } finally {
-      if (parser) {
-        await parser.destroy().catch(() => void 0);
+      for (const page of batch.pages) {
+        if (typeof page?.text !== "string") {
+          fail("document_content_invalid", "The PDF page text is invalid.");
+        }
+        processedPages += 1;
+        append(page.text);
       }
-      parentPort.close();
     }
-  };
-  void run();
-}
-function resolvePdfParseEntrypoint(pluginEntrypoint) {
-  return (0, import_node_module.createRequire)(pluginEntrypoint).resolve("pdf-parse");
-}
-function createPdfExtractionWorker(bytes, pdfParseEntrypoint, limits = PDF_EXTRACTION_LIMITS) {
-  const transferredBytes = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(transferredBytes).set(bytes);
-  return new import_node_worker_threads.Worker(`(${pdfExtractionWorkerMain.toString()})()`, {
-    eval: true,
-    transferList: [transferredBytes],
-    workerData: {
-      bytes: transferredBytes,
-      pdfParseEntrypoint,
-      limits: {
-        maxPages: limits.maxPages,
-        pageBatchSize: limits.pageBatchSize,
-        maxRetainedCharacters: limits.maxRetainedCharacters,
-        maxErrorMessageCharacters: MAX_PDF_ERROR_MESSAGE_CHARS
-      }
-    },
-    resourceLimits: {
-      maxOldGenerationSizeMb: limits.maxOldGenerationSizeMb,
-      maxYoungGenerationSizeMb: limits.maxYoungGenerationSizeMb,
-      stackSizeMb: limits.stackSizeMb
+    if (processedPages !== totalPages) {
+      fail(
+        "document_content_invalid",
+        "The PDF page set could not be extracted completely."
+      );
     }
-  });
+    publish({
+      kind: "success",
+      text: retainedParts.join(""),
+      totalCharacters,
+      returnedCharacters: retainedCharacters,
+      totalPages,
+      processedPages
+    });
+  } catch (error) {
+    const candidateCode = error instanceof Error && typeof error.code === "string" ? error.code : void 0;
+    publish({
+      kind: "failure",
+      ...candidateCode ? { code: candidateCode } : {},
+      message: boundedMessage(error)
+    });
+  } finally {
+    if (parser) {
+      await parser.destroy().catch(() => void 0);
+    }
+  }
 }
+
+// plugins/document-reader/source/pdf-result.ts
+var CONTROLLED_PDF_ERROR_CODES = /* @__PURE__ */ new Set([
+  "document_content_invalid",
+  "document_pdf_page_limit",
+  "document_pdf_resource_limit"
+]);
 function isSafeNonNegativeInteger(value) {
   return Number.isSafeInteger(value) && typeof value === "number" && value >= 0;
 }
@@ -628,6 +1161,76 @@ function isPdfWorkerMessage(value) {
     return typeof candidate.message === "string" && candidate.message.length <= MAX_PDF_ERROR_MESSAGE_CHARS && (candidate.code === void 0 || typeof candidate.code === "string");
   }
   return candidate.kind === "success" && typeof candidate.text === "string" && isSafeNonNegativeInteger(candidate.totalCharacters) && isSafeNonNegativeInteger(candidate.returnedCharacters) && isSafeNonNegativeInteger(candidate.totalPages) && isSafeNonNegativeInteger(candidate.processedPages);
+}
+function isBoundedPdfSuccess(message, limits) {
+  if (message.text.length !== message.returnedCharacters) return false;
+  if (message.returnedCharacters > limits.maxRetainedCharacters) return false;
+  if (message.returnedCharacters > message.totalCharacters) return false;
+  if (message.totalPages > limits.maxPages) return false;
+  return message.processedPages === message.totalPages;
+}
+function documentFromPdfMessage(message, limits) {
+  if (!isPdfWorkerMessage(message)) {
+    throw new Error("PDF extraction worker returned invalid data.");
+  }
+  if (message.kind === "failure") {
+    if (message.code && CONTROLLED_PDF_ERROR_CODES.has(message.code)) {
+      throw new DocumentReaderError(message.code, message.message);
+    }
+    throw new Error(message.message);
+  }
+  if (!isBoundedPdfSuccess(message, limits)) {
+    throw new Error("PDF extraction worker exceeded its contract.");
+  }
+  return Object.freeze({
+    text: message.text,
+    textBounds: Object.freeze({
+      truncated: message.totalCharacters > message.returnedCharacters,
+      totalCharacters: message.totalCharacters,
+      returnedCharacters: message.returnedCharacters,
+      omittedCharacters: message.totalCharacters - message.returnedCharacters,
+      maxCharacters: limits.maxRetainedCharacters
+    }),
+    format: Object.freeze({
+      kind: "pdf",
+      totalPages: message.totalPages,
+      processedPages: message.processedPages,
+      maxPages: limits.maxPages
+    })
+  });
+}
+
+// plugins/document-reader/source/pdf-worker.ts
+function resolvePdfParseEntrypoint(pluginEntrypoint) {
+  return (0, import_node_module.createRequire)(pluginEntrypoint).resolve("pdf-parse");
+}
+function createPdfExtractionWorker(bytes, pdfParseEntrypoint, limits = PDF_EXTRACTION_LIMITS) {
+  const transferredBytes = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(transferredBytes).set(bytes);
+  return new import_node_worker_threads.Worker(
+    `const { parentPort, workerData } = require("node:worker_threads");
+    void (${runPdfParser.toString()})(workerData, message => parentPort.postMessage(message))
+      .finally(() => parentPort.close());`,
+    {
+      eval: true,
+      transferList: [transferredBytes],
+      workerData: {
+        bytes: transferredBytes,
+        pdfParseEntrypoint,
+        limits: {
+          maxPages: limits.maxPages,
+          pageBatchSize: limits.pageBatchSize,
+          maxRetainedCharacters: limits.maxRetainedCharacters,
+          maxErrorMessageCharacters: MAX_PDF_ERROR_MESSAGE_CHARS
+        }
+      },
+      resourceLimits: {
+        maxOldGenerationSizeMb: limits.maxOldGenerationSizeMb,
+        maxYoungGenerationSizeMb: limits.maxYoungGenerationSizeMb,
+        stackSizeMb: limits.stackSizeMb
+      }
+    }
+  );
 }
 function resourceLimitError(message) {
   return new DocumentReaderError("document_pdf_resource_limit", message);
@@ -682,52 +1285,13 @@ async function extractPdfInWorker(bytes, params) {
       );
     };
     worker.once("message", (message) => {
-      if (!isPdfWorkerMessage(message)) {
-        settle(
-          () => reject(new Error("PDF extraction worker returned invalid data.")),
-          true
-        );
-        return;
-      }
-      if (message.kind === "failure") {
-        settle(() => {
-          if (message.code && CONTROLLED_PDF_ERROR_CODES.has(message.code)) {
-            reject(new DocumentReaderError(message.code, message.message));
-            return;
-          }
-          reject(new Error(message.message));
-        }, true);
-        return;
-      }
-      const validSuccess = message.text.length === message.returnedCharacters && message.returnedCharacters <= limits.maxRetainedCharacters && message.returnedCharacters <= message.totalCharacters && message.totalPages <= limits.maxPages && message.processedPages === message.totalPages;
-      if (!validSuccess) {
-        settle(
-          () => reject(new Error("PDF extraction worker exceeded its contract.")),
-          true
-        );
-        return;
-      }
-      settle(
-        () => resolve(
-          Object.freeze({
-            text: message.text,
-            textBounds: Object.freeze({
-              truncated: message.totalCharacters > message.returnedCharacters,
-              totalCharacters: message.totalCharacters,
-              returnedCharacters: message.returnedCharacters,
-              omittedCharacters: message.totalCharacters - message.returnedCharacters,
-              maxCharacters: limits.maxRetainedCharacters
-            }),
-            format: Object.freeze({
-              kind: "pdf",
-              totalPages: message.totalPages,
-              processedPages: message.processedPages,
-              maxPages: limits.maxPages
-            })
-          })
-        ),
-        true
-      );
+      settle(() => {
+        try {
+          resolve(documentFromPdfMessage(message, limits));
+        } catch (error) {
+          reject(error);
+        }
+      }, true);
     });
     worker.once("error", (error) => {
       settle(
@@ -757,6 +1321,37 @@ async function extractPdfInWorker(bytes, params) {
     params.signal?.addEventListener("abort", onAbort, { once: true });
     if (params.signal?.aborted) onAbort();
   });
+}
+
+// plugins/document-reader/source/read-failure.ts
+function failDocumentRead(file, maxBytes) {
+  switch (file.reason) {
+    case "not_regular_file":
+      return failDocument(
+        "document_target_not_file",
+        "The requested document is not a regular file."
+      );
+    case "too_large":
+      return failDocument(
+        "document_file_too_large",
+        "The requested document exceeds the " + maxBytes + "-byte parsing limit."
+      );
+    case "outside_root":
+      return failDocument(
+        "document_outside_root",
+        "The requested document resolves outside its authorized root. Do not retry this target or bypass the path restriction."
+      );
+    case "safe_open_unsupported":
+      return failDocument(
+        "document_safe_read_unavailable",
+        "Safe file reading is unavailable on this system. On Windows, computer policy may block the required PowerShell/C# helper. Do not retry or bypass this restriction with another tool; ask the user to check the system requirements or contact their administrator."
+      );
+    case "changed_during_read":
+      return failDocument(
+        "document_changed_during_read",
+        "The requested document changed while it was being read."
+      );
+  }
 }
 
 // plugins/document-reader/source/archive.ts
@@ -1107,9 +1702,215 @@ ${content}` : ""}`);
   return archiveResult(accumulator, archive);
 }
 
+// plugins/document-reader/source/pdf-process.ts
+var import_node_child_process2 = require("node:child_process");
+
+// plugins/document-reader/source/pdf-process-main.ts
+var PDF_PROCESS_HEADER_MAX_BYTES = 64 * 1024;
+async function pdfProcessMain(parse, maxInputBytes, maxHeaderBytes, maxHeapBytes) {
+  console.log = console.warn = console.error = () => void 0;
+  try {
+    const { heap_size_limit } = require("node:v8").getHeapStatistics();
+    if (heap_size_limit > maxHeapBytes) {
+      const failure = {
+        kind: "failure",
+        code: "document_pdf_resource_limit",
+        message: "PDF extraction could not establish its memory limit."
+      };
+      process.stdout.end(JSON.stringify(failure), () => process.exit(0));
+      return;
+    }
+    const chunks = [];
+    let size = 0;
+    for await (const chunk of process.stdin) {
+      size += chunk.length;
+      if (size > maxInputBytes + maxHeaderBytes + 1) {
+        throw new Error("PDF process input exceeds its limit.");
+      }
+      chunks.push(chunk);
+    }
+    const input = Buffer.concat(chunks, size);
+    const separator = input.indexOf(10);
+    if (separator < 0) throw new Error("Missing PDF process header.");
+    if (separator > maxHeaderBytes)
+      throw new Error("PDF process header is too large.");
+    const bytes = input.subarray(separator + 1);
+    if (bytes.length > maxInputBytes)
+      throw new Error("PDF process input is too large.");
+    const header = JSON.parse(
+      input.subarray(0, separator).toString("utf8")
+    );
+    let result;
+    await parse({ ...header, bytes }, (message) => {
+      result = message;
+    });
+    if (!result) throw new Error("PDF parser returned no result.");
+    process.stdout.end(JSON.stringify(result), () => process.exit(0));
+  } catch {
+    process.exit(1);
+  }
+}
+
+// plugins/document-reader/source/pdf-process.ts
+function pdfSemiSpaceLimitMb(youngGenerationMb) {
+  const maximum = Math.floor(youngGenerationMb / 3);
+  let size = 1;
+  while (size * 2 <= maximum) size *= 2;
+  return size;
+}
+function pdfProcessArguments(limits) {
+  return [
+    "--input-type=commonjs",
+    "--max-old-space-size=" + limits.maxOldGenerationSizeMb,
+    // V8's young generation uses three semi-spaces; keep it within the existing bound.
+    "--max-semi-space-size=" + pdfSemiSpaceLimitMb(limits.maxYoungGenerationSizeMb),
+    "--stack-size=" + Math.floor(limits.stackSizeMb * 1024),
+    "--eval",
+    "(" + pdfProcessMain.toString() + ")(" + runPdfParser.toString() + ", " + MAX_DOCUMENT_BYTES + ", " + PDF_PROCESS_HEADER_MAX_BYTES + ", " + (limits.maxOldGenerationSizeMb + limits.maxYoungGenerationSizeMb) * 1024 * 1024 + ")"
+  ];
+}
+function createPdfExtractionProcess(bytes, pdfParseEntrypoint, limits) {
+  const header = Buffer.from(
+    JSON.stringify({
+      pdfParseEntrypoint,
+      limits: {
+        maxPages: limits.maxPages,
+        pageBatchSize: limits.pageBatchSize,
+        maxRetainedCharacters: limits.maxRetainedCharacters,
+        maxErrorMessageCharacters: MAX_PDF_ERROR_MESSAGE_CHARS
+      }
+    }) + "\n"
+  );
+  if (header.length > PDF_PROCESS_HEADER_MAX_BYTES) {
+    throw new Error("PDF process header exceeds its limit.");
+  }
+  const child = (0, import_node_child_process2.spawn)(process.execPath, pdfProcessArguments(limits), {
+    windowsHide: true,
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  child.stdin.write(header);
+  child.stdin.end(Buffer.from(bytes));
+  return child;
+}
+function pdfCancellationError() {
+  return new DocumentReaderError(
+    "document_read_cancelled",
+    "Document reading was cancelled."
+  );
+}
+function pdfResourceError(message) {
+  return new DocumentReaderError("document_pdf_resource_limit", message);
+}
+function didPdfProcessExitCleanly(code, signal) {
+  if (signal !== null) return false;
+  return code === 0;
+}
+async function extractPdfInProcess(bytes, params) {
+  if (params.signal?.aborted) throw pdfCancellationError();
+  if (bytes.byteLength > MAX_DOCUMENT_BYTES) {
+    throw new DocumentReaderError(
+      "document_file_too_large",
+      "The PDF exceeds the input size limit."
+    );
+  }
+  const limits = params.limits ?? PDF_EXTRACTION_LIMITS;
+  const child = createPdfExtractionProcess(
+    bytes,
+    params.pdfParseEntrypoint,
+    limits
+  );
+  const maxResultBytes = limits.maxRetainedCharacters * 6 + 4096;
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let resultBytes = 0;
+    let failure;
+    const stopPdfProcess = (error) => {
+      if (failure) return;
+      failure = error;
+      chunks.length = 0;
+      child.stdin.destroy();
+      child.kill("SIGKILL");
+    };
+    const onAbort = () => stopPdfProcess(pdfCancellationError());
+    const timeout = setTimeout(
+      () => stopPdfProcess(
+        pdfResourceError(
+          "PDF extraction exceeded the " + limits.timeoutMs + "-millisecond time limit."
+        )
+      ),
+      limits.timeoutMs
+    );
+    timeout.unref();
+    child.stdout.on("data", (chunk) => {
+      if (failure) return;
+      resultBytes += chunk.length;
+      if (resultBytes > maxResultBytes) {
+        stopPdfProcess(
+          pdfResourceError("PDF extraction exceeded its result size limit.")
+        );
+        return;
+      }
+      chunks.push(chunk);
+    });
+    child.stderr.resume();
+    child.stdin.on(
+      "error",
+      () => stopPdfProcess(
+        new Error("PDF extraction process could not receive its input.")
+      )
+    );
+    child.stdout.on(
+      "error",
+      () => stopPdfProcess(
+        new Error("PDF extraction process could not return its result.")
+      )
+    );
+    child.stderr.on(
+      "error",
+      () => stopPdfProcess(new Error("PDF extraction process stream failed."))
+    );
+    child.on(
+      "error",
+      () => stopPdfProcess(
+        new DocumentReaderError(
+          "document_pdf_process_unavailable",
+          "The PDF extraction process could not be started or stopped. Do not retry or bypass this restriction with another tool; ask the user to check system requirements or contact their administrator."
+        )
+      )
+    );
+    child.once("close", (code, signal) => {
+      clearTimeout(timeout);
+      params.signal?.removeEventListener("abort", onAbort);
+      if (failure) {
+        reject(failure);
+        return;
+      }
+      if (!didPdfProcessExitCleanly(code, signal)) {
+        reject(new Error("PDF extraction process stopped unexpectedly."));
+        return;
+      }
+      try {
+        const message = JSON.parse(
+          Buffer.concat(chunks, resultBytes).toString("utf8")
+        );
+        resolve(documentFromPdfMessage(message, limits));
+      } catch (error) {
+        if (error instanceof SyntaxError) {
+          reject(new Error("PDF extraction process returned invalid data."));
+          return;
+        }
+        reject(error);
+      }
+    });
+    params.signal?.addEventListener("abort", onAbort, { once: true });
+    if (params.signal?.aborted) onAbort();
+  });
+}
+
 // plugins/document-reader/source/pdf.ts
 function extractPdfText(bytes, pdfParseEntrypoint, signal) {
-  return extractPdfInWorker(bytes, {
+  const extract = process.platform === "win32" ? extractPdfInProcess : extractPdfInWorker;
+  return extract(bytes, {
     pdfParseEntrypoint,
     ...signal ? { signal } : {}
   });
@@ -1164,24 +1965,7 @@ async function readDocument(document, pdfParseEntrypoint, signal) {
       rootPath: document.rootPath,
       ...signal ? { signal } : {}
     });
-    if (!file.ok && file.reason === "not_regular_file") {
-      failDocument(
-        "document_target_not_file",
-        "The requested document is not a regular file."
-      );
-    }
-    if (!file.ok && file.reason === "too_large") {
-      failDocument(
-        "document_file_too_large",
-        `The requested document exceeds the ${MAX_DOCUMENT_BYTES}-byte parsing limit.`
-      );
-    }
-    if (!file.ok) {
-      failDocument(
-        "document_changed_during_read",
-        "The requested document changed while it was being read."
-      );
-    }
+    if (!file.ok) failDocumentRead(file, MAX_DOCUMENT_BYTES);
     const bytes = new Uint8Array(file.bytes);
     return Object.freeze({
       bytes: bytes.byteLength,
@@ -1198,7 +1982,7 @@ async function readDocument(document, pdfParseEntrypoint, signal) {
 }
 
 // plugins/document-reader/source/source-resolution.ts
-var import_node_path2 = require("node:path");
+var import_node_path4 = require("node:path");
 var SUPPORTED_MIME_TYPES = new Set(
   Object.values(EXTENSION_MIME_TYPES)
 );
@@ -1208,11 +1992,11 @@ function supportedMimeType(value) {
   return SUPPORTED_MIME_TYPES.has(alias) ? alias : void 0;
 }
 function mimeTypeFromName(value) {
-  return EXTENSION_MIME_TYPES[(0, import_node_path2.extname)(value).toLowerCase()];
+  return EXTENSION_MIME_TYPES[(0, import_node_path4.extname)(value).toLowerCase()];
 }
 function attachmentDisplayName(attachment) {
   const candidate = attachment.name?.trim() || attachment.id;
-  return import_node_path2.posix.basename(import_node_path2.win32.basename(candidate));
+  return import_node_path4.posix.basename(import_node_path4.win32.basename(candidate));
 }
 function attachmentMimeType(attachment) {
   const displayName = attachmentDisplayName(attachment);
@@ -1254,7 +2038,7 @@ function resolveRuntimePathDocument(rawPath, loadContext, executionContext) {
     kind: "runtime_path",
     absolutePath: target.absolutePath,
     rootPath: target.rootPath,
-    displayName: (0, import_node_path2.basename)(target.logicalPath),
+    displayName: (0, import_node_path4.basename)(target.logicalPath),
     mimeType,
     path: Object.freeze({
       location: target.location,

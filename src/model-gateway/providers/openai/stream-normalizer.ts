@@ -1,28 +1,18 @@
+import { readOpenAIFunctionResult } from "./function-result.js";
 import { buildModelTokenUsage } from "../../protocol/usage.js";
 import type { ModelTokenUsage } from "../../types.js";
 import type { ModelProviderEventSink } from "../contracts.js";
 
-export type OpenAIMessageOutputNormalizationDiagnostic = Readonly<{
-  outcome: "additional_message_outputs_ignored";
-  outputCount: number;
-  selectedOutput: Readonly<{
-    itemId: string | null;
-    outputIndex: number | null;
-    arrivalOrder: number;
-    textByteCount: number;
-  }>;
-  ignoredOutputCount: number;
-  sampledIgnoredOutputs: readonly Readonly<{
-    itemId: string | null;
-    outputIndex: number | null;
-    arrivalOrder: number;
-    textByteCount: number;
-  }>[];
-  omittedIgnoredOutputCount: number;
-}>;
+import {
+  OpenAIStructuredMessageOutput,
+  type OpenAIMessageOutputNormalizationDiagnostic,
+} from "./structured-message-output.js";
+
+export type { OpenAIMessageOutputNormalizationDiagnostic } from "./structured-message-output.js";
 
 export type OpenAIResponsesStreamOptions = Readonly<{
   structuredOutput?: boolean;
+  functionOutputName?: string;
   onMessageOutputDiagnostic?: (
     diagnostic: OpenAIMessageOutputNormalizationDiagnostic,
   ) => void;
@@ -38,53 +28,10 @@ export type NormalizedOpenAIStreamEvent =
     }
   | { type: "error"; error: string };
 
-type OpenAIMessageOutputState = {
-  key: string;
-  itemId: string | null;
-  outputIndex: number | null;
-  arrivalOrder: number;
-  textByteCount: number;
-};
-
-const OPENAI_IGNORED_MESSAGE_OUTPUT_DIAGNOSTIC_LIMIT = 8;
-
 function readRecord(value: unknown): Record<string, unknown> {
   const isRecord =
     value !== null && typeof value === "object" && !Array.isArray(value);
   return isRecord ? (value as Record<string, unknown>) : {};
-}
-
-function resolveMessageOutputKey(params: {
-  itemId: string | null;
-  outputIndex: number | null;
-}): string {
-  if (params.itemId !== null) {
-    return `item:${params.itemId}`;
-  }
-  if (params.outputIndex !== null) {
-    return `output:${params.outputIndex}`;
-  }
-  return "unidentified-message-output";
-}
-
-function readOpenAIMessageOutputIdentity(
-  event: Record<string, unknown>,
-): Pick<OpenAIMessageOutputState, "key" | "itemId" | "outputIndex"> {
-  const itemId =
-    typeof event.item_id === "string" && event.item_id.length > 0
-      ? event.item_id
-      : null;
-  const outputIndex =
-    typeof event.output_index === "number" &&
-    Number.isInteger(event.output_index) &&
-    event.output_index >= 0
-      ? event.output_index
-      : null;
-  return {
-    key: resolveMessageOutputKey({ itemId, outputIndex }),
-    itemId,
-    outputIndex,
-  };
 }
 
 function readOpenAIUsage(data: unknown): ModelTokenUsage | undefined {
@@ -122,23 +69,45 @@ function readOpenAIIncompleteReason(data: unknown): string {
     : "unknown_reason";
 }
 
+function isMessageItemEvent(event: Record<string, unknown>): boolean {
+  return event.type === "response.output_item.added" || event.type === "response.output_item.done";
+}
+
+function contentEvents(texts: readonly string[]): NormalizedOpenAIStreamEvent[] {
+  return texts.map((text) => ({ type: "content", text }));
+}
+
+function isStreamError(event: NormalizedOpenAIStreamEvent): boolean {
+  return event.type === "error";
+}
+
 export class OpenAIResponsesStreamNormalizer {
-  private readonly outputs = new Map<string, OpenAIMessageOutputState>();
-  private primaryOutputKey: string | undefined;
+  private readonly structuredOutput = new OpenAIStructuredMessageOutput();
   private terminal = false;
 
   constructor(private readonly options: OpenAIResponsesStreamOptions) {}
+
+  get hasTerminated(): boolean {
+    return this.terminal;
+  }
 
   consume(data: unknown): NormalizedOpenAIStreamEvent[] {
     if (this.terminal) {
       return [];
     }
     const event = readRecord(data);
+    const isFailedResponse = event.type === "response.failed";
+    if (isFailedResponse) {
+      return this.fail(readOpenAIError(event.response));
+    }
     if (event.type === "response.output_text.delta") {
       return this.consumeTextDelta(event);
     }
+    if (isMessageItemEvent(event)) {
+      return this.consumeMessageItem(event);
+    }
     if (event.type === "response.completed") {
-      return this.complete(readOpenAIUsage(data));
+      return this.complete(readOpenAIUsage(data), undefined, event.response);
     }
     if (event.type === "response.incomplete") {
       return this.consumeIncompleteResponse(data);
@@ -151,12 +120,15 @@ export class OpenAIResponsesStreamNormalizer {
   }
 
   finish(): NormalizedOpenAIStreamEvent[] {
+    const events = this.end();
+    if (this.terminal) return events;
     return this.complete(undefined);
   }
 
   private consumeTextDelta(
     event: Record<string, unknown>,
   ): NormalizedOpenAIStreamEvent[] {
+    if (this.options.functionOutputName) return [];
     const delta = typeof event.delta === "string" ? event.delta : "";
     if (!delta) {
       return [];
@@ -165,51 +137,72 @@ export class OpenAIResponsesStreamNormalizer {
       return [{ type: "content", text: delta }];
     }
 
-    const output = this.getMessageOutput(event);
-    output.textByteCount += Buffer.byteLength(delta, "utf8");
-    return output.key === this.primaryOutputKey
-      ? [{ type: "content", text: delta }]
-      : [];
+    return contentEvents(this.structuredOutput.consumeDelta(event, delta));
   }
 
   private consumeIncompleteResponse(
     data: unknown,
   ): NormalizedOpenAIStreamEvent[] {
     const reason = readOpenAIIncompleteReason(data);
-    if (reason === "max_output_tokens") {
-      return this.complete(readOpenAIUsage(data), reason);
+    if (!this.options.functionOutputName && reason === "max_output_tokens") {
+      return this.complete(readOpenAIUsage(data), reason, readRecord(data).response);
     }
     this.terminal = true;
     return [{ type: "error", error: `openai response incomplete: ${reason}` }];
   }
 
-  private getMessageOutput(
-    event: Record<string, unknown>,
-  ): OpenAIMessageOutputState {
-    const identity = readOpenAIMessageOutputIdentity(event);
-    let output = this.outputs.get(identity.key);
-    if (!output) {
-      output = {
-        ...identity,
-        arrivalOrder: this.outputs.size + 1,
-        textByteCount: 0,
-      };
-      this.outputs.set(identity.key, output);
-      this.primaryOutputKey ??= identity.key;
-    }
-    return output;
+  private consumeMessageItem(event: Record<string, unknown>): NormalizedOpenAIStreamEvent[] {
+    if (this.options.functionOutputName) return [];
+    if (!this.options.structuredOutput) return [];
+    return contentEvents(this.structuredOutput.observeItem(event));
+  }
+
+  // Transport endings cannot authorize decisions or payloads. Ordinary text
+  // retains its legacy partial-output behavior.
+  end(): NormalizedOpenAIStreamEvent[] {
+    if (this.terminal) return [];
+    if (this.options.functionOutputName) return this.fail("openai function response not completed");
+    const requiresCompletedMessage = this.options.structuredOutput === true;
+    if (requiresCompletedMessage) return this.fail("openai response not completed");
+    return [];
+  }
+
+  private finishStructuredOutput(response?: unknown): NormalizedOpenAIStreamEvent[] {
+    if (!this.options.structuredOutput) return [];
+    const pending = this.structuredOutput.observeResponse(response);
+    const result = this.structuredOutput.finish();
+    if (result.error) return [{ type: "error", error: result.error }];
+    const diagnostic = this.structuredOutput.diagnostic();
+    if (diagnostic) this.options.onMessageOutputDiagnostic?.(diagnostic);
+    return contentEvents([...pending, ...result.text]);
+  }
+
+  private fail(error: string): NormalizedOpenAIStreamEvent[] {
+    this.terminal = true;
+    return [{ type: "error", error }];
+  }
+
+  private finishFunctionOutput(response: unknown, name: string): NormalizedOpenAIStreamEvent[] {
+    const result = readOpenAIFunctionResult(response, name);
+    if ("error" in result) return [{ type: "error", error: result.error }];
+    return [{ type: "content", text: result.text }];
   }
 
   private complete(
     usage: ModelTokenUsage | undefined,
     doneReason?: string,
+    response?: unknown,
   ): NormalizedOpenAIStreamEvent[] {
     if (this.terminal) {
       return [];
     }
-    this.emitAdditionalOutputDiagnostic();
+    const pending = this.options.functionOutputName
+      ? this.finishFunctionOutput(response, this.options.functionOutputName)
+      : this.finishStructuredOutput(response);
     this.terminal = true;
+    if (pending.some(isStreamError)) return pending;
     return [
+      ...pending,
       {
         type: "done",
         done: true,
@@ -219,40 +212,6 @@ export class OpenAIResponsesStreamNormalizer {
     ];
   }
 
-  private emitAdditionalOutputDiagnostic(): void {
-    const hasAdditionalStructuredOutputs =
-      this.options.structuredOutput && this.outputs.size > 1;
-    if (!hasAdditionalStructuredOutputs) {
-      return;
-    }
-
-    const outputs = [...this.outputs.values()];
-    const selectedOutput = outputs[0]!;
-    const ignoredOutputs = outputs.slice(1);
-    this.options.onMessageOutputDiagnostic?.({
-      outcome: "additional_message_outputs_ignored",
-      outputCount: outputs.length,
-      selectedOutput: {
-        itemId: selectedOutput.itemId?.slice(0, 160) ?? null,
-        outputIndex: selectedOutput.outputIndex,
-        arrivalOrder: selectedOutput.arrivalOrder,
-        textByteCount: selectedOutput.textByteCount,
-      },
-      ignoredOutputCount: ignoredOutputs.length,
-      sampledIgnoredOutputs: ignoredOutputs
-        .slice(0, OPENAI_IGNORED_MESSAGE_OUTPUT_DIAGNOSTIC_LIMIT)
-        .map(({ itemId, outputIndex, arrivalOrder, textByteCount }) => ({
-          itemId: itemId?.slice(0, 160) ?? null,
-          outputIndex,
-          arrivalOrder,
-          textByteCount,
-        })),
-      omittedIgnoredOutputCount: Math.max(
-        0,
-        ignoredOutputs.length - OPENAI_IGNORED_MESSAGE_OUTPUT_DIAGNOSTIC_LIMIT,
-      ),
-    });
-  }
 }
 
 export function writeNormalizedOpenAIEvents(

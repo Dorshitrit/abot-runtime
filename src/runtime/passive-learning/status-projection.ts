@@ -1,3 +1,4 @@
+import type { PassiveCollectionState } from "../../shared/passive-observation.js";
 import type { LongTermMemoryService } from "../long-term-memory/contracts.js";
 import type { LearningBatch, LearningBatchSummary } from "./contracts.js";
 
@@ -51,6 +52,12 @@ export async function recentLearningMemories(
   }
 }
 
+export function learningCollectionFailureState(reason: string): PassiveCollectionState {
+  if (reason === "collection_consent_required") return "permission_required";
+  if (reason === "learning_host_unavailable") return "unavailable";
+  return "failed";
+}
+
 export function learningFailureReason(error: unknown): string {
   if (!(error instanceof Error)) return "learning_failed";
   if (/^bridge_request_failed:\d{3}(?::|$)/u.test(error.message)) return "learning_model_request_failed";
@@ -61,6 +68,8 @@ export function learningFailureReason(error: unknown): string {
     "learning_model_profile_overridden",
     "learning_memory_unavailable",
     "learning_host_unavailable",
+    "collection_consent_required",
+    "native_observation_identity_invalid",
     "learning_storage_unavailable",
     "learning_batch_timeout",
     "learning_disabled",

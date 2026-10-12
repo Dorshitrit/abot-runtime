@@ -333,12 +333,12 @@ describe("Execution Agent request runner", () => {
           expect(JSON.stringify(lane.action)).not.toContain(EXACT_INTENT);
           expect(lane.result).toEqual({
             kind: EXECUTION_CAPABILITY_RESULT_MESSAGE_KIND,
-            authority: "capability_adapter_result",
-            presenceEffect: "runtime_result_only_not_user_intent",
-            invocationAttempt: 2,
+            authority: "canonical_role_call_ledger",
+            presenceEffect: "runtime_result_only_not_user_intent", invocationAttempt: 2,
             result: {
               executionId: "capability-execution-1",
               capabilityId: observeDescriptor.capabilityId,
+              outcome: "succeeded", observedEffect: "observation", summary: "Observed exact.txt.",
               adapterResult: {
                 kind: "generic_capability_result_v1",
                 authority: "capability_adapter",

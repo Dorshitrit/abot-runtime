@@ -4,6 +4,10 @@
   "version": "1.0.0",
   "description": "Inspect current machine health and disk capacity.",
   "extensions": {
+    "ai.abot.compatibility": {
+      "version": 1,
+      "runtimePlatforms": ["linux", "darwin", "win32"]
+    },
     "ai.abot.runtime": {
       "version": 1,
       "entrypoint": "./src/index.cjs",
@@ -17,9 +21,11 @@
             "metadata": {
               "path": {
                 "param": "path",
-                "kind": "string",
-                "default": "/"
+                "kind": "string"
               }
+            },
+            "resultMetadata": {
+              "path": { "path": "data.diskPath", "kind": "preview" }
             }
           },
           "skills": [],

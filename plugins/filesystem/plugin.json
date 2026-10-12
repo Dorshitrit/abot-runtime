@@ -4,6 +4,10 @@
   "version": "0.1.0",
   "description": "Inspect and mutate files under the configured agent work directory and workspace roots.",
   "extensions": {
+    "ai.abot.compatibility": {
+      "version": 1,
+      "runtimePlatforms": ["linux", "darwin", "win32"]
+    },
     "ai.abot.runtime": {
       "version": 1,
       "entrypoint": "./src/index.cjs",
@@ -215,7 +219,7 @@
         },
         "write_file": {
           "catalogGroups": ["write"],
-          "description": "Create one new file or perform an explicitly requested intentional full-file replacement. Use when the complete desired file is already known, especially for new or nearly empty files. Do not choose write_file for an ordinary addition or change to an existing file when an active existing-target editor can preserve current content. For an explicit existing-file replacement, inspect the complete current file first; prior conversation summaries do not count as current file content. Selection uses only the target path; runtime collects the raw file body over a separate payload channel.",
+          "description": "Write a file at the complete path, including its filename; missing parent directories are created automatically. For an empty directory, use an available SYSTEM or EXEC command tool. Use for a new file or explicitly requested full-file replacement whose complete content is known. Ordinary changes to an existing file belong to an available existing-target editor. Before full replacement, inspect the entire current file; conversation summaries are not current file content. Select only the path; the raw file body is authored separately.",
           "routingCapability": "filesystem_mutation",
           "controlsRefinement": "mechanical_when_complete",
           "developmentRoles": ["establish", "mutate"],
@@ -246,7 +250,7 @@
           "skills": [],
           "operations": {
             "write_complete_file": {
-              "summary": "Create a new file via a separate complete raw-text payload. Paths use the runtime-host namespace; relative paths use the call's working directory under the request's agent work root. Path syntax does not select a SYSTEM OS target. Establish source artifacts before consumers in a connected Worker call; bounded successful artifacts reach later payloads. Existing files require explicit full replacement; use edit_existing_file for ordinary edits. Do not create unrequested adjacent artifacts.",
+              "summary": "Write one file via separate complete raw payload; path includes its filename. Missing parents are auto-created; use an available SYSTEM or EXEC command for an empty directory. Paths use the runtime host; relative paths use call cwd under the agent work root, not a SYSTEM OS target. Establish sources before consumers in a Worker call; bounded successful artifacts reach later payloads. Existing files need explicit full replacement; use edit_existing_file for ordinary edits. No unrequested adjacent artifacts.",
               "input": {
                 "type": "object",
                 "additionalProperties": false,

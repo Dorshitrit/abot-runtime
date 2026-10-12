@@ -1,8 +1,11 @@
+import { installSparkDocument, sparkDom } from "./support/spark-composer-dom.js";
+import { createSparkQueueFixture } from "./support/spark-composer-queue.js";
 import { afterEach, expect, test, vi } from "vitest";
 // @ts-expect-error Browser composition module.
 import { createSparkChatFeature } from "../../web-ui/app/spark-chat-feature.js";
 
-const capture = vi.hoisted(() => ({ conversation: null as any, panelDom: null as any, setOpen: vi.fn(), resetView: vi.fn(), render: vi.fn() }));
+const capture = vi.hoisted(() => ({ conversation: null as any, queue: null as any, panelDom: null as any, setOpen: vi.fn(), resetView: vi.fn(), render: vi.fn() }));
+vi.mock("../../web-ui/app/services/workspace-state.js", () => ({ workspaceQueue: () => capture.queue }));
 vi.mock("../../web-ui/app/spark-chat-conversation.js", async (importOriginal) => {
   const actual = await importOriginal<Record<string, (...args: any[]) => any>>();
   return { createSparkChatConversation: (...args: any[]) => (capture.conversation = actual.createSparkChatConversation(...args)) };
@@ -18,29 +21,15 @@ vi.mock("../../web-ui/app/components/spark-chat/panel.js", () => ({
     onToggle: vi.fn(), showNotice: vi.fn(), hideNotice: vi.fn(), setUnread: vi.fn(), resetPosition: vi.fn() }),
 }));
 
-class ElementStub extends EventTarget {
-  value = ""; textContent = ""; innerHTML = ""; style = {}; dataset = {}; disabled = false; hidden = false;
-  classList = { toggle: vi.fn(), add: vi.fn(), remove: vi.fn() };
-  setAttribute = vi.fn(); focus = vi.fn(); closest = () => null; querySelector = () => null;
-  appendChild = vi.fn(); querySelectorAll = () => []; scrollHeight = 32;
-}
-function domStub() {
-  const nodes = new Map<PropertyKey, ElementStub>();
-  return new Proxy({} as Record<string, ElementStub>, { get: (_target, key) => {
-    if (!nodes.has(key)) nodes.set(key, new ElementStub());
-    return nodes.get(key);
-  } });
-}
 const message = (id: number) => ({ id, role: "assistant", text: `Answer ${id}`, requestId: `req-${id}`, createdAt: id });
 const latest = { sessionId: "spark-companion", kind: "spark", messages: [message(21), message(22)], requests: [] as Record<string, unknown>[], nextCursor: "older", newerCursor: null };
 const target = { ...latest, messages: [message(1), message(2)], nextCursor: null, newerCursor: "newer" };
 
 async function fixture(unread: boolean) {
-  vi.stubGlobal("document", Object.assign(new ElementStub(), { createElement: () => new ElementStub() }));
-  vi.stubGlobal("window", Object.assign(new ElementStub(), { setTimeout, requestAnimationFrame: vi.fn() }));
-  vi.stubGlobal("localStorage", { getItem: () => null, setItem() {} });
-  const dom = domStub(); dom.environmentSelect.value = "dev";
-  capture.panelDom = domStub();
+  installSparkDocument();
+  capture.queue = createSparkQueueFixture().queue;
+  const dom = sparkDom(); dom.environmentSelect.value = "dev";
+  capture.panelDom = sparkDom();
   const result = { sessionId: "spark-companion", modelProfileId: "model", snapshot: latest,
     readState: { readGeneration: "same", unreadMessageIds: unread ? [1] : [], unreadCount: unread ? 1 : 0 } };
   const client = {

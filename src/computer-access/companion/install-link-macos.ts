@@ -8,7 +8,8 @@ export function renderMacInstallLinkHandler(
   const literal = (value: string) => JSON.stringify(value);
   return `ObjC.import('Foundation');
 function openDocuments() {}
-function openLocation(url) {
+// JXA dispatches the macOS Get URL (GURL/GURL) AppleEvent to this exact name.
+function GURLGURL(url) {
   var task = $.NSTask.alloc.init;
   task.launchPath = ${literal(options.nodePath)};
   task.arguments = [${literal(options.cliPath)}, 'host', 'open-link', String(url)];

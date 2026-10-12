@@ -6,6 +6,9 @@ import { HostConnection } from "../computer-access/companion/connection.js";
 import { HostPairingStore } from "../computer-access/companion/pairing-store.js";
 import { startHostBroker } from "../computer-access/companion/broker-server.js";
 import { hostStateDirectory } from "../computer-access/companion/private-store.js";
+import { readCollectionConsent } from "../computer-access/collection-consent.js";
+import { readRuntimeCollectionSource } from "../computer-access/observation-source.js";
+import { COLLECTION_CONSENT_PATH, handleCollectionConsent } from "./system-host-setup/collection-consent-route.js";
 import {
   HOST_SOCKET_PATH,
   HOST_WIRE_MAX_BYTES,
@@ -28,6 +31,7 @@ import { HOST_PERMISSION_PATH, HostPermissionRoute } from "./system-host-setup/p
 import { NativeRuntimePermissionRoute, type NativePermissionAccess } from "./system-host-setup/native-permission-route.js";
 function isSystemHostRoute(pathname: string): boolean {
   if (pathname === "/web-api/runtime/system-host") return true;
+  if (pathname === COLLECTION_CONSENT_PATH) return true;
   return pathname === "/web-api/runtime/system-host/pairing";
 }
 export class WebSystemHostService {
@@ -123,6 +127,10 @@ export class WebSystemHostService {
     if (!isSystemHostRoute(pathname) && !isHostSetupRoute(pathname) && pathname !== HOST_PERMISSION_PATH) return false;
     response.setHeader("cache-control", "no-store");
     try {
+      if (pathname === COLLECTION_CONSENT_PATH) {
+        await handleCollectionConsent(request, response, this.rootDir);
+        return true;
+      }
       if (pathname === HOST_PERMISSION_PATH) {
         await this.permissions.handle(request, response);
         return true;
@@ -138,7 +146,8 @@ export class WebSystemHostService {
         const status = this.connection.status();
         const readiness = withLocalMacSetup(request, await readHostReadiness(status));
         const nativePermissions = await this.nativePermissions.status(request);
-        sendJson(response, 200, { ok: true, ...status, readiness, nativePermissions });
+        sendJson(response, 200, { ok: true, ...status, readiness, nativePermissions,
+          collectionSource: readRuntimeCollectionSource(), collectionConsent: readCollectionConsent(this.rootDir) });
         return true;
       }
       if (!acceptConfigMutationRequest(request, response)) return true;
@@ -167,7 +176,8 @@ export class WebSystemHostService {
         this.connection.disconnect();
         const status = this.connection.status();
         sendJson(response, 200, { ok: true, ...status,
-          readiness: withLocalMacSetup(request, await readHostReadiness(status)) });
+          readiness: withLocalMacSetup(request, await readHostReadiness(status)),
+          collectionSource: readRuntimeCollectionSource(), collectionConsent: readCollectionConsent(this.rootDir) });
         return true;
       }
       sendJson(response, 405, { ok: false, error: "method_not_allowed" });

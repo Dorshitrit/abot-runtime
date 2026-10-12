@@ -1,18 +1,20 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   buildComposerContextWindowModel,
   createComposerContextWindow,
 } from "../../web-ui/app/components/composer-context-window.js";
-// @ts-expect-error Browser-only JavaScript module has no declaration surface.
-import { createChatRequestController } from "../../web-ui/app/controllers/chat-request-controller.js";
+import { createComposerFeature } from "../../web-ui/app/controllers/composer-feature.js";
+import { createComposerWorkspaceController } from "../../web-ui/app/controllers/composer-workspace-controller.js";
+import { createSessionComposerQueue } from "../../web-ui/app/lib/session-composer-queue.js";
+afterEach(() => vi.unstubAllGlobals());
 import {
   createConversationSessionController,
   type ConversationSessionMessage,
   type ConversationSessionScope,
 } from "../../web-ui/app/controllers/conversation-session-controller.js";
 import { createRealtimeEventController } from "../../web-ui/app/controllers/realtime-event-controller.js";
-import { createComposerContextDom } from "./support/composer-context-window-dom.js";
+import { ContextElement, createComposerContextDom } from "./support/composer-context-window-dom.js";
 
 function deferredRequestId() {
   let resolve!: (requestId: string) => void;
@@ -91,24 +93,23 @@ function createSendLifecycleHarness() {
   const pendingRequest = deferredRequestId();
   const client = {
     postChatMessage: vi.fn(() => pendingRequest.promise),
+    stopChatRequest: vi.fn(async () => ({ accepted: true })),
+    attachmentPreviewUrl: vi.fn(() => ""),
+    deleteAttachment: vi.fn(async () => {}),
+    uploadAttachment: vi.fn(async () => ({ id: "file" })),
     markSessionRead: vi.fn(async () => ({ readState: {} })),
     listSessions: vi.fn(async () => ({ sessions: [] })),
     loadSession: vi.fn(async () => ({ messages: [], requests: [] })),
     fetchRequestEvents: vi.fn(async () => []),
   };
   const selectedEnvironmentId = () => "dev";
-  const currentComposerScope = () => ({
-    environmentId: selectedEnvironmentId(),
-    sessionId: state.currentSessionId,
-  });
   const isCurrentComposerScope = (scope: ConversationSessionScope) =>
     scope.environmentId === selectedEnvironmentId() &&
     scope.sessionId === state.currentSessionId;
   const conversationView = { reset: vi.fn(() => indicator.reset()) };
-  const sessionQueue = {
-    peek: vi.fn(() => null),
-    rebindBlocked: vi.fn(() => false),
-  };
+  const storage = new Map<string, string>();
+  const sessionQueue = createSessionComposerQueue({ storage: { getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => storage.set(key, value) } });
   const conversationSession = createConversationSessionController({
     state,
     dom: {
@@ -130,7 +131,6 @@ function createSendLifecycleHarness() {
     sessionQueue,
     conversationView,
     selectedEnvironmentId,
-    clearPendingAttachments: vi.fn(),
     applyConversationChrome: vi.fn(),
     applyModelSelection: vi.fn(),
     renderSessions: vi.fn(),
@@ -171,23 +171,26 @@ function createSendLifecycleHarness() {
     drainQueuedComposerMessage: vi.fn(),
     loadSessions: vi.fn(),
   });
-  const chatRequest = createChatRequestController({
-    state,
-    client,
-    sessionQueue,
-    conversationView,
-    conversationSession,
-    attachments: { invalidateCompletions: vi.fn() },
-    currentComposerScope,
-    isCurrentComposerScope,
-    rememberModelSelection: vi.fn(),
-    applyConversationChrome: vi.fn(),
-    renderSessions: vi.fn(),
-    renderAttachments: vi.fn(),
-    getToolPermissionMode: () => "full_access",
-    getModelPreference: () => ({ profileId: "local", scope: "all" }),
-    clearQueueRecovery: vi.fn(),
-    reportQueueFailure: vi.fn(),
+  const createElement = (tag: string): any => Object.assign(new ContextElement(tag), {
+    ownerDocument: dom.documentRoot, value: "", scrollHeight: 48, innerHTML: "", focus: vi.fn(),
+  });
+  const host: any = createElement("div");
+  host.insertBefore = (child: ContextElement) => host.appendChild(child);
+  const form = createElement("form");
+  host.appendChild(form);
+  const composerDom = { composerForm: form, composerInput: createElement("textarea"),
+    attachmentButton: createElement("button"), attachmentPreview: createElement("div") };
+  const workspace: any = createComposerWorkspaceController({ state, dom: composerDom,
+    homeComposerHost: createElement("div"), selectedEnvironmentId });
+  vi.stubGlobal("document", dom.documentRoot);
+  const composer = createComposerFeature({ state, dom: workspace.chatDom, shell: { showToast: vi.fn() }, client,
+    sessionQueue, conversationSession, conversationView, getEnvironmentId: selectedEnvironmentId,
+    getDraft: workspace.chatView.current, ensureSession: () => state.currentSessionId, drafts: workspace.drafts,
+    getSettings: () => ({ agentMode: "reasoning", toolPermissionMode: "ask", modelPreference: { profileId: "local" } }),
+    steer: vi.fn(), composerActions: { primaryAction: () => "send", render: vi.fn() },
+    selectedModelSupportsImageInput: () => true, isComposerAvailable: () => true,
+    getSubmissionBlock: () => null, onSubmissionBlocked: vi.fn(), isVisible: () => true,
+    renderSessions: vi.fn(), renderMessages, applyConversationChrome: vi.fn(), setMessageStatus: vi.fn(), recordControlEvent: vi.fn(),
   });
   realtime.recordEvent(contextSnapshot("completed", 31));
   return {
@@ -195,7 +198,7 @@ function createSendLifecycleHarness() {
     state,
     client,
     pendingRequest,
-    chatRequest,
+    composer, composerDom,
     conversationSession,
     realtime,
     renderMessages,
@@ -205,16 +208,17 @@ function createSendLifecycleHarness() {
 describe("composer context across chat submission", () => {
   test("hides completed-request context throughout pending send until the new request has metrics", async () => {
     const harness = createSendLifecycleHarness();
-    const { state, container, chatRequest, pendingRequest, realtime } = harness;
+    const { state, container, composer, pendingRequest, realtime } = harness;
     const completedMetrics = state.contextWindowByRequest.get("completed");
     expect(container.hidden).toBe(false);
     expect(container.dataset.requestId).toBe("completed");
     expect(container.textContent).toContain("31%");
     harness.renderMessages.mockClear();
 
-    const sending = chatRequest.sendMessage("Next question");
+    harness.composerDom.composerInput.value = "Next question";
+    const sending = composer.submit.dispatch();
 
-    expect(harness.client.postChatMessage).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(harness.client.postChatMessage).toHaveBeenCalledOnce());
     expect(harness.renderMessages).toHaveBeenCalledOnce();
     expect(state.activeRequestId).toBe("");
     expect(state.messages.at(-1)).toMatchObject({

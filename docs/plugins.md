@@ -237,11 +237,70 @@ options, or skill lists in `runtime.config.json`. Installing or changing a
 plugin means changing its package under `plugins/`; runtime config only decides
 whether that installed capability is available.
 
+## Runtime Platform Compatibility
+
+A plugin can declare where its code can run using a separate manifest extension:
+`extensions["ai.abot.compatibility"] = { "version": 1, "runtimePlatforms": ["linux", "darwin"] }`.
+The executable `ai.abot.runtime` extension remains at version 1.
+
+`runtimePlatforms` is a non-empty, duplicate-free list of Node platform names:
+`linux`, `darwin` (macOS), or `win32` (Windows). Unsupported versions, platform
+names and fields are rejected. Declare only platforms on which the complete
+plugin can safely load; individual operations may still require permissions,
+external programs or a connected computer.
+
+The declaration describes the **Runtime host**, not the browser or the computer
+controlled by a tool. A Linux Runtime in WSL or a Linux Docker container remains
+`linux`, including when SYSTEM controls a Windows Companion. It does not grant
+permissions or replace the tool's request-time target checks.
+
+Hosts with this compatibility support apply the following policy before resolving
+plugin settings/secrets or importing executable plugin code:
+
+- A declared matching platform can load, subject to the existing saved selection.
+- A declared non-matching platform cannot load.
+- Without a declaration, existing non-Windows behavior is preserved. Native
+  Windows reports **Compatibility not declared** and does not load the plugin.
+
+Installed, onboarding and model-selection views show compatibility separately
+from saved plugin/tool selection. Changing hosts does not rewrite saved selection
+or erase settings and keys. An incompatible package remains inspectable,
+configurable and removable. It can be installed for later use on a supported
+host; the review and installation result explain that it will not load here.
+Applying configuration cannot bypass the loader gate.
+
+**Older hosts:** ABot 1.7.0 accepts and preserves additional extension namespaces
+but does not enforce this declaration. Its existing behavior remains unchanged.
+This metadata is not an enforcement guarantee on older hosts, nor a claim that
+ABot 1.7.0 or its bundled plugins support native Windows. Existing bundled plugin
+manifests are not certified for Windows by this contract change.
+
+The required `windows-compatibility` CI job builds the Runtime, checks types and
+plugin packages, and runs the focused platform contract and loader suites on
+Windows with Node 24. It complements the Linux validation and macOS Companion
+checks; it does not certify all native Windows tool operations or Store packaging.
+
 ## Manifest Contract
 
 `@abot-ai/runtime/plugin-sdk` is the single public plugin-authoring entrypoint. It
 exports the manifest constants and types, entrypoint contract, and bounded
 authoring helpers consumed by plugin implementations.
+
+The SDK's `readBoundedRegularFile(path, { rootPath, maxBytes, signal })` reads one
+regular file within its authorized root and returns bounded bytes or a typed
+refusal. On native Windows, it uses the same C# handle primitives as `filesystem`,
+compiled by the built-in Windows PowerShell for each read. Root and file identity
+are checked before reading; traversal rejects reparse points beneath the root,
+including junctions. Binary content and documents up to 10 MiB are covered by
+native tests; each caller still sets its own size limit. Linux/macOS retain the
+existing no-follow file-descriptor path.
+
+A Windows policy or compiler restriction returns `safe_open_unsupported`. Plugins
+must report that safe reading is unavailable and avoid automatic retries or a
+less restricted fallback. Cancellation stops the helper and throws `AbortError`;
+a helper deadline (15 seconds) or ordinary I/O failure remains an explicit error.
+This SDK support does not enable Windows compatibility in a plugin manifest.
+Each plugin must still declare and validate its own Windows support.
 
 The manifest follows the Agent Plugins 1.0 package shape and keeps the local
 executable contract under `extensions.ai.abot.runtime`:
@@ -364,10 +423,14 @@ receive it. Planner uses this same brief instead of a separate aggregate-tag
 catalog. Its existing group-selection schema and Worker scope enforcement stay
 unchanged; descriptions do not select a group or execute an operation.
 
-Under `execution-agent-v1`, the canonical root receives group descriptions
-generated from member capability ids and summaries, and may mechanically open
-or extend its own RoleCall scope.
-It then selects a concrete capability only from that active scope. Scope
+Under `execution-agent-v1`, the canonical root receives every group and member
+in ASCII order on each decision, and may mechanically open or extend its own
+RoleCall scope. A capability's exact summary appears as `capabilityId: summary`
+at its first group membership; later memberships contain only its id, referring
+to that definition. The first group has no selection priority. Descriptions
+are neither sampled, truncated, nor synthesized. The active catalog supplies
+each capability's id and effect; its selection controls remain in the decision
+schema. It then selects a concrete capability only from that active scope. Scope
 updates, capability binding, payload authoring, adapter execution, and
 settlement use the same ledger and capability engine as delegated Worker
 execution. Unknown, empty, invalid, repeated, or no-op scopes are rejected
@@ -491,6 +554,36 @@ projection code under `src/runtime`. Result contents are model-facing evidence:
 they must not include secrets and they never act as instructions, new user
 intent, or proof that the whole request completed. See
 [tool-execution-result-evidence-contract.md](tool-execution-result-evidence-contract.md).
+
+### Reporting a confirmed mutation
+
+Use `successResult()` for ordinary successful observations. After the owning
+plugin has confirmed a completed mutation, use `mutationSuccessResult()` to
+preserve its receipt and add the Runtime's required `data.mutationEvidence: true`:
+
+```ts
+import { mutationSuccessResult } from "@abot-ai/runtime/plugin-sdk";
+
+// apiReceipt is the result of a completed write already confirmed by this handler.
+return mutationSuccessResult({
+  output: "The article was published.",
+  data: apiReceipt,
+}, context.resultBudget);
+```
+
+The helper does not execute the operation or independently verify its effect.
+Do not use it for a failed, ambiguous, pending, or no-op operation. It retains
+the same JSON and result-size bounds as `successResult()`; a rejected receipt
+returns a failure without asserting mutation evidence. The existing generic
+helper does not infer a mutation from `ok`, `progress`, prose, or the presence of
+arbitrary data. Explicit `actions`, `progress`, and other result fields remain
+available to the owning plugin.
+
+The adapter records operation outcome separately from observed effect.
+For a `mutating` operation, `ok: true` without `mutationEvidence: true` is
+classified as `mutation_evidence_missing`. The new helper supplies that marker
+after the plugin has established the evidence; it does not change the Runtime's
+classification rules or prove completion of the user's whole request.
 
 ### EXEC output storage
 
@@ -653,6 +746,54 @@ counts imply full-file coverage.
    restrictive allow-list.
 
 No concrete tool or skill mapping should be added anywhere under `src/runtime`.
+
+### Native Windows plugin support
+
+The native Windows group contains `capability-brief`, `code-outline`,
+`document-reader`, `exec`, `filesystem`, `json-inspector`, `local-search`, `memory`, `web`,
+`project-orientation`, `system-probe`, and `system`.
+Each declares `win32` in its versioned
+`ai.abot.compatibility` extension, alongside its existing Linux and macOS support.
+Compatibility uses the Runtime process OS, not the browser or a paired computer.
+A Windows-only plugin should declare only `win32`; other hosts will not load it.
+
+On native Windows, SYSTEM provides `system_targets`, `system_command`,
+`system_applications`, and `system_launch`. Commands run in local PowerShell and
+retain existing approvals, cancellation, and protected output handling. Desktop
+observation and input (`computer_*`) are excluded from the request catalog in
+this phase. Linux/macOS Runtime and WSL/Docker Companion routes retain their
+existing capabilities. This phase does not add screenshot OCR.
+
+`system-probe` reports Windows load averages as unsupported instead of presenting
+the OS's placeholder zeros as measured load. Its default disk probe uses the
+Runtime installation's filesystem; an explicit path selects that path's volume.
+
+`code-outline` uses the SDK's bounded file reader on Windows, with the same
+authorized roots, parser and output limits as Linux/macOS. If safe reading is
+unavailable, it reports the restriction explicitly and tells the model not to
+retry or bypass it. See [Code Outline](../plugins/code-outline/README.md).
+
+`document-reader` uses the SDK's bounded Windows reader for configured paths
+and request attachments, with shared text, Office and PDF parsers and limits.
+A blocked reader reports an explicit no-retry restriction.
+See [Document Reader](../plugins/document-reader/README.md).
+
+`json-inspector` uses the SDK's bounded Windows reader with the existing path,
+UTF-8, size and summary limits. A blocked reader reports an explicit no-retry
+restriction. See [JSON Inspector](../plugins/json-inspector/README.md).
+
+`project-orientation` uses the SDK's bounded Windows reader for package
+metadata and retains its existing directory-tree and result limits. Blocked
+manifest reads return an explicit no-retry restriction.
+See [Project Orientation](../plugins/project-orientation/README.md).
+
+`local-search` uses native Windows ripgrep through a PowerShell/C# helper that
+pins the selected path and owns the child process through a Job Object. Existing
+query, output, timeout and cancellation limits still apply. A blocked helper
+fails explicitly without a retry or policy bypass.
+See [Local Search](../plugins/local-search/README.md).
+
+Enabling manifests alone is not a validation step.
 
 ### Shared Computer access
 

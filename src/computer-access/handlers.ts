@@ -13,26 +13,81 @@ import { launchSystemApplication } from "./application-launch.js";
 import { executeSystemCommand } from "./commands.js";
 import {
   SystemOperationError,
+  type SystemApplication,
+  type SystemProcessResult,
   type SystemProcessRunner,
   type SystemTarget,
   type SystemTargetId,
 } from "./contracts.js";
 import type { SystemCommandOutputFactory } from "./command-output.js";
+import type { SystemResultProtection } from "./system-result-protection.js";
 import { runSystemProcess } from "./process-runner.js";
-import { systemProcessResult } from "./process-result.js";
+import { systemProcessResult, type SystemEvidenceScope } from "./process-result.js";
 import { readSystemTargetId, resolveSystemTarget } from "./targets.js";
+
+const PROTECTION_FAILURE = "The system result could not be protected for delivery.";
+
+function protectSystemResult<T>(operation: () => T): T {
+  try { return operation(); }
+  catch {
+    throw new SystemOperationError("system_result_protection_failed", PROTECTION_FAILURE);
+  }
+}
+
+function failedSystemProtectionReceipt(
+  target: SystemTarget,
+  result: SystemProcessResult,
+  evidenceScope: SystemEvidenceScope,
+) {
+  const safeProcess: SystemProcessResult = {
+    status: result.status,
+    exitCode: result.exitCode,
+    outputTruncated: result.outputTruncated,
+    stdout: "[UNAVAILABLE: result protection failed]",
+    stderr: "[UNAVAILABLE: result protection failed]",
+    ...(result.spawnedProcess ? {
+      spawnedProcess: {
+        pid: result.spawnedProcess.pid,
+        pidNamespace: result.spawnedProcess.pidNamespace,
+        identitySource: result.spawnedProcess.identitySource,
+        executable: "[REDACTED]",
+      },
+    } : {}),
+  };
+  const receipt = systemProcessResult(target, safeProcess, evidenceScope);
+  return failureResult({
+    errorCode: "system_result_protection_failed",
+    message: PROTECTION_FAILURE,
+    output: "The operation was dispatched. Inspect the process receipt before another action; the command was not replayed.\n" + receipt.output,
+    stdout: safeProcess.stdout,
+    stderr: safeProcess.stderr,
+    ...(result.exitCode !== null ? { exitCode: result.exitCode } : {}),
+    data: receipt.data,
+  });
+}
 
 function withSystemOperationErrors(
   operation: ToolImplementation,
+  protection?: SystemResultProtection,
 ): ToolImplementation {
   return async (params, context) => {
     try {
       return await operation(params, context);
     } catch (error) {
+      let message = error instanceof Error ? error.message : undefined;
+      try {
+        if (protection && message !== undefined)
+          message = protection.protectMessage(message);
+      } catch {
+        return failureResult({
+          errorCode: "system_result_protection_failed",
+          message: PROTECTION_FAILURE,
+        });
+      }
       if (error instanceof SystemOperationError)
         return failureResult({
           errorCode: error.code,
-          message: error.message,
+          message: message!,
           data: {
             humanActionRequired: error.code === "system_authorization_required",
           },
@@ -51,9 +106,11 @@ export function createSystemHandlers(
   resolveTarget: (id: SystemTargetId) => Promise<SystemTarget> = (id) =>
     resolveSystemTarget(id, run),
   commandOutput?: SystemCommandOutputFactory,
+  protection?: SystemResultProtection,
 ): Record<string, ToolImplementation> {
   const targets: ToolImplementation = async () => {
-    const observation = await observeSystemTargets(run);
+    const observed = await observeSystemTargets(run);
+    const observation = protection ? protectSystemResult(() => protection.protectTargets(observed)) : observed;
     return successResult({
       output: JSON.stringify(observation),
       data: {
@@ -65,13 +122,19 @@ export function createSystemHandlers(
   const command: ToolImplementation = async (params, context) => {
     const target = await resolveTarget(readSystemTargetId(params.target));
     const output = commandOutput?.(context);
-    const result = await executeSystemCommand({
+    const observed = await executeSystemCommand({
       target,
       params,
       run,
       ...(output ? { runCommand: output.run } : {}),
       ...(context?.abortSignal ? { abortSignal: context.abortSignal } : {}),
     });
+    let result = observed;
+    try {
+      if (protection) result = protection.protectProcess(observed);
+    } catch {
+      return failedSystemProtectionReceipt(target, observed, "command_process_completion");
+    }
     if (output) return output.present(target, result);
     return systemProcessResult(target, result, "command_process_completion");
   };
@@ -86,7 +149,8 @@ export function createSystemHandlers(
             minimum: 1,
             maximum: 100,
           });
-    const catalog = await readSystemApplications(target, run);
+    const observed = await readSystemApplications(target, run);
+    const catalog = protection ? protectSystemResult(() => protection.protectCatalog(observed)) : observed;
     const { output, data } = systemApplicationObservation(
       target,
       catalog,
@@ -109,17 +173,27 @@ export function createSystemHandlers(
       run,
       ...(context?.abortSignal ? { abortSignal: context.abortSignal } : {}),
     });
+    let process = result.process;
+    let application: SystemApplication | undefined = result.application;
+    try {
+      if (protection) {
+        process = protection.protectProcess(result.process);
+        application = protection.protectApplication(result.application);
+      }
+    } catch {
+      return failedSystemProtectionReceipt(target, result.process, "launch_request_dispatch");
+    }
     return systemProcessResult(
       target,
-      result.process,
+      process,
       "launch_request_dispatch",
-      result.application,
+      application,
     );
   };
   return {
-    system_targets: withSystemOperationErrors(targets),
-    system_command: withSystemOperationErrors(command),
-    system_applications: withSystemOperationErrors(applications),
-    system_launch: withSystemOperationErrors(launch),
+    system_targets: withSystemOperationErrors(targets, protection),
+    system_command: withSystemOperationErrors(command, protection),
+    system_applications: withSystemOperationErrors(applications, protection),
+    system_launch: withSystemOperationErrors(launch, protection),
   };
 }

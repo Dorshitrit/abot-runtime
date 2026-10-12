@@ -349,11 +349,67 @@ export function createPassiveLearningController({
     resetEnvironment();
   }
 
+  async function refreshCollectionAccess() {
+    if (!isRuntimeReady()) return;
+    const epoch = environmentEpoch;
+    const environment = getEnvironmentId();
+    function collectionReadIsCurrent() {
+      if (!isRuntimeReady() || epoch !== environmentEpoch) return false;
+      return environment === getEnvironmentId();
+    }
+    try {
+      const host = await client.getSystemHostConnection();
+      if (!collectionReadIsCurrent()) return;
+      if (typeof host?.collectionConsent?.accepted !== "boolean")
+        throw new Error("Collection acknowledgment status is unavailable. Refresh and try again.");
+      state.hostConnection = host;
+      publish();
+      return host;
+    } catch (error) {
+      if (!collectionReadIsCurrent()) return;
+      state.statusError = errorMessage(error);
+      publish();
+    }
+  }
+
+  async function acceptCollectionConsent() {
+    if (!isRuntimeReady() || state.saving) return;
+    const epoch = environmentEpoch;
+    const environment = getEnvironmentId();
+    function consentUpdateIsCurrent() {
+      if (!isRuntimeReady() || epoch !== environmentEpoch) return false;
+      return environment === getEnvironmentId();
+    }
+    state.saving = true;
+    state.statusError = "";
+    publish();
+    try {
+      const receipt = await client.acceptSystemHostCollectionConsent();
+      if (!consentUpdateIsCurrent()) return;
+      if (receipt?.collectionConsent?.accepted !== true)
+        throw new Error("Collection acknowledgment was not confirmed.");
+      const host = await refreshCollectionAccess();
+      if (!consentUpdateIsCurrent()) return;
+      if (host?.collectionConsent?.accepted !== true)
+        throw new Error("Collection acknowledgment could not be verified. Refresh and try again.");
+      return host;
+    } catch (error) {
+      if (consentUpdateIsCurrent()) state.statusError = errorMessage(error);
+    } finally {
+      if (consentUpdateIsCurrent()) {
+        state.saving = false;
+        publish();
+      }
+    }
+  }
+
   return Object.freeze({
     snapshot,
     runtimeAvailabilityChanged,
     publish,
     restartCollection,
+    acceptCollectionConsent,
+    refreshCollectionAccess,
     configure: (preferences) =>
       mutateLearningState(
         (id) => client.configurePassiveLearning(preferences, id),

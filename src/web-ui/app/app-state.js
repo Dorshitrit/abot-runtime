@@ -27,13 +27,6 @@ export function createAppState() {
     modelProfiles: [],
     defaultModelProfileId: "",
     runtimeAvailability: { status: "loading" },
-    pendingAttachments: [],
-    pendingAttachmentUploadCounts: new Map(),
-    composerAttachmentGeneration: 0,
-    composerSending: false,
-    composerQueueDrainingScopes: new Set(),
-    composerQueueRecoveredReleaseTokens: new Set(),
-    activeComposerQueueRecovery: null,
     sessionQuery: "",
   };
 }

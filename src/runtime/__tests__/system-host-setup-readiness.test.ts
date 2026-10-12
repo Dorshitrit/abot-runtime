@@ -8,6 +8,20 @@ const resolveTarget = () => vi.fn<typeof resolveSystemTarget>(async (id) => ({
 }));
 
 describe("installation host readiness", () => {
+  test.each([true, false])("native Windows preserves Companion setup independently of direct access=%s", async (directAccessReady) => {
+    const resolve = resolveTarget().mockResolvedValue({ id: "windows", transport: "native", shell: "powershell.exe" });
+    if (!directAccessReady) resolve.mockRejectedValueOnce(new Error("missing shell"));
+    const readiness = await readHostReadiness(unpaired, {
+      facts: { platform: "win32", kernelRelease: "Windows_NT", containerMarker: false },
+      resolveTarget: resolve,
+    });
+    expect(readiness).toMatchObject({
+      ready: false, route: "setup_required", environment: "native", platforms: ["windows"],
+      directAccessReady, restartRequired: false,
+    });
+    expect(resolve).toHaveBeenCalledExactlyOnceWith("windows");
+  });
+
   test("native Mac offers the shared connection while preserving direct access", async () => {
     const resolve = resolveTarget();
     expect(await readHostReadiness(unpaired, {

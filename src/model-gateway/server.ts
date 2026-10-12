@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+import { recoverRuntimeSetupEdit } from "../web-ui/local-runtime/runtime-setup-edit-recovery.js";
 import {
   createModelGatewayServer,
   resolveModelGatewayPort,
@@ -10,7 +12,9 @@ export {
   resolveFormat,
 } from "./providers/ollama.js";
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const invokedPath = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
+if (import.meta.url === invokedPath) {
+  await recoverRuntimeSetupEdit(process.cwd());
   const port = resolveModelGatewayPort();
   createModelGatewayServer().listen(port, () => {
     console.log(`MODEL GATEWAY RUNNING ${port}`);

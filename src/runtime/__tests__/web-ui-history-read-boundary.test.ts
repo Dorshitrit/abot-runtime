@@ -19,7 +19,7 @@ function fixture(visible = true) {
     sessions: { byId: () => ({}), titleOf: () => "", setCurrentTitle() {}, applyTitle() {}, applyReadState },
     sessionQueue, conversationView: { reset() {} },
     selectedEnvironmentId: () => "dev", isConversationVisible: () => visible, scheduleTask: (callback) => callback(),
-    clearPendingAttachments() {}, applyConversationChrome() {}, applyModelSelection() {}, renderSessions() {}, renderMessages() {},
+    applyConversationChrome() {}, applyModelSelection() {}, renderSessions() {}, renderMessages() {},
     updateComposerSendState() {}, setMessageStatus() {}, sendRealtime() {}, handleRealtimeMessage() {}, recordEvent() {}, recordControlEvent() {},
     reportQueueFailure() {}, drainQueuedMessage, suspendQueueRecovery: () => true, recoverBlockedQueue() {}, isCurrentComposerScope: () => true,
   });

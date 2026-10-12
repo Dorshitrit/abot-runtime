@@ -32,9 +32,14 @@ export interface SessionComposerQueueStorage {
 export interface ReleasedSessionComposerQueueItem {
   item: SessionComposerQueueItem;
   releaseToken: string;
+  owner?: { id: string; state: "editing" | "sending" | "uncertain" };
 }
 
 export interface SessionComposerQueue {
+  refresh?(): Promise<void>;
+  claimBlockedRelease(scope: SessionComposerQueueScope, releaseToken: string, options?: { takeover?: boolean }): ReleasedSessionComposerQueueItem | null;
+  beginBlockedSend(scope: SessionComposerQueueScope, releaseToken: string): boolean;
+  markBlockedUncertain(scope: SessionComposerQueueScope, releaseToken: string): boolean;
   enqueue(
     scope: SessionComposerQueueScope,
     item: SessionComposerQueueItemInput,
@@ -64,12 +69,19 @@ export interface SessionComposerQueue {
   ): boolean;
 }
 
+type QueueMutation = "claimBlockedRelease" | "beginBlockedSend" | "markBlockedUncertain" | "enqueue" | "updateBlockedRelease" | "releaseForTerminal" | "bindReleasedSuccess" | "rebindBlocked";
+export type RemoteSessionComposerQueue = Omit<SessionComposerQueue, QueueMutation> & {
+  [K in QueueMutation]: (...args: Parameters<SessionComposerQueue[K]>) => Promise<ReturnType<SessionComposerQueue[K]>>;
+};
+
 export interface CreateSessionComposerQueueOptions {
+  ownerId?: string | null;
   storage?: SessionComposerQueueStorage;
   storageKey?: string;
 }
 
 export declare const SESSION_COMPOSER_QUEUE_STORAGE_KEY: string;
+export declare function isPersistedStore(value: unknown): boolean;
 
 export declare function createSessionComposerQueue(
   options?: CreateSessionComposerQueueOptions,

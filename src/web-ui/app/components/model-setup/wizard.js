@@ -7,6 +7,10 @@ import {
 import { renderWizardProgress } from "../runtime-setup/wizard-shell.js";
 import { DEFAULT_OLLAMA_BASE_URL } from "../runtime-setup/validation.js";
 import { createSetupViewState } from "../runtime-setup/view-state.js";
+import {
+  clearModelContextWindowFeedback,
+  renderModelContextWindowFeedback,
+} from "./context-window-feedback.js";
 import { createModelSaveFlow } from "./save-flow.js";
 import {
   MODEL_SETUP_ID,
@@ -70,6 +74,7 @@ export function createModelSetupWizard({
       choice: "",
       model: "",
       contextWindowTokens: "",
+      contextWindowFeedback: null,
       profileId: "",
       profileEdited: false,
       newProviderId: "",
@@ -201,6 +206,11 @@ export function createModelSetupWizard({
       .querySelector(".runtime-setup-panel")
       .setAttribute("aria-busy", Boolean(state.busy).toString());
     viewState.restore({ focus, busy: Boolean(state.busy) });
+    renderModelContextWindowFeedback(
+      state,
+      modelForm,
+      viewState.canRestoreFocus(),
+    );
   }
 
   async function load() {
@@ -280,6 +290,7 @@ export function createModelSetupWizard({
       event.target.removeAttribute("aria-invalid");
       return;
     }
+    clearModelContextWindowFeedback(state, modelForm);
     state.saveOutcomeUncertain = false;
     const value = textOf(event.target.value);
     if (field === "model-id") {
@@ -315,6 +326,7 @@ export function createModelSetupWizard({
     )
       return;
     clearSecret();
+    clearModelContextWindowFeedback(state, modelForm);
     state.saveOutcomeUncertain = false;
     const providerChanged = state.choice !== event.target.value;
     if (providerChanged) state.model = "";

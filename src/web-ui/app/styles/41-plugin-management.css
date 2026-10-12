@@ -381,3 +381,11 @@
   gap: 8px;
   flex-wrap: wrap;
 }
+
+.plugin-platform-notice {
+  margin: 8px 0;
+  color: var(--amber);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}

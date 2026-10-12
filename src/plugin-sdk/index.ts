@@ -4,6 +4,7 @@ export * from "./parameters.js";
 export * from "./paths.js";
 export * from "./plugin.js";
 export * from "./results.js";
+export * from "./mutation-result.js";
 export * from "./context-text-result.js";
 export * from "../capabilities/tool-media.js";
 export * from "./tool-availability-brief.js";

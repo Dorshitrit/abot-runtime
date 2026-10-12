@@ -13,6 +13,10 @@ import type {
   ToolRoutingCapability,
   ToolRuntimePathBinding,
 } from "../capabilities/tool-types.js";
+import {
+  ABOT_PLUGIN_COMPATIBILITY_EXTENSION,
+  type PluginPlatformDeclaration,
+} from "./platform-compatibility.js";
 export const AGENT_PLUGIN_MANIFEST_SCHEMA =
   "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
 export const ABOT_RUNTIME_EXTENSION = "ai.abot.runtime";
@@ -69,6 +73,7 @@ export type AgentPluginManifest = Readonly<{
   description?: string;
   extensions: Readonly<{
     [ABOT_RUNTIME_EXTENSION]: AbotRuntimePluginExtension;
+    [ABOT_PLUGIN_COMPATIBILITY_EXTENSION]?: PluginPlatformDeclaration;
     [namespace: string]: unknown;
   }>;
 }>;

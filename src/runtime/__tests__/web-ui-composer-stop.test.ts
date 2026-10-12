@@ -7,7 +7,7 @@ import {
   formatEventDetail,
   formatEventLabel,
 } from "../../web-ui/app/lib/event-presentation.js";
-import { createComposerWorkspaceHarness } from "./support/web-ui-composer-workspace-harness.js";
+import { createComposerProductionHarness } from "./support/composer-production-harness.js";
 import { createPlanLifecycleHarness } from "./support/web-ui-plan-lifecycle-harness.js";
 import { createComposerActions } from "../../web-ui/app/components/composer-actions.js";
 
@@ -115,9 +115,10 @@ test("Stop stays available with no draft, uploads or send-next attachments", () 
 });
 
 test("stopping pauses Send next and restores its draft and attachments exactly once", async () => {
-  const h = createComposerWorkspaceHarness();
+  const h = createComposerProductionHarness();
   const scope = { environmentId: "dev", sessionId: "existing-chat" };
-  await h.queue.enqueue("Queued follow-up");
+  h.enqueue("Queued follow-up");
+  h.workspace.chatDraft().take();
   await h.queue.drain({
     ...scope,
     terminalRequestId: "existing-request",
@@ -125,23 +126,23 @@ test("stopping pauses Send next and restores its draft and attachments exactly o
   });
   expect(h.client.postChatMessage).not.toHaveBeenCalled();
   expect(h.dom.composerInput.value).toBe(
-    "Queued follow-up\nExisting chat draft",
+    "Queued follow-up",
   );
-  expect(h.state.pendingAttachments.map((entry) => entry.id)).toEqual([
+  expect(h.workspace.chatDraft().attachments.map((entry) => entry.id)).toEqual([
     "chat-file",
   ]);
   expect(h.onControlEvent).toHaveBeenLastCalledWith(
     expect.objectContaining({ tone: "neutral" }),
   );
   expect(h.sessionQueue.getBlockedRelease(scope)).toBeTruthy();
-  expect(h.queue.recoverForManualSend(scope)).toBe(false);
+  expect(await h.queue.recoverForManualSend(scope)).toBe(false);
   await h.queue.drain({
     ...scope,
     terminalRequestId: "existing-request",
     cancelled: true,
   });
   expect(h.dom.composerInput.value).toBe(
-    "Queued follow-up\nExisting chat draft",
+    "Queued follow-up",
   );
 });
 
@@ -244,8 +245,9 @@ test("a persisted stop response is identical live and after reload", () => {
 
 test("a realtime stop terminal preserves queued drafts instead of sending the next request", async () => {
   const h = createPlanLifecycleHarness();
-  const q = createComposerWorkspaceHarness();
-  await q.queue.enqueue("Keep this draft");
+  const q = createComposerProductionHarness();
+  q.enqueue("Keep this draft");
+  q.workspace.chatDraft().take();
   h.state.currentSessionId = q.state.currentSessionId;
   h.state.activeRequestId = q.state.activeRequestId;
   h.drainQueuedComposerMessage.mockImplementation((scope) =>
@@ -258,10 +260,7 @@ test("a realtime stop terminal preserves queued drafts instead of sending the ne
     environment: "dev",
     error: "request_cancelled",
   });
-  await Promise.resolve();
-  expect(q.dom.composerInput.value).toBe(
-    "Keep this draft\nExisting chat draft",
-  );
+  await vi.waitFor(() => expect(q.dom.composerInput.value).toBe("Keep this draft"));
   expect(q.sessionQueue.getBlockedRelease(q.queue.currentScope())).toBeTruthy();
   expect(q.client.postChatMessage).not.toHaveBeenCalled();
 });

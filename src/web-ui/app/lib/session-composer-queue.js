@@ -1,3 +1,5 @@
+import { hasValidQueueOwnership, canUpdateBlockedRelease, canBindBlockedRelease, createQueueOwnership } from "./session-composer-queue-ownership.js";
+
 export const SESSION_COMPOSER_QUEUE_STORAGE_KEY =
   "abot-web.sessionComposerQueue.v1";
 
@@ -60,6 +62,7 @@ function isQueueRecord(value) {
   const blockedReleaseItem = value?.blockedReleaseItem ?? null;
   return Boolean(
     isRecord(value) &&
+    hasValidQueueOwnership(value) &&
     isNonEmptyString(value.environmentId) &&
     isNonEmptyString(value.sessionId) &&
     (value.blockedByReleaseToken === null ||
@@ -72,7 +75,7 @@ function isQueueRecord(value) {
   );
 }
 
-function isPersistedStore(value) {
+export function isPersistedStore(value) {
   if (
     !isRecord(value) ||
     value.version !== STORAGE_VERSION ||
@@ -149,7 +152,8 @@ function createReleaseToken() {
 }
 
 export function createSessionComposerQueue({
-  storage = globalThis.localStorage,
+  storage,
+  ownerId = null,
   storageKey = SESSION_COMPOSER_QUEUE_STORAGE_KEY,
 } = {}) {
   if (
@@ -210,9 +214,7 @@ export function createSessionComposerQueue({
     return list(scopeInput)[0] ?? null;
   }
 
-  function getBlockedRelease(scopeInput) {
-    const scope = validateScope(scopeInput);
-    const queue = findQueue(readStore(), scope);
+  function projectRelease(queue) {
     if (
       !queue ||
       queue.blockedByReleaseToken === null ||
@@ -223,7 +225,12 @@ export function createSessionComposerQueue({
     return {
       releaseToken: queue.blockedByReleaseToken,
       item: cloneJson(queue.blockedReleaseItem),
+      ...(queue.blockedReleaseOwner ? { owner: { ...queue.blockedReleaseOwner } } : {}),
     };
+  }
+
+  function getBlockedRelease(scopeInput) {
+    return projectRelease(findQueue(readStore(), validateScope(scopeInput)));
   }
 
   function updateBlockedRelease(scopeInput, releaseToken, itemInput) {
@@ -239,6 +246,7 @@ export function createSessionComposerQueue({
     ) {
       return false;
     }
+    if (!canUpdateBlockedRelease(queue, ownerId)) return false;
     queue.blockedReleaseItem = item;
     writeStore(store);
     return true;
@@ -261,8 +269,9 @@ export function createSessionComposerQueue({
     const releaseToken = createReleaseToken();
     queue.blockedByReleaseToken = releaseToken;
     queue.blockedReleaseItem = item;
+    if (ownerId) queue.blockedReleaseOwner = { id: ownerId, state: "editing" };
     writeStore(store);
-    return { item: cloneJson(item), releaseToken };
+    return projectRelease(queue);
   }
 
   function bindReleasedSuccess(scopeInput, releaseToken, newRequestId) {
@@ -273,12 +282,14 @@ export function createSessionComposerQueue({
     const store = readStore();
     const queue = findQueue(store, scope);
     if (!queue || queue.blockedByReleaseToken !== releaseToken) return false;
+    if (!canBindBlockedRelease(queue, ownerId)) return false;
 
     if (queue.items[0]) {
       queue.items[0].waitForRequestId = newRequestId;
     }
     queue.blockedByReleaseToken = null;
     queue.blockedReleaseItem = null;
+    delete queue.blockedReleaseOwner;
     if (queue.items.length === 0) {
       store.queues = store.queues.filter((candidate) => candidate !== queue);
     }
@@ -292,12 +303,16 @@ export function createSessionComposerQueue({
     const store = readStore();
     const queue = findQueue(store, scope);
     if (!queue || queue.blockedByReleaseToken === null) return false;
+    // A request found in a snapshot is not proof that it belongs to this release.
+    if (queue.blockedReleaseOwner) return false;
+    if (queue.blockedReleaseItem?.waitForRequestId === newRequestId) return false;
 
     if (queue.items[0]) {
       queue.items[0].waitForRequestId = newRequestId;
     }
     queue.blockedByReleaseToken = null;
     queue.blockedReleaseItem = null;
+    delete queue.blockedReleaseOwner;
     if (queue.items.length === 0) {
       store.queues = store.queues.filter((candidate) => candidate !== queue);
     }
@@ -306,6 +321,10 @@ export function createSessionComposerQueue({
   }
 
   return {
+    ...createQueueOwnership({
+      ownerId, readStore, writeStore, createToken: createReleaseToken, projectRelease,
+      getQueue: (store, scope) => findQueue(store, validateScope(scope)),
+    }),
     enqueue,
     list,
     peek,

@@ -67,13 +67,24 @@ export class RequestActivationEvents {
     ) => Promise<SessionLifecycleMutationResult>,
   ): Promise<AcceptedMutation> {
     await this.events.drain();
-    const result = await operation(this.expectation());
-    if (!result.accepted)
-      throw new Error(`request_lifecycle_rejected:${result.reason}`);
-    this.current = result.current;
-    this.sealed = result.current.status !== "streaming";
-    this.publishCommitted(result.events);
-    return result;
+    // Draining is an observation, not a queue reservation: steering can emit
+    // another event before this continuation runs. Claim this same queue before
+    // reading the revision so no event can race the lifecycle commit.
+    const committed = this.tail.then(async () => {
+      if (this.persistenceError) throw this.persistenceError;
+      const result = await operation(this.expectation());
+      if (!result.accepted)
+        throw new Error(`request_lifecycle_rejected:${result.reason}`);
+      this.current = result.current;
+      this.sealed = result.current.status !== "streaming";
+      this.publishCommitted(result.events);
+      return result;
+    });
+    this.tail = committed.then(
+      () => undefined,
+      () => undefined,
+    );
+    return committed;
   }
 
   /** A failed event write cannot turn a committed wait into an execution failure. */
@@ -155,6 +166,8 @@ export class RequestActivationEvents {
     if (this.sealed) return;
     this.tail = this.tail
       .then(async () => {
+        const hasStreamingActivation = this.current.status === "streaming";
+        if (!hasStreamingActivation) return;
         if (this.persistenceError) return;
         const result = await this.store.appendActivationEvent(
           this.current.sessionId,

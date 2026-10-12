@@ -4,7 +4,9 @@ import { promisify } from "node:util";
 const execute = promisify(execFile);
 
 // Paths travel through an environment value, never through shell interpolation.
+// PowerShell 7 callers can pass incompatible modules to Windows PowerShell 5.1.
 const privateAccessScript = `
+$env:PSModulePath = "$PSHOME\\Modules"
 $ErrorActionPreference = 'Stop'
 $target = $env:ABOT_LOCAL_HOST_PRIVATE_PATH
 $current = [System.Security.Principal.WindowsIdentity]::GetCurrent().User

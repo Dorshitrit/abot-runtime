@@ -23,6 +23,11 @@ function snapshot(): RuntimePluginSnapshot {
     plugins: [
       {
         id: "partial",
+        compatibility: {
+          supported: true,
+          status: "legacy",
+          runtimePlatform: "linux",
+        },
         pluginEnabled: true,
         removable: true,
         configurable: false,
@@ -47,6 +52,11 @@ function snapshot(): RuntimePluginSnapshot {
       },
       {
         id: "empty",
+        compatibility: {
+          supported: true,
+          status: "legacy",
+          runtimePlatform: "linux",
+        },
         pluginEnabled: true,
         removable: true,
         configurable: false,
@@ -63,6 +73,11 @@ function snapshot(): RuntimePluginSnapshot {
       },
       {
         id: "off",
+        compatibility: {
+          supported: true,
+          status: "legacy",
+          runtimePlatform: "linux",
+        },
         pluginEnabled: false,
         removable: true,
         configurable: false,

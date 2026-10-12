@@ -20,7 +20,7 @@ function isMissingFile(error: unknown): boolean {
 }
 
 type CredentialFileSnapshot = { raw?: string; mode: number };
-type RuntimeSetupCredentialWrite = {
+export type RuntimeSetupCredentialWrite = {
   rootDir: string;
   configPath: string;
   apiKey?: string;
@@ -180,15 +180,58 @@ export async function persistRuntimeSetupCredentials(
   await commitRuntimeSetupCredentials(params, async () => undefined);
 }
 
+export type RuntimeSetupCredentialPlan = Readonly<{
+  rootDir: string;
+  path: string;
+  text: string;
+  previous: CredentialFileSnapshot;
+  write: () => Promise<void>;
+  publish: () => void;
+}>;
+
+/** Publish process credentials only after the caller's complete transaction commits. */
+export async function withPlannedRuntimeSetupCredentials<T>(
+  params: RuntimeSetupCredentialWrite,
+  operation: (plan: RuntimeSetupCredentialPlan) => Promise<T>,
+): Promise<T> {
+  const rootDir = await realpath(params.rootDir);
+  return withFileLock(join(rootDir, ".env.credentials.lock"), async () => {
+    const plan = await planCredentialAssignments({ ...params, rootDir });
+    const publish = () => {
+      const key =
+        params.apiKey ||
+        process.env[plan.apiKeyEnv] ||
+        readSavedApiKey(plan.previousFile.raw ?? "", plan.apiKeyEnv);
+      if (key) process.env[plan.apiKeyEnv] = key;
+    };
+    const result = await operation({
+      rootDir,
+      path: join(rootDir, ".env"),
+      text: plan.next,
+      previous: plan.previousFile,
+      write: () =>
+        replaceCredentialFile(rootDir, plan.previousFile.raw, plan.next),
+      publish,
+    });
+    publish();
+    return result;
+  });
+}
+
 /** Keep the credential private and locked until the related setup commit settles. */
 export async function commitRuntimeSetupCredentials<T>(
   params: RuntimeSetupCredentialWrite,
   commit: () => Promise<T>,
 ): Promise<T> {
-  const rootDir = await realpath(params.rootDir);
-  return withFileLock(join(rootDir, ".env.credentials.lock"), () =>
-    saveCredentialAssignments({ ...params, rootDir }, commit),
-  );
+  return withPlannedRuntimeSetupCredentials(params, async (plan) => {
+    await plan.write();
+    return commitOrRestoreCredentials(
+      plan.rootDir,
+      plan.previous,
+      plan.text,
+      commit,
+    );
+  });
 }
 
 function wouldReplaceConfiguredCredential(
@@ -204,10 +247,7 @@ function wouldReplaceConfiguredCredential(
   });
 }
 
-async function saveCredentialAssignments<T>(
-  params: RuntimeSetupCredentialWrite,
-  commit: () => Promise<T>,
-): Promise<T> {
+async function planCredentialAssignments(params: RuntimeSetupCredentialWrite) {
   const apiKeyEnv = params.apiKeyEnv ?? "OPENAI_API_KEY";
   const previousFile = await readCredentialFileSnapshot(params.rootDir);
   const previous = previousFile.raw ?? "";
@@ -238,17 +278,5 @@ async function saveCredentialAssignments<T>(
       apiKeyEnv,
       params.apiKey,
     );
-  await replaceCredentialFile(params.rootDir, previousFile.raw, next);
-  const result = await commitOrRestoreCredentials(
-    params.rootDir,
-    previousFile,
-    next,
-    commit,
-  );
-  const key =
-    params.apiKey ||
-    process.env[apiKeyEnv] ||
-    readSavedApiKey(previous, apiKeyEnv);
-  if (key) process.env[apiKeyEnv] = key;
-  return result;
+  return { previousFile, next, apiKeyEnv };
 }

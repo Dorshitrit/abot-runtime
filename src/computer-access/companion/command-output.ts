@@ -8,6 +8,8 @@ import { runSystemProcess } from "../process-runner.js";
 import { buildSystemProcessResult } from "../process-result.js";
 import { isHostIdentifier } from "./protocol.js";
 import { SYSTEM_OUTPUT_CAPABILITY, SYSTEM_OUTPUT_CHUNK_BYTES, readSystemOutputTransfer } from "./command-output-protocol.js";
+import { redactSecretText } from "../security/secret-text.js";
+import { systemResultProtection } from "../security/system-results.js";
 
 type Capture = Awaited<ReturnType<typeof createSystemOutputCapture>>;
 
@@ -49,12 +51,12 @@ export class CompanionCommandOutput {
     const handlers = createSystemHandlers(undefined, undefined, () => ({
       run: async (input) => {
         if (input.abortSignal?.aborted) return runSystemProcess(input);
-        captured = await createSystemOutputCapture(join(this.stateDir, "command-output"), retentionMs);
+        captured = await createSystemOutputCapture(join(this.stateDir, "command-output"), retentionMs, redactSecretText);
         captured.retain();
         try {
           const result = await runSystemProcess(input, captured.capture);
           await captured.finish(result, false);
-          return { ...result, outputTruncated: Boolean(captured.failure) };
+          return { ...captured.processResult!, outputTruncated: Boolean(captured.failure) };
         } catch (error) { await captured.finish(undefined, false); captured.release(); throw error; }
       },
       present: async (target, result) => {
@@ -63,8 +65,11 @@ export class CompanionCommandOutput {
         const data = { ...receipt.data, outputCapture: captured.receipt };
         if (captured.failure) {
           captured.release();
-          return failureResult({ errorCode: "system_output_storage_failed", message: "Command output storage failed after dispatch; inspect the process receipt before another action.",
-            data: { ...data, storageFailure: captured.failure }, ...(result.exitCode !== null ? { exitCode: result.exitCode } : {}) });
+          const errorCode = captured.failureKind === "security" ? "system_output_protection_failed" : "system_output_storage_failed";
+          return failureResult({ errorCode, message: "Command output could not be admitted after dispatch; inspect the process receipt before another action. The command was not replayed.",
+            data: { ...data, ...(captured.failureKind === "security"
+              ? { securityFailure: captured.failure } : { storageFailure: captured.failure }) },
+            ...(result.exitCode !== null ? { exitCode: result.exitCode } : {}) });
         }
         if (this.closed || context?.abortSignal?.aborted) {
           captured.release();
@@ -75,9 +80,17 @@ export class CompanionCommandOutput {
         return { ...receipt, output: receipt.output.split("\nSTDOUT excerpt:")[0] + "\nSTDOUT excerpt:\nStreams retained for exact transfer.",
           data: { ...data, outputTransfer: transfer } };
       },
-    }));
+    }), systemResultProtection);
     const { outputRetentionMs: _retention, ...command } = params;
-    return handlers.system_command!(command, context);
+    try { return await handlers.system_command!(command, context); }
+    finally {
+      if (!this.hasRegisteredTransfer(captured)) captured?.release();
+    }
+  }
+  private hasRegisteredTransfer(capture: Capture | undefined): boolean {
+    const id = capture?.receipt?.id;
+    if (!id) return false;
+    return this.captures.get(id) === capture;
   }
   private async read(params: Record<string, unknown>) {
     if (!isHostIdentifier(params.captureId)) throw new Error("system_output_reference_invalid");

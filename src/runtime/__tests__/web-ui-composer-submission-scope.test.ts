@@ -1,131 +1,93 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { createComposerProductionHarness } from "./support/composer-production-harness.js";
+afterEach(() => vi.unstubAllGlobals());
 
-import { createComposerSubmitController } from "../../web-ui/app/controllers/composer-submit-controller.js";
-
-function createPendingSubmission() {
-  let resolve!: () => void;
+function pending() {
+  let resolve!: (id: string) => void;
   let reject!: (error: Error) => void;
-  const promise = new Promise<void>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
+  const promise = new Promise<string>((done, failed) => { resolve = done; reject = failed; });
   return { promise, resolve, reject };
 }
 
-function createSubmitHarness() {
-  const pending = createPendingSubmission();
-  let environmentId = "dev";
-  let visible = true;
-  const state = {
-    currentSessionId: "old-chat",
-    sessionViewVersion: 1,
-    activeRequestId: "",
-    pendingAttachments: [],
-    composerSending: false,
-  };
-  const input = {
-    value: "Old request",
-    style: { height: "" },
-    scrollHeight: 48,
-    focus: vi.fn(),
-  };
-  const appendRequestError = vi.fn();
-  const setMessageStatus = vi.fn();
-  const sendMessage = vi.fn(() => pending.promise);
-  const controller = createComposerSubmitController({
-    state,
-    dom: { composerInput: input },
-    composerActions: {
-      primaryAction: () => "send",
-      render: vi.fn(),
-    },
-    attachments: { activeUploadCount: () => 0 },
-    queue: {
-      enqueue: async () => {},
-      isCurrentDraining: () => false,
-      queuedCount: () => 0,
-      restoreText: vi.fn(),
-    },
-    steer: async () => {},
-    chatRequests: { sendMessage },
-    conversationSession: { appendRequestError },
-    selectedEnvironmentId: () => environmentId,
-    setMessageStatus,
-    isComposerVisible: () => visible,
-  });
-  return {
-    controller, state, input, pending, appendRequestError,
-    setMessageStatus, sendMessage,
-    setEnvironment(value: string) { environmentId = value; },
-    setVisible(value: boolean) { visible = value; },
-  };
-}
-
-async function finishMicrotasks() {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-}
-
 describe("web ui pending composer submission ownership", () => {
-  test.each(["session", "environment", "view"] as const)(
-    "keeps a new send busy when an old HTTP request fails after changing %s",
-    async (scope) => {
-      const harness = createSubmitHarness();
-      harness.controller.dispatch();
-      expect(harness.state.composerSending).toBe(true);
-      if (scope === "session") harness.state.currentSessionId = "home-created-chat";
-      if (scope === "environment") harness.setEnvironment("prod");
-      if (scope === "view") harness.state.sessionViewVersion += 1;
-      harness.state.composerSending = true;
-      harness.input.value = "New conversation draft";
-
-      harness.pending.reject(new Error("Old transport failure"));
-      await finishMicrotasks();
-
-      expect(harness.state.composerSending).toBe(true);
-      expect(harness.appendRequestError).not.toHaveBeenCalled();
-      expect(harness.setMessageStatus).not.toHaveBeenCalledWith("ABot request failed.");
-      expect(harness.input.value).toBe("New conversation draft");
-      expect(harness.input.focus).not.toHaveBeenCalled();
-    },
-  );
-
-  test("binds completion to the session synchronously created by the request controller", async () => {
-    const harness = createSubmitHarness();
-    harness.state.currentSessionId = "";
-    harness.sendMessage.mockImplementationOnce(() => {
-      harness.state.currentSessionId = "created-chat";
-      return harness.pending.promise;
-    });
-
-    harness.controller.dispatch();
-    harness.pending.resolve();
-    await finishMicrotasks();
-
-    expect(harness.state.composerSending).toBe(false);
-    expect(harness.input.focus).toHaveBeenCalledOnce();
+  test.each(["session", "environment"] as const)("settles an old request independently after changing %s", async (scope) => {
+    const h = createComposerProductionHarness();
+    h.state.activeRequestId = "";
+    const first = pending();
+    const second = pending();
+    h.client.postChatMessage.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const oldScope = h.workspace.chatDraft().scope;
+    h.type("Old request");
+    const oldSending = h.composer.submit.dispatch();
+    await vi.waitFor(() => expect(h.client.postChatMessage).toHaveBeenCalledOnce());
+    if (scope === "session") h.switchSession("other-chat");
+    else h.setEnvironmentId("prod");
+    h.type("New conversation request");
+    const newSending = h.composer.submit.dispatch();
+    await vi.waitFor(() => expect(h.client.postChatMessage).toHaveBeenCalledTimes(2));
+    h.type("New conversation draft");
+    first.reject(new Error("Old transport failure"));
+    expect(await oldSending).toMatchObject({ status: "uncertain" });
+    expect(h.composer.lifecycle.hasPendingScope(h.workspace.chatDraft().scope)).toBe(true);
+    expect(h.dom.composerInput.value).toBe("New conversation draft");
+    expect(h.composer.lifecycle.paused(oldScope)).toHaveLength(1);
+    expect(h.onControlEvent).not.toHaveBeenCalled();
+    expect(h.dom.composerInput.focus).not.toHaveBeenCalled();
+    second.resolve("new-request");
+    expect(await newSending).toMatchObject({ status: "accepted" });
   });
 
-  test("reports failures for the same view and releases its busy state", async () => {
-    const harness = createSubmitHarness();
-    const error = new Error("Current request failed");
-    harness.controller.dispatch();
+  test("refreshing the same view keeps newer input separate from an unconfirmed send", async () => {
+    const h = createComposerProductionHarness();
+    h.state.activeRequestId = "";
+    const post = pending();
+    h.client.postChatMessage.mockReturnValueOnce(post.promise);
+    h.type("Older request");
+    const sending = h.composer.submit.dispatch();
+    h.state.sessionViewVersion += 1;
+    h.type("New draft after refresh");
+    post.reject(new Error("Lost response"));
+    expect(await sending).toMatchObject({ status: "uncertain" });
+    expect(h.dom.composerInput.value).toBe("New draft after refresh");
+    expect(h.composer.lifecycle.paused(h.workspace.chatDraft().scope)[0].payload.text).toBe("Older request");
+    expect(h.composer.lifecycle.hasPendingScope(h.workspace.chatDraft().scope)).toBe(false);
+  });
 
-    harness.pending.reject(error);
-    await finishMicrotasks();
+  test("binds the complete submission to a synchronously created session", async () => {
+    const h = createComposerProductionHarness();
+    h.state.activeRequestId = "";
+    h.switchSession("");
+    h.type("First request");
+    expect(await h.composer.submit.dispatch()).toMatchObject({ status: "accepted" });
+    expect(h.client.postChatMessage).toHaveBeenCalledWith(expect.objectContaining({ text: "First request", sessionId: "created-chat" }));
+    expect(h.session.activateRequestForScope).toHaveBeenCalledWith({ environmentId: "dev", sessionId: "created-chat" }, "new-request");
+    expect(h.composer.lifecycle.hasPendingScope(h.workspace.chatDraft().scope)).toBe(false);
+  });
 
-    expect(harness.appendRequestError).toHaveBeenCalledWith(error);
-    expect(harness.state.composerSending).toBe(false);
+  test("reports current-scope failures and pauses uncertain payload without blocking new input", async () => {
+    const h = createComposerProductionHarness();
+    h.state.activeRequestId = "";
+    h.client.postChatMessage.mockRejectedValueOnce(new Error("Disconnected"));
+    h.type("Question");
+    expect(await h.composer.submit.dispatch()).toMatchObject({ status: "uncertain" });
+    expect(h.onControlEvent).toHaveBeenCalledWith(expect.objectContaining({ tone: "failed" }));
+    expect(h.composer.lifecycle.hasPendingScope(h.workspace.chatDraft().scope)).toBe(false);
+    expect(h.dom.composerInput.value).toBe("");
+    expect(h.composer.lifecycle.paused(h.workspace.chatDraft().scope)).toHaveLength(1);
   });
 
   test("settles a background Chat request without focusing Home", async () => {
-    const harness = createSubmitHarness();
-    harness.controller.dispatch();
-    harness.setVisible(false);
-
-    harness.pending.resolve();
-    await finishMicrotasks();
-
-    expect(harness.state.composerSending).toBe(false);
-    expect(harness.input.focus).not.toHaveBeenCalled();
+    const h = createComposerProductionHarness();
+    h.state.activeRequestId = "";
+    const post = pending();
+    h.client.postChatMessage.mockReturnValueOnce(post.promise);
+    h.type("Chat request");
+    const sending = h.composer.submit.dispatch();
+    h.feature.setWorkspace("home");
+    h.type("Home draft");
+    post.resolve("accepted-request");
+    await sending;
+    expect(h.dom.composerInput.value).toBe("Home draft");
+    expect(h.dom.composerInput.focus).not.toHaveBeenCalled();
   });
 });

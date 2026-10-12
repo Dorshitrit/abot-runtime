@@ -1,3 +1,4 @@
+import { renderPluginPlatformNotice } from "./compatibility.js";
 import { escapeAttribute, escapeHtml } from "../../lib/text-format.js";
 
 function pluginMasterIsEnabled(plugin) {
@@ -50,6 +51,7 @@ function renderCapabilities(plugin, busy, open) {
       <button type="button" data-plugin-tools-back="${escapeAttribute(plugin.id)}" aria-label="${escapeAttribute(`Back to ${plugin.id}`)}">Back</button>
       <div><h4 title="${escapeAttribute(plugin.id)}">${escapeHtml(plugin.id)}</h4><span>Tools (${capabilities.length})</span></div>
     </header>
+    ${renderPluginPlatformNotice(plugin.compatibility)}
     <ul class="plugin-capability-list" data-plugin-tools-scroll="${escapeAttribute(plugin.id)}">
       ${capabilities.length ? capabilities.map((capability) => renderCapabilityRow(plugin, capability, busy)).join("") : '<li class="plugin-capability-empty">This plugin does not expose any tools.</li>'}
     </ul>
@@ -78,6 +80,7 @@ function renderPluginCard(
         <span class="plugin-selection-state" data-plugin-state="${escapeAttribute(plugin.state)}">${configuredPluginLabel(plugin)}</span>
       </div>
       <p class="plugin-description" title="${escapeAttribute(plugin.description || "Installed Runtime plugin.")}">${escapeHtml(plugin.description || "Installed Runtime plugin.")}</p>
+      ${renderPluginPlatformNotice(plugin.compatibility)}
       <div class="plugin-card-footer">
         <span>${plugin.selectedCapabilityCount} of ${plugin.capabilityCount} capabilities selected</span>
         <div class="plugin-card-actions">

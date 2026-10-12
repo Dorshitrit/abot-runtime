@@ -1,0 +1,30 @@
+.collection-consent-dialog .collection-consent-acknowledgment {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 18px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.collection-consent-acknowledgment input[type="checkbox"] {
+  appearance: auto;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  margin: 2px 0 0;
+  border-radius: 2px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.collection-consent-acknowledgment span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.collection-consent-acknowledgment a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

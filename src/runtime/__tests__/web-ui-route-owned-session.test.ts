@@ -35,7 +35,6 @@ describe("Web UI route-owned conversation loading", () => {
       expect(f.state.currentSessionId).toBe("session-1");
       expect(f.state.messages).toBe(previousMessages);
       expect(f.saveSessionPreference).not.toHaveBeenCalled();
-      expect(f.clearPendingAttachments).not.toHaveBeenCalled();
       expect(f.suspendQueueRecovery).not.toHaveBeenCalled();
       expect(f.sendRealtime).not.toHaveBeenCalled();
     },

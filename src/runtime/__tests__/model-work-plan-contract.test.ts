@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { inlineLocalSchemaReferences } from "./support/inline-local-schema-references.js";
 import {
   configureDebugLogger,
   resetDebugLoggerConfig,
@@ -35,7 +36,9 @@ function parseDecision(
 }
 
 function decisionVariants(options: ExecutionAgentDecisionContractOptions) {
-  const schema = createExecutionAgentDecisionFormat(options).schema as {
+  const schema = inlineLocalSchemaReferences(
+    createExecutionAgentDecisionFormat(options).schema,
+  ) as {
     properties: {
       decision: { anyOf: readonly { properties: Record<string, unknown> }[] };
     };

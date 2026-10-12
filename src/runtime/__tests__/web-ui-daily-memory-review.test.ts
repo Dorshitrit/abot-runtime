@@ -18,6 +18,35 @@ function harness(items = [record("a"), record("b")]) {
   const controller = createDailyMemoryReview({ client, preferences, getEnvironmentId: () => environment, render, now: () => new Date(2026, 8, 26) });
   return { controller, client, preferences, render, setEnvironment: (value: string) => { environment = value; } };
 }
+test("review waits for persistence and an old environment cannot advance the new review", async () => {
+  const f = harness();
+  f.controller.update(true);
+  await flush();
+  let finish!: () => void;
+  f.preferences.markReviewed = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+  const pending = f.controller.decide("keep");
+  expect(f.controller.snapshot().index).toBe(0);
+  expect(f.controller.snapshot().busy).toBe(true);
+  expect(await f.controller.decide("delete")).toBe(false);
+  f.setEnvironment("prod");
+  f.controller.update(true);
+  await flush();
+  finish();
+  expect(await pending).toBe(false);
+  expect(f.controller.snapshot().index).toBe(0);
+  expect(f.controller.snapshot().error).toBe("");
+});
+
+test("a failed review save remains visible and never claims completion", async () => {
+  const f = harness();
+  f.controller.update(true);
+  await flush();
+  f.preferences.markReviewed = vi.fn(async () => { throw new Error("Storage unavailable"); });
+  expect(await f.controller.decide("keep")).toBe(false);
+  expect(f.controller.snapshot()).toMatchObject({ index: 0, remaining: 2, busy: false });
+  expect(f.controller.snapshot().error).not.toBe("");
+});
+
 test("loads a bounded recent set once per entry and offers once per day without polling", async () => {
   const f = harness(Array.from({ length: 80 }, (_, index) => record(String(index))));
   f.controller.update(false);
@@ -27,16 +56,16 @@ test("loads a bounded recent set once per entry and offers once per day without 
   expect(f.client.listLongTermMemories).toHaveBeenCalledTimes(2);
   expect(f.client.listLongTermMemories.mock.calls[1]![0]).toMatchObject({ environmentId: "dev", limit: 50, offset: 30, origin: "passive_observation" });
   expect(f.controller.snapshot().items).toHaveLength(10);
-  expect(f.controller.markOffered()).toBe(true);
-  expect(f.controller.markOffered()).toBe(false);
+  expect(await f.controller.markOffered()).toBe(true);
+  expect(await f.controller.markOffered()).toBe(false);
   f.controller.update(true);
   f.controller.update(false);
   f.controller.update(true);
   await flush();
   expect(f.client.listLongTermMemories).toHaveBeenCalledTimes(4);
-  expect(f.controller.markOffered()).toBe(false);
+  expect(await f.controller.markOffered()).toBe(false);
 });
-test("Keep records a local receipt; Delete uses only the selected environment and memory ID", async () => {
+test("Keep records a review receipt; Delete uses only the selected environment and memory ID", async () => {
   const f = harness();
   f.controller.update(true);
   await flush();
@@ -63,7 +92,7 @@ test("empty and failed reads do not retry on every state update", async () => {
   await flush();
   f.controller.update(true);
   expect(f.client.listLongTermMemories).toHaveBeenCalledOnce();
-  expect(f.controller.markOffered()).toBe(false);
+  expect(await f.controller.markOffered()).toBe(false);
 });
 test("ignores stale environment responses and aborts the optional read when Home leaves", async () => {
   const f = harness();
@@ -106,7 +135,7 @@ test("manual review works after today's invitation and still excludes reviewed r
   expect(await f.controller.loadForReview()).toBe(true);
   expect(f.client.listLongTermMemories).toHaveBeenCalledTimes(2);
   expect(f.controller.snapshot().items.map((item: any) => item.id)).toEqual(["b"]);
-  expect(f.controller.markOffered()).toBe(false);
+  expect(await f.controller.markOffered()).toBe(false);
 });
 
 test("an explicit review reports failed reads and supports an empty result", async () => {
@@ -147,7 +176,7 @@ test.each([
   expect(f.controller.snapshot()).toMatchObject({ items: [], remaining: 0 });
   expect(Boolean(f.controller.snapshot().error)).toBe(manual);
   expect(f.render.mock.calls.every(([snapshot]) => snapshot.items.length === 0)).toBe(true);
-  expect(f.controller.markOffered()).toBe(false);
+  expect(await f.controller.markOffered()).toBe(false);
   expect(await f.controller.decide("delete")).toBe(false);
   expect(f.client.deleteLongTermMemory).not.toHaveBeenCalled();
   f.controller.update(true);

@@ -47,8 +47,16 @@ export function createAutomationRequests({ requestApi, getEnvironmentId, getConf
       requestAutomation(path(`/${encodeURIComponent(automationId)}/permission`, environmentId), {
         method: "PUT", body: JSON.stringify(permission),
       }),
-    getAutomationCatalog: (automationId, environmentId) =>
-      requestAutomation(`${path("/catalog", environmentId)}&automation=${encodeURIComponent(automationId)}`),
+    async getAutomationCatalog(automationId, environmentId = getEnvironmentId()) {
+      const [catalog, modelCatalog] = await Promise.all([
+        requestAutomation(`${path("/catalog", environmentId)}&automation=${encodeURIComponent(automationId)}`),
+        requestAutomation(`/chat/models?environment=${encodeURIComponent(environmentId)}`),
+      ]);
+      return { ...catalog, models: (catalog.models || []).map((model) => ({
+        ...model,
+        supportsThinking: modelCatalog.profiles?.find((profile) => profile.id === model.id)?.supportsThinking === true,
+      })) };
+    },
     startAutomationRun: (automationId, idempotencyKey, environmentId) =>
       post(path(`/${encodeURIComponent(automationId)}/run`, environmentId), { idempotencyKey }),
     listAutomationRuns: (automationId, environmentId) =>

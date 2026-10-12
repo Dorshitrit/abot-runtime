@@ -34,6 +34,17 @@ export function isNodeErrorCode(error: unknown, code: string): boolean {
   );
 }
 
+export function isDirectoryTypeFailure(code: unknown): boolean {
+  return code === "not_a_directory" || code === "ENOTDIR";
+}
+
+export function failNotDirectory(): never {
+  fail(
+    "not_a_directory",
+    "A component of the requested path is not a directory. An existing file cannot contain child files. Inspect the path and choose a file target under a directory; do not repeat the same operation unchanged or overwrite the blocking file to turn it into a directory.",
+  );
+}
+
 export function rethrowFilesystemError(
   error: unknown,
   operation: "inspect" | "read" | "write",
@@ -44,6 +55,9 @@ export function rethrowFilesystemError(
   }
   if (isNodeErrorCode(error, "ENOENT")) {
     fail("file_not_found", `Path does not exist: ${logicalPath}`);
+  }
+  if (error instanceof Error && isDirectoryTypeFailure((error as NodeError).code)) {
+    failNotDirectory();
   }
   if (isNodeErrorCode(error, "EACCES") || isNodeErrorCode(error, "EPERM")) {
     fail(

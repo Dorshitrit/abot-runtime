@@ -57,10 +57,12 @@ function responseFixture() {
   };
 }
 
-test("a missing Web projection is distinguished without querying the owner", async () => {
+test("a missing projection without an explicit environment never queries an owner", async () => {
   const requests = new LocalRequestExecution(new RealtimeClientHub());
   const resolve = vi.fn(() => environment());
-  await expect(requests.handleSteer(message, resolve)).resolves.toEqual({
+  await expect(
+    requests.handleSteer({ ...message, environment: "" }, resolve),
+  ).resolves.toEqual({
     type: "steer_ack",
     requestId: "request",
     steerId: "steer",
@@ -71,7 +73,7 @@ test("a missing Web projection is distinguished without querying the owner", asy
   expect(diagnostic("steer.received")).toEqual([
     expect.objectContaining({
       projectionPresent: false,
-      requestedEnvironment: "dev",
+      requestedEnvironment: "",
       textLength: message.text.length,
     }),
   ]);

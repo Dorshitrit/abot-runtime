@@ -97,6 +97,7 @@ function createHarness() {
   };
   const sessionQueue = {
     rebindBlocked: vi.fn(),
+    refresh: vi.fn(async () => {}),
     peek: vi.fn(() => null),
   };
   const conversationView = { reset: vi.fn() };
@@ -120,7 +121,6 @@ function createHarness() {
     sessionQueue,
     conversationView,
     selectedEnvironmentId: () => environmentId,
-    clearPendingAttachments: vi.fn(),
     applyConversationChrome: vi.fn(),
     applyModelSelection: vi.fn(),
     renderSessions: vi.fn(),
@@ -193,7 +193,7 @@ describe("web ui conversation session controller", () => {
     harness.controller.ensureSession();
     expect(permission.currentToolPermissionMode()).toBe("full_plus");
     harness.state.currentSessionId = "legacy-session";
-    expect(permission.currentToolPermissionMode()).toBe("full_access");
+    expect(permission.currentToolPermissionMode()).toBe("ask");
   });
 
   test("initializes implicit session creation exactly once", () => {
@@ -232,10 +232,8 @@ describe("web ui conversation session controller", () => {
       "session-1",
       "Loaded session",
     );
-    expect(harness.sessionQueue.rebindBlocked).toHaveBeenCalledWith(
-      { environmentId: "dev", sessionId: "session-1" },
-      "request-active",
-    );
+    expect(harness.sessionQueue.refresh).toHaveBeenCalledOnce();
+    expect(harness.sessionQueue.rebindBlocked).not.toHaveBeenCalled();
     expect(
       harness.handleRealtimeMessage.mock.calls.map(([event]) => event.seqNo),
     ).toEqual([1, 2, 3]);
@@ -348,15 +346,18 @@ describe("web ui conversation session controller", () => {
     });
   });
 
-  test("releases the previous view's pending send when a new conversation begins", () => {
+  test("refreshes the pending-send projection without mutating submission ownership when a new conversation begins", () => {
     const harness = createHarness();
     harness.state.currentSessionId = "old-chat";
-    harness.state.composerSending = true;
+    Object.defineProperty(harness.state, "composerSending", {
+      get: () => harness.state.currentSessionId === "old-chat",
+    });
 
     harness.controller.clearCurrentSessionView();
 
     expect(harness.state.composerSending).toBe(false);
     expect(harness.state.currentSessionId).toBe("");
+    expect(harness.dependencies.updateComposerSendState).toHaveBeenCalledOnce();
   });
 
   test("keeps a restored hidden conversation unread", async () => {

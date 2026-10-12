@@ -14,20 +14,6 @@ function serializeDiagnosticError(error: unknown): {
     : { name: "Error", message: String(error) };
 }
 
-function readRecord(value: unknown): Record<string, unknown> | undefined {
-  const isRecord =
-    value !== null && typeof value === "object" && !Array.isArray(value);
-  return isRecord ? (value as Record<string, unknown>) : undefined;
-}
-
-export function hasStructuredTextFormat(
-  payload: Record<string, unknown>,
-): boolean {
-  const text = readRecord(payload.text);
-  const format = readRecord(text?.format);
-  return format?.type === "json_schema" || format?.type === "json_object";
-}
-
 export function emitOpenAISchemaDiagnostics(
   requestId: string,
   diagnostics: readonly OpenAISchemaProjectionDiagnostic[],

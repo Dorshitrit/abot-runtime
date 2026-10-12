@@ -11,6 +11,11 @@ function shouldReconnectCollectionSource(event: HostObservationEvent): boolean {
   return event.reason === "collector_start_failed";
 }
 
+function requiresCollectionConsent(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.message === "collection_consent_required";
+}
+
 function hasHealthyCollectionEvent(event: HostObservationEvent): boolean {
   if (event.type === "observation") return true;
   return event.state === "collecting" || event.state === "partial";
@@ -68,6 +73,7 @@ export class LearningCollectionSource {
     } catch (error) {
       if (abort.signal.aborted) return;
       this.options.failed(error);
+      if (requiresCollectionConsent(error)) return;
       this.reconnect();
     }
   }

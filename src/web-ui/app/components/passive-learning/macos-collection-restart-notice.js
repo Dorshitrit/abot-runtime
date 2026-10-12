@@ -5,6 +5,7 @@ const permissionReasons = new Set([
 ]);
 
 function hasEnabledMacCollection(snapshot) {
+  if (snapshot.hostConnection?.collectionSource?.mode === "native") return false;
   if (snapshot.hostConnection?.identity?.os !== "macos") return false;
   return snapshot.status?.preferences?.enabled === true;
 }

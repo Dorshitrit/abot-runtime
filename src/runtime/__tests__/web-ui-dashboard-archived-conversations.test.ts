@@ -15,7 +15,7 @@ vi.mock("../../web-ui/app/components/dashboard/workspace.js", () => ({
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe("archived conversation visibility", () => {
-  test("Archive and Restore publish Home immediately through the shared render callback", () => {
+  test("Archive and Restore publish Home after persistence through the shared render callback", async () => {
     const root = new SidebarElement("div");
     vi.stubGlobal("document", {
       addEventListener: vi.fn(), createElement: (tag: string) => new SidebarElement(tag),
@@ -44,9 +44,11 @@ describe("archived conversation visibility", () => {
       element.querySelector(".session-open-button")?.id === "session-open-one" &&
       element.classList.contains("session-item"))!.querySelector(".archive-action")!;
     archiveAction().dispatch("click");
+    await new Promise<void>((resolve) => setImmediate(resolve));
     expect(dashboard.render).toHaveBeenLastCalledWith(expect.objectContaining({ sessions: [state.sessions[1]] }));
     root.querySelector(".session-archive-toggle")!.dispatch("click");
     archiveAction().dispatch("click");
+    await new Promise<void>((resolve) => setImmediate(resolve));
     expect(dashboard.render).toHaveBeenLastCalledWith(expect.objectContaining({ sessions: state.sessions }));
   });
 

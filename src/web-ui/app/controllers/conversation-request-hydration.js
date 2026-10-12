@@ -15,6 +15,15 @@ function isQueuedTerminalRequest(request, queued) {
   if (textOf(request.requestId) !== queued?.waitForRequestId) return false;
   return request.status === "completed" || request.status === "failed";
 }
+function mergeRefreshedRequests(previous, fresh) {
+  // A latest-page fetch includes every active request. Keep metadata for the
+  // displayed historical page, but never revive an older active projection.
+  const requests = new Map(previous
+    .filter((request) => !isStreamingRequest(request) && request.status !== "awaiting_approval")
+    .map((request) => [request.requestId, request]));
+  for (const request of fresh) requests.set(request.requestId, request);
+  return [...requests.values()];
+}
 function requestsForEventRestoration(requests, streamingRequestIds, appendEvents) {
   if (!appendEvents) return requests;
   // Existing live rows already contain received tokens. Resume their events only after lastSeq.
@@ -35,6 +44,14 @@ export function createConversationRequestHydration({
   async function restore(requests, { appendEvents = false } = {}) {
     const scope = { environmentId: selectedEnvironmentId(), sessionId: state.currentSessionId };
     const viewVersion = state.sessionViewVersion;
+    await sessionQueue.refresh?.();
+    if (!isCurrentHydration(scope, viewVersion)) return false;
+    const waitingRequestId = sessionQueue.peek(scope)?.waitForRequestId;
+    if (!canRestoreSnapshotQueue({ requests }, waitingRequestId)) {
+      const snapshot = await client.loadSession(scope.sessionId, scope.environmentId, { waitingRequestId });
+      if (!isCurrentHydration(scope, viewVersion)) return false;
+      requests = mergeRefreshedRequests(requests, snapshot.requests || []);
+    }
     for (const message of state.messages) {
       if (!isBindableResponse(message)) continue;
       state.requestMessages.set(message.requestId, message.id);
@@ -45,13 +62,6 @@ export function createConversationRequestHydration({
     const streamingRequestIds = new Set(requests
       .filter(isStreamingRequest)
       .map((request) => textOf(request.requestId)));
-    if (streamingRequestIds.size === 1) {
-      const [streamingRequestId] = streamingRequestIds;
-      try { sessionQueue.rebindBlocked(scope, streamingRequestId); }
-      catch (error) {
-        reportQueueFailure(scope, `The active request was restored, but the remaining Send next queue is paused: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
     state.activeRequestId = [...streamingRequestIds][0] || "";
     updateComposerSendState();
     for (const requestId of streamingRequestIds) activeAssistantForRequest(requestId);
@@ -64,7 +74,8 @@ export function createConversationRequestHydration({
       resumeRequest(requestId);
     }
     if (state.activeRequestId) { renderMessages(); return true; }
-    recoverBlockedQueue(scope);
+    await recoverBlockedQueue(scope);
+    if (!isCurrentHydration(scope, viewVersion)) return false;
     const queued = sessionQueue.peek(scope);
     const terminal = requests.find((request) => isQueuedTerminalRequest(request, queued));
     if (terminal) await drainQueuedMessage({ ...scope, terminalRequestId: terminal.requestId, cancelled: isStoppedRequest(terminal) });
@@ -73,15 +84,7 @@ export function createConversationRequestHydration({
     return true;
   }
   async function rehydrate(requests) {
-    const scope = { environmentId: selectedEnvironmentId(), sessionId: state.currentSessionId };
-    const viewVersion = state.sessionViewVersion;
-    const waitingRequestId = sessionQueue.peek(scope)?.waitForRequestId;
-    if (!canRestoreSnapshotQueue({ requests }, waitingRequestId)) {
-      const snapshot = await client.loadSession(scope.sessionId, scope.environmentId, { waitingRequestId });
-      if (!isCurrentHydration(scope, viewVersion)) return false;
-      requests = snapshot.requests || [];
-    }
-    subscribeSession(scope.sessionId);
+    subscribeSession(state.currentSessionId);
     return restore(requests, { appendEvents: true });
   }
   return { restore, rehydrate };

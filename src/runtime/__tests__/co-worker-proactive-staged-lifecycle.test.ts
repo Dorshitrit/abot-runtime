@@ -272,6 +272,8 @@ describe("SUPER proactive quota and upgrade regressions", () => {
       expect((await f.store.read()).reviewProgress?.expiresAt).toBe(initial.expiresAt);
       const usage = await f.budget.status();
       expect(usage.modelCalls).toBe(limit);
+      // Review completion precedes asynchronous rearming; await its published schedule.
+      await reviewScheduled.get(f.agent)!();
       expect((await f.agent.status()).nextReviewAt).toBe(new Date(usage.resetsAt).toISOString());
       await f.agent.stop();
       vi.setSystemTime(usage.resetsAt + 1000);
@@ -319,7 +321,9 @@ describe("shared quota and current replay admission", () => {
       expect(state.reviewProgress?.stages).toHaveLength(day + 1);
       await f.agent.stop(); vi.setSystemTime((await f.budget.status()).resetsAt + 1000);
     }
-  });
+    // Six simulated days include 138 real durable budget writes, beyond the usual
+    // single-cycle fixture. Keep a bounded wall-clock allowance for loaded CI.
+  }, 15_000);
 
   test.each(["unchanged", "changed", "cleared"])("a complete disk checkpoint with %s style proves replay before bypassing quota", async style => {
     const f = await fixture(6);

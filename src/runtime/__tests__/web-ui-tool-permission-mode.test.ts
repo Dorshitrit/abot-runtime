@@ -85,7 +85,7 @@ describe("explicit FULL+ client selection", () => {
         expect(restored.controller.currentToolPermissionMode()).toBe(mode);
       }
       restored.selectSession("old-session-without-entry");
-      expect(restored.controller.currentToolPermissionMode()).toBe("full_access");
+      expect(restored.controller.currentToolPermissionMode()).toBe("ask");
       expect(restored.preferences.loadLastToolPermissionMode(normalizeToolPermissionMode)).toBe(mode);
     },
   );
@@ -116,7 +116,7 @@ describe("explicit FULL+ client selection", () => {
       const harness = modeHarness(true, storage);
       harness.controller.initializeSessionMode("new");
       harness.selectSession("new");
-      expect(harness.controller.currentToolPermissionMode()).toBe("full_access");
+      expect(harness.controller.currentToolPermissionMode()).toBe("ask");
     },
   );
 
@@ -133,7 +133,7 @@ describe("explicit FULL+ client selection", () => {
     const harness = modeHarness(false);
     harness.controller.setToolPermissionMode("full_plus");
     expect(harness.state.sessionModes).toEqual({});
-    expect(harness.preferences.loadLastToolPermissionMode(normalizeToolPermissionMode)).toBe("full_access");
+    expect(harness.preferences.loadLastToolPermissionMode(normalizeToolPermissionMode)).toBe("ask");
     expect(harness.recordControlEvent).toHaveBeenCalledOnce();
     harness.preferences.saveSessionModes({ one: { toolPermissionMode: "full_plus", savedAt: 10 } });
     harness.state.sessionModes = harness.preferences.loadSessionModes(normalizeToolPermissionMode);
@@ -158,7 +158,7 @@ describe("explicit FULL+ client selection", () => {
     item.toolPermissionMode = "full_plus";
     const restored = createSessionComposerQueue({ storage });
     const first = restored.releaseForTerminal(scope, "running");
-    expect(first?.item.toolPermissionMode).toBe("full_access");
+    expect(first?.item.toolPermissionMode).toBe("ask");
     restored.bindReleasedSuccess(scope, first!.releaseToken, "second");
     restored.enqueue(scope, { ...item, waitForRequestId: "second" });
     harness.controller.setToolPermissionMode("ask");

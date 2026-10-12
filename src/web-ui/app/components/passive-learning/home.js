@@ -1,4 +1,4 @@
-import { hostSetupIsReady } from "../system-host/rendering.js";
+import { hasCollectionAccess, needsCollectionConsentReview } from "./collection-access.js";
 import { agentMarkup, renderAgent } from "./agent-view.js";
 import { createAgentMotion } from "./agent-motion.js";
 import { learningFailurePresentation } from "./presentation.js";
@@ -10,11 +10,12 @@ function canStartHomeLearning(snapshot) {
   if (snapshot.statusError || learningFailurePresentation(snapshot.status))
     return false;
   if (readActivityPermissions(snapshot.status.preferences).collection)
-    return hostSetupIsReady(snapshot.hostConnection);
+    return hasCollectionAccess(snapshot.hostConnection);
   return true;
 }
 
 function homeLearningActionLabel(snapshot) {
+  if (needsCollectionConsentReview(snapshot.status)) return "Review collection access";
   if (hasIndependentHomeActivity(snapshot.status)) return "Open ABot Spark";
   return canStartHomeLearning(snapshot)
     ? "Start ABot Spark"
@@ -59,6 +60,10 @@ export function createPassiveLearningHome({
     if (!button || !root.contains(button) || button.disabled) return;
     const snapshot = actions?.snapshot?.() ?? renderedSnapshot;
     if (snapshot.saving || snapshot.loadingStatus) return;
+    if (needsCollectionConsentReview(snapshot.status)) {
+      void actions.configure({ enabled: true });
+      return;
+    }
     if (hasIndependentHomeActivity(snapshot.status)) {
       openLearning();
       return;

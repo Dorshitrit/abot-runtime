@@ -1,4 +1,5 @@
 import { createMacCollectionConsent } from "./components/passive-learning/macos-collection-consent.js";
+import { createCollectionConsentGate } from "./components/passive-learning/collection-consent-gate.js";
 import { createPassiveLearningController } from "./controllers/passive-learning-controller.js";
 import { createPassiveLearningHome } from "./components/passive-learning/home.js";
 import { createPassiveLearningMemory } from "./components/passive-learning/memory.js";
@@ -17,8 +18,10 @@ export function createPassiveLearningFeature({
   let home;
   let memory;
   let collectionConsent;
+  let macConsent;
   function renderViews(snapshot) {
     collectionConsent?.update(snapshot);
+    macConsent?.update(snapshot);
     home?.render(snapshot);
     memory?.render(snapshot);
   }
@@ -31,11 +34,16 @@ export function createPassiveLearningFeature({
       onChange();
     },
   });
-  collectionConsent = createMacCollectionConsent({
+  macConsent = createMacCollectionConsent({
     actions: controller,
     container: learningRoot,
   });
-  const actions = { ...controller, configure: collectionConsent.configure };
+  collectionConsent = createCollectionConsentGate({
+    actions: { ...controller, configure: macConsent.configure },
+    container: learningRoot, openComputerAccess,
+  });
+  const actions = { ...controller, configure: collectionConsent.configure,
+    restartCollection: collectionConsent.restartCollection };
   home = createPassiveLearningHome({
     actions,
     openLearning,
@@ -54,14 +62,19 @@ export function createPassiveLearningFeature({
     ...actions,
     setWorkspace(workspace) {
       collectionConsent.cancel();
+      macConsent.cancel();
       controller.setWorkspace(workspace);
     },
     handleRealtime(message) {
-      if (message?.type === "system-host.changed") collectionConsent.cancel();
+      if (message?.type === "system-host.changed") {
+        collectionConsent.cancel();
+        macConsent.cancel();
+      }
       controller.handleRealtime(message);
     },
     environmentChanged() {
       collectionConsent.cancel();
+      macConsent.cancel();
       controller.environmentChanged();
     },
     mountHome: (root) => {

@@ -5,10 +5,22 @@ import { rgPath } from "@vscode/ripgrep";
 
 import { spawnDirectoryAuthorityCommand } from "../../../src/shared/directory-authority/index.js";
 
-export type SearchDirectoryAuthority = Readonly<{
-  directoryPath: string;
-  directoryFd: number;
-}>;
+import type { WindowsSearchAuthority } from "./windows-authority.js";
+import { spawnWindowsSearch } from "./windows-search-process.js";
+import type { LocalSearchError } from "./errors.js";
+
+export type SearchDirectoryAuthority =
+  | WindowsSearchAuthority
+  | Readonly<{
+      directoryPath: string;
+      directoryFd: number;
+    }>;
+
+function isWindowsSearchAuthority(
+  authority?: SearchDirectoryAuthority,
+): authority is WindowsSearchAuthority {
+  return authority !== undefined && "platform" in authority;
+}
 
 function controlledRipgrepEnvironment(): NodeJS.ProcessEnv {
   const environment = { ...process.env };
@@ -37,14 +49,28 @@ function terminateAuthorityGroup(
   }
 }
 
+type RipgrepInvocation = Readonly<{
+  child: ChildProcessByStdio<null, Readable, Readable>;
+  terminate(): void;
+  failureForExit?: (code: number | null | undefined) => LocalSearchError;
+}>;
+
 export function spawnRipgrepProcess(
   args: readonly string[],
   cwd: string,
   stdinFd?: number,
   directoryAuthority?: SearchDirectoryAuthority,
-) {
+): RipgrepInvocation {
   const commandArgs = ["--no-config", ...args];
   const env = controlledRipgrepEnvironment();
+  if (isWindowsSearchAuthority(directoryAuthority)) {
+    return spawnWindowsSearch({
+      authority: directoryAuthority,
+      command: rgPath,
+      args: commandArgs,
+      env,
+    });
+  }
   if (directoryAuthority) {
     const child = spawnDirectoryAuthorityCommand({
       ...directoryAuthority,

@@ -94,11 +94,11 @@ export function createDailyMemoryReview({ client, getEnvironmentId, preferences,
     return request;
   }
 
-  function markOffered() {
+  async function markOffered() {
     if (!items.length || environment !== getEnvironmentId()) return false;
     const day = localReviewDay(now());
     if (preferences.wasOffered(environment, day)) return false;
-    preferences.markOffered(environment, day);
+    await preferences.markOffered(environment, day);
     return true;
   }
 
@@ -109,25 +109,24 @@ export function createDailyMemoryReview({ client, getEnvironmentId, preferences,
     const target = environment;
     const operation = revision;
     error = "";
-    if (action === "delete") {
-      busy = true;
-      publish();
-      try {
+    busy = true;
+    publish();
+    try {
+      if (action === "delete") {
         const result = await client.deleteLongTermMemory({ environmentId: target, id: record.id });
         if (!isCurrent(operation, target)) return false;
         if (result?.deleted !== true) throw new Error("Delete not confirmed");
-      } catch {
-        if (isCurrent(operation, target)) error = "This memory could not be deleted. Try again, or keep it for now.";
-        return false;
-      } finally {
-        if (isCurrent(operation, target)) { busy = false; publish(); }
       }
+      if (action === "keep") await preferences.markReviewed(target, record);
+      if (!isCurrent(operation, target)) return false;
+      index += 1;
+      return true;
+    } catch {
+      if (isCurrent(operation, target)) error = "Your review could not be completed. Reload before continuing.";
+      return false;
+    } finally {
+      if (isCurrent(operation, target)) { busy = false; publish(); }
     }
-    if (!isCurrent(operation, target)) return false;
-    preferences.markReviewed(target, record);
-    index += 1;
-    publish();
-    return true;
   }
 
   return {

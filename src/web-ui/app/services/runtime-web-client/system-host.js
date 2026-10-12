@@ -14,6 +14,8 @@ export function createSystemHostRequests({ requestApi, getConfig, getEnvironment
   return {
     supportsSystemHostConnection,
     getSystemHostConnection: () => requestSystemHost(`?environment=${encodeURIComponent(getEnvironmentId())}`),
+    acceptSystemHostCollectionConsent: () =>
+      requestSystemHost("/collection-consent", { method: "POST", body: JSON.stringify({ acknowledged: true }) }),
     requestSystemHostPermissions: (input) =>
       requestSystemHost("/permissions", { method: "POST", body: JSON.stringify(input) }),
     connectLocalSystemHost: () =>

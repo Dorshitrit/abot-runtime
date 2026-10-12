@@ -1,3 +1,4 @@
+import { sampleWindowsDirectory } from "./windows/operations.js";
 import { constants, type BigIntStats } from "node:fs";
 import {
   open,
@@ -20,6 +21,7 @@ export const DIRECTORY_ENTRY_LIMIT = 160;
 export async function readDirectorySample(
   target: ResolvedRuntimeToolPath,
 ): Promise<Readonly<{ entries: readonly string[]; truncated: boolean }>> {
+  if (process.platform === "win32") return sampleWindowsDirectory(target, DIRECTORY_ENTRY_LIMIT);
   const entries: string[] = [];
   let handle: FileHandle | undefined;
   try {

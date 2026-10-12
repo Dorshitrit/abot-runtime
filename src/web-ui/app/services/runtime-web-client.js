@@ -36,6 +36,7 @@ export function createRuntimeWebClient({
   getEnvironmentId,
   fetchImpl = fetch,
   origin = window.location.origin,
+  onMemoryDeleted,
 }) {
   const environmentQuery = (environmentId = getEnvironmentId()) =>
     encodeURIComponent(environmentId);
@@ -98,6 +99,7 @@ export function createRuntimeWebClient({
     requestApi,
     getEnvironmentId,
     environmentQuery,
+    onMemoryDeleted,
   });
 
   return {

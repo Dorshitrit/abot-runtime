@@ -1,110 +1,49 @@
-import type {
-  SessionComposerAttachmentRef,
-  SessionComposerModelPreference,
-  SessionComposerQueue,
-} from "../lib/session-composer-queue.js";
+import type { RemoteSessionComposerQueue, SessionComposerQueue, SessionComposerQueueItem } from "../lib/session-composer-queue.js";
+import type { ComposerAttachment, ComposerDraft, ComposerDraftSnapshot, ComposerDrafts, ComposerScope } from "./composer-drafts.js";
+import type { ChatRequestController, ComposerChatAttempt } from "./chat-request-controller.js";
+import type { ComposerReviewAuthorization, ComposerSubmissionAttempt, ComposerSubmissionLifecycle, ComposerSubmissionSettings } from "./composer-submission-lifecycle.js";
 
-export type ComposerScope = Readonly<{
-  environmentId: string;
-  sessionId: string;
-}>;
-
-export type ComposerQueueDrainScope = ComposerScope &
-  Readonly<{ terminalRequestId: string; cancelled?: boolean }>;
-
-export interface ComposerQueueRecovery {
-  scope: ComposerScope;
-  releaseToken: string;
+export type { ComposerScope } from "./composer-drafts.js";
+export type ComposerQueueDrainScope = ComposerScope & Readonly<{ terminalRequestId: string; cancelled?: boolean }>;
+export interface ComposerNavigationCommit {
+  (): void;
+  canCommit?(): boolean;
 }
-
-export interface ComposerQueueMessage {
-  id?: string;
-  role?: string;
-  text?: string;
-  createdAt?: unknown;
-  requestId?: string;
-  streaming?: boolean;
-}
-
-export interface ComposerQueueState {
-  activeRequestId: string;
-  agentMode: string;
-  currentSessionId: string;
-  pendingAttachments: SessionComposerAttachmentRef[];
-  composerQueueDrainingScopes: Set<string>;
-  composerQueueRecoveredReleaseTokens: Set<string>;
-  activeComposerQueueRecovery: ComposerQueueRecovery | null;
-  messages: ComposerQueueMessage[];
-}
-
-export interface ComposerQueueDom {
-  composerInput: {
-    value: string;
-  };
-}
-
-export interface ComposerQueueAttachments {
-  clear(options?: { cleanup?: boolean }): void;
-  invalidateCompletions(): void;
-  render(): void;
-}
-
-export interface ComposerQueuePostChatRequest {
-  text: string;
-  attachments: SessionComposerAttachmentRef[];
-  environmentId: string;
-  sessionId: string;
-  agentMode: string;
-  toolPermissionMode: string;
-  modelPreference: SessionComposerModelPreference | null;
-}
-
-export interface ComposerQueueControlEvent {
-  type: "control";
-  name: string;
-  tone: "failed" | "neutral";
-  summary: string;
-}
+export type ComposerNavigationPreparation = false | ComposerNavigationCommit;
 
 export interface ComposerQueueControllerOptions {
-  state: ComposerQueueState;
-  dom: ComposerQueueDom;
-  queue: SessionComposerQueue;
-  selectedEnvironmentId: () => string;
-  getToolPermissionMode: () => string;
-  getModelPreference: () => SessionComposerModelPreference | null;
-  rememberModelSelection: () => void;
-  attachments: ComposerQueueAttachments;
-  updateSendState: () => void;
-  postChatMessage: (request: ComposerQueuePostChatRequest) => Promise<string>;
-  appendLocalUserMessage: (message: {
-    text: string;
-    attachments: SessionComposerAttachmentRef[];
-    requestId: string;
-  }) => void;
-  activateRequestForScope: (scope: ComposerScope, requestId: string) => void;
-  renderMessages: () => void;
-  setMessageStatus: (message: string, busy?: boolean) => void;
-  recordControlEvent: (event: ComposerQueueControlEvent) => void;
-  resizeComposer: () => void;
+  queue: SessionComposerQueue | RemoteSessionComposerQueue;
+  drafts: ComposerDrafts;
+  lifecycle: ComposerSubmissionLifecycle;
+  getDraft(): ComposerDraft;
+  requests: Pick<ChatRequestController, "send" | "prepareView" | "activate">;
+  getSettings(): ComposerSubmissionSettings;
+  isCurrentScope(scope: ComposerScope): boolean;
+  reportFailure(scope: ComposerScope, summary: string): void;
+  reportRecovery?(scope: ComposerScope, summary: string): void;
+  onChange?(): void;
+  confirmTakeover?(message: string): boolean;
 }
 
 export interface ComposerQueueController {
-  clearRecovery(scope: ComposerScope): void;
   currentScope(): ComposerScope;
   drain(scope: ComposerQueueDrainScope): Promise<void>;
-  enqueue(text: string): Promise<void>;
+  enqueue(attempt: ComposerChatAttempt, waitForRequestId: string): Promise<SessionComposerQueueItem>;
   isCurrentDraining(): boolean;
   isCurrentScope(scope: ComposerScope): boolean;
-  prepareRecoveryForNavigation(): false | (() => void);
+  prepareManualSend(attempt: ComposerChatAttempt): Promise<void>;
+  send(attempt: ComposerChatAttempt): Promise<string>;
+  bindAccepted(attempt: ComposerSubmissionAttempt, requestId: string): Promise<void>;
+  prepareRestore(attempt: ComposerSubmissionAttempt): Promise<ComposerDraftSnapshot>;
+  prepareRecoveryForNavigation(): ComposerNavigationCommit | Promise<ComposerNavigationPreparation>;
+  suspendRecoveryForNavigation(canNavigate?: () => boolean): boolean | Promise<boolean>;
   queuedCount(): number;
-  recoverForManualSend(scope: ComposerScope): boolean;
+  recoverForManualSend(scope: ComposerScope): Promise<boolean>;
+  hasManualRecovery(scope: ComposerScope): boolean;
   reportFailure(scope: ComposerScope, summary: string): void;
-  restoreText(text: string, scope: ComposerScope): void;
   scopeKey(scope: ComposerScope): string;
-  suspendRecoveryForNavigation(): boolean;
+  authorizeReview(attempt: ComposerSubmissionAttempt): Promise<ComposerReviewAuthorization>;
+  ownsAttachment(attachment: ComposerAttachment): boolean;
 }
 
-export declare function createComposerQueueController(
-  options: ComposerQueueControllerOptions,
-): ComposerQueueController;
+export declare function createComposerQueueController(options: ComposerQueueControllerOptions): ComposerQueueController;

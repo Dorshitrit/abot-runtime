@@ -85,7 +85,7 @@ test("persists pairing before a graceful socket close settles and sends credenti
           type: "hello",
           version: 1,
           identity,
-          capabilities: ["passive-observations-v1", "computer_control_v1"],
+          capabilities: ["host_secret_protection_v1", "passive-observations-v1", "computer_control_v1"],
           companionVersion: COMPANION_RELEASE_VERSION,
         });
         client.send(JSON.stringify({ type: "paired", hostId, credential }));
@@ -129,6 +129,9 @@ test("executes only the bound host operation and returns its matching result", a
         });
         client.on("message", (bytes) => {
           const message = JSON.parse(bytes.toString());
+          if (message.type === "hello") {
+            expect(message.capabilities).not.toContain("host_secret_protection_v1");
+          }
           if (message.type === "result") resolve(message);
         });
       });

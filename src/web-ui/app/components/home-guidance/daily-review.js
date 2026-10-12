@@ -14,7 +14,7 @@ export function createDailyReviewDialog({ container, onDecision, onDismiss }) {
     <p class="daily-review-error" role="alert" data-review-error hidden></p>
     <div class="daily-review-actions"><button type="button" data-review-delete>Delete memory</button>
       <button type="button" data-review-keep>Keep memory</button></div>
-    <p class="daily-review-note">These memories are already saved. Keep marks them as reviewed in this browser.</p>
+    <p class="daily-review-note">These memories are already saved. Keep marks them as reviewed in this ABot installation.</p>
     <button type="button" class="daily-review-later" data-review-later>Not now</button>`;
   container.append(dialog);
   let returnFocus;
@@ -53,7 +53,7 @@ export function createDailyReviewDialog({ container, onDecision, onDismiss }) {
     dialog.querySelector("[data-review-error]").hidden = !error;
     dialog.querySelector(".daily-review-actions").hidden = !record;
     for (const button of dialog.querySelectorAll(".daily-review-actions button")) button.disabled = busy;
-    dialog.querySelector("[data-review-delete]").textContent = busy ? "Deleting…" : "Delete memory";
+    dialog.querySelector("[data-review-delete]").textContent = busy ? "Saving…" : "Delete memory";
     const later = dialog.querySelector("[data-review-later]");
     later.textContent = record ? "Not now" : "Done";
     if (hasReviewLoadError) later.textContent = "Close";

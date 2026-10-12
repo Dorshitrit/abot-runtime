@@ -1,4 +1,5 @@
 /** Shared computer access. Import this subpath only when your plugin uses the host. */
+export { HOST_SECRET_PROTECTION_CAPABILITY } from "../computer-access/companion/secret-protection-protocol.js";
 export {
   executeHostOperation,
   readHostStatus,
@@ -59,3 +60,7 @@ export type { SystemProcessResult } from "../computer-access/contracts.js";
 export { createSystemOutputCapture, type SystemOutputReceipt } from "../computer-access/command-output-capture.js";
 export { DEFAULT_SYSTEM_OUTPUT_RETENTION_MS, scheduleSystemOutputCleanup } from "../computer-access/command-output-retention.js";
 export { SYSTEM_OUTPUT_CAPABILITY, SYSTEM_OUTPUT_CHUNK_BYTES, readSystemOutputTransfer } from "../computer-access/companion/command-output-protocol.js";
+
+export type { SystemResultProtection } from "../computer-access/system-result-protection.js";
+export type { SystemApplication } from "../computer-access/contracts.js";
+export type { SystemApplicationCatalog, SystemApplicationCatalogScope } from "../computer-access/application-catalog.js";

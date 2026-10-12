@@ -37,6 +37,7 @@
 }
 
 .model-plugin-summary-count,
+.model-plugin-platform-note,
 .model-plugin-global-note {
   color: var(--muted);
   font-size: var(--font-size-xs);

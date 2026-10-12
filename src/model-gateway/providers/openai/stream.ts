@@ -1,5 +1,6 @@
 import type { ModelTokenUsage } from "../../types.js";
 import type { ModelProviderEventSink } from "../contracts.js";
+import { readOpenAIDataFrames } from "./sse-data.js";
 import {
   OpenAIResponsesStreamNormalizer,
   writeNormalizedOpenAIEvents,
@@ -7,60 +8,16 @@ import {
   type OpenAIResponsesStreamOptions,
 } from "./stream-normalizer.js";
 
-function parseSseEvents(buffer: string): { events: string[]; rest: string } {
-  const events: string[] = [];
-  let remaining = buffer;
-  let boundaryIndex: number;
-  while ((boundaryIndex = remaining.indexOf("\n\n")) !== -1) {
-    events.push(remaining.slice(0, boundaryIndex));
-    remaining = remaining.slice(boundaryIndex + 2);
-  }
-  return { events, rest: remaining };
-}
-
-function readSseData(eventBlock: string): string[] {
-  return eventBlock
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice("data:".length).trim())
-    .filter(Boolean);
-}
-
-async function* readOpenAIDataLines(
-  body: ReadableStream<Uint8Array>,
-): AsyncGenerator<string> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
-    const parsed = parseSseEvents(buffer);
-    buffer = parsed.rest;
-
-    for (const eventBlock of parsed.events) {
-      for (const dataLine of readSseData(eventBlock)) {
-        yield dataLine;
-      }
-    }
-    if (done) {
-      break;
-    }
-  }
-}
-
 export async function forwardOpenAIResponsesStream(
   body: ReadableStream<Uint8Array>,
   sink: ModelProviderEventSink,
   options: OpenAIResponsesStreamOptions = {},
 ): Promise<void> {
   const normalizer = new OpenAIResponsesStreamNormalizer(options);
-  for await (const dataLine of readOpenAIDataLines(body)) {
+  for await (const dataLine of readOpenAIDataFrames(body)) {
     if (dataLine === "[DONE]") {
       writeNormalizedOpenAIEvents(normalizer.finish(), sink);
-      continue;
+      break;
     }
     try {
       const event = JSON.parse(dataLine) as unknown;
@@ -68,7 +25,9 @@ export async function forwardOpenAIResponsesStream(
     } catch {
       // Keep gateway behavior: ignore malformed upstream stream chunks.
     }
+    if (normalizer.hasTerminated) break;
   }
+  writeNormalizedOpenAIEvents(normalizer.end(), sink);
 }
 
 type CollectedOpenAIResponse = {
@@ -106,12 +65,12 @@ export async function collectOpenAIResponsesStream(
   const normalizer = new OpenAIResponsesStreamNormalizer(options);
   const collected: CollectedOpenAIResponse = { text: "" };
 
-  for await (const dataLine of readOpenAIDataLines(body)) {
+  for await (const dataLine of readOpenAIDataFrames(body)) {
     if (dataLine === "[DONE]") {
       for (const event of normalizer.finish()) {
         applyCollectedEvent(collected, event);
       }
-      continue;
+      break;
     }
 
     let event: unknown;
@@ -124,8 +83,12 @@ export async function collectOpenAIResponsesStream(
     for (const normalized of normalizer.consume(event)) {
       applyCollectedEvent(collected, normalized);
     }
+    if (normalizer.hasTerminated) break;
   }
 
+  for (const event of normalizer.end()) {
+    applyCollectedEvent(collected, event);
+  }
   return {
     text: collected.text,
     thinking: "",

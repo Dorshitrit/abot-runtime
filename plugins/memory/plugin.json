@@ -4,6 +4,10 @@
   "version": "1.0.0",
   "description": "Read, search, add, and delete deterministic long-term memory entries.",
   "extensions": {
+    "ai.abot.compatibility": {
+      "version": 1,
+      "runtimePlatforms": ["linux", "darwin", "win32"]
+    },
     "ai.abot.runtime": {
       "version": 1,
       "entrypoint": "./src/index.cjs",

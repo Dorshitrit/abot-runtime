@@ -1,3 +1,6 @@
+import type { createRuntimeWebClient } from "../services/runtime-web-client.js";
+type ReasoningConfigClient = ReturnType<typeof createRuntimeWebClient>;
+
 export type AgentMode = "auto" | "fast" | "reasoning" | "deep";
 import type { ToolPermissionMode } from "../lib/tool-permission-mode.js";
 export type { ToolPermissionMode } from "../lib/tool-permission-mode.js";
@@ -137,6 +140,9 @@ export interface RuntimeSelectionControllerDependencies {
     sync(): void;
   }>;
   readonly client: Readonly<{
+    loadConfigDashboard?: ReasoningConfigClient["loadConfigDashboard"];
+    saveConfigFile?: ReasoningConfigClient["saveConfigFile"];
+    applyRuntimeConfiguration?: ReasoningConfigClient["applyRuntimeConfiguration"];
     getAgentMode(environmentId: string): Promise<Record<string, unknown>>;
     setAgentMode(
       mode: AgentMode,
@@ -155,6 +161,7 @@ export interface RuntimeSelectionControllerDependencies {
   readonly onModelCatalogLoading?: () => void;
   readonly onModelCatalogLoaded?: (payload: Record<string, unknown>) => void;
   readonly onModelCatalogUnavailable?: (error: unknown) => void;
+  readonly onReasoningConfigurationApplied?: () => Promise<boolean>;
 }
 
 export declare function createRuntimeSelectionController(

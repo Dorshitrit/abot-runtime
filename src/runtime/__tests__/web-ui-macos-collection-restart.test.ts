@@ -32,7 +32,7 @@ async function fixture(workspace = "home", os = "macos", initial = blockedStatus
   const home = document.createElement("section"), spark = document.createElement("section");
   document.body.append(home); document.body.append(spark);
   let environment = "dev", status = initial;
-  const host = { paired: true, connected: true, hostId: "mac-1", connectionId: "socket-1",
+  const host = { collectionConsent: { accepted: true }, paired: true, connected: true, hostId: "mac-1", connectionId: "socket-1",
     identity: { os, name: "Test Mac", homeDir: "/fixture/test" },
     companion: { installedVersion: 6, updateAvailable: false }, readiness: { ready: true } };
   const client = {

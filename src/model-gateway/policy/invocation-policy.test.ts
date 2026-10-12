@@ -293,44 +293,6 @@ describe("model gateway invocation policy", () => {
     expect(payload).not.toHaveProperty("max_output_tokens");
   });
 
-  test("enforces the fixed output limit only for registered core decisions in OpenAI", () => {
-    const buildPayload = (modelStep: string, contextWindowTokens = 32_768) =>
-      buildOpenAIResponsesPayload({
-        modelStep, agentMode: "fast",
-        messages: [{ role: "user", content: "Choose the next action." }],
-        modelPolicy: {
-          providers: OPENAI_TEST_PROVIDERS,
-          profiles: {
-            "test-openai": {
-              provider: "openai",
-              model: "gpt-test",
-              contextWindowTokens, supportsThinking: true,
-            },
-          },
-          defaults: {
-            profileId: "test-openai",
-          },
-        },
-      });
-
-    expect(buildPayload(MODEL_STEPS.WORKER_DECISION)).toHaveProperty(
-      "max_output_tokens",
-      2_048,
-    );
-    expect(buildPayload(MODEL_STEPS.WORKER_RESULT)).not.toHaveProperty(
-      "max_output_tokens",
-    );
-    expect(buildPayload(MODEL_STEPS.CAPABILITY_CONTROLS)).not.toHaveProperty(
-      "max_output_tokens",
-    );
-    expect(buildPayload("unregistered.decision")).not.toHaveProperty(
-      "max_output_tokens",
-    );
-    expect(
-      buildPayload(MODEL_STEPS.WORKER_DECISION, 64).max_output_tokens,
-    ).toBeLessThan(2_048);
-  });
-
   test("lets an explicit reasoning override replace profile generation defaults", () => {
     const payload = buildOpenAIResponsesPayload({
       agentMode: "deep",

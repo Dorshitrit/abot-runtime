@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import { createComposerDrafts } from "../../web-ui/app/controllers/composer-drafts.js";
 import { createComposerAttachmentsController } from "../../web-ui/app/controllers/composer-attachments-controller.js";
 import { createOperationsController } from "../../web-ui/app/controllers/operations-controller.js";
 import { createRuntimeSelectionController } from "../../web-ui/app/controllers/runtime-selection-controller.js";
@@ -93,7 +94,7 @@ describe("web ui controller transport ownership", () => {
         value: "dev",
         options: [{ value: "dev", textContent: "Development" }],
       }),
-      modelSelect: fakeElement(),
+      modelSelect: fakeElement({ value: "model-1" }),
       agentModeButton: fakeElement(),
       agentModeMenu: fakeElement(),
       agentPickerButton: fakeElement(),
@@ -111,7 +112,7 @@ describe("web ui controller transport ownership", () => {
       agentModeMenuOpen: false,
       agentPickerOpen: false,
       permissionModeMenuOpen: false,
-      modelProfiles: [],
+      modelProfiles: [{ id: "model-1", supportsThinking: true }],
       defaultModelProfileId: "",
       sessionModes: {},
       sessionModels: {},
@@ -175,7 +176,7 @@ describe("web ui controller transport ownership", () => {
       agentModeMenuOpen: false,
       agentPickerOpen: false,
       permissionModeMenuOpen: false,
-      modelProfiles: [],
+      modelProfiles: [{ id: "model-1", supportsThinking: true }],
       defaultModelProfileId: "",
       sessionModes: {},
       sessionModels: {},
@@ -200,7 +201,7 @@ describe("web ui controller transport ownership", () => {
       state: state as never,
       dom: {
         environmentSelect,
-        modelSelect: fakeElement(),
+        modelSelect: fakeElement({ value: "model-1" }),
         agentModeButton: fakeElement(),
         agentModeMenu: fakeElement(),
         agentPickerButton: fakeElement(),
@@ -279,7 +280,7 @@ describe("web ui controller transport ownership", () => {
       agentModeMenuOpen: false,
       agentPickerOpen: false,
       permissionModeMenuOpen: false,
-      modelProfiles: [],
+      modelProfiles: [{ id: "model-1", supportsThinking: true }],
       defaultModelProfileId: "",
       sessionModes: {},
       sessionModels: {},
@@ -291,7 +292,7 @@ describe("web ui controller transport ownership", () => {
       state: state as never,
       dom: {
         environmentSelect,
-        modelSelect: fakeElement(),
+        modelSelect: fakeElement({ value: "model-1" }),
         agentModeButton: fakeElement(),
         agentModeMenu: fakeElement(),
         agentPickerButton: fakeElement(),
@@ -341,7 +342,7 @@ describe("web ui controller transport ownership", () => {
       agentModeMenuOpen: false,
       agentPickerOpen: false,
       permissionModeMenuOpen: false,
-      modelProfiles: [],
+      modelProfiles: [{ id: "model-1", supportsThinking: true }],
       defaultModelProfileId: "",
       sessionModes: {},
       sessionModels: {},
@@ -354,7 +355,7 @@ describe("web ui controller transport ownership", () => {
       state: state as never,
       dom: {
         environmentSelect: fakeElement({ value: "dev" }),
-        modelSelect: fakeElement(),
+        modelSelect: fakeElement({ value: "model-1" }),
         agentModeButton,
         agentModeMenu: fakeElement(),
         agentPickerButton: fakeElement(),
@@ -388,12 +389,6 @@ describe("web ui controller transport ownership", () => {
     vi.stubGlobal("document", {
       createElement: () => fakeElement(),
     });
-    const state = {
-      currentSessionId: "session-1",
-      pendingAttachments: [] as Array<Record<string, unknown>>,
-      composerAttachmentGeneration: 0,
-      pendingAttachmentUploadCounts: new Map<number, number>(),
-    };
     const client = {
       attachmentPreviewUrl: vi.fn(() => "/preview/attachment-1"),
       deleteAttachment: vi.fn(async () => undefined),
@@ -404,8 +399,9 @@ describe("web ui controller transport ownership", () => {
         name: "notes.txt",
       })),
     };
+    const draft = createComposerDrafts().open({ environmentId: "dev", sessionId: "session-1" });
     const controller = createComposerAttachmentsController({
-      state: state as never,
+      getDraft: () => draft,
       dom: {
         attachmentButton: fakeElement(),
         attachmentPreview: fakeElement(),
@@ -452,6 +448,6 @@ describe("web ui controller transport ownership", () => {
         mimeType: "text/plain",
       }),
     );
-    expect(state.pendingAttachments).toHaveLength(1);
+    expect(draft.attachments).toHaveLength(1);
   });
 });

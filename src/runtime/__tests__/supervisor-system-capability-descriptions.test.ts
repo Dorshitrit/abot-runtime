@@ -127,15 +127,19 @@ test.each(["supervisor-worker-v1", "execution-agent-v1"] as const)(
     const result = await runSystemBriefRequest({ policy, execute: true });
     expect(result.events.filter(({ type }) => type === "failed")).toEqual([]);
     expect(result.session?.messages.at(-1)?.content).toBe(EXEC_APPROVAL_FINAL);
-    expect(result.host.executeHostOperation).toHaveBeenCalledExactlyOnceWith(
+    expect(result.host.executeHostOperation).toHaveBeenNthCalledWith(1,
       "/runtime",
       expect.objectContaining({
         hostId: requestHostId,
         connectionId: requestConnectionId,
-        operation: "system_command",
+        operation: "system_command_capture",
         params: SYSTEM_BRIEF_CONTROLS,
       }),
     );
+    const operations = result.host.executeHostOperation.mock.calls.map(([, call]) => call.operation);
+    expect(operations).toEqual(["system_command_capture", "system_command_output", "system_command_output_close"]);
+    for (const [, call] of result.host.executeHostOperation.mock.calls)
+      expect(call).toMatchObject({ hostId: requestHostId, connectionId: requestConnectionId });
     expect(result.host.native).not.toHaveBeenCalled();
     const inputs = result.model.invoke.mock.calls.map(([input]) => input);
     for (const input of inputs) {

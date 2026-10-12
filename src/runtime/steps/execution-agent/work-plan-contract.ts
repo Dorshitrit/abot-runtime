@@ -1,9 +1,5 @@
 import { exactKeys, isRecord } from "../../validation/strict-record.js";
-import {
-  MODEL_WORK_PLAN_ITEM_LIMIT,
-  MODEL_WORK_PLAN_STATUSES,
-  type ModelWorkPlanItemUpdate,
-} from "../../orchestration/role-calls/work-plan-contracts.js";
+import type { ModelWorkPlanItemUpdate } from "../../orchestration/role-calls/work-plan-contracts.js";
 import { parseModelWorkPlanItemUpdates } from "../../orchestration/role-calls/work-plan-validation.js";
 
 export type ExecutionWorkPlanReport = Readonly<{
@@ -58,68 +54,4 @@ function resolveOfferedWorkPlanSource(
     );
   if (options.current?.sourceResultRef !== sourceResultRef) return undefined;
   return options.current;
-}
-
-/** Optional metadata uses explicit schema variants; existing variants stay byte-for-byte available. */
-export function withExecutionWorkPlanVariants(
-  variants: readonly Record<string, unknown>[],
-  options?: ExecutionWorkPlanOptions,
-): readonly Record<string, unknown>[] {
-  const reports = createReportSchemas(options);
-  if (reports.length === 0) return variants;
-  return variants.flatMap((variant) => [
-    variant,
-    {
-      ...variant,
-      properties: {
-        ...(variant.properties as Record<string, unknown>),
-        workPlan: { anyOf: reports },
-      },
-      required: [...(variant.required as string[]), "workPlan"],
-    },
-  ]);
-}
-
-function createReportSchemas(
-  options?: ExecutionWorkPlanOptions,
-): readonly Record<string, unknown>[] {
-  if (!options) return [];
-  const schemas = options.sources.map((source) =>
-    reportSchema("adopt", source),
-  );
-  if (options.current) schemas.push(reportSchema("progress", options.current));
-  return schemas;
-}
-
-function reportSchema(
-  mode: "adopt" | "progress",
-  source: ExecutionWorkPlanSource,
-): Record<string, unknown> {
-  const itemIds = [...new Set(source.itemIds)];
-  return {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      mode: { type: "string", enum: [mode] },
-      sourceResultRef: {
-        type: "string",
-        enum: [source.sourceResultRef],
-      },
-      itemUpdates: {
-        type: "array",
-        minItems: mode === "progress" ? 1 : 0,
-        maxItems: MODEL_WORK_PLAN_ITEM_LIMIT,
-        items: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            itemId: { type: "string", enum: itemIds },
-            status: { type: "string", enum: [...MODEL_WORK_PLAN_STATUSES] },
-          },
-          required: ["itemId", "status"],
-        },
-      },
-    },
-    required: ["mode", "sourceResultRef", "itemUpdates"],
-  };
 }

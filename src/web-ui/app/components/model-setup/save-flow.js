@@ -1,3 +1,4 @@
+import { receiveModelContextWindowFeedback } from "./context-window-feedback.js";
 import { selectedModelProvider } from "./validation.js";
 import {
   isDefinitiveModelSaveRejection,
@@ -97,7 +98,8 @@ export function createModelSaveFlow({
       if (credentialSaved)
         state.credentialSavedFor =
           selectedModelProvider(state)?.id || state.newProviderId;
-      state.error = modelSaveErrorMessage(state, error);
+      if (!receiveModelContextWindowFeedback(state, error))
+        state.error = modelSaveErrorMessage(state, error);
       if (credentialSaved)
         state.error +=
           " Your API key was saved privately and will be reused on retry.";

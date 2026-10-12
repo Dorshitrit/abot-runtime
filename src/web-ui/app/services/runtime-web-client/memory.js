@@ -2,6 +2,7 @@ export function createLongTermMemoryRequests({
   requestApi,
   getEnvironmentId,
   environmentQuery,
+  onMemoryDeleted = async () => {},
 }) {
   return Object.freeze({
     loadLongTermMemoryStatus(environmentId = getEnvironmentId()) {
@@ -102,13 +103,17 @@ export function createLongTermMemoryRequests({
       });
     },
 
-    deleteLongTermMemory({ environmentId = getEnvironmentId(), id }) {
-      return requestApi(
+    async deleteLongTermMemory({ environmentId = getEnvironmentId(), id }) {
+      const result = await requestApi(
         `/runtime/memory/records/${encodeURIComponent(
           id,
         )}?environment=${environmentQuery(environmentId)}`,
         { method: "DELETE" },
       );
+      if (result?.deleted !== true) return result;
+      try { await onMemoryDeleted(environmentId, id); }
+      catch { /* Receipt storage reports its failure separately; DELETE already succeeded. */ }
+      return result;
     },
   });
 }

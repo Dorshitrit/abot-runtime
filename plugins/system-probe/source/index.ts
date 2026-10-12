@@ -9,6 +9,7 @@ import {
   successResult,
 } from "../../../src/plugin-sdk/index.js";
 
+import { defaultDiskProbePath } from "./disk-path.js";
 import { bytesToGiB, formatDuration, readMachineMetrics } from "./metrics.js";
 
 const ALLOWED_PATH_LOCATIONS = Object.freeze([
@@ -35,10 +36,14 @@ export default defineRuntimePlugin((context) => ({
           executionContext?.runtimePathResolver ?? context.runtimePathResolver,
       };
       try {
-        const target = resolvePluginPath(pathContext, explicitPath ?? "/", {
-          requirePath: true,
-          allowedLocations: ALLOWED_PATH_LOCATIONS,
-        });
+        const target = resolvePluginPath(
+          pathContext,
+          explicitPath ?? defaultDiskProbePath(context.runtimePaths.rootDir),
+          {
+            requirePath: true,
+            allowedLocations: ALLOWED_PATH_LOCATIONS,
+          },
+        );
         let disk:
           | Readonly<{
               totalBytes: number;
@@ -90,7 +95,7 @@ export default defineRuntimePlugin((context) => ({
           `uptime: ${formatDuration(machine.uptimeSeconds)}`,
           `cpu_count: ${machine.cpuCount}`,
           `load_level: ${machine.loadLevel}`,
-          `load_average: ${machine.loadAverage.map((value) => value.toFixed(2)).join(" ")}`,
+          `load_average: ${machine.loadAverage?.map((value) => value.toFixed(2)).join(" ") ?? "unsupported"}`,
           `memory_used: ${bytesToGiB(machine.memoryUsedBytes)} / ${bytesToGiB(machine.memoryTotalBytes)}`,
           `memory_free: ${bytesToGiB(machine.memoryFreeBytes)}`,
           `disk_path: ${target.logicalPath}`,

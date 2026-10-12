@@ -80,6 +80,12 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
           },
         ],
       },
+      prepareRequest: async (modules, preparation) => {
+        expect(
+          preparation?.runtimePathResolver?.resolve(".").absolutePath,
+        ).toBe(originalRoot);
+        return modules;
+      },
       implementation: execute,
     };
     const model = createExecApprovalScript(

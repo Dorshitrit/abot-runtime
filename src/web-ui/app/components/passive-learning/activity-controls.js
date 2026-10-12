@@ -1,3 +1,5 @@
+import { needsCollectionConsentReview } from "./collection-access.js";
+
 const activities = Object.freeze({
   collection: { label: "collection", permissionField: "collectionEnabled", selector: "[data-learning-toggle]" },
   learning: { label: "learning", permissionField: "processingEnabled", selector: "[data-learning-processing-toggle]" },
@@ -42,6 +44,8 @@ export function activityStatePatch(activity, preferences, running) {
 export function activityControl(activity, snapshot) {
   const definition = activities[activity];
   const preferences = snapshot.status?.preferences || {};
+  if (activity === "collection" && needsCollectionConsentReview(snapshot.status))
+    return { action: "start", label: "Review collection access", tone: "setup" };
   if (isActivityRunning(activity, preferences))
     return { action: "stop", label: `Stop ${definition.label}`, tone: "danger" };
   if (!hasActivityModel(activity, preferences, snapshot.models))

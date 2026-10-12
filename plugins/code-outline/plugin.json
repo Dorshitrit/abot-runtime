@@ -4,6 +4,7 @@
   "version": "0.1.1",
   "description": "Extract a bounded structural outline from one source file.",
   "extensions": {
+    "ai.abot.compatibility": { "version": 1, "runtimePlatforms": ["linux", "darwin", "win32"] },
     "ai.abot.runtime": {
       "version": 1,
       "entrypoint": "./src/index.cjs",

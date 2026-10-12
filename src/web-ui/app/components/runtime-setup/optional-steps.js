@@ -2,6 +2,7 @@ import { createEmbeddingSetupStep } from "./embedding.js";
 import { createSetupPluginStep } from "./plugins.js";
 import { createSystemHostConnectionManager } from "../system-host/manager.js";
 import { hostSetupIsReady } from "../system-host/rendering.js";
+import { isNativeWindowsLocalAccess } from "../system-host/native-windows-access.js";
 
 /** Optional setup steps retain their owning services and never apply the Runtime. */
 export function createSetupOptionalSteps({
@@ -57,9 +58,10 @@ export function createSetupOptionalSteps({
       })
     : null;
   const readyStep = computer ? 5 : 4;
-  function hasFreshComputerReadiness() {
+  function hasFreshComputerSetup() {
     if (!computer) return false;
     if (computer.state.busy || computer.state.statusUnavailable) return false;
+    if (isNativeWindowsLocalAccess(computer.state.snapshot)) return true;
     return hostSetupIsReady(computer.state.snapshot);
   }
   function projection(step) {
@@ -71,7 +73,8 @@ export function createSetupOptionalSteps({
       plugins: plugins.state.snapshot,
       hasComputerStep: Boolean(computer),
       readyStep,
-      computer: hasFreshComputerReadiness() ? computer.state.snapshot : null,
+      computer: hasFreshComputerSetup() ? computer.state.snapshot : null,
+      nativeWindowsAccess: hasFreshComputerSetup() && isNativeWindowsLocalAccess(computer.state.snapshot),
     };
     if (step === 2)
       return {
@@ -90,7 +93,7 @@ export function createSetupOptionalSteps({
       return {
         ...common,
         content: `<div data-onboarding-computer>${computer.markup()}</div>`,
-        canContinue: hasFreshComputerReadiness(),
+        canContinue: hasFreshComputerSetup(),
       };
     return common;
   }
@@ -111,7 +114,7 @@ export function createSetupOptionalSteps({
   }
   function canContinueComputer(step) {
     if (step !== 4) return false;
-    return hasFreshComputerReadiness();
+    return hasFreshComputerSetup();
   }
   return {
     embedding,

@@ -1,3 +1,4 @@
+import type { RuntimeToolPathResolver } from "./tool-types.js";
 import type { ToolRequestDisposer } from "./tool-media.js";
 
 /** Request-local effects that remain active after a tool returned. */
@@ -14,6 +15,8 @@ export type ToolRequestState = Readonly<{
   ): void;
 }>;
 export type ToolRequestPreparationContext = Readonly<{
+  /** Same immutable request roots used by execution, including approval resume. */
+  runtimePathResolver?: RuntimeToolPathResolver;
   requestState?: ToolRequestState;
   onRequestDispose?: ToolRequestDisposer;
 }>;

@@ -51,15 +51,21 @@ export async function writeOutputMetadata(
       await file.close();
     }
     await rename(temporary, path);
-    const directory = await open(dirname(path), "r");
-    try {
-      await directory.sync();
-    } finally {
-      await directory.close();
-    }
+    await syncOutputDirectoryEntry(path);
   } catch (error) {
     await rm(temporary, { force: true }).catch(() => undefined);
     throw outputFailure("metadata_write_failed", error);
+  }
+}
+// Node cannot fsync a directory handle on Windows. The file is still synced
+// before atomic rename; Unix also flushes the parent directory entry.
+async function syncOutputDirectoryEntry(path: string): Promise<void> {
+  if (process.platform === "win32") return;
+  const directory = await open(dirname(path), "r");
+  try {
+    await directory.sync();
+  } finally {
+    await directory.close();
   }
 }
 export async function prepareOutputOwnerDirectory(

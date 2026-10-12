@@ -11,6 +11,7 @@ import {
   type LockRecord,
 } from "./contracts.js";
 import { isLockOwnerIdentity } from "./owner-identity.js";
+import { observeLockReadFailure } from "./path-observation.js";
 
 export async function readOwnerRecord(
   lockPath: string,
@@ -20,10 +21,11 @@ export async function readOwnerRecord(
 ): Promise<DirectoryLockSnapshot> {
   let handle: FileHandle | undefined;
   try {
+    const ownerPath = join(lockPath, LEASE_DIRECTORY_NAME, entryName);
     handle = await open(
-      join(lockPath, LEASE_DIRECTORY_NAME, entryName),
+      ownerPath,
       constants.O_RDONLY | constants.O_NOFOLLOW,
-    );
+    ).catch(async (error) => { throw await observeLockReadFailure(ownerPath, error); });
     const before = await handle.stat({ bigint: true });
     const modifiedAtMs = Math.max(
       directoryModifiedAtMs,

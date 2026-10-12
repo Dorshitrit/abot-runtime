@@ -11,14 +11,12 @@ test.each(["network_error", "history_cursor_stale"])("Latest failure (%s) preser
   const f = createPlanLifecycleHarness(target);
   await f.conversationSession.openSession("session-1");
   const before = { messages: f.state.messages, events: f.state.events, version: f.state.sessionViewVersion };
-  f.clearPendingAttachments.mockClear();
   const failure = Object.assign(new Error(code), { code });
   f.client.loadSession.mockRejectedValueOnce(failure);
   await expect(f.conversationSession.history.latest()).rejects.toBe(failure);
   expect(f.state.messages).toBe(before.messages);
   expect(f.state.events).toBe(before.events);
   expect(f.state.sessionViewVersion).toBe(before.version);
-  expect(f.clearPendingAttachments).not.toHaveBeenCalled();
   expect(f.conversationSession.history.hasNewer()).toBe(true);
   f.client.loadSession.mockResolvedValueOnce({ messages: [], requests: [], nextCursor: null });
   await f.conversationSession.history.load("older");

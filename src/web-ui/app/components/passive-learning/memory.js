@@ -1,3 +1,4 @@
+import { renderCollectionAccess } from "./collection-access.js";
 import { renderAgent } from "./agent-view.js";
 import { renderComputerUpdateNotice } from "./computer-update-notice.js";
 import { renderMacCollectionRestartNotice, handleMacCollectionRestartClick } from "./macos-collection-restart-notice.js";
@@ -133,11 +134,9 @@ export function createPassiveLearningMemory({
 
   function renderStatus(snapshot) {
     const status = snapshot.status;
-    const companion = snapshot.hostConnection?.companion;
+    renderCollectionAccess(root, snapshot);
     renderComputerUpdateNotice(root, snapshot);
     renderMacCollectionRestartNotice(root, snapshot);
-    root.querySelector("[data-learning-companion-version]").textContent = companion
-      ? `Installed version: ${companion.installedVersion ?? "unversioned"} · Available: ${companion.availableVersion}` : "Connect your computer to check its companion version.";
     const attention = learningFailurePresentation(status);
     const coverage = learningCoveragePresentation(status);
     root.querySelector("[data-learning-attention]").hidden = !attention;
@@ -150,7 +149,6 @@ export function createPassiveLearningMemory({
     root.querySelector("[data-learning-schedule-summary]").textContent = modelId
       ? `${model?.label || modelId} · ${learningCadenceLabel(status.preferences)}`
       : "Choose a model in Settings to get started.";
-    root.querySelector("[data-learning-device]").textContent = status?.deviceId || "Not connected now";
     root.querySelector("[data-learning-coverage]").textContent = coverage.label;
     root.querySelector("[data-learning-coverage-detail]").textContent = coverage.detail;
     const reasons = [status?.collectionReason, status?.processingReason, status?.reason, status?.proactive?.reason, status?.reassessment?.reason, status?.maintenanceReason].filter(Boolean);

@@ -230,11 +230,16 @@ export function createProjectsController({
   async function newConversation(projectId) {
     if (!canUseProjects()) return;
     if (state.busyProjectId) return;
-    if (!prepareConversation()) return;
     const environmentId = getEnvironmentId();
     const token = revision;
     const conversationRevision = getConversationRevision();
     const activationToken = ++activationRevision;
+    let prepared = prepareConversation();
+    if (typeof prepared?.then === "function") prepared = await prepared;
+    if (!prepared) return;
+    if (!isCurrentEnvironment(environmentId, token)) return;
+    if (activationToken !== activationRevision) return;
+    if (getConversationRevision() !== conversationRevision) return;
     state = { ...state, busyProjectId: projectId };
     publish();
     try {

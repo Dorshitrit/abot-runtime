@@ -1,3 +1,4 @@
+import { requireRuntimeSetupEditSettled } from "./runtime-setup-edit-recovery.js";
 import { readDefaultContextWindowTokens } from "../../../scripts/runtime-setup-files.js";
 import { initializeConfiguredRuntimeDirectories } from "../../../scripts/runtime-setup-directories.js";
 import {
@@ -48,6 +49,7 @@ export class RuntimeSetupService {
   constructor(private readonly options: RuntimeSetupServiceOptions) {}
 
   private source() {
+    requireRuntimeSetupEditSettled(this.options.rootDir);
     return inspectRuntimeConfigFileWithMeta(
       this.options.rootDir,
       this.savedConfigPath ?? this.options.getConfigPath(),
@@ -224,7 +226,9 @@ export class RuntimeSetupService {
             draft,
             input,
             credentialChanged,
+            credentialWrite,
           });
+          credentialsPersisted = true;
           draft = edited.draft;
           embeddingInvalidated = edited.embeddingInvalidated;
         }

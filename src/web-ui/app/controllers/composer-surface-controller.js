@@ -3,6 +3,7 @@ export function createComposerSurfaceController({
   getHomeComposer,
   getChatAttachments,
   getChatSubmit,
+  refreshComposerSurfaces = () => {},
   rememberModelSelection,
   showToast,
 }) {
@@ -27,7 +28,12 @@ export function createComposerSurfaceController({
     },
     updateComposerSendState() {
       workspace.syncChatDraft();
+      refreshComposerSurfaces();
       activeSubmit()?.updateSendState();
+    },
+    refreshComposerSubmissionState() {
+      getChatSubmit()?.updateSendState();
+      getHomeComposer()?.submit.updateSendState();
     },
     resizeComposerInput() {
       activeSubmit()?.resize();

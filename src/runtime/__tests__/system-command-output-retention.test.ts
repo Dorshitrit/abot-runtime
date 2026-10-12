@@ -6,6 +6,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { createSystemOutputCapture } from "../../computer-access/command-output-capture.js";
 import { cleanupSystemOutput, DEFAULT_SYSTEM_OUTPUT_RETENTION_MS } from "../../computer-access/command-output-retention.js";
 import { CompanionCommandOutput } from "../../computer-access/companion/command-output.js";
+import { redactSecretText } from "../../computer-access/security/secret-text.js";
 
 const DAY = 86_400_000;
 const roots: string[] = [];
@@ -14,7 +15,7 @@ afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 async function fixture() {
-  const parent = join(process.cwd(), ".codex/artifacts/companion-output-review-20261006/retention");
+  const parent = join(process.cwd(), ".codex/artifacts/secret-protection-contract-20261010/retention");
   await mkdir(parent, { recursive: true });
   const root = await mkdtemp(join(parent, "case-")); roots.push(root);
   return root;
@@ -58,7 +59,7 @@ test("a new command's policy does not shorten an earlier capture's lifetime", as
 
 test("captured streams and retention survive completion while an active transfer remains protected", async () => {
   const root = await fixture();
-  const output = await createSystemOutputCapture(root, 2 * DAY);
+  const output = await createSystemOutputCapture(root, 2 * DAY, redactSecretText);
   output.retain();
   try {
     const stdout = new PassThrough(), stderr = new PassThrough();

@@ -1,12 +1,20 @@
+import {
+  isPluginPlatformUnavailable,
+  renderPluginPlatformNotice,
+} from "./compatibility.js";
 import { renderPluginConfigurationFields } from "./configuration-fields.js";
 import { escapeAttribute, escapeHtml } from "../../lib/text-format.js";
 
 function renderPluginReview(review, busy) {
   if (!review) return "";
-  const installButton = `<button type="button" class="primary-button" data-plugin-install-confirm ${busy ? "disabled" : ""}>${busy ? "Installing…" : "Install and enable"}</button>`;
+  const installLabel = isPluginPlatformUnavailable(review.compatibility)
+    ? "Install"
+    : "Install and enable";
+  const installButton = `<button type="button" class="primary-button" data-plugin-install-confirm ${busy ? "disabled" : ""}>${busy ? "Installing…" : installLabel}</button>`;
   return `<section class="plugin-install-review" aria-label="Plugin installation review">
     <header class="plugin-install-heading"><div><h3>${escapeHtml(review.id)} ${review.version ? `<small>v${escapeHtml(review.version)}</small>` : ""}</h3><p>Not installed yet.</p></div>${installButton}</header>
     <p>${escapeHtml(review.description)}</p>
+    ${renderPluginPlatformNotice(review.compatibility)}
     <dl><dt>Source</dt><dd>${escapeHtml(review.source.repository)}</dd><dt>Commit</dt><dd><code>${escapeHtml(review.source.ref)}</code></dd></dl>
     <ul class="plugin-install-capabilities">${review.capabilities.map((capability) => `<li><strong>${escapeHtml(capability.id)}</strong><p>${escapeHtml(capability.description)}</p><span>${capability.operations.map((operation) => escapeHtml(`${operation.name} · ${operation.effect}`)).join(" / ")}</span></li>`).join("")}</ul>
     ${renderPluginConfigurationFields(review.configuration, busy)}

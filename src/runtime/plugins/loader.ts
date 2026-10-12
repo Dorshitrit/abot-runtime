@@ -26,6 +26,7 @@ import { discoverAgentPluginManifests } from "./manifest-discovery.js";
 import { resolveBundledRuntimeRoot } from "./bundled-root.js";
 import { projectManifestRuntimeContract } from "./manifest-projection.js";
 import { discoverConfiguredRuntimePluginManifests } from "./configured-manifests.js";
+import { resolvePluginPlatformCompatibility } from "./platform-compatibility.js";
 import {
   isPluginCatalogDisabled,
   isPluginToolSelected,
@@ -171,16 +172,7 @@ export function loadConfiguredRuntimePlugins(
   if (cached) {
     return cached;
   }
-  const host: ManifestRuntimeHostContext = {
-    rootDir: config.paths.rootDir,
-    pluginConfiguration: readPluginConfigurationStore(config.paths.rootDir)
-      .plugins,
-    runtimeId: config.runtimeId,
-    agentBridgeUrl: config.agentBridgeUrl,
-    runtimePaths: config.paths,
-  };
-
-  const manifestPlugins = discoverConfiguredRuntimePluginManifests(
+  const discoveredPlugins = discoverConfiguredRuntimePluginManifests(
     config.paths.rootDir,
     {
       excludedPluginIds: new Set([
@@ -188,7 +180,13 @@ export function loadConfiguredRuntimePlugins(
         ...selection.disabledPluginIds,
       ]),
     },
-  )
+  );
+  const compatiblePlugins = discoveredPlugins.filter(
+    (plugin) => resolvePluginPlatformCompatibility(plugin.manifest).supported,
+  );
+  const allPluginsIncompatible =
+    discoveredPlugins.length > 0 && compatiblePlugins.length === 0;
+  const selectedPlugins = compatiblePlugins
     .map((plugin) => ({
       plugin,
       selectedCapabilityIds: Object.keys(
@@ -201,10 +199,20 @@ export function loadConfiguredRuntimePlugins(
         }),
       ),
     }))
-    .filter(({ selectedCapabilityIds }) => selectedCapabilityIds.length > 0)
-    .map(({ plugin, selectedCapabilityIds }) =>
+    .filter(({ selectedCapabilityIds }) => selectedCapabilityIds.length > 0);
+  const host: ManifestRuntimeHostContext = {
+    rootDir: config.paths.rootDir,
+    pluginConfiguration: allPluginsIncompatible
+      ? {}
+      : readPluginConfigurationStore(config.paths.rootDir).plugins,
+    runtimeId: config.runtimeId,
+    agentBridgeUrl: config.agentBridgeUrl,
+    runtimePaths: config.paths,
+  };
+  const manifestPlugins = selectedPlugins.map(
+    ({ plugin, selectedCapabilityIds }) =>
       loadManifestRuntimePlugin(host, plugin, selectedCapabilityIds),
-    );
+  );
   const pluginIds = new Set<string>();
   for (const plugin of manifestPlugins) {
     if (pluginIds.has(plugin.id)) {
@@ -250,15 +258,23 @@ export function loadBundledRuntimePlugins(): readonly CompiledRuntimePlugin[] {
   if (cached) {
     return cached;
   }
+  const discoveredPlugins = discoverAgentPluginManifests(packageRoot);
+  const selectedPlugins = discoveredPlugins.filter(
+    (plugin) => resolvePluginPlatformCompatibility(plugin.manifest).supported,
+  );
+  const allPluginsIncompatible =
+    discoveredPlugins.length > 0 && selectedPlugins.length === 0;
   const host: ManifestRuntimeHostContext = {
     rootDir,
-    pluginConfiguration: readPluginConfigurationStore(rootDir).plugins,
+    pluginConfiguration: allPluginsIncompatible
+      ? {}
+      : readPluginConfigurationStore(rootDir).plugins,
     runtimeId: "default",
     agentBridgeUrl: "",
     runtimePaths: createUnconfiguredRuntimePaths(rootDir),
   };
   const catalog = Object.freeze(
-    discoverAgentPluginManifests(packageRoot).map((plugin) =>
+    selectedPlugins.map((plugin) =>
       freezeRuntimePlugin(
         loadManifestRuntimePlugin(
           host,

@@ -1,230 +1,155 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-
-import { createComposerWorkspaceHarness } from "./support/web-ui-composer-workspace-harness.js";
-
+import { createComposerProductionHarness } from "./support/composer-production-harness.js";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("web ui Home composer lifecycle", () => {
-  test("initializes fresh Home drafts without changing restored drafts or existing Chat", () => {
-    const harness = createComposerWorkspaceHarness();
-    expect(harness.onSessionCreated).not.toHaveBeenCalled();
-    harness.feature.setWorkspace("home");
-    expect(harness.onSessionCreated).toHaveBeenCalledExactlyOnceWith("home-session-1");
-    const draft = harness.workspace.takeHomeDraft("draft");
-    harness.workspace.restoreHomeDraft(draft);
-    expect(harness.workspace.ensureHomeSession()).toBe("home-session-1");
-    expect(harness.onSessionCreated).toHaveBeenCalledOnce();
-    harness.workspace.resetHomeDraft();
-    expect(harness.workspace.ensureHomeSession()).toBe("home-session-2");
-    expect(harness.onSessionCreated).toHaveBeenLastCalledWith("home-session-2");
+  test("initializes one Home draft per environment without changing existing Chat", () => {
+    const h = createComposerProductionHarness();
+    expect(h.onSessionCreated).not.toHaveBeenCalled();
+    h.feature.setWorkspace("home");
+    const draft = h.workspace.homeDraft();
+    h.type("Draft");
+    expect(h.onSessionCreated).toHaveBeenCalledExactlyOnceWith("home-session-1");
+    expect(h.workspace.ensureHomeSession()).toBe(draft.scope.sessionId);
+    expect(h.workspace.homeDraft().text).toBe("Draft");
+    expect(h.state.currentSessionId).toBe("existing-chat");
+    h.workspace.finishHomeActivation(draft.scope);
+    expect(h.workspace.ensureHomeSession()).toBe("home-session-2");
   });
 
-  test("moves the same composer and keeps the active Chat draft and attachments intact", () => {
-    const harness = createComposerWorkspaceHarness();
-    const originalAttachments = harness.state.pendingAttachments;
-    const originalMessages = harness.state.messages;
-    harness.feature.setWorkspace("home");
-
-    expect(harness.homeHost.appendChild).toHaveBeenCalledWith(harness.dom.composerForm);
-    expect(harness.homeSetupHost.appendChild).toHaveBeenCalledWith(
-      harness.dom.runtimeSetupGuide,
-    );
-    expect(harness.dom.composerInput.value).toBe("");
-    expect(harness.workspace.composerSessionId()).toBe("home-session-1");
-    expect(harness.state.currentSessionId).toBe("existing-chat");
-    expect(harness.state.activeRequestId).toBe("existing-request");
-    expect(harness.state.pendingAttachments).toBe(originalAttachments);
-    expect(harness.state.messages).toBe(originalMessages);
-    expect(harness.composerActions.render).toHaveBeenLastCalledWith(
-      expect.objectContaining({ activeRequestId: "", queuedCount: 0 }),
-    );
-
-    harness.dom.composerInput.value = "A separate Home draft";
-    harness.feature.setWorkspace("chat");
-    expect(harness.chatHost.insertBefore).toHaveBeenCalledWith(
-      harness.dom.composerForm,
-      harness.nextSibling,
-    );
-    expect(harness.dom.composerInput.value).toBe("Existing chat draft");
-    harness.feature.setWorkspace("home");
-    expect(harness.dom.composerInput.value).toBe("A separate Home draft");
+  test("moves the shared controls and parks Chat text and attachments intact", () => {
+    const h = createComposerProductionHarness();
+    const originalAttachments = h.workspace.chatDraft().attachments;
+    const messages = h.state.messages;
+    h.feature.setWorkspace("home");
+    expect(h.dom.composerForm.parentElement).toBe(h.homeHost);
+    expect(h.dom.runtimeSetupGuide.parentElement).toBe(h.homeSetupHost);
+    expect(h.dom.composerInput.value).toBe("");
+    expect(h.workspace.composerSessionId()).toBe("home-session-1");
+    expect(h.state.activeRequestId).toBe("existing-request");
+    expect(h.workspace.chatDraft().attachments).toEqual(originalAttachments);
+    expect(h.state.messages).toBe(messages);
+    expect(h.composerActions.render).toHaveBeenLastCalledWith(expect.objectContaining({ activeRequestId: "", queuedCount: 0 }));
+    h.type("A separate Home draft");
+    h.feature.setWorkspace("chat");
+    expect(h.dom.composerForm.parentElement).toBe(h.chatHost);
+    expect(h.dom.composerInput.value).toBe("Existing chat draft");
+    h.feature.setWorkspace("home");
+    expect(h.dom.composerInput.value).toBe("A separate Home draft");
   });
 
-  test("restores a failed background queue to the Chat draft without changing Home", async () => {
-    const harness = createComposerWorkspaceHarness();
-    const scope = { environmentId: "dev", sessionId: "existing-chat" };
-    harness.sessionQueue.enqueue(scope, {
-      waitForRequestId: "existing-request",
-      text: "Queued follow-up",
-      attachments: [{ id: "queued-file", mimeType: "text/plain" }],
-      agentMode: "reasoning",
-      toolPermissionMode: "ask",
-      modelPreference: { profileId: "selected-model" },
-    });
-    harness.feature.setWorkspace("home");
-    harness.dom.composerInput.value = "My new Home question";
-
-    await harness.queue.drain({ ...scope, terminalRequestId: "existing-request" });
-
-    expect(harness.dom.composerInput.value).toBe("My new Home question");
-    expect(harness.workspace.homeState.pendingAttachments).toEqual([]);
-    expect(harness.state.pendingAttachments.map((file) => file.id)).toEqual([
-      "queued-file", "chat-file",
-    ]);
-    harness.feature.setWorkspace("chat");
-    expect(harness.dom.composerInput.value).toBe(
-      "Queued follow-up\nExisting chat draft",
-    );
+  test("restores a definitely refused queued message to Chat without changing Home", async () => {
+    const h = createComposerProductionHarness();
+    h.enqueue("Queued follow-up");
+    h.client.postChatMessage.mockRejectedValueOnce(Object.assign(new Error("Invalid request"), { status: 400 }));
+    h.feature.setWorkspace("home");
+    h.type("My new Home question");
+    await h.queue.drain({ environmentId: "dev", sessionId: "existing-chat", terminalRequestId: "existing-request" });
+    expect(h.dom.composerInput.value).toBe("My new Home question");
+    expect(h.workspace.homeDraft().attachments).toEqual([]);
+    expect(h.workspace.chatDraft().attachments.map((file) => file.id)).toEqual(["chat-file"]);
+    h.feature.setWorkspace("chat");
+    expect(h.dom.composerInput.value).toBe("Queued follow-up\nExisting chat draft");
+    expect(h.client.postChatMessage).toHaveBeenCalledOnce();
   });
 
-  test("keeps a Chat upload that completes on Home out of the visible attachment list", async () => {
-    const harness = createComposerWorkspaceHarness();
-    const upload = harness.chatAttachments.upload(
-      Object.assign(new Blob(["chat file"], { type: "text/plain" }), { name: "chat.txt" }),
-    );
-    harness.feature.setWorkspace("home");
-    harness.dom.composerInput.value = "Home question";
-    harness.dom.attachmentPreview.appendChild.mockClear();
-
+  test("keeps a Chat upload completing on Home in its source draft", async () => {
+    const h = createComposerProductionHarness();
+    const upload = h.chatAttachments.upload(Object.assign(new Blob(["chat file"], { type: "text/plain" }), { name: "chat.txt" }));
+    h.feature.setWorkspace("home");
+    h.type("Home question");
     await upload;
-
-    expect(harness.state.pendingAttachments).toHaveLength(2);
-    expect(harness.workspace.homeState.pendingAttachments).toEqual([]);
-    expect(harness.dom.attachmentPreview.appendChild).not.toHaveBeenCalled();
-    expect(harness.dom.composerInput.value).toBe("Home question");
+    expect(h.workspace.chatDraft().attachments).toHaveLength(2);
+    expect(h.workspace.homeDraft().attachments).toEqual([]);
+    expect(h.dom.composerInput.value).toBe("Home question");
   });
 
-  test("uploads into a new session and sends through the existing Chat request path", async () => {
-    const harness = createComposerWorkspaceHarness();
-    harness.feature.setWorkspace("home");
-    const homeSessionId = harness.workspace.composerSessionId();
-    await harness.feature.upload(
-      Object.assign(new Blob(["document"], { type: "text/plain" }), { name: "notes.txt" }),
-    );
-    expect(harness.client.uploadAttachment).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: homeSessionId, environmentId: "dev" }),
-    );
-    expect(harness.state.currentSessionId).toBe("existing-chat");
-    expect(harness.state.pendingAttachments[0]?.id).toBe("chat-file");
-    harness.dom.composerInput.value = "Summarize this document";
-
-    harness.feature.dispatch();
-    await vi.waitFor(() => expect(harness.client.postChatMessage).toHaveBeenCalledOnce());
-
-    expect(harness.workspace.isChatVisible()).toBe(true);
-    expect(harness.state.currentSessionId).toBe(homeSessionId);
-    expect(harness.client.postChatMessage).toHaveBeenCalledWith({
-      text: "Summarize this document",
-      attachments: [expect.objectContaining({
-        id: "home-file",
-        sessionId: homeSessionId,
-      })],
-      environmentId: "dev",
-      sessionId: homeSessionId,
-      agentMode: "reasoning",
-      toolPermissionMode: "ask",
+  test("uploads into a new Home session and sends through the shared request path", async () => {
+    const h = createComposerProductionHarness();
+    h.feature.setWorkspace("home");
+    const homeSessionId = h.workspace.composerSessionId();
+    await h.feature.upload(Object.assign(new Blob(["document"], { type: "text/plain" }), { name: "notes.txt" }));
+    expect(h.client.uploadAttachment).toHaveBeenCalledWith(expect.objectContaining({ sessionId: homeSessionId, environmentId: "dev" }));
+    expect(h.state.currentSessionId).toBe("existing-chat");
+    expect(h.workspace.chatDraft().attachments[0].id).toBe("chat-file");
+    h.type("Summarize this document");
+    await h.feature.dispatch();
+    expect(h.workspace.isChatVisible()).toBe(true);
+    expect(h.state.currentSessionId).toBe(homeSessionId);
+    expect(h.client.postChatMessage).toHaveBeenCalledWith(expect.objectContaining({
+      text: "Summarize this document", attachments: [expect.objectContaining({ id: "home-file", sessionId: homeSessionId })],
+      environmentId: "dev", sessionId: homeSessionId, agentMode: "reasoning", toolPermissionMode: "ask",
       modelPreference: { profileId: "selected-model" },
-    });
-    expect(harness.workspace.homeState.pendingAttachments).toEqual([]);
-    expect(harness.state.activeRequestId).toBe("new-request");
-    harness.feature.setWorkspace("home");
-    expect(harness.workspace.composerSessionId()).not.toBe(homeSessionId);
-    expect(harness.dom.composerInput.value).toBe("");
+    }));
+    expect(h.state.activeRequestId).toBe("new-request");
+    h.feature.setWorkspace("home");
+    expect(h.workspace.composerSessionId()).not.toBe(homeSessionId);
+    expect(h.dom.composerInput.value).toBe("");
   });
 
-  test("starts a fresh Home draft while its previous message is awaiting HTTP acceptance", async () => {
-    const harness = createComposerWorkspaceHarness();
-    let resolveRequest!: (value: string) => void;
-    harness.client.postChatMessage.mockReturnValueOnce(
-      new Promise((resolve) => { resolveRequest = resolve; }),
-    );
-    harness.feature.setWorkspace("home");
-    harness.dom.composerInput.value = "First message";
-    harness.feature.dispatch();
-
-    harness.feature.setWorkspace("home");
-    harness.dom.composerInput.value = "Another new conversation";
-    harness.feature.submit.updateSendState();
-    expect(harness.workspace.homeState.composerSending).toBe(false);
-    expect(harness.composerActions.render).toHaveBeenLastCalledWith(
-      expect.objectContaining({ busy: false, disabled: false }),
-    );
-
-    resolveRequest("accepted-request");
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(harness.dom.composerInput.value).toBe("Another new conversation");
-    expect(harness.workspace.homeState.composerSending).toBe(false);
+  test("starts a fresh Home draft after activation while its prior POST is pending", async () => {
+    const h = createComposerProductionHarness();
+    let resolve!: (id: string) => void;
+    h.client.postChatMessage.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    h.feature.setWorkspace("home");
+    h.type("First message");
+    const sending = h.feature.dispatch();
+    await vi.waitFor(() => expect(h.client.postChatMessage).toHaveBeenCalledOnce());
+    h.feature.setWorkspace("home");
+    h.type("Another new conversation");
+    h.feature.submit.updateSendState();
+    expect(h.composerActions.render).toHaveBeenLastCalledWith(expect.objectContaining({ busy: false, disabled: false }));
+    resolve("accepted-request");
+    await sending;
+    expect(h.dom.composerInput.value).toBe("Another new conversation");
+    expect(h.workspace.homeDraft().text).toBe("Another new conversation");
   });
 
-  test("retains the Home draft if Chat activation is blocked", async () => {
-    const harness = createComposerWorkspaceHarness();
-    harness.feature.setWorkspace("home");
-    const homeSessionId = harness.workspace.composerSessionId();
-    harness.workspace.homeState.pendingAttachments = [{ id: "home-file" }];
-    harness.activateHomeSession.mockReturnValueOnce(false);
-    harness.dom.composerInput.value = "Keep this draft";
-
-    harness.feature.dispatch();
-    await vi.waitFor(() => expect(harness.workspace.homeState.composerSending).toBe(false));
-
-    expect(harness.client.postChatMessage).not.toHaveBeenCalled();
-    expect(harness.state.currentSessionId).toBe("existing-chat");
-    expect(harness.workspace.composerSessionId()).toBe(homeSessionId);
-    expect(harness.dom.composerInput.value).toBe("Keep this draft");
-    expect(harness.workspace.homeState.pendingAttachments).toEqual([{ id: "home-file" }]);
+  test("retains the complete Home draft when Chat activation is blocked", async () => {
+    const h = createComposerProductionHarness();
+    h.feature.setWorkspace("home");
+    const draft = h.workspace.homeDraft();
+    draft.attachments = [{ id: "home-file" }];
+    h.activateHomeSession.mockReturnValueOnce(false);
+    h.type("Keep this draft");
+    expect(await h.feature.dispatch()).toMatchObject({ status: "refused" });
+    expect(h.client.postChatMessage).not.toHaveBeenCalled();
+    expect(h.state.currentSessionId).toBe("existing-chat");
+    expect(h.workspace.composerSessionId()).toBe(draft.scope.sessionId);
+    expect(h.dom.composerInput.value).toBe("Keep this draft");
+    expect(draft.attachments).toEqual([{ id: "home-file" }]);
   });
 
-  test("returns uploaded files to the new Chat when the send fails", async () => {
-    const harness = createComposerWorkspaceHarness();
-    harness.feature.setWorkspace("home");
-    await harness.feature.upload(
-      Object.assign(new Blob(["document"], { type: "text/plain" }), { name: "notes.txt" }),
-    );
-    harness.client.postChatMessage.mockRejectedValueOnce(new Error("Offline"));
-    harness.dom.composerInput.value = "Send this";
-
-    harness.feature.dispatch();
-    await vi.waitFor(() => expect(harness.onControlEvent).toHaveBeenCalled());
-
-    expect(harness.workspace.isChatVisible()).toBe(true);
-    expect(harness.state.pendingAttachments).toEqual([
-      expect.objectContaining({ id: "home-file", sessionId: "home-session-1" }),
-    ]);
-    expect(harness.onControlEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ summary: "Offline" }),
-    );
-    expect(harness.dom.composerInput.focus).not.toHaveBeenCalled();
+  test("keeps an unconfirmed Home send and files paused instead of silently restoring it", async () => {
+    const h = createComposerProductionHarness();
+    h.feature.setWorkspace("home");
+    const scope = h.workspace.homeDraft().scope;
+    await h.feature.upload(Object.assign(new Blob(["document"], { type: "text/plain" }), { name: "notes.txt" }));
+    h.client.postChatMessage.mockRejectedValueOnce(new Error("Offline"));
+    h.type("Send this");
+    expect(await h.feature.dispatch()).toMatchObject({ status: "uncertain" });
+    const paused = h.composer.lifecycle.paused(scope);
+    expect(paused).toHaveLength(1);
+    expect(paused[0].payload.attachments).toEqual([expect.objectContaining({ id: "home-file", sessionId: scope.sessionId })]);
+    expect(h.workspace.chatDraft().attachments).toEqual([]);
+    expect(h.client.deleteAttachment).not.toHaveBeenCalled();
+    expect(h.client.postChatMessage).toHaveBeenCalledOnce();
   });
 
-  test("invalidates a pending Home upload after changing environment", async () => {
-    const harness = createComposerWorkspaceHarness();
-    harness.feature.setWorkspace("home");
-    let resolveUpload!: (value: {
-      id: string; storageRef: string; mimeType: string;
-    }) => void;
-    harness.client.uploadAttachment.mockReturnValueOnce(
-      new Promise((resolve) => { resolveUpload = resolve; }),
-    );
-    const upload = harness.feature.upload(
-      Object.assign(new Blob(["document"], { type: "text/plain" }), { name: "notes.txt" }),
-    );
-    harness.setEnvironmentId("prod");
-    harness.feature.environmentChanged();
-    resolveUpload({
-      id: "stale-file",
-      storageRef: "home-session-1/stale-file",
-      mimeType: "text/plain",
-    });
+  test("parks a Home upload in its source environment instead of deleting it on navigation", async () => {
+    const h = createComposerProductionHarness();
+    h.feature.setWorkspace("home");
+    const original = h.workspace.homeDraft();
+    let resolve!: (file: { id: string; storageRef: string; mimeType: string }) => void;
+    h.client.uploadAttachment.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    const upload = h.feature.upload(Object.assign(new Blob(["document"], { type: "text/plain" }), { name: "notes.txt" }));
+    h.setEnvironmentId("prod");
+    h.feature.environmentChanged();
+    resolve({ id: "late-file", storageRef: `${original.scope.sessionId}/late-file`, mimeType: "text/plain" });
     await upload;
-
-    expect(harness.workspace.homeState.pendingAttachments).toEqual([]);
-    expect(harness.workspace.homeState.environmentId).toBe("prod");
-    expect(harness.client.deleteAttachment).toHaveBeenCalledWith(
-      expect.objectContaining({
-        environmentId: "dev",
-        sessionId: "home-session-1",
-        id: "stale-file",
-      }),
-    );
+    expect(h.workspace.homeDraft().attachments).toEqual([]);
+    expect(h.workspace.homeDraft().scope.environmentId).toBe("prod");
+    expect(original.attachments).toEqual([expect.objectContaining({ id: "late-file", environment: "dev" })]);
+    expect(h.client.deleteAttachment).not.toHaveBeenCalled();
   });
 });

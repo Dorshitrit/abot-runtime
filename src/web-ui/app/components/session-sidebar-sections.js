@@ -7,7 +7,7 @@ export function renderSessionSidebarSections({
   if (showingArchived) {
     const notice = document.createElement("p");
     notice.className = "session-archive-notice";
-    notice.textContent = "Archived in this browser and environment. Restore a conversation from its menu.";
+    notice.textContent = "Archived in this ABot installation and environment. Restore a conversation from its menu.";
     root.appendChild(notice);
   }
   const pinned = sessions.filter((session) => isPinned(session.id));
@@ -35,7 +35,7 @@ export function renderSessionSidebarSections({
   const toggle = document.createElement("button");
   toggle.type = "button";
   toggle.className = "session-archive-toggle";
-  toggle.title = "Conversations archived in this browser and environment";
+  toggle.title = "Conversations archived in this ABot installation and environment";
   toggle.textContent = showingArchived ? "Back to conversations" : `Archived (${archivedCount})`;
   toggle.setAttribute("aria-pressed", String(showingArchived));
   toggle.addEventListener("click", onToggleArchived);

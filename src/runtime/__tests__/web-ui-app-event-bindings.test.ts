@@ -12,24 +12,29 @@ function deferred<T>() {
 }
 
 function fakeEventElement() {
-  const listeners = new Map<string, Array<{ listener: (event: unknown) => void; capture: boolean }>>();
+  const listeners = new Map<string, Array<{ listener: (event: unknown) => unknown; capture: boolean }>>();
   return {
     value: "",
     textContent: "",
-    addEventListener(type: string, listener: (event: unknown) => void, capture = false) {
+    addEventListener(type: string, listener: (event: unknown) => unknown, capture = false) {
       listeners.set(type, [...(listeners.get(type) || []), { listener, capture }]);
     },
     contains: () => false,
     dispatch(type: string, event: Record<string, unknown> = {}) {
       const ordered = [...(listeners.get(type) || [])].sort((left, right) => Number(right.capture) - Number(left.capture));
+      let stopped = false;
+      const pending: unknown[] = [];
       for (const { listener } of ordered) {
-        listener({
+        if (stopped) break;
+        pending.push(listener({
           target: this,
           preventDefault: vi.fn(),
           stopPropagation: vi.fn(),
+          stopImmediatePropagation: () => { stopped = true; },
           ...event,
-        });
+        }));
       }
+      return Promise.all(pending);
     },
     dispatchEvent(event: Event) {
       this.dispatch(event.type);
@@ -59,7 +64,6 @@ function createHarness(
   const dom = createDom();
   dom.environmentSelect.value = "dev";
   const state = {
-    activeComposerQueueRecovery: null,
     agentModeMenuOpen: false,
     agentPickerOpen: true,
     currentSessionId: "session-1",
@@ -86,6 +90,7 @@ function createHarness(
   const shell = {
     closeOverlaysOnEscape: vi.fn(() => false),
     prepareWorkspaceActivation: vi.fn(() => vi.fn(() => true)),
+    showToast: vi.fn(),
     setSessionsDrawerOpen: vi.fn(),
   };
   const onSessionCreated = vi.fn();
@@ -108,7 +113,7 @@ function createHarness(
 }
 
 describe("web ui environment transitions", () => {
-  test("initializes the new ordinary session before permission controls render", () => {
+  test("initializes the new ordinary session before permission controls render", async () => {
     const harness = createHarness({
       saveSessionId: vi.fn(),
       selectedEnvironmentId: () => "dev",
@@ -117,7 +122,7 @@ describe("web ui environment transitions", () => {
       subscribeSession: vi.fn(),
       renderSessions: vi.fn(),
     });
-    harness.dom.newSessionButton.dispatch("click");
+    await harness.dom.newSessionButton.dispatch("click");
     expect(harness.state.currentSessionId).not.toBe("session-1");
     expect(harness.onSessionCreated).toHaveBeenCalledExactlyOnceWith(
       harness.state.currentSessionId,
@@ -143,8 +148,8 @@ describe("web ui environment transitions", () => {
       to: "prod",
     });
     expect(harness.dom.environmentSelect.value).toBe("dev");
-    expect(observedEnvironments).toEqual(["dev"]);
-    expect(harness.actions.suspendQueueRecovery).not.toHaveBeenCalled();
+    expect(observedEnvironments).toEqual([]);
+    expect(harness.actions.suspendQueueRecovery).toHaveBeenCalledOnce();
     expect(harness.actions.saveEnvironmentId).not.toHaveBeenCalled();
     expect(harness.actions.loadRuntimeConfig).not.toHaveBeenCalled();
     expect(harness.state.currentSessionId).toBe("session-1");
@@ -212,7 +217,7 @@ describe("web ui environment transitions", () => {
 });
 
 describe("web ui new-session transitions", () => {
-  test("does not commit a prepared workspace change when queue recovery blocks navigation", () => {
+  test("does not commit a prepared workspace change when queue recovery blocks navigation", async () => {
     const harness = createHarness({
       suspendQueueRecovery: vi.fn(() => false),
     });
@@ -221,12 +226,9 @@ describe("web ui new-session transitions", () => {
       commitWorkspaceActivation,
     );
 
-    harness.dom.newSessionButton.dispatch("click");
+    await harness.dom.newSessionButton.dispatch("click");
 
-    expect(harness.shell.prepareWorkspaceActivation).toHaveBeenCalledWith(
-      "chat",
-      { focus: false },
-    );
+    expect(harness.shell.prepareWorkspaceActivation).not.toHaveBeenCalled();
     expect(harness.actions.suspendQueueRecovery).toHaveBeenCalledOnce();
     expect(commitWorkspaceActivation).not.toHaveBeenCalled();
     expect(harness.state.currentSessionId).toBe("session-1");
@@ -277,4 +279,49 @@ describe("awaitable environment navigation", () => {
     await expect(first).resolves.toBe(false);
     expect(f.actions.restoreLastSession).toHaveBeenCalledOnce();
   });
+});
+
+
+test("a shared saved default cannot select the active environment before recovered edits are ready", async () => {
+  const recovery = deferred<() => boolean>();
+  const saveDefault = deferred<void>();
+  let saved = "prod";
+  const commitRecovery = vi.fn(() => true);
+  const f = createHarness({
+    savedEnvironmentId: () => saved,
+    prepareQueueRecovery: vi.fn(() => recovery.promise),
+    saveEnvironmentId: vi.fn(() => saveDefault.promise),
+  });
+  const observed: string[] = [];
+  f.dom.environmentSelect.addEventListener("change", () => { observed.push(f.dom.environmentSelect.value); });
+  const changing = f.controller.changeEnvironment("prod");
+  expect(f.dom.environmentSelect.value).toBe("dev");
+  expect(f.state.currentSessionId).toBe("session-1");
+  expect(f.actions.loadModels).not.toHaveBeenCalled();
+  expect(observed).toEqual([]);
+  saved = "qa"; // Another window changes only the default while this transition waits.
+  recovery.resolve(commitRecovery);
+  await expect(changing).resolves.toBe(true);
+  expect(commitRecovery).toHaveBeenCalledOnce();
+  expect(f.dom.environmentSelect.value).toBe("prod");
+  expect(observed).toEqual(["prod"]);
+  expect(f.actions.saveEnvironmentId).toHaveBeenCalledWith("prod");
+  expect(f.actions.loadModels).toHaveBeenCalledOnce();
+  expect(f.actions.restoreLastSession).toHaveBeenCalledOnce();
+  saveDefault.resolve();
+});
+
+test("a failed default save reports the error without rolling back a committed route or blocking its loads", async () => {
+  let rejectSave!: (error: Error) => void;
+  const saved = new Promise<void>((_resolve, reject) => { rejectSave = reject; });
+  const f = createHarness({ saveEnvironmentId: () => saved });
+  await expect(f.controller.changeEnvironment("prod")).resolves.toBe(true);
+  expect(f.dom.environmentSelect.value).toBe("prod");
+  expect(f.actions.restoreLastSession).toHaveBeenCalledOnce();
+  rejectSave(new Error("Default could not be saved"));
+  await vi.waitFor(() => expect(f.shell.showToast).toHaveBeenCalledWith("Default could not be saved", "failed"));
+  expect(f.dom.environmentSelect.value).toBe("prod");
+  expect(f.state.currentSessionId).toBe("");
+  expect(f.state.messages).toEqual([]);
+  expect(f.actions.restoreLastSession).toHaveBeenCalledOnce();
 });

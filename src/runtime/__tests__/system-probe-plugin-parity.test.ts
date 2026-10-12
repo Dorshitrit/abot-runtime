@@ -24,7 +24,10 @@ describe("system-probe plugin parity", () => {
       controlsRefinement: "mechanical_when_complete",
       eventPresentation: {
         metadata: {
-          path: { param: "path", kind: "string", default: "/" },
+          path: { param: "path", kind: "string" },
+        },
+        resultMetadata: {
+          path: { path: "data.diskPath", kind: "preview" },
         },
       },
     });
@@ -74,42 +77,46 @@ describe("system-probe plugin parity", () => {
     });
   });
 
-  test("delegates the default root-filesystem probe to the runtime path authority", async () => {
-    const resolve = vi.fn(() => ({
-      location: "host_system",
-      rootPath: "/",
-      absolutePath: "/",
-      relativePath: "",
-      logicalPath: "/",
-    }));
-    const createPlugin = loadBundledPluginEntrypoint<
-      Readonly<Record<string, unknown>>,
-      Readonly<{
-        handlers: Readonly<{
-          system_probe: (
-            params: Record<string, unknown>,
-          ) => Promise<Record<string, unknown>>;
-        }>;
-      }>
-    >("system-probe");
-    const handler = createPlugin({
-      runtimePathResolver: { resolve },
-    }).handlers.system_probe;
+  test.skipIf(process.platform === "win32")(
+    "delegates the default root-filesystem probe to the runtime path authority",
+    async () => {
+      const resolve = vi.fn(() => ({
+        location: "host_system",
+        rootPath: "/",
+        absolutePath: "/",
+        relativePath: "",
+        logicalPath: "/",
+      }));
+      const createPlugin = loadBundledPluginEntrypoint<
+        Readonly<Record<string, unknown>>,
+        Readonly<{
+          handlers: Readonly<{
+            system_probe: (
+              params: Record<string, unknown>,
+            ) => Promise<Record<string, unknown>>;
+          }>;
+        }>
+      >("system-probe");
+      const handler = createPlugin({
+        runtimePathResolver: { resolve },
+        runtimePaths: { rootDir: "/runtime" },
+      }).handlers.system_probe;
 
-    const result = await handler({});
-    expect(result).toMatchObject({
-      ok: true,
-      output: expect.stringContaining("disk_path: /"),
-      data: {
-        diskPath: "/",
-        diskStatus: "available",
-      },
-    });
-    expect(result.output).not.toContain("hostname:");
-    expect(result.output).not.toContain("resolved_disk_path:");
-    expect(resolve).toHaveBeenCalledWith("/", {
-      requirePath: true,
-      allowedLocations: ["agent_work", "workspace", "host_system"],
-    });
-  });
+      const result = await handler({});
+      expect(result).toMatchObject({
+        ok: true,
+        output: expect.stringContaining("disk_path: /"),
+        data: {
+          diskPath: "/",
+          diskStatus: "available",
+        },
+      });
+      expect(result.output).not.toContain("hostname:");
+      expect(result.output).not.toContain("resolved_disk_path:");
+      expect(resolve).toHaveBeenCalledWith("/", {
+        requirePath: true,
+        allowedLocations: ["agent_work", "workspace", "host_system"],
+      });
+    },
+  );
 });

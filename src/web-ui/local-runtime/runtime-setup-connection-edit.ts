@@ -1,3 +1,8 @@
+import { commitRuntimeSetupEdit } from "./runtime-setup-edit-transaction.js";
+import {
+  withPlannedRuntimeSetupCredentials,
+  type RuntimeSetupCredentialWrite,
+} from "./runtime-setup-credentials.js";
 import { randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -46,6 +51,7 @@ export async function editRuntimeSetupConnection(params: {
   draft: RuntimeSetupDraft;
   input: RuntimeSetupInput;
   credentialChanged: boolean;
+  credentialWrite: RuntimeSetupCredentialWrite;
 }): Promise<{ draft: RuntimeSetupDraft; embeddingInvalidated: boolean }> {
   return withConfigFileTransaction(
     params.configPath,
@@ -133,29 +139,50 @@ export async function editRuntimeSetupConnection(params: {
             modelConfig,
             ownedProviders: retained.ownedProviders,
           };
-          let modelWritten = false;
-          let configWritten = false;
-          try {
-            await modelTransaction.write(modelConfig, {
-              expectedConfig: params.draft.modelConfig,
-            });
-            modelWritten = true;
-            await configTransaction.write(config, {
-              expectedConfig: source.config,
-            });
-            configWritten = true;
-            await writeRuntimeSetupDraft(nextDraft);
-          } catch (error) {
-            if (configWritten)
-              await configTransaction.write(source.config, {
-                expectedConfig: config,
-              });
-            if (modelWritten)
-              await modelTransaction.write(params.draft.modelConfig, {
-                expectedConfig: modelConfig,
-              });
-            throw error;
-          }
+          await withPlannedRuntimeSetupCredentials(
+            params.credentialWrite,
+            async (credentials) => {
+              const json = (value: object) =>
+                JSON.stringify(value, null, 2) + "\n";
+              await commitRuntimeSetupEdit(
+                params.rootDir,
+                [
+                  {
+                    role: "model",
+                    path: modelTransaction.path,
+                    text: json(modelConfig),
+                  },
+                  {
+                    role: "config",
+                    path: configTransaction.path,
+                    text: json(config),
+                  },
+                  {
+                    role: "receipt",
+                    path: configTransaction.path + ".web-setup.json",
+                    text: json(nextDraft),
+                  },
+                  {
+                    role: "credentials",
+                    path: credentials.path,
+                    text: credentials.text,
+                    mode: 0o600,
+                  },
+                ],
+                async () => {
+                  await modelTransaction.write(modelConfig, {
+                    expectedConfig: params.draft.modelConfig,
+                  });
+                  await configTransaction.write(config, {
+                    expectedConfig: source.config,
+                  });
+                  await writeRuntimeSetupDraft(nextDraft);
+                  await credentials.write();
+                },
+                credentials.publish,
+              );
+            },
+          );
           return { draft: nextDraft, embeddingInvalidated };
         },
       );

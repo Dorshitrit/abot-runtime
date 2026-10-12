@@ -1,3 +1,11 @@
+import {
+  buildExecutionCapabilityResultMessage,
+  EXECUTION_CAPABILITY_TOOL_NAME,
+} from "./capability-result-context.js";
+export {
+  EXECUTION_CAPABILITY_RESULT_MESSAGE_KIND,
+  EXECUTION_CAPABILITY_TOOL_NAME,
+} from "./capability-result-context.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { MemoryRecallContinuation } from "../../long-term-memory/recall-continuation.js";
 import type {
@@ -22,10 +30,7 @@ export const EXECUTION_CAPABILITY_GROUP_CATALOG_MESSAGE_KIND =
   "runtime_execution_capability_group_catalog_v1" as const;
 export const EXECUTION_AGENT_ACTION_MESSAGE_KIND =
   "runtime_execution_agent_action_v1" as const;
-export const EXECUTION_CAPABILITY_RESULT_MESSAGE_KIND =
-  "runtime_execution_capability_result_v1" as const;
 export { EXECUTION_CAPABILITY_RECONSIDERATION_MESSAGE_KIND } from "./reconsideration-context.js";
-export const EXECUTION_CAPABILITY_TOOL_NAME = "runtime_capability" as const;
 
 type ExecutionStateNoticeProjection = Readonly<{
   includeCapabilitySelectionReconsideration: boolean;
@@ -157,7 +162,7 @@ function buildExecutionStateMessageForConsumer(
         capabilityResults:
           projection.capabilityEvidenceLane === "selected"
             ? "Only evidence explicitly selected for the frozen Controls assignment is supplied in the canonical runtime_request_tool_results_v1 reference lane. Omitted executions add no assignment or result evidence."
-            : "Accepted capability actions and exact canonical adapter results are supplied only in the chronological native tool lane after the current request.",
+            : "Accepted capability actions, canonical runtime outcomes and effects, and exact adapter results are supplied only in the chronological native tool lane after the current request.",
         ...(eligibleControlsEvidenceExecutionIds !== undefined
           ? {
               controlsEvidenceSelection:
@@ -185,7 +190,27 @@ function buildExecutionStateMessageForConsumer(
 
 export function buildExecutionCapabilityGroupCatalogMessage(
   catalogGroups: readonly CapabilityCatalogGroup[],
+  capabilities: readonly CapabilityDescriptor[],
 ): ChatMessage {
+  const sortedCapabilities = [...capabilities].sort((left, right) => {
+    if (left.capabilityId < right.capabilityId) return -1;
+    if (left.capabilityId > right.capabilityId) return 1;
+    return 0;
+  });
+  const describedCapabilityIds = new Set<string>();
+  const projectedGroups = catalogGroups.map((group) => ({
+    ...group,
+    description: sortedCapabilities
+      .filter((capability) =>
+        (capability.catalogGroups ?? ["other"]).includes(group.groupId),
+      )
+      .map(({ capabilityId, summary }) => {
+        if (describedCapabilityIds.has(capabilityId)) return capabilityId;
+        describedCapabilityIds.add(capabilityId);
+        return `${capabilityId}: ${summary}`;
+      })
+      .join("\n"),
+  }));
   return Object.freeze({
     role: "user" as const,
     content: JSON.stringify({
@@ -199,13 +224,7 @@ export function buildExecutionCapabilityGroupCatalogMessage(
         unchangedUpdate: "rejected_before_action",
         automaticTransitions: false,
       },
-      groupDescriptionProjection: {
-        source: "all_group_member_capabilities",
-        lineFormat: "capabilityId: summary",
-        ordering: "ascii_ascending",
-        completeness: "all_members_without_sampling_or_truncation",
-      },
-      catalogGroups,
+      catalogGroups: projectedGroups,
     }),
   });
 }
@@ -220,9 +239,7 @@ export function buildExecutionCapabilityCatalogMessage(
       authority: "runtime_registry",
       capabilities: capabilities.map((capability) => ({
         capabilityId: capability.capabilityId,
-        summary: capability.summary,
         effect: capability.effect,
-        selectionControlIds: capability.selectionControlIds ?? [],
       })),
     }),
   });
@@ -259,7 +276,7 @@ export function buildExecutionContinuationMessages(
       invocationAttempt: group[0]!.invocationAttempt,
       messages: [
         buildAcceptedActionMessage(group),
-        ...group.map((execution) => buildCapabilityResultMessage(execution)),
+        ...group.map((execution) => buildExecutionCapabilityResultMessage(head, execution)),
       ],
     })),
     ...memoryRecalls,
@@ -301,30 +318,6 @@ function buildAcceptedActionMessage(
         }),
       ),
     ),
-  });
-}
-
-function buildCapabilityResultMessage(
-  execution: RoleCapabilityExecution,
-): ChatMessage {
-  if (execution.status !== "settled" || execution.exactResult === undefined) {
-    throw new Error("execution_agent_continuation_result_invalid");
-  }
-  return Object.freeze({
-    role: "tool" as const,
-    content: JSON.stringify({
-      kind: EXECUTION_CAPABILITY_RESULT_MESSAGE_KIND,
-      authority: "capability_adapter_result",
-      presenceEffect: "runtime_result_only_not_user_intent",
-      invocationAttempt: execution.invocationAttempt,
-      result: {
-        executionId: execution.executionId,
-        capabilityId: execution.capabilityId,
-        adapterResult: execution.exactResult,
-      },
-    }),
-    toolCallId: execution.executionId,
-    toolName: EXECUTION_CAPABILITY_TOOL_NAME,
   });
 }
 

@@ -3,7 +3,6 @@ import { stat } from "node:fs/promises";
 import {
   boundText,
   defineRuntimePlugin,
-  failureFromError,
   failureResult,
   readBoundedInteger,
   readOptionalString,
@@ -11,6 +10,10 @@ import {
   successResult,
 } from "../../../src/plugin-sdk/index.js";
 
+import {
+  projectInspectionFailure,
+  throwIfProjectInspectionCancelled,
+} from "./inspection-failure.js";
 import { readProjectManifests } from "./manifest-summary.js";
 import { collectProjectTree } from "./tree.js";
 
@@ -40,9 +43,12 @@ export default defineRuntimePlugin((context) => {
         const pathContext = {
           ...context,
           runtimePathResolver:
-            executionContext?.runtimePathResolver ?? context.runtimePathResolver,
+            executionContext?.runtimePathResolver ??
+            context.runtimePathResolver,
         };
+        const signal = executionContext?.abortSignal;
         try {
+          throwIfProjectInspectionCancelled(signal);
           const requestedPath = readOptionalString(params.path) ?? ".";
           const target = resolvePluginPath(pathContext, requestedPath, {
             defaultPath: ".",
@@ -68,9 +74,10 @@ export default defineRuntimePlugin((context) => {
             name: "maxEntries",
           });
           const [tree, manifests] = await Promise.all([
-            collectProjectTree(pathContext, target, depth, maxEntries),
-            readProjectManifests(pathContext, target),
+            collectProjectTree(pathContext, target, depth, maxEntries, signal),
+            readProjectManifests(pathContext, target, signal),
           ]);
+          throwIfProjectInspectionCancelled(signal);
           const packageManifest = manifests.find(
             ({ file }) => file === "package.json",
           );
@@ -111,11 +118,7 @@ export default defineRuntimePlugin((context) => {
             },
           });
         } catch (error) {
-          return failureFromError(error, {
-            fallbackCode: "project_orientation_failed",
-            fallbackMessage: "Project orientation failed.",
-            operation: "inspect_project",
-          });
+          return projectInspectionFailure(error, signal);
         }
       },
     },

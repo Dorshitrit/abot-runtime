@@ -6,6 +6,14 @@ var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res, err) => function __init() {
+  if (err) throw err[0];
+  try {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  } catch (e) {
+    throw err = [e], e;
+  }
+};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
@@ -20,12 +28,270 @@ var __copyProps = (to, from, except, desc) => {
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
+// src/shared/windows-file-io/read-bytes-script.ts
+var WINDOWS_FILE_READ_BYTES;
+var init_read_bytes_script = __esm({
+  "src/shared/windows-file-io/read-bytes-script.ts"() {
+    "use strict";
+    WINDOWS_FILE_READ_BYTES = String.raw`
+public static partial class AbotFilesystem {
+  static byte[] ReadBytes(SafeFileHandle file, long position, int length) {
+    long actual; Check(SetFilePointerEx(file, position, out actual, 0));
+    if (actual != position) throw new FsFault("filesystem_read_incomplete");
+    var bytes = new byte[length];
+    int offset = 0;
+    while (offset < length) {
+      var chunk = new byte[Math.Min(65536, length-offset)];
+      uint read; Check(ReadFile(file, chunk, (uint)chunk.Length, out read, IntPtr.Zero));
+      if (read == 0 || read > chunk.Length) throw new FsFault("filesystem_read_incomplete");
+      Buffer.BlockCopy(chunk, 0, bytes, offset, (int)read);
+      offset += (int)read;
+    }
+    return bytes;
+  }
+}
+`;
+  }
+});
+
+// src/shared/windows-file-io/native-script.ts
+var WINDOWS_FILESYSTEM_NATIVE;
+var init_native_script = __esm({
+  "src/shared/windows-file-io/native-script.ts"() {
+    "use strict";
+    WINDOWS_FILESYSTEM_NATIVE = String.raw`
+using System;
+using System.IO;
+using System.Text;
+using System.Linq;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
+using System.Web.Script.Serialization;
+using Microsoft.Win32.SafeHandles;
+
+public sealed class FsFault : Exception {
+  public readonly string Code;
+  public FsFault(string code) : base(code) { Code = code; }
+}
+public static partial class AbotFilesystem {
+  [StructLayout(LayoutKind.Sequential)] struct UnicodeString { public ushort Length, MaximumLength; public IntPtr Buffer; }
+  [StructLayout(LayoutKind.Sequential)] struct ObjectAttributes {
+    public int Length; public IntPtr Root, Name; public uint Attributes; public IntPtr Security, Qos;
+  }
+  [StructLayout(LayoutKind.Sequential)] struct IoStatus { public IntPtr Status, Information; }
+  [StructLayout(LayoutKind.Sequential)] struct BasicInfo {
+    public long Created, Accessed, Modified, Changed; public uint Attributes;
+  }
+  [StructLayout(LayoutKind.Sequential)] struct FileInfo {
+    public uint Attributes; public System.Runtime.InteropServices.ComTypes.FILETIME Created, Accessed, Modified;
+    public uint Volume, SizeHigh, SizeLow, Links, IndexHigh, IndexLow;
+  }
+  [DllImport("ntdll.dll")] static extern int NtCreateFile(out SafeFileHandle file, uint access,
+    ref ObjectAttributes attributes, out IoStatus status, IntPtr allocation, uint fileAttributes,
+    uint share, uint disposition, uint options, IntPtr ea, uint eaLength);
+  [DllImport("ntdll.dll")] static extern uint RtlNtStatusToDosError(int status);
+  [DllImport("ntdll.dll")] static extern int NtSetInformationFile(SafeFileHandle file,
+    out IoStatus status, IntPtr info, uint length, int kind);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileInformationByHandle(SafeFileHandle file, out FileInfo info);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileInformationByHandleEx(SafeFileHandle file, int kind, IntPtr data, uint length);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetFileInformationByHandle(SafeFileHandle file, int kind, ref BasicInfo info, uint length);
+  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern uint GetFinalPathNameByHandle(SafeFileHandle file, StringBuilder name, uint length, uint flags);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetFilePointerEx(SafeFileHandle file, long position, out long result, uint method);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool ReadFile(SafeFileHandle file, byte[] bytes, uint count, out uint read, IntPtr overlapped);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool WriteFile(SafeFileHandle file, byte[] bytes, uint count, out uint written, IntPtr overlapped);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool FlushFileBuffers(SafeFileHandle file);
+  [DllImport("advapi32.dll")] static extern uint GetSecurityInfo(SafeFileHandle file, int kind, uint information,
+    out IntPtr owner, out IntPtr group, out IntPtr dacl, out IntPtr sacl, out IntPtr descriptor);
+  [DllImport("advapi32.dll")] static extern uint SetSecurityInfo(SafeFileHandle file, int kind, uint information,
+    IntPtr owner, IntPtr group, IntPtr dacl, IntPtr sacl);
+  [DllImport("advapi32.dll", SetLastError=true)] static extern bool GetSecurityDescriptorControl(IntPtr descriptor, out ushort control, out uint revision);
+  [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr value);
+
+  static void Check(bool success) { if (!success) NativeFailure((uint)Marshal.GetLastWin32Error()); }
+  static bool IsNotDirectoryError(uint code) { return code == 267; } // ERROR_DIRECTORY
+  static void NativeFailure(uint code) {
+    if (IsNotDirectoryError(code)) throw new FsFault("not_a_directory");
+    if (code == 2 || code == 3) throw new FsFault("file_not_found");
+    if (code == 80 || code == 183) throw new FsFault("filesystem_target_changed");
+    if (code == 5 || code == 32 || code == 33) throw new FsFault("filesystem_access_denied");
+    throw new FsFault("filesystem_native_operation_failed");
+  }
+  static void CheckNt(int status) { if (status < 0) NativeFailure(RtlNtStatusToDosError(status)); }
+  static SafeFileHandle OpenHandle(SafeFileHandle root, string name, bool directory,
+    uint disposition, uint access, uint share, byte[] securityDescriptor = null, bool deleteOnClose = false) {
+    IntPtr text = Marshal.StringToHGlobalUni(name), unicodePointer = IntPtr.Zero, securityPointer = IntPtr.Zero;
+    try {
+      int length = Encoding.Unicode.GetByteCount(name);
+      if (length > 65532) throw new FsFault("filesystem_invalid_path");
+      UnicodeString unicode = new UnicodeString { Length=(ushort)length, MaximumLength=(ushort)(length+2), Buffer=text };
+      unicodePointer = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(UnicodeString)));
+      Marshal.StructureToPtr(unicode, unicodePointer, false);
+      if (securityDescriptor != null) {
+        securityPointer = Marshal.AllocHGlobal(securityDescriptor.Length);
+        Marshal.Copy(securityDescriptor, 0, securityPointer, securityDescriptor.Length);
+      }
+      ObjectAttributes attributes = new ObjectAttributes {
+        Length=Marshal.SizeOf(typeof(ObjectAttributes)), Root=root == null ? IntPtr.Zero : root.DangerousGetHandle(),
+        Name=unicodePointer, Attributes=0x40, Security=securityPointer
+      };
+      SafeFileHandle file;
+      IoStatus status;
+      int result = NtCreateFile(out file, access | 0x100000, ref attributes, out status,
+        IntPtr.Zero, 0x80, share, disposition, 0x200020u | (directory ? 1u : 0x40u) | (deleteOnClose ? 0x1000u : 0u), IntPtr.Zero, 0);
+      if (result < 0) { if (file != null) file.Dispose(); CheckNt(result); }
+      try {
+        FileInfo info; Check(GetFileInformationByHandle(file, out info));
+        if ((info.Attributes & 0x400) != 0) throw new FsFault("filesystem_path_changed");
+        if (((info.Attributes & 0x10) != 0) != directory) throw new FsFault("filesystem_path_changed");
+        return file;
+      } catch { file.Dispose(); throw; }
+    } finally {
+      if (securityPointer != IntPtr.Zero) Marshal.FreeHGlobal(securityPointer);
+      if (unicodePointer != IntPtr.Zero) Marshal.FreeHGlobal(unicodePointer);
+      Marshal.FreeHGlobal(text);
+    }
+  }
+  static BasicInfo Basic(SafeFileHandle file) {
+    IntPtr buffer = Marshal.AllocHGlobal(40);
+    try { Check(GetFileInformationByHandleEx(file, 0, buffer, 40)); return (BasicInfo)Marshal.PtrToStructure(buffer, typeof(BasicInfo)); }
+    finally { Marshal.FreeHGlobal(buffer); }
+  }
+  static Dictionary<string,object> Record(params object[] pairs) {
+    var result = new Dictionary<string,object>();
+    for (int i=0;i<pairs.Length;i+=2) result.Add((string)pairs[i], pairs[i+1]);
+    return result;
+  }
+  static string Text(Dictionary<string,object> request, string key) {
+    object value;
+    if (!request.TryGetValue(key, out value) || !(value is string)) throw new FsFault("filesystem_invalid_request");
+    return (string)value;
+  }
+  static int Limit(Dictionary<string,object> request, string key, int maximum) {
+    object value;
+    if (!request.TryGetValue(key, out value) || !(value is int)) throw new FsFault("filesystem_invalid_request");
+    int number = (int)value;
+    if (number < 0 || number > maximum) throw new FsFault("filesystem_invalid_request");
+    return number;
+  }
+}
+`;
+  }
+});
+
+// src/shared/windows-file-io/authority-script.ts
+var WINDOWS_FILESYSTEM_AUTHORITY;
+var init_authority_script = __esm({
+  "src/shared/windows-file-io/authority-script.ts"() {
+    "use strict";
+    WINDOWS_FILESYSTEM_AUTHORITY = String.raw`
+public static partial class AbotFilesystem {
+  static string NativePath(string path) {
+    string full = Path.GetFullPath(path);
+    if (full.StartsWith(@"\\?\") || full.StartsWith(@"\\.\")) throw new FsFault("filesystem_invalid_path");
+    if (full.StartsWith(@"\\")) return @"\??\UNC\" + full.Substring(2);
+    if (full.Length < 3 || full[1] != ':' || full[2] != '\\') throw new FsFault("filesystem_invalid_path");
+    return @"\??\" + full;
+  }
+  static string FinalPath(SafeFileHandle handle) {
+    var value = new StringBuilder(32768);
+    uint length = GetFinalPathNameByHandle(handle, value, (uint)value.Capacity, 0);
+    Check(length != 0);
+    if (length >= value.Capacity) throw new FsFault("filesystem_invalid_path");
+    string path = value.ToString();
+    if (path.StartsWith(@"\\?\UNC\")) return @"\\" + path.Substring(8);
+    if (path.StartsWith(@"\\?\")) return path.Substring(4);
+    throw new FsFault("filesystem_path_changed");
+  }
+  static SafeFileHandle OpenRoot(Dictionary<string,object> request) {
+    string path = Path.GetFullPath(Text(request, "rootPath"));
+    SafeFileHandle root = OpenHandle(null, NativePath(path), true, 1, 0x80000000, 7);
+    try {
+      if (!String.Equals(FinalPath(root).TrimEnd('\\'), path.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+        throw new FsFault("filesystem_path_changed");
+      var expected = request["rootIdentity"] as Dictionary<string,object>;
+      if (expected == null || !MatchesIdentity(Identity(root), expected)) throw new FsFault("filesystem_path_changed");
+      return root;
+    } catch { root.Dispose(); throw; }
+  }
+  static string[] Components(Dictionary<string,object> request) {
+    string relative = Text(request, "relativePath");
+    if (relative == "") return new string[0];
+    string[] parts = relative.Split('/');
+    foreach (string part in parts) ValidateComponent(part);
+    return parts;
+  }
+  static void ValidateComponent(string name) {
+    if (name.Length == 0 || name == "." || name == "..") throw new FsFault("filesystem_invalid_path");
+    if (name.EndsWith(".") || name.EndsWith(" ")) throw new FsFault("filesystem_invalid_path");
+    foreach (char c in name) {
+      if (c < 32 || "\\/:*?\"<>|".IndexOf(c) >= 0) throw new FsFault("filesystem_invalid_path");
+    }
+    string stem = name.Split('.')[0].ToUpperInvariant();
+    if (stem == "CON" || stem == "PRN" || stem == "AUX" || stem == "NUL" ||
+      stem == "CONIN$" || stem == "CONOUT$") throw new FsFault("filesystem_invalid_path");
+    if (stem.Length == 4 && (stem.StartsWith("COM") || stem.StartsWith("LPT")) &&
+      "123456789\u00b9\u00b2\u00b3".IndexOf(stem[3]) >= 0) throw new FsFault("filesystem_invalid_path");
+  }
+  sealed class DirectoryChain : IDisposable {
+    public readonly SafeFileHandle Root;
+    readonly List<SafeFileHandle> children = new List<SafeFileHandle>();
+    public SafeFileHandle Current { get { return children.Count == 0 ? Root : children[children.Count-1]; } }
+    public DirectoryChain(Dictionary<string,object> request) { Root = OpenRoot(request); }
+    public void Walk(string[] parts, int count, bool create) {
+      for (int i=0;i<count;i++) children.Add(OpenHandle(Current, parts[i], true, create ? 3u : 1u, 0x80000000, 7));
+    }
+    public void Dispose() { for (int i=children.Count-1;i>=0;i--) children[i].Dispose(); Root.Dispose(); }
+  }
+  static ulong FileId(FileInfo info) {
+    ulong id=((ulong)info.IndexHigh << 32) | info.IndexLow;
+    if (id == 0) throw new FsFault("filesystem_safe_io_unsupported");
+    return id;
+  }
+  static Dictionary<string,object> Identity(SafeFileHandle file) {
+    FileInfo info; Check(GetFileInformationByHandle(file, out info));
+    BasicInfo basic = Basic(file);
+    return Record("device", info.Volume.ToString(), "inode", FileId(info).ToString(),
+      "birthtimeNs", ((basic.Created - 116444736000000000L) * 100L).ToString());
+  }
+  static bool MatchesIdentity(Dictionary<string,object> left, Dictionary<string,object> right) {
+    foreach (string key in new [] {"device", "inode", "birthtimeNs"}) {
+      if (!right.ContainsKey(key) || !Object.Equals(left[key], right[key])) return false;
+    }
+    return true;
+  }
+  static Dictionary<string,object> Metadata(SafeFileHandle file) {
+    FileInfo info; Check(GetFileInformationByHandle(file, out info));
+    BasicInfo basic = Basic(file);
+    ulong size = ((ulong)info.SizeHigh << 32) | info.SizeLow;
+    if (size > 9007199254740991UL) throw new FsFault("file_too_large");
+    return Record("device", info.Volume.ToString(), "inode", FileId(info).ToString(),
+      "size", (long)size, "mode", (basic.Attributes & 1) != 0 ? 292 : 438,
+      "modifiedNs", ((basic.Modified - 116444736000000000L) * 100L).ToString(),
+      "changedNs", ((basic.Changed - 116444736000000000L) * 100L).ToString());
+  }
+  static bool SameMetadata(Dictionary<string,object> left, Dictionary<string,object> right) {
+    foreach (string key in new [] {"device", "inode", "size", "mode", "modifiedNs", "changedNs"}) {
+      if (!right.ContainsKey(key) || Convert.ToString(left[key]) != Convert.ToString(right[key])) return false;
+    }
+    return true;
+  }
+}
+`;
+  }
+});
+
 // plugins/filesystem/source/index.ts
 var index_exports = {};
 __export(index_exports, {
   default: () => index_default
 });
 module.exports = __toCommonJS(index_exports);
+
+// plugins/filesystem/source/windows/request-availability.ts
+var import_node_async_hooks = require("node:async_hooks");
 
 // src/plugin-sdk/bounds.ts
 function boundText(value, options) {
@@ -270,6 +536,557 @@ function failureFromError(error, options) {
 // src/capabilities/tool-media.ts
 var TOOL_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
+// plugins/filesystem/source/windows/process.ts
+var import_node_child_process = require("node:child_process");
+var import_node_path = require("node:path");
+
+// plugins/filesystem/source/errors.ts
+var FilesystemToolError = class extends Error {
+  code;
+  data;
+  constructor(code, message = code, data) {
+    super(message);
+    this.name = "FilesystemToolError";
+    this.code = code;
+    this.data = data;
+  }
+};
+function fail(code, message = code, data) {
+  throw new FilesystemToolError(code, message, data);
+}
+function isNodeErrorCode(error, code) {
+  return error instanceof Error && typeof error.code === "string" && error.code === code;
+}
+function isDirectoryTypeFailure(code) {
+  return code === "not_a_directory" || code === "ENOTDIR";
+}
+function failNotDirectory() {
+  fail(
+    "not_a_directory",
+    "A component of the requested path is not a directory. An existing file cannot contain child files. Inspect the path and choose a file target under a directory; do not repeat the same operation unchanged or overwrite the blocking file to turn it into a directory."
+  );
+}
+function rethrowFilesystemError(error, operation, logicalPath) {
+  if (isRuntimeToolPathError(error) || error instanceof FilesystemToolError) {
+    throw error;
+  }
+  if (isNodeErrorCode(error, "ENOENT")) {
+    fail("file_not_found", `Path does not exist: ${logicalPath}`);
+  }
+  if (error instanceof Error && isDirectoryTypeFailure(error.code)) {
+    failNotDirectory();
+  }
+  if (isNodeErrorCode(error, "EACCES") || isNodeErrorCode(error, "EPERM")) {
+    fail(
+      "filesystem_access_denied",
+      `Access was denied while attempting to ${operation}: ${logicalPath}`
+    );
+  }
+  if (isNodeErrorCode(error, "EISDIR")) {
+    fail("not_a_file", `Expected a regular file: ${logicalPath}`);
+  }
+  fail(
+    `filesystem_${operation}_failed`,
+    `Filesystem ${operation} failed for ${logicalPath}.`
+  );
+}
+
+// plugins/filesystem/source/windows/source.ts
+init_read_bytes_script();
+
+// plugins/filesystem/source/windows/native-script.ts
+init_native_script();
+
+// plugins/filesystem/source/windows/authority-script.ts
+init_authority_script();
+
+// plugins/filesystem/source/windows/read-script.ts
+var WINDOWS_FILESYSTEM_READ = String.raw`
+public static partial class AbotFilesystem {
+  static object ReadSlices(Dictionary<string,object> request) {
+    int headLimit=Limit(request, "headBytes", 1048576), tailLimit=Limit(request, "tailBytes", 1048576);
+    int maximum=Limit(request, "maximumFileBytes", 1048576);
+    string[] parts=Components(request);
+    if (parts.Length == 0) throw new FsFault("not_a_file");
+    using (var chain=new DirectoryChain(request)) {
+      chain.Walk(parts, parts.Length-1, false);
+      using (var file=OpenHandle(chain.Current, parts[parts.Length-1], false, 1, 0x80000000, 1)) {
+        var before=Metadata(file);
+        long size=Convert.ToInt64(before["size"]);
+        if (maximum > 0 && size > maximum) throw new FsFault("file_too_large");
+        bool complete=size <= (long)headLimit+tailLimit;
+        var head=ReadBytes(file, 0, complete ? (int)size : headLimit);
+        var tail=complete ? new byte[0] : ReadBytes(file, size-tailLimit, tailLimit);
+        if (!SameMetadata(before, Metadata(file))) throw new FsFault("filesystem_read_changed");
+        return Record("metadata", before, "head", Convert.ToBase64String(head), "tail", Convert.ToBase64String(tail));
+      }
+    }
+  }
+  static object SampleDirectory(Dictionary<string,object> request) {
+    int maximum=Limit(request, "maxEntries", 160);
+    string[] parts=Components(request);
+    using (var chain=new DirectoryChain(request)) {
+      chain.Walk(parts, parts.Length, false);
+      var before=Basic(chain.Current);
+      var entries=new List<string>();
+      bool truncated=false, complete=false;
+      IntPtr buffer=Marshal.AllocHGlobal(16384);
+      try {
+        int kind=11;
+        while (!complete) {
+          if (!GetFileInformationByHandleEx(chain.Current, kind, buffer, 16384)) {
+            uint error=(uint)Marshal.GetLastWin32Error();
+            if (error == 18) break;
+            NativeFailure(error);
+          }
+          kind=10;
+          int offset=0;
+          for (;;) {
+            int next=Marshal.ReadInt32(buffer, offset), attributes=Marshal.ReadInt32(buffer, offset+56);
+            int nameLength=Marshal.ReadInt32(buffer, offset+60);
+            if (nameLength < 0 || nameLength % 2 != 0 || offset+104+nameLength > 16384)
+              throw new FsFault("filesystem_native_operation_failed");
+            string name=Marshal.PtrToStringUni(IntPtr.Add(buffer, offset+104), nameLength/2);
+            if (name != "." && name != "..") {
+              if (entries.Count == maximum) { truncated=true; complete=true; break; }
+              entries.Add(name + ((attributes & 0x410) == 0x10 ? "/" : ""));
+            }
+            if (next == 0) break;
+            if (next < 104 || offset+next >= 16384) throw new FsFault("filesystem_native_operation_failed");
+            offset+=next;
+          }
+        }
+      } finally { Marshal.FreeHGlobal(buffer); }
+      var after=Basic(chain.Current);
+      if (before.Modified != after.Modified || before.Changed != after.Changed) throw new FsFault("filesystem_read_changed");
+      return Record("entries", entries, "truncated", truncated);
+    }
+  }
+}
+`;
+
+// plugins/filesystem/source/windows/streams-script.ts
+var WINDOWS_FILESYSTEM_STREAMS = String.raw`
+public static partial class AbotFilesystem {
+  static void RequireUnnamedDataStreamOnly(SafeFileHandle file) {
+    // One unnamed data stream fits in 40 bytes. Extra entries/names must not
+    // be silently discarded by replacement; only a bounded header is needed.
+    const int capacity=64;
+    IntPtr buffer=Marshal.AllocHGlobal(capacity);
+    try {
+      if (!GetFileInformationByHandleEx(file, 7, buffer, capacity)) {
+        uint error=(uint)Marshal.GetLastWin32Error();
+        if (error == 122 || error == 234)
+          throw new FsFault("filesystem_named_streams_unsupported");
+        NativeFailure(error);
+      }
+      int next=Marshal.ReadInt32(buffer, 0), length=Marshal.ReadInt32(buffer, 4);
+      if (next != 0 || length != 14)
+        throw new FsFault("filesystem_named_streams_unsupported");
+      string name=Marshal.PtrToStringUni(IntPtr.Add(buffer, 24), length/2);
+      if (name != "::$DATA") throw new FsFault("filesystem_named_streams_unsupported");
+    } finally { Marshal.FreeHGlobal(buffer); }
+  }
+}
+`;
+
+// plugins/filesystem/source/windows/storage-script.ts
+var WINDOWS_FILESYSTEM_STORAGE = String.raw`
+public static partial class AbotFilesystem {
+  static void RequireReplaceableStorage(SafeFileHandle file) {
+    const uint encrypted=0x4000, compressed=0x800;
+    if ((Basic(file).Attributes & (encrypted | compressed)) != 0)
+      throw new FsFault("filesystem_storage_attributes_unsupported");
+    RequireUnnamedDataStreamOnly(file);
+  }
+}
+`;
+
+// plugins/filesystem/source/windows/publication-script.ts
+var WINDOWS_FILESYSTEM_PUBLICATION = String.raw`
+public static partial class AbotFilesystem {
+  static void CheckLinkPublication(int status) {
+    if (status >= 0) return;
+    uint error=RtlNtStatusToDosError(status);
+    if (error == 1 || error == 50 || error == 87)
+      throw new FsFault("filesystem_windows_publication_unsupported");
+    NativeFailure(error);
+  }
+  static void PublishLinkRelative(SafeFileHandle file, SafeFileHandle parent, string name, bool replace) {
+    byte[] bytes=Encoding.Unicode.GetBytes(name);
+    int rootOffset=IntPtr.Size == 8 ? 8 : 4;
+    int lengthOffset=rootOffset+IntPtr.Size, nameOffset=lengthOffset+4;
+    IntPtr buffer=Marshal.AllocHGlobal(nameOffset+bytes.Length);
+    try {
+      for (int i=0;i<nameOffset;i++) Marshal.WriteByte(buffer, i, 0);
+      // FileLinkInformationEx: replace the destination atomically, retaining
+      // existing observations. Closing this handle deletes only its temporary name.
+      Marshal.WriteInt32(buffer, 0, replace ? 3 : 0);
+      Marshal.WriteIntPtr(buffer, rootOffset, parent.DangerousGetHandle());
+      Marshal.WriteInt32(buffer, lengthOffset, bytes.Length);
+      Marshal.Copy(bytes, 0, IntPtr.Add(buffer, nameOffset), bytes.Length);
+      IoStatus status;
+      CheckLinkPublication(NtSetInformationFile(file, out status, buffer, (uint)(nameOffset+bytes.Length), 72));
+    } finally { Marshal.FreeHGlobal(buffer); }
+  }
+}
+`;
+
+// plugins/filesystem/source/windows/write-script.ts
+var WINDOWS_FILESYSTEM_WRITE = String.raw`
+public static partial class AbotFilesystem {
+  static string Digest(byte[] bytes) {
+    using (var hash=System.Security.Cryptography.SHA256.Create())
+      return BitConverter.ToString(hash.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant();
+  }
+  static SafeFileHandle ObserveExisting(SafeFileHandle parent, string name, Dictionary<string,object> expected) {
+    SafeFileHandle file=null;
+    try {
+      try { file=OpenHandle(parent, name, false, 1, 0x80020000, 7); }
+      catch (FsFault error) {
+        if (error.Code != "file_not_found") throw;
+        if (Text(expected, "kind") != "absent") throw new FsFault("filesystem_target_changed");
+        return null;
+      }
+      if (Text(expected, "kind") != "file") throw new FsFault("filesystem_target_changed");
+      var before=Metadata(file);
+      if (!SameMetadata(before, expected)) throw new FsFault("filesystem_target_changed");
+      long size=Convert.ToInt64(before["size"]);
+      if (size > 1048576) throw new FsFault("filesystem_target_changed");
+      byte[] bytes=ReadBytes(file, 0, (int)size);
+      if (!SameMetadata(before, Metadata(file)) || Digest(bytes) != Text(expected, "digest"))
+        throw new FsFault("filesystem_target_changed");
+      RequireReplaceableStorage(file);
+      return file;
+    } catch { if (file != null) file.Dispose(); throw; }
+  }
+  static byte[] PrivateFileSecurityDescriptor() {
+    var acl=new FileSecurity();
+    acl.SetAccessRuleProtection(true, false);
+    acl.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User,
+      FileSystemRights.FullControl, AccessControlType.Allow));
+    return acl.GetSecurityDescriptorBinaryForm();
+  }
+  static void PreserveAccess(SafeFileHandle original, SafeFileHandle replacement) {
+    IntPtr owner, group, dacl, sacl, descriptor;
+    uint error=GetSecurityInfo(original, 1, 4, out owner, out group, out dacl, out sacl, out descriptor);
+    if (error != 0) NativeFailure(error);
+    try {
+      ushort control; uint revision;
+      Check(GetSecurityDescriptorControl(descriptor, out control, out revision));
+      uint protection=(control & 0x1000) != 0 ? 0x80000000u : 0x20000000u;
+      error=SetSecurityInfo(replacement, 1, 4 | protection, IntPtr.Zero, IntPtr.Zero, dacl, IntPtr.Zero);
+      if (error != 0) NativeFailure(error);
+      var basic=new BasicInfo { Attributes=Basic(original).Attributes & 0x27u };
+      if (basic.Attributes == 0) basic.Attributes=0x80;
+      Check(SetFileInformationByHandle(replacement, 0, ref basic, 40));
+    } finally { LocalFree(descriptor); }
+  }
+  static void WritePreparedContent(SafeFileHandle file, byte[] bytes) {
+    int offset=0;
+    while (offset < bytes.Length) {
+      var chunk=new byte[Math.Min(65536, bytes.Length-offset)];
+      Buffer.BlockCopy(bytes, offset, chunk, 0, chunk.Length);
+      uint written;
+      Check(WriteFile(file, chunk, (uint)chunk.Length, out written, IntPtr.Zero));
+      if (written == 0 || written > chunk.Length) throw new FsFault("filesystem_native_operation_failed");
+      offset+=(int)written;
+    }
+    Check(FlushFileBuffers(file));
+  }
+  static object CommitWrite(Dictionary<string,object> request) {
+    string[] parts=Components(request);
+    if (parts.Length == 0) throw new FsFault("not_a_file");
+    byte[] bytes=Convert.FromBase64String(Text(request, "content"));
+    if (bytes.Length > 1048576) throw new FsFault("file_too_large");
+    var expected=request["expected"] as Dictionary<string,object>;
+    if (expected == null) throw new FsFault("filesystem_invalid_request");
+    string name=parts[parts.Length-1];
+    using (var chain=new DirectoryChain(request)) {
+      chain.Walk(parts, parts.Length-1, true);
+      using (var previous=ObserveExisting(chain.Current, name, expected)) {
+        string temporary=".abot-"+Guid.NewGuid().ToString("N")+".tmp";
+        using (var file=OpenHandle(chain.Current, temporary, false, 2, 0xC0070000, 0, PrivateFileSecurityDescriptor(), true)) {
+          WritePreparedContent(file, bytes);
+          using (var current=ObserveExisting(chain.Current, name, expected)) {
+            if (current != null) PreserveAccess(current, file);
+            PublishLinkRelative(file, chain.Current, name, current != null);
+          }
+          return Record("committed", true);
+        }
+      }
+    }
+  }
+}
+`;
+
+// plugins/filesystem/source/windows/source.ts
+var ENTRYPOINT = String.raw`
+public static partial class AbotFilesystem {
+  public static string Run(string input) {
+    var json=new JavaScriptSerializer { MaxJsonLength=2097152 };
+    try {
+      var request=json.Deserialize<Dictionary<string,object>>(input);
+      string operation=Text(request, "operation");
+      object result;
+      switch (operation) {
+        case "probe": result=Record("available", true); break;
+        case "read": result=ReadSlices(request); break;
+        case "sample": result=SampleDirectory(request); break;
+        case "write": result=CommitWrite(request); break;
+        default: throw new FsFault("filesystem_invalid_request");
+      }
+      return json.Serialize(Record("ok", true, "result", result));
+    } catch (FsFault error) { return json.Serialize(Record("ok", false, "code", error.Code)); }
+      catch { return json.Serialize(Record("ok", false, "code", "filesystem_native_operation_failed")); }
+  }
+}
+`;
+var WINDOWS_FILESYSTEM_SOURCE = [
+  WINDOWS_FILESYSTEM_NATIVE,
+  WINDOWS_FILESYSTEM_AUTHORITY,
+  WINDOWS_FILE_READ_BYTES,
+  WINDOWS_FILESYSTEM_READ,
+  WINDOWS_FILESYSTEM_STREAMS,
+  WINDOWS_FILESYSTEM_STORAGE,
+  WINDOWS_FILESYSTEM_PUBLICATION,
+  WINDOWS_FILESYSTEM_WRITE,
+  ENTRYPOINT
+].join("\n");
+
+// plugins/filesystem/source/windows/process.ts
+var MAX_MESSAGE_BYTES = 2 * 1024 * 1024;
+var BOOTSTRAP = [
+  "$ErrorActionPreference='Stop'",
+  `if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { Write-Output '{"ok":false,"code":"filesystem_windows_policy_blocked"}'; exit 0 }`,
+  "$env:PSModulePath=[IO.Path]::Combine($PSHOME,'Modules')",
+  "[Console]::InputEncoding=[Text.UTF8Encoding]::new($false)",
+  "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)",
+  "$started=$false",
+  "try {",
+  "$envelope=[Console]::In.ReadToEnd() | ConvertFrom-Json",
+  "Add-Type -ReferencedAssemblies @('System.Web.Extensions') -TypeDefinition $envelope.source",
+  "$started=$true",
+  "[Console]::Write([AbotFilesystem]::Run($envelope.request))",
+  `} catch { if ($started) { [Console]::Write('{"ok":false,"code":"filesystem_windows_operation_unreported"}') } else { [Console]::Write('{"ok":false,"code":"filesystem_windows_helper_unavailable"}') } }`
+].join(";");
+var NATIVE_CODES = /* @__PURE__ */ new Set([
+  "file_not_found",
+  "file_too_large",
+  "not_a_file",
+  "not_a_directory",
+  "filesystem_access_denied",
+  "filesystem_safe_io_unsupported",
+  "filesystem_storage_attributes_unsupported",
+  "filesystem_named_streams_unsupported",
+  "filesystem_windows_publication_unsupported",
+  "filesystem_path_changed",
+  "filesystem_target_changed",
+  "filesystem_invalid_path",
+  "filesystem_read_changed",
+  "filesystem_read_incomplete",
+  "filesystem_invalid_request",
+  "filesystem_native_operation_failed",
+  "filesystem_windows_policy_blocked",
+  "filesystem_windows_helper_unavailable"
+]);
+function isWindowsHelperBlocked(error) {
+  if (!(error instanceof FilesystemToolError)) return false;
+  return error.code === "filesystem_windows_policy_blocked" || error.code === "filesystem_windows_helper_unavailable";
+}
+function helperFailure(code, mutation) {
+  if (code === "filesystem_windows_publication_unsupported")
+    return new FilesystemToolError(
+      code,
+      "Windows cannot safely publish this file. Writes require Windows 10 version 1809 or newer and a filesystem supporting hard links, such as NTFS. The destination was left unchanged. Do not retry this write on the same unsupported target.",
+      {
+        retryable: false,
+        blockedBy: "filesystem_publication_support",
+        targetUnchanged: true
+      }
+    );
+  if (code === "filesystem_named_streams_unsupported")
+    return new FilesystemToolError(
+      code,
+      "This file has Windows named data streams, which may include download-origin security information. Editing it is not supported; the original file and its streams were left unchanged. Do not retry this edit or remove the streams to bypass the restriction.",
+      {
+        retryable: false,
+        blockedBy: "file_named_streams",
+        targetUnchanged: true
+      }
+    );
+  if (code === "filesystem_storage_attributes_unsupported")
+    return new FilesystemToolError(
+      code,
+      "This file uses EFS encryption or NTFS compression. Editing it is not supported; the original file was left unchanged. Do not retry this edit or remove its storage attributes to bypass the restriction.",
+      {
+        retryable: false,
+        blockedBy: "file_storage_attributes",
+        targetUnchanged: true
+      }
+    );
+  if (code === "filesystem_windows_policy_blocked")
+    return new FilesystemToolError(
+      code,
+      "Windows policy blocks the filesystem helper. No file operation ran. Retrying cannot resolve this restriction; ask the user to contact their administrator. Do not bypass the restriction.",
+      {
+        retryable: false,
+        blockedBy: "system_policy",
+        operationOutcome: "not_started"
+      }
+    );
+  if (code === "filesystem_windows_helper_unavailable")
+    return new FilesystemToolError(
+      code,
+      "The Windows filesystem helper is unavailable. No file operation ran. Do not retry in this request; the user must resolve helper availability first.",
+      {
+        retryable: false,
+        blockedBy: "helper_availability",
+        operationOutcome: "not_started"
+      }
+    );
+  return new FilesystemToolError(
+    code,
+    mutation ? "The filesystem helper did not report a completed operation. The file state is unknown; do not repeat the write automatically." : "The Windows filesystem helper did not complete the read.",
+    {
+      retryable: false,
+      operationOutcome: mutation ? "unknown" : "not_started"
+    }
+  );
+}
+async function runWindowsFilesystem(request, signal, spawnProcess = import_node_child_process.spawn) {
+  const mutation = request.operation === "write";
+  if (signal?.aborted)
+    throw helperFailure("filesystem_windows_interrupted", false);
+  const input = JSON.stringify({
+    source: WINDOWS_FILESYSTEM_SOURCE,
+    request: JSON.stringify(request)
+  });
+  if (Buffer.byteLength(input) > MAX_MESSAGE_BYTES)
+    throw new FilesystemToolError(
+      "filesystem_invalid_request",
+      "Filesystem helper input exceeds its byte limit."
+    );
+  const executable = (0, import_node_path.join)(
+    process.env.SystemRoot ?? "C:\\Windows",
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe"
+  );
+  const raw = await new Promise((resolve, reject) => {
+    const child = spawnProcess(
+      executable,
+      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", BOOTSTRAP],
+      { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
+    );
+    const chunks = [];
+    let bytes = 0;
+    let failure;
+    const stop = (code2) => {
+      failure ??= helperFailure(code2, mutation);
+      child.kill("SIGKILL");
+    };
+    const abort = () => stop("filesystem_windows_interrupted");
+    const timer = setTimeout(() => stop("filesystem_windows_timeout"), 15e3);
+    timer.unref();
+    signal?.addEventListener("abort", abort, { once: true });
+    child.stdout.on("data", (chunk) => {
+      bytes += chunk.length;
+      if (bytes > MAX_MESSAGE_BYTES) {
+        stop("filesystem_windows_output_limit");
+        return;
+      }
+      chunks.push(chunk);
+    });
+    child.stderr.resume();
+    child.stdin.on("error", () => stop("filesystem_windows_transport_failed"));
+    child.once("error", () => {
+      failure ??= child.pid === void 0 ? helperFailure("filesystem_windows_helper_unavailable", false) : helperFailure("filesystem_windows_transport_failed", mutation);
+    });
+    child.once("close", (code2) => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+      if (failure) {
+        reject(failure);
+        return;
+      }
+      if (code2 !== 0) {
+        reject(helperFailure("filesystem_windows_transport_failed", mutation));
+        return;
+      }
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    child.stdin.end(input, "utf8");
+  });
+  let envelope;
+  try {
+    envelope = JSON.parse(raw);
+  } catch {
+    throw helperFailure("filesystem_windows_response_invalid", mutation);
+  }
+  if (envelope?.ok === true) return envelope.result;
+  const code = typeof envelope?.code === "string" ? envelope.code : "";
+  if (!NATIVE_CODES.has(code))
+    throw helperFailure("filesystem_windows_response_invalid", mutation);
+  if (isDirectoryTypeFailure(code)) failNotDirectory();
+  if (code === "filesystem_storage_attributes_unsupported" || code === "filesystem_named_streams_unsupported")
+    throw helperFailure(code, mutation);
+  if (code.startsWith("filesystem_windows_")) throw helperFailure(code, false);
+  throw new FilesystemToolError(
+    code,
+    "The filesystem operation was rejected: " + code + "."
+  );
+}
+
+// plugins/filesystem/source/windows/request-availability.ts
+var currentRequest = new import_node_async_hooks.AsyncLocalStorage();
+async function executeWindowsFilesystem(request) {
+  const scope = currentRequest.getStore();
+  if (scope?.availability.blocked) throw scope.availability.blocked;
+  try {
+    return await runWindowsFilesystem(request, scope?.signal);
+  } catch (error) {
+    if (scope && isWindowsHelperBlocked(error))
+      scope.availability.blocked = error;
+    throw error;
+  }
+}
+var prepareFilesystemRequest = async (modules) => {
+  if (process.platform !== "win32" || modules.length === 0) return modules;
+  try {
+    const result = await runWindowsFilesystem({ operation: "probe" });
+    if (!result || typeof result !== "object" || !("available" in result) || result.available !== true)
+      return Object.freeze([]);
+  } catch {
+    return Object.freeze([]);
+  }
+  const availability = {};
+  return Object.freeze(
+    modules.map((module2) => ({
+      ...module2,
+      implementation: (params, context) => {
+        if (availability.blocked)
+          return Promise.resolve(
+            failureResult({
+              errorCode: availability.blocked.code,
+              message: availability.blocked.message,
+              data: availability.blocked.data
+            })
+          );
+        return currentRequest.run(
+          { availability, signal: context?.abortSignal },
+          () => module2.implementation(params, context)
+        );
+      }
+    }))
+  );
+};
+
 // plugins/filesystem/source/adapters.ts
 function invalidStrings(params, names) {
   return names.filter((name) => {
@@ -306,59 +1123,277 @@ var writeFileAdapter = Object.freeze({
 });
 
 // plugins/filesystem/source/dev-view.ts
-var import_promises3 = require("node:fs/promises");
+var import_promises4 = require("node:fs/promises");
 
 // plugins/filesystem/source/bounded-io.ts
 var import_node_crypto = require("node:crypto");
-var import_node_fs2 = require("node:fs");
-var import_promises2 = require("node:fs/promises");
-var import_node_path3 = require("node:path");
 var import_node_string_decoder = require("node:string_decoder");
 var import_node_util = require("node:util");
 
-// plugins/filesystem/source/errors.ts
-var FilesystemToolError = class extends Error {
-  code;
-  data;
-  constructor(code, message = code, data) {
-    super(message);
-    this.name = "FilesystemToolError";
-    this.code = code;
-    this.data = data;
-  }
-};
-function fail(code, message = code, data) {
-  throw new FilesystemToolError(code, message, data);
+// plugins/filesystem/source/file-observation.ts
+var import_node_fs = require("node:fs");
+var import_promises2 = require("node:fs/promises");
+var import_node_path3 = require("node:path");
+
+// plugins/filesystem/source/file-version.ts
+function metadataFromStat(info, logicalPath) {
+  if (info.size > BigInt(Number.MAX_SAFE_INTEGER))
+    fail("file_too_large", `File is too large to read safely: ${logicalPath}`);
+  return Object.freeze({
+    device: info.dev,
+    inode: info.ino,
+    size: Number(info.size),
+    mode: Number(info.mode) & 4095,
+    modifiedNs: info.mtimeNs,
+    changedNs: info.ctimeNs
+  });
 }
-function isNodeErrorCode(error, code) {
-  return error instanceof Error && typeof error.code === "string" && error.code === code;
+function sameMetadata(left, right) {
+  return left.device === right.device && left.inode === right.inode && left.size === right.size && left.mode === right.mode && left.modifiedNs === right.modifiedNs && left.changedNs === right.changedNs;
 }
-function rethrowFilesystemError(error, operation, logicalPath) {
-  if (isRuntimeToolPathError(error) || error instanceof FilesystemToolError) {
-    throw error;
-  }
-  if (isNodeErrorCode(error, "ENOENT")) {
-    fail("file_not_found", `Path does not exist: ${logicalPath}`);
-  }
-  if (isNodeErrorCode(error, "EACCES") || isNodeErrorCode(error, "EPERM")) {
+
+// plugins/filesystem/source/windows/operations.ts
+var import_promises = require("node:fs/promises");
+var import_node_path2 = require("node:path");
+async function withTarget(target, run) {
+  const expectedPath = import_node_path2.win32.resolve(target.rootPath, target.relativePath);
+  if (import_node_path2.win32.relative(expectedPath, target.absolutePath) !== "")
     fail(
-      "filesystem_access_denied",
-      `Access was denied while attempting to ${operation}: ${logicalPath}`
+      "filesystem_path_changed",
+      "The resolved file target no longer matches its root."
     );
+  const relative4 = import_node_path2.win32.relative(target.rootPath, expectedPath);
+  if (import_node_path2.win32.isAbsolute(relative4) || relative4 === ".." || relative4.startsWith("..\\"))
+    fail(
+      "filesystem_path_changed",
+      "The file target is outside its configured root."
+    );
+  let root;
+  try {
+    root = await (0, import_promises.open)(target.rootPath, "r");
+    const identity = await root.stat({ bigint: true });
+    if (!identity.isDirectory())
+      fail("not_a_directory", "The configured root is not a directory.");
+    if (identity.ino <= 0n)
+      fail(
+        "filesystem_safe_io_unsupported",
+        "The configured filesystem does not provide a stable file identity."
+      );
+    return await run(
+      {
+        rootPath: target.rootPath,
+        relativePath: target.relativePath,
+        rootIdentity: {
+          device: String(identity.dev),
+          inode: String(identity.ino),
+          birthtimeNs: String(identity.birthtimeNs)
+        }
+      },
+      root
+    );
+  } catch (error) {
+    return rethrowFilesystemError(error, "inspect", target.logicalPath);
+  } finally {
+    await root?.close().catch(() => void 0);
   }
-  if (isNodeErrorCode(error, "EISDIR")) {
-    fail("not_a_file", `Expected a regular file: ${logicalPath}`);
+}
+function decodeMetadata(value) {
+  const validSize = Number.isSafeInteger(value?.size) && value.size >= 0;
+  if (!validSize || !Number.isSafeInteger(value?.mode))
+    fail(
+      "filesystem_windows_response_invalid",
+      "The filesystem helper returned invalid file metadata."
+    );
+  const fields = [value.device, value.inode, value.modifiedNs, value.changedNs];
+  if (!fields.every(
+    (field) => typeof field === "string" && /^-?\d{1,30}$/u.test(field)
+  ))
+    fail(
+      "filesystem_windows_response_invalid",
+      "The filesystem helper returned invalid file identity."
+    );
+  return Object.freeze({
+    device: BigInt(value.device),
+    inode: BigInt(value.inode),
+    size: value.size,
+    mode: value.mode,
+    modifiedNs: BigInt(value.modifiedNs),
+    changedNs: BigInt(value.changedNs)
+  });
+}
+async function readWindowsFileSlices(target, options) {
+  return withTarget(target, async (request) => {
+    const result = await executeWindowsFilesystem({
+      ...request,
+      operation: "read",
+      ...options,
+      maximumFileBytes: options.maximumFileBytes ?? 0
+    });
+    const metadata = decodeMetadata(result?.metadata);
+    if (typeof result.head !== "string" || typeof result.tail !== "string")
+      fail(
+        "filesystem_windows_response_invalid",
+        "The filesystem helper returned invalid file bytes."
+      );
+    const head = Buffer.from(result.head, "base64"), tail = Buffer.from(result.tail, "base64");
+    const complete = metadata.size <= options.headBytes + options.tailBytes;
+    const expectedHead = complete ? metadata.size : options.headBytes;
+    const expectedTail = complete ? 0 : options.tailBytes;
+    if (head.length !== expectedHead || tail.length !== expectedTail)
+      fail(
+        "filesystem_read_incomplete",
+        "The filesystem helper returned incomplete file bytes."
+      );
+    return Object.freeze({ metadata, head, tail });
+  });
+}
+async function sampleWindowsDirectory(target, maxEntries) {
+  return withTarget(target, async (request) => {
+    const result = await executeWindowsFilesystem({
+      ...request,
+      operation: "sample",
+      maxEntries
+    });
+    if (!Array.isArray(result?.entries) || result.entries.length > maxEntries || !result.entries.every((entry) => typeof entry === "string") || typeof result.truncated !== "boolean")
+      fail(
+        "filesystem_windows_response_invalid",
+        "The filesystem helper returned an invalid directory sample."
+      );
+    return Object.freeze({
+      entries: Object.freeze(result.entries.sort((a, b) => a.localeCompare(b))),
+      truncated: result.truncated
+    });
+  });
+}
+async function writeWindowsFile(input) {
+  await withTarget(input.target, async (request, root) => {
+    const expected = Object.fromEntries(
+      Object.entries(input.expectedVersion).map(([key, value]) => [
+        key,
+        typeof value === "bigint" ? String(value) : value
+      ])
+    );
+    const result = await executeWindowsFilesystem({
+      ...request,
+      operation: "write",
+      content: Buffer.from(input.content, "utf8").toString("base64"),
+      expected
+    });
+    if (result?.committed !== true)
+      fail(
+        "filesystem_windows_response_invalid",
+        "The filesystem helper did not confirm the write; do not repeat it automatically."
+      );
+    try {
+      input.onCommitted?.(root);
+    } catch {
+    }
+  });
+}
+
+// plugins/filesystem/source/file-observation.ts
+async function readExactBytes(reader, buffer, position, logicalPath) {
+  let offset = 0;
+  while (offset < buffer.length) {
+    const result = await reader.read(
+      buffer,
+      offset,
+      buffer.length - offset,
+      position + offset
+    );
+    if (result.bytesRead <= 0 || result.bytesRead > buffer.length - offset) {
+      fail(
+        "filesystem_read_incomplete",
+        `File changed or ended before a complete read: ${logicalPath}`
+      );
+    }
+    offset += result.bytesRead;
   }
-  fail(
-    `filesystem_${operation}_failed`,
-    `Filesystem ${operation} failed for ${logicalPath}.`
-  );
+}
+async function openRegularFile(target) {
+  let handle;
+  try {
+    if (typeof import_node_fs.constants.O_NOFOLLOW !== "number") {
+      fail(
+        "filesystem_safe_io_unsupported",
+        "This platform does not provide the no-follow operation required for a safe read."
+      );
+    }
+    handle = await (0, import_promises2.open)(
+      target.absolutePath,
+      import_node_fs.constants.O_RDONLY | import_node_fs.constants.O_NOFOLLOW
+    );
+    const info = await handle.stat({ bigint: true });
+    if (!info.isFile()) {
+      fail("not_a_file", `Expected a regular file: ${target.logicalPath}`);
+    }
+    const metadata = metadataFromStat(info, target.logicalPath);
+    const [canonicalRoot, canonicalTarget] = await Promise.all([
+      (0, import_promises2.realpath)(target.rootPath),
+      (0, import_promises2.realpath)(target.absolutePath)
+    ]);
+    const rootRelative = (0, import_node_path3.relative)(canonicalRoot, canonicalTarget);
+    if (rootRelative === ".." || rootRelative.startsWith(`..${import_node_path3.sep}`) || rootRelative.startsWith(import_node_path3.sep)) {
+      fail(
+        "filesystem_path_changed",
+        `File changed outside its configured root: ${target.logicalPath}`
+      );
+    }
+    const pathIdentity = await (0, import_promises2.stat)(canonicalTarget, { bigint: true });
+    if (!pathIdentity.isFile() || pathIdentity.dev !== info.dev || pathIdentity.ino !== info.ino) {
+      fail(
+        "filesystem_path_changed",
+        `File changed while it was being opened: ${target.logicalPath}`
+      );
+    }
+    return Object.freeze({ handle, size: metadata.size, metadata });
+  } catch (error) {
+    await handle?.close().catch(() => void 0);
+    rethrowFilesystemError(error, "inspect", target.logicalPath);
+  }
+}
+async function observeFileSlices(target, options) {
+  if (process.platform === "win32")
+    return readWindowsFileSlices(target, options);
+  const file = await openRegularFile(target);
+  try {
+    if (options.maximumFileBytes !== void 0 && file.size > options.maximumFileBytes)
+      fail(
+        "file_too_large",
+        `File exceeds the mutation byte limit: ${target.logicalPath}`,
+        { byteCount: file.size, maxBytes: options.maximumFileBytes }
+      );
+    const complete = file.size <= options.headBytes + options.tailBytes;
+    const head = Buffer.alloc(complete ? file.size : options.headBytes);
+    const tail = Buffer.alloc(complete ? 0 : options.tailBytes);
+    await readExactBytes(file.handle, head, 0, target.logicalPath);
+    await readExactBytes(
+      file.handle,
+      tail,
+      file.size - tail.length,
+      target.logicalPath
+    );
+    const after = metadataFromStat(
+      await file.handle.stat({ bigint: true }),
+      target.logicalPath
+    );
+    if (!sameMetadata(file.metadata, after))
+      fail(
+        "filesystem_read_changed",
+        `File changed while it was being read: ${target.logicalPath}`
+      );
+    return Object.freeze({ metadata: file.metadata, head, tail });
+  } catch (error) {
+    return rethrowFilesystemError(error, "read", target.logicalPath);
+  } finally {
+    await file.handle.close().catch(() => void 0);
+  }
 }
 
 // plugins/filesystem/source/directory-sample.ts
-var import_node_fs = require("node:fs");
-var import_promises = require("node:fs/promises");
-var import_node_path2 = require("node:path");
+var import_node_fs2 = require("node:fs");
+var import_promises3 = require("node:fs/promises");
+var import_node_path5 = require("node:path");
 
 // src/shared/directory-authority/bootstrap.ts
 function directoryAuthorityBootstrap(mode, messageLimit, task) {
@@ -433,9 +1468,9 @@ function directoryAuthorityBootstrap(mode, messageLimit, task) {
     writeResponse(1, encoded);
   }
   function runCommand(input) {
-    const { spawn: spawn2 } = require("node:child_process");
+    const { spawn: spawn3 } = require("node:child_process");
     const command = input;
-    const child = spawn2(command.command, command.args, {
+    const child = spawn3(command.command, command.args, {
       stdio: ["ignore", "inherit", "inherit"],
       env: process.env
     });
@@ -467,7 +1502,7 @@ function directoryAuthorityScript(mode, messageLimit, task) {
 }
 
 // src/shared/directory-authority/protocol.ts
-var import_node_path = require("node:path");
+var import_node_path4 = require("node:path");
 
 // src/shared/directory-authority/errors.ts
 var DirectoryAuthorityError = class extends Error {
@@ -486,7 +1521,7 @@ var AUTHORITY_MESSAGE_LIMIT = 8 * 1024 * 1024;
 var AUTHORITY_STDERR_LIMIT = 16 * 1024;
 var AUTHORITY_TASK_TIMEOUT_MS = 3e4;
 function assertDirectoryAuthorityLocation(location) {
-  if (!(0, import_node_path.isAbsolute)(location.directoryPath)) {
+  if (!(0, import_node_path4.isAbsolute)(location.directoryPath)) {
     throw new DirectoryAuthorityError(
       "directory_authority_invalid_path",
       "The directory authority requires an absolute starting path."
@@ -574,7 +1609,7 @@ function decodeAuthorityResult(output) {
 }
 
 // src/shared/directory-authority/task.ts
-var import_node_child_process = require("node:child_process");
+var import_node_child_process2 = require("node:child_process");
 async function runDirectoryAuthorityTask(input) {
   assertDirectoryAuthorityLocation(input);
   const request = encodeAuthorityRequest(input.input);
@@ -592,7 +1627,7 @@ async function runDirectoryAuthorityTask(input) {
       "The directory operation was cancelled before it started."
     );
   }
-  const child = (0, import_node_child_process.spawn)(
+  const child = (0, import_node_child_process2.spawn)(
     process.execPath,
     [
       "--input-type=commonjs",
@@ -721,35 +1756,36 @@ async function sampleDirectoryTask(input) {
 // plugins/filesystem/source/directory-sample.ts
 var DIRECTORY_ENTRY_LIMIT = 160;
 async function readDirectorySample(target) {
+  if (process.platform === "win32") return sampleWindowsDirectory(target, DIRECTORY_ENTRY_LIMIT);
   const entries = [];
   let handle;
   try {
-    if (typeof import_node_fs.constants.O_DIRECTORY !== "number" || typeof import_node_fs.constants.O_NOFOLLOW !== "number") {
+    if (typeof import_node_fs2.constants.O_DIRECTORY !== "number" || typeof import_node_fs2.constants.O_NOFOLLOW !== "number") {
       fail(
         "filesystem_safe_io_unsupported",
         "This platform does not provide the no-follow directory operation required for a safe read."
       );
     }
-    handle = await (0, import_promises.open)(
+    handle = await (0, import_promises3.open)(
       target.absolutePath,
-      import_node_fs.constants.O_RDONLY | import_node_fs.constants.O_DIRECTORY | import_node_fs.constants.O_NOFOLLOW
+      import_node_fs2.constants.O_RDONLY | import_node_fs2.constants.O_DIRECTORY | import_node_fs2.constants.O_NOFOLLOW
     );
     const before = await handle.stat({ bigint: true });
     if (!before.isDirectory()) {
       fail("not_a_directory", `Expected a directory: ${target.logicalPath}`);
     }
     const [canonicalRoot, canonicalTarget] = await Promise.all([
-      (0, import_promises.realpath)(target.rootPath),
-      (0, import_promises.realpath)(target.absolutePath)
+      (0, import_promises3.realpath)(target.rootPath),
+      (0, import_promises3.realpath)(target.absolutePath)
     ]);
-    const rootRelative = (0, import_node_path2.relative)(canonicalRoot, canonicalTarget);
-    if (rootRelative === ".." || rootRelative.startsWith(`..${import_node_path2.sep}`) || rootRelative.startsWith(import_node_path2.sep)) {
+    const rootRelative = (0, import_node_path5.relative)(canonicalRoot, canonicalTarget);
+    if (rootRelative === ".." || rootRelative.startsWith(`..${import_node_path5.sep}`) || rootRelative.startsWith(import_node_path5.sep)) {
       fail(
         "filesystem_path_changed",
         `Directory changed outside its configured root: ${target.logicalPath}`
       );
     }
-    const pathIdentity = await (0, import_promises.stat)(canonicalTarget, { bigint: true });
+    const pathIdentity = await (0, import_promises3.stat)(canonicalTarget, { bigint: true });
     if (!pathIdentity.isDirectory() || pathIdentity.dev !== before.dev || pathIdentity.ino !== before.ino) {
       fail(
         "filesystem_path_changed",
@@ -766,7 +1802,7 @@ async function readDirectorySample(target) {
       await assertDirectoryStable(handle, before, target.logicalPath);
       return sample;
     }
-    const directory = await (0, import_promises.opendir)(`/proc/self/fd/${handle.fd}`);
+    const directory = await (0, import_promises3.opendir)(`/proc/self/fd/${handle.fd}`);
     for await (const entry of directory) {
       if (entries.length >= DIRECTORY_ENTRY_LIMIT) {
         await assertDirectoryStable(handle, before, target.logicalPath);
@@ -811,32 +1847,13 @@ var MAX_MUTATION_BYTES = 1048576;
 var READ_HEAD_BYTES = 24576;
 var READ_TAIL_BYTES = 12288;
 var DEV_SCAN_BYTES = 1048576;
-async function readExactBytes(reader, buffer, position, logicalPath) {
-  let offset = 0;
-  while (offset < buffer.length) {
-    const result = await reader.read(
-      buffer,
-      offset,
-      buffer.length - offset,
-      position + offset
-    );
-    if (result.bytesRead <= 0 || result.bytesRead > buffer.length - offset) {
-      fail(
-        "filesystem_read_incomplete",
-        `File changed or ended before a complete read: ${logicalPath}`
-      );
-    }
-    offset += result.bytesRead;
-  }
-}
 function decodeCompletePrefix(buffer) {
   return new import_node_string_decoder.StringDecoder("utf8").write(buffer);
 }
 function decodeSuffix(buffer) {
   let start = 0;
-  while (start < Math.min(4, buffer.length) && (buffer[start] & 192) === 128) {
+  while (start < Math.min(4, buffer.length) && (buffer[start] & 192) === 128)
     start += 1;
-  }
   return buffer.subarray(start).toString("utf8");
 }
 function decodeMutationText(buffer, logicalPath) {
@@ -849,194 +1866,88 @@ function decodeMutationText(buffer, logicalPath) {
     );
   }
 }
-async function openRegularFile(target) {
-  let handle;
-  try {
-    if (typeof import_node_fs2.constants.O_NOFOLLOW !== "number") {
-      fail(
-        "filesystem_safe_io_unsupported",
-        "This platform does not provide the no-follow operation required for a safe read."
-      );
-    }
-    handle = await (0, import_promises2.open)(
-      target.absolutePath,
-      import_node_fs2.constants.O_RDONLY | import_node_fs2.constants.O_NOFOLLOW
-    );
-    const info = await handle.stat({ bigint: true });
-    if (!info.isFile()) {
-      fail("not_a_file", `Expected a regular file: ${target.logicalPath}`);
-    }
-    const metadata = metadataFromStat(info, target.logicalPath);
-    const [canonicalRoot, canonicalTarget] = await Promise.all([
-      (0, import_promises2.realpath)(target.rootPath),
-      (0, import_promises2.realpath)(target.absolutePath)
-    ]);
-    const rootRelative = (0, import_node_path3.relative)(canonicalRoot, canonicalTarget);
-    if (rootRelative === ".." || rootRelative.startsWith(`..${import_node_path3.sep}`) || rootRelative.startsWith(import_node_path3.sep)) {
-      fail(
-        "filesystem_path_changed",
-        `File changed outside its configured root: ${target.logicalPath}`
-      );
-    }
-    const pathIdentity = await (0, import_promises2.stat)(canonicalTarget, { bigint: true });
-    if (!pathIdentity.isFile() || pathIdentity.dev !== info.dev || pathIdentity.ino !== info.ino) {
-      fail(
-        "filesystem_path_changed",
-        `File changed while it was being opened: ${target.logicalPath}`
-      );
-    }
-    return Object.freeze({ handle, size: metadata.size, metadata });
-  } catch (error) {
-    await handle?.close().catch(() => void 0);
-    rethrowFilesystemError(error, "inspect", target.logicalPath);
-  }
-}
 async function readBoundedText(target, options = {}) {
-  const file = await openRegularFile(target);
-  const headBytes = options.headBytes ?? READ_HEAD_BYTES;
-  const tailBytes = options.tailBytes ?? READ_TAIL_BYTES;
-  const byteBudget = headBytes + tailBytes;
-  try {
-    if (file.size <= byteBudget) {
-      const buffer = Buffer.alloc(file.size);
-      await readExactBytes(file.handle, buffer, 0, target.logicalPath);
-      await assertFileStable(file, target.logicalPath);
-      rejectBinary(buffer, target.logicalPath);
-      return Object.freeze({
-        text: decodeCompletePrefix(buffer),
-        byteCount: file.size,
-        bytesRead: file.size,
-        omittedBytes: 0,
-        truncated: false
-      });
-    }
-    const head = Buffer.alloc(headBytes);
-    const tail = Buffer.alloc(tailBytes);
-    await Promise.all([
-      readExactBytes(file.handle, head, 0, target.logicalPath),
-      readExactBytes(
-        file.handle,
-        tail,
-        Math.max(0, file.size - tailBytes),
-        target.logicalPath
-      )
-    ]);
-    await assertFileStable(file, target.logicalPath);
-    rejectBinary(head, target.logicalPath);
-    rejectBinary(tail, target.logicalPath);
-    const omittedBytes = Math.max(0, file.size - head.length - tail.length);
-    return Object.freeze({
-      text: [
-        decodeCompletePrefix(head),
-        `[${omittedBytes} bytes omitted from the middle]`,
-        decodeSuffix(tail)
-      ].join("\n"),
-      byteCount: file.size,
-      bytesRead: head.length + tail.length,
-      omittedBytes,
-      truncated: true
-    });
-  } catch (error) {
-    return rethrowFilesystemError(error, "read", target.logicalPath);
-  } finally {
-    await file.handle.close().catch(() => void 0);
-  }
+  const observed = await observeFileSlices(target, {
+    headBytes: options.headBytes ?? READ_HEAD_BYTES,
+    tailBytes: options.tailBytes ?? READ_TAIL_BYTES
+  });
+  rejectBinary(observed.head, target.logicalPath);
+  rejectBinary(observed.tail, target.logicalPath);
+  const bytesRead = observed.head.length + observed.tail.length;
+  const omittedBytes = observed.metadata.size - bytesRead;
+  const text = omittedBytes === 0 ? decodeCompletePrefix(observed.head) : [
+    decodeCompletePrefix(observed.head),
+    `[${omittedBytes} bytes omitted from the middle]`,
+    decodeSuffix(observed.tail)
+  ].join("\n");
+  return Object.freeze({
+    text,
+    byteCount: observed.metadata.size,
+    bytesRead,
+    omittedBytes,
+    truncated: omittedBytes > 0
+  });
 }
 async function readPrefixText(target, maxBytes = DEV_SCAN_BYTES) {
-  const file = await openRegularFile(target);
-  try {
-    const length = Math.min(file.size, maxBytes);
-    const buffer = Buffer.alloc(length);
-    await readExactBytes(file.handle, buffer, 0, target.logicalPath);
-    await assertFileStable(file, target.logicalPath);
-    rejectBinary(buffer, target.logicalPath);
-    return Object.freeze({
-      text: decodeCompletePrefix(buffer),
-      byteCount: file.size,
-      bytesRead: length,
-      omittedBytes: Math.max(0, file.size - length),
-      truncated: length < file.size
-    });
-  } catch (error) {
-    rethrowFilesystemError(error, "read", target.logicalPath);
-  } finally {
-    await file.handle.close().catch(() => void 0);
-  }
+  const observed = await observeFileSlices(target, {
+    headBytes: maxBytes,
+    tailBytes: 0
+  });
+  rejectBinary(observed.head, target.logicalPath);
+  return Object.freeze({
+    text: decodeCompletePrefix(observed.head),
+    byteCount: observed.metadata.size,
+    bytesRead: observed.head.length,
+    omittedBytes: observed.metadata.size - observed.head.length,
+    truncated: observed.head.length < observed.metadata.size
+  });
 }
 async function readMutationSnapshot(target) {
-  let file;
   try {
-    file = await openRegularFile(target);
-    const byteCount = file.size;
-    if (byteCount > MAX_MUTATION_BYTES) {
-      fail(
-        "file_too_large",
-        `File exceeds the ${MAX_MUTATION_BYTES}-byte mutation limit: ${target.logicalPath}`,
-        { byteCount, maxBytes: MAX_MUTATION_BYTES }
-      );
-    }
-    const buffer = Buffer.alloc(byteCount);
-    await readExactBytes(file.handle, buffer, 0, target.logicalPath);
-    const afterRead = metadataFromStat(
-      await file.handle.stat({ bigint: true }),
-      target.logicalPath
-    );
-    if (!sameMetadata(file.metadata, afterRead)) {
-      failTargetChanged(target.logicalPath, "file", "file");
-    }
-    rejectBinary(buffer, target.logicalPath);
+    const observed = await observeFileSlices(target, {
+      headBytes: MAX_MUTATION_BYTES,
+      tailBytes: 0,
+      maximumFileBytes: MAX_MUTATION_BYTES
+    });
+    rejectBinary(observed.head, target.logicalPath);
     return Object.freeze({
-      content: decodeMutationText(buffer, target.logicalPath),
+      content: decodeMutationText(observed.head, target.logicalPath),
       version: Object.freeze({
         kind: "file",
-        ...file.metadata,
-        digest: digest(buffer)
+        ...observed.metadata,
+        digest: digest(observed.head)
       })
     });
   } catch (error) {
-    if (error instanceof FilesystemToolError && error.code === "file_not_found") {
+    if (error instanceof FilesystemToolError && error.code === "file_not_found")
       return Object.freeze({
         content: null,
         version: Object.freeze({ kind: "absent" })
       });
-    }
+    if (error instanceof FilesystemToolError && error.code === "filesystem_read_changed")
+      failTargetChanged(target.logicalPath, "file", "file");
     return rethrowFilesystemError(error, "read", target.logicalPath);
-  } finally {
-    await file?.handle.close().catch(() => void 0);
   }
 }
 async function assertMutationTargetUnchanged(target, expected) {
-  let file;
+  let current;
   try {
-    file = await openRegularFile(target);
+    current = await readMutationSnapshot(target);
   } catch (error) {
-    if (error instanceof FilesystemToolError && error.code === "file_not_found") {
-      if (expected.kind === "absent") return;
-      failTargetChanged(target.logicalPath, expected.kind, "absent");
-    }
+    const changedContents = error instanceof FilesystemToolError && [
+      "file_too_large",
+      "binary_file_unsupported",
+      "filesystem_invalid_encoding"
+    ].includes(error.code);
+    if (changedContents)
+      failTargetChanged(target.logicalPath, expected.kind, "file");
     throw error;
   }
-  try {
-    if (expected.kind === "absent") {
-      failTargetChanged(target.logicalPath, "absent", "file");
-    }
-    if (!sameMetadata(expected, file.metadata)) {
-      failTargetChanged(target.logicalPath, "file", "file");
-    }
-    const buffer = Buffer.alloc(file.size);
-    await readExactBytes(file.handle, buffer, 0, target.logicalPath);
-    const afterRead = metadataFromStat(
-      await file.handle.stat({ bigint: true }),
-      target.logicalPath
-    );
-    if (!sameMetadata(file.metadata, afterRead) || digest(buffer) !== expected.digest) {
-      failTargetChanged(target.logicalPath, "file", "file");
-    }
-  } catch (error) {
-    return rethrowFilesystemError(error, "inspect", target.logicalPath);
-  } finally {
-    await file.handle.close().catch(() => void 0);
-  }
+  if (current.version.kind !== expected.kind)
+    failTargetChanged(target.logicalPath, expected.kind, current.version.kind);
+  if (current.version.kind === "absent" || expected.kind === "absent") return;
+  if (!sameMetadata(expected, current.version) || expected.digest !== current.version.digest)
+    failTargetChanged(target.logicalPath, "file", "file");
 }
 function assertMutationContentSize(content) {
   const byteCount = Buffer.byteLength(content, "utf8");
@@ -1050,40 +1961,11 @@ function assertMutationContentSize(content) {
   return byteCount;
 }
 function rejectBinary(buffer, logicalPath) {
-  if (buffer.includes(0)) {
+  if (buffer.includes(0))
     fail(
       "binary_file_unsupported",
       `Binary file is not supported: ${logicalPath}`
     );
-  }
-}
-function metadataFromStat(info, logicalPath) {
-  if (info.size > BigInt(Number.MAX_SAFE_INTEGER)) {
-    fail("file_too_large", `File is too large to read safely: ${logicalPath}`);
-  }
-  return Object.freeze({
-    device: info.dev,
-    inode: info.ino,
-    size: Number(info.size),
-    mode: Number(info.mode) & 4095,
-    modifiedNs: info.mtimeNs,
-    changedNs: info.ctimeNs
-  });
-}
-function sameMetadata(left, right) {
-  return left.device === right.device && left.inode === right.inode && left.size === right.size && left.mode === right.mode && left.modifiedNs === right.modifiedNs && left.changedNs === right.changedNs;
-}
-async function assertFileStable(file, logicalPath) {
-  const afterRead = metadataFromStat(
-    await file.handle.stat({ bigint: true }),
-    logicalPath
-  );
-  if (!sameMetadata(file.metadata, afterRead)) {
-    fail(
-      "filesystem_read_changed",
-      `File changed while it was being read: ${logicalPath}`
-    );
-  }
 }
 function digest(buffer) {
   return (0, import_node_crypto.createHash)("sha256").update(buffer).digest("hex");
@@ -1249,7 +2131,7 @@ function createDevViewHandler(paths) {
     const target = paths.resolve(pathRange.path, context);
     let info;
     try {
-      info = await (0, import_promises3.stat)(target.absolutePath);
+      info = await (0, import_promises4.stat)(target.absolutePath);
     } catch (error) {
       rethrowFilesystemError(error, "inspect", target.logicalPath);
     }
@@ -1449,16 +2331,16 @@ async function viewFile(input) {
 
 // plugins/filesystem/source/atomic-write.ts
 var import_node_crypto2 = require("node:crypto");
-var import_promises5 = require("node:fs/promises");
-var import_node_path5 = require("node:path");
+var import_promises6 = require("node:fs/promises");
+var import_node_path7 = require("node:path");
 
 // plugins/filesystem/source/mutation-parent.ts
 var import_node_fs3 = require("node:fs");
-var import_promises4 = require("node:fs/promises");
-var import_node_path4 = require("node:path");
+var import_promises5 = require("node:fs/promises");
+var import_node_path6 = require("node:path");
 function isWithinRoot(target, root) {
-  const rel = (0, import_node_path4.relative)(root, target);
-  return rel === "" || rel !== ".." && !rel.startsWith(`..${import_node_path4.sep}`);
+  const rel = (0, import_node_path6.relative)(root, target);
+  return rel === "" || rel !== ".." && !rel.startsWith(`..${import_node_path6.sep}`);
 }
 function sameIdentity(left, right) {
   return left.dev === right.dev && left.ino === right.ino;
@@ -1472,7 +2354,7 @@ async function openDirectory(path, rootPath, logicalPath, allowMissing = false) 
   }
   let handle;
   try {
-    handle = await (0, import_promises4.open)(
+    handle = await (0, import_promises5.open)(
       path,
       import_node_fs3.constants.O_RDONLY | import_node_fs3.constants.O_DIRECTORY | import_node_fs3.constants.O_NOFOLLOW
     );
@@ -1481,8 +2363,8 @@ async function openDirectory(path, rootPath, logicalPath, allowMissing = false) 
       fail("not_a_directory", `Expected a directory: ${logicalPath}`);
     }
     const [canonicalRoot, canonicalDirectory] = await Promise.all([
-      (0, import_promises4.realpath)(rootPath),
-      (0, import_promises4.realpath)(path)
+      (0, import_promises5.realpath)(rootPath),
+      (0, import_promises5.realpath)(path)
     ]);
     if (!isWithinRoot(canonicalDirectory, canonicalRoot)) {
       fail(
@@ -1490,7 +2372,7 @@ async function openDirectory(path, rootPath, logicalPath, allowMissing = false) 
         `Directory changed outside its configured root: ${logicalPath}`
       );
     }
-    const pathIdentity = await (0, import_promises4.stat)(canonicalDirectory, { bigint: true });
+    const pathIdentity = await (0, import_promises5.stat)(canonicalDirectory, { bigint: true });
     if (!pathIdentity.isDirectory() || !sameIdentity(opened, pathIdentity)) {
       fail(
         "filesystem_path_changed",
@@ -1499,7 +2381,7 @@ async function openDirectory(path, rootPath, logicalPath, allowMissing = false) 
     }
     if (usesIsolatedDirectoryAuthority()) return handle;
     const procPath = `/proc/self/fd/${handle.fd}`;
-    const procIdentity = await (0, import_promises4.stat)(procPath, { bigint: true });
+    const procIdentity = await (0, import_promises5.stat)(procPath, { bigint: true });
     if (!procIdentity.isDirectory() || !sameIdentity(opened, procIdentity)) {
       fail(
         "filesystem_safe_io_unsupported",
@@ -1526,7 +2408,7 @@ async function openChildDirectory(parent, name, logicalPath) {
     if (!isNodeErrorCode(error, "ENOENT")) throw error;
   }
   try {
-    await (0, import_promises4.mkdir)(anchoredPath);
+    await (0, import_promises5.mkdir)(anchoredPath);
   } catch (error) {
     if (!isNodeErrorCode(error, "EEXIST")) {
       rethrowFilesystemError(error, "write", logicalPath);
@@ -1791,6 +2673,7 @@ async function writeWithDirectoryAuthority(input) {
 // plugins/filesystem/source/atomic-write.ts
 async function atomicWriteText(input) {
   assertMutationContentSize(input.content);
+  if (process.platform === "win32") return writeWindowsFile(input);
   if (requiresIsolatedDirectoryAuthority()) {
     await writeWithDirectoryAuthority(input);
     return;
@@ -1803,12 +2686,12 @@ async function atomicWriteText(input) {
     absolutePath: targetPath,
     relativePath: parent.targetName
   });
-  const temporaryName = `.abot-${import_node_path5.posix.basename(parent.targetName)}-${(0, import_node_crypto2.randomUUID)()}.tmp`;
+  const temporaryName = `.abot-${import_node_path7.posix.basename(parent.targetName)}-${(0, import_node_crypto2.randomUUID)()}.tmp`;
   const temporaryPath = `${parent.procPath}/${temporaryName}`;
   const existingMode = input.expectedVersion.kind === "file" ? input.expectedVersion.mode : void 0;
   let temporaryCreated = false;
   try {
-    const temporaryHandle = await (0, import_promises5.open)(temporaryPath, "wx");
+    const temporaryHandle = await (0, import_promises6.open)(temporaryPath, "wx");
     temporaryCreated = true;
     try {
       await temporaryHandle.writeFile(input.content, "utf8");
@@ -1830,7 +2713,7 @@ async function atomicWriteText(input) {
     if (input.expectedVersion.kind === "file") {
       temporaryCreated = false;
     } else {
-      const removed = await (0, import_promises5.rm)(temporaryPath, { force: true }).then(() => true).catch(() => false);
+      const removed = await (0, import_promises6.rm)(temporaryPath, { force: true }).then(() => true).catch(() => false);
       temporaryCreated = !removed;
     }
     await syncDirectoryBestEffort(parent.handle);
@@ -1839,7 +2722,7 @@ async function atomicWriteText(input) {
     rethrowFilesystemError(error, "write", input.target.logicalPath);
   } finally {
     if (temporaryCreated) {
-      await (0, import_promises5.rm)(temporaryPath, { force: true }).catch(() => void 0);
+      await (0, import_promises6.rm)(temporaryPath, { force: true }).catch(() => void 0);
     }
     await closeMutationParent(parent);
   }
@@ -1848,11 +2731,11 @@ async function installPreparedFile(input) {
   const temporaryPath = `${input.parentProcPath}/${input.temporaryName}`;
   const targetPath = `${input.parentProcPath}/${input.targetName}`;
   if (input.expectedKind === "file") {
-    await (0, import_promises5.rename)(temporaryPath, targetPath);
+    await (0, import_promises6.rename)(temporaryPath, targetPath);
     return;
   }
   try {
-    await (0, import_promises5.link)(temporaryPath, targetPath);
+    await (0, import_promises6.link)(temporaryPath, targetPath);
   } catch (error) {
     if (isNodeErrorCode(error, "EEXIST")) {
       fail(
@@ -1875,7 +2758,7 @@ function requiresIsolatedDirectoryAuthority() {
 
 // plugins/filesystem/source/draft/grounding.ts
 var import_node_crypto3 = require("node:crypto");
-var import_node_path6 = require("node:path");
+var import_node_path8 = require("node:path");
 var GROUNDING_MAX_CHARS = 32768;
 var SNAPSHOT_MAX_CHARS = 3e4;
 var SNAPSHOT_SEGMENT_CHARS = Math.floor(SNAPSHOT_MAX_CHARS / 2);
@@ -1884,7 +2767,7 @@ function buildMutationGrounding(input) {
   const byteCount = Buffer.byteLength(input.content, "utf8");
   const lineCount = input.content.length ? input.content.split(/\r?\n/u).length : 0;
   const sha256 = (0, import_node_crypto3.createHash)("sha256").update(input.content).digest("hex");
-  const extension = (0, import_node_path6.extname)(input.logicalPath).toLowerCase() || "none";
+  const extension = (0, import_node_path8.extname)(input.logicalPath).toLowerCase() || "none";
   const snapshot = projectSnapshot(input.content, input.previousContent);
   const summary = bound(
     [
@@ -2128,7 +3011,7 @@ function scopeError(message) {
 // plugins/filesystem/source/draft/validators.ts
 var import_parser = require("@babel/parser");
 var import_postcss = require("postcss");
-var import_node_path7 = require("node:path");
+var import_node_path9 = require("node:path");
 var SCRIPT_EXTENSIONS = /* @__PURE__ */ new Set([
   ".js",
   ".jsx",
@@ -2168,7 +3051,7 @@ function lineColumnAt(content, offset) {
   });
 }
 function scriptOptions(targetPath) {
-  const extension = (0, import_node_path7.extname)(targetPath).toLowerCase();
+  const extension = (0, import_node_path9.extname)(targetPath).toLowerCase();
   const plugins = [];
   if ([".js", ".jsx", ".mjs", ".cjs", ".tsx"].includes(extension)) {
     plugins.push("jsx");
@@ -2231,7 +3114,7 @@ function foreignScriptWrapper(content, targetPath, originalError) {
     return parseScript(projected.join("\n"), targetPath) === void 0;
   };
   if (opening && closing && first < last && parsesWithout(first, last)) {
-    const extension = (0, import_node_path7.extname)(targetPath).toLowerCase();
+    const extension = (0, import_node_path9.extname)(targetPath).toLowerCase();
     if (!originalError && [".jsx", ".tsx"].includes(extension))
       return void 0;
     return wrapperDiagnostic(lines[first], first, "opening", 2);
@@ -2249,14 +3132,14 @@ var validators = Object.freeze([
     id: "json",
     label: "strict JSON",
     authoritativeStructure: true,
-    matchesTarget: (targetPath) => (0, import_node_path7.extname)(targetPath).toLowerCase() === ".json",
+    matchesTarget: (targetPath) => (0, import_node_path9.extname)(targetPath).toLowerCase() === ".json",
     validate: (content) => validateJson(content)
   }),
   Object.freeze({
     id: "css",
     label: "CSS",
     authoritativeStructure: true,
-    matchesTarget: (targetPath) => (0, import_node_path7.extname)(targetPath).toLowerCase() === ".css",
+    matchesTarget: (targetPath) => (0, import_node_path9.extname)(targetPath).toLowerCase() === ".css",
     validate(content, targetPath) {
       try {
         (0, import_postcss.parse)(content, { from: targetPath });
@@ -2276,7 +3159,7 @@ var validators = Object.freeze([
     id: "script",
     label: "JavaScript/TypeScript",
     authoritativeStructure: true,
-    matchesTarget: (targetPath) => SCRIPT_EXTENSIONS.has((0, import_node_path7.extname)(targetPath).toLowerCase()),
+    matchesTarget: (targetPath) => SCRIPT_EXTENSIONS.has((0, import_node_path9.extname)(targetPath).toLowerCase()),
     validate(content, targetPath) {
       const error = parseScript(content, targetPath);
       return foreignScriptWrapper(content, targetPath, error) ?? (error ? scriptDiagnostic(error) : void 0);
@@ -2626,17 +3509,17 @@ function delimiterRegressions(previous, updated) {
     ["square", "[", "]"],
     ["paren", "(", ")"]
   ];
-  return delimiters.flatMap(([name, open5, close]) => {
-    if (!previous.includes(open5) || !previous.includes(close)) return [];
-    const before = balance(previous, open5, close);
-    const after = balance(updated, open5, close);
+  return delimiters.flatMap(([name, open6, close]) => {
+    if (!previous.includes(open6) || !previous.includes(close)) return [];
+    const before = balance(previous, open6, close);
+    const after = balance(updated, open6, close);
     return before === 0 && after !== 0 ? [`${name} delimiter balance changed from 0 to ${after}`] : [];
   });
 }
-function balance(content, open5, close) {
+function balance(content, open6, close) {
   let count = 0;
   for (const character of content) {
-    if (character === open5) count += 1;
+    if (character === open6) count += 1;
     else if (character === close) count -= 1;
   }
   return count;
@@ -2660,6 +3543,7 @@ function createFilesystemMutationCoordinator() {
   const tails = /* @__PURE__ */ new Map();
   return Object.freeze({
     async runExclusive(targetKey, task) {
+      if (process.platform === "win32") targetKey = targetKey.toUpperCase();
       const previous = tails.get(targetKey) ?? Promise.resolve();
       let release;
       const current = new Promise((resolve) => {
@@ -2682,7 +3566,7 @@ function getProcessFilesystemMutationCoordinator() {
 }
 
 // plugins/filesystem/source/path-service.ts
-var import_node_path8 = require("node:path");
+var import_node_path10 = require("node:path");
 var FILESYSTEM_LOCATIONS = Object.freeze([
   "agent_work",
   "workspace"
@@ -2700,7 +3584,7 @@ function logicalParent(logicalPath) {
   if (logicalPath === "." || logicalPath === "workspace") {
     return logicalPath;
   }
-  return import_node_path8.posix.dirname(logicalPath);
+  return import_node_path10.posix.dirname(logicalPath);
 }
 function createFilesystemPathService(fallbackResolver) {
   return Object.freeze({
@@ -2715,7 +3599,7 @@ function createFilesystemPathService(fallbackResolver) {
     },
     sibling(target, name, context) {
       const parent = logicalParent(target.logicalPath);
-      const logicalPath = parent === "." ? name : import_node_path8.posix.join(parent, name);
+      const logicalPath = parent === "." ? name : import_node_path10.posix.join(parent, name);
       return resolveWith(resolverFor(fallbackResolver, context), logicalPath);
     }
   });
@@ -2910,7 +3794,8 @@ function settle(handler, operation) {
         return failureResult({
           errorCode: error.code,
           message: error.message,
-          data: error.data
+          data: error.data,
+          ...error.code === "filesystem_windows_interrupted" && context?.abortSignal?.aborted ? { interruption: "aborted" } : {}
         });
       }
       return failureFromError(error, {
@@ -2925,6 +3810,7 @@ var index_default = defineRuntimePlugin((context) => {
   const paths = createFilesystemPathService(context.runtimePathResolver);
   const mutations = getProcessFilesystemMutationCoordinator();
   return Object.freeze({
+    prepareRequest: prepareFilesystemRequest,
     handlers: Object.freeze({
       dev_view: settle(createDevViewHandler(paths), "dev_view"),
       edit_file: settle(createEditFileHandler(paths, mutations), "edit_file"),

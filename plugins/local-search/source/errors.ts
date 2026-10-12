@@ -4,6 +4,8 @@ export type LocalSearchErrorCode =
   | "local_search_result_encoding_unsupported"
   | "local_search_result_invalid"
   | "local_search_path_roundtrip_unsafe"
+  | "local_search_authority_unavailable"
+  | "local_search_windows_unavailable"
   | "local_search_failed";
 
 export class LocalSearchError extends Error {

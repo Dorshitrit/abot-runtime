@@ -1,0 +1,23 @@
+.workspace-storage-notice {
+  color: var(--text); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 12px; padding: 24px; max-width: min(540px, calc(100vw - 40px));
+  line-height: 1.6;
+}
+.workspace-storage-notice::backdrop { background: #0009; }
+.workspace-storage-notice h2 { margin-top: 0; }
+.workspace-storage-notice button { margin-top: 8px; }
+.workspace-storage-failure {
+  position: fixed; z-index: 10000; bottom: 16px; left: 16px; right: 16px;
+  padding: 12px 16px; color: var(--text); background: var(--panel);
+  border: 1px solid #ed9b91; border-radius: 8px;
+}
+
+.composer-submission-notice {
+  grid-column: 1 / -1; width: 100%; color: var(--text-muted); font-size: 12px;
+}
+.composer-submission-notice[hidden] { display: none; }
+.composer-submission-notice > div {
+  display: flex; align-items: center; gap: 12px; justify-content: space-between;
+  padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px;
+}
+.composer-submission-notice button { flex-shrink: 0; }

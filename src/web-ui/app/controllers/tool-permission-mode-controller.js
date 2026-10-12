@@ -20,7 +20,7 @@ export function createToolPermissionModeController({
   function currentToolPermissionMode() {
     const sessionId = getComposerSessionId();
     if (!sessionId) return preferences.loadLastToolPermissionMode(normalizeToolPermissionMode);
-    return normalizeToolPermissionMode(sessionModeFor(sessionId).toolPermissionMode);
+    return normalizeToolPermissionMode(sessionModeFor(sessionId).toolPermissionMode || "ask");
   }
 
   function clearSessionMode(sessionId) {

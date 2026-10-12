@@ -18,12 +18,14 @@
   },
   "description": "Open runtime for local AI agents.",
   "devDependencies": {
+    "@actions/expressions": "^0.3.61",
     "@types/node": "^25.5.2",
     "esbuild": "^0.28.2",
     "prettier": "^3.8.1",
     "tsx": "^4.23.13",
     "typescript": "^6.0.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "yaml": "^2.9.1"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
@@ -181,5 +183,5 @@
   },
   "type": "module",
   "types": "./dist/src/runtime/index.d.ts",
-  "version": "1.7.0"
+  "version": "1.8.0"
 }

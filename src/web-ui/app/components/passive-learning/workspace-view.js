@@ -36,9 +36,9 @@ export function learningWorkspaceMarkup(timeZone) {
     <section class="passive-learning-panel" id="learning-chat-panel" role="tabpanel" tabindex="0" aria-labelledby="learning-chat-tab" data-learning-panel="chat" hidden></section>
     <section class="passive-learning-panel" id="learning-settings-panel" role="tabpanel" tabindex="0" aria-labelledby="learning-settings-tab" data-learning-panel="settings" hidden>
       ${learningSettingsMarkup(timeZone)}
-      <details class="passive-learning-setup" data-learning-setup><summary>Computer connection</summary>
+      <details class="passive-learning-setup" data-learning-setup><summary data-learning-connection-title>Computer connection</summary>
         <dl class="passive-learning-facts co-worker-connection-facts"><div><dt>Computer</dt><dd data-learning-device>—</dd></div><div><dt>Collection access</dt><dd><span data-learning-coverage>—</span><small data-learning-coverage-detail></small></dd></div></dl>
-        <p data-learning-companion-version></p><p>Collection uses the shared Computer access connection. Computer tools have their own controls.</p><button type="button" data-learning-computer-access>Manage Computer access</button></details>
+        <p data-learning-companion-version></p><p data-learning-connection-description></p><button type="button" data-learning-computer-access>Manage Computer access</button></details>
     </section>
     <section class="passive-learning-panel" id="learning-usage-panel" role="tabpanel" tabindex="0" aria-labelledby="learning-usage-tab" data-learning-panel="usage" hidden>${learningUsageMarkup()}</section>
   </section>`;

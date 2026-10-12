@@ -207,7 +207,11 @@ or screen content and is emitted only once per newly admitted pass.
 
 The Applications tab derives metadata from retained observations and configured
 rules, without a new activity store or model call. Counts cover retained data;
-the projection includes at most 100 recent unruled applications plus all rules.
+the projection includes at most 100 recent unruled applications plus all
+user-configurable rules. Application-wide built-in self-exclusions are omitted
+before applying this limit, including rows from old rules or retained evidence.
+Their controls are not exposed; user preferences cannot override collection's
+mandatory self-exclusion. Window-only Web UI exclusions do not hide the browser.
 Collection exclusions and processing exclusions are independent, exact
 case-insensitive application identities. Browser domains are not inferred.
 

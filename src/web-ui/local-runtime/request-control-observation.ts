@@ -45,8 +45,8 @@ export function webSteerRoute(
   active: ActiveRequest | undefined,
   steer: unknown,
 ): string {
-  if (!active) return "web_projection_missing";
   if (steer) return "runtime_owner";
+  if (!active) return "web_projection_missing";
   return "local_inbox";
 }
 

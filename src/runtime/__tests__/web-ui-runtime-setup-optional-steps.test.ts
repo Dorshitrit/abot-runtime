@@ -83,7 +83,7 @@ describe("optional onboarding steps", () => {
     expect(harness.applySetup).not.toHaveBeenCalled();
     harness.submit();
     expect(harness.container.innerHTML).toContain("Set up later");
-    expect(harness.container.innerHTML).toContain("1 enabled");
+    expect(harness.container.innerHTML).toContain("1 selected");
     harness.click("apply");
     await vi.waitFor(() => expect(onCheckAgain).toHaveBeenCalledOnce());
     expect(harness.applySetup).toHaveBeenCalledOnce();

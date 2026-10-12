@@ -10,6 +10,11 @@ The Store app and Runtime have separate releases.
 
 ## Connection experience
 
+A Runtime running directly on Windows uses local access and collection without
+Companion pairing. The Store connection remains available for a Windows computer
+used with a WSL or Docker Runtime. Spark also requires an installation-wide
+collection acknowledgment in the Web UI; accepting it does not start collection.
+
 The Web UI links to the Store for one installation. The user returns to ABot,
 requests a connection link and explicitly opens Companion. Companion shows the
 Runtime address and asks for confirmation before pairing. Users who already

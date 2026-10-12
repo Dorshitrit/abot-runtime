@@ -14,6 +14,8 @@ import { readSingleOutputOwner } from "./support/exec-output-fixture.js";
 
 afterEach(disposeCompositionFixtures);
 
+// This is an 8 MiB disk integrity/backpressure check, not a storage-speed deadline.
+// Windows runners also need time for the real flushes and repeated hash reads.
 test("captures complete output using pipe backpressure and bounded producer queues", async () => {
   const config = await createRuntimeConfig();
   const store = createExecOutputStore({ stateDir: config.paths.runtimeDir });
@@ -53,7 +55,7 @@ test("captures complete output using pipe backpressure and bounded producer queu
     actualHash.update(chunk);
   }
   expect(`sha256:${actualHash.digest("hex")}`).toBe(body.sha256);
-});
+}, process.platform === "win32" ? 30_000 : 5_000);
 
 test("starts retention after all writers close and protects an active reader past expiry", async () => {
   const config = await createRuntimeConfig();

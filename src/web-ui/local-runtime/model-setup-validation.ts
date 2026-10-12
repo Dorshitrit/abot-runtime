@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { throwModelSetupValidationError } from "./model-setup-context-window.js";
 import { loadRuntimeConfig } from "../../runtime/config.js";
 import { isRecord } from "../../runtime/config/utils.js";
 import { validateRuntimeConfigFile } from "../../runtime/config/validation.js";
@@ -8,7 +9,7 @@ import { validateRuntimeConfigFile } from "../../runtime/config/validation.js";
 /** Staging beside the selected source preserves every existing relative reference. */
 export async function validateModelConfigurationChange(
   config: Record<string, unknown>,
-  options: { rootDir: string; configPath: string },
+  options: { rootDir: string; configPath: string; modelProfileId?: string },
 ): Promise<void> {
   validateRuntimeConfigFile(config, options.configPath);
   const temporary = join(
@@ -26,13 +27,22 @@ export async function validateModelConfigurationChange(
       ? Object.keys(environment.profiles)
       : [];
     const environments = profileIds.length ? profileIds : [undefined];
-    for (const profileId of environments)
-      loadRuntimeConfig({
-        rootDir: options.rootDir,
-        configPath: temporary,
-        profileId,
-        env: { ...process.env },
-      });
+    for (const environmentId of environments) {
+      try {
+        loadRuntimeConfig({
+          rootDir: options.rootDir,
+          configPath: temporary,
+          profileId: environmentId,
+          env: { ...process.env },
+        });
+      } catch (error) {
+        throwModelSetupValidationError(
+          error,
+          options.modelProfileId,
+          environmentId,
+        );
+      }
+    }
   } finally {
     await rm(temporary, { force: true });
   }

@@ -1,6 +1,7 @@
 import { escapeHtml } from "../../lib/text-format.js";
 import { renderWindowsStoreSetup, windowsStorePanelIsAvailable } from "./windows-store-setup.js";
 import { renderConnectionCard, renderComputerMetadata } from "./connection-card.js";
+import { shouldRenderNativeWindowsAccess, renderNativeWindowsAccess } from "./native-windows-access.js";
 import { macPermissionSummary, renderMacPermissionPreparation } from "./macos-permission-rendering.js";
 import {
   renderMacSetupAction,
@@ -123,6 +124,8 @@ function canRenderCompactConnection(input) {
   return true;
 }
 export function renderSystemHostConnection(input) {
+  if (shouldRenderNativeWindowsAccess(input))
+    return renderNativeWindowsAccess(input);
   if (input.supported && windowsStorePanelIsAvailable(input.snapshot)) {
     return renderWindowsStoreSetup({
       snapshot: input.snapshot, invitation: input.windowsStoreInvitation,

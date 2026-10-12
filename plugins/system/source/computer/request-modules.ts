@@ -1,5 +1,4 @@
 import {
-  failureResult,
   type ToolImplementation,
   type ToolRequestPreparationContext,
   type ToolModuleDeclaration,
@@ -12,17 +11,14 @@ import {
 import type { SystemHostConnection } from "../host-dispatch.js";
 import { createComputerHandlers, COMPUTER_TOOLS } from "./handlers.js";
 import { RequestComputers } from "./request-computers.js";
+import { supportsRuntimeDesktopTools, unboundComputerFailure } from "./runtime-platform.js";
 
 /** Load-time placeholders cannot allocate a desktop outside request ownership. */
 export function unboundComputerHandlers(): Record<string, ToolImplementation> {
   return Object.fromEntries(
     COMPUTER_TOOLS.map((name) => [
       name,
-      async () =>
-        failureResult({
-          errorCode: "computer_request_binding_required",
-          message: "Computer control requires a prepared request.",
-        }),
+      async () => unboundComputerFailure(),
     ]),
   );
 }
@@ -35,6 +31,7 @@ export function prepareComputerModules(
   preparation?: ToolRequestPreparationContext,
 ): readonly ToolModuleDeclaration[] {
   if (modules.length === 0) return [];
+  if (!supportsRuntimeDesktopTools()) return [];
   const computers = new RequestComputers(
     rootDir,
     routes,

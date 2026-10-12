@@ -6,6 +6,7 @@ export function createAppliedEnvironmentProjection({
   dom,
   selection,
   loadWebConfig,
+  changeEnvironment,
 }) {
   let generation = 0;
   let pending = null;
@@ -23,11 +24,10 @@ export function createAppliedEnvironmentProjection({
     );
   }
 
-  function restoreProjection(config, selected) {
+  function applyProjection(config, selected) {
     state.config = config;
     selection.renderEnvironmentOptions();
     dom.environmentSelect.value = selected;
-    selection.renderAgentPicker();
   }
 
   function preferredEnvironmentId(options, selected, defaultId) {
@@ -36,45 +36,36 @@ export function createAppliedEnvironmentProjection({
     return options[0]?.value || "";
   }
 
-  function changeProjectedEnvironment(
-    next,
-    previousConfig,
-    previousEnvironment,
-  ) {
-    const ChangeEvent = dom.environmentSelect.ownerDocument.defaultView.Event;
-    dom.environmentSelect.dispatchEvent(new ChangeEvent("change"));
-    if (dom.environmentSelect.value === next) return true;
-    restoreProjection(previousConfig, previousEnvironment);
-    // Existing listeners also own composer/environment presentation after a refusal.
-    dom.environmentSelect.dispatchEvent(new ChangeEvent("change"));
-    return false;
-  }
-
-  function flush() {
+  async function flush() {
     if (!pending) return "unchanged";
-    const previousConfig = state.config;
     const previousEnvironment = selection.selectedEnvironmentId();
-    state.config = pending;
-    selection.renderEnvironmentOptions();
+    const projected = pending;
+    const revision = generation;
     const next = preferredEnvironmentId(
-      selection.environmentOptions(),
+      selection.configuredEnvironmentOptions(projected),
       previousEnvironment,
-      textOf(pending.defaultEnvironmentId).trim(),
+      textOf(projected.defaultEnvironmentId).trim(),
     );
-    if (!next) {
-      restoreProjection(previousConfig, previousEnvironment);
-      return "blocked";
-    }
-    dom.environmentSelect.value = next;
-    const unchanged = next === previousEnvironment;
-    if (unchanged) {
+    if (!next) return "blocked";
+    if (next === previousEnvironment) {
+      applyProjection(projected, next);
       pending = null;
       selection.renderAgentPicker();
       return "unchanged";
     }
-    if (!changeProjectedEnvironment(next, previousConfig, previousEnvironment))
-      return "blocked";
-    pending = null;
+    // Keep the old catalog and selected option until draft preparation commits.
+    const commitEnvironmentOptions = () => {
+      applyProjection(projected, next);
+      pending = null;
+    };
+    commitEnvironmentOptions.canCommit = () => {
+      if (revision !== generation) return false;
+      return pending === projected;
+    };
+    let accepted = false;
+    try { accepted = await changeEnvironment(next, { commitEnvironmentOptions }); }
+    catch { /* The old catalog remains active when draft persistence fails. */ }
+    if (!accepted) return "blocked";
     selection.renderAgentPicker();
     return "changed";
   }
@@ -87,6 +78,7 @@ export function createConfigurationFeature({
   state,
   selection,
   onConfigurationApplied,
+  changeEnvironment,
   ...options
 }) {
   const projection = createAppliedEnvironmentProjection({
@@ -94,6 +86,7 @@ export function createConfigurationFeature({
     dom: options.dom,
     selection,
     loadWebConfig: () => options.runtimeClient.loadWebConfig(),
+    changeEnvironment,
   });
   const workspace = createWorkspaceFeature({
     ...options,
@@ -101,13 +94,13 @@ export function createConfigurationFeature({
       const currentStillConfigured = await projection.prepare();
       if (currentStillConfigured) await onConfigurationApplied();
     },
-    onConfigurationSettled: () => projection.flush() !== "blocked",
+    onConfigurationSettled: async () => await projection.flush() !== "blocked",
   });
   return {
     ...workspace,
     async reloadAppliedEnvironmentModels() {
       await projection.prepare();
-      const result = projection.flush();
+      const result = await projection.flush();
       if (result === "blocked") return false;
       if (result === "changed") return true;
       const refreshed = await workspace.load();

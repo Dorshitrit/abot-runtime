@@ -276,7 +276,7 @@ describe("computer route and queue isolation", () => {
             user: "user",
             homeDir: "/home/user",
           },
-          capabilities: ["computer_control_v1"],
+          capabilities: ["computer_control_v1", "host_secret_protection_v1"],
         }) as never,
     };
     expect(await captureSystemTargetSnapshot(input)).toHaveLength(1);

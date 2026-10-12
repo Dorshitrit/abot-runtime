@@ -5,6 +5,7 @@ import { runInitRuntime } from "../../scripts/init-runtime.js";
 import { runConfigureLongTermMemory } from "../../scripts/configure-long-term-memory.js";
 import { resolveProviderAdapters } from "../model-gateway/server.js";
 import { loadDotEnvFile } from "../shared/load-dotenv.js";
+import { recoverRuntimeSetupEdit } from "../web-ui/local-runtime/runtime-setup-edit-recovery.js";
 import { closeRuntimeSetupServices } from "../web-ui/runtime-setup-shutdown.js";
 import { RuntimeSetupGateway } from "../web-ui/runtime-setup-gateway.js";
 import { startWebUiServer } from "../web-ui/server.js";
@@ -43,6 +44,7 @@ async function runStart(args: string[]): Promise<void> {
   }
 
   const rootDir = process.cwd();
+  await recoverRuntimeSetupEdit(rootDir);
   loadDotEnvFile(join(rootDir, ".env"));
   const webAddress = resolveWebUiAddress(process.env);
   const appDir = resolve(import.meta.dirname, "../web-ui/app");

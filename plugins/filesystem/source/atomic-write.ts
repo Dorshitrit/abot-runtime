@@ -1,3 +1,4 @@
+import { writeWindowsFile } from "./windows/operations.js";
 import { randomUUID } from "node:crypto";
 import { link, open, rename, rm, type FileHandle } from "node:fs/promises";
 import { posix } from "node:path";
@@ -23,6 +24,7 @@ export async function atomicWriteText(
   }>,
 ): Promise<void> {
   assertMutationContentSize(input.content);
+  if (process.platform === "win32") return writeWindowsFile(input);
   if (requiresIsolatedDirectoryAuthority()) {
     await writeWithDirectoryAuthority(input);
     return;

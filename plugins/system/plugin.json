@@ -4,6 +4,10 @@
   "version": "1.0.0",
   "description": "System commands, applications and structured observation/control of existing user desktops across native and locally connected OS targets.",
   "extensions": {
+    "ai.abot.compatibility": {
+      "version": 1,
+      "runtimePlatforms": ["linux", "darwin", "win32"]
+    },
     "ai.abot.runtime": {
       "version": 1,
       "entrypoint": "./src/index.cjs",
@@ -81,7 +85,7 @@
           ],
           "operations": {
             "run_system_command": {
-              "summary": "Run a shell command on an available OS target with absolute cwd in its namespace. The complete command, including inline file content, is limited to 4096 characters. File payload tools support larger bodies in the runtime-host namespace. Can read exposed application/browser text via native accessibility APIs, including signed-in pages. Verify the document and text. Capability references are not commands; exit zero is not effect evidence.",
+              "summary": "Run a shell command in the selected OS. cwd must be absolute; native Windows also accepts agent-work-relative paths and workspace/. The entire command is limited to 4096 characters; use file payload tools for larger bodies. Native accessibility APIs can read exposed app/browser text, including signed-in pages; verify the document and text. Capability references are not commands; exit zero is not effect evidence.",
               "input": {
                 "type": "object",
                 "additionalProperties": false,

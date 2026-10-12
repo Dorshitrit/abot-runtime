@@ -278,7 +278,15 @@ export function createConfigurationFeature({
           "Finish or cancel model setup before leaving configuration.";
         return null;
       }
-      return prepareDiscardChanges(...args);
+      const prepared = prepareDiscardChanges(...args);
+      if (typeof prepared !== "function") return prepared;
+      const commit = () => prepared();
+      commit.canCommit = () => {
+        if (pluginManager.hasConfigurationDraft()) return false;
+        if (modelSetup.isOpen()) return false;
+        return prepared.canCommit?.() !== false;
+      };
+      return commit;
     },
   };
 }

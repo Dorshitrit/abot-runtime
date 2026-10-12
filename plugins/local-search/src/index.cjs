@@ -8,6 +8,14 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res, err) => function __init() {
+  if (err) throw err[0];
+  try {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  } catch (e) {
+    throw err = [e], e;
+  }
+};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
@@ -30,13 +38,242 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
+// src/shared/windows-file-io/native-script.ts
+var WINDOWS_FILESYSTEM_NATIVE;
+var init_native_script = __esm({
+  "src/shared/windows-file-io/native-script.ts"() {
+    "use strict";
+    WINDOWS_FILESYSTEM_NATIVE = String.raw`
+using System;
+using System.IO;
+using System.Text;
+using System.Linq;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
+using System.Web.Script.Serialization;
+using Microsoft.Win32.SafeHandles;
+
+public sealed class FsFault : Exception {
+  public readonly string Code;
+  public FsFault(string code) : base(code) { Code = code; }
+}
+public static partial class AbotFilesystem {
+  [StructLayout(LayoutKind.Sequential)] struct UnicodeString { public ushort Length, MaximumLength; public IntPtr Buffer; }
+  [StructLayout(LayoutKind.Sequential)] struct ObjectAttributes {
+    public int Length; public IntPtr Root, Name; public uint Attributes; public IntPtr Security, Qos;
+  }
+  [StructLayout(LayoutKind.Sequential)] struct IoStatus { public IntPtr Status, Information; }
+  [StructLayout(LayoutKind.Sequential)] struct BasicInfo {
+    public long Created, Accessed, Modified, Changed; public uint Attributes;
+  }
+  [StructLayout(LayoutKind.Sequential)] struct FileInfo {
+    public uint Attributes; public System.Runtime.InteropServices.ComTypes.FILETIME Created, Accessed, Modified;
+    public uint Volume, SizeHigh, SizeLow, Links, IndexHigh, IndexLow;
+  }
+  [DllImport("ntdll.dll")] static extern int NtCreateFile(out SafeFileHandle file, uint access,
+    ref ObjectAttributes attributes, out IoStatus status, IntPtr allocation, uint fileAttributes,
+    uint share, uint disposition, uint options, IntPtr ea, uint eaLength);
+  [DllImport("ntdll.dll")] static extern uint RtlNtStatusToDosError(int status);
+  [DllImport("ntdll.dll")] static extern int NtSetInformationFile(SafeFileHandle file,
+    out IoStatus status, IntPtr info, uint length, int kind);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileInformationByHandle(SafeFileHandle file, out FileInfo info);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetFileInformationByHandleEx(SafeFileHandle file, int kind, IntPtr data, uint length);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetFileInformationByHandle(SafeFileHandle file, int kind, ref BasicInfo info, uint length);
+  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern uint GetFinalPathNameByHandle(SafeFileHandle file, StringBuilder name, uint length, uint flags);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetFilePointerEx(SafeFileHandle file, long position, out long result, uint method);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool ReadFile(SafeFileHandle file, byte[] bytes, uint count, out uint read, IntPtr overlapped);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool WriteFile(SafeFileHandle file, byte[] bytes, uint count, out uint written, IntPtr overlapped);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool FlushFileBuffers(SafeFileHandle file);
+  [DllImport("advapi32.dll")] static extern uint GetSecurityInfo(SafeFileHandle file, int kind, uint information,
+    out IntPtr owner, out IntPtr group, out IntPtr dacl, out IntPtr sacl, out IntPtr descriptor);
+  [DllImport("advapi32.dll")] static extern uint SetSecurityInfo(SafeFileHandle file, int kind, uint information,
+    IntPtr owner, IntPtr group, IntPtr dacl, IntPtr sacl);
+  [DllImport("advapi32.dll", SetLastError=true)] static extern bool GetSecurityDescriptorControl(IntPtr descriptor, out ushort control, out uint revision);
+  [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr value);
+
+  static void Check(bool success) { if (!success) NativeFailure((uint)Marshal.GetLastWin32Error()); }
+  static bool IsNotDirectoryError(uint code) { return code == 267; } // ERROR_DIRECTORY
+  static void NativeFailure(uint code) {
+    if (IsNotDirectoryError(code)) throw new FsFault("not_a_directory");
+    if (code == 2 || code == 3) throw new FsFault("file_not_found");
+    if (code == 80 || code == 183) throw new FsFault("filesystem_target_changed");
+    if (code == 5 || code == 32 || code == 33) throw new FsFault("filesystem_access_denied");
+    throw new FsFault("filesystem_native_operation_failed");
+  }
+  static void CheckNt(int status) { if (status < 0) NativeFailure(RtlNtStatusToDosError(status)); }
+  static SafeFileHandle OpenHandle(SafeFileHandle root, string name, bool directory,
+    uint disposition, uint access, uint share, byte[] securityDescriptor = null, bool deleteOnClose = false) {
+    IntPtr text = Marshal.StringToHGlobalUni(name), unicodePointer = IntPtr.Zero, securityPointer = IntPtr.Zero;
+    try {
+      int length = Encoding.Unicode.GetByteCount(name);
+      if (length > 65532) throw new FsFault("filesystem_invalid_path");
+      UnicodeString unicode = new UnicodeString { Length=(ushort)length, MaximumLength=(ushort)(length+2), Buffer=text };
+      unicodePointer = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(UnicodeString)));
+      Marshal.StructureToPtr(unicode, unicodePointer, false);
+      if (securityDescriptor != null) {
+        securityPointer = Marshal.AllocHGlobal(securityDescriptor.Length);
+        Marshal.Copy(securityDescriptor, 0, securityPointer, securityDescriptor.Length);
+      }
+      ObjectAttributes attributes = new ObjectAttributes {
+        Length=Marshal.SizeOf(typeof(ObjectAttributes)), Root=root == null ? IntPtr.Zero : root.DangerousGetHandle(),
+        Name=unicodePointer, Attributes=0x40, Security=securityPointer
+      };
+      SafeFileHandle file;
+      IoStatus status;
+      int result = NtCreateFile(out file, access | 0x100000, ref attributes, out status,
+        IntPtr.Zero, 0x80, share, disposition, 0x200020u | (directory ? 1u : 0x40u) | (deleteOnClose ? 0x1000u : 0u), IntPtr.Zero, 0);
+      if (result < 0) { if (file != null) file.Dispose(); CheckNt(result); }
+      try {
+        FileInfo info; Check(GetFileInformationByHandle(file, out info));
+        if ((info.Attributes & 0x400) != 0) throw new FsFault("filesystem_path_changed");
+        if (((info.Attributes & 0x10) != 0) != directory) throw new FsFault("filesystem_path_changed");
+        return file;
+      } catch { file.Dispose(); throw; }
+    } finally {
+      if (securityPointer != IntPtr.Zero) Marshal.FreeHGlobal(securityPointer);
+      if (unicodePointer != IntPtr.Zero) Marshal.FreeHGlobal(unicodePointer);
+      Marshal.FreeHGlobal(text);
+    }
+  }
+  static BasicInfo Basic(SafeFileHandle file) {
+    IntPtr buffer = Marshal.AllocHGlobal(40);
+    try { Check(GetFileInformationByHandleEx(file, 0, buffer, 40)); return (BasicInfo)Marshal.PtrToStructure(buffer, typeof(BasicInfo)); }
+    finally { Marshal.FreeHGlobal(buffer); }
+  }
+  static Dictionary<string,object> Record(params object[] pairs) {
+    var result = new Dictionary<string,object>();
+    for (int i=0;i<pairs.Length;i+=2) result.Add((string)pairs[i], pairs[i+1]);
+    return result;
+  }
+  static string Text(Dictionary<string,object> request, string key) {
+    object value;
+    if (!request.TryGetValue(key, out value) || !(value is string)) throw new FsFault("filesystem_invalid_request");
+    return (string)value;
+  }
+  static int Limit(Dictionary<string,object> request, string key, int maximum) {
+    object value;
+    if (!request.TryGetValue(key, out value) || !(value is int)) throw new FsFault("filesystem_invalid_request");
+    int number = (int)value;
+    if (number < 0 || number > maximum) throw new FsFault("filesystem_invalid_request");
+    return number;
+  }
+}
+`;
+  }
+});
+
+// src/shared/windows-file-io/authority-script.ts
+var WINDOWS_FILESYSTEM_AUTHORITY;
+var init_authority_script = __esm({
+  "src/shared/windows-file-io/authority-script.ts"() {
+    "use strict";
+    WINDOWS_FILESYSTEM_AUTHORITY = String.raw`
+public static partial class AbotFilesystem {
+  static string NativePath(string path) {
+    string full = Path.GetFullPath(path);
+    if (full.StartsWith(@"\\?\") || full.StartsWith(@"\\.\")) throw new FsFault("filesystem_invalid_path");
+    if (full.StartsWith(@"\\")) return @"\??\UNC\" + full.Substring(2);
+    if (full.Length < 3 || full[1] != ':' || full[2] != '\\') throw new FsFault("filesystem_invalid_path");
+    return @"\??\" + full;
+  }
+  static string FinalPath(SafeFileHandle handle) {
+    var value = new StringBuilder(32768);
+    uint length = GetFinalPathNameByHandle(handle, value, (uint)value.Capacity, 0);
+    Check(length != 0);
+    if (length >= value.Capacity) throw new FsFault("filesystem_invalid_path");
+    string path = value.ToString();
+    if (path.StartsWith(@"\\?\UNC\")) return @"\\" + path.Substring(8);
+    if (path.StartsWith(@"\\?\")) return path.Substring(4);
+    throw new FsFault("filesystem_path_changed");
+  }
+  static SafeFileHandle OpenRoot(Dictionary<string,object> request) {
+    string path = Path.GetFullPath(Text(request, "rootPath"));
+    SafeFileHandle root = OpenHandle(null, NativePath(path), true, 1, 0x80000000, 7);
+    try {
+      if (!String.Equals(FinalPath(root).TrimEnd('\\'), path.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+        throw new FsFault("filesystem_path_changed");
+      var expected = request["rootIdentity"] as Dictionary<string,object>;
+      if (expected == null || !MatchesIdentity(Identity(root), expected)) throw new FsFault("filesystem_path_changed");
+      return root;
+    } catch { root.Dispose(); throw; }
+  }
+  static string[] Components(Dictionary<string,object> request) {
+    string relative = Text(request, "relativePath");
+    if (relative == "") return new string[0];
+    string[] parts = relative.Split('/');
+    foreach (string part in parts) ValidateComponent(part);
+    return parts;
+  }
+  static void ValidateComponent(string name) {
+    if (name.Length == 0 || name == "." || name == "..") throw new FsFault("filesystem_invalid_path");
+    if (name.EndsWith(".") || name.EndsWith(" ")) throw new FsFault("filesystem_invalid_path");
+    foreach (char c in name) {
+      if (c < 32 || "\\/:*?\"<>|".IndexOf(c) >= 0) throw new FsFault("filesystem_invalid_path");
+    }
+    string stem = name.Split('.')[0].ToUpperInvariant();
+    if (stem == "CON" || stem == "PRN" || stem == "AUX" || stem == "NUL" ||
+      stem == "CONIN$" || stem == "CONOUT$") throw new FsFault("filesystem_invalid_path");
+    if (stem.Length == 4 && (stem.StartsWith("COM") || stem.StartsWith("LPT")) &&
+      "123456789\u00b9\u00b2\u00b3".IndexOf(stem[3]) >= 0) throw new FsFault("filesystem_invalid_path");
+  }
+  sealed class DirectoryChain : IDisposable {
+    public readonly SafeFileHandle Root;
+    readonly List<SafeFileHandle> children = new List<SafeFileHandle>();
+    public SafeFileHandle Current { get { return children.Count == 0 ? Root : children[children.Count-1]; } }
+    public DirectoryChain(Dictionary<string,object> request) { Root = OpenRoot(request); }
+    public void Walk(string[] parts, int count, bool create) {
+      for (int i=0;i<count;i++) children.Add(OpenHandle(Current, parts[i], true, create ? 3u : 1u, 0x80000000, 7));
+    }
+    public void Dispose() { for (int i=children.Count-1;i>=0;i--) children[i].Dispose(); Root.Dispose(); }
+  }
+  static ulong FileId(FileInfo info) {
+    ulong id=((ulong)info.IndexHigh << 32) | info.IndexLow;
+    if (id == 0) throw new FsFault("filesystem_safe_io_unsupported");
+    return id;
+  }
+  static Dictionary<string,object> Identity(SafeFileHandle file) {
+    FileInfo info; Check(GetFileInformationByHandle(file, out info));
+    BasicInfo basic = Basic(file);
+    return Record("device", info.Volume.ToString(), "inode", FileId(info).ToString(),
+      "birthtimeNs", ((basic.Created - 116444736000000000L) * 100L).ToString());
+  }
+  static bool MatchesIdentity(Dictionary<string,object> left, Dictionary<string,object> right) {
+    foreach (string key in new [] {"device", "inode", "birthtimeNs"}) {
+      if (!right.ContainsKey(key) || !Object.Equals(left[key], right[key])) return false;
+    }
+    return true;
+  }
+  static Dictionary<string,object> Metadata(SafeFileHandle file) {
+    FileInfo info; Check(GetFileInformationByHandle(file, out info));
+    BasicInfo basic = Basic(file);
+    ulong size = ((ulong)info.SizeHigh << 32) | info.SizeLow;
+    if (size > 9007199254740991UL) throw new FsFault("file_too_large");
+    return Record("device", info.Volume.ToString(), "inode", FileId(info).ToString(),
+      "size", (long)size, "mode", (basic.Attributes & 1) != 0 ? 292 : 438,
+      "modifiedNs", ((basic.Modified - 116444736000000000L) * 100L).ToString(),
+      "changedNs", ((basic.Changed - 116444736000000000L) * 100L).ToString());
+  }
+  static bool SameMetadata(Dictionary<string,object> left, Dictionary<string,object> right) {
+    foreach (string key in new [] {"device", "inode", "size", "mode", "modifiedNs", "changedNs"}) {
+      if (!right.ContainsKey(key) || Convert.ToString(left[key]) != Convert.ToString(right[key])) return false;
+    }
+    return true;
+  }
+}
+`;
+  }
+});
+
 // plugins/local-search/source/index.ts
 var index_exports = {};
 __export(index_exports, {
   default: () => index_default
 });
 module.exports = __toCommonJS(index_exports);
-var import_node_path3 = require("node:path");
+var import_node_path5 = require("node:path");
 
 // src/plugin-sdk/bounds.ts
 function sanitizeJsonText(value) {
@@ -346,8 +583,85 @@ function budgetSearchOutput(query, mode, candidates, sourceTruncated, fitsSerial
 
 // plugins/local-search/source/paths.ts
 var import_node_fs = require("node:fs");
+var import_promises2 = require("node:fs/promises");
+var import_node_path2 = __toESM(require("node:path"), 1);
+
+// plugins/local-search/source/windows-authority.ts
 var import_promises = require("node:fs/promises");
-var import_node_path = __toESM(require("node:path"), 1);
+var import_node_path = require("node:path");
+function identity(stats) {
+  return {
+    device: String(stats.dev),
+    inode: String(stats.ino),
+    birthtimeNs: String(stats.birthtimeNs)
+  };
+}
+function sameWindowsPath(left, right) {
+  return import_node_path.win32.resolve(left).toLowerCase() === import_node_path.win32.resolve(right).toLowerCase();
+}
+function windowsSearchAuthorityUnavailable() {
+  return new LocalSearchError(
+    "local_search_authority_unavailable",
+    "Local search could not keep the selected Windows path safely bound to its authorized root. No results were returned. Do not retry or bypass this restriction with another tool; ask the user to check the path and access permissions."
+  );
+}
+async function openWindowsSearchAuthority(target) {
+  const handles = [];
+  try {
+    const root = await (0, import_promises.open)(target.rootPath, "r");
+    handles.push(root);
+    const selected = await (0, import_promises.open)(target.absolutePath, "r");
+    handles.push(selected);
+    const [rootStats, selectedStats, rootPath, targetPath] = await Promise.all([
+      root.stat({ bigint: true }),
+      selected.stat({ bigint: true }),
+      (0, import_promises.realpath)(target.rootPath),
+      (0, import_promises.realpath)(target.absolutePath)
+    ]);
+    if (!rootStats.isDirectory()) throw windowsSearchAuthorityUnavailable();
+    if (!sameWindowsPath(rootPath, target.rootPath))
+      throw windowsSearchAuthorityUnavailable();
+    if (!sameWindowsPath(targetPath, target.absolutePath))
+      throw windowsSearchAuthorityUnavailable();
+    if (!selectedStats.isFile() && !selectedStats.isDirectory()) {
+      throw new LocalSearchError(
+        "local_search_target_invalid",
+        "The selected search target must be a regular file or directory."
+      );
+    }
+    const isFile = selectedStats.isFile();
+    return Object.freeze({
+      target,
+      isFile,
+      commandDirectory: isFile ? import_node_path.win32.dirname(targetPath) : targetPath,
+      commandTarget: isFile ? import_node_path.win32.basename(targetPath) : ".",
+      directoryAuthority: {
+        platform: "win32",
+        rootPath,
+        targetPath,
+        rootIdentity: identity(rootStats),
+        targetIdentity: identity(selectedStats),
+        isFile
+      },
+      close: async () => {
+        for (const handle of handles.splice(0)) await handle.close();
+      }
+    });
+  } catch (error) {
+    await Promise.all(handles.splice(0).map((handle) => handle.close()));
+    if (error instanceof LocalSearchError) throw error;
+    const code = error?.code;
+    if (code === "ENOENT" || code === "ENOTDIR") {
+      throw new LocalSearchError(
+        "local_search_root_not_found",
+        "The selected logical search root does not exist."
+      );
+    }
+    throw windowsSearchAuthorityUnavailable();
+  }
+}
+
+// plugins/local-search/source/paths.ts
 function fsCode(error) {
   return error && typeof error === "object" && "code" in error ? String(error.code) : void 0;
 }
@@ -355,8 +669,8 @@ function sameIdentity(left, right) {
   return left.dev === right.dev && left.ino === right.ino && left.isFile() === right.isFile() && left.isDirectory() === right.isDirectory();
 }
 function isWithinRoot(root, target) {
-  const relative = import_node_path.default.relative(root, target);
-  return relative === "" || relative !== ".." && !relative.startsWith(`..${import_node_path.default.sep}`) && !import_node_path.default.isAbsolute(relative);
+  const relative = import_node_path2.default.relative(root, target);
+  return relative === "" || relative !== ".." && !relative.startsWith(`..${import_node_path2.default.sep}`) && !import_node_path2.default.isAbsolute(relative);
 }
 function authorityUnavailable() {
   return new LocalSearchError(
@@ -376,7 +690,7 @@ async function openSearchAuthority(target) {
   let handle;
   let targetOpened = false;
   try {
-    handle = await (0, import_promises.open)(
+    handle = await (0, import_promises2.open)(
       target.absolutePath,
       import_node_fs.constants.O_RDONLY | import_node_fs.constants.O_NOFOLLOW | import_node_fs.constants.O_NONBLOCK
     );
@@ -389,15 +703,15 @@ async function openSearchAuthority(target) {
       );
     }
     const [canonicalRoot, canonicalTarget] = await Promise.all([
-      (0, import_promises.realpath)(target.rootPath),
-      (0, import_promises.realpath)(target.absolutePath)
+      (0, import_promises2.realpath)(target.rootPath),
+      (0, import_promises2.realpath)(target.absolutePath)
     ]);
-    if (import_node_path.default.resolve(canonicalRoot) !== import_node_path.default.resolve(target.rootPath) || import_node_path.default.resolve(canonicalTarget) !== import_node_path.default.resolve(target.absolutePath) || !isWithinRoot(canonicalRoot, canonicalTarget)) {
+    if (import_node_path2.default.resolve(canonicalRoot) !== import_node_path2.default.resolve(target.rootPath) || import_node_path2.default.resolve(canonicalTarget) !== import_node_path2.default.resolve(target.absolutePath) || !isWithinRoot(canonicalRoot, canonicalTarget)) {
       throw authorityUnavailable();
     }
     const [pathIdentity, descriptorIdentity] = await Promise.all([
-      (0, import_promises.stat)(canonicalTarget, { bigint: true }),
-      process.platform === "linux" ? (0, import_promises.stat)(`/proc/self/fd/${handle.fd}`, { bigint: true }) : handle.stat({ bigint: true })
+      (0, import_promises2.stat)(canonicalTarget, { bigint: true }),
+      process.platform === "linux" ? (0, import_promises2.stat)(`/proc/self/fd/${handle.fd}`, { bigint: true }) : handle.stat({ bigint: true })
     ]);
     if (!sameIdentity(observed, pathIdentity) || !sameIdentity(observed, descriptorIdentity)) {
       throw authorityUnavailable();
@@ -448,11 +762,13 @@ async function resolveSearchRoot(context, rawPath) {
     requirePath: true,
     allowedLocations: ["agent_work", "workspace"]
   });
+  const needsWindowsSearchAuthority = process.platform === "win32";
+  if (needsWindowsSearchAuthority) return openWindowsSearchAuthority(target);
   return openSearchAuthority(target);
 }
 function normalizeRelativeResult(value) {
-  const normalized = import_node_path.default.sep === "/" ? value : value.replaceAll(import_node_path.default.sep, "/");
-  if (!normalized || normalized.includes("\\") || import_node_path.default.isAbsolute(normalized) || /^[A-Za-z]:[\\/]/u.test(normalized) || /^[\\/]{2}/u.test(normalized)) {
+  const normalized = import_node_path2.default.sep === "/" ? value : value.replaceAll(import_node_path2.default.sep, "/");
+  if (!normalized || normalized.includes("\\") || import_node_path2.default.isAbsolute(normalized) || /^[A-Za-z]:[\\/]/u.test(normalized) || /^[\\/]{2}/u.test(normalized)) {
     throw new LocalSearchError(
       "local_search_path_roundtrip_unsafe",
       "Local search found a path that cannot be reused as a logical path."
@@ -461,7 +777,7 @@ function normalizeRelativeResult(value) {
   return normalized.replace(/^\.\/+/, "");
 }
 function qualifyMatchPath(context, root, rawPath) {
-  const logical = root.isFile ? root.target.logicalPath : root.target.logicalPath === "." ? normalizeRelativeResult(rawPath) : import_node_path.default.posix.join(
+  const logical = root.isFile ? root.target.logicalPath : root.target.logicalPath === "." ? normalizeRelativeResult(rawPath) : import_node_path2.default.posix.join(
     root.target.logicalPath,
     normalizeRelativeResult(rawPath)
   );
@@ -469,8 +785,8 @@ function qualifyMatchPath(context, root, rawPath) {
     requirePath: true,
     allowedLocations: ["agent_work", "workspace"]
   });
-  const sourceAbsolutePath = root.isFile ? root.target.absolutePath : import_node_path.default.resolve(root.target.absolutePath, rawPath);
-  if (roundTrip.logicalPath !== logical || import_node_path.default.resolve(roundTrip.absolutePath) !== import_node_path.default.resolve(sourceAbsolutePath)) {
+  const sourceAbsolutePath = root.isFile ? root.target.absolutePath : import_node_path2.default.resolve(root.target.absolutePath, rawPath);
+  if (roundTrip.logicalPath !== logical || import_node_path2.default.resolve(roundTrip.absolutePath) !== import_node_path2.default.resolve(sourceAbsolutePath)) {
     throw new LocalSearchError(
       "local_search_path_roundtrip_unsafe",
       "Local search found a path that cannot be reused as a logical path."
@@ -483,7 +799,7 @@ function qualifyMatchPath(context, root, rawPath) {
 var import_node_util = require("node:util");
 
 // plugins/local-search/source/ripgrep-process.ts
-var import_node_child_process2 = require("node:child_process");
+var import_node_child_process3 = require("node:child_process");
 var import_ripgrep = require("@vscode/ripgrep");
 
 // src/shared/directory-authority/command.ts
@@ -562,9 +878,9 @@ function directoryAuthorityBootstrap(mode, messageLimit, task) {
     writeResponse(1, encoded);
   }
   function runCommand(input) {
-    const { spawn: spawn3 } = require("node:child_process");
+    const { spawn: spawn4 } = require("node:child_process");
     const command = input;
-    const child = spawn3(command.command, command.args, {
+    const child = spawn4(command.command, command.args, {
       stdio: ["ignore", "inherit", "inherit"],
       env: process.env
     });
@@ -596,7 +912,7 @@ function directoryAuthorityScript(mode, messageLimit, task) {
 }
 
 // src/shared/directory-authority/protocol.ts
-var import_node_path2 = require("node:path");
+var import_node_path3 = require("node:path");
 
 // src/shared/directory-authority/errors.ts
 var DirectoryAuthorityError = class extends Error {
@@ -614,7 +930,7 @@ var DirectoryAuthorityError = class extends Error {
 var AUTHORITY_MESSAGE_LIMIT = 8 * 1024 * 1024;
 var AUTHORITY_STDERR_LIMIT = 16 * 1024;
 function assertDirectoryAuthorityLocation(location) {
-  if (!(0, import_node_path2.isAbsolute)(location.directoryPath)) {
+  if (!(0, import_node_path3.isAbsolute)(location.directoryPath)) {
     throw new DirectoryAuthorityError(
       "directory_authority_invalid_path",
       "The directory authority requires an absolute starting path."
@@ -684,7 +1000,252 @@ function spawnDirectoryAuthorityCommand(input) {
   return child;
 }
 
+// plugins/local-search/source/windows-search-process.ts
+var import_node_child_process2 = require("node:child_process");
+var import_node_path4 = require("node:path");
+
+// src/shared/windows-job-object.ts
+var WINDOWS_EXEC_JOB_SOURCE = String.raw`
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+public static class AbotExecJob {
+  private static IntPtr job = IntPtr.Zero;
+
+  [StructLayout(LayoutKind.Sequential)]
+  private struct BasicLimits {
+    public long PerProcessUserTimeLimit;
+    public long PerJobUserTimeLimit;
+    public uint LimitFlags;
+    public UIntPtr MinimumWorkingSetSize;
+    public UIntPtr MaximumWorkingSetSize;
+    public uint ActiveProcessLimit;
+    public UIntPtr Affinity;
+    public uint PriorityClass;
+    public uint SchedulingClass;
+  }
+  [StructLayout(LayoutKind.Sequential)]
+  private struct IoCounters {
+    public ulong ReadOperationCount, WriteOperationCount, OtherOperationCount;
+    public ulong ReadTransferCount, WriteTransferCount, OtherTransferCount;
+  }
+  [StructLayout(LayoutKind.Sequential)]
+  private struct ExtendedLimits {
+    public BasicLimits BasicLimitInformation;
+    public IoCounters IoInfo;
+    public UIntPtr ProcessMemoryLimit, JobMemoryLimit;
+    public UIntPtr PeakProcessMemoryUsed, PeakJobMemoryUsed;
+  }
+
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  private static extern IntPtr CreateJobObject(IntPtr attributes, string name);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  private static extern bool SetInformationJobObject(IntPtr handle, int kind,
+    ref ExtendedLimits limits, uint size);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  private static extern bool AssignProcessToJobObject(IntPtr handle, IntPtr process);
+  [DllImport("kernel32.dll")]
+  private static extern IntPtr GetCurrentProcess();
+  [DllImport("kernel32.dll")]
+  private static extern bool CloseHandle(IntPtr handle);
+
+  public static void Attach() {
+    if (job != IntPtr.Zero) throw new InvalidOperationException("Already attached");
+    IntPtr candidate = CreateJobObject(IntPtr.Zero, null);
+    if (candidate == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+    try {
+      ExtendedLimits limits = new ExtendedLimits();
+      limits.BasicLimitInformation.LimitFlags = 0x00002000; // KILL_ON_JOB_CLOSE
+      if (!SetInformationJobObject(candidate, 9, ref limits,
+          (uint)Marshal.SizeOf(typeof(ExtendedLimits))))
+        throw new Win32Exception(Marshal.GetLastWin32Error());
+      if (!AssignProcessToJobObject(candidate, GetCurrentProcess()))
+        throw new Win32Exception(Marshal.GetLastWin32Error());
+      job = candidate;
+      candidate = IntPtr.Zero;
+    } finally {
+      if (candidate != IntPtr.Zero) CloseHandle(candidate);
+    }
+  }
+}
+`;
+
+// plugins/local-search/source/windows-search-script.ts
+init_native_script();
+init_authority_script();
+
+// plugins/local-search/source/windows-search-lease.ts
+var WINDOWS_SEARCH_LEASE = String.raw`
+public static partial class AbotFilesystem {
+  sealed class SearchPathLease : IDisposable {
+    readonly List<SafeFileHandle> held = new List<SafeFileHandle>();
+    public readonly string Target;
+    public readonly bool IsFile;
+    public SearchPathLease(Dictionary<string,object> request) {
+      try {
+        Target = Path.GetFullPath(Text(request, "targetPath"));
+        string root = Path.GetFullPath(Text(request, "rootPath")).TrimEnd('\\');
+        if (!String.Equals(Target.TrimEnd('\\'), root, StringComparison.OrdinalIgnoreCase) &&
+            !Target.StartsWith(root + "\\", StringComparison.OrdinalIgnoreCase))
+          throw new FsFault("filesystem_invalid_path");
+        IsFile = (bool)request["isFile"];
+        string current = Path.GetPathRoot(Target);
+        var handle = OpenHandle(null, NativePath(current), true, 1, 0x80000000, 3);
+        held.Add(handle);
+        bool foundRoot = VerifyRoot(current, root, handle, request);
+        string rest = Target.Substring(current.Length).TrimEnd('\\');
+        string[] parts = rest.Length == 0 ? new string[0] : rest.Split('\\');
+        for (int i = 0; i < parts.Length; i++) {
+          ValidateComponent(parts[i]);
+          bool isFile = IsFile && i == parts.Length - 1;
+          handle = OpenHandle(handle, parts[i], !isFile, 1, 0x80000000, isFile ? 1u : 3u);
+          held.Add(handle);
+          current = Path.Combine(current, parts[i]);
+          if (!String.Equals(FinalPath(handle).TrimEnd('\\'), current.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+            throw new FsFault("filesystem_path_changed");
+          foundRoot |= VerifyRoot(current, root, handle, request);
+        }
+        if (!foundRoot || !MatchesIdentity(Identity(handle), request["targetIdentity"] as Dictionary<string,object>))
+          throw new FsFault("filesystem_path_changed");
+      } catch { Dispose(); throw; }
+    }
+    static bool VerifyRoot(string current, string root, SafeFileHandle handle, Dictionary<string,object> request) {
+      if (!String.Equals(current.TrimEnd('\\'), root, StringComparison.OrdinalIgnoreCase)) return false;
+      var expected = request["rootIdentity"] as Dictionary<string,object>;
+      if (expected == null || !MatchesIdentity(Identity(handle), expected)) throw new FsFault("filesystem_path_changed");
+      return true;
+    }
+    public void Dispose() {
+      for (int i = held.Count - 1; i >= 0; i--) held[i].Dispose();
+      held.Clear();
+    }
+  }
+}
+`;
+
+// plugins/local-search/source/windows-search-script.ts
+var SEARCH_COMMAND = String.raw`
+public static partial class AbotFilesystem {
+  static string QuoteSearchArgument(string value) {
+    var quoted = new StringBuilder("\"");
+    int slashes = 0;
+    foreach (char c in value) {
+      if (c == '\\') { slashes++; continue; }
+      if (c == '"') { quoted.Append('\\', slashes * 2 + 1); quoted.Append(c); slashes = 0; continue; }
+      quoted.Append('\\', slashes); slashes = 0; quoted.Append(c);
+    }
+    quoted.Append('\\', slashes * 2); quoted.Append('"');
+    return quoted.ToString();
+  }
+  public static int Search(string input) {
+    var json = new JavaScriptSerializer { MaxJsonLength = 2 * 1024 * 1024 };
+    try {
+      var request = json.Deserialize<Dictionary<string,object>>(input);
+      using (var lease = new SearchPathLease(request)) {
+        var args = (System.Collections.IEnumerable)request["args"];
+        var quoted = new List<string>();
+        foreach (object arg in args) quoted.Add(QuoteSearchArgument((string)arg));
+        var start = new System.Diagnostics.ProcessStartInfo {
+          FileName = Text(request, "command"), Arguments = String.Join(" ", quoted),
+          WorkingDirectory = lease.IsFile ? Path.GetDirectoryName(lease.Target) : lease.Target,
+          UseShellExecute = false, CreateNoWindow = true,
+          RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        using (var process = System.Diagnostics.Process.Start(start)) {
+          process.StandardInput.Close();
+          var output = process.StandardOutput.BaseStream.CopyToAsync(Console.OpenStandardOutput());
+          var errors = process.StandardError.BaseStream.CopyToAsync(Console.OpenStandardError());
+          process.WaitForExit();
+          System.Threading.Tasks.Task.WaitAll(output, errors);
+          return process.ExitCode;
+        }
+      }
+    } catch { return 125; }
+  }
+}
+`;
+var WINDOWS_SEARCH_SOURCE = [
+  WINDOWS_FILESYSTEM_NATIVE,
+  WINDOWS_FILESYSTEM_AUTHORITY,
+  WINDOWS_SEARCH_LEASE,
+  SEARCH_COMMAND
+].join("\n");
+
+// plugins/local-search/source/windows-search-process.ts
+var BOOTSTRAP = [
+  "$ErrorActionPreference='Stop'",
+  "$ProgressPreference='SilentlyContinue'",
+  "if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { exit 126 }",
+  "$env:PSModulePath=[IO.Path]::Combine($PSHOME,'Modules')",
+  "try {",
+  "[Console]::InputEncoding=[Text.UTF8Encoding]::new($false)",
+  "$envelope=[Console]::In.ReadToEnd() | ConvertFrom-Json",
+  "Add-Type -TypeDefinition $envelope.jobSource",
+  "[AbotExecJob]::Attach()",
+  "Add-Type -ReferencedAssemblies @('System.Web.Extensions') -TypeDefinition $envelope.source",
+  "$result=[AbotFilesystem]::Search($envelope.request)",
+  "exit $result",
+  "} catch { exit 126 }"
+].join(";\n");
+function windowsSearchUnavailable() {
+  return new LocalSearchError(
+    "local_search_windows_unavailable",
+    "The Windows local-search helper is unavailable or blocked by computer policy. No results were returned. Do not retry or bypass this restriction with another tool; ask the user to check PowerShell/C# availability or contact their administrator."
+  );
+}
+function windowsSearchExitFailure(code) {
+  if (code === 125) return windowsSearchAuthorityUnavailable();
+  const helperUnavailable = code === 126 || code === void 0;
+  if (helperUnavailable) return windowsSearchUnavailable();
+  return new LocalSearchError(
+    "local_search_failed",
+    "Local search could not complete under the selected logical root."
+  );
+}
+function spawnWindowsSearch(params) {
+  const input = JSON.stringify({
+    source: WINDOWS_SEARCH_SOURCE,
+    jobSource: WINDOWS_EXEC_JOB_SOURCE,
+    request: JSON.stringify({
+      ...params.authority,
+      command: params.command,
+      args: params.args
+    })
+  });
+  if (Buffer.byteLength(input) > 2 * 1024 * 1024)
+    throw windowsSearchUnavailable();
+  const executable = (0, import_node_path4.join)(
+    process.env.SystemRoot ?? "C:\\Windows",
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe"
+  );
+  const child = (0, import_node_child_process2.spawn)(
+    executable,
+    ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", BOOTSTRAP],
+    {
+      env: params.env,
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "pipe"]
+    }
+  );
+  child.stdin.on("error", () => void 0);
+  child.stdin.end(input, "utf8");
+  return {
+    child,
+    terminate: () => {
+      child.kill("SIGKILL");
+    },
+    failureForExit: windowsSearchExitFailure
+  };
+}
+
 // plugins/local-search/source/ripgrep-process.ts
+function isWindowsSearchAuthority(authority) {
+  return authority !== void 0 && "platform" in authority;
+}
 function controlledRipgrepEnvironment() {
   const environment = { ...process.env };
   for (const name of Object.keys(environment)) {
@@ -710,6 +1271,14 @@ function terminateAuthorityGroup(child) {
 function spawnRipgrepProcess(args, cwd, stdinFd, directoryAuthority) {
   const commandArgs = ["--no-config", ...args];
   const env = controlledRipgrepEnvironment();
+  if (isWindowsSearchAuthority(directoryAuthority)) {
+    return spawnWindowsSearch({
+      authority: directoryAuthority,
+      command: import_ripgrep.rgPath,
+      args: commandArgs,
+      env
+    });
+  }
   if (directoryAuthority) {
     const child2 = spawnDirectoryAuthorityCommand({
       ...directoryAuthority,
@@ -719,7 +1288,7 @@ function spawnRipgrepProcess(args, cwd, stdinFd, directoryAuthority) {
     });
     return { child: child2, terminate: () => terminateAuthorityGroup(child2) };
   }
-  const child = (0, import_node_child_process2.spawn)(import_ripgrep.rgPath, commandArgs, {
+  const child = (0, import_node_child_process3.spawn)(import_ripgrep.rgPath, commandArgs, {
     cwd,
     env,
     stdio: [stdinFd ?? "ignore", "pipe", "pipe"],
@@ -818,7 +1387,7 @@ async function runRipgrepBounded(args, cwd, maxResults, parser, signal, stdinFd,
     let timedOut = false;
     let aborted = false;
     let parserError;
-    const { child, terminate } = spawnRipgrepProcess(
+    const { child, terminate, failureForExit } = spawnRipgrepProcess(
       args,
       cwd,
       stdinFd,
@@ -873,7 +1442,7 @@ async function runRipgrepBounded(args, cwd, maxResults, parser, signal, stdinFd,
       }
     });
     child.stderr.on("data", () => void 0);
-    child.on("error", (error) => settleFailure(error));
+    child.on("error", (error) => settleFailure(failureForExit?.(void 0) ?? error));
     child.on("close", (code) => {
       if (completed) return;
       if (parserError) {
@@ -893,7 +1462,7 @@ async function runRipgrepBounded(args, cwd, maxResults, parser, signal, stdinFd,
         }
       }
       if (!stoppedAfterExtraResult && code !== 0 && code !== 1) {
-        settleFailure();
+        settleFailure(failureForExit?.(code));
         return;
       }
       completed = true;
@@ -1006,7 +1575,7 @@ function runRipgrepContentSearch(args, cwd, maxResults, signal, stdinFd, directo
 var DEFAULT_MAX_RESULTS = 40;
 var MAX_RESULTS = 200;
 function fileNameMatches(logicalPath, query, caseSensitive) {
-  const filename = import_node_path3.posix.basename(logicalPath);
+  const filename = import_node_path5.posix.basename(logicalPath);
   return caseSensitive ? filename.includes(query) : filename.toLowerCase().includes(query.toLowerCase());
 }
 var index_default = defineRuntimePlugin((context) => ({
@@ -1045,7 +1614,7 @@ var index_default = defineRuntimePlugin((context) => ({
         if (mode === "names" || mode === "both") {
           const names = root.isFile ? Object.freeze({
             items: Object.freeze(
-              fileNameMatches(root.target.logicalPath, query, caseSensitive) ? [import_node_path3.posix.basename(root.target.logicalPath)] : []
+              fileNameMatches(root.target.logicalPath, query, caseSensitive) ? [import_node_path5.posix.basename(root.target.logicalPath)] : []
             ),
             truncated: false
           }) : await runRipgrepPathSearch(

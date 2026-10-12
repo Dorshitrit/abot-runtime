@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { inlineLocalSchemaReferences } from "./support/inline-local-schema-references.js";
 import { validateJsonSchemaValue } from "../model/json-schema-value.js";
 import {
   createExecutionAgentDecisionFormat,
@@ -20,7 +21,9 @@ function validateDecision(
   options: ExecutionAgentDecisionContractOptions = adoptionOptions,
 ) {
   return validateJsonSchemaValue(
-    createExecutionAgentDecisionFormat(options).schema,
+    inlineLocalSchemaReferences(
+      createExecutionAgentDecisionFormat(options).schema,
+    ),
     { decision },
   );
 }
@@ -74,6 +77,23 @@ describe("Execution Agent work-plan schema source binding", () => {
       expect(validateDecision(decision)).toBeDefined();
     },
   );
+
+  test.each([
+    { sourceResultRef: "unknown" },
+    { mode: "progress" },
+    { mode: "invent" },
+    { itemUpdates: [{ itemId: "missing", status: "pending" }] },
+    { itemUpdates: [{ itemId: "write-a", status: "finished" }] },
+    { extra: "not allowed" },
+  ])("rejects invalid report fields: %j", (alteration) => {
+    const decision = adoptionDecision("proposal-a", ["write-a"]);
+    const invalid = {
+      ...decision,
+      workPlan: { ...decision.workPlan, ...alteration },
+    };
+    expect(validateDecision(invalid)).toBeDefined();
+    expect(parseDecision(invalid)).toMatchObject({ ok: false });
+  });
 
   test("retains progress binding to the currently adopted proposal", () => {
     const options = {

@@ -134,7 +134,7 @@ async function runRipgrepBounded<T>(
     let timedOut = false;
     let aborted = false;
     let parserError: unknown;
-    const { child, terminate } = spawnRipgrepProcess(
+    const { child, terminate, failureForExit } = spawnRipgrepProcess(
       args,
       cwd,
       stdinFd,
@@ -194,7 +194,7 @@ async function runRipgrepBounded<T>(
     });
     // Always drain stderr so the child cannot block on its diagnostic pipe.
     child.stderr.on("data", () => undefined);
-    child.on("error", (error) => settleFailure(error));
+    child.on("error", (error) => settleFailure(failureForExit?.(undefined) ?? error));
     child.on("close", (code) => {
       if (completed) return;
       if (parserError) {
@@ -214,7 +214,7 @@ async function runRipgrepBounded<T>(
         }
       }
       if (!stoppedAfterExtraResult && code !== 0 && code !== 1) {
-        settleFailure();
+        settleFailure(failureForExit?.(code));
         return;
       }
       completed = true;

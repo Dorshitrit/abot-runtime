@@ -3,6 +3,8 @@ import { expect, test, vi } from "vitest";
 import { selectHomeSuggestion } from "../../web-ui/app/components/home-guidance/suggestion-policy.js";
 // @ts-expect-error Browser-only module.
 import { createHomeGuidancePreferences, localReviewDay } from "../../web-ui/app/services/home-guidance-preferences.js";
+// @ts-expect-error Browser-only module.
+import { createWorkspaceStateStorage } from "../../web-ui/app/services/workspace-state-storage.js";
 
 const connection = { snapshot: { paired: false, readiness: { ready: false, route: "setup_required", environment: "wsl", platforms: ["windows"] } } };
 const memory = { enabled: true, available: true };
@@ -47,21 +49,58 @@ test("review receipts are isolated by environment, bounded, and contain no memor
   expect(saved).not.toContain("private text");
   expect(localReviewDay(new Date(2026, 8, 26, 0, 1))).toBe("2026-9-26");
 });
-test("unavailable or malformed browser storage never blocks a dismissal", () => {
+test("failed storage does not acknowledge a dismissal", () => {
   const storage = { getItem: () => '{"reviewed":{},"dismissed":{}}', setItem: vi.fn(() => { throw new Error("full"); }) };
   const preferences = createHomeGuidancePreferences(storage);
   expect(preferences.hasReviewed("dev", { id: "a", updatedAt: "b" })).toBe(false);
-  preferences.dismiss("dev", "memory");
-  expect(preferences.dismissed("dev")).toEqual(["memory"]);
+  expect(() => preferences.dismiss("dev", "memory")).toThrow("full");
+  expect(preferences.dismissed("dev")).toEqual([]);
 });
 
-test("storage recovery keeps the latest receipt instead of a stale session fallback", () => {
+test("a new storage projection does not invent receipts after a failed save", () => {
   let value = "{}";
   const storage = { getItem: () => value, setItem: vi.fn((_key: string, next: string) => { value = next; }) };
   storage.setItem.mockImplementationOnce(() => { throw new Error("full"); });
   const preferences = createHomeGuidancePreferences(storage);
-  preferences.dismiss("dev", "memory");
+  expect(() => preferences.dismiss("dev", "memory")).toThrow("full");
   preferences.markOffered("dev", "2026-9-26");
   expect(preferences.wasOffered("dev", "2026-9-26")).toBe(true);
-  expect(preferences.dismissed("dev")).toEqual(["memory"]);
+  expect(createHomeGuidancePreferences(storage).dismissed("dev")).toEqual([]);
+});
+
+
+test("reviewing a new version replaces its earlier receipt and deleting it removes the receipt", () => {
+  const values = new Map<string, string>();
+  const storage = { getItem: (key: string) => values.get(key), setItem: (key: string, value: string) => values.set(key, value) };
+  const preferences = createHomeGuidancePreferences(storage);
+  preferences.markReviewed("dev", { id: "a", updatedAt: "old" });
+  preferences.markReviewed("dev", { id: "a", updatedAt: "current" });
+  preferences.markReviewed("prod", { id: "a", updatedAt: "current" });
+  expect(preferences.hasReviewed("dev", { id: "a", updatedAt: "old" })).toBe(false);
+  expect(preferences.hasReviewed("dev", { id: "a", updatedAt: "current" })).toBe(true);
+  expect(JSON.parse(values.get("abot-web.homeGuidance.dev")!).reviewed).toEqual([{ id: "a", updatedAt: "current" }]);
+  preferences.forgetReviewed("dev", "a");
+  expect(preferences.hasReviewed("dev", { id: "a", updatedAt: "current" })).toBe(false);
+  expect(preferences.hasReviewed("prod", { id: "a", updatedAt: "current" })).toBe(true);
+});
+
+test.each(["review", "dismissal"])("a rejected %s save is not reported as persisted after rerender", async (kind) => {
+  const initial = { version: 1, revision: 0, preferences: {}, queue: "{}" };
+  let rejectSave!: (response: Response) => void;
+  const fetchImpl = vi.fn()
+    .mockResolvedValueOnce(Response.json({ state: initial }))
+    .mockImplementationOnce(() => new Promise<Response>((resolve) => { rejectSave = resolve; }));
+  const storage = createWorkspaceStateStorage({ fetchImpl });
+  await storage.refresh();
+  const preferences = createHomeGuidancePreferences(storage);
+  const memory = { id: "a", updatedAt: "current" };
+  const saving = kind === "review" ? preferences.markReviewed("dev", memory) : preferences.dismiss("dev", "memory");
+  await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
+  rejectSave(Response.json({ error: "preference_conflict", message: "Conflicting preference update" }, { status: 409 }));
+  await expect(saving).rejects.toThrow("Conflicting preference update");
+  expect(preferences.hasReviewed("dev", memory)).toBe(false);
+  expect(preferences.dismissed("dev")).toEqual([]);
+  const reloaded = createHomeGuidancePreferences(storage);
+  expect(reloaded.hasReviewed("dev", memory)).toBe(false);
+  expect(reloaded.dismissed("dev")).toEqual([]);
 });

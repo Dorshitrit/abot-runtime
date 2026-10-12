@@ -160,15 +160,45 @@ reasoning to the provider rather than claiming that it disabled it.
 For OpenAI profiles with declared reasoning controls, the gateway sends the resolved
 `reasoning.effort`, including explicit `none`, and omits `temperature`/`top_p`
 unless reasoning is disabled with `none`.
-OpenAI's `max_output_tokens` counts both reasoning and visible output. When
-reasoning is enabled or left to the provider's default, including profiles with
-`supportsThinking` omitted or `false`,
-the gateway does not project the short core-decision limit into this combined
-budget; the provider enforces output capacity and the input context guard remains
-unchanged. Only an explicitly projected `reasoning.effort=none` retains the
-core-decision limit, clamped to remaining physical context. Configured sampling
-controls keep their existing semantics; this policy does not discover model
-capabilities or assume support for a particular effort level.
+OpenAI's `max_output_tokens` counts both reasoning and visible output. The
+gateway omits this parameter for all reasoning levels and model steps, including
+explicit `reasoning.effort=none`. FAST, REASONING and DEEP select reasoning effort
+without adding a separate output cap. The provider enforces output capacity;
+the input context guard and configured sampling controls retain their existing
+semantics. This policy does not discover model capabilities or assume support
+for a particular effort level.
+
+For `capability.controls` requests with an object JSON schema, OpenAI receives
+one forced native function with that schema as its parameters and parallel calls
+disabled. This carries the existing EA or SUPER controls envelope; it does not
+expose tool handlers or grant execution authority. Only one matching call from a
+completed response supplies arguments to the existing Runtime validators and
+frozen-control merge. Commentary and argument deltas remain provisional. Missing,
+duplicate, mismatched or malformed calls fail explicitly; a truncated response,
+EOF or `[DONE]` without a completed response cannot authorize execution.
+Token counting includes the same function declaration as generation. Request
+messages, reasoning, timeouts, retries, capability permissions and continuation
+history keep their existing contracts. Non-schema gateway requests and other
+steps retain their existing formatting. This transport is shared by Windows,
+WSL, Linux and macOS; it does not depend on the host or a particular model name.
+
+For structured OpenAI responses and `tool_payload.raw` content authoring, message
+selection uses the provider's `phase` metadata and item identity. Only the selected
+`final_answer` enters the decision validators or tool payload consumer; commentary
+cannot become file content. Plain payload authoring keeps its plain-text provider
+format, and existing tool validators still validate the selected bytes.
+Final-answer deltas stream as soon as their phase is known. Text
+without phase metadata waits for item or response metadata; if no phase is
+provided anywhere, the first text message retains its legacy meaning. A response
+must complete before its text can be accepted as a decision or tool payload; EOF
+or `[DONE]` alone fails explicitly, even if the collected content is valid. Additional
+messages are never concatenated into a decision or tool payload. A phase-labelled
+response without `final_answer` reports an explicit stream error. This rule is
+independent of reasoning effort and model name. Other unstructured text steps
+keep their existing streaming behavior. Raw provider I/O retains preambles;
+bounded selection diagnostics identify the chosen and ignored messages without
+copying their text. No extra model call or JSON repair is introduced here.
+
 Each `/chat` or `/raw` call writes `model.invocation.resolved` to the runtime
 debug log with the selected `profileId`, `provider`, concrete provider `model`,
 and reasoning level. This is the authoritative log event for identifying which
@@ -194,6 +224,18 @@ summary. Cancellation propagation uses `provider.abort.requested` and
 `provider.abort.propagated`. None of these diagnostics enter client events or
 change provider-stream behavior.
 
+The OpenAI HTTP response body ends locally when the existing normalizer accepts
+`response.completed`, `response.incomplete`, `response.failed`, `error`, or `[DONE]`. This boundary
+precedes tracing clones, so chat, raw collection and trace readers all finish
+without waiting for the provider to close its connection. The upstream reader
+is cancelled and released; asynchronous transport cleanup cannot delay the
+accepted result. The trace retains received bytes through the chunk containing
+the terminal frame. Message/item completion is not response completion. The
+same SSE data framing serves lifetime detection and output decoding, including
+LF, CRLF, CR, split UTF-8 and multiline data. Ordinary text retains partial-text
+EOF behavior; structured decisions, native function output and tool payloads
+require response completion. Existing max-output-token handling remains unchanged.
+
 Full provider I/O is written separately to
 `.runtime/shared/logs/model-io.jsonl`. A `provider.request` entry contains the
 exact provider payload after calibration instructions, message projection,
@@ -206,6 +248,43 @@ provider reports it. The exact raw provider response remains available in
 entries share a unique `invocationId` as well as the runtime `requestId` and
 `modelStep`. Provider credentials are deliberately excluded because they are
 transport secrets, not model-visible input.
+
+Response traces also record bounded stream diagnostics: time to headers and first/
+last chunk, bytes received, SSE event counts, and the last 32 event types with
+arrival times. A failed capture emits `provider.failure` with stage
+`response.capture` and the same `response.stream` diagnostics. Its response
+retains two bounded excerpts of the received raw bytes:
+
+- `response.partialBodyPrefix`: the first at most 16 KiB. `partialBodyPrefixBytes`
+  counts retained source bytes; `partialBodyPrefixTruncated` is true when
+  `response.stream.bytesReceived` exceeds that count.
+- `response.partialBody`: the last at most 16 KiB, preserving the existing tail
+  contract. `partialBodyBytes` counts its retained source bytes; `bodyTruncated`
+  is true when `response.stream.bytesReceived` exceeds that count.
+
+The excerpts may overlap; when at most 16 KiB arrived, they contain the same
+received bytes and both truncation flags are false. Those flags describe excerpt
+bounds, not whether the provider completed its response. A failure before any
+bytes arrive records empty excerpts, zero byte counts, and false flags.
+Each excerpt is decoded as UTF-8 and may start or end inside a character or SSE
+event; byte counts refer to source bytes before decoding, including any split
+character rendered as a replacement character. These are diagnostic fragments,
+never a completed model result or two pieces to concatenate into one result.
+Successful responses retain their existing complete body and decoded output.
+These records follow the existing logging and content-privacy gates and do not
+change model output selection, timeouts, or retries.
+
+SSE diagnostics count data-bearing frames only. The last explicit `event` field
+wins (including an empty field, which means `message`). Without an explicit
+event field, a complete newline-joined data payload supplies its JSON `type`
+or the `[DONE]` marker; otherwise the type is `message`. Field values preserve
+whitespace except for the protocol's optional single ASCII space after `:`.
+Type names retain at most 128 characters. Lines and accumulated frame data each
+retain at most 32,768 characters; oversized event lines still replace the prior
+type using their retained prefix. Truncated data is never parsed as complete
+JSON. `oversizedLineCount` reports dropped line suffixes; a frame exceeding the
+aggregate data bound still counts, using its explicit type or `message`.
+A raw capture failure is logged without waiting for the diagnostic decoder.
 
 The full trace follows `logging.enabled` and uses the same
 `logging.rotation` limits as the runtime debug logs, but has its own file and

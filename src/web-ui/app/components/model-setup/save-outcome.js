@@ -19,6 +19,7 @@ export function modelSaveFailureMessage(state) {
 
 export function modelSaveErrorMessage(state, error) {
   const fallback = modelSaveFailureMessage(state);
+  if (error?.payload?.error === "context_window_too_small") return fallback;
   const detail = error?.payload?.message;
   if (!detail) return fallback;
   if (state.saved) return `${fallback} ${detail}`;

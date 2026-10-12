@@ -24,17 +24,6 @@ function decisionRequest(): ModelGatewayRequest {
   };
 }
 
-function measuredPayload(request: ModelGatewayRequest, inputTokens: number) {
-  const countPayload = buildOpenAIInputTokenCountPayload(request);
-  return buildOpenAIResponsesPayload(request, {
-    inputTokenMeasurement: {
-      inputTokens,
-      providerEnvelopeFingerprint: createProviderEnvelopeFingerprint(countPayload),
-      source: "provider_input_token_count",
-    },
-  });
-}
-
 describe("OpenAI core decision output budget", () => {
   test("does not spend the visible decision limit on high reasoning before any answer", () => {
     const request = decisionRequest();
@@ -42,17 +31,27 @@ describe("OpenAI core decision output budget", () => {
     expect(invocation).toMatchObject({
       think: "high", profile: { supportsThinking: true, contextWindowTokens: 120_000 },
     });
-    const payload = measuredPayload(request, 25_610);
+    const payload = buildOpenAIResponsesPayload(request);
     expect(payload.reasoning).toEqual({ effort: "high" });
     expect(payload).not.toHaveProperty("max_output_tokens");
   });
 
-  test("retains the core limit when fast mode explicitly disables reasoning", () => {
+  test("disables reasoning in fast mode without adding an output limit", () => {
     const request = { ...decisionRequest(), agentMode: "fast" };
     expect(resolveModelInvocation(request).think).toBe("none");
-    expect(buildOpenAIResponsesPayload(request)).toMatchObject({
-      reasoning: { effort: "none" }, max_output_tokens: 2_048,
-    });
+    const payload = buildOpenAIResponsesPayload(request);
+    expect(payload.reasoning).toEqual({ effort: "none" });
+    expect(payload).not.toHaveProperty("max_output_tokens");
+  });
+
+  test.each([
+    ["fast", "none"], ["reasoning", "medium"], ["deep", "high"],
+  ] as const)("changes only reasoning effort for %s mode", (agentMode, effort) => {
+    const request = decisionRequest();
+    const baseline = buildOpenAIResponsesPayload(request);
+    const payload = buildOpenAIResponsesPayload({ ...request, agentMode });
+    expect(payload).toEqual({ ...baseline, reasoning: { effort } });
+    expect(payload).not.toHaveProperty("max_output_tokens");
   });
 
   test.each([false, undefined])("leaves provider-default reasoning room with supportsThinking=%s", (supportsThinking) => {
@@ -83,12 +82,10 @@ describe("OpenAI core decision output budget", () => {
   test.each([
     "supervisor.decision", "planner.decision", "worker.decision",
     "reviewer.decision", "execution.decision", "auditor.decision",
-  ])("budgets the %s step from projected reasoning rather than the role", (modelStep) => {
+  ])("does not add a per-mode output cap to the %s step", (modelStep) => {
     const request = { ...decisionRequest(), modelStep };
     expect(buildOpenAIResponsesPayload(request)).not.toHaveProperty("max_output_tokens");
-    expect(buildOpenAIResponsesPayload({ ...request, agentMode: "fast" })).toMatchObject({
-      reasoning: { effort: "none" }, max_output_tokens: 2_048,
-    });
+    expect(buildOpenAIResponsesPayload({ ...request, agentMode: "fast" })).not.toHaveProperty("max_output_tokens");
     delete request.modelPolicy!.profiles!.reasoning!.supportsThinking;
     expect(buildOpenAIResponsesPayload({ ...request, agentMode: "fast" })).not.toHaveProperty("max_output_tokens");
   });
@@ -104,24 +101,24 @@ describe("OpenAI core decision output budget", () => {
   });
 
   test.each([
-    ["deep", "none", 2_048],
-    ["fast", "high", undefined],
-  ] as const)("honors the explicit %s override %s", (agentMode, reasoningOverride, expectedLimit) => {
+    ["deep", "none"],
+    ["fast", "high"],
+  ] as const)("honors the explicit %s override %s without an output cap", (agentMode, reasoningOverride) => {
     const request = { ...decisionRequest(), agentMode, reasoningOverride };
     expect(resolveModelInvocation(request).think).toBe(reasoningOverride);
     const payload = buildOpenAIResponsesPayload(request);
     expect(payload.reasoning).toEqual({ effort: reasoningOverride });
-    expect(payload.max_output_tokens).toBe(expectedLimit);
+    expect(payload).not.toHaveProperty("max_output_tokens");
   });
 
-  test("respects per-step reasoning calibration without changing the shared core limit", () => {
+  test("respects per-step reasoning calibration without adding an output limit", () => {
     const request = decisionRequest();
     request.modelPolicy!.profiles!.reasoning!.calibration = {
       "execution.decision": { generation: { reasoningEffort: "none" } },
     };
     request.modelPolicy!.defaults!.steps = { "execution.decision": "execution.decision" };
     expect(resolveModelInvocation(request).think).toBe("none");
-    expect(buildOpenAIResponsesPayload(request).max_output_tokens).toBe(2_048);
+    expect(buildOpenAIResponsesPayload(request)).not.toHaveProperty("max_output_tokens");
   });
 
   test("does not cap the default reasoning mode when no effort was configured", () => {
@@ -138,10 +135,10 @@ describe("OpenAI core decision output budget", () => {
     },
   );
 
-  test("keeps the physical headroom clamp when reasoning is disabled", () => {
-    const request = { ...decisionRequest(), agentMode: "fast" };
-    expect(measuredPayload(request, 119_900).max_output_tokens).toBe(100);
-    expect(measuredPayload(request, 119_999).max_output_tokens).toBe(1);
+  test.each(["fast", "reasoning", "deep"])("does not derive an output cap from input size in %s mode", (agentMode) => {
+    const request = { ...decisionRequest(), agentMode };
+    request.messages = [{ role: "user", content: "x".repeat(520_000) }];
+    expect(buildOpenAIResponsesPayload(request)).not.toHaveProperty("max_output_tokens");
   });
 
   test.each([

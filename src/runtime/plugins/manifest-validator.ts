@@ -1,5 +1,7 @@
 import { parseOptionalToolOutputChannels } from "../../capabilities/normal-invocation/output-channels.js";
 import { parseRequiredToolPermissionMode } from "../../capabilities/tool-permission-mode.js";
+import { ABOT_PLUGIN_COMPATIBILITY_EXTENSION } from "../../plugin-contract/platform-compatibility.js";
+import { parsePluginPlatformDeclaration } from "./manifest-platform-compatibility.js";
 import type {
   AgentPluginCapabilityManifest,
   AgentPluginManifest,
@@ -322,7 +324,10 @@ function parseEventPresentation(
         return [
           key,
           {
-            ...parseEventInputTextOptions(projection, `${path}.metadata.${key}`),
+            ...parseEventInputTextOptions(
+              projection,
+              `${path}.metadata.${key}`,
+            ),
             param: projection.param.trim(),
             kind: projection.kind as (typeof EVENT_PROJECTION_KINDS)[number],
             ...(fallback !== undefined ? { default: fallback } : {}),
@@ -429,7 +434,10 @@ function parseOperation(value: unknown, path: string): ParsedOperation {
   return {
     manifest: {
       summary: operation.summary.trim(),
-      ...parseOptionalToolOutputChannels(operation.outputChannels, `${path}.outputChannels`),
+      ...parseOptionalToolOutputChannels(
+        operation.outputChannels,
+        `${path}.outputChannels`,
+      ),
       input: input as AgentPluginOperationManifest["input"],
       ...(selectionControlIds ? { selectionControlIds } : {}),
       effect: operation.effect as AgentPluginOperationManifest["effect"],
@@ -439,7 +447,10 @@ function parseOperation(value: unknown, path: string): ParsedOperation {
         ? { payload: payload as AgentPluginOperationManifest["payload"] }
         : {}),
       ...(attachmentInput
-        ? { attachmentInput: attachmentInput as AgentPluginOperationManifest["attachmentInput"] }
+        ? {
+            attachmentInput:
+              attachmentInput as AgentPluginOperationManifest["attachmentInput"],
+          }
         : {}),
     },
     ...(legacySkills ? { legacySkills } : {}),
@@ -701,6 +712,9 @@ export function parseAgentPluginManifest(
   const runtimeExtension = parseRuntimeExtension(
     extensions[ABOT_RUNTIME_EXTENSION],
   );
+  const compatibility = parsePluginPlatformDeclaration(
+    extensions[ABOT_PLUGIN_COMPATIBILITY_EXTENSION],
+  );
   return {
     $schema: AGENT_PLUGIN_MANIFEST_SCHEMA,
     name: manifest.name,
@@ -713,6 +727,9 @@ export function parseAgentPluginManifest(
     extensions: {
       ...extensions,
       [ABOT_RUNTIME_EXTENSION]: runtimeExtension,
+      ...(compatibility
+        ? { [ABOT_PLUGIN_COMPATIBILITY_EXTENSION]: compatibility }
+        : {}),
     },
   };
 }

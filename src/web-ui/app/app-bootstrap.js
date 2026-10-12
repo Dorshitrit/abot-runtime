@@ -36,7 +36,7 @@ export async function bootstrapWebApp({
     captureHandoffNavigation: createSparkHandoffNavigation({ state, getEnvironmentId: () => dom.environmentSelect.value,
       shell, conversation: navigation?.conversation, onNavigationChange: () => routes?.sync() }),
     onOpenSchedule: (jobId) => schedules.openJob(jobId) });
-  navigation?.bindings.setEnvironmentChangePreparation(spark.prepareEnvironmentChange);
+  navigation?.bindings.setEnvironmentChangePreparation(spark.prepareEnvironmentChange, spark.refreshComposerSubmissionState);
   notifications?.setCompanionChat?.(spark);
   const automations = createAutomationsFeature({
     dom, client, shell, realtime,
@@ -61,6 +61,16 @@ export async function bootstrapWebApp({
     : null;
   onNavigationReady(routes);
   routes?.bind();
+  let preferenceViewsReady = false;
+  function synchronizePreferences() {
+    selection.loadPreferences();
+    if (!preferenceViewsReady) return;
+    selection.applyModelSelection();
+    selection.renderPermissionMode();
+    void dashboard.refresh();
+    void navigation?.conversation.loadSessions();
+  }
+  preferences.subscribe?.(synchronizePreferences);
   selection.loadPreferences();
   shell.load();
   homeComposer.setWorkspace(shell.activeWorkspace());
@@ -88,6 +98,7 @@ export async function bootstrapWebApp({
       ? saved
       : fallback;
   preferences.saveEnvironmentId(dom.environmentSelect.value);
+  navigation?.bindings.initializeEnvironment?.();
   learning?.environmentChanged();
   spark.environmentChanged();
   learning?.setWorkspace(shell.activeWorkspace());
@@ -108,6 +119,8 @@ export async function bootstrapWebApp({
     await spark.open(initialAddress.searchParams.get("message") || undefined, sparkNotificationReference(initialAddress));
   dashboard.setReady();
   notifications?.setReady();
+  preferenceViewsReady = true;
+  synchronizePreferences();
 }
 
 export async function startWebApp(options) {

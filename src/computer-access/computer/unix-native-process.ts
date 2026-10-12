@@ -40,7 +40,12 @@ export function createUnixNativeProcess(
   let failedReason: string | undefined;
   let buffer = Buffer.alloc(0);
   let queue = Promise.resolve();
-  let lastResult: NativeComputerResult | undefined;
+  let lastDesktop:
+    | Pick<
+        NativeComputerResult["desktop"],
+        "binding" | "bounds" | "coordinateSpace" | "targetingGuarantee"
+      >
+    | undefined;
 
   function interruptedResult(reason: string): NativeComputerResult {
     const dispatch =
@@ -52,12 +57,8 @@ export function createUnixNativeProcess(
           })
         : undefined;
     const result = unavailableUnixDesktop(options.platform, reason, dispatch);
-    if (!lastResult) return result;
-    return {
-      ...result,
-      desktop: { ...lastResult.desktop, available: false, reason },
-      windows: lastResult.windows,
-    };
+    if (!lastDesktop) return result;
+    return { ...result, desktop: { ...result.desktop, ...lastDesktop } };
   }
 
   function terminate(reason: string): void {
@@ -71,6 +72,7 @@ export function createUnixNativeProcess(
       retiring.once("exit", () => clearTimeout(hardStop));
     }
     child = undefined;
+    buffer.fill(0);
     buffer = Buffer.alloc(0);
   }
 
@@ -87,7 +89,18 @@ export function createUnixNativeProcess(
     }
     if (message.type !== "result") throw new Error("native_protocol_invalid");
     const result = readUnixNativeResult(message.result, options.platform);
-    lastResult = result;
+    // Retain only mechanical interruption identity, never observation content.
+    lastDesktop = {
+      binding: result.desktop.binding,
+      bounds: {
+        x: result.desktop.bounds.x,
+        y: result.desktop.bounds.y,
+        width: result.desktop.bounds.width,
+        height: result.desktop.bounds.height,
+      },
+      coordinateSpace: result.desktop.coordinateSpace,
+      targetingGuarantee: result.desktop.targetingGuarantee,
+    };
     pending.finish(result);
   }
 
@@ -101,15 +114,19 @@ export function createUnixNativeProcess(
     child.stderr.resume();
     child.stdout.on("data", (chunk: Buffer) => {
       if (closed || failedReason) return;
-      buffer = Buffer.concat([buffer, chunk]);
+      const previous = buffer;
+      buffer = Buffer.concat([previous, chunk]);
+      previous.fill(0);
       if (buffer.length > NATIVE_JSON_LIMIT) {
         terminate("computer_native_result_limit");
         return;
       }
       let boundary = buffer.indexOf(10);
       while (boundary >= 0) {
-        const line = buffer.subarray(0, boundary).toString("utf8");
-        buffer = buffer.subarray(boundary + 1);
+        const received = buffer;
+        const line = received.subarray(0, boundary).toString("utf8");
+        buffer = Buffer.from(received.subarray(boundary + 1));
+        received.fill(0);
         try {
           receiveLine(line);
         } catch {

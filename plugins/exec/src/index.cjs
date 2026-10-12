@@ -266,54 +266,37 @@ function canHandOffContextText(original, assessed, budget) {
 var TOOL_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
 // plugins/exec/source/filesystem-observer.ts
+var import_promises2 = require("node:fs/promises");
+var import_node_path = require("node:path");
+
+// plugins/exec/source/filesystem-file-observer.ts
 var import_node_crypto = require("node:crypto");
 var import_node_fs = require("node:fs");
 var import_promises = require("node:fs/promises");
-var import_node_path = require("node:path");
-var SNAPSHOT_MAX_ENTRIES = 4096;
-var SNAPSHOT_MAX_HASHED_BYTES = 16 * 1024 * 1024;
 var SNAPSHOT_MAX_HASHED_FILE_BYTES = 2 * 1024 * 1024;
-var DELTA_ACTION_LIMIT = 64;
-var ACTION_TARGET_MAX_CHARS = 96;
 function isMissingPathError(error) {
   return error instanceof Error && "code" in error && (error.code === "ENOENT" || error.code === "ENOTDIR");
 }
 function hashBuffer(content) {
   return (0, import_node_crypto.createHash)("sha256").update(content).digest("hex");
 }
-async function readBoundedDirectory(absoluteDirectory, maxItems) {
-  let directory;
-  try {
-    directory = await (0, import_promises.opendir)(absoluteDirectory);
-  } catch (error) {
-    if (isMissingPathError(error)) {
-      return Object.freeze({ children: Object.freeze([]), complete: true });
-    }
-    throw error;
-  }
-  const children = [];
-  let complete = true;
-  try {
-    while (true) {
-      const child = await directory.read();
-      if (!child) break;
-      if (children.length >= maxItems) {
-        complete = false;
-        break;
-      }
-      children.push(child);
-    }
-  } finally {
-    await directory.close().catch((error) => {
-      if (!(error instanceof Error) || !("code" in error) || error.code !== "ERR_DIR_CLOSED") {
-        throw error;
-      }
+async function inspectExecRegularFile(absolutePath, remainingHashBytes) {
+  if (process.platform === "win32") {
+    const info = await (0, import_promises.lstat)(absolutePath).catch((error) => {
+      if (isMissingPathError(error)) return null;
+      throw error;
+    });
+    if (!info?.isFile()) return void 0;
+    return Object.freeze({
+      entry: Object.freeze({
+        kind: "file",
+        mode: info.mode,
+        size: info.size,
+        mtimeMs: info.mtimeMs
+      }),
+      hashedBytes: 0
     });
   }
-  children.sort((left, right) => left.name.localeCompare(right.name));
-  return Object.freeze({ children: Object.freeze(children), complete });
-}
-async function inspectRegularFile(absolutePath, remainingHashBytes) {
   const noFollow = import_node_fs.constants.O_NOFOLLOW;
   if (!Number.isInteger(noFollow)) return void 0;
   let file;
@@ -359,11 +342,49 @@ async function inspectRegularFile(absolutePath, remainingHashBytes) {
     await file.close();
   }
 }
+
+// plugins/exec/source/filesystem-observer.ts
+var SNAPSHOT_MAX_ENTRIES = 4096;
+var SNAPSHOT_MAX_HASHED_BYTES = 16 * 1024 * 1024;
+var DELTA_ACTION_LIMIT = 64;
+var ACTION_TARGET_MAX_CHARS = 96;
+async function readBoundedDirectory(absoluteDirectory, maxItems) {
+  let directory;
+  try {
+    directory = await (0, import_promises2.opendir)(absoluteDirectory);
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return Object.freeze({ children: Object.freeze([]), complete: true });
+    }
+    throw error;
+  }
+  const children = [];
+  let complete = true;
+  try {
+    while (true) {
+      const child = await directory.read();
+      if (!child) break;
+      if (children.length >= maxItems) {
+        complete = false;
+        break;
+      }
+      children.push(child);
+    }
+  } finally {
+    await directory.close().catch((error) => {
+      if (!(error instanceof Error) || !("code" in error) || error.code !== "ERR_DIR_CLOSED") {
+        throw error;
+      }
+    });
+  }
+  children.sort((left, right) => left.name.localeCompare(right.name));
+  return Object.freeze({ children: Object.freeze(children), complete });
+}
 async function captureExecFilesystemSnapshot(absoluteRoot, logicalRoot) {
   const entries = /* @__PURE__ */ new Map();
   let remainingHashBytes = SNAPSHOT_MAX_HASHED_BYTES;
   let complete = true;
-  const rootInfo = await (0, import_promises.lstat)(absoluteRoot).catch((error) => {
+  const rootInfo = await (0, import_promises2.lstat)(absoluteRoot).catch((error) => {
     if (isMissingPathError(error)) return null;
     throw error;
   });
@@ -387,7 +408,7 @@ async function captureExecFilesystemSnapshot(absoluteRoot, logicalRoot) {
     for (const child of directory.children) {
       const relativePath = relativeDirectory ? (0, import_node_path.join)(relativeDirectory, child.name) : child.name;
       const absolutePath = (0, import_node_path.join)(absoluteRoot, relativePath);
-      const info = await (0, import_promises.lstat)(absolutePath).catch((error) => {
+      const info = await (0, import_promises2.lstat)(absolutePath).catch((error) => {
         if (isMissingPathError(error)) return null;
         throw error;
       });
@@ -406,7 +427,7 @@ async function captureExecFilesystemSnapshot(absoluteRoot, logicalRoot) {
         continue;
       }
       if (info.isSymbolicLink()) {
-        const linkTarget = await (0, import_promises.readlink)(absolutePath).catch(() => void 0);
+        const linkTarget = await (0, import_promises2.readlink)(absolutePath).catch(() => void 0);
         entries.set(
           relativePath,
           Object.freeze({
@@ -420,7 +441,7 @@ async function captureExecFilesystemSnapshot(absoluteRoot, logicalRoot) {
         continue;
       }
       if (info.isFile()) {
-        const inspected = await inspectRegularFile(
+        const inspected = await inspectExecRegularFile(
           absolutePath,
           remainingHashBytes
         );
@@ -802,7 +823,7 @@ var ExecTerminalDelivery = class {
 
 // plugins/exec/source/output-files.ts
 var import_node_crypto3 = require("node:crypto");
-var import_promises2 = require("node:fs/promises");
+var import_promises3 = require("node:fs/promises");
 var import_node_path2 = require("node:path");
 var ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 function outputStorageRoot(stateDir) {
@@ -836,28 +857,32 @@ function outputFailure(code, cause) {
 async function writeOutputMetadata(path, value) {
   const temporary = `${path}.${(0, import_node_crypto3.randomUUID)()}.tmp`;
   try {
-    const file = await (0, import_promises2.open)(temporary, "wx", 384);
+    const file = await (0, import_promises3.open)(temporary, "wx", 384);
     try {
       await file.writeFile(JSON.stringify(value));
       await file.sync();
     } finally {
       await file.close();
     }
-    await (0, import_promises2.rename)(temporary, path);
-    const directory = await (0, import_promises2.open)((0, import_node_path2.dirname)(path), "r");
-    try {
-      await directory.sync();
-    } finally {
-      await directory.close();
-    }
+    await (0, import_promises3.rename)(temporary, path);
+    await syncOutputDirectoryEntry(path);
   } catch (error) {
-    await (0, import_promises2.rm)(temporary, { force: true }).catch(() => void 0);
+    await (0, import_promises3.rm)(temporary, { force: true }).catch(() => void 0);
     throw outputFailure("metadata_write_failed", error);
+  }
+}
+async function syncOutputDirectoryEntry(path) {
+  if (process.platform === "win32") return;
+  const directory = await (0, import_promises3.open)((0, import_node_path2.dirname)(path), "r");
+  try {
+    await directory.sync();
+  } finally {
+    await directory.close();
   }
 }
 async function prepareOutputOwnerDirectory(directory) {
   try {
-    await (0, import_promises2.mkdir)(directory, { recursive: true, mode: 448 });
+    await (0, import_promises3.mkdir)(directory, { recursive: true, mode: 448 });
   } catch (error) {
     throw outputFailure("write_failed", error);
   }
@@ -865,7 +890,7 @@ async function prepareOutputOwnerDirectory(directory) {
 async function readOutputOwner(directory) {
   let value;
   try {
-    value = JSON.parse(await (0, import_promises2.readFile)((0, import_node_path2.join)(directory, "owner.json"), "utf8"));
+    value = JSON.parse(await (0, import_promises3.readFile)((0, import_node_path2.join)(directory, "owner.json"), "utf8"));
   } catch (error) {
     if (error.code === "ENOENT") return void 0;
     throw outputFailure("owner_read_failed", error);
@@ -884,7 +909,7 @@ async function lookupOutputSnapshot(directory, ownerId, id) {
   let value;
   try {
     value = JSON.parse(
-      await (0, import_promises2.readFile)(outputSnapshotPath(directory, id), "utf8")
+      await (0, import_promises3.readFile)(outputSnapshotPath(directory, id), "utf8")
     );
   } catch (error) {
     throw outputFailure("snapshot_unavailable", error);
@@ -1057,7 +1082,7 @@ function invalid() {
 }
 
 // plugins/exec/source/paths.ts
-var import_promises3 = require("node:fs/promises");
+var import_promises4 = require("node:fs/promises");
 var import_node_path3 = require("node:path");
 function resolveContextualDirectory(pluginContext, executionContext, requestedPath) {
   if ((0, import_node_path3.isAbsolute)(requestedPath)) return { absolutePath: requestedPath };
@@ -1084,11 +1109,12 @@ function logicalDirectory(absolutePath, base) {
   return import_node_path3.posix.join(base.logicalPath, fromBase.split(import_node_path3.sep).join("/") || ".");
 }
 async function resolveExecWorkingDirectory(pluginContext, executionContext, rawPath) {
-  const requestedPath = readRequiredString(rawPath, {
+  const inputPath = readRequiredString(rawPath, {
     name: "cwd",
     trim: false,
     maxLength: 4096
   });
+  const requestedPath = process.platform === "win32" ? inputPath.replaceAll("\\", "/") : inputPath;
   if (requestedPath.includes("\0")) {
     throw new ExecPluginError(
       "exec_cwd_invalid",
@@ -1103,8 +1129,8 @@ async function resolveExecWorkingDirectory(pluginContext, executionContext, rawP
   let absolutePath;
   let info;
   try {
-    absolutePath = await (0, import_promises3.realpath)(target.absolutePath);
-    info = await (0, import_promises3.stat)(absolutePath);
+    absolutePath = await (0, import_promises4.realpath)(target.absolutePath);
+    info = await (0, import_promises4.stat)(absolutePath);
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       throw new ExecPluginError(
@@ -1130,10 +1156,9 @@ async function resolveExecWorkingDirectory(pluginContext, executionContext, rawP
 }
 
 // plugins/exec/source/process-manager.ts
-var import_node_child_process = require("node:child_process");
 var import_node_crypto6 = require("node:crypto");
 var import_node_os = require("node:os");
-var import_node_path6 = require("node:path");
+var import_node_path7 = require("node:path");
 
 // plugins/exec/source/process-output.ts
 function streamReceipt2(body) {
@@ -1270,7 +1295,7 @@ async function createExecProcessOutput(store, ownerId) {
 }
 
 // plugins/exec/source/output-store.ts
-var import_promises9 = require("node:fs/promises");
+var import_promises10 = require("node:fs/promises");
 var import_node_path5 = require("node:path");
 
 // plugins/exec/source/output-contracts.ts
@@ -1279,7 +1304,7 @@ var EXEC_OUTPUT_IO_CHUNK_BYTES = 64 * 1024;
 
 // plugins/exec/source/output-range-reader.ts
 var import_node_crypto4 = require("node:crypto");
-var import_promises4 = require("node:fs/promises");
+var import_promises5 = require("node:fs/promises");
 function assertOutputRange(startByte, endByte, availableBytes) {
   if (!Number.isSafeInteger(startByte) || startByte < 0)
     throw outputFailure("range_invalid");
@@ -1296,7 +1321,7 @@ async function* readOutputFileRange(path, range) {
   if (!Number.isSafeInteger(range.maxChunkBytes) || range.maxChunkBytes < 1 || range.maxChunkBytes > EXEC_OUTPUT_IO_CHUNK_BYTES)
     throw outputFailure("chunk_size_invalid");
   range.signal?.throwIfAborted();
-  const handle = await (0, import_promises4.open)(path, "r").catch((error) => {
+  const handle = await (0, import_promises5.open)(path, "r").catch((error) => {
     throw outputFailure("read_failed", error);
   });
   try {
@@ -1346,7 +1371,7 @@ async function assertOutputBodyHash(path, body, signal) {
 }
 
 // plugins/exec/source/output-maintenance.ts
-var import_promises5 = require("node:fs/promises");
+var import_promises6 = require("node:fs/promises");
 var MAX_CLEANUP_INTERVAL_MS = 60 * 6e4;
 var jobs = /* @__PURE__ */ new Map();
 function scheduleExecOutputCleanup(root, retentionMs, cleanup) {
@@ -1368,7 +1393,7 @@ function scheduleExecOutputCleanup(root, retentionMs, cleanup) {
     let empty = false;
     try {
       await job.cleanup();
-      empty = (await (0, import_promises5.readdir)(root).catch((error) => {
+      empty = (await (0, import_promises6.readdir)(root).catch((error) => {
         if (error.code === "ENOENT") return [];
         throw error;
       })).length === 0;
@@ -1393,19 +1418,19 @@ function scheduleExecOutputCleanup(root, retentionMs, cleanup) {
 }
 
 // plugins/exec/source/output-retention.ts
-var import_promises6 = require("node:fs/promises");
+var import_promises7 = require("node:fs/promises");
 var import_node_path4 = require("node:path");
 async function outputCaptureCompletedAt(directory, owner) {
   if (owner?.completedAt !== null && owner?.completedAt !== void 0)
     return owner.completedAt;
-  const entries = await (0, import_promises6.readdir)(directory, { withFileTypes: true });
+  const entries = await (0, import_promises7.readdir)(directory, { withFileTypes: true });
   const captures = entries.filter(
     (entry) => entry.isFile() && entry.name.endsWith(".bytes")
   );
-  if (!captures.length) return (await (0, import_promises6.stat)(directory)).mtimeMs;
+  if (!captures.length) return (await (0, import_promises7.stat)(directory)).mtimeMs;
   const times = await Promise.all(
     captures.map(
-      async (entry) => (await (0, import_promises6.stat)((0, import_node_path4.join)(directory, entry.name))).mtimeMs
+      async (entry) => (await (0, import_promises7.stat)((0, import_node_path4.join)(directory, entry.name))).mtimeMs
     )
   );
   return Math.max(...times);
@@ -1431,9 +1456,9 @@ function incompleteUtf8TailBytes(tail) {
 
 // plugins/exec/source/output-writer.ts
 var import_node_crypto5 = require("node:crypto");
-var import_promises7 = require("node:fs/promises");
+var import_promises8 = require("node:fs/promises");
 var import_node_stream = require("node:stream");
-var import_promises8 = require("node:stream/promises");
+var import_promises9 = require("node:stream/promises");
 var OutputFileSink = class extends import_node_stream.Writable {
   constructor(file) {
     super({ highWaterMark: EXEC_OUTPUT_IO_CHUNK_BYTES });
@@ -1486,11 +1511,11 @@ var OutputFileSink = class extends import_node_stream.Writable {
 async function createOutputWriter(params) {
   const streamId = (0, import_node_crypto5.randomUUID)();
   const path = outputStreamPath(params.directory, streamId);
-  const file = await (0, import_promises7.open)(path, "wx+", 384).catch((error) => {
+  const file = await (0, import_promises8.open)(path, "wx+", 384).catch((error) => {
     throw outputFailure("write_failed", error);
   });
   const sink = new OutputFileSink(file);
-  const completion = (0, import_promises8.finished)(sink).finally(params.onClosed);
+  const completion = (0, import_promises9.finished)(sink).finally(params.onClosed);
   void completion.catch(() => void 0);
   return Object.freeze({
     sink,
@@ -1644,7 +1669,7 @@ function createExecOutputStore(params) {
       );
     },
     async cleanupExpired() {
-      const directories = await (0, import_promises9.readdir)(root, { withFileTypes: true }).catch(
+      const directories = await (0, import_promises10.readdir)(root, { withFileTypes: true }).catch(
         (error) => {
           if (error.code === "ENOENT") return [];
           throw outputFailure("cleanup_failed", error);
@@ -1663,7 +1688,7 @@ function createExecOutputStore(params) {
             throw outputFailure("owner_binding_invalid");
           if (!await hasOutputExpired(directory, owner, now(), retentionMs))
             return;
-          await (0, import_promises9.rm)(directory, { recursive: true });
+          await (0, import_promises10.rm)(directory, { recursive: true });
           removed += 1;
         });
       }
@@ -1751,32 +1776,178 @@ async function materializeExecOutput(store, scope, snapshot) {
 
 // plugins/exec/source/shell-platform.ts
 var import_node_fs2 = require("node:fs");
-var import_promises10 = require("node:fs/promises");
+var import_promises11 = require("node:fs/promises");
+var import_node_path6 = require("node:path");
 var EXEC_SHELL = "/bin/bash";
+function execShell(platform = process.platform) {
+  if (platform === "win32")
+    return import_node_path6.win32.join(
+      process.env.SystemRoot ?? "C:\\Windows",
+      "System32",
+      "WindowsPowerShell",
+      "v1.0",
+      "powershell.exe"
+    );
+  return EXEC_SHELL;
+}
 function isSupportedExecPlatform(platform) {
+  if (platform === "win32") return true;
   return platform === "linux" || platform === "darwin";
 }
 async function assertSupportedShell(platform = process.platform) {
   if (!isSupportedExecPlatform(platform)) {
     throw new ExecPluginError(
       "exec_platform_unsupported",
-      "The exec plugin requires Linux or macOS and executable /bin/bash."
+      "The exec plugin requires Linux/macOS with Bash or native Windows with Windows PowerShell."
     );
   }
   try {
-    await (0, import_promises10.access)(EXEC_SHELL, import_node_fs2.constants.X_OK);
+    await (0, import_promises11.access)(execShell(platform), import_node_fs2.constants.X_OK);
   } catch {
     throw new ExecPluginError(
       "exec_shell_unavailable",
-      "The exec plugin cannot start because executable /bin/bash is unavailable."
+      `The exec shell is unavailable: ${execShell(platform)}. No command ran. Do not retry until the user restores shell availability.`
     );
   }
+}
+
+// plugins/exec/source/shell-process.ts
+var import_node_child_process = require("node:child_process");
+
+// plugins/exec/source/windows-shell-bootstrap.ts
+var WINDOWS_EXEC_BOOTSTRAP = [
+  "$ErrorActionPreference='Stop'",
+  "$ProgressPreference='SilentlyContinue'",
+  "if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { Write-Error 'Windows policy blocks the EXEC helper. No command ran. Do not retry or bypass this restriction; ask the user to contact their administrator.' -ErrorAction Continue; exit 126 }",
+  "$abotExecOriginalPSModulePath=$env:PSModulePath",
+  "try {",
+  "$env:PSModulePath=[IO.Path]::Combine($PSHOME,'Modules')",
+  "[Console]::InputEncoding=[Text.UTF8Encoding]::new($false)",
+  "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)",
+  "$OutputEncoding=[Text.UTF8Encoding]::new($false)",
+  "$abotExecEnvelope=[Console]::In.ReadToEnd() | ConvertFrom-Json",
+  "Add-Type -TypeDefinition $abotExecEnvelope.source",
+  "[AbotExecJob]::Attach()",
+  "} catch { [Console]::Error.WriteLine('The Windows EXEC helper is unavailable or blocked. No command ran. Do not retry or bypass the restriction; the user must resolve helper availability first.'); exit 126 }",
+  "$env:PSModulePath=$abotExecOriginalPSModulePath",
+  "$global:LASTEXITCODE=0",
+  ". ([ScriptBlock]::Create($abotExecEnvelope.command))",
+  "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }"
+].join(";\n");
+
+// src/shared/windows-job-object.ts
+var WINDOWS_EXEC_JOB_SOURCE = String.raw`
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+public static class AbotExecJob {
+  private static IntPtr job = IntPtr.Zero;
+
+  [StructLayout(LayoutKind.Sequential)]
+  private struct BasicLimits {
+    public long PerProcessUserTimeLimit;
+    public long PerJobUserTimeLimit;
+    public uint LimitFlags;
+    public UIntPtr MinimumWorkingSetSize;
+    public UIntPtr MaximumWorkingSetSize;
+    public uint ActiveProcessLimit;
+    public UIntPtr Affinity;
+    public uint PriorityClass;
+    public uint SchedulingClass;
+  }
+  [StructLayout(LayoutKind.Sequential)]
+  private struct IoCounters {
+    public ulong ReadOperationCount, WriteOperationCount, OtherOperationCount;
+    public ulong ReadTransferCount, WriteTransferCount, OtherTransferCount;
+  }
+  [StructLayout(LayoutKind.Sequential)]
+  private struct ExtendedLimits {
+    public BasicLimits BasicLimitInformation;
+    public IoCounters IoInfo;
+    public UIntPtr ProcessMemoryLimit, JobMemoryLimit;
+    public UIntPtr PeakProcessMemoryUsed, PeakJobMemoryUsed;
+  }
+
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  private static extern IntPtr CreateJobObject(IntPtr attributes, string name);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  private static extern bool SetInformationJobObject(IntPtr handle, int kind,
+    ref ExtendedLimits limits, uint size);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  private static extern bool AssignProcessToJobObject(IntPtr handle, IntPtr process);
+  [DllImport("kernel32.dll")]
+  private static extern IntPtr GetCurrentProcess();
+  [DllImport("kernel32.dll")]
+  private static extern bool CloseHandle(IntPtr handle);
+
+  public static void Attach() {
+    if (job != IntPtr.Zero) throw new InvalidOperationException("Already attached");
+    IntPtr candidate = CreateJobObject(IntPtr.Zero, null);
+    if (candidate == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+    try {
+      ExtendedLimits limits = new ExtendedLimits();
+      limits.BasicLimitInformation.LimitFlags = 0x00002000; // KILL_ON_JOB_CLOSE
+      if (!SetInformationJobObject(candidate, 9, ref limits,
+          (uint)Marshal.SizeOf(typeof(ExtendedLimits))))
+        throw new Win32Exception(Marshal.GetLastWin32Error());
+      if (!AssignProcessToJobObject(candidate, GetCurrentProcess()))
+        throw new Win32Exception(Marshal.GetLastWin32Error());
+      job = candidate;
+      candidate = IntPtr.Zero;
+    } finally {
+      if (candidate != IntPtr.Zero) CloseHandle(candidate);
+    }
+  }
+}
+`;
+
+// plugins/exec/source/shell-process.ts
+function spawnExecShell(command, cwd) {
+  if (process.platform !== "win32")
+    return (0, import_node_child_process.spawn)(execShell(), ["-lc", command], {
+      cwd,
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+  const child = (0, import_node_child_process.spawn)(
+    execShell(),
+    [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-EncodedCommand",
+      Buffer.from(WINDOWS_EXEC_BOOTSTRAP, "utf16le").toString("base64")
+    ],
+    { cwd, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
+  );
+  child.stdin.on("error", () => {
+  });
+  child.stdin.end(
+    JSON.stringify({ source: WINDOWS_EXEC_JOB_SOURCE, command }),
+    "utf8"
+  );
+  return child;
+}
+function killExecProcessTree(child) {
+  if (process.platform === "win32") {
+    child.kill("SIGKILL");
+    return;
+  }
+  if (typeof child.pid === "number") {
+    try {
+      process.kill(-child.pid, "SIGKILL");
+      return;
+    } catch {
+    }
+  }
+  child.kill("SIGKILL");
 }
 
 // plugins/exec/source/process-manager.ts
 var MAX_ACTIVE_PROCESSES_PER_SCOPE = 4;
 function createExecProcessManager(store = createExecOutputStore({
-  stateDir: (0, import_node_path6.join)((0, import_node_os.tmpdir)(), "abot-exec")
+  stateDir: (0, import_node_path7.join)((0, import_node_os.tmpdir)(), "abot-exec")
 })) {
   const processes = /* @__PURE__ */ new Map();
   const opening = /* @__PURE__ */ new Map();
@@ -1791,21 +1962,10 @@ function createExecProcessManager(store = createExecOutputStore({
   const activeProcessCount = (scope) => [...processes.values()].filter(
     (managed) => managed.scope === scope && !managed.settled
   ).length + (opening.get(scope) ?? 0);
-  const killProcessTree = (managed) => {
-    const pid = managed.child.pid;
-    if (typeof pid === "number") {
-      try {
-        process.kill(-pid, "SIGKILL");
-        return;
-      } catch {
-      }
-    }
-    managed.child.kill("SIGKILL");
-  };
   const requestTermination = (managed, reason) => {
     if (managed.settled || managed.terminationReason) return;
     managed.terminationReason = reason;
-    killProcessTree(managed);
+    killExecProcessTree(managed.child);
     if (reason === "output_storage_failed") {
       managed.child.stdout.destroy();
       managed.child.stderr.destroy();
@@ -1937,11 +2097,7 @@ function createExecProcessManager(store = createExecOutputStore({
       });
       let child;
       try {
-        child = (0, import_node_child_process.spawn)(EXEC_SHELL, ["-lc", params.shellCommand], {
-          cwd: params.cwd,
-          detached: true,
-          stdio: ["ignore", "pipe", "pipe"]
-        });
+        child = spawnExecShell(params.shellCommand, params.cwd);
       } catch {
         await output.dispose();
         throw new ExecPluginError(

@@ -5,10 +5,14 @@ import {
   type ToolImplementation,
 } from "../../../../src/plugin-sdk/index.js";
 import { SystemOperationError } from "../../../../src/plugin-sdk/computer-access.js";
-import { computerFields, readPhysicalRectangle } from "../../../../src/plugin-sdk/computer-access.js";
+import {
+  computerFields,
+  readPhysicalRectangle,
+} from "../../../../src/plugin-sdk/computer-access.js";
 import { readPublicComputerAction } from "./public-action.js";
 import { withDesktopQueue } from "../../../../src/plugin-sdk/computer-access.js";
 import { serializeComputerDesktops } from "./observation-output.js";
+import { protectObservedError } from "../security/observed-error.js";
 import {
   describeDesktop,
   projectComputerResult,
@@ -53,10 +57,10 @@ export function createComputerHandlers(
             error instanceof SystemOperationError
               ? error.code
               : "computer_operation_interrupted",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Computer operation interrupted; effects may be partial. Observe before another action.",
+          message: protectObservedError(
+            error,
+            "Computer operation interrupted; effects may be partial. Observe before another action.",
+          ),
         });
       }
     };
@@ -79,10 +83,10 @@ export function createComputerHandlers(
               return {
                 ...computerRouteLabel(entry),
                 available: false,
-                reason:
-                  error instanceof Error
-                    ? error.message
-                    : "Desktop inspection failed.",
+                reason: protectObservedError(
+                  error,
+                  "Desktop inspection failed.",
+                ),
               };
             }
           },

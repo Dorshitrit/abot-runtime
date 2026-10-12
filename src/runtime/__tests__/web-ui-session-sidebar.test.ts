@@ -7,6 +7,8 @@ import { createClientPreferences } from "../../web-ui/app/services/client-prefer
 import { allSidebarElements, dragEvent, SidebarElement, sidebarStorage } from "./support/session-sidebar-dom.js";
 import { ContextElement } from "./support/composer-context-window-dom.js";
 
+const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+
 type Session = { id: string; title?: string; projectId?: string };
 
 function isVisibleSidebarElement(element: ContextElement): boolean {
@@ -24,7 +26,7 @@ function fixture(sessions: Session[], pinnedSessionIds: string[] = [], saved = s
     getElementById: (id: string) => allSidebarElements(root).find((element) => element.id === id),
   };
   vi.stubGlobal("document", documentRoot);
-  const state = { sessions, pinnedSessionIds, busySessionIds: new Set(), currentSessionId: "", sessionQuery: "" };
+  const state = { sessions, pinnedSessionIds, sessionModels: {}, busySessionIds: new Set(), currentSessionId: "", sessionQuery: "" };
   const preferences = createClientPreferences(saved);
   const onOpen = vi.fn();
   const showToast = vi.fn();
@@ -33,7 +35,8 @@ function fixture(sessions: Session[], pinnedSessionIds: string[] = [], saved = s
     state, preferences, client, onOpen, selectedEnvironmentId: () => environment,
     dom: { sessionsList: root, sessionsCount: new SidebarElement("span") },
     sessionActionsMenu: { reset: vi.fn() }, shell: { showToast, setSessionsDrawerOpen: vi.fn() },
-    confirmAction: vi.fn(), copyText: vi.fn(),
+    confirmAction: () => true, copyText: vi.fn(), onClearSessionMode: vi.fn(), onSaveModelPreferences: vi.fn(),
+    onClearCurrent: vi.fn(), onReload: vi.fn(), onControlEvent: vi.fn(),
     renderGroups: (input: object) => {
       renderProjectSessionGroups({
         ...input, projects: [{ id: "project", name: "Project", directory: "/project" }],
@@ -67,10 +70,11 @@ describe("conversation sidebar", () => {
     expect(f.row("pin-project").parentElement).toBe(f.root);
   });
 
-  test("Archive hides a pinned or open conversation, survives reload, and restores it without server mutations", () => {
+  test("Archive hides a pinned or open conversation, survives reload, and restores it without deleting the session or its messages", async () => {
     const f = fixture([{ id: "one" }, { id: "two" }], ["one"]);
     f.state.currentSessionId = "one";
     f.row("one").querySelector(".archive-action")!.dispatch("click");
+    await settle();
     expect(f.ids()).toEqual(["two"]);
     expect(f.state.currentSessionId).toBe("one");
     expect(f.state.sessions).toHaveLength(2);
@@ -85,13 +89,15 @@ describe("conversation sidebar", () => {
     reopened.row("one").querySelector(".session-open-button")!.dispatch("click");
     expect(reopened.onOpen).toHaveBeenCalledExactlyOnceWith("one");
     reopened.row("one").querySelector(".archive-action")!.dispatch("click");
+    await settle();
     reopened.root.querySelector(".session-archive-toggle")!.dispatch("click");
     expect(reopened.ids()).toEqual(["one", "two"]);
   });
 
-  test("archives and manual order stay in their selected environment", () => {
+  test("archives and manual order stay in their selected environment", async () => {
     const f = fixture([{ id: "one" }, { id: "two" }]);
     f.row("one").querySelector(".archive-action")!.dispatch("click");
+    await settle();
     f.root.querySelector(".session-archive-toggle")!.dispatch("click");
     f.setEnvironment("dev");
     expect(f.ids()).toEqual(["one", "two"]);
@@ -99,7 +105,7 @@ describe("conversation sidebar", () => {
     expect(f.ids()).toEqual(["two"]);
   });
 
-  test("dragging reorders within groups, retains search-hidden rows, and rejects cross-project moves", () => {
+  test("dragging reorders within groups, retains search-hidden rows, and rejects cross-project moves", async () => {
     const f = fixture([{ id: "one", title: "match" }, { id: "hidden" }, { id: "two", title: "match" }, { id: "child", projectId: "project" }]);
     f.state.sessionQuery = "match";
     f.controller.render();
@@ -108,6 +114,7 @@ describe("conversation sidebar", () => {
     f.row("one").dispatch("dragover", over);
     expect(over.preventDefault).toHaveBeenCalledOnce();
     f.row("one").dispatch("drop", dragEvent());
+    await settle();
     f.state.sessionQuery = "";
     f.controller.render();
     expect(f.ids()).toEqual(["child", "two", "one", "hidden"]);
@@ -118,18 +125,20 @@ describe("conversation sidebar", () => {
     reopened.row("child").dispatch("dragover", blocked);
     expect(blocked.preventDefault).not.toHaveBeenCalled();
     reopened.row("child").dispatch("drop", dragEvent());
+    await settle();
     expect(reopened.ids()).toEqual(["child", "two", "one", "hidden"]);
   });
 
-  test("keyboard menu moves persist pin order across project ownership and focus the moved conversation", () => {
+  test("keyboard menu moves persist pin order across project ownership and focus the moved conversation", async () => {
     const f = fixture([{ id: "one", projectId: "project" }, { id: "two" }], ["one", "two"]);
     f.row("two").querySelector(".move-up-action")!.dispatch("click");
+    await settle();
     expect(f.ids()).toEqual(["two", "one"]);
     expect(f.preferences.loadPinnedSessions()).toEqual(["two", "one"]);
     expect((f.row("two").querySelector(".session-open-button") as SidebarElement).focus).toHaveBeenCalledOnce();
   });
 
-  test.each(["menu", "drag"])("%s moves preserve the order of unloaded and archived sessions", (method) => {
+  test.each(["menu", "drag"])("%s moves preserve the order of unloaded and archived sessions", async (method) => {
     const f = fixture([{ id: "one" }, { id: "two" }]);
     f.preferences.saveSessionSidebar("prod", {
       orderedSessionIds: ["before", "one", "between", "two", "archived", "after"],
@@ -141,6 +150,7 @@ describe("conversation sidebar", () => {
       f.row("two").querySelector(".session-open-button")!.dispatch("dragstart", dragEvent());
       f.row("one").dispatch("drop", dragEvent());
     }
+    await settle();
     expect(f.preferences.loadSessionSidebar("prod")).toEqual({
       orderedSessionIds: ["before", "two", "one", "between", "archived", "after"],
       archivedSessionIds: ["archived"],
@@ -149,15 +159,16 @@ describe("conversation sidebar", () => {
     expect(reloaded.ids()).toEqual(["before", "two", "one", "between", "after"]);
   });
 
-  test("moving a new unranked session into a partial saved order preserves unloaded IDs", () => {
+  test("moving a new unranked session into a partial saved order preserves unloaded IDs", async () => {
     const f = fixture([{ id: "new" }, { id: "one" }]);
     f.preferences.saveSessionSidebar("prod", { orderedSessionIds: ["one", "unloaded"], archivedSessionIds: [] });
     f.controller.render();
     f.row("new").querySelector(".move-down-action")!.dispatch("click");
+    await settle();
     expect(f.preferences.loadSessionSidebar("prod").orderedSessionIds).toEqual(["one", "new", "unloaded"]);
   });
 
-  test.each(["ordinary", "project", "pinned"])("keyboard moves skip search-hidden siblings in the %s group", (group) => {
+  test.each(["ordinary", "project", "pinned"])("keyboard moves skip search-hidden siblings in the %s group", async (group) => {
     const sessions = ["hidden-before", "one", "hidden-between", "two", "hidden-after"].map((id) => ({
       id, title: ["one", "two"].includes(id) ? "match" : "hidden",
       ...(group === "project" ? { projectId: "project" } : {}),
@@ -167,11 +178,15 @@ describe("conversation sidebar", () => {
     f.state.sessionQuery = "match";
     f.controller.render();
     f.row("one").querySelector(".move-up-action")!.dispatch("click");
+    await settle();
     f.row("two").querySelector(".move-down-action")!.dispatch("click");
+    await settle();
     expect(f.saved.setItem).not.toHaveBeenCalled();
     f.row("one").querySelector(".move-down-action")!.dispatch("click");
+    await settle();
     expect(f.ids()).toEqual(["two", "one"]);
     f.row("one").querySelector(".move-up-action")!.dispatch("click");
+    await settle();
     expect(f.ids()).toEqual(["one", "two"]);
     f.state.sessionQuery = "";
     f.controller.render();
@@ -180,13 +195,14 @@ describe("conversation sidebar", () => {
     expect(fixture(sessions, reloadedPins, f.saved).ids()).toEqual(f.ids());
   });
 
-  test("the project renderer preserves manually ordered children after rerender and preference reload", () => {
+  test("the project renderer preserves manually ordered children after rerender and preference reload", async () => {
     const sessions = [
       { id: "first", projectId: "project" }, { id: "ordinary" },
       { id: "second", projectId: "project" },
     ];
     const f = fixture(sessions);
     f.row("second").querySelector(".move-up-action")!.dispatch("click");
+    await settle();
     expect(f.ids()).toEqual(["second", "first", "ordinary"]);
     expect(f.row("second").parentElement).toBe(f.row("first").parentElement);
     f.controller.render();
@@ -194,10 +210,11 @@ describe("conversation sidebar", () => {
     expect(fixture(sessions, [], f.saved).ids()).toEqual(["second", "first", "ordinary"]);
   });
 
-  test("storage failure keeps the conversation visible and reports the failed local action", () => {
+  test("storage failure keeps the conversation visible and reports the failed local action", async () => {
     const f = fixture([{ id: "one" }]);
     f.saved.setItem.mockImplementationOnce(() => { throw new Error("quota"); });
     f.row("one").querySelector(".archive-action")!.dispatch("click");
+    await settle();
     expect(f.ids()).toEqual(["one"]);
     expect(f.showToast).toHaveBeenCalledWith(expect.stringContaining("Could not save"), "failed");
   });
@@ -210,18 +227,92 @@ describe("conversation sidebar", () => {
     expect(f.ids()).toEqual([...pinned, ...project.slice(0, 5), ...ordinary].map((session) => session.id));
   });
 
-  test("project keyboard moves stop at the preview boundary while drag preserves hidden siblings", () => {
+  test("project keyboard moves stop at the preview boundary while drag preserves hidden siblings", async () => {
     const sessions = Array.from({ length: 7 }, (_, index) => ({ id: `row-${index}`, projectId: "project" }));
     const f = fixture(sessions);
     f.row("row-4").querySelector(".move-down-action")!.dispatch("click");
+    await settle();
     expect(f.saved.setItem).not.toHaveBeenCalled();
     expect(f.ids()).toEqual(["row-0", "row-1", "row-2", "row-3", "row-4"]);
     f.row("row-4").querySelector(".session-open-button")!.dispatch("dragstart", dragEvent());
     f.row("row-0").dispatch("drop", dragEvent());
+    await settle();
     expect(f.ids()).toEqual(["row-4", "row-0", "row-1", "row-2", "row-3"]);
     expect(f.preferences.loadSessionSidebar("prod").orderedSessionIds).toEqual(["row-4", "row-0", "row-1", "row-2", "row-3", "row-5", "row-6"]);
     f.root.querySelector(".project-session-more")!.dispatch("click");
     f.row("row-5").querySelector(".move-down-action")!.dispatch("click");
+    await settle();
     expect(f.preferences.loadSessionSidebar("prod").orderedSessionIds.slice(-2)).toEqual(["row-6", "row-5"]);
   });
+});
+
+test.each([false, true])("a rejected pin change preserves acknowledged state across rerender and later changes, initially pinned=%s", async (pinned) => {
+  const previous = pinned ? ["one", "two"] : ["two"];
+  const f = fixture([{ id: "one" }, { id: "two" }], previous);
+  let reject!: (error: Error) => void;
+  const save = vi.spyOn(f.preferences, "savePinnedSessions").mockImplementationOnce(() =>
+    new Promise<void>((_resolve, fail) => { reject = fail; }) as never);
+  const changing = f.controller.togglePinned("one");
+  await vi.waitFor(() => expect(save).toHaveBeenCalledOnce());
+  expect(f.state.pinnedSessionIds).toBe(previous);
+  f.controller.render();
+  expect(f.row("one").classList.contains("pinned")).toBe(pinned);
+  reject(new Error("preference conflict")); await changing;
+  expect(f.state.pinnedSessionIds).toBe(previous);
+  f.controller.render();
+  expect(f.row("one").classList.contains("pinned")).toBe(pinned);
+  expect(f.showToast).toHaveBeenCalledWith(expect.stringContaining("Could not save"), "failed");
+  await f.controller.togglePinned("two");
+  expect(f.state.pinnedSessionIds).toEqual(pinned ? ["one"] : []);
+});
+
+test("rapid pin actions derive from acknowledged predecessors and remain invisible while saving", async () => {
+  const f = fixture([{ id: "one" }, { id: "two" }]);
+  let accept!: () => void;
+  const save = vi.spyOn(f.preferences, "savePinnedSessions").mockImplementationOnce(() =>
+    new Promise<void>((resolve) => { accept = resolve; }) as never);
+  const first = f.controller.togglePinned("one");
+  const second = f.controller.togglePinned("two");
+  await vi.waitFor(() => expect(save).toHaveBeenCalledOnce());
+  expect(f.state.pinnedSessionIds).toEqual([]);
+  accept(); await Promise.all([first, second]);
+  expect(save.mock.calls).toEqual([[["one"]], [["two", "one"]]]);
+  expect(f.state.pinnedSessionIds).toEqual(["two", "one"]);
+  expect(f.ids()).toEqual(["two", "one"]);
+});
+
+test("pin reordering waits for a pending pin change before deriving its list", async () => {
+  const f = fixture([{ id: "one" }, { id: "two" }, { id: "three" }], ["one", "two"]);
+  let accept!: () => void;
+  const save = vi.spyOn(f.preferences, "savePinnedSessions").mockImplementationOnce(() =>
+    new Promise<void>((resolve) => { accept = resolve; }) as never);
+  const pinning = f.controller.togglePinned("three");
+  f.row("two").querySelector(".move-up-action")!.dispatch("click");
+  await vi.waitFor(() => expect(save).toHaveBeenCalledOnce());
+  accept(); await pinning;
+  await vi.waitFor(() => expect(f.state.pinnedSessionIds).toEqual(["three", "two", "one"]));
+  expect(save.mock.calls).toEqual([[["three", "one", "two"]], [["three", "two", "one"]]]);
+});
+
+test("pin cleanup after deletion shares pending pin updates without restoring deleted pins", async () => {
+  const f = fixture([{ id: "one" }, { id: "two" }], ["one"]);
+  let accept!: () => void;
+  const save = vi.spyOn(f.preferences, "savePinnedSessions").mockImplementationOnce(() =>
+    new Promise<void>((resolve) => { accept = resolve; }) as never);
+  const pinning = f.controller.togglePinned("two");
+  await f.controller.deleteSession("one");
+  await vi.waitFor(() => expect(save).toHaveBeenCalledOnce());
+  accept(); await pinning;
+  await vi.waitFor(() => expect(f.state.pinnedSessionIds).toEqual(["two"]));
+  expect(f.ids()).toEqual(["two"]);
+  expect(f.client.deleteSession).toHaveBeenCalledExactlyOnceWith("one", "prod");
+});
+
+test("failed pin cleanup reports separately while a successfully deleted session stays deleted", async () => {
+  const f = fixture([{ id: "one" }, { id: "two" }], ["one"]);
+  vi.spyOn(f.preferences, "savePinnedSessions").mockRejectedValueOnce(new Error("conflict"));
+  await f.controller.deleteSession("one");
+  await vi.waitFor(() => expect(f.showToast).toHaveBeenCalledWith(expect.stringContaining("saved pin"), "failed"));
+  expect(f.state.pinnedSessionIds).toEqual(["one"]);
+  expect(f.ids()).toEqual(["two"]);
 });

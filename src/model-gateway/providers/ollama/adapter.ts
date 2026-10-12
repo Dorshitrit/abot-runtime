@@ -1,5 +1,8 @@
 import { fetchProviderWithTrace } from "../../model-io-trace.js";
-import { toolMediaSafeError, toolMediaSafeMessage } from "../../observability/tool-media-privacy.js";
+import {
+  toolMediaSafeError,
+  toolMediaSafeMessage,
+} from "../../observability/tool-media-privacy.js";
 import type { OllamaSchemaProjectionDiagnostic } from "../../structured-output/projection.js";
 import type { ModelGatewayEvent } from "../../types.js";
 import type {
@@ -27,6 +30,7 @@ import {
   forwardOllamaStream,
   type OllamaProviderTiming,
 } from "./stream-normalizer.js";
+import { OllamaStreamTerminationError } from "./stream-termination.js";
 import { embedWithOllama } from "./embeddings.js";
 import { listOllamaEmbeddingModels } from "./embedding-models.js";
 
@@ -96,7 +100,10 @@ export function createOllamaProviderAdapter(options: {
         return {
           kind: "error" as const,
           statusCode: response.status || 502,
-          message: toolMediaSafeMessage(message || "ollama error", params.requestBody),
+          message: toolMediaSafeMessage(
+            message || "ollama error",
+            params.requestBody,
+          ),
         };
       }
 
@@ -123,7 +130,12 @@ export function createOllamaProviderAdapter(options: {
             } catch (error) {
               outcome = resolveFailureOutcome(error);
               failure = toolMediaSafeError(error, params.requestBody);
-              throw failure;
+              if (!(error instanceof OllamaStreamTerminationError))
+                throw failure;
+              writer.emit({
+                type: "error",
+                error: toolMediaSafeMessage(error.message, params.requestBody),
+              });
             } finally {
               streamDiagnostics.terminate(outcome, failure);
               await responseTrace;

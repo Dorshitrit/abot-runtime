@@ -1,10 +1,13 @@
+import { installSparkDocument, sparkDom } from "./support/spark-composer-dom.js";
+import { createSparkQueueFixture } from "./support/spark-composer-queue.js";
 import { afterEach, expect, test, vi } from "vitest";
 // @ts-expect-error Browser composition module.
 import { createSparkChatFeature } from "../../web-ui/app/spark-chat-feature.js";
 // @ts-expect-error Browser transport composition module.
 import { createAppRealtimeTransport } from "../../web-ui/app/app-realtime-transport.js";
 
-const capture = vi.hoisted(() => ({ conversation: null as any, panelDom: null as any, transport: null as any }));
+const capture = vi.hoisted(() => ({ conversation: null as any, queue: null as any, panelDom: null as any, transport: null as any, open: false }));
+vi.mock("../../web-ui/app/services/workspace-state.js", () => ({ workspaceQueue: () => capture.queue }));
 vi.mock("../../web-ui/app/spark-chat-conversation.js", async (importOriginal) => {
   const actual = await importOriginal<Record<string, (...args: any[]) => any>>();
   return { createSparkChatConversation: (...args: any[]) => (capture.conversation = actual.createSparkChatConversation(...args)) };
@@ -14,7 +17,7 @@ vi.mock("../../web-ui/app/controllers/conversation-view-feature.js", () => ({
 }));
 vi.mock("../../web-ui/app/components/spark-chat/settings.js", () => ({ createSparkChatSettings: () => ({ render: vi.fn() }) }));
 vi.mock("../../web-ui/app/components/spark-chat/panel.js", () => ({
-  createSparkChatPanel: () => ({ dom: capture.panelDom, isOpen: () => false, setOpen: vi.fn(), setAvailable: vi.fn(),
+  createSparkChatPanel: () => ({ dom: capture.panelDom, isOpen: () => capture.open, setOpen: vi.fn((open: boolean) => { capture.open = open; }), setAvailable: vi.fn(),
     onToggle: vi.fn(), showNotice: vi.fn(), hideNotice: vi.fn(), setUnread: vi.fn(), resetPosition: vi.fn() }),
 }));
 vi.mock("../../web-ui/app/services/realtime-transport.js", () => ({
@@ -24,38 +27,20 @@ vi.mock("../../web-ui/app/services/realtime-transport.js", () => ({
   },
 }));
 
-class ElementStub extends EventTarget {
-  value = ""; textContent = ""; innerHTML = ""; style = {}; dataset = {}; disabled = false; hidden = false;
-  classes = new Set<string>(); attributes = new Map<string, string>();
-  classList = {
-    toggle: (name: string, enabled: boolean) => enabled ? this.classes.add(name) : this.classes.delete(name),
-    add: (name: string) => this.classes.add(name), remove: (name: string) => this.classes.delete(name),
-    contains: (name: string) => this.classes.has(name),
-  };
-  setAttribute = (name: string, value: string) => this.attributes.set(name, value);
-  focus = vi.fn(); closest = () => null; querySelector = () => null;
-  appendChild = vi.fn(); querySelectorAll = () => []; scrollHeight = 32;
-}
-function domStub() {
-  const nodes = new Map<PropertyKey, ElementStub>();
-  return new Proxy({} as Record<string, ElementStub>, { get: (_target, key) => {
-    if (!nodes.has(key)) nodes.set(key, new ElementStub());
-    return nodes.get(key);
-  } });
-}
 
 async function harness(active = true) {
-  vi.stubGlobal("document", Object.assign(new ElementStub(), { createElement: () => new ElementStub() }));
-  vi.stubGlobal("window", Object.assign(new ElementStub(), { setTimeout, requestAnimationFrame: vi.fn() }));
-  vi.stubGlobal("localStorage", { getItem: () => null, setItem() {} });
-  const dom = domStub(); dom.environmentSelect.value = "dev";
-  capture.panelDom = domStub();
+  capture.open = false;
+  installSparkDocument();
+  capture.queue = createSparkQueueFixture().queue;
+  const dom = sparkDom(); dom.environmentSelect.value = "dev";
+  capture.panelDom = sparkDom();
   const snapshot = { sessionId: "spark-companion", kind: "spark", messages: [],
     requests: active ? [{ requestId: "spark-request", status: "streaming" }] : [] };
   const client = {
     supportsSparkChat: () => true, listModels: async () => ({ profiles: [{ id: "model" }] }),
     loadSparkChat: vi.fn(async () => ({ sessionId: "spark-companion", modelProfileId: "model", snapshot,
       readState: { readGeneration: "same", unreadMessageIds: [], unreadCount: 0 } })),
+    postChatMessage: vi.fn<(...args: any[]) => Promise<string>>(),
     loadSession: vi.fn(async () => snapshot), fetchRequestEvents: vi.fn(async () => []),
   };
   const appState = { connected: true, runtimeAvailability: { status: "ready" },
@@ -124,9 +109,17 @@ test.each(["completed", "failed"])("stops when the request is %s without reopeni
 test("composer submission alone and an unrelated active conversation do not claim SPARK is working", async () => {
   const h = await harness(false);
   h.expectWorking(false);
-  h.conversation.state.composerSending = true;
+  await h.feature.open();
+  let refuse!: (error: Error) => void;
+  h.client.postChatMessage.mockReturnValueOnce(new Promise((_resolve, reject) => { refuse = reject; }));
+  capture.panelDom.composerInput.value = "New SPARK request";
+  capture.panelDom.composerInput.dispatchEvent(new Event("input"));
+  capture.panelDom.composerForm.dispatchEvent(new Event("submit", { cancelable: true }));
+  await vi.waitFor(() => expect(h.client.postChatMessage).toHaveBeenCalledOnce());
+  expect(h.conversation.state.composerSending).toBe(true);
   h.conversation.update(); h.expectWorking(false);
-  h.conversation.state.composerSending = false;
+  refuse(Object.assign(new Error("Request refused"), { status: 400 }));
+  await vi.waitFor(() => expect(h.conversation.state.composerSending).toBe(false));
   h.conversation.update(); h.expectWorking(false);
 });
 

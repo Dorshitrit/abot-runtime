@@ -41,18 +41,26 @@ export function desktopCollectorCommand(
 export function startDesktopCollector(options: {
   excludedApplications: readonly string[];
   onEvent(event: PassiveCollectorEvent): void;
+  /** Confirms helper exit or that no helper was created; close alone does not confirm either. */
+  onStopped?(): void;
   platform?: string;
   spawnProcess?: typeof spawn;
 }): DesktopCollector {
   const command = desktopCollectorCommand(options.platform ?? process.platform);
   let child: ChildProcess | undefined;
   let closed = false;
+  let stopped = false;
+  const confirmStopped = () => {
+    if (stopped) return;
+    stopped = true;
+    options.onStopped?.();
+  };
   let received = Buffer.alloc(0);
   let terminalStatus = false;
   const filter = new ObservationFilter(options.excludedApplications);
   const close = () => {
     closed = true;
-    if (!child?.pid) return;
+    if (stopped || !child?.pid) return;
     // POSIX language launchers can spawn an interpreter; stop the entire owned process group.
     if (process.platform !== "win32") {
       try {
@@ -70,6 +78,7 @@ export function startDesktopCollector(options: {
       state: "unavailable",
       reason: "platform_unsupported",
     });
+    confirmStopped();
     return { close };
   }
   if (process.platform === "darwin") {
@@ -86,19 +95,27 @@ export function startDesktopCollector(options: {
         state: "unavailable",
         reason: "macos_swift_tools_unavailable",
       });
+      confirmStopped();
       return { close };
     }
   }
   options.onEvent({ type: "status", state: "starting" });
-  child = (options.spawnProcess ?? spawn)(command.file, command.args, {
-    windowsHide: true,
-    detached: process.platform !== "win32",
-    stdio: ["pipe", "pipe", "pipe"],
-    env: {
-      ...process.env,
-      ABOT_OBSERVATION_EXCLUSIONS: JSON.stringify(options.excludedApplications),
-    },
-  });
+  try {
+    child = (options.spawnProcess ?? spawn)(command.file, command.args, {
+      windowsHide: true,
+      detached: process.platform !== "win32",
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        ABOT_OBSERVATION_EXCLUSIONS: JSON.stringify(options.excludedApplications),
+      },
+    });
+  } catch {
+    options.onEvent({ type: "status", state: "failed", reason: "collector_start_failed" });
+    closed = true;
+    confirmStopped();
+    return { close };
+  }
   child.stdin?.on("error", () => {});
   child.stdin?.end(command.input);
   // Compiler/dependency diagnostics can contain local paths. Never forward them into model or general logs.
@@ -138,23 +155,30 @@ export function startDesktopCollector(options: {
     }
   });
   child.once("error", () => {
-    if (closed) return;
-    options.onEvent({
-      type: "status",
-      state: "unavailable",
-      reason: "collector_dependency_unavailable",
-    });
-    close();
-  });
-  child.once("exit", (code) => {
-    if (closed) return;
-    if (!terminalStatus)
+    try {
+      if (closed) return;
       options.onEvent({
         type: "status",
         state: "unavailable",
-        reason: code === 0 ? "collector_stopped" : "collector_start_failed",
+        reason: "collector_dependency_unavailable",
       });
-    close();
+      close();
+    } finally {
+      if (!child?.pid) confirmStopped();
+    }
+  });
+  child.once("exit", (code) => {
+    try {
+      if (!closed && !terminalStatus)
+        options.onEvent({
+          type: "status",
+          state: "unavailable",
+          reason: code === 0 ? "collector_stopped" : "collector_start_failed",
+        });
+    } finally {
+      closed = true;
+      confirmStopped();
+    }
   });
   return { close };
 }

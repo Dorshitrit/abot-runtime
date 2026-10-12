@@ -3,8 +3,10 @@ import {
   loadRuntimeConfig,
 } from "./src/runtime/index.js";
 import { startAgentBridge } from "./src/bridge/start-agent-bridge.js";
+import { recoverRuntimeSetupEdit } from "./src/web-ui/local-runtime/runtime-setup-edit-recovery.js";
 
 async function main() {
+  await recoverRuntimeSetupEdit(process.cwd());
   const config = loadRuntimeConfig();
   const runtime = createLocalRuntimeApplication(config);
   await runtime.start();
@@ -28,4 +30,4 @@ async function main() {
   process.on("SIGTERM", stopRuntime);
 }
 
-main();
+await main();

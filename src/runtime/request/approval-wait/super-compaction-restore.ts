@@ -1,3 +1,4 @@
+import { restoreExecutionApprovalCompaction } from "./execution-compaction-restore.js";
 import { createRoleCallLedger } from "../../orchestration/role-calls/index.js";
 import { hasSuperContextContract } from "../../context/super-context-policy.js";
 import { createOwnedSuperContextFailure } from "../../context/super-context-failure.js";
@@ -22,7 +23,7 @@ export function restoreApprovalCompaction(params: {
 }) {
   const { snapshot, executionPolicy } = params;
   if (!hasSuperContextContract(executionPolicy.authority, "supervisor"))
-    return restoreRequestContextCompaction(snapshot);
+    return restoreExecutionApprovalCompaction(params);
   const ledger = createRoleCallLedger({
     requestId: params.requestId,
     policy: createRequestRoleCallPolicy(executionPolicy),

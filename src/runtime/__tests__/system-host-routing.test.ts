@@ -10,7 +10,7 @@ import {
 } from "./support/system-request-plugin-fixture.js";
 
 describe("system plugin binds implicit destinations before approval", () => {
-  test.each(["system_command", "system_applications", "system_launch"])(
+  test.each(["system_applications", "system_launch"])(
     "%s dispatches Windows through the captured companion without model connection input",
     async (operation) => {
       const h = systemRequestPluginFixture();
@@ -52,6 +52,28 @@ describe("system plugin binds implicit destinations before approval", () => {
       });
     },
   );
+
+  test("command capture and exact output reads stay on the captured connection without replay", async () => {
+    const h = systemRequestPluginFixture();
+    const [module] = await h.prepare(["system_command"]);
+    const controller = new AbortController();
+    const params = { target: "windows", cwd: "C:\\\\", command: "Get-Location" };
+    expect(await module!.implementation(params, { abortSignal: controller.signal })).toMatchObject({
+      ok: true, stdout: h.commandOutput, stderr: "", exitCode: 0,
+      data: { processStatus: "completed", outputDelivery: "complete" },
+    });
+    const calls = h.executeHostOperation.mock.calls.map(([, call]) => call);
+    expect(calls.map(({ operation }) => operation)).toEqual([
+      "system_command_capture", "system_command_output", "system_command_output_close",
+    ]);
+    expect(calls[0]).toMatchObject({ params, abortSignal: controller.signal });
+    expect(calls[1]).toMatchObject({ params: { target: "windows", stream: "stdout", offset: 0 } });
+    for (const call of calls)
+      expect(call).toMatchObject({ hostId: requestHostId, connectionId: requestConnectionId });
+    expect(h.native).not.toHaveBeenCalled();
+    expect(h.readHostStatus).toHaveBeenCalledOnce();
+    expect(module!.adapter!.executionBinding!({ tool: "system_command", params }).identity).toContain(requestConnectionId);
+  });
 
   test.each(["host_id", "hostId", "connectionId"])(
     "rejects externally authored %s without dispatch",

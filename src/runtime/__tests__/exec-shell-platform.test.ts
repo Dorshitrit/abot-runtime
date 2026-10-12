@@ -3,7 +3,10 @@ import { access } from "node:fs/promises";
 
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { assertSupportedShell } from "../../../plugins/exec/source/shell-platform.js";
+import {
+  assertSupportedShell,
+  execShell,
+} from "../../../plugins/exec/source/shell-platform.js";
 
 vi.mock("node:fs/promises", () => ({ access: vi.fn() }));
 
@@ -16,11 +19,26 @@ describe("exec shell platform admission", () => {
     "accepts %s only after executable Bash is available",
     async (platform) => {
       await expect(assertSupportedShell(platform)).resolves.toBeUndefined();
-      expect(access).toHaveBeenCalledExactlyOnceWith("/bin/bash", constants.X_OK);
+      expect(access).toHaveBeenCalledExactlyOnceWith(
+        "/bin/bash",
+        constants.X_OK,
+      );
     },
   );
 
-  test.each(["win32", "freebsd"] as const)(
+  test("accepts native Windows only after the system PowerShell is available", async () => {
+    await expect(assertSupportedShell("win32")).resolves.toBeUndefined();
+    expect(access).toHaveBeenCalledExactlyOnceWith(
+      execShell("win32"),
+      constants.X_OK,
+    );
+    vi.mocked(access).mockRejectedValueOnce(new Error("missing"));
+    await expect(assertSupportedShell("win32")).rejects.toMatchObject({
+      code: "exec_shell_unavailable",
+    });
+  });
+
+  test.each(["freebsd"] as const)(
     "rejects unsupported %s without selecting another shell",
     async (platform) => {
       await expect(assertSupportedShell(platform)).rejects.toMatchObject({

@@ -1,3 +1,7 @@
+import {
+  isPluginPlatformUnavailable,
+  renderPluginPlatformNotice,
+} from "../plugins/compatibility.js";
 import { escapeAttribute, escapeHtml } from "../../lib/text-format.js";
 import {
   modelPluginRulesNeedRepair,
@@ -58,10 +62,12 @@ function renderPluginRow(file, plugin, globalPlugin, viewState) {
       <summary id="${escapeAttribute(summaryId)}">
         <span class="model-plugin-name" title="${escapeAttribute(plugin.id)}">${escapeHtml(plugin.id)}</span>
         <span class="model-plugin-row-status">
+          ${isPluginPlatformUnavailable(plugin.compatibility) ? '<span class="model-plugin-platform-note">Unavailable on this host</span>' : ""}
           ${globallyRestricted ? '<span class="model-plugin-global-note">Global restrictions</span>' : ""}
           <span class="plugin-selection-state" data-plugin-state="${escapeAttribute(plugin.state)}">${plugin.selectedCapabilityCount}/${count} tools</span>
         </span>
       </summary>
+      ${renderPluginPlatformNotice(plugin.compatibility)}
       <div class="model-plugin-details-body">
         ${plugin.description ? `<p class="model-plugin-description">${escapeHtml(plugin.description)}</p>` : ""}
         ${reason ? `<p class="plugin-capability-policy model-plugin-policy" id="${escapeAttribute(reasonId)}">${escapeHtml(reason)}</p>` : ""}
@@ -116,7 +122,7 @@ export function renderModelPluginPermissions(file, catalog, viewState = {}) {
   return `<details class="model-plugin-permissions" data-model-plugin-section="${escapeAttribute(file.id)}" aria-label="${escapeAttribute(`Plugin access for ${modelLabel(file)}`)}" ${open ? "open" : ""}>
     <summary id="${escapeAttribute(summaryId)}">
       <span>Plugin access</span>
-      <span class="model-plugin-summary-count">${plugins.length} plugins · ${selectedCount}/${capabilityCount} tools available</span>
+      <span class="model-plugin-summary-count">${plugins.length} plugins · ${selectedCount}/${capabilityCount} tools selected</span>
     </summary>
     <div class="model-plugin-permissions-body">
       <p class="model-plugin-help">Allow plugins and individual tools for <strong>${escapeHtml(modelLabel(file))}</strong>. Global restrictions still apply. Save this model, then apply changes.</p>

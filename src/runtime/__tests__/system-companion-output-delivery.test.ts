@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { expect, test, vi } from "vitest";
 import { createBoundSystemHandlers } from "../../../plugins/system/source/host-dispatch.js";
 import { SYSTEM_OUTPUT_CAPABILITY, SYSTEM_OUTPUT_CHUNK_BYTES } from "../../computer-access/companion/command-output-protocol.js";
+import { HOST_SECRET_PROTECTION_CAPABILITY } from "../../computer-access/companion/secret-protection-protocol.js";
 import type { ComputerAccessConnection } from "../../computer-access/client.js";
 import { assessResultEnvelopeBytes } from "../../capabilities/result-budget.js";
 import { measureToolContextTextBytes } from "../../capabilities/tool-context-text.js";
@@ -26,7 +27,7 @@ function fixture(stdout = "a".repeat(SYSTEM_OUTPUT_CHUNK_BYTES - 1) + "שלום 
       bytes: streams[stream].subarray(offset, offset + SYSTEM_OUTPUT_CHUNK_BYTES).toString("base64") } };
   });
   const route = { kind: "companion" as const, target: "linux" as const, hostId: randomUUID(), connectionId: randomUUID(),
-    identity: { os: "linux" as const, name: "fixture", user: "fixture", homeDir: "/fixture" }, capabilities: [SYSTEM_OUTPUT_CAPABILITY] };
+    identity: { os: "linux" as const, name: "fixture", user: "fixture", homeDir: "/fixture" }, capabilities: [SYSTEM_OUTPUT_CAPABILITY, HOST_SECRET_PROTECTION_CAPABILITY] };
   const connection = { readHostStatus: vi.fn<ComputerAccessConnection["readHostStatus"]>(), executeHostOperation: dispatch };
   const create = (capabilities = route.capabilities) => createBoundSystemHandlers({ rootDir: "/fixture", nativeHandlers: { system_command: native },
     snapshot: [{ ...route, capabilities }], connection, outputRetentionMs: 900_000 }).system_command!;
@@ -135,12 +136,10 @@ test("storage failure preserves the native receipt without attempting stream rea
   expect(f.dispatch).toHaveBeenCalledOnce();
 });
 
-test("companions without the capability keep the legacy operation unchanged", async () => {
+test.each([[], [SYSTEM_OUTPUT_CAPABILITY], [HOST_SECRET_PROTECTION_CAPABILITY]])("missing protection or complete capture blocks before dispatch: %j", async (...capabilities: string[]) => {
   const f = fixture();
-  f.dispatch.mockResolvedValue(f.receipt);
-  expect(await f.create([])({ target: "linux", cwd: "/fixture", command: "legacy" })).toBe(f.receipt);
-  expect(f.dispatch).toHaveBeenCalledExactlyOnceWith("/fixture", {
-    hostId: f.route.hostId, connectionId: f.route.connectionId, operation: "system_command",
-    params: { target: "linux", cwd: "/fixture", command: "legacy" },
-  });
+  expect(await f.create(capabilities)({ target: "linux", cwd: "/fixture", command: "legacy" }))
+    .toMatchObject({ ok: false, errorCode: "system_companion_protection_upgrade_required" });
+  expect(f.dispatch).not.toHaveBeenCalled();
+  expect(f.native).not.toHaveBeenCalled();
 });

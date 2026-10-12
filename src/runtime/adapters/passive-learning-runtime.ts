@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { connectHostObservations } from "../../computer-access/companion/observation-client.js";
+import { connectRuntimeObservations } from "./runtime-observation-connection.js";
 import type { RuntimeConfig, ModelGatewayClient, SessionStore } from "../ports.js";
 import type { LongTermMemoryService } from "../long-term-memory/contracts.js";
 import { createPassiveLearningService } from "../passive-learning/service.js";
@@ -8,7 +8,7 @@ import { createRuntimePassiveLearningModel } from "../passive-learning/model.js"
 import { createCoWorkerResourceDependencies } from "./co-worker-resources.js";
 import type { SessionRequestAdmission } from "../request/session-admission.js";
 
-/** The environment owns learning; the paired desktop owns native collection. */
+/** The environment owns learning; the collection adapter owns the selected desktop source. */
 export function createRuntimePassiveLearning(params: {
   config: RuntimeConfig;
   models: ModelGatewayClient;
@@ -30,7 +30,7 @@ export function createRuntimePassiveLearning(params: {
       sessions: params.sessions, deliveryAdmission: params.deliveryAdmission,
     }),
     connect: (input) =>
-      connectHostObservations({
+      connectRuntimeObservations({
         ...input,
         ownerId,
         rootDir: config.paths.rootDir,

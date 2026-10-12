@@ -1,0 +1,20 @@
+/** No execution-policy override: setup must succeed before any supplied command runs. */
+export const WINDOWS_EXEC_BOOTSTRAP = [
+  "$ErrorActionPreference='Stop'",
+  "$ProgressPreference='SilentlyContinue'",
+  "if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { Write-Error 'Windows policy blocks the EXEC helper. No command ran. Do not retry or bypass this restriction; ask the user to contact their administrator.' -ErrorAction Continue; exit 126 }",
+  "$abotExecOriginalPSModulePath=$env:PSModulePath",
+  "try {",
+  "$env:PSModulePath=[IO.Path]::Combine($PSHOME,'Modules')",
+  "[Console]::InputEncoding=[Text.UTF8Encoding]::new($false)",
+  "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)",
+  "$OutputEncoding=[Text.UTF8Encoding]::new($false)",
+  "$abotExecEnvelope=[Console]::In.ReadToEnd() | ConvertFrom-Json",
+  "Add-Type -TypeDefinition $abotExecEnvelope.source",
+  "[AbotExecJob]::Attach()",
+  "} catch { [Console]::Error.WriteLine('The Windows EXEC helper is unavailable or blocked. No command ran. Do not retry or bypass the restriction; the user must resolve helper availability first.'); exit 126 }",
+  "$env:PSModulePath=$abotExecOriginalPSModulePath",
+  "$global:LASTEXITCODE=0",
+  ". ([ScriptBlock]::Create($abotExecEnvelope.command))",
+  "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
+].join(";\n");

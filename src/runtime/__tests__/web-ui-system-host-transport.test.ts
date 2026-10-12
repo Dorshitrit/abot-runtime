@@ -95,6 +95,7 @@ test("bridge backend rejects host configuration locally", async () => {
     "local Runtime backend",
   );
   await expect(client.requestSystemHostStoreConnection()).rejects.toThrow("local Runtime backend");
+  await expect(client.acceptSystemHostCollectionConsent()).rejects.toThrow("local Runtime backend");
   await expect(client.downloadSystemHostSetup("macos")).rejects.toThrow(
     "local Runtime backend",
   );
@@ -111,5 +112,16 @@ test("permission preparation uses the shared POST route with explicit live host 
   expect(fetchImpl.mock.calls).toEqual([[
     "/web-api/runtime/system-host/permissions",
     { method: "POST", body: JSON.stringify(input), headers: { "content-type": "application/json" } },
+  ]]);
+});
+
+
+test("collection acknowledgment is an installation-wide explicit JSON write", async () => {
+  const { client, fetchImpl, changeEnvironment } = harness();
+  changeEnvironment("dev");
+  await client.acceptSystemHostCollectionConsent();
+  expect(fetchImpl.mock.calls).toEqual([[
+    "/web-api/runtime/system-host/collection-consent",
+    { method: "POST", body: JSON.stringify({ acknowledged: true }), headers: { "content-type": "application/json" } },
   ]]);
 });

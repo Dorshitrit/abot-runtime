@@ -1,6 +1,10 @@
 import type { ModelGatewayEvent, ModelTokenUsage } from "../../types.js";
 import type { ModelProviderEventSink } from "../contracts.js";
 import { buildModelTokenUsage } from "../../protocol/usage.js";
+import {
+  assertOllamaFrameSucceeded,
+  assertOllamaStreamCompleted,
+} from "./stream-termination.js";
 
 export type OllamaProviderTiming = Readonly<{
   loadDurationNs?: number;
@@ -26,6 +30,7 @@ function observeNormalizedEvent(
 }
 
 function readOllamaEvent(json: unknown): ModelGatewayEvent[] {
+  assertOllamaFrameSucceeded(json);
   const obj =
     json && typeof json === "object"
       ? (json as {
@@ -136,11 +141,7 @@ export function flushNdjsonBuffer(
       continue;
     }
 
-    try {
-      writeGatewayEvents(events, JSON.parse(line), options);
-    } catch {
-      // Keep bridge behavior: ignore malformed upstream chunks.
-    }
+    writeGatewayEvents(events, parseOllamaStreamLine(line), options);
   }
 
   return remaining;
@@ -154,29 +155,44 @@ export async function forwardOllamaStream(
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let terminalReceived = false;
+  const terminalTrackingEvents: ModelProviderEventSink = {
+    emit(event) {
+      if (event.type === "done") terminalReceived = true;
+      events.emit(event);
+    },
+  };
 
-  while (true) {
-    const { done, value } = await reader.read();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
 
-    if (done) {
-      buffer += decoder.decode();
-    } else {
-      buffer += decoder.decode(value, { stream: true });
+      if (done) {
+        buffer += decoder.decode();
+      } else {
+        buffer += decoder.decode(value, { stream: true });
+      }
+
+      buffer = flushNdjsonBuffer(buffer, terminalTrackingEvents, options);
+
+      if (done) {
+        break;
+      }
     }
 
-    buffer = flushNdjsonBuffer(buffer, events, options);
-
-    if (done) {
-      break;
+    if (buffer.trim()) {
+      writeGatewayEvents(
+        terminalTrackingEvents,
+        parseOllamaStreamLine(buffer.trim()),
+        options,
+      );
     }
-  }
-
-  if (buffer.trim()) {
-    try {
-      writeGatewayEvents(events, JSON.parse(buffer.trim()), options);
-    } catch {
-      // Keep bridge behavior: ignore malformed trailing chunks.
-    }
+    assertOllamaStreamCompleted(terminalReceived);
+  } catch (error) {
+    void reader.cancel(error).catch(() => {});
+    throw error;
+  } finally {
+    reader.releaseLock();
   }
 }
 
@@ -198,6 +214,7 @@ export async function collectOllamaStream(
   let doneReason: string | null | undefined;
 
   const appendJson = (json: unknown) => {
+    assertOllamaFrameSucceeded(json);
     const obj =
       json && typeof json === "object"
         ? (json as {
@@ -230,40 +247,40 @@ export async function collectOllamaStream(
     }
   };
 
-  while (true) {
-    const { done, value } = await reader.read();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
 
-    if (done) {
-      buffer += decoder.decode();
-    } else {
-      buffer += decoder.decode(value, { stream: true });
-    }
-
-    let newlineIndex: number;
-    while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-      const line = buffer.slice(0, newlineIndex).trim();
-      buffer = buffer.slice(newlineIndex + 1);
-      if (!line) {
-        continue;
+      if (done) {
+        buffer += decoder.decode();
+      } else {
+        buffer += decoder.decode(value, { stream: true });
       }
-      try {
-        appendJson(JSON.parse(line));
-      } catch {
-        // Keep bridge behavior: ignore malformed upstream chunks.
+
+      let newlineIndex: number;
+      while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+        const line = buffer.slice(0, newlineIndex).trim();
+        buffer = buffer.slice(newlineIndex + 1);
+        if (!line) {
+          continue;
+        }
+        appendJson(parseOllamaStreamLine(line));
+      }
+
+      if (done) {
+        break;
       }
     }
 
-    if (done) {
-      break;
+    if (buffer.trim()) {
+      appendJson(parseOllamaStreamLine(buffer.trim()));
     }
-  }
-
-  if (buffer.trim()) {
-    try {
-      appendJson(JSON.parse(buffer.trim()));
-    } catch {
-      // Keep bridge behavior: ignore malformed trailing chunks.
-    }
+    assertOllamaStreamCompleted(doneReason !== undefined);
+  } catch (error) {
+    void reader.cancel(error).catch(() => {});
+    throw error;
+  } finally {
+    reader.releaseLock();
   }
 
   return {
@@ -272,4 +289,13 @@ export async function collectOllamaStream(
     ...(usage ? { usage } : {}),
     ...(doneReason !== undefined ? { doneReason } : {}),
   };
+}
+
+function parseOllamaStreamLine(line: string): unknown {
+  try {
+    return JSON.parse(line) as unknown;
+  } catch {
+    // Preserve tolerance for malformed chunks without swallowing provider errors.
+    return undefined;
+  }
 }

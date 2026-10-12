@@ -122,7 +122,11 @@ export function createSparkChatFeature({ dom, state: appState, client, shell, re
   });
   panel.dom.settingsButton.addEventListener("click", openSettings);
   panel.onToggle((opened) => {
-    if (!opened) { conversation.view.closeFilePreview(); return; }
+    if (!opened) {
+      accessRevision += 1;
+      conversation.view.closeFilePreview();
+      return;
+    }
     if (!isSparkAvailable()) { panel.setOpen(false, { focus: false }); return; }
     if (!restoringOpen) void open();
   });
@@ -131,7 +135,7 @@ export function createSparkChatFeature({ dom, state: appState, client, shell, re
     if (!isSparkAvailable()) return false;
     const scope = getEnvironmentId();
     const revision = accessRevision;
-    try { await sync.refresh({ wait: true }); }
+    try { await sync.refresh({ wait: true, consolidated: true }); }
     catch (error) {
       if (!canCompleteSparkOpening(scope, revision)) return false;
       shell.showToast(`SPARK could not be opened: ${error.message}`, "failed");
@@ -219,13 +223,15 @@ export function createSparkChatFeature({ dom, state: appState, client, shell, re
       const revision = accessRevision;
       try { if (!configuration) await sync.refresh({ wait: true }); }
       catch (error) {
-        if (!canCompleteSparkOpening(scope, revision)) return false;
+        if (!canCompleteSparkOpening(scope, revision)) return true;
         shell.showToast(`SPARK could not be opened: ${error.message}`, "failed");
         return true;
       }
       if (!canCompleteSparkOpening(scope, revision)) return true;
       if (sessionId !== configuration?.sessionId) return false;
-      return open(messageId, reference);
+      const opened = await open(messageId, reference);
+      if (!canCompleteSparkOpening(scope, revision)) return true;
+      return opened;
     },
     bind() {
       conversation.bind();

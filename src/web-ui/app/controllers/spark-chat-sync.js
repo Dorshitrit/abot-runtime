@@ -95,7 +95,7 @@ export function createSparkChatSync({
     try {
       const result = await client.loadSparkChat(environmentId);
       if (!isCurrentRead(environmentId, readRevision)) return;
-      if (modelCatalogEnvironment !== environmentId || !modelProfiles.some((profile) => profile.id === result.modelProfileId)) {
+      if (consolidateNext || modelCatalogEnvironment !== environmentId || !modelProfiles.some((profile) => profile.id === result.modelProfileId)) {
         const catalog = await client.listModels(environmentId);
         if (!isCurrentRead(environmentId, readRevision)) return;
         modelProfiles = catalog.profiles || catalog.models || [];
@@ -111,7 +111,7 @@ export function createSparkChatSync({
         onHistoryReset();
       }
       if (hasReadableGeneration(result.readState)) readGeneration = result.readState.readGeneration;
-      onConfiguration({ ...result, supportsImageInput, modelAvailable: Boolean(profile) });
+      onConfiguration({ ...result, supportsImageInput, supportsThinking: profile?.supportsThinking === true, modelAvailable: Boolean(profile) });
       onReadState(result.readState);
       const snapshot = result.snapshot;
       if (shouldHydrateSparkConversation(initialized, rehydrate, snapshot, state)) {

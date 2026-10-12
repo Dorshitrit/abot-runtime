@@ -252,6 +252,9 @@ function canHandOffContextText(original, assessed, budget) {
 // src/capabilities/tool-media.ts
 var TOOL_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
+// src/computer-access/companion/secret-protection-protocol.ts
+var HOST_SECRET_PROTECTION_CAPABILITY = "host_secret_protection_v1";
+
 // src/computer-access/companion/broker-client.ts
 var import_node_net = require("node:net");
 
@@ -270,25 +273,25 @@ function hostStateDirectory(rootDir) {
 }
 function ensureHostStateDirectory(directory) {
   (0, import_node_fs.mkdirSync)(directory, { recursive: true, mode: 448 });
-  const stat4 = (0, import_node_fs.lstatSync)(directory);
-  if (!stat4.isDirectory()) throw new Error("host_state_directory_invalid");
+  const stat3 = (0, import_node_fs.lstatSync)(directory);
+  if (!stat3.isDirectory()) throw new Error("host_state_directory_invalid");
   if (process.platform === "win32") return;
-  if (stat4.uid !== process.getuid?.())
+  if (stat3.uid !== process.getuid?.())
     throw new Error("host_state_owner_invalid");
-  if ((stat4.mode & 63) !== 0)
+  if ((stat3.mode & 63) !== 0)
     throw new Error("host_state_directory_not_private");
 }
 function readHostPrivateJson(path) {
   try {
-    const stat4 = (0, import_node_fs.lstatSync)(path);
-    if (!stat4.isFile()) throw new Error("host_state_file_invalid");
+    const stat3 = (0, import_node_fs.lstatSync)(path);
+    if (!stat3.isFile()) throw new Error("host_state_file_invalid");
     if (process.platform !== "win32") {
-      if (stat4.uid !== process.getuid?.())
+      if (stat3.uid !== process.getuid?.())
         throw new Error("host_state_owner_invalid");
-      if ((stat4.mode & 63) !== 0)
+      if ((stat3.mode & 63) !== 0)
         throw new Error("host_state_file_not_private");
     }
-    if (stat4.size > 16384) throw new Error("host_state_file_too_large");
+    if (stat3.size > 16384) throw new Error("host_state_file_too_large");
     return JSON.parse((0, import_node_fs.readFileSync)(path, "utf8"));
   } catch (error) {
     if (error.code === "ENOENT") return void 0;
@@ -2139,7 +2142,7 @@ function createUnixNativeProcess(options) {
   let failedReason;
   let buffer = Buffer.alloc(0);
   let queue = Promise.resolve();
-  let lastResult;
+  let lastDesktop;
   function interruptedResult(reason) {
     const dispatch = pending?.request.operation === "act" ? pending.dispatch ?? {
       status: "unknown",
@@ -2147,12 +2150,8 @@ function createUnixNativeProcess(options) {
       reason
     } : void 0;
     const result = unavailableUnixDesktop(options.platform, reason, dispatch);
-    if (!lastResult) return result;
-    return {
-      ...result,
-      desktop: { ...lastResult.desktop, available: false, reason },
-      windows: lastResult.windows
-    };
+    if (!lastDesktop) return result;
+    return { ...result, desktop: { ...result.desktop, ...lastDesktop } };
   }
   function terminate(reason) {
     failedReason = reason;
@@ -2165,6 +2164,7 @@ function createUnixNativeProcess(options) {
       retiring.once("exit", () => clearTimeout(hardStop));
     }
     child = void 0;
+    buffer.fill(0);
     buffer = Buffer.alloc(0);
   }
   function receiveLine(line) {
@@ -2180,7 +2180,17 @@ function createUnixNativeProcess(options) {
     }
     if (message.type !== "result") throw new Error("native_protocol_invalid");
     const result = readUnixNativeResult(message.result, options.platform);
-    lastResult = result;
+    lastDesktop = {
+      binding: result.desktop.binding,
+      bounds: {
+        x: result.desktop.bounds.x,
+        y: result.desktop.bounds.y,
+        width: result.desktop.bounds.width,
+        height: result.desktop.bounds.height
+      },
+      coordinateSpace: result.desktop.coordinateSpace,
+      targetingGuarantee: result.desktop.targetingGuarantee
+    };
     pending.finish(result);
   }
   function ensureHelper() {
@@ -2193,15 +2203,19 @@ function createUnixNativeProcess(options) {
     child.stderr.resume();
     child.stdout.on("data", (chunk) => {
       if (closed || failedReason) return;
-      buffer = Buffer.concat([buffer, chunk]);
+      const previous = buffer;
+      buffer = Buffer.concat([previous, chunk]);
+      previous.fill(0);
       if (buffer.length > NATIVE_JSON_LIMIT) {
         terminate("computer_native_result_limit");
         return;
       }
       let boundary = buffer.indexOf(10);
       while (boundary >= 0) {
-        const line = buffer.subarray(0, boundary).toString("utf8");
-        buffer = buffer.subarray(boundary + 1);
+        const received = buffer;
+        const line = received.subarray(0, boundary).toString("utf8");
+        buffer = Buffer.from(received.subarray(boundary + 1));
+        received.fill(0);
         try {
           receiveLine(line);
         } catch {
@@ -5114,15 +5128,60 @@ function identityExcerpt(identity) {
 }
 
 // src/computer-access/handlers.ts
-function withSystemOperationErrors(operation) {
+var PROTECTION_FAILURE = "The system result could not be protected for delivery.";
+function protectSystemResult(operation) {
+  try {
+    return operation();
+  } catch {
+    throw new SystemOperationError("system_result_protection_failed", PROTECTION_FAILURE);
+  }
+}
+function failedSystemProtectionReceipt(target, result, evidenceScope) {
+  const safeProcess = {
+    status: result.status,
+    exitCode: result.exitCode,
+    outputTruncated: result.outputTruncated,
+    stdout: "[UNAVAILABLE: result protection failed]",
+    stderr: "[UNAVAILABLE: result protection failed]",
+    ...result.spawnedProcess ? {
+      spawnedProcess: {
+        pid: result.spawnedProcess.pid,
+        pidNamespace: result.spawnedProcess.pidNamespace,
+        identitySource: result.spawnedProcess.identitySource,
+        executable: "[REDACTED]"
+      }
+    } : {}
+  };
+  const receipt = systemProcessResult(target, safeProcess, evidenceScope);
+  return failureResult({
+    errorCode: "system_result_protection_failed",
+    message: PROTECTION_FAILURE,
+    output: "The operation was dispatched. Inspect the process receipt before another action; the command was not replayed.\n" + receipt.output,
+    stdout: safeProcess.stdout,
+    stderr: safeProcess.stderr,
+    ...result.exitCode !== null ? { exitCode: result.exitCode } : {},
+    data: receipt.data
+  });
+}
+function withSystemOperationErrors(operation, protection) {
   return async (params, context) => {
     try {
       return await operation(params, context);
     } catch (error) {
+      let message = error instanceof Error ? error.message : void 0;
+      try {
+        if (protection && message !== void 0)
+          message = protection.protectMessage(message);
+      } catch {
+        return failureResult({
+          errorCode: "system_result_protection_failed",
+          message: PROTECTION_FAILURE
+        });
+      }
       if (error instanceof SystemOperationError)
         return failureResult({
           errorCode: error.code,
-          message: error.message,
+          message,
           data: {
             humanActionRequired: error.code === "system_authorization_required"
           }
@@ -5135,9 +5194,10 @@ function withSystemOperationErrors(operation) {
     }
   };
 }
-function createSystemHandlers(run = runSystemProcess, resolveTarget = (id) => resolveSystemTarget(id, run), commandOutput) {
+function createSystemHandlers(run = runSystemProcess, resolveTarget = (id) => resolveSystemTarget(id, run), commandOutput, protection) {
   const targets = async () => {
-    const observation = await observeSystemTargets(run);
+    const observed = await observeSystemTargets(run);
+    const observation = protection ? protectSystemResult(() => protection.protectTargets(observed)) : observed;
     return successResult({
       output: JSON.stringify(observation),
       data: {
@@ -5149,13 +5209,19 @@ function createSystemHandlers(run = runSystemProcess, resolveTarget = (id) => re
   const command = async (params, context) => {
     const target = await resolveTarget(readSystemTargetId(params.target));
     const output = commandOutput?.(context);
-    const result = await executeSystemCommand({
+    const observed = await executeSystemCommand({
       target,
       params,
       run,
       ...output ? { runCommand: output.run } : {},
       ...context?.abortSignal ? { abortSignal: context.abortSignal } : {}
     });
+    let result = observed;
+    try {
+      if (protection) result = protection.protectProcess(observed);
+    } catch {
+      return failedSystemProtectionReceipt(target, observed, "command_process_completion");
+    }
     if (output) return output.present(target, result);
     return systemProcessResult(target, result, "command_process_completion");
   };
@@ -5167,7 +5233,8 @@ function createSystemHandlers(run = runSystemProcess, resolveTarget = (id) => re
       minimum: 1,
       maximum: 100
     });
-    const catalog = await readSystemApplications(target, run);
+    const observed = await readSystemApplications(target, run);
+    const catalog = protection ? protectSystemResult(() => protection.protectCatalog(observed)) : observed;
     const { output, data } = systemApplicationObservation(
       target,
       catalog,
@@ -5190,18 +5257,28 @@ function createSystemHandlers(run = runSystemProcess, resolveTarget = (id) => re
       run,
       ...context?.abortSignal ? { abortSignal: context.abortSignal } : {}
     });
+    let process2 = result.process;
+    let application = result.application;
+    try {
+      if (protection) {
+        process2 = protection.protectProcess(result.process);
+        application = protection.protectApplication(result.application);
+      }
+    } catch {
+      return failedSystemProtectionReceipt(target, result.process, "launch_request_dispatch");
+    }
     return systemProcessResult(
       target,
-      result.process,
+      process2,
       "launch_request_dispatch",
-      result.application
+      application
     );
   };
   return {
-    system_targets: withSystemOperationErrors(targets),
-    system_command: withSystemOperationErrors(command),
-    system_applications: withSystemOperationErrors(applications),
-    system_launch: withSystemOperationErrors(launch)
+    system_targets: withSystemOperationErrors(targets, protection),
+    system_command: withSystemOperationErrors(command, protection),
+    system_applications: withSystemOperationErrors(applications, protection),
+    system_launch: withSystemOperationErrors(launch, protection)
   };
 }
 
@@ -5209,19 +5286,74 @@ function createSystemHandlers(run = runSystemProcess, resolveTarget = (id) => re
 var import_node_crypto6 = require("node:crypto");
 var import_node_events = require("node:events");
 var import_node_fs5 = require("node:fs");
-var import_promises6 = require("node:fs/promises");
+var import_promises7 = require("node:fs/promises");
 var import_node_path8 = require("node:path");
-var import_promises7 = require("node:stream/promises");
+var import_promises8 = require("node:stream/promises");
+
+// src/computer-access/command-output-protection.ts
+var import_promises5 = require("node:fs/promises");
+var CapturedOutputProtectionError = class extends Error {
+  constructor(reason) {
+    super(reason);
+    this.reason = reason;
+  }
+  reason;
+};
+async function protectCapturedOutput(paths, redact) {
+  let stdout, stderr;
+  try {
+    stdout = await protectStream(paths.stdout, redact);
+    stderr = await protectStream(paths.stderr, redact);
+    const writes = await Promise.allSettled([
+      (0, import_promises5.writeFile)(paths.stdout, stdout, { flag: "w", mode: 384, flush: true }),
+      (0, import_promises5.writeFile)(paths.stderr, stderr, { flag: "w", mode: 384, flush: true })
+    ]);
+    if (hasRejectedOutputWrite(writes)) throw new CapturedOutputProtectionError("output_storage_failed");
+    return { stdout, stderr };
+  } catch (error) {
+    stdout?.fill(0);
+    stderr?.fill(0);
+    throw error;
+  }
+}
+async function protectStream(path, redact) {
+  let bytes;
+  try {
+    bytes = await (0, import_promises5.readFile)(path);
+  } catch {
+    throw new CapturedOutputProtectionError("output_storage_failed");
+  }
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+    const protectedText = redact(text);
+    if (!isProtectedOutputText(protectedText)) throw new Error("output_protection_failed");
+    return Buffer.from(protectedText, "utf8");
+  } catch {
+    throw new CapturedOutputProtectionError("output_protection_failed");
+  } finally {
+    bytes.fill(0);
+  }
+}
+async function discardCapturedOutput(paths) {
+  const removed = await Promise.allSettled(Object.values(paths).map((path) => (0, import_promises5.rm)(path, { force: true })));
+  return removed.every((entry) => entry.status === "fulfilled");
+}
+function isProtectedOutputText(value) {
+  return typeof value === "string";
+}
+function hasRejectedOutputWrite(writes) {
+  return writes.some((entry) => entry.status === "rejected");
+}
 
 // src/computer-access/command-output-retention.ts
-var import_promises5 = require("node:fs/promises");
+var import_promises6 = require("node:fs/promises");
 var import_node_path7 = require("node:path");
 var DEFAULT_SYSTEM_OUTPUT_RETENTION_MS = 7 * 24 * 60 * 6e4;
 var activeSystemCaptures = /* @__PURE__ */ new Set();
 var jobs = /* @__PURE__ */ new Map();
 var CAPTURE_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 async function cleanupSystemOutput(root, retentionMs) {
-  const entries = await (0, import_promises5.readdir)(root, { withFileTypes: true }).catch((error) => {
+  const entries = await (0, import_promises6.readdir)(root, { withFileTypes: true }).catch((error) => {
     if (error.code === "ENOENT") return [];
     throw error;
   });
@@ -5230,13 +5362,13 @@ async function cleanupSystemOutput(root, retentionMs) {
     if (!entry.isDirectory() || !CAPTURE_ID.test(entry.name)) continue;
     const directory = (0, import_node_path7.join)(root, entry.name);
     if (activeSystemCaptures.has(directory)) continue;
-    const files = await (0, import_promises5.readdir)(directory);
-    const times = await Promise.all(files.map(async (file) => (await (0, import_promises5.stat)((0, import_node_path7.join)(directory, file))).mtimeMs));
-    const completedAt = Math.max((await (0, import_promises5.stat)(directory)).mtimeMs, ...times);
+    const files = await (0, import_promises6.readdir)(directory);
+    const times = await Promise.all(files.map(async (file) => (await (0, import_promises6.stat)((0, import_node_path7.join)(directory, file))).mtimeMs));
+    const completedAt = Math.max((await (0, import_promises6.stat)(directory)).mtimeMs, ...times);
     const captureRetentionMs = await readCaptureRetention(directory, entry.name, retentionMs);
     if (Date.now() - completedAt < captureRetentionMs) continue;
     if (activeSystemCaptures.has(directory)) continue;
-    await (0, import_promises5.rm)(directory, { recursive: true });
+    await (0, import_promises6.rm)(directory, { recursive: true });
     removed += 1;
   }
   return removed;
@@ -5244,7 +5376,7 @@ async function cleanupSystemOutput(root, retentionMs) {
 async function readCaptureRetention(directory, id, fallbackMs) {
   let receipt;
   try {
-    receipt = JSON.parse(await (0, import_promises5.readFile)((0, import_node_path7.join)(directory, "receipt.json"), "utf8"));
+    receipt = JSON.parse(await (0, import_promises6.readFile)((0, import_node_path7.join)(directory, "receipt.json"), "utf8"));
   } catch (error) {
     if (error.code === "ENOENT") return fallbackMs;
     if (error instanceof SyntaxError) return fallbackMs;
@@ -5271,7 +5403,7 @@ function scheduleSystemOutputCleanup(root, retentionMs) {
     let empty = false;
     try {
       await cleanupSystemOutput(root, job.retentionMs);
-      empty = (await (0, import_promises5.readdir)(root).catch((error) => {
+      empty = (await (0, import_promises6.readdir)(root).catch((error) => {
         if (error.code === "ENOENT") return [];
         throw error;
       })).length === 0;
@@ -5291,30 +5423,36 @@ function scheduleSystemOutputCleanup(root, retentionMs) {
 }
 
 // src/computer-access/command-output-capture.ts
+var STREAMS = ["stdout", "stderr"];
 var OUTPUT_IO_CHUNK_BYTES = 64 * 1024;
-async function createSystemOutputCapture(root, retentionMs) {
+async function createSystemOutputCapture(root, retentionMs, redact) {
+  if (!hasOutputProtection(redact))
+    throw new SystemOperationError("system_output_protection_failed", "Command output protection is unavailable. The command was not dispatched.");
   const id = (0, import_node_crypto6.randomUUID)();
   const directory = (0, import_node_path8.join)(root, id);
   activeSystemCaptures.add(directory);
   try {
-    await (0, import_promises6.mkdir)(directory, { recursive: true, mode: 448 });
+    await (0, import_promises7.mkdir)(directory, { recursive: true, mode: 448 });
   } catch {
     activeSystemCaptures.delete(directory);
     throw new SystemOperationError("system_output_storage_failed", "Output storage could not be prepared. The command was not dispatched.");
   }
-  let failure;
+  let storageFailure, securityFailure;
   let stop;
-  let ended = false;
-  let retained = false;
+  let ended = false, retained = false, admitted = false;
+  let receipt;
+  let processResult;
+  let finishing;
   const sources = [];
-  const streams = ["stdout", "stderr"].map((name) => {
-    const path = (0, import_node_path8.join)(directory, name + ".bytes");
-    const sink = (0, import_node_fs5.createWriteStream)(path, { flags: "wx", mode: 384, highWaterMark: OUTPUT_IO_CHUNK_BYTES, flush: true });
-    const completion = (0, import_promises7.finished)(sink).catch(() => {
-      failure ??= "write_failed";
+  const completeStreams = /* @__PURE__ */ new Set();
+  const paths = { stdout: (0, import_node_path8.join)(directory, "stdout.bytes"), stderr: (0, import_node_path8.join)(directory, "stderr.bytes") };
+  const streams = STREAMS.map((name) => {
+    const sink = (0, import_node_fs5.createWriteStream)(paths[name], { flags: "wx", mode: 384, highWaterMark: OUTPUT_IO_CHUNK_BYTES, flush: true });
+    const completion = (0, import_promises8.finished)(sink).catch(() => {
+      storageFailure ??= "write_failed";
       stop?.();
     });
-    return { name, path, sink, completion, hash: (0, import_node_crypto6.createHash)("sha256") };
+    return { sink, completion };
   });
   try {
     await Promise.all(streams.map(({ sink }) => (0, import_node_events.once)(sink, "open")));
@@ -5326,19 +5464,30 @@ async function createSystemOutputCapture(root, retentionMs) {
     throw new SystemOperationError("system_output_storage_failed", "Output files could not be opened. The command was not dispatched.");
   }
   scheduleSystemOutputCleanup(root, retentionMs);
+  const failure = () => storageFailure ?? securityFailure;
   const capture = {
     attach(stdout, stderr, onFailure) {
+      if (!canAttachCapture()) {
+        securityFailure ??= "output_protection_failed";
+        onFailure();
+        return;
+      }
       stop = onFailure;
       sources.push(stdout, stderr);
-      stdout.on("data", (bytes) => streams[0].hash.update(bytes));
-      stderr.on("data", (bytes) => streams[1].hash.update(bytes));
-      stdout.pipe(streams[0].sink);
-      stderr.pipe(streams[1].sink);
-      if (failure) onFailure();
+      for (const [index, source] of sources.entries()) {
+        source.once("end", () => completeStreams.add(STREAMS[index]));
+        source.once("error", () => {
+          securityFailure ??= "output_incomplete";
+          stop?.();
+        });
+        source.pipe(streams[index].sink);
+      }
+      if (failure()) onFailure();
     },
     end() {
       if (ended) return;
       ended = true;
+      if (!hasCompleteStreams()) securityFailure ??= "output_incomplete";
       for (const source of sources) {
         source.unpipe();
         source.destroy();
@@ -5346,14 +5495,105 @@ async function createSystemOutputCapture(root, retentionMs) {
       for (const { sink } of streams) if (!sink.destroyed && !sink.writableEnded) sink.end();
     }
   };
-  let receipt;
+  function canAttachCapture() {
+    return sources.length === 0 && !ended;
+  }
+  function hasCompleteStreams() {
+    return completeStreams.size === 2;
+  }
+  function protectProcess2(result) {
+    if (!result) return;
+    let spawnedProcess = result.spawnedProcess;
+    if (spawnedProcess) {
+      let executable = "[REDACTED]";
+      try {
+        executable = redact(spawnedProcess.executable);
+        if (!hasProtectedIdentity(executable)) throw new Error("output_protection_failed");
+      } catch {
+        securityFailure ??= "output_protection_failed";
+        executable = "[REDACTED]";
+      }
+      spawnedProcess = { ...spawnedProcess, executable };
+    }
+    processResult = {
+      exitCode: result.exitCode,
+      status: result.status,
+      outputTruncated: result.outputTruncated,
+      stdout: "",
+      stderr: "",
+      ...spawnedProcess ? { spawnedProcess } : {}
+    };
+  }
+  async function finish(result, materialize = true) {
+    capture.end();
+    await Promise.all(streams.map(({ completion }) => completion));
+    protectProcess2(result);
+    let protectedBytes;
+    try {
+      if (!failure()) {
+        try {
+          protectedBytes = await protectCapturedOutput(paths, redact);
+        } catch (error) {
+          if (isOutputStorageFailure(error)) storageFailure ??= "write_failed";
+          else securityFailure ??= "output_protection_failed";
+        }
+      }
+      if (failure() && !await discardCapturedOutput(paths)) storageFailure = "capture_purge_failed";
+      receipt = {
+        id,
+        stdoutBytes: protectedBytes?.stdout.length ?? 0,
+        stderrBytes: protectedBytes?.stderr.length ?? 0,
+        completedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        retentionMs,
+        complete: !failure(),
+        ...!materialize && protectedBytes ? {
+          stdoutSha256: (0, import_node_crypto6.createHash)("sha256").update(protectedBytes.stdout).digest("hex"),
+          stderrSha256: (0, import_node_crypto6.createHash)("sha256").update(protectedBytes.stderr).digest("hex")
+        } : {}
+      };
+      try {
+        const temporary = (0, import_node_path8.join)(directory, "receipt.tmp");
+        await (0, import_promises7.writeFile)(
+          temporary,
+          JSON.stringify({
+            kind: "system_command_output_v1",
+            ...receipt,
+            processStatus: processResult?.status,
+            exitCode: processResult?.exitCode,
+            spawnedProcess: processResult?.spawnedProcess,
+            ...securityFailure ? { securityFailure } : {},
+            ...storageFailure ? { storageFailure } : {}
+          }),
+          { flag: "wx", mode: 384, flush: true }
+        );
+        await (0, import_promises7.rename)(temporary, (0, import_node_path8.join)(directory, "receipt.json"));
+      } catch {
+        storageFailure ??= "receipt_write_failed";
+        receipt = { ...receipt, complete: false };
+      }
+      admitted = receipt.complete;
+      if (!admitted || !materialize || !protectedBytes) return { stdout: "", stderr: "" };
+      return { stdout: protectedBytes.stdout.toString("utf8"), stderr: protectedBytes.stderr.toString("utf8") };
+    } finally {
+      protectedBytes?.stdout.fill(0);
+      protectedBytes?.stderr.fill(0);
+      if (!retained) activeSystemCaptures.delete(directory);
+    }
+  }
   return {
     capture,
     get receipt() {
       return receipt;
     },
     get failure() {
-      return failure;
+      return failure();
+    },
+    get failureKind() {
+      if (storageFailure) return "storage";
+      return securityFailure ? "security" : void 0;
+    },
+    get processResult() {
+      return processResult;
     },
     retain() {
       retained = true;
@@ -5364,67 +5604,39 @@ async function createSystemOutputCapture(root, retentionMs) {
       activeSystemCaptures.delete(directory);
     },
     async read(stream, offset, length) {
-      const path = streams.find((entry) => entry.name === stream).path;
-      const file = await (0, import_promises6.open)(path, "r");
+      if (!admitted) throw new Error("system_output_unavailable");
+      if (!isAdmittedOutputRead(stream, offset, length, receipt)) throw new Error("system_output_reference_invalid");
+      const file = await (0, import_promises7.open)(paths[stream], "r");
       try {
-        const bytes = Buffer.alloc(length);
-        const { bytesRead } = await file.read(bytes, 0, length, offset);
+        const size = stream === "stdout" ? receipt.stdoutBytes : receipt.stderrBytes;
+        const bytes = Buffer.alloc(Math.min(length, size - offset));
+        const { bytesRead } = await file.read(bytes, 0, bytes.length, offset);
         return bytes.subarray(0, bytesRead);
       } finally {
         await file.close();
       }
     },
-    async finish(result, materialize = true) {
-      capture.end();
-      try {
-        await Promise.all(streams.map(({ completion }) => completion));
-        const sizes = await Promise.all(streams.map(async ({ path }) => {
-          try {
-            return (await (0, import_promises6.stat)(path)).size;
-          } catch {
-            failure ??= "read_failed";
-            return 0;
-          }
-        }));
-        let stdout = "", stderr = "";
-        if (!failure && materialize) {
-          try {
-            [stdout, stderr] = await Promise.all(streams.map(({ path }) => (0, import_promises6.readFile)(path, "utf8")));
-          } catch {
-            failure = "read_failed";
-          }
-        }
-        const completedAt = Date.now();
-        receipt = {
-          id,
-          stdoutBytes: sizes[0],
-          stderrBytes: sizes[1],
-          completedAt: new Date(completedAt).toISOString(),
-          retentionMs,
-          complete: !failure,
-          ...!materialize ? { stdoutSha256: streams[0].hash.digest("hex"), stderrSha256: streams[1].hash.digest("hex") } : {}
-        };
-        try {
-          const temporary = (0, import_node_path8.join)(directory, "receipt.tmp");
-          await (0, import_promises6.writeFile)(temporary, JSON.stringify({
-            kind: "system_command_output_v1",
-            ...receipt,
-            processStatus: result?.status,
-            exitCode: result?.exitCode,
-            spawnedProcess: result?.spawnedProcess,
-            ...failure ? { storageFailure: failure } : {}
-          }), { flag: "wx", mode: 384, flush: true });
-          await (0, import_promises6.rename)(temporary, (0, import_node_path8.join)(directory, "receipt.json"));
-        } catch {
-          failure ??= "receipt_write_failed";
-          receipt = { ...receipt, complete: false };
-        }
-        return { stdout, stderr };
-      } finally {
-        if (!retained) activeSystemCaptures.delete(directory);
-      }
+    finish(result, materialize = true) {
+      finishing ??= finish(result, materialize);
+      return finishing;
     }
   };
+}
+function hasOutputProtection(value) {
+  return typeof value === "function";
+}
+function hasProtectedIdentity(value) {
+  return typeof value === "string";
+}
+function isOutputStorageFailure(error) {
+  return error instanceof CapturedOutputProtectionError && error.reason === "output_storage_failed";
+}
+function isAdmittedOutputRead(stream, offset, length, receipt) {
+  if (stream !== "stdout" && stream !== "stderr") return false;
+  if (!Number.isSafeInteger(offset) || offset < 0) return false;
+  if (!Number.isSafeInteger(length) || length < 0) return false;
+  const size = stream === "stdout" ? receipt.stdoutBytes : receipt.stderrBytes;
+  return offset <= size;
 }
 
 // src/computer-access/companion/command-output-protocol.ts
@@ -5452,6 +5664,39 @@ function readSystemOutputTransfer(value) {
     stdoutSha256: value.stdoutSha256,
     stderrSha256: value.stderrSha256
   };
+}
+
+// plugins/system/source/command-working-directory.ts
+var import_node_path9 = require("node:path");
+function createSystemCommandPathAdapter(adapter, snapshot, resolver) {
+  if (!resolver) return adapter;
+  return {
+    ...adapter,
+    normalizeCall(input) {
+      const call = adapter?.normalizeCall?.(input) ?? input;
+      if (!hasNativeWindowsRelativeDirectory(call, snapshot)) return call;
+      const directory = resolver.resolve(call.params.cwd, {
+        requirePath: true,
+        allowedLocations: ["agent_work", "workspace"]
+      });
+      return {
+        ...call,
+        params: { ...call.params, cwd: directory.absolutePath }
+      };
+    }
+  };
+}
+function hasNativeWindowsRelativeDirectory(call, snapshot) {
+  if (call.tool !== "system_command") return false;
+  if (call.params.target !== "windows") return false;
+  if (typeof call.params.cwd !== "string") return false;
+  if (import_node_path9.win32.isAbsolute(call.params.cwd.trim())) return false;
+  const route = snapshot.find((entry) => {
+    if (entry.kind !== "native") return false;
+    if (entry.target.id !== "windows") return false;
+    return entry.target.transport === "native";
+  });
+  return route !== void 0;
 }
 
 // plugins/system/source/computer/public-action.ts
@@ -5615,6 +5860,113 @@ function fits(value) {
   return Buffer.byteLength(value, "utf8") <= COMPUTER_OBSERVATION_OUTPUT_MAX_BYTES;
 }
 
+// plugins/system/source/security/secret-text.ts
+var REDACTED = "[REDACTED]";
+var CREDENTIAL_KEY_SOURCE = String.raw`(?:[A-Za-z][A-Za-z0-9_-]*\.)*(?:[A-Za-z][A-Za-z0-9]*[-_])*(?:password|passwd|pwd|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|client[_ -]?secret|secret[_ -]?access[_ -]?key|recovery[_ -]?code)`;
+var credentialIndicator = new RegExp(
+  String.raw`(?<![\p{L}\p{N}_.-])(?:-{1,2})?(?:${CREDENTIAL_KEY_SOURCE}|(?:proxy-)?authorization)[\s"'\\]*[:=]`,
+  "iu"
+);
+function detectionText(input) {
+  const percentDecoded = input.replace(
+    /%([0-7][0-9a-f])/giu,
+    (_, hex) => String.fromCharCode(Number.parseInt(hex, 16))
+  );
+  return percentDecoded.replace(
+    /\\(?:u00|x|U000000)([0-7][0-9a-fA-F])/gu,
+    (_, hex) => String.fromCharCode(Number.parseInt(hex, 16))
+  );
+}
+function hasPrivateKeyIndicator(text) {
+  return /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----/u.test(text);
+}
+function hasUrlCredentials(text) {
+  return /\b[a-z][a-z0-9+.-]*(?::|%3a)(?:\/|%2f){2}[^\s/?#<>]*(?:@|%40)/iu.test(text);
+}
+function hasAuthorizationCredentials(text) {
+  for (const match of text.matchAll(
+    /\b(Bearer|Basic)[ \t]+([A-Za-z0-9._~+/-]+={0,2})/giu
+  )) {
+    if (match[1].toLowerCase() === "bearer") return true;
+    const value = match[2];
+    if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(value)) continue;
+    if (value.length < 8) continue;
+    if (Buffer.from(value, "base64").toString("utf8").includes(":")) return true;
+  }
+  return false;
+}
+function isAwsAccessKeyValue(value, atEnd) {
+  if (/^[A-Z0-9]{16}$/u.test(value)) return true;
+  if (!atEnd) return false;
+  return /^[A-Z0-9]{4,15}$/u.test(value);
+}
+function isRecognizedProviderToken(prefix, value, atEnd) {
+  if (prefix === "AKIA" || prefix === "ASIA")
+    return isAwsAccessKeyValue(value, atEnd);
+  if (value.length >= 20) return true;
+  const partialMinimum = prefix === "sk-" ? 8 : 1;
+  return atEnd && value.length >= partialMinimum;
+}
+function hasProviderToken(text) {
+  const provider = /\b(sk-(?:proj-|svcacct-)?|gh[pousr]_|github_pat_|xox[baprs]-|AKIA|ASIA)([A-Za-z0-9_-]+)/gu;
+  for (const match of text.matchAll(provider)) {
+    const atEnd = match.index + match[0].length === text.length;
+    if (isRecognizedProviderToken(match[1], match[2], atEnd)) return true;
+  }
+  return false;
+}
+function compactJoseSegmentCount(header) {
+  try {
+    const value = JSON.parse(
+      Buffer.from(header, "base64url").toString("utf8")
+    );
+    if (typeof value !== "object" || value === null || Array.isArray(value))
+      return void 0;
+    const fields = value;
+    if (typeof fields.alg !== "string") return void 0;
+    return typeof fields.enc === "string" ? 5 : 3;
+  } catch {
+    return void 0;
+  }
+}
+function hasCompactJoseToken(text) {
+  const jose = /\b([A-Za-z0-9_-]+)(?:\.[A-Za-z0-9_-]*)+/gu;
+  for (const match of text.matchAll(jose)) {
+    const parts = match[0].split(".");
+    const capturedAtEnd = match.index + match[0].length === text.length;
+    for (let index = 0; index < parts.length - 1; index += 1) {
+      const expected = compactJoseSegmentCount(parts[index]);
+      if (expected === void 0) continue;
+      if (expected === 3 && parts[index + 1] === "") continue;
+      if (parts.length - index >= expected) return true;
+      if (capturedAtEnd) return true;
+    }
+  }
+  return false;
+}
+function hasSecretIndicator(text) {
+  if (credentialIndicator.test(text)) return true;
+  if (hasPrivateKeyIndicator(text)) return true;
+  if (hasUrlCredentials(text)) return true;
+  if (hasAuthorizationCredentials(text)) return true;
+  if (hasProviderToken(text)) return true;
+  return hasCompactJoseToken(text);
+}
+function redactSecretText(input) {
+  if (hasSecretIndicator(input)) return REDACTED;
+  if (hasSecretIndicator(detectionText(input))) return REDACTED;
+  return input;
+}
+
+// plugins/system/source/security/observed-error.ts
+function protectObservedError(error, fallback) {
+  try {
+    return redactSecretText(error instanceof Error ? error.message : fallback);
+  } catch {
+    return "Observed error details withheld because the protection check failed.";
+  }
+}
+
 // plugins/system/source/computer/request-computers.ts
 var import_node_crypto8 = require("node:crypto");
 
@@ -5704,7 +6056,7 @@ function systemRouteMetadata(route) {
   return {
     displayTarget: route.target,
     transport: "host_companion",
-    computerName: route.identity.name
+    computerName: redactSecretText(route.identity.name)
   };
 }
 function observeCapturedSystemTargets(snapshot) {
@@ -5851,7 +6203,7 @@ var DesktopBindings = class {
     this.current = void 0;
     this.windows.clear();
   }
-  regionalObservation(observationRef, rectangle) {
+  regionalObservation(observationRef, rectangle2) {
     const current = this.current;
     if (!current || current.id !== observationRef)
       throw new SystemOperationError(
@@ -5859,7 +6211,7 @@ var DesktopBindings = class {
         "Use a current observation to select a smaller region."
       );
     const observation = current.observation;
-    if (!isRegionInsideImage(rectangle, observation))
+    if (!isRegionInsideImage(rectangle2, observation))
       throw new SystemOperationError(
         "computer_region_outside_image",
         "Select a region inside the returned image."
@@ -5871,10 +6223,10 @@ var DesktopBindings = class {
       desktopBinding: current.result.desktop.binding,
       expectedGeometry: current.result.desktop.bounds,
       region: {
-        x: Math.round(observation.region.x + rectangle.x * scaleX),
-        y: Math.round(observation.region.y + rectangle.y * scaleY),
-        width: Math.max(1, Math.floor(rectangle.width * scaleX)),
-        height: Math.max(1, Math.floor(rectangle.height * scaleY))
+        x: Math.round(observation.region.x + rectangle2.x * scaleX),
+        y: Math.round(observation.region.y + rectangle2.y * scaleY),
+        width: Math.max(1, Math.floor(rectangle2.width * scaleX)),
+        height: Math.max(1, Math.floor(rectangle2.height * scaleY))
       }
     };
   }
@@ -5906,10 +6258,10 @@ function imageRectangle(bounds, observation) {
     height: bounds.height * scaleY
   };
 }
-function isRegionInsideImage(rectangle, observation) {
-  if (rectangle.x < 0 || rectangle.y < 0) return false;
-  if (rectangle.x + rectangle.width > observation.imageWidth) return false;
-  return rectangle.y + rectangle.height <= observation.imageHeight;
+function isRegionInsideImage(rectangle2, observation) {
+  if (rectangle2.x < 0 || rectangle2.y < 0) return false;
+  if (rectangle2.x + rectangle2.width > observation.imageWidth) return false;
+  return rectangle2.y + rectangle2.height <= observation.imageHeight;
 }
 function translateAction(action, observation) {
   const point = (value) => {
@@ -5932,6 +6284,131 @@ function translateAction(action, observation) {
   if (action.kind === "drag")
     return { ...action, from: point(action.from), to: point(action.to) };
   return action;
+}
+
+// plugins/system/source/security/desktop-result.ts
+function rectangle(value) {
+  return { x: value.x, y: value.y, width: value.width, height: value.height };
+}
+function projectDesktopFields(result, text) {
+  const capability = (value) => ({
+    supported: value.supported,
+    available: value.available,
+    ...value.reason === void 0 ? {} : { reason: text(value.reason) }
+  });
+  const desktop = result.desktop;
+  return {
+    desktop: {
+      platform: desktop.platform,
+      binding: desktop.binding,
+      name: text(desktop.name),
+      available: desktop.available,
+      ...desktop.reason === void 0 ? {} : { reason: text(desktop.reason) },
+      bounds: rectangle(desktop.bounds),
+      ...desktop.coordinateSpace === void 0 ? {} : { coordinateSpace: desktop.coordinateSpace },
+      capabilities: {
+        capture: capability(desktop.capabilities.capture),
+        accessibility: capability(desktop.capabilities.accessibility),
+        input: capability(desktop.capabilities.input),
+        windows: capability(desktop.capabilities.windows)
+      },
+      targetingGuarantee: desktop.targetingGuarantee
+    },
+    windows: result.windows.map((window) => ({
+      binding: window.binding,
+      title: text(window.title),
+      ...window.application === void 0 ? {} : { application: text(window.application) },
+      bounds: rectangle(window.bounds),
+      focused: window.focused
+    })),
+    ...result.focusedWindow === void 0 ? {} : { focusedWindow: result.focusedWindow },
+    ...result.observation ? {
+      observation: {
+        capturedAt: text(result.observation.capturedAt),
+        region: rectangle(result.observation.region),
+        imageWidth: result.observation.imageWidth,
+        imageHeight: result.observation.imageHeight,
+        accessibility: result.observation.accessibility.map((node) => ({
+          role: text(node.role),
+          ...node.name === void 0 ? {} : { name: text(node.name) },
+          ...node.value === void 0 ? {} : { value: text(node.value) },
+          ...node.bounds === void 0 ? {} : { bounds: rectangle(node.bounds) },
+          ...node.focused === void 0 ? {} : { focused: node.focused }
+        })),
+        accessibilityTruncated: result.observation.accessibilityTruncated
+      }
+    } : {},
+    ...result.dispatch ? {
+      dispatch: {
+        status: result.dispatch.status,
+        requestedInputCount: result.dispatch.requestedInputCount,
+        ...result.dispatch.acceptedInputCount === void 0 ? {} : { acceptedInputCount: result.dispatch.acceptedInputCount },
+        ...result.dispatch.reason === void 0 ? {} : { reason: text(result.dispatch.reason) }
+      }
+    } : {},
+    ...result.error ? {
+      error: {
+        code: text(result.error.code),
+        message: text(result.error.message)
+      }
+    } : {}
+  };
+}
+function protectDesktopResult(result, scan = redactSecretText) {
+  let suspected = false;
+  try {
+    const protectedResult = projectDesktopFields(result, (input) => {
+      const output = scan(input);
+      if (typeof output !== "string")
+        throw new Error("desktop_text_scan_failed");
+      suspected ||= output !== input;
+      return output;
+    });
+    if (!suspected)
+      return {
+        ...protectedResult,
+        ...result.image ? {
+          image: {
+            mimeType: result.image.mimeType,
+            bytes: result.image.bytes
+          }
+        } : {}
+      };
+    result.image?.bytes.fill(0);
+    return {
+      ...protectedResult,
+      ...result.image && !protectedResult.error ? {
+        error: {
+          code: "computer_image_secret_blocked",
+          message: "Image withheld because desktop text contained a suspected secret. The dispatch receipt is unchanged."
+        }
+      } : {}
+    };
+  } catch {
+    result.image?.bytes.fill(0);
+    const safe = projectDesktopFields(result, () => "[REDACTED]");
+    return {
+      desktop: {
+        ...safe.desktop,
+        reason: "Desktop content withheld because its protection check failed."
+      },
+      windows: [],
+      ...safe.focusedWindow === void 0 ? {} : { focusedWindow: safe.focusedWindow },
+      ...safe.dispatch ? { dispatch: safe.dispatch } : {},
+      error: {
+        code: "computer_observation_protection_failed",
+        message: "Desktop content withheld because its protection check failed. The dispatch receipt is unchanged."
+      }
+    };
+  }
+}
+function protectNativeDesktopBackend(backend) {
+  return {
+    async execute(request, signal) {
+      return protectDesktopResult(await backend.execute(request, signal));
+    },
+    close: () => backend.close()
+  };
 }
 
 // plugins/system/source/computer/request-computers.ts
@@ -5988,7 +6465,7 @@ var RequestComputers = class {
         "Install the companion from this Runtime build to enable desktop observation and input."
       );
     if (entry.backend) return entry.backend;
-    entry.backend = entry.route.kind === "native" ? this.nativeFactory(entry.route.target) : createCompanionComputerBackend(
+    entry.backend = entry.route.kind === "native" ? protectNativeDesktopBackend(this.nativeFactory(entry.route.target)) : createCompanionComputerBackend(
       this.rootDir,
       entry.route,
       this.connection
@@ -6015,7 +6492,7 @@ function computerQueueIdentity(entry) {
 }
 function supportsComputerRoute(route) {
   if (route.kind === "native") return true;
-  return route.capabilities?.includes(COMPUTER_CAPABILITY) === true;
+  return route.capabilities?.includes(COMPUTER_CAPABILITY) === true && route.capabilities.includes(HOST_SECRET_PROTECTION_CAPABILITY);
 }
 function restoreComputers(routes, value) {
   if (!value || typeof value !== "object" || !("kind" in value) || value.kind !== "request_computers_v1" || !("entries" in value) || !Array.isArray(value.entries))
@@ -6064,7 +6541,7 @@ async function projectComputerResult(entry, result, context) {
         );
       media.push(image);
     } catch (error) {
-      imageFailure = error instanceof Error ? error.message : "Image admission failed.";
+      imageFailure = protectObservedError(error, "Image admission failed.");
     } finally {
       result.image.bytes.fill(0);
     }
@@ -6075,7 +6552,10 @@ async function projectComputerResult(entry, result, context) {
     description.observation_ref = void 0;
   }
   const hasPartialInputDispatch = result.dispatch?.status === "partial";
-  const operationError = result.error ?? (hasPartialInputDispatch ? { code: "computer_input_partial", message: "Only part of the input was accepted." } : void 0);
+  const operationError = result.error ?? (hasPartialInputDispatch ? {
+    code: "computer_input_partial",
+    message: "Only part of the input was accepted."
+  } : void 0);
   const data = {
     desktop_ref: entry.ref,
     ...description.observation_ref ? { observation_ref: description.observation_ref } : {},
@@ -6154,7 +6634,10 @@ function createComputerHandlers(computers) {
     } catch (error) {
       return failureResult({
         errorCode: error instanceof SystemOperationError ? error.code : "computer_operation_interrupted",
-        message: error instanceof Error ? error.message : "Computer operation interrupted; effects may be partial. Observe before another action."
+        message: protectObservedError(
+          error,
+          "Computer operation interrupted; effects may be partial. Observe before another action."
+        )
       });
     }
   };
@@ -6175,7 +6658,10 @@ function createComputerHandlers(computers) {
               return {
                 ...computerRouteLabel(entry),
                 available: false,
-                reason: error instanceof Error ? error.message : "Desktop inspection failed."
+                reason: protectObservedError(
+                  error,
+                  "Desktop inspection failed."
+                )
               };
             }
           }
@@ -6244,20 +6730,34 @@ function requireMedia(context) {
     );
 }
 
+// plugins/system/source/computer/runtime-platform.ts
+function supportsRuntimeDesktopTools(platform = process.platform) {
+  return platform !== "win32";
+}
+function unboundComputerFailure() {
+  if (!supportsRuntimeDesktopTools())
+    return failureResult({
+      errorCode: "computer_runtime_platform_unsupported",
+      message: "Desktop observation and control are unavailable on Windows Runtime. System commands and applications remain available."
+    });
+  return failureResult({
+    errorCode: "computer_request_binding_required",
+    message: "Computer control requires a prepared request."
+  });
+}
+
 // plugins/system/source/computer/request-modules.ts
 function unboundComputerHandlers() {
   return Object.fromEntries(
     COMPUTER_TOOLS.map((name) => [
       name,
-      async () => failureResult({
-        errorCode: "computer_request_binding_required",
-        message: "Computer control requires a prepared request."
-      })
+      async () => unboundComputerFailure()
     ])
   );
 }
 function prepareComputerModules(rootDir, modules, routes, connection, preparation) {
   if (modules.length === 0) return [];
+  if (!supportsRuntimeDesktopTools()) return [];
   const computers = new RequestComputers(
     rootDir,
     routes,
@@ -6415,7 +6915,17 @@ function boundOperation(input, operation) {
       const route = requireSystemRequestRoute(input.snapshot, params.target);
       if (route.kind === "native")
         return await input.nativeHandlers[operation](params, context);
-      if (operation === "system_command" && supportsCompanionCommandOutput(route))
+      if (!supportsProtectedCompanionResults(route.capabilities))
+        return failureResult({
+          errorCode: "system_companion_protection_upgrade_required",
+          message: "Update Companion to enable protected system results. The operation was not dispatched."
+        });
+      if (operation === "system_command" && !supportsCompanionCommandOutput(route))
+        return failureResult({
+          errorCode: "system_companion_protection_upgrade_required",
+          message: "Update Companion to enable protected complete command output. The command was not dispatched."
+        });
+      if (operation === "system_command")
         return await executeCompanionCommand({ ...input, route, params, context });
       return await input.connection.executeHostOperation(input.rootDir, {
         hostId: route.hostId,
@@ -6426,13 +6936,16 @@ function boundOperation(input, operation) {
       });
     } catch (error) {
       if (error instanceof SystemOperationError)
-        return failureResult({ errorCode: error.code, message: error.message });
+        return failureResult({ errorCode: error.code, message: redactSecretText(error.message) });
       return failureResult({
         errorCode: "system_execution_route_failed",
         message: "The bound execution route failed. No other destination was attempted; effects may be partial if dispatch began."
       });
     }
   };
+}
+function supportsProtectedCompanionResults(capabilities) {
+  return capabilities?.includes(HOST_SECRET_PROTECTION_CAPABILITY) === true;
 }
 function hasConnectionControl(params) {
   if (Object.hasOwn(params, "host_id")) return true;
@@ -6473,7 +6986,14 @@ async function prepareSystemRequestModules(rootDir, modules, dependencies = {}, 
     outputRetentionMs: dependencies.outputRetentionMs
   });
   return Object.freeze([
-    ...modules.filter((module2) => !isComputerTool(module2.definition.name)).map((module2) => projectSystemRequestModule(module2, snapshot, handlers)),
+    ...modules.filter((module2) => !isComputerTool(module2.definition.name)).map(
+      (module2) => projectSystemRequestModule(
+        module2,
+        snapshot,
+        handlers,
+        preparation?.runtimePathResolver
+      )
+    ),
     ...computerModules
   ]);
 }
@@ -6490,7 +7010,7 @@ function uniqueSystemCommandRoutes(candidates) {
     return true;
   });
 }
-function projectSystemRequestModule(module2, snapshot, handlers) {
+function projectSystemRequestModule(module2, snapshot, handlers, resolver) {
   const targets = Object.freeze(snapshot.map(routeTargetId));
   const availability = ` Available targets for this request: ${targets.join(", ")}.`;
   return Object.freeze({
@@ -6511,7 +7031,7 @@ function projectSystemRequestModule(module2, snapshot, handlers) {
     },
     implementation: handlers[module2.definition.name],
     adapter: {
-      ...module2.adapter,
+      ...createSystemCommandPathAdapter(module2.adapter, snapshot, resolver),
       executionBinding: systemExecutionBinding(snapshot)
     }
   });
@@ -6532,18 +7052,128 @@ function systemExecutionBinding(snapshot) {
 }
 
 // plugins/system/source/local-command-output.ts
-var import_node_path9 = require("node:path");
+var import_node_path11 = require("node:path");
+
+// plugins/system/source/security/windows-output-directory.ts
+var import_node_child_process5 = require("node:child_process");
+var import_promises9 = require("node:fs/promises");
+var import_node_path10 = require("node:path");
+var import_node_util2 = require("node:util");
+var execute = (0, import_node_util2.promisify)(import_node_child_process5.execFile);
+var privateDirectoryScript = `
+$env:PSModulePath = "$PSHOME\\Modules"
+$ErrorActionPreference = 'Stop'
+$target = $env:ABOT_SYSTEM_OUTPUT_DIRECTORY
+$current = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+$item = Get-Item -LiteralPath $target -Force
+if (-not $item.PSIsContainer) { exit 2 }
+if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { exit 2 }
+$inherit = [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+if ($env:ABOT_SYSTEM_OUTPUT_CREATE_PRIVATE -eq '1') {
+  $acl = New-Object System.Security.AccessControl.DirectorySecurity
+  $acl.SetOwner($current)
+  $acl.SetAccessRuleProtection($true, $false)
+  $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($current, 'FullControl', $inherit, [System.Security.AccessControl.PropagationFlags]::None, [System.Security.AccessControl.AccessControlType]::Allow)
+  $acl.AddAccessRule($rule)
+  Set-Acl -LiteralPath $target -AclObject $acl
+}
+$observed = Get-Acl -LiteralPath $target
+if ($observed.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -ne $current.Value) { exit 3 }
+if (-not $observed.AreAccessRulesProtected) { exit 4 }
+$rules = @($observed.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]))
+if ($rules.Count -ne 1) { exit 5 }
+$rule = $rules[0]
+if ($rule.IdentityReference.Value -ne $current.Value) { exit 5 }
+if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) { exit 5 }
+if ($rule.FileSystemRights -ne [System.Security.AccessControl.FileSystemRights]::FullControl) { exit 5 }
+if ($rule.InheritanceFlags -ne $inherit) { exit 5 }
+if ($rule.PropagationFlags -ne [System.Security.AccessControl.PropagationFlags]::None) { exit 5 }
+`;
+async function verifyPrivateOutputDirectory(directory, create = false) {
+  const info = await (0, import_promises9.lstat)(directory);
+  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("output_directory_unavailable");
+  const powershell = (0, import_node_path10.join)(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  await execute(powershell, [
+    "-NoProfile",
+    "-NonInteractive",
+    "-EncodedCommand",
+    Buffer.from(privateDirectoryScript, "utf16le").toString("base64")
+  ], {
+    windowsHide: true,
+    timeout: 1e4,
+    maxBuffer: 16384,
+    env: { ...process.env, ABOT_SYSTEM_OUTPUT_DIRECTORY: directory, ABOT_SYSTEM_OUTPUT_CREATE_PRIVATE: create ? "1" : "0" }
+  });
+}
+function isAbsentPath(error) {
+  if (!error || typeof error !== "object" || !("code" in error)) return false;
+  return error.code === "ENOENT";
+}
+async function hasOutputDirectoryPath(directory) {
+  try {
+    await (0, import_promises9.lstat)(directory);
+    return true;
+  } catch (error) {
+    if (isAbsentPath(error)) return false;
+    throw error;
+  }
+}
+async function installPrivateOutputDirectory(directory) {
+  if (await hasOutputDirectoryPath(directory)) return;
+  const parent = (0, import_node_path10.dirname)(directory);
+  await (0, import_promises9.mkdir)(parent, { recursive: true });
+  const candidate = await (0, import_promises9.mkdtemp)((0, import_node_path10.join)(parent, `.${(0, import_node_path10.basename)(directory)}.private-`));
+  try {
+    await verifyPrivateOutputDirectory(candidate, true);
+    try {
+      await (0, import_promises9.rename)(candidate, directory);
+    } catch (error) {
+      if (!await hasOutputDirectoryPath(directory)) throw error;
+    }
+  } finally {
+    await (0, import_promises9.rmdir)(candidate).catch((error) => {
+      if (!isAbsentPath(error)) throw error;
+    });
+  }
+}
+async function ensureWindowsOutputDirectory(directory) {
+  if (process.platform !== "win32") return;
+  try {
+    await installPrivateOutputDirectory(directory);
+    await verifyPrivateOutputDirectory(directory);
+  } catch {
+    throw new SystemOperationError("system_output_storage_failed", "Private output storage could not be prepared. The command was not dispatched.");
+  }
+}
+
+// plugins/system/source/local-command-output-retention.ts
+function scheduleLocalSystemOutputCleanup(root, retentionMs) {
+  if (process.platform !== "win32") {
+    scheduleSystemOutputCleanup(root, retentionMs);
+    return Promise.resolve();
+  }
+  return ensureWindowsOutputDirectory(root).then(
+    () => scheduleSystemOutputCleanup(root, retentionMs),
+    () => process.emitWarning("SYSTEM output cleanup skipped because private storage could not be verified.", {
+      code: "SYSTEM_OUTPUT_PRIVATE_STORAGE_UNAVAILABLE"
+    })
+  );
+}
+
+// plugins/system/source/local-command-output.ts
 var CONTEXT_STREAMS = Object.freeze(["stdout", "stderr"]);
 function createLocalSystemCommandOutput(plugin) {
-  const root = (0, import_node_path9.join)(plugin.stateDir, "command-output");
+  const root = (0, import_node_path11.join)(plugin.stateDir, "command-output");
   const retentionMs = systemCommandOutputRetentionMs(plugin);
-  scheduleSystemOutputCleanup(root, retentionMs);
+  const initialization = scheduleLocalSystemOutputCleanup(root, retentionMs);
   return (context) => {
     let captured;
     return {
       async run(input) {
         if (input.abortSignal?.aborted) return runSystemProcess(input);
-        captured = await createSystemOutputCapture(root, retentionMs);
+        await initialization;
+        await ensureWindowsOutputDirectory(root);
+        captured = await createSystemOutputCapture(root, retentionMs, redactSecretText);
         let result;
         try {
           result = await runSystemProcess(input, captured.capture);
@@ -6553,14 +7183,14 @@ function createLocalSystemCommandOutput(plugin) {
         }
         const streams = await captured.finish(result);
         return {
-          ...result,
+          ...captured.processResult,
           stdout: streams.stdout,
-          stderr: streams.stderr || result.stderr,
+          stderr: streams.stderr,
           outputTruncated: Boolean(captured.failure)
         };
       },
       async present(target, result) {
-        if (captured?.failure) return outputFailure(target, result, context, captured.receipt, captured.failure);
+        if (captured?.failure) return outputFailure(target, result, context, captured.receipt, captured.failure, captured.failureKind);
         const receipt = buildSystemProcessResult(target, result, "command_process_completion");
         const delivered = deliverPluginTextResult({
           ...receipt,
@@ -6573,9 +7203,10 @@ function createLocalSystemCommandOutput(plugin) {
     };
   };
 }
-function outputFailure(target, result, context, capture, storageFailure) {
+function outputFailure(target, result, context, capture, captureFailure, failureKind) {
+  const failureCode = failureKind === "security" ? "system_output_protection_failed" : "system_output_storage_failed";
   return failureResult({
-    errorCode: storageFailure ? "system_output_storage_failed" : "system_output_delivery_pending",
+    errorCode: captureFailure ? failureCode : "system_output_delivery_pending",
     message: "The command was dispatched. Its output could not be delivered completely; do not repeat the command just to retrieve output. Inspect the process receipt and retained capture.",
     ...result.exitCode !== null ? { exitCode: result.exitCode } : {},
     data: {
@@ -6585,7 +7216,8 @@ function outputFailure(target, result, context, capture, storageFailure) {
       spawnedProcess: result.spawnedProcess ?? null,
       exitCode: result.exitCode,
       outputCapture: capture ?? null,
-      ...storageFailure ? { storageFailure } : {},
+      ...captureFailure && failureKind === "security" ? { securityFailure: captureFailure } : {},
+      ...captureFailure && failureKind !== "security" ? { storageFailure: captureFailure } : {},
       outputDelivery: "pending",
       evidenceScope: "command_process_completion",
       independentOutcomeCheck: "not_performed",
@@ -6602,14 +7234,68 @@ function systemCommandOutputRetentionMs(plugin) {
   });
 }
 
+// plugins/system/source/security/system-results.ts
+var INCOMPLETE_STREAM = "[UNAVAILABLE: incomplete output cannot be scanned for secrets]";
+var SENSITIVE_TARGET = "Target unavailable because its shell identity contains sensitive text.";
+function protectApplication(application) {
+  if (redactSecretText(application.id) !== application.id) return void 0;
+  return { ...application, name: redactSecretText(application.name) };
+}
+function protectCatalog(catalog) {
+  const applications = catalog.applications.flatMap((application) => {
+    const protectedApplication = protectApplication(application);
+    return protectedApplication ? [protectedApplication] : [];
+  });
+  return {
+    ...catalog,
+    applications,
+    complete: catalog.complete && applications.length === catalog.applications.length,
+    scope: { ...catalog.scope, roots: catalog.scope.roots.map(redactSecretText) }
+  };
+}
+function protectTargets(observation) {
+  return {
+    ...observation,
+    host: { ...observation.host, kernelRelease: redactSecretText(observation.host.kernelRelease) },
+    targets: observation.targets.map((target) => {
+      if (!target.available)
+        return { ...target, reason: redactSecretText(target.reason) };
+      if (redactSecretText(target.shell) !== target.shell)
+        return { id: target.id, available: false, reason: SENSITIVE_TARGET };
+      return target;
+    })
+  };
+}
+function protectProcess(result) {
+  return {
+    ...result,
+    stdout: result.outputTruncated ? INCOMPLETE_STREAM : redactSecretText(result.stdout),
+    stderr: result.outputTruncated ? INCOMPLETE_STREAM : redactSecretText(result.stderr),
+    ...result.spawnedProcess ? {
+      spawnedProcess: {
+        ...result.spawnedProcess,
+        executable: redactSecretText(result.spawnedProcess.executable)
+      }
+    } : {}
+  };
+}
+var systemResultProtection = Object.freeze({
+  protectTargets,
+  protectCatalog,
+  protectProcess,
+  protectApplication,
+  protectMessage: redactSecretText
+});
+
 // plugins/system/source/index.ts
 var index_default = defineRuntimePlugin((context) => {
   const output = createLocalSystemCommandOutput(context);
   return {
-    handlers: { ...createSystemHandlers(void 0, void 0, output), ...unboundComputerHandlers() },
+    handlers: { ...createSystemHandlers(void 0, void 0, output, systemResultProtection), ...unboundComputerHandlers() },
     prepareRequest: (modules, preparation) => prepareSystemRequestModules(context.rootDir, modules, {
       outputRetentionMs: systemCommandOutputRetentionMs(context),
-      createNativeHandlers: (resolve) => createSystemHandlers(void 0, resolve, output)
+      observeTargets: async () => systemResultProtection.protectTargets(await observeSystemTargets()),
+      createNativeHandlers: (resolve) => createSystemHandlers(void 0, resolve, output, systemResultProtection)
     }, preparation)
   };
 });

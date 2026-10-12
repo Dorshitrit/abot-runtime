@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { access, mkdir, open, rename, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, open, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import {
@@ -8,6 +8,7 @@ import {
   type MemoryStoreState,
 } from "./types.js";
 import { acquireStoreLock } from "./store-lock.js";
+import { replacePreparedMemoryFile } from "./prepared-memory-replacement.js";
 
 const MAX_STORE_BYTES = 4 * 1024 * 1024;
 const MAX_STORE_ENTRIES = 2_000;
@@ -133,7 +134,7 @@ async function atomicWrite(
       encoding: "utf8",
       mode: 0o600,
     });
-    await rename(temporaryPath, filePath);
+    await replacePreparedMemoryFile(temporaryPath, filePath);
   } finally {
     await rm(temporaryPath, { force: true });
   }

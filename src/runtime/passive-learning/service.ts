@@ -39,7 +39,7 @@ import { ObservationQueue } from "./queue.js";
 import { canProcessLearningObservation, isLearningApplicationExcluded } from "./application-policy.js";
 import { commitLearningApplicationPreferences } from "./application-controls.js";
 import {
-  learningFailureReason,
+  learningFailureReason, learningCollectionFailureState,
   summarizeBatch,
 } from "./status-projection.js";
 import {
@@ -495,8 +495,7 @@ class LearningService {
   }
   private failFeature(error: unknown): void {
     this.reason = learningFailureReason(error);
-    this.state =
-      this.reason === "learning_host_unavailable" ? "unavailable" : "failed";
+    this.state = learningCollectionFailureState(this.reason);
     this.changed();
   }
   private failProcessing(error: unknown): void {

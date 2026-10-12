@@ -1,3 +1,4 @@
+import { renderPluginPlatformNotice } from "../plugins/compatibility.js";
 import { escapeAttribute, escapeHtml } from "../../lib/text-format.js";
 
 function blockReason(plugin, capability) {
@@ -33,6 +34,7 @@ function renderPluginCard(plugin, busy) {
   return `<li class="runtime-plugin-card">
     ${checkbox(plugin, null, busy)}
     <p class="runtime-plugin-summary" title="${escapeAttribute(plugin.description || "")}">${escapeHtml(plugin.description || "Installed Runtime plugin.")}</p>
+    ${renderPluginPlatformNotice(plugin.compatibility)}
     <div class="runtime-plugin-tools-heading"><span>Tools</span><span>${plugin.selectedCapabilityCount} of ${capabilities.length} selected</span></div>
     <ul class="runtime-plugin-capabilities" aria-label="${escapeAttribute(`Tools in ${plugin.id}`)}">${capabilities.map((capability) => `<li>${checkbox(plugin, capability, busy)}</li>`).join("")}</ul>
   </li>`;
@@ -144,7 +146,7 @@ export function createSetupPluginStep({
       state.snapshot?.selection?.enabled === false ||
       state.snapshot?.selection?.deny?.includes("*");
     return `<div class="runtime-setup-plugins">
-      <p class="runtime-setup-feedback">All installed plugins start enabled in a new setup. Turn off anything you do not need.</p>
+      <p class="runtime-setup-feedback">All installed plugins start selected in a new setup. Host compatibility determines which plugins can load. Turn off anything you do not need.</p>
       ${globalBlocked ? '<p class="runtime-setup-feedback">An existing global policy blocks plugins. Your saved policy is preserved.</p>' : ""}
       ${state.error ? `<p class="runtime-setup-feedback error" role="alert">${escapeHtml(state.error)}</p><button type="button" class="runtime-setup-inline-action" data-runtime-setup-action="plugins-reload">Reload selection</button>` : state.message ? `<p class="runtime-setup-feedback" role="status">${escapeHtml(state.message)}</p>` : ""}
       ${state.busy ? '<p class="runtime-setup-feedback" role="status">Saving or loading plugin selection…</p>' : ""}

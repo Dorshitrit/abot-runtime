@@ -10,6 +10,7 @@ function createFilesystemMutationCoordinator(): FilesystemMutationCoordinator {
       targetKey: string,
       task: () => Promise<T>,
     ): Promise<T> {
+      if (process.platform === "win32") targetKey = targetKey.toUpperCase();
       const previous = tails.get(targetKey) ?? Promise.resolve();
       let release!: () => void;
       const current = new Promise<void>((resolve) => {

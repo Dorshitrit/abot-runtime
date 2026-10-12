@@ -1,3 +1,5 @@
+import { bindRequestWorkingDirectory } from "../capabilities/request-working-directory.js";
+import { createRuntimeToolPathResolver } from "../capabilities/runtime-target-path.js";
 import { isSparkSession } from "../../sessions/spark-session.js";
 import type { AgentMode } from "../../shared/types.js";
 import {
@@ -265,6 +267,12 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
     : preparedSeed;
   const toolRegistry = options.toolRegistry?.prepareRequest
     ? await options.toolRegistry.prepareRequest({
+        runtimePathResolver: createRuntimeToolPathResolver(
+          bindRequestWorkingDirectory(
+            options.toolRegistry.prepareSharedState?.() ?? {},
+            requestWorkingDirectory,
+          ).runtimePaths,
+        ),
         requestState: resources.state,
         onRequestDispose: resources.onRequestDispose,
       })

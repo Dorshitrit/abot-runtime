@@ -1,78 +1,10 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { createComposerQueueController } from "../../web-ui/app/controllers/composer-queue-controller.js";
-import { createComposerSubmitController } from "../../web-ui/app/controllers/composer-submit-controller.js";
+import { createComposerProductionHarness } from "./support/composer-production-harness.js";
+afterEach(() => vi.unstubAllGlobals());
 import { createSteerController } from "../../web-ui/app/controllers/steer-controller.js";
 import { createRealtimeTransport } from "../../web-ui/app/services/realtime-transport.js";
 import { createRuntimeWebClient } from "../../web-ui/app/services/runtime-web-client.js";
-
-function createQueueHarness(overrides: Record<string, unknown> = {}) {
-  type BlockedRelease = {
-    releaseToken: string;
-    item: {
-      text: string;
-      attachments: Array<{ id: string }>;
-    };
-  };
-  const state = {
-    currentSessionId: "session-1",
-    activeRequestId: "request-1",
-    agentMode: "reasoning",
-    pendingAttachments: [{ id: "attachment-1" }],
-    composerQueueDrainingScopes: new Set<string>(),
-    composerQueueRecoveredReleaseTokens: new Set<string>(),
-    activeComposerQueueRecovery: null as null | Record<string, unknown>,
-    messages: [] as Array<Record<string, unknown>>,
-  };
-  const queue = {
-    list: vi.fn(() => []),
-    enqueue: vi.fn(),
-    releaseForTerminal: vi.fn(() => ({
-      item: {
-        text: "queued",
-        attachments: [{ id: "queued-file" }],
-        agentMode: "reasoning",
-        toolPermissionMode: "full_access",
-        modelPreference: { profileId: "model-1" },
-      },
-      releaseToken: "release-1",
-    })),
-    bindReleasedSuccess: vi.fn(() => true),
-    getBlockedRelease: vi.fn<() => BlockedRelease | null>(() => null),
-    updateBlockedRelease: vi.fn(() => true),
-  };
-  const attachments = {
-    invalidateCompletions: vi.fn(),
-    render: vi.fn(),
-    clear: vi.fn(),
-  };
-  const dependencies = {
-    state,
-    dom: { composerInput: { value: "draft" } },
-    queue,
-    selectedEnvironmentId: () => "dev",
-    getToolPermissionMode: () => "full_access",
-    getModelPreference: () => ({ profileId: "model-1" }),
-    rememberModelSelection: vi.fn(),
-    attachments,
-    updateSendState: vi.fn(),
-    postChatMessage: vi.fn(async () => "request-2"),
-    appendLocalUserMessage: vi.fn(),
-    activateRequestForScope: vi.fn(),
-    renderMessages: vi.fn(),
-    setMessageStatus: vi.fn(),
-    recordControlEvent: vi.fn(),
-    resizeComposer: vi.fn(),
-    ...overrides,
-  };
-  return {
-    state,
-    queue,
-    attachments,
-    dependencies,
-    controller: createComposerQueueController(dependencies as never),
-  };
-}
 
 describe("web ui application collaborators", () => {
   test("runtime client owns semantic endpoint construction, payloads, attachments, and errors", async () => {
@@ -314,115 +246,62 @@ describe("web ui application collaborators", () => {
   });
 
   test("queue drain starts exactly one successor and binds the remaining queue", async () => {
-    const harness = createQueueHarness();
-    await harness.controller.drain({
-      environmentId: "dev",
-      sessionId: "session-1",
-      terminalRequestId: "request-1",
-    });
-    expect(harness.queue.releaseForTerminal).toHaveBeenCalledTimes(1);
-    expect(harness.dependencies.postChatMessage).toHaveBeenCalledTimes(1);
-    expect(harness.queue.bindReleasedSuccess).toHaveBeenCalledWith(
-      { environmentId: "dev", sessionId: "session-1" },
-      "release-1",
-      "request-2",
-    );
-    expect(harness.dependencies.appendLocalUserMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ text: "queued", requestId: "request-2" }),
-    );
-    expect(harness.dependencies.activateRequestForScope).toHaveBeenCalledWith(
-      { environmentId: "dev", sessionId: "session-1" },
-      "request-2",
-    );
+    const h = createComposerProductionHarness();
+    h.enqueue("queued");
+    h.enqueue("remaining");
+    const bind = vi.spyOn(h.sessionQueue, "bindReleasedSuccess");
+    await h.queue.drain({ environmentId: "dev", sessionId: "existing-chat", terminalRequestId: "existing-request" });
+    expect(h.client.postChatMessage).toHaveBeenCalledOnce();
+    expect(bind).toHaveBeenCalledWith({ environmentId: "dev", sessionId: "existing-chat" }, expect.any(String), "new-request");
+    expect(h.session.appendLocalUserMessage).toHaveBeenCalledWith(expect.objectContaining({ text: "queued" }));
+    expect(h.session.activateRequestForScope).toHaveBeenCalledWith({ environmentId: "dev", sessionId: "existing-chat" }, "new-request");
+    expect(h.sessionQueue.list(h.queue.currentScope())[0].waitForRequestId).toBe("new-request");
   });
 
-  test("failed queued start restores the draft without automatic retry", async () => {
-    const postChatMessage = vi.fn(async () => {
-      throw new Error("offline");
-    });
-    const harness = createQueueHarness({ postChatMessage });
-    await harness.controller.drain({
-      environmentId: "dev",
-      sessionId: "session-1",
-      terminalRequestId: "request-1",
-    });
-    expect(postChatMessage).toHaveBeenCalledTimes(1);
-    expect(harness.dependencies.dom.composerInput.value).toContain("queued");
-    expect(
-      harness.state.composerQueueRecoveredReleaseTokens.has("release-1"),
-    ).toBe(true);
-    expect(harness.queue.bindReleasedSuccess).not.toHaveBeenCalled();
+  test("an unconfirmed queued start keeps its payload paused without retry or mixing into input", async () => {
+    const h = createComposerProductionHarness();
+    h.enqueue("queued");
+    h.client.postChatMessage.mockRejectedValueOnce(new Error("offline"));
+    const terminal = { environmentId: "dev", sessionId: "existing-chat", terminalRequestId: "existing-request" };
+    await h.queue.drain(terminal);
+    await h.queue.drain(terminal);
+    expect(h.client.postChatMessage).toHaveBeenCalledOnce();
+    expect(h.dom.composerInput.value).toBe("Existing chat draft");
+    const paused = h.composer.lifecycle.paused(h.queue.currentScope());
+    expect(paused).toHaveLength(1);
+    expect(paused[0].payload.text).toBe("queued");
+    expect(paused[0].payload.attachments[0].id).toBe("chat-file");
+    expect(h.sessionQueue.getBlockedRelease(h.queue.currentScope())).toBeTruthy();
   });
 
-  test("composer dispatch owns one selected action and its busy lifecycle", async () => {
-    const state = {
-      activeRequestId: "request-1",
-      currentSessionId: "session-1",
-      pendingAttachments: [] as unknown[],
-      composerSending: false,
-    };
-    const input = {
-      value: "run next",
-      scrollHeight: 72,
-      style: { height: "" },
-      focus: vi.fn(),
-    };
-    const queue = {
-      isCurrentDraining: vi.fn(() => false),
-      queuedCount: vi.fn(() => 0),
-      enqueue: vi.fn(async () => {}),
-      restoreText: vi.fn(),
-    };
-    const composerActions = {
-      primaryAction: vi.fn(() => "send_next"),
-      render: vi.fn(),
-    };
-    const setMessageStatus = vi.fn();
-    const controller = createComposerSubmitController({
-      state,
-      dom: { composerInput: input },
-      composerActions,
-      attachments: { activeUploadCount: vi.fn(() => 0) },
-      queue,
-      steer: vi.fn(async () => {}),
-      chatRequests: { sendMessage: vi.fn(async () => {}) },
-      conversationSession: { appendRequestError: vi.fn() },
-      selectedEnvironmentId: () => "dev",
-      setMessageStatus,
-    });
-
-    controller.dispatch();
-    expect(state.composerSending).toBe(true);
-    expect(input.value).toBe("");
-    expect(queue.enqueue).toHaveBeenCalledWith("run next");
-    await vi.waitFor(() => expect(state.composerSending).toBe(false));
-    expect(setMessageStatus).toHaveBeenCalledWith(
-      "Message queued for this conversation.",
-      true,
-    );
-    expect(input.focus).toHaveBeenCalledTimes(1);
+  test("composer dispatch chooses one action and owns its captured payload through acknowledgement", async () => {
+    const h = createComposerProductionHarness();
+    h.composerActions.primaryAction.mockReturnValue("send_next");
+    h.type("run next");
+    const sending = h.composer.submit.dispatch();
+    expect(h.composer.lifecycle.hasPendingScope(h.queue.currentScope())).toBe(true);
+    expect(h.dom.composerInput.value).toBe("");
+    expect(h.workspace.chatDraft().attachments).toEqual([]);
+    expect(await sending).toMatchObject({ status: "accepted" });
+    expect(h.sessionQueue.list(h.queue.currentScope())).toEqual([expect.objectContaining({ text: "run next", attachments: [expect.objectContaining({ id: "chat-file" })] })]);
+    expect(h.client.postChatMessage).not.toHaveBeenCalled();
+    expect(h.steer).not.toHaveBeenCalled();
+    expect(h.composer.lifecycle.hasPendingScope(h.queue.currentScope())).toBe(false);
+    expect(h.dom.composerInput.focus).toHaveBeenCalledOnce();
   });
 
-  test("navigation persists one recovered draft and preserves its attachments", () => {
-    const blocked = {
-      releaseToken: "release-1",
-      item: { text: "old", attachments: [{ id: "old-file" }] },
-    };
-    const harness = createQueueHarness();
-    harness.queue.getBlockedRelease.mockReturnValue(blocked);
-    harness.state.activeComposerQueueRecovery = {
-      scope: { environmentId: "dev", sessionId: "session-1" },
-      releaseToken: "release-1",
-    };
-    expect(harness.controller.suspendRecoveryForNavigation()).toBe(true);
-    expect(harness.queue.updateBlockedRelease).toHaveBeenCalledWith(
-      { environmentId: "dev", sessionId: "session-1" },
-      "release-1",
-      expect.objectContaining({
-        text: "draft",
-        attachments: [{ id: "attachment-1" }],
-      }),
-    );
-    expect(harness.attachments.clear).toHaveBeenCalledWith({ cleanup: false });
+  test("navigation acknowledges a recovered draft without clearing its parked files", async () => {
+    const h = createComposerProductionHarness();
+    h.enqueue("recovered");
+    h.workspace.chatDraft().take();
+    await h.queue.drain({ environmentId: "dev", sessionId: "existing-chat", terminalRequestId: "existing-request", cancelled: true });
+    expect(h.workspace.chatDraft().release).toBeTruthy();
+    h.type("edited recovered draft");
+    expect(await h.queue.suspendRecoveryForNavigation()).toBe(true);
+    const release = h.sessionQueue.getBlockedRelease(h.queue.currentScope());
+    expect(release?.item.text).toBe("edited recovered draft");
+    expect(release?.item.attachments[0].id).toBe("chat-file");
+    expect(h.workspace.chatDraft().attachments[0].id).toBe("chat-file");
+    expect(h.client.deleteAttachment).not.toHaveBeenCalled();
   });
 });

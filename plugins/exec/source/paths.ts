@@ -54,11 +54,13 @@ export async function resolveExecWorkingDirectory(
   executionContext: ToolExecutionContext | undefined,
   rawPath: unknown,
 ): Promise<ExecWorkingDirectory> {
-  const requestedPath = readRequiredString(rawPath, {
+  const inputPath = readRequiredString(rawPath, {
     name: "cwd",
     trim: false,
     maxLength: 4_096,
   });
+  const requestedPath =
+    process.platform === "win32" ? inputPath.replaceAll("\\", "/") : inputPath;
   if (requestedPath.includes("\0")) {
     throw new ExecPluginError(
       "exec_cwd_invalid",

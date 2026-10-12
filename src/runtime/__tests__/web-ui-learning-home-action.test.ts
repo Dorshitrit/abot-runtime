@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { readHostReadiness } from "../../web-ui/system-host-setup/readiness.js";
 // @ts-expect-error Browser-only component has no declaration surface.
 import { createPassiveLearningHome } from "../../web-ui/app/components/passive-learning/home.js";
 // @ts-expect-error Browser-only feature has no declaration surface.
@@ -74,6 +75,38 @@ describe("Home Co-worker quick action", () => {
     h.button.dispatch("click");
     expect(h.configure).toHaveBeenCalledExactlyOnceWith({ enabled: true });
     expect(h.snapshot.status!.preferences).toEqual(preferences);
+    expect(h.openLearning).not.toHaveBeenCalled();
+  });
+
+  test.each([true, false])("native Windows local access never starts unpaired collection (direct access=%s)", async (directAccessReady) => {
+    const status = { paired: false, connected: false } as const;
+    const resolveTarget = vi.fn(async () => ({ id: "windows", transport: "native", shell: "powershell.exe" } as const));
+    if (!directAccessReady) resolveTarget.mockRejectedValueOnce(new Error("missing shell"));
+    const readiness = await readHostReadiness(status, {
+      facts: { platform: "win32", kernelRelease: "Windows_NT" }, resolveTarget,
+    });
+    const snapshot = readySnapshot();
+    snapshot.hostConnection = { ...status, readiness };
+    const h = homeHarness(snapshot);
+    expect(readiness).toMatchObject({ ready: false, directAccessReady });
+    expect(h.button.textContent).toBe("Set up ABot Spark");
+    h.button.dispatch("click");
+    expect(h.openLearning).toHaveBeenCalledOnce();
+    expect(h.configure).not.toHaveBeenCalled();
+  });
+
+  test("a capable connected Companion still allows authorized collection on native Windows", async () => {
+    const status = { paired: true, connected: true, connectionId: "native-windows-companion", capabilities: ["computer_control_v1", "passive-observations-v1"] } as const;
+    const readiness = await readHostReadiness(status, {
+      facts: { platform: "win32", kernelRelease: "Windows_NT" },
+    });
+    const snapshot = readySnapshot();
+    snapshot.hostConnection = { ...status, readiness };
+    const h = homeHarness(snapshot);
+    expect(readiness).toMatchObject({ ready: true, route: "companion" });
+    expect(h.button.textContent).toBe("Start ABot Spark");
+    h.button.dispatch("click");
+    expect(h.configure).toHaveBeenCalledExactlyOnceWith({ enabled: true });
     expect(h.openLearning).not.toHaveBeenCalled();
   });
 
@@ -159,7 +192,7 @@ describe("Home Co-worker quick action", () => {
     let rejectStart!: (error: Error) => void;
     const client = {
       loadPassiveLearning: vi.fn(async () => ({ ok: true, status })),
-      getSystemHostConnection: vi.fn(async () => ({ readiness: { ready: true } })),
+      getSystemHostConnection: vi.fn(async () => ({ collectionConsent: { accepted: true }, readiness: { ready: true } })),
       configurePassiveLearning: vi.fn(() => new Promise((_resolve, reject) => { rejectStart = reject; })),
     };
     const openLearning = vi.fn();
