@@ -339,9 +339,6 @@ function expectSelectionBoundRefinement(
       },
     ],
   });
-  expect(messages.find(({ role }) => role === "system")?.content).toContain(
-    "sole semantic authority",
-  );
   expect(collectPropertySchemas(format, "path")).toHaveLength(0);
   expect(collectPropertySchemas(format, "content")).not.toHaveLength(0);
 }

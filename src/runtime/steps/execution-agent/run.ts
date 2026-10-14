@@ -1,3 +1,4 @@
+import { projectExecutionAgentMemory } from "../../long-term-memory/initial-context.js";
 import { assertBoundModelStepSteeringCurrent } from "../../model/model-step-steering.js";
 import { resolveRequestSteeringInbox } from "../../request/request-steering.js";
 import { resolveMemoryRecallSteeringVersion } from "../../long-term-memory/recall-binding.js";
@@ -53,7 +54,14 @@ export async function runExecutionAgentDecision(
       options.call.callId,
     ),
   );
-  const input = buildExecutionAgentInput(request, options);
+  assertBoundModelStepSteeringCurrent(
+    resolveRequestSteeringInbox(request.requestSteering),
+    options.steeringSnapshot.version,
+  );
+  const memoryContext = projectExecutionAgentMemory(
+    request, options.head.state.initialMemory, options.steeringSnapshot,
+  );
+  const input = buildExecutionAgentInput(request, { ...options, memoryContext });
   const accepted = await invokeStructuredModelStep({
     request,
     boundSteeringVersion: options.steeringSnapshot.version,

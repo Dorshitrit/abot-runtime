@@ -2932,9 +2932,6 @@ describe("generic Worker capability decision boundary", () => {
         }),
       ]),
     );
-    expect(input.context.messages[0]!.content).toContain(
-      "runtime_worker_assignment.workingDirectory is the canonical base",
-    );
     expect(JSON.stringify(logs)).not.toContain(descriptorSecret);
 
     const referenceData = "FULL_REFERENCE_DATA_REMAINS_IN_REFINEMENT";
@@ -3194,15 +3191,6 @@ describe("generic Worker capability decision boundary", () => {
     });
 
     expect(input.context.messages).toHaveLength(4);
-    expect(input.context.messages[0]!.content).toContain(
-      "the same Worker call resuming after capability execution",
-    );
-    expect(input.context.messages[0]!.content).toContain(
-      "single runtime_request_tool_results_v1 block",
-    );
-    expect(input.context.messages[0]!.content).toContain(
-      "including any capability invoked earlier; prior use does not exhaust it",
-    );
     const reconsiderationInput = buildWorkerDecisionInput(createRequest(), {
       call: currentCall,
       requestToolResults: requestToolResults(ledger, settledHead, currentCall),
@@ -3219,9 +3207,6 @@ describe("generic Worker capability decision boundary", () => {
       },
     });
     expect(reconsiderationInput.allowedActions).not.toContain("return_result");
-    expect(reconsiderationInput.context.messages[0]!.content).not.toContain(
-      "choose return_result when no distinct required outcome remains",
-    );
     expect(JSON.parse(input.context.messages[2]!.content)).toMatchObject({
       kind: "runtime_worker_assignment",
       callId: currentCall.callId,

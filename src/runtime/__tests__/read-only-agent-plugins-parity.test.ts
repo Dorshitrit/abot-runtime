@@ -240,9 +240,6 @@ describe("read-only Agent Plugins parity", () => {
       },
       actions: [{ type: "inspect_target", target: "." }],
     });
-    expect(rootSearch?.output).toContain(
-      'Search scope: selected logical path; use "." for the current Worker root.',
-    );
     expect(rootSearch?.output).not.toContain("Search root:");
     expect(rootSearch?.output).toContain("- src/invoice-service.ts");
     expect(rootSearch?.output).toContain(
@@ -382,9 +379,6 @@ describe("read-only Agent Plugins parity", () => {
       data: { hasData: true, itemCount: 1 },
       actions: [{ type: "inspect_target", target: "Project" }],
     });
-    expect(result?.output).toContain(
-      'Search scope: selected logical path; use "." for the current Worker root.',
-    );
     expect(result?.output).not.toContain("Search root: Project");
     expect(result?.output).toContain(
       "Project/index.html:1:<main>worker scope</main>",

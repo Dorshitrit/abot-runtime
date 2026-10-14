@@ -10,10 +10,14 @@ import {
 } from "./result-observer.js";
 import { createRegisteredToolWorkerFailureOutcomeFingerprint } from "./failure-outcome-fingerprint.js";
 
-export const STEERING_SUPERSEDED_BEFORE_EXTERNAL_EXECUTION =
-  "steering_superseded_before_external_execution" as const;
-export const STEERING_SUPERSEDED_SUMMARY =
-  "steering_superseded_before_external_execution: No external execution occurred because a newer active-request update superseded this capability invocation.";
+import {
+  STEERING_SUPERSEDED_BEFORE_EXTERNAL_EXECUTION,
+  STEERING_SUPERSEDED_SUMMARY,
+} from "../../orchestration/worker-capabilities/execution/execution-freshness.js";
+export {
+  STEERING_SUPERSEDED_BEFORE_EXTERNAL_EXECUTION,
+  STEERING_SUPERSEDED_SUMMARY,
+};
 
 export type PayloadLifecycleContext = Readonly<
   Omit<

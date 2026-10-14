@@ -44,7 +44,7 @@ function serializeProjection(records: readonly LongTermMemoryRecord[]): string {
   return JSON.stringify({
     kind: LONG_TERM_MEMORY_MESSAGE_KIND,
     authority: "passive_reference",
-    purpose: "support_personalized_terminal_response_authoring",
+    purpose: "support_root_decisions_and_response_authoring",
     memories: records.map((record) => ({
       content: record.content,
       tags: record.tags,

@@ -1,5 +1,6 @@
 import { createSystemHostConnectionManager } from "./components/system-host/manager.js";
 import { createSystemHostSetupNotice } from "./components/system-host/setup-notice.js";
+import { computerAccessWidgetSummary } from "./components/system-host/home-widget-summary.js";
 
 /** One connection owner for configured Home and its shared chat notice. */
 export function createComputerAccessFeature({
@@ -7,11 +8,13 @@ export function createComputerAccessFeature({
   runtimeClient,
   getEnvironmentId = () => "",
   isComputerAccessAvailable = () => true,
+  compactHomeWidgets,
   onChange = () => {},
 }) {
   const documentRoot = dom.homeDashboardRoot?.ownerDocument;
   const root = documentRoot?.createElement("section");
   let notice;
+  let unregisterWidget = () => {};
   const connection = createSystemHostConnectionManager({
     documentRoot,
     compact: true,
@@ -27,6 +30,7 @@ export function createComputerAccessFeature({
     supportsConnection: () => runtimeClient.supportsSystemHostConnection(),
     onChange: () => {
       notice?.render();
+      compactHomeWidgets?.refresh();
       onChange();
     },
   });
@@ -35,7 +39,7 @@ export function createComputerAccessFeature({
     if (!isComputerAccessAvailable()) return false;
     dom.homeWorkspaceButton?.click();
     if (dom.homeWorkspacePanel?.hidden !== false || !root) return false;
-    connection.openManagement();
+    if (!compactHomeWidgets?.open("computer")) connection.openManagement();
     root.scrollIntoView?.({ block: "start", behavior: "smooth" });
     root.focus({ preventScroll: true });
     return true;
@@ -45,6 +49,7 @@ export function createComputerAccessFeature({
     const ready = isComputerAccessAvailable();
     if (root) root.hidden = !ready;
     connection.setActive(ready);
+    compactHomeWidgets?.refresh();
     notice?.render();
   }
 
@@ -71,6 +76,12 @@ export function createComputerAccessFeature({
       dom.homeDashboardRoot,
     );
     connection.mount(root);
+    unregisterWidget = compactHomeWidgets?.register({
+      id: "computer", label: "Computer access", icon: "computer", element: root,
+      isAvailable: isComputerAccessAvailable,
+      getSummary: () => computerAccessWidgetSummary(connection.state, runtimeClient.supportsSystemHostConnection()),
+      onOpen: connection.openManagement,
+    }) || unregisterWidget;
     runtimeAvailabilityChanged();
   }
   dom.environmentSelect?.addEventListener("change", connection.environmentChanged);
@@ -80,6 +91,7 @@ export function createComputerAccessFeature({
     open,
     runtimeAvailabilityChanged,
     dispose() {
+      unregisterWidget();
       dom.environmentSelect?.removeEventListener("change", connection.environmentChanged);
       notice.dispose();
       connection.dispose();

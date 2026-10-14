@@ -2,6 +2,9 @@ import {
   buildRuntimeFilesystemScopeMessage,
   canEstablishRuntimeWorkingDirectory,
 } from "../../context/runtime-filesystem-scope.js";
+import { canAuthorDirectResponseMemory, resolveDirectResponseOffer } from "./direct-response-policy.js";
+import { buildDirectResponseInstructions } from "./direct-response-prompt.js";
+import { traceDebug } from "../../observability/debug-logger.js";
 import { buildSparkConversationInstructions } from "../../context/spark-conversation-policy.js";
 import type {
   ChatMessage,
@@ -11,6 +14,7 @@ import type { RequestContextProjection } from "../../context/request-context-con
 import { projectRequestContext } from "../../context/request-context.js";
 import { projectRootSessionMemory } from "../../context/session-memory/root-projection.js";
 import { buildConversationMemoryAvailabilityInstructions } from "../../long-term-memory/conversation-authoring/prompt.js";
+import type { ExecutionMemoryProjection } from "../../long-term-memory/initial-context.js";
 import { canOfferMemoryRecall } from "../../long-term-memory/recall-policy.js";
 import { projectMemoryRecallContinuations } from "../../long-term-memory/recall-continuation.js";
 import { buildRequestTemporalContextMessage } from "../../context/request-temporal-context.js";
@@ -31,6 +35,7 @@ import {
   resolveRequestWorkerCapabilities,
   type RequestExecutionScope,
 } from "../../request/execution-scope.js";
+import { resolveRequestCapabilityBriefEntries } from "../../request/capability-brief.js";
 import { appendRequestSteeringContext } from "../../request/request-steering-context.js";
 import type { RequestSteeringSnapshot } from "../../request/request-steering.js";
 import {
@@ -79,6 +84,7 @@ type BuildExecutionAgentInputOptions = Readonly<{
   allowPlanner: boolean;
   allowAuditor: boolean;
   memoryRecallMessage?: ChatMessage;
+  memoryContext?: ExecutionMemoryProjection;
 }>;
 
 export function buildExecutionAgentInput(
@@ -86,6 +92,7 @@ export function buildExecutionAgentInput(
   options: BuildExecutionAgentInputOptions,
 ): ExecutionAgentInput {
   assertCanonicalSource(request, options.head, options.call);
+  const directResponse = resolveDirectResponseOffer(request, options.head, options.call);
   const allCapabilities =
     resolveRequestWorkerCapabilities(request).provider.getDescriptors();
   const capabilityCatalogGroups =
@@ -137,8 +144,16 @@ export function buildExecutionAgentInput(
   const memoryRecallMessage = request.longTermMemory?.enabled
     ? options.memoryRecallMessage
     : undefined;
+  const memoryContext = request.longTermMemory?.enabled ? options.memoryContext : undefined;
+  const automaticMemoryMessage = memoryRecallMessage ? undefined : memoryContext?.memoryMessage;
   const workPlan = projectExecutionWorkPlanOptions(options.head, options.call);
+  const directMemoryAuthoring = canAuthorDirectResponseMemory(directResponse.maxLength, memoryContext)
+    ? { ...(memoryContext.authoringContext ? { context: memoryContext.authoringContext } : {}) }
+    : undefined;
   const contract = Object.freeze({
+    ...(directResponse.maxLength !== undefined
+      ? { directResponseMaxLength: directResponse.maxLength } : {}),
+    ...(directMemoryAuthoring ? { directResponseMemoryAuthoring: directMemoryAuthoring } : {}),
     ...(workPlan ? { workPlan } : {}),
     allowMemoryRecall: canOfferMemoryRecall({
       enabled: request.longTermMemory?.enabled === true,
@@ -178,6 +193,7 @@ export function buildExecutionAgentInput(
   });
   const instructions = [
     buildExecutionAgentInstructions({
+      allowDirectResponse: directResponse.maxLength !== undefined,
       allowWorkPlan: workPlan !== undefined,
       allowMemoryRecall: contract.allowMemoryRecall,
       hasMemoryRecallContext: memoryRecallMessage !== undefined,
@@ -192,6 +208,9 @@ export function buildExecutionAgentInput(
       includeTitle: options.includeTitle,
       includeWorkingDirectory: options.call.workingDirectory === undefined,
     }),
+    ...buildDirectResponseInstructions(
+      directResponse.maxLength, request.runnerConfig, directMemoryAuthoring !== undefined,
+    ),
     ...buildConversationMemoryAvailabilityInstructions(
       request.longTermMemory?.enabled === true,
     ),
@@ -219,6 +238,8 @@ export function buildExecutionAgentInput(
   const referenceMessages = [
     ...(filesystemMessage ? [filesystemMessage] : []),
     ...scheduledExecution.referenceMessages,
+    ...(automaticMemoryMessage ? [automaticMemoryMessage] : []),
+    ...(directMemoryAuthoring?.context ? [directMemoryAuthoring.context.message] : []),
     ...(request.temporalContext
       ? [buildRequestTemporalContextMessage(request.temporalContext)]
       : []),
@@ -234,8 +255,10 @@ export function buildExecutionAgentInput(
       ? [operationSupervisionEvidenceMessage]
       : []),
     buildExecutionCapabilityGroupCatalogMessage(
-      capabilityCatalogGroups,
-      allCapabilities,
+      knownGroupIds,
+      resolveRequestCapabilityBriefEntries(
+        resolveRequestWorkerCapabilities(request), capabilityCatalogGroups,
+      ),
     ),
     ...(capabilities.length > 0
       ? [buildExecutionCapabilityCatalogMessage(capabilities)]
@@ -247,6 +270,10 @@ export function buildExecutionAgentInput(
     projectMemoryRecallContinuations(memoryRecallMessage),
   );
   const sessionMemory = projectRootSessionMemory(request);
+  traceDebug("runtime.execution-agent", "direct_response.offer", {
+    requestId: request.requestId, reason: directResponse.reason,
+    maxLength: directResponse.maxLength ?? null,
+  });
   const context = projectRequestContext({
     instructions: scheduledExecution.instructions,
     format,

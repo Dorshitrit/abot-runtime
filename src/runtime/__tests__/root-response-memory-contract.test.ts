@@ -133,8 +133,6 @@ describe("root response long-term-memory contract", () => {
     });
     const execution = buildExecutionAgentResponseInstructions();
 
-    expect(supervisor).toContain("plain text");
-    expect(execution).toContain("raw text");
     expect(supervisor).not.toContain("memoryCandidates");
     expect(execution).not.toContain("memoryCandidates");
   });

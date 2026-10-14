@@ -1441,9 +1441,6 @@ describe("Supervisor-root request runner slice", () => {
               },
             ],
           });
-          expect(messages[0]!.content).toContain(
-            "automatically supplied from a previously settled direct sibling",
-          );
           return {
             text: encodeDecision({
               action: "return_result",

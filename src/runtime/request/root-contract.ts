@@ -36,6 +36,7 @@ type RootContractAction =
   | Readonly<{
       action: "respond";
       responseRecommendation?: string;
+      directResponse?: RootAuthoredResponse;
       acknowledgement?: string;
       title?: string;
     }>
@@ -132,6 +133,7 @@ export type RootContractAdapter<TRequest> = Readonly<{
       callFrame: RoleCallFrame;
       steeringVersion: number;
       responseRecommendation?: string;
+      directResponse?: RootAuthoredResponse;
       call: RootContractCallIdentity;
       toolResults: RequestToolResultsView;
       resume?: RoleChildReturnContext;

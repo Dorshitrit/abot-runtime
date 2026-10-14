@@ -56,9 +56,9 @@ function availabilityHarness(options: {
     ...(options.limit !== undefined
       ? { memoryRecallLimit: options.limit }
       : {}),
-    async retrieve() {
-      retrievalCount += 1;
-      if (options.steerDuringFirstRecall && retrievalCount === 1) {
+    async retrieve({ query }) {
+      if (query !== REQUEST_PROMPT) retrievalCount += 1;
+      if (query !== REQUEST_PROMPT && options.steerDuringFirstRecall && retrievalCount === 1) {
         harness.requestSteering.append({
           steerId: "after-first-lookup",
           text: "Use the current stored preference in the answer.",
@@ -90,7 +90,7 @@ function availabilityHarness(options: {
       };
     },
   });
-  return { ...harness, offered, decisions, limit };
+  return { ...harness, offered, decisions, limit, policy: options.policy };
 }
 
 function expectNormalCompletion(
@@ -100,7 +100,9 @@ function expectNormalCompletion(
     ...Array<boolean>(harness.limit).fill(true),
     false,
   ]);
-  expect(harness.memory.retrieve).toHaveBeenCalledTimes(harness.limit);
+  expect(harness.memory.retrieve).toHaveBeenCalledTimes(
+    harness.limit + 1,
+  );
   expect(harness.request.onAnswerToken).toHaveBeenCalledExactlyOnceWith(
     FINAL_RESPONSE,
   );

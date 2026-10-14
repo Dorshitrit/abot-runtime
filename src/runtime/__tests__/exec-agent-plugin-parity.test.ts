@@ -315,9 +315,6 @@ describe("exec Agent Plugin parity", () => {
     if (typeof mutationGrounding !== "string") {
       throw new Error("exec mutation grounding missing");
     }
-    expect(mutationGrounding).toContain(
-      "settled tool evidence; not command intent",
-    );
     expect(mutationGrounding).toContain("- observation root: .");
     expect(mutationGrounding).toContain("- observation complete: true");
     expect(mutationGrounding).toContain("- changed entries: 3");

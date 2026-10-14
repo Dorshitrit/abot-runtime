@@ -1,9 +1,10 @@
+import { prepareInitialMemory } from "../long-term-memory/initial-context.js";
 import { createRequestRoleCallPolicy } from "./role-call-policy.js";
 import { restoreApprovalExecutionFreshness } from "./capability-execution-freshness.js";
 import { captureRoleCallLedgerCheckpoint } from "../orchestration/role-calls/checkpoint.js";
 import { isRoleApprovalWait } from "../orchestration/role-executors/approval-continuation.js";
 import type { BoundApprovalDecision } from "../orchestration/worker-capabilities/approval-contracts.js";
-import { resumeCapabilityApprovalGroup } from "../orchestration/worker-capabilities/execution/approval-group.js";
+import { restoreCapabilityApprovalGroup } from "../orchestration/worker-capabilities/execution/approval-group.js";
 import {
   createRoleApprovalContinuation,
   validateRequestApprovalContinuation,
@@ -62,8 +63,12 @@ export async function runRequestRunner(
         }
       : {}),
   });
+  const initialMemory = await prepareInitialMemory(
+    request, options.continuation?.ledger.state.initialMemory,
+  );
   const ledger = createRoleCallLedger({
     requestId: request.requestId,
+    ...(initialMemory !== undefined ? { initialMemory } : {}),
     ...(options.continuation
       ? { checkpoint: options.continuation.ledger }
       : {}),
@@ -82,18 +87,24 @@ export async function runRequestRunner(
         ledger,
         request.workerCapabilities.provider.getDescriptors(),
       );
+      request.abortSignal.throwIfAborted();
       const executionFreshness = restoreApprovalExecutionFreshness(
         options.continuation.preparedGroup.executionFreshnessToken,
         request.requestSteering,
       );
-      const settled = await resumeCapabilityApprovalGroup({
+      const prepared = await restoreCapabilityApprovalGroup({
         ...(executionFreshness ? { executionFreshness } : {}),
         ledger,
         context: request.workerCapabilities.executionContext,
         adapters: request.workerCapabilities.provider.getAdapters(),
         group: options.continuation.preparedGroup,
-        decisions: options.decisions ?? [],
       });
+      request.abortSignal.throwIfAborted();
+      restoreApprovalExecutionFreshness(
+        options.continuation.preparedGroup.executionFreshnessToken,
+        request.requestSteering,
+      );
+      const settled = await prepared.execute(options.decisions ?? []);
       continuation = createRoleApprovalContinuation(
         options.continuation,
         settled.executionIds,

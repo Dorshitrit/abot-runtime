@@ -66,7 +66,7 @@ export function createSparkChatPanel({ documentRoot = document, launcherAnchor }
     placement.refresh();
     onToggle(value);
     if (!focus) return;
-    if (value) dom.messagesList.focus({ preventScroll: true });
+    if (value) dom.composerInput.focus({ preventScroll: true });
     else (previousFocus?.isConnected ? previousFocus : dom.launcherButton)?.focus({ preventScroll: true });
   }
 

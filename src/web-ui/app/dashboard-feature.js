@@ -75,6 +75,15 @@ export function createDashboardFeature({
   document.addEventListener("visibilitychange", controller.visibilityChanged);
   return {
     ...controller,
+    compactWidgets: view.compactWidgets,
+    setActive(value) {
+      view.compactWidgets.setWorkspace(value ? "home" : "other");
+      controller.setActive(value);
+    },
+    environmentChanged() {
+      view.compactWidgets.close({ restoreFocus: false });
+      controller.environmentChanged();
+    },
     composerHost: view.composerHost,
     setupHost: view.setupHost,
   };

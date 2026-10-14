@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "filesystem",
   "version": "0.1.0",
-  "description": "Inspect and mutate files under the configured agent work directory and workspace roots.",
+  "description": "Inspect, read, write, and edit files within configured agent-work and workspace roots.",
   "extensions": {
     "ai.abot.compatibility": {
       "version": 1,

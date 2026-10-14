@@ -1,5 +1,7 @@
 import { MODEL_STEPS } from "../../../shared/model-steps.js";
 import type { MemoryRecallDecision } from "../memory-recall-decision.js";
+import type { MemoryCandidate } from "../../long-term-memory/contracts.js";
+import type { ConversationMemoryAuthoringContext } from "../../long-term-memory/conversation-authoring/context.js";
 import type {
   ExecutionWorkPlanOptions,
   ExecutionWorkPlanReport,
@@ -54,6 +56,10 @@ export type ExecutionAgentDecisionPresentation = Readonly<{
 export type ExecutionAgentRespondDecision = Readonly<
   ExecutionAgentDecisionPresentation & {
     action: "respond";
+    /** Exact prevalidated short answer; absent keeps separate presentation. */
+    response?: string;
+    /** Assessed proposals bound to the same accepted direct response. */
+    memoryCandidates?: readonly MemoryCandidate[];
   }
 >;
 
@@ -204,6 +210,10 @@ export type ExecutionAgentDecisionContractOptions = Readonly<{
   includeAcknowledgement?: boolean;
   includeTitle?: boolean;
   allowRespond?: boolean;
+  directResponseMaxLength?: number;
+  directResponseMemoryAuthoring?: Readonly<{
+    context?: ConversationMemoryAuthoringContext;
+  }>;
   allowMemoryRecall?: boolean;
   allowPlanner?: boolean;
   allowAuditor?: boolean;

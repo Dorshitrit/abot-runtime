@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "json-inspector",
   "version": "0.3.1",
-  "description": "Validate a JSON file and return a bounded structural summary.",
+  "description": "Validate JSON files and inspect their structure.",
   "extensions": {
     "ai.abot.compatibility": { "version": 1, "runtimePlatforms": ["linux", "darwin", "win32"] },
     "ai.abot.runtime": {

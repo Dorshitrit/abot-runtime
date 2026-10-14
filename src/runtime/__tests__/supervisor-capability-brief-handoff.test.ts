@@ -314,11 +314,12 @@ describe("Supervisor and Planner capability brief handoff", () => {
         if (isDelegationRouting) {
           expect(briefMessages).toHaveLength(1);
           expect(briefMessages[0]!.role).toBe("system");
-          expect(briefMessages[0]!.content).toContain("write_file");
-          expect(briefMessages[0]!.content).toContain("write_complete_file");
+          expect(briefMessages[0]!.content).toContain("Tool groups: write: filesystem [write_file]\nPlugin descriptions: filesystem:");
           expect(briefMessages[0]!.content).toContain(
-            JSON.stringify(writeSummary),
+            "Inspect, read, write, and edit files within configured agent-work and workspace roots.",
           );
+          expect(briefMessages[0]!.content).not.toContain("write_complete_file");
+          expect(briefMessages[0]!.content).not.toContain(writeSummary);
           expect(briefMessages[0]!.content).not.toContain("read_file");
         } else {
           expect(briefMessages).toEqual([]);
@@ -376,7 +377,7 @@ describe("Supervisor and Planner capability brief handoff", () => {
           parentCallId: "call-2",
           objective: workerObjective,
           workingDirectory: ".",
-          availableCapabilities: [{ capabilityId: "write_complete_file" }],
+          availableCapabilities: [{ capabilityId: "write_complete_file", summary: writeSummary }],
         });
         expect(request.onAnswerToken).toHaveBeenCalledExactlyOnceWith(
           finalResponse,

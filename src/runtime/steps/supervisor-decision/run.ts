@@ -66,6 +66,7 @@ export async function runSupervisorDecision(
     workerCapabilityAffordances?: readonly SupervisorWorkerCapabilityAffordance[];
     availableWorkerCapabilityCatalog?: readonly WorkerCapabilityCatalogGroup[];
     memoryRecallMessage?: ChatMessage;
+    initialMemoryMessage?: ChatMessage;
     memoryRecallCount?: number;
   }>,
 ): Promise<SupervisorDecisionOutcome> {
@@ -91,6 +92,9 @@ export async function runSupervisorDecision(
   const memoryRecallMessage = request.longTermMemory?.enabled
     ? options.memoryRecallMessage
     : undefined;
+  const initialMemoryMessage = request.longTermMemory?.enabled
+    ? options.initialMemoryMessage
+    : undefined;
   const input = buildSupervisorDecisionInput(request, {
     allowMemoryRecall: canOfferMemoryRecall({
       enabled: request.longTermMemory?.enabled === true,
@@ -98,6 +102,7 @@ export async function runSupervisorDecision(
       maxRecallCallsPerRequest: request.memoryRecallLimit,
     }),
     ...(memoryRecallMessage ? { memoryRecallMessage } : {}),
+    ...(initialMemoryMessage ? { initialMemoryMessage } : {}),
     ...buildSupervisorCapabilityBriefOptions(request, options),
     toolResults: options.toolResults,
     ...(options.includeAcknowledgement === undefined

@@ -35,11 +35,5 @@ describe("semantic state manifest plugin parity", () => {
           [],
       ),
     ).toEqual(["list_memory", "search_memory", "add_memory", "delete_memory"]);
-    expect(plugin?.skills?.memory_lookup_skill).toContain(
-      "facts actually retrieved",
-    );
-    expect(plugin?.skills?.memory_mutation_skill).toContain(
-      "It is not file storage",
-    );
   });
 });

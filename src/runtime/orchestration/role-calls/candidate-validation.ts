@@ -11,7 +11,7 @@ import {
   isRoleCapabilitySelectionSupervisionState,
 } from "./capability-selection-supervision.js";
 import { isValidRoleCapabilitySelectionSupervision } from "./capability-selection-supervision-validation.js";
-import { validateRoleMemoryRecalls } from "./memory-recall-state-validation.js";
+import { hasInitialMemoryContext, validateRoleMemoryRecalls } from "./memory-recall-state-validation.js";
 import { isValidAdoptedModelWorkPlan } from "./work-plan-validation.js";
 import {
   isRoleOperationFingerprint,
@@ -108,6 +108,7 @@ export function validateRoleCallState(
     !Array.isArray(state?.plans) ||
     !Array.isArray(state?.capabilityExecutions) ||
     !Array.isArray(state?.memoryRecalls) ||
+    !hasInitialMemoryContext(state?.initialMemory, policy.authority.id) ||
     !isRoleOperationSupervisionState(state?.operationSupervision) ||
     !isRoleCapabilitySelectionSupervisionState(
       state?.capabilitySelectionSupervision,

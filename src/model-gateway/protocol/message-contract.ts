@@ -153,7 +153,7 @@ export function isTextChatMessage(value: unknown): value is ChatTextMessage {
   );
 }
 
-function isStrictTextChatMessage(value: unknown): value is ChatTextMessage {
+export function isStrictTextChatMessage(value: unknown): value is ChatTextMessage {
   if (
     !isRecord(value) ||
     !hasOnlyKeys(value, TEXT_MESSAGE_KEYS) ||

@@ -1,8 +1,7 @@
 # Supervisor Route Selection
 
-Classify by the final outcome requested now, not by future-action words or the
-number of steps, tools, facts, sources, sections, or comparison dimensions.
-Operational length alone never selects Planner.
+Apply the runtime's role-selection rules to the remaining requested work.
+Classify by the requested outcome, not isolated wording.
 
 - Distinguish internal recollection from a fresh observation of external state.
   When an offered root context action owns the needed lookup, use it directly
@@ -14,7 +13,7 @@ Operational length alone never selects Planner.
   observation needs an exact successful result from this request; conversation
   history, recollections, summaries, stable knowledge, silence, and earlier
   results cannot substitute. If an available observation can satisfy a remaining
-  external requirement, choose Worker.
+  external requirement, delegate according to the runtime's role-selection rules.
 - Choose `respond` only after no required observation or external effect
   remains and the requested final form is the conversation itself. Explanation,
   comparison, recommendation, prioritization, and hypothetical planning remain
@@ -28,7 +27,6 @@ Operational length alone never selects Planner.
   resolve it.
 - Choose Worker only when one independently completable external outcome can
   be delegated without coordinating multiple final-state artifacts or effects.
-  Prerequisite observation or reasoning alone does not require Planner.
 - Choose Planner when the request requires two or more persistent effects,
   deliverables, or components that must each exist in the final state and must
   be coordinated for integration, consistency, or joint acceptance, even when

@@ -18,7 +18,6 @@ import { projectImmediateCapabilityReconsideration } from "./reconsideration-con
 import { projectAuditorInputState } from "../auditor-decision/audit-input-state.js";
 import { projectExecutionWorkPlanContext } from "./work-plan-sources.js";
 import type {
-  CapabilityCatalogGroup,
   CapabilityDescriptor,
 } from "../../orchestration/capability-adapters/index.js";
 
@@ -26,8 +25,10 @@ export const EXECUTION_STATE_MESSAGE_KIND =
   "runtime_execution_state_v1" as const;
 export const EXECUTION_CAPABILITY_CATALOG_MESSAGE_KIND =
   "runtime_execution_capability_catalog_v1" as const;
-export const EXECUTION_CAPABILITY_GROUP_CATALOG_MESSAGE_KIND =
-  "runtime_execution_capability_group_catalog_v1" as const;
+export {
+  EXECUTION_CAPABILITY_GROUP_CATALOG_HEADER,
+  buildExecutionCapabilityGroupCatalogMessage,
+} from "./plugin-catalog.js";
 export const EXECUTION_AGENT_ACTION_MESSAGE_KIND =
   "runtime_execution_agent_action_v1" as const;
 export { EXECUTION_CAPABILITY_RECONSIDERATION_MESSAGE_KIND } from "./reconsideration-context.js";
@@ -188,47 +189,6 @@ function buildExecutionStateMessageForConsumer(
   });
 }
 
-export function buildExecutionCapabilityGroupCatalogMessage(
-  catalogGroups: readonly CapabilityCatalogGroup[],
-  capabilities: readonly CapabilityDescriptor[],
-): ChatMessage {
-  const sortedCapabilities = [...capabilities].sort((left, right) => {
-    if (left.capabilityId < right.capabilityId) return -1;
-    if (left.capabilityId > right.capabilityId) return 1;
-    return 0;
-  });
-  const describedCapabilityIds = new Set<string>();
-  const projectedGroups = catalogGroups.map((group) => ({
-    ...group,
-    description: sortedCapabilities
-      .filter((capability) =>
-        (capability.catalogGroups ?? ["other"]).includes(group.groupId),
-      )
-      .map(({ capabilityId, summary }) => {
-        if (describedCapabilityIds.has(capabilityId)) return capabilityId;
-        describedCapabilityIds.add(capabilityId);
-        return `${capabilityId}: ${summary}`;
-      })
-      .join("\n"),
-  }));
-  return Object.freeze({
-    role: "user" as const,
-    content: JSON.stringify({
-      kind: EXECUTION_CAPABILITY_GROUP_CATALOG_MESSAGE_KIND,
-      authority: "runtime_registry",
-      presenceEffect: "passive_routing_metadata_not_user_intent",
-      scopeSemantics: {
-        groupCombination: "or_union",
-        openAction: "establish_when_closed",
-        extendAction: "add_only_inactive_groups_when_active",
-        unchangedUpdate: "rejected_before_action",
-        automaticTransitions: false,
-      },
-      catalogGroups: projectedGroups,
-    }),
-  });
-}
-
 export function buildExecutionCapabilityCatalogMessage(
   capabilities: readonly CapabilityDescriptor[],
 ): ChatMessage {
@@ -239,6 +199,7 @@ export function buildExecutionCapabilityCatalogMessage(
       authority: "runtime_registry",
       capabilities: capabilities.map((capability) => ({
         capabilityId: capability.capabilityId,
+        summary: capability.summary,
         effect: capability.effect,
       })),
     }),

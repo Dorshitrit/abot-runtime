@@ -183,5 +183,5 @@
   },
   "type": "module",
   "types": "./dist/src/runtime/index.d.ts",
-  "version": "1.8.0"
+  "version": "1.8.1"
 }

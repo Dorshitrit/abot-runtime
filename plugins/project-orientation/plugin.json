@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "project-orientation",
   "version": "0.3.1",
-  "description": "Inspect a bounded project tree and its manifest metadata.",
+  "description": "Inspect project directories and manifest metadata.",
   "extensions": {
     "ai.abot.compatibility": { "version": 1, "runtimePlatforms": ["linux", "darwin", "win32"] },
     "ai.abot.runtime": {

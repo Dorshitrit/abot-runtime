@@ -1,12 +1,12 @@
 import { escapeHtml } from "../../lib/text-format.js";
 import { canCheckMacPermissions, canCheckNativePermissions, permissionsMatchConnection, permissionsMatchNativeOwner } from "./macos-permission-scopes.js";
 
-function hasNativePermissionSurface(snapshot) {
+export function hasNativePermissionSurface(snapshot) {
   if (snapshot?.identity?.os === "macos") return true;
   if (!snapshot?.nativePermissions) return false;
   return snapshot.nativePermissions.reason !== "native_macos_unavailable";
 }
-function permissionSummary(receipt) {
+export function permissionSummary(receipt) {
   if (!receipt) return "not checked";
   if (receipt.permissions.screenRecording !== "granted") return "action needed";
   if (receipt.permissions.accessibility !== "granted") return "action needed";

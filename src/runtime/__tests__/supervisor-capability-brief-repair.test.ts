@@ -17,6 +17,8 @@ type ModelInput = Parameters<ModelGatewayClient["invoke"]>[0];
 const prompt = "Inspect the requested record.";
 const entries: ToolAvailabilityEntry[] = Array.from({ length: 40 }, (_, i) => ({
   toolName: `tool_${i}`,
+  pluginName: `plugin_${i}`,
+  pluginDescription: `Inspect source ${i}. ${"Read bounded records. ".repeat(4)}`.trim(),
   operationId: `observe_${i}`,
   summary: `Observe record ${i}. ${"f".repeat(300)}`,
   catalogGroups: ["read"],
@@ -204,23 +206,17 @@ describe("Supervisor optional descriptions across structured repairs", () => {
       "supervisor_working_directory",
     ]);
     const firstBrief = messages(inputs[0]!).find(isCapabilityBriefMessage)!;
-    expect(JSON.parse(firstBrief.content.split("\n").at(-1)!)).toHaveLength(40);
+    expect(firstBrief.content.split("\n").at(-1)!.split(" | ")).toHaveLength(40);
     for (const input of inputs.slice(1, 3)) {
       const brief = messages(input).find(isCapabilityBriefMessage);
       if (brief) {
         expect(brief.content).not.toContain("Detail: descriptions.");
         expect(brief.content).not.toContain(entries[0]!.summary);
         expect(brief.content).not.toContain(entries.at(-1)!.summary);
-        if (brief.content.includes("Detail: detailed.")) {
-          for (const entry of entries)
-            expect(brief.content).toContain(entry.operationId);
-        } else if (brief.content.includes("Detail: titles.")) {
-          for (const entry of entries)
-            expect(brief.content).toContain(entry.toolName);
-        } else {
-          expect(brief.content).toContain("Detail: groups.");
-          expect(brief.content).toContain("memberCount=40");
-        }
+        expect(brief.content).toContain("Detail: groups.");
+        expect(brief.content).toContain("memberCount=40");
+        for (const entry of entries)
+          expect(brief.content).not.toContain(entry.operationId);
       }
     }
     expect(messages(inputs[3]!).filter(isCapabilityBriefMessage)).toEqual([]);

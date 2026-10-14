@@ -75,7 +75,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
       await expect(runRequestRunner(harness.request)).resolves.toMatchObject({
         output: FINAL_RESPONSE,
       });
-      expect(harness.memory.retrieve).toHaveBeenCalledExactlyOnceWith({
+      expect(harness.memory.retrieve).toHaveBeenLastCalledWith({
         query: RECALL_QUERY,
         context: expect.objectContaining({
           requestId: harness.request.requestId,
@@ -83,6 +83,9 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
           abortSignal: harness.request.abortSignal,
         }),
       });
+      expect(harness.memory.retrieve.mock.calls.map(([input]) => input.query)).toEqual(
+        [REQUEST_PROMPT, RECALL_QUERY],
+      );
       expect(harness.getAdapters).not.toHaveBeenCalled();
       expect(harness.invokeRaw).not.toHaveBeenCalled();
       const inputs = harness.invoke.mock.calls.map(([input]) => input);
@@ -162,7 +165,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
           output: FINAL_RESPONSE,
         });
         expect(decisionCount).toBe(2);
-        expect(harness.memory.retrieve).toHaveBeenCalledOnce();
+        expect(harness.memory.retrieve).toHaveBeenCalledTimes(2);
         expect(harness.getAdapters).not.toHaveBeenCalled();
       },
     );
@@ -187,11 +190,12 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
       expect(harness.invoke.mock.calls).toHaveLength(2);
     });
 
-    test("keeps automatic terminal retrieval for an unrelated request without explicit recall", async () => {
+    test("prepares memory before root decisions and reuses it at response", async () => {
       const harness = createMemoryRecallHarness({
         policy,
         decide(input) {
           expect(recallCapsules(input)).toEqual([]);
+          expect(harness.memory.retrieve).toHaveBeenCalledTimes(1);
           return {
             ...responseDecision(policy),
             acknowledgement: "I will answer the request.",

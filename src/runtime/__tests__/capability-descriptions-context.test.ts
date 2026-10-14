@@ -14,14 +14,12 @@ import {
 } from "../context/token-estimator.js";
 
 type ContextInput = Parameters<typeof projectRequestContext>[0];
-type Description = Pick<
-  ToolAvailabilityEntry,
-  "toolName" | "operationId" | "summary" | "catalogGroups"
->;
 
 function entries(count = 70): ToolAvailabilityEntry[] {
   return Array.from({ length: count }, (_, index) => ({
     toolName: `tool_${String(index).padStart(3, "0")}`,
+    pluginName: `plugin_${String(index).padStart(3, "0")}`,
+    pluginDescription: `Discover source ${index}. ${"Inspect available records and their contents. ".repeat(2)}`.trim(),
     operationId: `operation_${String(index).padStart(3, "0")}`,
     summary: `Exact operation ${index}. Available targets for this request: linux, windows.`,
     catalogGroups: ["system", "custom"],
@@ -72,24 +70,19 @@ function project(
   });
 }
 
-function descriptions(message: ChatMessage | undefined): Description[] {
+function descriptions(message: ChatMessage | undefined): string {
   expect(message?.role).toBe("system");
-  return JSON.parse(message!.content.split("\n").at(-1)!);
+  return message!.content.slice(message!.content.indexOf("Tool groups: "));
 }
 
-function expectedDescriptions(
-  catalog: readonly ToolAvailabilityEntry[],
-): Description[] {
-  return catalog.map(({ toolName, operationId, summary, catalogGroups }) => ({
-    toolName,
-    operationId,
-    summary,
-    catalogGroups: [...new Set(catalogGroups)].sort(),
-  }));
+function expectedDescriptions(catalog: readonly ToolAvailabilityEntry[]): string {
+  const bindings = catalog.map((entry) => `${entry.pluginName} [${entry.toolName}]`).join(", ");
+  return `Tool groups: custom: ${bindings} | system: ${bindings}\nPlugin descriptions: `
+    + catalog.map((entry) => `${entry.pluginName}: ${entry.pluginDescription}`).join(" | ");
 }
 
-describe("complete semantic capability descriptions", () => {
-  test("retains all 70 operations once with full request-bound facts beyond the old token cap", () => {
+describe("compact plugin discovery descriptions", () => {
+  test("lists all 70 plugin descriptions once and budgets both catalog lines without operation details", () => {
     const catalog = entries();
     catalog[69] = {
       ...catalog[69]!,
@@ -105,9 +98,30 @@ describe("complete semantic capability descriptions", () => {
     );
     const body = descriptions(projection.message);
     expect(body).toEqual(expectedDescriptions(catalog));
-    expect(body).toHaveLength(70);
-    expect(new Set(body.map(({ operationId }) => operationId)).size).toBe(70);
-    expect(body[69]!.summary).toBe(catalog[69]!.summary);
+    const [bindings, pluginDescriptions] = body.split("\n");
+    expect(bindings!.split(" | ")).toHaveLength(2);
+    expect(pluginDescriptions!.split(" | ")).toHaveLength(70);
+    expect(projection.estimatedTokens).toBe(estimateMessageTokens(projection.message!));
+    expect(projection.estimatedTokens).toBeGreaterThan(estimateMessageTokens({
+      role: "system", content: projection.message!.content.split("\nPlugin descriptions:")[0]!,
+    }));
+    for (const entry of catalog) {
+      expect(body).toContain(entry.toolName);
+      expect(body.split(entry.pluginDescription!)).toHaveLength(2);
+      expect(body).not.toContain(entry.operationId);
+      expect(body).not.toContain(entry.summary);
+    }
+  });
+
+  test("does not grow discovery when one tool grows from one to 78 operations", () => {
+    const catalog = entries(78).map((entry) => ({
+      ...entry, toolName: "desktop_tools", pluginName: "system",
+      pluginDescription: "Discover and control the desktop.",
+    }));
+    expect(project(catalog).message).toEqual(project(catalog.slice(0, 1)).message);
+    expect(descriptions(project(catalog).message)).toBe(
+      "Tool groups: custom: system [desktop_tools] | system: system [desktop_tools]\nPlugin descriptions: system: Discover and control the desktop.",
+    );
   });
 
   test("orders entries stably without changing source arrays or context", () => {
@@ -150,24 +164,24 @@ describe("complete semantic capability descriptions", () => {
       expectedDescriptions(catalog),
     );
     const rejected = project(catalog, input);
-    expect(rejected.level).toBe("detailed");
+    expect(rejected.level).toBe("groups");
     expect(rejected.budgetTokens).toBe(Math.min(512, cost - 1));
     expect(rejected.message!.content).not.toContain(catalog[0]!.summary);
     for (const entry of catalog)
-      expect(rejected.message!.content).toContain(entry.operationId);
+      expect(rejected.message!.content).not.toContain(entry.operationId);
   });
 
-  test("falls back to a complete old overview when exact summaries cannot fit", () => {
+  test("ignores operation summary size in plugin discovery", () => {
     const catalog = entries(2).map((entry) => ({
       ...entry,
       summary: "unique proof ".repeat(10_000),
     }));
     const projection = project(catalog);
-    expect(projection.level).toBe("detailed");
+    expect(projection.level).toBe("descriptions");
     expect(projection.estimatedTokens).toBeLessThanOrEqual(512);
     expect(projection.message!.content).not.toContain("unique proof");
     for (const entry of catalog)
-      expect(projection.message!.content).toContain(entry.operationId);
+      expect(projection.message!.content).not.toContain(entry.operationId);
   });
 
   test("deducts configured instructions and full history before descriptions admission", () => {

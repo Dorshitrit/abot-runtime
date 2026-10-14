@@ -175,6 +175,8 @@ export type ToolDefinition = {
   name: string;
   /** Runtime-owned provenance used when presenting tools by plugin. */
   pluginName?: string;
+  /** Optional manifest-owned plugin description for passive discovery. */
+  pluginDescription?: string;
   description?: string;
   routingCapability: ToolRoutingCapability;
   controlsRefinement?: ToolControlsRefinement;
@@ -219,6 +221,8 @@ export type ToolRequestAttachment = Readonly<{
 /** Minimal config-filtered tool fact; consumers project it for their own context. */
 export type ToolAvailabilityEntry = Readonly<{
   toolName: string;
+  pluginName?: string;
+  pluginDescription?: string;
   operationId: string;
   summary: string;
   catalogGroups: readonly ToolCatalogGroup[];

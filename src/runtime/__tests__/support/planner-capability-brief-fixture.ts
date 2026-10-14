@@ -9,6 +9,8 @@ import { createTestRequestExecutionScope } from "./request-execution-scope.js";
 export const PLANNER_BRIEF_ENTRIES: readonly ToolAvailabilityEntry[] =
   Array.from({ length: 6 }, (_, index) => ({
     toolName: `fixture_tool_${index}`,
+    pluginName: `fixture_plugin_${index}`,
+    pluginDescription: `Inspect existing artifacts in group ${index}. ${"Read bounded content. ".repeat(4)}`.trim(),
     operationId: `fixture_operation_${index}`,
     summary: `Canonical observation ${index}. ${"Read bounded existing content. ".repeat(20)}`,
     catalogGroups: ["read"],

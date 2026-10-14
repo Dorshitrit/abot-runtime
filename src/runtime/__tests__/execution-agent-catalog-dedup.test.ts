@@ -8,6 +8,7 @@ import {
   resetDebugLoggerConfig,
 } from "../observability/debug-logger.js";
 import { handleRunRequest } from "../request/handler.js";
+import { EXECUTION_CAPABILITY_GROUP_CATALOG_HEADER as GROUP_HEADER } from "../steps/execution-agent/state-context.js";
 import {
   capsules,
   decision,
@@ -24,7 +25,10 @@ const CHANGE_SUMMARY = "Change exactly one fixture item.";
 const MIXED_SUMMARY = "Inspect and change one fixture item.";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
-afterEach(() => resetDebugLoggerConfig());
+afterEach(() => {
+  resetDebugLoggerConfig();
+  vi.useRealTimers();
+});
 
 test("retains complete overlapping discovery and exact executable controls across closed, partial and full scopes", async () => {
   const fixture = await filesystemScopeFixture("execution-agent-v1");
@@ -117,53 +121,64 @@ test("retains complete overlapping discovery and exact executable controls acros
           (message) => message.role === "user" && message.content === prompt,
         ),
       ).toHaveLength(1);
-      const groupCatalog = capsules(input, GROUP_KIND);
-      expect(groupCatalog).toHaveLength(1);
-      expect(groupCatalog[0]).toMatchObject({
-        role: "user",
-        authority: "runtime_registry",
-        presenceEffect: "passive_routing_metadata_not_user_intent",
-        catalogGroups: [
-          {
-            groupId: "alpha",
-            description: `change_item: ${CHANGE_SUMMARY}\nobserve_item: ${OBSERVE_SUMMARY}`,
-            memberCount: 2,
-            effects: ["observation", "mutation"],
-          },
-          {
-            groupId: "beta",
-            description: "change_item\nobserve_item",
-            memberCount: 2,
-            effects: ["observation", "mutation"],
-          },
-          {
-            groupId: "omega",
-            description: `inspect_and_change: ${MIXED_SUMMARY}`,
-            memberCount: 1,
-            effects: ["mixed"],
-          },
+      expect(capsules(input, GROUP_KIND)).toEqual([]);
+      expect(
+        messages(input).filter(({ content }) =>
+          content.startsWith(GROUP_HEADER),
+        ),
+      ).toEqual([
+        { role: "user", content: `${GROUP_HEADER} alpha: change_item_fixture, observe_item_fixture | beta: change_item_fixture, observe_item_fixture | omega: inspect_and_change_fixture` },
+      ]);
+      const offeredGroups = decisionVariants(input).flatMap(
+        ({ properties }) => properties.catalogGroupIds?.items.enum ?? [],
+      );
+      expect(offeredGroups).toEqual(
+        [["alpha", "beta", "omega"], ["omega"], ["omega"], ["omega"], [], []][
+          decisionTurn - 1
         ],
-      });
-      expect(groupCatalog[0]).not.toHaveProperty("groupDescriptionProjection");
+      );
       const activeCatalog = capsules(input, ACTIVE_KIND);
       const expectedActive =
         decisionTurn === 1
           ? []
           : [
-              { capabilityId: "observe_item", effect: "observation" },
-              { capabilityId: "change_item", effect: "mutation" },
+              {
+                capabilityId: "observe_item",
+                effect: "observation",
+                summary: OBSERVE_SUMMARY,
+              },
+              {
+                capabilityId: "change_item",
+                effect: "mutation",
+                summary: CHANGE_SUMMARY,
+              },
               ...(decisionTurn >= 5
-                ? [{ capabilityId: "inspect_and_change", effect: "mixed" }]
+                ? [
+                    {
+                      capabilityId: "inspect_and_change",
+                      effect: "mixed",
+                      summary: MIXED_SUMMARY,
+                    },
+                  ]
                 : []),
             ];
       expect(activeCatalog).toHaveLength(decisionTurn === 1 ? 0 : 1);
       const active = activeCatalog[0]?.capabilities ?? [];
       expect(active).toEqual(expect.arrayContaining(expectedActive));
       expect(active).toHaveLength(expectedActive.length);
-      const catalogText = JSON.stringify([groupCatalog, activeCatalog]);
+      const catalogText = messages(input)
+        .map(({ content }) => content)
+        .join("\n");
       for (const summary of [OBSERVE_SUMMARY, CHANGE_SUMMARY, MIXED_SUMMARY]) {
         const encodedSummary = JSON.stringify(summary).slice(1, -1);
-        expect(catalogText.split(encodedSummary)).toHaveLength(2);
+        const expectedCount = expectedActive.some(
+          (entry) => entry.summary === summary,
+        )
+          ? 1
+          : 0;
+        expect(catalogText.split(encodedSummary)).toHaveLength(
+          expectedCount + 1,
+        );
       }
 
       const variants = invocationVariants(input);
@@ -230,6 +245,111 @@ test("retains complete overlapping discovery and exact executable controls acros
   }
 });
 
+test("a greeting receives the same closed catalog with one or 32 operations in one tool", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-13T00:00:00.000Z"));
+  const projections: unknown[] = [];
+  for (const operationCount of [1, 32]) {
+    const fixture = await filesystemScopeFixture("execution-agent-v1");
+    const execute = vi.fn<ToolModuleDeclaration["implementation"]>(async () =>
+      successResult({ output: "Unexpected execution." }),
+    );
+    const operationModules = Array.from({ length: operationCount }, (_, index) =>
+      moduleFor(
+        `operation_${index}`,
+        ["dynamic_group"],
+        `Summary ${index}.`,
+        "read_only",
+        execute,
+      ),
+    );
+    const first = operationModules[0]!;
+    const module: ToolModuleDeclaration = {
+      ...first,
+      definition: { ...first.definition, name: "dynamic_fixture" },
+      normalInvocation: {
+        version: 1,
+        operations: operationModules.flatMap((item) => item.normalInvocation!.operations),
+      },
+    };
+    const registry = createConfiguredToolRegistry(fixture.config, [module]);
+    const inputs: FilesystemModelInput[] = [];
+    const scripted = fixture.script(
+      [
+        {
+          step: "execution.decision",
+          output: decision({ action: "respond", acknowledgement: "Hello." }),
+        },
+        { step: "execution.response", output: "Hello." },
+      ],
+      (input) => inputs.push(input),
+    );
+    try {
+      await handleRunRequest(
+        {
+          send: (data: string) => fixture.events.push(JSON.parse(data)),
+        } as unknown as WebSocket,
+        {
+          type: "run_request",
+          requestId: "greeting-catalog-request",
+          sessionId: "filesystem-session",
+          input: "Hi",
+          agentMode: "reasoning",
+          toolPermissionMode: "full_access",
+          modelPreference: { profileId: "scripted", scope: "all" },
+        },
+        {
+          runtimeConfig: fixture.config,
+          sessionStore: fixture.sessions,
+          toolRegistry: registry,
+          modelGatewayClient: scripted.model,
+        },
+      );
+      scripted.assertComplete();
+      const initial = inputs[0]!;
+      expect(capsules(initial, GROUP_KIND)).toEqual([]);
+      expect(
+        messages(initial).filter(({ content }) =>
+          content.startsWith(GROUP_HEADER),
+        ),
+      ).toEqual([{ role: "user", content: `${GROUP_HEADER} dynamic_group: dynamic_fixture` }]);
+      expect(
+        decisionVariants(initial).flatMap(
+          ({ properties }) => properties.catalogGroupIds?.items.enum ?? [],
+        ),
+      ).toEqual(["dynamic_group"]);
+      expect(invocationVariants(initial)).toEqual([]);
+      expect(capsules(initial, ACTIVE_KIND)).toEqual([]);
+      expect(
+        messages(initial).filter(
+          ({ role, content }) => role === "user" && content === "Hi",
+        ),
+      ).toHaveLength(1);
+      for (const input of inputs) {
+        const exposed = JSON.stringify({
+          messages: messages(input),
+          format: input.format,
+        });
+        for (const operation of module.normalInvocation!.operations) {
+          expect(exposed).not.toContain(operation.operationId);
+          expect(exposed).not.toContain(operation.summary);
+        }
+        expect(exposed).not.toContain("itemId");
+      }
+      projections.push(
+        inputs.map((input) => ({
+          messages: messages(input),
+          schema: input.format,
+        })),
+      );
+      expect(execute).not.toHaveBeenCalled();
+    } finally {
+      await fixture.close();
+    }
+  }
+  expect(projections[0]).toEqual(projections[1]);
+});
+
 function moduleFor(
   operationId: string,
   catalogGroups: readonly string[],
@@ -274,10 +394,11 @@ type InvocationVariant = {
     action: { enum: string[] };
     capabilityId: { enum: string[] };
     selectionControls?: unknown;
+    catalogGroupIds?: { items: { enum: string[] } };
   };
 };
 
-function invocationVariants(input: FilesystemModelInput): InvocationVariant[] {
+function decisionVariants(input: FilesystemModelInput): InvocationVariant[] {
   const format = input.format as {
     schema: {
       properties: {
@@ -286,7 +407,11 @@ function invocationVariants(input: FilesystemModelInput): InvocationVariant[] {
     };
   };
   const decisionSchema = format.schema.properties.decision;
-  return (decisionSchema.anyOf ?? [decisionSchema]).filter(({ properties }) =>
+  return decisionSchema.anyOf ?? [decisionSchema];
+}
+
+function invocationVariants(input: FilesystemModelInput): InvocationVariant[] {
+  return decisionVariants(input).filter(({ properties }) =>
     properties.action.enum.includes("invoke_capability"),
   );
 }

@@ -12,7 +12,7 @@ export function normalizeAgentMode(mode) {
 function agentModeMeta(mode) {
   const modes = {
     auto: { label: "Auto", description: "Lets the agent choose", icon: "*" },
-    fast: { label: "Fast", description: "Shorter and quicker", icon: "!" },
+    fast: { label: "Low", description: "Shorter and quicker", icon: "!" },
     deep: {
       label: "Deep analysis",
       description: "More careful responses",

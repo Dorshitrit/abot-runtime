@@ -1,5 +1,10 @@
 import { escapeHtml } from "./text-format.js";
 
+export function displayReasoningMode(mode) {
+  if (mode === "fast") return "Low";
+  return mode;
+}
+
 export function canChooseReasoning(profile) {
   return profile?.supportsThinking === true;
 }
@@ -7,7 +12,7 @@ export function canChooseReasoning(profile) {
 /** Keep the stored mode for compatibility while showing the effective provider default. */
 export function reasoningModeOptions(mode, enabled, modes = ["fast", "reasoning", "deep"]) {
   if (!enabled) return `<option value="${escapeHtml(mode || "reasoning")}">Provider default</option>`;
-  const labels = { fast: "Fast", reasoning: "Reasoning", deep: "Deep", auto: "Auto" };
+  const labels = { fast: "Low", reasoning: "Reasoning", deep: "Deep", auto: "Auto" };
   return modes.map((value) => `<option value="${escapeHtml(value)}"${value === mode ? " selected" : ""}>${escapeHtml(labels[value] || value)}</option>`).join("");
 }
 

@@ -23,6 +23,8 @@ const catalog: readonly WorkerCapabilityCatalogGroup[] = [
 const entries: readonly ToolAvailabilityEntry[] = [
   {
     toolName: "local_search",
+    pluginName: "search-plugin",
+    pluginDescription: "Find local content.",
     operationId: "search_local_files",
     catalogGroups: ["read"],
     effect: "read_only",
@@ -30,6 +32,8 @@ const entries: readonly ToolAvailabilityEntry[] = [
   },
   {
     toolName: "weather_forecast",
+    pluginName: "weather-plugin",
+    pluginDescription: "Get weather forecasts.",
     operationId: "get_forecast",
     catalogGroups: ["web"],
     effect: "read_only",
@@ -123,9 +127,10 @@ describe("Supervisor capability brief input boundaries", () => {
       }),
     );
     for (const entry of entries) {
-      expect(brief[0]!.content).toContain(entry.toolName);
-      expect(brief[0]!.content).toContain(entry.operationId);
-      expect(brief[0]!.content).toContain(JSON.stringify(entry.summary));
+      expect(brief[0]!.content).toContain(entry.pluginName!);
+      expect(brief[0]!.content).toContain(entry.pluginDescription!);
+      expect(brief[0]!.content).not.toContain(entry.operationId);
+      expect(brief[0]!.content).not.toContain(entry.summary);
     }
     expect(detailed.context.messages[0]!.content).not.toContain(
       JSON.stringify(catalog),

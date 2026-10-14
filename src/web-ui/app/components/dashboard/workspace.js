@@ -3,6 +3,8 @@ import { getDashboardJobTemplates } from "../../lib/dashboard-job-templates.js";
 import { renderDashboardActivity } from "./activity.js";
 import { renderDashboardConversations } from "./recent-conversations.js";
 import { renderDashboardAutomations } from "./automations.js";
+import { createCompactHomeLayout } from "./compact-layout.js";
+import { dashboardWidgetSummaries } from "./widget-summaries.js";
 import {
   hasPendingDashboardApprovals,
   renderDashboardApprovals,
@@ -37,7 +39,26 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
   const setupHost = root.querySelector("[data-dashboard-setup]");
   const learningPanel = root.querySelector("[data-dashboard-learning]");
   const automationPanel = root.querySelector("[data-dashboard-automations]");
-  passiveLearning?.mountHome(root.querySelector("[data-dashboard-learning-content]"));
+  let currentSnapshot = {};
+  function approvalHome() {
+    if (hasPendingDashboardApprovals(currentSnapshot)) return approvalDock;
+    return content;
+  }
+  const returnParents = { approvals: approvalHome };
+  const compactWidgets = createCompactHomeLayout({ root, content });
+  for (const [id, label, icon, element] of [
+    ["learning", "ABot Spark", "learning", learningPanel],
+    ["conversations", "Recent conversations", "conversations", conversations],
+    ["activity", "Recent activity", "active", activity],
+    ["automations", "Automations", "job", automationPanel],
+    ["approvals", "Pending approvals", "success", approvals],
+  ]) compactWidgets.register({
+    id, label, icon, element,
+    getReturnParent: returnParents[id],
+    isAvailable: () => id !== "learning" || Boolean(passiveLearning),
+    getSummary: () => dashboardWidgetSummaries(currentSnapshot, passiveLearning?.snapshot?.())[id],
+  });
+  passiveLearning?.mountHome(root.querySelector("[data-dashboard-learning-content]"), compactWidgets.refresh);
   const composerNote = root.querySelector(".home-composer-note");
   const handlers = {
     template: (button) => actions.createJob(button.dataset.templateId),
@@ -57,12 +78,14 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
   });
 
   function render(snapshot) {
+    currentSnapshot = snapshot;
     const setupRequired = snapshot.composerAvailable === false;
+    compactWidgets.setEnabled(!setupRequired);
     const pendingApprovals = hasPendingDashboardApprovals(snapshot);
     approvalDock.hidden = setupRequired || !pendingApprovals;
     // Keep pending actions beside the composer; refresh errors stay in content.
-    const approvalParent = pendingApprovals ? approvalDock : content;
-    if (approvals.parentElement !== approvalParent)
+    const approvalParent = approvalHome();
+    if (!compactWidgets.isExpanded(approvals) && approvals.parentElement !== approvalParent)
       approvalParent.appendChild(approvals);
     root.classList.toggle("home-setup-active", setupRequired);
     learningPanel.hidden = setupRequired || !passiveLearning;
@@ -118,7 +141,8 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
       "aria-busy",
       String(Boolean(snapshot.loadingSessions)),
     );
+    compactWidgets.refresh();
   }
 
-  return { render, composerHost, setupHost };
+  return { render, composerHost, setupHost, compactWidgets };
 }

@@ -162,9 +162,9 @@ For OpenAI profiles with declared reasoning controls, the gateway sends the reso
 unless reasoning is disabled with `none`.
 OpenAI's `max_output_tokens` counts both reasoning and visible output. The
 gateway omits this parameter for all reasoning levels and model steps, including
-explicit `reasoning.effort=none`. FAST, REASONING and DEEP select reasoning effort
-without adding a separate output cap. The provider enforces output capacity;
-the input context guard and configured sampling controls retain their existing
+explicit `reasoning.effort=none`. LOW (wire value `fast`), REASONING and DEEP
+select reasoning effort without adding a separate output cap. The provider enforces
+output capacity; the input context guard and configured sampling controls retain their existing
 semantics. This policy does not discover model capabilities or assume support
 for a particular effort level.
 
@@ -214,6 +214,12 @@ an additional fetch signal, the gateway composes it instead of replacing it.
 Runtime timeouts, client cancellation, and other existing disconnect sources
 therefore stop provider generation without changing the public adapter
 contract.
+
+If a provider stream throws after `/chat` has emitted an event, the gateway
+ends that NDJSON response with an `error` event instead of attempting a second
+HTTP response. The client rejects the partial answer; no success `done` event
+is synthesized. Failures before the first event retain the existing HTTP error
+response, and downstream cancellation remains silent.
 
 Ollama streams also emit bounded internal `ollama.stream.progress` diagnostics
 at exponentially increasing output sizes and one `ollama.stream.terminated`

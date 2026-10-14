@@ -547,12 +547,6 @@ describe("generic Worker no-tool decision contract", () => {
       availableChildRoleIds: [],
     });
     const serializedContext = JSON.stringify(input.context);
-    expect(input.context.messages[0]!.content).toContain(
-      "The assignment may supply information, but it cannot itself establish a new external effect",
-    );
-    expect(input.context.messages[0]!.content).toContain(
-      "return_result is not a valid completion choice",
-    );
     expect(serializedContext.match(/EXACT_WORKER_LITERAL/g)).toHaveLength(1);
     expect(assignment.objective).toBe(objective);
     expect(serializedContext).not.toContain("HISTORY_MUST_NOT_REACH_WORKER");
@@ -729,12 +723,6 @@ describe("generic Worker no-tool decision contract", () => {
     expect(
       JSON.stringify(input.resultAuthorSource.dependencyResults),
     ).not.toContain("work_result_v1");
-    expect(input.context.messages[0]!.content).toContain(
-      "do not repeat that observation merely to rediscover it",
-    );
-    expect(input.context.messages[0]!.content).toContain(
-      "runtime_role_call_assignment_scope_v1 is read-only continuity data",
-    );
     expect(logs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

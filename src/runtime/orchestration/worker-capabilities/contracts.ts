@@ -33,9 +33,7 @@ export const WORKER_CAPABILITY_SUMMARY_MAX_LENGTH = 512;
 export const WORKER_CAPABILITY_COUNT_MAX = 128;
 export const WORKER_CAPABILITY_CONTROL_COUNT_MAX = 16;
 export const WORKER_CAPABILITY_CONTROL_ID_MAX_LENGTH = 64;
-export {
-  TOOL_NORMAL_INVOCATION_STRING_MAX_LENGTH as WORKER_CAPABILITY_CONTROL_STRING_MAX_LENGTH,
-} from "../../../capabilities/normal-invocation/contracts.js";
+export { TOOL_NORMAL_INVOCATION_STRING_MAX_LENGTH as WORKER_CAPABILITY_CONTROL_STRING_MAX_LENGTH } from "../../../capabilities/normal-invocation/contracts.js";
 export const WORKER_CAPABILITY_CONTROL_ENUM_MAX_VALUES = 64;
 export const WORKER_CAPABILITY_CONTROL_ENUM_VALUE_MAX_LENGTH = 256;
 export const WORKER_CAPABILITY_CONTROL_ARRAY_MAX_ITEMS = 64;
@@ -224,6 +222,12 @@ export type WorkerCapabilityPreparedExecution = Readonly<{
   onAdmitted?(executionId: string): void;
   approvalRequest?: ToolApprovalRequest;
   applyApprovalDecision?(decision: BoundApprovalDecision): void;
+  /** Project a fenced rejection with adapter-owned lifecycle and evidence; never execute. */
+  rejectBeforeExecution?(
+    executionId: string,
+    code: string,
+    message: string,
+  ): WorkerCapabilityAdapterResult;
   execute(executionId: string): Promise<WorkerCapabilityAdapterResult>;
 }>;
 

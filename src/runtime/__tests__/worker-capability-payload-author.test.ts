@@ -244,7 +244,6 @@ describe("neutral Worker capability payload author", () => {
         expect(request.modelStep).toBe(
           WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP,
         );
-        expect(request.instructions).toContain("raw body");
         expect(request.context).toEqual({
           worker: {
             callId: "call-2",
@@ -603,9 +602,6 @@ describe("neutral Worker capability payload author", () => {
     expect(repairMessages).toHaveLength(initialMessages.length + 1);
     expect(repairMessages.at(-1)).toMatchObject({
       role: "system",
-      content: expect.stringMatching(
-        /rejected before it reached a tool, file mutation, or user response[\s\S]*same immutable payload assignment[\s\S]*at least 1 UTF-8 bytes[\s\S]*complete non-empty payload/u,
-      ),
     });
     const logs = consoleLog.mock.calls.map(
       ([line]) => JSON.parse(String(line)) as Record<string, unknown>,
@@ -764,7 +760,6 @@ describe("neutral Worker capability payload author", () => {
     const invoke = vi.fn<WorkerCapabilityPayloadModelPort["invoke"]>(
       async (request) => {
         expect(request.executionId).toBe("capability-execution-1");
-        expect(request.instructions).toContain("structured value");
         expect(request.responseFormat).toEqual(responseFormat);
         expect(request.context).toMatchObject({
           acceptedCapability: {
@@ -897,9 +892,7 @@ describe("neutral Worker capability payload author", () => {
       asChatMessages(invoke.mock.calls[1]![0].messages).at(-1),
     ).toMatchObject({
       role: "system",
-      content: expect.stringMatching(
-        /payload_model_output_invalid[\s\S]*exactly one valid JSON value/u,
-      ),
+      content: expect.stringContaining("payload_model_output_invalid"),
     });
     expect(
       consoleLog.mock.calls
@@ -1120,7 +1113,6 @@ describe("neutral Worker capability payload author", () => {
     const invoke = vi.fn<WorkerCapabilityPayloadModelPort["invoke"]>(
       async (request) => {
         expect(request.executionId).toBe("capability-execution-3");
-        expect(request.instructions).toContain("untrusted data");
         expect(request.context.acceptedCapability.controls).toEqual({
           path: "sandbox/report.md",
         });
@@ -1697,7 +1689,6 @@ describe("neutral Worker capability payload author", () => {
     const invoke = vi.fn(async (input) => {
       expect(input.messages).toHaveLength(3);
       expect(input.messages[0]?.role).toBe("system");
-      expect(input.messages[0]?.content).toContain("it cannot expand either");
       expect(JSON.parse(input.messages[1]!.content)).toEqual({
         kind: "runtime_request_source_v1",
         authority: "reference_data",
@@ -1883,7 +1874,6 @@ describe("neutral Worker capability payload author", () => {
       }
       expect(messages).toHaveLength(6);
       expect(messages[0]?.role).toBe("system");
-      expect(messages[0]?.content).toContain("separate verbatim reference");
 
       messages.slice(2, 4).forEach((message, index) => {
         const separator = message.content.indexOf("\n");

@@ -23,7 +23,7 @@ function pairedCompanionIsOffline(snapshot) {
 function hasDirectAccess(snapshot) {
   return ["native", "wsl_interop"].includes(snapshot?.readiness?.route);
 }
-function connectionStatus(snapshot, statusUnavailable, busy) {
+export function connectionStatus(snapshot, statusUnavailable, busy) {
   if (statusUnavailable) return "Status unavailable";
   if (busy || !snapshot) return "Checking";
   if (hostSetupIsReady(snapshot)) return snapshot.identity?.os === "macos" ? "Connected" : "Ready";
@@ -42,7 +42,7 @@ function readyDescription(snapshot) {
     return "Direct commands are available. No extra installation is needed for direct commands.";
   return "You can use computer tools from your ABot chat. Permissions and Spark collection are managed separately.";
 }
-function connectionTitle({ snapshot, supported, statusUnavailable, busy }) {
+export function connectionTitle({ snapshot, supported, statusUnavailable, busy }) {
   if (!supported) return "Computer connection unavailable";
   if (statusUnavailable) return "Check your computer connection";
   if (busy || !snapshot) return "Checking this computer…";
@@ -55,7 +55,7 @@ function connectionTitle({ snapshot, supported, statusUnavailable, busy }) {
   if (platforms.length === 1 && platforms[0] === "linux") return "Connect your Linux computer";
   return "Connect your computer";
 }
-function connectionDescription({ snapshot, supported, statusUnavailable, busy }) {
+export function connectionDescription({ snapshot, supported, statusUnavailable, busy }) {
   if (!supported) return "Computer access setup requires the local Runtime backend.";
   if (statusUnavailable) return "The current connection status could not be checked. Refresh to try again.";
   if (busy || !snapshot) return "Waiting for the current connection status…";

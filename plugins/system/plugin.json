@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "system",
   "version": "1.0.0",
-  "description": "System commands, applications and structured observation/control of existing user desktops across native and locally connected OS targets.",
+  "description": "Run OS commands, discover and launch apps, inspect and control desktops.",
   "extensions": {
     "ai.abot.compatibility": {
       "version": 1,

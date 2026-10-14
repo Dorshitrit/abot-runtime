@@ -84,7 +84,12 @@ When client events are enabled, scheduling emits `memory.save.queued` before
 the terminal response. Background completion and failure remain diagnostic-only
 because they occur outside the request lifecycle.
 
-Terminal response authoring receives the automatic passive projection. When
+Both root policies prepare the automatic passive projection once at request start.
+The existing request ledger/checkpoint carries it through decisions, tools,
+steering and approval resume. Execution Agent also prepares conversation candidate
+targets at startup; its direct responses may include memoryCandidates. Supervisor
+keeps candidate preparation and authoring in its separate terminal step before the
+raw response. Neither policy retrieves automatically again at response time. When
 memory is enabled, Supervisor and Execution Agent root decisions may also select
 `recall_memory` with a bounded query. The shared root kernel invokes this same
 service, records the result in the RoleCall ledger, and resumes the exact root.
@@ -106,12 +111,14 @@ offered schema and action instructions. The request continues with its other
 actions; settled memory references and their provenance instructions remain
 available. No limit-triggered finalization or separate counter is introduced.
 Query changes, empty or unavailable results, and steering do not reset the count.
-A new request receives a fresh budget. Automatic terminal retrieval is unchanged.
+A new request receives a fresh budget. Automatic startup preparation does not
+consume this explicit-recall budget for either root policy.
 
 Only the requesting root's current steering version receives settled recollections.
 Steering that supersedes retrieval discards its data before the next decision.
 The final response reuses current recall context instead of making an automatic
-second search. With no explicit recall, automatic terminal retrieval is unchanged.
+second search. Without current explicit recall, both policies reuse their initial
+reference, including after steering; only model-selected recall refreshes it.
 Disabled memory adds neither the action nor recall context.
 
 Planner, Worker, Reviewer, payload, and tool contexts do not receive the recall

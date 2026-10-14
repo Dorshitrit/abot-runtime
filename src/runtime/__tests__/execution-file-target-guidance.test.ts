@@ -10,7 +10,7 @@ import type { ModelGatewayClient } from "../ports.js";
 import { handleRunRequest } from "../request/handler.js";
 import {
   EXECUTION_CAPABILITY_CATALOG_MESSAGE_KIND as ACTIVE_KIND,
-  EXECUTION_CAPABILITY_GROUP_CATALOG_MESSAGE_KIND as GROUP_KIND,
+  EXECUTION_CAPABILITY_GROUP_CATALOG_HEADER as GROUP_HEADER,
 } from "../steps/execution-agent/state-context.js";
 import {
   capsules,
@@ -83,15 +83,17 @@ test.each(["LUNA/index.html", "LUNA/README"])(
       for (const input of inputs.filter(
         ({ modelStep }) => modelStep === "execution.decision",
       )) {
-        const groups = capsules(input, GROUP_KIND);
+        const groups = messages(input).filter(({ content }) =>
+          content.startsWith(GROUP_HEADER),
+        );
         expect(groups).toHaveLength(1);
-        expect(occurrences(groups, summary)).toBe(1);
+        expect(occurrences(groups, summary)).toBe(0);
         const active = capsules(input, ACTIVE_KIND);
-        expect(occurrences(active, summary)).toBe(0);
+        expect(occurrences(active, summary)).toBe(input === inputs[0] ? 0 : 1);
         expect(active.flatMap((capsule) => capsule.capabilities)).toEqual(
           input === inputs[0]
             ? []
-            : [{ capabilityId: CAPABILITY_ID, effect: "mutation" }],
+            : [{ capabilityId: CAPABILITY_ID, effect: "mutation", summary }],
         );
       }
 
@@ -161,7 +163,7 @@ test("an unrelated direct response does not select or author a filesystem operat
       "execution.decision",
       "execution.response",
     ]);
-    expect(occurrences(capsules(inputs[0]!, GROUP_KIND), summary)).toBe(1);
+    expect(occurrences(messages(inputs[0]!), summary)).toBe(0);
     expect(capsules(inputs[0]!, ACTIVE_KIND)).toEqual([]);
     expect(occurrences(messages(inputs[1]!), summary)).toBe(0);
     expect(

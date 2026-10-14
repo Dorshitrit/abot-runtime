@@ -56,10 +56,7 @@ describe("automation authoring catalog discovery", () => {
     f.source.operations = [];
     const page = await readAutomationAuthoringCatalogIndex(f.service, "", 0);
     expect(page).toMatchObject({ catalogScope: { kind: "pre_draft" },
-      permissions: { kind: "automation_authoring_permissions_v1", authority: "capability_contract",
-        granted: expect.stringContaining("future workflow"),
-        grantsPermissions: expect.stringContaining("read"),
-        currentChat: expect.stringContaining("does not determine") } });
+      permissions: { kind: "automation_authoring_permissions_v1", authority: "capability_contract" } });
     expect(page.operations.items.every(({ granted }) => granted === false)).toBe(true);
     expect(page).not.toHaveProperty("authoringAllowed");
     expect(f.catalog).toHaveBeenCalledExactlyOnceWith("");

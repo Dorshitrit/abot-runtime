@@ -42,7 +42,7 @@ import {
   EXECUTION_AGENT_ACTION_MESSAGE_KIND,
   EXECUTION_AGENT_DECISION_MODEL_STEP,
   EXECUTION_CAPABILITY_CATALOG_MESSAGE_KIND,
-  EXECUTION_CAPABILITY_GROUP_CATALOG_MESSAGE_KIND,
+  EXECUTION_CAPABILITY_GROUP_CATALOG_HEADER,
   EXECUTION_CAPABILITY_RECONSIDERATION_MESSAGE_KIND,
   EXECUTION_CAPABILITY_RESULT_MESSAGE_KIND,
   EXECUTION_CAPABILITY_TOOL_NAME,
@@ -484,16 +484,12 @@ describe("Execution Agent bounded context", () => {
         effects: ["observation"],
       },
     ]);
-    expect(
-      parseRuntimeMessage(
-        closed.messages,
-        EXECUTION_CAPABILITY_GROUP_CATALOG_MESSAGE_KIND,
-      ),
-    ).toMatchObject({
-      authority: "runtime_registry",
-      presenceEffect: "passive_routing_metadata_not_user_intent",
-      catalogGroups: closed.capabilityCatalogGroups,
-    });
+    expect(closed.messages.filter(({ content }) =>
+      content.startsWith(EXECUTION_CAPABILITY_GROUP_CATALOG_HEADER),
+    )).toEqual([{
+      role: "user",
+      content: `${EXECUTION_CAPABILITY_GROUP_CATALOG_HEADER} ${FILE_GROUP}, ${WEB_GROUP}`,
+    }]);
     expect(
       parseRuntimeMessage(
         closed.messages,
@@ -536,10 +532,12 @@ describe("Execution Agent bounded context", () => {
         {
           capabilityId: observePrimary.capabilityId,
           effect: observePrimary.effect,
+          summary: observePrimary.summary,
         },
         {
           capabilityId: observeSecondary.capabilityId,
           effect: observeSecondary.effect,
+          summary: observeSecondary.summary,
         },
       ],
     });

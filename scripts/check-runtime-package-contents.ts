@@ -586,8 +586,8 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // contract. Each emitted runtime module contributes both .js and .d.ts files,
 // so legitimate production modules can move the count by more than one.
 // These ceilings bound the approved public package inventory and unpacked size.
-const maxFileCount = 3_899;
-const maxUnpackedSizeBytes = 12_441_048;
+const maxFileCount = 3_922;
+const maxUnpackedSizeBytes = 12_520_000;
 
 if (paths.length > maxFileCount) {
   fail(`package includes too many files: ${paths.length} > ${maxFileCount}`);

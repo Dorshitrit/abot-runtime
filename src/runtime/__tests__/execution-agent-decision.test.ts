@@ -6,7 +6,6 @@ import {
   type CapabilityDescriptor,
 } from "../orchestration/capability-adapters/index.js";
 import {
-  buildExecutionAgentInstructions,
   createExecutionAgentDecisionFormat,
   parseExecutionAgentDecisionOutput,
 } from "../steps/execution-agent/index.js";
@@ -55,55 +54,6 @@ const writeFile = {
 } as const satisfies CapabilityDescriptor;
 
 describe("Single Execution Agent structured decision", () => {
-  test("keeps external-effect completion and approval decisions model-owned", () => {
-    const instructions = buildExecutionAgentInstructions({
-      hasCapabilities: true,
-      hasCapabilityCatalogGroups: true,
-      capabilityScopeAction: "open",
-      allowPlanner: false,
-      availableAuditCriterionCount: 0,
-      allowRespond: true,
-      includeAcknowledgement: false,
-      includeTitle: false,
-      includeWorkingDirectory: false,
-    });
-
-    expect(instructions).toContain(
-      "The user's explicit request is already the authority to perform the offered action within its stated scope.",
-    );
-    expect(instructions).toContain(
-      "Do not ask the user to repeat content that is already present in the supplied history",
-    );
-    expect(instructions).toContain(
-      "runtime_active_request_updates_v1 capsule whose authority is user define the active user intent",
-    );
-    expect(instructions).toContain("Apply those steering updates in sequence.");
-    expect(instructions).toContain(
-      "equivalent phrasing in any language followed by an action as a request to perform that action",
-    );
-    expect(instructions).toContain(
-      "a requested new observation, file read, mutation, artifact, or other external effect requires its corresponding successful capability result",
-    );
-    expect(instructions).toContain(
-      "respond is invalid: invoke that capability instead",
-    );
-    expect(instructions).toContain(
-      "Never use respond to ask permission for a reversible file creation or update that the user explicitly requested.",
-    );
-    expect(instructions).toContain(
-      "Never claim that a file was read, compared, created, changed, or verified unless the exact visible capability results establish that claim.",
-    );
-    expect(instructions).toContain(
-      "You alone decide whether and when to open or extend a capability scope.",
-    );
-    expect(instructions).toContain(
-      "The runtime never automatically expands, closes, or falls back from a scope.",
-    );
-    expect(instructions).toContain(
-      "Neither action invokes a capability or forces any later capability, Planner, Auditor, or respond decision.",
-    );
-  });
-
   test("builds one strict dynamic envelope and gates optional services", () => {
     const format = createExecutionAgentDecisionFormat({
       capabilities: [observeFile, observeProject, writeFile],

@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "memory",
   "version": "1.0.0",
-  "description": "Read, search, add, and delete deterministic long-term memory entries.",
+  "description": "Search, read, add, and delete long-term memory entries.",
   "extensions": {
     "ai.abot.compatibility": {
       "version": 1,

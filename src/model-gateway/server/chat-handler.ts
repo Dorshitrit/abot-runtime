@@ -6,6 +6,7 @@ import type {
   ModelGatewayInvocationContext,
 } from "./contracts.js";
 import { respondToGatewayHandlerError } from "./errors.js";
+import { writeChatStreamResponse } from "./chat-stream-response.js";
 import { sendText } from "./http-response.js";
 import type { InputTokenMeasurementStore } from "./input-token-measurements.js";
 import {
@@ -92,14 +93,11 @@ export function createChatHandler(
         throw new Error("model_provider_adapter_chat_result_invalid");
       }
 
-      response.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
-      response.setHeader("Cache-Control", "no-cache");
-      await result.stream({
-        emit(event) {
-          response.write(`${JSON.stringify(event)}\n`);
-        },
+      await writeChatStreamResponse({
+        invocation: result,
+        response,
+        abortSignal,
       });
-      response.end();
     } catch (error) {
       respondToGatewayHandlerError({
         error,

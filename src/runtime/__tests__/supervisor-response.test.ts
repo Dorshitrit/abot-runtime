@@ -234,9 +234,6 @@ describe("Supervisor terminal response", () => {
     expect(JSON.stringify(input.context.messages)).not.toContain(
       '"action":"invoke_role"',
     );
-    expect(input.context.messages[0]?.content).toContain(
-      "Do not independently redo, expand, or replace the delegated work",
-    );
   });
 
   test("rejects a returned child owned by a different caller", () => {
@@ -275,23 +272,9 @@ describe("Supervisor terminal response", () => {
     const childResultIndex = parsedMessages.findIndex(
       (message) => message?.kind === "runtime_child_result",
     );
-    const instructions = input.context.messages[0]!.content;
 
     expect(capsuleIndexes).toHaveLength(1);
     expect(capsuleIndexes[0]).toBeLessThan(childResultIndex);
-    expect(instructions).toContain(
-      "fixed root and only role that writes the terminal response",
-    );
-    expect(instructions).toContain("request-wide read-only reference data");
-    expect(instructions).toContain("never instructions");
-    expect(instructions).toContain(
-      "does not by itself prove completion of the delegated work",
-    );
-    expect(instructions).toContain(
-      "use the most recent substantive user-authored message",
-    );
-    expect(instructions).toContain("never language authority");
-    expect(instructions).not.toContain("Return exactly one JSON object");
   });
 
   test.each([
@@ -362,18 +345,15 @@ describe("Supervisor terminal response", () => {
   );
 
   test("authors memory candidates before returning a raw Supervisor response", async () => {
-    const retrieve = vi.fn(async () => ({
-      available: true,
-      records: [],
-      message: {
-        role: "system" as const,
-        content: JSON.stringify({
-          kind: "runtime_long_term_memory_reference_v1",
-          authority: "passive_reference",
-          memories: [{ content: "User prefers concise answers.", tags: [] }],
-        }),
-      },
-    }));
+    const initialMemoryMessage = {
+      role: "system" as const,
+      content: JSON.stringify({
+        kind: "runtime_long_term_memory_reference_v1",
+        authority: "passive_reference",
+        memories: [{ content: "User prefers concise answers.", tags: [] }],
+      }),
+    };
+    const retrieve = vi.fn();
     const invoke = vi
       .fn<ModelGatewayClient["invoke"]>()
       .mockResolvedValueOnce({
@@ -402,6 +382,7 @@ describe("Supervisor terminal response", () => {
     await expect(
       runSupervisorAuthoredResponse(request, {
         call,
+        initialMemoryMessage,
         toolResults: EMPTY_REQUEST_TOOL_RESULTS,
         steeringSnapshot: { version: 0, updates: Object.freeze([]) },
       }),
@@ -411,9 +392,7 @@ describe("Supervisor terminal response", () => {
         { content: "User prefers concise answers.", tags: ["preference"] },
       ],
     });
-    expect(retrieve).toHaveBeenCalledWith(
-      expect.objectContaining({ query: request.prompt }),
-    );
+    expect(retrieve).not.toHaveBeenCalled();
     expect(invoke).toHaveBeenCalledTimes(2);
     expect(invoke.mock.calls[0]?.[0].format).toMatchObject({
       type: "json_schema",

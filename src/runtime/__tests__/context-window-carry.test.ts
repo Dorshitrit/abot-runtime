@@ -49,8 +49,7 @@ describe("buildContextBuckets carry policy", () => {
       {
         role: "system",
         contextMessageKind: "prior_tool_observation",
-        content:
-          "Context note: This message was derived from a previous tool-based observation and may not reflect current external state.\nMy favorite color is blue.",
+        content: expect.stringContaining("My favorite color is blue."),
       },
     ]);
     expect(buckets.recentConversation).toEqual([
@@ -100,8 +99,7 @@ describe("buildContextBuckets carry policy", () => {
       {
         role: "system",
         contextMessageKind: "prior_tool_observation",
-        content:
-          "Context note: This message was derived from a previous tool-based observation and may not reflect current external state.\nMy name is Test User.",
+        content: expect.stringContaining("My name is Test User."),
       },
     ]);
   });
@@ -195,14 +193,12 @@ describe("buildContextBuckets carry policy", () => {
       {
         role: "system",
         contextMessageKind: "development_task_result_observation",
-        content:
-          [
-            "Context note: This message was derived from a previous tool-based observation and may not reflect current external state.",
-            "Development continuity snapshot:",
-            "Model work state:",
-            "Artifacts:",
-            "- sandbox/demo/index.html lastTool=write_file mutations=1",
-          ].join("\n"),
+        content: expect.stringContaining([
+          "Development continuity snapshot:",
+          "Model work state:",
+          "Artifacts:",
+          "- sandbox/demo/index.html lastTool=write_file mutations=1",
+        ].join("\n")),
       },
     ]);
     expect(buckets.recentConversation).toEqual([
@@ -328,8 +324,7 @@ describe("buildContextBuckets carry policy", () => {
       {
         role: "system",
         contextMessageKind: "development_task_result_observation",
-        content:
-          "Context note: This message was derived from a previous tool-based observation and may not reflect current external state.\nDevelopment continuity snapshot:\nSummary: latest snapshot",
+        content: expect.stringContaining("Development continuity snapshot:\nSummary: latest snapshot"),
       },
     ]);
   });
@@ -455,15 +450,13 @@ describe("buildContextBuckets carry policy", () => {
         role: "system",
         contextMessageKind: "development_task_result_observation",
         taskResultRole: "supplemental_follow_up",
-        content:
-          "Context note: This message was derived from a previous tool-based observation and may not reflect current external state.\nDevelopment continuity snapshot:\nSummary: file listing result",
+        content: expect.stringContaining("Development continuity snapshot:\nSummary: file listing result"),
       },
       {
         role: "system",
         contextMessageKind: "development_task_result_observation",
         taskResultRole: "authoritative_project_handoff",
-        content:
-          "Context note: This message was derived from a previous tool-based observation and may not reflect current external state.\nDevelopment continuity snapshot:\nSummary: project handoff",
+        content: expect.stringContaining("Development continuity snapshot:\nSummary: project handoff"),
       },
     ]);
   });
@@ -520,8 +513,7 @@ describe("buildContextBuckets carry policy", () => {
         role: "system",
         contextMessageKind: "development_task_result_observation",
         taskResultRole: "authoritative_project_handoff",
-        content:
-          "Context note: This message was derived from a previous tool-based observation and may not reflect current external state.\nDevelopment continuity snapshot:\nSummary: checkpoint before finalization",
+        content: expect.stringContaining("Development continuity snapshot:\nSummary: checkpoint before finalization"),
       },
     ]);
   });

@@ -22,14 +22,26 @@ async function runAvailabilityCase(policy: RecallPolicy, enabled: boolean, promp
 }
 
 describe("core passive memory availability at root decisions", () => {
-  test.each(POLICIES)("%s projects availability without expanding decision actions or starting memory work", async (policy) => {
+  test.each(POLICIES)("%s preserves memory action ownership and prepares initial context for both policies", async (policy) => {
     const prompt = "Please remember that I am interested in AI models.";
     const enabled = await runAvailabilityCase(policy, true, prompt);
     const disabled = await runAvailabilityCase(policy, false, prompt);
     expect(enabled.decisions).toHaveLength(1);
     expect(disabled.decisions).toHaveLength(1);
-    expect(enabled.decisions[0]!.format).toEqual(disabled.decisions[0]!.format);
-    expect(enabled.memoryReadsAtDecision).toBe(0);
+    if (policy === "supervisor-worker-v1") {
+      expect(enabled.decisions[0]!.format).toEqual(disabled.decisions[0]!.format);
+    } else {
+      const enabledVariants = decisionVariants(enabled.decisions[0]!.format);
+      const disabledVariants = decisionVariants(disabled.decisions[0]!.format);
+      expect(enabledVariants.filter(isDirectResponse)).toHaveLength(1);
+      expect(enabledVariants.find(isDirectResponse)).toMatchObject({
+        properties: { memoryCandidates: { type: "array" } },
+      });
+      expect(disabledVariants.filter(isDirectResponse)).toHaveLength(1);
+      expect(enabledVariants.filter((variant) => !isDirectResponse(variant)))
+        .toEqual(disabledVariants.filter((variant) => !isDirectResponse(variant)));
+    }
+    expect(enabled.memoryReadsAtDecision).toBe(1);
     expect(disabled.memoryReadsAtDecision).toBe(0);
     expect(enabled.getAdapters).not.toHaveBeenCalled();
     expect(enabled.memory.processCandidates).not.toHaveBeenCalled();
@@ -57,9 +69,24 @@ describe("core passive memory availability at root decisions", () => {
     const messages = modelMessages(f.decisions[0]!);
     expect(messages.filter(({ role, content }) => role === "user" && content === prompt)).toHaveLength(1);
     expect(messages[0]!.role).toBe("system");
-    expect(f.memoryReadsAtDecision).toBe(0);
+    expect(f.memoryReadsAtDecision).toBe(1);
     expect(f.getAdapters).not.toHaveBeenCalled();
     expect(f.memory.processCandidates).not.toHaveBeenCalled();
     expect(f.result.memoryCandidates).toBeUndefined();
   });
 });
+
+type DecisionVariant = {
+  properties: { action: { enum: readonly string[] }; response?: unknown };
+};
+
+function decisionVariants(format: unknown): readonly DecisionVariant[] {
+  return (format as {
+    schema: { properties: { decision: { anyOf: readonly DecisionVariant[] } } };
+  }).schema.properties.decision.anyOf;
+}
+
+function isDirectResponse(variant: DecisionVariant): boolean {
+  return variant.properties.action.enum.includes("respond") &&
+    variant.properties.response !== undefined;
+}

@@ -174,7 +174,6 @@ describe("provider schema projection", () => {
     expect(projection.instructions).toHaveLength(1);
     expect(projection.instructions[0]).toContain('"action"');
     expect(projection.instructions[0]).toContain('"invoke_role"');
-    expect(projection.instructions[0]).toContain("Do not rename fields");
     expect(projection.diagnostics).toEqual([
       {
         action: "schema_instruction_injected",

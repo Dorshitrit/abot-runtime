@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "web",
   "version": "0.1.0",
-  "description": "Search the public web and fetch readable content from public URLs.",
+  "description": "Search the public web and read content from public URLs.",
   "extensions": {
     "ai.abot.compatibility": {
       "version": 1,

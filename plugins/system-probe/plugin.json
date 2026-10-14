@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "system-probe",
   "version": "1.0.0",
-  "description": "Inspect current machine health and disk capacity.",
+  "description": "Inspect machine health and available disk capacity.",
   "extensions": {
     "ai.abot.compatibility": {
       "version": 1,

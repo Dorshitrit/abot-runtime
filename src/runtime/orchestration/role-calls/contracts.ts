@@ -16,7 +16,7 @@ import type {
 } from "./capability-selection-supervision.js";
 import type { RoleCapabilitySelectionReconsiderationCause } from "./reconsideration-cause.js";
 import type { RoleCallResultReceipt } from "./result-receipt.js";
-import type { RoleMemoryRecall, RoleMemoryRecallCommand, RoleMemoryRecallCommitEffect, RoleMemoryRecallTransactions } from "./memory-recall-contract.js";
+import type { RoleInitialMemory, RoleMemoryRecall, RoleMemoryRecallCommand, RoleMemoryRecallCommitEffect, RoleMemoryRecallTransactions } from "./memory-recall-contract.js";
 import type { AdoptedModelWorkPlan, UpdateModelWorkPlanCommand, ModelWorkPlanCommitEffect, ModelWorkPlanTransactions } from "./work-plan-contracts.js";
 
 export const ROLE_CALL_LEDGER_CONTRACT_VERSION = 18;
@@ -265,6 +265,7 @@ export type RoleCallState = Readonly<{
   plans: readonly RoleCallPlanState[];
   capabilityExecutions: readonly RoleCapabilityExecution[];
   memoryRecalls: readonly RoleMemoryRecall[];
+  initialMemory?: RoleInitialMemory;
   operationSupervision: RoleOperationSupervisionState;
   capabilitySelectionSupervision: RoleCapabilitySelectionSupervisionState;
   rootResponse: string | null;

@@ -14,6 +14,8 @@ import type { ModelStepCompactionScope } from "../model/model-step-port.js";
 function createFixture() {
   const entries: ToolAvailabilityEntry[] = ["alpha", "beta"].map((name) => ({
     toolName: name,
+    pluginName: name,
+    pluginDescription: `${name} performs bounded observation. `.repeat(4),
     operationId: `${name}_read`,
     summary: `${name} performs bounded observation. `.repeat(30),
     catalogGroups: ["read"],
@@ -119,7 +121,7 @@ test("resolves fresh options after projection and preserves every nonbrief at it
   const projected = [...fixture.messages, repair];
   fixture.project.mockImplementation(() => {
     fixture.updateOptions({
-      budget: { ...fixture.options.budget, contextWindowTokens: 1000 },
+      budget: { ...fixture.options.budget, contextWindowTokens: 500 },
     });
     return projected;
   });
@@ -130,10 +132,11 @@ test("resolves fresh options after projection and preserves every nonbrief at it
   for (const index of [0, 1, 3, 4])
     expect(result[index]).toBe(projected[index]);
   expect(fixture.onReadmitted).toHaveBeenCalledExactlyOnceWith(
-    expect.objectContaining({ level: "detailed", reason: "complete_catalog" }),
+    expect.objectContaining({ level: "groups", reason: "complete_catalog" }),
   );
-  expect(result[2]!.content).toContain("alpha_read");
-  expect(result[2]!.content).toContain("beta_read");
+  expect(result[2]!.content).toContain("memberCount=2");
+  expect(result[2]!.content).not.toContain("alpha_read");
+  expect(result[2]!.content).not.toContain("beta_read");
   expect(result[2]!.content).not.toContain("bounded observation");
 });
 

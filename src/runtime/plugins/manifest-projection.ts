@@ -85,6 +85,9 @@ export function projectManifestRuntimeContract(
       definition: {
         name: capabilityId,
         pluginName: manifest.name,
+        ...(manifest.description !== undefined
+          ? { pluginDescription: manifest.description }
+          : {}),
         ...(capability.requiredPermissionMode
           ? { requiredPermissionMode: capability.requiredPermissionMode }
           : {}),

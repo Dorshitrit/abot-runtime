@@ -147,19 +147,17 @@ test("stale entry prevents memory retrieval and every provider invocation", asyn
   expect(invoke).not.toHaveBeenCalled();
 });
 
-test("steering during retrieval returns to routing before memory authoring or raw response", async () => {
+test("steering during startup retrieval reaches the first routing decision and later authoring", async () => {
   let decisionCount = 0;
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
     if (invocationPhase(input) === "decision") {
       decisionCount += 1;
       return {
-        text: respond(
-          decisionCount === 1 ? OLD_RECOMMENDATION : FRESH_RECOMMENDATION,
-        ),
+        text: respond(FRESH_RECOMMENDATION),
         meta: {},
       };
     }
-    expect(decisionCount).toBe(2);
+    expect(decisionCount).toBe(1);
     expect(JSON.stringify(input.messages)).toContain(STEERING);
     if (invocationPhase(input) === "memory") {
       assertMemoryInput(input);
@@ -173,7 +171,7 @@ test("steering during retrieval returns to routing before memory authoring or ra
     return { text: "Fresh answer.", meta: {} };
   });
   const { request, memory } = createHarness(invoke, async () => {
-    if (decisionCount === 1)
+    if (decisionCount === 0)
       request.requestSteering!.append({
         steerId: "during-retrieval",
         text: STEERING,
@@ -186,13 +184,11 @@ test("steering during retrieval returns to routing before memory authoring or ra
   });
   expect(invoke.mock.calls.map(([input]) => invocationPhase(input))).toEqual([
     "decision",
-    "decision",
     "memory",
     "response",
   ]);
   expect(memory.retrieve.mock.calls.map(([input]) => input.query)).toEqual([
     PROMPT,
-    `${PROMPT}\n${STEERING}`,
   ]);
   expect(request.onAnswerToken).toHaveBeenCalledExactlyOnceWith(
     "Fresh answer.",

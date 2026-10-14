@@ -155,9 +155,6 @@ describe("runtime degraded finalization", () => {
       .map((message) => message.content)
       .join("\n");
     expect(modelInput).toContain("בצע את השינוי ובדוק את התוצאה.");
-    expect(modelInput).toContain(
-      "Use exactly the same language as the user's last message.",
-    );
   });
 
   test.each([

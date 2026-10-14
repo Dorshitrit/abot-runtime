@@ -1,3 +1,5 @@
+import type { ChatMessage } from "../../../model-gateway/types.js";
+import type { LearningKnowledgeContext } from "../../long-term-memory/maturation/contracts.js";
 import type { LongTermMemoryRecord } from "../../long-term-memory/contracts.js";
 import type {
   RoleCallTransactionInput,
@@ -76,4 +78,10 @@ export type RoleMemoryRecallTransactions = Readonly<{
       "memory_recall_transition_invalid"
     >
   >;
+}>;
+
+/** Initial automatic reference; never a model recall or an activation. */
+export type RoleInitialMemory = Readonly<{
+  message?: ChatMessage;
+  knowledge?: LearningKnowledgeContext;
 }>;

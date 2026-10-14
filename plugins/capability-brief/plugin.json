@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "capability-brief",
   "version": "1.0.0",
-  "description": "Describe the request-effective ABot tool catalog on demand.",
+  "description": "Describe the tools and operations available to the current request.",
   "extensions": {
     "ai.abot.compatibility": {
       "version": 1,

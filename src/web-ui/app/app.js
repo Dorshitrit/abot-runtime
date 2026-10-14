@@ -463,6 +463,7 @@ const appEventBindings = createAppEventBindings({
 });
 
 configWorkspace = createConfigurationFeature({
+  compactHomeWidgets: dashboardFeature.compactWidgets,
   getOperationsSummary: () => operationsController.summary(shell.activeOperationsTab()),
   getLearningSnapshot: () => passiveLearning?.snapshot(),
   isRuntimeReady: runtimeOnboarding.isReady,

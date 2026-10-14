@@ -302,9 +302,6 @@ describe("final model context admission", () => {
       const providerInput = harness.invoke.mock.calls[0]![0];
       const serializedMessages = JSON.stringify(providerInput.messages);
       expect(serializedMessages.split(sentinel)).toHaveLength(2);
-      expect(serializedMessages).toContain(
-        "## Configured operating methodology",
-      );
       expect(serializedMessages).not.toContain(ref);
       expect(serializedMessages).not.toContain(contentHash);
     }

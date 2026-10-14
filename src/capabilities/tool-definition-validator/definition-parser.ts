@@ -18,6 +18,7 @@ export function parseToolDefinition(raw: unknown): ToolDefinition {
   }
   const name = raw.name;
   const pluginName = raw.pluginName;
+  const pluginDescription = raw.pluginDescription;
   const description = raw.description;
   const routingCapability = raw.routingCapability;
   const controlsRefinement = raw.controlsRefinement;
@@ -37,6 +38,9 @@ export function parseToolDefinition(raw: unknown): ToolDefinition {
   if (pluginName !== undefined &&
       (typeof pluginName !== "string" || pluginName.trim().length === 0)) {
     throw new Error(`Invalid tool definition for ${name} (pluginName)`);
+  }
+  if (!hasSupportedPluginDescription(pluginDescription)) {
+    throw new Error(`Invalid tool definition for ${name} (pluginDescription)`);
   }
   if (!isRoutingCapability(routingCapability)) {
     throw new Error(`Invalid tool definition for ${name} (routingCapability)`);
@@ -82,6 +86,7 @@ export function parseToolDefinition(raw: unknown): ToolDefinition {
   return {
     name,
     ...(typeof pluginName === "string" ? { pluginName } : {}),
+    ...(typeof pluginDescription === "string" ? { pluginDescription } : {}),
     requiredPermissionMode: parseRequiredToolPermissionMode(
       raw.requiredPermissionMode,
       `${name}.requiredPermissionMode`,
@@ -110,4 +115,8 @@ function hasSupportedDevelopmentRoles(value: unknown): boolean {
   if (value === undefined) return true;
   if (!Array.isArray(value)) return false;
   return value.every(isDevelopmentRole);
+}
+
+function hasSupportedPluginDescription(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === "string";
 }

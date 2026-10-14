@@ -125,6 +125,8 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
       const harness = createMemoryRecallHarness({
         policy,
         async retrieve({ query }) {
+          if (query === REQUEST_PROMPT)
+            return { available: true, records: [MEMORY_RECORD] };
           if (query === RECALL_QUERY) {
             harness.requestSteering.append({
               steerId: "during-recall",
@@ -174,7 +176,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
       expect(decisionCount).toBe(3);
       expect(
         harness.memory.retrieve.mock.calls.map(([input]) => input.query),
-      ).toEqual([RECALL_QUERY, FRESH_QUERY]);
+      ).toEqual([REQUEST_PROMPT, RECALL_QUERY, FRESH_QUERY]);
       expect(harness.getAdapters).not.toHaveBeenCalled();
       expect(harness.request.onAnswerToken).toHaveBeenCalledExactlyOnceWith(
         FINAL_RESPONSE,
@@ -210,7 +212,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
       });
       expect(
         harness.memory.retrieve.mock.calls.map(([input]) => input.query),
-      ).toEqual([`${REQUEST_PROMPT}\n${STEERING}`]);
+      ).toEqual([REQUEST_PROMPT]);
       expect(decisionCount).toBe(2);
     });
 
@@ -252,7 +254,9 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
       const abortError = new Error("request cancelled during memory recall");
       const harness = createMemoryRecallHarness({
         policy,
-        async retrieve() {
+        async retrieve({ query }) {
+          if (query === REQUEST_PROMPT)
+            return { available: true, records: [] };
           harness.abortController.abort(abortError);
           throw abortError;
         },
@@ -268,8 +272,25 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
         "request cancelled",
       );
       expect(harness.invoke).toHaveBeenCalledOnce();
-      expect(harness.memory.retrieve).toHaveBeenCalledOnce();
+      expect(harness.memory.retrieve).toHaveBeenCalledTimes(2);
       expect(harness.request.onAnswerToken).not.toHaveBeenCalled();
     });
   },
 );
+
+
+test("EA cancellation during its initial automatic lookup prevents the first model call", async () => {
+  const failure = new Error("initial memory preparation cancelled");
+  const harness = createMemoryRecallHarness({
+    policy: "execution-agent-v1",
+    async retrieve() {
+      harness.abortController.abort(failure);
+      throw failure;
+    },
+    decide: () => responseDecision("execution-agent-v1"),
+  });
+  await expect(runRequestRunner(harness.request)).rejects.toBe(failure);
+  expect(harness.memory.retrieve).toHaveBeenCalledOnce();
+  expect(harness.invoke).not.toHaveBeenCalled();
+  expect(harness.request.onAnswerToken).not.toHaveBeenCalled();
+});

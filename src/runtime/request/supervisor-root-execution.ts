@@ -34,6 +34,9 @@ export const SUPERVISOR_ROOT_CONTRACT: RequestRootContractAdapter =
         allowedRoleIds: options.allowedRoleIds,
         availableWorkerCapabilityCatalog:
           options.availableWorkerCapabilityCatalog,
+        ...(options.head.state.initialMemory?.message
+          ? { initialMemoryMessage: options.head.state.initialMemory.message }
+          : {}),
         ...(options.memoryRecallMessage
           ? { memoryRecallMessage: options.memoryRecallMessage }
           : {}),
@@ -45,6 +48,9 @@ export const SUPERVISOR_ROOT_CONTRACT: RequestRootContractAdapter =
         responseRecommendation: options.responseRecommendation,
         call: options.call,
         toolResults: options.toolResults,
+        ...(options.head.state.initialMemory?.message
+          ? { initialMemoryMessage: options.head.state.initialMemory.message }
+          : {}),
         ...(options.memoryRecallMessage
           ? { memoryRecallMessage: options.memoryRecallMessage }
           : {}),

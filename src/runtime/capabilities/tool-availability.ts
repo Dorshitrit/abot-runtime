@@ -17,6 +17,12 @@ export function projectAvailableTools(
     registration.contract.operations.map((operation) =>
       Object.freeze({
         toolName: registration.toolName,
+        ...(registration.definition.pluginName !== undefined
+          ? { pluginName: registration.definition.pluginName }
+          : {}),
+        ...(registration.definition.pluginDescription !== undefined
+          ? { pluginDescription: registration.definition.pluginDescription }
+          : {}),
         operationId: operation.operationId,
         summary: operation.summary,
         catalogGroups: Object.freeze([

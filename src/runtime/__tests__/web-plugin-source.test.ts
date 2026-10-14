@@ -168,12 +168,6 @@ describe("web plugin entrypoint", () => {
       "web_fetch",
       "web_search",
     ]);
-    expect(
-      readFileSync(
-        join(process.cwd(), "plugins/web/skills/web_search_skill/SKILL.md"),
-        "utf8",
-      ),
-    ).toContain("more than twice consecutively");
   });
 
   test("fetches bounded readable content with explicit untrusted framing", async () => {

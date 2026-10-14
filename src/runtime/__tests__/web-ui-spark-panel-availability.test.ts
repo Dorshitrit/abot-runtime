@@ -30,7 +30,7 @@ function fixture() {
   documentRoot.body = new ElementStub(documentRoot);
   const panel = new ElementStub(documentRoot), notice = new ElementStub(documentRoot);
   panel.hidden = true; notice.hidden = true;
-  const names = ["launcherButton", "messagesList", "closeButton", "mascotButton", "noticeButton", "dismissNoticeButton", "sendNextMenu", "unreadBadge"];
+  const names = ["launcherButton", "messagesList", "composerInput", "closeButton", "mascotButton", "noticeButton", "dismissNoticeButton", "sendNextMenu", "unreadBadge"];
   const nodes = Object.fromEntries(names.map((name) => {
     const node = new ElementStub(documentRoot); node.dataset.spark = name;
     return [name, node];

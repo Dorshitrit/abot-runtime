@@ -40,7 +40,15 @@ export function restoreApprovalExecutionFreshness(
   });
   if (!isDeepStrictEqual(current.token, token))
     throw new Error("request_approval_steering_mismatch");
-  if (!current.isCurrent())
+  // A newer accepted prefix invalidates execution, not the saved approval.
+  // A closed inbox has no current version and must remain terminal.
+  if (!hasLiveSteeringInbox(inbox))
     throw new Error("request_approval_steering_superseded");
   return Object.freeze({ token, isCurrent: current.isCurrent });
+}
+
+function hasLiveSteeringInbox(
+  inbox: ReturnType<typeof resolveRequestSteeringInbox>,
+): boolean {
+  return inbox.isCurrent(inbox.snapshot().version);
 }

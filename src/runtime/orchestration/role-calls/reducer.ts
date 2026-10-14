@@ -21,7 +21,9 @@ import { reject, seal } from "./reducer-primitives.js";
 
 export { hasRoleCallCapabilityAuthority } from "./candidate-validation.js";
 
-export function createInitialRoleCallState(requestId: string): RoleCallState {
+export function createInitialRoleCallState(
+  requestId: string, initialMemory?: RoleCallState["initialMemory"],
+): RoleCallState {
   const state: RoleCallState = seal({
     contractVersion: ROLE_CALL_LEDGER_CONTRACT_VERSION,
     requestId,
@@ -36,6 +38,7 @@ export function createInitialRoleCallState(requestId: string): RoleCallState {
     plans: [],
     capabilityExecutions: [],
     memoryRecalls: [],
+    ...(initialMemory !== undefined ? { initialMemory } : {}),
     operationSupervision: createInitialRoleOperationSupervisionState(),
     capabilitySelectionSupervision:
       createInitialRoleCapabilitySelectionSupervisionState(),

@@ -6,10 +6,9 @@ import type { ToolAvailabilityEntry } from "../../capabilities/tool-types.js";
 import {
   buildToolAvailabilityOverview,
   type ToolAvailabilityOverviewGroup,
-  type ToolAvailabilityOverviewLevel,
 } from "../../plugin-sdk/tool-availability-overview.js";
 import { resolveCapabilityBriefHeadroom } from "./capability-brief-budget.js";
-import { buildCapabilityDescriptions } from "./capability-descriptions.js";
+import { buildPluginDiscoveryCatalogText } from "./capability-descriptions.js";
 import type { projectRequestContext } from "./request-context.js";
 import { estimateMessageTokens } from "./token-estimator.js";
 
@@ -17,10 +16,7 @@ export const CAPABILITY_BRIEF_KIND = "runtime_capability_brief_v1";
 export const CAPABILITY_BRIEF_MAX_TOKENS = 512;
 const CAPABILITY_BRIEF_PREFIX = `${CAPABILITY_BRIEF_KIND}\n`;
 
-export type CapabilityBriefLevel =
-  | ToolAvailabilityOverviewLevel
-  | "descriptions"
-  | "none";
+export type CapabilityBriefLevel = "groups" | "descriptions" | "none";
 export type CapabilityBriefProjection = Readonly<{
   level: CapabilityBriefLevel;
   message?: ChatMessage;
@@ -64,14 +60,17 @@ export function projectCapabilityBriefAtHeadroom(
   }
   const levels: readonly Exclude<CapabilityBriefLevel, "none">[] =
     hasCompleteCapabilityBriefEntries(params.entries, params.groups)
-      ? ["descriptions", "detailed", "titles", "groups"]
+      ? ["descriptions", "groups"]
       : ["groups"];
   for (const level of levels) {
     const budgetTokens =
       level === "descriptions" ? headroom : compactBudgetTokens;
     const body =
       level === "descriptions"
-        ? buildCapabilityDescriptions(params.entries ?? [])
+        ? buildPluginDiscoveryCatalogText(
+            params.groups.map(({ groupId }) => groupId),
+            params.entries,
+          )
         : buildToolAvailabilityOverview(
             params.entries ?? [],
             params.groups,

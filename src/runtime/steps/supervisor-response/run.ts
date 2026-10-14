@@ -30,7 +30,6 @@ import {
   resolveRequestSteeringInbox,
   type RequestSteeringSnapshot,
 } from "../../request/request-steering.js";
-import { retrieveResponseLongTermMemory } from "../../long-term-memory/response-context.js";
 import type { RootAuthoredResponse } from "../../long-term-memory/contracts.js";
 import { authorSupervisorMemoryCandidates } from "./memory-authoring.js";
 import {
@@ -53,6 +52,7 @@ export async function runSupervisorResponse(
   options: Readonly<{
     responseRecommendation?: string;
     memoryRecallMessage?: ChatMessage;
+    initialMemoryMessage?: ChatMessage;
     call: SupervisorResponseCallIdentity;
     toolResults: RequestToolResultsView;
     resume?: SupervisorResponseResumeContext;
@@ -67,6 +67,7 @@ export async function runSupervisorAuthoredResponse(
   options: Readonly<{
     responseRecommendation?: string;
     memoryRecallMessage?: ChatMessage;
+    initialMemoryMessage?: ChatMessage;
     call: SupervisorResponseCallIdentity;
     toolResults: RequestToolResultsView;
     resume?: SupervisorResponseResumeContext;
@@ -92,12 +93,9 @@ export async function runSupervisorAuthoredResponse(
       ? options.steeringSnapshot?.version
       : undefined);
   assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
-  const memoryMessage =
-    options.memoryRecallMessage ??
-    (memoryEnabled && options.steeringSnapshot
-      ? await retrieveResponseLongTermMemory(request, options.steeringSnapshot)
-      : undefined);
-  assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
+  const memoryMessage = memoryEnabled
+    ? options.memoryRecallMessage ?? options.initialMemoryMessage
+    : undefined;
   const inputOptions = {
     ...options,
     ...(memoryMessage ? { longTermMemoryMessage: memoryMessage } : {}),

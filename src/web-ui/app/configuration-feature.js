@@ -22,6 +22,7 @@ export function createConfigurationFeature({
   getLearningSnapshot = () => null,
   isRuntimeReady = () => true,
   isComputerAccessAvailable = () => true,
+  compactHomeWidgets,
 }) {
   let configWorkspace;
   let activation;
@@ -107,6 +108,7 @@ export function createConfigurationFeature({
   let homeSetupSuggestion;
   const computerAccess = createComputerAccessFeature({
     dom,
+    compactHomeWidgets,
     runtimeClient,
     getEnvironmentId: selectedEnvironmentId,
     isComputerAccessAvailable,

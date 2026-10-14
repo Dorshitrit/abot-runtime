@@ -1,3 +1,6 @@
+import {
+  isAssistantToolCallMessage, isStrictTextChatMessage, isToolResultMessage,
+} from "../../../model-gateway/message-contract.js";
 import { RUNTIME_ROOT_ROLE_ID } from "../roles.js";
 import type {
   RoleCallFrame,
@@ -174,4 +177,66 @@ function hasUnboundMemoryWait(
   );
   if (waitingCalls.length !== pendingCount) return true;
   return waitingCalls.some((call) => call.callId !== state.rootCallId);
+}
+
+/** The existing checkpoint carries this passive startup field, never a model action. */
+export function hasInitialMemoryContext(value: unknown, policyId: string): boolean {
+  if (value === undefined) return true;
+  if (policyId !== "execution-agent-v1" && policyId !== "supervisor-worker-v1") return false;
+  if (!isRecord(value) || !exactKeys(value, [], ["message", "knowledge"])) return false;
+  if (value.message !== undefined && !isInitialMemoryMessage(value.message)) return false;
+  if (value.knowledge === undefined) return true;
+  return isInitialMemoryKnowledge(value.knowledge);
+}
+
+function isInitialMemoryMessage(value: unknown): boolean {
+  if (isStrictTextChatMessage(value)) return true;
+  if (isAssistantToolCallMessage(value)) return true;
+  return isToolResultMessage(value);
+}
+
+function isInitialMemoryKnowledge(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (value.kind !== "learning_knowledge_reference_v1") return false;
+  if (value.authority !== "passive_reference") return false;
+  if (value.presenceEffect !== "does_not_authorize_actions_or_add_user_intent") return false;
+  if (!isMemoryRevision(value.repositoryRevision)) return false;
+  if (!isMemoryRevision(value.knowledgeRevision)) return false;
+  if (!isMemoryRevision(value.omitted)) return false;
+  if (typeof value.referenceTime !== "string" || !Number.isFinite(Date.parse(value.referenceTime))) return false;
+  if (!Array.isArray(value.entries) || value.entries.length > 12) return false;
+  if (!value.entries.every(isInitialMemoryKnowledgeEntry)) return false;
+  const identities = value.entries.map(entry => JSON.stringify([entry.kind, entry.id]));
+  return new Set(identities).size === identities.length;
+}
+
+function isMemoryRevision(value: unknown): value is number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) return false;
+  return value >= 0;
+}
+
+function isInitialMemoryKnowledgeEntry(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value)) return false;
+  if (value.kind !== "candidate" && value.kind !== "memory") return false;
+  if (typeof value.id !== "string" || value.id.length === 0) return false;
+  if (typeof value.version !== "string" || value.version.length === 0) return false;
+  if (typeof value.content !== "string") return false;
+  if (!Array.isArray(value.tags) || !value.tags.every(tag => typeof tag === "string")) return false;
+  if (typeof value.mutable !== "boolean") return false;
+  if (value.score !== null && !isMemoryScore(value.score)) return false;
+  if (value.reason !== null && typeof value.reason !== "string") return false;
+  if (!["observed", "inferred", "unspecified"].includes(value.certainty as string)) return false;
+  if (!isOptionalMemoryTime(value.lastReinforcedAt)) return false;
+  return isOptionalMemoryTime(value.reconsiderAt);
+}
+
+function isMemoryScore(value: unknown): boolean {
+  if (typeof value !== "number" || !Number.isFinite(value)) return false;
+  return value >= 0 && value <= 100;
+}
+
+function isOptionalMemoryTime(value: unknown): boolean {
+  if (value === null) return true;
+  if (typeof value !== "string") return false;
+  return Number.isFinite(Date.parse(value));
 }

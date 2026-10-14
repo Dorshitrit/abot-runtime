@@ -37,8 +37,10 @@ export function createPassiveLearningHome({
   let root = null;
   let renderedSnapshot = {};
   let motion;
+  let onRendered = () => {};
 
-  function mount(nextRoot) {
+  function mount(nextRoot, notify = () => {}) {
+    onRendered = notify;
     if (root === nextRoot) return;
     motion?.dispose();
     root?.removeEventListener("click", handleClick);
@@ -88,6 +90,7 @@ export function createPassiveLearningHome({
     const error = root.querySelector("[data-learning-status]");
     error.textContent = snapshot.statusError || "";
     error.hidden = !snapshot.statusError;
+    onRendered();
   }
 
   return Object.freeze({ mount, render });

@@ -55,11 +55,12 @@ export function createRoleCallLedger(params: {
   requestId: string;
   policy: RoleCallPolicyInput;
   checkpoint?: RoleCallLedgerCheckpoint;
+  initialMemory?: RoleCallState["initialMemory"];
 }): RoleCallLedger {
   const policy = sealRoleCallPolicy(params.policy);
   const initialState = params.checkpoint
-    ? restoreCheckpointState(params.checkpoint, params.requestId, policy)
-    : createInitialRoleCallState(params.requestId);
+    ? restoreCheckpointState(params.checkpoint, params.requestId, policy, params.initialMemory)
+    : createInitialRoleCallState(params.requestId, params.initialMemory);
   const capabilitySelectionSupervisionIssuanceAuthority =
     resolveRoleCapabilitySelectionSupervisionIssuanceAuthority(initialState);
   if (!capabilitySelectionSupervisionIssuanceAuthority) {

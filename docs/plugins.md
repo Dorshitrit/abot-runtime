@@ -387,25 +387,34 @@ and exposes the OR-union of matching capabilities. The Worker still selects
 the concrete capability and controls.
 
 Supervisor routing and delegated Planner each receive one optional, passive
-text brief through the same shared projection from the
-request-filtered registry used by `capability-brief`. It first includes every
-offered operation's tool name, operation id, summary and catalog groups when
-that complete description set fits the existing context headroom. Request-bound
-facts already present in summaries, such as available execution targets, remain
-intact. Admission reserves each consumer's existing context, configured
-instructions, calibration, output and safety headroom and stays below the
-existing compaction threshold. Root steering is reserved only for Supervisor;
-it does not enter the bounded Planner call.
+brief from the request-filtered registry. They share EA's plain-text discovery
+catalog, organized by selectable group id with ` | ` between group entries:
 
-When complete descriptions cannot fit, the existing compact representations
-remain available under a 512-token ceiling: tool names with operation ids and
-groups, tool names by group, group counts and effects, or no brief. The declared
-level makes omitted detail explicit; it never implies that omitted detail means
-an operation is unavailable. Group ids remain in the response schema in every
-mode. No subset of tools is selected, no summary is truncated, and no model call
-summarizes the catalog. The brief carries no input schemas, execution authority
-or completion evidence. It is confined to delegation decisions; Worker selection,
-Execution Agent context, approval and terminal-response contracts are unchanged.
+```text
+Tool groups: scheduling: schedules | write: filesystem [edit_file, write_file]
+Plugin descriptions: filesystem: Inspect, read, write, and edit files within configured agent-work and workspace roots.
+```
+
+Each group lists its plugins and their tool names as `group: plugin [tool names]`.
+Native tools appear by name without a plugin wrapper; groups without tool entries
+remain bare ids. A plugin may span groups, and a group may contain several plugins.
+Reserved characters in tool names are percent-encoded. Each optional plugin
+description appears once on the separate `Plugin descriptions:` line, with
+whitespace normalized, `|` displayed as `/`, and at most 160 Unicode code points
+plus `....` when truncated. Missing descriptions leave the tool bindings intact;
+the description line is omitted when none are available. This index lists tool
+names, not individual operations, summaries or parameter schemas. Worker still
+receives the exact operations and controls from the selected groups.
+
+Admission preserves the existing context, configured instructions, calibration,
+output and safety reserves and compaction threshold. Root steering is reserved
+only for Supervisor; it does not enter the bounded Planner call. When the whole
+plugin catalog cannot fit, complete group counts and effects remain available
+under the existing 512-token ceiling, or the optional brief is omitted. Legal
+group ids remain in the response schema. Neither fallback restores operation
+details, selects a partial set of plugins, or adds a model decision. The brief
+carries no execution authority or completion evidence. EA's output and the
+Worker, approval and terminal-response contracts remain unchanged.
 Before each Supervisor routing or Planner attempt, including structured-output repairs,
 the optional brief is reselected against the actual projected messages plus
 current consumer-specific calibration and context. It retains its reference position or is
@@ -423,19 +432,15 @@ receive it. Planner uses this same brief instead of a separate aggregate-tag
 catalog. Its existing group-selection schema and Worker scope enforcement stay
 unchanged; descriptions do not select a group or execute an operation.
 
-Under `execution-agent-v1`, the canonical root receives every group and member
-in ASCII order on each decision, and may mechanically open or extend its own
-RoleCall scope. A capability's exact summary appears as `capabilityId: summary`
-at its first group membership; later memberships contain only its id, referring
-to that definition. The first group has no selection priority. Descriptions
-are neither sampled, truncated, nor synthesized. The active catalog supplies
-each capability's id and effect; its selection controls remain in the decision
-schema. It then selects a concrete capability only from that active scope. Scope
-updates, capability binding, payload authoring, adapter execution, and
-settlement use the same ledger and capability engine as delegated Worker
-execution. Unknown, empty, invalid, repeated, or no-op scopes are rejected
-rather than widened to the full catalog. A request with no Worker capabilities
-may still invoke an unscoped Worker for a knowledge-only result.
+Under `execution-agent-v1`, the canonical root receives the same plain-text
+discovery catalog shown above. Descriptions supply discovery context, not
+instructions or authority. The root may mechanically open or extend
+its RoleCall scope. Only then does the active catalog expose each capability's
+id, exact summary, and effect, with selection controls in the decision schema.
+It selects concrete capabilities only from that active scope. Scope updates,
+binding, payload authoring, execution, and settlement retain the shared engine
+and ledger. Unknown, empty, invalid, repeated, or no-op scopes are rejected. Requests
+without Worker capabilities may still invoke an unscoped knowledge-only Worker.
 
 Skill ids resolve only inside the same plugin package. For the example above,
 the loader reads:

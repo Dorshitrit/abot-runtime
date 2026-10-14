@@ -41,7 +41,7 @@ function storeRepairConfirmationIsCurrent(snapshot, attempt) {
   return attempt?.phase === "confirm-repair";
 }
 
-function storeConnectionStage(snapshot, invitation, attempt) {
+export function storeConnectionStage(snapshot, invitation, attempt) {
   if (snapshot?.readiness?.ready === true) return "ready";
   if (attempt?.phase === "repairing") return "repairing";
   if (storeRepairConfirmationIsCurrent(snapshot, attempt)) return "confirm-repair";
@@ -111,7 +111,7 @@ function connectionStageContent(stage, snapshot, invitation, disabled) {
   };
 }
 
-function storeConnectionDisplayContent(stage, snapshot, invitation, disabled, statusUnavailable) {
+export function storeConnectionDisplayContent(stage, snapshot, invitation, disabled, statusUnavailable) {
   if (statusUnavailable) return {
     status: "Status unavailable", step: "Check your computer connection",
     copy: "The current connection status could not be checked. Refresh to try again.",

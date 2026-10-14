@@ -60,6 +60,8 @@ export const EXECUTION_AGENT_ROOT_CONTRACT: RequestRootContractAdapter =
       });
     },
     async authorResponse(request, options) {
+      if (options.directResponse !== undefined)
+        return options.directResponse;
       const requestSteering = resolveRequestSteeringInbox(
         request.requestSteering,
       );
@@ -151,7 +153,15 @@ function projectKernelDecision(
         ...presentation,
       });
     case "respond":
-      return Object.freeze({ action: "respond" as const, ...presentation });
+      return Object.freeze({
+        action: "respond" as const, ...presentation,
+        ...(decision.response !== undefined ? {
+          directResponse: Object.freeze({
+            finalResponse: decision.response,
+            memoryCandidates: decision.memoryCandidates ?? Object.freeze([]),
+          }),
+        } : {}),
+      });
     case "blocked":
       return Object.freeze({
         action: "blocked" as const,

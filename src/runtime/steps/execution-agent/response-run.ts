@@ -1,3 +1,4 @@
+import { projectExecutionAgentMemory } from "../../long-term-memory/initial-context.js";
 import { resolveMemoryRecallSteeringVersion } from "../../long-term-memory/recall-binding.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import {
@@ -19,14 +20,9 @@ import { createExecutionAgentCompactionController } from "./compaction.js";
 import { createSessionMemoryAwareCompactionController } from "../../context/session-memory/index.js";
 import { buildExecutionAgentResponseInput } from "./response-input.js";
 import { buildExecutionAgentResponseRepairHint } from "./response-prompt.js";
-import { retrieveResponseLongTermMemory } from "../../long-term-memory/response-context.js";
 import type { RootAuthoredResponse } from "../../long-term-memory/contracts.js";
 import { createPlainRootAuthoredResponse } from "../../orchestration/final-response/authoring-contract.js";
 import { invokeRootAuthoredResponse } from "../../orchestration/final-response/invoke.js";
-import {
-  canAuthorConversationMemory,
-  prepareConversationMemoryAuthoring,
-} from "../../long-term-memory/conversation-authoring/context.js";
 import { assertBoundModelStepSteeringCurrent } from "../../model/model-step-steering.js";
 import { resolveRequestSteeringInbox } from "../../request/request-steering.js";
 import {
@@ -58,7 +54,6 @@ export async function runExecutionAgentAuthoredResponse(
     steeringSnapshot: RequestSteeringSnapshot;
   }>,
 ): Promise<RootAuthoredResponse> {
-  const memoryEnabled = request.longTermMemory?.enabled === true;
   const boundSteeringVersion = options.steeringSnapshot.version;
   const requestSteering = resolveRequestSteeringInbox(request.requestSteering);
   assertBoundModelStepSteeringCurrent(
@@ -70,26 +65,17 @@ export async function runExecutionAgentAuthoredResponse(
     ),
   );
   assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
-  const memoryMessage =
-    options.memoryRecallMessage ??
-    (memoryEnabled
-      ? await retrieveResponseLongTermMemory(request, options.steeringSnapshot)
-      : undefined);
+  const memoryContext = projectExecutionAgentMemory(
+    request, options.head.state.initialMemory, options.steeringSnapshot,
+  );
+  const memoryMessage = options.memoryRecallMessage ?? memoryContext.memoryMessage;
   const maxResponseChars = Math.min(
     EXECUTION_AGENT_RESPONSE_MAX_LENGTH,
     options.head.policy.limits.maxResponseChars,
   );
-  const memoryAuthoringContext = memoryEnabled
-    ? await prepareConversationMemoryAuthoring(
-        request,
-        options.steeringSnapshot,
-      )
-    : undefined;
+  const memoryAuthoringContext = memoryContext.authoringContext;
   assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
-  const memoryAuthoringEnabled = canAuthorConversationMemory(
-    request,
-    memoryAuthoringContext,
-  );
+  const memoryAuthoringEnabled = memoryContext.authoringEnabled;
   const input = buildExecutionAgentResponseInput(request, {
     ...options,
     ...(memoryAuthoringEnabled

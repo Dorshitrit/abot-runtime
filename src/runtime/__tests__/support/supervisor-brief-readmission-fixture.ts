@@ -18,6 +18,8 @@ const entries: readonly ToolAvailabilityEntry[] = Array.from(
   { length: 6 },
   (_, index) => ({
     toolName: `fixture_${index}`,
+    pluginName: `fixture_plugin_${index}`,
+    pluginDescription: `Inspect source ${index}. ${"Read bounded records. ".repeat(4)}`.trim(),
     operationId: `operation_${index}`,
     summary: `Canonical operation ${index}. ${"description ".repeat(12)}`,
     catalogGroups: ["read"],

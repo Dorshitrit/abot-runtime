@@ -1,3 +1,4 @@
+import { displayReasoningMode } from "../lib/reasoning-controls.js";
 import { formatTime, textOf } from "../lib/text-format.js";
 import { getNumber } from "../lib/event-presentation.js";
 
@@ -91,7 +92,7 @@ function healthSummary(read) {
     label: "System health · all environments",
     items: [
       { label: "Health · all environments", value: unavailable || healthValue(payload.ok), status: true },
-      { label: "Runtime mode", value: unavailable || textOf(payload.agentMode, "-") || "-" },
+      { label: "Runtime mode", value: unavailable || textOf(displayReasoningMode(payload.agentMode), "-") || "-" },
       { label: "Active streams", value: unavailable || activeStreamCount(payload) },
       { label: "Latest event", value: unavailable || textOf(latest?.lastEventName || latest?.lastEventType, "-") || "-" },
     ],

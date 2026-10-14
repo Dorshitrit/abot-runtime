@@ -58,7 +58,7 @@ test("fresh Planner repair shrinks only the shared optional brief before admissi
   const original = nonBrief(modelMessages(inputs[0]!));
   expect(
     modelMessages(inputs[0]!).find(isCapabilityBriefMessage)?.content,
-  ).toContain(JSON.stringify(fixture.entries[0]!.summary));
+  ).toContain(fixture.entries[0]!.pluginDescription!.trim());
   for (const input of inputs.slice(1)) {
     const messages = modelMessages(input);
     expect(nonBrief(messages).slice(0, -1)).toEqual(original);

@@ -73,6 +73,7 @@ export function buildSupervisorDecisionInput(
     includeTitle?: boolean;
     allowMemoryRecall?: boolean;
     memoryRecallMessage?: ChatMessage;
+    initialMemoryMessage?: ChatMessage;
     allowedRoleIds?: readonly SupervisorDelegateRoleId[];
     diagnostic?: SupervisorDecisionDiagnosticContext;
     resume?: SupervisorResumeContext;
@@ -144,7 +145,11 @@ export function buildSupervisorDecisionInput(
       })
     : undefined;
   const roleContinuationParts = roleContinuationPart ? [roleContinuationPart] : [];
+  const initialMemoryMessage = options.memoryRecallMessage
+    ? undefined
+    : options.initialMemoryMessage;
   const referenceMessages = [
+    ...(initialMemoryMessage ? [initialMemoryMessage] : []),
     ...(request.temporalContext
       ? [buildRequestTemporalContextMessage(request.temporalContext)]
       : []),
@@ -170,6 +175,7 @@ export function buildSupervisorDecisionInput(
     buildSupervisorDecisionInstructions({
       allowMemoryRecall: options.allowMemoryRecall === true,
       hasMemoryRecallContext: options.memoryRecallMessage !== undefined,
+      hasInitialMemoryContext: initialMemoryMessage !== undefined,
       includeAcknowledgement,
       includeTitle,
       includeResponseRecommendation,

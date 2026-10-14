@@ -42,7 +42,9 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
       });
       await runRequestRunner(request);
       expect(decisionCount).toBe(2);
-      expect(harness.memory.retrieve).toHaveBeenCalledExactlyOnceWith({
+      expect(harness.memory.retrieve.mock.calls.map(([input]) => input.query))
+        .toEqual([prompt, query]);
+      expect(harness.memory.retrieve).toHaveBeenLastCalledWith({
         query, context: expect.objectContaining({ requestId: request.requestId, sessionId: record.id }),
       });
       expect(harness.getAdapters).not.toHaveBeenCalled();

@@ -1,3 +1,4 @@
+import { displayReasoningMode } from "../lib/reasoning-controls.js";
 import { escapeHtml, formatTime, shortId, textOf } from "../lib/text-format.js";
 import { formatDurationMs, latestHealthEvent, projectOperationsSummary } from "../components/operations-summary.js";
 
@@ -112,7 +113,7 @@ export function createOperationsController({ dom, client, getEnvironmentId = () 
         const latest = latestHealthEvent(details);
         const rows = [
           ["Status", payload.ok ? "Healthy" : "Unhealthy"],
-          ["Runtime mode", payload.agentMode || "-"],
+          ["Runtime mode", displayReasoningMode(payload.agentMode) || "-"],
           ["Active streams", payload.activeStreamingRequests ?? details.length],
           [
             "Latest event",

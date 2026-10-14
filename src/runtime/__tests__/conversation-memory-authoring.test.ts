@@ -195,7 +195,8 @@ describe("shared conversation memory authoring", () => {
       expect(messages.filter(({ role, content }) => role === "user" && content === f.request.prompt)).toHaveLength(1);
       const references = messages.filter(({ content }) => content.startsWith(`{"kind":"${REFERENCE_KIND}"`));
       const isAuthoring = input.format !== undefined && input.modelStep?.endsWith(".response");
-      expect(references).toHaveLength(isAuthoring ? 1 : 0);
+      const offersDirectAuthoring = policy === "execution-agent-v1" && input.modelStep === "execution.decision";
+      expect(references).toHaveLength(isAuthoring || offersDirectAuthoring ? 1 : 0);
     }
     scheduleFinalResponseMemory({ service: f.memory, candidates: result.memoryCandidates, requestId: f.request.requestId, sessionId: f.request.sessionId });
     expect(f.memory.scheduleCandidates).toHaveBeenCalledWith(expect.objectContaining({ candidates: result.memoryCandidates }));
@@ -247,7 +248,7 @@ describe("shared conversation memory authoring", () => {
     expect(f.memory.scheduleCandidates).not.toHaveBeenCalled();
   });
 
-  test.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])("%s discards preparation superseded by steering before authoring", async (policy) => {
+  test.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])("%s binds latest steering before authoring", async (policy) => {
     const f = fixture(policy);
     f.prepare.mockImplementationOnce(async () => {
       f.requestSteering.append({ steerId: "new-evidence", text: "I now prefer fuller explanations." });
@@ -260,7 +261,7 @@ describe("shared conversation memory authoring", () => {
     });
     const result = await runRequestRunner(f.request);
     expect(result.output).toBe("Updated answer");
-    expect(f.prepare).toHaveBeenCalledTimes(2);
+    expect(f.prepare).toHaveBeenCalledTimes(policy === "execution-agent-v1" ? 1 : 2);
     expect(result.memoryCandidates?.[0]?.assessment?.evidence.evidenceDigest).toBe(createHash("sha256").update(JSON.stringify([f.request.prompt, "I now prefer fuller explanations."])).digest("hex"));
     expect(f.invoke.mock.calls.filter(([input]) => input.format && input.modelStep?.endsWith(".response"))).toHaveLength(1);
   });

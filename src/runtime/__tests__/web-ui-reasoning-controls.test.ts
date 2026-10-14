@@ -13,6 +13,16 @@ function domRoot() {
 }
 
 describe("reasoning controls reflect active model permission", () => {
+  test("Low keeps the existing stored mode in reasoning forms", () => {
+    const root = domRoot();
+    root.innerHTML = renderReasoningModeField("fast", { supportsThinking: true });
+    const option = root.querySelector('[value="fast"]')!;
+    expect(option.textContent).toBe("Low");
+    expect(option.hasAttribute("selected")).toBe(true);
+    const select = root.querySelector("[data-reasoning-mode]")!;
+    select.value = option.value;
+    expect(retainedReasoningMode(root, "reasoning")).toBe("fast");
+  });
   test.each([undefined, false, "true", 1])("requires explicit true, received %s", (flag) => {
     expect(canChooseReasoning({ supportsThinking: flag })).toBe(false);
     expect(renderReasoningModeField("deep", { supportsThinking: flag })).toContain(" disabled");
@@ -51,8 +61,11 @@ describe("reasoning controls reflect active model permission", () => {
     profile = { id: "two", supportsThinking: true };
     control.renderAgentMode();
     expect(menu.attributes.get("role")).toBe("menu");
+    expect(menu.querySelector('[data-mode="fast"]')!.querySelector("strong")!.textContent).toBe("Low");
     await expect(control.setAgentMode("fast")).resolves.toBe(true);
     expect(client.setAgentMode).toHaveBeenCalledWith("fast", "prod");
+    expect(state.agentMode).toBe("fast");
+    expect(button.setAttribute).toHaveBeenCalledWith("aria-label", "Reasoning depth: Low");
   });
   test("SPARK settings block mode changes until its model permission is active", () => {
     const root = domRoot();
@@ -69,6 +82,7 @@ describe("reasoning controls reflect active model permission", () => {
     expect(onAgentModeChange).not.toHaveBeenCalled();
     settings.render({ sessionId: "spark", supportsThinking: true }, "prod");
     expect(select.disabled).toBe(false);
+    expect(select.querySelector('[value="fast"]')!.textContent).toBe("Low");
     select.value = "fast"; select.dispatch("change");
     expect(onAgentModeChange).toHaveBeenCalledWith("fast");
   });

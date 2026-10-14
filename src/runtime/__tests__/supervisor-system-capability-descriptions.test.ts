@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import type { ToolAvailabilityEntry } from "../../capabilities/tool-types.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import { isCapabilityBriefMessage } from "../context/capability-brief.js";
 import {
@@ -22,16 +23,20 @@ type ModelInput = Parameters<ModelGatewayClient["invoke"]>[0];
 const messages = (input: ModelInput) =>
   input.messages as readonly ChatMessage[];
 
-function descriptionEntries(input: ModelInput): unknown {
+function assertPluginDiscovery(
+  input: ModelInput,
+  offered: readonly ToolAvailabilityEntry[],
+): void {
   const briefs = messages(input).filter(isCapabilityBriefMessage);
   expect(briefs).toHaveLength(1);
   const content = briefs[0]!.content;
-  const start = content.indexOf("\n[");
-  expect(
-    start,
-    "routing brief must include the canonical description array",
-  ).toBeGreaterThanOrEqual(0);
-  return JSON.parse(content.slice(start + 1));
+  expect(content.split("\n").slice(-2).join("\n")).toBe(
+    "Tool groups: system: system [computer_act, computer_desktops, computer_observe, system_applications, system_command, system_launch, system_targets]\nPlugin descriptions: system: Run OS commands, discover and launch apps, inspect and control desktops.",
+  );
+  for (const entry of offered) {
+    expect(content).not.toContain(entry.operationId);
+    expect(content).not.toContain(entry.summary);
+  }
 }
 
 function assertNoConnectionIdentity(inputs: readonly ModelInput[]): void {
@@ -56,7 +61,7 @@ afterEach(async () => {
 });
 
 test.each([true, false])(
-  "Supervisor sees request-prepared SYSTEM descriptions with connection=%s",
+  "Supervisor sees compact SYSTEM discovery with connection=%s",
   async (connected) => {
     const result = await runSystemBriefRequest({ connected });
     expect(result.events.filter(({ type }) => type === "failed")).toEqual([]);
@@ -67,16 +72,8 @@ test.each([true, false])(
     const routing = inputs.find(
       ({ modelStep }) => modelStep === "supervisor.decision",
     )!;
-    const canonicalEntries = result.offered.map(
-      ({ toolName, operationId, summary, catalogGroups }) => ({
-        toolName,
-        operationId,
-        summary,
-        catalogGroups,
-      }),
-    );
-    expect(descriptionEntries(routing)).toEqual(canonicalEntries);
-    expect(canonicalEntries).toHaveLength(14);
+    assertPluginDiscovery(routing, result.offered);
+    expect(result.offered).toHaveLength(14);
     const prepared = await result.prepare.mock.results[0]!.value;
     const expectedTargets = connected ? ["linux", "windows"] : ["linux"];
     for (const module of prepared) {
@@ -148,16 +145,7 @@ test.each(["supervisor-worker-v1", "execution-agent-v1"] as const)(
         typeof input.format === "object" &&
         input.format?.name === "supervisor_decision";
       if (isRouting) {
-        expect(descriptionEntries(input)).toEqual(
-          result.offered.map(
-            ({ toolName, operationId, summary, catalogGroups }) => ({
-              toolName,
-              operationId,
-              summary,
-              catalogGroups,
-            }),
-          ),
-        );
+        assertPluginDiscovery(input, result.offered);
         continue;
       }
       expect(messages(input).filter(isCapabilityBriefMessage)).toEqual([]);
@@ -169,6 +157,12 @@ test.each(["supervisor-worker-v1", "execution-agent-v1"] as const)(
     expect(
       inputs.filter(({ modelStep }) => modelStep === selectingStep).length,
     ).toBeGreaterThan(1);
+    if (policy === "supervisor-worker-v1") {
+      const worker = inputs.find(({ modelStep }) => modelStep === selectingStep)!;
+      const content = messages(worker).map(({ content }) => content).join("\n");
+      for (const entry of result.offered)
+        expect(content).toContain(JSON.stringify(entry.summary));
+    }
     const controlsInput = inputs.find(
       ({ modelStep }) => modelStep === "capability.controls",
     )!;

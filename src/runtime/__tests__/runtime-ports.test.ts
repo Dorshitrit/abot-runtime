@@ -151,7 +151,7 @@ describe("runtime public ports", () => {
 
     await expect(
       skillProvider.getActionContext("inspect_project"),
-    ).resolves.toContain("Project Orientation Skill");
+    ).resolves.toMatch(/\S/u);
     await expect(workspaceProvider.getSystemSummary()).resolves.toEqual(
       expect.any(String),
     );

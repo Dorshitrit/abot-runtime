@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "local-search",
   "version": "0.1.0",
-  "description": "Search filenames and textual content beneath configured agent data roots.",
+  "description": "Search filenames and file contents within configured agent-work and workspace roots.",
   "extensions": {
     "ai.abot.compatibility": { "version": 1, "runtimePlatforms": ["linux", "darwin", "win32"] },
     "ai.abot.runtime": {

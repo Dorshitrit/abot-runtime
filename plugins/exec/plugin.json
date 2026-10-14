@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "exec",
   "version": "1.0.0",
-  "description": "Execute, observe, and cancel trusted non-interactive shell processes: Bash on Linux/macOS, Windows PowerShell on native Windows with per-action approval in Ask/Full.",
+  "description": "Run, observe, and cancel non-interactive shell processes on the Runtime host.",
   "extensions": {
     "ai.abot.compatibility": { "version": 1, "runtimePlatforms": ["linux", "darwin", "win32"] },
     "ai.abot.runtime": {

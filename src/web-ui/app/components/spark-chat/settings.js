@@ -14,7 +14,7 @@ export function createSparkChatSettings({ root, onSave, onClear, onOpen, onReset
     </form>
     <div class="spark-settings-row">
       <label for="spark-agent-mode"><strong>Thinking mode</strong><span>Choose how deeply SPARK thinks before replying.</span></label>
-      <select id="spark-agent-mode" data-spark-agent-mode aria-label="SPARK thinking mode"><option value="fast">Fast</option><option value="reasoning" selected>Reasoning</option><option value="deep">Deep</option></select>
+      <select id="spark-agent-mode" data-spark-agent-mode aria-label="SPARK thinking mode"><option value="fast">Low</option><option value="reasoning" selected>Reasoning</option><option value="deep">Deep</option></select>
     </div>
     <div class="spark-settings-row"><div><strong>Chat shortcut</strong><p>Drag SPARK wherever feels right. Use Alt + arrow keys to move it.</p></div>
       <button type="button" data-spark-reset-position>Return to sidebar</button></div>

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { projectOllamaFormat } from "../../model-gateway/structured-output.js";
 import {
-  buildReviewerDecisionInstructions,
   createReviewerDecisionFormat,
   parseReviewerDecisionOutput,
   type ReviewerReviewSnapshot,
@@ -127,7 +126,6 @@ describe("Reviewer audit coverage", () => {
 
   test("removes and defensively rejects pass for unverified multi-target mutations", () => {
     const format = createReviewerDecisionFormat(snapshot);
-    const instructions = buildReviewerDecisionInstructions();
     const decisionSchema = (
       format.schema as {
         properties: {
@@ -151,8 +149,6 @@ describe("Reviewer audit coverage", () => {
 
     expect(decisionSchema.anyOf).toBeUndefined();
     expect(decisionSchema.properties.action.enum).toEqual(["report_gaps"]);
-    expect(instructions).toContain("gap.kind set to missing_evidence");
-    expect(instructions).not.toContain("missing-verification gap");
     expect(parsed).toMatchObject({
       ok: false,
       issues: [

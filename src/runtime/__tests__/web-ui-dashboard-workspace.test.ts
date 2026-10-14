@@ -220,7 +220,7 @@ describe("dashboard presentation interactions", () => {
   test("onboarding hides Spark even when its asynchronous view unhides its own mount", () => {
     const passiveLearning = { mountHome: vi.fn() };
     const { workspace, refs } = dashboardHarness(passiveLearning);
-    expect(passiveLearning.mountHome).toHaveBeenCalledExactlyOnceWith(refs.learningContent);
+    expect(passiveLearning.mountHome).toHaveBeenCalledExactlyOnceWith(refs.learningContent, expect.any(Function));
     workspace.render({ ...loaded, composerAvailable: false });
     refs.learningContent.hidden = false;
     expect(refs.learning.hidden).toBe(true);

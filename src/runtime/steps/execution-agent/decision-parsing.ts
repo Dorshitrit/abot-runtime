@@ -1,3 +1,7 @@
+import {
+  parseDirectResponse,
+  parseDirectResponseMemoryCandidates,
+} from "./direct-response-contract.js";
 import { readStructuredDecisionEnvelope } from "../../model/structured-decision-envelope.js";
 import { parseDecisionWithWorkPlan } from "./work-plan-decision-parsing.js";
 import {
@@ -144,9 +148,18 @@ function parseExecutionAgentActionOutput(
       } satisfies ExecutionAgentOpenCapabilityScopeDecision;
     }
   } else if (selectedAction === "respond") {
+    const response = parseDirectResponse(record, options.directResponseMaxLength, issues);
+    const memoryCandidates = response !== undefined
+      ? parseDirectResponseMemoryCandidates(record, options.directResponseMemoryAuthoring)
+      : undefined;
     exactKeys(
       record,
-      ["action", ...presentationKeys(contract)],
+      [
+        "action",
+        ...(response !== undefined ? ["response"] : []),
+        ...(memoryCandidates !== undefined ? ["memoryCandidates"] : []),
+        ...presentationKeys(contract),
+      ],
       issues,
       "decision",
     );
@@ -161,6 +174,8 @@ function parseExecutionAgentActionOutput(
     }
     decision = {
       action: "respond",
+      ...(response !== undefined ? { response } : {}),
+      ...(memoryCandidates !== undefined ? { memoryCandidates } : {}),
       ...presentation,
     };
   } else if (selectedAction === "blocked") {

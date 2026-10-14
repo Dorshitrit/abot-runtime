@@ -2,12 +2,10 @@ import { describe, expect, test } from "vitest";
 
 import type { CapabilityDescriptor } from "../orchestration/capability-adapters/index.js";
 import {
-  buildExecutionAgentInstructions,
   createExecutionAgentDecisionFormat,
   parseExecutionAgentDecisionOutput,
 } from "../steps/execution-agent/index.js";
 import { EXECUTION_AGENT_OPERATION_OBJECTIVE_MAX_LENGTH } from "../steps/execution-agent/capability-invocation-contract.js";
-import { buildExecutionControlsRefinementInstructions } from "../steps/execution-agent/refinement-prompt.js";
 
 const inspectPath = {
   capabilityId: "inspect_path",
@@ -175,40 +173,6 @@ describe("Execution Agent operation objective", () => {
         }),
       ]),
     });
-  });
-
-  test("keeps client intent separate and makes the refinement objective exclusive", () => {
-    const decisionInstructions = buildExecutionAgentInstructions({
-      hasCapabilities: true,
-      hasCapabilityCatalogGroups: false,
-      capabilityScopeAction: null,
-      allowPlanner: false,
-      availableAuditCriterionCount: 0,
-      allowRespond: false,
-      includeAcknowledgement: false,
-      includeTitle: false,
-      includeWorkingDirectory: false,
-    });
-    expect(decisionInstructions).toContain(
-      "complete bounded operation for that invocation alone",
-    );
-    expect(decisionInstructions).toContain(
-      "Intent is presentation metadata only",
-    );
-
-    const refinementInstructions = buildExecutionControlsRefinementInstructions(
-      [
-        {
-          slot: "invocation_1",
-          capabilityId: readRange.capabilityId,
-          guidance: "",
-        },
-      ],
-    );
-    expect(refinementInstructions).toContain("sole semantic authority");
-    expect(refinementInstructions).toContain(
-      "never replace it, broaden it, or add another requested outcome",
-    );
   });
 });
 

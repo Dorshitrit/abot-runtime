@@ -662,6 +662,7 @@ class RootExecutionSession {
       ? createPlainRootAuthoredResponse(decision.response)
       : await this.policy.rootContract.authorResponse(this.request, {
           responseRecommendation: decision.responseRecommendation,
+          directResponse: decision.directResponse,
           memoryRecallMessage: projectRootMemoryRecallMessage({
             head: activation.head,
             callId: activation.call.callId,

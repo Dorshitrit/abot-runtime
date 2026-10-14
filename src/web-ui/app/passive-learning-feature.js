@@ -77,8 +77,8 @@ export function createPassiveLearningFeature({
       macConsent.cancel();
       controller.environmentChanged();
     },
-    mountHome: (root) => {
-      home.mount(root);
+    mountHome: (root, onRendered) => {
+      home.mount(root, onRendered);
       home.render(controller.snapshot());
     },
   });

@@ -118,7 +118,8 @@ describe("schedule run history", () => {
     });
     const historicalHtml = root.innerHTML.split('data-run-id="history-run"')[1];
     expect(historicalHtml).toContain("recorded-profile");
-    expect(historicalHtml).toContain("fast");
+    expect(historicalHtml).toContain("Low");
+    expect(historicalHtml).not.toContain("fast");
     expect(historicalHtml).toContain("UTC");
     expect(historicalHtml).not.toContain("new-profile");
     expect(historicalHtml).not.toContain("Asia/Jerusalem");

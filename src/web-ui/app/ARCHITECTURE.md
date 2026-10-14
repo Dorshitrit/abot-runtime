@@ -330,7 +330,7 @@ the ordinary session list.
 The native `/runtime/spark/chat` contract supplies the canonical session snapshot,
 shared proactive model selection and persisted tool permission preference. Changes
 live in SPARK's Chat tab; the shared model selector remains under Proactive mode
-in Settings. Chat also hosts the existing Fast / Reasoning / Deep selector, backed
+in Settings. Chat also hosts the existing Low / Reasoning / Deep selector, backed
 by the companion view state and used by ordinary send/queue capture. The compact
 composer keeps attachment, stop and send actions inside one input row; permissions
 remain in Chat settings. The popup settings button opens Chat directly. Clear uses the

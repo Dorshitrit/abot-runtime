@@ -1,208 +1,226 @@
 # ABot Runtime
 
-Open TypeScript runtime for building inspectable AI agents with local or hosted
-language models.
+**Put your language model to work with tools, memory, and repeatable workflows.**
 
-ABot Runtime provides the execution layer around a model: sessions, tools,
-plugins, model routing, persisted events, and a local graphical interface. It
-does not choose a model for you or hide model-provider behavior behind
-hardcoded defaults.
+ABot Runtime is an open-source TypeScript engine for AI agents that work with
+files, use tools, retain useful context, and carry out multi-step tasks.
 
-[Website](https://abot-ai.com/) · [Documentation](#documentation) · [GitHub](https://github.com/Dorshitrit/abot-runtime)
+**Work locally, with a model you choose.** Run Ollama on your own machine and
+keep task data local when generation, memory embeddings, SPARK models, and the
+tools you use are all local. Hosted models, remote endpoints, Web access, and
+other external tools can send relevant data outside your machine.
 
-## Features
+Use the bundled Web UI as your everyday workspace, or embed the same runtime
+in your own application. Connect a local or hosted model, choose how it should
+work, and keep visibility into its actions and results.
 
-- Configurable local and hosted model providers
-- Persistent conversations, request events, and replay
-- Optional long-term memory with protected saves and reviewed automatic candidates
-- ABot Spark for optional desktop learning and proactive conversation suggestions
-- Desktop observation and control through shared Computer access
-- A notification inbox and optional native desktop alerts
-- Local scheduled requests bound to their conversations
-- Planning, execution, and review workflows
-- Manifest-based tools and plugins with explicit runtime boundaries
-- Workspace, file, skill, and memory capabilities
-- Streaming model and tool activity
-- A local Web UI for everyday use and inspection
-- An optional bridge transport for integration with external applications
+[Website](https://abot-ai.com/) · [Get started](#get-started) · [Documentation](#documentation) · [Releases](https://github.com/Dorshitrit/abot-runtime/releases)
 
-## Web UI
+![ABot Studio starter templates for research, documents, and system review](https://abot-ai.com/_astro/studio-templates.CvsBi5Kw.png)
 
-The source checkout includes the project's primary GUI. It uses the direct
-local runtime backend by default, so an external bridge is not required.
+*Start from a Studio template, then choose your inputs, model, and permissions.*
 
-The Web UI supports:
+## What can you do with ABot?
 
-- creating, pinning, reordering, archiving, reopening, and deleting conversations
-- choosing the active environment, model, and reasoning mode
-- uploading files and images
-- streaming messages, current activity, tool progress, and failures
-- steering or stopping an active request, or queuing the next message
-- editing runtime configuration
-- configuring passive long-term memory with a consumer-selected embedding model
-- managing scheduled Jobs, their saved models and permissions, and run history
-- controlling Spark collection, learning, proactive suggestions, and application exclusions
-- reviewing saved memories and opening notification sources
-- inspecting runtime status, logs, and health
+- **Research and produce something useful.** Compare public sources and save a
+  sourced Markdown brief with findings and open questions.
+- **Work with documents and projects.** Summarize a document, explain a code
+  module, inspect configuration, or work with files using the enabled tools.
+- **Automate recurring work.** Save a request as a scheduled Job, or build a
+  reusable Studio workflow that processes inputs through several steps.
+- **Build an agent into your product.** Reuse ABot's execution, session, tool,
+  and event interfaces behind your own application.
 
-The UI is a client of the runtime; persisted sessions, events, and request state
-remain owned by the runtime.
+These workflows use the models, plugins, credentials, and permissions you
+configure.
 
-Schedules can also be managed through the model's built-in `schedules` capability.
-Every Job belongs to a conversation and runs there with its saved model and Full
-or FULL+ tool permissions. New Jobs default to Full. The chat shows a compact run
-card; expand it to read the exact historical prompt. ABot must be running at the scheduled time. Missed offline
-occurrences and failed runs are not retried. Cancelling a Job or deleting its
-conversation prevents pending starts; an already-started run continues.
+## One engine, two execution routes
 
-Timers, one-time requests, intervals, and daily/weekly/monthly schedules are
-supported. Calendar schedules require an exact time and IANA time zone. Jobs and
-run history are stored locally under the environment's runtime directory.
-Scheduling uses the Runtime directly and requires no plugin or external bridge.
+Different models benefit from different ways of working. ABot gives you two
+routes within the same runtime:
 
-## Requirements
+| | Execution Agent (EA) | Supervisor (SUPER) |
+|---|---|---|
+| Designed for | Capable models that can take broader responsibility for a task | Models that benefit from smaller, focused responsibilities, including local models |
+| How it works | The main agent selects and runs tools directly, with optional planning and audit advice | A Supervisor coordinates the request and delegates to Planner, Worker, and Reviewer roles when needed |
+| Tool execution | Owned by the Execution Agent | Delegated to a Worker |
 
-- Node.js `^20.19.0` or `>=22.12.0` (Node.js 21 is not supported)
+**EA gives capable models room to act. SUPER gives models a more structured
+division of work.**
+
+Both routes share tools, permission controls, conversations, persistence, and
+execution infrastructure. Both can be used with local or hosted models.
+Choose according to the model's capabilities and the tasks you want it to perform.
+
+In the Web UI, select **Execution Agent** or **Supervisor** under a model's
+**Execution route** setting. The choice belongs to the model profile.
+
+Planning and review are available when needed; individual requests do not have
+to pass through every role. Results still depend on the model, context window,
+configuration, and available tools.
+
+See [Configuration](docs/configuration.md#request-runner) for technical policy
+names, defaults, and model calibration.
+
+## Get started
+
+You need:
+
+- Node.js `^20.19.0` or `>=22.12.0`; Node.js 21 is not supported
 - npm
-- A configured model provider and model
+- An OpenAI or Ollama model connection
 
-Ollama and OpenAI adapters are included. The Ollama server and model files are
-not: install Ollama from the [official download page](https://ollama.com/download)
-and pull a model you choose. OpenAI profiles require `OPENAI_API_KEY`. ABot
-Runtime has no built-in default model.
-
-## Install And Run
-
-Create a consumer project and install the package:
+Create a directory for your ABot installation:
 
 ```bash
 mkdir my-abot
 cd my-abot
 npm init -y
 npm install @abot-ai/runtime
-```
-
-Initialize one explicit provider and model, then start the model gateway and
-Web UI with one command:
-
-```bash
-npx abot init --provider ollama --model <model-id>
 npx abot start
-```
-
-Open [http://127.0.0.1:5177](http://127.0.0.1:5177). The generated files and
-runtime state belong to the consumer project; installing the package does not
-write into the package directory.
-
-For OpenAI, set `OPENAI_API_KEY` in the generated `.env` and initialize with:
-
-```bash
-npx abot init --provider openai --model <model-id>
-```
-
-OpenAI profiles created by `abot init` or `abot add-model` use the recommended
-`execution-agent-v1` execution policy. Existing profiles are preserved unless
-the user explicitly requests replacement.
-
-Passive long-term memory is disabled by default. After configuring a provider,
-choose and probe an embedding model from **Memory → Setup** or the CLI:
-
-```bash
-npx abot memory enable --provider <provider-id> --model <embedding-model-id>
-```
-
-See [Passive Long-Term Memory](docs/long-term-memory.md) for its privacy,
-storage, retrieval, and management contracts.
-[ABot Spark](docs/long-term-memory.md#learning-from-computer-activity) adds optional
-computer-activity learning and proactive suggestions, with separate controls and
-daily usage limits. Collection and proactive messages are off by default.
-
-[Computer access and notifications](docs/installation.md#computer-access-during-setup)
-use one paired Companion. Desktop tools require the [SYSTEM platform dependencies
-and permissions](plugins/system/README.md#execution-environments).
-
-## Quick Start From Source
-
-From a checkout of this repository:
-
-If you are using Ollama, install it and make sure its service is running first.
-On the machine that runs Ollama, choose a concrete id from the
-[Ollama model library](https://ollama.com/library), then pull and verify that
-exact model:
-
-```bash
-ollama pull <model-id>
-curl http://127.0.0.1:11434/api/tags
-```
-
-Then initialize the runtime with the same model id:
-
-```bash
-npm install
-npm run init -- --provider ollama --model <model-id>
-```
-
-The command above uses `http://127.0.0.1:11434`. When Ollama is reachable from
-the runtime at another address, provide that origin explicitly:
-
-```bash
-npm run init -- --provider ollama --model <model-id> --base-url http://<ollama-host>:11434
-```
-
-The init command creates machine-local configuration, including `.env` and
-`local/runtime.config.json`. It also sets `LLM_RUNTIME_CONFIG_FILE` in `.env`
-so the local commands use that config. Both the provider and model are explicit.
-
-The initializer configures the adapter; it does not install or start Ollama or
-download a model. The configured URL must be reachable from the runtime
-process. For example, Docker Desktop can usually reach Ollama on its Windows or
-macOS host at `http://host.docker.internal:11434`; other WSL, container, and
-remote layouts may require a different address.
-
-Start the model gateway:
-
-```bash
-npm run model-gateway
-```
-
-Then start the Web UI in another terminal:
-
-```bash
-npm run web-ui
 ```
 
 Open [http://127.0.0.1:5177](http://127.0.0.1:5177).
 
-For an OpenAI profile, initialize with:
+The setup wizard guides you through connecting a provider, selecting a model,
+choosing tools, and optionally enabling semantic memory.
 
-```bash
-npm run init -- --provider openai --model <model-id>
-```
+- **OpenAI:** enter your API key and model ID.
+- **Ollama:** install and start Ollama separately, download your chosen model,
+  and provide an address reachable from the Runtime.
 
-The generated OpenAI model profile opts into `execution-agent-v1`.
+ABot includes the provider adapters. You supply the model and any required
+credentials. Configuration and runtime state are stored in your project.
 
-To add another model to an initialized runtime without replacing existing
-providers or profiles, give the new profile a unique id:
-
-```bash
-npm run add-model -- --profile <profile-id> --provider openai --model <model-id>
-```
-
-Add `--default` to select the new profile as the request-runner default. This
-changes only the default selection; it does not remove existing models.
-
+Prefer command-line setup or running from source?
 See [Installation](docs/installation.md) and
-[Running Locally](docs/running-locally.md) for complete setup options.
+[Running Locally](docs/running-locally.md).
 
-## Use as a Library
+## A workspace for everyday agent work
 
-Install the same package in a TypeScript host:
+The included Web UI brings conversations, tools, models, and automation into
+one place.
 
-```bash
-npm install @abot-ai/runtime
-```
+- Organize conversations and projects around working folders.
+- Select models and their supported reasoning settings.
+- Attach files and images, subject to model and tool support.
+- Follow streaming responses, tool activity, results, and failures.
+- Steer an active request, stop it, or queue the next message.
+- Manage plugins, memories, schedules, and runtime configuration.
+- Inspect persisted conversation history, request events, logs, and health.
+- Review notifications and open the conversation or run behind them.
 
-Compose the runtime from its public API:
+The default Web UI connects directly to the local Runtime. An external bridge
+is optional.
+
+## Tools you can use and extend
+
+The bundled public plugins cover:
+
+| Area | Capabilities |
+|---|---|
+| Files and documents | Read, create, and edit files; extract document content |
+| Development | Inspect projects, code structure, and JSON configuration |
+| Local search | Find relevant content in accessible files |
+| Commands and systems | Execute commands, inspect system information, and discover or launch applications where supported |
+| Web research | Fetch public pages and search supported sources |
+| Explicit memory | Save and retrieve records through dedicated memory tools |
+
+Select the plugins and tools available to your agent, then extend the catalog
+with your own plugins through the public Plugin SDK.
+
+Sensitive actions follow the selected approval mode. Tool availability also
+depends on platform support, installed dependencies, and OS permissions.
+Approved commands run with the Runtime user's OS authority; project folders
+are not a shell sandbox.
+
+For Web access:
+
+- `web_fetch` retrieves a public HTTP(S) page without a search API key.
+- `web_search` uses Brave Search when `BRAVE_SEARCH_API_KEY` is configured.
+- Without a key, Light search discovers pages within a bounded catalog of
+  public sources. Its coverage is more limited than a whole-web search engine.
+
+See [Plugins](docs/plugins.md) and
+[Projects and Permissions](docs/projects-and-full-plus.md).
+
+## Turn repeated work into automation
+
+### Scheduled conversation requests
+
+Save a request to run later in its conversation, using its saved model and
+permissions. Supported schedules include timers, one-time requests, intervals,
+and daily, weekly, or monthly schedules.
+
+Manage Jobs in the Web UI or through the model's built-in scheduling capability.
+Each run leaves a record in its conversation.
+
+The Runtime must be running when a Job is due. Missed offline occurrences and
+failed runs are not retried automatically.
+
+### ABot Studio
+
+Build reusable workflows in a visual editor by combining tool and agent steps.
+
+Studio supports:
+
+- Sequential steps and parallel branches
+- Connected inputs and reusable saved agents
+- Starter templates for research, documents, development, and operations
+- Manual runs, schedules, and folder polling
+- Retained step outputs and execution records
+- Separate draft, publication, activation, pause, and stop controls
+
+For example, turn incoming documents into briefs, compare several sources,
+or run a repeatable project inspection.
+
+Conversations can help create and edit workflow drafts. Publication, activation,
+and execution remain separate actions.
+
+## Memory that carries useful context forward
+
+Optional long-term memory helps retain selected facts and preferences across
+conversations. Inspect, edit, and delete saved records from the Web UI.
+
+Passive memory is disabled by default and requires an embedding model you
+select. Configure it during setup or under **Memory → Setup**.
+
+The explicit memory plugin is a separate tool-based option and does not require
+passive memory to be enabled.
+
+Runtime storage is local. Data sent for generation or embeddings is processed
+by the provider you configure.
+
+See [Long-Term Memory](docs/long-term-memory.md).
+
+## SPARK: optional help from computer activity
+
+SPARK adds learning from authorized computer activity and proactive suggestions
+in its own persistent conversation.
+
+Use it to surface possible next steps from the context you allow it to observe.
+A saved suggestion can open a regular work conversation with its retained
+context; opening it does not start the work automatically.
+
+Collection requires explicit consent. Collection, learning, and proactive
+messages have separate controls, with application exclusions and usage limits.
+Collection and proactive messages are off by default.
+
+Collected content may be sent to the learning model provider you select.
+
+On native Windows, SPARK collection runs locally without Companion pairing.
+Other deployment arrangements may require the shared Computer access setup
+and platform permissions.
+
+See [SPARK and computer-activity learning](docs/long-term-memory.md#learning-from-computer-activity)
+and [Computer access setup](docs/installation.md#computer-access-during-setup).
+
+## Embed the same engine in your application
+
+Use ABot as a TypeScript library when you want your own interface, transport,
+or application lifecycle.
+
+Compose the default services through the public API:
 
 ```ts
 import {
@@ -211,84 +229,60 @@ import {
 } from "@abot-ai/runtime/runtime";
 
 const config = loadRuntimeConfig({ rootDir: process.cwd() });
-const dependencies = createDefaultRuntimeDependencies(config);
+const runtime = createDefaultRuntimeDependencies(config);
 ```
 
-The host owns startup, shutdown, transport, and process lifecycle. See
-[examples/runtime-library-host.ts](examples/runtime-library-host.ts) for a
-complete host and [Runtime Library](docs/runtime-library.md) for the supported
-API surface.
+This creates the service composition. Your host supplies startup, shutdown,
+and application integration, including a configured model gateway connection.
 
-## Configuration and Providers
+Use the default services or provide adapters for models, session storage,
+tools, attachments, and events.
 
-The default config path is `runtime.config.json`. A host can instead pass
-`configPath` or set `LLM_RUNTIME_CONFIG_FILE`; the source initializer uses this
-mechanism to select `local/runtime.config.json`.
+See the [complete host example](examples/runtime-library-host.ts),
+[Runtime Library guide](docs/runtime-library.md), and
+[public contracts](docs/runtime-public-contracts.md).
 
-Provider profiles, model profiles, request-runner policy, environments, paths,
-and optional bridge settings are configuration-driven. Secrets belong in
-environment variables or a host secret store, never in committed config.
+## Platforms and current scope
 
-See [Configuration](docs/configuration.md) and the packaged
-[`runtime.config.schema.json`](runtime.config.schema.json). Model behavior can
-also be tuned per semantic step without adding provider-specific logic to the
-runtime; see [Calibrating A Model By
-Step](docs/configuration.md#calibrating-a-model-by-step).
+ABot is available as an npm package with a browser-based Web UI on Windows,
+Linux, and macOS, with separate WSL and Docker setup paths.
 
-## Plugins and Web Access
+The [1.8.0 release](https://github.com/Dorshitrit/abot-runtime/releases/tag/v1.8.0)
+includes native Windows support for the Runtime and the documented operations of
+its bundled plugins. SYSTEM provides commands and application discovery and
+launch; desktop observation and input (`computer_*`) are unavailable on native
+Windows. Tool requirements, permissions, and limits still apply.
 
-The distribution includes a curated public plugin catalog for development and
-agent workflows: filesystem operations, command execution, document reading,
-local search, explicit memory operations, project inspection, JSON inspection,
-system probing, and Web access. Hosts can add plugins under their own runtime
-root; duplicate plugin IDs fail closed. The explicit memory plugin is separate
-from core-owned passive long-term memory.
+The separate desktop shell remains in QA and is not included in npm or the
+public source snapshot.
 
-The Web plugin exposes two distinct capabilities:
+ABot Runtime is an early-stage project. The documented package exports define
+its supported API; internal source paths may change between releases.
 
-- `web_fetch` retrieves a specific public HTTP(S) page without a search API key.
-- `web_search` uses Brave Search when `BRAVE_SEARCH_API_KEY` is configured.
-  Without a key, it uses Light search: bounded discovery and ranking within a
-  catalog of public Hebrew and English sources, without an external search
-  engine. Light has limited coverage; an empty result does not mean the
-  information is absent from the web. A configured Brave key that fails does
-  not trigger an automatic switch to Light.
-
-Some plugins have platform-specific requirements. See [Plugins](docs/plugins.md)
-for their contracts, limits, and configuration.
-
-## Architecture at a Glance
-
-- The runtime owns request execution, sessions, events, context, and capability
-  orchestration.
-- The model gateway normalizes provider adapters, model profiles, and streaming
-  responses behind one runtime-facing contract.
-- Plugins own tool implementations and declare their capabilities, operations,
-  parameters, skills, and required secrets.
-- The Web UI and bridge are clients of the same runtime contracts.
-
-For a deeper view, see [Architecture](docs/architecture.md).
+See [platform-specific plugin support](docs/plugins.md#native-windows-plugin-support)
+and [Known Limitations](docs/known-limitations.md).
 
 ## Documentation
 
-- [Installation](docs/installation.md)
-- [Running Locally](docs/running-locally.md)
-- [Configuration](docs/configuration.md)
-- [Runtime Library](docs/runtime-library.md)
-- [Passive Long-Term Memory](docs/long-term-memory.md)
-- [Plugins](docs/plugins.md)
-- [Troubleshooting](docs/troubleshooting.md)
+| Goal | Guide |
+|---|---|
+| Install ABot or run from source | [Installation](docs/installation.md) |
+| Configure local services | [Running Locally](docs/running-locally.md) |
+| Select models and execution policies | [Configuration](docs/configuration.md) |
+| Use and build plugins | [Plugins](docs/plugins.md) |
+| Understand projects and permissions | [Projects and FULL+](docs/projects-and-full-plus.md) |
+| Configure memory and SPARK | [Long-Term Memory](docs/long-term-memory.md) |
+| Embed the runtime | [Runtime Library](docs/runtime-library.md) |
+| Understand the engine | [Architecture](docs/architecture.md) |
+| Check operational boundaries | [Known Limitations](docs/known-limitations.md) |
+| Diagnose setup and runtime issues | [Troubleshooting](docs/troubleshooting.md) |
 
-## Project Status
+## Contributing, security, and license
 
-ABot Runtime is an early-stage project. Only documented package exports are
-part of its supported API; internal source paths may change between releases.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and
+[SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 
-## Contributing, Security, and License
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines and
-[SECURITY.md](SECURITY.md) for reporting vulnerabilities. ABot Runtime is
-available under the [MIT License](LICENSE).
+ABot Runtime is available under the [MIT License](LICENSE).
 
 ## Acknowledgements
 

@@ -11,7 +11,7 @@ export function shouldRenderNativeWindowsAccess(input) {
   return isNativeWindowsLocalAccess(input.snapshot);
 }
 
-function nativeWindowsAccessPresentation(input) {
+export function nativeWindowsAccessPresentation(input) {
   if (input.statusUnavailable) return {
     title: "Check Windows access", status: "Status unavailable",
     description: "The current local access status could not be checked. Refresh to try again.",

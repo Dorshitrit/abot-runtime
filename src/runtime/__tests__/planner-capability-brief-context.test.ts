@@ -27,8 +27,9 @@ test("projects one shared complete catalog without replacing the exact Planner a
   expect(brief).toHaveLength(1);
   expect(brief[0]!.role).toBe("system");
   for (const entry of full.entries) {
-    expect(brief[0]!.content).toContain(JSON.stringify(entry.summary));
-    expect(brief[0]!.content).toContain(entry.operationId);
+    expect(brief[0]!.content).toContain(entry.pluginDescription!);
+    expect(brief[0]!.content).not.toContain(entry.summary);
+    expect(brief[0]!.content).not.toContain(entry.operationId);
   }
   expect(withoutBrief(full.input.context.messages)).toEqual(
     withoutBrief(partial.input.context.messages),

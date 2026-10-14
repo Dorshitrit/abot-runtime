@@ -32,7 +32,7 @@ const HISTORY_MESSAGE = {
 };
 
 describe("passive capability brief context", () => {
-  test("falls back to a complete detailed brief within the cap including message overhead", () => {
+  test("keeps bounded plugin discovery instead of full operation summaries and counts message overhead", () => {
     const context = createContext();
     const projection = projectCapabilityBrief({
       entries: [createEntry({ summary: "x".repeat(20_000) })],
@@ -40,11 +40,12 @@ describe("passive capability brief context", () => {
       context,
     });
 
-    expect(projection.level).toBe("detailed");
+    expect(projection.level).toBe("descriptions");
     expect(projection.reason).toBe("complete_catalog");
     expect(projection.message?.role).toBe("system");
     expect(projection.message?.content).toContain("reader");
-    expect(projection.message?.content).toContain("read_item");
+    expect(projection.message?.content).not.toContain("read_item");
+    expect(projection.message?.content).not.toContain("x".repeat(161));
     expect(projection.estimatedTokens).toBe(
       estimateMessageTokens(projection.message!),
     );
@@ -54,15 +55,16 @@ describe("passive capability brief context", () => {
     expect(projection.estimatedTokens).toBeLessThanOrEqual(
       CAPABILITY_BRIEF_MAX_TOKENS,
     );
-    expect(projection.budgetTokens).toBe(CAPABILITY_BRIEF_MAX_TOKENS);
+    expect(projection.budgetTokens).toBeGreaterThan(CAPABILITY_BRIEF_MAX_TOKENS);
     expect(Object.isFrozen(projection)).toBe(true);
     expect(Object.isFrozen(projection.message)).toBe(true);
   });
 
-  test("falls back to every tool title when complete operation detail is too large", () => {
+  test("shows each plugin once regardless of operation detail size", () => {
     const entries = ["alpha", "beta", "gamma"].map((toolName) =>
       createEntry({
         toolName,
+        pluginName: `${toolName}-plugin`,
         operationId: `${toolName}_${"x".repeat(1_000)}`,
         summary: "x".repeat(20_000),
       }),
@@ -73,7 +75,7 @@ describe("passive capability brief context", () => {
       context: createContext(),
     });
 
-    expect(projection.level).toBe("titles");
+    expect(projection.level).toBe("descriptions");
     for (const entry of entries) {
       expect(projection.message?.content).toContain(entry.toolName);
       expect(projection.message?.content).not.toContain(entry.operationId);
@@ -85,6 +87,7 @@ describe("passive capability brief context", () => {
     const entries = Array.from({ length: 1_000 }, (_, index) =>
       createEntry({
         toolName: `tool_${index}_${"x".repeat(100)}`,
+        pluginName: `plugin_${index}`,
         operationId: `operation_${index}_${"y".repeat(100)}`,
       }),
     );
@@ -328,6 +331,7 @@ describe("passive capability brief context", () => {
       entries: [
         createEntry({
           toolName: "קריאה",
+          pluginDescription: "קריאת קבצים",
           operationId: "קובץ",
           summary: "x".repeat(20_000),
         }),
@@ -335,7 +339,7 @@ describe("passive capability brief context", () => {
       groups: GROUPS,
       context: createContext({ budget: { tokenEstimation } }),
     });
-    expect(projection.level).toBe("detailed");
+    expect(projection.level).toBe("descriptions");
     expect(projection.estimatedTokens).toBe(
       estimateMessageTokens(projection.message!, tokenEstimation),
     );
@@ -399,6 +403,8 @@ function createEntry(
 ): ToolAvailabilityEntry {
   return {
     toolName: "reader",
+    pluginName: "reader-plugin",
+    pluginDescription: "Read bounded records.",
     operationId: "read_item",
     summary: "Read one configured item.",
     catalogGroups: ["read"],

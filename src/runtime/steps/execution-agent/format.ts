@@ -1,4 +1,5 @@
 import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
+import { directResponseVariants } from "./direct-response-contract.js";
 import { createMemoryRecallDecisionSchema } from "../memory-recall-decision.js";
 import { createExecutionWorkPlanDecisionSchema } from "./work-plan-schema.js";
 import { isToolCatalogGroupId } from "../../../capabilities/tool-types.js";
@@ -103,6 +104,10 @@ export function createExecutionAgentDecisionFormat(
             action: literal("respond"),
             ...presentation,
           }),
+          ...directResponseVariants(
+            options.directResponseMaxLength, presentation,
+            options.directResponseMemoryAuthoring !== undefined,
+          ),
         ]
       : []),
     exactObject({

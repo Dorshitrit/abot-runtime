@@ -118,7 +118,7 @@ test.each([
     expect(request.memoryRecallLimit).toBe(limit);
     expect(request.executionPolicy.authority.id).toBe(policy);
     expect(offered).toEqual([...Array<boolean>(limit).fill(true), false]);
-    expect(harness.memory.retrieve).toHaveBeenCalledTimes(limit);
+    expect(harness.memory.retrieve).toHaveBeenCalledTimes(limit + 1);
     expect(harness.invokeRaw).not.toHaveBeenCalled();
     expect(
       harness.invoke.mock.calls.some(

@@ -1,3 +1,4 @@
+import { fenceRestoredApprovalExecution } from "./execution-freshness.js";
 import { restorePreparationRejection } from "./preparation-rejection.js";
 import { isDeepStrictEqual } from "node:util";
 import type { RoleCallLedger, RoleCallFrame } from "../../role-calls/index.js";
@@ -193,7 +194,13 @@ export async function restoreCapabilityApprovalGroup<TContext>(params: {
         ledger: params.ledger,
         expectedHead: head,
         call,
-        invocations,
+        invocations: invocations.map((invocation) => ({
+          ...invocation,
+          prepared: fenceRestoredApprovalExecution(
+            invocation.prepared,
+            params.executionFreshness,
+          ),
+        })),
         executionIds: group.entries.map((entry) => entry.executionId),
         batch: group.batch,
         diagnostic,

@@ -11,6 +11,7 @@ export function restoreCheckpointState(
   checkpoint: RoleCallLedgerCheckpoint,
   requestId: string,
   policy: RoleCallPolicy,
+  initialMemory?: RoleCallState["initialMemory"],
 ): RoleCallState {
   if (!isCheckpointEnvelope(checkpoint))
     throw new Error("role_call_checkpoint_invalid");
@@ -18,7 +19,10 @@ export function restoreCheckpointState(
     throw new Error("role_call_checkpoint_request_mismatch");
   if (!hasCheckpointPolicy(checkpoint, policy))
     throw new Error("role_call_checkpoint_policy_mismatch");
-  const state = seal(structuredClone(checkpoint.state));
+  const state = seal(structuredClone({ ...checkpoint.state,
+    ...(checkpoint.state.initialMemory === undefined && initialMemory !== undefined
+      ? { initialMemory } : {}),
+  }));
   if (!isParkedCapabilityState(state))
     throw new Error("role_call_checkpoint_not_parked");
   if (!issueInitialRoleCapabilitySelectionSupervisionState(state))

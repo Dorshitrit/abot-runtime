@@ -4,6 +4,52 @@ All notable changes to this project should be documented in this file.
 
 This project follows semantic versioning after the first public release.
 
+## 1.8.1 - 2026-10-14
+
+ABot 1.8.1 improves request reliability, memory-informed decisions, tool discovery
+and planning, with a more compact Home experience on smaller screens.
+
+### Changed
+
+- Execution Agent can return an eligible short answer and memory candidates in
+  one model call. Automatic long-term memory is prepared before its first
+  decision and reused through tools, steering and saved approval resume.
+- Supervisor receives automatic long-term memory before its first routing
+  decision and retains that reference through the existing request lifecycle.
+  Explicit memory recall remains available in both execution modes.
+- Execution Agent, Supervisor and Planner use a compact, group-first tool
+  catalog with exact plugin/tool membership and optional short plugin
+  descriptions. Detailed operations appear after the relevant group is opened.
+- Supervisor chooses an available Planner when remaining execution requires
+  multiple steps across at least two different tools. Planner guidance is
+  streamlined while preserving requested tools and Worker execution ownership.
+- Home uses compact widgets at widths up to 1440px, with previews for activity,
+  conversations, approvals, runs, automations and computer access. Opening a
+  widget shows its existing live panel in a scrollable dialog; wider screens
+  retain the full layout.
+- The interface displays the existing Fast reasoning mode as Low. Stored and
+  API values, effort mapping and defaults remain unchanged.
+- Refresh the README around practical local workflows, Execution Agent,
+  Supervisor and Studio, with clearer Windows support boundaries.
+
+### Fixed
+
+- A steering update arriving during saved tool-approval resume no longer fails
+  the request. The original approval or rejection is preserved, superseded
+  execution is fenced, and the update reaches the existing continuation once.
+- An abrupt Ollama disconnect during streamed output no longer crashes the
+  Gateway by attempting a second HTTP response. The request fails explicitly,
+  partial output is not accepted, and the same process can serve later requests.
+- EA no longer loses its direct-answer option because of a conservative context
+  estimate. Actual context admission, provider token counting and compaction
+  still enforce the configured limits.
+- Initial EA memory preparation preserves supported conversation text and
+  attachments, filters request-local tool evidence, and ignores undeclared
+  memory-reference fields before saving context.
+- Compact Home widgets preserve live component state, drafts, actions and focus
+  when opened and closed. Computer previews include accessible name and OS
+  descriptions, and opening SPARK chat focuses its input.
+
 ## 1.8.0 - 2026-10-12
 
 ABot 1.8.0 adds native Windows support to the Runtime library and its bundled

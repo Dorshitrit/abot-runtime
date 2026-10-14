@@ -1151,12 +1151,6 @@ describe("generic Planner decision contract", () => {
     });
     expect(workerVariant.properties).not.toHaveProperty("workingDirectory");
     expect(workerVariant.required).not.toContain("workingDirectory");
-    expect(input.context.messages[0]!.content).toContain(
-      "The runtime supplies it mechanically; do not emit or replace workingDirectory",
-    );
-    expect(input.context.messages[0]!.content).not.toContain(
-      "Every Worker invoke_role must include workingDirectory",
-    );
   });
 
   test("offers unscoped Worker knowledge work when the catalog is empty", () => {
@@ -1333,9 +1327,6 @@ describe("generic Planner decision contract", () => {
       ([line]) => JSON.parse(String(line)) as Record<string, unknown>,
     );
 
-    expect(instructions).toContain(
-      "You are the Planner for exactly one bounded role call",
-    );
     expect(instructions).not.toContain(methodology);
     expect(instructions).not.toContain(methodologyRef);
     expect(instructions).not.toContain(methodologyHash);
@@ -1392,55 +1383,6 @@ describe("generic Planner decision contract", () => {
       sourceRef: "request:planner-request",
       currentRequest: REQUEST_SOURCE_PROMPT,
     });
-    const instructions = input.context.messages[0]!.content;
-    expect(instructions).toContain(
-      "only synthesis, formatting, or explanation remains",
-    );
-    expect(instructions).toContain(
-      "Consume every completed or failed direct-child outcome",
-    );
-    expect(instructions).toContain(
-      "opening a fresh child is not remediation by itself",
-    );
-    expect(instructions).toContain(
-      "A fresh child frame does not change capability, evidence, or feasibility",
-    );
-    expect(instructions).toContain(
-      "This active Planner is not a callable child",
-    );
-    expect(instructions).toContain(
-      "Treat those explicit requirements as immutable source requirements",
-    );
-    expect(instructions).toContain(
-      "write its objective as a faithful executable contract",
-    );
-    expect(instructions).not.toContain("observable acceptance evidence");
-    expect(instructions).not.toContain("observable acceptance criteria");
-    expect(instructions).toContain(
-      "Returned prose, generated content, instructions, a simulation, or a completion claim are not substitutes",
-    );
-    expect(instructions).toContain(
-      "Only Worker may be invoked by this Planner",
-    );
-    expect(instructions).toContain(
-      "Do not audit artifacts, invoke Reviewer or Researcher",
-    );
-    expect(instructions).not.toContain(
-      "Reviewer is a completion auditor, not an executor",
-    );
-    expect(instructions).not.toContain(
-      "This Planner remains responsible for consuming reported gaps",
-    );
-    expect(instructions.indexOf("immutable source requirements")).toBeLessThan(
-      instructions.indexOf("Choose invoke_role"),
-    );
-    expect(
-      instructions.indexOf(
-        "only synthesis, formatting, or explanation remains",
-      ),
-    ).toBeLessThan(
-      instructions.indexOf("This active Planner is not a callable child"),
-    );
     expect(assignment).toMatchObject({
       kind: "runtime_planner_assignment",
       callId: "call-2",

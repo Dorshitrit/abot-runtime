@@ -10,11 +10,13 @@ import {
 } from "../observability/debug-logger.js";
 import { runtimePluginsToToolModules } from "../plugins/loader.js";
 import { loadRuntimeCapabilityPlugins } from "../plugins/runtime-capability-plugins.js";
+import { EXECUTION_CAPABILITY_GROUP_CATALOG_HEADER } from "../steps/execution-agent/state-context.js";
 import {
   assertFilesystemScope,
   capsules,
   decision,
   filesystemScopeFixture,
+  messages,
   type FilesystemModelInput,
 } from "./support/filesystem-scope-integration-fixture.js";
 import { selectedSystemModules } from "./support/system-request-plugin-fixture.js";
@@ -111,6 +113,9 @@ test("EA 32K and 120K retain identical catalog and control schemas; SYSTEM-first
       ],
       (input) => {
         inputs.push(input);
+        expect(
+          capsules(input, "runtime_execution_capability_group_catalog_v1"),
+        ).toEqual([]);
         if (input.modelStep === "execution.decision") executionTurn += 1;
         if (input.modelStep === "execution.decision" && executionTurn === 2) {
           assertFilesystemScope(input, root, null, true);
@@ -157,9 +162,8 @@ test("EA 32K and 120K retain identical catalog and control schemas; SYSTEM-first
           )
           .map((input) => ({
             step: input.modelStep,
-            groups: capsules(
-              input,
-              "runtime_execution_capability_group_catalog_v1",
+            groups: messages(input).filter(({ content }) =>
+              content.startsWith(EXECUTION_CAPABILITY_GROUP_CATALOG_HEADER),
             ),
             capabilities: capsules(
               input,

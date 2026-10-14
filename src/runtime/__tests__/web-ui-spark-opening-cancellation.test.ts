@@ -51,7 +51,7 @@ function createPanelDocument() {
   documentRoot.hasFocus = () => true;
   const panel = new ElementStub(documentRoot), notice = new ElementStub(documentRoot);
   panel.hidden = true; notice.hidden = true;
-  const names = ["settingsButton", "launcherButton", "messagesList", "closeButton", "mascotButton",
+  const names = ["settingsButton", "launcherButton", "messagesList", "composerInput", "closeButton", "mascotButton",
     "noticeButton", "dismissNoticeButton", "sendNextMenu", "unreadBadge"];
   const nodes = Object.fromEntries(names.map((name) => {
     const node = new ElementStub(documentRoot); node.dataset.spark = name;
@@ -117,7 +117,7 @@ const finishBrowserTurn = () => new Promise<void>((resolve) => setImmediate(reso
 function launch(f: Awaited<ReturnType<typeof fixture>>) {
   f.panel.dom.launcherButton.dispatchEvent(new Event("click"));
   expect(f.panel.isOpen()).toBe(true);
-  expect(f.documentRoot.activeElement).toBe(f.panel.dom.messagesList);
+  expect(f.documentRoot.activeElement).toBe(f.panel.dom.composerInput);
 }
 
 function dismiss(f: Awaited<ReturnType<typeof fixture>>, control = "closeButton") {
@@ -197,7 +197,7 @@ test("an explicit opening after cancellation can show and focus SPARK again", as
   expect(await f.feature.open()).toBe(true);
   expect(f.panel.isOpen()).toBe(true);
   expect(f.panel.panel.hidden).toBe(false);
-  expect(f.documentRoot.activeElement).toBe(f.panel.dom.messagesList);
+  expect(f.documentRoot.activeElement).toBe(f.panel.dom.composerInput);
 });
 
 async function connectNotifications(f: Awaited<ReturnType<typeof fixture>>) {
@@ -284,6 +284,6 @@ test("an uncancelled recognized notification opens SPARK without URL fallback", 
   const notifications = await connectNotifications(f);
   await notifications.open();
   expect(f.panel.isOpen()).toBe(true);
-  expect(f.documentRoot.activeElement).toBe(f.panel.dom.messagesList);
+  expect(f.documentRoot.activeElement).toBe(f.panel.dom.composerInput);
   expect(notifications.assign).not.toHaveBeenCalled();
 });

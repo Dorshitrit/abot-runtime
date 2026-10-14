@@ -15,6 +15,7 @@ import {
   type RegisteredToolWorkerCapabilityProviderDiagnostic,
 } from "../registered-tool-worker-capability-diagnostics.js";
 import { executionFreshnessRejection } from "./payload-lifecycle.js";
+import { payloadRejection } from "./payload-rejection.js";
 import { RegisteredToolWorkerCapabilityExecutionError } from "./errors.js";
 import {
   observeExternalResult,
@@ -39,6 +40,24 @@ export function createPreparedWorkerInvocation(
   payloadObservability: { release(executionId: string): void },
 ): WorkerCapabilityPreparedExecution {
   const operationId = params.projection.operation.operationId;
+  const rejectBeforeExecution: NonNullable<
+    WorkerCapabilityPreparedExecution["rejectBeforeExecution"]
+  > = (executionId, code, message) => {
+    payloadObservability.release(executionId);
+    const rejectedExecution = payloadRejection(code, message);
+    normalPreparation.emitRejection({
+      executionId,
+      executorIdentity: input.call,
+      errorCode: code,
+    });
+    return attachTargetReferences(
+      {
+        ...rejectedExecution.result,
+        exactResult: rejectedExecution.exactResult,
+      },
+      selectedTargetReferences,
+    );
+  };
   return Object.freeze({
     actionFingerprint: normalPreparation.actionFingerprint,
     acceptedControls: normalPreparation.acceptedControls,
@@ -53,6 +72,7 @@ export function createPreparedWorkerInvocation(
       : {}),
     applyApprovalDecision: normalPreparation.applyApprovalDecision,
     onAdmitted: payloadObservability.release,
+    rejectBeforeExecution,
     execute: async (executionId: string) => {
       try {
         payloadObservability.release(executionId);
@@ -67,20 +87,12 @@ export function createPreparedWorkerInvocation(
         const rejectedExecution = executionFreshnessRejection(
           input.executionFreshness,
         );
-        if (rejectedExecution) {
-          normalPreparation.emitRejection({
+        if (rejectedExecution)
+          return rejectBeforeExecution(
             executionId,
-            executorIdentity: input.call,
-            errorCode: rejectedExecution.sourceIssueCode,
-          });
-          return attachTargetReferences(
-            {
-              ...rejectedExecution.result,
-              exactResult: rejectedExecution.exactResult,
-            },
-            selectedTargetReferences,
+            rejectedExecution.sourceIssueCode,
+            rejectedExecution.result.summary,
           );
-        }
         const externalResult = await normalPreparation.execute(
           executionId,
           input.call,

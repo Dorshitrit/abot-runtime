@@ -4,6 +4,7 @@ import {
   resetDebugLoggerConfig,
 } from "../observability/debug-logger.js";
 import { runRequestRunner } from "../request/runner.js";
+import { projectLongTermMemoryMessage } from "../long-term-memory/projection.js";
 import { REVIEWER_AUDIT_CONTEXT_KIND } from "../steps/reviewer-decision/model-context.js";
 import {
   createMemoryRecallHarness,
@@ -51,6 +52,8 @@ test.each([false, true])(
     let plannerCount = 0;
     const harness = createMemoryRecallHarness({
       policy: "supervisor-worker-v1",
+      retrieve: async () => ({ available: true, records: [MEMORY_RECORD],
+        message: projectLongTermMemoryMessage([MEMORY_RECORD])! }),
       onInput(input) {
         const isRootDecision =
           input.modelStep === "supervisor.decision" &&
@@ -140,6 +143,8 @@ test.each([false, true])(
         if (input.modelStep === "supervisor.decision") {
           supervisorCount += 1;
           if (supervisorCount === 1) {
+            expect(modelMessages(input)).toContainEqual(projectLongTermMemoryMessage([MEMORY_RECORD]));
+            expect(harness.memory.retrieve).toHaveBeenCalledOnce();
             return {
               action: "recall_memory",
               query: RECALL_QUERY,
@@ -299,7 +304,7 @@ test.each([false, true])(
       "supervisor.response",
       "supervisor.response",
     ]);
-    expect(harness.memory.retrieve).toHaveBeenCalledOnce();
+    expect(harness.memory.retrieve).toHaveBeenCalledTimes(2);
     expect(harness.invokeRaw).not.toHaveBeenCalled();
     expect(harness.request.onAnswerToken).toHaveBeenCalledExactlyOnceWith(
       FINAL_RESPONSE,

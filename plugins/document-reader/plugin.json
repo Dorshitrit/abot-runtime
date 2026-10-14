@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "document-reader",
   "version": "0.1.0",
-  "description": "Extract bounded text from PDF, Office and supported text documents. Use file readers for source code.",
+  "description": "Read text from PDF, Office, and supported text documents.",
   "extensions": {
     "ai.abot.compatibility": { "version": 1, "runtimePlatforms": ["linux", "darwin", "win32"] },
     "ai.abot.runtime": {

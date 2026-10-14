@@ -1,4 +1,9 @@
 const paths = {
+  unread: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/>',
+  collecting: '<path d="M2 12h5l3-8 4 16 3-8h5"/>',
+  paused: '<path d="M9 5v14M15 5v14"/>',
+  unknown: '<circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 0 1 6 0c0 2-3 2-3 4m0 4h.01"/>',
+  computer: '<rect x="5" y="3" width="14" height="13" rx="2"/><path d="M5 16 2 21h20l-3-5"/>',
   upload: '<path d="M12 16V4m-4 4 4-4 4 4"/><path d="M4 16v4h16v-4"/>',
   job: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18m-9 3v4m-2-2h4"/>',
   conversations:
