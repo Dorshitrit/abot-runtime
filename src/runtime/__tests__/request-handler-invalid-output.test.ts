@@ -1,3 +1,4 @@
+import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { buildDegradedFinalizationFallback } from "../steps/degraded-finalization/fallback.js";
 import { writeFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -79,7 +80,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
           failureNotice: "I could not safely finish the requested work.",
           nextStep: "Continue with the recorded state in a follow-up request.",
         };
-        const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+        const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
           if (input.modelStep === "degraded.finalization") {
             if (degradedOutcome === "provider_failure")
               throw new Error("degraded_provider_connection_failed");
@@ -105,7 +106,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
                 : "",
             meta: {},
           };
-        });
+        }));
         const sessionStore = createInMemorySessionStore();
         await sessionStore.getOrCreateSession("invalid-lifecycle-session");
         await sessionStore.updateSessionTitle(

@@ -268,9 +268,30 @@
 .automation-text-button { border: 0; border-radius: 6px; background: transparent; padding: 6px 10px; color: var(--accent); font-size: var(--font-size-sm); }
 .automation-text-button:hover, .automation-text-button:focus-visible { background: var(--control-bg); color: var(--accent-strong); }
 .automation-heading .automation-text-button { margin-inline-start: -10px; }
-.automation-run-choices { display: flex; flex-wrap: wrap; gap: 6px; }
-.automation-run-choices button { min-height: 30px; font-size: var(--font-size-xs); }
-.automation-run-choices button[aria-current="true"] { border-color: var(--accent); color: var(--accent); }
+.automation-run-history { display: grid; gap: 10px; min-width: 0; }
+.automation-run-history h4 { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0; color: var(--text-strong); font-size: var(--font-size-sm); font-weight: 600; }
+.automation-run-history h4 span { color: var(--muted); font-size: var(--font-size-xs); font-weight: 400; }
+.automation-run-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
+.automation-run-filters label { display: grid; gap: 5px; min-width: 0; flex: 1 1 150px; color: var(--muted); font-size: var(--font-size-xs); }
+.automation-run-filters :is(select, input) { box-sizing: border-box; width: 100%; min-width: 0; min-height: 36px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--control-bg); color: var(--text); font: inherit; }
+.automation-run-filters select { text-transform: capitalize; }
+.automation-run-filters button, .automation-run-history-footer button { min-height: 36px; font-size: var(--font-size-xs); }
+.automation-run-filters small { flex-basis: 100%; color: var(--muted); font-size: var(--font-size-xs); }
+.automation-run-history-footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 20px; color: var(--muted); font-size: var(--font-size-xs); }
+.automation-run-history-error { margin: 0; color: var(--danger); font-size: var(--font-size-sm); }
+.automation-run-choices > .automation-muted { margin: 16px; }
+.automation-run-choices { max-height: 264px; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.automation-run-choices button { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 8px 16px; width: 100%; min-height: 44px; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--line); border-inline-start: 3px solid transparent; border-radius: 0; background: transparent; color: var(--text); text-align: start; font-size: var(--font-size-xs); }
+.automation-run-choices button:last-child { border-bottom: 0; }
+.automation-run-choices button:hover { background: var(--panel-soft); }
+.automation-run-choices button[aria-current="true"] { border-inline-start-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+.automation-run-choices button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.automation-run-time { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.automation-run-status { justify-self: end; display: inline-flex; align-items: center; gap: 7px; max-width: 100%; color: var(--muted); text-transform: capitalize; overflow-wrap: anywhere; }
+.automation-run-status::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.automation-run-status[data-status="succeeded"] { color: var(--green); }
+.automation-run-status:is([data-status="failed"], [data-status="rejected"]) { color: var(--danger); }
+.automation-run-status:is([data-status="pending"], [data-status="running"], [data-status="stopping"], [data-status="completed_with_skips"]) { color: var(--amber); }
 .automation-permission-modal { width: min(560px, calc(100vw - 24px)); max-height: min(80vh, 760px); overflow: auto; padding: 20px; color: var(--text); background: var(--panel); border: 1px solid var(--line-strong); border-radius: 9px; box-shadow: var(--shadow); }
 .automation-permission-modal::backdrop { background: rgba(2, 9, 15, .68); }
 .automation-permission-dialog { display: grid; gap: 13px; }

@@ -136,6 +136,7 @@ describe("runtime composition", () => {
       sessions: createInMemorySessionStore(),
       attachments: defaults.services.attachments,
       tools: defaults.services.tools,
+      knowledgeSkillStore: defaults.services.knowledgeSkillStore,
       models: defaults.services.models,
       events: defaults.services.events,
       sessionMemoryCompactor: defaults.services.sessionMemoryCompactor,
@@ -149,6 +150,7 @@ describe("runtime composition", () => {
       config,
       ...overrides,
       sessions: runtime.sessions,
+      personalSkills: defaults.services.personalSkills,
       projects: {
         list: expect.any(Function),
         get: expect.any(Function),

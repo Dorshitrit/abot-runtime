@@ -1,3 +1,4 @@
+import { CORE_TOOL_CONTRACTS } from "../core-tool-contracts.js";
 import { Buffer } from "node:buffer";
 import { AUTOMATION_TOOL_EVENT_PRESENTATION } from "./event-presentation.js";
 import type {
@@ -9,7 +10,6 @@ import { automationDraftPreparationReceipt } from "./draft-operation-refs.js";
 import { AutomationDraftReceiptCapacityError, prepareAutomationDraftReceipt } from "./draft-receipt-admission.js";
 import type { AutomationRevision, WorkflowNode } from "../../automations/definition-contracts.js";
 import { readAutomationDraftIndex } from "./draft-index.js";
-import { automationModelToolContract } from "./model-tool-contract.js";
 import { readAutomationAuthoringPreparation } from "./authoring-preparation.js";
 import { automationAuthoringCatalogScope, readAutomationAuthoringCatalog, readAutomationAuthoringCatalogIndex } from "./authoring-catalog.js";
 import { AUTOMATION_AUTHORING_REFERENCE } from "../automation-builder/authoring-reference.js";
@@ -258,7 +258,7 @@ export function createAutomationDraftToolModule(
 ): ToolModuleDeclaration {
   return {
     definition: {
-      name: "automations",
+      name: CORE_TOOL_CONTRACTS.automations.name,
       eventPresentation: AUTOMATION_TOOL_EVENT_PRESENTATION,
       description: "Inspect and make targeted edits to ABot Studio drafts. For a complete connected workflow or several related edits, prefer automation_builder create_automation_draft or apply_automation_draft_changes. Catalog discovery lists tools for the FUTURE workflow, not Studio editing commands; fetch operation detail only when needed. Successful edits return exact revision and newNodeIds for reuse; read_draft when state is unknown or after a revision conflict. Draft authoring only: the user grants permissions, publishes and runs automations.",
       routingCapability: "semantic_mutation",
@@ -266,14 +266,14 @@ export function createAutomationDraftToolModule(
       developmentRoles: ["auxiliary"],
       controlsRefinement: "mechanical_when_complete",
     },
-    normalInvocation: automationModelToolContract,
+    normalInvocation: CORE_TOOL_CONTRACTS.automations.normalInvocation,
     async implementation(params, context?: ToolExecutionContext) {
       try {
         await ready();
         context?.abortSignal?.throwIfAborted();
         const result = await execute(getService(), params);
         if (params.action === "read_draft") {
-          const operation = automationModelToolContract.operations.find(({ operationId }) => operationId === "read_draft")!;
+          const operation = CORE_TOOL_CONTRACTS.automations.normalInvocation.operations.find(({ operationId }) => operationId === "read_draft")!;
           return prepareAutomationDraftReceipt(result, { tool: "automations", operation, params, mutationEvidence: false });
         }
         const isDraftMutation = !["list_drafts", "read_draft", "catalog", "browse_catalog", "prepare_draft", "validate_draft"].includes(String(params.action));

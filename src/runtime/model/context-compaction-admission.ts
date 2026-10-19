@@ -19,6 +19,7 @@ import {
   type ContextCompactionIdentity,
 } from "./context-compaction-diagnostics.js";
 import { isCompactionSteeringSuperseded } from "./model-step-steering.js";
+import { ModelStepTimeoutError } from "../steps/model-step-timeout.js";
 
 type CompactionEnvelope = Readonly<{
   messages: readonly ChatMessage[];
@@ -88,6 +89,14 @@ function canAdmitReusedCompactedContext(
   return controller?.hasExhaustedVerifiedCompactionSources?.(messages) === true;
 }
 
+function hasChangedOptionalContextProjection(
+  candidate: readonly ChatMessage[] | undefined,
+  previous: readonly ChatMessage[],
+): candidate is readonly ChatMessage[] {
+  if (!candidate) return false;
+  return candidate !== previous;
+}
+
 /** The model boundary owns budget decisions; stages own source selection only. */
 export async function admitCompactedContext(
   params: CompactionEnvelope &
@@ -97,6 +106,7 @@ export async function admitCompactedContext(
         messages: readonly ChatMessage[],
       ): Promise<RequestMessagesBudgetAssessment>;
       assertCurrent(): void;
+      boundSteeringVersion?: number;
       abortSignal: AbortSignal;
       identity: ContextCompactionIdentity;
       onEvent?: (name: string, extra?: Record<string, unknown>) => void;
@@ -121,6 +131,29 @@ export async function admitCompactedContext(
 
   try {
     params.assertCurrent();
+    const optionalProjection = params.controller?.projectForCompaction?.(
+      current.messages,
+    );
+    if (
+      hasChangedOptionalContextProjection(optionalProjection, current.messages)
+    ) {
+      params.assertCurrent();
+      const assessment = await params.assess(optionalProjection);
+      params.assertCurrent();
+      current = { messages: optionalProjection, assessment };
+    }
+    if (isCompactedEnvelopeAdmissible(current.assessment, params.assessment)) {
+      diagnostics.trace("admitted", {
+        outcome: "admitted",
+        reason: "optional_context_removed_within_budget",
+        committedScopes,
+        ...compactionMeasurement(current.assessment),
+        afterInputTokens: resolveRequestBudgetInputTokens(
+          current.assessment.budget,
+        ),
+      });
+      return current;
+    }
     if (
       canAdmitReusedCompactedContext(
         current.assessment,
@@ -147,7 +180,9 @@ export async function admitCompactedContext(
     for (const [stageIndex, stage] of stages.entries()) {
       activeStage = stage;
       params.assertCurrent();
-      const outcome = await stage.prepare(current.messages);
+      const outcome = await stage.prepare(current.messages, {
+        boundSteeringVersion: params.boundSteeringVersion,
+      });
       params.assertCurrent();
       const stageMetadata = {
         stageIndex,
@@ -299,6 +334,7 @@ export async function admitCompactedContext(
           : { secondaryIssueCode: compactionIssueCode(error) }),
       },
     );
+    if (isCompactionSteeringSuperseded(primary)) params.assertCurrent();
     throw primary;
   }
 }
@@ -328,7 +364,15 @@ function resolveCompactionFailureReason(
 ): string {
   if (signal.aborted) return "request_aborted";
   if (isCompactionSteeringSuperseded(error)) return "steering_superseded";
+  if (isCompactionModelStepTimeout(error)) return "context_compaction_timeout";
   if (compactionIssueCode(error) === "request_context_compaction_required")
     return "context_compaction_controller_unavailable";
   return "semantic_checkpoint_rejected";
+}
+
+function isCompactionModelStepTimeout(
+  error: unknown,
+): error is ModelStepTimeoutError {
+  if (!(error instanceof ModelStepTimeoutError)) return false;
+  return error.modelStep === "context.compact";
 }

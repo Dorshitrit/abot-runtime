@@ -1,3 +1,4 @@
+import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type WebSocket from "ws";
 import type { AgentBridgeOptions } from "../../bridge/start-agent-bridge.js";
@@ -196,7 +197,9 @@ describe("compatibility host scheduler ownership", () => {
       await scheduler.runNow(job.id);
       await scheduler.tick();
       expect((await scheduler.listRuns())[0].status).toBe("pending");
-      expect(fixture.invoke).toHaveBeenCalledTimes(1);
+      expect(fixture.invoke.mock.calls.map(([input]) => supervisorFormatName(input))).toEqual([
+        "supervisor_presentation", "supervisor_skill_selection", "supervisor_decision",
+      ]);
       await effective.sessions.deleteSession("custom-session");
     } finally {
       release.open();

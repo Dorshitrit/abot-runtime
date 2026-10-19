@@ -18,6 +18,7 @@ export type ReviewerReferenceDataBudget = Readonly<{
 
 export type ReviewerEvidenceCandidate = Readonly<{
   executionId: string;
+  skillGuidance?: boolean;
   outcome: "succeeded" | "failed";
   observedEffect: RoleCapabilityObservedEffect;
   summary: string;
@@ -231,7 +232,9 @@ export function projectReviewerFinalEvidence(
     evidence.push(
       Object.freeze({
         evidenceRef: candidate.executionId,
-        kind: "capability_execution",
+        kind: candidate.skillGuidance
+          ? "skill_guidance"
+          : "capability_execution",
         outcome: candidate.outcome,
         effect: candidate.observedEffect,
         subjectRefs: Object.freeze([candidate.subjectRef]),

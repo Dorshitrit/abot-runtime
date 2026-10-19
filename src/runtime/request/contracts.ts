@@ -1,3 +1,4 @@
+import type { KnowledgeSkillStore } from "../knowledge-skills/store.js";
 import type { RequestToolResources } from "../capabilities/request-tool-resources.js";
 import type { CapabilityApprovalGate } from "../orchestration/worker-capabilities/approval-contracts.js";
 import type { RequestApprovalExecution } from "./approval-wait/snapshot.js";
@@ -60,6 +61,7 @@ export type RequestHandlerOptions = {
   sessionStore?: RequestSessionStore;
   attachmentStore?: RuntimeAttachmentStore;
   toolRegistry?: ToolRegistry;
+  knowledgeSkillStore?: KnowledgeSkillStore;
   toolApprovalController?: ToolApprovalController;
   requestSteering?: RequestSteeringInbox;
   /** Trusted automation-only receipt boundary; never accepted from client JSON. */

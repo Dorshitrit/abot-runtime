@@ -18,6 +18,7 @@ import type { RoleCapabilitySelectionReconsiderationCause } from "./reconsiderat
 import type { RoleCallResultReceipt } from "./result-receipt.js";
 import type { RoleInitialMemory, RoleMemoryRecall, RoleMemoryRecallCommand, RoleMemoryRecallCommitEffect, RoleMemoryRecallTransactions } from "./memory-recall-contract.js";
 import type { AdoptedModelWorkPlan, UpdateModelWorkPlanCommand, ModelWorkPlanCommitEffect, ModelWorkPlanTransactions } from "./work-plan-contracts.js";
+import type { RecordRoleSkillReadCommand, RoleSkillRead, RoleSkillReadCommitEffect } from "./skill-read.js";
 
 export const ROLE_CALL_LEDGER_CONTRACT_VERSION = 18;
 export const ROLE_CALL_LEDGER_HEAD_KIND =
@@ -70,16 +71,16 @@ export type ExecutionPolicyAuthoritySnapshot = Readonly<{
 export const SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT: ExecutionPolicyAuthoritySnapshot =
   Object.freeze({
     id: "supervisor-worker-v1",
-    version: 2,
+    version: 3,
     definitionHash:
-      "sha256:2ee79cee6dbb27ffaeb59f84c4c838cf9d16a965ca4f07e7d638e8589868e036",
+      "sha256:f4283b1d3f8f86bba0177475d9368137f39eca54d452a06668c844f4173791c5",
     rootContractId: "supervisor",
     availableSubordinateContractIds: Object.freeze([
       "planner",
       "worker",
       "reviewer",
     ] as const),
-    capabilityAuthorities: Object.freeze(["worker"] as const),
+    capabilityAuthorities: Object.freeze(["root", "worker"] as const),
   });
 
 export type RoleCallPolicy = Readonly<{
@@ -265,6 +266,8 @@ export type RoleCallState = Readonly<{
   plans: readonly RoleCallPlanState[];
   capabilityExecutions: readonly RoleCapabilityExecution[];
   memoryRecalls: readonly RoleMemoryRecall[];
+  /** Immutable core reference reads; omitted on older checkpoints. */
+  skillReads?: readonly RoleSkillRead[];
   initialMemory?: RoleInitialMemory;
   operationSupervision: RoleOperationSupervisionState;
   capabilitySelectionSupervision: RoleCapabilitySelectionSupervisionState;
@@ -399,6 +402,7 @@ export type ReconsiderRoleCapabilitySelectionCommand = Readonly<{
 }>;
 
 export type RoleCallLedgerCommand =
+  | RecordRoleSkillReadCommand
   | UpdateModelWorkPlanCommand
   | RoleMemoryRecallCommand
   | CreateRootRoleCallCommand
@@ -414,6 +418,7 @@ export type RoleCallLedgerCommand =
   | ReconsiderRoleCapabilitySelectionCommand;
 
 export type RoleCallCommitEffect =
+  | RoleSkillReadCommitEffect
   | ModelWorkPlanCommitEffect
   | RoleMemoryRecallCommitEffect
   | Readonly<{ type: "root_created"; callId: string }>
@@ -522,6 +527,8 @@ export type RoleCallTransitionRejectionCode =
   | "capability_selection_reconsideration_invalid"
   | "capability_selection_supervision_limit_exceeded"
   | "operation_supervision_limit_exceeded"
+  | "skill_read_caller_invalid"
+  | "skill_read_invocation_mismatch"
   | "memory_recall_caller_invalid"
   | "memory_recall_invocation_mismatch"
   | "memory_recall_settlement_mismatch"

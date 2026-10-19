@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ToolModuleDeclaration } from "../../capabilities/tool-types.js";
 import { createConfiguredToolRegistry } from "../capabilities/configured-tool-registry.js";
+import { createKnowledgeSkillsToolModule } from "../capabilities/knowledge-skills/tool-module.js";
 import { createRegisteredToolWorkerCapabilityProvider } from "../adapters/registered-tool-worker-capabilities.js";
 import {
   configureDebugLogger,
@@ -48,7 +49,10 @@ function capabilities(count: number): readonly WorkerCapabilityDescriptor[] {
   );
 }
 
-function provider(operationIds: readonly string[]) {
+function provider(
+  operationIds: readonly string[],
+  extraModules: readonly ToolModuleDeclaration[] = [],
+) {
   const declarations = operationIds.map(
     (operationId, index): ToolModuleDeclaration => ({
       definition: {
@@ -78,7 +82,10 @@ function provider(operationIds: readonly string[]) {
       },
     }),
   );
-  const registry = createConfiguredToolRegistry(undefined, declarations);
+  const registry = createConfiguredToolRegistry(undefined, [
+    ...declarations,
+    ...extraModules,
+  ]);
   return createRegisteredToolWorkerCapabilityProvider({
     getRequestToolRegistry: () => registry,
     requestId: "capacity",
@@ -177,8 +184,8 @@ function requestWithCatalog(
   });
 }
 
-test("registered catalog admits 128 distinct descriptors and adapters", () => {
-  const ids = capabilities(128).map(({ capabilityId }) => capabilityId);
+test("registered catalog admits 130 distinct descriptors and adapters", () => {
+  const ids = capabilities(130).map(({ capabilityId }) => capabilityId);
   const source = provider(ids);
   expect(
     source.getDescriptors().map(({ capabilityId }) => capabilityId),
@@ -188,10 +195,25 @@ test("registered catalog admits 128 distinct descriptors and adapters", () => {
   ).toEqual(ids);
 });
 
-test("registered catalog rejects 129 operations and still rejects duplicate identities", () => {
+test.each([126, 127])(
+  "preserves %i existing operations alongside core ABot Skills",
+  (existingCount) => {
+    const ids = capabilities(existingCount).map(({ capabilityId }) => capabilityId);
+    const skills = createKnowledgeSkillsToolModule();
+    expect(skills.definition.name).toBe("abot_skills");
+    const source = provider(ids, [skills]);
+    const expectedIds = [...ids, "list_skills", "read_skill", "read_skills"];
+    expect(source.getDescriptors().map(({ capabilityId }) => capabilityId))
+      .toEqual(expectedIds);
+    expect(source.getAdapters().map(({ descriptor }) => descriptor.capabilityId))
+      .toEqual(expectedIds);
+  },
+);
+
+test("registered catalog rejects 131 operations and still rejects duplicate identities", () => {
   expect(() =>
     provider(
-      capabilities(129).map(({ capabilityId }) => capabilityId),
+      capabilities(131).map(({ capabilityId }) => capabilityId),
     ).getDescriptors(),
   ).toThrow("operation_count_exceeded");
   expect(() => provider(["duplicate", "duplicate"]).getDescriptors()).toThrow(
@@ -199,9 +221,9 @@ test("registered catalog rejects 129 operations and still rejects duplicate iden
   );
 });
 
-test("binding accepts 128 and preserves the excessive-count and duplicate guards", () => {
-  expect(bindCatalog(capabilities(128)).capabilities).toHaveLength(128);
-  expect(() => bindCatalog(capabilities(129))).toThrow(
+test("binding accepts 130 and preserves the excessive-count and duplicate guards", () => {
+  expect(bindCatalog(capabilities(130)).capabilities).toHaveLength(130);
+  expect(() => bindCatalog(capabilities(131))).toThrow(
     "capability_count_invalid",
   );
   const duplicate = capabilities(1)[0]!;
@@ -211,10 +233,10 @@ test("binding accepts 128 and preserves the excessive-count and duplicate guards
 });
 
 test("Worker and Execution Agent formats and parsers retain the last capability above 64", () => {
-  const descriptors = capabilities(128);
+  const descriptors = capabilities(130);
   const decision = {
     action: "invoke_capability",
-    capabilityId: "observe_127",
+    capabilityId: "observe_129",
     intent: "Observe the selected source.",
   };
   expect(() =>
@@ -224,7 +246,7 @@ test("Worker and Execution Agent formats and parsers retain the last capability 
     parseWorkerDecisionOutput(JSON.stringify({ decision }), undefined, {
       availableCapabilities: descriptors,
     }),
-  ).toMatchObject({ ok: true, decision: { capabilityId: "observe_127" } });
+  ).toMatchObject({ ok: true, decision: { capabilityId: "observe_129" } });
   expect(() =>
     createExecutionAgentDecisionFormat({ capabilities: descriptors }),
   ).not.toThrow();
@@ -232,17 +254,17 @@ test("Worker and Execution Agent formats and parsers retain the last capability 
     parseExecutionAgentDecisionOutput(JSON.stringify({ decision }), {
       capabilities: descriptors,
     }),
-  ).toMatchObject({ ok: true, decision: { capabilityId: "observe_127" } });
+  ).toMatchObject({ ok: true, decision: { capabilityId: "observe_129" } });
   expect(() =>
-    createWorkerDecisionFormat({ capabilities: capabilities(129) }),
+    createWorkerDecisionFormat({ capabilities: capabilities(131) }),
   ).toThrow("worker_capabilities_invalid");
   expect(() =>
-    createExecutionAgentDecisionFormat({ capabilities: capabilities(129) }),
+    createExecutionAgentDecisionFormat({ capabilities: capabilities(131) }),
   ).toThrow("execution_agent_capabilities_invalid");
 });
 
-test("Supervisor accepts 128 passive affordances while retaining its upper bound", () => {
-  const descriptors = capabilities(128);
+test("Supervisor accepts 130 passive affordances while retaining its upper bound", () => {
+  const descriptors = capabilities(130);
   const request = requestWithCatalog(descriptors);
   const affordances = descriptors.map(({ summary, effect }) => ({
     purpose: summary,
@@ -255,7 +277,7 @@ test("Supervisor accepts 128 passive affordances while retaining its upper bound
   };
   expect(
     buildSupervisorDecisionInput(request, options).workerCapabilityAffordances,
-  ).toHaveLength(128);
+  ).toHaveLength(130);
   expect(() =>
     buildSupervisorDecisionInput(request, {
       ...options,
@@ -266,7 +288,7 @@ test("Supervisor accepts 128 passive affordances while retaining its upper bound
 });
 
 test("larger catalogs do not raise the Execution Agent batch contract above 64", () => {
-  const descriptors = capabilities(128);
+  const descriptors = capabilities(130);
   expect(() =>
     createExecutionAgentDecisionFormat({
       capabilities: descriptors,
@@ -311,8 +333,8 @@ test("larger catalogs do not raise the Execution Agent batch contract above 64",
   ).toMatchObject({ ok: true });
 });
 
-test("production Execution Agent input keeps a 128-item active catalog and the existing batch64 bound", async () => {
-  const request = requestWithCatalog(capabilities(128));
+test("production Execution Agent input keeps a 130-item active catalog and the existing batch64 bound", async () => {
+  const request = requestWithCatalog(capabilities(130));
   const ledger = createRoleCallLedger({
     requestId: request.requestId,
     policy: {
@@ -357,7 +379,7 @@ test("production Execution Agent input keeps a 128-item active catalog and the e
     allowPlanner: false,
     allowAuditor: false,
   });
-  expect(input.capabilities).toHaveLength(128);
+  expect(input.capabilities).toHaveLength(130);
   expect(input.contract.maxBatchCapabilityExecutions).toBe(64);
   expect(request.modelGatewayClient.invoke).not.toHaveBeenCalled();
 });

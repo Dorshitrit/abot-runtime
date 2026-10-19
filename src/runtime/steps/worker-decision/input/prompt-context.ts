@@ -11,14 +11,13 @@ import {
   buildWorkerDecisionInstructions,
 } from "../prompt.js";
 import { WORKER_SESSION_ARTIFACT_PATH_PROJECTION_MAX } from "../runtime-path-refinement.js";
+import { projectWorkerCapabilityExecutionGuidance } from "./execution-guidance.js";
 import type {
   PreparedWorkerDecisionSession,
   PreparedWorkerPromptContext,
   PreparedWorkerReferenceContext,
   ProjectedWorkerDecisionContext,
   WorkerPendingCapabilitySelection,
-  WorkerSelectedCapabilityBatchExecution,
-  WorkerSelectedCapabilityExecution,
 } from "./types.js";
 
 export function prepareWorkerPromptContext(
@@ -73,7 +72,7 @@ export function prepareWorkerPromptContext(
   const builtInInstructions = [
     baseInstructions,
     ...(capabilityExecutionPending
-      ? projectCapabilityExecutionGuidance({
+      ? projectWorkerCapabilityExecutionGuidance({
           selectedCapabilityExecution,
           selectedCapabilityBatchExecution,
         })
@@ -256,36 +255,4 @@ function phaseAuthorsRuntimePathControl(
         : selectionControlIds.has(controlId),
     );
   });
-}
-
-function projectCapabilityExecutionGuidance(
-  options: Readonly<{
-    selectedCapabilityExecution?: WorkerSelectedCapabilityExecution;
-    selectedCapabilityBatchExecution?: WorkerSelectedCapabilityBatchExecution;
-  }>,
-): readonly string[] {
-  if (options.selectedCapabilityExecution) {
-    return Object.freeze([
-      "### SELECTED CAPABILITY EXECUTION GUIDANCE",
-      options.selectedCapabilityExecution.guidance.length > 0
-        ? options.selectedCapabilityExecution.guidance
-        : "No additional execution guidance is supplied for this capability.",
-      "### END SELECTED CAPABILITY EXECUTION GUIDANCE",
-    ]);
-  }
-  if (options.selectedCapabilityBatchExecution) {
-    return Object.freeze([
-      "### SELECTED CAPABILITY BATCH EXECUTION GUIDANCE",
-      ...options.selectedCapabilityBatchExecution.invocations.flatMap(
-        (invocation, index) => [
-          `#### Invocation ${index + 1}: ${invocation.capabilityId}`,
-          invocation.guidance.length > 0
-            ? invocation.guidance
-            : "No additional execution guidance is supplied for this invocation.",
-        ],
-      ),
-      "### END SELECTED CAPABILITY BATCH EXECUTION GUIDANCE",
-    ]);
-  }
-  return Object.freeze([]);
 }

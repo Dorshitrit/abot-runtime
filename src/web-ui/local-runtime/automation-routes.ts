@@ -6,6 +6,7 @@ import { AutomationPublicationError } from "../../runtime/automations/publicatio
 import type { JsonObject } from "./contracts.js";
 import { acceptConfigMutationRequest } from "./config-mutation-request.js";
 import { sendJson } from "./http.js";
+import { readAutomationRunPage } from "./automation-run-page.js";
 
 type AutomationEnvironment = {
   start(): Promise<void>;
@@ -195,7 +196,7 @@ export class AutomationRoutes {
     }
     if (action === "runs" && method === "GET") {
       sendJson(response, 200, { ok: true,
-        runs: await service.listRuns(automationId, { limit: 100 }),
+        ...await readAutomationRunPage(service, automationId, request.url.searchParams),
       });
       return;
     }

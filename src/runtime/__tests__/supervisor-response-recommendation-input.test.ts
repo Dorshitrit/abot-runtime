@@ -15,6 +15,10 @@ import {
   buildSupervisorResponseInput,
 } from "../steps/supervisor-response/input.js";
 import { SUPERVISOR_RESPONSE_RECOMMENDATION_KIND } from "../steps/supervisor-response/response-recommendation.js";
+import {
+  activeCoreSkillCall, commitSkillFixture, createCoreSkillContextFixture,
+  CORE_SKILL_DOCUMENT,
+} from "./support/core-skill-read-context-fixture.js";
 
 const CURRENT_PROMPT = "Explain the distinction from the information above.";
 const RESPONSE_RECOMMENDATION =
@@ -159,6 +163,45 @@ describe("Supervisor response-recommendation projection", () => {
     expect(initial.includeResponseRecommendation).toBe(true);
     expect(afterEffect.includeResponseRecommendation).toBe(false);
     expect(afterChild.includeResponseRecommendation).toBe(false);
+  });
+
+  test("empty Skill-read history retains direct-response recommendations without discovery in routing", async () => {
+    const fixture = await createCoreSkillContextFixture();
+    const initial = fixture.input();
+    const withCatalog = buildSupervisorDecisionInput(fixture.request, {
+      toolResults: fixture.toolResults(), skillReadHead: fixture.ledger.current(),
+    });
+    expect(initial).toMatchObject({ includeResponseRecommendation: true });
+    expect(withCatalog.includeResponseRecommendation).toBe(true);
+    expect(JSON.stringify(withCatalog.format)).toContain('"responseRecommendation"');
+    expect(JSON.stringify(withCatalog.context.messages)).not.toContain(CORE_SKILL_DOCUMENT.name);
+  });
+
+  test.each((["list_skills", "read_skills"] as const).flatMap((operation) =>
+    (["completed", "failed"] as const).map((outcome) => ({ operation, outcome })),
+  ))("disables recommendations after $operation with outcome $outcome", async ({ operation, outcome }) => {
+    const fixture = await createCoreSkillContextFixture();
+    const { content: _content, revision: _revision, ...metadata } = CORE_SKILL_DOCUMENT;
+    await commitSkillFixture(fixture.ledger, {
+      authority: "runtime", type: "record_skill_read", callId: "call-1", invocationAttempt: 1,
+      steeringVersion: 0, operation,
+      selectors: operation === "read_skills" ? [CORE_SKILL_DOCUMENT.skillId] : [],
+      result: outcome === "failed"
+        ? { outcome, skills: [], errorCode: "knowledge_skill_not_found" }
+        : { outcome, skills: [operation === "read_skills" ? CORE_SKILL_DOCUMENT : metadata] },
+    });
+    const input = fixture.input();
+    expect(input).toMatchObject({ includeResponseRecommendation: false });
+    expect(JSON.stringify(input.format)).not.toContain('"responseRecommendation"');
+    const active = activeCoreSkillCall(fixture.ledger);
+    expect(() => buildSupervisorResponseInput(fixture.request, {
+      call: {
+        rootCallId: active.callId, callId: active.callId, parentCallId: null,
+        depth: 0, invocationAttempt: active.activationCount,
+      },
+      toolResults: fixture.toolResults(), skillReadHead: fixture.ledger.current(),
+      responseRecommendation: RESPONSE_RECOMMENDATION,
+    })).toThrow("supervisor_response_recommendation_scope_invalid");
   });
 
   test("adds one passive reference bound to this call without adding user intent", () => {

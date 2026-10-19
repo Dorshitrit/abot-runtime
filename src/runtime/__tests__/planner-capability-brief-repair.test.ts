@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
+import type { ToolAvailabilityEntry } from "../../capabilities/tool-types.js";
 import type { ModelGatewayClient } from "../ports.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import { isCapabilityBriefMessage } from "../context/capability-brief.js";
@@ -119,4 +120,29 @@ test("configured methodology and calibration fit without duplicate admission or 
   expect(serialized).not.toContain("CALIBRATION_MARK");
   expect(serialized).not.toContain("ROOT_STEERING_MARK");
   expect(messages.filter(isCapabilityBriefMessage)).toHaveLength(1);
+});
+
+test("Planner structured repair never readmits SUPER-owned Skill writes into the Worker brief", async () => {
+  const operationIds = ["create_skill", "update_skill", "list_skills", "read_skill", "other_knowledge"];
+  const entries: ToolAvailabilityEntry[] = operationIds.map((operationId) => ({
+    operationId, toolName: operationId, summary: operationId,
+    catalogGroups: ["knowledge"], effect: "read_only",
+  }));
+  const fixture = createPlannerBriefFixture({ entries });
+  fixture.invoke.mockImplementation(async () => ({
+    text: fixture.invoke.mock.calls.length === 1
+      ? "invalid envelope"
+      : JSON.stringify({ decision: { action: "return_result", result: "Bounded knowledge result." } }),
+    meta: {},
+  }));
+  await expect(runPlannerDecision(fixture.request, fixture.inputOptions))
+    .resolves.toMatchObject({ action: "return_result" });
+  expect(fixture.invoke).toHaveBeenCalledTimes(2);
+  for (const [input] of fixture.invoke.mock.calls) {
+    const briefs = modelMessages(input).filter(isCapabilityBriefMessage);
+    expect(briefs).toHaveLength(1);
+    for (const operationId of operationIds.slice(0, 2)) expect(briefs[0]!.content).not.toContain(operationId);
+    for (const operationId of operationIds.slice(2)) expect(briefs[0]!.content).toContain(operationId);
+    expect(input.format).toEqual(fixture.input.format);
+  }
 });

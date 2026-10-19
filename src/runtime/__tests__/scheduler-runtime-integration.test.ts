@@ -1,3 +1,4 @@
+import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -77,7 +78,9 @@ describe("scheduled requests through runtime composition", () => {
           ? "execution.decision"
           : "supervisor.decision";
       const decisionInput = invoke.mock.calls.find(
-        ([input]) => input.modelStep === decisionStep,
+        ([input]) => policy === "execution-agent-v1"
+          ? input.modelStep === decisionStep
+          : supervisorFormatName(input) === "supervisor_decision",
       )![0];
       const messages = scheduledModelMessages(decisionInput);
       expect(
@@ -158,14 +161,16 @@ describe("scheduled requests through runtime composition", () => {
     await entered.waiting;
     const pending = await scheduler.runNow(job.id);
     await scheduler.tick();
-    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke.mock.calls.map(([input]) => supervisorFormatName(input))).toEqual([
+      "supervisor_presentation", "supervisor_skill_selection", "supervisor_decision",
+    ]);
     expect((await scheduler.listRuns())[0].status).toBe("pending");
     release.open();
     await ordinary;
     await scheduler.tick();
     expect((await waitForRun(pending.id)).status).toBe("succeeded");
     const decisions = invoke.mock.calls.filter(
-      ([input]) => input.modelStep === "supervisor.decision",
+      ([input]) => supervisorFormatName(input) === "supervisor_decision",
     );
     expect(decisions).toHaveLength(2);
     expect(JSON.stringify(scheduledModelMessages(decisions[1][0]))).toContain(

@@ -14,6 +14,14 @@ export function createAutomationRequests({ requestApi, getEnvironmentId, getConf
   const post = (url, input) => requestAutomation(url, {
     method: "POST", body: JSON.stringify(input),
   });
+  const historyPath = (automationId, environmentId, query) => {
+    const params = new URLSearchParams();
+    for (const key of ["limit", "cursor", "status", "from", "to"])
+      if (query[key] !== undefined && query[key] !== null && query[key] !== "")
+        params.set(key, String(query[key]));
+    const suffix = params.size ? `&${params}` : "";
+    return `${path(`/${encodeURIComponent(automationId)}/runs`, environmentId)}${suffix}`;
+  };
   return {
     supportsAutomations,
     listAutomations: (environmentId) => requestAutomation(path("", environmentId)),
@@ -59,8 +67,8 @@ export function createAutomationRequests({ requestApi, getEnvironmentId, getConf
     },
     startAutomationRun: (automationId, idempotencyKey, environmentId) =>
       post(path(`/${encodeURIComponent(automationId)}/run`, environmentId), { idempotencyKey }),
-    listAutomationRuns: (automationId, environmentId) =>
-      requestAutomation(path(`/${encodeURIComponent(automationId)}/runs`, environmentId)),
+    listAutomationRuns: (automationId, environmentId, query = {}) =>
+      requestAutomation(historyPath(automationId, environmentId, query)),
     getAutomationRun: (runId, environmentId) => requestAutomation(runPath(runId, environmentId)),
     getAutomationStepEvidence: (runId, nodeId, environmentId, full = false) => requestAutomation(
       `/automation-runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(nodeId)}?environment=${encodeURIComponent(environmentId || getEnvironmentId())}${full ? "&full=1" : ""}`),

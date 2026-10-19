@@ -1,3 +1,5 @@
+import { projectSupervisorSkillReadContext } from "../../context/core-skill-read-context.js";
+import type { RoleCallLedgerHead } from "../../orchestration/role-calls/index.js";
 import { buildSparkConversationInstructions } from "../../context/spark-conversation-policy.js";
 import type {
   ChatMessage,
@@ -9,7 +11,6 @@ import { resolveConfiguredStepInstructionMetadata } from "../../config/runner/st
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
 import { projectRequestContext } from "../../context/request-context.js";
 import { projectRootSessionMemory } from "../../context/session-memory/root-projection.js";
-import { buildConversationMemoryAvailabilityInstructions } from "../../long-term-memory/conversation-authoring/prompt.js";
 import { buildRequestTemporalContextMessage } from "../../context/request-temporal-context.js";
 import { projectScheduledExecutionContext } from "../../context/scheduled-execution-context.js";
 import {
@@ -36,7 +37,14 @@ import {
   traceSupervisorContextProjected,
 } from "./diagnostics.js";
 import { createSupervisorDecisionFormat } from "./format.js";
-import { buildSupervisorDecisionInstructions } from "./prompt.js";
+import {
+  projectSupervisorArtifactPaths,
+  type SupervisorArtifactPathsProjection,
+} from "./artifact-paths.js";
+import {
+  buildSupervisorDecisionInstructions,
+  buildSupervisorMemoryAvailabilityInstructions,
+} from "./prompt.js";
 import { buildSupervisorContinuationPart } from "./resume.js";
 import { buildSupervisorMemoryRecallContinuationParts } from "./memory-recall-continuation.js";
 import { canRecommendDirectSupervisorResponse } from "./response-recommendation.js";
@@ -61,6 +69,7 @@ export type SupervisorDecisionInputRequest = Pick<
       | "temporalContext"
       | "scheduledExecution"
       | "sessionMemory"
+      | "sessionArtifactPaths"
       | "longTermMemory"
     >
   >;
@@ -69,9 +78,11 @@ export function buildSupervisorDecisionInput(
   request: SupervisorDecisionInputRequest,
   options: Readonly<{
     toolResults: RequestToolResultsView;
+    skillReadHead?: RoleCallLedgerHead;
     includeAcknowledgement?: boolean;
     includeTitle?: boolean;
     allowMemoryRecall?: boolean;
+    allowSkillAuthoring?: boolean;
     memoryRecallMessage?: ChatMessage;
     initialMemoryMessage?: ChatMessage;
     allowedRoleIds?: readonly SupervisorDelegateRoleId[];
@@ -90,9 +101,11 @@ export function buildSupervisorDecisionInput(
   includeTitle: boolean;
   includeResponseRecommendation: boolean;
   allowMemoryRecall: boolean;
+  allowSkillAuthoring: boolean;
   allowedRoleIds: readonly SupervisorDelegateRoleId[];
   workerCapabilityAffordances: readonly SupervisorWorkerCapabilityAffordance[];
   availableWorkerCapabilityCatalog: readonly WorkerCapabilityCatalogGroup[];
+  artifactPathsProjection?: SupervisorArtifactPathsProjection;
 } {
   if (options.resume && options.includeTitle === true) {
     throw new Error("supervisor_resume_title_not_allowed");
@@ -124,6 +137,7 @@ export function buildSupervisorDecisionInput(
       : EMPTY_WORKER_CAPABILITY_AFFORDANCES;
   const format = createSupervisorDecisionFormat({
     allowMemoryRecall: options.allowMemoryRecall === true,
+    allowSkillAuthoring: options.allowSkillAuthoring === true,
     includeAcknowledgement,
     includeTitle,
     includeResponseRecommendation,
@@ -148,7 +162,9 @@ export function buildSupervisorDecisionInput(
   const initialMemoryMessage = options.memoryRecallMessage
     ? undefined
     : options.initialMemoryMessage;
+  const skillReadContext = projectSupervisorSkillReadContext(options.skillReadHead);
   const referenceMessages = [
+    ...skillReadContext.referenceMessages,
     ...(initialMemoryMessage ? [initialMemoryMessage] : []),
     ...(request.temporalContext
       ? [buildRequestTemporalContextMessage(request.temporalContext)]
@@ -174,6 +190,7 @@ export function buildSupervisorDecisionInput(
   const instructions = [
     buildSupervisorDecisionInstructions({
       allowMemoryRecall: options.allowMemoryRecall === true,
+      allowSkillAuthoring: options.allowSkillAuthoring === true,
       hasMemoryRecallContext: options.memoryRecallMessage !== undefined,
       hasInitialMemoryContext: initialMemoryMessage !== undefined,
       includeAcknowledgement,
@@ -185,7 +202,7 @@ export function buildSupervisorDecisionInput(
       workerCapabilityAffordances,
       availableWorkerCapabilityCatalog,
     }),
-    ...buildConversationMemoryAvailabilityInstructions(request.longTermMemory?.enabled === true),
+    ...buildSupervisorMemoryAvailabilityInstructions(request.longTermMemory?.enabled === true),
     ...buildSparkConversationInstructions(request.sessionKind),
   ].join("\n");
   const scheduledExecution = projectScheduledExecutionContext(
@@ -202,14 +219,17 @@ export function buildSupervisorDecisionInput(
     prompt: request.prompt,
     ...(request.attachments ? { attachments: request.attachments } : {}),
     ...(referenceMessages.length > 0 ? { referenceMessages } : {}),
-    continuationParts: options.memoryRecallMessage
-      ? buildSupervisorMemoryRecallContinuationParts({
-          memoryRecallMessage: options.memoryRecallMessage,
-          ...(options.resume ? { resume: options.resume } : {}),
-          currentCallId: requireSupervisorCallId(diagnostic),
-          currentInvocationAttempt: requireSupervisorInvocationAttempt(diagnostic),
-        })
-      : roleContinuationParts,
+    continuationParts: [
+      ...(options.memoryRecallMessage
+        ? buildSupervisorMemoryRecallContinuationParts({
+            memoryRecallMessage: options.memoryRecallMessage,
+            ...(options.resume ? { resume: options.resume } : {}),
+            currentCallId: requireSupervisorCallId(diagnostic),
+            currentInvocationAttempt: requireSupervisorInvocationAttempt(diagnostic),
+          })
+        : roleContinuationParts),
+      ...skillReadContext.continuationParts,
+    ],
     budget,
     diagnostic,
     ...(request.onEvent ? { onEvent: request.onEvent } : {}),
@@ -226,14 +246,22 @@ export function buildSupervisorDecisionInput(
       : { additionalBudgetMessages: options.capabilityBriefBudgetMessages }),
   });
   if (capabilityBrief.message) referenceMessages.push(capabilityBrief.message);
+  const artifactPaths = projectSupervisorArtifactPaths({
+    targets: request.sessionArtifactPaths,
+    context: { ...contextInput, referenceMessages },
+    additionalBudgetMessages: options.capabilityBriefBudgetMessages,
+  });
+  if (artifactPaths) referenceMessages.push(artifactPaths.message);
   const context = projectRequestContext({
     ...contextInput,
+    instructions: artifactPaths?.instructions ?? contextInput.instructions,
     ...(referenceMessages.length > 0 ? { referenceMessages } : {}),
   });
 
   traceSupervisorContextProjected({
     diagnostic,
     allowMemoryRecall: options.allowMemoryRecall === true,
+    allowSkillAuthoring: options.allowSkillAuthoring === true,
     context,
     format,
     historyMessageCount: sessionMemory.historyMessages.length,
@@ -276,9 +304,11 @@ export function buildSupervisorDecisionInput(
     includeTitle,
     includeResponseRecommendation,
     allowMemoryRecall: options.allowMemoryRecall === true,
+    allowSkillAuthoring: options.allowSkillAuthoring === true,
     allowedRoleIds,
     workerCapabilityAffordances,
     availableWorkerCapabilityCatalog,
+    ...(artifactPaths ? { artifactPathsProjection: artifactPaths } : {}),
   };
 }
 

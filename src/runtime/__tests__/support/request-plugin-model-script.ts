@@ -1,5 +1,6 @@
 import { expect, vi } from "vitest";
 import type { ModelGatewayClient } from "../../ports.js";
+import { withSupervisorPreparation } from "./supervisor-model-phases.js";
 
 export type SnapshotPolicy = "supervisor-worker-v1" | "execution-agent-v1";
 export type SnapshotModelInput = Parameters<ModelGatewayClient["invoke"]>[0];
@@ -16,15 +17,11 @@ export function createSnapshotModelScript(input: {
 }) {
   let decisions = 0;
   let calls = 0;
-  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (modelInput) => {
-    await input.beforeModel?.(modelInput, ++calls);
+  const respond = withSupervisorPreparation(async (modelInput) => {
     const visible = JSON.stringify({
       messages: modelInput.messages,
       format: modelInput.format,
     });
-    expect(visible).not.toContain("private-destination-");
-    expect(visible).not.toContain("connectionId");
-    expect(visible).not.toContain("host_id");
     if (modelInput.modelStep === "worker.result")
       return { text: SNAPSHOT_FINAL, meta: {} };
     if (modelInput.modelStep === "supervisor.response")
@@ -75,6 +72,14 @@ export function createSnapshotModelScript(input: {
       return { text: JSON.stringify({ workingDirectory: "." }), meta: {} };
     }
     return { text: JSON.stringify({ decision }), meta: {} };
+  });
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (modelInput) => {
+    await input.beforeModel?.(modelInput, ++calls);
+    const visible = JSON.stringify({ messages: modelInput.messages, format: modelInput.format });
+    expect(visible).not.toContain("private-destination-");
+    expect(visible).not.toContain("connectionId");
+    expect(visible).not.toContain("host_id");
+    return respond(modelInput);
   });
   return { invoke, invokeRaw: vi.fn<ModelGatewayClient["invokeRaw"]>() };
 }

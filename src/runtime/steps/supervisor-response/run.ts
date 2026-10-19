@@ -1,5 +1,6 @@
 import { resolveMemoryRecallSteeringVersion } from "../../long-term-memory/recall-binding.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
+import type { RoleCallLedgerHead } from "../../orchestration/role-calls/index.js";
 import {
   invokeRepairableRawModelStep,
   type RawModelValidationResult,
@@ -51,10 +52,12 @@ export async function runSupervisorResponse(
   request: RequestExecutionScope,
   options: Readonly<{
     responseRecommendation?: string;
+    responseRecommendationOrigin?: "skill_authoring_no_save";
     memoryRecallMessage?: ChatMessage;
     initialMemoryMessage?: ChatMessage;
     call: SupervisorResponseCallIdentity;
     toolResults: RequestToolResultsView;
+    skillReadHead?: RoleCallLedgerHead;
     resume?: SupervisorResponseResumeContext;
   }>,
 ): Promise<string> {
@@ -66,10 +69,12 @@ export async function runSupervisorAuthoredResponse(
   request: RequestExecutionScope,
   options: Readonly<{
     responseRecommendation?: string;
+    responseRecommendationOrigin?: "skill_authoring_no_save";
     memoryRecallMessage?: ChatMessage;
     initialMemoryMessage?: ChatMessage;
     call: SupervisorResponseCallIdentity;
     toolResults: RequestToolResultsView;
+    skillReadHead?: RoleCallLedgerHead;
     resume?: SupervisorResponseResumeContext;
     steeringSnapshot?: RequestSteeringSnapshot;
   }>,

@@ -74,6 +74,7 @@ export function createWorkspaceShell({
     const automationsWorkspace = shellState.workspace === "automations";
     const learningWorkspace = shellState.workspace === "learning";
     const memoryWorkspace = shellState.workspace === "memory";
+    const skillsWorkspace = shellState.workspace === "skills";
     const notificationsWorkspace = shellState.workspace === "notifications";
     const sessions = sidebarLayout();
     const showSessionsToggle = chatWorkspace && !sessions.docked;
@@ -128,6 +129,12 @@ export function createWorkspaceShell({
       "aria-hidden",
       String(!memoryWorkspace),
     );
+    if (dom.skillsWorkspacePanel) {
+      dom.skillsWorkspacePanel.hidden = !skillsWorkspace;
+      dom.skillsWorkspacePanel.inert = !skillsWorkspace;
+      dom.skillsWorkspacePanel.setAttribute("aria-hidden", String(!skillsWorkspace));
+    }
+    setCurrentPage(dom.skillsWorkspaceButton, skillsWorkspace);
     if (dom.notificationsWorkspacePanel) {
       dom.notificationsWorkspacePanel.hidden = !notificationsWorkspace;
       dom.notificationsWorkspacePanel.inert = !notificationsWorkspace;
@@ -263,6 +270,7 @@ export function createWorkspaceShell({
           automations: dom.closeAutomationsWorkspaceButton,
           learning: dom.closeLearningWorkspaceButton,
           memory: dom.closeMemoryWorkspaceButton,
+          skills: dom.closeSkillsWorkspaceButton,
           config: dom.closeConfigWorkspaceButton,
           models: dom.closeConfigWorkspaceButton,
           plugins: dom.closeConfigWorkspaceButton,
@@ -342,7 +350,7 @@ export function createWorkspaceShell({
       setSessionsDrawerOpen(false, { restoreFocus: true });
       return true;
     }
-    if (["config", "models", "plugins", "schedules", "automations", "learning", "memory", "notifications"].includes(shellState.workspace)) {
+    if (["config", "models", "plugins", "schedules", "automations", "learning", "memory", "skills", "notifications"].includes(shellState.workspace)) {
       return activateWorkspace("chat");
     }
     return false;
@@ -351,6 +359,8 @@ export function createWorkspaceShell({
   function bind() {
     if (shellState.bound) return;
     shellState.bound = true;
+    dom.skillsWorkspaceButton?.addEventListener("click", () => activateWorkspace("skills"));
+    dom.closeSkillsWorkspaceButton?.addEventListener("click", () => activateWorkspace("chat"));
     dom.notificationsWorkspaceButton?.addEventListener("click", () => activateWorkspace("notifications"));
     dom.closeNotificationsWorkspaceButton?.addEventListener("click", () => activateWorkspace("chat"));
     dom.homeWorkspaceButton?.addEventListener("click", () => {

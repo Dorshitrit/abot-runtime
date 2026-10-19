@@ -1,5 +1,6 @@
 import { expectCompactedSupervisionReference } from "./support/compacted-supervision-assertions.js";
 import { afterEach, beforeEach, expect, test } from "vitest";
+import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 import {
   configureDebugLogger,
   resetDebugLoggerConfig,
@@ -75,6 +76,7 @@ test("S11/S12/S13: Supervisor-Planner-Worker-Reviewer-Supervisor reuses the same
   expect(chain).toEqual([
     "supervisor.decision",
     "supervisor.decision",
+    "supervisor.decision",
     "planner.decision",
     "worker.decision",
     "worker.decision",
@@ -86,6 +88,9 @@ test("S11/S12/S13: Supervisor-Planner-Worker-Reviewer-Supervisor reuses the same
     "reviewer.decision",
     "supervisor.decision",
     "supervisor.response",
+  ]);
+  expect(f.invoke.mock.calls.slice(0, 3).map(([input]) => supervisorFormatName(input))).toEqual([
+    "supervisor_presentation", "supervisor_decision", "supervisor_working_directory",
   ]);
   expect(
     f.calls

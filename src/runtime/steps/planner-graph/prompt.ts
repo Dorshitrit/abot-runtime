@@ -1,4 +1,4 @@
-import { CAPABILITY_PROGRAM_PLANNING_INSTRUCTION } from "../capability-execution-instructions.js";
+import { KNOWLEDGE_SKILL_GUIDANCE_INSTRUCTION } from "../knowledge-skill-instructions.js";
 
 export function buildPlannerGraphInstructions(): string {
   return [
@@ -9,7 +9,7 @@ export function buildPlannerGraphInstructions(): string {
     'For a direct question or simple isolated change that needs no meaningful decomposition, return the strict {"action":"decline","reason":"..."} variant. Decline is an advisory outcome, not an error.',
     "Use dependsOn only for actual data, ordering, or integration dependencies.",
     "Every node must describe an outcome the Execution Agent can establish and contain explicit acceptance criteria. Mark a criterion mechanical only when runtime evidence can decide it; otherwise mark it semantic.",
-    CAPABILITY_PROGRAM_PLANNING_INSTRUCTION,
     "The proposal is passive advice. The Execution Agent decides what to do next, and no work is complete merely because a graph was proposed.",
+    KNOWLEDGE_SKILL_GUIDANCE_INSTRUCTION,
   ].join("\n");
 }

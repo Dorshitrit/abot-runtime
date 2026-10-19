@@ -331,7 +331,10 @@ try {
       join(cliConsumerDir, "local", "models", "hosted.config.json"),
       "utf-8",
     ),
-  ) as { execution?: { policy?: string } };
+  ) as {
+    execution?: { policy?: string };
+    calibration?: Record<string, { timeoutMs?: number }>;
+  };
   if (
     !cliRuntimeConfig.models?.providers?.ollama ||
     !cliRuntimeConfig.models.providers.openai ||
@@ -340,7 +343,7 @@ try {
   ) {
     throw new Error("packed abot CLI did not preserve and extend model setup");
   }
-  const packedRunnerConfigViolatesV2 =
+  const packedSetupViolatesModelDefaults =
     cliRunnerConfig.schemaVersion !== 2 ||
     cliRunnerConfig.models?.defaults?.profileId !== "hosted" ||
     cliRunnerConfig.stepDefaults?.timeoutMs !== 90_000 ||
@@ -351,16 +354,15 @@ try {
         "execution.response": "default",
         "tool_payload.raw": "toolPayload.raw",
       }) ||
+    JSON.stringify(cliRunnerConfig.steps?.["context.compact"]) !==
+      JSON.stringify({ timeoutMs: 180_000 }) ||
     Object.keys(cliRunnerConfig.steps ?? {}).join(",") !==
-      "supervisor.response,execution.response";
-  if (packedRunnerConfigViolatesV2) {
+      "context.compact,supervisor.response,execution.response" ||
+    hostedModelConfig.execution?.policy !== "execution-agent-v1" ||
+    hostedModelConfig.calibration?.["context.compact"]?.timeoutMs !== 300_000;
+  if (packedSetupViolatesModelDefaults) {
     throw new Error(
-      "packed abot CLI did not preserve the sparse Config v2 contract while selecting the requested default",
-    );
-  }
-  if (hostedModelConfig.execution?.policy !== "execution-agent-v1") {
-    throw new Error(
-      "packed abot CLI did not configure the OpenAI execution policy",
+      "packed abot CLI did not preserve Config v2 and provider model defaults while selecting the requested default",
     );
   }
   const memoryStatus = JSON.parse(memoryStatusOutput) as {
@@ -509,7 +511,7 @@ const runtimeConfig = config.loadRuntimeConfig({
 });
 const toolRegistry = defaultAdapters.createDefaultToolRegistry(runtimeConfig);
 const loadedCapabilities = toolRegistry.listDefinitions().map(({ name }) => name).sort();
-const expectedConfiguredCapabilities = [...expectedPublicCapabilities, "consumer_probe"].sort();
+const expectedConfiguredCapabilities = ["abot_skills", ...expectedPublicCapabilities, "consumer_probe"].sort();
 if (
   loadedCapabilities.length !== expectedConfiguredCapabilities.length ||
   loadedCapabilities.some((name, index) => name !== expectedConfiguredCapabilities[index])

@@ -39,12 +39,22 @@ import type {
 } from "./contracts.js";
 import { buildWorkerCapabilityPayloadRepairHint } from "./worker-capability-payload-prompts.js";
 import { projectExecutionPayloadCompactedEvidence } from "./execution-payload-compacted-evidence.js";
+import { projectPayloadSettledEvidence } from "./payload-settled-evidence.js";
+import { rootPayloadCompactionScopeId } from "../orchestration/worker-capabilities/payload-compaction-transport.js";
+import {
+  prepareSupervisorSkillPayloadInput,
+  projectSupervisorSkillPayloadHistory,
+  createSupervisorSkillPayloadCompactionController,
+  projectPayloadSkillGuidance,
+  projectSupervisorSkillPayloadContinuation,
+  projectSupervisorSkillPayloadRequestSource,
+} from "./supervisor-skill-payload-context.js";
 
 type RequestWorkerCapabilityPayloadContext =
   BoundRequestModelInvocationContext &
     Pick<
       RequestExecutionSeed,
-      "prompt" | "historyMessages" | "onEvent" | "contextCompactionStore"
+      "prompt" | "historyMessages" | "sessionId" | "sessionMemory" | "attachments" | "onEvent" | "contextCompactionStore"
     >;
 
 const PAYLOAD_TARGET_CONTENT_MESSAGE_KIND =
@@ -113,7 +123,7 @@ export function createRequestWorkerCapabilityPayloadAuthor(
               }),
             ),
         }),
-      }).author(authorInput);
+      }).author(prepareSupervisorSkillPayloadInput(authorInput));
     },
   });
 }
@@ -135,27 +145,27 @@ async function invokePayloadModel(
       request,
       modelStep: input.modelStep,
       messages: projection.messages,
-      contextCompaction: createModelStepCompactionController(request, {
-        consumer: input.modelStep,
-        hasVerifiedCompactedEvidence: projection.hasVerifiedCompactedEvidence,
-        call: payloadCompactionCall(request.prompt, input.context),
-        sourceRevision:
-          input.superWorkerCompaction?.sourceRevision ??
-          payloadCompactionSourceRevision(input.context),
-        ...(input.superWorkerCompaction
-          ? {
-              superWorkerCompaction: input.superWorkerCompaction,
-              requireSuperWorkerSources: true,
-            }
-          : {}),
-        allowedConsumers: compactionOptions.allowedConsumers,
-        scopeId: compactionOptions.scopeId,
-        ...(compactionOptions.resultSourceOverrides
-          ? {
-              resultSourceOverrides: compactionOptions.resultSourceOverrides,
-            }
-          : {}),
-      }),
+      contextCompaction: createSupervisorSkillPayloadCompactionController(
+        input, request, createModelStepCompactionController(request, {
+          consumer: input.modelStep,
+          hasVerifiedCompactedEvidence: projection.hasVerifiedCompactedEvidence,
+          call: payloadCompactionCall(request.prompt, input),
+          sourceRevision:
+            input.superWorkerCompaction?.sourceRevision ??
+            payloadCompactionSourceRevision(input.context),
+          ...(input.superWorkerCompaction
+            ? {
+                superWorkerCompaction: input.superWorkerCompaction,
+                requireSuperWorkerSources: true,
+              }
+            : {}),
+          allowedConsumers: compactionOptions.allowedConsumers,
+          scopeId: compactionOptions.scopeId,
+          resultSourceOverrides:
+            compactionOptions.resultSourceOverrides ??
+            projection.resultSourceOverrides,
+        }),
+      ),
       timeoutReason: "worker_capability_payload_timeout",
       ...(input.responseFormat ? { format: input.responseFormat } : {}),
       maxRepairAttempts: WORKER_CAPABILITY_PAYLOAD_MAX_REPAIR_ATTEMPTS,
@@ -262,6 +272,7 @@ function payloadMessages(
   filesystemMessage?: ChatMessage,
 ): Readonly<{
   messages: ChatMessage[];
+  resultSourceOverrides: readonly SemanticCompactionSource[];
   hasVerifiedCompactedEvidence(messages: readonly ChatMessage[]): boolean;
 }> {
   const callId = payloadContextCallId(input.context);
@@ -274,6 +285,7 @@ function payloadMessages(
       : {}),
     ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),
   });
+  const conversation = projectSupervisorSkillPayloadHistory(input, request);
   const requestSource =
     input.requestSourceProjection === "full_request"
       ? projectRequestSource({
@@ -281,7 +293,7 @@ function payloadMessages(
           prompt: request.prompt,
           modelStep: input.modelStep,
           callId,
-          historyMessages: request.historyMessages,
+          historyMessages: conversation ? [] : request.historyMessages,
         })
       : undefined;
   const projectedContext = projectPayloadContext(input.context, request);
@@ -304,16 +316,17 @@ function payloadMessages(
   try {
     const messages = projectRequestContext({
       instructions: input.instructions,
-      historyMessages: [],
+      ...(conversation ?? { historyMessages: [] }),
       prompt: canonicalContext,
       referenceMessages: [
+        ...projectPayloadSkillGuidance(input),
         ...(filesystemMessage ? [filesystemMessage] : []),
-        ...(requestSource ? [buildRequestSourceMessage(requestSource)] : []),
+        ...(requestSource ? [projectSupervisorSkillPayloadRequestSource(
+          input, buildRequestSourceMessage(requestSource), request.attachments,
+        )] : []),
         ...projectedContext.relatedArtifactMessages,
       ],
-      ...(projectedContext.targetContentMessage
-        ? { continuationMessages: [projectedContext.targetContentMessage] }
-        : {}),
+      ...projectSupervisorSkillPayloadContinuation(input, projectedContext.targetContentMessage),
       budget,
       diagnostic: {
         requestId: request.requestId,
@@ -325,6 +338,7 @@ function payloadMessages(
     }).messages;
     return Object.freeze({
       messages,
+      resultSourceOverrides: projectedContext.resultSourceOverrides,
       hasVerifiedCompactedEvidence(candidateMessages: readonly ChatMessage[]) {
         if (projectedContext.reusedCompactedSourceCount === 0) return false;
         return candidateMessages.some(
@@ -349,23 +363,18 @@ function payloadContextCallId(context: PayloadContext): string {
   return "worker" in context ? context.worker.callId : context.root.callId;
 }
 
-function payloadCompactionCall(requestPrompt: string, context: PayloadContext) {
-  return Object.freeze(
-    "worker" in context
-      ? {
-          roleId: "worker",
-          callId: context.worker.callId,
-          objective: context.worker.objective,
-        }
-      : {
-          roleId: "root",
-          callId: context.root.callId,
-          objective: [
-            requestPrompt,
-            ...context.root.updates.map(({ text }) => text),
-          ].join("\n"),
-        },
-  );
+function payloadCompactionCall(requestPrompt: string, input: WorkerCapabilityPayloadModelRequest) {
+  const context = input.context;
+  if ("worker" in context) return Object.freeze({
+    roleId: "worker", callId: context.worker.callId, objective: context.worker.objective,
+  });
+  if (input.superWorkerCompaction) return Object.freeze({
+    roleId: "supervisor", callId: context.root.callId, objective: requestPrompt,
+  });
+  return Object.freeze({
+    roleId: "root", callId: context.root.callId,
+    objective: [requestPrompt, ...context.root.updates.map(({ text }) => text)].join("\n"),
+  });
 }
 
 function payloadCompactionSourceRevision(context: PayloadContext): number {
@@ -400,12 +409,10 @@ function payloadCompactionOptions(
   }
   return Object.freeze({
     allowedConsumers: Object.freeze([input.modelStep]),
-    scopeId: [
-      "payload",
-      payloadContextCallId(input.context),
-      input.executionId,
-      input.context.payloadStage?.index ?? 0,
-    ].join(":"),
+    scopeId: rootPayloadCompactionScopeId(input),
+    ...(input.superWorkerCompaction
+      ? { resultSourceOverrides: input.superWorkerCompaction.sources }
+      : {}),
   });
 }
 
@@ -419,6 +426,7 @@ function projectPayloadContext(
   contextScope: PayloadContext["contextScope"];
   settledResultDiagnostics: SettledResultProjectionDiagnostics;
   reusedCompactedSourceCount: number;
+  resultSourceOverrides: readonly SemanticCompactionSource[];
 }> {
   const contextScope = context.contextScope;
   const targetProjection = context.targetContext
@@ -439,13 +447,16 @@ function projectPayloadContext(
     context,
     settledResultProjection.results,
   );
+  const adapterEvidence = projectPayloadSettledEvidence(
+    compactedEvidence.results,
+  );
   const baseMetadata: Record<string, unknown> = { ...context };
   delete baseMetadata.targetContext;
   delete baseMetadata.relatedArtifactContexts;
   return Object.freeze({
     metadata: Object.freeze({
       ...baseMetadata,
-      settledCapabilityResults: compactedEvidence.results,
+      settledCapabilityResults: adapterEvidence.results,
       ...(compactedEvidence.evidence
         ? { compactedSourceEvidence: compactedEvidence.evidence }
         : {}),
@@ -465,8 +476,18 @@ function projectPayloadContext(
       ? { targetContentMessage: targetProjection.message }
       : {}),
     contextScope,
-    settledResultDiagnostics: settledResultProjection.diagnostics,
+    settledResultDiagnostics: projectSettledResultDiagnostics({
+      sourceResults: context.settledCapabilityResults,
+      includedResults: adapterEvidence.results,
+      deduplicatedReferenceDataCount:
+        settledResultProjection.diagnostics.deduplicatedReferenceDataCount +
+        adapterEvidence.deduplicatedReferenceDataCount,
+      deduplicatedReferenceDataChars:
+        settledResultProjection.diagnostics.deduplicatedReferenceDataChars +
+        adapterEvidence.deduplicatedReferenceDataChars,
+    }),
     reusedCompactedSourceCount: compactedEvidence.evidence?.sources.length ?? 0,
+    resultSourceOverrides: adapterEvidence.resultSourceOverrides,
   });
 }
 
@@ -557,7 +578,10 @@ function sameTargetReference(left: string, right: string): boolean {
 function projectSettledResultDiagnostics(
   params: Readonly<{
     sourceResults: readonly PayloadSettledResult[];
-    includedResults: readonly ProjectedPayloadSettledResult[];
+    includedResults: readonly Pick<
+      PayloadSettledResult,
+      "summary" | "referenceData"
+    >[];
     deduplicatedReferenceDataCount: number;
     deduplicatedReferenceDataChars: number;
   }>,

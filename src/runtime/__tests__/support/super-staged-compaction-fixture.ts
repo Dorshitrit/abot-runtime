@@ -1,5 +1,6 @@
 import { semanticCompactionReplacementSlots } from "./semantic-compaction-replacement-fixture.js";
 import { vi } from "vitest";
+import { withSupervisorPreparation } from "./supervisor-model-phases.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { ModelGatewayClient } from "../../ports.js";
 import type { RequestRunnerConfig } from "../../config/runner/contracts.js";
@@ -75,10 +76,9 @@ export function stagedSuperFixture(
       },
     }),
   );
-  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+  const respond = withSupervisorPreparation(async (input) => {
     const messages = input.messages as readonly ChatMessage[];
     const step = input.modelStep!;
-    calls.push({ step, messages });
     const formatName = (input.format as { name?: string } | undefined)?.name;
     if (formatName === "supervisor_working_directory")
       return { text: '{"workingDirectory":"."}', meta: {} };
@@ -209,6 +209,10 @@ export function stagedSuperFixture(
     }
     if (step === "supervisor.response") return { text: STAGED_FACT, meta: {} };
     throw new Error(`unexpected_staged_model_step:${step}`);
+  });
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    calls.push({ step: input.modelStep!, messages: input.messages as readonly ChatMessage[] });
+    return respond(input);
   });
   const countInputTokens = vi.fn<
     NonNullable<ModelGatewayClient["countInputTokens"]>

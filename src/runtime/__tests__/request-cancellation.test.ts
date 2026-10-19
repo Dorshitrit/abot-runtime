@@ -1,3 +1,5 @@
+import { withSupervisorPreparation, defaultSupervisorPresentation } from "./support/supervisor-model-phases.js";
+import { rootWorkCalls } from "./support/root-invalid-output-fixture.js";
 import { writeFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type WebSocket from "ws";
@@ -87,7 +89,7 @@ describe.each(ROOT_OUTPUT_POLICIES)("$policyId cancellation", (policy) => {
       const resumedDecision = JSON.parse(rootRespondOutput(policy.policyId));
       if (phase === "before_start")
         resumedDecision.decision.title = "Resumed work";
-      const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
         const response =
           input.modelStep === policy.decisionStep
             ? JSON.stringify(resumedDecision)
@@ -103,7 +105,12 @@ describe.each(ROOT_OUTPUT_POLICIES)("$policyId cancellation", (policy) => {
         if (phase === "late_result") return { text: response, meta: {} };
         input.abortSignal.throwIfAborted();
         throw new Error("The request signal was not propagated");
-      });
+      }, {
+        present: (input) => ({
+          ...defaultSupervisorPresentation(input),
+          ...(phase === "before_start" ? { title: "Resumed work" } : {}),
+        }),
+      }));
       const events: Record<string, unknown>[] = [];
       const ws = {
         send: (data: string) => {
@@ -195,7 +202,7 @@ describe.each(ROOT_OUTPUT_POLICIES)("$policyId cancellation", (policy) => {
         1,
       );
       expect(events.some((event) => event.type === "failed")).toBe(false);
-      const nextMessages = invoke.mock.calls[0]?.[0].messages as {
+      const nextMessages = rootWorkCalls(invoke)[0]?.[0].messages as {
         role: string;
         content: string;
       }[];

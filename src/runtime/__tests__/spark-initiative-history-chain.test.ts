@@ -13,6 +13,7 @@ import { SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT } from "../orchestration/role-c
 import { createTestRequestExecutionScopeWithCapabilities } from "./support/request-execution-scope.js";
 import { createTargetHandoffFixture, finalDispatchReport, targetHandoffSeed } from "./support/system-target-handoff-fixture.js";
 import { createTargetHandoffScript, type HandoffModelInput } from "./support/system-target-handoff-script.js";
+import { supervisorFormatName, withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => { resetDebugLoggerConfig(); vi.restoreAllMocks(); });
@@ -53,7 +54,7 @@ test.each([true, false])("ordinary initiative history preserves the complete del
     const script = createTargetHandoffScript(() => {});
     const rootSteps: string[] = []; const childSteps: string[] = []; const excludedContexts: (readonly ChatMessage[])[] = [];
     let index = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
       const call = script[index++]; expect(input.modelStep).toBe(call?.step);
       const messages = input.messages as readonly ChatMessage[];
       const references = initiativeReferences(messages);
@@ -72,7 +73,7 @@ test.each([true, false])("ordinary initiative history preserves the complete del
       expect(JSON.stringify(messages)).not.toContain(session.messages[0]!.initiative!.reason);
       expect(JSON.stringify(messages)).not.toContain(session.messages[0]!.initiative!.handoffBrief);
       return { text: typeof call!.output === "string" ? call!.output : call!.output(input), meta: {} };
-    });
+    }));
     const seed = { ...targetHandoffSeed(invoke, "ask"), sessionId: session.id, sessionMemory,
       historyMessages: sessionMemory.project().historyMessages, ...(markedSpark ? { sessionKind: "spark" as const } : {}) };
     const registry = await fixture.registry.prepareRequest!();
@@ -83,6 +84,15 @@ test.each([true, false])("ordinary initiative history preserves the complete del
     });
     await expect(runRequestRunner(request)).resolves.toEqual({ output: finalDispatchReport });
     expect(index).toBe(script.length);
+    const preparation = invoke.mock.calls.filter(([input]) => ["supervisor_presentation", "supervisor_skill_selection"].includes(supervisorFormatName(input) ?? ""));
+    expect(preparation.map(([input]) => supervisorFormatName(input))).toEqual(["supervisor_presentation"]);
+    for (const [input] of preparation) {
+      const messages = input.messages as readonly ChatMessage[];
+      expect(messages.filter(({ role, content }) => role === "user" && content === seed.prompt)).toHaveLength(1);
+      expect(messages.some(({ content }) => content === session.messages[0]!.content)).toBe(false);
+      expect(initiativeReferences(messages)).toEqual([]);
+      expect(JSON.stringify(messages)).not.toContain(session.messages[0]!.initiative!.handoffBrief);
+    }
     for (const messages of excludedContexts) {
       expect(initiativeReferences(messages)).toEqual([]);
       expect(JSON.stringify(messages)).not.toContain(session.messages[0]!.initiative!.handoffBrief);

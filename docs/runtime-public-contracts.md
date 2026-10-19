@@ -128,6 +128,43 @@ These events describe canonical delegated Planner state. A `planner.graph`
 advisory under `execution-agent-v1` is a passive subordinate result and does
 not create `planner.plan.*` state or events.
 
+Supervisor delegation is reported by `role.delegated` only after a direct
+child call is committed under the Supervisor root contract. Its payload carries
+`callerCallId`, `callerRole`, `childCallId`, `childRole`, and the exact canonical
+`objective` (up to 8,192 characters). The ordinary request envelope supplies
+request identity and ordering. The event records accepted delegation, not child
+execution success, request completion, or a change of active display role; it has
+no `stage` or `phase`. Execution Agent calls and nested Planner-to-Worker calls
+do not produce this event.
+
+The event uses existing request-event persistence and replay. Resuming an
+already-open child after approval does not emit another delegation. Clients
+identify each delegation by request identity, generation when present, and
+`childCallId`; repeated objectives or recipient roles do not establish duplicates.
+The Web UI retains these records in the Supervisor card, with an expandable
+preview of the original objective, separately from its latest status. Older
+sessions without recorded delegation events retain their existing presentation.
+Projection adds no model invocation or model-visible context and preserves the
+existing synchronous commit-observer and event-delivery failure behavior.
+
+A direct Planner return under the Supervisor root contract also projects
+`role.returned` after its canonical `child_returned` commit. Its payload carries
+`callerCallId`, `callerRole=supervisor`, `childCallId`, `childRole=planner`,
+`outcome=completed|failed`, and the exact committed result `summary`. The summary
+is not truncated to the delegation objective limit. The event is a historical
+role result, not a request-terminal status or proof that a plan was created. It
+has no `stage` or `phase`, and neither nested returns nor Execution Agent
+advisories produce it.
+
+Return receipts use the same request persistence and replay as delegations,
+with a separate identity namespace keyed by request, generation when present,
+and child call. Restoring an existing result or continuing after approval does
+not emit it again. The Planner card shows an expandable result or failure
+receipt and suppresses an earlier generic planning summary; a later planning
+activation still has its own status. Legacy sessions without this event do not
+infer a result. Model calls, model context, and existing synchronous observer
+failure handling are unchanged by this projection.
+
 Runtime capabilities use the stable tool event envelope. Adapter-owned
 presentation metadata supplies the tool, operation and action type; target
 metadata contains only resolved logical paths. Physical

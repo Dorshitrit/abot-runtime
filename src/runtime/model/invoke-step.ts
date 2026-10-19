@@ -17,6 +17,10 @@ import { createModelStepAbort } from "../steps/model-step-timeout.js";
 import { acceptModelStepOutput } from "./model-step-acceptance.js";
 import { createModelContextAssessment } from "./model-context-assessment.js";
 import {
+  invokeModelProvider,
+  projectModelProviderFailureDiagnostics,
+} from "./provider-failure.js";
+import {
   isModelStepCompactionEligible,
   resolveModelContextAdmission,
 } from "./model-context-budget.js";
@@ -298,6 +302,9 @@ class ModelStepInvocation<T> {
         controller: contextCompaction,
         assess,
         assertCurrent,
+        boundSteeringVersion:
+          params.boundSteeringVersion ??
+          (this.input.ownsRequestSteering ? steeringSnapshot.version : undefined),
         abortSignal: request.abortSignal,
         identity: {
           requestId: request.requestId,
@@ -498,6 +505,7 @@ class ModelStepInvocation<T> {
       modelStep: params.modelStep,
       status,
       errorType: classifyRuntimeErrorType(error),
+      ...projectModelProviderFailureDiagnostics(error, params.messages),
       responseReceived: outputDiagnostics !== undefined,
       steeringVersion: attempt.steeringSnapshot.version,
       supersededAttemptCount: this.supersededAttemptCount,
@@ -532,19 +540,21 @@ class ModelStepAttempt {
 
   invokeProvider() {
     const { request, params } = this.input;
-    return request.modelGatewayClient.invoke({
-      messages: this.input.messages,
-      agentMode: request.agentMode,
-      modelStep: params.modelStep,
-      ...(request.modelPreference
-        ? { modelPreference: request.modelPreference }
-        : {}),
-      ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),
-      abortSignal: this.input.stepAbort.signal,
-      debugRequestId: request.requestId,
-      ...(params.format === undefined ? {} : { format: params.format }),
-      onThinking: this.input.onThinking,
-    });
+    return invokeModelProvider(params.modelStep, () =>
+      request.modelGatewayClient.invoke({
+        messages: this.input.messages,
+        agentMode: request.agentMode,
+        modelStep: params.modelStep,
+        ...(request.modelPreference
+          ? { modelPreference: request.modelPreference }
+          : {}),
+        ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),
+        abortSignal: this.input.stepAbort.signal,
+        debugRequestId: request.requestId,
+        ...(params.format === undefined ? {} : { format: params.format }),
+        onThinking: this.input.onThinking,
+      }),
+    );
   }
 
   recordOutputReceived(outputDiagnostics: ModelStepOutputDiagnostics): void {

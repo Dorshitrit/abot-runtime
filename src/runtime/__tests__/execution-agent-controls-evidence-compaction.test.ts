@@ -232,7 +232,7 @@ test("C10/C17: root and legacy Controls checkpoints stay isolated from the new f
     call,
     consumer: input.modelStep,
     steeringSnapshot: fixture.steering.snapshot(),
-    sourceRevision: head.revision,
+    head,
     allowedConsumers: ["execution.decision", "execution.response"],
   });
   const rootCandidate = await root.getStages()[0]!.prepare(input.messages);

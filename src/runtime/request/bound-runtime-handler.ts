@@ -15,6 +15,7 @@ export function createBoundRuntimeRequestHandler(
     sessionStore: services.sessions,
     attachmentStore: services.attachments,
     toolRegistry: services.tools,
+    knowledgeSkillStore: services.knowledgeSkillStore,
     sessionMemoryCompactor: services.sessionMemoryCompactor,
     longTermMemory: services.longTermMemory,
   };

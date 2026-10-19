@@ -1,3 +1,5 @@
+import { KNOWLEDGE_SKILL_GUIDANCE_INSTRUCTION } from "../knowledge-skill-instructions.js";
+import { buildBatchCapabilityExecutionGuidance } from "../capability-execution-guidance.js";
 import {
   CAPABILITY_ANALYSIS_CONTROLS_INSTRUCTION,
   CAPABILITY_COMMAND_CONTROLS_INSTRUCTION,
@@ -31,10 +33,14 @@ export function buildExecutionControlsRefinementInstructions(
     CAPABILITY_COMMAND_CONTROLS_INSTRUCTION,
     "A control is a missing user choice only when valid values materially change requested outcome, scope, or authority. Otherwise choose the narrow value required by the exact current request and immutable assignment.",
     "The runtime validates and mechanically merges remaining controls with frozen selectionControls before any effect.",
-    ...pending.flatMap(({ slot, capabilityId, guidance }) => [
-      `### ${slot} ${capabilityId}`,
-      guidance || "No additional execution guidance is supplied.",
-      `### end ${slot}`,
-    ]),
+    KNOWLEDGE_SKILL_GUIDANCE_INSTRUCTION,
+    ...buildBatchCapabilityExecutionGuidance(
+      pending,
+      ({ slot, capabilityId, guidance }) => [
+        `### ${slot} ${capabilityId}`,
+        guidance || "No additional execution guidance is supplied.",
+        `### end ${slot}`,
+      ],
+    ),
   ].join("\n");
 }

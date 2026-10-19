@@ -35,6 +35,7 @@ describe("capability-brief plugin", () => {
     );
 
     expect(registry.listDefinitions()).toEqual([
+      expect.objectContaining({ name: "abot_skills" }),
       expect.objectContaining({
         name: "capability_brief",
         routingCapability: "semantic_lookup",
@@ -42,6 +43,7 @@ describe("capability-brief plugin", () => {
       }),
     ]);
     expect(registry.listNormalInvocations?.()).toEqual([
+      expect.objectContaining({ toolName: "abot_skills" }),
       expect.objectContaining({
         toolName: "capability_brief",
         contract: {

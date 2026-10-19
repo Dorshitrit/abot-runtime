@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "vitest";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import { createSchedulerRuntimeFixture } from "./support/scheduler-runtime-fixture.js";
+import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 
 type RuntimeFixture = Awaited<ReturnType<typeof createSchedulerRuntimeFixture>>;
 const fixtures: RuntimeFixture[] = [];
@@ -51,10 +52,12 @@ test.each(policies)("%s admits complete >32K step evidence at decision and respo
   const fixture = await createSchedulerRuntimeFixture(policy);
   fixtures.push(fixture);
   const run = await runAgent(fixture, evidence);
-  expect(run).toMatchObject({ status: "succeeded", report: { modelCalls: 2, toolCalls: 0 } });
-  const prefix = policy === "execution-agent-v1" ? "execution" : "supervisor";
-  expect(fixture.invoke.mock.calls.map(([call]) => call.modelStep))
-    .toEqual([`${prefix}.decision`, `${prefix}.response`]);
+  const expectedPhases = policy === "execution-agent-v1"
+    ? ["execution.decision", "execution.response"]
+    : ["supervisor_presentation", "supervisor_decision", "supervisor.response"];
+  expect(run).toMatchObject({ status: "succeeded", report: { modelCalls: expectedPhases.length, toolCalls: 0 } });
+  expect(fixture.invoke.mock.calls.map(([call]) => supervisorFormatName(call) ?? call.modelStep))
+    .toEqual(expectedPhases);
   for (const [call] of fixture.invoke.mock.calls) {
     expectCompleteAssignment(call.messages as readonly ChatMessage[], evidence);
   }
@@ -78,8 +81,10 @@ test.each(policies)("%s rejects oversized evidence before ordinary inference whi
   expect(fixture.invokeRaw).not.toHaveBeenCalled();
 
   const admitted = await runAgent(fixture, "A small complete source finding.");
-  expect(admitted).toMatchObject({ status: "succeeded", report: { modelCalls: 2 } });
-  const prefix = policy === "execution-agent-v1" ? "execution" : "supervisor";
-  expect(fixture.invoke.mock.calls.map(([call]) => call.modelStep))
-    .toEqual([...failureSteps, `${prefix}.decision`, `${prefix}.response`]);
+  const expectedPhases = policy === "execution-agent-v1"
+    ? ["execution.decision", "execution.response"]
+    : ["supervisor_presentation", "supervisor_decision", "supervisor.response"];
+  expect(admitted).toMatchObject({ status: "succeeded", report: { modelCalls: expectedPhases.length } });
+  expect(fixture.invoke.mock.calls.map(([call]) => supervisorFormatName(call) ?? call.modelStep))
+    .toEqual([...failureSteps, ...expectedPhases]);
 });

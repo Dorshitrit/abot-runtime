@@ -6,6 +6,7 @@ import { createAutomationDraftActions } from "./automation-draft-actions.js";
 import { createAutomationRunActions } from "./automation-run-actions.js";
 import { createAutomationViewCapture } from "./automation-view-scope.js";
 import { createAutomationManagementActions } from "./automation-management-actions.js";
+import { createAutomationRunHistory } from "./automation-run-history.js";
 import {
   automationProjectionChanged, readAutomationBackgroundProjection,
   readAutomationList, readAutomationSelection, validationResult,
@@ -31,7 +32,7 @@ export function createAutomationsController({
   isEditingDirty = () => false,
 }) {
   const state = {
-    automations: [], selectedAutomationId: "", selectedRunId: "", selectedNodeId: "",
+    automations: [], selectedAutomationId: "", selectedRunId: "", selectedNodeId: "", lastViewedRunId: "",
     draft: null, publishedDefinition: null, grant: null, validation: null, validationVisible: false,
     catalog: null, templateCatalog: null, templateCatalogError: "", runs: [], run: null,
     loading: false, mutation: "", error: "", feedback: "",
@@ -50,6 +51,8 @@ export function createAutomationsController({
   const snapshot = () => ({ ...state, draftUndo: draftActions?.undoState() || null,
     runStartPending: runActions?.isStartingRun() || false });
   const publish = () => render(snapshot());
+  const runHistory = createAutomationRunHistory({ state, client, getEnvironmentId, publish, errorLabel });
+  const { setRunFilters, loadMoreRuns, resetRunHistory, retryRunHistory } = runHistory;
   const currentEnvironment = (environmentId) => environmentId === getEnvironmentId();
   const captureView = createAutomationViewCapture({ state, getEnvironmentId,
     getNavigationRevision: () => navigationRevision, getNavigationRequestRevision: () => navigationRequestRevision,
@@ -61,7 +64,8 @@ export function createAutomationsController({
     currentEnvironment, captureView });
   const { mutateDraft, saveDefinition, saveNode, undoDraftMove, restorePublishedDraft } = draftActions;
   runActions = createAutomationRunActions({ client, mutation, publish,
-    loadSelected, openRun, captureView });
+    loadSelected, openRun, captureView,
+    refreshRunHistory: (isCurrent) => runHistory.resetRunHistory({ isCurrent, supersede: true }) });
   const { startRun, stopRun, rerun } = runActions;
   const { create, deleteDraft, publishDefinition, setActive, changeArchiveState, setPermission } =
     createAutomationManagementActions({ state, client, mutation, captureView,
@@ -86,14 +90,16 @@ export function createAutomationsController({
     state.stepEvidenceLoading = false;
     state.stepEvidenceError = "";
     if (automationChanged) {
+      state.lastViewedRunId = "";
       state.draft = null;
       state.publishedDefinition = null;
       state.grant = null;
       state.validation = null;
       state.validationVisible = false;
       state.catalog = null;
-      state.runs = [];
+      runHistory.resetScope();
     }
+    if (runId) state.lastViewedRunId = runId;
     navigationRevision += 1;
     onNavigationChange();
   }
@@ -123,19 +129,23 @@ export function createAutomationsController({
     }
   }
 
-  async function loadSelected(automationId, runId = "", isCurrent = () => true) {
+  async function loadSelected(automationId, runId = "", isCurrent = () => true, refreshRuns = false) {
     if (!isCurrent()) return false;
     const environmentId = getEnvironmentId();
     const revision = ++readRevision;
+    const historyRead = runHistory.captureRead({ refresh: refreshRuns });
     state.loading = true;
     state.error = "";
     publish();
     try {
-      const projection = await readAutomationSelection(client, automationId, runId, environmentId);
+      const projection = await readAutomationSelection(client, automationId, runId, environmentId,
+        { runsQuery: historyRead.query });
       if (!isCurrent()) return false;
       if (revision !== readRevision || !currentEnvironment(environmentId)) return false;
       if (state.selectedAutomationId !== automationId) return false;
-      Object.assign(state, projection);
+      const { runs, runsNextCursor, ...selection } = projection;
+      Object.assign(state, selection);
+      historyRead.accept({ runs, runsNextCursor });
       const selectedNodeId = selectedAutomationRunStepId(state.run, state.selectedNodeId);
       const initialStepSelected = selectedNodeId !== state.selectedNodeId;
       state.selectedNodeId = selectedNodeId;
@@ -181,7 +191,7 @@ export function createAutomationsController({
     const loadedList = await loadList(isCurrent);
     if (!loadedList || !isCurrent()) return false;
     if (!selected) return true;
-    const selectedLoaded = await loadSelected(selected, runId, isCurrent);
+    const selectedLoaded = await loadSelected(selected, runId, isCurrent, true);
     if (!selectedLoaded || !isCurrent()) return false;
     if (selectedLoaded && runId && state.selectedNodeId)
       await loadStepEvidence(runId, state.selectedNodeId, stepEvidenceFull, isCurrent);
@@ -193,24 +203,29 @@ export function createAutomationsController({
         state.mutation || isEditingDirty()) return false;
     if (!currentEnvironment(identity.environmentId) || identity.readRevision !== readRevision ||
         identity.navigationRevision !== navigationRevision || identity.mutationRevision !== mutationRevision ||
-        identity.evidenceRevision !== evidenceReadRevision) return false;
+        identity.evidenceRevision !== evidenceReadRevision ||
+        identity.historyRevision !== runHistory.revision()) return false;
     return state.selectedAutomationId === identity.automationId &&
       state.selectedRunId === identity.runId && state.selectedNodeId === identity.nodeId;
   }
 
   async function backgroundRefresh() {
+    const historyRead = runHistory.captureRead({ refresh: true });
     const identity = {
       environmentId: getEnvironmentId(), automationId: state.selectedAutomationId,
       runId: state.selectedRunId, nodeId: state.selectedNodeId,
       readRevision, navigationRevision, mutationRevision,
       evidenceRevision: evidenceReadRevision, full: stepEvidenceFull,
+      runsQuery: historyRead.query, historyRevision: runHistory.revision(),
     };
     if (!backgroundIdentityMatches(identity)) return false;
     try {
       const projection = await readAutomationBackgroundProjection(client, identity);
       if (!backgroundIdentityMatches(identity)) return false;
       if (!automationProjectionChanged(state, projection)) return true;
-      Object.assign(state, projection);
+      const { runs, runsNextCursor, ...selection } = projection;
+      Object.assign(state, selection);
+      historyRead.accept({ runs, runsNextCursor });
       publish();
       return true;
     } catch {
@@ -339,9 +354,10 @@ export function createAutomationsController({
     draftActions.clearUndo();
     readRevision += 1;
     loaded = false;
+    runHistory.resetScope();
     stepEvidenceFull = false;
     Object.assign(state, {
-      automations: [], selectedAutomationId: "", selectedRunId: "", selectedNodeId: "",
+      automations: [], selectedAutomationId: "", selectedRunId: "", selectedNodeId: "", lastViewedRunId: "",
       draft: null, publishedDefinition: null, grant: null, validation: null, validationVisible: false,
       catalog: null, templateCatalog: null, templateCatalogError: "", runs: [], run: null,
       loading: false, error: "", feedback: "",
@@ -369,7 +385,7 @@ export function createAutomationsController({
     createTemplate: (templateId) => create(templateId), deleteDraft, mutateDraft, saveDefinition,
     saveNode, saveAgent, validate, publishDefinition, setActive, undoDraftMove, restorePublishedDraft,
     archive: () => changeArchiveState(true), restore: () => changeArchiveState(false),
-    setPermission, openRun,
+    setPermission, openRun, setRunFilters, loadMoreRuns, resetRunHistory, retryRunHistory,
     startRun, stopRun, rerun, environmentChanged, setWorkspaceActive, handleRealtime,
     showFullStepOutput() {
       if (!state.selectedRunId || !state.selectedNodeId) return false;

@@ -87,7 +87,7 @@ test.each(["clone", "changed_content"] as const)("actual checkpoint projection r
   const input = buildExecutionAgentInput(f.request, options);
   const controller = createExecutionAgentCompactionController(f.request, {
     call: options.call, steeringSnapshot: options.steeringSnapshot,
-    sourceRevision: options.head.revision, consumer: "execution.decision",
+    head: options.head, consumer: "execution.decision",
     allowedConsumers: ["execution.decision", "execution.response"],
   });
   const projected = controller.project(input.messages);

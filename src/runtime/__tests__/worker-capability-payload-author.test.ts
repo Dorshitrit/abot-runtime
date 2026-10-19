@@ -421,7 +421,7 @@ describe("neutral Worker capability payload author", () => {
       async () => "must not be called",
     );
     const unauthorized = createWorkerCapabilityPayloadAuthor({
-      requestId: "request-unauthorized-root-payload",
+      requestId: "request-unauthorized-root-payload", capabilityAuthorities: ["worker"],
       abortSignal: new AbortController().signal,
       model: { invoke },
     });

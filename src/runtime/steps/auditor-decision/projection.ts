@@ -1,3 +1,4 @@
+import { isSuccessfulCoreSkillRead } from "../../knowledge-skills/read-evidence.js";
 import { projectExecutionCompactionObjective } from "../../context/execution-compaction-objective.js";
 import type {
   RoleCallFrame,
@@ -35,6 +36,13 @@ export function projectAuditorAssignment(
     objective.requestSteeringVersion,
   );
   const evidence = projectAuditorWorkEvidence(head, caller!.callId);
+  const skillReadEvidence = evidence.filter((entry) =>
+    isSuccessfulCoreSkillRead(
+      entry.capabilityId,
+      entry.outcome,
+      entry.adapterResult,
+    ),
+  );
   const compactedSourceEvidence = resolveExecutionCompactedSources({
     requestId: request.requestId,
     prompt: request.prompt,
@@ -110,6 +118,9 @@ export function projectAuditorAssignment(
     reviewedEvidenceBundles: state.reviewedEvidenceBundles,
     selectedEvidenceIds: Object.freeze([]),
     evidence: Object.freeze([]),
+    ...(skillReadEvidence.length > 0
+      ? { skillReadEvidence: Object.freeze(skillReadEvidence) }
+      : {}),
     ...(compactedSourceEvidence ? { compactedSourceEvidence } : {}),
     availableEvidenceCount: inventory.length,
     omittedEvidenceCount: 0,

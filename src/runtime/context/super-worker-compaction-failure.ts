@@ -1,6 +1,6 @@
 import type { ModelStep } from "../../shared/model-steps.js";
 import type { SuperCompactionFailureOwner } from "./super-compaction-failure-owner.js";
-import type { SuperWorkerCompactionSidecar } from "./super-worker-compaction-sidecar.js";
+import { superPayloadCompactionContractId, type SuperWorkerCompactionSidecar } from "./super-worker-compaction-sidecar.js";
 export { withSuperCompactionFailure as withSuperWorkerCompactionFailure } from "./super-compaction-failure-owner.js";
 
 export function superWorkerCompactionFailureOwner(
@@ -16,7 +16,7 @@ export function superWorkerCompactionFailureOwner(
       requestId: sidecar.requestId,
       callId: sidecar.callId,
       parentCallId: sidecar.parentCallId,
-      contractId: "delegated.worker",
+      contractId: superPayloadCompactionContractId(sidecar),
       invocationAttempt: sidecar.invocationAttempt,
       sourceRevision: sidecar.sourceRevision,
       modelStep,

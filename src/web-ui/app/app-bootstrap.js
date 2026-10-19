@@ -15,6 +15,7 @@ export async function bootstrapWebApp({
   dashboard,
   learning,
   notifications,
+  skills,
   schedules,
   projects,
   selection,
@@ -77,6 +78,7 @@ export async function bootstrapWebApp({
   dashboard.setActive(true);
   for (const control of [shell, ...bindables, spark]) control.bind();
   bindEvents();
+  skills?.bind();
   renderComposer();
   selection.renderPermissionMode();
   renderMessages();
@@ -85,6 +87,7 @@ export async function bootstrapWebApp({
   schedules.refreshAvailability();
   automations.refreshAvailability();
   notifications?.refreshAvailability();
+  skills?.refreshAvailability();
   projects?.refreshAvailability();
   selection.renderEnvironmentOptions();
   const options = selection.environmentOptions();

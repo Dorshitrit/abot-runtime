@@ -10,6 +10,7 @@ import { traceDebug } from "../../observability/debug-logger.js";
 export type ConversationMemoryAuthoringContext = Readonly<{
   evidence: ConversationMemoryEvidence;
   targets: ReadonlyMap<string, LearningKnowledgeEntry>;
+  omitted: number;
   userMessages: readonly string[];
   message: ChatMessage;
 }>;
@@ -72,7 +73,7 @@ export function buildConversationMemoryAuthoringContext(
   const entries = context.entries.map(projectConversationMemoryKnowledgeEntry);
   const targets = new Map(entries.map((entry, index) => [`k${index + 1}`, Object.freeze(entry)]));
   return Object.freeze({
-    evidence, targets,
+    evidence, targets, omitted: context.omitted,
     userMessages: Object.freeze([request.prompt, ...steering.updates.map(({ text }) => text)]),
     message: Object.freeze({ role: "system" as const, content: JSON.stringify({
       kind: "conversation_memory_authoring_reference_v1",

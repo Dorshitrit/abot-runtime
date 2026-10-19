@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { loadRuntimeConfig } from "../config.js";
 import { loadRequestRunnerConfig } from "../config/runner/loader.js";
+import { createRequestModelPolicy } from "../config/runner/model-policy.js";
+import { resolveModelStepTimeout } from "../model/model-step-timeout-policy.js";
 
 const rootDir = resolve(import.meta.dirname, "../../..");
 const initScript = join(rootDir, "scripts", "init-runtime.ts");
@@ -68,6 +70,7 @@ describe("init-runtime", () => {
         },
       },
       "none",
+      { format: "json", generation: { temperature: 0, reasoningEffort: "none" } },
     ],
     [
       "openai",
@@ -79,6 +82,7 @@ describe("init-runtime", () => {
         },
       },
       "estimate",
+      { format: "json", timeoutMs: 300_000 },
     ],
     [
       "future-adapter",
@@ -89,10 +93,11 @@ describe("init-runtime", () => {
         },
       },
       "estimate",
+      { format: "json" },
     ],
   ] as const)(
     "creates a generic default profile for %s",
-    async (provider, model, expectedProviders, expectedAccountingMode) => {
+    async (provider, model, expectedProviders, expectedAccountingMode, expectedCompaction) => {
       const targetRoot = await createTargetRoot();
       const result = runInit([
         "--provider",
@@ -133,6 +138,7 @@ describe("init-runtime", () => {
         timeoutMs: 90_000,
       });
       expect(Object.keys(asRecord(runnerConfig.steps))).toEqual([
+        "context.compact",
         "supervisor.response",
         "execution.response",
       ]);
@@ -147,6 +153,20 @@ describe("init-runtime", () => {
       expect(
         asRecord(asRecord(modelConfig.context).formatTokenAccounting),
       ).toEqual({ mode: expectedAccountingMode });
+      const expectedTokenEstimation = provider === "ollama"
+        ? {
+            asciiCharactersPerToken: 3,
+            nonAsciiBytesPerToken: 2,
+            messageOverheadTokens: 6,
+          }
+        : undefined;
+      expect(asRecord(modelConfig.context).tokenEstimation).toEqual(
+        expectedTokenEstimation,
+      );
+      expect(asRecord(modelConfig.calibration)["context.compact"]).toEqual(
+        expectedCompaction,
+      );
+      expect(modelConfig.supportsThinking).toBeUndefined();
       expect(Object.keys(asRecord(modelConfig.calibration))).toEqual(
         expect.arrayContaining([
           "supervisor.decision",
@@ -168,6 +188,13 @@ describe("init-runtime", () => {
           formatTokenAccounting: { mode: expectedAccountingMode },
         },
       });
+      expect(loaded.models?.profiles?.default.context?.tokenEstimation).toEqual(
+        expectedTokenEstimation,
+      );
+      expect(loaded.models?.profiles?.default.calibration?.["context.compact"]).toEqual(
+        expectedCompaction,
+      );
+      expect(loaded.models?.profiles?.default.supportsThinking).toBeUndefined();
       expect(loaded.modelExecutionPolicies?.default).toEqual(
         provider === "openai" ? { policy: "execution-agent-v1" } : undefined,
       );
@@ -178,6 +205,21 @@ describe("init-runtime", () => {
           "request-runner.config.json",
         ),
       });
+      expect(loadedRunner.steps["context.compact"].timeoutMs).toBe(180_000);
+      const compactionTimeout = resolveModelStepTimeout({
+        modelStep: "context.compact",
+        fallbackTimeoutMs: loadedRunner.steps["context.compact"].timeoutMs,
+        modelPolicy: createRequestModelPolicy({
+          platformPolicy: loaded.models, runnerConfig: loadedRunner,
+        }),
+      });
+      expect(compactionTimeout.timeoutMs).toBe(
+        provider === "openai" ? 300_000 : 180_000,
+      );
+      const otherStepTimeouts = Object.entries(loadedRunner.steps)
+        .filter(([stepId]) => stepId !== "context.compact")
+        .map(([, step]) => step.timeoutMs);
+      expect(new Set(otherStepTimeouts)).toEqual(new Set([90_000]));
       const expectedResponseMethodologyRefs = [
         "../methodologies/response-ux.md",
         "../methodologies/memory-informed-response.md",
@@ -265,6 +307,12 @@ describe("init-runtime", () => {
       targetRoot,
     ]);
     expect(first.status, first.stderr).toBe(0);
+    const modelPath = join(targetRoot, "local", "models", "default.config.json");
+    const existingModel = await readJson(modelPath);
+    delete asRecord(existingModel.context).tokenEstimation;
+    delete asRecord(asRecord(existingModel.calibration)["context.compact"]).generation;
+    const originalModel = JSON.stringify(existingModel);
+    await writeFile(modelPath, originalModel, "utf-8");
     const runnerConfigPath = join(
       targetRoot,
       "local",
@@ -294,6 +342,7 @@ describe("init-runtime", () => {
     ]);
     expect(second.status, second.stderr).toBe(0);
     expect(await readFile(runnerConfigPath, "utf-8")).toBe(publishedV1Runner);
+    expect(await readFile(modelPath, "utf-8")).toBe(originalModel);
     expect(
       await readJson(
         join(targetRoot, "local", "models", "default.config.json"),

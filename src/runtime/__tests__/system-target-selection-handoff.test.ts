@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import type { ModelGatewayClient } from "../ports.js";
 import {
   configureDebugLogger,
@@ -67,14 +68,7 @@ describe("plugin target evidence survives the complete delegated request", () =>
         ).toMatchObject({ callId: "call-3", parentCallId: "call-2" });
       });
       let nextCall = 0;
-      const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-        const visible = JSON.stringify({
-          messages: input.messages,
-          format: input.format,
-        });
-        expect(visible).not.toContain(selectedHost);
-        expect(visible).not.toContain(selectedConnection);
-        expect(visible).not.toContain("host_id");
+      const respond = withSupervisorPreparation(async (input) => {
         const call = script[nextCall++];
         expect(
           call,
@@ -88,6 +82,13 @@ describe("plugin target evidence survives the complete delegated request", () =>
               : call!.output(input),
           meta: {},
         };
+      });
+      const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+        const visible = JSON.stringify({ messages: input.messages, format: input.format });
+        expect(visible).not.toContain(selectedHost);
+        expect(visible).not.toContain(selectedConnection);
+        expect(visible).not.toContain("host_id");
+        return respond(input);
       });
       const seed = targetHandoffSeed(invoke, mode);
       const preparedRegistry = await fixture.registry.prepareRequest!();

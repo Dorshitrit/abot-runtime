@@ -1,3 +1,6 @@
+import { createRuntimeKnowledgeSkillStore } from "./knowledge-skills/personal-store.js";
+import { builtinKnowledgeSkillStore } from "./knowledge-skills/catalog.js";
+import type { KnowledgeSkillStore } from "./knowledge-skills/store.js";
 import { loadRuntimeCapabilityPlugins } from "./plugins/runtime-capability-plugins.js";
 import type WebSocket from "ws";
 import { join } from "node:path";
@@ -38,6 +41,7 @@ import type {
 import { createSchedulingToolModule } from "./capabilities/scheduling/tool-module.js";
 import { createAutomationDraftToolModule } from "./capabilities/automations/tool-module.js";
 import { createAutomationBuilderToolModule } from "./capabilities/automation-builder/tool-module.js";
+import { createKnowledgeSkillsToolModule } from "./capabilities/knowledge-skills/tool-module.js";
 import type { AutomationService } from "./automations/service.js";
 import type { SchedulerService } from "./scheduler/contracts.js";
 import { createFileLongTermMemoryRepository } from "./adapters/long-term-memory/file-repository.js";
@@ -75,9 +79,11 @@ export function createDefaultToolRegistry(
   config?: RuntimeConfig,
   scheduling?: { service: SchedulerService; ready: () => Promise<void> },
   authoring?: { getService: () => AutomationService; ready: () => Promise<void> },
+  knowledgeSkillStore: KnowledgeSkillStore = config ? createRuntimeKnowledgeSkillStore(config.paths.runtimeDir) : builtinKnowledgeSkillStore,
 ): ToolRegistry {
   const plugins = loadRuntimeCapabilityPlugins(config);
   return createConfiguredToolRegistry(config, [
+    createKnowledgeSkillsToolModule(knowledgeSkillStore),
     ...runtimePluginsToToolModules(plugins),
     ...(config && scheduling
       ? [

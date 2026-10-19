@@ -64,6 +64,7 @@ export async function validateApprovalResume(
       sessionStore: services.sessions,
       attachmentStore: services.attachments,
       toolRegistry: services.tools,
+      knowledgeSkillStore: services.knowledgeSkillStore,
       modelGatewayClient: models,
       eventSinkFactory: { create: () => events },
       sessionMemoryCompactor: services.sessionMemoryCompactor,

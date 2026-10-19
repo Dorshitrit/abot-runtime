@@ -77,7 +77,7 @@ describe("finite compaction admission stages", () => {
       const active = createAdmissionStage("active_request", "active");
       await harness.run(createAdmissionController([history, active]));
       expect(history.commit).not.toHaveBeenCalled();
-      expect(active.prepare).toHaveBeenCalledWith(ADMISSION_MESSAGES);
+      expect(active.prepare.mock.calls[0]![0]).toEqual(ADMISSION_MESSAGES);
       expect(active.commit).toHaveBeenCalledOnce();
       expect(harness.events).toContainEqual([
         "context.compaction.completed",

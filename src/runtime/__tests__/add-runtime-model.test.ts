@@ -111,6 +111,7 @@ describe("add-runtime-model", () => {
       model: "gpt-5.6-luna",
       execution: { policy: "execution-agent-v1" },
       context: { formatTokenAccounting: { mode: "estimate" } },
+      calibration: { "context.compact": { format: "json", timeoutMs: 300_000 } },
     });
   });
 
@@ -339,6 +340,25 @@ describe("add-runtime-model", () => {
 
     expect(added.status, added.stderr).toBe(0);
     expect(added.stdout).toContain("provider: ollama (kept)");
+    const profile = await readJson(
+      join(targetRoot, "local", "models", "second-local.config.json"),
+    );
+    expect(profile).toMatchObject({
+      context: {
+        tokenEstimation: {
+          asciiCharactersPerToken: 3,
+          nonAsciiBytesPerToken: 2,
+          messageOverheadTokens: 6,
+        },
+      },
+      calibration: {
+        "context.compact": {
+          format: "json",
+          generation: { temperature: 0, reasoningEffort: "none" },
+        },
+      },
+    });
+    expect(profile.supportsThinking).toBeUndefined();
     const runtime = await readJson(
       join(targetRoot, "local", "runtime.config.json"),
     );

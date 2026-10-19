@@ -1,3 +1,4 @@
+import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type WebSocket from "ws";
 import type { AgentBridgeOptions } from "../../bridge/start-agent-bridge.js";
@@ -83,7 +84,9 @@ describe.each(["public_factory", "host_override"] as const)(
       await fixture.scheduler.tick();
       try {
         expect((await fixture.scheduler.listRuns())[0].status).toBe("pending");
-        expect(fixture.invoke).toHaveBeenCalledTimes(1);
+        expect(fixture.invoke.mock.calls.map(([input]) => supervisorFormatName(input))).toEqual([
+          "supervisor_presentation", "supervisor_skill_selection", "supervisor_decision",
+        ]);
       } finally {
         release.open();
         await request;
@@ -119,7 +122,9 @@ describe.each(["public_factory", "host_override"] as const)(
       try {
         // Let a wrongly unguarded handler finish its asynchronous session setup.
         await new Promise<void>((resolve) => setTimeout(resolve, 30));
-        expect(fixture.invoke).toHaveBeenCalledTimes(1);
+        expect(fixture.invoke.mock.calls.map(([input]) => supervisorFormatName(input))).toEqual([
+          "supervisor_presentation", "supervisor_skill_selection", "supervisor_decision",
+        ]);
       } finally {
         release.open();
         await fixture.waitForRun(pending.id);
@@ -127,7 +132,7 @@ describe.each(["public_factory", "host_override"] as const)(
       }
       expect(
         fixture.invoke.mock.calls.filter(
-          ([input]) => input.modelStep === "supervisor.decision",
+          ([input]) => supervisorFormatName(input) === "supervisor_decision",
         ),
       ).toHaveLength(2);
     });

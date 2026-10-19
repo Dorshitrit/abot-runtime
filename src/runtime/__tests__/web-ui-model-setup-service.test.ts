@@ -106,7 +106,8 @@ describe("additive Web model setup", () => {
       });
       const after = await fixture.readConfig();
       expect(after.models.providers[providerId]).toEqual(provider);
-      expect(await readAddedProfile("alias-model")).toMatchObject({
+      const profile = await readAddedProfile("alias-model");
+      expect(profile).toMatchObject({
         provider: providerId,
         context: {
           formatTokenAccounting: {
@@ -117,6 +118,20 @@ describe("additive Web model setup", () => {
           ? { execution: { policy: "execution-agent-v1" } }
           : {}),
       });
+      expect(profile.context.tokenEstimation).toEqual(type === "ollama"
+        ? {
+            asciiCharactersPerToken: 3,
+            nonAsciiBytesPerToken: 2,
+            messageOverheadTokens: 6,
+          }
+        : undefined);
+      expect(profile.calibration["context.compact"]).toEqual(type === "ollama"
+        ? {
+            format: "json",
+            generation: { temperature: 0, reasoningEffort: "none" },
+          }
+        : { format: "json", timeoutMs: 300_000 });
+      expect(profile.supportsThinking).toBeUndefined();
       if (type === "openai")
         expect(process.env.MODEL_FIXTURE_KEY).toBe("fixture-custom-key");
     },

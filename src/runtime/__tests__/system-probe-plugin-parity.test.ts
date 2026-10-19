@@ -16,6 +16,7 @@ describe("system-probe plugin parity", () => {
     );
 
     expect(registry.listDefinitions().map(({ name }) => name)).toEqual([
+      "abot_skills",
       "system_probe",
     ]);
     expect(registry.getDefinition("system_probe")).toMatchObject({
@@ -32,13 +33,14 @@ describe("system-probe plugin parity", () => {
       },
     });
     expect(Object.keys(registry.getImplementations())).toEqual([
+      "abot_skills",
       "system_probe",
     ]);
 
     const registrations = registry.listNormalInvocations?.() ?? [];
-    expect(registrations).toHaveLength(1);
-    expect(registrations[0]?.toolName).toBe("system_probe");
-    expect(registrations[0]?.contract).toEqual({
+    expect(registrations.map(({ toolName }) => toolName))
+      .toEqual(["abot_skills", "system_probe"]);
+    expect(registrations.find(({ toolName }) => toolName === "system_probe")?.contract).toEqual({
       version: 1,
       operations: [
         {

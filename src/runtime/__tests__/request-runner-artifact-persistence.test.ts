@@ -1,3 +1,4 @@
+import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { ModelGatewayClient } from "../ports.js";
@@ -228,7 +229,7 @@ describe("request runner artifact-path persistence sequencing", () => {
     mocks.persistSettledSessionArtifactPaths.mockImplementation(async () => {
       order.push("persist");
     });
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async ({ modelStep }) =>
+    const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async ({ modelStep }) =>
       modelStep === "supervisor.decision"
         ? {
             text: JSON.stringify({
@@ -238,7 +239,7 @@ describe("request runner artifact-path persistence sequencing", () => {
             }),
             meta: {},
           }
-        : { text: "Bounded response.", meta: {} },
+        : { text: "Bounded response.", meta: {} }),
     );
     const onAnswerToken = vi.fn(() => {
       order.push("answer");
@@ -269,10 +270,10 @@ describe("request runner artifact-path persistence sequencing", () => {
     mocks.persistSettledSessionArtifactPaths.mockImplementation(async () => {
       order.push("persist");
     });
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async () => {
+    const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async () => {
       order.push("root_failure");
       throw new Error("primary_root_failure");
-    });
+    }));
     const onAnswerToken = vi.fn(() => {
       order.push("answer");
     });

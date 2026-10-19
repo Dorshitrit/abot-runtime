@@ -1,3 +1,4 @@
+import { withSupervisorPreparation, supervisorFormatName } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -31,14 +32,14 @@ const fallback = buildDegradedFinalizationFallback({
 test.each(["invalid", "provider_failure"] as const)(
   "SUPER failed %s finalizer makes one attempt and commits a blocked fallback",
   async (outcome) => {
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
       if (
         input.modelStep === "degraded.finalization" &&
         outcome === "provider_failure"
       )
         throw new Error("provider_connection_failed");
       return { text: "invalid", meta: {} };
-    });
+    }));
     const request = createRootInvalidOutputRequest(invoke);
     const ledger = await createRootInvalidOutputLedger();
     const result = await runRootExecutionKernel({ request, ledger });
@@ -58,7 +59,7 @@ test("SUPER discards stale finalizer phrasing without replenishing its authoring
   const steering = createRequestSteeringInbox({
     requestId: "root-invalid-request",
   });
-  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
     if (input.modelStep === "degraded.finalization") {
       steering.append({
         steerId: "new-direction",
@@ -70,7 +71,7 @@ test("SUPER discards stale finalizer phrasing without replenishing its authoring
       };
     }
     return { text: "invalid", meta: {} };
-  });
+  }));
   const request = createRootInvalidOutputRequest(
     invoke,
     "supervisor-worker-v1",
@@ -91,7 +92,7 @@ test("SUPER still accepts healthy work after finalizer steering invalidation", a
   const steering = createRequestSteeringInbox({
     requestId: "root-invalid-request",
   });
-  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
     if (input.modelStep === "degraded.finalization") {
       steering.append({ steerId: "fresh", text: "Answer the new direction." });
       return {
@@ -107,7 +108,7 @@ test("SUPER still accepts healthy work after finalizer steering invalidation", a
         meta: {},
       };
     return { text: "Current answer", meta: {} };
-  });
+  }));
   const request = createRootInvalidOutputRequest(
     invoke,
     "supervisor-worker-v1",
@@ -125,10 +126,10 @@ test("SUPER still accepts healthy work after finalizer steering invalidation", a
 });
 
 test("SUPER never fabricates a role commit when the response limit cannot hold a complete notice", async () => {
-  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async () => ({
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async () => ({
     text: "invalid",
     meta: {},
-  }));
+  })));
   const request = createRootInvalidOutputRequest(invoke);
   const ledger = await createRootInvalidOutputLedger("supervisor-worker-v1", 8);
   const head = ledger.current();
@@ -144,7 +145,7 @@ test("SUPER never fabricates a role commit when the response limit cannot hold a
   ).toBeLessThanOrEqual(1);
 });
 
-test("a real root compaction read failure is owned and produces one blocked response before ordinary inference", async () => {
+test("a root compaction read failure permits fresh presentation but blocks history-dependent routing", async () => {
   const canonicalStore = createRequestContextCompactionStore();
   const store = {
     ...canonicalStore,
@@ -152,27 +153,35 @@ test("a real root compaction read failure is owned and produces one blocked resp
       throw new Error("context_compaction_checkpoint_invalid");
     }),
   };
-  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async () => ({
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async () => ({
     text: JSON.stringify({
       failureNotice: "Cannot finish this request.",
       nextStep: "Please try again.",
     }),
     meta: {},
-  }));
+  })));
   const request = createRootInvalidOutputRequest(
     invoke,
     "supervisor-worker-v1",
     {
       contextCompactionStore: store,
+      historyMessages: [{
+        id: "previous-user", role: "user", content: "PRIVATE_PREVIOUS_HISTORY",
+        createdAt: "2026-10-17T00:00:00.000Z",
+      }],
     },
   );
   const ledger = await createRootInvalidOutputLedger();
   const result = await runRootExecutionKernel({ request, ledger });
   expect(result).toMatchObject({ disposition: "blocked" });
   expect(result.output).toContain("Cannot finish this request.");
-  expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
+  expect(invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
+    "supervisor_presentation",
     "degraded.finalization",
   ]);
+  expect(JSON.stringify(invoke.mock.calls[0]![0].messages)).not.toContain("PRIVATE_PREVIOUS_HISTORY");
+  expect(ledger.current().state.calls).toHaveLength(1);
+  expect(ledger.current().state.capabilityExecutions).toEqual([]);
   expect(ledger.current().state.rootResponse).toBe(result.output);
   expect(request.superFailureFinalization!.primaryError()).toMatchObject({
     name: "SuperContextFailure",

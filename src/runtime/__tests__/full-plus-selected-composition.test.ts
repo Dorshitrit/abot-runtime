@@ -21,16 +21,18 @@ const systemTools = [
 
 describe("permission mode only narrows the selected plugin catalog", () => {
   test.each([{ enabled: false }, { allow: ["*"], deny: ["*"] }])(
-    "a globally disabled catalog stays empty in every mode: %j",
+    "globally disabled plugins leave only the core knowledge tool in every mode: %j",
     async (selection) => {
       const config = await createPluginSelectionFixture(selection);
       const source = createDefaultToolRegistry(config);
       for (const mode of modes) {
         const registry = restrictToolRegistryToRequestMode(source, mode);
-        expect(registry.hasToolsAvailable()).toBe(false);
-        expect(registry.listDefinitions()).toEqual([]);
-        expect(registry.listNormalInvocations?.()).toEqual([]);
-        expect(registry.getImplementations()).toEqual({});
+        expect(registry.hasToolsAvailable()).toBe(true);
+        expect(registry.listDefinitions().map(({ name }) => name))
+          .toEqual(["abot_skills"]);
+        expect(registry.listNormalInvocations?.().map(({ toolName }) => toolName))
+          .toEqual(["abot_skills"]);
+        expect(Object.keys(registry.getImplementations())).toEqual(["abot_skills"]);
         const skills = createDefaultSkillProvider(config, {
           toolRegistry: registry,
         });
@@ -100,6 +102,7 @@ describe("permission mode only narrows the selected plugin catalog", () => {
         "full_plus",
       );
       expect(registry.listDefinitions().map(({ name }) => name)).toEqual([
+        "abot_skills",
         "fixture_ping",
       ]);
       await expect(

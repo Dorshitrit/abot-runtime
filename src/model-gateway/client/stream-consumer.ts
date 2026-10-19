@@ -4,6 +4,10 @@ import {
 } from "../client-stream-parser.js";
 import type { ModelTokenUsage } from "../types.js";
 import type { EmptyResponseReason, StreamMeta } from "./contracts.js";
+import {
+  ModelGatewayInvocationError,
+  wrapModelGatewayTransportError,
+} from "./invocation-error.js";
 
 function resolveAbortMessage(reason?: unknown): string {
   if (reason instanceof Error) {
@@ -70,11 +74,23 @@ export class InactivityBoundStreamReader {
           void this.reader
             .cancel("llm_stream_inactivity_timeout")
             .catch(() => {});
-          settle(reject, createAbortError("llm_stream_inactivity_timeout"));
+          settle(
+            reject,
+            new ModelGatewayInvocationError(
+              "inactivity",
+              "llm_stream_inactivity_timeout",
+            ),
+          );
         }, inactivityTimeoutMs);
         void this.reader.read().then(
           (result) => settle(resolve, result),
-          (error) => settle(reject, error),
+          (error) => {
+            if (this.abortSignal.aborted) {
+              settle(reject, createAbortError(this.abortSignal.reason));
+              return;
+            }
+            settle(reject, wrapModelGatewayTransportError("stream", error));
+          },
         );
       },
     );

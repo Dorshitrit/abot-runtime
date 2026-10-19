@@ -1,3 +1,4 @@
+import { withSupervisorPreparation } from "./supervisor-model-phases.js";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +8,7 @@ import type { ChatMessage } from "../../../model-gateway/types.js";
 import {
   createRuntimeApplication,
   type RuntimeApplication,
+  type RuntimeApplicationOverrides,
 } from "../../composition.js";
 import type { RequestExecutionPolicyId } from "../../config/model-execution-policy.js";
 import { processDebugLogger } from "../../observability/debug-logger.js";
@@ -32,6 +34,7 @@ export async function createSchedulerRuntimeFixture(
   policy: RequestExecutionPolicyId = "supervisor-worker-v1",
   beforeModel?: (input: ScheduledModelInput) => Promise<void>,
   tools?: ToolRegistry,
+  knowledgeSkillStore?: RuntimeApplicationOverrides["knowledgeSkillStore"],
 ) {
   const rootDir = await mkdtemp(
     join(tmpdir(), "scheduler-runtime-integration-"),
@@ -85,7 +88,7 @@ export async function createSchedulerRuntimeFixture(
     },
     modelExecutionPolicies: { "scheduled-model": { policy } },
   };
-  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
     await beforeModel?.(input);
     if (input.modelStep === "supervisor.decision")
       return {
@@ -111,7 +114,7 @@ export async function createSchedulerRuntimeFixture(
     throw new Error(
       `unexpected_scripted_model_step:${String(input.modelStep)}`,
     );
-  });
+  }));
   const invokeRaw = vi.fn<ModelGatewayClient["invokeRaw"]>(async () => {
     throw new Error("unexpected_raw_model_call");
   });
@@ -121,6 +124,7 @@ export async function createSchedulerRuntimeFixture(
     application = createRuntimeApplication(config, {
       models: { invoke, invokeRaw },
       ...(tools ? { tools } : {}),
+      ...(knowledgeSkillStore ? { knowledgeSkillStore } : {}),
     });
     application.subscribeScheduledEvents((event) => events.push(event));
     await application.start();

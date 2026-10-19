@@ -5,6 +5,14 @@ import {
   titleCaseEventValue,
 } from "./event-presentation.js";
 import { textOf } from "./text-format.js";
+import {
+  isRoleDelegationEvent,
+  projectRoleDelegationEvent,
+} from "./role-delegation-event.js";
+import {
+  isRoleReturnEvent,
+  projectRoleReturnEvent,
+} from "./role-return-event.js";
 import { countToolInvocations } from "./tool-invocation-count.js";
 import { projectToolActivityEvent } from "./tool-activity-event.js";
 import { correlateToolApprovalActivity } from "./tool-approval-activity.js";
@@ -32,13 +40,16 @@ const ROLE_RESPONSIBILITIES = Object.freeze({
 });
 
 function latestRoleAction(group) {
+  if (group.summarySupersededByReturn) return "";
+  if (!group.latestEvent) return "";
   if (group.toolActions.some((action) => !action.legacy)) {
-    return group.latestRoleEvent
+    return group.latestRoleEvent && !isSupervisorSkillActivity(group.latestRoleEvent)
       ? roleActivitySummary(group.latestRoleEvent)
       : "";
   }
   const toolEvent = group.toolEvents.at(-1);
-  return roleActivitySummary(toolEvent || group.latestEvent);
+  const event = toolEvent || group.latestEvent;
+  return isSupervisorSkillActivity(event) ? "" : roleActivitySummary(event);
 }
 
 function belongsToRoleRequest(event, requestId) {
@@ -64,14 +75,20 @@ function orderedRequestActivity(events, requestId) {
   for (const event of events) {
     if (!belongsToRoleRequest(event, requestId)) continue;
     const position = activityPosition(event);
-    if (!position) {
+    const delegation = projectRoleDelegationEvent(event);
+    const receipt = projectRoleReturnEvent(event);
+    if (!position && !delegation && !receipt) {
       unique.push({ event, position });
       continue;
     }
-    const identity = `${position.domain}:${position.value}`;
+    let identity;
+    if (receipt) identity = `return:${receipt.id}`;
+    else if (delegation) identity = `delegation:${delegation.id}`;
+    else identity = `${position.domain}:${position.value}`;
     if (seen.has(identity)) continue;
     seen.add(identity);
     unique.push({ event, position });
+    if (!position) continue;
     const domain = domains.get(position.domain) || { events: [], next: 0 };
     domain.events.push({ event, position });
     domains.set(position.domain, domain);
@@ -104,8 +121,14 @@ function isToolActivityEvent(event) {
   return activityEventName(event).startsWith("tool.");
 }
 
+function isSupervisorSkillActivity(event) {
+  return event.stage === "supervisor" && event.phase === "skills"
+    && !isToolActivityEvent(event);
+}
+
 function roleActivityStage(event) {
   if (isToolActivityEvent(event)) return "";
+  if (isRoleDelegationEvent(event) || isRoleReturnEvent(event)) return "";
   return textOf(event.stage).trim();
 }
 
@@ -114,6 +137,7 @@ function hasSupportedRoleStage(stage) {
 }
 
 function isFailedRoleActivity(event) {
+  if (!event) return false;
   if (isToolActivityEvent(event)) return false;
   return (textOf(event.tone) || eventTone(event)) === "failed";
 }
@@ -134,6 +158,10 @@ function createRoleGroup(role, event) {
     latestRoleEvent: null,
     toolEvents: [],
     toolActions: [],
+    skillActivities: [],
+    delegations: [],
+    returns: [],
+    summarySupersededByReturn: false,
   };
 }
 
@@ -153,6 +181,7 @@ function buildRoleCard(group, activeRole, streaming) {
   const active = isActiveRoleActivity(group, activeRole, streaming);
   const toolCount = countToolInvocations(group.toolEvents);
   const toolSummary = summarizeConversationTools(group.toolActions);
+  const roleIdentityRecorded = group.latestRoleEvent || group.delegations[0];
   let tone = "recorded";
   if (active) tone = "active";
   if (failed) tone = "failed";
@@ -160,12 +189,17 @@ function buildRoleCard(group, activeRole, streaming) {
     id: group.role,
     role: group.role,
     title:
-      group.role === "supervisor" && !group.latestRoleEvent
+      group.role === "supervisor" && !roleIdentityRecorded
         ? "Root agent"
         : ROLE_TITLES[group.role],
     responsibility: ROLE_RESPONSIBILITIES[group.role],
     phaseLabel: titleCaseEventValue(group.phase),
     summary: latestRoleAction(group),
+    ...(group.skillActivities.length > 0
+      ? { skillActivities: group.skillActivities }
+      : {}),
+    ...(group.delegations.length > 0 ? { delegations: group.delegations } : {}),
+    ...(group.returns.length > 0 ? { returns: group.returns } : {}),
     toolActions: group.toolActions,
     facts: toolSummary
       ? [toolSummary]
@@ -203,6 +237,23 @@ export function buildConversationRoleCards({
       continue;
     }
 
+    const delegation = projectRoleDelegationEvent(event);
+    if (delegation) {
+      const group = groups.get("supervisor") || createRoleGroup("supervisor", null);
+      group.delegations.push(delegation);
+      groups.set("supervisor", group);
+      continue;
+    }
+
+    const receipt = projectRoleReturnEvent(event);
+    if (receipt) {
+      const group = groups.get("planner") || createRoleGroup("planner", null);
+      group.returns.push(receipt);
+      group.summarySupersededByReturn = true;
+      groups.set("planner", group);
+      continue;
+    }
+
     const stage = roleActivityStage(event);
     if (stage) {
       activeRole = "";
@@ -212,6 +263,13 @@ export function buildConversationRoleCards({
         group.phase = textOf(event.phase);
         group.latestEvent = event;
         group.latestRoleEvent = event;
+        group.summarySupersededByReturn = false;
+        if (isSupervisorSkillActivity(event)) {
+          group.skillActivities.push({
+            summary: roleActivitySummary(event),
+            tone: textOf(event.tone) || eventTone(event),
+          });
+        }
         groups.set(stage, group);
       }
     }

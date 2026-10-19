@@ -7,6 +7,7 @@ import { replacePreparedSessionFile } from "../../sessions/prepared-session-repl
 import { isPersistedStore } from "../app/lib/session-composer-queue.js";
 import { ClientStateError, emptyClientState, type ClientState } from "./contracts.js";
 import { decodePreference } from "./preferences.js";
+import { serializeClientStateTransaction } from "./transaction-order.js";
 
 const maxStateBytes = 8 * 1024 * 1024;
 
@@ -63,7 +64,7 @@ export class WebClientStateStore {
       if (this.initialization === initializing) this.initialization = undefined;
       throw error;
     }
-    return withFileLock(join(this.directory, "state.lock"), async () => {
+    return serializeClientStateTransaction(this.path, () => withFileLock(join(this.directory, "state.lock"), async () => {
       const state = await this.load();
       const before = JSON.stringify(state);
       const result = operation(state);
@@ -72,6 +73,6 @@ export class WebClientStateStore {
         await this.save(state);
       }
       return { result, state };
-    });
+    }));
   }
 }

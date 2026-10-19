@@ -1,3 +1,4 @@
+import type { ChatMessage } from "../../../model-gateway/types.js";
 import {
   invokeStructuredModelStep,
   StructuredModelInvalidOutputError,
@@ -5,6 +6,7 @@ import {
 import { emitRuntimeStatus } from "../../events/runtime-status.js";
 import { classifyRuntimeErrorType } from "../../observability/error-type.js";
 import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
+import { buildCoreSkillReadContextMessages } from "../../context/core-skill-read-context.js";
 import { superCompactionFailureOwner } from "../../context/super-compaction-failure-owner.js";
 import type { RoleExecutor } from "../../orchestration/role-executors/index.js";
 import type { RequestExecutionScope } from "../../request/execution-scope.js";
@@ -40,6 +42,7 @@ export async function runReviewerDecision(
       Parameters<typeof buildReviewerDecisionInput>[1]["budget"]
     >;
     referenceDataBudget: ReviewerReferenceDataBudget;
+    skillGuidanceMessages?: readonly ChatMessage[];
   }>,
 ): Promise<ReviewerDecision> {
   const input = buildReviewerDecisionInput(request, options);
@@ -122,6 +125,7 @@ export const GENERIC_REVIEWER_EXECUTOR: RoleExecutor<
       message: "Reviewing high-level completion...",
     });
     const budget = resolveReviewerDecisionContextBudget(context);
+    const skillGuidanceMessages = buildCoreSkillReadContextMessages(ledger.current(), "delegate");
     const emptyReferenceDataBudget: ReviewerReferenceDataBudget = Object.freeze(
       {
         maxTokens: 0,
@@ -158,6 +162,7 @@ export const GENERIC_REVIEWER_EXECUTOR: RoleExecutor<
       call,
       snapshot: budgetAssessmentSnapshot,
       budget,
+      skillGuidanceMessages,
     });
     const referenceDataBudget = resolveReviewerReferenceDataBudget({
       context,
@@ -165,6 +170,7 @@ export const GENERIC_REVIEWER_EXECUTOR: RoleExecutor<
       budget,
       baseAssessment,
       projectSnapshot,
+      skillGuidanceMessages,
     });
     const snapshot = projectSnapshot(referenceDataBudget, true);
     const decision = await runReviewerDecision(context, {
@@ -172,6 +178,7 @@ export const GENERIC_REVIEWER_EXECUTOR: RoleExecutor<
       snapshot,
       budget,
       referenceDataBudget,
+      skillGuidanceMessages,
     });
     const receipt = createRoleCallReviewerVerdictReceipt({
       reviewerCallId: call.callId,
@@ -205,6 +212,7 @@ function resolveReviewerReferenceDataBudget(
       Parameters<typeof buildReviewerDecisionInput>[1]["budget"]
     >;
     baseAssessment: ReturnType<typeof assessReviewerDecisionInputBudget>;
+    skillGuidanceMessages?: readonly ChatMessage[];
     projectSnapshot: (
       budget: ReviewerReferenceDataBudget,
       trace: boolean,
@@ -233,6 +241,7 @@ function resolveReviewerReferenceDataBudget(
       call: params.call,
       snapshot: candidateSnapshot,
       budget: params.budget,
+      skillGuidanceMessages: params.skillGuidanceMessages,
     });
     if (
       assessment.fits &&

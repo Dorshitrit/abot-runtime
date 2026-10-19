@@ -10,6 +10,7 @@ import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { RuntimeSetupService } from "../../web-ui/local-runtime/runtime-setup-service.js";
 import { loadRuntimeConfig } from "../config.js";
+import { loadRequestRunnerConfig } from "../config/runner/loader.js";
 import { RuntimeEnvironmentRegistry } from "../../web-ui/local-runtime/environment-registry.js";
 
 const artifactRoot = resolve(
@@ -57,9 +58,18 @@ describe("Web runtime setup persistence", () => {
     });
     expect(JSON.stringify(result)).not.toContain("fixture-test-not-a-real-secret");
     const config = loadRuntimeConfig({ rootDir, configPath });
+    const runner = loadRequestRunnerConfig({
+      configPath: config.requestRunner.configPath,
+    });
+    expect(runner.steps["context.compact"].timeoutMs).toBe(180_000);
+    const otherStepTimeouts = Object.entries(runner.steps)
+      .filter(([stepId]) => stepId !== "context.compact")
+      .map(([, step]) => step.timeoutMs);
+    expect(new Set(otherStepTimeouts)).toEqual(new Set([90_000]));
     expect(config.models?.profiles?.default).toMatchObject({
       provider: "openai",
       model: "setup-test-model",
+      calibration: { "context.compact": { format: "json", timeoutMs: 300_000 } },
     });
     const source = await readFile(configPath!, "utf8");
     expect(source).not.toContain("fixture-test-not-a-real-secret");
@@ -93,10 +103,25 @@ describe("Web runtime setup persistence", () => {
     });
     const credentials = await readFile(join(rootDir, ".env"), "utf8");
     expect(credentials).toContain(existing);
-    expect(
-      loadRuntimeConfig({ rootDir, configPath }).models?.profiles?.default
-        .model,
-    ).toBe("no-model-call");
+    const profile = loadRuntimeConfig({ rootDir, configPath })
+      .models?.profiles?.default;
+    expect(profile).toMatchObject({
+      model: "no-model-call",
+      context: {
+        tokenEstimation: {
+          asciiCharactersPerToken: 3,
+          nonAsciiBytesPerToken: 2,
+          messageOverheadTokens: 6,
+        },
+      },
+      calibration: {
+        "context.compact": {
+          format: "json",
+          generation: { temperature: 0, reasoningEffort: "none" },
+        },
+      },
+    });
+    expect(profile?.supportsThinking).toBeUndefined();
   });
 
   test("rejects invalid input and a missing key before any setup files are written", async () => {

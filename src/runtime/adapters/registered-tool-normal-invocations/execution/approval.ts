@@ -1,4 +1,5 @@
 import { requiresToolActionApproval } from "../../../../capabilities/tool-permission-mode.js";
+import { isCoreToolAutomaticRead } from "../../../capabilities/core-tool-contracts.js";
 import type { ToolCall } from "../../../../capabilities/tool-types.js";
 import {
   buildToolExecutorEventMetadata,
@@ -10,8 +11,21 @@ import type {
   ToolApprovalDecision,
   ToolPermissionMode,
 } from "../../../ports.js";
-import type { RegisteredToolNormalInvocationRejection } from "../shared/contracts.js";
+import type { BoundOperation, RegisteredToolNormalInvocationRejection } from "../shared/contracts.js";
 import { rejectNormalInvocation } from "../shared/rejection.js";
+
+/** Both accepted source and normalized target must share the core read exemption. */
+export function requiresRegisteredToolActionApproval(
+  mode: ToolPermissionMode,
+  source: BoundOperation,
+  target: BoundOperation,
+): boolean {
+  const force = source.operation.approval === "always" || target.operation.approval === "always";
+  if (!requiresToolActionApproval(mode, force)) return false;
+  if (force) return true;
+  if (!isCoreToolAutomaticRead(source.registration.toolName, source.operation)) return true;
+  return !isCoreToolAutomaticRead(target.registration.toolName, target.operation);
+}
 
 function recommendsFullPlusForForcedAction(
   mode: ToolPermissionMode,
@@ -36,11 +50,15 @@ export async function requestNormalInvocationApproval(params: {
   call: ToolCall;
   eventMeta?: Record<string, unknown>;
   force: boolean;
+  /** Captured operation policy; omitted for ordinary direct approval callers. */
+  requiredByOperationPolicy?: boolean;
 }): Promise<
   | Readonly<{ ok: true }>
   | Readonly<{ ok: false; rejection: RegisteredToolNormalInvocationRejection }>
 > {
-  if (!requiresToolActionApproval(params.toolPermissionMode, params.force)) {
+  const required = params.requiredByOperationPolicy ??
+    requiresToolActionApproval(params.toolPermissionMode, params.force);
+  if (!required) {
     return Object.freeze({ ok: true as const });
   }
   const approvalId =

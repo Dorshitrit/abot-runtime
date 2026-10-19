@@ -16,6 +16,8 @@ export type SemanticCompactionGenerationParams = Readonly<{
   binding: SemanticCompactionCheckpointBinding;
   sourceRevision: number;
   preservationObjective: string;
+  /** Invocation-local freshness binding; never part of a saved checkpoint. */
+  boundSteeringVersion?: number;
   previous?: SemanticCompactionCheckpoint;
   /** Model step that will consume the checkpoint. */
   consumer?: ModelStep;

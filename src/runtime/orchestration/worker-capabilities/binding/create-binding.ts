@@ -26,6 +26,7 @@ import {
   normalizeExecutionFreshness,
 } from "./call-authority.js";
 import { bindCapabilityDependencyResults } from "./dependency-results.js";
+import { projectSupervisorSkillCapabilityAdapters } from "../supervisor-skill-authority.js";
 
 export function createRoleCapabilityBinding<TContext>(params: {
   requestId: string;
@@ -64,7 +65,9 @@ export function createRoleCapabilityBinding<TContext>(params: {
     emptyDiagnostic,
   });
   const catalog = createBoundCapabilityCatalog({
-    adapters: params.adapters,
+    adapters: projectSupervisorSkillCapabilityAdapters({
+      head: initialHead, call: authority.authoritativeCall, adapters: params.adapters,
+    }),
     boundCall,
     emptyDiagnostic,
   });

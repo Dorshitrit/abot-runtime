@@ -1,5 +1,4 @@
-import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
-import { resolveConfiguredStepInstructionMetadata } from "../../config/runner/step-instructions.js";
+import type { ChatMessage, ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
 import type {
   RequestContextBudget,
   RequestContextProjection,
@@ -45,9 +44,7 @@ import {
   estimateReferenceDataTokens,
   type ReviewerReferenceDataBudget,
 } from "./final-evidence.js";
-import { createReviewerDecisionFormat } from "./format.js";
-import { projectReviewerModelContext } from "./model-context.js";
-import { buildReviewerDecisionInstructions } from "./prompt.js";
+import { createReviewerDecisionInputParts } from "./model-context.js";
 
 export type ReviewerDecisionInputRequest = Pick<
   RequestExecutionSeed,
@@ -78,6 +75,7 @@ export function buildReviewerDecisionInput(
     diagnostic?: ReviewerDecisionDiagnosticContext;
     budget?: RequestContextBudget;
     referenceDataBudget: ReviewerReferenceDataBudget;
+    skillGuidanceMessages?: readonly ChatMessage[];
   }>,
 ): {
   context: RequestContextProjection;
@@ -112,6 +110,7 @@ export function buildReviewerDecisionInput(
   const parts = createReviewerDecisionInputParts(request, {
     call: options.call,
     snapshot,
+    skillGuidanceMessages: options.skillGuidanceMessages,
   });
   const context = projectRequestContext({
     instructions: parts.instructions,
@@ -170,6 +169,7 @@ export function assessReviewerDecisionInputBudget(
     call: RoleCallFrame;
     snapshot: ReviewerReviewSnapshot;
     budget: RequestContextBudget;
+    skillGuidanceMessages?: readonly ChatMessage[];
   }>,
 ): RequestMessagesBudgetAssessment {
   const parts = createReviewerDecisionInputParts(request, options);
@@ -182,32 +182,6 @@ export function assessReviewerDecisionInputBudget(
     format: parts.format,
     budget: options.budget,
   });
-}
-
-function createReviewerDecisionInputParts(
-  request: ReviewerDecisionInputRequest,
-  options: Readonly<{
-    call: RoleCallFrame;
-    snapshot: ReviewerReviewSnapshot;
-  }>,
-) {
-  const format = createReviewerDecisionFormat(options.snapshot);
-  const modelContext = projectReviewerModelContext(options.snapshot, options.call);
-  const configuredInstructionMetadata =
-    resolveConfiguredStepInstructionMetadata({
-      runnerConfig: request.runnerConfig,
-      modelStep: REVIEWER_DECISION_MODEL_STEP,
-    });
-  return {
-    instructions: buildReviewerDecisionInstructions(),
-    configuredInstructionMetadata,
-    format,
-    referenceMessages: modelContext.referenceMessages,
-    prompt: modelContext.prompt,
-    completionTargetLength: modelContext.completionTargetLength,
-    auditCapsuleCharacterCount: modelContext.auditCapsuleCharacterCount,
-    evidenceAppendixCharacterCount: modelContext.evidenceAppendixCharacterCount,
-  };
 }
 
 export function normalizeReviewerReviewSnapshot(

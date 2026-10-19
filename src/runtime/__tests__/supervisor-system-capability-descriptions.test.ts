@@ -70,7 +70,7 @@ test.each([true, false])(
     expect(result.host.readHostStatus).toHaveBeenCalledOnce();
     const inputs = result.model.invoke.mock.calls.map(([input]) => input);
     const routing = inputs.find(
-      ({ modelStep }) => modelStep === "supervisor.decision",
+      ({ format }) => typeof format === "object" && format?.name === "supervisor_decision",
     )!;
     assertPluginDiscovery(routing, result.offered);
     expect(result.offered).toHaveLength(14);

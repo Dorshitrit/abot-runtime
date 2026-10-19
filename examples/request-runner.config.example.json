@@ -20,6 +20,9 @@
     "timeoutMs": 90000
   },
   "steps": {
+    "context.compact": {
+      "timeoutMs": 180000
+    },
     "supervisor.response": {
       "instructionRefs": [
         "../methodologies/response-ux.md",

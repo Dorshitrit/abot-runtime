@@ -1,5 +1,6 @@
 import { expect, vi } from "vitest";
 import type { ModelGatewayClient } from "../../ports.js";
+import { withSupervisorPreparation } from "./supervisor-model-phases.js";
 
 export type ExecRequestPolicy = "execution-agent-v1" | "supervisor-worker-v1";
 export const EXEC_REQUEST_FINAL = "The exec verification attempt settled.";
@@ -49,7 +50,7 @@ export function createExecRequestScript(
   command: string,
 ) {
   let decisions = 0;
-  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
     if (input.modelStep === "worker.result")
       return { text: EXEC_REQUEST_FINAL, meta: {} };
     if (input.modelStep === "execution.response")
@@ -86,7 +87,7 @@ export function createExecRequestScript(
         ? executionDecision(decisions)
         : delegatedDecision(decisions);
     return { text: JSON.stringify({ decision }), meta: {} };
-  });
+  }));
   return {
     invoke,
     invokeRaw: vi.fn<ModelGatewayClient["invokeRaw"]>(async () => {

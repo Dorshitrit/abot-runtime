@@ -31,6 +31,8 @@ export function traceSupervisorContextProjected(params: {
   completedChildSummaryLength: number;
   allowedRoleIds: readonly SupervisorDelegateRoleId[];
   allowMemoryRecall: boolean;
+  allowSkillAuthoring?: boolean;
+  allowSkillReads?: boolean;
   workerCapabilityAffordances: readonly SupervisorWorkerCapabilityAffordance[];
   availableWorkerCapabilityCatalog: readonly WorkerCapabilityCatalogGroup[];
   capabilityBrief: CapabilityBriefProjection;
@@ -243,7 +245,7 @@ export function traceSupervisorAcknowledgementNormalized(params: {
 export function traceSupervisorDecisionRejected(params: {
   diagnostic: SupervisorDecisionDiagnosticContext;
   issues: readonly SupervisorDecisionValidationIssue[];
-  selectedAction?: SupervisorDecision["action"];
+  selectedAction?: SupervisorDecision["action"] | SupervisorRoutingDecision["action"];
 }): void {
   traceDebug(SUPERVISOR_LOG_SCOPE, "decision.rejected", {
     ...baseFields(params.diagnostic),
@@ -262,6 +264,8 @@ export function traceSupervisorModelStarted(params: {
   includeTitle: boolean;
   allowedRoleIds: readonly SupervisorDelegateRoleId[];
   allowMemoryRecall: boolean;
+  allowSkillAuthoring?: boolean;
+  allowSkillReads?: boolean;
   availableWorkerCapabilityCatalog: readonly WorkerCapabilityCatalogGroup[];
 }): void {
   traceDebug(SUPERVISOR_LOG_SCOPE, "model.started", {
@@ -476,11 +480,15 @@ function workingDirectoryDiagnosticFields(
 function projectSupervisorAllowedActions(params: {
   allowedRoleIds: readonly SupervisorDelegateRoleId[];
   allowMemoryRecall: boolean;
-}): SupervisorDecision["action"][] {
+  allowSkillReads?: boolean;
+  allowSkillAuthoring?: boolean;
+}): Array<SupervisorDecision["action"] | SupervisorRoutingDecision["action"]> {
   const canInvokeRole = params.allowedRoleIds.length > 0;
-  const actions: SupervisorDecision["action"][] = canInvokeRole
+  const actions: Array<SupervisorDecision["action"] | SupervisorRoutingDecision["action"]> = canInvokeRole
     ? [...SUPERVISOR_DECISION_ACTIONS]
     : ["respond"];
   if (params.allowMemoryRecall) actions.push("recall_memory");
+  if (params.allowSkillReads) actions.push("list_skills", "read_skills");
+  if (params.allowSkillAuthoring) actions.push("author_skill");
   return actions;
 }

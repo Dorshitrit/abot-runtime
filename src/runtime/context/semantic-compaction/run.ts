@@ -11,6 +11,8 @@ import {
 } from "../request-context-budget.js";
 import { invokeStructuredModelStep } from "../../model/invoke-structured-step.js";
 import { countModelInputTokens } from "../../model/input-token-count.js";
+import { assertBoundModelStepSteeringCurrent } from "../../model/model-step-steering.js";
+import { resolveRequestSteeringInbox } from "../../request/request-steering.js";
 import { resolveModelContextAdmission } from "../../model/model-context-budget.js";
 import { ModelOutputIncompleteError } from "../../model/provider-completion.js";
 import { traceDebug } from "../../observability/debug-logger.js";
@@ -111,6 +113,7 @@ export async function generateSemanticCompactionCandidate(
     >({
       request: params.request,
       modelStep: CONTEXT_COMPACTION_MODEL_STEP,
+      boundSteeringVersion: params.boundSteeringVersion,
       messages: prepared.messages,
       format: prepared.format,
       timeoutReason: "context_compaction_timeout",
@@ -372,6 +375,7 @@ async function prepareSemanticCompactionSliceInputForAdmission(
     params.request,
     prepared.messages,
     prepared.format,
+    params.boundSteeringVersion,
   );
   const repairHeadroom = assessSemanticCompactionRepairHeadroom({
     assessment: admission.assessment,
@@ -401,6 +405,7 @@ async function invokeSemanticCompactionSlice(
   return invokeStructuredModelStep({
     request: params.request,
     modelStep: CONTEXT_COMPACTION_MODEL_STEP,
+    boundSteeringVersion: params.boundSteeringVersion,
     messages: prepared.messages,
     format: prepared.format,
     timeoutReason: "context_compaction_timeout",
@@ -489,6 +494,7 @@ async function prepareSemanticCompactionInputForAdmission(
     params.request,
     prepared.messages,
     prepared.format,
+    params.boundSteeringVersion,
   );
   const repairHeadroom = assessSemanticCompactionRepairHeadroom({
     assessment: admission.assessment,
@@ -523,7 +529,10 @@ async function assessSemanticCompactionMessagesForAdmission(
   request: SemanticCompactionRequest,
   messages: readonly ChatMessage[],
   format: ReturnType<typeof createSemanticCompactionFormat>,
+  boundSteeringVersion: number | undefined,
 ) {
+  const requestSteering = resolveRequestSteeringInbox(request.requestSteering);
+  assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
   const admission = resolveSemanticCompactionAdmission(request, format);
   const projectedMessages = projectSemanticCompactionMessages(
     request,
@@ -536,6 +545,7 @@ async function assessSemanticCompactionMessagesForAdmission(
     messages: projectedMessages,
     format,
   });
+  assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
   const assessment = assessSemanticCompactionMessagesWithAdmission({
     admission,
     messages: projectedMessages,

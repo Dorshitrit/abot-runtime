@@ -1,3 +1,4 @@
+import type { PersonalSkillManagementService } from "../knowledge-skills/personal-contracts.js";
 import type { RuntimeEnvironmentServices } from "../composition.js";
 import type { RuntimeAttachmentStore } from "../attachments/store.js";
 import type { SessionStore } from "../ports.js";
@@ -88,6 +89,10 @@ export const LOCAL_AUTOMATION_METHODS = [
   "rerun",
 ] as const satisfies readonly (keyof AutomationService)[];
 
+export const LOCAL_PERSONAL_SKILL_METHODS = [
+  "list", "get", "create", "updateContent", "archive", "restore",
+] as const satisfies readonly (keyof PersonalSkillManagementService)[];
+
 type ServiceTarget = Record<string, unknown>;
 
 function selectServiceMethod(
@@ -111,6 +116,8 @@ export async function dispatchLocalServiceCall(
 ): Promise<unknown> {
   const [service, operation, extra] = method.split(".");
   if (!operation || extra) throw new Error("local_runtime_method_unknown");
+  if (service === "personalSkills")
+    return selectServiceMethod(services.personalSkills, operation, LOCAL_PERSONAL_SKILL_METHODS)(...args);
   if (service === "sessions")
     return selectServiceMethod(
       services.sessions,

@@ -3,11 +3,11 @@ import type {
   ModelStepContextCompactionController,
   ModelStepCompactionStageOutcome,
 } from "../../model/model-step-port.js";
-import type { RequestExecutionScope } from "../../request/execution-scope.js";
+import type { BoundRequestModelInvocationContext, RequestExecutionSeed } from "../../request/contracts.js";
 import { replaceSessionMemoryProjection } from "./message-replacement.js";
 
 export function createSessionMemoryAwareCompactionController(
-  request: RequestExecutionScope,
+  request: BoundRequestModelInvocationContext & Pick<RequestExecutionSeed, "sessionId" | "sessionMemory">,
   activeRequestController: ModelStepContextCompactionController,
 ): ModelStepContextCompactionController {
   const sessionMemory = request.sessionMemory;

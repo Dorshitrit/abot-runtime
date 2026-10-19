@@ -1,3 +1,8 @@
+import { matchesToolSelectionId } from "../../shared/tool-selection.js";
+import { CORE_TOOL_CONTRACTS } from "../capabilities/core-tool-contracts.js";
+import { captureModelPluginConfig } from "../config/model-plugin-config.js";
+import type { KnowledgeSkillStore } from "../knowledge-skills/store.js";
+import type { AvailableSkillsSource } from "../knowledge-skills/available-skills.js";
 import {
   captureRuntimeFilesystemScope,
   type RuntimeFilesystemScope,
@@ -42,6 +47,8 @@ export type RequestCapabilityCompositionView =
         | "sessionId"
         | "prompt"
         | "historyMessages"
+        | "sessionMemory"
+        | "attachments"
         | "toolPermissionMode"
         | "toolApprovalController"
         | "effectPersistence"
@@ -69,7 +76,7 @@ export type RequestCapabilityExecutionView = Readonly<
 export type RequestWorkerCapabilities = Readonly<{
   filesystemScope?: RuntimeFilesystemScope;
   provider: WorkerCapabilityAdapterProvider<RequestCapabilityExecutionView> &
-    Partial<ToolAvailabilitySource>;
+    Partial<ToolAvailabilitySource & AvailableSkillsSource>;
   executionContext: RequestCapabilityExecutionView;
 }>;
 
@@ -95,6 +102,7 @@ export type RequestExecutionScope = RequestExecutionSeed &
     capabilities: RequestWorkerCapabilities;
     superFailureFinalization?: SuperFailureFinalization;
     workerCapabilities: RequestWorkerCapabilities;
+    knowledgeSkillStore?: KnowledgeSkillStore;
   }>;
 
 export type CompiledRequestExecutionPolicy =
@@ -113,6 +121,7 @@ export type RequestWorkerCapabilityCatalog = Pick<
 export function createRequestExecutionScope(
   input: Readonly<{
     seed: RequestExecutionSeed;
+    knowledgeSkillStore?: KnowledgeSkillStore;
     requestWorkingDirectory?: string;
     executionPolicy: CompiledRequestExecutionPolicy;
     superFailureFinalization?: SuperFailureFinalization;
@@ -154,6 +163,9 @@ export function createRequestExecutionScope(
     modelInvocation,
     modelSteps,
     capabilities,
+    ...(input.knowledgeSkillStore && !isSkillStoreDeniedForModel(input.seed)
+      ? { knowledgeSkillStore: input.knowledgeSkillStore }
+      : {}),
     superFailureFinalization:
       input.superFailureFinalization ??
       createSuperFailureFinalization({
@@ -189,4 +201,15 @@ function createRequestExecutionPolicyFacet(
     ...(selection !== undefined ? { selection } : {}),
     executionPolicy,
   });
+}
+
+
+/** Direct core reads retain the same captured model restriction as abot_skills. */
+function isSkillStoreDeniedForModel(seed: RequestExecutionSeed): boolean {
+  const deniedSelectors = captureModelPluginConfig(
+    seed.executionPolicySelection?.plugins,
+  )?.deny ?? [];
+  return deniedSelectors.some((selector) =>
+    matchesToolSelectionId("", CORE_TOOL_CONTRACTS.skills.name, selector),
+  );
 }

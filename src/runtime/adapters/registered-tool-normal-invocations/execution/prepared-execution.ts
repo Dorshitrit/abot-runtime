@@ -4,7 +4,6 @@ import {
   assertRegisteredToolResultMetadataFits,
 } from "./result-budget.js";
 import { randomUUID } from "node:crypto";
-import { requiresToolActionApproval } from "../../../../capabilities/tool-permission-mode.js";
 import {
   buildToolCompletedEventActions,
   buildToolCompletedEventMetadata,
@@ -28,7 +27,7 @@ import {
   type ToolEventExecutorIdentity,
 } from "../shared/event-metadata.js";
 import { rejectNormalInvocation } from "../shared/rejection.js";
-import { requestNormalInvocationApproval } from "./approval.js";
+import { requestNormalInvocationApproval, requiresRegisteredToolActionApproval } from "./approval.js";
 import { createPreparedInvocationRejectionEmitter } from "./rejection-event.js";
 import { createFileOutputPresentation } from "./file-output-presentation.js";
 import { executeWithToolResources } from "./tool-media-execution.js";
@@ -46,13 +45,12 @@ export function createPreparedNormalInvocation(params: {
   executionMetadata?: Readonly<Record<string, unknown>>;
   restoredApprovalRequest?: ToolApprovalRequest;
 }): RegisteredToolPreparedNormalInvocation {
-  const force =
-    params.source.operation.approval === "always" ||
-    params.target.operation.approval === "always";
-  const approvalRequest = requiresToolActionApproval(
-    params.executor.toolPermissionMode,
-    force,
-  )
+  // Keep an already-recorded approval pending across upgrades; new core reads skip it.
+  const requiresApproval = params.restoredApprovalRequest !== undefined ||
+    requiresRegisteredToolActionApproval(
+      params.executor.toolPermissionMode, params.source, params.target,
+    );
+  const approvalRequest = requiresApproval
     ? Object.freeze({
         ...(params.restoredApprovalRequest ?? {
           requestId: params.executor.requestId,
@@ -148,6 +146,10 @@ async function executePreparedNormalInvocation(params: {
   });
   assertRegisteredToolResultMetadataFits(resultBudget);
   const approval = await requestNormalInvocationApproval({
+    requiredByOperationPolicy: params.approvalRequest !== undefined ||
+      requiresRegisteredToolActionApproval(
+        params.executor.toolPermissionMode, params.source, params.target,
+      ),
     ...(params.approvalRequest
       ? { preparedRequest: params.approvalRequest }
       : {}),

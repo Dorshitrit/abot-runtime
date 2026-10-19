@@ -1,3 +1,5 @@
+import { rootWorkCalls } from "./support/root-invalid-output-fixture.js";
+import { withSupervisorPreparation, supervisorFormatName } from "./support/supervisor-model-phases.js";
 import { buildDegradedFinalizationFallback } from "../steps/degraded-finalization/fallback.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
@@ -29,13 +31,13 @@ describe.each(ROOT_OUTPUT_POLICIES)(
         failureNotice: "The model could not produce a valid decision.",
         nextStep: "Continue from the established state in a follow-up request.",
       };
-      const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => ({
+      const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => ({
         text:
           input.modelStep === "degraded.finalization"
             ? JSON.stringify(phrasing)
             : "malformed decision",
         meta: {},
-      }));
+      })));
       const request = createRootInvalidOutputRequest(invoke, policy.policyId);
       const ledger = await createRootInvalidOutputLedger(policy.policyId);
       const result = await runRootExecutionKernel({ request, ledger });
@@ -47,7 +49,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
         phrasing,
       });
 
-      expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
+      expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([
         policy.decisionStep,
         policy.decisionStep,
         policy.decisionStep,
@@ -75,7 +77,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
         nextStep: "Continue using the established state.",
       };
       let degradedAttempts = 0;
-      const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
         if (input.modelStep === policy.decisionStep)
           return { text: rootRespondOutput(policy.policyId), meta: {} };
         if (input.modelStep === "degraded.finalization") {
@@ -86,7 +88,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
           };
         }
         return { text: "  ", meta: {} };
-      });
+      }));
       const request = createRootInvalidOutputRequest(invoke, policy.policyId);
       const result = await runRequestRunner(request);
       const expected =
@@ -97,7 +99,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
             })
           : `${phrasing.failureNotice}\n\n${phrasing.nextStep}`;
 
-      expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
+      expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([
         policy.decisionStep,
         ...Array<string>(policy.responseAttempts).fill(policy.responseStep),
         ...Array<string>(
@@ -111,22 +113,29 @@ describe.each(ROOT_OUTPUT_POLICIES)(
     });
 
     test("retains valid response behavior without calling degraded finalization", async () => {
-      const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => ({
+      const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => ({
         text:
           input.modelStep === policy.decisionStep
             ? rootRespondOutput(policy.policyId)
             : "The established result.",
         meta: {},
-      }));
+      })));
       const request = createRootInvalidOutputRequest(invoke, policy.policyId);
 
       const result = await runRequestRunner(request);
 
       expect(result.output).toBe("The established result.");
-      expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
+      expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([
         policy.decisionStep,
         policy.responseStep,
       ]);
+      if (policy.policyId === "supervisor-worker-v1") {
+        expect(invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
+          "supervisor_presentation",
+          "supervisor_decision",
+          "supervisor.response",
+        ]);
+      }
       expect(request.onAnswerToken).toHaveBeenCalledExactlyOnceWith(
         "The established result.",
       );
@@ -134,7 +143,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
 
     test("successful local repair continues normally instead of terminalizing", async () => {
       let decisionCalls = 0;
-      const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
         if (input.modelStep !== policy.decisionStep)
           return { text: "Recovered answer.", meta: {} };
         decisionCalls += 1;
@@ -145,13 +154,13 @@ describe.each(ROOT_OUTPUT_POLICIES)(
               : rootRespondOutput(policy.policyId),
           meta: {},
         };
-      });
+      }));
       const request = createRootInvalidOutputRequest(invoke, policy.policyId);
 
       await expect(runRequestRunner(request)).resolves.toMatchObject({
         output: "Recovered answer.",
       });
-      expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
+      expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([
         policy.decisionStep,
         policy.decisionStep,
         policy.responseStep,

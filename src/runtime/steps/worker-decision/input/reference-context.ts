@@ -12,6 +12,7 @@ import { buildRoleCallAssignmentScopeMessage } from "../../../orchestration/role
 import { isWorkerCapabilityAssignmentProvenanceValid } from "../../../orchestration/worker-capabilities/index.js";
 import type { WorkerResultAuthorSource } from "../contracts.js";
 import { projectWorkerPayloadDependencyResults } from "../payload-dependency-results.js";
+import { buildCoreSkillReadContextMessages } from "../../../context/core-skill-read-context.js";
 import type {
   PreparedWorkerDecisionSession,
   PreparedWorkerReferenceContext,
@@ -86,12 +87,16 @@ export function prepareWorkerReferenceContext(
   }
   const resultAuthorDependencyResults =
     projectWorkerPayloadDependencyResults(dependencyResults);
+  const coreSkillReadMessages = buildCoreSkillReadContextMessages(
+    canonicalState.canonicalSource?.head, "delegate",
+  );
   const resultAuthorSource: WorkerResultAuthorSource = Object.freeze({
     ...callIdentity,
     objective,
     ...(assignmentProvenance ? { assignmentProvenance } : {}),
     dependencyResults: resultAuthorDependencyResults,
     requestToolResults,
+    ...(coreSkillReadMessages.length > 0 ? { coreSkillReadMessages } : {}),
     ...(requestToolResultsMessage
       ? { requestToolResultsContextMessage: requestToolResultsMessage }
       : {}),
@@ -108,6 +113,7 @@ export function prepareWorkerReferenceContext(
     capabilities: session.capabilitySelection.capabilities,
   });
   const baseReferenceMessages = Object.freeze([
+    ...coreSkillReadMessages,
     ...(filesystemMessage ? [filesystemMessage] : []),
     ...(request.temporalContext
       ? [buildRequestTemporalContextMessage(request.temporalContext)]

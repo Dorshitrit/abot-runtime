@@ -3,7 +3,10 @@ import type { RequestContextProjection } from "../../context/request-context-con
 import { projectRequestContext } from "../../context/request-context.js";
 import { buildRequestTemporalContextMessage } from "../../context/request-temporal-context.js";
 import { resolveModelContextBudget } from "../../model/model-context-budget.js";
-import type { RoleCallFrame } from "../../orchestration/role-calls/index.js";
+import type {
+  RoleCallFrame,
+  RoleCallLedgerHead,
+} from "../../orchestration/role-calls/index.js";
 import type { RequestExecutionSeed } from "../../request/contracts.js";
 import {
   EXECUTION_AGENT_PLANNER_GRAPH_LIMITS,
@@ -12,10 +15,12 @@ import {
 } from "./contracts.js";
 import { createPlannerGraphFormat } from "./format.js";
 import { buildPlannerGraphInstructions } from "./prompt.js";
+import { buildPlannerSkillGuidanceMessage } from "./skill-guidance.js";
 
 export function buildPlannerGraphInput(
   request: RequestExecutionSeed,
   call: RoleCallFrame,
+  head: RoleCallLedgerHead,
   limits: PlannerGraphLimits = EXECUTION_AGENT_PLANNER_GRAPH_LIMITS,
 ): Readonly<{
   context: RequestContextProjection;
@@ -31,6 +36,7 @@ export function buildPlannerGraphInput(
   ) {
     throw new Error("planner_graph_call_invalid");
   }
+  const skillGuidance = buildPlannerSkillGuidanceMessage(request, head, call);
   const format = createPlannerGraphFormat(limits);
   const budget = resolveModelContextBudget({
     runnerConfig: request.runnerConfig,
@@ -55,13 +61,12 @@ export function buildPlannerGraphInput(
       format,
       historyMessages: [],
       prompt,
-      ...(request.temporalContext
-        ? {
-            referenceMessages: [
-              buildRequestTemporalContextMessage(request.temporalContext),
-            ],
-          }
-        : {}),
+      referenceMessages: [
+        ...(request.temporalContext
+          ? [buildRequestTemporalContextMessage(request.temporalContext)]
+          : []),
+        ...(skillGuidance ? [skillGuidance] : []),
+      ],
       budget,
       diagnostic: {
         requestId: request.requestId,

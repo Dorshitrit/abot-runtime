@@ -105,8 +105,33 @@ export function buildModelConfig(
   contextWindowTokens?: number,
 ): JsonObject {
   const context = isRecord(template.context) ? template.context : {};
-  return {
+  const tokenEstimation = isRecord(context.tokenEstimation)
+    ? context.tokenEstimation
+    : {};
+  const calibration = isRecord(template.calibration) ? template.calibration : {};
+  const compaction = isRecord(calibration["context.compact"])
+    ? calibration["context.compact"]
+    : {};
+  const generation = isRecord(compaction.generation) ? compaction.generation : {};
+  const shouldApplyOllamaSetupCalibration = provider === "ollama";
+  const shouldApplyOpenAiCompactionTimeout = provider === "openai";
+  const modelConfig = {
     ...template,
+    ...(shouldApplyOllamaSetupCalibration
+      ? {
+          calibration: {
+            ...calibration,
+            "context.compact": {
+              ...compaction,
+              generation: {
+                temperature: 0,
+                reasoningEffort: "none",
+                ...generation,
+              },
+            },
+          },
+        }
+      : {}),
     label: model,
     provider,
     model,
@@ -122,9 +147,27 @@ export function buildModelConfig(
       : {}),
     context: {
       ...context,
+      ...(shouldApplyOllamaSetupCalibration
+        ? {
+            tokenEstimation: {
+              asciiCharactersPerToken: 3,
+              nonAsciiBytesPerToken: 2,
+              messageOverheadTokens: 6,
+              ...tokenEstimation,
+            },
+          }
+        : {}),
       formatTokenAccounting: {
-        mode: provider === "ollama" ? "none" : "estimate",
+        mode: shouldApplyOllamaSetupCalibration ? "none" : "estimate",
       },
+    },
+  };
+  if (!shouldApplyOpenAiCompactionTimeout) return modelConfig;
+  return {
+    ...modelConfig,
+    calibration: {
+      ...calibration,
+      "context.compact": { timeoutMs: 300_000, ...compaction },
     },
   };
 }

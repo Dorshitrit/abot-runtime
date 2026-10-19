@@ -1,5 +1,6 @@
 import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
 import { createMemoryRecallDecisionSchema } from "../memory-recall-decision.js";
+import { SUPERVISOR_SKILL_AUTHORING_ROUTE_SCHEMA } from "../supervisor-skill-authoring/contract.js";
 import {
   createStructuredDecisionEnvelopeSchema,
   structuredDecisionVariantSchemaPath,
@@ -21,6 +22,7 @@ export function createSupervisorDecisionFormat(
     includeTitle?: boolean;
     includeResponseRecommendation?: boolean;
     allowMemoryRecall?: boolean;
+    allowSkillAuthoring?: boolean;
     allowedRoleIds?: readonly SupervisorDelegateRoleId[];
     availableWorkerCapabilityCatalog?: readonly WorkerCapabilityCatalogGroup[];
   }> = {},
@@ -91,6 +93,7 @@ export function createSupervisorDecisionFormat(
       includeResponseRecommendation,
     ),
     ...invokeVariants,
+    ...(params.allowSkillAuthoring ? [SUPERVISOR_SKILL_AUTHORING_ROUTE_SCHEMA] : []),
     ...(params.allowMemoryRecall
       ? [
           createMemoryRecallDecisionSchema({

@@ -1,3 +1,4 @@
+import { projectAvailableSkillsInstructions } from "../../knowledge-skills/available-skills-projection.js";
 import {
   buildRuntimeFilesystemScopeMessage,
   canEstablishRuntimeWorkingDirectory,
@@ -14,6 +15,7 @@ import type { RequestContextProjection } from "../../context/request-context-con
 import { projectRequestContext } from "../../context/request-context.js";
 import { projectRootSessionMemory } from "../../context/session-memory/root-projection.js";
 import { buildConversationMemoryAvailabilityInstructions } from "../../long-term-memory/conversation-authoring/prompt.js";
+import { buildConversationMemoryAuthoringPlainTextMessage } from "../../long-term-memory/conversation-authoring/plain-text-context.js";
 import type { ExecutionMemoryProjection } from "../../long-term-memory/initial-context.js";
 import { canOfferMemoryRecall } from "../../long-term-memory/recall-policy.js";
 import { projectMemoryRecallContinuations } from "../../long-term-memory/recall-continuation.js";
@@ -239,7 +241,8 @@ export function buildExecutionAgentInput(
     ...(filesystemMessage ? [filesystemMessage] : []),
     ...scheduledExecution.referenceMessages,
     ...(automaticMemoryMessage ? [automaticMemoryMessage] : []),
-    ...(directMemoryAuthoring?.context ? [directMemoryAuthoring.context.message] : []),
+    ...(directMemoryAuthoring?.context
+      ? [buildConversationMemoryAuthoringPlainTextMessage(directMemoryAuthoring.context)] : []),
     ...(request.temporalContext
       ? [buildRequestTemporalContextMessage(request.temporalContext)]
       : []),
@@ -274,7 +277,7 @@ export function buildExecutionAgentInput(
     requestId: request.requestId, reason: directResponse.reason,
     maxLength: directResponse.maxLength ?? null,
   });
-  const context = projectRequestContext({
+  const contextInput: Parameters<typeof projectRequestContext>[0] = {
     instructions: scheduledExecution.instructions,
     format,
     ...sessionMemory,
@@ -290,6 +293,15 @@ export function buildExecutionAgentInput(
       callId: options.call.callId,
     },
     onEvent: request.onEvent,
+  };
+  const skills = remainingExecutions > 0
+    ? resolveRequestWorkerCapabilities(request).provider.getAvailableSkills?.() ?? []
+    : [];
+  const context = projectRequestContext({
+    ...contextInput,
+    instructions: projectAvailableSkillsInstructions({
+      skills, context: contextInput,
+    }),
   });
   return Object.freeze({
     context,

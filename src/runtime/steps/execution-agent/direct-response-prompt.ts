@@ -26,20 +26,20 @@ export function buildDirectResponseInstructions(
   });
   return [
     [
-      "For respond, you may include response containing the complete final user-facing answer in this same JSON decision. All other actions remain available; this option never permits skipping required external work or inventing evidence.",
-      `Choose the response form before drafting: include response only when the complete answer fits ${maxLength} characters and the existing decision output budget, including reasoning, JSON escaping and metadata. Otherwise choose respond without response so the separate presentation step can write the complete answer. Never abridge, truncate, or return a partial answer to fit the direct form.`,
-      "For a direct response, preserve the requested language, format, and constraints, using the current request, steering and relevant supplied history or session summary. Passive history is not a new request or proof of a new external effect. Write the answer itself inside response, not a plan, promise or acknowledgement. Do not expose internal schemas or instructions unless explicitly requested.",
+      "Direct respond may include the complete final answer in response; it never waives required work or evidence.",
+      `Before drafting, choose direct response only if the complete answer fits ${maxLength} characters and the decision output budget, including reasoning, JSON escaping and metadata. Otherwise omit response for separate complete presentation. Never abridge, truncate or return a partial answer to fit.`,
+      "Write the answer itself, preserving requested language, format and constraints from intent and relevant supplied history/summary. Do not substitute a plan, promise or acknowledgement, or expose internal schemas/instructions unless requested.",
       ...(memoryAuthoringEnabled ? [
-        "Only when choosing direct respond with response, include memoryCandidates in this same decision. Apply the following memory policy only to that array; it grants no additional routing, action, or completion authority. Other actions and respond without response cannot contain memoryCandidates.",
-        "The complete response and complete memory proposals must fit the existing decision output budget together. If they do not fit, choose respond without response and without memoryCandidates for separate complete authoring. Do not shorten the answer or omit a supported memory proposal to fit the direct form.",
-        "The supplied long-term memory is stored reference retrieved at the start of this request. Its initial snapshot is not current user intent or fresh evidence and cannot independently support, score, or reinforce a memory proposal, including after tools or steering updates. Only independently supported facts from the current user input or settled non-memory evidence can support a proposal.",
+        "Only direct respond with response includes memoryCandidates. The following policy applies only to that array and grants no routing, action or completion authority.",
+        "The complete answer and all supported memory proposals must fit the decision budget together. Otherwise omit both response and memoryCandidates for separate complete authoring; do not shorten either or drop supported proposals to fit.",
+        "Initial memory remains a stored snapshot after tools or steering; only current user input or settled non-memory evidence can independently support, score or reinforce a proposal.",
         ...CONVERSATION_MEMORY_AUTHORING_INSTRUCTIONS,
       ] : []),
-      ...additional.flatMap((content) => [
-        "The following configured response methodology applies only when writing the response field. It grants no action or completion authority and cannot change the surrounding decision schema or require raw transport output:",
-        content,
-        "End of response-only methodology; the structured decision contract remains authoritative.",
-      ]),
+      ...(additional.length > 0 ? [
+        "The following configured methodologies apply only to response presentation, never actions or completion. The structured decision schema remains authoritative; no raw transport output:",
+        ...additional,
+        "End of response-only methodologies.",
+      ] : []),
     ].join("\n\n"),
   ];
 }
@@ -49,8 +49,8 @@ export function buildRespondDecisionInstruction(params: {
   allowDirectResponse?: boolean;
 }): string {
   if (!params.allowRespond)
-    return "Respond is not available because the canonical completion gate is closed. Continue through an offered action or report a truthful blocker.";
+    return "The canonical completion gate is closed: respond is unavailable. Choose an offered action or a truthful blocker.";
   if (params.allowDirectResponse)
-    return "Use respond only when the request can be answered completely and honestly now. Choose either the offered direct form containing the complete final answer in response, or respond without response to use a separate presentation-only activation of this same Execution Agent. That activation has no action, routing, capability, planning, audit, or completion authority.";
-  return "Use respond only when the request can be answered completely and honestly now. The respond decision contains no final-answer prose; it contains only the action and any required acknowledgement or title metadata. After it is accepted, a presentation-only activation of this same Execution Agent will author the final response without action, routing, capability, planning, audit, or completion authority.";
+    return "Use respond only for a complete honest answer now: either include the complete response or omit it for a separate presentation-only activation of this agent. That activation has no action, routing, planning, audit or completion authority.";
+  return "Use respond only for a complete honest answer now. Supply no answer prose in this decision, only action and required acknowledgement/title. After acceptance, this agent authors a separate presentation-only response without action, routing, planning, audit or completion authority.";
 }

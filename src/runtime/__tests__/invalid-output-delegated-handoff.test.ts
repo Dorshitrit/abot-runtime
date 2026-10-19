@@ -1,4 +1,7 @@
+import { rootWorkCalls } from "./support/root-invalid-output-fixture.js";
+import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { ModelGatewayInvocationError } from "../../model-gateway/client/invocation-error.js";
 import type { ModelGatewayClient } from "../ports.js";
 import {
   configureDebugLogger,
@@ -23,6 +26,7 @@ type ScriptEntry = Readonly<{
   output: string | ((input: InvalidOutputModelInput) => string);
   providerCompletionReason?: "length";
   timeout?: boolean;
+  providerFailure?: boolean;
 }>;
 
 const REJECTED_OUTPUT = "INVALID_MODEL_OUTPUT_SENTINEL";
@@ -37,8 +41,11 @@ function invalidAttempts(
   step: FailureStep,
   providerCompletionReason?: "length",
   timeout = false,
+  providerFailure = false,
 ): ScriptEntry[] {
   if (step === "none") return [];
+  if (providerFailure)
+    return [{ step, output: REJECTED_OUTPUT, providerFailure }];
   if (timeout) return [{ step, output: REJECTED_OUTPUT, timeout }];
   if (providerCompletionReason) {
     return [{ step, output: REJECTED_OUTPUT, providerCompletionReason }];
@@ -106,6 +113,7 @@ function createScript(
   failureStep: FailureStep,
   providerCompletionReason?: "length",
   timeout = false,
+  providerFailure = false,
 ): ScriptEntry[] {
   const workerFailed = workerOutputFailed(failureStep);
   const plannerFailed = plannerOutputFailed(failureStep);
@@ -138,7 +146,12 @@ function createScript(
   ];
   if (failureStep === "worker.decision") {
     script.push(
-      ...invalidAttempts(failureStep, providerCompletionReason, timeout),
+      ...invalidAttempts(
+        failureStep,
+        providerCompletionReason,
+        timeout,
+        providerFailure,
+      ),
     );
   } else {
     script.push({
@@ -147,27 +160,35 @@ function createScript(
     });
     script.push(
       ...(failureStep === "worker.result"
-        ? invalidAttempts(failureStep, providerCompletionReason, timeout)
+        ? invalidAttempts(
+            failureStep,
+            providerCompletionReason,
+            timeout,
+            providerFailure,
+          )
         : [{ step: "worker.result" as const, output: RESULT }]),
     );
   }
   if (failureStep === "planner.decision") {
     script.push(
-      ...invalidAttempts(failureStep, providerCompletionReason, timeout).map(
-        (entry) => ({
-          ...entry,
-          output(input: InvalidOutputModelInput) {
-            expect(readReturnedChild(input)).toMatchObject({
-              callerCallId: "call-2",
-              childCallId: "call-3",
-              roleId: "worker",
-              outcome: "completed",
-              workReceipt: { kind: "work_result_v1", callerCallId: "call-2" },
-            });
-            return REJECTED_OUTPUT;
-          },
-        }),
-      ),
+      ...invalidAttempts(
+        failureStep,
+        providerCompletionReason,
+        timeout,
+        providerFailure,
+      ).map((entry) => ({
+        ...entry,
+        output(input: InvalidOutputModelInput) {
+          expect(readReturnedChild(input)).toMatchObject({
+            callerCallId: "call-2",
+            childCallId: "call-3",
+            roleId: "worker",
+            outcome: "completed",
+            workReceipt: { kind: "work_result_v1", callerCallId: "call-2" },
+          });
+          return REJECTED_OUTPUT;
+        },
+      })),
     );
   } else {
     script.push({
@@ -195,6 +216,15 @@ function createScript(
             reason: failureStep.replace(".", "_") + "_timeout",
             modelStep: failureStep,
             validationStage: "model_step_timeout",
+          });
+        }
+        if (providerFailure && workerFailed) {
+          expect(JSON.parse(returned.summary)).toMatchObject({
+            reason: "model_provider_failure",
+            modelStep: failureStep,
+            validationStage: "model_provider_stream",
+            callId: "call-3",
+            parentCallId: "call-2",
           });
         }
         return workerFailed
@@ -234,12 +264,26 @@ function createScript(
           validationStage: "model_step_timeout",
         });
       }
+      if (providerFailure && failureStep === "planner.decision") {
+        expect(JSON.parse(readReturnedChild(input).summary)).toMatchObject({
+          reason: "model_provider_failure",
+          modelStep: failureStep,
+          validationStage: "model_provider_stream",
+          callId: "call-2",
+          parentCallId: "call-1",
+        });
+      }
       return decision({ action: "invoke_role", roleId: "reviewer" });
     },
   });
   const reviewerEntries =
     failureStep === "reviewer.decision"
-      ? invalidAttempts(failureStep, providerCompletionReason, timeout)
+      ? invalidAttempts(
+          failureStep,
+          providerCompletionReason,
+          timeout,
+          providerFailure,
+        )
       : [{ step: "reviewer.decision" as const, output: reviewerGap }];
   script.push(
     ...reviewerEntries.map((entry) => ({
@@ -286,6 +330,15 @@ function createScript(
             validationStage: "model_step_timeout",
           });
         }
+        if (providerFailure) {
+          expect(JSON.parse(returned.summary)).toMatchObject({
+            reason: "model_provider_failure",
+            modelStep: failureStep,
+            validationStage: "model_provider_stream",
+            callId: "call-4",
+            parentCallId: "call-1",
+          });
+        }
         return decision({ action: "respond" });
       },
     },
@@ -310,20 +363,31 @@ describe("invalid output across the complete delegated request", () => {
     { failureStep: "worker.result", timeout: true },
     { failureStep: "planner.decision", timeout: true },
     { failureStep: "reviewer.decision", timeout: true },
+    { failureStep: "worker.decision", providerFailure: true },
+    { failureStep: "worker.result", providerFailure: true },
+    { failureStep: "planner.decision", providerFailure: true },
+    { failureStep: "reviewer.decision", providerFailure: true },
   ] satisfies {
     failureStep: FailureStep;
     providerCompletionReason?: "length";
     timeout?: boolean;
+    providerFailure?: boolean;
   }[])(
-    "$failureStep ($providerCompletionReason, timeout=$timeout) preserves child return, plan state and independent review",
-    async ({ failureStep, providerCompletionReason, timeout }) => {
+    "$failureStep ($providerCompletionReason, timeout=$timeout, provider=$providerFailure) preserves child return, plan state and independent review",
+    async ({
+      failureStep,
+      providerCompletionReason,
+      timeout,
+      providerFailure,
+    }) => {
       const script = createScript(
         failureStep,
         providerCompletionReason,
         timeout,
+        providerFailure,
       );
       let next = 0;
-      const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
         const entry = script[next++];
         expect(
           entry,
@@ -334,6 +398,12 @@ describe("invalid output across the complete delegated request", () => {
           typeof entry!.output === "string"
             ? entry!.output
             : entry!.output(input);
+        if (entry!.providerFailure) {
+          throw new ModelGatewayInvocationError(
+            "stream",
+            `model_stream_error: ollama_stream_error: prediction aborted, token repeat limit reached ${REJECTED_OUTPUT}`,
+          );
+        }
         if (entry!.timeout) {
           await new Promise<never>((_resolve, reject) => {
             input.abortSignal!.addEventListener(
@@ -347,7 +417,7 @@ describe("invalid output across the complete delegated request", () => {
           text,
           meta: { providerCompletionReason: entry!.providerCompletionReason },
         };
-      });
+      }));
       const initialRequest = createInvalidOutputRequest(invoke);
       const request = timeout
         ? deriveTestRequestExecutionScope(initialRequest, {
@@ -364,6 +434,10 @@ describe("invalid output across the complete delegated request", () => {
         output: FINAL_OUTPUT,
       });
       expect(next).toBe(script.length);
+      expect(rootWorkCalls(invoke)).toHaveLength(script.length);
+      expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).not.toContain(
+        "degraded.finalization",
+      );
       if (providerCompletionReason) {
         expect(
           invoke.mock.calls.filter(
@@ -373,6 +447,9 @@ describe("invalid output across the complete delegated request", () => {
       }
       expect(script.filter((entry) => entry.timeout)).toHaveLength(
         timeout ? 1 : 0,
+      );
+      expect(script.filter((entry) => entry.providerFailure)).toHaveLength(
+        providerFailure ? 1 : 0,
       );
       expect(request.onAnswerToken).toHaveBeenCalledExactlyOnceWith(
         FINAL_OUTPUT,

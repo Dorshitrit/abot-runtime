@@ -1,3 +1,4 @@
+import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -151,13 +152,15 @@ describe("local Runtime across separate processes", () => {
       schedule: { kind: "timer", delayMs: 1000 },
     });
     const pending = await waitForPending(local, job.id);
-    expect(local.invoke).toHaveBeenCalledTimes(1);
+    expect(local.invoke.mock.calls.map(([input]) => supervisorFormatName(input))).toEqual([
+      "supervisor_presentation", "supervisor_skill_selection", "supervisor_decision",
+    ]);
     release.open();
     await ordinary;
     await local.observer.services.scheduler.tick();
     expect((await local.waitForRun(pending.id)).status).toBe("succeeded");
     const decisions = local.invoke.mock.calls.filter(
-      ([input]) => input.modelStep === "supervisor.decision",
+      ([input]) => supervisorFormatName(input) === "supervisor_decision",
     );
     expect(decisions).toHaveLength(2);
     expect(JSON.stringify(scheduledModelMessages(decisions[1][0]))).toContain(
@@ -268,7 +271,7 @@ describe("local Runtime across separate processes", () => {
     expect(await child.call("listRuns")).toEqual([]);
     expect(
       local.invoke.mock.calls.filter(
-        ([input]) => input.modelStep === "supervisor.decision",
+        ([input]) => supervisorFormatName(input) === "supervisor_decision",
       ),
     ).toHaveLength(1);
     await expect(

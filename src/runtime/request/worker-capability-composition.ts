@@ -1,3 +1,8 @@
+import type { KnowledgeSkillStore } from "../knowledge-skills/store.js";
+import {
+  projectAvailableSkills,
+  type AvailableSkillsSource,
+} from "../knowledge-skills/available-skills.js";
 import { randomUUID } from "node:crypto";
 import type { RuntimeModelPluginConfig } from "../config/model-plugin-config.js";
 import type { RuntimeFilesystemScope } from "../context/runtime-filesystem-scope.js";
@@ -37,6 +42,7 @@ type RequestWorkerCapabilityProviderParams<TRequest> = Readonly<{
   requestAttachments?: readonly ToolRequestAttachment[];
   runtimeConfig?: RuntimeConfig;
   toolRegistryOverride?: ToolRegistry;
+  knowledgeSkillStore?: KnowledgeSkillStore;
 }>;
 
 /**
@@ -46,7 +52,7 @@ type RequestWorkerCapabilityProviderParams<TRequest> = Readonly<{
 export function createRequestWorkerCapabilityProvider(
   params: RequestWorkerCapabilityProviderParams<RequestCapabilityCompositionView>,
 ): WorkerCapabilityAdapterProvider<RequestCapabilityExecutionView> &
-  ToolAvailabilitySource {
+  ToolAvailabilitySource & AvailableSkillsSource {
   let requestToolRegistry: ToolRegistry | undefined;
   let requestSkillProvider: SkillProvider | undefined;
 
@@ -118,9 +124,14 @@ export function createRequestWorkerCapabilityProvider(
           : {}),
       },
     );
+  const getAvailableTools = () =>
+    projectAvailableTools(getRequestToolRegistry().listNormalInvocations?.());
   return Object.freeze({
     ...provider,
-    getAvailableTools: () =>
-      projectAvailableTools(getRequestToolRegistry().listNormalInvocations?.()),
+    getAvailableTools,
+    getAvailableSkills: () => projectAvailableSkills(
+      params.knowledgeSkillStore,
+      getAvailableTools(),
+    ),
   });
 }

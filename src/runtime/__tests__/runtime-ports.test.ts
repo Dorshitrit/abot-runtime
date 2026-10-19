@@ -107,7 +107,7 @@ describe("runtime public ports", () => {
     expect(registry.getDefinition("read_file")).toBeUndefined();
   });
 
-  test("configured tool registry can disable the plugin catalog", async () => {
+  test("configured tool registry disables plugins while retaining core tools", async () => {
     const { config } = await createConfiguredRuntimeRoot();
     config.paths.rootDir = process.cwd();
     config.plugins = { enabled: false };
@@ -116,9 +116,10 @@ describe("runtime public ports", () => {
       createDefaultToolRegistry(config),
     );
 
-    expect(registry.hasToolsAvailable()).toBe(false);
-    expect(registry.listDefinitions()).toEqual([]);
-    expect(registry.getImplementations()).toEqual({});
+    expect(registry.hasToolsAvailable()).toBe(true);
+    expect(registry.listDefinitions().map(({ name }) => name))
+      .toEqual(["abot_skills"]);
+    expect(Object.keys(registry.getImplementations())).toEqual(["abot_skills"]);
   });
 
   test("configured tool registry prepares current runtime paths for capabilities", async () => {

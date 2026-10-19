@@ -1,4 +1,6 @@
 import { createConversationTools } from "./conversation-tools.js";
+import { createConversationRoleDelegations } from "./conversation-role-delegations.js";
+import { createConversationRoleReturns } from "./conversation-role-returns.js";
 
 const ROLE_INITIALS = {
   supervisor: "S",
@@ -16,6 +18,8 @@ export function createConversationRoleCards({
   const timelineRequests = new Set();
   const timelineToggles = new Map();
   const toolsByRequest = new Map();
+  const delegations = createConversationRoleDelegations({ documentRoot });
+  const returns = createConversationRoleReturns({ documentRoot });
   let panelSequence = 0;
 
   function element(tag, className, text = "") {
@@ -97,6 +101,25 @@ export function createConversationRoleCards({
     }
     content.appendChild(header);
     const message = element("div", "conversation-role-message");
+    for (const activity of card.skillActivities || []) {
+      const skill = textElement(
+        "p",
+        "conversation-role-summary conversation-role-skill-activity",
+        activity.summary,
+      );
+      skill.dataset.tone = activity.tone;
+      message.appendChild(skill);
+    }
+    if (card.role === "supervisor") {
+      const history = delegations.createNode({
+        requestId, delegations: card.delegations || [],
+      });
+      if (history) message.appendChild(history);
+    }
+    if (card.role === "planner") {
+      const history = returns.createNode({ requestId, returns: card.returns || [] });
+      if (history) message.appendChild(history);
+    }
     if (card.summary) {
       const summary = element("p", "conversation-role-summary");
       summary.append(
@@ -187,6 +210,8 @@ export function createConversationRoleCards({
   }
 
   function forget(requestId) {
+    delegations.forget(requestId);
+    returns.forget(requestId);
     timelineRequests.delete(requestId);
     timelineToggles.delete(requestId);
     const tools = toolsByRequest.get(requestId);
@@ -195,6 +220,8 @@ export function createConversationRoleCards({
   }
 
   function reset() {
+    delegations.reset();
+    returns.reset();
     timelineRequests.clear();
     timelineToggles.clear();
     for (const tools of toolsByRequest.values()) {

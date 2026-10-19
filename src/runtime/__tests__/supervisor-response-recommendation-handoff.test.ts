@@ -1,3 +1,4 @@
+import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -43,7 +44,7 @@ function createRequest(invoke: ModelGatewayClient["invoke"]) {
       },
       defaults: { profileId: "test", steps: {} },
     },
-    modelGatewayClient: { invoke, invokeRaw: vi.fn() },
+    modelGatewayClient: { invoke: withSupervisorPreparation(invoke), invokeRaw: vi.fn() },
     workerCapabilityProvider: {
       getDescriptors: () => [],
       getAdapters: vi.fn(() => []),

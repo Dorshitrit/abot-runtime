@@ -1,3 +1,4 @@
+import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 import { afterEach, expect, test, vi } from "vitest";
 import { createLocalRuntimeOwner } from "../local-host/app-owner.js";
 import type { LocalRuntimePeer } from "../local-host/contracts.js";
@@ -74,7 +75,9 @@ test.each(["ordinary", "scheduled"] as const)(
       )) as SchedulerRun[];
       expect(runs).toMatchObject([{ status: "interrupted" }]);
     }
-    expect(fixture.invoke).toHaveBeenCalledTimes(1);
+    expect(fixture.invoke.mock.calls.map(([input]) => supervisorFormatName(input))).toEqual([
+      "supervisor_presentation", "supervisor_skill_selection", "supervisor_decision",
+    ]);
     if (pending) expect(await pending).toBe("local_runtime_connection_lost");
   },
 );
@@ -100,7 +103,9 @@ test("shutdown rejects an ordinary request queued behind scheduled work before i
   fixture.completion.open();
   const replacement = await fixture.connect();
   await pending;
-  expect(fixture.invoke).toHaveBeenCalledTimes(1);
+  expect(fixture.invoke.mock.calls.map(([input]) => supervisorFormatName(input))).toEqual([
+    "supervisor_presentation", "supervisor_skill_selection", "supervisor_decision",
+  ]);
   const session = (await replacement.call("sessions.getSessionById", [
     "session",
   ])) as Session;

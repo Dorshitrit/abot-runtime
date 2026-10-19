@@ -1,3 +1,5 @@
+import { rootWorkCalls } from "./support/root-invalid-output-fixture.js";
+import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { buildDegradedFinalizationFallback } from "../steps/degraded-finalization/fallback.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ModelOutputIncompleteError } from "../model/provider-completion.js";
@@ -34,7 +36,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
     test.each(["decision", "response"] as const)(
       "replaces incomplete %s with one model-authored canonical degraded result",
       async (phase) => {
-        const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+        const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
           if (input.modelStep === "degraded.finalization") {
             expect(JSON.stringify(input.messages)).toContain(
               "output_incomplete",
@@ -50,7 +52,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
             text: PARTIAL_OUTPUT,
             meta: { providerCompletionReason: "length" },
           };
-        });
+        }));
         const request = createRootInvalidOutputRequest(invoke, policy.policyId);
         const ledger = await createRootInvalidOutputLedger(policy.policyId);
         const result = await runRootExecutionKernel({ request, ledger });
@@ -68,7 +70,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
         expect(ledger.current().state.calls).toEqual([
           expect.objectContaining({ status: "completed", activationCount: 1 }),
         ]);
-        expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
+        expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([
           policy.decisionStep,
           ...(phase === "response" ? [policy.responseStep] : []),
           "degraded.finalization",
@@ -80,13 +82,13 @@ describe.each(ROOT_OUTPUT_POLICIES)(
     test("cancellation wins over incomplete output without publishing framing", async () => {
       const abort = new AbortController();
       const failure = new Error("cancelled_incomplete_root");
-      const invoke = vi.fn<ModelGatewayClient["invoke"]>(async () => {
+      const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async () => {
         abort.abort(failure);
         return {
           text: PARTIAL_OUTPUT,
           meta: { providerCompletionReason: "length" },
         };
-      });
+      }));
       const request = createRootInvalidOutputRequest(invoke, policy.policyId, {
         abortSignal: abort.signal,
       });
@@ -97,7 +99,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
         failure,
       );
       expect(ledger.current()).toBe(initialHead);
-      expect(invoke).toHaveBeenCalledOnce();
+      expect(rootWorkCalls(invoke)).toHaveLength(1);
       expect(request.onAnswerToken).not.toHaveBeenCalled();
     });
 
@@ -105,7 +107,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
       "propagates a %s failure of degraded finalization without a substitute answer",
       async (degradedFailure) => {
         const failure = new Error("degraded_provider_failed");
-        const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+        const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
           if (input.modelStep !== "degraded.finalization") {
             return {
               text: PARTIAL_OUTPUT,
@@ -120,7 +122,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
                 ? { providerCompletionReason: "length" }
                 : {},
           };
-        });
+        }));
         const request = createRootInvalidOutputRequest(invoke, policy.policyId);
         const ledger = await createRootInvalidOutputLedger(policy.policyId);
         const initialHead = ledger.current();
@@ -140,7 +142,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
             disposition: "blocked",
           });
           expect(ledger.current().state.rootResponse).toBe(expected);
-          expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
+          expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([
             policy.decisionStep,
             "degraded.finalization",
           ]);
@@ -159,7 +161,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
         }
         expect(ledger.current()).toBe(initialHead);
         expect(ledger.current().state.rootResponse).toBeNull();
-        expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
+        expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([
           policy.decisionStep,
           ...Array<string>(degradedFailure === "invalid" ? 3 : 1).fill(
             "degraded.finalization",
@@ -186,12 +188,12 @@ describe.each(ROOT_OUTPUT_POLICIES)(
         new ModelOutputIncompleteError(diagnostics, foreignRootStep),
       ];
       for (const failure of failures) {
-        const invoke = vi.fn<ModelGatewayClient["invoke"]>(async () => {
+        const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async () => {
           throw failure;
-        });
+        }));
         const request = createRootInvalidOutputRequest(invoke, policy.policyId);
         await expect(runRequestRunner(request)).rejects.toBe(failure);
-        expect(invoke).toHaveBeenCalledOnce();
+        expect(rootWorkCalls(invoke)).toHaveLength(1);
         expect(request.onAnswerToken).not.toHaveBeenCalled();
       }
     });

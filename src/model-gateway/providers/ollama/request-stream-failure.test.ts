@@ -21,14 +21,24 @@ const FAILURE_EXPLANATION = {
   failureNotice: "Unable to finish the response.",
   nextStep: "Continue in a new request.",
 };
+const PRESENTATION_FRAME = {
+  message: {
+    content: JSON.stringify({
+      decision: {
+        acknowledgement: "Synthetic QA response",
+        title: "Synthetic QA response",
+      },
+    }),
+  },
+  done: true,
+  done_reason: "stop",
+};
 const DECISION_FRAME = {
   message: {
     content: JSON.stringify({
       decision: {
         action: "respond",
         responseRecommendation: "Synthetic QA response",
-        acknowledgement: "Synthetic QA response",
-        title: "Synthetic QA response",
       },
     }),
   },
@@ -96,6 +106,7 @@ test.each([
   async ({ failureFrames, cause }) => {
     const harness = await createFailureHarness();
     const responses = [
+      [PRESENTATION_FRAME],
       [DECISION_FRAME],
       failureFrames,
       [
@@ -141,10 +152,15 @@ test.each([
 
     expect(gatewayRequests.map((request) => request.modelStep)).toEqual([
       "supervisor.decision",
+      "supervisor.decision",
       "supervisor.response",
       "degraded.finalization",
     ]);
-    expect(providerFetch).toHaveBeenCalledTimes(3);
+    expect(gatewayRequests.slice(0, 2).map((request) => request.format)).toEqual([
+      expect.objectContaining({ name: "supervisor_presentation" }),
+      expect.objectContaining({ name: "supervisor_decision" }),
+    ]);
+    expect(providerFetch).toHaveBeenCalledTimes(4);
     expect(responses).toEqual([]);
     expect(harness.events.filter(({ type }) => type === "completed")).toEqual(
       [],

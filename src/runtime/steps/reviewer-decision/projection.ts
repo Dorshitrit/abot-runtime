@@ -1,3 +1,4 @@
+import { isSuccessfulCoreSkillRead } from "../../knowledge-skills/read-evidence.js";
 import { hasSuperContextContract } from "../../context/super-context-policy.js";
 import { assertSuperCompactionCheckpointIntegrity } from "../../context/semantic-compaction/super-source-integrity.js";
 import type {
@@ -220,6 +221,13 @@ function projectReviewerReviewSnapshotUnchecked(
     evidenceCandidates.push(
       Object.freeze({
         executionId: execution.executionId,
+        ...(isSuccessfulCoreSkillRead(
+          execution.capabilityId,
+          execution.outcome,
+          execution.exactResult,
+        )
+          ? { skillGuidance: true }
+          : {}),
         outcome: execution.outcome,
         observedEffect: execution.observedEffect,
         summary: execution.summary,

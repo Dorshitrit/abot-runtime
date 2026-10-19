@@ -96,7 +96,7 @@ test("A6 target-only payload omissions are never revived by the internal source 
   expect(invoke).toHaveBeenCalledOnce();
 });
 
-test("E6 ordinary Worker and payload schemas remain unchanged while their canonical source contains the accepted action", async () => {
+test("E6 payload omits duplicate reference data while its canonical source keeps the accepted action", async () => {
   const { payload, invoke, payloadInput, view } =
     await createSuperCompactionSourceFixture();
   const sidecar = readSuperWorkerCompactionSidecar(
@@ -109,6 +109,10 @@ test("E6 ordinary Worker and payload schemas remain unchanged while their canoni
     "referenceData",
   );
   expect(JSON.stringify(view)).not.toContain("sourceFingerprint");
+  const originalResults = JSON.stringify(payloadInput.settledCapabilityResults);
+  const { referenceData, ...singleCopyEvidence } =
+    payloadInput.settledCapabilityResults[0]!;
+  expect(referenceData).toBeDefined();
   invoke.mockImplementation(async (input: ModelGatewayInvokeParams) => {
     const context = (input.messages as readonly { content: string }[]).find(
       (message) => message.content.startsWith("Canonical runtime context:\n"),
@@ -116,9 +120,7 @@ test("E6 ordinary Worker and payload schemas remain unchanged while their canoni
     const decoded = JSON.parse(
       context.content.slice("Canonical runtime context:\n".length),
     );
-    expect(decoded.settledCapabilityResults).toEqual(
-      payloadInput.settledCapabilityResults,
-    );
+    expect(decoded.settledCapabilityResults).toEqual([singleCopyEvidence]);
     expect(decoded.settledCapabilityResults[0]).not.toHaveProperty(
       "acceptedAction",
     );
@@ -129,4 +131,7 @@ test("E6 ordinary Worker and payload schemas remain unchanged while their canoni
     status: "authored",
     body: "report body",
   });
+  expect(JSON.stringify(payloadInput.settledCapabilityResults)).toBe(
+    originalResults,
+  );
 });

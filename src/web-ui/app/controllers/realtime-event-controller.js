@@ -17,6 +17,14 @@ import { reduceTaskProgress } from "../lib/task-progress.js";
 import { projectWebSourceEvent } from "../lib/web-source-event.js";
 import { projectToolActivityEvent } from "../lib/tool-activity-event.js";
 import {
+  hasRecordedRoleDelegation,
+  projectRoleDelegationEvent,
+} from "../lib/role-delegation-event.js";
+import {
+  hasRecordedRoleReturn,
+  projectRoleReturnEvent,
+} from "../lib/role-return-event.js";
+import {
   contextEvidenceScope,
   contextEvidenceOrder,
   reduceContextWindowEvidence,
@@ -47,10 +55,14 @@ function canMergeUnsequencedActivity(
   eventSequence,
   webSources,
   toolActivity,
+  roleDelegation,
+  roleReturn,
 ) {
   if (eventSequence !== undefined) return false;
   if (webSources || previous?.webSources) return false;
   if (toolActivity || previous?.toolActivity) return false;
+  if (roleDelegation || previous?.roleDelegation) return false;
+  if (roleReturn || previous?.roleReturn) return false;
   if (!previous?.key || previous.key !== key) return false;
   return !hasOriginalEventSequence(previous.eventSequence);
 }
@@ -158,7 +170,12 @@ export function createRealtimeEventController({
       renderContextWindow();
       renderActivityStatus();
     }
-    if (hasRecordedOriginalEvent(state.events, requestId, eventSequence)) {
+    const roleDelegation = projectRoleDelegationEvent(message);
+    const roleReturn = projectRoleReturnEvent(message);
+    let alreadyRecorded = hasRecordedOriginalEvent(state.events, requestId, eventSequence);
+    if (roleDelegation) alreadyRecorded = hasRecordedRoleDelegation(state.events, roleDelegation);
+    if (roleReturn) alreadyRecorded = hasRecordedRoleReturn(state.events, roleReturn);
+    if (alreadyRecorded) {
       trackSeq(message);
       return;
     }
@@ -188,6 +205,8 @@ export function createRealtimeEventController({
         eventSequence,
         webSources,
         toolActivity,
+        roleDelegation,
+        roleReturn,
       )
     ) {
       lastEvent.count = (lastEvent.count || 1) + 1;
@@ -224,6 +243,8 @@ export function createRealtimeEventController({
         ),
         ...(webSources ? { webSources } : {}),
         ...(toolActivity ? { toolActivity } : {}),
+        ...(roleDelegation ? { roleDelegation } : {}),
+        ...(roleReturn ? { roleReturn } : {}),
         payload: {
           plan: message.plan,
           item: message.item,

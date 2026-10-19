@@ -13,6 +13,7 @@ import {
 } from "./contracts.js";
 import type { RoleCallWorkerCapabilityScope } from "../../orchestration/role-calls/index.js";
 import type { WorkerCapabilityCatalogGroup } from "../../orchestration/worker-capabilities/index.js";
+import { parseSupervisorSkillAuthoringRoute } from "../supervisor-skill-authoring/contract.js";
 import {
   createWorkerCapabilityScopeDecisionContract,
   parseWorkerCapabilityScopeDecision,
@@ -42,6 +43,7 @@ export function parseSupervisorDecisionOutput(
     includeTitle?: boolean;
     includeResponseRecommendation?: boolean;
     allowMemoryRecall?: boolean;
+    allowSkillAuthoring?: boolean;
     allowedRoleIds?: readonly SupervisorDelegateRoleId[];
     availableWorkerCapabilityCatalog?: readonly WorkerCapabilityCatalogGroup[];
     diagnostic?: SupervisorDecisionDiagnosticContext;
@@ -112,6 +114,14 @@ export function parseSupervisorDecisionOutput(
   }
 
   const issues: SupervisorDecisionValidationIssue[] = [];
+  if (record.action === "author_skill") {
+    const parsed = parseSupervisorSkillAuthoringRoute(record, options.allowSkillAuthoring === true);
+    if (diagnostic) {
+      if (parsed.ok) traceSupervisorDecisionAccepted({ diagnostic, decision: parsed.decision });
+      else traceSupervisorDecisionRejected({ diagnostic, selectedAction: "author_skill", issues: parsed.issues });
+    }
+    return parsed.ok ? parsed : { ...parsed, stage: "domain_parser" };
+  }
   if (isMemoryRecallDecisionRecord(record)) {
     const recalled = parseMemoryRecallDecision(record, {
       allowMemoryRecall: options.allowMemoryRecall,

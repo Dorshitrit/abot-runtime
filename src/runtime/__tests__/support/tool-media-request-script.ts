@@ -1,13 +1,14 @@
 import { expect, vi } from "vitest";
 import type { ModelGatewayClient } from "../../ports.js";
 import { readHandoffCapsule } from "./system-target-handoff-script.js";
+import { withSupervisorPreparation } from "./supervisor-model-phases.js";
 
 export const MEDIA_FINAL = "The two-pixel fixture was observed.";
 export type MediaPolicy = "execution-agent-v1" | "supervisor-worker-v1";
 
 export function createMediaRequestScript(policy: MediaPolicy) {
   const turns = new Map<string, number>();
-  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
     const step = input.modelStep!;
     const turn = (turns.get(step) ?? 0) + 1;
     turns.set(step, turn);
@@ -50,6 +51,6 @@ export function createMediaRequestScript(policy: MediaPolicy) {
     if (["worker.result", "execution.response", "supervisor.response"].includes(step))
       return { text: MEDIA_FINAL, meta: {} };
     throw new Error(`Unexpected media fixture model step: ${step}`);
-  });
+  }));
   return { invoke, invokeRaw: vi.fn(async () => { throw new Error("No live/raw provider in media fixture"); }) };
 }

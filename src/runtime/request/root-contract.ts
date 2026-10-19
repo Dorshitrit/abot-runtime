@@ -1,3 +1,5 @@
+import type { SupervisorSkillWriteSelection } from "../steps/supervisor-skill-authoring/contract.js";
+import type { SkillReadDecision } from "../steps/skill-read-decision.js";
 import type { ModelStep } from "../../shared/model-steps.js";
 import type { ModelWorkPlanUpdate } from "../orchestration/role-calls/work-plan-contracts.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
@@ -32,10 +34,18 @@ export type RootContractCallIdentity = Readonly<{
 }>;
 
 type RootContractAction =
+  | SkillReadDecision
   | MemoryRecallDecision
+  | Readonly<{
+      action: "prepare_skill_write";
+      selection: SupervisorSkillWriteSelection;
+      acknowledgement?: string;
+      title?: string;
+    }>
   | Readonly<{
       action: "respond";
       responseRecommendation?: string;
+      responseRecommendationOrigin?: "skill_authoring_no_save";
       directResponse?: RootAuthoredResponse;
       acknowledgement?: string;
       title?: string;
@@ -122,6 +132,7 @@ export type RootContractAdapter<TRequest> = Readonly<{
       includeTitle: boolean;
       allowedRoleIds: readonly RuntimeDelegateRoleId[];
       availableWorkerCapabilityCatalog: readonly WorkerCapabilityCatalogGroup[];
+      availableSkillWriteOperationIds?: readonly string[];
       memoryRecallMessage?: ChatMessage;
       resume?: RoleChildReturnContext;
     }>,
@@ -133,6 +144,7 @@ export type RootContractAdapter<TRequest> = Readonly<{
       callFrame: RoleCallFrame;
       steeringVersion: number;
       responseRecommendation?: string;
+      responseRecommendationOrigin?: "skill_authoring_no_save";
       directResponse?: RootAuthoredResponse;
       call: RootContractCallIdentity;
       toolResults: RequestToolResultsView;

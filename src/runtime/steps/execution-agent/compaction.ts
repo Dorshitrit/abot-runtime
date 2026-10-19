@@ -5,13 +5,16 @@ import {
 import type { RequestSteeringSnapshot } from "../../request/request-steering.js";
 import type { ModelStep } from "../../../shared/model-steps.js";
 import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
-import type { RoleCallFrame } from "../../orchestration/role-calls/index.js";
+import type {
+  RoleCallFrame, RoleCallLedgerHead,
+} from "../../orchestration/role-calls/index.js";
+import { buildExecutionCapabilityResultSource } from "./capability-result-context.js";
 import type { RequestExecutionScope } from "../../request/execution-scope.js";
 
 type ExecutionAgentCompactionOptions = Readonly<{
   call: RoleCallFrame;
   steeringSnapshot: RequestSteeringSnapshot;
-  sourceRevision: number;
+  head: RoleCallLedgerHead;
   consumer?: ModelStep;
   allowedConsumers: readonly ModelStep[];
   scopeSuffix?: string;
@@ -28,7 +31,15 @@ export function createExecutionAgentCompactionController(
   const call = Object.freeze({ ...options.call, objective });
   return createModelStepCompactionController(request, {
     call,
-    sourceRevision: options.sourceRevision,
+    sourceRevision: options.head.revision,
+    resultSourceOverrides: options.head.state.capabilityExecutions
+      .filter(function isSettledExecutionOfCall(execution) {
+        if (execution.callId !== call.callId) return false;
+        return execution.status === "settled";
+      })
+      .map((execution) =>
+        buildExecutionCapabilityResultSource(options.head, execution),
+      ),
     allowedConsumers: options.allowedConsumers,
     consumer: options.consumer,
     scopeId: executionCompactionScopeId({

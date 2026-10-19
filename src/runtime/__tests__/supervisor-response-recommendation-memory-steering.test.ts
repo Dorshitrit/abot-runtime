@@ -1,3 +1,4 @@
+import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { LongTermMemoryService } from "../long-term-memory/contracts.js";
 import {
@@ -84,7 +85,7 @@ function createHarness(
       },
       defaults: { profileId: "test", steps: {} },
     },
-    modelGatewayClient: { invoke, invokeRaw: vi.fn() },
+    modelGatewayClient: { invoke: withSupervisorPreparation(invoke), invokeRaw: vi.fn() },
     workerCapabilityProvider: {
       getDescriptors: () => [],
       getAdapters: vi.fn(() => []),

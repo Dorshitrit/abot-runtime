@@ -1,3 +1,5 @@
+import type { PersonalSkillManagementService } from "./knowledge-skills/personal-contracts.js";
+import type { KnowledgeSkillStore } from "./knowledge-skills/store.js";
 import type WebSocket from "ws";
 import type { RuntimeProjectService } from "./projects/contracts.js";
 
@@ -34,6 +36,8 @@ export type RuntimeEnvironmentServices = Readonly<{
   projects?: RuntimeProjectService;
   attachments: RuntimeAttachmentStore;
   tools: ToolRegistry;
+  knowledgeSkillStore?: KnowledgeSkillStore;
+  personalSkills?: PersonalSkillManagementService;
   models: ModelGatewayClient;
   events: EventSinkFactory;
   sessionMemoryCompactor: SessionMemoryCompactor;
@@ -91,6 +95,7 @@ export type RuntimeDependencies = {
   sessions: SessionStore;
   attachments: RuntimeAttachmentStore;
   tools: ToolRegistry;
+  knowledgeSkillStore?: KnowledgeSkillStore;
   models: ModelGatewayClient;
   events: EventSinkFactory;
   sessionMemoryCompactor: SessionMemoryCompactor;

@@ -1,3 +1,4 @@
+import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ModelGatewayClient } from "../ports.js";
 import {
@@ -236,7 +237,7 @@ test.each([false, true])(
     expect(PLANNER_RESULT.length).toBeGreaterThan(8_192);
     const script = createLongResultScript(plannerFailed);
     let next = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
       const entry = script[next++];
       expect(entry, `unexpected model step: ${input.modelStep}`).toBeDefined();
       expect(input.modelStep).toBe(entry!.step);
@@ -244,7 +245,7 @@ test.each([false, true])(
         text: typeof entry!.output === "string" ? entry!.output : entry!.output(input),
         meta: {},
       };
-    });
+    }));
     const request = createInvalidOutputRequest(invoke);
     await expect(runRequestRunner(request)).resolves.toEqual({ output: FINAL_OUTPUT });
     expect(next).toBe(script.length);

@@ -1,5 +1,6 @@
 import type { ModelTokenUsage } from "../types.js";
 import { normalizeModelTokenUsage } from "../protocol/usage.js";
+import { ModelGatewayInvocationError } from "./invocation-error.js";
 
 export type StreamCallbacks = {
   onThinking?: (text: string) => void;
@@ -105,7 +106,10 @@ function throwStreamError(
     kind: "error",
     text: errorText,
   });
-  throw new Error(`model_stream_error: ${errorText}`);
+  throw new ModelGatewayInvocationError(
+    "stream",
+    `model_stream_error: ${errorText}`,
+  );
 }
 
 function readContentText(

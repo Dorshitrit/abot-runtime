@@ -66,6 +66,7 @@ export function runtimeCapsule(
 }
 export async function createControlsEvidenceFixture(
   overrides: Partial<TestRequestSeed> = {},
+  maxCapabilityExecutions = 192,
 ) {
   const requestId = "controls-evidence-test";
   const steering = createRequestSteeringInbox({ requestId });
@@ -142,7 +143,7 @@ export async function createControlsEvidenceFixture(
       limits: {
         maxDepth: 12,
         maxCalls: 48,
-        maxCapabilityExecutions: 192,
+        maxCapabilityExecutions,
         maxObjectiveChars: ROLE_CALL_OBJECTIVE_MAX_LENGTH,
         maxResultChars: ROLE_CALL_RESULT_MAX_LENGTH,
         maxResponseChars: ROLE_CALL_RESPONSE_MAX_LENGTH,

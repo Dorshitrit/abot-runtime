@@ -2,7 +2,10 @@ import { projectCurrentRequestToolResults } from "./request-tool-results-superse
 import { projectCanonicalRequestToolResult } from "./canonical-capability-result.js";
 import type { RoleCallLedgerHead } from "../orchestration/role-calls/index.js";
 import type { SemanticCompactionSource } from "./semantic-compaction/contracts.js";
-import { projectCanonicalCapabilityResultCompactionSources } from "./capability-result-compaction-source.js";
+import {
+  isCanonicalSuperCapabilitySourceCall,
+  projectCanonicalCapabilityResultCompactionSources,
+} from "./capability-result-compaction-source.js";
 import { hasSuperContextContract } from "./super-context-policy.js";
 
 const SOURCE_BINDING = Symbol("superWorkerCompactionSources");
@@ -23,7 +26,7 @@ type CarrierBinding = Readonly<{
   sidecar: SuperWorkerCompactionSidecar;
 }>;
 
-/** Only a verified SUPER producing Worker may mint a non-serializable sidecar. */
+/** Only a canonical SUPER capability owner may mint a non-serializable sidecar. */
 export function bindSuperWorkerCompactionSources<T extends object>(
   carrier: T,
   head: RoleCallLedgerHead,
@@ -34,7 +37,9 @@ export function bindSuperWorkerCompactionSources<T extends object>(
   const call = head.state.calls.find(
     (candidate) => candidate.callId === callId,
   );
-  if (!call || call.roleId !== "worker") return Object.freeze(carrier);
+  if (!isCanonicalSuperCapabilitySourceCall(head, call)) return Object.freeze(carrier);
+  // Root RAW uses settled-result arrays; routing views retain request-wide evidence.
+  if (call.roleId === "supervisor" && !Array.isArray(carrier)) return Object.freeze(carrier);
   const results = head.state.capabilityExecutions
     .filter(
       (execution) =>
@@ -72,6 +77,12 @@ export function bindSuperWorkerCompactionSources<T extends object>(
     configurable: false,
   });
   return Object.freeze(carrier);
+}
+
+export function superPayloadCompactionContractId(
+  sidecar: SuperWorkerCompactionSidecar,
+): "supervisor" | "delegated.worker" {
+  return sidecar.parentCallId === null ? "supervisor" : "delegated.worker";
 }
 
 /** Copying a carrier never copies authority, including object/array spread. */

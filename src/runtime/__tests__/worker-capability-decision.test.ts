@@ -3759,7 +3759,7 @@ describe("generic Worker capability decision boundary", () => {
     const getExecutionGuidance = vi.fn(
       async () => "Execute the selected observation.",
     );
-    const baseRequest = createRequest(invoke);
+    const baseRequest = createRequest(invoke, { contextWindowTokens: 10_000 });
     const request = createTestRequestExecutionScope({
       ...baseRequest,
       workerCapabilityProvider: {
@@ -4427,7 +4427,7 @@ describe("generic Worker capability decision boundary", () => {
     });
 
     await expect(
-      runWorkerDecision(createRequest(invoke), {
+      runWorkerDecision(createRequest(invoke, { contextWindowTokens: 10_000 }), {
         call,
         requestToolResults: requestToolResults(ledger, ledger.current(), call),
         capabilitySource: Object.freeze({
@@ -4585,7 +4585,7 @@ describe("generic Worker capability decision boundary", () => {
     });
 
     await expect(
-      runWorkerDecision(createRequest(invoke), {
+      runWorkerDecision(createRequest(invoke, { contextWindowTokens: 10_000 }), {
         call,
         requestToolResults: requestToolResults(ledger, ledger.current(), call),
         capabilitySource: capabilitySource(ledger, binding),
@@ -4719,7 +4719,7 @@ describe("generic Worker capability decision boundary", () => {
         meta: {},
       };
     });
-    const request = createRequest(invoke);
+    const request = createRequest(invoke, { contextWindowTokens: 10_000 });
 
     const firstDecision = await runWorkerDecision(request, {
       call: firstCall,

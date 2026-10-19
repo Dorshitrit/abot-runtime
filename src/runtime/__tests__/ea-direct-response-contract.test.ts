@@ -218,7 +218,7 @@ test("direct memory authoring requires its candidate lane and binds proposals to
   const context: ConversationMemoryAuthoringContext = {
     evidence: { sourceSessionId: "session", sourceRequestId: "request",
       observedAt: "2026-10-13T10:00:00.000Z", evidenceDigest: "source-digest" },
-    targets: new Map(), userMessages: [userMessage],
+    targets: new Map(), omitted: 0, userMessages: [userMessage],
     message: { role: "system", content: "{}" },
   };
   const options = { directResponseMaxLength: 1024, directResponseMemoryAuthoring: { context } };
@@ -248,7 +248,7 @@ test("invalid candidate targets cannot acquire update authority through a direct
   const context: ConversationMemoryAuthoringContext = {
     evidence: { sourceSessionId: "session", sourceRequestId: "request",
       observedAt: "2026-10-13T10:00:00.000Z", evidenceDigest: "source-digest" },
-    targets: new Map(), userMessages: ["I prefer short answers."],
+    targets: new Map(), omitted: 0, userMessages: ["I prefer short answers."],
     message: { role: "system", content: "{}" },
   };
   expect(parseExecutionAgentDecisionOutput(JSON.stringify({ decision: {

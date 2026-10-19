@@ -41,15 +41,17 @@ describe("request execution scope", () => {
       "modelSteps",
       "sessionId",
       "prompt",
+      "attachments",
       "historyMessages",
+      "sessionMemory",
       "toolPermissionMode",
       "toolApprovalController",
       "onEvent",
       "contextCompactionStore",
     ]);
     expect(compositionView).not.toHaveProperty("sessionArtifactPaths");
-    expect(compositionView).not.toHaveProperty("sessionMemory");
-    expect(compositionView).not.toHaveProperty("attachments");
+    expect(compositionView?.sessionMemory).toBe(seed.sessionMemory);
+    expect(compositionView?.attachments).toBe(seed.attachments);
     expect(compositionView).not.toHaveProperty("temporalContext");
     expect(compositionView).not.toHaveProperty("shouldGenerateSessionTitle");
     expect(compositionView).not.toHaveProperty("onAcknowledgement");
@@ -256,6 +258,21 @@ describe("request execution scope", () => {
 
   test("does not treat an unbound structural lookalike as a request scope", () => {
     expect(isRequestExecutionScope(createSeed())).toBe(false);
+  });
+
+  test("does not add session memory to the composition view when the seed has none", () => {
+    const { sessionMemory: _memory, ...seed } = createSeed();
+    let composition: RequestCapabilityCompositionView | undefined;
+    const scope = createRequestExecutionScope({
+      seed, executionPolicy: EXECUTION_AGENT_V1_EXECUTION_POLICY,
+      createWorkerCapabilities(view) {
+        composition = view;
+        return emptyProvider<RequestCapabilityExecutionView>();
+      },
+    });
+    expect(composition).not.toHaveProperty("sessionMemory");
+    expect(scope).not.toHaveProperty("sessionMemory");
+    expect(scope.capabilities.executionContext).not.toHaveProperty("sessionMemory");
   });
 
   test("keeps scheduled provenance on the root scope and outside capability or invocation views", () => {

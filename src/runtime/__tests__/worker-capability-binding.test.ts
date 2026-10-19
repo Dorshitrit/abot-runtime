@@ -5,7 +5,7 @@ import {
   resetDebugLoggerConfig,
 } from "../observability/debug-logger.js";
 import {
-  createRoleCallLedger,
+  createRoleCallLedger, SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT,
   ROLE_CALL_OBJECTIVE_MAX_LENGTH,
   ROLE_CALL_RESPONSE_MAX_LENGTH,
   ROLE_CALL_RESULT_MAX_LENGTH,
@@ -436,7 +436,7 @@ describe("call-scoped Worker capability binding", () => {
   test("rejects a root binding when the policy does not grant root capability authority", async () => {
     const ledger = createRoleCallLedger({
       requestId: "request-default-root",
-      policy: {
+      policy: { authority: { ...SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT, capabilityAuthorities: ["worker"] },
         limits: {
           maxDepth: 4,
           maxCalls: 8,

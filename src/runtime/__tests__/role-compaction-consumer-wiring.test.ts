@@ -92,7 +92,7 @@ test("real planner graph runner binds compaction to graph rather than the first 
       },
     },
   });
-  expect(await runPlannerGraph(request, call)).toMatchObject({
+  expect(await runPlannerGraph(request, call, fixture.ledger.current())).toMatchObject({
     outcome: "decline",
   });
   expect(controller.mock.calls[0]![1]).toMatchObject({

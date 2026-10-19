@@ -237,7 +237,7 @@ export function buildExecutionContinuationMessages(
       invocationAttempt: group[0]!.invocationAttempt,
       messages: [
         buildAcceptedActionMessage(group),
-        ...group.map((execution) => buildExecutionCapabilityResultMessage(head, execution)),
+        ...group.map((execution) => buildExecutionCapabilityResultMessage(head, execution, "model")),
       ],
     })),
     ...memoryRecalls,

@@ -13,6 +13,7 @@ import {
 import { isValidRoleCapabilitySelectionSupervision } from "./capability-selection-supervision-validation.js";
 import { hasInitialMemoryContext, validateRoleMemoryRecalls } from "./memory-recall-state-validation.js";
 import { isValidAdoptedModelWorkPlan } from "./work-plan-validation.js";
+import { validateRoleSkillReads } from "./skill-read.js";
 import {
   isRoleOperationFingerprint,
   isRoleOperationOutcomeFingerprintForOutcome,
@@ -299,6 +300,7 @@ export function validateRoleCallState(
   issues.push(...validateRoleCallPlans(state, policy));
   validateCapabilityExecutions(state, policy, issues);
   issues.push(...validateRoleMemoryRecalls(state));
+  issues.push(...validateRoleSkillReads(state, policy));
   if (!isValidRoleOperationSupervision(state, policy)) {
     issues.push(
       issue("invalid_role_operation_supervision", "state.operationSupervision"),

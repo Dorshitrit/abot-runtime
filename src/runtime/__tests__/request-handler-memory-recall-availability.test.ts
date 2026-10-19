@@ -105,7 +105,7 @@ test.each([
         runtimeConfig,
         sessionStore,
         modelGatewayClient: {
-          invoke: harness.invoke,
+          invoke: harness.gatewayInvoke,
           invokeRaw: harness.invokeRaw,
         },
         longTermMemory: harness.memory,

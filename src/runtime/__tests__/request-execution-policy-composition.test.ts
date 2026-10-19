@@ -18,12 +18,12 @@ describe("request execution policy composition", () => {
     expect(SUPERVISOR_WORKER_V1_EXECUTION_POLICY).toMatchObject({
       authority: {
         id: "supervisor-worker-v1",
-        version: 2,
+        version: 3,
         definitionHash:
-          "sha256:2ee79cee6dbb27ffaeb59f84c4c838cf9d16a965ca4f07e7d638e8589868e036",
+          "sha256:f4283b1d3f8f86bba0177475d9368137f39eca54d452a06668c844f4173791c5",
         rootContractId: "supervisor",
         availableSubordinateContractIds: ["planner", "worker", "reviewer"],
-        capabilityAuthorities: ["worker"],
+        capabilityAuthorities: ["root", "worker"],
       },
       rootContract: { contractId: "supervisor" },
       roleExecutors: { roleIds: ["planner", "worker", "reviewer"] },

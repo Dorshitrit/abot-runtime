@@ -56,7 +56,7 @@ export function legacyExecutionMessage(message: ChatMessage): ChatMessage {
   return { ...message, content: JSON.stringify(envelope) };
 }
 
-export async function createExecutionApprovalCompactionFixture() {
+export async function createExecutionApprovalCompactionFixture(duplicateSummary = false) {
   let pressure = false;
   const compacted: (readonly ChatMessage[])[] = [];
   const model = createExecApprovalScript(
@@ -92,7 +92,7 @@ export async function createExecutionApprovalCompactionFixture() {
   const observed = vi.fn(async () => ({
     outcome: "succeeded" as const,
     observedEffect: "observation" as const,
-    summary: "Observed original source.",
+    summary: duplicateSummary ? APPROVAL_SOURCE_MARKER : "Observed original source.",
     exactResult: {
       kind: "registered_tool_execution_result_v1" as const,
       authority: "registered_plugin" as const,

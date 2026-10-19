@@ -5,6 +5,9 @@ import { hasSuperContextContract } from "../context/super-context-policy.js";
 import { validateRoleCallCandidate } from "../orchestration/role-calls/reducer.js";
 import { quarantineProvenOwnedSuperCheckpoint } from "./super-checkpoint-quarantine.js";
 import { traceDebug } from "../observability/debug-logger.js";
+import { isCanonicalSuperCapabilitySourceCall } from "../context/capability-result-compaction-source.js";
+import { superPayloadCompactionContractId } from "../context/super-worker-compaction-sidecar.js";
+import { rootPayloadCompactionScopeId } from "../orchestration/worker-capabilities/payload-compaction-transport.js";
 
 type PayloadRequest = Readonly<{
   requestId: string;
@@ -24,12 +27,14 @@ export function quarantineOwnedSuperPayloadCheckpoint(
   const sidecar = input.superWorkerCompaction;
   if (!sidecar || !request.contextCompactionStore) return;
   const head = sidecar.head;
-  if (!hasSuperContextContract(head.policy.authority, "delegated.worker"))
+  const contractId = superPayloadCompactionContractId(sidecar);
+  if (!hasSuperContextContract(head.policy.authority, contractId))
     return;
   const call = head.state.calls.find(
     (candidate) => candidate.callId === sidecar.callId,
   );
-  if (!call || call.roleId !== "worker" || call.status !== "active") return;
+  if (!isCanonicalSuperCapabilitySourceCall(head, call)) return;
+  if (call.status !== "active") return;
   if (head.state.phase !== "running" || head.state.activeCallId !== call.callId)
     return;
   if (
@@ -47,7 +52,7 @@ export function quarantineOwnedSuperPayloadCheckpoint(
     return;
   if (
     binding.parentCallId !== call.parentCallId ||
-    binding.contractId !== "delegated.worker"
+    binding.contractId !== contractId
   )
     return;
   if (
@@ -55,8 +60,11 @@ export function quarantineOwnedSuperPayloadCheckpoint(
     binding.invocationAttempt !== call.activationCount
   )
     return;
+  const scopeId = "worker" in input.context
+    ? `worker:${call.callId}:request-tool-results`
+    : rootPayloadCompactionScopeId(input);
   if (
-    binding.scopeId !== `worker:${call.callId}:request-tool-results` ||
+    binding.scopeId !== scopeId ||
     binding.modelStep !== input.modelStep
   )
     return;

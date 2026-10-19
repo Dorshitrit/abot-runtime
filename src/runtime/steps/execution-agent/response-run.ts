@@ -92,7 +92,7 @@ export async function runExecutionAgentAuthoredResponse(
       consumer: input.modelStep,
       call: options.call,
       steeringSnapshot: options.steeringSnapshot,
-      sourceRevision: options.head.revision,
+      head: options.head,
       allowedConsumers: Object.freeze([
         EXECUTION_AGENT_DECISION_MODEL_STEP,
         EXECUTION_AGENT_RESPONSE_MODEL_STEP,

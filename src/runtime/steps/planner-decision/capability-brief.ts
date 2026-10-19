@@ -1,3 +1,4 @@
+import { projectSupervisorWorkerCapabilityBriefEntries } from "../../orchestration/worker-capabilities/supervisor-skill-authority.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import { createCapabilityBriefReadmissionController } from "../../context/capability-brief-readmission.js";
 import { resolveModelContextAdmission } from "../../model/model-context-budget.js";
@@ -5,7 +6,7 @@ import type { ModelStepContextCompactionController } from "../../model/model-ste
 import { traceDebug } from "../../observability/debug-logger.js";
 import type { WorkerCapabilityCatalogGroup } from "../../orchestration/worker-capabilities/index.js";
 import { resolveRequestCapabilityBriefEntries } from "../../request/capability-brief.js";
-import type { RequestWorkerCapabilityProviderSource } from "../../request/execution-scope.js";
+import type { RequestExecutionScope, RequestWorkerCapabilityProviderSource } from "../../request/execution-scope.js";
 import { PLANNER_DECISION_MODEL_STEP } from "./contracts.js";
 import type { buildPlannerDecisionInput } from "./input.js";
 
@@ -13,7 +14,7 @@ type BriefRequest = Omit<
   Parameters<typeof resolveModelContextAdmission>[0],
   "modelStep"
 > &
-  RequestWorkerCapabilityProviderSource;
+  RequestWorkerCapabilityProviderSource & Pick<RequestExecutionScope, "executionPolicy">;
 
 /** Planner delegation uses the same request-registry facts as Supervisor. */
 export function buildPlannerCapabilityBriefOptions(
@@ -35,10 +36,10 @@ export function buildPlannerCapabilityBriefOptions(
       ? [{ role: "system", content: instructions.join("\n") }]
       : [];
   return Object.freeze({
-    entries: resolveRequestCapabilityBriefEntries(
-      request.workerCapabilities,
-      groups,
-    ),
+    entries: projectSupervisorWorkerCapabilityBriefEntries({
+      authority: request.executionPolicy.authority,
+      entries: resolveRequestCapabilityBriefEntries(request.workerCapabilities, groups),
+    }),
     groups,
     budget: admission.budget,
     // Root steering is deliberately not inherited by this bounded child.

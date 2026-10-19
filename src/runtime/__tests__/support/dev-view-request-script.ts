@@ -1,6 +1,7 @@
 import { expect, vi } from "vitest";
 import type { ModelGatewayClient } from "../../ports.js";
 import { isRecord } from "../../validation/strict-record.js";
+import { withSupervisorPreparation } from "./supervisor-model-phases.js";
 
 export type DevViewRequestPolicy =
   | "execution-agent-v1"
@@ -61,7 +62,7 @@ export function createDevViewRequestScript(
   let rootTurns = 0;
   let workerTurns = 0;
   let controlsTurns = 0;
-  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
     if (input.modelStep === "worker.result")
       return { text: DEV_VIEW_REQUEST_FINAL, meta: {} };
     if (input.modelStep === "execution.response")
@@ -110,7 +111,7 @@ export function createDevViewRequestScript(
       text: JSON.stringify({ decision: rootDecision(++rootTurns) }),
       meta: {},
     };
-  });
+  }));
   return {
     invoke,
     invokeRaw: vi.fn<ModelGatewayClient["invokeRaw"]>(async () => {

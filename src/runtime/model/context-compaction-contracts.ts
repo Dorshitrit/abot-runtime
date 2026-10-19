@@ -28,12 +28,21 @@ export type ModelStepCompactionStage = Readonly<{
   scopeId: string;
   prepare(
     messages: readonly ChatMessage[],
+    context?: Readonly<{ boundSteeringVersion?: number }>,
   ): Promise<ModelStepCompactionStageOutcome>;
 }>;
 
 export type ModelStepContextCompactionController = Readonly<{
   /** Projects committed state once, before the complete envelope is assessed. */
   project(messages: readonly ChatMessage[]): ChatMessage[];
+  /**
+   * Drops only owned optional context once before semantic compaction.
+   * No model calls or persistent effects; mandatory messages remain unchanged.
+   * Return the same array when unchanged to avoid another budget measurement.
+   */
+  projectForCompaction?(
+    messages: readonly ChatMessage[],
+  ): readonly ChatMessage[];
   /** Trusted projection proof plus a fresh source scan; never model-authored JSON. */
   hasExhaustedVerifiedCompactionSources?(
     messages: readonly ChatMessage[],

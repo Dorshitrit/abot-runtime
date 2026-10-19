@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { ModelGatewayInvocationError } from "../../model-gateway/client/invocation-error.js";
 import { StructuredModelInvalidOutputError } from "../model/invoke-structured-step.js";
 import { RawModelValidationError } from "../model/invoke-raw-step.js";
 import { ModelOutputIncompleteError } from "../model/provider-completion.js";
+import { ModelProviderFailure } from "../model/provider-failure.js";
 import { ModelStepTimeoutError } from "../steps/model-step-timeout.js";
 import {
   composeRoleCallPlanChildObjective,
@@ -77,6 +79,13 @@ function timeoutOutput(modelStep: ModelStep) {
   );
 }
 
+function providerFailure(modelStep: ModelStep) {
+  return new ModelProviderFailure(
+    modelStep,
+    new ModelGatewayInvocationError("stream", PRIVATE_OUTPUT),
+  );
+}
+
 async function createLedger(maxResultChars = ROLE_CALL_RESULT_MAX_LENGTH) {
   const ledger = createRoleCallLedger({
     requestId: "invalid-child",
@@ -143,6 +152,16 @@ describe("exhausted child model output", () => {
     ["reviewer", () => timeoutOutput("reviewer.decision")],
     ["planner", () => timeoutOutput("planner.graph")],
     ["reviewer", () => timeoutOutput("auditor.decision")],
+    ["worker", () => providerFailure("worker.decision")],
+    ["worker", () => providerFailure("worker.result")],
+    ["worker", () => providerFailure("capability.controls")],
+    ["planner", () => providerFailure("planner.decision")],
+    ["planner", () => providerFailure("planner.graph")],
+    ["reviewer", () => providerFailure("reviewer.decision")],
+    ["reviewer", () => providerFailure("auditor.decision")],
+    ["planner", () => providerFailure("context.compact")],
+    ["worker", () => providerFailure("context.compact")],
+    ["reviewer", () => providerFailure("context.compact")],
     [
       "worker",
       () => structuredFailure("invalid_worker_decision", "capability.controls"),
@@ -229,6 +248,14 @@ describe("exhausted child model output", () => {
 
   test.each([
     new Error("provider_stream_error"),
+    new Error("model_provider_failure"),
+    new ModelGatewayInvocationError("stream", "unbound_provider_error"),
+    { code: "model_provider_failure", modelStep: "worker.decision" },
+    providerFailure("supervisor.decision"),
+    providerFailure("reviewer.decision"),
+    providerFailure("planner.graph"),
+    providerFailure("auditor.decision"),
+    providerFailure("tool_payload.raw"),
     new Error("output_incomplete"),
     new Error("worker_result_timeout"),
     { code: "worker_result_timeout", modelStep: "worker.result" },
@@ -261,6 +288,84 @@ describe("exhausted child model output", () => {
       expect(ledger.current().state.activeCallId).toBe("call-2");
     },
   );
+
+  test("a later provider failure returns the Worker without replaying or discarding settled effects", async () => {
+    const ledger = await createLedger();
+    let completedExecutions = ledger.current().state.capabilityExecutions;
+    let activations = 0;
+    const returned = await invokeChild(ledger, {
+      roleId: "worker",
+      async execute({ call }) {
+        activations += 1;
+        if (activations > 1) throw providerFailure("worker.decision");
+        const begun = await ledger.apply({
+          expectedHead: ledger.current(),
+          command: {
+            authority: "active_role",
+            type: "begin_capability_execution",
+            callId: call.callId,
+            invocationAttempt: call.activationCount,
+            capabilityId: "example.write",
+            declaredEffect: "mutation",
+            intent: "Write the requested result.",
+            controlsJson: "{}",
+          },
+        });
+        if (!begun.ok || begun.effect.type !== "capability_execution_begun") {
+          throw new Error("fixture_capability_begin_failed");
+        }
+        const executionId = begun.effect.executionId;
+        const settled = await ledger.apply({
+          expectedHead: begun.head,
+          command: {
+            authority: "runtime",
+            type: "settle_capability_execution",
+            callId: call.callId,
+            executionId,
+            outcome: "succeeded",
+            observedEffect: "mutation",
+            summary: "Requested result saved.",
+            exactResult: {
+              kind: "generic_capability_result_v1",
+              authority: "capability_adapter",
+              status: "executed",
+              ok: true,
+              payload: { content: "Saved result remains established." },
+            },
+          },
+        });
+        expect(settled.ok).toBe(true);
+        completedExecutions = ledger.current().state.capabilityExecutions;
+        return {
+          kind: "continue",
+          continuation: { kind: "capability_execution", executionId },
+        };
+      },
+    });
+    expect(activations).toBe(2);
+    expect(returned.execution).toMatchObject({
+      kind: "terminal",
+      outcome: "failed",
+    });
+    expect(returned.returnCommit.effect).toMatchObject({
+      type: "child_returned",
+      callerCallId: "call-1",
+      childCallId: "call-2",
+    });
+    expect(ledger.current().state.capabilityExecutions).toEqual(
+      completedExecutions,
+    );
+    expect(completedExecutions).toHaveLength(1);
+    expect(completedExecutions[0]).toMatchObject({
+      outcome: "succeeded",
+      observedEffect: "mutation",
+      exactResult: {
+        payload: { content: "Saved result remains established." },
+      },
+    });
+    expect(ledger.current().state.activeCallId).toBe("call-1");
+    expect(ledger.current().state.rootResponse).toBeNull();
+  });
 
   test("does not normalize a malformed runtime executor result into model failure", async () => {
     const ledger = await createLedger();

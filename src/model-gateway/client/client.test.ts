@@ -513,7 +513,7 @@ describe("invokeModelGateway", () => {
       abortSignal: new AbortController().signal,
     });
     const rejectionExpectation = expect(responsePromise).rejects.toMatchObject({
-      name: "AbortError",
+      name: "ModelGatewayInvocationError",
       message: "llm_stream_inactivity_timeout",
     });
 
@@ -560,7 +560,7 @@ describe("invokeModelGateway", () => {
       abortSignal: new AbortController().signal,
     });
     const rejectionExpectation = expect(responsePromise).rejects.toMatchObject({
-      name: "AbortError",
+      name: "ModelGatewayInvocationError",
       message: "llm_stream_inactivity_timeout",
     });
 

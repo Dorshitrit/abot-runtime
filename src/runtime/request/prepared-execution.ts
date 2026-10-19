@@ -281,6 +281,7 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
   resources.assertRestoredStateClaimed();
   const request = createRequestExecutionScope({
     seed,
+    ...(options.knowledgeSkillStore ? { knowledgeSkillStore: options.knowledgeSkillStore } : {}),
     requestWorkingDirectory,
     executionPolicy,
     ...(superFailureFinalization ? { superFailureFinalization } : {}),
@@ -298,6 +299,7 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
           ? { runtimeConfig: options.runtimeConfig }
           : {}),
         ...(toolRegistry ? { toolRegistryOverride: toolRegistry } : {}),
+        knowledgeSkillStore: options.knowledgeSkillStore,
       }),
   });
   return {

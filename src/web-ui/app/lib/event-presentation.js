@@ -1,8 +1,19 @@
 import { textOf } from "./text-format.js";
 import { isStopResult } from "./request-stop-state.js";
+import {
+  isRoleDelegationEvent,
+  projectRoleDelegationEvent,
+} from "./role-delegation-event.js";
+
+import {
+  isRoleReturnEvent,
+  projectRoleReturnEvent,
+} from "./role-return-event.js";
 
 function canMergeEventTimelineEntries(previous, event, name, summary) {
   if (!previous) return false;
+  if (isRoleDelegationEvent(previous) || isRoleDelegationEvent(event)) return false;
+  if (isRoleReturnEvent(previous) || isRoleReturnEvent(event)) return false;
   if (previous.name !== name) return false;
   if (previous.summary !== summary) return false;
   if (previous.tone !== event.tone) return false;
@@ -119,7 +130,22 @@ export function getPlanItemPayload(message) {
   };
 }
 
+function isMissingSkillLookup(message) {
+  if (message.type !== "event") return false;
+  if (message.stage !== "supervisor") return false;
+  if (message.phase !== "skills") return false;
+  // Runtime-owned status text, before or after event enrichment.
+  const name = textOf(message.name || message.rawType);
+  const status = textOf(message.message || name);
+  return (name === "runtime.state" || name === status)
+    && status === "Skill lookup failed: knowledge_skill_not_found";
+}
+
 export function formatEventLabel(message) {
+  const receipt = projectRoleReturnEvent(message);
+  if (receipt) return receipt.outcome === "failed" ? "Planner failed" : "Returned result";
+  const delegation = projectRoleDelegationEvent(message);
+  if (delegation) return `Delegated to ${titleCaseEventValue(delegation.childRole)}`;
   const name = textOf(message.name || message.rawType || message.type);
   const status = textOf(message.status);
   const phase = textOf(message.phase);
@@ -155,6 +181,7 @@ export function formatEventLabel(message) {
   if (name === "request.failed" || message.type === "failed") {
     return isStopResult(message) ? "Response stopped" : "Response failed";
   }
+  if (isMissingSkillLookup(message)) return "Skill not found";
   if (name === "runtime.state") {
     return status || textOf(message.output) || "Runtime state";
   }
@@ -180,6 +207,11 @@ function uncompletedToolLabel(message, name) {
 }
 
 export function formatEventDetail(message) {
+  const receipt = projectRoleReturnEvent(message);
+  if (receipt) return receipt.summary;
+  const delegation = projectRoleDelegationEvent(message);
+  if (delegation) return delegation.objective;
+  if (isMissingSkillLookup(message)) return "";
   if (isStopResult(message)) return "Stopped by you.";
   const parts = [];
   const name = textOf(message.name || message.rawType || message.type);
@@ -209,10 +241,12 @@ export function formatEventDetail(message) {
 }
 
 export function eventTone(message) {
+  if (isRoleReturnEvent(message)) return "neutral";
   const name = textOf(message.name || message.type);
   const normalized = name.toLowerCase();
   if (isStopResult(message)) return "neutral";
   if (isUncompletedToolEvent(message)) return "neutral";
+  if (isMissingSkillLookup(message)) return "neutral";
   if (
     message.ok === false ||
     textOf(message.status).toLowerCase() === "failed" ||

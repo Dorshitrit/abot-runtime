@@ -1,3 +1,4 @@
+import { CORE_TOOL_CONTRACTS } from "../core-tool-contracts.js";
 import type {
   ToolExecutionContext,
   ToolModuleDeclaration,
@@ -11,7 +12,6 @@ import type {
 import { resolveModelSelection } from "../../model/model-selection.js";
 import { requireCreateCalendarTimeZone } from "./create-time-zone.js";
 import { requireAvailableScheduleModel } from "./model-validation.js";
-import { schedulingToolContract } from "./tool-contract.js";
 import { createSchedulerJobPage } from "./job-list-page.js";
 
 function requireText(value: unknown, field: string): string {
@@ -146,7 +146,7 @@ export function createSchedulingToolModule(
 
   return {
     definition: {
-      name: "schedules",
+      name: CORE_TOOL_CONTRACTS.scheduling.name,
       description:
         "Core local schedules for the current conversation: create, inspect, edit, pause, resume, cancel and run now. Scheduled requests run with FULL permissions using their saved model.",
       routingCapability: "semantic_mutation",
@@ -154,7 +154,7 @@ export function createSchedulingToolModule(
       developmentRoles: ["auxiliary"],
       controlsRefinement: "mechanical_when_complete",
     },
-    normalInvocation: schedulingToolContract,
+    normalInvocation: CORE_TOOL_CONTRACTS.scheduling.normalInvocation,
     async implementation(params, context) {
       try {
         const result = await execute(params, context);

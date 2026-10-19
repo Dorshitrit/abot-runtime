@@ -1,10 +1,13 @@
+import {
+  findExactEvidencePath,
+  type EvidenceValuePath,
+} from "../../context/exact-evidence-match.js";
 import { projectCompactedCapabilityResultReceipt } from "../../context/compacted-capability-result-receipt.js";
 import type { AuditorCapabilityEvidence } from "./contracts.js";
 import type { ExecutionCompactedSource } from "../../context/execution-compacted-evidence.js";
 
 type SupplementField = "summary" | "referenceData" | "references";
-type AdapterPath = readonly (string | number)[];
-type RepresentedFields = Partial<Record<SupplementField, AdapterPath>>;
+type RepresentedFields = Partial<Record<SupplementField, EvidenceValuePath>>;
 
 export type AuditorEvidenceRepresentation = Readonly<
   Omit<AuditorCapabilityEvidence, SupplementField | "adapterResult"> &
@@ -47,7 +50,7 @@ export function projectAuditorEvidenceRepresentation(
   for (const field of ["summary", "referenceData", "references"] as const) {
     const supplement = evidence[field];
     if (supplement === undefined) continue;
-    const path = findExactAdapterPath(evidence.adapterResult, supplement);
+    const path = findExactEvidencePath(evidence.adapterResult, supplement);
     if (!path) continue;
     delete represented[field];
     representedFields[field] = path;
@@ -58,42 +61,4 @@ export function projectAuditorEvidenceRepresentation(
       ? { representedFields: Object.freeze(representedFields) }
       : {}),
   });
-}
-
-function findExactAdapterPath(
-  adapterResult: unknown,
-  supplement: string | AuditorCapabilityEvidence["references"],
-): AdapterPath | undefined {
-  const expectedArray = Array.isArray(supplement)
-    ? JSON.stringify(supplement)
-    : undefined;
-  function visit(value: unknown, path: AdapterPath): AdapterPath | undefined {
-    if (isExactSupplementValue(value, supplement, expectedArray))
-      return Object.freeze([...path]);
-    if (Array.isArray(value)) {
-      for (let index = 0; index < value.length; index += 1) {
-        const found = visit(value[index], [...path, index]);
-        if (found) return found;
-      }
-      return undefined;
-    }
-    if (value !== null && typeof value === "object") {
-      for (const [key, child] of Object.entries(value)) {
-        const found = visit(child, [...path, key]);
-        if (found) return found;
-      }
-    }
-    return undefined;
-  }
-  return visit(adapterResult, []);
-}
-
-function isExactSupplementValue(
-  value: unknown,
-  supplement: string | AuditorCapabilityEvidence["references"],
-  expectedArray: string | undefined,
-): boolean {
-  if (typeof supplement === "string") return value === supplement;
-  if (!Array.isArray(value) || expectedArray === undefined) return false;
-  return JSON.stringify(value) === expectedArray;
 }

@@ -3,6 +3,7 @@ import type { RegisteredToolNormalInvocation, ToolCall, ToolExecutionResult } fr
 import type { AutomationDraftRecord } from "../../automations/storage-records.js";
 import type { ToolRegistry } from "../../ports.js";
 import type { createSchedulerRuntimeFixture } from "./scheduler-runtime-fixture.js";
+import { withSupervisorPreparation } from "./supervisor-model-phases.js";
 
 type Fixture = Awaited<ReturnType<typeof createSchedulerRuntimeFixture>>;
 type Studio = NonNullable<Fixture["application"]["services"]["automations"]>;
@@ -38,7 +39,7 @@ export function scriptToolUsingAgent(fixture: Fixture, policy: Policy) {
   let executionDecisions = 0;
   let supervisorDecisions = 0;
   let workerDecisions = 0;
-  fixture.invoke.mockImplementation(async (input) => {
+  fixture.invoke.mockImplementation(withSupervisorPreparation(async (input) => {
     if (input.modelStep === "execution.decision") {
       const action = [
         { action: "open_capability_scope", catalogGroupIds: ["identity_probe"],
@@ -73,7 +74,7 @@ export function scriptToolUsingAgent(fixture: Fixture, policy: Policy) {
     if (input.modelStep === "execution.response" || input.modelStep === "supervisor.response")
       return { text: `Observed via ${policy}.`, meta: {} };
     throw new Error(`unexpected_model_step:${String(input.modelStep)}`);
-  });
+  }));
 }
 
 export async function addAgent(studio: Studio, draft: AutomationDraftRecord, title: string) {

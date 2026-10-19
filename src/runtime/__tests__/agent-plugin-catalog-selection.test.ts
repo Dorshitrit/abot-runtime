@@ -63,6 +63,7 @@ describe("Agent plugin compiled catalog selection", () => {
       createDefaultToolRegistry(config),
     );
     expect(registry.listDefinitions().map(({ name }) => name)).toEqual([
+      "abot_skills",
       "selected_lookup",
     ]);
     const skillProvider = createDefaultSkillProvider(config, {

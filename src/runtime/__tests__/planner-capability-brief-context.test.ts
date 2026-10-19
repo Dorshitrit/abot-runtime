@@ -1,10 +1,15 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
+import type { ToolAvailabilityEntry } from "../../capabilities/tool-types.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import { isCapabilityBriefMessage } from "../context/capability-brief.js";
 import {
   configureDebugLogger,
   resetDebugLoggerConfig,
 } from "../observability/debug-logger.js";
+import { resolveRequestExecutionPolicy } from "../request/role-executor-composition.js";
+import { createTestRequestExecutionScopeWithCapabilities } from "./support/request-execution-scope.js";
+import { buildPlannerCapabilityBriefOptions } from "../steps/planner-decision/capability-brief.js";
+import { buildSupervisorCapabilityBriefOptions } from "../steps/supervisor-decision/capability-brief.js";
 import { buildPlannerDecisionInput } from "../steps/planner-decision/input.js";
 import { parsePlannerDecisionOutput } from "../steps/planner-decision/parser.js";
 import {
@@ -131,3 +136,41 @@ test("root steering does not enter bounded Planner context or consume its catalo
   expect(current.context.messages).toEqual(fixture.input.context.messages);
   expect(current.capabilityBrief).toEqual(fixture.input.capabilityBrief);
 });
+
+test.each(["supervisor-worker-v1", "execution-agent-v1"] as const)(
+  "%s delegate catalogs and briefs expose only policy-owned Skill operations",
+  (policy) => {
+    const operationIds = ["create_skill", "update_skill", "list_skills", "read_skill", "read_skills", "other_knowledge"];
+    const entries: ToolAvailabilityEntry[] = operationIds.map((operationId, index) => ({
+      operationId, toolName: operationId, summary: operationId,
+      catalogGroups: ["knowledge"], effect: index < 2 ? "mutating" : "read_only",
+    }));
+    const fixture = createPlannerBriefFixture({ entries });
+    const provider = fixture.request.workerCapabilities.provider;
+    const request = createTestRequestExecutionScopeWithCapabilities(fixture.request, () => ({
+      ...provider,
+      getDescriptors: () => provider.getDescriptors().map((descriptor) => ({
+        ...descriptor,
+        effect: operationIds.slice(0, 2).includes(descriptor.capabilityId)
+          ? "mutation" as const : "observation" as const,
+      })),
+    }), { executionPolicy: resolveRequestExecutionPolicy(policy) });
+    const input = buildPlannerDecisionInput(request, fixture.inputOptions);
+    const retained = policy === "supervisor-worker-v1" ? operationIds.slice(2) : operationIds;
+    expect(input.availableWorkerCapabilityCatalog).toEqual([{
+      groupId: "knowledge", memberCount: retained.length,
+      effects: policy === "supervisor-worker-v1" ? ["observation"] : ["observation", "mutation"],
+    }]);
+    const briefOptions = buildPlannerCapabilityBriefOptions(request, input.availableWorkerCapabilityCatalog);
+    expect(briefOptions.entries?.map(({ operationId }) => operationId)).toEqual(retained);
+    const supervisor = buildSupervisorCapabilityBriefOptions(request, {
+      allowedRoleIds: ["worker"], availableWorkerCapabilityCatalog: input.availableWorkerCapabilityCatalog,
+    });
+    expect(supervisor.capabilityBriefEntries?.map(({ operationId }) => operationId)).toEqual(retained);
+    expect(input.capabilityBrief.level).toBe("descriptions");
+    const brief = input.context.messages.find(isCapabilityBriefMessage)!.content;
+    for (const operationId of retained) expect(brief).toContain(operationId);
+    if (policy === "supervisor-worker-v1")
+      for (const operationId of operationIds.slice(0, 2)) expect(brief).not.toContain(operationId);
+  },
+);

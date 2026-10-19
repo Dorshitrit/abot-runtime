@@ -1,5 +1,7 @@
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { RequestContextPinnedPart } from "../../context/request-context-contracts.js";
+import { projectStoredCompletedRoleChild } from "../../orchestration/role-calls/child-return.js";
+import type { RoleCallLedgerHead } from "../../orchestration/role-calls/index.js";
 import {
   isSupervisorDelegateRoleId,
   SUPERVISOR_OBJECTIVE_MAX_LENGTH,
@@ -18,6 +20,25 @@ type SupervisorContinuationParams = Readonly<{
   currentCallId: string;
   currentInvocationAttempt: number;
 }>;
+
+/** Rebuild root-owned source returns after reads or capability continuations. */
+export function buildCompletedSupervisorChildContinuationParts(
+  head?: RoleCallLedgerHead,
+): readonly RequestContextPinnedPart[] {
+  const root = head?.state.calls.find(({ callId }) => callId === head.state.rootCallId);
+  if (!head || !root) return [];
+  const completedChildren = root.childCallIds.flatMap((childCallId) => {
+    if (head.state.calls.find(({ callId }) => callId === childCallId)?.status !== "completed") return [];
+    return [projectStoredCompletedRoleChild(head.state, { callerCallId: root.callId, childCallId }, head.policy)];
+  });
+  const returned = completedChildren.at(-1);
+  if (!returned) return [];
+  return buildSupervisorChildContinuationParts({
+    currentCallId: root.callId, currentInvocationAttempt: root.activationCount,
+    resume: { callerCallId: root.callId, invocationAttempt: root.activationCount,
+      returnedChildCallId: returned.childCallId, returnedResultRef: returned.resultRef, completedChildren },
+  });
+}
 
 export function buildSupervisorContinuationMessages(
   params: SupervisorContinuationParams,

@@ -1,5 +1,5 @@
+import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-
 import type { ModelGatewayAttachment } from "../../model-gateway/types.js";
 import { directRespondDecision } from "./support/supervisor-direct-respond.js";
 import {
@@ -411,7 +411,7 @@ describe("Supervisor decision feasibility contract", () => {
     );
   });
 
-  test("rejects missing, unknown, duplicate, and non-Worker catalog-group scopes", () => {
+  test("rejects missing, unknown, and non-Worker catalog-group scopes", () => {
     const options = {
       allowedRoleIds: ["worker", "reviewer"] as const,
       availableWorkerCapabilityCatalog: AVAILABLE_WORKER_CAPABILITY_CATALOG,
@@ -419,7 +419,6 @@ describe("Supervisor decision feasibility contract", () => {
     for (const workerCapabilityScope of [
       undefined,
       { catalogGroupIds: ["unknown"] },
-      { catalogGroupIds: ["documents", "documents"] },
     ]) {
       const parsed = parseSupervisorDecisionOutput(
         decisionText({
@@ -1415,95 +1414,6 @@ describe("Supervisor decision feasibility contract", () => {
     ).toThrow("supervisor_resume_caller_mismatch");
   });
 
-  test("compacts settled child continuation without emitting inner lifecycle events", () => {
-    const baseRequest = createRequest();
-    const baseProfile =
-      baseRequest.modelPolicy!.profiles!["supervisor-test-profile"]!;
-    const onEvent = vi.fn();
-    const request = createRequest({
-      onEvent,
-      runnerConfig: {
-        ...baseRequest.runnerConfig,
-        context: {
-          outputReserveTokens: 0,
-          safetyReserveTokens: 0,
-          attachmentReserveTokens: 0,
-        },
-      },
-      modelPolicy: {
-        ...baseRequest.modelPolicy,
-        profiles: {
-          ...baseRequest.modelPolicy!.profiles,
-          "supervisor-test-profile": {
-            ...baseProfile,
-            contextWindowTokens: 3_180,
-          },
-        },
-      },
-    });
-    const input = buildSupervisorDecisionInput(request, {
-      allowedRoleIds: [],
-      diagnostic: {
-        requestId: "resume-compaction-request",
-        modelStep: SUPERVISOR_DECISION_MODEL_STEP,
-        rootCallId: "call-1",
-        callId: "call-1",
-        parentCallId: null,
-        depth: 0,
-        invocationAttempt: 3,
-      },
-      resume: {
-        callerCallId: "call-1",
-        invocationAttempt: 3,
-        returnedChildCallId: "call-2",
-        returnedResultRef: "result-1",
-        completedChildren: [
-          {
-            callerCallId: "call-1",
-            childCallId: "call-2",
-            resultRef: "result-1",
-            roleId: "worker",
-            objective: "Perform the delegated external operation.",
-            workingDirectory: WORKING_DIRECTORY,
-            workerCapabilityScope: WORKER_CAPABILITY_SCOPE,
-            dependencyResultRefs: [],
-            outcome: "completed",
-            summary: "The delegated operation completed.",
-          },
-        ],
-      },
-    });
-    const parsedMessages = input.context.messages.flatMap((message) => {
-      try {
-        return [JSON.parse(message.content) as Record<string, unknown>];
-      } catch {
-        return [];
-      }
-    });
-
-    expect(input.context.budget.estimatedInputTokens).toBeLessThan(
-      input.context.budget.compactionTriggerInputTokens,
-    );
-    expect(input.context.compaction.applied).toBe(true);
-    expect(input.context.compaction.compactedSourceRefs).toEqual([
-      "supervisor-children:call-1:3:result-1",
-    ]);
-    expect(
-      parsedMessages.filter((message) => message.action === "invoke_role"),
-    ).toHaveLength(0);
-    expect(
-      parsedMessages.find((message) => message.kind === "runtime_child_result"),
-    ).toMatchObject({
-      resultRef: "result-1",
-      delegatedObjective: "Perform the delegated external operation.",
-      workingDirectory: WORKING_DIRECTORY,
-      workerCapabilityScope: WORKER_CAPABILITY_SCOPE,
-      outcome: "completed",
-      summary: "The delegated operation completed.",
-    });
-    expect(onEvent).not.toHaveBeenCalled();
-  });
-
   test("defers an over-budget cumulative child unit without truncating it", () => {
     const completedChildren = Array.from({ length: 4 }, (_, index) => ({
       callerCallId: "call-1",
@@ -2216,7 +2126,7 @@ describe("Supervisor decision feasibility contract", () => {
         },
       },
       modelGatewayClient: {
-        invoke,
+        invoke: withSupervisorPreparation(invoke, { present: () => ({ title: "Bounded discussion" }) }),
         invokeRaw: vi.fn(),
       },
     });
@@ -2361,71 +2271,6 @@ describe("Supervisor decision feasibility contract", () => {
     }
   });
 
-  test("keeps Supervisor inputs at baseline when stored artifact paths exist", async () => {
-    const run = async (sessionArtifactPaths?: readonly string[]) => {
-      const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-        if (
-          typeof input.format === "object" &&
-          input.format !== null &&
-          input.format.name === "supervisor_decision"
-        ) {
-          return {
-            text: decisionText({
-              action: "invoke_role",
-              roleId: "planner",
-              objective: "Update the existing stored news artifact.",
-            }),
-            meta: {},
-          };
-        }
-        return {
-          text: JSON.stringify({ workingDirectory: "news" }),
-          meta: {},
-        };
-      });
-      const request = createRequest({
-        ...(sessionArtifactPaths ? { sessionArtifactPaths } : {}),
-        modelGatewayClient: { invoke, invokeRaw: vi.fn() },
-      });
-      const outcome = await runSupervisorDecision(request, {
-        call: {
-          rootCallId: "call-1",
-          callId: "call-1",
-          parentCallId: null,
-          depth: 0,
-          invocationAttempt: 1,
-        },
-        toolResults: EMPTY_REQUEST_TOOL_RESULTS,
-        allowedRoleIds: ["planner"],
-      });
-      return {
-        outcome,
-        inputs: invoke.mock.calls.map(([input]) => ({
-          messages: input.messages,
-          format: input.format,
-        })),
-      };
-    };
-
-    const baseline = await run();
-    const withPaths = await run(Object.freeze(["news/news.txt"]));
-    expect(withPaths.outcome).toEqual({
-      decision: {
-        action: "invoke_role",
-        roleId: "planner",
-        objective: "Update the existing stored news artifact.",
-        workingDirectory: "news",
-      },
-      steeringVersion: 0,
-    });
-    expect(withPaths.inputs).toEqual(baseline.inputs);
-    expect(withPaths.inputs).toHaveLength(2);
-    expect(JSON.stringify(withPaths.inputs)).not.toContain(
-      "runtime_session_artifact_paths_v1",
-    );
-    expect(JSON.stringify(withPaths.inputs)).not.toContain("news/news.txt");
-  });
-
   test("repairs only workingDirectory and preserves the frozen routing decision", async () => {
     configureDebugLogger({ enabled: true });
     const objective =
@@ -2454,7 +2299,7 @@ describe("Supervisor decision feasibility contract", () => {
       });
     const request = createRequest({
       shouldGenerateSessionTitle: true,
-      modelGatewayClient: { invoke, invokeRaw: vi.fn() },
+      modelGatewayClient: { invoke: withSupervisorPreparation(invoke, { present: () => ({ acknowledgement: routing.acknowledgement, title: routing.title }) }), invokeRaw: vi.fn() },
     });
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
     let decision;

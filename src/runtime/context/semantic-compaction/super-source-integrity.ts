@@ -4,7 +4,10 @@ import type {
   RoleCallLedgerHead,
 } from "../../orchestration/role-calls/index.js";
 import { WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS } from "../../orchestration/worker-capabilities/payload-contracts.js";
-import { projectCanonicalCapabilityResultCompactionSources } from "../capability-result-compaction-source.js";
+import {
+  isCanonicalSuperCapabilitySourceCall,
+  projectCanonicalCapabilityResultCompactionSources,
+} from "../capability-result-compaction-source.js";
 import { hasSuperContextContract } from "../super-context-policy.js";
 import {
   assertValidSemanticCompactionCheckpoint,
@@ -19,6 +22,8 @@ import { assertHistoricalOperationSource } from "./super-operation-source.js";
 import { assertHistoricalChildResultSource } from "./super-child-result-source.js";
 import { assertHistoricalReviewerSource } from "./super-reviewer-source.js";
 import { readStoredSourceMessage } from "./super-source-message.js";
+import { CORE_SKILL_READ_MESSAGE_KIND } from "../core-skill-read-context.js";
+import { assertCoreSkillReadSource } from "./core-skill-read-source.js";
 
 export type SuperCompactionIntegrityInput = Readonly<{
   requestId: string;
@@ -99,7 +104,7 @@ export function assertSuperCompactionCheckpointBinding(
     throw new Error("context_compaction_checkpoint_objective_invalid");
   if (checkpoint.contextLane !== SEMANTIC_COMPACTION_CONTEXT_LANE)
     throw new Error("context_compaction_checkpoint_lane_invalid");
-  assertOwnedScopeBinding(checkpoint, call);
+  assertOwnedScopeBinding(checkpoint, call, head);
 }
 
 function assertSuperIntegrityRequest(
@@ -114,7 +119,12 @@ function assertSuperIntegrityRequest(
 function assertOwnedScopeBinding(
   checkpoint: SemanticCompactionCheckpointBinding & { scopeId: string },
   call: RoleCallFrame,
+  head: RoleCallLedgerHead,
 ): void {
+  if (checkpoint.scopeId.startsWith("payload:")) {
+    assertOwnedRootPayloadScope(checkpoint, call, head);
+    return;
+  }
   const expectedScope =
     call.roleId === "worker"
       ? `worker:${call.callId}:request-tool-results`
@@ -123,6 +133,32 @@ function assertOwnedScopeBinding(
     throw new Error("context_compaction_checkpoint_scope_invalid");
   const consumers = resolveOwnedConsumers(call);
   if (JSON.stringify(checkpoint.allowedConsumers) !== JSON.stringify(consumers))
+    throw new Error("context_compaction_checkpoint_consumers_invalid");
+}
+
+function assertOwnedRootPayloadScope(
+  checkpoint: SemanticCompactionCheckpointBinding & { scopeId: string },
+  call: RoleCallFrame,
+  head: RoleCallLedgerHead,
+): void {
+  if (call.roleId !== "supervisor" || !isCanonicalSuperCapabilitySourceCall(head, call))
+    throw new Error("context_compaction_checkpoint_scope_invalid");
+  const prefix = `payload:${call.callId}:capability-preparation:${call.callId}:`;
+  const suffix = checkpoint.scopeId.startsWith(prefix)
+    ? checkpoint.scopeId.slice(prefix.length) : "";
+  if (!/^[1-9]\d*:[1-9]\d*:(0|[1-9]\d*)$/.test(suffix))
+    throw new Error("context_compaction_checkpoint_scope_invalid");
+  const [attempt, item, stage] = suffix.split(":").map(Number) as [number, number, number];
+  if (![attempt, item, stage].every(Number.isSafeInteger) || attempt > call.activationCount)
+    throw new Error("context_compaction_checkpoint_scope_invalid");
+  const admitted = head.state.capabilityExecutions.filter((execution) =>
+    execution.callId === call.callId && execution.invocationAttempt === attempt).length;
+  // RAW precedes ledger admission; restored preparations are bound to their admitted items.
+  const preparing = head.state.phase === "running" && call.status === "active" &&
+    head.state.activeCallId === call.callId && attempt === call.activationCount;
+  if (item > admitted + (preparing ? 1 : 0))
+    throw new Error("context_compaction_checkpoint_scope_invalid");
+  if (JSON.stringify(checkpoint.allowedConsumers) !== JSON.stringify(["tool_payload.raw"]))
     throw new Error("context_compaction_checkpoint_consumers_invalid");
 }
 
@@ -188,6 +224,11 @@ function assertOwnedSource(
   }
   const message = readStoredSourceMessage(source);
   const record = readSourceCapsuleHeader(message.content);
+
+  if (record.kind === CORE_SKILL_READ_MESSAGE_KIND) {
+    assertCoreSkillReadSource({ source, record, head: params.head, ...(scopeCall ? { scopeCall } : {}) });
+    return;
+  }
 
   if (record.kind === "runtime_operation_supervision_evidence_v1") {
     const call = requireSourceOwner(

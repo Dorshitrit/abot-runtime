@@ -1,3 +1,4 @@
+import { withSupervisorPreparation } from "./supervisor-model-phases.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { vi } from "vitest";
 import type WebSocket from "ws";
@@ -32,7 +33,7 @@ export const SYSTEM_BRIEF_CONTROLS = {
 
 function responseOnlyModel() {
   return {
-    invoke: vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    invoke: vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
       if (
         input.modelStep === "supervisor.decision" ||
         input.modelStep === "execution.decision"
@@ -52,7 +53,7 @@ function responseOnlyModel() {
           ? JSON.stringify({ memoryCandidates: [] })
           : EXEC_APPROVAL_FINAL;
       return { text, meta: {} };
-    }),
+    })),
     invokeRaw: vi.fn<ModelGatewayClient["invokeRaw"]>(async () => {
       throw new Error("System brief fixture must not call a raw or live model");
     }),

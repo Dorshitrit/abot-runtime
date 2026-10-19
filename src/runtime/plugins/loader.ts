@@ -1,3 +1,4 @@
+import { hasCoreToolContractCollision } from "../capabilities/core-tool-contracts.js";
 import { pluginLoadConfiguration } from "./configuration-context.js";
 import {
   readPluginConfigurationStore,
@@ -183,8 +184,10 @@ export function loadConfiguredRuntimePlugins(
   );
   const compatiblePlugins = discoveredPlugins.filter(
     (plugin) => resolvePluginPlatformCompatibility(plugin.manifest).supported,
-  );
-  const allPluginsIncompatible =
+  ).filter(({ manifest }) => !hasCoreToolContractCollision(
+    manifest.extensions[ABOT_RUNTIME_EXTENSION].capabilities,
+  ));
+  const allPluginsUnavailable =
     discoveredPlugins.length > 0 && compatiblePlugins.length === 0;
   const selectedPlugins = compatiblePlugins
     .map((plugin) => ({
@@ -202,7 +205,7 @@ export function loadConfiguredRuntimePlugins(
     .filter(({ selectedCapabilityIds }) => selectedCapabilityIds.length > 0);
   const host: ManifestRuntimeHostContext = {
     rootDir: config.paths.rootDir,
-    pluginConfiguration: allPluginsIncompatible
+    pluginConfiguration: allPluginsUnavailable
       ? {}
       : readPluginConfigurationStore(config.paths.rootDir).plugins,
     runtimeId: config.runtimeId,
@@ -261,12 +264,14 @@ export function loadBundledRuntimePlugins(): readonly CompiledRuntimePlugin[] {
   const discoveredPlugins = discoverAgentPluginManifests(packageRoot);
   const selectedPlugins = discoveredPlugins.filter(
     (plugin) => resolvePluginPlatformCompatibility(plugin.manifest).supported,
-  );
-  const allPluginsIncompatible =
+  ).filter(({ manifest }) => !hasCoreToolContractCollision(
+    manifest.extensions[ABOT_RUNTIME_EXTENSION].capabilities,
+  ));
+  const allPluginsUnavailable =
     discoveredPlugins.length > 0 && selectedPlugins.length === 0;
   const host: ManifestRuntimeHostContext = {
     rootDir,
-    pluginConfiguration: allPluginsIncompatible
+    pluginConfiguration: allPluginsUnavailable
       ? {}
       : readPluginConfigurationStore(rootDir).plugins,
     runtimeId: "default",

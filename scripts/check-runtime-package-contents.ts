@@ -533,6 +533,13 @@ const requiredPaths = [
     "web-ui/app/lib/tool-activity-event",
     "web-ui/app/lib/tool-activity-model",
     "web-ui/app/lib/tool-timeline",
+    "runtime/request/role-call-delegation-events",
+    "web-ui/app/lib/role-delegation-event",
+    "web-ui/app/components/conversation-role-delegations",
+    "runtime/request/role-call-return-events",
+    "web-ui/app/lib/role-return-event",
+    "web-ui/app/components/conversation-role-history",
+    "web-ui/app/components/conversation-role-returns",
   ].flatMap((modulePath) => [
     `dist/src/${modulePath}.js`,
     `dist/src/${modulePath}.d.ts`,
@@ -586,8 +593,8 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // contract. Each emitted runtime module contributes both .js and .d.ts files,
 // so legitimate production modules can move the count by more than one.
 // These ceilings bound the approved public package inventory and unpacked size.
-const maxFileCount = 3_922;
-const maxUnpackedSizeBytes = 12_520_000;
+const maxFileCount = 4_063;
+const maxUnpackedSizeBytes = 12_845_000;
 
 if (paths.length > maxFileCount) {
   fail(`package includes too many files: ${paths.length} > ${maxFileCount}`);

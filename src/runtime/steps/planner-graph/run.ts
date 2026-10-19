@@ -5,6 +5,7 @@ import {
 import {
   ROLE_CALL_RESULT_MAX_LENGTH,
   type RoleCallFrame,
+  type RoleCallLedgerHead,
 } from "../../orchestration/role-calls/index.js";
 import type { RoleExecutor } from "../../orchestration/role-executors/index.js";
 import type { RequestExecutionScope } from "../../request/execution-scope.js";
@@ -19,8 +20,9 @@ import { parsePlannerGraphOutput } from "./parser.js";
 export async function runPlannerGraph(
   request: RequestExecutionScope,
   call: RoleCallFrame,
+  head: RoleCallLedgerHead,
 ): Promise<PlannerGraphOutcome> {
-  const input = buildPlannerGraphInput(request, call);
+  const input = buildPlannerGraphInput(request, call, head);
   return invokeStructuredModelStep({
     request,
     modelStep: input.modelStep,
@@ -29,7 +31,7 @@ export async function runPlannerGraph(
     contextCompaction: createModelStepCompactionController(request, {
       consumer: PLANNER_GRAPH_MODEL_STEP,
       call,
-      sourceRevision: call.activationCount,
+      sourceRevision: head.revision,
       allowedConsumers: Object.freeze([
         PLANNER_DECISION_MODEL_STEP,
         PLANNER_GRAPH_MODEL_STEP,
@@ -46,12 +48,12 @@ export const EXECUTION_AGENT_PLANNER_EXECUTOR: RoleExecutor<
   RequestRoleExecutionHandoff
 > = Object.freeze({
   roleId: "planner",
-  async execute({ context, call, continuation }) {
+  async execute({ context, call, ledger, continuation }) {
     if (continuation) {
       return failedAdvisory("planner_graph_continuation_unsupported");
     }
     try {
-      const outcome = await runPlannerGraph(context, call);
+      const outcome = await runPlannerGraph(context, call, ledger.current());
       const summary = JSON.stringify({
         kind: "runtime_execution_agent_planner_advisory_v1",
         authority: "model_advisory",

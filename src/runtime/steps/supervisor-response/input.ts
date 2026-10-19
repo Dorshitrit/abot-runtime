@@ -28,6 +28,8 @@ import {
   buildSupervisorResponseInstructions,
 } from "./prompt.js";
 import { automationResponseFormat } from "../../request/automation-output-contract.js";
+import type { RoleCallLedgerHead } from "../../orchestration/role-calls/index.js";
+import { buildCoreSkillReadContextMessages } from "../../context/core-skill-read-context.js";
 
 export type SupervisorResponseInputRequest = Pick<
   RequestExecutionSeed,
@@ -69,6 +71,10 @@ export function buildSupervisorResponseInput(
   );
   return buildSupervisorInput(request, options, {
     ...scheduledExecution,
+    referenceMessages: [
+      ...(scheduledExecution.referenceMessages ?? []),
+      ...buildCoreSkillReadContextMessages(options.skillReadHead),
+    ],
     ...(request.automationOutputContract
       ? { format: automationResponseFormat(request.automationOutputContract) }
       : {}),
@@ -95,8 +101,10 @@ export function buildSupervisorMemoryAuthoringInput(
 
 type SupervisorResponseInputOptions = Readonly<{
   responseRecommendation?: string;
+  responseRecommendationOrigin?: "skill_authoring_no_save";
   call: SupervisorResponseCallIdentity;
   toolResults: RequestToolResultsView;
+  skillReadHead?: RoleCallLedgerHead;
   resume?: SupervisorResponseResumeContext;
   longTermMemoryMessage?: ChatMessage;
   memoryAuthoringMessage?: ChatMessage;

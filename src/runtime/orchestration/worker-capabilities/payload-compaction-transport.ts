@@ -12,7 +12,6 @@ export function projectWorkerPayloadCompactionInput(
   input: Parameters<WorkerCapabilityPayloadAuthor["author"]>[0],
   requestId: string,
 ): Pick<WorkerCapabilityPayloadModelRequest, "superWorkerCompaction"> {
-  if (input.call.roleId !== "worker") return {};
   const sidecar = readSuperWorkerCompactionSidecar(
     input.settledCapabilityResults,
   );
@@ -22,4 +21,13 @@ export function projectWorkerPayloadCompactionInput(
     callId: input.call.callId,
   });
   return { superWorkerCompaction: sidecar };
+}
+
+/** Root payload checkpoints are isolated to the exact preparation and stage. */
+export function rootPayloadCompactionScopeId(
+  input: WorkerCapabilityPayloadModelRequest,
+): string {
+  if (!("root" in input.context)) throw new Error("payload_root_context_required");
+  return ["payload", input.context.root.callId, input.executionId,
+    input.context.payloadStage?.index ?? 0].join(":");
 }

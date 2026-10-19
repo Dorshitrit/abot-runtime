@@ -1,3 +1,4 @@
+import { projectSupervisorWorkerCapabilityDescriptors } from "../../orchestration/worker-capabilities/supervisor-skill-authority.js";
 import {
   buildRuntimeFilesystemScopeMessage,
   canEstablishRuntimeWorkingDirectory,
@@ -38,6 +39,7 @@ import {
 import {
   resolveRequestWorkerCapabilityCatalog,
   type RequestWorkerCapabilityProviderSource,
+  type RequestExecutionScope,
 } from "../../request/execution-scope.js";
 import type { RequestExecutionSeed } from "../../request/contracts.js";
 import {
@@ -66,6 +68,7 @@ import {
 import { buildPlannerDecisionInstructions } from "./prompt.js";
 import { buildPlannerChildContinuationPart } from "./resume.js";
 import { projectPlannerToolResults } from "./tool-results.js";
+import { buildCoreSkillReadContextMessages } from "../../context/core-skill-read-context.js";
 
 export type PlannerDecisionInputRequest = Pick<
   RequestExecutionSeed,
@@ -77,7 +80,7 @@ export type PlannerDecisionInputRequest = Pick<
   | "modelPolicy"
 > &
   Partial<Pick<RequestExecutionSeed, "onEvent" | "temporalContext">> &
-  RequestWorkerCapabilityProviderSource;
+  RequestWorkerCapabilityProviderSource & Pick<RequestExecutionScope, "executionPolicy">;
 
 export type PlannerDecisionProgressSource = Readonly<{
   kind: "role_child";
@@ -125,7 +128,10 @@ export function buildPlannerDecisionInput(
     "worker",
   )
     ? projectWorkerCapabilityCatalogGroups(
-        resolveRequestWorkerCapabilityCatalog(request).getDescriptors(),
+        projectSupervisorWorkerCapabilityDescriptors({
+          authority: request.executionPolicy.authority,
+          descriptors: resolveRequestWorkerCapabilityCatalog(request).getDescriptors(),
+        }),
       )
     : Object.freeze([]);
   const availableChildRoleIds = configuredChildRoleIds;
@@ -190,6 +196,7 @@ export function buildPlannerDecisionInput(
     ),
   });
   const referenceMessages = [
+    ...buildCoreSkillReadContextMessages(options.dependencyHead, "delegate"),
     ...(filesystemMessage ? [filesystemMessage] : []),
     ...(request.temporalContext
       ? [buildRequestTemporalContextMessage(request.temporalContext)]

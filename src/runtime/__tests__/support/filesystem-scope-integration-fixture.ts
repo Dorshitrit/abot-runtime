@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { expect, vi } from "vitest";
+import { withSupervisorPreparation } from "./supervisor-model-phases.js";
 import type WebSocket from "ws";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import { createInMemorySessionStore } from "../../adapters/in-memory-session-store.js";
@@ -121,7 +122,7 @@ export async function filesystemScopeFixture(
       inspect?: (input: FilesystemModelInput) => void,
     ) {
       let index = 0;
-      const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
         const next = calls[index++];
         expect(
           next,
@@ -138,7 +139,7 @@ export async function filesystemScopeFixture(
             ? next!.output(input)
             : next!.output;
         return { text, meta: {} };
-      });
+      }));
       const model: ModelGatewayClient = {
         invoke,
         invokeRaw: vi.fn(async () => {

@@ -1,4 +1,6 @@
 import type { ConversationToolAction } from "./tool-activity-model.js";
+import type { RoleDelegation } from "./role-delegation-event.js";
+import type { RoleReturn } from "./role-return-event.js";
 
 export type ConversationRole =
   | "supervisor"
@@ -17,6 +19,9 @@ export interface ConversationRoleCard {
   summary: string;
   facts: string[];
   toolActions?: ConversationToolAction[];
+  skillActivities?: { summary: string; tone: string }[];
+  delegations?: RoleDelegation[];
+  returns?: RoleReturn[];
   active: boolean;
   tone: "active" | "failed" | "recorded";
 }

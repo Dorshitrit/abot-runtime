@@ -83,6 +83,7 @@ function resolveActivationReservationCallId(
     case "update_capability_scope":
     case "reconsider_capability_selection":
     case "begin_memory_recall":
+    case "record_skill_read":
       return command.callId;
     default:
       return undefined;

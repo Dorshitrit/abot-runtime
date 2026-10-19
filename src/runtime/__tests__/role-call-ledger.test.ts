@@ -179,12 +179,12 @@ describe("canonical role-call ledger", () => {
 
     expect(authority).toEqual({
       id: "supervisor-worker-v1",
-      version: 2,
+      version: 3,
       definitionHash:
-        "sha256:2ee79cee6dbb27ffaeb59f84c4c838cf9d16a965ca4f07e7d638e8589868e036",
+        "sha256:f4283b1d3f8f86bba0177475d9368137f39eca54d452a06668c844f4173791c5",
       rootContractId: "supervisor",
       availableSubordinateContractIds: ["planner", "worker", "reviewer"],
-      capabilityAuthorities: ["worker"],
+      capabilityAuthorities: ["root", "worker"],
     });
     expect(Object.isFrozen(authority)).toBe(true);
     expect(Object.isFrozen(authority.availableSubordinateContractIds)).toBe(
@@ -464,7 +464,7 @@ describe("canonical role-call ledger", () => {
   });
 
   test("establishes one strict immutable root working directory without consuming an activation", async () => {
-    const legacyLedger = createLedger();
+    const legacyLedger = createRoleCallLedger({ requestId: "worker-only", policy: { ...policy(), authority: { ...SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT, capabilityAuthorities: ["worker"] } } });
     const legacyRooted = await commit(legacyLedger, {
       authority: "runtime",
       type: "create_root",
@@ -690,7 +690,7 @@ describe("canonical role-call ledger", () => {
   });
 
   test("rejects unauthorized child and capability transitions atomically", async () => {
-    const childLedger = createLedger();
+    const childLedger = createRoleCallLedger({ requestId: "worker-only", policy: { ...policy(), authority: { ...SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT, capabilityAuthorities: ["worker"] } } });
     await commit(childLedger, { authority: "runtime", type: "create_root" });
     const beforeChild = childLedger.current();
     expect(

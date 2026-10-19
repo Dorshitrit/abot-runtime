@@ -65,7 +65,7 @@ const modelPolicy = {
     "runtime-default": {
       provider: "local",
       model: "runtime-default:latest",
-      contextWindowTokens: 8_000,
+      contextWindowTokens: 10_000,
       supportsThinking: true,
       calibration: {
         "worker.decision": {},

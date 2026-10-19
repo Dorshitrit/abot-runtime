@@ -193,7 +193,9 @@ describe("shared conversation memory authoring", () => {
     for (const [input] of f.invoke.mock.calls) {
       const messages = modelMessages(input);
       expect(messages.filter(({ role, content }) => role === "user" && content === f.request.prompt)).toHaveLength(1);
-      const references = messages.filter(({ content }) => content.startsWith(`{"kind":"${REFERENCE_KIND}"`));
+      const references = messages.filter(({ content }) =>
+        content.startsWith(`{"kind":"${REFERENCE_KIND}"`) ||
+        content.startsWith(`${REFERENCE_KIND} (plain text)`));
       const isAuthoring = input.format !== undefined && input.modelStep?.endsWith(".response");
       const offersDirectAuthoring = policy === "execution-agent-v1" && input.modelStep === "execution.decision";
       expect(references).toHaveLength(isAuthoring || offersDirectAuthoring ? 1 : 0);

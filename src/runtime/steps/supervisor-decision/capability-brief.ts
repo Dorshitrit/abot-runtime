@@ -1,3 +1,4 @@
+import { projectSupervisorWorkerCapabilityBriefEntries } from "../../orchestration/worker-capabilities/supervisor-skill-authority.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { ToolAvailabilityEntry } from "../../../capabilities/tool-types.js";
 import { resolveModelContextAdmission } from "../../model/model-context-budget.js";
@@ -13,6 +14,8 @@ import {
 
 type BriefOptions = Readonly<{
   allowedRoleIds?: readonly string[];
+  remainingCapabilityExecutions?: number;
+  remainingRoleCalls?: number;
   availableWorkerCapabilityCatalog?: readonly WorkerCapabilityCatalogGroup[];
 }>;
 
@@ -24,11 +27,14 @@ export function buildSupervisorCapabilityBriefOptions(
   capabilityBriefEntries?: readonly ToolAvailabilityEntry[];
   capabilityBriefBudgetMessages?: readonly ChatMessage[];
 }> {
-  if (!canProjectSupervisorCapabilityBrief(options)) return {};
-  const entries = resolveRequestCapabilityBriefEntries(
-    request.capabilities,
-    options.availableWorkerCapabilityCatalog ?? [],
-  );
+  const hasCapabilityBrief = canProjectSupervisorCapabilityBrief(options);
+  if (!hasCapabilityBrief && !request.sessionArtifactPaths?.length) return {};
+  const entries = hasCapabilityBrief
+    ? projectSupervisorWorkerCapabilityBriefEntries({
+        authority: request.executionPolicy.authority,
+        entries: resolveRequestCapabilityBriefEntries(request.capabilities, options.availableWorkerCapabilityCatalog ?? []),
+      })
+    : undefined;
   const admission = resolveModelContextAdmission({
     runnerConfig: request.runnerConfig,
     agentMode: request.agentMode,

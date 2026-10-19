@@ -1,15 +1,24 @@
 import type { ChatMessage } from "../../../model-gateway/types.js";
+import { resolveConfiguredStepInstructionMetadata } from "../../config/runner/step-instructions.js";
 import type { RoleCallFrame } from "../../orchestration/role-calls/index.js";
 import {
+  REVIEWER_DECISION_MODEL_STEP,
   projectReviewerDecisionCallIdentity,
   type ReviewerReviewSnapshot,
 } from "./contracts.js";
+import { createReviewerDecisionFormat } from "./format.js";
+import type { ReviewerDecisionInputRequest } from "./input.js";
+import { buildReviewerDecisionInstructions } from "./prompt.js";
 import { projectReviewerVerificationCoverage } from "./verification-coverage.js";
 
 export const REVIEWER_AUDIT_CONTEXT_KIND = "runtime_reviewer_audit_v4" as const;
 export const REVIEWER_EVIDENCE_APPENDIX_KIND =
   "runtime_reviewer_evidence_v1" as const;
 const REVIEWER_CANDIDATE_SUPPORT_RELATION = "candidate_support" as const;
+const REVIEWER_SKILL_GUIDANCE_MARKER = Object.freeze({
+  purpose: "skill_guidance",
+  presenceEffect: "procedural_guidance_not_completion_evidence",
+});
 
 export type ReviewerModelContextProjection = Readonly<{
   referenceMessages: readonly ChatMessage[];
@@ -18,6 +27,38 @@ export type ReviewerModelContextProjection = Readonly<{
   auditCapsuleCharacterCount: number;
   evidenceAppendixCharacterCount: number;
 }>;
+
+/** Budget assessment and invocation share the same captured guidance and assembly. */
+export function createReviewerDecisionInputParts(
+  request: ReviewerDecisionInputRequest,
+  options: Readonly<{
+    call: RoleCallFrame;
+    snapshot: ReviewerReviewSnapshot;
+    skillGuidanceMessages?: readonly ChatMessage[];
+  }>,
+) {
+  const format = createReviewerDecisionFormat(options.snapshot);
+  const modelContext = projectReviewerModelContext(options.snapshot, options.call);
+  const configuredInstructionMetadata =
+    resolveConfiguredStepInstructionMetadata({
+      runnerConfig: request.runnerConfig,
+      modelStep: REVIEWER_DECISION_MODEL_STEP,
+    });
+  const hasSkillGuidance = Boolean(options.skillGuidanceMessages?.length) ||
+    options.snapshot.evidence.some(({ kind }) => kind === "skill_guidance");
+  return {
+    instructions: buildReviewerDecisionInstructions(hasSkillGuidance),
+    configuredInstructionMetadata,
+    format,
+    referenceMessages: options.skillGuidanceMessages?.length
+      ? Object.freeze([...options.skillGuidanceMessages, ...modelContext.referenceMessages])
+      : modelContext.referenceMessages,
+    prompt: modelContext.prompt,
+    completionTargetLength: modelContext.completionTargetLength,
+    auditCapsuleCharacterCount: modelContext.auditCapsuleCharacterCount,
+    evidenceAppendixCharacterCount: modelContext.evidenceAppendixCharacterCount,
+  };
+}
 
 /**
  * Projects one authority-first Reviewer context from canonical snapshot facts.
@@ -154,6 +195,7 @@ export function projectReviewerModelContext(
     effect: item.effect,
     summary: item.summary,
     subjectRefs: item.subjectRefs,
+    ...(item.kind === "skill_guidance" ? REVIEWER_SKILL_GUIDANCE_MARKER : {}),
     ...(item.references ? { references: item.references } : {}),
     referenceDataSupplied: item.referenceData !== undefined,
   }));

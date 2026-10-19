@@ -1,3 +1,4 @@
+import { SUPER_SKILL_GUIDANCE_INSTRUCTION, SUPER_SKILL_DELEGATION_INSTRUCTION } from "../supervisor-skill-instructions.js";
 import {
   PLANNER_OBJECTIVE_MAX_LENGTH,
   type PlannerDecisionPlanContext,
@@ -71,6 +72,8 @@ export function buildPlannerDecisionInstructions(
     "After failure, delegate only a materially different remaining outcome supported by the assignment and returned facts. Choose return_failure when no evidence-supported remaining outcome is feasible through the offered roles; state the unmet requirement. A new child alone changes neither capability nor evidence.",
     "Never fabricate work, observations, files, citations, or completion. Silence about problems is not evidence of success.",
     "Return exactly one JSON object matching the supplied schema.",
+    SUPER_SKILL_GUIDANCE_INSTRUCTION,
+    SUPER_SKILL_DELEGATION_INSTRUCTION,
   ].join("\n");
 }
 

@@ -332,3 +332,61 @@
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
+
+.conversation-role-history {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation-role-history + .conversation-role-summary {
+  margin-block-start: 8px;
+}
+
+.conversation-role-history-toggle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 8px;
+  cursor: pointer;
+  list-style: none;
+  border-radius: 4px;
+}
+
+.conversation-role-history-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.conversation-role-history-toggle:focus-visible {
+  outline: 2px solid var(--role-accent);
+  outline-offset: 3px;
+}
+
+.conversation-role-history-label,
+.conversation-role-history-chevron {
+  color: var(--role-accent);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+}
+
+.conversation-role-history-text {
+  grid-column: 1 / -1;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-md);
+  line-height: 1.6;
+}
+
+.conversation-role-history-item[open] .conversation-role-history-text {
+  display: block;
+  -webkit-line-clamp: unset;
+}
+
+.conversation-role-history-item[open] .conversation-role-history-chevron {
+  transform: rotate(180deg);
+}

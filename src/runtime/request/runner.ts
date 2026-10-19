@@ -18,6 +18,8 @@ import {
 } from "../orchestration/role-calls/index.js";
 import { traceDebug } from "../observability/debug-logger.js";
 import { attachRequestPlannerRoleCallEvents } from "./role-call-planner-events.js";
+import { attachRequestRoleDelegationEvents } from "./role-call-delegation-events.js";
+import { attachRequestRoleReturnEvents } from "./role-call-return-events.js";
 import type { RequestRunnerResult } from "./result.js";
 import { runRootExecutionKernel } from "./root-execution-kernel.js";
 import {
@@ -75,6 +77,14 @@ export async function runRequestRunner(
     policy: createRequestRoleCallPolicy(executionPolicy),
   });
   attachRequestPlannerRoleCallEvents({
+    ledger,
+    onEvent: request.onEvent,
+  });
+  attachRequestRoleDelegationEvents({
+    ledger,
+    onEvent: request.onEvent,
+  });
+  attachRequestRoleReturnEvents({
     ledger,
     onEvent: request.onEvent,
   });

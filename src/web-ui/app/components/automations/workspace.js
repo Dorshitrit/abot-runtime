@@ -7,6 +7,7 @@ import { readAutomationDefinitionPatch, renderAutomationEditor, renderAutomation
 import { createAutomationStepEditorDialog } from "./step-editor-dialog.js";
 import { focusSelectedAutomationStep } from "./run-steps-view.js";
 import { renderAutomationRun } from "./run.js";
+import { createAutomationRunHistoryControls } from "./run-history-controls.js";
 import { findAutomationPosition } from "../../lib/automation-graph-position.js";
 import { canWrapAutomationSequence } from "../../lib/automation-parallel-depth.js";
 import { createAutomationTimelineCamera } from "./timeline-camera.js";
@@ -70,6 +71,7 @@ export function createAutomationsWorkspace({
     isEditing: () => Boolean(current.selectedNodeId) || stepEditor.isOpen(),
   });
   const liveView = createAutomationLiveView(root);
+  const runHistory = createAutomationRunHistoryControls({ root, actions });
 
   function isDirty() { return definitionDirty || stepEditor.isDirty(); }
 
@@ -132,7 +134,9 @@ export function createAutomationsWorkspace({
     const previousNodeId = renderedNodeId;
     const viewIdentity = `${snapshot.selectedAutomationId}/${snapshot.selectedRunId || "editor"}`;
     const sameEditor = snapshot.selectedAutomationId === current.selectedAutomationId && !snapshot.selectedRunId;
-    if (!liveView.isCurrent(viewIdentity)) { paletteQuery = ""; paletteSelectedTool = ""; insertion = null; detailsCollapsed = false; camera.resetState(); }
+    const viewChanged = !liveView.isCurrent(viewIdentity);
+    const historyHadFocus = documentRoot.activeElement?.matches?.("[data-select-run]");
+    if (viewChanged) { paletteQuery = ""; paletteSelectedTool = ""; insertion = null; detailsCollapsed = false; camera.resetState(); }
     else camera.capture();
     const retainedDefinition = definitionDirty && sameEditor
       ? root.querySelector("[data-automation-definition-form]") : null;
@@ -144,6 +148,7 @@ export function createAutomationsWorkspace({
         : renderAutomationEditor(snapshot, { query: paletteQuery, selectedToolName: paletteSelectedTool });
     const changed = liveView.update(viewIdentity, renderAutomationLibraryTabs(snapshot, markup, activeLibraryTab));
     if (changed && retainedDefinition) root.querySelector("[data-automation-definition-form]")?.replaceWith(retainedDefinition);
+    runHistory.sync(snapshot, { viewChanged, focus: historyHadFocus });
     markInsertion();
     updateDetailsVisibility();
     camera.restore();
@@ -314,7 +319,11 @@ export function createAutomationsWorkspace({
     run: () => { if (requireSavedGraph()) return actions.startRun(); },
     "toggle-active": () => current.automations.find((item) => item.id === current.selectedAutomationId)?.status === "active"
       ? actions.setActive(false) : openPermissionDialog("activate"),
-    "show-runs": () => { if (prepareLeave()) return current.runs[0] ? actions.openRun(current.runs[0].id) : notify("No runs yet."); },
+    "show-runs": () => {
+      if (!prepareLeave()) return;
+      const runId = current.runs[0]?.id || current.lastViewedRunId;
+      return runId ? actions.openRun(runId) : notify("No runs yet.");
+    },
     editor: () => { if (prepareLeave()) return actions.openRoute(current.selectedAutomationId, ""); },
     stop: () => actions.stopRun(),
     rerun: () => current.run &&

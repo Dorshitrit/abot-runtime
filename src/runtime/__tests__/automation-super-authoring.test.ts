@@ -6,6 +6,7 @@ import { AUTOMATION_AUTHORING_REFERENCE } from "../capabilities/automation-build
 import type { readAutomationAuthoringCatalogIndex } from "../capabilities/automations/authoring-catalog.js";
 import type { readAutomationAuthoringPreparation } from "../capabilities/automations/authoring-preparation.js";
 import { completeAuthoringPlan, createCompleteAuthoringFixture } from "./support/automation-complete-authoring-fixture.js";
+import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 
 type Fixture = Awaited<ReturnType<typeof createCompleteAuthoringFixture>>;
 type Catalog = Awaited<ReturnType<typeof readAutomationAuthoringCatalogIndex>>;
@@ -50,7 +51,7 @@ it("carries scoped catalog evidence through the full SUPER draft-authoring and r
   let modelProfileId: string | undefined;
   const savedResult = () => `${workerResult} Automation ${created!.automationId}; revision ${created!.revision}.`;
   const decision = (value: unknown) => ({ text: JSON.stringify({ decision: value }), meta: {} });
-  fixture.invoke.mockImplementation(async (input) => {
+  fixture.invoke.mockImplementation(withSupervisorPreparation(async (input) => {
     const messages = input.messages as readonly ChatMessage[];
     const format = input.format;
     if (typeof format === "object" && format?.name === "supervisor_working_directory")
@@ -166,7 +167,7 @@ it("carries scoped catalog evidence through the full SUPER draft-authoring and r
     }
     expect(input.modelStep).toBe("supervisor.response");
     return { text: answer, meta: {} };
-  });
+  }));
 
   const events: Record<string, unknown>[] = [];
   await fixture.application.requests.handle({ send(value: string) { events.push(JSON.parse(value)); } } as unknown as WebSocket, {

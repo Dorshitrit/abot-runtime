@@ -12,6 +12,7 @@ import {
   type ScheduledModelInput,
 } from "./support/scheduler-runtime-fixture.js";
 import { directRespondText } from "./support/supervisor-direct-respond.js";
+import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 
 type Fixture = Awaited<ReturnType<typeof createSchedulerRuntimeFixture>>;
 type Studio = NonNullable<Fixture["application"]["services"]["automations"]>;
@@ -99,7 +100,7 @@ function assignmentFrom(input: ScheduledModelInput): {
 
 function scriptModel(fixture: Fixture) {
   const observed: { step: string; inputs: Record<string, unknown>; content: string }[] = [];
-  fixture.invoke.mockImplementation(async (input) => {
+  fixture.invoke.mockImplementation(withSupervisorPreparation(async (input) => {
     const assignment = assignmentFrom(input);
     const content = JSON.stringify(scheduledModelMessages(input));
     observed.push({ step: String(input.modelStep), inputs: assignment.inputs, content });
@@ -115,7 +116,7 @@ function scriptModel(fixture: Fixture) {
     if (input.modelStep === "supervisor.response" || input.modelStep === "execution.response")
       return { text: response, meta: {} };
     throw new Error(`unexpected_model_step:${input.modelStep}`);
-  });
+  }));
   return observed;
 }
 

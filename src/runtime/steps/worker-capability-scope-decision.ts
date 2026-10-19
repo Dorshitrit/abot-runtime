@@ -50,7 +50,12 @@ export function parseWorkerCapabilityScopeDecision(
   contract: WorkerCapabilityScopeDecisionContract,
 ): RoleCallWorkerCapabilityScope | undefined {
   if (!contract.required) return undefined;
-  const parsed = parseRoleCallWorkerCapabilityScope(input);
+  if (!hasWorkerCapabilityGroupList(input)) return undefined;
+  // Normalize model selections; canonical scopes remain strictly unique.
+  const parsed = parseRoleCallWorkerCapabilityScope({
+    ...input,
+    catalogGroupIds: [...new Set(input.catalogGroupIds)],
+  });
   if (
     !parsed ||
     parsed.catalogGroupIds.length > contract.catalogGroupIds.length ||
@@ -61,4 +66,16 @@ export function parseWorkerCapabilityScopeDecision(
     return undefined;
   }
   return parsed;
+}
+
+function hasWorkerCapabilityGroupList(
+  input: unknown,
+): input is Record<string, unknown> & { catalogGroupIds: unknown[] } {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    return false;
+  }
+  return (
+    Object.hasOwn(input, "catalogGroupIds") &&
+    Array.isArray((input as Record<string, unknown>).catalogGroupIds)
+  );
 }

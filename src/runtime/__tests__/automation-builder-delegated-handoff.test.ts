@@ -8,6 +8,7 @@ import { createAutomationBuilderToolModule } from "../capabilities/automation-bu
 import { AUTOMATION_BUILDER_PAYLOAD_FORMAT } from "../capabilities/automation-builder/payload-schema.js";
 import { readInvalidOutputCapsules } from "./support/invalid-output-request.js";
 import { createSchedulerRuntimeFixture, type ScheduledModelInput } from "./support/scheduler-runtime-fixture.js";
+import { supervisorFormatName, withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 
 type Fixture = Awaited<ReturnType<typeof createSchedulerRuntimeFixture>>;
 type Receipt = { automationId: string; revision: number; aliases: Record<string, string> };
@@ -147,7 +148,7 @@ it("preserves the complete delegated role chain around one schema-bound draft cr
   ];
   let next = 0;
   let modelAssertion: unknown;
-  fixture.invoke.mockImplementation(async (input) => {
+  fixture.invoke.mockImplementation(withSupervisorPreparation(async (input) => {
     try {
       const entry = script[next++];
       expect(entry, `unexpected_model_step:${input.modelStep}`).toBeDefined();
@@ -155,7 +156,7 @@ it("preserves the complete delegated role chain around one schema-bound draft cr
       const text = typeof entry!.output === "string" ? entry!.output : await entry!.output(input);
       return { text, meta: {} };
     } catch (error) { modelAssertion ??= error; throw error; }
-  });
+  }));
   const events: Record<string, unknown>[] = [];
   await fixture.application.requests.handle({ send(value: string) { events.push(JSON.parse(value)); } } as unknown as WebSocket, {
     type: "run_request", requestId: "delegated-builder-handoff", sessionId: "session", text: prompt,
@@ -165,7 +166,11 @@ it("preserves the complete delegated role chain around one schema-bound draft cr
   expect(events.filter(({ type }) => type === "failed")).toEqual([]);
   expect(events).toContainEqual(expect.objectContaining({ type: "completed", output: finalAnswer }));
   expect(next).toBe(script.length);
-  expect(fixture.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual(script.map(({ step }) => step));
+  expect(fixture.invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
+    "supervisor_presentation", "supervisor_decision", "supervisor_working_directory",
+    "planner.decision", "worker.decision", "tool_payload.raw", "worker.decision", "worker.result",
+    "planner.decision", "supervisor_decision", "reviewer.decision", "supervisor_decision", "supervisor.response",
+  ]);
   expect(execute).toHaveBeenCalledOnce();
   expect(execute.mock.calls[0]![0]).toMatchObject({ tool: "automation_builder", params: {
     action: "create_automation_draft", title: "Delegated draft",

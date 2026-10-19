@@ -89,6 +89,7 @@ export async function runWorkerResultAuthor(
             callId: options.source.callId,
           });
     const referenceMessages = Object.freeze([
+      ...(options.source.coreSkillReadMessages ?? []),
       ...(requestSource ? [buildRequestSourceMessage(requestSource)] : []),
       ...(options.source.requestToolResultsContextMessage
         ? [options.source.requestToolResultsContextMessage]
@@ -240,6 +241,12 @@ function validateSource(
       source.assignmentProvenance !== undefined,
     ) ||
     !Array.isArray(source.dependencyResults) ||
+    (source.coreSkillReadMessages !== undefined &&
+      (!Array.isArray(source.coreSkillReadMessages) ||
+        !Object.isFrozen(source.coreSkillReadMessages) ||
+        source.coreSkillReadMessages.some((message) =>
+          !message || !Object.isFrozen(message) || message.role !== "user" ||
+          message.content.trim().length === 0))) ||
     !Object.isFrozen(source.requestToolResults) ||
     !Number.isSafeInteger(source.requestToolResults.sourceRevision) ||
     source.requestToolResults.sourceRevision < 0 ||

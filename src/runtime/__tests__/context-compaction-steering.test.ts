@@ -210,20 +210,88 @@ describe("admission steering freshness", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  test("propagates the compactor timeout without regenerating or resetting a stage", async () => {
+  test.each([
+    ["session_history", "session_memory_compaction_timeout"],
+    ["active_request", "context_compaction_timeout"],
+  ] as const)(
+    "reports a %s compactor timeout without regenerating or committing",
+    async (scope, issueCode) => {
+      const harness = createAdmissionFixture();
+      const history = createAdmissionStage("session_history", "history");
+      const active = createAdmissionStage("active_request", "active");
+      const stage = scope === "session_history" ? history : active;
+      const timeout = new ModelStepTimeoutError(issueCode, "context.compact");
+      stage.prepare.mockRejectedValue(timeout);
+      await expect(
+        harness.run(createAdmissionController([history, active])),
+      ).rejects.toBe(timeout);
+      expect(history.prepare).toHaveBeenCalledOnce();
+      expect(active.prepare).toHaveBeenCalledTimes(
+        scope === "active_request" ? 1 : 0,
+      );
+      expect(history.commit).not.toHaveBeenCalled();
+      expect(active.commit).not.toHaveBeenCalled();
+      expect(harness.invoke).not.toHaveBeenCalled();
+      expect(
+        harness.events.filter(([name]) => name === "context.compaction.failed"),
+      ).toEqual([
+        [
+          "context.compaction.failed",
+          expect.objectContaining({
+            reason: "context_compaction_timeout",
+            issueCode,
+          }),
+        ],
+      ]);
+    },
+  );
+
+  test.each([
+    { label: "an ordinary error", error: new Error("context_compaction_timeout") },
+    {
+      label: "another model step's timeout",
+      error: new ModelStepTimeoutError(
+        "context_compaction_timeout",
+        "execution.decision",
+      ),
+    },
+  ])("keeps $label outside compactor timeout classification", async ({ error }) => {
     const harness = createAdmissionFixture();
-    const history = createAdmissionStage("session_history", "history");
     const active = createAdmissionStage("active_request", "active");
-    const timeout = new ModelStepTimeoutError(
-      "compactor_timeout",
-      "context.compact",
-    );
-    history.prepare.mockRejectedValue(timeout);
+    active.prepare.mockRejectedValue(error);
     await expect(
-      harness.run(createAdmissionController([history, active])),
-    ).rejects.toBe(timeout);
-    expect(history.prepare).toHaveBeenCalledOnce();
-    expect(active.prepare).not.toHaveBeenCalled();
+      harness.run(createAdmissionController([active])),
+    ).rejects.toBe(error);
+    expect(harness.events).toContainEqual([
+      "context.compaction.failed",
+      expect.objectContaining({
+        reason: "semantic_checkpoint_rejected",
+        issueCode: "context_compaction_timeout",
+      }),
+    ]);
+    expect(active.commit).not.toHaveBeenCalled();
+    expect(harness.invoke).not.toHaveBeenCalled();
+  });
+
+  test("keeps parent cancellation primary over a concurrent compactor timeout", async () => {
+    const harness = createAdmissionFixture();
+    const active = createAdmissionStage("active_request", "active");
+    const cancellation = new Error("request_cancelled");
+    active.prepare.mockImplementation(async () => {
+      harness.abort.abort(cancellation);
+      throw new ModelStepTimeoutError("context_compaction_timeout", "context.compact");
+    });
+    await expect(
+      harness.run(createAdmissionController([active])),
+    ).rejects.toBe(cancellation);
+    expect(harness.events).toContainEqual([
+      "context.compaction.failed",
+      expect.objectContaining({
+        reason: "request_aborted",
+        issueCode: "request_cancelled",
+      }),
+    ]);
+    expect(active.commit).not.toHaveBeenCalled();
     expect(harness.invoke).not.toHaveBeenCalled();
   });
 });

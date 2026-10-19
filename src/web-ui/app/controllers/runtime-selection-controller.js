@@ -157,7 +157,13 @@ export function createRuntimeSelectionController({
     renderAgentMode();
   }
 
+  function hasModelCatalogFromAnotherEnvironment() {
+    if (modelCatalogEnvironmentId === null) return false;
+    return modelCatalogEnvironmentId !== selectedEnvironmentId();
+  }
+
   function rememberModelSelection() {
+    if (hasModelCatalogFromAnotherEnvironment()) return;
     const profileId = textOf(dom.modelSelect.value);
     if (!profileId) return;
     state.lastModelByEnvironment[selectedEnvironmentId()] = profileId;
@@ -176,7 +182,7 @@ export function createRuntimeSelectionController({
 
   const { renderAgentMode, loadAgentMode, setAgentMode } = createReasoningModeController({
     state, dom, client, selectedEnvironmentId,
-    selectedModelProfile: () => modelCatalogEnvironmentId !== null && modelCatalogEnvironmentId !== selectedEnvironmentId() ? null : selectedModelProfile(),
+    selectedModelProfile: () => hasModelCatalogFromAnotherEnvironment() ? null : selectedModelProfile(),
     reloadModels: onReasoningConfigurationApplied || loadModels, recordControlEvent,
   });
 

@@ -1,3 +1,4 @@
+import { SUPER_SKILL_GUIDANCE_INSTRUCTION } from "../supervisor-skill-instructions.js";
 import type { RawModelRepairHintInput } from "../../model/invoke-raw-step.js";
 import { CONVERSATION_MEMORY_AUTHORING_INSTRUCTIONS } from "../../long-term-memory/conversation-authoring/prompt.js";
 
@@ -39,6 +40,7 @@ export function buildSupervisorResponseInstructions(params: {
           "Use each capsule result only for its exact reported outcome, observed effect, and summary. It does not by itself prove completion of the delegated work or of the user request.",
         ]
       : []),
+    SUPER_SKILL_GUIDANCE_INSTRUCTION,
     "Do not mention internal role names, call identifiers, runtime contracts, or orchestration unless the user explicitly asks about them.",
   ].join("\n");
 }

@@ -3,6 +3,7 @@ import type { RegisteredToolNormalInvocation } from "../../capabilities/tool-typ
 import type { ToolRegistry } from "../ports.js";
 import { createSchedulerRuntimeFixture } from "./support/scheduler-runtime-fixture.js";
 import { directRespondText } from "./support/supervisor-direct-respond.js";
+import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 
 const fixtures: Awaited<ReturnType<typeof createSchedulerRuntimeFixture>>[] = [];
 
@@ -200,7 +201,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
   async (policy) => {
     const fixture = await createSchedulerRuntimeFixture(policy);
     fixtures.push(fixture);
-    fixture.invoke.mockImplementation(async (input) => {
+    fixture.invoke.mockImplementation(withSupervisorPreparation(async (input) => {
       if (input.modelStep === "execution.decision") return {
         text: JSON.stringify({ decision: {
           action: "respond", acknowledgement: "I have the result.",
@@ -212,7 +213,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       if (input.modelStep === "execution.response" || input.modelStep === "supervisor.response")
         return { text: '{"label":"done"}', meta: {} };
       throw new Error(`unexpected_step:${input.modelStep}`);
-    });
+    }));
     const studio = fixture.application.services.automations!;
     const created = await studio.create("Structured report");
     const objective = await studio.updateDraft(created.automationId, created.revision, {
@@ -239,6 +240,6 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     const response = fixture.invoke.mock.calls.find(([input]) =>
       input.modelStep === "execution.response" || input.modelStep === "supervisor.response")?.[0];
     expect(response?.format).toMatchObject({ type: "json_schema", name: "automation_step_result" });
-    expect(fixture.invoke).toHaveBeenCalledTimes(2);
+    expect(fixture.invoke).toHaveBeenCalledTimes(policy === "supervisor-worker-v1" ? 3 : 2);
   },
 );

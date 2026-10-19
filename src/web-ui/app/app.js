@@ -2,6 +2,7 @@ import { createComposerFeature } from "./controllers/composer-feature.js";
 import { isWorkspaceChange } from "./lib/workspace-change.js";
 import { prepareEnvironmentWorkspaceChanges } from "./controllers/environment-workspace-preparation.js";
 import { createAppState } from "./app-state.js";
+import { createSkillsFeature } from "./skills-feature.js";
 import { createProjectsFeature } from "./projects-feature.js";
 import { createComposerSurfaceController } from "./controllers/composer-surface-controller.js";
 import { startWebApp } from "./app-bootstrap.js";
@@ -66,6 +67,7 @@ let runtimeSelection;
 let projectsFeature;
 let workspaceRoutes;
 let notifications;
+let skills;
 const operationsController = createOperationsController({
   onSummaryChange: () => configWorkspace?.syncSummary(),
   dom,
@@ -102,6 +104,7 @@ const shell = createWorkspaceShell({
   dom,
   onNavigationChange: () => { configWorkspace?.syncSummary(); workspaceRoutes?.sync(); },
   isWorkspaceAvailable: (destination) => {
+    if (skills?.isWorkspaceAvailable(destination) === false) return false;
     if (!notifications?.isWorkspaceAvailable(destination)) return false;
     return schedulesFeature?.isWorkspaceAvailable(destination) ?? false;
   },
@@ -130,6 +133,7 @@ const shell = createWorkspaceShell({
     return configWorkspace.prepareDiscardChanges("leave configuration");
   },
 });
+skills = createSkillsFeature({ dom, client: runtimeClient, shell, getEnvironmentId: selectedEnvironmentId });
 notifications = createNotificationsFeature({
   dom, state, client: runtimeClient, shell, getEnvironmentId: selectedEnvironmentId, send: sendRealtime,
 });
@@ -440,7 +444,7 @@ const appEventBindings = createAppEventBindings({
     subscribeSession,
     renderMessages,
     renderAgentPicker,
-    beforeEnvironmentChange: () => prepareEnvironmentWorkspaceChanges(schedulesFeature, configWorkspace),
+    beforeEnvironmentChange: () => prepareEnvironmentWorkspaceChanges(schedulesFeature, configWorkspace, skills),
     saveEnvironmentId,
     loadModels,
     loadAgentMode,
@@ -662,6 +666,7 @@ void startWebApp({
   dashboard: dashboardFeature,
   learning: passiveLearning,
   notifications,
+  skills,
   schedules: schedulesFeature,
   projects: projectsFeature,
   selection: runtimeSelection,

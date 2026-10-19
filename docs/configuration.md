@@ -610,6 +610,14 @@ The common slots and their first tuning targets are:
 | Context compaction              | `context.compact`                                                                                                                                                     | Structured format and preservation of facts that later steps still require; physical capacity remains profile-owned.                                                                    |
 | Literal tool payloads           | `toolPayload.raw`                                                                                                                                                     | Literal-payload instructions and any intentional provider-native output controls. Verify the produced payload or artifact directly, not the model's description of it.                  |
 
+New OpenAI profiles created through CLI setup or Web onboarding set
+`calibration["context.compact"].timeoutMs` to `300000` (five minutes). This
+profile override takes precedence over the shared 180-second compaction
+default; other steps retain their own timeouts. An explicit template timeout
+is preserved, and existing profiles are not migrated automatically. To apply
+the same setting to an existing GPT profile, add `"timeoutMs": 300000` to its
+`calibration["context.compact"]` object. This does not change reasoning effort.
+
 `timeoutMs` addresses provider latency only; raising it does not improve model
 reasoning. Top-level `contextWindowTokens` declares the concrete model
 profile's physical capacity. Calibration context fields can tune projection

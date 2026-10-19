@@ -280,6 +280,10 @@ export interface SchedulerListFilter {
 }
 export interface SchedulerRunListQuery {
   cursor?: string;
+  status?: SchedulerStoredRun["status"];
+  /** Scheduled instant range: inclusive from, exclusive to, with UTC offsets. */
+  from?: string;
+  to?: string;
   /** Bounded newest-first results; 101 allows a 100-record page plus lookahead. */
   limit: number;
 }

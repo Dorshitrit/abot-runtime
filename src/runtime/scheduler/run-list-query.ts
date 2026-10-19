@@ -1,7 +1,8 @@
-import type { SchedulerRun, SchedulerRunListQuery } from "./contracts.js";
+import type { SchedulerStoredRun, SchedulerRunListQuery } from "./contracts.js";
+import { createSchedulerRunFilter } from "./run-list-filter.js";
 
 /** Omitted queries retain the public service's complete, chronological result. */
-type RunListIdentity = Pick<SchedulerRun, "id" | "jobId" | "scheduledAt">;
+type RunListIdentity = Pick<SchedulerStoredRun, "id" | "jobId" | "scheduledAt" | "status">;
 export function querySchedulerRuns<T extends RunListIdentity>(
   runs: readonly T[],
   jobId: string | undefined,
@@ -12,9 +13,11 @@ export function querySchedulerRuns<T extends RunListIdentity>(
   );
   if (query === undefined) return scoped;
   const limit = requireRunPageLimit(query?.limit);
+  const matchesFilter = createSchedulerRunFilter(query);
   const ordered = scoped.sort(compareNewestRuns);
   const offset = runCursorOffset(ordered, query.cursor);
-  return ordered.slice(offset, offset + limit);
+  // Resolve the cursor before filtering: its status may change between pages.
+  return ordered.slice(offset).filter(matchesFilter).slice(0, limit);
 }
 
 function requireRunPageLimit(limit: unknown): number {

@@ -1,0 +1,34 @@
+.skills-workspace-panel {
+  --config-surface: var(--panel);
+  --config-control: var(--panel-raised);
+  --config-control-hover: var(--accent-soft);
+  --config-line: var(--line);
+  --config-line-strong: var(--line-strong);
+  --config-copy: var(--text);
+  --config-muted: var(--muted);
+  --config-faint: var(--muted-2);
+}
+/* Buttons reuse config-dashboard, config-category-tab and config-model-button. */
+.skills-workspace-content { display: block; width: min(var(--workspace-content-width), 100%); min-width: 0; border: 0; border-radius: 0; overflow: visible; background: transparent; }
+.skills-toolbar, .skills-toolbar-actions, .skills-filters, .skills-editor-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.skills-toolbar { justify-content: space-between; }
+.skills-intro, .skills-description, .skills-empty, .skills-id, .skills-archived-note { color: var(--muted); font-size: var(--font-size-sm); }
+.skills-intro { margin: 14px 0 22px; }
+.skills-layout { display: grid; grid-template-columns: minmax(190px, 30%) minmax(0, 1fr); gap: 24px; }
+.skills-list { display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 0; }
+.skills-list-item { display: flex; flex-direction: column; gap: 7px; text-align: start; overflow-wrap: anywhere; }
+.skills-list-item strong, .skills-list-item span { width: 100%; }
+.skills-list-item span { white-space: normal; overflow: visible; color: var(--muted); font-size: var(--font-size-sm); }
+.skills-detail { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 20px; background: var(--panel); }
+.skills-detail h3 { margin: 0 0 8px; overflow-wrap: anywhere; }
+.skills-description { overflow-wrap: anywhere; white-space: pre-wrap; }
+.skills-id { overflow-wrap: anywhere; }
+.skills-content-label { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; font-size: var(--font-size-sm); }
+.skills-content-label textarea { box-sizing: border-box; width: 100%; min-height: 300px; resize: vertical; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--control-bg); color: var(--text); font: inherit; line-height: 1.6; }
+.skills-editor-actions { margin-top: 14px; }
+.skills-feedback { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere; }
+.skills-feedback[role="alert"] { color: var(--danger, var(--text)); }
+@media (max-width: 760px) { .skills-layout { grid-template-columns: 1fr; } .skills-detail { padding: 14px; } .skills-content-label textarea { min-height: 250px; } }
+.skills-creation-label { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; font-size: var(--font-size-sm); }
+.skills-creation-label :is(input, textarea) { box-sizing: border-box; padding: 8px 10px; font: inherit; }
+.skills-creation-label textarea { min-height: 76px; resize: vertical; line-height: 1.5; }

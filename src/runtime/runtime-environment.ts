@@ -1,3 +1,5 @@
+import { canManageKnowledgeSkills } from "./knowledge-skills/personal-contracts.js";
+import { createRuntimeKnowledgeSkillStore } from "./knowledge-skills/personal-store.js";
 import { createRuntimeProjectService } from "./projects/service.js";
 import { traceDebug } from "./observability/debug-logger.js";
 import { createRuntimePassiveLearning } from "./adapters/passive-learning-runtime.js";
@@ -108,6 +110,9 @@ export function createRuntimeEnvironment(
     if (!automations) throw new Error("automation_service_not_ready");
     return automations;
   }
+  const usesDefaultToolRegistry = overrides.tools === undefined;
+  const knowledgeSkillStore = overrides.knowledgeSkillStore ??
+    (usesDefaultToolRegistry ? createRuntimeKnowledgeSkillStore(config.paths.runtimeDir) : undefined);
   const tools =
     overrides.tools ??
     createDefaultToolRegistry(config, {
@@ -116,7 +121,7 @@ export function createRuntimeEnvironment(
     }, {
       getService: requireAutomations,
       ready: scheduling.ensureStarted,
-    });
+    }, knowledgeSkillStore);
   const models = overrides.models ?? createDefaultModelGatewayClient(config);
   const automationPersistence = createAutomationPersistence(scheduling.store);
   const automationResults = createAutomationResultStore(config.paths.runtimeDir);
@@ -266,6 +271,9 @@ export function createRuntimeEnvironment(
     projects: createRuntimeProjectService(config, sessionLifecycle.store),
     attachments,
     tools,
+    knowledgeSkillStore,
+    ...(knowledgeSkillStore && canManageKnowledgeSkills(knowledgeSkillStore)
+      ? { personalSkills: knowledgeSkillStore.personalSkills } : {}),
     models,
     events: overrides.events ?? createDefaultEventSinkFactory(config),
     sessionMemoryCompactor:
@@ -348,10 +356,14 @@ export function recomposeRuntimeEnvironment(
     resolved.sessions === bound?.sessions
       ? (previous?.sessions ?? resolved.sessions)
       : resolved.sessions;
+  const preservesSkillStoreBinding =
+    resolved.tools === undefined || resolved.tools === bound?.tools;
   return createRuntimeEnvironment(config, {
     ...resolved,
     sessions,
     tools,
+    knowledgeSkillStore: resolved.knowledgeSkillStore ??
+      (preservesSkillStoreBinding ? bound?.knowledgeSkillStore : undefined),
     scheduledRequestOptions: previous?.scheduledRequestOptions,
   }).services;
 }

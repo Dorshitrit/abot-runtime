@@ -3,6 +3,7 @@ import {
   type ModelOutputFailure,
 } from "../../../model/invalid-output-failure.js";
 import { ModelOutputIncompleteError } from "../../../model/provider-completion.js";
+import { ModelProviderFailure } from "../../../model/provider-failure.js";
 import { ModelStepTimeoutError } from "../../../steps/model-step-timeout.js";
 import type { RuntimeRoleId } from "../../roles.js";
 import { traceDebug } from "../../../observability/debug-logger.js";
@@ -12,7 +13,7 @@ import type {
   RoleExecutorInput,
 } from "../contracts.js";
 
-/** Contains recognized model-output failure or step timeout in the current call. */
+/** Contains recognized model failures and step timeouts in the current call. */
 export async function executeRoleWithModelOutputFailure<TContext, TValue>(
   executor: RoleExecutor<TContext, TValue>,
   input: RoleExecutorInput<TContext>,
@@ -46,7 +47,10 @@ export async function executeRoleWithModelOutputFailure<TContext, TValue>(
 function resolveChildModelOutputFailure(
   error: unknown,
 ): ModelOutputFailure | undefined {
-  if (error instanceof ModelStepTimeoutError) {
+  if (
+    error instanceof ModelProviderFailure ||
+    error instanceof ModelStepTimeoutError
+  ) {
     return Object.freeze({
       code: error.code,
       modelStep: error.modelStep,

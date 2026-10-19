@@ -1,3 +1,4 @@
+import { CORE_TOOL_CONTRACTS } from "../core-tool-contracts.js";
 import { Buffer } from "node:buffer";
 import { AUTOMATION_TOOL_EVENT_PRESENTATION } from "../automations/event-presentation.js";
 import { automationDraftPreparationReceipt } from "../automations/draft-operation-refs.js";
@@ -6,7 +7,6 @@ import type { AutomationDraftPlanAcceptance } from "../../automations/draft-mana
 import type { ToolModuleDeclaration } from "../../../capabilities/tool-types.js";
 import { AUTOMATION_DRAFT_BATCH_LIMITS, AutomationDraftBatchError, AutomationDraftBatchGraphError } from "../../automations/draft-batch.js";
 import type { AutomationService } from "../../automations/service.js";
-import { automationBuilderToolContract } from "./tool-contract.js";
 import { AUTOMATION_BUILDER_PAYLOAD_FORMAT } from "./payload-schema.js";
 import { compileAutomationCreationRecipe, hasAutomationCreationRecipe } from "./creation-recipe.js";
 
@@ -40,7 +40,7 @@ function requireAcceptedDraftReceipt(output: ReturnType<typeof prepareAutomation
 async function execute(service: AutomationService, params: Record<string, unknown>) {
   const action = requiredText(params, "action");
   const plan = parsePlanPayload(params);
-  const operation = automationBuilderToolContract.operations.find(({ operationId }) => operationId === action);
+  const operation = CORE_TOOL_CONTRACTS.automationBuilder.normalInvocation.operations.find(({ operationId }) => operationId === action);
   if (!operation) throw new Error("automation_action_unknown");
   let acceptedOutput: ReturnType<typeof prepareAutomationDraftReceipt> | undefined;
   const accept: AutomationDraftPlanAcceptance = ({ draft, aliases }) => {
@@ -76,7 +76,7 @@ export function createAutomationBuilderToolModule(
 ): ToolModuleDeclaration {
   return {
     definition: {
-      name: "automation_builder",
+      name: CORE_TOOL_CONTRACTS.automationBuilder.name,
       eventPresentation: {
         ...AUTOMATION_TOOL_EVENT_PRESENTATION,
         metadata: {
@@ -91,7 +91,7 @@ export function createAutomationBuilderToolModule(
       payloadChannelSpec: { params: ["planJson"], outputParam: "planJson", generationMode: "raw_text",
         stages: [{ outputParam: "planJson", responseFormat: AUTOMATION_BUILDER_PAYLOAD_FORMAT }] },
     },
-    normalInvocation: automationBuilderToolContract,
+    normalInvocation: CORE_TOOL_CONTRACTS.automationBuilder.normalInvocation,
     async implementation(params, context) {
       try {
         await ready();

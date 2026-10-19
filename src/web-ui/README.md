@@ -160,11 +160,23 @@ and disclosures; selecting another step resets only that reader's scroll.
 Execution status is separate from the saved content's claims. The UI does not
 infer publication or file creation from model-authored JSON keys or text.
 
+Studio run history reads 50 metadata rows per page through the scheduler cursor.
+Status and inclusive local calendar-date filters apply on the server to the full
+history using `scheduledAt`, before the page limit. Scrolling near the list end
+loads the next page; Load more offers the same action for keyboard users. Newest
+reloads the first page with the current filters. Selecting a run reads its saved
+report separately and does not reset the history. While browsing older pages,
+background updates keep the selected report current without replacing the list;
+Newest refreshes that history snapshot. Run and Run again also reload the first
+page with the current filters before opening the created report. Failed page
+loads keep the existing rows and cursor for an explicit retry; a history refresh
+failure does not prevent opening the created report. Report retention policy is unchanged.
+
 ## Workspace addresses
 
-Home, Chat, Schedules, Notifications, Spark, Memory, Models, Plugins and System
+Home, Chat, Schedules, Notifications, Spark, Memory, Skills, Models, Plugins and System
 have browser addresses at `/home`, `/chat`, `/schedules`, `/notifications`,
-`/learning`, `/memory`, `/models`, `/plugins` and `/system`. Refresh restores the
+`/learning`, `/memory`, `/skills`, `/models`, `/plugins` and `/system`. Refresh restores the
 addressed workspace, and browser Back and Forward follow accepted navigation.
 `/` starts at Home. Legacy `/config` addresses map to the current workspace.
 
@@ -179,6 +191,27 @@ catalog and list. Workspace availability and the existing configuration,
 schedule-draft, and queue guards also apply to browser navigation. Declining a
 transition keeps the accepted view and address. An unavailable environment never
 redirects its conversation or Job identifier into another environment.
+
+## Personal Skills
+
+The local Runtime backend exposes `/skills` for personal Skills created with the
+model or entered manually with New Skill. Creation requires a name, short
+description and content; the Store generates the ID. The workspace has
+active/archive lists and loads the selected content on demand. Name, ID and description are read-only; only active content is editable.
+Archive removes a Skill from new model discovery and reads, while keeping it
+viewable and restorable here. Built-in Skills are excluded. Existing captured
+Skill evidence in conversations remains unchanged.
+
+GET `/web-api/runtime/skills` lists personal metadata; POST creates from
+`{name, description, content}`. `/:id` reads a document or
+PATCHes `{content, expectedRevision}`. POST `/:id/archive` and `/:id/restore`
+require `expectedRevision`. Writes use the existing same-origin JSON guard and
+return the saved document; stale revisions return a conflict without replacing
+the browser draft. All operations use the selected environment's Runtime owner
+and existing Store; the Web server does not open a second repository. Navigation
+and environment changes protect unsaved content, and late responses from an old
+environment cannot replace the current editor. Bridge mode hides this workspace.
+No renaming of saved Skills, deletion, import or export is added.
 
 ## Notifications
 

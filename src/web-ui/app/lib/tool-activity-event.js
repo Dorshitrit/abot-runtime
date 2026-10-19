@@ -2,6 +2,7 @@ import { getRecord, titleCaseEventValue } from "./event-presentation.js";
 import { projectConversationFileReference } from "./conversation-file-reference.js";
 import { computerInputFields } from "./tool-computer-activity-fields.js";
 import { automationActivityFields } from "./tool-automation-activity-fields.js";
+import { skillActivityFields } from "./tool-skill-activity-fields.js";
 import {
   processInputFields,
   processResultFields,
@@ -193,10 +194,11 @@ export function projectToolActivityEvent(message) {
   const params = getRecord(meta.params);
   const inputMeta = { ...meta, params };
   const fileReference = projectConversationFileReference(message);
-  const automation = automationActivityFields(meta, tool);
+  const skill = skillActivityFields(meta, tool, completed, message.ok);
+  const activity = skill ?? automationActivityFields(meta, tool);
   return {
     ...(fileReference ? { fileReference } : {}),
-    ...(automation?.activityTitle ? { activityTitle: automation.activityTitle } : {}),
+    ...(activity?.activityTitle ? { activityTitle: activity.activityTitle } : {}),
     name,
     tool,
     executionId: boundedText(message.executionId, 200).trim(),
@@ -206,7 +208,7 @@ export function projectToolActivityEvent(message) {
     beforeExternalExecution: message.stage === "before_external_execution",
     intent: boundedText(message.intent || meta.intent),
     target: boundedText(
-      automation?.target ||
+      activity?.target ||
         meta.source ||
         meta.displayTarget ||
         meta.path ||
@@ -215,10 +217,10 @@ export function projectToolActivityEvent(message) {
         meta.id ||
         meta.savedId,
     ),
-    sent: [...inputFields(inputMeta, completed, tool), ...(automation?.sent || [])],
+    sent: [...inputFields(inputMeta, completed, tool), ...(activity?.sent || [])],
     received: terminal ? resultFields(meta, tool, message.ok) : [],
-    preview: terminal ? boundedText(meta.outputPreview, 1_200) : "",
-    previewTruncated: terminal && hasClippedPreview(meta),
+    preview: terminal && !skill ? boundedText(meta.outputPreview, 1_200) : "",
+    previewTruncated: terminal && !skill && hasClippedPreview(meta),
     partial: terminal && hasPartialSource(meta),
     outcome: completedOutcome(meta),
     ok: typeof message.ok === "boolean" ? message.ok : null,

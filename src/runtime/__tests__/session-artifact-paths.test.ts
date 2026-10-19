@@ -68,6 +68,23 @@ describe("session artifact path context", () => {
     ]);
   });
 
+  test("allows Supervisor reference applicability without changing the default capsule", () => {
+    const params = {
+      targets: [".event_artifacts/news.txt"],
+      applicable: true,
+      fits: () => true,
+    };
+    const baseline = buildSessionArtifactPathsMessage(params)!;
+    const supervisor = buildSessionArtifactPathsMessage({
+      ...params,
+      applicability: "supervisor_objective_and_working_directory_reference_only",
+    })!;
+    expect(JSON.parse(supervisor.message.content)).toEqual({
+      ...JSON.parse(baseline.message.content),
+      applicability: "supervisor_objective_and_working_directory_reference_only",
+    });
+  });
+
   test("returns the deterministic longest fitting prefix with path-free counts", () => {
     const attemptedPrefixLengths: number[] = [];
     const projection = buildSessionArtifactPathsMessage({

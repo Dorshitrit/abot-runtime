@@ -9,6 +9,7 @@ import {
 import { reconsiderCapabilitySelection } from "./command-dispatch/capability-selection-transition.js";
 import { updateModelWorkPlan } from "./command-dispatch/work-plan-transition.js";
 import { beginMemoryRecall, settleMemoryRecall } from "./command-dispatch/memory-recall-transitions.js";
+import { recordSkillRead } from "./command-dispatch/skill-read-transition.js";
 import {
   establishWorkingDirectory,
   updateCapabilityScope,
@@ -35,6 +36,8 @@ export function dispatchRoleCallCommand(
   admittedHeadRevision?: number,
 ): RoleCallTransitionResult {
   switch (command.type) {
+    case "record_skill_read":
+      return recordSkillRead(state, command, policy);
     case "update_model_work_plan":
       return updateModelWorkPlan(state, command, policy);
     case "begin_memory_recall":

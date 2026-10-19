@@ -1,3 +1,4 @@
+import { SUPER_SKILL_GUIDANCE_INSTRUCTION, SUPER_SKILL_PAYLOAD_INSTRUCTION } from "../supervisor-skill-instructions.js";
 import {
   WORKER_CAPABILITY_AUTHORING_OBJECTIVE_MAX_LENGTH,
   WORKER_CAPABILITY_INTENT_MAX_LENGTH,
@@ -7,7 +8,6 @@ import {
   CAPABILITY_ANALYSIS_CONTROLS_INSTRUCTION,
   CAPABILITY_ANALYSIS_RESULT_INSTRUCTION,
   CAPABILITY_COMMAND_CONTROLS_INSTRUCTION,
-  CAPABILITY_PROGRAM_PREPARATION_INSTRUCTION,
 } from "../capability-execution-instructions.js";
 
 export const WORKER_COMPLETION_EVIDENCE_POLICY =
@@ -87,6 +87,7 @@ export function buildWorkerCapabilityExecutionInstructions(
     ...terminalActionInstructions,
     "Do not fabricate observations, effects, files, citations, or completion.",
     "Return exactly one JSON object matching the supplied schema and nothing else.",
+    SUPER_SKILL_GUIDANCE_INSTRUCTION,
   ].join("\n");
 }
 
@@ -105,6 +106,7 @@ export function buildWorkerResultInstructions(): string {
     "The role result is the semantic delta for the caller; runtime_request_tool_results_v1 remains the canonical detailed evidence lane and is supplied independently to later roles.",
     "Return the objective-specific findings, exact required facts, and supporting executionId or artifact references. Do not duplicate file bodies or tool transcripts merely to transfer evidence. Preserve explicitly requested inline deliverables and never claim an unproduced artifact exists.",
     "Return only non-empty raw result text. Do not wrap it in JSON, Markdown fences, a status envelope, or commentary about this authoring step.",
+    SUPER_SKILL_GUIDANCE_INSTRUCTION,
   ].join("\n");
 }
 
@@ -237,7 +239,6 @@ export function buildWorkerDecisionInstructions(
                 "Capability controls and operational parameters are execution details, not automatically missing user choices. Derive them from the assignment when doing so preserves its requested outcome, scope, and authority. Treat a control as a missing user choice only when different valid values would materially change one of those boundaries; otherwise select the bounded value needed to execute the objective.",
               ]
             : [
-                CAPABILITY_PROGRAM_PREPARATION_INSTRUCTION,
                 CAPABILITY_ANALYSIS_RESULT_INSTRUCTION,
                 "Choose invoke_capability only when one listed capability is necessary for the objective and its result is not already supplied. Select its exact capabilityId and state one short client-facing intent that tells the user what will happen next. The intent is presentation only: do not place sources, dependencies, controls, payload details, or execution instructions in it. When the schema requires authoringObjective, state the complete bounded content-authoring task for this payload; it is an internal immutable assignment and cannot change the capability, controls, target, or authority. When the schema requires selectionControls, choose exactly those identity-bearing controls together with the capability and intent; they become immutable. Do not produce any other capability controls during this selection decision; the runtime supplies only the remaining controls contract in the next step.",
                 "When two or more independent observations are already identifiable and all are needed, prefer invoke_capabilities so they run concurrently. Each intent is presentation only and never an execution binding. When an invocation schema requires authoringObjective, provide its complete bounded payload-authoring task independently for that invocation. The runtime compares complete materialized operations and coalesces only exact duplicates before execution. Never batch a mutation, mixed capability, or an observation whose target depends on another result.",
@@ -252,5 +253,7 @@ export function buildWorkerDecisionInstructions(
     "Do not fabricate observations, effects, files, citations, or completion.",
     "Do not address the end user, decide the caller's next action, create a plan, or review unrelated work.",
     "Return exactly one JSON object matching the supplied schema and nothing else.",
+    SUPER_SKILL_GUIDANCE_INSTRUCTION,
+    SUPER_SKILL_PAYLOAD_INSTRUCTION,
   ].join("\n");
 }

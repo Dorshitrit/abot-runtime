@@ -80,6 +80,79 @@ A persistence failure preserves cancellation and sets
 `details.stoppedResponsePersistenceFailed`; it does not claim that history was
 saved. Earlier cancelled requests without an assistant message are not migrated.
 
+## Knowledge Skill documents
+
+The core-owned `abot_skills` tool provides `list_skills` metadata,
+`read_skill` and `read_skills` independently of installed plugins. Multiple reads
+accept exact IDs or full case-sensitive names. IDs take precedence; a name shared
+by several Skills returns all matches. Reads return at most eight distinct documents
+and fail as a whole for an unknown reference or an exceeded limit. A single read
+returns one document, or a skills array when its name matches several. It uses the
+same Tool Registry, capability execution, permissions, tool events and result
+context as other tools. LIST/READ load internal guidance without per-action user
+approval in EA and SUPER, including ASK mode; explicit model-level Skills blocks
+still apply. The core-only read policy does not exempt other tools or Skill
+CREATE/UPDATE. An older request already waiting for approval retains its recorded
+approval through resume. Available Skills projects bounded metadata from the same
+Store; document bodies enter context only after an explicit read.
+
+The packaged read-only catalog contains ABot Studio, Computer Use, Skill Creator and Technical Work. The documents
+are packaged source content, not tool action-Skills or system instructions.
+They supply procedural reference under the current objective without granting
+capabilities, permissions or completion authority. Tool catalogs and selected
+operation guidance continue to own tool choice and execution contracts.
+
+EA invokes the tool directly through ordinary tool evidence and compaction.
+SUPER selects and reads relevant Skills in its existing discovery step against
+the same Store, without a Worker call. Each lookup records its result in the existing role ledger
+and uses the existing activation budget. Captured documents are passive context
+for SUPER and its Planner/Worker calls, including Worker payload authoring; they
+are not copied into objectives or system messages. The existing compactor and
+checkpoint restore validate these references against their captured ledger source.
+No separate cache, active-Skill registry or resume/compaction mechanism is added.
+SUPER reads initial guidance directly; Workers retain LIST/READ and captured
+Skill guidance, but cannot CREATE/UPDATE. The same write-ownership filter applies
+to the Worker catalogs shown to Planner and Supervisor.
+Unknown references fail explicitly. EA and Worker Skill operations use ordinary
+`tool.*` events; SUPER lookups use its existing runtime status events. Successful
+reads show canonical Skill names without document bodies.
+Personal `create_skill` and `update_skill` operations use ordinary mutating
+permissions and the existing RAW payload authoring channel, only on user request.
+In SUPER, routing selects a separate authoring step only for a requested save.
+That step selects metadata; core loads an exact personal edit target and revision,
+and RAW writes the complete Markdown from the supplied sources. The full edit
+target remains verbatim through compaction. Existing approval/resume executes the
+prepared body and controls without reauthoring or refreshing a stale revision.
+A settled write or no-save outcome goes directly to the final response; it does
+not return to discovery or delegate more work. EA keeps its existing write flow.
+Success events show the saved name and ID without the document body.
+Personal documents live in `paths.runtimeDir/skills/personal.json`, shared across
+sessions/models in that environment; dev/prod separation follows the configured
+runtime directories. Writes reuse the existing file lock and atomic replacement.
+Updates require the revision returned by READ, so stale edits cannot overwrite a
+newer document. System documents cannot be changed through these operations.
+An unreadable personal store omits optional discovery and produces an explicit
+tool failure; system reads remain available. Research Skills remain outside this stage.
+
+The Web UI manages personal Skills through the environment owner's
+`personalSkills` service and the existing local RPC. It creates personal documents
+with generated IDs, lists metadata, loads a selected document, edits content only,
+and archives/restores by expected revision.
+System documents are excluded and immutable; archived documents are view-only
+until restored. Archive state shares the same file and lock as model writes.
+New model LIST/READ calls exclude archived records, including reads by name; model
+updates cannot revive them. Previously captured tool/role evidence stays intact.
+The store reads schema v1 records as active without rewriting on read; the next
+mutation writes schema v2 with explicit archive state. Older runtimes reject v2
+rather than silently dropping archive state. No hard delete/import/sync UI or
+dedicated authoring model is added.
+
+Core tool names and operation contracts share `capabilities/core-tool-contracts.ts`.
+Runtime loading silently ignores an entire plugin that declares a reserved tool
+name or operation ID, before loading its entrypoint or action-Skills. Reserved
+operation IDs are derived from the same contracts used by native definitions.
+The installed package and saved plugin selection remain unchanged.
+
 ## Code Lifetimes and Composition
 
 `createRuntimeApplication(...)` is the primary composition root. It constructs
@@ -557,7 +630,12 @@ Call sites use the shared model-step registry rather than inferring behavior
 from step-name prefixes.
 
 `planner.decision` is the delegated Planner contract and retains its existing
-methodology and child-role behavior. `planner.graph` is the separate
+methodology and child-role behavior. Supervisor and delegated Planner model
+outputs normalize repeated Worker catalog group IDs to their first occurrence
+before strict scope validation. This preserves the selected set and order;
+unknown groups, invalid values and extra scope fields still fail validation.
+The canonical role-call scope remains strict, and no prompt instruction,
+repair attempt or model call is added. `planner.graph` is the separate
 Execution-Agent advisory contract: it receives only its bounded objective and
 returns a passive proposal or decline. It does not replace, extend, or mutate
 `planner.decision`.
@@ -583,6 +661,23 @@ projects those committed reports into the existing events. This adds no model
 turns. The statuses are model reports, not tool evidence or completion gates;
 Planner/Auditor returns and tool settlement never auto-complete their items.
 The delegated policy keeps its existing Worker-bound plan semantics.
+
+Direct child openings under the Supervisor root contract also project
+`role.delegated` after the canonical commit. A request-owned observer reads the
+committed caller, child identity, recipient role and objective; it never changes
+model context, selects a role, or makes a model call. The event is a historical
+delegation receipt with no runtime stage or phase. Execution Agent and nested
+Planner delegations are excluded. Existing event persistence supports live and
+replayed display; approval continuation restores the child without reopening it
+or re-emitting its delegation. Existing commit-observer failure semantics apply.
+
+A matching `role.returned` receipt projects a direct Planner's committed
+result back to its Supervisor caller. It reads the canonical result identity,
+outcome and complete summary after `child_returned`; failed results remain role
+outcomes, not request-terminal events. Existing event persistence supports
+live and restored Planner-card content, with independent return deduplication.
+Checkpoint restoration does not re-emit prior results. This observer adds no
+model context or calls and retains the existing observer failure boundary.
 
 Tool execution continues to use the existing `tool.*` lifecycle. A successful
 tool event establishes only that bounded capability outcome, not completion of

@@ -50,6 +50,7 @@ const reply = (decision: unknown) => ({
 
 test("C5/C8/C20: selected URLs survive batch Controls through kernel and adapters without evidence fields", async () => {
   const observed: string[] = [];
+  const sharedGuidance = "EA_BATCH_GUIDANCE_SENTINEL";
   const lookupExecute = vi.fn(async () => ({
     outcome: "succeeded" as const,
     observedEffect: "observation" as const,
@@ -72,6 +73,8 @@ test("C5/C8/C20: selected URLs survive batch Controls through kernel and adapter
     prompt:
       "Look up the two URLs, fetch the first then the second, and report.",
     workerCapabilityProvider: {
+      getExecutionGuidance: async (capabilityId) =>
+        capabilityId === fetch.capabilityId ? sharedGuidance : "",
       getDescriptors: () => [lookup, fetch],
       getAdapters: () => [
         { descriptor: lookup, execute: lookupExecute },
@@ -85,6 +88,13 @@ test("C5/C8/C20: selected URLs survive batch Controls through kernel and adapter
     if (input.modelStep === "execution.response")
       return { text: "Fetched both selected URLs.", meta: {} };
     if (input.modelStep === "capability.controls") {
+      const instructions = messages
+        .filter(({ role }) => role === "system")
+        .map(({ content }) => content)
+        .join("\n");
+      expect(instructions.split(sharedGuidance)).toHaveLength(2);
+      expect(instructions).toContain(`invocation_1 (${fetch.capabilityId})`);
+      expect(instructions).toContain(`invocation_2 (${fetch.capabilityId})`);
       const assignment = runtimeCapsule(
         messages,
         "runtime_execution_capability_refinement_v1",

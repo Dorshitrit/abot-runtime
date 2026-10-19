@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { createDefaultToolRegistry } from "../default-adapters.js";
 import { directRespondText } from "./support/supervisor-direct-respond.js";
+import { expectDirectDelegation } from "./support/supervisor-delegation-events.js";
+import { separateSupervisorRunnerModelPhases } from "./support/supervisor-runner-model-phases.js";
 import type {
   ModelGatewayClient,
   RuntimeConfig,
@@ -165,86 +167,9 @@ function createRequest(
   overrides: Partial<TestRequestSeed> = {},
 ): RequestExecutionScope {
   const scriptedInvoke = overrides.modelGatewayClient?.invoke ?? invoke;
-  const pendingWorkerResults: string[] = [];
-  const separatedInvoke: ModelGatewayClient["invoke"] = async (input) => {
-    if (
-      input.modelStep === SUPERVISOR_DECISION_MODEL_STEP &&
-      typeof input.format === "object" &&
-      input.format !== null &&
-      "name" in input.format &&
-      input.format.name === "supervisor_working_directory"
-    ) {
-      const frozenInvocation = (
-        input.messages as readonly Readonly<{ content: string }>[]
-      )
-        .flatMap((message) => {
-          try {
-            const parsed = JSON.parse(message.content) as Record<
-              string,
-              unknown
-            >;
-            return parsed.kind === "runtime_supervisor_frozen_invocation_v1"
-              ? [parsed]
-              : [];
-          } catch {
-            return [];
-          }
-        })
-        .at(-1);
-      if (
-        frozenInvocation?.roleId !== "planner" &&
-        frozenInvocation?.roleId !== "worker"
-      ) {
-        throw new Error("supervisor_working_directory_fixture_invalid");
-      }
-      return {
-        text: JSON.stringify({
-          workingDirectory:
-            frozenInvocation.roleId === "planner"
-              ? PLANNER_WORKING_DIRECTORY
-              : DIRECT_WORKER_WORKING_DIRECTORY,
-        }),
-        meta: {},
-      };
-    }
-    if (input.modelStep === WORKER_RESULT_MODEL_STEP) {
-      const result = pendingWorkerResults.shift();
-      if (result === undefined) {
-        throw new Error("worker_result_test_fixture_missing");
-      }
-      return { text: result, meta: {} };
-    }
-    const response = await scriptedInvoke(input);
-    if (input.modelStep !== WORKER_DECISION_MODEL_STEP) {
-      return response;
-    }
-    let decoded: unknown;
-    try {
-      decoded = JSON.parse(response.text) as unknown;
-    } catch {
-      return response;
-    }
-    const decision =
-      typeof decoded === "object" && decoded !== null && !Array.isArray(decoded)
-        ? (decoded as Record<string, unknown>).decision
-        : undefined;
-    if (
-      typeof decision !== "object" ||
-      decision === null ||
-      Array.isArray(decision) ||
-      (decision as Record<string, unknown>).action !== "return_result" ||
-      typeof (decision as Record<string, unknown>).result !== "string"
-    ) {
-      return response;
-    }
-    pendingWorkerResults.push(
-      (decision as Record<string, unknown>).result as string,
-    );
-    return {
-      ...response,
-      text: encodeDecision({ action: "return_result" }),
-    };
-  };
+  const separatedInvoke = separateSupervisorRunnerModelPhases(scriptedInvoke, {
+    planner: PLANNER_WORKING_DIRECTORY, worker: DIRECT_WORKER_WORKING_DIRECTORY,
+  });
   return createTestRequestExecutionScope({
     requestId: "supervisor-runner-request",
     sessionId: "supervisor-runner-session",
@@ -360,7 +285,7 @@ describe("Supervisor-root request runner slice", () => {
         };
       }
       return {
-        text: directRespondText(REQUEST_ACKNOWLEDGEMENT, "Supervisor ownership"),
+        text: directRespondText(),
         meta: {},
       };
     });
@@ -438,7 +363,7 @@ describe("Supervisor-root request runner slice", () => {
     expect(supervisorSystemPrompt).not.toContain("private_capability_identity");
     expect(request.onAcknowledgement).not.toHaveBeenCalled();
     expect(request.onSessionTitle).toHaveBeenCalledExactlyOnceWith(
-      "Supervisor ownership",
+      "Handle the request",
     );
     expect(request.onAnswerToken).toHaveBeenCalledExactlyOnceWith(
       "One Supervisor owns the request.",
@@ -667,13 +592,14 @@ describe("Supervisor-root request runner slice", () => {
     expect(gatewayInvoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
+      SUPERVISOR_DECISION_MODEL_STEP,
       PLANNER_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_RESPONSE_MODEL_STEP,
     ]);
 
-    const routingFormat = gatewayInvoke.mock.calls[0]![0].format;
-    const workingDirectoryFormat = gatewayInvoke.mock.calls[1]![0].format;
+    const routingFormat = gatewayInvoke.mock.calls[1]![0].format;
+    const workingDirectoryFormat = gatewayInvoke.mock.calls[2]![0].format;
     expect(routingFormat).toMatchObject({ name: "supervisor_decision" });
     expect(JSON.stringify(routingFormat)).not.toContain("workingDirectory");
     expect(workingDirectoryFormat).toMatchObject({
@@ -705,7 +631,7 @@ describe("Supervisor-root request runner slice", () => {
     ).toEqual(["workingDirectory"]);
 
     const frozenInvocation = (
-      gatewayInvoke.mock.calls[1]![0].messages as readonly Readonly<{
+      gatewayInvoke.mock.calls[2]![0].messages as readonly Readonly<{
         content: string;
       }>[]
     ).flatMap((message) => {
@@ -769,7 +695,7 @@ describe("Supervisor-root request runner slice", () => {
       throw new Error(`stale child model step invoked: ${input.modelStep}`);
     });
     const onSessionTitle = vi.fn(async (title: string) => {
-      expect(title).toBe("Stale project route");
+      expect(title).toBe("Handle the request");
       expect(
         requestSteering.append({
           steerId: "steer-during-title",
@@ -800,9 +726,10 @@ describe("Supervisor-root request runner slice", () => {
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
+      SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_RESPONSE_MODEL_STEP,
     ]);
-    expect(gatewayInvoke.mock.calls[1]![0].format).toMatchObject({
+    expect(gatewayInvoke.mock.calls[2]![0].format).toMatchObject({
       name: "supervisor_working_directory",
     });
     expect(
@@ -954,7 +881,7 @@ describe("Supervisor-root request runner slice", () => {
       REQUEST_ACKNOWLEDGEMENT,
     );
     expect(
-      onEvent.mock.calls.filter(([name]) => name !== "context.window.snapshot"),
+      expectDirectDelegation(onEvent.mock.calls, "planner", plannerObjective, plannerResult),
     ).toEqual([
       [
         "runtime.state",
@@ -1979,8 +1906,8 @@ describe("Supervisor-root request runner slice", () => {
         },
       }),
     );
-    const lifecycleEvents = onEvent.mock.calls.filter(
-      ([name]) => name !== "context.window.snapshot",
+    const lifecycleEvents = expectDirectDelegation(
+      onEvent.mock.calls, "worker", "Inspect the current system state and report it.",
     );
     expect(lifecycleEvents.map(([name]) => name)).toEqual([
       "runtime.state",
@@ -2264,9 +2191,7 @@ describe("Supervisor-root request runner slice", () => {
           },
         },
       });
-      const lifecycleEvents = onEvent.mock.calls.filter(
-        ([name]) => name !== "context.window.snapshot",
-      );
+      const lifecycleEvents = expectDirectDelegation(onEvent.mock.calls, "worker", objective);
       expect(lifecycleEvents.map(([name]) => name)).toEqual([
         "runtime.state",
         "tool.payload.started",

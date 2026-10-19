@@ -316,3 +316,22 @@ test("rejects invalidating another request's dependent checkpoint before effects
   expect(f.compacted).toEqual([]);
   expect(JSON.stringify(snapshot)).toBe(original);
 });
+
+
+test("resumes a pre-dedup snapshot without invalidation, repeated reads or repeated compaction", async () => {
+  const f = await createExecutionApprovalCompactionFixture(true);
+  const snapshot = f.snapshot(false);
+  const message = JSON.parse(snapshot.sources[0]!.content);
+  const result = JSON.parse(message.content).result;
+  expect(result.summary).toBe(APPROVAL_SOURCE_MARKER);
+  expect(result.adapterResult.result.output).toBe(APPROVAL_SOURCE_MARKER);
+  const before = JSON.stringify(snapshot);
+  expect(f.restore(snapshot).snapshot!()).toEqual(snapshot);
+  const { resumed, store } = await f.resume(snapshot);
+  expect(resumed.kind).toBe("completed");
+  expect(f.observed).toHaveBeenCalledOnce();
+  expect(f.performed).toHaveBeenCalledOnce();
+  expect(f.compacted).toEqual([]);
+  expect(store.snapshot!()).toEqual(snapshot);
+  expect(JSON.stringify(snapshot)).toBe(before);
+});

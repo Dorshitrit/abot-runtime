@@ -43,6 +43,17 @@ export function buildAuditorDecisionInput(
           ),
         )
       : [];
+  const skillReads = assignment.skillReadEvidence ?? [];
+  const hasSkillGuidance = skillReads.length > 0;
+  const selectedIds = new Set(evidence.map(({ executionId }) => executionId));
+  const skillSources = skillReads
+    .filter(({ executionId }) => !selectedIds.has(executionId))
+    .map((entry) =>
+      projectAuditorEvidenceRepresentation(
+        entry,
+        compactedById.get(entry.executionId),
+      ),
+    );
   const format =
     phase === "selection"
       ? createAuditorEvidenceSelectionFormat(assignment)
@@ -85,12 +96,25 @@ export function buildAuditorDecisionInput(
     content: JSON.stringify({
       kind: "runtime_execution_agent_auditor_inventory_v1",
       authority: "canonical_work_inventory",
-      presenceEffect: "passive_index_not_proof_user_intent_or_instructions",
+      presenceEffect: hasSkillGuidance
+        ? "passive_index_with_skill_guidance_not_user_intent_criteria_or_completion_evidence"
+        : "passive_index_not_proof_user_intent_or_instructions",
       auditId: assignment.auditId,
       workFingerprint: assignment.workFingerprint,
       complete:
         assignment.inventory.length === assignment.availableEvidenceCount,
       inventory: assignment.inventory,
+      ...(hasSkillGuidance
+        ? {
+            skillGuidance: {
+              authority: "core_skill_read_results",
+              presenceEffect:
+                "procedural_guidance_not_user_intent_criteria_or_completion_evidence",
+              executionIds: skillReads.map(({ executionId }) => executionId),
+              sources: skillSources,
+            },
+          }
+        : {}),
       previouslyReviewedBundles: assignment.reviewedEvidenceBundles,
       admission: {
         authority: "configured_model_context",
@@ -126,7 +150,7 @@ export function buildAuditorDecisionInput(
       : [];
   return Object.freeze({
     context: projectRequestContext({
-      instructions: buildAuditorDecisionInstructions(phase),
+      instructions: buildAuditorDecisionInstructions(phase, hasSkillGuidance),
       format,
       historyMessages: [],
       prompt,
@@ -155,7 +179,7 @@ export function buildAuditorDecisionInput(
       (total, entry) => total + JSON.stringify(entry).length,
       0,
     ),
-    reusedCompactedSourceCount: evidence.filter(
+    reusedCompactedSourceCount: [...evidence, ...skillSources].filter(
       (entry) => entry.compactedSourceEvidence,
     ).length,
   });

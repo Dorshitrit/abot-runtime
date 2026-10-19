@@ -1,3 +1,4 @@
+import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -43,7 +44,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
           "degraded.finalization",
         ];
         let next = 0;
-        const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+        const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
           expect(input.modelStep).toBe(steps[next++]);
           if (next === 1) {
             expect(steering.snapshot().version).toBe(0);
@@ -62,7 +63,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
             text: "UNTRUSTED_CURRENT_PARTIAL_OUTPUT",
             meta: { providerCompletionReason: "length", steeringVersion: 99 },
           };
-        });
+        }));
         const request = createRootInvalidOutputRequest(
           invoke,
           policy.policyId,
@@ -102,7 +103,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
         policy.responseStep,
       ];
       let next = 0;
-      const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
         expect(input.modelStep).toBe(steps[next++]);
         if (next === 1) {
           expect(
@@ -133,7 +134,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
               : FRESH_OUTPUT,
           meta: {},
         };
-      });
+      }));
       const request = createRootInvalidOutputRequest(invoke, policy.policyId, {
         requestSteering: steering,
       });
@@ -165,7 +166,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
         policy.responseStep,
       ];
       let next = 0;
-      const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
         expect(input.modelStep).toBe(steps[next++]);
         if (next === 1) {
           expect(
@@ -184,7 +185,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
               : FRESH_OUTPUT,
           meta: {},
         };
-      });
+      }));
       const request = createRootInvalidOutputRequest(invoke, policy.policyId, {
         requestSteering: steering,
       });

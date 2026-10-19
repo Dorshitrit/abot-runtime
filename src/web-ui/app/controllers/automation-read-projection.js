@@ -1,3 +1,5 @@
+import { automationRunPage } from "./automation-run-history.js";
+
 export function validationResult(value) {
   if (Array.isArray(value)) return { issues: value };
   if (Array.isArray(value?.issues)) return value;
@@ -17,11 +19,12 @@ export async function readAutomationList(client, environmentId) {
   };
 }
 
-export async function readAutomationSelection(client, automationId, runId, environmentId) {
+export async function readAutomationSelection(client, automationId, runId, environmentId,
+  { runsQuery = { limit: 50 } } = {}) {
   const [draftResponse, catalog, runsResponse, runResponse] = await Promise.all([
     client.getAutomationDraft(automationId, environmentId),
     client.getAutomationCatalog(automationId, environmentId),
-    client.listAutomationRuns(automationId, environmentId),
+    runsQuery ? client.listAutomationRuns(automationId, environmentId, runsQuery) : Promise.resolve(null),
     runId ? client.getAutomationRun(runId, environmentId) : Promise.resolve(null),
   ]);
   if (runResponse?.run && runResponse.run.automationId !== automationId)
@@ -32,7 +35,7 @@ export async function readAutomationSelection(client, automationId, runId, envir
     grant: draftResponse.grant || null,
     validation: validationResult(draftResponse.validation),
     catalog,
-    runs: Array.isArray(runsResponse.runs) ? runsResponse.runs : [],
+    ...(runsResponse ? automationRunPage(runsResponse) : {}),
     run: runResponse?.run || null,
   };
 }
@@ -41,7 +44,8 @@ export async function readAutomationBackgroundProjection(client, identity) {
   const [list, selected, evidenceResponse] = await Promise.all([
     readAutomationList(client, identity.environmentId),
     identity.automationId
-      ? readAutomationSelection(client, identity.automationId, identity.runId, identity.environmentId)
+      ? readAutomationSelection(client, identity.automationId, identity.runId, identity.environmentId,
+        { runsQuery: identity.runsQuery })
       : Promise.resolve(null),
     identity.runId && identity.nodeId
       ? client.getAutomationStepEvidence(identity.runId, identity.nodeId,

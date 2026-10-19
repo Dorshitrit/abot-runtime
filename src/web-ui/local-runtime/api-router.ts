@@ -1,3 +1,4 @@
+import { PersonalSkillManagementRoutes } from "./skill-management-routes.js";
 import { ProjectRoutes } from "./project-routes.js";
 import { cancelWebRequest } from "./request-cancellation-route.js";
 import { ConversationFileRoutes } from "./conversation-file-routes.js";
@@ -77,6 +78,7 @@ export class LocalRuntimeApiRouter {
   private readonly modelSetup: ModelSetupRoutes;
   private readonly setupEmbedding: SetupEmbeddingRoutes;
   private readonly plugins: PluginManagementRoutes;
+  private readonly skillManagement: PersonalSkillManagementRoutes;
   private readonly memoryManagement: LongTermMemoryManagementRoutes;
   private readonly memoryOnboarding: LongTermMemoryOnboardingRoutes;
   private readonly schedules: ScheduleManagementRoutes;
@@ -165,6 +167,9 @@ export class LocalRuntimeApiRouter {
         providerAdapters: options.providerAdapters,
         configPath: options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
       }),
+    );
+    this.skillManagement = new PersonalSkillManagementRoutes(
+      (id) => this.environments.get(id).services.personalSkills,
     );
     this.memoryManagement = new LongTermMemoryManagementRoutes(
       (environmentId) =>
@@ -357,6 +362,10 @@ export class LocalRuntimeApiRouter {
     ) {
       return;
     }
+
+    if (await this.skillManagement.handle({
+      method, segments, body, environmentId, request: req, response: res,
+    })) return;
 
     if (
       await this.memoryManagement.handle({

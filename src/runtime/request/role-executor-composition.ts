@@ -72,10 +72,10 @@ export const EXECUTION_AGENT_ROLE_EXECUTORS: RoleExecutorRegistry<
 
 const SUPERVISOR_WORKER_V1_POLICY_DEFINITION = Object.freeze({
   id: "supervisor-worker-v1" as const,
-  version: 2,
+  version: 3,
   rootContract: SUPERVISOR_ROOT_CONTRACT,
   roleExecutors: REQUEST_ROLE_EXECUTORS,
-  capabilityAuthorities: Object.freeze(["worker"] as const),
+  capabilityAuthorities: Object.freeze(["root", "worker"] as const),
 });
 
 const EXECUTION_AGENT_V1_POLICY_DEFINITION = Object.freeze({

@@ -1,3 +1,4 @@
+import type { RoleCallLedgerHead } from "../../orchestration/role-calls/index.js";
 import type { RequestToolResultsView } from "../../context/request-tool-results.js";
 import type {
   SupervisorRespondDecision,
@@ -11,9 +12,11 @@ export function canRecommendDirectSupervisorResponse(
   options: Readonly<{
     resume?: SupervisorResumeContext;
     toolResults: RequestToolResultsView;
+    skillReadHead?: RoleCallLedgerHead;
   }>,
 ): boolean {
   if (options.resume !== undefined) return false;
+  if ((options.skillReadHead?.state.skillReads?.length ?? 0) > 0) return false;
   return options.toolResults.results.length === 0;
 }
 

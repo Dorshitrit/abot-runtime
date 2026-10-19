@@ -1,3 +1,4 @@
+import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type WebSocket from "ws";
 import { ensureSparkSession } from "../../sessions/spark-session.js";
@@ -65,15 +66,25 @@ describe("SPARK canonical conversation policy", () => {
       });
       await run(value, spark.id, "spark-request", { text: prompt });
       const root = policy === "execution-agent-v1" ? "execution" : "supervisor";
-      expect(value.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-        `${root}.decision`, `${root}.response`,
-      ]);
-      const companionInputs = value.invoke.mock.calls.map(([input]) => scheduledModelMessages(input));
+      expect(value.invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual(
+        policy === "execution-agent-v1" ? [`${root}.decision`, `${root}.response`] : [
+          "supervisor_presentation", "supervisor_skill_selection", "supervisor_decision", "supervisor.response",
+        ],
+      );
       const policyBlock = buildSparkConversationInstructions("spark").join("\n");
-      for (const messages of companionInputs) {
+      for (const [input] of value.invoke.mock.calls) {
+        const messages = scheduledModelMessages(input);
         expect(messages[0].role).toBe("system");
-        expect(messages[0].content.split(policyBlock)).toHaveLength(2);
         expect(messages.filter((message) => message.role === "user" && message.content === prompt)).toHaveLength(1);
+        const phase = supervisorFormatName(input);
+        if (phase === "supervisor_presentation" || phase === "supervisor_skill_selection") {
+          expect(messages[0].content).not.toContain(policyBlock);
+          expect(messages.filter(({ role }) => role !== "system")).toEqual([{ role: "user", content: prompt }]);
+          expect(JSON.stringify(messages)).not.toContain("Relevant stored context");
+          expect(JSON.stringify(messages)).not.toContain("A saved, tentative interest in the earlier idea.");
+          continue;
+        }
+        expect(messages[0].content.split(policyBlock)).toHaveLength(2);
         expect(messages.find((message) => message.content === "An earlier idea you may want to consider.")?.role).toBe("assistant");
         const conversationContents = new Set(["Earlier question", "Earlier ordinary answer",
           "An earlier idea you may want to consider.", prompt]);

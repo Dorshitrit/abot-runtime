@@ -23,6 +23,7 @@ import {
 } from "./call-binding.js";
 import { captureExecutionBinding } from "./execution-binding.js";
 import { createPreparedNormalInvocation } from "./prepared-execution.js";
+import { requiresRegisteredToolActionApproval } from "./approval.js";
 
 type OperationIdentity = Readonly<{
   tool: string;
@@ -98,11 +99,15 @@ export function restoreNormalInvocation(params: {
   const force =
     source.operation.approval === "always" ||
     target.operation.approval === "always";
-  const required = requiresToolActionApproval(
-    params.executor.toolPermissionMode,
-    force,
+  const required = requiresRegisteredToolActionApproval(
+    params.executor.toolPermissionMode, source, target,
   );
-  if (required !== Boolean(value.approvalRequest)) throw invalid();
+  const missingRequiredApproval = required && !value.approvalRequest;
+  if (missingRequiredApproval) throw invalid();
+  // Existing ASK approvals remain valid even when core reads no longer need new ones.
+  const unexpectedRecordedApproval = value.approvalRequest &&
+    !requiresToolActionApproval(params.executor.toolPermissionMode, force);
+  if (unexpectedRecordedApproval) throw invalid();
   if (value.approvalRequest) {
     if (!isRequestApproval(value.approvalRequest, params.executor.requestId))
       throw invalid();

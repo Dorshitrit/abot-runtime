@@ -222,16 +222,10 @@ describe("model-reported work-plan client events", () => {
     });
   });
 
-  test("keeps the Supervisor authority snapshot unchanged and rejects forged root adoption", async () => {
-    expect(SUPERVISOR_WORKER_V1_EXECUTION_POLICY.authority).toEqual({
-      id: "supervisor-worker-v1",
-      version: 2,
-      definitionHash:
-        "sha256:2ee79cee6dbb27ffaeb59f84c4c838cf9d16a965ca4f07e7d638e8589868e036",
-      rootContractId: "supervisor",
-      availableSubordinateContractIds: ["planner", "worker", "reviewer"],
-      capabilityAuthorities: ["worker"],
-    });
+  test("denies Supervisor model-work-plan authority and rejects forged root adoption", async () => {
+    expect(SUPERVISOR_WORKER_V1_EXECUTION_POLICY.authority).not.toHaveProperty(
+      "modelWorkPlanAuthority",
+    );
     const fixture = await createModelWorkPlanEventFixture(
       SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT,
     );

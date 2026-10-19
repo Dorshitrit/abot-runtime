@@ -10,6 +10,7 @@ import { SUPERVISOR_WORKER_V1_AUTHORITY_SNAPSHOT } from "../orchestration/role-c
 import { createTestRequestExecutionScopeWithCapabilities } from "./support/request-execution-scope.js";
 import { createTargetHandoffFixture, finalDispatchReport, targetHandoffSeed } from "./support/system-target-handoff-fixture.js";
 import { createTargetHandoffScript } from "./support/system-target-handoff-script.js";
+import { supervisorFormatName, withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => { resetDebugLoggerConfig(); vi.restoreAllMocks(); });
@@ -26,7 +27,7 @@ test("SPARK presentation stays on the root across Planner, Worker, Reviewer and 
     let nextCall = 0;
     const rootPresentationSteps: string[] = [];
     const childSteps: string[] = [];
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
       const call = script[nextCall++];
       expect(input.modelStep).toBe(call?.step);
       const messages = input.messages as readonly { role: string; content: string }[];
@@ -38,7 +39,7 @@ test("SPARK presentation stays on the root across Planner, Worker, Reviewer and 
         expect(hasPresentationPolicy).toBe(false);
       }
       return { text: typeof call!.output === "string" ? call!.output : call!.output(input), meta: {} };
-    });
+    }));
     const seed = { ...targetHandoffSeed(invoke, "ask"), sessionKind: "spark" as const };
     const registry = await fixture.registry.prepareRequest!();
     const request = createTestRequestExecutionScopeWithCapabilities(seed, (view) => {
@@ -49,6 +50,9 @@ test("SPARK presentation stays on the root across Planner, Worker, Reviewer and 
     });
     await expect(runRequestRunner(request)).resolves.toEqual({ output: finalDispatchReport });
     expect(nextCall).toBe(script.length);
+    const preparation = invoke.mock.calls.filter(([input]) => ["supervisor_presentation", "supervisor_skill_selection"].includes(supervisorFormatName(input) ?? ""));
+    expect(preparation.map(([input]) => supervisorFormatName(input))).toEqual(["supervisor_presentation"]);
+    for (const [input] of preparation) expect(JSON.stringify(input.messages)).not.toContain(policy);
     expect(rootPresentationSteps).toEqual(["supervisor.decision", "supervisor.decision", "supervisor.decision", "supervisor.response"]);
     expect(childSteps).toEqual(expect.arrayContaining(["planner.decision", "worker.decision", "worker.result", "reviewer.decision", "capability.controls"]));
     expect(fixture.executeHostOperation).toHaveBeenCalledTimes(2);

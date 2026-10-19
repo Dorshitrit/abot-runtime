@@ -6,6 +6,14 @@ export type AutomationDraftResponse = Readonly<{
   validation?: Record<string, unknown> | null;
 }>;
 
+export type AutomationRunHistoryQuery = Readonly<{
+  limit?: number;
+  cursor?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+}>;
+
 export type AutomationRequests = Readonly<{
   supportsAutomations(): boolean;
   listAutomations(environmentId?: string): Promise<{ automations: Record<string, unknown>[] }>;
@@ -22,7 +30,7 @@ export type AutomationRequests = Readonly<{
   setAutomationPermission(automationId: string, input: { expectedGrantRevision: number; mode: "full_access" | "full_plus"; operations: OperationRef[] }, environmentId?: string): Promise<Record<string, unknown>>;
   getAutomationCatalog(automationId: string, environmentId?: string): Promise<Record<string, unknown>>;
   startAutomationRun(automationId: string, idempotencyKey: string, environmentId?: string): Promise<Record<string, unknown>>;
-  listAutomationRuns(automationId: string, environmentId?: string): Promise<Record<string, unknown>>;
+  listAutomationRuns(automationId: string, environmentId?: string, query?: AutomationRunHistoryQuery): Promise<Record<string, unknown>>;
   getAutomationRun(runId: string, environmentId?: string): Promise<Record<string, unknown>>;
   getAutomationStepEvidence(runId: string, nodeId: string, environmentId?: string, full?: boolean): Promise<Record<string, unknown>>;
   stopAutomationRun(runId: string, environmentId?: string): Promise<Record<string, unknown>>;

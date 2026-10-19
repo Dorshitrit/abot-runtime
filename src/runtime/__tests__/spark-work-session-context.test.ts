@@ -1,3 +1,4 @@
+import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 import { afterEach, expect, test, vi } from "vitest";
 import type WebSocket from "ws";
 import { buildSparkConversationInstructions } from "../context/spark-conversation-policy.js";
@@ -37,15 +38,19 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       modelPreference: { profileId: "scheduled-model", scope: "all" },
     });
     const root = policy === "execution-agent-v1" ? "execution" : "supervisor";
-    expect(fixture.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-      `${root}.decision`, `${root}.response`,
-    ]);
+    expect(fixture.invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual(
+      policy === "execution-agent-v1" ? [`${root}.decision`, `${root}.response`] : [
+        "supervisor_presentation", "supervisor_skill_selection", "supervisor_decision", "supervisor.response",
+      ],
+    );
     const companionPolicy = buildSparkConversationInstructions("spark").join("\n");
     for (const [input] of fixture.invoke.mock.calls) {
       const messages = scheduledModelMessages(input);
       expect(messages.filter((message) => message.role === "user" && message.content === text)).toHaveLength(1);
       expect(messages.filter((message) => message.role === "user").some((message) => message.content === brief)).toBe(false);
-      expect(messages.filter((message) => message.content === brief).map(({ role }) => role)).toEqual(["assistant"]);
+      const phase = supervisorFormatName(input);
+      const preparation = phase === "supervisor_presentation" || phase === "supervisor_skill_selection";
+      expect(messages.filter((message) => message.content === brief).map(({ role }) => role)).toEqual(preparation ? [] : ["assistant"]);
       expect(messages.some((message) => message.content.includes(companionPolicy))).toBe(false);
     }
     expect((await sessions.getSessionById(target.id))!.messages.filter(({ role }) => role === "user").map(({ content }) => content)).toEqual([text]);

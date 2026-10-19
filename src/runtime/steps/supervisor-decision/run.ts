@@ -1,58 +1,42 @@
 import { resolveMemoryRecallSteeringVersion } from "../../long-term-memory/recall-binding.js";
 import { canOfferMemoryRecall } from "../../long-term-memory/recall-policy.js";
-import {
-  invokeStructuredModelStep,
-  StructuredModelInvalidOutputError,
-  type StructuredModelParseResult,
-} from "../../model/invoke-structured-step.js";
 import type { RequestToolResultsView } from "../../context/request-tool-results.js";
 import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
 import { superCompactionFailureOwner } from "../../context/super-compaction-failure-owner.js";
 import { createSessionMemoryAwareCompactionController } from "../../context/session-memory/index.js";
-import type { ModelStepContextCompactionController } from "../../model/model-step-port.js";
 import type { RequestExecutionScope } from "../../request/execution-scope.js";
 import {
   resolveRequestSteeringInbox,
-  type RequestSteeringInbox,
 } from "../../request/request-steering.js";
 import type { WorkerCapabilityCatalogGroup } from "../../orchestration/worker-capabilities/index.js";
 import {
   SUPERVISOR_DECISION_MODEL_STEP,
-  type SupervisorDecision,
   type SupervisorDecisionCallIdentity,
   type SupervisorDecisionDiagnosticContext,
   type SupervisorDecisionOutcome,
   type SupervisorDelegateRoleId,
   type SupervisorResumeContext,
-  type SupervisorRoutingDecision,
-  type SupervisorWorkingDirectoryDecision,
-  type SupervisorWorkingDirectoryRoutingDecision,
   type SupervisorWorkerCapabilityAffordance,
 } from "./contracts.js";
-import {
-  traceSupervisorDecisionPhaseSuperseded,
-  traceSupervisorModelCompleted,
-  traceSupervisorModelFailed,
-  traceSupervisorModelStarted,
-  traceSupervisorWorkingDirectoryModelStarted,
-} from "./diagnostics.js";
 import { buildSupervisorDecisionInput } from "./input.js";
 import { buildSupervisorCapabilityBriefOptions } from "./capability-brief.js";
 import { createSupervisorCapabilityBriefReadmissionController } from "./capability-brief-readmission.js";
-import { parseSupervisorDecisionOutput } from "./parser.js";
+import { createSupervisorArtifactPathsReadmissionController } from "./artifact-paths.js";
 import {
   buildSupervisorWorkingDirectoryInput,
   mergeSupervisorWorkingDirectory,
-  parseSupervisorWorkingDirectoryOutput,
 } from "./working-directory.js";
 import { SUPERVISOR_RESPONSE_MODEL_STEP } from "../supervisor-response/contracts.js";
 import { resolveCanonicalReviewerCompletionTargetText } from "../reviewer-decision/contracts.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
+import type { RoleCallLedgerHead } from "../../orchestration/role-calls/index.js";
 
-type AcceptedSupervisorPhase<T> = Readonly<{
-  decision: T;
-  steeringVersion: number;
-}>;
+import { createDecisionOutcome, runRoutingPhase, runWorkingDirectoryPhase, requiresWorkingDirectory, tracePhaseSuperseded } from "./decision-phases.js";
+import { prepareSupervisorDecision } from "./preparation.js";
+import { isSupervisorSkillLookup } from "./skill-selection.js";
+import { assertBoundModelStepSteeringCurrent } from "../../model/model-step-steering.js";
+import { canOfferSupervisorSkillAuthoring } from "../supervisor-skill-authoring/input.js";
+import { runSupervisorSkillAuthoring } from "../supervisor-skill-authoring/run.js";
 
 export async function runSupervisorDecision(
   request: RequestExecutionScope,
@@ -65,9 +49,14 @@ export async function runSupervisorDecision(
     resume?: SupervisorResumeContext;
     workerCapabilityAffordances?: readonly SupervisorWorkerCapabilityAffordance[];
     availableWorkerCapabilityCatalog?: readonly WorkerCapabilityCatalogGroup[];
+    availableSkillWriteOperationIds?: readonly string[];
     memoryRecallMessage?: ChatMessage;
     initialMemoryMessage?: ChatMessage;
     memoryRecallCount?: number;
+    remainingCapabilityExecutions?: number;
+    remainingRoleCalls?: number;
+    allowSkillReads?: boolean;
+    skillReadHead?: RoleCallLedgerHead;
   }>,
 ): Promise<SupervisorDecisionOutcome> {
   const boundSteeringVersion = resolveMemoryRecallSteeringVersion(
@@ -95,39 +84,6 @@ export async function runSupervisorDecision(
   const initialMemoryMessage = request.longTermMemory?.enabled
     ? options.initialMemoryMessage
     : undefined;
-  const input = buildSupervisorDecisionInput(request, {
-    allowMemoryRecall: canOfferMemoryRecall({
-      enabled: request.longTermMemory?.enabled === true,
-      recallCount: options.memoryRecallCount ?? 0,
-      maxRecallCallsPerRequest: request.memoryRecallLimit,
-    }),
-    ...(memoryRecallMessage ? { memoryRecallMessage } : {}),
-    ...(initialMemoryMessage ? { initialMemoryMessage } : {}),
-    ...buildSupervisorCapabilityBriefOptions(request, options),
-    toolResults: options.toolResults,
-    ...(options.includeAcknowledgement === undefined
-      ? {}
-      : { includeAcknowledgement: options.includeAcknowledgement }),
-    ...(options.includeTitle === undefined
-      ? {}
-      : { includeTitle: options.includeTitle }),
-    ...(options.allowedRoleIds === undefined
-      ? {}
-      : { allowedRoleIds: options.allowedRoleIds }),
-    ...(options.resume === undefined ? {} : { resume: options.resume }),
-    ...(options.workerCapabilityAffordances === undefined
-      ? {}
-      : {
-          workerCapabilityAffordances: options.workerCapabilityAffordances,
-        }),
-    ...(options.availableWorkerCapabilityCatalog === undefined
-      ? {}
-      : {
-          availableWorkerCapabilityCatalog:
-            options.availableWorkerCapabilityCatalog,
-        }),
-    diagnostic: routingDiagnostic,
-  });
   const requestSteering = resolveRequestSteeringInbox(request.requestSteering);
   const contextCompaction = createSessionMemoryAwareCompactionController(
     request,
@@ -161,17 +117,75 @@ export async function runSupervisorDecision(
   );
 
   for (;;) {
+    const preparation = await prepareSupervisorDecision(request, {
+      diagnostic: baseDiagnostic,
+      includeAcknowledgement: options.resume === undefined && options.includeAcknowledgement === true,
+      includeTitle: options.resume === undefined && (options.includeTitle ?? request.shouldGenerateSessionTitle ?? false),
+      allowSkillReads: request.knowledgeSkillStore !== undefined && options.allowSkillReads !== false,
+      skillReadHead: options.skillReadHead,
+      boundSteeringVersion,
+    });
+    assertBoundModelStepSteeringCurrent(requestSteering, preparation.steeringVersion);
+    if (isSupervisorSkillLookup(preparation.selection)) {
+      return createDecisionOutcome({ ...preparation.selection, ...preparation.presentation }, preparation.steeringVersion);
+    }
+    const input = buildSupervisorDecisionInput(request, {
+      allowSkillAuthoring: canOfferSupervisorSkillAuthoring(request, options),
+      allowMemoryRecall: canOfferMemoryRecall({
+        enabled: request.longTermMemory?.enabled === true,
+        recallCount: options.memoryRecallCount ?? 0,
+        maxRecallCallsPerRequest: request.memoryRecallLimit,
+      }),
+      ...(memoryRecallMessage ? { memoryRecallMessage } : {}),
+      ...(initialMemoryMessage ? { initialMemoryMessage } : {}),
+      ...buildSupervisorCapabilityBriefOptions(request, options),
+      toolResults: options.toolResults,
+      ...(options.skillReadHead ? { skillReadHead: options.skillReadHead } : {}),
+      includeAcknowledgement: false,
+      includeTitle: false,
+      ...(options.allowedRoleIds === undefined
+        ? {}
+        : { allowedRoleIds: options.allowedRoleIds }),
+      ...(options.resume === undefined ? {} : { resume: options.resume }),
+      ...(options.workerCapabilityAffordances === undefined
+        ? {}
+        : {
+            workerCapabilityAffordances: options.workerCapabilityAffordances,
+          }),
+      ...(options.availableWorkerCapabilityCatalog === undefined
+        ? {}
+        : {
+            availableWorkerCapabilityCatalog:
+              options.availableWorkerCapabilityCatalog,
+          }),
+      diagnostic: routingDiagnostic,
+    });
     const routing = await runRoutingPhase({
       request,
       requestSteering,
-      boundSteeringVersion,
+      boundSteeringVersion: preparation.steeringVersion,
       input,
       diagnostic: routingDiagnostic,
-      contextCompaction: createSupervisorCapabilityBriefReadmissionController(
+      contextCompaction: createSupervisorArtifactPathsReadmissionController(
         request,
-        { input, controller: contextCompaction },
+        {
+          projection: input.artifactPathsProjection,
+          format: input.format,
+          includeInstructions: true,
+          controller: createSupervisorCapabilityBriefReadmissionController(
+            request,
+            { input, controller: contextCompaction },
+          ),
+        },
       ),
     });
+    if (routing.decision.action === "author_skill") {
+      const authored = await runSupervisorSkillAuthoring(request, {
+        ...options, diagnostic: baseDiagnostic,
+        boundSteeringVersion: routing.steeringVersion, contextCompaction,
+      });
+      return createDecisionOutcome({ ...authored.decision, ...preparation.presentation }, authored.steeringVersion);
+    }
     if (
       routing.decision.action === "invoke_role" &&
       routing.decision.roleId === "reviewer"
@@ -179,6 +193,7 @@ export async function runSupervisorDecision(
       return createDecisionOutcome(
         Object.freeze({
           ...routing.decision,
+          ...preparation.presentation,
           objective: resolveCanonicalReviewerCompletionTargetText(
             request.prompt,
           ),
@@ -187,7 +202,7 @@ export async function runSupervisorDecision(
       );
     }
     if (!requiresWorkingDirectory(routing.decision)) {
-      return createDecisionOutcome(routing.decision, routing.steeringVersion);
+      return createDecisionOutcome({ ...routing.decision, ...preparation.presentation }, routing.steeringVersion);
     }
 
     if (!requestSteering.isCurrent(routing.steeringVersion)) {
@@ -215,7 +230,15 @@ export async function runSupervisorDecision(
       boundSteeringVersion,
       frozenDecision: routing.decision,
       diagnostic: workingDirectoryDiagnostic,
-      contextCompaction,
+      contextCompaction: createSupervisorArtifactPathsReadmissionController(
+        request,
+        {
+          projection: input.artifactPathsProjection,
+          format: workingDirectoryInput.format,
+          includeInstructions: false,
+          controller: contextCompaction,
+        },
+      ),
     });
     const merged = mergeSupervisorWorkingDirectory(
       routing.decision,
@@ -236,187 +259,6 @@ export async function runSupervisorDecision(
       continue;
     }
 
-    return createDecisionOutcome(merged, workingDirectory.steeringVersion);
+    return createDecisionOutcome({ ...merged, ...preparation.presentation }, workingDirectory.steeringVersion);
   }
-}
-
-function createDecisionOutcome(
-  decision: SupervisorDecision,
-  steeringVersion: number,
-): SupervisorDecisionOutcome {
-  return Object.freeze({ decision, steeringVersion });
-}
-
-async function runRoutingPhase(params: {
-  request: RequestExecutionScope;
-  requestSteering: RequestSteeringInbox;
-  boundSteeringVersion?: number;
-  input: ReturnType<typeof buildSupervisorDecisionInput>;
-  diagnostic: SupervisorDecisionDiagnosticContext;
-  contextCompaction: ModelStepContextCompactionController;
-}): Promise<AcceptedSupervisorPhase<SupervisorRoutingDecision>> {
-  const startedAt = Date.now();
-  traceSupervisorModelStarted({
-    diagnostic: params.diagnostic,
-    allowMemoryRecall: params.input.allowMemoryRecall,
-    messageCount: params.input.context.messages.length,
-    messageCharacterCount: params.input.context.messages.reduce(
-      (total, message) => total + message.content.length,
-      0,
-    ),
-    includeAcknowledgement: params.input.includeAcknowledgement,
-    includeTitle: params.input.includeTitle,
-    allowedRoleIds: params.input.allowedRoleIds,
-    availableWorkerCapabilityCatalog:
-      params.input.availableWorkerCapabilityCatalog,
-  });
-
-  try {
-    const accepted = await invokeStructuredModelStep({
-      request: params.request,
-      boundSteeringVersion: params.boundSteeringVersion,
-      modelStep: params.input.modelStep,
-      format: params.input.format,
-      messages: params.input.context.messages,
-      contextCompaction: params.contextCompaction,
-      timeoutReason: "supervisor_decision_timeout",
-      invalidOutputReason: "invalid_supervisor_decision",
-      parse: (text) =>
-        captureAcceptedPhase(
-          parseSupervisorDecisionOutput(text, {
-            includeAcknowledgement: params.input.includeAcknowledgement,
-            includeTitle: params.input.includeTitle,
-            includeResponseRecommendation:
-              params.input.includeResponseRecommendation,
-            allowMemoryRecall: params.input.allowMemoryRecall,
-            allowedRoleIds: params.input.allowedRoleIds,
-            availableWorkerCapabilityCatalog:
-              params.input.availableWorkerCapabilityCatalog,
-            diagnostic: params.diagnostic,
-          }),
-          params.requestSteering,
-        ),
-    });
-    traceSupervisorModelCompleted({
-      diagnostic: params.diagnostic,
-      decision: accepted.decision,
-      durationMs: Date.now() - startedAt,
-    });
-    return accepted;
-  } catch (error: unknown) {
-    tracePhaseFailure(params.diagnostic, startedAt, error);
-    throw error;
-  }
-}
-
-async function runWorkingDirectoryPhase(params: {
-  request: RequestExecutionScope;
-  requestSteering: RequestSteeringInbox;
-  boundSteeringVersion?: number;
-  input: ReturnType<typeof buildSupervisorWorkingDirectoryInput>;
-  frozenDecision: SupervisorWorkingDirectoryRoutingDecision;
-  diagnostic: SupervisorDecisionDiagnosticContext;
-  contextCompaction: ModelStepContextCompactionController;
-}): Promise<AcceptedSupervisorPhase<SupervisorWorkingDirectoryDecision>> {
-  const startedAt = Date.now();
-  traceSupervisorWorkingDirectoryModelStarted({
-    diagnostic: params.diagnostic,
-    messageCount: params.input.messages.length,
-    messageCharacterCount: params.input.messages.reduce(
-      (total, message) => total + message.content.length,
-      0,
-    ),
-    frozenDecision: params.frozenDecision,
-  });
-
-  try {
-    const accepted = await invokeStructuredModelStep({
-      request: params.request,
-      boundSteeringVersion: params.boundSteeringVersion,
-      modelStep: params.input.modelStep,
-      format: params.input.format,
-      messages: params.input.messages,
-      contextCompaction: params.contextCompaction,
-      timeoutReason: "supervisor_decision_timeout",
-      invalidOutputReason: "invalid_supervisor_decision",
-      parse: (text) =>
-        captureAcceptedPhase(
-          parseSupervisorWorkingDirectoryOutput(text, {
-            diagnostic: params.diagnostic,
-          }),
-          params.requestSteering,
-        ),
-    });
-    traceSupervisorModelCompleted({
-      diagnostic: params.diagnostic,
-      decision: mergeSupervisorWorkingDirectory(
-        params.frozenDecision,
-        accepted.decision,
-      ),
-      durationMs: Date.now() - startedAt,
-    });
-    return accepted;
-  } catch (error: unknown) {
-    tracePhaseFailure(params.diagnostic, startedAt, error);
-    throw error;
-  }
-}
-
-function captureAcceptedPhase<T>(
-  parsed: StructuredModelParseResult<T>,
-  requestSteering: RequestSteeringInbox,
-): StructuredModelParseResult<AcceptedSupervisorPhase<T>> {
-  if (!parsed.ok) {
-    return parsed;
-  }
-  return Object.freeze({
-    ok: true as const,
-    decision: Object.freeze({
-      decision: parsed.decision,
-      steeringVersion: requestSteering.snapshot().version,
-    }),
-  });
-}
-
-function requiresWorkingDirectory(
-  decision: SupervisorRoutingDecision,
-): decision is SupervisorWorkingDirectoryRoutingDecision {
-  return (
-    decision.action === "invoke_role" &&
-    (decision.roleId === "planner" || decision.roleId === "worker")
-  );
-}
-
-function tracePhaseFailure(
-  diagnostic: SupervisorDecisionDiagnosticContext,
-  startedAt: number,
-  error: unknown,
-): void {
-  traceSupervisorModelFailed({
-    diagnostic,
-    durationMs: Date.now() - startedAt,
-    errorType: error instanceof Error && error.name ? error.name : typeof error,
-    invalidStructuredOutput: error instanceof StructuredModelInvalidOutputError,
-  });
-}
-
-function tracePhaseSuperseded(params: {
-  diagnostic: SupervisorDecisionDiagnosticContext;
-  requestSteering: RequestSteeringInbox;
-  routingSteeringVersion: number;
-  workingDirectorySteeringVersion?: number;
-  checkpoint: "before_working_directory" | "after_working_directory";
-}): void {
-  traceSupervisorDecisionPhaseSuperseded({
-    diagnostic: params.diagnostic,
-    routingSteeringVersion: params.routingSteeringVersion,
-    currentSteeringVersion: params.requestSteering.snapshot().version,
-    ...(params.workingDirectorySteeringVersion === undefined
-      ? {}
-      : {
-          workingDirectorySteeringVersion:
-            params.workingDirectorySteeringVersion,
-        }),
-    checkpoint: params.checkpoint,
-  });
 }

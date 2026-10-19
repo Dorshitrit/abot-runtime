@@ -75,6 +75,8 @@ export type AuditorAssignment = Readonly<{
   reviewedEvidenceBundles: readonly (readonly string[])[];
   pendingEvidenceIds: readonly string[] | null;
   evidence: readonly AuditorEvidence[];
+  /** Successful core reads from this caller; guidance, never completion proof. */
+  skillReadEvidence?: readonly AuditorCapabilityEvidence[];
   compactedSourceEvidence?: ExecutionCompactedSources;
   availableEvidenceCount: number;
   omittedEvidenceCount: number;

@@ -10,7 +10,9 @@ export type SessionArtifactPathsCapsule = Readonly<{
   provenance: "settled_successful_tool_target_references";
   purpose: "passive_tool_target_continuity_reference";
   representation: "verbatim_settled_tool_target";
-  applicability: "selected_capability_runtime_path_control_authoring_refinement_only";
+  applicability:
+    | "selected_capability_runtime_path_control_authoring_refinement_only"
+    | "supervisor_objective_and_working_directory_reference_only";
   nonAuthority: Readonly<{
     addsUserIntent: false;
     addsPendingWork: false;
@@ -43,6 +45,7 @@ export function buildSessionArtifactPathsMessage(
     targets: readonly string[];
     availableTargetCount?: number;
     applicable: boolean;
+    applicability?: SessionArtifactPathsCapsule["applicability"];
     maxTargets?: number;
     fits(message: ChatMessage): boolean;
   }>,
@@ -82,6 +85,7 @@ export function buildSessionArtifactPathsMessage(
       purpose: "passive_tool_target_continuity_reference",
       representation: "verbatim_settled_tool_target",
       applicability:
+        params.applicability ??
         "selected_capability_runtime_path_control_authoring_refinement_only",
       nonAuthority: Object.freeze({
         addsUserIntent: false,

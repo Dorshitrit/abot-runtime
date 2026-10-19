@@ -1,3 +1,4 @@
+import { projectSupervisorSkillCapabilityAdapters } from "../supervisor-skill-authority.js";
 import { fenceRestoredApprovalExecution } from "./execution-freshness.js";
 import { restorePreparationRejection } from "./preparation-rejection.js";
 import { isDeepStrictEqual } from "node:util";
@@ -119,6 +120,7 @@ export async function restoreCapabilityApprovalGroup<TContext>(params: {
     )
   )
     throw new Error("prepared_approval_freshness_mismatch");
+  const adapters = projectSupervisorSkillCapabilityAdapters({ head, call, adapters: params.adapters });
   const running = head.state.capabilityExecutions.filter(
     (entry) => entry.status === "running",
   );
@@ -129,7 +131,7 @@ export async function restoreCapabilityApprovalGroup<TContext>(params: {
       const admitted = running.find(
         (value) => value.executionId === entry.executionId,
       );
-      const adapter = params.adapters.find(
+      const adapter = adapters.find(
         (value) => value.descriptor.capabilityId === entry.capabilityId,
       );
       if (
@@ -184,8 +186,8 @@ export async function restoreCapabilityApprovalGroup<TContext>(params: {
     scopeMode: call.workerCapabilityScope ? "catalog_groups" : "full",
     scopeCatalogGroupIds: call.workerCapabilityScope?.catalogGroupIds ?? [],
     knownCatalogGroupCount: 0,
-    fullCapabilityCount: params.adapters.length,
-    filteredCapabilityCount: params.adapters.length,
+    fullCapabilityCount: adapters.length,
+    filteredCapabilityCount: adapters.length,
   };
   return Object.freeze({
     async execute(decisions: readonly BoundApprovalDecision[]) {

@@ -140,6 +140,7 @@ export type WorkerResultAuthorSource = WorkerDecisionCallIdentity &
     requestToolResults: RequestToolResultsView;
     requestToolResultsContextMessage?: ChatMessage;
     operationSupervisionEvidenceContextMessage?: ChatMessage;
+    coreSkillReadMessages?: readonly ChatMessage[];
   }>;
 
 export type WorkerDecisionDiagnosticContext = Readonly<{

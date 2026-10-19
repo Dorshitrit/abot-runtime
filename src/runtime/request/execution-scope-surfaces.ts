@@ -1,3 +1,4 @@
+import type { KnowledgeSkillStore } from "../knowledge-skills/store.js";
 import type { SuperFailureFinalization } from "./super-failure-explanation.js";
 import type { RequestModelStepPort } from "../model/model-step-port.js";
 import {
@@ -67,7 +68,13 @@ export function createCapabilityCompositionView(
     modelSteps: enumerableGetter(() => modelSteps),
     sessionId: enumerableGetter(() => facets.identity.sessionId),
     prompt: enumerableGetter(() => facets.input.prompt),
+    ...(facets.input.attachments !== undefined
+      ? { attachments: enumerableGetter(() => facets.input.attachments!) }
+      : {}),
     historyMessages: enumerableGetter(() => facets.session.historyMessages),
+    ...(facets.session.sessionMemory !== undefined
+      ? { sessionMemory: enumerableGetter(() => facets.session.sessionMemory!) }
+      : {}),
     toolPermissionMode: enumerableGetter(
       () => facets.lifecycle.toolPermissionMode,
     ),
@@ -116,6 +123,7 @@ export function createScopeSurface(
     modelInvocation: RequestModelInvocationView;
     modelSteps: RequestModelStepPort;
     capabilities: RequestWorkerCapabilities;
+    knowledgeSkillStore?: KnowledgeSkillStore;
     superFailureFinalization?: SuperFailureFinalization | undefined;
   }>,
 ): RequestExecutionScope {
@@ -169,6 +177,7 @@ export function createScopeSurface(
     policy: hiddenValue(policy),
     modelInvocation: hiddenValue(modelInvocation),
     capabilities: hiddenValue(capabilities),
+    ...(input.knowledgeSkillStore ? { knowledgeSkillStore: hiddenValue(input.knowledgeSkillStore) } : {}),
     ...(input.superFailureFinalization
       ? {
           superFailureFinalization: hiddenValue(input.superFailureFinalization),

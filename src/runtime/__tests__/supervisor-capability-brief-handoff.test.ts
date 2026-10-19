@@ -1,3 +1,4 @@
+import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -256,7 +257,7 @@ function createSeed(
       },
       defaults: { profileId: "test", steps: {} },
     },
-    modelGatewayClient: { invoke, invokeRaw: vi.fn() },
+    modelGatewayClient: { invoke: withSupervisorPreparation(invoke), invokeRaw: vi.fn() },
     toolPermissionMode: "full_access",
     abortSignal: new AbortController().signal,
     onAcknowledgement: vi.fn(),
@@ -314,7 +315,17 @@ describe("Supervisor and Planner capability brief handoff", () => {
         if (isDelegationRouting) {
           expect(briefMessages).toHaveLength(1);
           expect(briefMessages[0]!.role).toBe("system");
-          expect(briefMessages[0]!.content).toContain("Tool groups: write: filesystem [write_file]\nPlugin descriptions: filesystem:");
+          expect(
+            briefMessages[0]!.content.split("\n")
+              .find((line) => line.startsWith("Tool groups: "))
+              ?.slice("Tool groups: ".length).split(" | "),
+          ).toEqual([
+            "knowledge: abot_skills",
+            "write: filesystem [write_file]",
+          ]);
+          expect(briefMessages[0]!.content).toContain(
+            "\nPlugin descriptions: filesystem:",
+          );
           expect(briefMessages[0]!.content).toContain(
             "Inspect, read, write, and edit files within configured agent-work and workspace roots.",
           );

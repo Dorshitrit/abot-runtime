@@ -1,4 +1,4 @@
-import type { RoleCallLedgerHead } from "../orchestration/role-calls/index.js";
+import type { RoleCallFrame, RoleCallLedgerHead } from "../orchestration/role-calls/index.js";
 import type { CapabilityJsonObject } from "../orchestration/capability-adapters/result.js";
 import type { RequestToolResult } from "./request-tool-results.js";
 import { projectCanonicalRequestToolResult } from "./canonical-capability-result.js";
@@ -48,7 +48,7 @@ export function projectCanonicalCapabilityResultCompactionSources(params: {
   const call = params.head.state.calls.find(
     ({ callId }) => callId === params.callId,
   );
-  if (!call || call.roleId !== "worker")
+  if (!isCanonicalSuperCapabilitySourceCall(params.head, call))
     throw new Error("context_compaction_source_call_invalid");
   return Object.freeze(
     params.head.state.capabilityExecutions
@@ -62,6 +62,18 @@ export function projectCanonicalCapabilityResultCompactionSources(params: {
         ),
       ),
   );
+}
+
+/** SUPER payloads may belong to a Worker or to the canonical Supervisor root. */
+export function isCanonicalSuperCapabilitySourceCall(
+  head: RoleCallLedgerHead,
+  call: RoleCallFrame | undefined,
+): call is RoleCallFrame {
+  if (!call) return false;
+  if (call.roleId === "worker") return true;
+  if (call.roleId !== "supervisor") return false;
+  if (call.callId !== head.state.rootCallId) return false;
+  return call.parentCallId === null && call.depth === 0;
 }
 
 /** The existing visible Worker dedup rule also defines canonical source bytes. */

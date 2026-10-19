@@ -1,4 +1,6 @@
-import { createRootExecutionFreshness } from "./capability-execution-freshness.js";
+import { prepareRootCapabilityBinding, requireRootCallFrame } from "./root-capability-binding.js";
+import { captureRootCapabilityCatalog } from "./root-capability-catalog.js";
+import { prepareSupervisorSkillWrite } from "./supervisor-skill-write-preparation.js";
 import {
   bindRoleApprovalWait,
   isRoleApprovalWait,
@@ -27,12 +29,8 @@ import {
   type RoleCallTransactions,
   type RoleChildReturnContext,
 } from "../orchestration/role-calls/index.js";
-import { RUNTIME_ROOT_ROLE_ID } from "../orchestration/roles.js";
 import {
-  createRoleCapabilityBinding,
   isWorkerCapabilityOperationSupervisionLimitError,
-  projectWorkerCapabilityCatalogGroups,
-  type WorkerCapabilityCatalogGroup,
   type WorkerCapabilityExecutionFreshness,
 } from "../orchestration/worker-capabilities/index.js";
 import {
@@ -66,7 +64,7 @@ import {
   projectSupervisorFinalObservation,
   type RootObservationHandoff,
 } from "./root-observation-handoff.js";
-import { performRootMemoryRecall } from "./root-memory-recall.js";
+import { isRootReferenceDecision, performRootReferenceAction } from "./root-reference-action.js";
 import { applyRootModelWorkPlan } from "./root-plan-update.js";
 import { projectRootMemoryRecallMessage } from "../long-term-memory/recall-context.js";
 import { createPlainRootAuthoredResponse } from "../orchestration/final-response/authoring-contract.js";
@@ -112,9 +110,7 @@ class RootExecutionSession {
   >;
   private resume: RoleChildReturnContext | undefined;
   private observationHandoff: RootObservationHandoff | undefined;
-  private availableWorkerCapabilityCatalog:
-    | readonly WorkerCapabilityCatalogGroup[]
-    | undefined;
+  private capabilityCatalog: ReturnType<typeof captureRootCapabilityCatalog> | undefined;
   private acknowledgementPublished = false;
   private titlePublished = false;
 
@@ -253,14 +249,10 @@ class RootExecutionSession {
     attempt: RootActivationAttempt,
   ): Promise<RootDecisionActivation> {
     attempt.failureStage = "project_worker_catalog";
-    this.availableWorkerCapabilityCatalog ??=
-      this.policy.authority.capabilityAuthorities.includes("root") ||
-      (this.policy.roleExecutors.roleIds.includes("worker") &&
-        this.policy.authority.capabilityAuthorities.includes("worker"))
-        ? projectWorkerCapabilityCatalogGroups(
-            this.request.workerCapabilities.provider.getDescriptors(),
-          )
-        : Object.freeze([]);
+    this.capabilityCatalog ??= captureRootCapabilityCatalog({
+      authority: this.policy.authority, roleIds: this.policy.roleExecutors.roleIds,
+      getDescriptors: () => this.request.workerCapabilities.provider.getDescriptors(),
+    });
     attempt.failureStage = "decide";
     const decisionToolResults = projectRequestToolResults({
       ledger: this.ledger,
@@ -287,7 +279,7 @@ class RootExecutionSession {
           !this.titlePublished &&
           this.request.shouldGenerateSessionTitle,
         allowedRoleIds: this.policy.roleExecutors.roleIds,
-        availableWorkerCapabilityCatalog: this.availableWorkerCapabilityCatalog,
+        ...this.capabilityCatalog,
         ...(this.resume ? { resume: this.resume } : {}),
       },
     );
@@ -350,6 +342,21 @@ class RootExecutionSession {
     attempt: RootActivationAttempt,
   ): Promise<RootLoopControl> {
     const { decision } = activation;
+    if (decision.action === "prepare_skill_write") {
+      attempt.failureStage = "apply_root_transition";
+      const prepared = await prepareSupervisorSkillWrite({
+        request: this.request, ledger: this.ledger,
+        activation: { ...activation, decision }, resume: this.resume,
+      });
+      if (!prepared) return CONTINUE_ROOT_EXECUTION;
+      activation = prepared.activation;
+      this.resume = prepared.resume;
+      attempt.head = activation.head;
+      attempt.call = activation.call;
+      return prepared.activation.decision.action === "respond"
+        ? this.completeResponse(activation, prepared.activation.decision, attempt)
+        : this.invokeCapabilities(activation, prepared.activation.decision, attempt);
+    }
     if (decision.workPlan) {
       attempt.failureStage = "apply_root_transition";
       const updated = await applyRootModelWorkPlan({
@@ -365,16 +372,11 @@ class RootExecutionSession {
       attempt.head = updated.head;
       attempt.call = updated.call;
     }
-    if (decision.action === "recall_memory") {
-      attempt.failureStage = "recall_memory";
-      await performRootMemoryRecall({
-        request: this.request,
-        ledger: this.ledger,
-        head: activation.head,
-        call: activation.call,
-        steeringVersion: activation.decisionSteeringVersion,
-        query: decision.query,
-      });
+    if (isRootReferenceDecision(decision)) {
+      attempt.failureStage = decision.action === "recall_memory" ? "recall_memory" : "apply_root_transition";
+      this.resume = await performRootReferenceAction(
+        this.request, this.ledger, { ...activation, decision }, this.resume,
+      );
       return CONTINUE_ROOT_EXECUTION;
     }
     if (decision.action === "invoke_role") {
@@ -516,41 +518,11 @@ class RootExecutionSession {
       return CONTINUE_ROOT_EXECUTION;
     }
     attempt.failureStage = "invoke_child";
-    let head = activation.head;
-    let call = activation.call;
-    if (decision.workingDirectory !== undefined) {
-      const established = await this.transactions.establishWorkingDirectory({
-        expectedHead: head,
-        callId: call.callId,
-        invocationAttempt: call.activationCount,
-        workingDirectory: decision.workingDirectory,
-      });
-      if (!established.ok) {
-        throw new Error(`role_call_ledger_rejected:${established.issueCode}`);
-      }
-      head = established.commit.head;
-      attempt.head = head;
-      call = requireRootCallFrame({ head, callId: call.callId });
-      attempt.call = call;
-    }
-    const binding = createRoleCapabilityBinding({
-      requestId: this.request.requestId,
-      context: this.request.workerCapabilities.executionContext,
-      call,
-      ledger: this.ledger,
-      adapters: this.request.workerCapabilities.provider.getAdapters(),
-      ...(this.request.approvalGate
-        ? { approvalGate: this.request.approvalGate }
-        : {}),
-      ...(this.policy.authority.capabilityAuthorities.includes("root")
-        ? {
-            executionFreshness: createRootExecutionFreshness({
-              requestSteering: this.requestSteering,
-              steeringVersion: activation.decisionSteeringVersion,
-            }),
-          }
-        : {}),
+    const { head, call, binding } = await prepareRootCapabilityBinding({
+      request: this.request, ledger: this.ledger, activation, decision,
     });
+    attempt.head = head;
+    attempt.call = call;
     try {
       const execution =
         decision.action === "invoke_capability"
@@ -662,6 +634,7 @@ class RootExecutionSession {
       ? createPlainRootAuthoredResponse(decision.response)
       : await this.policy.rootContract.authorResponse(this.request, {
           responseRecommendation: decision.responseRecommendation,
+          responseRecommendationOrigin: decision.responseRecommendationOrigin,
           directResponse: decision.directResponse,
           memoryRecallMessage: projectRootMemoryRecallMessage({
             head: activation.head,
@@ -774,24 +747,4 @@ function emitSupervisorResumeStatus(request: RequestExecutionScope): void {
     phase: "resuming",
     message: "Processing the delegated result...",
   });
-}
-
-function requireRootCallFrame(params: {
-  head: RoleCallLedgerHead;
-  callId: string;
-}): RoleCallFrame {
-  const call = params.head.state.calls.find(
-    (candidate) => candidate.callId === params.callId,
-  );
-  if (
-    !call ||
-    call.callId !== params.head.state.rootCallId ||
-    call.parentCallId !== null ||
-    call.roleId !== RUNTIME_ROOT_ROLE_ID ||
-    call.depth !== 0 ||
-    call.status !== "active"
-  ) {
-    throw new Error("supervisor_call_frame_missing");
-  }
-  return call;
 }

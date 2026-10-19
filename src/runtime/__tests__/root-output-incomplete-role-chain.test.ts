@@ -1,3 +1,4 @@
+import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -158,7 +159,7 @@ test.each(["decision", "response"] as const)(
       output: JSON.stringify(PHRASING),
     });
     let next = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
       const entry = script[next++];
       expect(entry, `unexpected model step: ${input.modelStep}`).toBeDefined();
       expect(input.modelStep).toBe(entry!.step);
@@ -169,7 +170,7 @@ test.each(["decision", "response"] as const)(
             : entry!.output(input),
         meta: entry!.incomplete ? { providerCompletionReason: "length" } : {},
       };
-    });
+    }));
     const request = createRootInvalidOutputRequest(invoke);
     const result = await runRequestRunner(request);
     const expected = renderDegradedFinalization({

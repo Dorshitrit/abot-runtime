@@ -7,6 +7,7 @@ import type {
 import type { ModelGatewayClient } from "../../ports.js";
 import { createRequestSteeringInbox } from "../../request/request-steering.js";
 import { createTestRequestExecutionScope } from "./request-execution-scope.js";
+import { withSupervisorPreparation, type SupervisorPhaseDecision } from "./supervisor-model-phases.js";
 
 export type RecallPolicy = "supervisor-worker-v1" | "execution-agent-v1";
 export type RecallModelInput = Parameters<ModelGatewayClient["invoke"]>[0];
@@ -66,6 +67,8 @@ export function createMemoryRecallHarness(
     memoryRecallLimit?: number;
     retrieve?: LongTermMemoryService["retrieve"];
     onInput?: (input: RecallModelInput) => void;
+    present?: SupervisorPhaseDecision;
+    selectSkills?: SupervisorPhaseDecision;
   }>,
 ) {
   const enabled = options.enabled ?? true;
@@ -116,6 +119,7 @@ export function createMemoryRecallHarness(
       typeof decision === "string" ? decision : JSON.stringify({ decision });
     return { text, meta: {} };
   });
+  const gatewayInvoke = vi.fn(withSupervisorPreparation(invoke, options));
   const modelSteps = [
     "supervisor.decision",
     "supervisor.response",
@@ -157,7 +161,7 @@ export function createMemoryRecallHarness(
       },
       defaults: { profileId: "test", steps: {} },
     },
-    modelGatewayClient: { invoke, invokeRaw },
+    modelGatewayClient: { invoke: gatewayInvoke, invokeRaw },
     workerCapabilityProvider: {
       getDescriptors: () => [],
       getAdapters,
@@ -178,6 +182,7 @@ export function createMemoryRecallHarness(
   return {
     request,
     invoke,
+    gatewayInvoke,
     invokeRaw,
     memory,
     getAdapters,

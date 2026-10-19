@@ -1,3 +1,5 @@
+import { rootWorkCalls } from "./support/root-invalid-output-fixture.js";
+import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { ModelStep } from "../../shared/model-steps.js";
@@ -53,7 +55,7 @@ describe.each(ROOT_OUTPUT_POLICIES)("$policyId failure delivery", (policy) => {
     async (phase) => {
       const harness = await createFailureHarness(policy.policyId);
       const failingStep = phase === "decision" ? policy.decisionStep : policy.responseStep;
-      const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
         if (input.modelStep === "degraded.finalization") {
           expect(readProblem(input)).toEqual({
             stage: "provider_completion",
@@ -71,13 +73,13 @@ describe.each(ROOT_OUTPUT_POLICIES)("$policyId failure delivery", (policy) => {
           };
         }
         return { text: rootRespondOutput(policy.policyId), meta: {} };
-      });
+      }));
       await harness.run(invoke);
       const session = await harness.sessionStore.getSessionById("failure-session");
       expect(session?.messages.filter(({ role }) => role === "assistant")).toEqual([
         expect.objectContaining({ content: authoredOutput }),
       ]);
-      expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
+      expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([
         policy.decisionStep,
         ...(phase === "response" ? [policy.responseStep] : []),
         "degraded.finalization",
@@ -95,7 +97,7 @@ test.each([false, true])(
   async (authoringFails) => {
     const harness = await createFailureHarness();
     const primary = incompleteError("worker.result");
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
       if (input.modelStep !== "degraded.finalization") throw primary;
       expect(readProblem(input)).toEqual({
         stage: "decide",
@@ -105,7 +107,7 @@ test.each([false, true])(
       });
       if (authoringFails) throw new Error("secondary_provider_failure");
       return { text: JSON.stringify(phrasing), meta: {} };
-    });
+    }));
     await harness.run(invoke);
     const expected = authoringFails
       ? buildDegradedFinalizationFallback({
@@ -120,7 +122,7 @@ test.each([false, true])(
     expect(harness.events.filter(({ type }) => type === "failed")).toEqual([
       expect.objectContaining({ error: "output_incomplete" }),
     ]);
-    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(rootWorkCalls(invoke)).toHaveLength(2);
   },
 );
 
@@ -145,10 +147,10 @@ test.each([
 
 test("SUPER cause belongs to the primary failure, not later caller data", async () => {
   const primary = new Error("provider_connection_failed");
-  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
     expect(readProblem(input)).toEqual({ stage: "decide", code: primary.message });
     return { text: JSON.stringify(phrasing), meta: {} };
-  });
+  }));
   const request = createRootInvalidOutputRequest(invoke);
   request.superFailureFinalization!.remember(primary, "decide");
   await request.superFailureFinalization!.explain({
@@ -160,7 +162,7 @@ test("SUPER cause belongs to the primary failure, not later caller data", async 
     maxResponseChars: 1000,
   });
   expect(request.superFailureFinalization!.primaryError()).toBe(primary);
-  expect(invoke).toHaveBeenCalledOnce();
+  expect(rootWorkCalls(invoke)).toHaveLength(1);
 });
 
 test("output-limit fallback is actionable while retaining canonical recorded progress", async () => {

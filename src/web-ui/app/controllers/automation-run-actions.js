@@ -1,5 +1,5 @@
 /** Async run commands retain the view that authorized them through every read. */
-export function createAutomationRunActions({ client, mutation, publish, loadSelected, openRun,
+export function createAutomationRunActions({ client, mutation, publish, loadSelected, refreshRunHistory, openRun,
   captureView }) {
   const pendingStarts = new Set();
   const runStartKey = (view) => JSON.stringify([view.environmentId, view.automationId]);
@@ -10,6 +10,8 @@ export function createAutomationRunActions({ client, mutation, publish, loadSele
     const continuation = view.captureContinuation();
     const refreshed = await loadSelected(view.automationId, "", continuation.isCurrent);
     if (!refreshed || !continuation.isCurrent()) return false;
+    await refreshRunHistory(continuation.isCurrent);
+    if (!continuation.isCurrent()) return false;
     return openRun(result.run.id, continuation.ownsMutation);
   }
 

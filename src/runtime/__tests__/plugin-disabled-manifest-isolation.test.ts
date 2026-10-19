@@ -24,7 +24,8 @@ describe("disabled plugin manifest isolation", () => {
       const config = await createPluginSelectionFixture(selection);
       await malformedPlugin(config.paths.rootDir, "broken-fixture");
       expect(loadConfiguredRuntimePlugins(config)).toEqual([]);
-      expect(createDefaultToolRegistry(config).listDefinitions()).toEqual([]);
+      expect(createDefaultToolRegistry(config).listDefinitions().map(({ name }) => name))
+        .toEqual(["abot_skills"]);
     },
   );
 
@@ -38,6 +39,7 @@ describe("disabled plugin manifest isolation", () => {
       await malformedPlugin(config.paths.rootDir, id);
       const registry = createDefaultToolRegistry(config);
       expect(registry.listDefinitions().map(({ name }) => name)).toEqual([
+        "abot_skills",
         "fixture_ping",
       ]);
       await expect(

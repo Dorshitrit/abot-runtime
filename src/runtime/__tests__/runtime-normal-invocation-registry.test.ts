@@ -79,7 +79,10 @@ describe("manifest-derived ordinary invocation registry", () => {
 
     expect(plugins.length).toBeGreaterThan(0);
     expect(manifestOperations.length).toBeGreaterThan(0);
-    expect(registeredOperations).toEqual(manifestOperations);
+    expect(registeredOperations.filter(({ toolName }) => toolName !== "abot_skills"))
+      .toEqual(manifestOperations);
+    expect(registeredOperations.filter(({ toolName }) => toolName === "abot_skills")
+      .map(({ operationId }) => operationId)).toEqual(["create_skill", "list_skills", "read_skill", "read_skills", "update_skill"]);
     expect(
       registeredOperations.find(
         ({ operationId }) => operationId === "inspect_target",
@@ -98,12 +101,12 @@ describe("manifest-derived ordinary invocation registry", () => {
         .listDefinitions()
         .map(({ name }) => name)
         .sort(),
-    ).toEqual(
-      plugins
+    ).toEqual([
+      "abot_skills",
+      ...plugins
         .flatMap((plugin) => plugin.capabilities)
-        .map(({ definition }) => definition.name)
-        .sort(),
-    );
+        .map(({ definition }) => definition.name),
+    ].sort());
   });
 
   test("scopes document-reader working paths exactly once through the full provider", async () => {
@@ -236,9 +239,11 @@ describe("manifest-derived ordinary invocation registry", () => {
       createDefaultToolRegistry(config),
     );
     expect(registry.listDefinitions().map(({ name }) => name)).toEqual([
+      "abot_skills",
       "host_lookup",
     ]);
     expect(registry.listNormalInvocations?.()).toMatchObject([
+      { toolName: "abot_skills" },
       {
         toolName: "host_lookup",
         contract: {

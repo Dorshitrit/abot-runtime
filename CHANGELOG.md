@@ -4,6 +4,74 @@ All notable changes to this project should be documented in this file.
 
 This project follows semantic versioning after the first public release.
 
+## 1.9.0 - 2026-10-19
+
+ABot 1.9.0 adds reusable personal Skills and a dedicated Skills workspace,
+improves Studio run history, and strengthens continuity during longer tasks.
+
+### Added
+
+- Discover and read built-in Skills for ABot Studio, Computer Use, Skill Creator
+  and Technical Work when their guidance is relevant. Skills can be read by name
+  or ID, with up to eight documents in one call.
+- Ask ABot to create or update personal Skills for recurring tasks. Saved Skills
+  are shared across conversations and models within the same Runtime environment;
+  concurrent edits are checked to prevent overwriting another saved revision.
+- Manage personal Skills in a new Web UI workspace: create, edit content, archive
+  and restore. Built-in Skills remain read-only, and archived personal Skills are
+  excluded from new discovery and reads.
+- Expandable Supervisor cards show the objectives of delegated work, and Planner
+  cards show returned results or failures. Recorded details remain available when
+  reopening the conversation.
+
+### Changed
+
+- Studio run history supports status and calendar-date filters, 50-record pages,
+  automatic loading while scrolling, and a Load more button. Navigation preserves
+  the loaded history, and Run or Run again refreshes it before opening the report.
+- Supervisor can read Skills directly and pass captured guidance through planning,
+  execution, review and completion audits, including after context compaction.
+  Ordinary Skill reads no longer require per-action approval in ASK mode;
+  explicit tool blocks, forced approvals and write permissions still apply.
+- Supervisor now handles requested personal Skill creation and updates directly,
+  using relevant conversation, attachments and completed work as source material.
+  Updates retain the complete existing document and checked revision through
+  context compaction; approval resume saves the previously prepared content.
+- Shorter agent instructions and deduplicated tool-result content reduce repeated
+  context. Guidance emphasizes reusing established results, preserving task
+  requirements and respecting later user instructions, including requests to stop.
+  Missing evidence is distinguished from work the user still requires.
+- Technical Work guidance favors focused implementation and verification, with
+  broader browser or UI testing reserved for explicit requests. Computer Use
+  guidance calls for explicit approval before discovering, observing or controlling
+  a computer, while retaining approval already given for the same target and task.
+- Newly configured Ollama profiles receive tailored defaults for token estimation
+  and context compaction. Existing profiles are not automatically changed.
+
+### Fixed
+
+- Supervisor follow-up tasks retain exact paths to previously created artifacts,
+  including directory names that begin with a dot.
+- Provider and transport failures in delegated model calls return a failed result
+  to their caller instead of automatically failing the entire request.
+- Available Skills no longer disappear because of an early context-budget
+  estimate. Missing Skill lookups display a clear "Skill not found" activity.
+- Context compaction is interrupted when the user updates an active request,
+  so continuation uses the current input.
+- Switching Runtime environments no longer overwrites the destination
+  environment's remembered model selection with the previous environment's model.
+- Concurrent Web UI state saves no longer trigger the lock conflicts seen
+  on Windows.
+- Repeated tool-group selections no longer cause otherwise valid Supervisor or
+  Planner delegation decisions to fail validation.
+- Context-compaction deadlines are identified as timeouts in failure diagnostics
+  instead of being reported as rejected checkpoints.
+- Newly initialized environments use a 180-second context-compaction timeout
+  instead of the general 90-second step timeout. Newly configured OpenAI profiles
+  receive a five-minute compaction timeout through CLI or Web setup, unless the
+  template specifies one. Existing runner and model configurations are not
+  automatically migrated.
+
 ## 1.8.1 - 2026-10-14
 
 ABot 1.8.1 improves request reliability, memory-informed decisions, tool discovery

@@ -1,3 +1,4 @@
+import { createSkillRequests } from "./runtime-web-client/skills.js";
 import { createNotificationRequests } from "./runtime-web-client/notifications.js";
 import { createSparkChatRequests } from "./runtime-web-client/spark-chat.js";
 import { createProjectRequests } from "./runtime-web-client/projects.js";
@@ -380,6 +381,7 @@ export function createRuntimeWebClient({
     ...createProjectRequests({ requestApi, getEnvironmentId, getConfig }),
     ...createToolApprovalRequests({ requestApi, getEnvironmentId, getConfig }),
     ...createNotificationRequests({ requestApi, getEnvironmentId, getConfig }),
+    ...createSkillRequests({ requestApi, getEnvironmentId, getConfig }),
     ...createSparkChatRequests({ requestApi, getEnvironmentId, getConfig }),
   };
 }

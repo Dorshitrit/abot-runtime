@@ -95,10 +95,12 @@ test("cached plugin entrypoint prepares the selected catalog once per request wi
   const first = await registry.prepareRequest!();
   const second = await registry.prepareRequest!();
   expect(first.listDefinitions().map(({ name }) => name)).toEqual([
+    "abot_skills",
     "first",
     "second",
   ]);
   expect(second.listDefinitions().map(({ name }) => name)).toEqual([
+    "abot_skills",
     "first",
     "second",
   ]);
@@ -121,8 +123,8 @@ test("cached plugin entrypoint prepares the selected catalog once per request wi
     await second.execute({ tool: "first", params: { destination: "two" } }),
   ).toMatchObject({ ok: true, output: "2" });
   expect(
-    registry.listNormalInvocations!()[0]!.contract.operations[0]!.input
-      .properties.destination,
+    registry.listNormalInvocations!().find(({ toolName }) => toolName === "first")!
+      .contract.operations[0]!.input.properties.destination,
   ).toEqual({ type: "string", enum: ["one", "two"] });
   expect(JSON.stringify(first.listDefinitions())).not.toContain("private-");
   expect(first.getDefinition("disabled")).toBeUndefined();

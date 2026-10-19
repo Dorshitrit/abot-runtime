@@ -1,3 +1,4 @@
+import type { PersonalSkillManagementService } from "../knowledge-skills/personal-contracts.js";
 import type { SessionStore } from "../ports.js";
 import type { RuntimeProjectService } from "../projects/contracts.js";
 import type { RuntimeAttachmentStore } from "../attachments/store.js";
@@ -6,6 +7,7 @@ import type { AutomationService } from "../automations/service.js";
 import type { LocalRuntimeCallHandler } from "./contracts.js";
 import { bindManagedSessionAttachmentDeletion } from "../session/session-attachment-deletion.js";
 import {
+  LOCAL_PERSONAL_SKILL_METHODS,
   LOCAL_SESSION_METHODS,
   LOCAL_PROJECT_METHODS,
   LOCAL_ATTACHMENT_METHODS,
@@ -40,5 +42,8 @@ export function createLocalServiceClients(call: LocalRuntimeCallHandler) {
     "projects",
     LOCAL_PROJECT_METHODS,
   );
-  return { sessions, attachments, scheduler, automations, projects };
+  const personalSkills = service<PersonalSkillManagementService>(
+    "personalSkills", LOCAL_PERSONAL_SKILL_METHODS,
+  );
+  return { sessions, attachments, scheduler, automations, projects, personalSkills };
 }

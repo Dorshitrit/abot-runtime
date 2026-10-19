@@ -11,6 +11,7 @@ import {
 import { resolveSuperWorkerCompactionProjection } from "./super-worker-compaction-projection.js";
 import type { SuperWorkerCompactionSidecar } from "./super-worker-compaction-sidecar.js";
 import { CompactionSourceInvariantError } from "./compaction-source-invariant.js";
+import { CORE_SKILL_READ_MESSAGE_KIND, coreSkillReadSourceRef } from "./core-skill-read-context.js";
 import { projectRequestToolResultsCheckpointMessage } from "./request-tool-results-checkpoint.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { ModelStep } from "../../shared/model-steps.js";
@@ -156,7 +157,7 @@ export function createModelStepCompactionController(
   const activeStage = Object.freeze<ModelStepCompactionStage>({
     compactionScope: "active_request",
     scopeId,
-    async prepare(messages) {
+    async prepare(messages, context) {
       const {
         sidecar,
         failureOwner,
@@ -206,6 +207,7 @@ export function createModelStepCompactionController(
         binding,
         sourceRevision: options.sourceRevision,
         preservationObjective: options.call.objective!,
+        boundSteeringVersion: context?.boundSteeringVersion,
         consumer: options.consumer,
         ...(previous ? { previous } : {}),
         sources: newSources,
@@ -390,7 +392,8 @@ function resolveMessageSources(
 ): readonly SemanticCompactionSource[] {
   if (message.role === "tool") {
     return Object.freeze([
-      createMessageSource(`tool-result:${message.toolCallId}`, message),
+      resultSourceOverrides.get(`tool-result:${message.toolCallId}`) ??
+        createMessageSource(`tool-result:${message.toolCallId}`, message),
     ]);
   }
   if (message.role === "assistant" && message.toolCalls) {
@@ -421,6 +424,14 @@ function resolveMessageSources(
     );
   }
   const record = parseJsonRecord(message.content);
+  if (record?.kind === CORE_SKILL_READ_MESSAGE_KIND) {
+    const read = record.read as { readId?: unknown } | undefined;
+    const document = record.document as { skillId?: unknown } | undefined;
+    const readId = readNonEmptyString(read?.readId);
+    return readId ? Object.freeze([createMessageSource(
+      coreSkillReadSourceRef(readId, readNonEmptyString(document?.skillId)), message,
+    )]) : Object.freeze([]);
+  }
   if (record?.kind === OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND) {
     return Object.freeze([
       createMessageSource(
@@ -647,13 +658,14 @@ function resolveResultSource(
 ): SemanticCompactionSource | undefined {
   const executionId = readNonEmptyString(result.executionId);
   if (!executionId) return undefined;
-  const override = overrides.get(executionId);
+  const sourceRef = sourceRefPrefix
+    ? `${sourceRefPrefix}:${executionId}`
+    : executionId;
+  const override = overrides.get(executionId) ?? overrides.get(sourceRef);
   if (override) return override;
   const content = JSON.stringify(result);
   return Object.freeze({
-    sourceRef: sourceRefPrefix
-      ? `${sourceRefPrefix}:${executionId}`
-      : executionId,
+    sourceRef,
     sourceFingerprint: createSemanticCompactionSha256Fingerprint(content),
     content,
   });
@@ -674,8 +686,12 @@ function resolveScannableResultSource(
   if (!executionId) return undefined;
   if (sidecar && !sidecar.eligibleExecutionIds.includes(executionId))
     return undefined;
+  const sourceRef = sourceRefPrefix
+    ? `${sourceRefPrefix}:${executionId}`
+    : executionId;
   if (
     !overrides.has(executionId) &&
+    !overrides.has(sourceRef) &&
     !readNonEmptyString(result.referenceData) &&
     !parseRecord(result.adapterResult)
   ) {

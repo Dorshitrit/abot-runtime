@@ -108,7 +108,7 @@ describe.each([
       await expect(
         h.run(createAdmissionController([history, active])),
       ).rejects.toThrow("context_compaction_projection_not_reduced");
-      expect(active.prepare).toHaveBeenCalledWith(ADMISSION_MESSAGES);
+      expect(active.prepare.mock.calls[0]![0]).toEqual(ADMISSION_MESSAGES);
       expect(history.commit).not.toHaveBeenCalled();
       expect(active.commit).not.toHaveBeenCalled();
       expect(h.invoke).not.toHaveBeenCalled();

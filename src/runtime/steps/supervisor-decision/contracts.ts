@@ -1,5 +1,7 @@
 import { MODEL_STEPS } from "../../../shared/model-steps.js";
 import type { MemoryRecallDecision } from "../memory-recall-decision.js";
+import type { SkillReadDecision } from "../skill-read-decision.js";
+import type { SupervisorSkillAuthoringSelection } from "../supervisor-skill-authoring/contract.js";
 import {
   isRuntimeDelegateRoleId,
   RUNTIME_DELEGATE_ROLE_IDS,
@@ -24,6 +26,9 @@ export const SUPERVISOR_ACKNOWLEDGEMENT_MAX_LENGTH = 220;
 export const SUPERVISOR_TITLE_MAX_LENGTH = 80;
 export const SUPERVISOR_OBJECTIVE_MAX_LENGTH = 8_192;
 export const SUPERVISOR_DECISION_PHASES = Object.freeze([
+  "presentation",
+  "skill_selection",
+  "skill_authoring",
   "routing",
   "working_directory",
 ] as const);
@@ -77,8 +82,10 @@ export type SupervisorInvokeRoleDecision =
 
 export type SupervisorDecision =
   | MemoryRecallDecision
+  | SkillReadDecision
   | SupervisorRespondDecision
-  | SupervisorInvokeRoleDecision;
+  | SupervisorInvokeRoleDecision
+  | (SupervisorSkillAuthoringSelection & Readonly<{ acknowledgement?: string; title?: string }>);
 
 export type SupervisorDecisionOutcome = Readonly<{
   decision: SupervisorDecision;
@@ -114,7 +121,8 @@ export type SupervisorRoutingInvokeRoleDecision =
 export type SupervisorRoutingDecision =
   | MemoryRecallDecision
   | SupervisorRespondDecision
-  | SupervisorRoutingInvokeRoleDecision;
+  | SupervisorRoutingInvokeRoleDecision
+  | Readonly<{ action: "author_skill"; acknowledgement?: never; title?: never }>;
 
 export type SupervisorWorkingDirectoryRoutingDecision = Extract<
   SupervisorRoutingInvokeRoleDecision,

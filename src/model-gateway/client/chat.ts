@@ -7,6 +7,10 @@ import type {
 } from "./contracts.js";
 import { buildModelInvocationMetrics } from "./invocation-metrics.js";
 import {
+  fetchModelGatewayResponse,
+  ModelGatewayInvocationError,
+} from "./invocation-error.js";
+import {
   buildChatGatewayRequestBody,
   resolveMetricMessages,
   resolveRequestMessages,
@@ -48,14 +52,20 @@ export async function invokeModelGatewayWithOptions(
     messageCount: requestMessages.length,
   });
 
-  const response = await fetch(url + "/chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+  const serializedRequestBody = JSON.stringify(requestBody);
+  const response = await fetchModelGatewayResponse(
+    url + "/chat",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      signal: params.abortSignal,
+      body: serializedRequestBody,
     },
-    signal: params.abortSignal,
-    body: JSON.stringify(requestBody),
-  });
+    params.abortSignal,
+  );
+  params.abortSignal.throwIfAborted();
 
   traceDebug("model-gateway.client", "chat.response.received", {
     requestId,
@@ -65,6 +75,7 @@ export async function invokeModelGatewayWithOptions(
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
+    params.abortSignal.throwIfAborted();
     traceDebug("model-gateway.client", "chat.response.error", {
       requestId,
       status: response.status,
@@ -73,7 +84,8 @@ export async function invokeModelGatewayWithOptions(
         ? { bodyPreview: errorText.slice(0, 400) }
         : { contentOmitted: true }),
     });
-    throw new Error(
+    throw new ModelGatewayInvocationError(
+      "http",
       `bridge_request_failed:${response.status}:${permitsModelContentTrace(params.modelStep, params.messages) ? errorText || "empty error body" : "content omitted"}`,
     );
   }
@@ -82,7 +94,7 @@ export async function invokeModelGatewayWithOptions(
     traceDebug("model-gateway.client", "chat.response.no_body", {
       requestId,
     });
-    throw new Error("no stream");
+    throw new ModelGatewayInvocationError("missing_stream", "no stream");
   }
 
   const streamReader = new InactivityBoundStreamReader(

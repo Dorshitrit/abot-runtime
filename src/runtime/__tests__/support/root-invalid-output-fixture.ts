@@ -1,4 +1,5 @@
-import { vi } from "vitest";
+import { vi, type Mock } from "vitest";
+import { supervisorFormatName } from "./supervisor-model-phases.js";
 import { MODEL_STEPS } from "../../../shared/model-steps.js";
 import type { RequestExecutionPolicyId } from "../../config/model-execution-policy.js";
 import type { RequestRunnerConfig } from "../../config/runner/contracts.js";
@@ -18,6 +19,13 @@ import {
 import { directRespondText } from "./supervisor-direct-respond.js";
 
 const invokedSteps = Object.values(MODEL_STEPS);
+
+export function rootWorkCalls(invoke: Mock<ModelGatewayClient["invoke"]>) {
+  return invoke.mock.calls.filter(([input]) => {
+    const format = supervisorFormatName(input);
+    return format !== "supervisor_presentation" && format !== "supervisor_skill_selection";
+  });
+}
 
 export const INVALID_OUTPUT_RUNNER_CONFIG: RequestRunnerConfig = {
   models: {
