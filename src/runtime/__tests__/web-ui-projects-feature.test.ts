@@ -4,6 +4,8 @@ import { createProjectsFeature } from "../../web-ui/app/projects-feature.js";
 // @ts-expect-error Browser rendering module has no declaration surface.
 import { renderProjectSessionGroups } from "../../web-ui/app/components/project-session-groups.js";
 import { ContextElement } from "./support/composer-context-window-dom.js";
+import { createClientPreferences } from "../../web-ui/app/services/client-preferences.js";
+import { sidebarStorage } from "./support/session-sidebar-dom.js";
 import { deferredProjectResult, project, projectClient } from "./support/projects-controller-fixture.js";
 import type { SessionProject } from "../../sessions/project-binding.js";
 
@@ -82,6 +84,7 @@ function featureFixture(supported = true) {
   const feature = createProjectsFeature({
     onSessionCreated,
     dom, state, client, shell, conversationSession,
+    preferences: createClientPreferences(sidebarStorage()),
     selectedEnvironmentId: () => environmentId, renderSessions: vi.fn(),
     prepareConversation,
   });
@@ -327,7 +330,7 @@ describe("project group disclosure", () => {
     expect(toggle.tagName).toBe("button");
     const title = toggle.querySelector(".project-group-title")!;
     expect(title.parentElement).toBe(toggle);
-    expect(toggle.querySelector(".project-group-chevron")?.getAttribute("aria-hidden")).toBe("true");
+    expect(toggle.querySelector(".project-group-chevron")).toBeNull();
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(toggle.getAttribute("aria-controls")).toBe(content.id);
     expect(content.hidden).toBe(false);
@@ -381,7 +384,7 @@ describe("project group disclosure", () => {
     expect(restored.secondContent.hidden).toBe(false);
   });
 
-  test("clears collapsed choices when switching environments, including returning to the original one", async () => {
+  test("restores saved collapsed choices when returning to the original environment", async () => {
     const f = featureFixture();
     renderFeatureGroups(f).firstToggle.dispatch("click");
     f.setEnvironment("dev");
@@ -393,7 +396,7 @@ describe("project group disclosure", () => {
     f.setEnvironment("prod");
     f.dom.environmentSelect.dispatch("change");
     await Promise.resolve();
-    expect(renderFeatureGroups(f).firstContent.hidden).toBe(false);
+    expect(renderFeatureGroups(f).firstContent.hidden).toBe(true);
   });
 });
 

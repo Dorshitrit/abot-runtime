@@ -41,7 +41,8 @@ test("a captured legacy LIST failure still suppresses selection without another 
   });
   await expect(prepareSupervisorDecision(fixture.request, {
     includeAcknowledgement: false, includeTitle: false, allowSkillReads: true,
-    skillReadHead: fixture.ledger.current(), diagnostic: {
+    skillReadHead: fixture.ledger.current(),
+    skillSelectionWindow: fixture.request.supervisorSkillSelectionWindows.bind({ rootCallId: call.callId }), diagnostic: {
       requestId: fixture.request.requestId, modelStep: "supervisor.decision", decisionPhase: "skill_selection",
       callId: call.callId, parentCallId: null, depth: 0, invocationAttempt: call.activationCount,
     },
@@ -49,11 +50,12 @@ test("a captured legacy LIST failure still suppresses selection without another 
   expect(fixture.invoke).not.toHaveBeenCalled();
 });
 
-test("failed READ stops collection across Worker return and steering while preserving previously read guidance", async () => {
+test("a failed read after child return suppresses later selection while retaining prior guidance", async () => {
   let selections = 0;
   let routes = 0;
+  let workers = 0;
   const store = {
-    list: vi.fn(() => [guide]),
+    list: vi.fn(() => [guide, { ...guide, skillId: "missing-guide", name: "Removed after selection" }]),
     read: vi.fn((id: string) => id === guide.skillId ? guide : undefined),
   };
   const harness = createMemoryRecallHarness({
@@ -61,29 +63,40 @@ test("failed READ stops collection across Worker return and steering while prese
     selectSkills() {
       return { action: "read_skills", skillIds: [++selections === 1 ? guide.skillId : "missing-guide"] };
     },
+    classifyProcedure: () => ({ requiresProcedure: true }),
+    delegate(input) {
+      expect(JSON.stringify(input.messages)).not.toContain(guide.content);
+      expect(selections).toBe(++routes);
+      return { action: "invoke_role", roleId: "worker", objective: "Explain the owning layer." };
+    },
     decide(input) {
       if (supervisorFormatName(input) === "supervisor_working_directory")
         return JSON.stringify({ workingDirectory: "." });
       expect(JSON.stringify(input.messages)).toContain(guide.content);
-      if (input.modelStep === "supervisor.decision") {
-        if (++routes === 1) return { action: "invoke_role", roleId: "worker", objective: "Explain the owning layer." };
-        expect(JSON.stringify(input.messages)).toContain("Finish with a short explanation.");
-        expect(jsonMessages(input).some(({ kind }) => kind === "runtime_child_result")).toBe(true);
-        return { action: "respond" };
-      }
+      if (input.modelStep === "worker.result") return "The runtime owns canonical state.";
       if (input.modelStep === "worker.decision") {
-        expect(harness.requestSteering.append({ steerId: "finish-after-failure", text: "Finish with a short explanation." }).ok).toBe(true);
+        workers++;
+        expect(harness.requestSteering.append({ steerId: `after-worker-${workers}`, text: `Finish after Worker ${workers}.` }).ok).toBe(true);
         return { action: "return_result" };
       }
-      expect(input.modelStep).toBe("worker.result");
-      return "The runtime owns canonical state.";
+      expect(input.modelStep).toBe("supervisor.decision");
+      routes++;
+      expect(jsonMessages(input).some(({ kind }) => kind === "runtime_child_result")).toBe(true);
+      if (routes === 2) {
+        expect(selections).toBe(2);
+        expect(JSON.stringify(input.messages)).toContain("knowledge_skill_not_found");
+        return { action: "invoke_role", roleId: "worker", objective: "Check the explanation using the captured guide." };
+      }
+      expect(routes).toBe(3);
+      expect(JSON.stringify(input.messages)).toContain("Finish after Worker 2.");
+      return { action: "respond" };
     },
   });
   await expect(runRequestRunner(attachStore(harness, store))).resolves.toMatchObject({ output: FINAL_RESPONSE });
   expect(selections).toBe(2);
-  expect(routes).toBe(2);
+  expect(routes).toBe(3);
   expect(store.read.mock.calls).toEqual([[guide.skillId], ["missing-guide"]]);
-  expect(harness.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.decision")).toHaveLength(1);
+  expect(harness.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.decision")).toHaveLength(2);
   expect(JSON.stringify(harness.gatewayInvoke.mock.calls.at(-1)![0].messages)).toContain(guide.content);
   expect(skillEvents(harness)).toEqual([
     ["runtime.state", { stage: "supervisor", phase: "skills", message: "Read Skills: First guide" }],
@@ -91,8 +104,8 @@ test("failed READ stops collection across Worker return and steering while prese
   ]);
 });
 
-test("a new request in the same session can collect Skills after the previous request failed", async () => {
-  let available = false;
+test.each([false, true])("a new request can read the same Skill after a prior request (available: %s)", async (initiallyAvailable) => {
+  let available = initiallyAvailable;
   const store = { list: vi.fn(() => [guide]), read: vi.fn(() => available ? guide : undefined) };
   const failedSelection = vi.fn(() => ({ action: "read_skills", skillIds: [guide.skillId] }));
   const first = createMemoryRecallHarness({
@@ -107,40 +120,62 @@ test("a new request in the same session can collect Skills after the previous re
     policy: "supervisor-worker-v1", enabled: false,
     selectSkills: () => ++selections === 1
       ? { action: "read_skills", skillIds: [guide.skillId] } : { action: "continue" },
-    decide(input) {
-      expect(JSON.stringify(input.messages)).toContain(guide.content);
-      return { action: "respond" };
+    classifyProcedure(input) {
+      expect(JSON.stringify(input.messages)).not.toContain(guide.content);
+      return { requiresProcedure: false, responseRecommendation: "Answer the request using the guide." };
     },
+    onInput(input) {
+      if (input.modelStep === "supervisor.response") expect(JSON.stringify(input.messages)).toContain(guide.content);
+    },
+    decide: vi.fn(),
   });
   expect(first.request.sessionId).toBe(next.request.sessionId);
   await expect(runRequestRunner(attachStore(next, store, "next-request"))).resolves.toMatchObject({ output: FINAL_RESPONSE });
-  expect(selections).toBe(2);
+  expect(selections).toBe(1);
   expect(store.read.mock.calls).toEqual([[guide.skillId], [guide.skillId]]);
   expect(skillEvents(next)).toEqual([["runtime.state", {
     stage: "supervisor", phase: "skills", message: "Read Skills: First guide",
   }]]);
 });
 
-test("successful reads still allow selection of additional Skills in the same request", async () => {
+test("a child return permits one additional Skill batch in the same request", async () => {
   const documents = [guide, secondGuide];
   const store = {
     list: vi.fn(() => documents),
     read: vi.fn((id: string) => documents.find(({ skillId }) => id === skillId)),
   };
   let selections = 0;
+  let routes = 0;
   const harness = createMemoryRecallHarness({
     policy: "supervisor-worker-v1", enabled: false,
     selectSkills() {
       const target = documents[selections++];
-      return target ? { action: "read_skills", skillIds: [target.skillId] } : { action: "continue" };
+      expect(target).toBeDefined();
+      return { action: "read_skills", skillIds: [target!.skillId] };
+    },
+    classifyProcedure: () => ({ requiresProcedure: true }),
+    delegate(input) {
+      expect(JSON.stringify(input.messages)).not.toContain(guide.content);
+      expect(selections).toBe(++routes);
+      return { action: "invoke_role", roleId: "worker", objective: "Apply the first guide." };
     },
     decide(input) {
+      if (supervisorFormatName(input) === "supervisor_working_directory")
+        return JSON.stringify({ workingDirectory: "." });
+      expect(JSON.stringify(input.messages)).toContain(guide.content);
+      if (input.modelStep === "worker.decision") return { action: "return_result" };
+      if (input.modelStep === "worker.result") return "The first guide was applied.";
+      expect(input.modelStep).toBe("supervisor.decision");
+      routes++;
+      expect(routes).toBe(2);
+      expect(jsonMessages(input).some(({ kind }) => kind === "runtime_child_result")).toBe(true);
       for (const { content } of documents) expect(JSON.stringify(input.messages)).toContain(content);
       return { action: "respond" };
     },
   });
   await expect(runRequestRunner(attachStore(harness, store))).resolves.toMatchObject({ output: FINAL_RESPONSE });
-  expect(selections).toBe(3);
+  expect(selections).toBe(2);
+  expect(routes).toBe(2);
   expect(store.read.mock.calls).toEqual(documents.map(({ skillId }) => [skillId]));
   expect(skillEvents(harness)).toEqual(documents.map(({ name }) => ["runtime.state", {
     stage: "supervisor", phase: "skills", message: `Read Skills: ${name}`,

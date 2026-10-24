@@ -73,7 +73,7 @@ test.each([true, false])("ordinary initiative history preserves the complete del
       expect(JSON.stringify(messages)).not.toContain(session.messages[0]!.initiative!.reason);
       expect(JSON.stringify(messages)).not.toContain(session.messages[0]!.initiative!.handoffBrief);
       return { text: typeof call!.output === "string" ? call!.output : call!.output(input), meta: {} };
-    }));
+    }, { classifyProcedure: () => ({ requiresProcedure: true }) }));
     const seed = { ...targetHandoffSeed(invoke, "ask"), sessionId: session.id, sessionMemory,
       historyMessages: sessionMemory.project().historyMessages, ...(markedSpark ? { sessionKind: "spark" as const } : {}) };
     const registry = await fixture.registry.prepareRequest!();

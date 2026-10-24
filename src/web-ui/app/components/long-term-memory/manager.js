@@ -1,3 +1,4 @@
+import { confirmDialog } from "../confirmation-dialog.js";
 import { escapeAttribute, escapeHtml } from "../../lib/text-format.js";
 import {
   readMemoryEditorInput,
@@ -12,7 +13,8 @@ import {
 
 export function createLongTermMemoryManager({
   actions,
-  confirmDelete = (message) => window.confirm(message),
+  getEnvironmentId = () => "",
+  confirmDelete = (message) => confirmDialog(message, { title: "Delete memory", confirmLabel: "Delete memory", tone: "danger" }),
 }) {
   let root = null;
   let view = null;
@@ -59,7 +61,7 @@ export function createLongTermMemoryManager({
       void actions.setOriginFilter(view.originFilter ? "" : "passive_observation");
     if (action === "previous-page") void actions.changePage(-1);
     if (action === "next-page") void actions.changePage(1);
-    if (action === "delete") confirmAndDelete(recordId);
+    if (action === "delete") void confirmAndDelete(recordId);
   }
 
   function handleSubmit(event) {
@@ -79,11 +81,19 @@ export function createLongTermMemoryManager({
     actions.cancelEdit();
   }
 
-  function confirmAndDelete(recordId) {
+  async function confirmAndDelete(recordId) {
     const record = view?.items.find((item) => item.id === recordId);
     if (!record) return;
-    if (!confirmDelete(buildMemoryDeleteConfirmation(record))) return;
-    void actions.deleteMemory(record.id);
+    const environmentId = getEnvironmentId();
+    const targetRoot = root;
+    const updatedAt = record.updatedAt;
+    if (!await confirmDelete(buildMemoryDeleteConfirmation(record))) return;
+    if (environmentId !== getEnvironmentId() || root !== targetRoot) return;
+    const snapshot = actions.snapshot();
+    if (snapshot.mutation || snapshot.loading) return;
+    const current = snapshot.items.find((item) => item.id === recordId);
+    if (current !== record || current.updatedAt !== updatedAt) return;
+    await actions.deleteMemory(record.id);
   }
 
   function toggleMemoryContent(button) {

@@ -1,4 +1,5 @@
-import { renderReasoningModeField, syncReasoningModeField, retainedReasoningMode } from "../../lib/reasoning-controls.js";
+import { readReasoningPreferenceField } from "../../lib/reasoning-preference.js";
+import { clearReasoningOffForMode, renderReasoningModeField, syncReasoningModeField, retainedReasoningMode } from "../../lib/reasoning-controls.js";
 import { escapeHtml } from "../../lib/text-format.js";
 import { SCHEDULE_WEEKDAYS } from "../../lib/schedule-presentation.js";
 import { scheduleErrorMessage } from "../../lib/schedule-errors.js";
@@ -89,7 +90,7 @@ export function createScheduleForm({
     <label>Task prompt<textarea name="prompt" rows="5" required dir="auto" placeholder="What should ABot do when this schedule runs?">${escapeHtml(values.prompt || "")}</textarea></label>
     <div class="schedule-form-grid">${scheduleFields(values)}</div>
     <div class="schedule-form-grid"><label>Model<select name="modelProfileId" required><option value="">Choose a model</option>${options(modelOptions, values.modelProfileId)}</select></label>
-    ${renderReasoningModeField(values.agentMode || "reasoning", models.find((model) => model.id === values.modelProfileId), modes.filter((mode) => mode !== "auto"))}</div>
+    ${renderReasoningModeField(values.agentMode || "reasoning", models.find((model) => model.id === values.modelProfileId), modes.filter((mode) => mode !== "auto"), values.reasoningPreference)}</div>
     <label>Tool access<select name="toolPermissionMode">${options(
       [
         { value: "full_access", label: "Full" },
@@ -112,12 +113,18 @@ export function createScheduleForm({
     }
   }
 
-  const readInput = () => {
+  const readInput = (initial = false) => {
     const data = new FormData(form);
     data.set("agentMode", retainedReasoningMode(form, values.agentMode || "reasoning"));
-    return scheduleFormInput(data, job?.schedule);
+    const input = scheduleFormInput(data, job?.schedule);
+    const preference = initial ? values.reasoningPreference : readReasoningPreferenceField(form);
+    if (preference) input.reasoningPreference = preference;
+    else if (job?.reasoningPreference) input.reasoningPreference = null;
+    return input;
   };
   fields.namedItem("modelProfileId").addEventListener("change", () => syncReasoningModeField(form, models, modes.filter((mode) => mode !== "auto")));
+  form.querySelector("[data-reasoning-mode]")?.addEventListener("change", () => clearReasoningOffForMode(form, models, modes.filter((mode) => mode !== "auto")));
+  form.querySelector("[data-reasoning-preference-mode]")?.addEventListener("change", () => syncReasoningModeField(form, models, modes.filter((mode) => mode !== "auto")));
   let initialInput;
   form.querySelector("[data-cancel]").addEventListener("click", onCancel);
   fields.namedItem("kind").addEventListener("change", syncKind);
@@ -139,7 +146,7 @@ export function createScheduleForm({
     }
   });
   syncKind();
-  if (job) initialInput = readInput();
+  if (job) initialInput = readInput(true);
   const initialFields = JSON.stringify([...new FormData(form)]);
   function trackScheduleDraft() {
     form.dataset.dirty = String(

@@ -2,6 +2,9 @@ import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
+import { defaultProviderAddress, parseProviderCredentialEnvironment } from "./runtime-setup-provider-options.js";
+import { buildSetupModelReasoning, type SetupModelOptions } from "./runtime-setup-model-options.js";
+
 export type Provider = string;
 export type JsonObject = Record<string, unknown>;
 
@@ -82,6 +85,7 @@ export async function writeJsonObject(
 export function buildProviderConfig(
   provider: Provider,
   baseUrl?: string,
+  apiKeyEnv?: string,
 ): JsonObject {
   if (provider === "openai") {
     return {
@@ -95,6 +99,14 @@ export function buildProviderConfig(
       baseUrl: baseUrl ?? "http://127.0.0.1:11434",
     };
   }
+  if (provider === "llamacpp") {
+    const credential = parseProviderCredentialEnvironment(apiKeyEnv);
+    return {
+      type: "llamacpp",
+      baseUrl: baseUrl ?? defaultProviderAddress(provider),
+      ...(credential ? { apiKeyEnv: credential } : {}),
+    };
+  }
   return { type: provider };
 }
 
@@ -103,6 +115,7 @@ export function buildModelConfig(
   provider: Provider,
   model: string,
   contextWindowTokens?: number,
+  modelOptions: SetupModelOptions = {},
 ): JsonObject {
   const context = isRecord(template.context) ? template.context : {};
   const tokenEstimation = isRecord(context.tokenEstimation)
@@ -113,10 +126,18 @@ export function buildModelConfig(
     ? calibration["context.compact"]
     : {};
   const generation = isRecord(compaction.generation) ? compaction.generation : {};
+  const rawPayload = isRecord(calibration["toolPayload.raw"])
+    ? calibration["toolPayload.raw"]
+    : {};
   const shouldApplyOllamaSetupCalibration = provider === "ollama";
-  const shouldApplyOpenAiCompactionTimeout = provider === "openai";
+  const shouldApplyOpenAiStepTimeouts = provider === "openai";
   const modelConfig = {
     ...template,
+    ...buildSetupModelReasoning(
+      provider,
+      isRecord(template.generation) ? template.generation : {},
+      modelOptions,
+    ),
     ...(shouldApplyOllamaSetupCalibration
       ? {
           calibration: {
@@ -162,12 +183,13 @@ export function buildModelConfig(
       },
     },
   };
-  if (!shouldApplyOpenAiCompactionTimeout) return modelConfig;
+  if (!shouldApplyOpenAiStepTimeouts) return modelConfig;
   return {
     ...modelConfig,
     calibration: {
       ...calibration,
       "context.compact": { timeoutMs: 300_000, ...compaction },
+      "toolPayload.raw": { timeoutMs: 300_000, ...rawPayload },
     },
   };
 }

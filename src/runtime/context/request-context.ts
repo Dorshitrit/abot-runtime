@@ -298,6 +298,25 @@ export function projectLatestCompleteConversationTurn(
   return undefined;
 }
 
+/** Returns one latest settled turn: a complete pair or a trusted assistant initiative. */
+export function projectLatestSettledConversationTurn(
+  historyMessages: readonly RequestHistoryMessage[],
+): readonly RequestHistoryMessage[] | undefined {
+  const turns = collectConversationTurns(historyMessages);
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index]!;
+    if (!isSettledConversationTurn(turn)) continue;
+    return Object.freeze([...turn.source]);
+  }
+  return undefined;
+}
+
+function isSettledConversationTurn(turn: ConversationTurn): boolean {
+  // The canonical collector emits only a pending user, a completed pair, or
+  // a singleton trusted assistant initiative; only the pending user is unsettled.
+  return turn.source.at(-1)?.role === "assistant";
+}
+
 function collectConversationTurns(
   historyMessages: readonly RequestHistoryMessage[],
 ): ConversationTurn[] {

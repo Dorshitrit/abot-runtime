@@ -1,3 +1,4 @@
+import { createSkillActivityIcon } from "./conversation-skill-activity.js";
 import { createConversationFileAction } from "./conversation-file-action.js";
 import { createConversationToolEvidence } from "./conversation-tool-evidence.js";
 
@@ -92,11 +93,9 @@ export function createConversationTools({
 
   function actionSummary(action, status, fileAction) {
     const summary = element("summary", "conversation-tool-summary");
-    const symbol = element(
-      "span",
-      "conversation-tool-symbol",
-      STATUS_SYMBOLS[status],
-    );
+    const symbol = action.skillRead
+      ? createSkillActivityIcon(documentRoot)
+      : element("span", "conversation-tool-symbol", STATUS_SYMBOLS[status]);
     symbol.setAttribute("aria-hidden", "true");
     const description = element("span", "conversation-tool-description");
     description.appendChild(
@@ -132,6 +131,7 @@ export function createConversationTools({
     const row = element("li", "conversation-tool-row");
     const details = element("details", `conversation-tool is-${status}`);
     details.dataset.actionId = action.id;
+    details.classList.toggle("is-skill-read", action.skillRead === true);
     details.open = request.expanded.has(action.id);
     request.nodes.set(action.id, details);
     const fileAction = createConversationFileAction({

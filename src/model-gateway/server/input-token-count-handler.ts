@@ -1,3 +1,4 @@
+import { InputTokenCountDiagnostics } from "../observability/input-token-count-diagnostics.js";
 import { traceDebug } from "../../runtime/observability/debug-logger.js";
 import { resolveModelInvocation } from "../policy/invocation-policy.js";
 import type { ModelGatewayRequest } from "../types.js";
@@ -30,6 +31,7 @@ export function createInputTokenCountHandler(
     context: ModelGatewayInvocationContext = {},
   ): Promise<void> {
     const abortSignal = context.abortSignal ?? new AbortController().signal;
+    const diagnostics = new InputTokenCountDiagnostics("model-gateway.server", requestBody);
     try {
       abortSignal.throwIfAborted();
       const effectiveRequestBody = applyConfiguredModelPolicy(
@@ -44,7 +46,9 @@ export function createInputTokenCountHandler(
         return sendText(response, 400, messageValidationError);
       }
 
+      diagnostics.setPhase("resolve");
       const invocation = resolveModelInvocation(effectiveRequestBody);
+      diagnostics.bindInvocation(invocation);
       const providerAdapter = providerAdapters.resolve(
         invocation.profile.provider,
       );
@@ -65,6 +69,7 @@ export function createInputTokenCountHandler(
         );
       }
 
+      diagnostics.setPhase("provider_count");
       const result = await providerAdapter.countInputTokens({
         endpoint: "chat",
         requestBody: effectiveRequestBody,
@@ -73,7 +78,7 @@ export function createInputTokenCountHandler(
           endpoint: "input_tokens",
           requestBody: effectiveRequestBody,
           invocation,
-          fetchImpl,
+          fetchImpl: diagnostics.observeFetch(fetchImpl),
           abortSignal,
         }),
       });
@@ -81,9 +86,11 @@ export function createInputTokenCountHandler(
         return;
       }
       if (result.kind === "error") {
+        diagnostics.failed({ kind: "provider_result", statusCode: result.statusCode, aborted: false });
         return sendText(response, result.statusCode, result.message);
       }
 
+      diagnostics.setPhase("measurement_record");
       inputTokenMeasurements?.record(
         { requestBody: effectiveRequestBody, invocation },
         result,
@@ -100,6 +107,7 @@ export function createInputTokenCountHandler(
         model: invocation.model,
         inputTokens: result.inputTokens,
       });
+      diagnostics.setPhase("response_write");
       return sendJson(response, 200, {
         inputTokens: result.inputTokens,
         profileId: invocation.profile.id,
@@ -109,6 +117,7 @@ export function createInputTokenCountHandler(
         source: "provider_input_token_count",
       });
     } catch (error) {
+      diagnostics.failed({ kind: "exception", error, aborted: abortSignal.aborted });
       respondToGatewayHandlerError({
         error,
         response,

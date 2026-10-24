@@ -1,5 +1,6 @@
 @import url("./styles/foundation.css");
 @import url("./styles/00-tokens-base.css");
+@import url("./styles/01-color-palettes.css");
 @import url("./styles/10-shell-sessions.css");
 @import url("./styles/11-workspace-rail.css");
 @import url("./styles/12-conversation-sidebar.css");
@@ -7,12 +8,15 @@
 @import url("./styles/20-chat-composer.css");
 @import url("./styles/19-runtime-setup.css");
 @import url("./styles/21-composer-controls.css");
+@import url("./styles/22-reasoning-budget.css");
 @import url("./styles/22-composer-context-window.css");
 @import url("./styles/23-composer-plan.css");
 @import url("./styles/24-conversation-role-cards.css");
 @import url("./styles/25-conversation-sources.css");
 @import url("./styles/26-message-content.css");
 @import url("./styles/27-conversation-tools.css");
+@import url("./styles/27-conversation-skills.css");
+@import url("./styles/27-conversation-memory.css");
 @import url("./styles/28-conversation-status.css");
 @import url("./styles/29-conversation-file-preview.css");
 @import url("./styles/30-inspector-config.css");
@@ -28,6 +32,7 @@
 @import url("./styles/35-memory-onboarding.css");
 @import url("./styles/36-memory-management.css");
 @import url("./styles/39-memory-workspace.css");
+@import url("./styles/35-embedding-profiles.css");
 @import url("./styles/40-skills.css");
 @import url("./styles/39-passive-learning.css");
 @import url("./styles/37-config-operations.css");
@@ -65,3 +70,6 @@
 @import url("./styles/94-automations-responsive.css");
 @import url("./styles/64-workspace-storage.css");
 @import url("./styles/95-home-widgets.css");
+@import url("./styles/65-appearance.css");
+@import url("./styles/66-navigation-display.css");
+@import url("./styles/67-confirmation-dialog.css");

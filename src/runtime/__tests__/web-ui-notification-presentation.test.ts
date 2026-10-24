@@ -19,7 +19,7 @@ const notice = {
 };
 
 describe("notification presentation and navigation", () => {
-  test("renders stored text safely and distinguishes submitted from read", () => {
+  test("renders stored text safely and distinguishes submitted from read", async () => {
     const html = renderNotificationItem(notice, false);
     expect(html).toContain("&lt;script&gt;");
     expect(html).toContain("&lt;img");
@@ -29,7 +29,7 @@ describe("notification presentation and navigation", () => {
     expect(html).toContain("Mark read");
   });
 
-  test("offers a compact preview with full details and separate accessible actions", () => {
+  test("offers a compact preview with full details and separate accessible actions", async () => {
     const body = "העדכון המלא זמין כאן גם כששורת התצוגה המקדימה קצרה.\nעוד מידע על הבקשה.";
     const html = renderNotificationItem({ ...notice, title: "עדכון חדש", body }, false);
     const summary = html.match(/<summary\b[^>]*>([\s\S]*?)<\/summary>/)?.[1];
@@ -42,7 +42,7 @@ describe("notification presentation and navigation", () => {
     expect(html).not.toContain('<details class="notification-item-details" open');
   });
 
-  test.each(["failed", "unknown", "unavailable"])("shows a safe %s delivery reason inside expanded details", (status) => {
+  test.each(["failed", "unknown", "unavailable"])("shows a safe %s delivery reason inside expanded details", async (status) => {
     const reason = "<img src=x onerror=alert(1)> Desktop alerts are blocked.";
     const html = renderNotificationItem({ ...notice, delivery: { status, error: reason } }, false);
     const summary = html.match(/<summary\b[^>]*>([\s\S]*?)<\/summary>/)?.[1];
@@ -52,7 +52,7 @@ describe("notification presentation and navigation", () => {
     expect(html).not.toContain("<img");
   });
 
-  test("omits empty and irrelevant delivery errors and hides legacy PowerShell serialization", () => {
+  test("omits empty and irrelevant delivery errors and hides legacy PowerShell serialization", async () => {
     for (const status of ["pending", "submitted", "disabled"])
       expect(renderNotificationItem({ ...notice, delivery: { status, error: "stale failure" } }, false))
         .not.toContain("notification-delivery-error");
@@ -67,7 +67,7 @@ describe("notification presentation and navigation", () => {
     expect(html).not.toContain("serialized exception");
   });
 
-  test("restores keyboard focus to the same disclosure after a notification refresh", () => {
+  test("restores keyboard focus to the same disclosure after a notification refresh", async () => {
     const previous = { dataset: { notificationDetail: notice.id } };
     const replacement = { dataset: { notificationDetail: notice.id }, focus: vi.fn() };
     const body = {};
@@ -86,7 +86,7 @@ describe("notification presentation and navigation", () => {
     expect(replacement.focus).toHaveBeenCalledWith({ preventScroll: true });
   });
 
-  test("directs users to older unread history when the loaded page contains only read items", () => {
+  test("directs users to older unread history when the loaded page contains only read items", async () => {
     const snapshot = {
       supported: true, filter: "unread", unreadCount: 1, nextCursor: "older-page",
       loading: false, error: "",
@@ -97,14 +97,14 @@ describe("notification presentation and navigation", () => {
     expect(notificationFeedback(snapshot, [notice])).toBe("");
   });
 
-  test("source links must remain inside the same environment and allowed workspace", () => {
+  test("source links must remain inside the same environment and allowed workspace", async () => {
     expect(notificationSourceUrl(notice)).toBe(notice.sourceUrl);
     for (const sourceUrl of ["https://elsewhere.invalid/", "//elsewhere.invalid/", "//[", "/chat?environment=dev", "/web-api/notifications?environment=prod"])
       expect(notificationSourceUrl({ ...notice, sourceUrl })).toBe("");
     expect(notificationSourceUrl({ ...notice, sourceUrl: "/notifications?environment=prod" })).toContain("/notifications");
   });
 
-  test("automation alerts present a run link only when every source identity matches", () => {
+  test("automation alerts present a run link only when every source identity matches", async () => {
     const { sessionId: _sessionId, ...base } = notice;
     const automation = {
       ...base,
@@ -139,7 +139,7 @@ describe("notification presentation and navigation", () => {
     })).toContain('data-notification-kind="automation" checked');
   });
 
-  test("restores notifications routes and honors the configuration discard guard", () => {
+  test("restores notifications routes and honors the configuration discard guard", async () => {
     expect(readWorkspaceRoute({ pathname: "/notifications", search: "?environment=dev" })).toMatchObject({
       workspace: "notifications", environment: "dev",
     });
@@ -151,10 +151,10 @@ describe("notification presentation and navigation", () => {
     });
     shell.bind();
     shell.load();
-    shell.activateWorkspace("config");
-    expect(shell.activateWorkspace("notifications")).toBe(false);
+    await shell.activateWorkspace("config");
+    expect(await shell.activateWorkspace("notifications")).toBe(false);
     mayLeave = true;
-    harness.dom.notificationsWorkspaceButton.dispatch("click");
+    await harness.dom.notificationsWorkspaceButton.dispatch("click");
     harness.flushFrames();
     expect(shell.activeWorkspace()).toBe("notifications");
     expect(harness.dom.notificationsWorkspacePanel.hidden).toBe(false);
@@ -162,6 +162,7 @@ describe("notification presentation and navigation", () => {
     expect(harness.documentRoot.activeElement).toBe(harness.dom.closeNotificationsWorkspaceButton);
     expect(harness.dom.notificationsWorkspaceButton.getAttribute("aria-current")).toBe("page");
     shell.closeOverlaysOnEscape();
+    await vi.waitFor(() => expect(shell.activeWorkspace()).toBe("chat"));
     expect(harness.dom.notificationsWorkspacePanel.hidden).toBe(true);
   });
 

@@ -47,6 +47,8 @@ for (const path of paths) {
 
 const requiredPaths = [
   ...[
+    "model-gateway/providers/llamacpp/input-token-count",
+    "model-gateway/policy/reasoning-mode-budget", "shared/model-reasoning-modes",
     "capabilities/tool-media", "model-gateway/observability/tool-media-privacy",
     "model-gateway/providers/openai/image-content", "runtime/attachments/request-tool-media",
     "runtime/automations/agent-session-lifetime", "runtime/automations/agent-assignment",
@@ -188,6 +190,7 @@ const requiredPaths = [
   "dist/src/web-ui/app/controllers/projects-controller.d.ts",
   "dist/src/web-ui/app/controllers/tool-permission-mode-controller.js",
   "dist/src/web-ui/app/controllers/tool-permission-mode-controller.d.ts",
+  "dist/src/web-ui/app/controllers/reasoning-budget-menu-events.js",
   "dist/src/web-ui/app/lib/tool-permission-mode.js",
   "dist/src/web-ui/app/lib/tool-permission-mode.d.ts",
   "dist/src/web-ui/app/projects-feature.js",
@@ -269,6 +272,8 @@ const requiredPaths = [
     "config-workspace/model-setup-entry",
     "config-workspace/model-removal",
     "config-workspace/raw-config-repair",
+    "config-workspace/reasoning-budget-edit",
+    "config-workspace/reasoning-mode-budgets",
   ].map((name) => "dist/src/web-ui/app/components/" + name + ".js"),
   "dist/src/web-ui/app/styles/43-model-setup.css",
   "dist/src/web-ui/app/styles/44-model-provider-cards.css",
@@ -593,8 +598,8 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // contract. Each emitted runtime module contributes both .js and .d.ts files,
 // so legitimate production modules can move the count by more than one.
 // These ceilings bound the approved public package inventory and unpacked size.
-const maxFileCount = 4_063;
-const maxUnpackedSizeBytes = 12_845_000;
+const maxFileCount = 4_247;
+const maxUnpackedSizeBytes = 13_300_000;
 
 if (paths.length > maxFileCount) {
   fail(`package includes too many files: ${paths.length} > ${maxFileCount}`);

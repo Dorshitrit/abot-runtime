@@ -61,7 +61,7 @@ afterEach(async () => {
 });
 
 test.each([true, false])(
-  "Supervisor sees compact SYSTEM discovery with connection=%s",
+  "Supervisor procedure gate stays independent of SYSTEM discovery with connection=%s",
   async (connected) => {
     const result = await runSystemBriefRequest({ connected });
     expect(result.events.filter(({ type }) => type === "failed")).toEqual([]);
@@ -70,9 +70,9 @@ test.each([true, false])(
     expect(result.host.readHostStatus).toHaveBeenCalledOnce();
     const inputs = result.model.invoke.mock.calls.map(([input]) => input);
     const routing = inputs.find(
-      ({ format }) => typeof format === "object" && format?.name === "supervisor_decision",
+      ({ format }) => typeof format === "object" && format?.name === "supervisor_procedure_gate",
     )!;
-    assertPluginDiscovery(routing, result.offered);
+    expect(messages(routing).filter(isCapabilityBriefMessage)).toEqual([]);
     expect(result.offered).toHaveLength(14);
     const prepared = await result.prepare.mock.results[0]!.value;
     const expectedTargets = connected ? ["linux", "windows"] : ["linux"];

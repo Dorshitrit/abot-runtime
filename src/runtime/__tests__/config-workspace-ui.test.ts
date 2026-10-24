@@ -18,7 +18,7 @@ function deferred<T>() {
 }
 
 function fakeInteractiveElement() {
-  const listeners = new Map<string, Array<(event: unknown) => void>>();
+  const listeners = new Map<string, Array<(event: unknown) => unknown>>();
   const attributes = new Map<string, string>();
   return {
     className: "",
@@ -26,13 +26,11 @@ function fakeInteractiveElement() {
     inert: false,
     innerHTML: "",
     textContent: "",
-    addEventListener(type: string, listener: (event: unknown) => void) {
+    addEventListener(type: string, listener: (event: unknown) => unknown) {
       listeners.set(type, [...(listeners.get(type) || []), listener]);
     },
     dispatch(type: string, event: Record<string, unknown> = {}) {
-      for (const listener of listeners.get(type) || []) {
-        listener({ target: this, ...event });
-      }
+      return Promise.all((listeners.get(type) || []).map((listener) => listener({ target: this, ...event })));
     },
     getAttribute(name: string) {
       return attributes.get(name) ?? null;
@@ -440,7 +438,7 @@ describe("config workspace ui behavior", () => {
     });
 
     const load = harness.workspace.load();
-
+    await vi.waitFor(() => expect(harness.configDashboard.getAttribute("aria-busy")).toBe("true"));
     expect(harness.configDashboard.inert).toBe(false);
     expect(harness.configDashboard.getAttribute("aria-busy")).toBe("true");
     expect(harness.refreshConfigButton.disabled).toBe(true);
@@ -608,7 +606,7 @@ describe("config workspace ui behavior", () => {
     });
     expect(harness.workspace.beginExternalRuntimeMutation()).toBe(true);
     expect(harness.configDashboard.getAttribute("aria-busy")).toBe("true");
-    expect(harness.workspace.prepareDiscardChanges("change environment")).toBe(
+    expect(await harness.workspace.prepareDiscardChanges("change environment")).toBe(
       null,
     );
 
@@ -636,7 +634,7 @@ describe("config workspace ui behavior", () => {
       saveFile: vi.fn(() => pendingSave.promise),
     });
     await harness.workspace.load();
-    harness.configDashboard.dispatch("change", {
+    await harness.configDashboard.dispatch("change", {
       target: {
         id: "configRawFileSelect",
         value: "requestRunner:requestRunner",
@@ -725,7 +723,7 @@ describe("config workspace ui behavior", () => {
     harness.configDashboard.dispatch("input", {
       target: configFieldTarget("model", "local", ["provider"], "openai"),
     });
-    harness.configDashboard.dispatch("change", {
+    await harness.configDashboard.dispatch("change", {
       target: {
         id: "configRawFileSelect",
         value: "model:local",
@@ -868,7 +866,7 @@ describe("config workspace ui behavior", () => {
     expect(harness.refreshConfigButton.disabled).toBe(false);
   });
 
-  test("keeps the config canvas active when leaving is declined", () => {
+  test("keeps the config canvas active when leaving is declined", async () => {
     const dom = createWorkspaceShellHarness().dom;
     let allowLeave = false;
     const shell = createWorkspaceShell({
@@ -888,18 +886,18 @@ describe("config workspace ui behavior", () => {
     });
 
     shell.load();
-    expect(shell.activateWorkspace("config", { focus: false })).toBe(true);
-    expect(shell.activateWorkspace("chat", { focus: false })).toBe(false);
+    expect(await shell.activateWorkspace("config", { focus: false })).toBe(true);
+    expect(await shell.activateWorkspace("chat", { focus: false })).toBe(false);
     expect(dom.configWorkspacePanel.hidden).toBe(false);
     expect(dom.chatPanel.hidden).toBe(true);
 
     allowLeave = true;
-    expect(shell.activateWorkspace("chat", { focus: false })).toBe(true);
+    expect(await shell.activateWorkspace("chat", { focus: false })).toBe(true);
     expect(dom.configWorkspacePanel.hidden).toBe(true);
     expect(dom.chatPanel.hidden).toBe(false);
   });
 
-  test("defers a prepared workspace change until its activation is committed", () => {
+  test("defers a prepared workspace change until its activation is committed", async () => {
     const dom = createWorkspaceShellHarness().dom;
     const discardPreparedChanges = vi.fn();
     const shell = createWorkspaceShell({
@@ -919,8 +917,8 @@ describe("config workspace ui behavior", () => {
     });
 
     shell.load();
-    expect(shell.activateWorkspace("config", { focus: false })).toBe(true);
-    const activateChat = shell.prepareWorkspaceActivation("chat", {
+    expect(await shell.activateWorkspace("config", { focus: false })).toBe(true);
+    const activateChat = await shell.prepareWorkspaceActivation("chat", {
       focus: false,
     });
 

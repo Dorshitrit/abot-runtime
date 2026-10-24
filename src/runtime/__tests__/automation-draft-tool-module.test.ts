@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createAutomationDraftManager } from "../automations/draft-management.js";
 import type { AutomationPersistence } from "../automations/persistence.js";
 import { createAutomationSavedAgentManager } from "../automations/saved-agent-management.js";
+import { findAutomationStep } from "../automations/step-evidence-effects.js";
 import type { AutomationService } from "../automations/service.js";
 import { emptyAutomationJournalState } from "../automations/storage-records.js";
 import { createAutomationDraftToolModule } from "../capabilities/automations/tool-module.js";
@@ -48,7 +49,7 @@ function fixture() {
   } as unknown as AutomationService;
   const ready = vi.fn(async () => undefined);
   const module = createAutomationDraftToolModule(() => service, ready);
-  return { module, ready, catalog };
+  return { module, ready, catalog, service };
 }
 
 function output(result: Awaited<ReturnType<ReturnType<typeof createAutomationDraftToolModule>["implementation"]>>) {
@@ -130,6 +131,125 @@ describe("automation draft model tool", () => {
     expect(reused.revision).toBe(4);
     expect((reused.newNodeIds as string[])).toHaveLength(1);
     expect(ready).toHaveBeenCalled();
+  });
+
+  it("updates agent model bindings without carrying an old reasoning override", async () => {
+    const { module, service } = fixture();
+    const created = output(await module.implementation({ action: "create_draft", title: "Think" }));
+    const automationId = String(created.automationId);
+    const added = output(await module.implementation({
+      action: "add_agent", automationId, expectedRevision: 1,
+      parentSequenceId: created.rootSequenceId, index: 0,
+      title: "Answer", modelProfileId: "local", agentMode: "fast",
+      roleInstructions: "Answer", prompt: "Think", onFailure: "stop",
+      reasoningMode: "budget", reasoningBudgetTokens: 128,
+    }));
+    const nodeId = (added.newNodeIds as string[])[0]!;
+    let revision = 2;
+    const readAgent = async () => {
+      const draft = await service.getDraft(automationId);
+      const node = findAutomationStep(draft!.definition.body, nodeId);
+      if (node?.kind !== "agent") throw new Error("agent_required");
+      return node;
+    };
+    const edit = async (params: Record<string, unknown>) => {
+      const result = await module.implementation({
+        action: "edit_agent", automationId, expectedRevision: revision, nodeId, ...params,
+      });
+      if (result.ok) revision = Number(output(result).revision);
+      return result;
+    };
+    const original = { profileId: "local", mode: "budget", budgetTokens: 128 };
+    expect((await edit({ modelProfileId: "local" })).ok).toBe(true);
+    expect((await readAgent()).reasoningPreference).toEqual(original);
+    expect((await edit({ prompt: "New prompt" })).ok).toBe(true);
+    expect((await readAgent()).reasoningPreference).toEqual(original);
+    const rejected = await edit({ modelProfileId: "other", reasoningBudgetTokens: 64 });
+    expect(rejected.ok).toBe(false);
+    expect(rejected.error).toContain("reasoningBudgetTokens requires reasoningMode=budget");
+    expect((await readAgent()).reasoningPreference).toEqual(original);
+    // Canonical draft mutations still require the caller to clear or replace a binding.
+    await expect(service.updateDraft(automationId, revision, {
+      kind: "update_node", nodeId, patch: { modelProfileId: "other" },
+    })).rejects.toThrow();
+    expect((await edit({ modelProfileId: "other" })).ok).toBe(true);
+    expect(await readAgent()).toMatchObject({ modelProfileId: "other" });
+    expect((await readAgent()).reasoningPreference).toBeUndefined();
+    for (const reasoningMode of ["budget", "off", "server-default", "inherit"]) {
+      const modelProfileId = reasoningMode;
+      expect((await edit({
+        modelProfileId, reasoningMode,
+        ...(reasoningMode === "budget" ? { reasoningBudgetTokens: 64 } : {}),
+      })).ok).toBe(true);
+      const expected = reasoningMode === "inherit" ? undefined : {
+        profileId: modelProfileId, mode: reasoningMode,
+        ...(reasoningMode === "budget" ? { budgetTokens: 64 } : {}),
+      };
+      expect((await readAgent()).reasoningPreference).toEqual(expected);
+    }
+  });
+
+  it("edits only reasoning controls while preserving the agent configuration", async () => {
+    const { module, service } = fixture();
+    const created = output(await module.implementation({ action: "create_draft", title: "Reasoning" }));
+    const automationId = String(created.automationId);
+    const added = output(await module.implementation({
+      action: "add_agent", automationId, expectedRevision: 1,
+      parentSequenceId: created.rootSequenceId, index: 0,
+      title: "Answer", modelProfileId: "local", agentMode: "deep",
+      roleInstructions: "Answer carefully", prompt: "Read the request", onFailure: "stop",
+      reasoningMode: "budget", reasoningBudgetTokens: 128,
+    }));
+    const nodeId = (added.newNodeIds as string[])[0]!;
+    let revision = Number(added.revision);
+    const before = (await service.getDraft(automationId))!;
+    const originalAgent = findAutomationStep(before.definition.body, nodeId);
+    if (originalAgent?.kind !== "agent") throw new Error("agent_required");
+    const { reasoningPreference: _original, ...unchangedAgent } = originalAgent;
+    for (const reasoningMode of ["off", "budget", "server-default", "inherit"]) {
+      const result = output(await module.implementation({
+        action: "edit_agent", automationId, expectedRevision: revision, nodeId,
+        reasoningMode, ...(reasoningMode === "budget" ? { reasoningBudgetTokens: 64 } : {}),
+      }));
+      revision += 1;
+      expect(result.revision).toBe(revision);
+      const draft = (await service.getDraft(automationId))!;
+      const agent = findAutomationStep(draft.definition.body, nodeId);
+      if (agent?.kind !== "agent") throw new Error("agent_required");
+      const { reasoningPreference, ...preservedAgent } = agent;
+      expect(preservedAgent).toEqual(unchangedAgent);
+      expect(reasoningPreference).toEqual(reasoningMode === "inherit" ? undefined : {
+        profileId: "local", mode: reasoningMode,
+        ...(reasoningMode === "budget" ? { budgetTokens: 64 } : {}),
+      });
+    }
+  });
+
+  it.each([
+    {}, { reasoningBudgetTokens: 64 }, { reasoningMode: "budget" },
+    { reasoningMode: "budget", reasoningBudgetTokens: -1 },
+    { reasoningMode: "off", reasoningBudgetTokens: 64 },
+    { reasoningMode: "inherit", reasoningBudgetTokens: 64 },
+    { reasoningMode: "effort" },
+    { reasoningPreference: { profileId: "local", mode: "off" } },
+  ])("rejects empty or malformed reasoning-only edits without mutating the draft: %j", async (controls) => {
+    const { module, service } = fixture();
+    const created = output(await module.implementation({ action: "create_draft", title: "Reasoning" }));
+    const automationId = String(created.automationId);
+    const added = output(await module.implementation({
+      action: "add_agent", automationId, expectedRevision: 1,
+      parentSequenceId: created.rootSequenceId, index: 0,
+      title: "Answer", modelProfileId: "local", agentMode: "fast",
+      roleInstructions: "Answer", prompt: "Think", onFailure: "stop",
+      reasoningMode: "budget", reasoningBudgetTokens: 128,
+    }));
+    const before = await service.getDraft(automationId);
+    const result = await module.implementation({
+      action: "edit_agent", automationId, expectedRevision: added.revision,
+      nodeId: (added.newNodeIds as string[])[0], ...controls,
+    });
+    expect(result.ok).toBe(false);
+    expect(await service.getDraft(automationId)).toEqual(before);
   });
 
   it("rejects invalid bounded JSON without changing the draft", async () => {

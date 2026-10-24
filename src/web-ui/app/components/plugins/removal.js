@@ -1,3 +1,4 @@
+import { confirmDialog } from "../confirmation-dialog.js";
 function isDefinitiveRemovalRejection(error) {
   if (!(error.status >= 400 && error.status < 500)) return false;
   return [
@@ -29,7 +30,9 @@ export function createPluginRemoval({
   onConfigurationSettled = () => true,
   onSnapshot,
   render,
-  confirmRemoval = (message) => window.confirm(message),
+  captureRemovalTarget = () => null,
+  canRemoveTarget = () => true,
+  confirmRemoval = (message) => confirmDialog(message, { title: "Remove plugin", confirmLabel: "Remove plugin", tone: "danger" }),
 }) {
   const state = { busy: false, message: "", error: "" };
   let environment = getEnvironmentId();
@@ -43,12 +46,17 @@ export function createPluginRemoval({
   async function remove(pluginId) {
     resetEnvironment();
     if (state.busy || !removePlugin) return false;
+    const selectedEnvironment = getEnvironmentId();
+    const confirmationGeneration = generation;
+    const target = captureRemovalTarget(pluginId);
     if (
-      !confirmRemoval(
+      !await confirmRemoval(
         `Remove ${pluginId}? This disables the plugin, applies the change when Runtime is idle, and deletes its installed folder. If Runtime is busy, try Remove again after it finishes.`,
       )
     )
       return false;
+    if (selectedEnvironment !== getEnvironmentId() || confirmationGeneration !== generation) return false;
+    if (state.busy || !canRemoveTarget(pluginId, target)) return false;
     if (!beginRuntimeMutation("plugin removal")) return false;
     const request = ++generation;
     const selected = environment;

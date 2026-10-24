@@ -1,3 +1,4 @@
+import { parseBoundModelReasoningPreference } from "../../shared/model-reasoning.js";
 import { randomUUID } from "node:crypto";
 import { requireSchedulerToolPermissionMode } from "./tool-permission-mode.js";
 import type {
@@ -52,6 +53,7 @@ export function createSchedulerJob(
       prompt: input.prompt,
       modelProfileId: input.modelProfileId,
       agentMode: input.agentMode,
+      ...(input.reasoningPreference ? { reasoningPreference: parseBoundModelReasoningPreference(input.reasoningPreference, input.modelProfileId) } : {}),
       toolPermissionMode: requireSchedulerToolPermissionMode(
         input.toolPermissionMode,
       ),
@@ -85,7 +87,7 @@ export function updateSchedulerJob(
         if (job.state === "cancelled")
           throw new Error("scheduler_job_cancelled");
         const editable = pickEditableFields(patch);
-        const input = { ...job, ...editable };
+        const input = { ...job, ...editable, reasoningPreference: editable.reasoningPreference === null ? undefined : (editable.reasoningPreference ?? job.reasoningPreference) };
         validateSchedulerJobInput(input);
         const now = context.now();
         const schedule = normalizeSchedulerScheduleUpdate(
@@ -106,6 +108,7 @@ export function updateSchedulerJob(
         const pending = findPendingRun(state, jobId);
         cancelPendingRuns(state, jobId, new Date(now).toISOString());
         Object.assign(job, editable, {
+          reasoningPreference: parseBoundModelReasoningPreference(input.reasoningPreference, input.modelProfileId),
           schedule,
           nextRunAt,
           updatedAt: new Date(now).toISOString(),
@@ -143,6 +146,7 @@ function hasSchedulerJobChanges(
   candidate: SchedulerJob,
 ): boolean {
   if (hasSchedulerTimingChanges(job, candidate)) return true;
+  if (JSON.stringify(job.reasoningPreference) !== JSON.stringify(candidate.reasoningPreference)) return true;
   return (
     [
       "title",
@@ -163,6 +167,7 @@ function pickEditableFields(
     "prompt",
     "modelProfileId",
     "agentMode",
+    "reasoningPreference",
     "toolPermissionMode",
     "timeZone",
     "schedule",

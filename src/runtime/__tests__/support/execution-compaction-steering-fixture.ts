@@ -1,3 +1,4 @@
+import type { TestRequestSeed } from "./request-execution-scope.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import { projectRequestToolResults } from "../../context/request-tool-results.js";
 import { runExecutionAgentDecision } from "../../steps/execution-agent/run.js";
@@ -13,17 +14,20 @@ import {
 import { semanticCompactionReplacementSlots } from "./semantic-compaction-replacement-fixture.js";
 
 export const STEERED_FACT = "The selected target has verified value 42.";
+export const STEERED_CONTINUATION = "OLD_OBJECTIVE_CONTINUATION_DO_NOT_INHERIT";
 export const STEERED_RAW = "UNCOMPACTED_EVIDENCE_".repeat(600);
 
-export async function executionCompactionSteeringFixture() {
-  const fixture = await createControlsEvidenceFixture();
+export async function executionCompactionSteeringFixture(
+  overrides: Partial<TestRequestSeed> = {},
+) {
+  const fixture = await createControlsEvidenceFixture(overrides);
   const executionId = await fixture.addResult(STEERED_RAW);
   fixture.countInputTokens.mockImplementation(async (input) => ({
     inputTokens:
       input.modelStep !== "context.compact" &&
-      (input.messages as readonly ChatMessage[]).some(
+      ((input.messages as readonly ChatMessage[]).some(
         ({ role }) => role === "tool",
-      )
+      ) || JSON.stringify(input.messages).includes("UNCOMPACTED_EVIDENCE_"))
         ? 24000
         : 1000,
     profileId: "test",
@@ -46,7 +50,13 @@ export async function executionCompactionSteeringFixture() {
     );
     return {
       text: JSON.stringify({
-        continuation: compactContinuation(),
+        continuation: compactContinuation({
+          currentState: STEERED_CONTINUATION,
+          decisions: [STEERED_CONTINUATION],
+          openWork: [STEERED_CONTINUATION],
+          blockers: [STEERED_CONTINUATION],
+          nextStep: STEERED_CONTINUATION,
+        }),
         sourceDigests: semanticCompactionReplacementSlots(
           envelope,
           () => STEERED_FACT,

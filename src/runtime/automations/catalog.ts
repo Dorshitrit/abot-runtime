@@ -1,3 +1,4 @@
+import { supportsModelReasoningBudget } from "../../shared/model-reasoning.js";
 import type { ToolNormalInvocationInput, ToolNormalInvocationPayload, ToolNormalInvocationOperation } from "../../capabilities/normal-invocation/contracts.js";
 import type { ToolNormalInvocationAttachmentInput } from "../../capabilities/normal-invocation/contracts.js";
 import type { ToolCatalogGroup } from "../../capabilities/tool-types.js";
@@ -82,6 +83,7 @@ export async function readAutomationCatalog(input: {
   const models = Object.entries(input.config.models?.profiles ?? {}).map(([id, profile]) => ({
     id,
     label: profile.label ?? id,
+    ...(supportsModelReasoningBudget({ provider: input.config.models?.providers?.[profile.provider ?? ""]?.type ?? "", supportsThinking: profile.supportsThinking }) ? { reasoningControls: { budgetTokens: true } } : {}),
     ...(profile.provider ? { provider: profile.provider } : {}),
   }));
   const latestAgents = new Map<string, (typeof state.savedAgents)[number]>();

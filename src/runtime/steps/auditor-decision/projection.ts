@@ -51,6 +51,8 @@ export function projectAuditorAssignment(
       steering.updates,
     ),
     callId: caller!.callId,
+    updates: steering.updates,
+    sourceRevision: head.revision,
     store: request.contextCompactionStore,
     results: head.state.capabilityExecutions
       .filter(

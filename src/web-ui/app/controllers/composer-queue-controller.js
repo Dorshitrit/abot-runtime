@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/confirmation-dialog.js";
 import { ComposerSubmissionRefused, isDefiniteSubmissionRefusal } from "./composer-submission-lifecycle.js";
 
 const scopeKey = (scope) => JSON.stringify([scope.environmentId, scope.sessionId]);
@@ -11,7 +12,7 @@ function hasConversationQueueScope(scope) {
 export function createComposerQueueController({
   queue, drafts, lifecycle, getDraft, requests, getSettings,
   isCurrentScope, reportFailure, reportRecovery = () => {}, onChange = () => {},
-  confirmTakeover = (message) => globalThis.confirm?.(message) === true,
+  confirmTakeover = confirmDialog,
 }) {
   const processing = new Map();
   const bindings = new Map();
@@ -112,8 +113,13 @@ export function createComposerQueueController({
     }
     let claimed = await queue.claimBlockedRelease(scope, release.releaseToken);
     if (!claimed) {
-      const approved = confirmTakeover("This queued message may have been sent or may belong to another window. Close that window and check the conversation before taking ownership for manual review. Sending it again may repeat its actions. Continue?");
+      if (!isCurrentScope(scope)) return false;
+      const revision = draft.revision;
+      const approved = await confirmTakeover("This queued message may have been sent or may belong to another window. Close that window and check the conversation before taking ownership for manual review. Sending it again may repeat its actions. Continue?",
+        { title: "Review queued message", confirmLabel: "Take ownership" });
       if (!approved) return false;
+      if (!isCurrentScope(scope) || draft.revision !== revision) return false;
+      if (queue.getBlockedRelease(scope)?.releaseToken !== release.releaseToken) return false;
       claimed = await queue.claimBlockedRelease(scope, release.releaseToken, { takeover: true });
     }
     if (!claimed) throw new Error("This queued message changed before it could be recovered.");
@@ -168,7 +174,7 @@ export function createComposerQueueController({
     const item = released.item;
     const attempt = await lifecycle.submitCaptured({
       action: "send", payload: { scope, text: item.text, attachments: item.attachments, release: released },
-      settings: { agentMode: item.agentMode, toolPermissionMode: item.toolPermissionMode, modelPreference: item.modelPreference },
+      settings: { agentMode: item.agentMode, toolPermissionMode: item.toolPermissionMode, modelPreference: item.modelPreference, ...(item.reasoningPreference ? { reasoningPreference: item.reasoningPreference } : {}) },
       prepare: async (submission) => { await prepareManualSend(submission); requests.prepareView(submission); },
       execute: send, accepted: bindAccepted, prepareRestore,
     });

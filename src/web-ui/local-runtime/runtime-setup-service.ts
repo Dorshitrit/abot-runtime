@@ -1,3 +1,5 @@
+import { inspectModelSetupConnection } from "./model-connection-inspection.js";
+import { resolveRuntimeSetupCredentialEnvironment } from "./runtime-setup-auth.js";
 import { requireRuntimeSetupEditSettled } from "./runtime-setup-edit-recovery.js";
 import { readDefaultContextWindowTokens } from "../../../scripts/runtime-setup-files.js";
 import { initializeConfiguredRuntimeDirectories } from "../../../scripts/runtime-setup-directories.js";
@@ -84,6 +86,8 @@ export class RuntimeSetupService {
               provider: existingModel.provider,
               model: existingModel.model,
               contextWindowTokens: existingModel.contextWindowTokens,
+              supportsThinking: existingModel.supportsThinking,
+              reasoningBudget: existingModel.reasoningBudget,
               ...(existingModel.baseUrl
                 ? { baseUrl: existingModel.baseUrl }
                 : {}),
@@ -91,6 +95,14 @@ export class RuntimeSetupService {
           }
         : {}),
       providers: [
+        {
+          id: "llamacpp",
+          label: "llama.cpp",
+          description: "A separately running llama-server with token reasoning controls",
+          requiresApiKey: existingModel?.provider === "llamacpp" && existingModel.requiresApiKey,
+          credentialConfigured: existingModel?.provider === "llamacpp" && Boolean(existingModel.apiKeyEnv) &&
+            await hasRuntimeSetupCredential(this.options.rootDir, existingModel.apiKeyEnv),
+        },
         {
           id: "ollama",
           label: "Ollama",
@@ -103,11 +115,17 @@ export class RuntimeSetupService {
           requiresApiKey: true,
           credentialConfigured: await hasRuntimeSetupCredential(
             this.options.rootDir,
-            existingModel?.apiKeyEnv,
+            existingModel?.provider === "openai" ? existingModel.apiKeyEnv : undefined,
           ),
         },
       ],
     };
+  }
+
+  async inspectConnection(body: Record<string, unknown>, signal: AbortSignal) {
+    return inspectModelSetupConnection(
+      { rootDir: this.options.rootDir, configPath: this.source().path }, body, signal,
+    );
   }
 
   async finalize(connectionRevision?: string): Promise<boolean> {
@@ -174,19 +192,18 @@ export class RuntimeSetupService {
         const requestedProvider = setupConfigMap(
           requestedProviders[input.provider],
         );
-        let apiKeyEnv = existingModel?.apiKeyEnv;
-        if (editingDraft)
-          apiKeyEnv =
-            typeof requestedProvider.apiKeyEnv === "string"
-              ? requestedProvider.apiKeyEnv
-              : undefined;
+        const apiKeyEnv = resolveRuntimeSetupCredentialEnvironment(
+          input.provider,
+          requestedProvider,
+          input.apiKey,
+        );
         const hasCredential =
           input.apiKey ||
           (await hasRuntimeSetupCredential(this.options.rootDir, apiKeyEnv));
-        if (input.provider === "openai" && !hasCredential) {
+        if ((input.provider === "openai" || apiKeyEnv !== undefined) && !hasCredential) {
           throw new RuntimeSetupError(
             "setup_credential_required",
-            "Enter your OpenAI API key to finish setup.",
+            "Enter the API key for this connection to finish setup.",
           );
         }
         const configuredPath = this.options.getConfigPath();

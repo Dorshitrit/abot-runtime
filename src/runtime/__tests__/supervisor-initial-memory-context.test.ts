@@ -27,7 +27,7 @@ test("startup memory participates in the existing input budget without changing 
   expect(enriched.context.budget.estimatedInputTokens).toBeGreaterThan(baseline.context.budget.estimatedInputTokens);
 });
 
-test("session compaction retains initial memory in SUPER routing and RAW response without retrieving again", async () => {
+test("session compaction retains initial memory in response authoring after the minimal gate without retrieving again", async () => {
   const f = await createRootCompactionFixture("supervisor-worker-v1", { noActiveEvidence: true });
   const memoryHarness = createMemoryRecallHarness({
     policy: "supervisor-worker-v1", decide: () => ({ action: "respond" }),
@@ -42,6 +42,12 @@ test("session compaction retains initial memory in SUPER routing and RAW respons
   const original = f.invoke.getMockImplementation()!;
   f.invoke.mockImplementation(withSupervisorPreparation(async input => {
     if (input.modelStep === "context.compact") return original(input);
+    if (supervisorFormatName(input) === "supervisor_procedure_gate") {
+      expect(modelMessages(input)).not.toContainEqual(message);
+      expect(JSON.stringify(input.messages)).toContain(MEMORY_RECORD.content);
+      expect(JSON.stringify(input.messages)).not.toContain(HISTORY_FACT);
+      return { text: JSON.stringify({ decision: { requiresProcedure: false, responseRecommendation: "Answer the current request." } }), meta: {} };
+    }
     expect(modelMessages(input)).toContainEqual(message);
     expect(JSON.stringify(input.messages)).toContain(HISTORY_FACT);
     expect(JSON.stringify(input.messages)).not.toContain("old detail");
@@ -61,12 +67,13 @@ test("session compaction retains initial memory in SUPER routing and RAW respons
   }));
   await expect(runRequestRunner(request)).resolves.toMatchObject({ output: "A memory-informed answer." });
   expect(f.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-    "supervisor.decision", "context.compact", "supervisor.decision", "supervisor.response", "supervisor.response",
+    "supervisor.decision", "supervisor.decision", "context.compact", "supervisor.response", "supervisor.response",
   ]);
   for (const [input] of f.invoke.mock.calls) {
     if (input.modelStep === "context.compact") continue;
-    if (supervisorFormatName(input) === "supervisor_presentation") {
+    if (["supervisor_presentation", "supervisor_procedure_gate"].includes(supervisorFormatName(input) ?? "")) {
       expect(modelMessages(input)).not.toContainEqual(message);
+      if (supervisorFormatName(input) === "supervisor_procedure_gate") expect(JSON.stringify(input.messages)).toContain(MEMORY_RECORD.content);
       expect(JSON.stringify(input.messages)).not.toContain(HISTORY_FACT);
       continue;
     }

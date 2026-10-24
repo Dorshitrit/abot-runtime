@@ -47,7 +47,7 @@ function appendSteering(
   ).toBe(true);
 }
 
-test.each(["supervisor_decision", "supervisor_working_directory"] as const)(
+test.each(["supervisor_delegation", "supervisor_working_directory"] as const)(
   "provider-count pressure removes optional paths before semantic compaction in %s",
   async (phase) => {
     const options = {
@@ -67,7 +67,7 @@ test.each(["supervisor_decision", "supervisor_working_directory"] as const)(
     await ample.run();
     const expected = await baseline.run();
     const initial = ample
-      .inputs()
+      .workInputs()
       .find((input) => modelFormatName(input) === phase)!;
     const estimated = ample.assess(
       modelMessages(initial),
@@ -96,12 +96,16 @@ test.each(["supervisor_decision", "supervisor_working_directory"] as const)(
     expect(modelMessages(phaseCounts[1]!).filter(isArtifactMessage)).toEqual(
       [],
     );
-    expect(countInputTokens).toHaveBeenCalledTimes(3);
+    expect(countInputTokens.mock.calls.map(([input]) => modelFormatName(input))).toEqual(
+      phase === "supervisor_delegation"
+        ? ["supervisor_procedure_gate", phase, phase, "supervisor_working_directory", "supervisor_working_directory"]
+        : ["supervisor_procedure_gate", "supervisor_delegation", phase, phase],
+    );
     const result = fixture
-      .inputs()
+      .workInputs()
       .find((input) => modelFormatName(input) === phase)!;
     const control = baseline
-      .inputs()
+      .workInputs()
       .find((input) => modelFormatName(input) === phase)!;
     expect(modelMessages(result)).toEqual(modelMessages(control));
     expect(result.format).toEqual(control.format);
@@ -113,8 +117,8 @@ test.each(["supervisor_decision", "supervisor_working_directory"] as const)(
         content.includes(steeringText),
       ),
     ).toHaveLength(1);
-    expect(fixture.inputs().map(modelFormatName)).toEqual([
-      "supervisor_decision",
+    expect(fixture.workInputs().map(modelFormatName)).toEqual([
+      "supervisor_delegation",
       "supervisor_working_directory",
     ]);
     expect(
@@ -125,7 +129,7 @@ test.each(["supervisor_decision", "supervisor_working_directory"] as const)(
     const snapshots = fixture.events.filter(
       ({ name }) => name === "context.window.snapshot",
     );
-    expect(snapshots).toHaveLength(2);
+    expect(snapshots).toHaveLength(3);
     for (const { extra } of snapshots) {
       expect(extra?.measuredInputTokens).toBeLessThan(
         Number(extra?.compactionTriggerInputTokens),
@@ -143,10 +147,10 @@ test("provider counting without artifact state keeps the ordinary two-phase requ
   >(async (input) => countWithProviderOverhead(fixture, input));
   fixture = createArtifactReadmissionFixture({ targets: [], countInputTokens });
   await expect(fixture.run()).resolves.toEqual(expected);
-  expect(countInputTokens).toHaveBeenCalledTimes(2);
+  expect(countInputTokens).toHaveBeenCalledTimes(3);
   expect(
-    fixture.inputs().map(({ messages, format }) => ({ messages, format })),
+    fixture.workInputs().map(({ messages, format }) => ({ messages, format })),
   ).toEqual(
-    baseline.inputs().map(({ messages, format }) => ({ messages, format })),
+    baseline.workInputs().map(({ messages, format }) => ({ messages, format })),
   );
 });

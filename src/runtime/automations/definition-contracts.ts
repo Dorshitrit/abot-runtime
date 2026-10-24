@@ -1,3 +1,4 @@
+import type { ModelReasoningPreference } from "../../shared/model-reasoning.js";
 import type { ToolNormalInvocationInput } from "../../capabilities/normal-invocation/contracts.js";
 import type { AgentMode } from "../../shared/types.js";
 import type { CapabilityJsonValue } from "../orchestration/capability-adapters/result.js";
@@ -70,6 +71,7 @@ export type AgentNode = AutomationNodeBase &
     kind: "agent";
     modelProfileId: string;
     agentMode: AgentMode;
+    reasoningPreference?: ModelReasoningPreference;
     roleInstructions: string;
     prompt: string;
     inputs: Readonly<Record<string, ValueBinding>>;

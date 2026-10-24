@@ -144,6 +144,7 @@ export class LocalRequestExecution {
       text,
       agentMode: body.agentMode,
       modelPreference: body.modelPreference,
+      reasoningPreference: body.reasoningPreference,
       toolPermissionMode: body.toolPermissionMode,
       attachments: Array.isArray(body.attachments) ? body.attachments : [],
     };

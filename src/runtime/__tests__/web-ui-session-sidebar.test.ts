@@ -18,7 +18,7 @@ function isVisibleSidebarElement(element: ContextElement): boolean {
   return true;
 }
 
-function fixture(sessions: Session[], pinnedSessionIds: string[] = [], saved = sidebarStorage()) {
+function fixture(sessions: Session[], pinnedSessionIds: string[] = [], saved = sidebarStorage(), deletedProjectIds: string[] = []) {
   let environment = "prod";
   const root = new SidebarElement("div");
   const documentRoot = {
@@ -33,6 +33,7 @@ function fixture(sessions: Session[], pinnedSessionIds: string[] = [], saved = s
   const client = { deleteSession: vi.fn(), clearSessionMessages: vi.fn() };
   const controller = createSessionController({
     state, preferences, client, onOpen, selectedEnvironmentId: () => environment,
+    getDeletedProjectIds: () => deletedProjectIds,
     dom: { sessionsList: root, sessionsCount: new SidebarElement("span") },
     sessionActionsMenu: { reset: vi.fn() }, shell: { showToast, setSessionsDrawerOpen: vi.fn() },
     confirmAction: () => true, copyText: vi.fn(), onClearSessionMode: vi.fn(), onSaveModelPreferences: vi.fn(),
@@ -40,7 +41,7 @@ function fixture(sessions: Session[], pinnedSessionIds: string[] = [], saved = s
     renderGroups: (input: object) => {
       renderProjectSessionGroups({
         ...input, projects: [{ id: "project", name: "Project", directory: "/project" }],
-        query: state.sessionQuery, documentRoot, onNewConversation: vi.fn(), onRetry: vi.fn(),
+        query: state.sessionQuery, documentRoot, onNewConversation: vi.fn(), onRetry: vi.fn(), deletedProjectIds,
       });
       return true;
     },
@@ -63,8 +64,8 @@ describe("conversation sidebar", () => {
     ], ["pin-ordinary", "pin-project"]);
     expect(f.ids()).toEqual(["pin-ordinary", "pin-project", "project-child", "ordinary"]);
     const pinnedHeading = f.root.children.findIndex((element) => element.classList.contains("pinned-conversations-heading"));
-    const projectHeading = f.root.children.findIndex((element) => element.textContent === "Projects");
-    expect(pinnedHeading).toBeLessThan(projectHeading);
+    const projectGroup = f.root.children.findIndex((element) => element.classList.contains("project-session-group"));
+    expect(pinnedHeading).toBeLessThan(projectGroup);
     const menus = f.ids().map((id) => (f.row(id) as SidebarElement).innerHTML.match(/aria-controls="([^"]+)"/)?.[1]);
     expect(new Set(menus).size).toBe(4);
     expect(f.row("pin-project").parentElement).toBe(f.root);
@@ -315,4 +316,19 @@ test("failed pin cleanup reports separately while a successfully deleted session
   await vi.waitFor(() => expect(f.showToast).toHaveBeenCalledWith(expect.stringContaining("saved pin"), "failed"));
   expect(f.state.pinnedSessionIds).toEqual(["one"]);
   expect(f.ids()).toEqual(["two"]);
+});
+
+
+test("deleted project conversations use general-list move controls without rewriting session ownership", async () => {
+  const deletedProjectIds: string[] = [];
+  const f = fixture([{ id: "child", projectId: "project" }, { id: "ordinary" }], [], sidebarStorage(), deletedProjectIds);
+  expect(f.root.querySelector(".project-session-group")).not.toBeNull();
+  deletedProjectIds.push("project");
+  f.controller.render();
+  expect(f.root.querySelector(".project-session-group")).toBeNull();
+  expect(f.ids()).toEqual(["child", "ordinary"]);
+  f.row("child").querySelector(".move-down-action")!.dispatch("click");
+  await settle();
+  expect(f.ids()).toEqual(["ordinary", "child"]);
+  expect(f.state.sessions[0]?.projectId).toBe("project");
 });

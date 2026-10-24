@@ -5,6 +5,11 @@ export function createConfigurationRequests({ requestApi, environmentQuery }) {
     path + "?environment=" + environmentQuery(environmentId);
   return {
     ...createPluginConfigurationRequests({ requestApi, environmentQuery }),
+    inspectModelConnection(input, environmentId) {
+      return requestApi(scoped("/runtime/setup/connection", environmentId), {
+        method: "POST", body: JSON.stringify(input),
+      });
+    },
     getRuntimeSetup(environmentId) {
       return requestApi(scoped("/runtime/setup", environmentId));
     },

@@ -1,3 +1,4 @@
+import { confirmDialog } from "../confirmation-dialog.js";
 function isDefinitiveModelRemovalRejection(error) {
   const status = error?.status;
   if (!Number.isInteger(status)) return false;
@@ -24,7 +25,7 @@ export function createModelRemovalController({
   refreshRuntimeConfig,
   onSaved,
   setStatus,
-  confirmRemoval = (message) => window.confirm(message),
+  confirmRemoval = (message) => confirmDialog(message, { title: "Remove model", confirmLabel: "Remove model", tone: "danger" }),
 }) {
   let pending = false;
 
@@ -78,11 +79,12 @@ export function createModelRemovalController({
     pending = true;
     try {
       if (
-        !confirmRemoval(
+        !await confirmRemoval(
           `Remove ${label || profileId} from configured models? Its model file, provider and credentials will be kept.`,
         )
       )
         return false;
+      if (environmentId !== getEnvironmentId()) return false;
       try {
         await removeModel({ profileId, expectedRevision }, environmentId);
       } catch (error) {

@@ -11,6 +11,7 @@ export function parseRequestInput(msg: RunRequestMessage): {
   rawAttachments: unknown;
   rawAgentMode: unknown;
   rawModelPreference: unknown;
+  rawReasoningPreference?: unknown;
   toolPermissionMode: ToolPermissionMode;
 } {
   return {
@@ -25,6 +26,7 @@ export function parseRequestInput(msg: RunRequestMessage): {
     rawAttachments: msg.attachments,
     rawAgentMode: msg.agentMode,
     rawModelPreference: msg.modelPreference,
+    rawReasoningPreference: msg.reasoningPreference,
     toolPermissionMode: resolveToolPermissionMode(msg.toolPermissionMode),
   };
 }

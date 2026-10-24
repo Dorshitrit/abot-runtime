@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { LongTermMemoryOnboardingResult } from "../../runtime/long-term-memory/onboarding/contracts.js";
 import {
   assertConfigMutationRequest,
   ConfigMutationRequestError,
@@ -6,13 +7,19 @@ import {
 import { readBody, readJsonBody, sendJson } from "./http.js";
 import { withHttpRequestAbortSignal } from "./request-abort.js";
 import { RuntimeSetupError } from "./runtime-setup-input.js";
-import {
-  SetupEmbeddingFailure,
-  SetupEmbeddingService,
-} from "./setup-embedding-service.js";
+import { SetupEmbeddingFailure } from "./setup-embedding-service.js";
+
+type EmbeddingConnectionService = {
+  enable(body: Record<string, unknown>, signal: AbortSignal): Promise<
+    Pick<LongTermMemoryOnboardingResult, "status" | "probe" | "restartRequired">
+  >;
+};
 
 export class SetupEmbeddingRoutes {
-  constructor(private readonly service: SetupEmbeddingService) {}
+  constructor(
+    private readonly service: EmbeddingConnectionService,
+    private readonly route = "runtime/setup/embedding",
+  ) {}
 
   async handle(params: {
     method: string;
@@ -20,7 +27,7 @@ export class SetupEmbeddingRoutes {
     request: IncomingMessage;
     response: ServerResponse;
   }): Promise<boolean> {
-    if (params.route !== "runtime/setup/embedding") return false;
+    if (params.route !== this.route) return false;
     params.response.setHeader("cache-control", "no-store");
     try {
       if (params.method !== "POST") {

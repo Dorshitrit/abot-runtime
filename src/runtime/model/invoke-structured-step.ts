@@ -3,10 +3,11 @@ import type {
   ModelGatewayJsonSchemaFormat,
 } from "../../model-gateway/types.js";
 import type { ModelStep } from "../../shared/model-steps.js";
+import type { ConfiguredStepInstructionPolicy } from "../config/runner/step-instructions.js";
 import { traceDebug } from "../observability/debug-logger.js";
 import type { BoundRequestModelInvocationContext } from "../request/contracts.js";
 import { resolveRequestModelStepInvoker } from "./invoke-step.js";
-import type { ModelStepContextCompactionController } from "./model-step-port.js";
+import type { ModelStepContextCompactionController, ModelStepOptionalContextProjection } from "./model-step-port.js";
 import { resolveOutputIncompleteError } from "./provider-completion.js";
 import {
   STRUCTURED_MODEL_MAX_REPAIR_ATTEMPTS,
@@ -64,6 +65,8 @@ export async function invokeStructuredModelStep<T>(params: {
   boundSteeringVersion?: number;
   invalidOutputReason: string;
   contextRetention?: "exact";
+  configuredInstructionPolicy?: ConfiguredStepInstructionPolicy;
+  optionalContextProjection?: ModelStepOptionalContextProjection;
   contextCompaction?: ModelStepContextCompactionController;
   parse: (
     text: string,
@@ -87,6 +90,10 @@ export async function invokeStructuredModelStep<T>(params: {
       boundSteeringVersion: params.boundSteeringVersion,
       format: params.format,
       contextRetention: params.contextRetention,
+      configuredInstructionPolicy: params.configuredInstructionPolicy,
+      ...(params.optionalContextProjection
+        ? { optionalContextProjection: params.optionalContextProjection }
+        : {}),
       ...(params.contextCompaction
         ? { contextCompaction: params.contextCompaction }
         : {}),

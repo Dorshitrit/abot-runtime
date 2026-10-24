@@ -20,6 +20,8 @@ import {
   type RecallPolicy,
 } from "./support/memory-recall-runner.js";
 
+import { supervisorFormatName } from "./support/supervisor-model-phases.js";
+
 const STEERING = "Use only my current presentation preference.";
 const FRESH_QUERY = "current presentation preference";
 
@@ -112,6 +114,23 @@ test("settles recall superseded during admission without calling the service or 
   });
 });
 
+/** Initial SUPER cannot recall: complete a real child before exercising root recall. */
+function createRecallAfterChildHarness(options: Parameters<typeof createMemoryRecallHarness>[0]) {
+  if (options.policy !== "supervisor-worker-v1") return createMemoryRecallHarness(options);
+  return createMemoryRecallHarness({
+    ...options,
+    classifyProcedure: () => ({ requiresProcedure: true }),
+    delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Check whether the saved preference is needed." }),
+    decide(input) {
+      if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
+      if (input.modelStep === "worker.decision") return { action: "return_result" };
+      if (input.modelStep === "worker.result") return "The current request requires the saved preference.";
+      expect(supervisorFormatName(input)).toBe("supervisor_decision");
+      return options.decide(input);
+    },
+  });
+}
+
 describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
   "%s memory recall steering",
   (policy) => {
@@ -122,7 +141,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
         id: "fresh-preference",
         content: "Use one concise paragraph for this request.",
       };
-      const harness = createMemoryRecallHarness({
+      const harness = createRecallAfterChildHarness({
         policy,
         async retrieve({ query }) {
           if (query === REQUEST_PROMPT)
@@ -167,7 +186,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
               ],
             }),
           ]);
-          return responseDecision(policy);
+          return policy === "supervisor-worker-v1" ? { action: "respond" } : responseDecision(policy);
         },
       });
       await expect(runRequestRunner(harness.request)).resolves.toMatchObject({
@@ -177,48 +196,46 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
       expect(
         harness.memory.retrieve.mock.calls.map(([input]) => input.query),
       ).toEqual([REQUEST_PROMPT, RECALL_QUERY, FRESH_QUERY]);
-      expect(harness.getAdapters).not.toHaveBeenCalled();
+      if (policy === "execution-agent-v1") expect(harness.getAdapters).not.toHaveBeenCalled();
+      else expect(harness.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.decision")).toHaveLength(1);
       expect(harness.request.onAnswerToken).toHaveBeenCalledExactlyOnceWith(
         FINAL_RESPONSE,
       );
     });
 
-    test("rejects stale recall before retrieval when steering arrives during acknowledgement", async () => {
+    test(policy === "supervisor-worker-v1"
+      ? "rejects stale recall before retrieval when steering arrives during returned decision acceptance"
+      : "rejects stale recall before retrieval when steering arrives during acknowledgement", async () => {
       let decisionCount = 0;
-      const harness = createMemoryRecallHarness({
+      const harness = createRecallAfterChildHarness({
         policy,
         decide(input) {
           decisionCount += 1;
           if (decisionCount === 1) {
+            if (policy === "supervisor-worker-v1") harness.requestSteering.append({
+              steerId: "before-recall", text: STEERING,
+            });
             return {
-              action: "recall_memory",
-              query: RECALL_QUERY,
+              action: "recall_memory", query: RECALL_QUERY,
               acknowledgement: "I will check the saved preference.",
             };
           }
           expect(recallCapsules(input)).toEqual([]);
           expect(JSON.stringify(input.messages)).toContain(STEERING);
-          return responseDecision(policy);
+          return policy === "supervisor-worker-v1" ? { action: "respond" } : responseDecision(policy);
         },
       });
-      vi.mocked(harness.request.onAcknowledgement).mockImplementation(() => {
-        harness.requestSteering.append({
-          steerId: "before-recall",
-          text: STEERING,
-        });
+      if (policy === "execution-agent-v1") vi.mocked(harness.request.onAcknowledgement).mockImplementation(() => {
+        harness.requestSteering.append({ steerId: "before-recall", text: STEERING });
       });
-      await expect(runRequestRunner(harness.request)).resolves.toMatchObject({
-        output: FINAL_RESPONSE,
-      });
-      expect(
-        harness.memory.retrieve.mock.calls.map(([input]) => input.query),
-      ).toEqual([REQUEST_PROMPT]);
+      await expect(runRequestRunner(harness.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
+      expect(harness.memory.retrieve.mock.calls.map(([input]) => input.query)).toEqual([REQUEST_PROMPT]);
       expect(decisionCount).toBe(2);
     });
 
     test("rebuilds recalled context when steering changes during the resumed model decision", async () => {
       let decisionCount = 0;
-      const harness = createMemoryRecallHarness({
+      const harness = createRecallAfterChildHarness({
         policy,
         decide(input) {
           decisionCount += 1;
@@ -234,11 +251,11 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
               steerId: "after-recall",
               text: STEERING,
             });
-            return responseDecision(policy);
+            return policy === "supervisor-worker-v1" ? { action: "respond" } : responseDecision(policy);
           }
           expect(recallCapsules(input)).toEqual([]);
           expect(JSON.stringify(input.messages)).toContain(STEERING);
-          return responseDecision(policy);
+          return policy === "supervisor-worker-v1" ? { action: "respond" } : responseDecision(policy);
         },
       });
       await expect(runRequestRunner(harness.request)).resolves.toMatchObject({
@@ -252,7 +269,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
 
     test("preserves cancellation during memory retrieval without another model call", async () => {
       const abortError = new Error("request cancelled during memory recall");
-      const harness = createMemoryRecallHarness({
+      const harness = createRecallAfterChildHarness({
         policy,
         async retrieve({ query }) {
           if (query === REQUEST_PROMPT)
@@ -271,7 +288,10 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
       await expect(runRequestRunner(harness.request)).rejects.toThrow(
         "request cancelled",
       );
-      expect(harness.invoke).toHaveBeenCalledOnce();
+      const rootCalls = harness.invoke.mock.calls.filter(([input]) =>
+        input.modelStep === "execution.decision" || supervisorFormatName(input) === "supervisor_decision");
+      expect(rootCalls).toHaveLength(1);
+      expect(harness.invoke.mock.calls.at(-1)![0]).toBe(rootCalls[0]![0]);
       expect(harness.memory.retrieve).toHaveBeenCalledTimes(2);
       expect(harness.request.onAnswerToken).not.toHaveBeenCalled();
     });

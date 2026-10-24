@@ -119,16 +119,16 @@ async function runDelegation(
 ) {
   const objective = options.objective ?? "Update the existing news summary.";
   const workingDirectory = options.workingDirectory ?? ".event_artifacts";
-  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => ({
-    text:
-      typeof input.format === "object" &&
-      input.format?.name === "supervisor_decision"
-        ? JSON.stringify({
-            decision: { action: "invoke_role", roleId: "planner", objective },
-          })
-        : JSON.stringify({ workingDirectory }),
-    meta: {},
-  }));
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const phase = typeof input.format === "object" && input.format?.name;
+    if (phase === "supervisor_procedure_gate")
+      return { text: JSON.stringify({ decision: { requiresProcedure: true } }), meta: {} };
+    if (phase === "supervisor_delegation")
+      return { text: JSON.stringify({ decision: { action: "invoke_role", roleId: "planner", objective } }), meta: {} };
+    if (phase === "supervisor_working_directory")
+      return { text: JSON.stringify({ workingDirectory }), meta: {} };
+    throw new Error("unexpected_artifact_test_phase");
+  });
   const request = createRequest({
     ...(options.sessionArtifactPaths
       ? { sessionArtifactPaths: options.sessionArtifactPaths }
@@ -170,7 +170,7 @@ describe("Supervisor session artifact path reference", () => {
     ).toEqual(
       absent.inputs.map(({ messages, format }) => ({ messages, format })),
     );
-    expect(empty.inputs).toHaveLength(2);
+    expect(empty.inputs).toHaveLength(3);
     for (const input of empty.inputs)
       expect(artifactCapsules(input.messages)).toEqual([]);
   });
@@ -233,8 +233,9 @@ describe("Supervisor session artifact path reference", () => {
       result.inputs.map(
         ({ format }) => typeof format === "object" && format?.name,
       ),
-    ).toEqual(["supervisor_decision", "supervisor_working_directory"]);
-    for (const input of result.inputs) {
+    ).toEqual(["supervisor_procedure_gate", "supervisor_delegation", "supervisor_working_directory"]);
+    expect(artifactCapsules(result.inputs[0]!.messages)).toEqual([]);
+    for (const input of result.inputs.slice(1)) {
       expect(artifactCapsules(input.messages)).toHaveLength(1);
       expect(artifactCapsules(input.messages)[0]?.targets).toEqual([TARGET]);
       expect(
@@ -270,7 +271,7 @@ describe("Supervisor session artifact path reference", () => {
     expect(artifactCapsules(result.inputs[1]!.messages)[0]?.targets).toEqual([
       TARGET,
     ]);
-    expect(result.inputs).toHaveLength(2);
+    expect(result.inputs).toHaveLength(3);
   });
 
   test("omits the optional paths near the compaction threshold without evicting history or catalog", () => {

@@ -1,6 +1,7 @@
 import { beforeEach, expect, test, vi } from "vitest";
 
 const fixtures = vi.hoisted(() => ({
+  confirm: vi.fn(),
   workspace: {
     beginExternalRuntimeMutation: vi.fn(),
     endExternalRuntimeMutation: vi.fn(),
@@ -18,6 +19,8 @@ const fixtures = vi.hoisted(() => ({
   workspaceOptions: {} as Record<string, any>,
   wizardOptions: {} as Record<string, any>,
 }));
+
+vi.mock("../../web-ui/app/components/confirmation-dialog.js", () => ({ confirmDialog: fixtures.confirm }));
 
 vi.mock("../../web-ui/app/components/config-workspace.js", () => ({
   createConfigWorkspace: (options: Record<string, any>) => {
@@ -55,6 +58,7 @@ import { createConfigurationFeature } from "../../web-ui/app/configuration-featu
 
 beforeEach(() => {
   vi.resetAllMocks();
+  fixtures.confirm.mockResolvedValue(true);
   fixtures.workspace.beginExternalRuntimeMutation.mockReturnValue(true);
   fixtures.workspace.refreshAfterExternalRuntimeMutation.mockResolvedValue(
     true,
@@ -131,14 +135,14 @@ test("the provider shortcut honors draft/busy guards and opens outside the dashb
   expect(fixtures.wizard.open).toHaveBeenCalledOnce();
 });
 
-test("an open wizard blocks programmatic workspace/environment changes", () => {
+test("an open wizard blocks programmatic workspace/environment changes", async () => {
   const { feature, status } = setup();
   fixtures.wizard.isOpen.mockReturnValue(true);
-  expect(feature.prepareDiscardChanges("change environment")).toBeNull();
+  expect(await feature.prepareDiscardChanges("change environment")).toBeNull();
   expect(fixtures.workspace.prepareDiscardChanges).not.toHaveBeenCalled();
   expect(status.textContent).toContain("Finish or cancel");
   fixtures.wizard.isOpen.mockReturnValue(false);
-  expect(feature.prepareDiscardChanges("leave configuration")).not.toBeNull();
+  expect(await feature.prepareDiscardChanges("leave configuration")).not.toBeNull();
   expect(fixtures.workspace.prepareDiscardChanges).toHaveBeenCalledWith(
     "leave configuration",
   );
@@ -245,40 +249,37 @@ test("Configuration composition preserves the loaded revision through the transp
 });
 
 test("model removal passes the loaded root revision and remains pending explicit Apply", async () => {
-  vi.stubGlobal("window", { confirm: () => true });
-  try {
-    const { client } = setup();
-    const model = {
-      profileId: "extra-model",
-      label: "Extra model",
-      expectedRevision: "loaded-root-revision",
-    };
-    fixtures.wizard.isOpen.mockReturnValueOnce(true);
-    await fixtures.workspaceOptions.onRemoveModel(model);
-    expect(client.removeRuntimeModel).not.toHaveBeenCalled();
-    await fixtures.workspaceOptions.onRemoveModel(model);
-    expect(client.removeRuntimeModel).toHaveBeenCalledExactlyOnceWith(
-      { profileId: model.profileId, expectedRevision: model.expectedRevision },
-      "dev",
-    );
-    expect(
-      fixtures.workspace.beginExternalRuntimeMutation,
-    ).toHaveBeenCalledWith("model removal");
-    expect(
-      fixtures.workspace.endExternalRuntimeMutation,
-    ).toHaveBeenCalledOnce();
-    expect(fixtures.activation.markPending).toHaveBeenCalledOnce();
-    expect(client.applyRuntimeConfiguration).not.toHaveBeenCalled();
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  const { client } = setup();
+  const model = {
+    profileId: "extra-model",
+    label: "Extra model",
+    expectedRevision: "loaded-root-revision",
+  };
+  fixtures.wizard.isOpen.mockReturnValueOnce(true);
+  await fixtures.workspaceOptions.onRemoveModel(model);
+  expect(client.removeRuntimeModel).not.toHaveBeenCalled();
+  await fixtures.workspaceOptions.onRemoveModel(model);
+  expect(fixtures.confirm).toHaveBeenCalledWith(expect.stringContaining("Extra model"),
+    { title: "Remove model", confirmLabel: "Remove model", tone: "danger" });
+  expect(client.removeRuntimeModel).toHaveBeenCalledExactlyOnceWith(
+    { profileId: model.profileId, expectedRevision: model.expectedRevision },
+    "dev",
+  );
+  expect(
+    fixtures.workspace.beginExternalRuntimeMutation,
+  ).toHaveBeenCalledWith("model removal");
+  expect(
+    fixtures.workspace.endExternalRuntimeMutation,
+  ).toHaveBeenCalledOnce();
+  expect(fixtures.activation.markPending).toHaveBeenCalledOnce();
+  expect(client.applyRuntimeConfiguration).not.toHaveBeenCalled();
 });
 
-test("plugin configuration drafts block navigation until finished", () => {
+test("plugin configuration drafts block navigation until finished", async () => {
   const { feature } = setup();
   fixtures.plugins.hasConfigurationDraft.mockReturnValue(true);
-  expect(feature.prepareDiscardChanges("change environment")).toBeNull();
+  expect(await feature.prepareDiscardChanges("change environment")).toBeNull();
   expect(fixtures.workspace.prepareDiscardChanges).not.toHaveBeenCalled();
   fixtures.plugins.hasConfigurationDraft.mockReturnValue(false);
-  expect(feature.prepareDiscardChanges("change environment")).not.toBeNull();
+  expect(await feature.prepareDiscardChanges("change environment")).not.toBeNull();
 });

@@ -125,7 +125,10 @@ export class PendingToolApprovals implements ToolApprovalController {
     const pending = this.pending.get(decision.approvalId);
     const active = this.activeRequest(decision.requestId);
     if (!canResolvePendingApproval(pending, active, decision)) return false;
-    pending.resolve({ approved: decision.approved });
+    pending.resolve({
+      approved: decision.approved,
+      ...(decision.reason !== undefined ? { reason: decision.reason } : {}),
+    });
     return true;
   }
 

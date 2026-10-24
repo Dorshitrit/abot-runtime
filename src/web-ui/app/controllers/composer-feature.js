@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/confirmation-dialog.js";
 import { createComposerDrafts } from "./composer-drafts.js";
 import { createComposerSubmissionLifecycle, ComposerSubmissionRefused } from "./composer-submission-lifecycle.js";
 import { createComposerAttachmentsController } from "./composer-attachments-controller.js";
@@ -14,7 +15,7 @@ export function createComposerFeature({
   getSubmissionBlock, onSubmissionBlocked, isVisible = () => true,
   renderSessions, renderMessages, applyConversationChrome, setMessageStatus, recordControlEvent,
   drafts = createComposerDrafts(), onChange = () => {},
-  confirmReview = (message) => globalThis.confirm?.(message) === true,
+  confirmReview = confirmDialog,
 }) {
   const surfaces = [];
   let queue;
@@ -49,7 +50,12 @@ export function createComposerFeature({
       canDeleteAttachment: (file) => !drafts.contains(file) && !lifecycle.ownsAttachment(file) && !queue.ownsAttachment(file),
     });
     const notice = createComposerSubmissionNotice({ form: surfaceDom.composerForm, review: async (attempt) => {
-      if (!confirmReview("Check the conversation first: this message may already have been sent. Restore it for manual review? Sending it again may repeat its actions.")) return;
+      const draft = currentDraft();
+      const revision = draft.revision;
+      if (!await confirmReview("Check the conversation first: this message may already have been sent. Restore it for manual review? Sending it again may repeat its actions.",
+        { title: "Review paused message", confirmLabel: "Restore for review" })) return;
+      if (!visible() || currentDraft() !== draft || draft.revision !== revision) return;
+      if (!lifecycle.paused(draft.scope).includes(attempt)) return;
       try { await lifecycle.restoreForManualReview(attempt.id, queue.authorizeReview); }
       catch (error) { reportFailure(attempt.payload.scope, error.message); }
     }, recover: async (scope) => {
@@ -75,7 +81,8 @@ export function createComposerFeature({
     function send(action) {
       let draft = currentDraft();
       draft.text = surfaceDom.composerInput.value.trim();
-      const settings = getSettings();
+      const configured = getSettings();
+      const settings = { ...configured, ...(configured.reasoningPreference ? { reasoningPreference: { ...configured.reasoningPreference } } : {}) };
       if (!draft.scope.sessionId) { ensureBoundSession(); draft = currentDraft(); }
       const activeRequestId = allowsActiveRequest ? state.activeRequestId : "";
       return lifecycle.submit({ draft, action, settings,

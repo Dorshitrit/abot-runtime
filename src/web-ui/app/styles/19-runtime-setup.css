@@ -400,3 +400,19 @@
     flex-wrap: wrap;
   }
 }
+
+/* The thinking capability is a compact checkbox, not a full-width text field. */
+.runtime-setup-reasoning-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.runtime-setup-field.runtime-setup-reasoning-toggle input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  min-width: 1rem;
+  min-height: 1rem;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 1rem;
+}

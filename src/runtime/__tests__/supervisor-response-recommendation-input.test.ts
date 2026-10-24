@@ -179,7 +179,7 @@ describe("Supervisor response-recommendation projection", () => {
 
   test.each((["list_skills", "read_skills"] as const).flatMap((operation) =>
     (["completed", "failed"] as const).map((outcome) => ({ operation, outcome })),
-  ))("disables recommendations after $operation with outcome $outcome", async ({ operation, outcome }) => {
+  ))("retains direct-response recommendations after $operation with outcome $outcome", async ({ operation, outcome }) => {
     const fixture = await createCoreSkillContextFixture();
     const { content: _content, revision: _revision, ...metadata } = CORE_SKILL_DOCUMENT;
     await commitSkillFixture(fixture.ledger, {
@@ -191,17 +191,20 @@ describe("Supervisor response-recommendation projection", () => {
         : { outcome, skills: [operation === "read_skills" ? CORE_SKILL_DOCUMENT : metadata] },
     });
     const input = fixture.input();
-    expect(input).toMatchObject({ includeResponseRecommendation: false });
-    expect(JSON.stringify(input.format)).not.toContain('"responseRecommendation"');
+    expect(input).toMatchObject({ includeResponseRecommendation: true });
+    expect(JSON.stringify(input.format)).toContain('"responseRecommendation"');
     const active = activeCoreSkillCall(fixture.ledger);
-    expect(() => buildSupervisorResponseInput(fixture.request, {
+    const response = buildSupervisorResponseInput(fixture.request, {
       call: {
         rootCallId: active.callId, callId: active.callId, parentCallId: null,
         depth: 0, invocationAttempt: active.activationCount,
       },
       toolResults: fixture.toolResults(), skillReadHead: fixture.ledger.current(),
       responseRecommendation: RESPONSE_RECOMMENDATION,
-    })).toThrow("supervisor_response_recommendation_scope_invalid");
+    });
+    const capsules = response.context.messages.filter(isRecommendationCapsule);
+    expect(capsules).toHaveLength(1);
+    expect(JSON.parse(capsules[0]!.content).responseRecommendation).toBe(RESPONSE_RECOMMENDATION);
   });
 
   test("adds one passive reference bound to this call without adding user intent", () => {

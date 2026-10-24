@@ -1,3 +1,4 @@
+import type { ConversationReasoningPreferences } from "./conversation-reasoning-preferences.js";
 import type { ToolPermissionMode } from "../lib/tool-permission-mode.js";
 
 type PreferenceMap = Record<string, unknown>;
@@ -15,11 +16,13 @@ type PreferenceStorage = {
   snapshot?(): { preferences: Record<string, string> } | null;
 };
 
-export declare function createClientPreferences(storage: PreferenceStorage): {
+export declare function createClientPreferences(storage: PreferenceStorage): ConversationReasoningPreferences & {
   subscribe(listener: () => void): (() => void) | undefined;
   flush(): Promise<void> | undefined;
   loadSessionSidebar(environmentId: string): SessionSidebarPreferences;
   saveSessionSidebar(environmentId: string, value: SessionSidebarPreferences): void | Promise<unknown>;
+  loadCollapsedProjectIds(environmentId: string): string[];
+  saveCollapsedProjectIds(environmentId: string, ids: readonly string[]): void | Promise<unknown>;
   loadPinnedSessions(): string[];
   savePinnedSessions(sessionIds: readonly string[]): void | Promise<unknown>;
   loadSessionModes(normalize: (value: unknown) => ToolPermissionMode): SessionModeMap;

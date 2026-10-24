@@ -3,7 +3,7 @@ import { createConfiguredToolRegistry } from "../capabilities/configured-tool-re
 import { createKnowledgeSkillsToolModule } from "../capabilities/knowledge-skills/tool-module.js";
 import { createKnowledgeSkillStore, KNOWLEDGE_SKILL_READ_MAX_ITEMS } from "../knowledge-skills/store.js";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
-import { defaultSupervisorPresentation } from "./support/supervisor-model-phases.js";
+import { defaultSupervisorPresentation, supervisorFormatName } from "./support/supervisor-model-phases.js";
 import {
   capsules, createKnowledgeSkillsRequestFixture, decision, exactSkillOutput,
   KNOWLEDGE_FIXTURE_DOCUMENTS, messages, type KnowledgeModelInput,
@@ -54,9 +54,11 @@ test("an unknown ID cannot produce an apparently complete partial read", async (
   expect(result.output).not.toContain(docs[0]!.content);
 });
 
-test.each((["execution-agent-v1", "supervisor-worker-v1"] as const).flatMap((policy) =>
-  (["id", "name"] as const).map((reference) => ({ policy, reference })),
-))(
+test.each([
+  { policy: "execution-agent-v1", reference: "id" },
+  { policy: "execution-agent-v1", reference: "name" },
+  { policy: "supervisor-worker-v1", reference: "id" },
+] as const)(
   "$policy reads multiple Skills by $reference through its policy-owned read path", async ({ policy, reference }) => {
     const skillIds = docs.map((doc) => reference === "id" ? doc.skillId : doc.name);
     const f = await createKnowledgeSkillsRequestFixture(policy);
@@ -89,12 +91,15 @@ test.each((["execution-agent-v1", "supervisor-worker-v1"] as const).flatMap((pol
       { step: "supervisor.decision" as const, output: (input: KnowledgeModelInput) =>
         decision(defaultSupervisorPresentation(input)) },
       { step: "supervisor.decision" as const, output: (input: KnowledgeModelInput) => {
+        expect(supervisorFormatName(input)).toBe("supervisor_skill_selection");
         for (const doc of docs) expect(JSON.stringify(messages(input))).not.toContain(doc.content);
         return decision({ action: "read_skills", skillIds });
       } },
-      { step: "supervisor.decision" as const, output: decision({ action: "continue" }) },
       { step: "supervisor.decision" as const, output: (input: KnowledgeModelInput) => {
-        check(input); return decision({ action: "respond" });
+        expect(supervisorFormatName(input)).toBe("supervisor_procedure_gate");
+        expect(capsules(input, "runtime_core_skill_read_v1")).toEqual([]);
+        for (const doc of docs) expect(JSON.stringify(messages(input))).not.toContain(doc.content);
+        return decision({ requiresProcedure: false, responseRecommendation: "Explain the two supplied references." });
       } },
       { step: "supervisor.response" as const, output: (input: KnowledgeModelInput) => {
         check(input); return answer;

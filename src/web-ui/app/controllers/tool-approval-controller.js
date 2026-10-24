@@ -2,6 +2,10 @@ import { textOf } from "../lib/text-format.js";
 import { requestLifecycles } from "../lib/request-lifecycle-view.js";
 import { approvalDecisionCommand } from "../lib/approval-decision-command.js";
 import { projectToolActivityEvent } from "../lib/tool-activity-event.js";
+import {
+  approvalRejectionIdentity,
+  createApprovalRejectionDrafts,
+} from "../lib/tool-approval-rejection-drafts.js";
 
 export function createToolApprovalController({
   state,
@@ -11,6 +15,16 @@ export function createToolApprovalController({
   recordControlEvent,
   createCard: createApprovalCard,
 }) {
+  const rejectionDrafts = createApprovalRejectionDrafts();
+
+  function approvalScope(event) {
+    return {
+      ...event,
+      environmentId: selectedEnvironmentId(),
+      sessionId: event?.sessionId || state.currentSessionId,
+    };
+  }
+
   function isResolved(approvalId) {
     for (const lifecycle of requestLifecycles(state).values()) {
       if (
@@ -76,10 +90,12 @@ export function createToolApprovalController({
         });
       }
     }
-    return [...pending.values()];
+    const events = [...pending.values()];
+    rejectionDrafts.retain(events.map(approvalScope));
+    return events;
   }
 
-  function submit(approvalId, approved) {
+  function submit(approvalId, approved, reason) {
     if (!state.connected) {
       recordControlEvent({
         type: "control",
@@ -99,6 +115,7 @@ export function createToolApprovalController({
       type: "tool_approval_response",
       approvalId,
       approved,
+      ...(reason !== undefined ? { reason } : {}),
       environment: selectedEnvironmentId(),
       ...(pending.waitId
         ? {
@@ -113,11 +130,27 @@ export function createToolApprovalController({
     return sent !== false;
   }
 
+  function canSubmitFromCard(scope) {
+    const pending = pendingEvents().find(
+      (event) => event.approvalId === scope.approvalId,
+    );
+    if (!pending) return false;
+    return (
+      approvalRejectionIdentity(scope) ===
+      approvalRejectionIdentity(approvalScope(pending))
+    );
+  }
+
   function createCard(event) {
+    const scope = approvalScope(event);
     return createApprovalCard({
       event,
+      rejectionDraft: rejectionDrafts.get(scope),
       submitted: state.submittedToolApprovalIds.has(textOf(event?.approvalId)),
-      onDecision: submit,
+      onDecision: (approvalId, approved, reason) => {
+        if (!canSubmitFromCard(scope)) return false;
+        return submit(approvalId, approved, reason);
+      },
     });
   }
 

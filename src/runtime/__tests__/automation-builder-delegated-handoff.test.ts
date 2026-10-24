@@ -167,7 +167,7 @@ it("preserves the complete delegated role chain around one schema-bound draft cr
   expect(events).toContainEqual(expect.objectContaining({ type: "completed", output: finalAnswer }));
   expect(next).toBe(script.length);
   expect(fixture.invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
-    "supervisor_presentation", "supervisor_decision", "supervisor_working_directory",
+    "supervisor_presentation", "supervisor_procedure_gate", "supervisor_delegation", "supervisor_working_directory",
     "planner.decision", "worker.decision", "tool_payload.raw", "worker.decision", "worker.result",
     "planner.decision", "supervisor_decision", "reviewer.decision", "supervisor_decision", "supervisor.response",
   ]);

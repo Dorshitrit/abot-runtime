@@ -110,12 +110,32 @@ describe("Execution Agent payload operation assignment", () => {
     expect(f.invoke).not.toHaveBeenCalled();
   });
 
-  it.each([false, true])("refines remaining controls and forwards the objective only for payload=%s", async (payload) => {
-    const f = await fixture([capability("selected", payload, false)]);
-    const result = await f.refine({ action: "invoke_capability", capabilityId: "selected",
-      intent: "Display progress.", operationObjective: "Read the selected document.", controlsEvidenceExecutionIds: [] });
+  it("selects ordinary observation controls without a second authoring step", async () => {
+    const f = await fixture([capability("selected", false, false)]);
+    const result = await f.refine({
+      action: "invoke_capability",
+      capabilityId: "selected",
+      intent: "Read the selected document.",
+      selectionControls: { target: "document.txt" },
+    });
     expect(result.invocations[0]?.controls).toEqual({ target: "document.txt" });
-    expect(result.invocations[0]?.authoringObjective).toBe(payload ? "Read the selected document." : undefined);
+    expect(result.invocations[0]).not.toHaveProperty("authoringObjective");
+    expect(f.invoke).not.toHaveBeenCalled();
+  });
+
+  it("refines payload controls and forwards the bounded authoring objective", async () => {
+    const f = await fixture([capability("selected", true, false)]);
+    const result = await f.refine({
+      action: "invoke_capability",
+      capabilityId: "selected",
+      intent: "Display progress.",
+      operationObjective: "Read the selected document.",
+      controlsEvidenceExecutionIds: [],
+    });
+    expect(result.invocations[0]?.controls).toEqual({ target: "document.txt" });
+    expect(result.invocations[0]?.authoringObjective).toBe(
+      "Read the selected document.",
+    );
     expect(f.invoke).toHaveBeenCalledOnce();
   });
 

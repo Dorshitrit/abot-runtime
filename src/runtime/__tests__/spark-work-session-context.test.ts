@@ -40,7 +40,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     const root = policy === "execution-agent-v1" ? "execution" : "supervisor";
     expect(fixture.invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual(
       policy === "execution-agent-v1" ? [`${root}.decision`, `${root}.response`] : [
-        "supervisor_presentation", "supervisor_skill_selection", "supervisor_decision", "supervisor.response",
+        "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate", "supervisor.response",
       ],
     );
     const companionPolicy = buildSparkConversationInstructions("spark").join("\n");
@@ -49,7 +49,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       expect(messages.filter((message) => message.role === "user" && message.content === text)).toHaveLength(1);
       expect(messages.filter((message) => message.role === "user").some((message) => message.content === brief)).toBe(false);
       const phase = supervisorFormatName(input);
-      const preparation = phase === "supervisor_presentation" || phase === "supervisor_skill_selection";
+      const preparation = ["supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate"].includes(phase ?? "");
       expect(messages.filter((message) => message.content === brief).map(({ role }) => role)).toEqual(preparation ? [] : ["assistant"]);
       expect(messages.some((message) => message.content.includes(companionPolicy))).toBe(false);
     }

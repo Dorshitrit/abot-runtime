@@ -93,6 +93,7 @@ export interface RuntimeSelectionControllerDependencies {
     agentMode: AgentMode;
     supportedAgentModes: AgentMode[];
     agentModeMenuOpen: boolean;
+    reasoningBudgetMenuOpen?: boolean;
     permissionModeMenuOpen: boolean;
     agentPickerOpen: boolean;
     modelProfiles: Array<
@@ -118,8 +119,11 @@ export interface RuntimeSelectionControllerDependencies {
     permissionModeMenu: RuntimeSelectionControlMenuSurface;
     agentModeButton: RuntimeSelectionAgentModeButtonSurface;
     agentModeMenu: RuntimeSelectionControlMenuSurface;
+    reasoningBudgetControl?: HTMLElement;
+    reasoningBudgetButton?: HTMLButtonElement;
+    reasoningBudgetMenu?: HTMLElement;
   }>;
-  readonly preferences: Readonly<{
+  readonly preferences: Readonly<Partial<import("../services/conversation-reasoning-preferences.js").ConversationReasoningPreferences> & {
     loadPinnedSessions(): string[];
     loadSessionModes(
       normalize: (value: unknown) => ToolPermissionMode,
@@ -183,6 +187,7 @@ export declare function createRuntimeSelectionController(
   renderPermissionMode(): void;
   saveModelPreferences(): void;
   selectedEnvironmentId(): string;
+  selectedReasoningPreference(): import("../../../shared/model-reasoning.js").ModelReasoningPreference | undefined;
   selectedModelPreference(): Record<string, unknown> | null;
   selectedModelSupportsImageInput(profileId?: string): boolean;
   setAgentMode(mode: AgentMode): Promise<boolean>;

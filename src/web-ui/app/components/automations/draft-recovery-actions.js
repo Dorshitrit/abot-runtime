@@ -20,6 +20,7 @@ export function createAutomationDraftRecoveryCommands({ actions, requireSavedGra
       if (!requireSavedGraph()) return false;
       const restored = await actions.restorePublishedDraft(({ title, publishedRevision }) => confirmDiscard(
         `Replace the current draft of “${title}” with published revision ${publishedRevision}? Unpublished draft changes will be discarded. The published version, schedule, permissions, and existing runs will stay unchanged.`,
+        { title: "Reset draft", confirmLabel: "Reset draft", tone: "danger" },
       ));
       if (restored) onRestored();
       return restored;

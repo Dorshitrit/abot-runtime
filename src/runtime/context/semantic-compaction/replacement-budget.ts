@@ -3,6 +3,11 @@ import { resolveModelContextAdmission } from "../../model/model-context-budget.j
 import type { SemanticCompactionSourceIdentity } from "./contracts.js";
 import type { SemanticCompactionGenerationParams } from "./generation-contracts.js";
 
+import {
+  assertInheritedCompactionSourceDigests,
+  resolvePriorCompactionSourceDigests,
+} from "./inherited-source-digests.js";
+
 const CHECKPOINT_CONTEXT_WINDOW_SHARE = 0.3;
 
 /** A shared checkpoint must fit every declared consumer, starting with its caller. */
@@ -10,8 +15,9 @@ export function prepareReplacementCompactionBudget(
   params: SemanticCompactionGenerationParams,
   sources: readonly SemanticCompactionSourceIdentity[] = params.sources,
 ) {
+  assertInheritedCompactionSourceDigests(params);
   const expectedSources = Object.freeze(
-    [...(params.previous?.sourceDigests ?? []), ...sources].map(
+    [...resolvePriorCompactionSourceDigests(params), ...sources].map(
       ({ sourceRef, sourceFingerprint }) =>
         Object.freeze({ sourceRef, sourceFingerprint }),
     ),

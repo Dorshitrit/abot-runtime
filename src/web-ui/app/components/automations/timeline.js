@@ -46,7 +46,7 @@ function nodeIsRunning(node, run) {
 
 function nodeMetadata(node) {
   if (node.kind === "agent") {
-    return [node.modelProfileId || "Model not selected", displayReasoningMode(node.agentMode) || ""].filter(Boolean).join(" · ");
+    return [node.modelProfileId || "Model not selected", displayReasoningMode(node.agentMode, node.reasoningPreference) || ""].filter(Boolean).join(" · ");
   }
   return [node.operation?.toolName, node.operation?.operationId].filter(Boolean).join(" · ") || "Operation not selected";
 }
@@ -128,7 +128,7 @@ export function renderAutomationNodeDetails(node, run = null) {
   const record = nodeRunState(run, node.id);
   const operation = node.kind === "tool"
     ? `<dt>Operation</dt><dd>${escapeHtml(nodeMetadata(node))}</dd>`
-    : `<dt>Model</dt><dd>${escapeHtml(node.modelProfileId || "Not selected")}</dd><dt>Role</dt><dd>${escapeHtml(displayReasoningMode(node.agentMode) || "Not selected")}</dd>`;
+    : `<dt>Model</dt><dd>${escapeHtml(node.modelProfileId || "Not selected")}</dd><dt>Role</dt><dd>${escapeHtml(displayReasoningMode(node.agentMode, node.reasoningPreference) || "Not selected")}</dd>`;
   const prompt = node.kind === "agent" && node.prompt
     ? `<div class="automation-inspector-prompt"><strong>Prompt</strong><p dir="auto">${escapeHtml(node.prompt)}</p></div>`
     : "";

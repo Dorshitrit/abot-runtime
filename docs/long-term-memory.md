@@ -194,6 +194,15 @@ It can list configured providers, discover models when the provider supports
 discovery, probe and enable a selected model, or disable the feature. A provider
 without discovery support accepts a model id entered by the user.
 
+Choose **Add connection** to configure an embedding server directly from this
+screen. The shared setup form supports OpenAI, Ollama and llama.cpp; llama.cpp
+can have a separate connection even when a chat connection already exists.
+Enter its server URL, model ID and optional key, then choose **Test and save**.
+The selected memory profile, lifecycle-event setting and plugin policy are
+preserved. If the probe fails after the connection is saved, it remains available
+for retry and the previous memory binding stays in place. After a successful
+save, choose **Apply & restart** or close the dialog and apply later.
+
 ## Configuration Contract
 
 The onboarding flow writes a dedicated embedding profile and binds the feature
@@ -233,6 +242,9 @@ or memory lifecycle event is added to the response path.
   model ids through `/api/tags`.
 - OpenAI uses `/embeddings`. Model discovery is not exposed by that provider,
   so the consumer supplies the embedding model id.
+- llama.cpp uses `/v1/embeddings` with a manually supplied embedding model id.
+  Use an embedding-enabled server; setup can register a separate connection
+  without changing the chat server. See [llama.cpp setup](llamacpp.md#embeddings-and-semantic-memory).
 - A custom model-gateway adapter may implement `embed` and optional
   `listEmbeddingModels` without changing Runtime memory policy.
 

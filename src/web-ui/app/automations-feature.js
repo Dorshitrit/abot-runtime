@@ -4,7 +4,7 @@ import { createAutomationChatRunProjection } from "./components/automations/chat
 import { openAutomationAuthoringChat } from "./components/automations/authoring-entry.js";
 
 export function createAutomationsFeature({
-  dom, client, shell, realtime, getEnvironmentId, onNavigationChange,
+  dom, client, shell, realtime, getEnvironmentId, onNavigationChange, startNewConversation,
   documentRoot = document,
 }) {
   if (!dom.automationsRoot || !dom.automationsWorkspaceButton || !dom.automationChatRunPanel) {
@@ -25,10 +25,15 @@ export function createAutomationsFeature({
   });
   const chatRun = createAutomationChatRunProjection({
     dom, client, getEnvironmentId, onNavigationChange,
-    returnToStudio: (run) => {
+    returnToStudio: async (run) => {
+      const environmentId = getEnvironmentId(), runId = chatRun.runId();
+      const isCurrent = controller.captureActionScope();
+      const activate = await shell.prepareWorkspaceActivation("automations");
+      if (!activate || !isCurrent()) return;
+      if (environmentId !== getEnvironmentId() || runId !== chatRun.runId()) return;
+      if (activate.canCommit?.() === false || activate() === false) return;
       chatRun.clear();
-      if (!shell.activateWorkspace("automations")) return;
-      void controller.openRoute(run?.automationId || "", run?.id || "");
+      await controller.openRoute(run?.automationId || "", run?.id || "");
     },
   });
   view = createAutomationsWorkspace({
@@ -36,10 +41,14 @@ export function createAutomationsFeature({
     actions: {
       ...controller,
       openAuthoringChat(automationId, revision) {
-        return openAutomationAuthoringChat({ dom, shell, automationId, revision });
+        return openAutomationAuthoringChat({ dom, shell, automationId, revision, startNewConversation,
+          getEnvironmentId, isCurrent: controller.captureActionScope() });
       },
-      showChatRun(runId) {
-        if (!shell.activateWorkspace("chat")) return false;
+      async showChatRun(runId) {
+        const isCurrent = controller.captureActionScope();
+        const activate = await shell.prepareWorkspaceActivation("chat");
+        if (!activate || !isCurrent()) return false;
+        if (activate.canCommit?.() === false || activate() === false) return false;
         return chatRun.open(runId);
       },
     },
@@ -93,10 +102,10 @@ export function createAutomationsFeature({
     },
     prepareRouteChange(route) {
       if (shell.activeWorkspace() !== "automations") return true;
-      const changesIdentity = route.workspace !== "automations" ||
-        route.automation !== controller.selectedAutomationId() ||
-        route.run !== controller.selectedRunId() ||
-        route.environment !== getEnvironmentId();
+      const changesEnvironment = Boolean(route.environment) && route.environment !== getEnvironmentId();
+      if (route.workspace !== "automations" && !changesEnvironment) return true;
+      const changesIdentity = changesEnvironment || route.automation !== controller.selectedAutomationId() ||
+        route.run !== controller.selectedRunId();
       return !changesIdentity || view.prepareLeave();
     },
   };

@@ -1,3 +1,4 @@
+import { parseBoundModelReasoningPreference } from "../../shared/model-reasoning.js";
 import { Buffer } from "node:buffer";
 import type { AutomationRevision, ValueBinding, WorkflowNode } from "./definition-contracts.js";
 import { isAutomationRunFileName } from "./run-file-binding.js";
@@ -139,8 +140,9 @@ function node(value: unknown, path: string, depth: number): asserts value is Wor
     return;
   }
   if (input.kind !== "agent") invalid(`${path}.kind`);
-  onlyKeys(input, ["kind", "id", "title", "onFailure", "modelProfileId", "agentMode", "roleInstructions", "prompt", "inputs", "tools", "result", "acceptance", "savedAgentOrigin"], path);
+  onlyKeys(input, ["kind", "id", "title", "onFailure", "modelProfileId", "agentMode", "reasoningPreference", "roleInstructions", "prompt", "inputs", "tools", "result", "acceptance", "savedAgentOrigin"], path);
   text(input.modelProfileId, `${path}.modelProfileId`, 128);
+  parseBoundModelReasoningPreference(input.reasoningPreference, String(input.modelProfileId));
   if (!["fast", "reasoning", "deep"].includes(String(input.agentMode))) invalid(`${path}.agentMode`);
   text(input.roleInstructions, `${path}.roleInstructions`);
   text(input.prompt, `${path}.prompt`);

@@ -1,3 +1,4 @@
+import { resolveExecutionEvidenceCheckpoint } from "../../context/execution-compaction-checkpoint-selection.js";
 import {
   executionCompactionScopeId,
   projectExecutionCompactionObjective,
@@ -29,6 +30,23 @@ export function createExecutionAgentCompactionController(
     options.steeringSnapshot.updates,
   );
   const call = Object.freeze({ ...options.call, objective });
+  const scopeId = executionCompactionScopeId({
+    callId: call.callId,
+    prompt: request.prompt,
+    objective,
+    ...(options.scopeSuffix ? { scopeSuffix: options.scopeSuffix } : {}),
+  });
+  const checkpoint = resolveExecutionEvidenceCheckpoint({
+    requestId: request.requestId,
+    prompt: request.prompt,
+    objective,
+    callId: call.callId,
+    store: request.contextCompactionStore,
+    updates: options.steeringSnapshot.updates,
+    allowedConsumers: options.allowedConsumers,
+    scopeSuffix: options.scopeSuffix,
+    sourceRevision: options.head.revision,
+  });
   return createModelStepCompactionController(request, {
     call,
     sourceRevision: options.head.revision,
@@ -42,11 +60,9 @@ export function createExecutionAgentCompactionController(
       ),
     allowedConsumers: options.allowedConsumers,
     consumer: options.consumer,
-    scopeId: executionCompactionScopeId({
-      callId: call.callId,
-      prompt: request.prompt,
-      objective,
-      ...(options.scopeSuffix ? { scopeSuffix: options.scopeSuffix } : {}),
-    }),
+    scopeId,
+    ...(checkpoint && checkpoint.scopeId !== scopeId
+      ? { inheritedCheckpoint: checkpoint }
+      : {}),
   });
 }

@@ -26,9 +26,7 @@ const document: KnowledgeSkillDocument = {
   revision: 1,
   content: "Explain one owning layer and one caller boundary.",
 };
-const respond = {
-  action: "respond",
-};
+const responseRecommendation = "Explain the supplied guidance and state any failed reads.";
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => {
   resetDebugLoggerConfig();
@@ -57,33 +55,29 @@ function skillActionIndexes(input: RecallModelInput): number[] {
   });
 }
 
-function assertSkillContinuation(
+function assertSkillSnapshot(
   input: RecallModelInput,
-  expected: { readId: string; action: "list_skills" | "read_skills"; skillIds?: readonly string[]; documents?: readonly string[] },
+  expected: { readId: string; skillIds: readonly string[]; documents?: readonly string[] },
 ) {
   const messages = modelMessages(input);
-  const prompts = messages.flatMap((message, index) =>
-    message.role === "user" && message.content === REQUEST_PROMPT ? [index] : []);
-  expect(prompts).toHaveLength(1);
-  const actions = skillActionIndexes(input);
-  expect(actions).toHaveLength(1);
-  const actionIndex = actions[0]!;
-  expect(actionIndex).toBeGreaterThan(prompts[0]!);
-  expect(JSON.parse(messages[actionIndex]!.content)).toEqual({
-    decision: { action: expected.action, ...(expected.skillIds ? { skillIds: expected.skillIds } : {}) },
-  });
-  const resultIndexes = messages.flatMap((message, index) => {
-    try {
-      const value = JSON.parse(message.content);
-      return value.kind === "runtime_core_skill_read_v1" && value.read.readId === expected.readId ? [index] : [];
-    } catch { return []; }
-  });
-  expect(resultIndexes.length).toBeGreaterThan(0);
-  expect(resultIndexes).toEqual(resultIndexes.map((_, index) => actionIndex + 1 + index));
+  expect(messages.filter(({ role, content }) => role === "user" && content === REQUEST_PROMPT)).toHaveLength(1);
+  const references = jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1");
+  expect(references).toHaveLength(expected.documents?.length ?? 1);
+  for (const reference of references) {
+    expect(reference).toMatchObject({
+      authority: "passive_reference", source: "core_skills_store",
+      read: { readId: expected.readId, operation: "read_skills", selectors: expected.skillIds },
+    });
+  }
   for (const content of expected.documents ?? []) {
     expect(messages.filter((message) => message.content.includes(content))).toHaveLength(1);
   }
-  expect(JSON.stringify(input.format)).not.toContain('"responseRecommendation"');
+}
+
+function assertNoSkillGuidance(input: RecallModelInput, documents: readonly KnowledgeSkillDocument[]) {
+  expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1")).toEqual([]);
+  expect(skillActionIndexes(input)).toEqual([]);
+  for (const { content } of documents) expect(JSON.stringify(input.messages)).not.toContain(content);
 }
 
 test("SUPER reads multiple supplied Skills directly without LIST, waking Worker or duplicating their content", async () => {
@@ -103,39 +97,39 @@ test("SUPER reads multiple supplied Skills directly without LIST, waking Worker 
       expect(JSON.stringify(input.messages)).not.toContain(document.content);
       expect(JSON.stringify(input.messages)).not.toContain(secondDocument.content);
       expect(JSON.stringify(input.format)).not.toContain('"list_skills"');
-      if (selections === 1) {
-        for (const { name, description } of documents) {
-          expect(JSON.stringify(input.messages)).toContain(name);
-          expect(JSON.stringify(input.messages)).toContain(description);
-        }
-        return { action: "read_skills", skillIds: documents.map(({ skillId }) => skillId) };
+      for (const { name, description } of documents) {
+        expect(JSON.stringify(input.messages)).toContain(name);
+        expect(JSON.stringify(input.messages)).toContain(description);
       }
-      return { action: "continue" };
+      return { action: "read_skills", skillIds: documents.map(({ skillId }) => skillId) };
     },
-    decide(input) {
-      assertSkillContinuation(input, {
-        readId: "skill-read-1", action: "read_skills",
+    classifyProcedure(input) {
+      assertNoSkillGuidance(input, documents);
+      return { requiresProcedure: false, responseRecommendation };
+    },
+    onInput(input) {
+      expect(input.modelStep).toBe("supervisor.response");
+      assertSkillSnapshot(input, {
+        readId: "skill-read-1",
         skillIds: documents.map(({ skillId }) => skillId), documents: documents.map(({ content }) => content),
       });
       expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_child_result")).toEqual([]);
-      return respond;
     },
+    decide() { throw new Error("unexpected_routing_after_direct_procedure_gate"); },
   });
   const request = attachStore(harness.request, store);
   await expect(runRequestRunner(request)).resolves.toMatchObject({
     output: FINAL_RESPONSE,
   });
   expect(store.read.mock.calls).toEqual(documents.map(({ skillId }) => [skillId]));
-  expect(selections).toBe(2);
-  expect(store.list).toHaveBeenCalledTimes(selections);
+  expect(selections).toBe(1);
+  expect(store.list).toHaveBeenCalledOnce();
   expect(harness.getAdapters).not.toHaveBeenCalled();
   const formats = harness.gatewayInvoke.mock.calls.map(([input]) =>
     typeof input.format === "object" && input.format !== null ? input.format.name : input.modelStep);
-  expect(formats.slice(0, 3)).toEqual([
-    "supervisor_presentation", "supervisor_skill_selection", "supervisor_skill_selection",
+  expect(formats).toEqual([
+    "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate", "supervisor.response",
   ]);
-  expect(formats.at(-2)).toBe("supervisor_decision");
-  expect(formats.at(-1)).toBe("supervisor.response");
   for (const [input] of harness.gatewayInvoke.mock.calls) {
     expect(
       modelMessages(input).filter(
@@ -146,7 +140,9 @@ test("SUPER reads multiple supplied Skills directly without LIST, waking Worker 
   }
   const response = harness.gatewayInvoke.mock.calls.at(-1)![0];
   expect(JSON.stringify(jsonMessages(response))).toContain(document.content);
-  expect(jsonMessages(response).some(({ kind }) => kind === "runtime_supervisor_response_recommendation_v1")).toBe(false);
+  expect(jsonMessages(response)).toContainEqual(expect.objectContaining({
+    kind: "runtime_supervisor_response_recommendation_v1", responseRecommendation,
+  }));
 });
 
 test("a failed core read returns an explicit failure to SUPER without claiming guidance was loaded", async () => {
@@ -159,8 +155,13 @@ test("a failed core read returns an explicit failure to SUPER without claiming g
       selections += 1;
       return { action: "read_skills", skillIds: ["missing"] };
     },
-    decide(input) {
-      assertSkillContinuation(input, { readId: "skill-read-1", action: "read_skills", skillIds: ["missing"] });
+    classifyProcedure(input) {
+      assertNoSkillGuidance(input, [document]);
+      return { requiresProcedure: false, responseRecommendation };
+    },
+    onInput(input) {
+      expect(input.modelStep).toBe("supervisor.response");
+      assertSkillSnapshot(input, { readId: "skill-read-1", skillIds: ["missing"] });
       expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_child_result")).toEqual([]);
       expect(JSON.stringify(jsonMessages(input))).toContain(
         "knowledge_skill_not_found",
@@ -168,8 +169,8 @@ test("a failed core read returns an explicit failure to SUPER without claiming g
       expect(JSON.stringify(jsonMessages(input))).not.toContain(
         document.content,
       );
-      return respond;
     },
+    decide() { throw new Error("unexpected_routing_after_direct_procedure_gate"); },
   });
   await expect(
     runRequestRunner(attachStore(harness.request, store)),
@@ -191,23 +192,23 @@ test("hands the read snapshot to Planner and its Worker without objective copies
     enabled: false,
     selectSkills(input) {
       expect(JSON.stringify(input.messages)).not.toContain(document.content);
-      return ++selection === 1
-        ? { action: "read_skills", skillIds: [document.skillId] }
-        : { action: "continue" };
+      selection += 1;
+      return { action: "read_skills", skillIds: [document.skillId] };
+    },
+    classifyProcedure(input) {
+      assertNoSkillGuidance(input, [document]);
+      return { requiresProcedure: true };
+    },
+    delegate(input) {
+      assertNoSkillGuidance(input, [document]);
+      return { action: "invoke_role", roleId: "planner", objective };
     },
     decide(input) {
       if (typeof input.format === "object" && input.format?.name === "supervisor_working_directory")
         return JSON.stringify({ workingDirectory: "." });
       expect(JSON.stringify(jsonMessages(input))).toContain(document.content);
       if (input.modelStep === "supervisor.decision") {
-        if (++supervisor === 1) {
-          assertSkillContinuation(input, {
-            readId: "skill-read-1", action: "read_skills",
-            skillIds: [document.skillId], documents: [document.content],
-          });
-          return { action: "invoke_role", roleId: "planner", objective };
-        }
-        expect(supervisor).toBe(2);
+        expect(++supervisor).toBe(1);
         expect(skillActionIndexes(input)).toEqual([]);
         expect(jsonMessages(input).some(({ kind }) => kind === "runtime_child_result")).toBe(true);
         return { action: "respond" };
@@ -227,6 +228,7 @@ test("hands the read snapshot to Planner and its Worker without objective copies
   });
   await expect(runRequestRunner(attachStore(harness.request, store))).resolves.toMatchObject({ output: FINAL_RESPONSE });
   expect(store.read).toHaveBeenCalledExactlyOnceWith(document.skillId);
+  expect(selection).toBe(1);
   expect(harness.request.onAcknowledgement).toHaveBeenCalledOnce();
   expect(harness.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.decision")).toHaveLength(1);
   for (const [input] of harness.gatewayInvoke.mock.calls) {

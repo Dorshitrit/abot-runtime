@@ -8,11 +8,17 @@ export function createWorkspaceConversationOpener({ state, shell, openSession })
       shell.showToast?.("Wait for the environment change to finish before opening a conversation.", "neutral");
       return false;
     }
-    const activate = shell.prepareWorkspaceActivation("chat");
-    if (!activate) return false;
     let navigationRevision = shell.navigationRevision?.();
+    const sessionIdBefore = state.currentSessionId;
+    const viewVersion = state.sessionViewVersion;
+    const activate = await shell.prepareWorkspaceActivation("chat");
+    if (!activate) return false;
+    if (navigationRevision !== shell.navigationRevision?.()) return false;
+    if (sessionIdBefore !== state.currentSessionId) return false;
+    if (viewVersion !== state.sessionViewVersion) return false;
     function isConversationWorkspaceNavigationCurrent() {
       if (!canNavigateConversation(state)) return false;
+      if (!committed && activate.canCommit?.() === false) return false;
       return shell.navigationRevision?.() === navigationRevision;
     }
     let committed = false;

@@ -25,15 +25,19 @@ function rootDecision(turn: number) {
   if (turn === 2)
     return {
       ...invocation,
-      operationObjective: "Read the requested section containing target.",
-      controlsEvidenceExecutionIds: [],
+      selectionControls: {
+        path: "notes.txt", locator: "target", context_lines: 1,
+        start_line: null, end_line: null,
+      },
       workingDirectory: ".",
     };
   if (turn === 3)
     return {
       ...invocation,
-      operationObjective: "Read the second candidate's numeric window.",
-      controlsEvidenceExecutionIds: ["capability-execution-1"],
+      selectionControls: {
+        path: "notes.txt", start_line: 3, end_line: 5,
+        locator: null, context_lines: null,
+      },
     };
   expect(turn).toBe(4);
   return { action: "respond" };
@@ -75,6 +79,7 @@ export function createDevViewRequestScript(
         meta: {},
       };
     if (input.modelStep === "capability.controls") {
+      expect(policy).toBe("supervisor-worker-v1");
       controlsTurns += 1;
       expect(containsSystemGuidance(input.messages, guidance)).toBe(true);
       const visible = JSON.stringify(input.messages);
@@ -86,14 +91,7 @@ export function createDevViewRequestScript(
         controlsTurns === 1
           ? { locator: "target", context_lines: 1 }
           : { start_line: 3, end_line: 5 };
-      const decision =
-        policy === "execution-agent-v1"
-          ? {
-              invocations: {
-                invocation_1: { disposition: "execute", controls },
-              },
-            }
-          : { action: "invoke_capability", controls };
+      const decision = { action: "invoke_capability", controls };
       return { text: JSON.stringify({ decision }), meta: {} };
     }
     if (input.modelStep === "supervisor.decision")
@@ -107,8 +105,19 @@ export function createDevViewRequestScript(
         workerTurns <= 2 ? invocation : { action: "return_result" };
       return { text: JSON.stringify({ decision }), meta: {} };
     }
+    rootTurns += 1;
+    if (rootTurns >= 2) {
+      expect(containsSystemGuidance(input.messages, guidance)).toBe(true);
+      if (rootTurns === 3) {
+        const visible = JSON.stringify(input.messages);
+        expect(visible).toContain("ambiguous_text_locator");
+        expect(visible).toContain("start_line=3, end_line=5");
+      }
+    } else {
+      expect(containsSystemGuidance(input.messages, guidance)).toBe(false);
+    }
     return {
-      text: JSON.stringify({ decision: rootDecision(++rootTurns) }),
+      text: JSON.stringify({ decision: rootDecision(rootTurns) }),
       meta: {},
     };
   }));

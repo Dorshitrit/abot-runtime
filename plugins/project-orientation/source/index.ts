@@ -1,5 +1,3 @@
-import { stat } from "node:fs/promises";
-
 import {
   boundText,
   defineRuntimePlugin,
@@ -16,6 +14,7 @@ import {
 } from "./inspection-failure.js";
 import { readProjectManifests } from "./manifest-summary.js";
 import { collectProjectTree } from "./tree.js";
+import { readProjectTargetInfo } from "./project-target.js";
 
 const DEFAULT_DEPTH = 3;
 const DEFAULT_MAX_ENTRIES = 200;
@@ -54,7 +53,7 @@ export default defineRuntimePlugin((context) => {
             defaultPath: ".",
             allowedLocations: ["agent_work", "workspace"],
           });
-          const info = await stat(target.absolutePath);
+          const info = await readProjectTargetInfo(target.absolutePath, signal);
           if (!info.isDirectory()) {
             return failureResult({
               errorCode: "project_target_not_directory",

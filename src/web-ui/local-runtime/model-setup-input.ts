@@ -3,14 +3,18 @@ import {
   parseBaseUrl,
   parseContextWindowTokens,
 } from "../../../scripts/runtime-setup-files.js";
+import { parseSetupModelOptions, type SetupModelOptions } from "../../../scripts/runtime-setup-model-options.js";
+import { supportsProviderAddress, parseProviderCredentialEnvironment } from "../../../scripts/runtime-setup-provider-options.js";
 import { isRecord } from "../../runtime/config/utils.js";
 
 export type NewModelProvider = Readonly<{
   id: string;
-  type: "openai" | "ollama";
+  type: "openai" | "ollama" | "llamacpp";
+  apiKeyEnv?: string;
+  useApiKey?: boolean;
   baseUrl?: string;
 }>;
-export type ModelSetupInput = Readonly<{
+export type ModelSetupInput = SetupModelOptions & Readonly<{
   profileId: string;
   model: string;
   contextWindowTokens?: number;
@@ -104,19 +108,19 @@ function readNewProvider(value: unknown): NewModelProvider {
       "invalid_model_provider",
       "Choose a configured provider or add a new provider.",
     );
-  requireAllowedFields(value, ["id", "type", "baseUrl"]);
+  requireAllowedFields(value, ["id", "type", "baseUrl", "apiKeyEnv", "useApiKey"]);
   const id = requireIdentifier(inputString(value, "id")!, "provider");
   const type = inputString(value, "type");
-  if (type !== "openai" && type !== "ollama")
+  if (type !== "openai" && type !== "ollama" && type !== "llamacpp")
     throw new ModelSetupError(
       "invalid_model_provider",
-      "A new provider must use OpenAI or Ollama.",
+      "A new provider must use OpenAI, Ollama or llama.cpp.",
     );
   const address = inputString(value, "baseUrl", true);
-  if (address && type !== "ollama")
+  if (address && !supportsProviderAddress(type))
     throw new ModelSetupError(
       "invalid_model_address",
-      "A custom address is available for a new Ollama provider.",
+      "A custom address is available for a new Ollama or llama.cpp provider.",
     );
   let baseUrl: string | undefined;
   try {
@@ -127,7 +131,17 @@ function readNewProvider(value: unknown): NewModelProvider {
       "Enter an HTTP or HTTPS origin without a path or credentials.",
     );
   }
-  return { id, type, ...(baseUrl ? { baseUrl } : {}) };
+  if (value.useApiKey !== undefined && (type !== "llamacpp" || typeof value.useApiKey !== "boolean"))
+    throw new ModelSetupError("invalid_model_credential", "An optional API key choice is available for llama.cpp.");
+  let apiKeyEnv: string | undefined;
+  try {
+    apiKeyEnv = parseProviderCredentialEnvironment(value.apiKeyEnv);
+  } catch (error) {
+    throw new ModelSetupError("invalid_model_credential", (error as Error).message);
+  }
+  if (apiKeyEnv && type !== "llamacpp")
+    throw new ModelSetupError("invalid_model_credential", "A custom key environment is available for llama.cpp.");
+  return { id, type, ...(baseUrl ? { baseUrl } : {}), ...(apiKeyEnv ? { apiKeyEnv } : {}), ...(value.useApiKey !== undefined ? { useApiKey: value.useApiKey as boolean } : {}) };
 }
 
 function requireModelIdentifier(model: string): void {
@@ -154,10 +168,16 @@ export function parseModelSetupInput(
     "profileId",
     "model",
     "contextWindowTokens",
+    "supportsThinking",
+    "reasoningBudget",
     "providerId",
     "newProvider",
     "apiKey",
   ]);
+  let modelOptions: SetupModelOptions;
+  try { modelOptions = parseSetupModelOptions(body); } catch (error) {
+    throw new ModelSetupError("invalid_model_reasoning", (error as Error).message);
+  }
   const profileId = requirePortableModelProfileId(
     inputString(body, "profileId")!,
   );
@@ -186,6 +206,7 @@ export function parseModelSetupInput(
     ? { providerId }
     : { newProvider: readNewProvider(body.newProvider) };
   return {
+    ...modelOptions,
     profileId,
     model,
     ...(contextWindowTokens !== undefined ? { contextWindowTokens } : {}),

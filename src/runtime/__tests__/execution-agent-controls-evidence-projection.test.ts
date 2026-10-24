@@ -28,7 +28,7 @@ const slot = (
 ): ControlsEvidenceAssignmentSlot => ({
   slot: slotId,
   capabilityId: evidenceDescriptor.capabilityId,
-  operationObjective: "Read exact evidence for this operation.",
+  operationObjective: "Apply exact evidence for this update.",
   selectionControls: { path: "exact.txt" },
   remainingControls: {
     type: "object",
@@ -67,7 +67,7 @@ async function refine(
     invocations: [
       {
         capabilityId: evidenceDescriptor.capabilityId,
-        intent: "Read selected evidence.",
+        intent: "Apply selected evidence.",
         operationObjective: "Use the selected source exactly.",
         selectionControls: { path: "exact.txt" },
         controlsEvidenceExecutionIds: ids,

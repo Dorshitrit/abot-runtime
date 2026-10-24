@@ -1,0 +1,96 @@
+.conversation-skill-collection {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+}
+
+.conversation-skill-collection + * {
+  margin-block-start: 6px;
+}
+
+.conversation-skill-icon {
+  display: inline-flex;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+}
+
+.conversation-skill-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.conversation-skill-inline-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+}
+
+.conversation-skill-inline-row > .conversation-skill-icon {
+  margin-block-start: 2px;
+}
+
+.conversation-skill-read-label {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.conversation-skill-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation-role-skill-activity {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.conversation-role-skill-activity + .conversation-role-skill-activity::before {
+  content: "·";
+  flex: none;
+  color: var(--muted);
+}
+
+.conversation-skill-summary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.conversation-role-skill-activity[data-tone="failed"] {
+  color: var(--danger);
+}
+
+.conversation-role-skill-activity[data-tone="neutral"] {
+  color: var(--muted);
+}
+
+.conversation-tool.is-skill-read .conversation-tool-title {
+  color: var(--muted);
+}
+
+.conversation-tool.is-skill-read .conversation-tool-target {
+  color: var(--text);
+}
+
+.conversation-tool.is-skill-read.is-completed .conversation-tool-status {
+  color: var(--green);
+}
+
+.conversation-tool.is-skill-read.is-failed .conversation-tool-status {
+  color: var(--danger);
+}

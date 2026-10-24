@@ -1,15 +1,17 @@
-export function sessionSidebarGroup(session, pinnedSessionIds) {
+import { sessionProjectId } from "./session-project-groups.js";
+
+export function sessionSidebarGroup(session, pinnedSessionIds, deletedProjectIds = []) {
   if (pinnedSessionIds.includes(session.id)) return "pinned";
-  const projectId = session.projectId || session.project?.id;
+  const projectId = sessionProjectId(session, deletedProjectIds);
   if (projectId) return `project:${projectId}`;
   return "ordinary";
 }
 
-export function canReorderSidebarSessions(source, target, pinnedSessionIds) {
+export function canReorderSidebarSessions(source, target, pinnedSessionIds, deletedProjectIds = []) {
   if (!source || !target) return false;
   if (source.id === target.id) return false;
-  return sessionSidebarGroup(source, pinnedSessionIds) ===
-    sessionSidebarGroup(target, pinnedSessionIds);
+  return sessionSidebarGroup(source, pinnedSessionIds, deletedProjectIds) ===
+    sessionSidebarGroup(target, pinnedSessionIds, deletedProjectIds);
 }
 
 export function orderSidebarSessions(sessions, pinnedSessionIds, orderedSessionIds) {

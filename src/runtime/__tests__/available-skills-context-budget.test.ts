@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { assessRequestMessagesBudget } from "../context/request-context-budget.js";
-import { defaultSupervisorPresentation } from "./support/supervisor-model-phases.js";
+import { defaultSupervisorPresentation, supervisorFormatName } from "./support/supervisor-model-phases.js";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import {
   createKnowledgeSkillsRequestFixture,
@@ -40,7 +40,13 @@ async function fixture(policy: "execution-agent-v1" | "supervisor-worker-v1") {
 }
 
 function assertCatalog(input: KnowledgeModelInput) {
-  expect(messages(input)[0]!.content).toContain("[" + skill.skillId + "]:");
+  const content = messages(input)[0]!.content;
+  if (supervisorFormatName(input) === "supervisor_skill_selection") {
+    const catalog = JSON.parse(content.split("\n").find((line) => line.startsWith('{"kind":"runtime_supervisor_skill_candidates_v1"'))!);
+    expect(catalog.skills).toContainEqual({ skillId: skill.skillId, name: skill.name, description: skill.description });
+  } else {
+    expect(content).toContain("[" + skill.skillId + "]:");
+  }
   expect(JSON.stringify(messages(input))).not.toContain(skill.content);
 }
 
@@ -99,22 +105,24 @@ test("SUPER retains discovery above the compaction threshold and reads directly"
   await f.run(prompt, [
     { step: "supervisor.decision", output: input => decision(defaultSupervisorPresentation(input)) },
     { step: "supervisor.decision", output: input => {
+      expect(supervisorFormatName(input)).toBe("supervisor_skill_selection");
       assertAboveCompactionThreshold(input);
       assertCatalog(input);
       return decision({ action: "read_skills", skillIds: [skill.skillId] });
     } },
     { step: "supervisor.decision", output: input => {
+      expect(supervisorFormatName(input)).toBe("supervisor_procedure_gate");
+      expect(capsules(input, "runtime_core_skill_read_v1")).toEqual([]);
       expect(JSON.stringify(messages(input))).not.toContain(skill.content);
-      return decision({ action: "continue" });
+      return decision({ requiresProcedure: false, responseRecommendation: "Explain the supplied reference." });
     } },
-    { step: "supervisor.decision", output: input => {
+    { step: "supervisor.response", output: input => {
       const references = capsules(input, "runtime_core_skill_read_v1");
       expect(references).toContainEqual(expect.objectContaining({
         document: expect.objectContaining({ skillId: skill.skillId, content: skill.content }),
       }));
-      return decision({ action: "respond" });
+      return "Reference consulted.";
     } },
-    { step: "supervisor.response", output: "Reference consulted." },
   ], "Reference consulted.");
   expect(f.application.services.models.countInputTokens).toHaveBeenCalled();
   expect(f.store.read).toHaveBeenCalledExactlyOnceWith(skill.skillId);

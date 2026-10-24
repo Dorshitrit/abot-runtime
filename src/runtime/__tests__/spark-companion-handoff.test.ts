@@ -39,7 +39,7 @@ test("SPARK presentation stays on the root across Planner, Worker, Reviewer and 
         expect(hasPresentationPolicy).toBe(false);
       }
       return { text: typeof call!.output === "string" ? call!.output : call!.output(input), meta: {} };
-    }));
+    }, { classifyProcedure: () => ({ requiresProcedure: true }) }));
     const seed = { ...targetHandoffSeed(invoke, "ask"), sessionKind: "spark" as const };
     const registry = await fixture.registry.prepareRequest!();
     const request = createTestRequestExecutionScopeWithCapabilities(seed, (view) => {

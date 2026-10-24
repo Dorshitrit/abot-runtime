@@ -131,6 +131,9 @@ describe("additive Web model setup", () => {
             generation: { temperature: 0, reasoningEffort: "none" },
           }
         : { format: "json", timeoutMs: 300_000 });
+      expect(profile.calibration["toolPayload.raw"].timeoutMs).toBe(
+        type === "openai" ? 300_000 : undefined,
+      );
       expect(profile.supportsThinking).toBeUndefined();
       if (type === "openai")
         expect(process.env.MODEL_FIXTURE_KEY).toBe("fixture-custom-key");

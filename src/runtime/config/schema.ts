@@ -1,3 +1,4 @@
+import { modelReasoningBudgetByModeSchema, modelReasoningBudgetSchema } from "./model-reasoning-schema.js";
 import { modelPluginConfigSchema } from "./model-plugin-config.js";
 import { DEFAULT_MEMORY_RECALL_CALL_LIMIT } from "../long-term-memory/recall-policy.js";
 import {
@@ -115,6 +116,8 @@ function modelGenerationSchema(): Record<string, unknown> {
         type: "number",
         description: "Nucleus sampling value forwarded to the model provider.",
       },
+      reasoningBudget: modelReasoningBudgetSchema,
+      reasoningBudgetByMode: modelReasoningBudgetByModeSchema,
       reasoningEffort: {
         type: "string",
         enum: ["none", "minimal", "low", "medium", "high", "xhigh"],

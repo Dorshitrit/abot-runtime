@@ -52,6 +52,8 @@ test.each([false, true])(
     let plannerCount = 0;
     const harness = createMemoryRecallHarness({
       policy: "supervisor-worker-v1",
+      classifyProcedure: () => ({ requiresProcedure: true }),
+      delegate: () => ({ action: "invoke_role", roleId: "planner", objective: PLANNER_OBJECTIVE }),
       retrieve: async () => ({ available: true, records: [MEMORY_RECORD],
         message: projectLongTermMemoryMessage([MEMORY_RECORD])! }),
       onInput(input) {
@@ -65,13 +67,14 @@ test.each([false, true])(
           const recallIndex = messages.findIndex(
             (message) => message.role === "tool" && message.toolName === "recall_memory",
           );
-          const childIndex = messages.findIndex(
-            ({ content }) => content.includes('"kind":"runtime_child_result"'),
-          );
+          const childIndexes = messages.flatMap(({ content }, index) =>
+            content.includes('"kind":"runtime_child_result"') ? [index] : []);
           expect(recallIndex).toBeGreaterThan(messages.findIndex(
             ({ role, content }) => role === "user" && content === REQUEST_PROMPT,
           ));
-          if (childIndex >= 0) expect(recallIndex).toBeLessThan(childIndex);
+          expect(childIndexes.length).toBeGreaterThan(0);
+          expect(recallIndex).toBeGreaterThan(childIndexes[0]!);
+          if (childIndexes.length > 1) expect(recallIndex).toBeLessThan(childIndexes.at(-1)!);
         }
         const origins = jsonMessages(input).filter(
           ({ kind }) => kind === "runtime_scheduled_execution_v1",
@@ -153,7 +156,7 @@ test.each([false, true])(
             };
           }
           if (supervisorCount === 2) {
-            expect(harness.getAdapters).not.toHaveBeenCalled();
+            expect(harness.getAdapters).toHaveBeenCalledOnce();
           }
           expect(recallCapsules(input)).toEqual([
             expect.objectContaining({
@@ -167,17 +170,10 @@ test.each([false, true])(
               ],
             }),
           ]);
-          if (supervisorCount === 2) {
-            return {
-              action: "invoke_role",
-              roleId: "planner",
-              objective: PLANNER_OBJECTIVE,
-            };
-          }
           const returned = jsonMessages(input)
             .filter(({ kind }) => kind === "runtime_child_result")
             .at(-1);
-          if (supervisorCount === 3) {
+          if (supervisorCount === 2) {
             expect(returned).toMatchObject({
               callerCallId: "call-1",
               childCallId: "call-2",
@@ -187,7 +183,7 @@ test.each([false, true])(
             });
             return { action: "invoke_role", roleId: "reviewer" };
           }
-          expect(supervisorCount).toBe(4);
+          expect(supervisorCount).toBe(3);
           expect(returned).toMatchObject({
             callerCallId: "call-1",
             childCallId: "call-4",
@@ -292,12 +288,11 @@ test.each([false, true])(
       .filter(([input]) => !isWorkingDirectoryCall(input))
       .map(([input]) => input.modelStep);
     expect(modelSteps).toEqual([
-      "supervisor.decision",
-      "supervisor.decision",
       "planner.decision",
       "worker.decision",
       "worker.result",
       "planner.decision",
+      "supervisor.decision",
       "supervisor.decision",
       "reviewer.decision",
       "supervisor.decision",

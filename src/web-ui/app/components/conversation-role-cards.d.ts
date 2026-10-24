@@ -1,5 +1,6 @@
 import type { ConversationFileReference } from "../lib/conversation-file-reference.js";
 import type { buildConversationRoleCards } from "../lib/conversation-role-model.js";
+import type { MemoryActivity } from "../lib/memory-activity-model.js";
 
 export declare function createConversationRoleCards(options?: {
   documentRoot?: Document;
@@ -12,6 +13,7 @@ export declare function createConversationRoleCards(options?: {
   createNode(input: {
     requestId: string;
     cards: ReturnType<typeof buildConversationRoleCards>;
+    memoryActivities?: MemoryActivity[];
     heading?: HTMLElement;
     timeline: HTMLElement;
     hasTimeline: boolean;

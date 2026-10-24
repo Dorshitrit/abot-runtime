@@ -17,7 +17,7 @@ const file = (scope: ComposerScope, id = "file") => ({
   id, storageRef: `${scope.sessionId}/${id}`, sessionId: scope.sessionId, environment: scope.environmentId,
 });
 
-function fixture() {
+function fixture(confirmAction: () => boolean | Promise<boolean> = () => true) {
   let environment = "prod";
   const ack = deferred();
   const drafts = createComposerDrafts();
@@ -50,7 +50,7 @@ function fixture() {
     state, preferences, client, selectedEnvironmentId: () => environment,
     dom: { sessionsList: { innerHTML: "", scrollTop: 0 }, sessionsCount: { textContent: "" } },
     sessionActionsMenu, renderGroups: () => true,
-    shell: { showToast: vi.fn() }, confirmAction: () => true, copyText: vi.fn(), onOpen: vi.fn(),
+    shell: { showToast: vi.fn() }, confirmAction, copyText: vi.fn(), onOpen: vi.fn(),
     onClearCurrent, onClearSessionMode, onSaveModelPreferences, onReload, onControlEvent, onSessionAttachmentsCleared,
   });
   return { controller, ack, drafts, draft, destination, state, preferences, client, sessionActionsMenu,
@@ -80,6 +80,7 @@ describe.each(["clearMessages", "deleteSession"] as const)("%s", (action) => {
   test("late ACK cleans only its captured environment and does not alter the new environment view", async () => {
     const f = fixture();
     const waiting = f.controller[action]("A");
+    await vi.waitFor(() => expect(action === "clearMessages" ? f.client.clearSessionMessages : f.client.deleteSession).toHaveBeenCalledOnce());
     const devScope = { environmentId: "dev", sessionId: "A" };
     const devDraft = f.drafts.open(devScope);
     devDraft.text = "Dev input";
@@ -156,4 +157,39 @@ test("clearing an unopened scope does not create or invalidate a draft", () => {
   expect(changed).not.toHaveBeenCalled();
   expect(drafts.open(original).generation).toBe(0);
   expect(drafts.open(original).revision).toBe(0);
+});
+
+describe.each(["clearMessages", "deleteSession"] as const)("%s confirmation", (action) => {
+  test.each(["cancel", "environment", "conversation", "removed"] as const)(
+    "pending approval preserves drafts and refuses a stale %s target", async (change) => {
+      let approve!: (value: boolean) => void;
+      const confirmation = new Promise<boolean>((resolve) => { approve = resolve; });
+      const f = fixture(() => confirmation);
+      const waiting = f.controller[action]("A");
+      expect(f.client.clearSessionMessages).not.toHaveBeenCalled();
+      expect(f.client.deleteSession).not.toHaveBeenCalled();
+      expect(f.state.busySessionIds.size).toBe(0);
+      if (change === "environment") f.setEnvironment("dev");
+      if (change === "conversation") f.state.currentSessionId = "A";
+      if (change === "removed") f.state.sessions = [{ id: "B" }];
+      approve(change !== "cancel");
+      await waiting;
+      expect(f.client.clearSessionMessages).not.toHaveBeenCalled();
+      expect(f.client.deleteSession).not.toHaveBeenCalled();
+      expect(f.draft.attachments).toEqual([file(original)]);
+      expect(f.onSessionAttachmentsCleared).not.toHaveBeenCalled();
+    },
+  );
+  test("approved unchanged target starts one mutation only after the dialog settles", async () => {
+    let approve!: (value: boolean) => void;
+    const f = fixture(() => new Promise<boolean>((resolve) => { approve = resolve; }));
+    const waiting = f.controller[action]("A");
+    expect(f.client.clearSessionMessages).not.toHaveBeenCalled();
+    expect(f.client.deleteSession).not.toHaveBeenCalled();
+    approve(true);
+    await vi.waitFor(() => expect(action === "clearMessages" ? f.client.clearSessionMessages : f.client.deleteSession).toHaveBeenCalledOnce());
+    f.ack.resolve();
+    await waiting;
+    expect(f.onSessionAttachmentsCleared).toHaveBeenCalledExactlyOnceWith(original);
+  });
 });

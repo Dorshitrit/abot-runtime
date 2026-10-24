@@ -1,3 +1,4 @@
+import { supportsProviderAddress } from "./runtime-setup-provider-options.js";
 import { isRecord, type JsonObject } from "./runtime-setup-files.js";
 
 export function parseRuntimeModelProfileId(value: string): string {
@@ -47,7 +48,7 @@ export function mergeRuntimeModelAddition(
       );
     }
     if (
-      input.provider.type === "ollama" &&
+      supportsProviderAddress(String(input.provider.type)) &&
       input.baseUrl &&
       existingProvider.baseUrl !== input.baseUrl
     ) {
@@ -55,6 +56,10 @@ export function mergeRuntimeModelAddition(
         `provider ${input.providerId} already uses a different base URL; no files were changed`,
       );
     }
+    const changesLlamaCredentialBinding = input.provider.type === "llamacpp" &&
+      input.provider.apiKeyEnv !== undefined && input.provider.apiKeyEnv !== existingProvider.apiKeyEnv;
+    if (changesLlamaCredentialBinding)
+      throw new Error("provider " + input.providerId + " already uses a different credential binding; no files were changed");
   }
   return {
     providerAdded: existingProvider === undefined,

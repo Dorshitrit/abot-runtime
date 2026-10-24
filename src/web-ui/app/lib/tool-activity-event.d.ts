@@ -3,6 +3,7 @@ import type { ToolActivityField } from "./tool-activity-model.js";
 
 export interface ToolActivityEvent {
   fileReference?: ConversationFileReference;
+  skillRead?: true;
   name: string;
   tool: string;
   activityTitle?: string;

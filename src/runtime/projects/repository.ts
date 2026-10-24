@@ -1,41 +1,52 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { copySessionProject } from "../../sessions/project-binding.js";
-import type { RuntimeProject } from "./contracts.js";
+import type { RuntimeProject, RuntimeProjectCatalog } from "./contracts.js";
+import { readProjectCatalog } from "./registry-format.js";
 
-/** One environment owner serializes updates; rename publishes a complete registry. */
+/** One environment owner serializes updates; rename publishes a complete catalog. */
 export class FileProjectRepository {
   private tail: Promise<void> = Promise.resolve();
 
   constructor(private readonly filename: string) {}
 
-  async list(): Promise<RuntimeProject[]> {
+  async catalog(): Promise<RuntimeProjectCatalog> {
     try {
-      const input: unknown = JSON.parse(await readFile(this.filename, "utf8"));
-      if (!Array.isArray(input)) throw new Error("project_registry_invalid");
-      return input.map((entry: RuntimeProject) => {
-        const project = copySessionProject(entry);
-        if (typeof entry.createdAt !== "string")
-          throw new Error("project_registry_created_at_invalid");
-        return { ...project, createdAt: entry.createdAt };
-      });
+      return readProjectCatalog(JSON.parse(await readFile(this.filename, "utf8")));
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      if ((error as NodeJS.ErrnoException).code === "ENOENT")
+        return { projects: [], deletedProjectIds: [] };
       throw error;
     }
   }
 
+  async list(): Promise<readonly RuntimeProject[]> {
+    return (await this.catalog()).projects;
+  }
+
   create(project: RuntimeProject): Promise<RuntimeProject> {
-    const result = this.tail.then(async () => {
-      const projects = await this.list();
-      const existing = projects.find(
+    return this.mutate(async (catalog) => {
+      const existing = catalog.projects.find(
         (entry) => entry.directory === project.directory,
       );
       if (existing) return existing;
-      await this.save([...projects, project]);
+      await this.save({ ...catalog, projects: [...catalog.projects, project] });
       return project;
     });
+  }
+
+  delete(projectId: string): Promise<void> {
+    return this.mutate(async (catalog) => {
+      if (catalog.deletedProjectIds.includes(projectId)) return;
+      await this.save({
+        projects: catalog.projects.filter((project) => project.id !== projectId),
+        deletedProjectIds: [...catalog.deletedProjectIds, projectId],
+      });
+    });
+  }
+
+  private mutate<T>(apply: (catalog: RuntimeProjectCatalog) => Promise<T>): Promise<T> {
+    const result = this.tail.then(async () => apply(await this.catalog()));
     this.tail = result.then(
       () => undefined,
       () => undefined,
@@ -43,11 +54,11 @@ export class FileProjectRepository {
     return result;
   }
 
-  private async save(projects: readonly RuntimeProject[]): Promise<void> {
+  private async save(catalog: RuntimeProjectCatalog): Promise<void> {
     await mkdir(dirname(this.filename), { recursive: true });
     const temporary = `${this.filename}.${process.pid}.${randomUUID()}.tmp`;
     try {
-      await writeFile(temporary, JSON.stringify(projects, null, 2), "utf8");
+      await writeFile(temporary, JSON.stringify({ version: 1, ...catalog }, null, 2), "utf8");
       await rename(temporary, this.filename);
     } catch (error) {
       await rm(temporary, { force: true }).catch(() => undefined);

@@ -1,5 +1,6 @@
 import type { KnowledgeSkillStore } from "../knowledge-skills/store.js";
 import type { SuperFailureFinalization } from "./super-failure-explanation.js";
+import type { SupervisorSkillSelectionWindows } from "./supervisor-skill-selection-window.js";
 import type { RequestModelStepPort } from "../model/model-step-port.js";
 import {
   BOUND_REQUEST_MODEL_INVOCATION,
@@ -40,6 +41,7 @@ export function createCapabilityCompositionView(
     requestId: enumerableGetter(() => facets.identity.requestId),
     runnerConfig: enumerableGetter(() => facets.model.runnerConfig),
     agentMode: enumerableGetter(() => facets.input.agentMode),
+    ...(facets.model.reasoningPreference ? { reasoningPreference: enumerableGetter(() => facets.model.reasoningPreference!) } : {}),
     ...(facets.model.modelPreference !== undefined
       ? {
           modelPreference: enumerableGetter(
@@ -125,6 +127,7 @@ export function createScopeSurface(
     capabilities: RequestWorkerCapabilities;
     knowledgeSkillStore?: KnowledgeSkillStore;
     superFailureFinalization?: SuperFailureFinalization | undefined;
+    supervisorSkillSelectionWindows: SupervisorSkillSelectionWindows;
   }>,
 ): RequestExecutionScope {
   const { facets, policy, modelInvocation, modelSteps, capabilities } = input;
@@ -177,6 +180,7 @@ export function createScopeSurface(
     policy: hiddenValue(policy),
     modelInvocation: hiddenValue(modelInvocation),
     capabilities: hiddenValue(capabilities),
+    supervisorSkillSelectionWindows: hiddenValue(input.supervisorSkillSelectionWindows),
     ...(input.knowledgeSkillStore ? { knowledgeSkillStore: hiddenValue(input.knowledgeSkillStore) } : {}),
     ...(input.superFailureFinalization
       ? {
@@ -248,6 +252,7 @@ function requestSeedDescriptors(
           ),
         }
       : {}),
+    ...(facets.model.reasoningPreference ? { reasoningPreference: enumerableGetter(() => facets.model.reasoningPreference!) } : {}),
     ...(facets.model.modelPreference !== undefined
       ? {
           modelPreference: enumerableGetter(

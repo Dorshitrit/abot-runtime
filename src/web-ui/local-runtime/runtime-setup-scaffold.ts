@@ -1,3 +1,4 @@
+import { resolveRuntimeSetupCredentialEnvironment } from "./runtime-setup-auth.js";
 import {
   createRuntimeSetupDraft,
   type RuntimeSetupDraft,
@@ -195,6 +196,7 @@ async function saveRuntimeSetupScaffold(
   const provider = buildProviderConfig(
     params.input.provider,
     params.input.baseUrl,
+    resolveRuntimeSetupCredentialEnvironment(params.input.provider, providers[params.input.provider], params.input.apiKey),
   );
   const ownedProviders = await recoverSetupProviderOwnership(
     params.source,
@@ -243,6 +245,7 @@ async function saveRuntimeSetupScaffold(
     params.input.provider,
     params.input.model,
     params.input.contextWindowTokens,
+    params.input,
   );
   const rebasedRunner = rebaseRunnerInstructions(runnerTemplate, (file) =>
     relative(dirname(runnerPath), join(params.rootDir, file)),

@@ -26,7 +26,8 @@ export async function countModelInputTokens(params: {
     messages: params.messages,
     agentMode: params.request.agentMode,
     modelStep: params.modelStep,
-    ...(params.request.modelPreference
+    ...(params.request.reasoningPreference ? { reasoningPreference: params.request.reasoningPreference } : {}),
+      ...(params.request.modelPreference
       ? { modelPreference: params.request.modelPreference }
       : {}),
     ...(params.request.modelPolicy

@@ -321,7 +321,7 @@ describe("native scheduling tool binding", () => {
     },
   );
 
-  test("edits only supplied Job settings and cannot alter session or FULL permissions", async () => {
+  test("edits supplied Job settings, clears old model bindings and cannot alter session or FULL permissions", async () => {
     const { module, service, context } = createFixture();
     const result = await module.implementation(
       {
@@ -339,6 +339,7 @@ describe("native scheduling tool binding", () => {
     expect(service.update).toHaveBeenCalledExactlyOnceWith("job", {
       title: "Changed",
       modelProfileId: "default",
+      reasoningPreference: null,
       agentMode: "fast",
     });
   });

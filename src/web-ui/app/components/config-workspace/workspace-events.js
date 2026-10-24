@@ -1,3 +1,5 @@
+import { activateEditedReasoningBudget, syncActivatedReasoningBudget } from "./reasoning-budget-edit.js";
+import { shouldRefreshReasoningBudgetFields } from "./reasoning-budget.js";
 import { rememberCalibrationDisclosure } from "./calibration-disclosure.js";
 import { textOf } from "../../lib/text-format.js";
 import { resolveModelExecutionRoute } from "./config-model.js";
@@ -72,10 +74,17 @@ export function createConfigWorkspaceEvents({
       action === "step-value"
         ? element.value
         : parseConfigInputValue(element, file, path);
-    mutateConfigFile(element.dataset.kind, element.dataset.id, (config) =>
-      applyConfigFieldValue(config, element, path, value),
-    );
+    let activatedGeneration;
+    mutateConfigFile(element.dataset.kind, element.dataset.id, (config) => {
+      applyConfigFieldValue(config, element, path, value);
+      activatedGeneration = activateEditedReasoningBudget(
+        file, state.configDashboard, path, value, setConfigPathValue,
+      );
+    });
+    if (activatedGeneration)
+      syncActivatedReasoningBudget(dom.configDashboard, file, state.configDashboard, activatedGeneration);
     syncExecutionRouteDescription(element);
+    if (shouldRefreshReasoningBudgetFields(file, path, element.dataset.valueType)) renderConfigDashboard();
   }
 
   function handleDashboardInput(event) {
@@ -90,8 +99,7 @@ export function createConfigWorkspaceEvents({
     if (dashboardIsBusy()) return;
     const element = event.target;
     if (element?.id === "configRawFileSelect") {
-      changeRawFile(element.value, element);
-      return;
+      return changeRawFile(element.value, element);
     }
     const actionElement = element?.closest?.("[data-config-action]");
     if (!actionElement) return;
@@ -273,9 +281,9 @@ export function createConfigWorkspaceEvents({
   function bind() {
     if (state.bound) return;
     state.bound = true;
-    dom.refreshConfigButton.addEventListener("click", () => {
+    dom.refreshConfigButton.addEventListener("click", async () => {
       if (dashboardIsBusy()) return;
-      if (!confirmDiscardChanges("refresh configuration")) return;
+      if (!await confirmDiscardChanges("refresh configuration")) return;
       void loadRuntimeConfig({ protectUnsaved: false });
     });
     dom.configDashboard.addEventListener("click", handleDashboardClick);

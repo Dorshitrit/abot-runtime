@@ -403,7 +403,7 @@ describe("config workspace DOM characterization", () => {
 
     await vi.waitFor(() => expect(loadDashboard).toHaveBeenCalledTimes(2));
     expect(
-      harness.workspace.prepareDiscardChanges("change environment"),
+      await harness.workspace.prepareDiscardChanges("change environment"),
     ).toBeNull();
     expect(harness.configStatus.textContent).toContain(
       "Wait for the current save",

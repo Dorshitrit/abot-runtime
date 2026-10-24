@@ -81,6 +81,48 @@ describe("ABot Studio library tabs", () => {
     expect(name.value).toBe("Unsaved title");
   });
 
+  test.each(["approve", "edit"])("async discard handles %s without using a pending Promise as approval", async (outcome) => {
+    const { document, root, snapshot } = fixture("one");
+    let approve!: (approved: boolean) => void;
+    const openRoute = vi.fn(async () => true);
+    const workspace = createAutomationsWorkspace({ root, documentRoot: document,
+      actions: { snapshot: () => snapshot, openRoute },
+      confirmDiscard: () => new Promise<boolean>((resolve) => { approve = resolve; }) });
+    const name = root.querySelector('[data-automation-definition-form]')!.querySelector('[name="title"]')!;
+    name.value = "Unsaved title";
+    name.dispatch("input");
+    root.querySelector('[data-automation-library-tab="templates"]')!.dispatch("click");
+    expect(openRoute).not.toHaveBeenCalled();
+    expect(workspace.isDirty()).toBe(true);
+    if (outcome === "edit") { name.value = "Newer title"; name.dispatch("input"); }
+    approve(true);
+    if (outcome === "approve") await vi.waitFor(() => expect(openRoute).toHaveBeenCalledExactlyOnceWith("", ""));
+    else {
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+      expect(openRoute).not.toHaveBeenCalled();
+      expect(workspace.isDirty()).toBe(true);
+    }
+  });
+
+  test("a workspace discard remains uncommitted while another navigation guard is pending", async () => {
+    const { document, root, snapshot } = fixture("one");
+    const workspace = createAutomationsWorkspace({ root, documentRoot: document,
+      actions: { snapshot: () => snapshot }, confirmDiscard: () => true });
+    const name = root.querySelector('[data-automation-definition-form]')!.querySelector('[name="title"]')!;
+    name.value = "Unsaved title"; name.dispatch("input");
+    const commit = await workspace.prepareLeave();
+    expect(typeof commit).toBe("function");
+    expect(workspace.isDirty()).toBe(true);
+    expect(commit.canCommit()).toBe(true);
+    name.value = "Newer title"; name.dispatch("input");
+    expect(commit.canCommit()).toBe(false);
+    expect(commit()).toBe(false);
+    expect(workspace.isDirty()).toBe(true);
+    const nextCommit = await workspace.prepareLeave();
+    expect(nextCommit()).toBe(true);
+    expect(workspace.isDirty()).toBe(false);
+  });
+
   test("keeps the prior view stable during selected draft loading and shows real failures", () => {
     const { document, root, snapshot } = fixture();
     const workspace = createAutomationsWorkspace({ root, documentRoot: document,

@@ -2,6 +2,7 @@ import { createToolApprovalCard } from "../tool-approval-card.js";
 import { formatEventDetail } from "../../lib/event-presentation.js";
 import { projectToolActivityEvent } from "../../lib/tool-activity-event.js";
 import { textOf } from "../../lib/text-format.js";
+import { captureApprovalRejectionFocus } from "../tool-approval-rejection-input.js";
 
 const renderedApprovalCards = new WeakMap();
 const renderedApprovalViews = new WeakMap();
@@ -29,6 +30,8 @@ function approvalScopeKey(approval) {
     approval.sessionId,
     approval.requestId,
     approval.approvalId,
+    approval.generation,
+    approval.waitId,
   ]);
 }
 
@@ -51,8 +54,12 @@ function createHomeApproval(approval, title, onDecision, documentRoot) {
   const card = createToolApprovalCard({
     event,
     submitted: approval.submitted === true,
+    rejectionDraft: approval.rejectionDraft,
     documentRoot,
-    onDecision: (_approvalId, approved) => void onDecision(approval, approved),
+    onDecision: (_approvalId, approved, reason) => {
+      if (reason === undefined) return onDecision(approval, approved);
+      return onDecision(approval, approved, reason);
+    },
   });
   card.querySelector(".approval-message-header").appendChild(conversation);
   section.appendChild(card);
@@ -106,6 +113,10 @@ export function renderDashboardApprovals({
     previousView.firstChild === root.firstChild
   )
     return;
+  const restoreRejectionFocus = captureApprovalRejectionFocus(
+    root,
+    documentRoot,
+  );
   const previousCards = renderedApprovalCards.get(root) || new Map();
   const nextCards = new Map();
   const retainedCards = [];
@@ -127,6 +138,7 @@ export function renderDashboardApprovals({
 
   function publish() {
     reconcileApprovalNodes(root, nodes, retainedCards);
+    restoreRejectionFocus();
     renderedApprovalCards.set(root, nextCards);
     renderedApprovalViews.set(root, { signature, firstChild: root.firstChild });
   }

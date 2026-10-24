@@ -278,6 +278,19 @@ including projects with no sessions. The session's saved project snapshot also
 provides the visible working-folder label. Neither project presentation nor client
 request payloads overwrite global runtime paths.
 
+Project grouping and sidebar reordering share the saved project ID and the
+owner's deleted-project catalog. Deleting a project moves its conversations into
+the ordinary list without modifying session snapshots, history or working folders.
+The retained snapshot still provides the open conversation's working-folder label.
+Deletion also applies to groups inferred from historical sessions; unrelated
+inferred groups remain visible. Names, paths and session-ID shapes never select
+special grouping rules. Global pins, search and bounded previews remain intact.
+
+Collapsed project IDs live in the existing installation preferences, scoped by
+environment, and survive refresh and reopening. Search expands matching groups
+only for its duration and does not overwrite saved collapse choices. The header
+search button reveals the input; closing it clears the temporary query.
+
 `tool-permission-mode-controller.js` owns the permission selector and explicit
 per-session preference changes; `lib/tool-permission-mode.js` owns known browser
 values and server compatibility. FULL+ requires advertised server support, and

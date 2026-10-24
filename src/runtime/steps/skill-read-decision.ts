@@ -105,10 +105,15 @@ export function parseSkillReadDecision(
 }
 
 function hasValidSkillReadReferences(value: unknown): value is readonly string[] {
-  if (!Array.isArray(value)) return false;
-  if (value.length === 0 || value.length > KNOWLEDGE_SKILL_READ_MAX_ITEMS) return false;
-  if (!value.every(isKnowledgeSkillReadReference)) return false;
-  return new Set(value).size === value.length;
+  return classifySkillReadReferences(value) === "valid";
+}
+
+export function classifySkillReadReferences(value: unknown): "valid" | "invalid" | "duplicate" {
+  if (!Array.isArray(value)) return "invalid";
+  if (value.length === 0 || value.length > KNOWLEDGE_SKILL_READ_MAX_ITEMS) return "invalid";
+  if (!value.every(isKnowledgeSkillReadReference)) return "invalid";
+  if (new Set(value).size !== value.length) return "duplicate";
+  return "valid";
 }
 
 function hasBoundedSkillPresentation(value: unknown, maximum: number): value is string {

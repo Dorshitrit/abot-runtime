@@ -101,7 +101,7 @@ test("late mutation results cannot overwrite a new environment", async () => {
   const f = fixture({ updatePersonalSkill: vi.fn(() => pending.promise) });
   await f.controller.refresh(); await f.controller.select(skill.skillId); f.controller.setDraft("Changed");
   const saving = f.controller.save();
-  expect(f.controller.prepareLeave()).toBe(false);
+  expect(await f.controller.prepareLeave()).toBe(false);
   f.setEnvironment("prod"); pending.resolve({ skill: { ...skill, content: "Changed" } });
   expect(await saving).toBe(false);
   expect(f.controller.snapshot()).toMatchObject({ skill: null, draft: "", message: "", mutation: "" });
@@ -112,59 +112,59 @@ test("workspace and environment guards keep drafts until the full transition com
   const schedules = { prepareEnvironmentChange: vi.fn(() => true) };
   const config = { prepareDiscardChanges: vi.fn(() => true) };
   const skills = { prepareEnvironmentChange: f.controller.prepareLeave };
-  expect(prepareEnvironmentWorkspaceChanges(schedules, config, skills)).toBeNull();
+  expect(await prepareEnvironmentWorkspaceChanges(schedules, config, skills)).toBeNull();
   expect(f.controller.snapshot().draft).toBe("Unsaved");
   f.confirmDiscard.mockReturnValue(true);
-  const prepared = prepareEnvironmentWorkspaceChanges(schedules, config, skills);
+  const prepared = await prepareEnvironmentWorkspaceChanges(schedules, config, skills);
   expect(f.controller.snapshot().draft).toBe("Unsaved");
   expect(prepared.canCommit()).toBe(true);
   f.controller.setDraft("Newer unsaved");
   expect(prepared.canCommit()).toBe(false);
-  const current = prepareEnvironmentWorkspaceChanges(schedules, config, skills); current();
+  const current = await prepareEnvironmentWorkspaceChanges(schedules, config, skills); current();
   expect(f.controller.snapshot().draft).toBe(skill.content);
   expect(f.controller.isDirty()).toBe(false);
 });
 
 test("selecting another Skill or filter respects the unsaved-change guard", async () => {
   const f = fixture(); await f.controller.refresh(); await f.controller.select(skill.skillId); f.controller.setDraft("Unsaved");
-  expect(f.controller.setArchived(true)).toBe(false);
+  expect(await f.controller.setArchived(true)).toBe(false);
   expect(f.controller.snapshot()).toMatchObject({ archived: false, draft: "Unsaved" });
   f.confirmDiscard.mockReturnValue(true);
-  expect(f.controller.setArchived(true)).toBe(true);
+  expect(await f.controller.setArchived(true)).toBe(true);
   expect(f.controller.snapshot()).toMatchObject({ archived: true, skill: null });
 });
 
-function fillCreation(controller: ReturnType<typeof createSkillsController>) {
-  expect(controller.beginCreate()).toBe(true);
+async function fillCreation(controller: ReturnType<typeof createSkillsController>) {
+  expect(await controller.beginCreate()).toBe(true);
   controller.setCreationField("name", "New personal guide");
   controller.setCreationField("description", "How to work together");
   controller.setDraft("Follow the agreed process.");
 }
 
 test("creation sends only editable fields and selects the canonical new Skill", async () => {
-  const f = fixture(); fillCreation(f.controller);
+  const f = fixture(); await fillCreation(f.controller);
   expect(await f.controller.save()).toBe(true);
   expect(f.client.createPersonalSkill).toHaveBeenCalledExactlyOnceWith({ name: "New personal guide", description: "How to work together", content: "Follow the agreed process." }, "dev");
   expect(f.controller.snapshot()).toMatchObject({ creating: false, archived: false, dirty: false,
     skill: { skillId: "personal-created", revision: 1, name: "New personal guide" } });
 });
 
-test.each(["name", "description", "content"])("a new %s draft is protected by cancellation and navigation", (field) => {
-  const f = fixture(); f.controller.beginCreate();
+test.each(["name", "description", "content"])("a new %s draft is protected by cancellation and navigation", async (field) => {
+  const f = fixture(); await f.controller.beginCreate();
   if (field === "content") f.controller.setDraft("Unsaved content");
   else f.controller.setCreationField(field, "Unsaved metadata");
   expect(f.controller.isDirty()).toBe(true);
-  expect(f.controller.prepareLeave()).toBe(false);
-  expect(f.controller.cancelCreate()).toBe(false);
-  expect(f.controller.beginCreate()).toBe(false);
+  expect(await f.controller.prepareLeave()).toBe(false);
+  expect(await f.controller.cancelCreate()).toBe(false);
+  expect(await f.controller.beginCreate()).toBe(false);
   f.confirmDiscard.mockReturnValue(true);
-  expect(f.controller.cancelCreate()).toBe(true);
+  expect(await f.controller.cancelCreate()).toBe(true);
   expect(f.controller.snapshot()).toMatchObject({ creating: false, name: "", description: "", draft: "", dirty: false });
 });
 
 test("creation failure preserves every field and permits retry", async () => {
   const f = fixture({ createPersonalSkill: vi.fn(async () => { throw new Error("Storage unavailable"); }) });
-  fillCreation(f.controller);
+  await fillCreation(f.controller);
   expect(await f.controller.save()).toBe(false);
   expect(f.controller.snapshot()).toMatchObject({ creating: true, name: "New personal guide", description: "How to work together",
     draft: "Follow the agreed process.", dirty: true, mutation: "", error: "Storage unavailable" });
@@ -173,19 +173,19 @@ test("creation failure preserves every field and permits retry", async () => {
 test("pending creation blocks leaving and a late result cannot repopulate a changed environment", async () => {
   const pending = deferred<{ skill: typeof skill }>();
   const f = fixture({ createPersonalSkill: vi.fn(() => pending.promise) });
-  fillCreation(f.controller); const saving = f.controller.save();
-  expect(f.controller.prepareLeave()).toBe(false);
-  expect(f.controller.cancelCreate()).toBe(false);
-  expect(f.controller.beginCreate()).toBe(false);
+  await fillCreation(f.controller); const saving = f.controller.save();
+  expect(await f.controller.prepareLeave()).toBe(false);
+  expect(await f.controller.cancelCreate()).toBe(false);
+  expect(await f.controller.beginCreate()).toBe(false);
   f.setEnvironment("prod"); f.setEnvironment("dev"); pending.resolve({ skill });
   expect(await saving).toBe(false);
   expect(f.controller.snapshot()).toMatchObject({ skill: null, creating: false, name: "", description: "", draft: "", message: "" });
 });
 
 test("creation validates metadata and UTF-8 content bounds before transport", async () => {
-  const f = fixture(); f.controller.beginCreate();
+  const f = fixture(); await f.controller.beginCreate();
   expect(await f.controller.save()).toBe(false);
-  fillCreation(f.controller);
+  await fillCreation(f.controller);
   f.controller.setCreationField("name", "n".repeat(161));
   expect(await f.controller.save()).toBe(false);
   f.controller.setCreationField("name", "Name"); f.controller.setCreationField("description", "d".repeat(513));

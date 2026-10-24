@@ -8,10 +8,7 @@ import {
   resetDebugLoggerConfig,
 } from "../observability/debug-logger.js";
 import { runRequestRunner } from "../request/runner.js";
-import {
-  createControlsEvidenceFixture,
-  runtimeCapsule,
-} from "./support/execution-controls-evidence-fixture.js";
+import { createControlsEvidenceFixture } from "./support/execution-controls-evidence-fixture.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => resetDebugLoggerConfig());
@@ -48,7 +45,7 @@ const reply = (decision: unknown) => ({
   meta: {},
 });
 
-test("C5/C8/C20: selected URLs survive batch Controls through kernel and adapters without evidence fields", async () => {
+test("C5/C8/C20: EA selects guided exact URLs before direct batch dispatch", async () => {
   const observed: string[] = [];
   const sharedGuidance = "EA_BATCH_GUIDANCE_SENTINEL";
   const lookupExecute = vi.fn(async () => ({
@@ -87,56 +84,7 @@ test("C5/C8/C20: selected URLs survive batch Controls through kernel and adapter
     const messages = input.messages as readonly ChatMessage[];
     if (input.modelStep === "execution.response")
       return { text: "Fetched both selected URLs.", meta: {} };
-    if (input.modelStep === "capability.controls") {
-      const instructions = messages
-        .filter(({ role }) => role === "system")
-        .map(({ content }) => content)
-        .join("\n");
-      expect(instructions.split(sharedGuidance)).toHaveLength(2);
-      expect(instructions).toContain(`invocation_1 (${fetch.capabilityId})`);
-      expect(instructions).toContain(`invocation_2 (${fetch.capabilityId})`);
-      const assignment = runtimeCapsule(
-        messages,
-        "runtime_execution_capability_refinement_v1",
-      )!;
-      expect(assignment.invocations).toMatchObject([
-        {
-          slot: "invocation_1",
-          capabilityId: fetch.capabilityId,
-          controlsEvidenceExecutionIds: ["capability-execution-1"],
-          operationObjective: "Fetch only the first located URL.",
-        },
-        {
-          slot: "invocation_2",
-          capabilityId: fetch.capabilityId,
-          controlsEvidenceExecutionIds: ["capability-execution-1"],
-          operationObjective: "Fetch only the second located URL.",
-        },
-      ]);
-      const capsule = runtimeCapsule(
-        messages,
-        "runtime_request_tool_results_v1",
-      )!;
-      const results = capsule.results as {
-        executionId: string;
-        adapterResult: { payload: { referenceData: string } };
-      }[];
-      expect(results).toHaveLength(1);
-      const exact = JSON.parse(results[0]!.adapterResult.payload.referenceData);
-      expect(exact).toEqual({ first: urls[0], second: urls[1] });
-      return reply({
-        invocations: {
-          invocation_1: {
-            disposition: "execute",
-            controls: { url: exact.first },
-          },
-          invocation_2: {
-            disposition: "execute",
-            controls: { url: exact.second },
-          },
-        },
-      });
-    }
+    expect(input.modelStep).toBe("execution.decision");
     decisionCount++;
     if (decisionCount === 1)
       return reply({
@@ -151,16 +99,26 @@ test("C5/C8/C20: selected URLs survive batch Controls through kernel and adapter
         intent: "Locate exact URLs.",
         workingDirectory: null,
       });
-    if (decisionCount === 3)
+    if (decisionCount === 3) {
+      const decisionContext = messages.map(({ content }) => content).join("\n");
+      expect(decisionContext.split(sharedGuidance)).toHaveLength(2);
+      const resultMessages = messages.filter(({ role }) => role === "tool");
+      expect(resultMessages).toHaveLength(1);
+      const result = JSON.parse(resultMessages[0]!.content);
+      expect(result.kind).toBe("runtime_execution_capability_result_v1");
+      const exact = JSON.parse(
+        result.result.adapterResult.payload.referenceData,
+      );
+      expect(exact).toEqual({ first: urls[0], second: urls[1] });
       return reply({
         action: "invoke_capabilities",
         invocations: ["first", "second"].map((ordinal) => ({
           capabilityId: fetch.capabilityId,
           intent: `Fetch the ${ordinal} page.`,
-          operationObjective: `Fetch only the ${ordinal} located URL.`,
-          controlsEvidenceExecutionIds: ["capability-execution-1"],
+          selectionControls: { url: exact[ordinal] },
         })),
       });
+    }
     return reply({ action: "respond" });
   });
   await expect(runRequestRunner(fixture.request)).resolves.toMatchObject({
@@ -169,6 +127,9 @@ test("C5/C8/C20: selected URLs survive batch Controls through kernel and adapter
   expect(observed).toEqual(urls);
   expect(lookupExecute).toHaveBeenCalledOnce();
   expect(fetchExecute).toHaveBeenCalledTimes(2);
+  expect(
+    fixture.invoke.mock.calls.map(([input]) => input.modelStep),
+  ).not.toContain("capability.controls");
 });
 
 test("C16: direct response adds no Controls selection schema, index or evidence", async () => {

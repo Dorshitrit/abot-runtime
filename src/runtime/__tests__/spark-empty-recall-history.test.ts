@@ -4,8 +4,9 @@ import { buildSparkConversationInstructions } from "../context/spark-conversatio
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import { runRequestRunner } from "../request/runner.js";
 import { deriveTestRequestExecutionScope } from "./support/request-execution-scope.js";
+import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 import { initiative, memoryFor, ordinaryTurn, session } from "./support/initiative-session-memory-fixture.js";
-import { createMemoryRecallHarness, modelMessages, recallCapsules, responseDecision,
+import { createMemoryRecallHarness, modelMessages, recallCapsules,
   type RecallPolicy } from "./support/memory-recall-runner.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
@@ -21,8 +22,13 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
       let decisionCount = 0;
       const harness = createMemoryRecallHarness({
         policy,
+        classifyProcedure: () => ({ requiresProcedure: true }),
+        delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Identify whether earlier stored suggestions are needed." }),
         retrieve: async () => ({ available: true, records: [] }),
         decide(input) {
+          if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
+          if (input.modelStep === "worker.decision") return { action: "return_result" };
+          if (input.modelStep === "worker.result") return "The earlier suggestion should be checked by the root.";
           decisionCount += 1;
           if (decisionCount === 1) {
             expect(recallCapsules(input)).toEqual([]);
@@ -33,7 +39,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
             requestId: harness.request.requestId, callId: "call-1", steeringVersion: 0,
             recalls: [expect.objectContaining({ query, outcome: "empty", memories: [], omittedRecordCount: 0 })],
           })]);
-          return responseDecision(policy);
+          return { action: "respond" };
         },
       });
       const request = deriveTestRequestExecutionScope(harness.request, {
@@ -47,13 +53,15 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
       expect(harness.memory.retrieve).toHaveBeenLastCalledWith({
         query, context: expect.objectContaining({ requestId: request.requestId, sessionId: record.id }),
       });
-      expect(harness.getAdapters).not.toHaveBeenCalled();
+      expect(harness.getAdapters).toHaveBeenCalledTimes(policy === "supervisor-worker-v1" ? 1 : 0);
       expect(harness.invokeRaw).not.toHaveBeenCalled();
       const policyBlock = buildSparkConversationInstructions("spark").join("\n");
       const expectedConversation = [...record.messages.map(({ role, content }) => ({ role, content })),
         { role: "user", content: prompt }];
       const conversationContents = new Set(expectedConversation.map(({ content }) => content));
-      const inputs = harness.invoke.mock.calls.map(([input]) => input);
+      const inputs = harness.invoke.mock.calls.map(([input]) => input)
+        .filter((input) => input.modelStep !== "worker.decision" && input.modelStep !== "worker.result"
+          && supervisorFormatName(input) !== "supervisor_working_directory");
       expect(inputs.filter(({ modelStep }) => String(modelStep).endsWith("response")).length).toBeGreaterThan(0);
       for (const [index, input] of inputs.entries()) {
         const messages = modelMessages(input);

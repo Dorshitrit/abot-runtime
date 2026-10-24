@@ -1,3 +1,4 @@
+import { parseBoundModelReasoningPreference } from "../../shared/model-reasoning.js";
 import type {
   SchedulerJob,
   SchedulerRun,
@@ -75,6 +76,7 @@ export function parseStoredRun(value: unknown): SchedulerStoredRun {
     failSnapshot();
   if (!Number.isSafeInteger(value.jobRevision)) failSnapshot();
   if (Number(value.jobRevision) < 1) failSnapshot();
+  parseBoundModelReasoningPreference(value.reasoningPreference, String(value.modelProfileId));
   requireSchedulerToolPermissionMode(value.toolPermissionMode);
   validateTimeZone(String(value.timeZone));
   const states = [

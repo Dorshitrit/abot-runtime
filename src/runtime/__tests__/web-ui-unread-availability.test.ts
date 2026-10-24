@@ -36,6 +36,7 @@ function sessionHarness(session: Session) {
   const onOpen = vi.fn();
   const controller = createSessionController({
     state,
+    selectedEnvironmentId: () => "dev",
     dom: {
       sessionsList: {
         innerHTML: "",

@@ -1,3 +1,4 @@
+import { availableEmbeddingProviders } from "./onboarding-provider-availability.js";
 import {
   discoverEmbeddingModels,
   executeEmbeddingRequest,
@@ -6,6 +7,7 @@ import {
 import type {
   LongTermMemoryOnboardingConfigRepository,
   LongTermMemoryOnboardingService,
+  LongTermMemoryOnboardingStatus,
 } from "../../long-term-memory/onboarding/contracts.js";
 import { createLongTermMemoryOnboardingService } from "../../long-term-memory/onboarding/service.js";
 import { createFileLongTermMemoryOnboardingConfigRepository } from "./onboarding-config-repository.js";
@@ -26,7 +28,7 @@ export function createLocalLongTermMemoryOnboardingService(params: {
       rootDir: params.rootDir,
       ...(params.configPath ? { configPath: params.configPath } : {}),
     });
-  return createLongTermMemoryOnboardingService({
+  const service = createLongTermMemoryOnboardingService({
     repository,
     probe: async (input) => {
       const result = await executeEmbeddingRequest({
@@ -50,5 +52,31 @@ export function createLocalLongTermMemoryOnboardingService(params: {
         providerAdapters: params.providerAdapters,
         ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
       }),
+  });
+  const projectStatus = (status: LongTermMemoryOnboardingStatus) => Object.freeze({
+    ...status, providers: availableEmbeddingProviders(status.providers, params.providerAdapters),
+  });
+  return Object.freeze({
+    ...service,
+    async enable(input) {
+      const result = await service.enable(input);
+      return { ...result, status: projectStatus(result.status) };
+    },
+    async saveProfile(input) {
+      const result = await service.saveProfile(input);
+      return { ...result, status: projectStatus(result.status) };
+    },
+    async removeProfile(input) {
+      const result = await service.removeProfile(input);
+      return { ...result, status: projectStatus(result.status) };
+    },
+    async disable() {
+      const result = await service.disable();
+      return { ...result, status: projectStatus(result.status) };
+    },
+    async status() {
+      const status = await service.status();
+      return projectStatus(status);
+    },
   });
 }

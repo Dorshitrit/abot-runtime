@@ -8,7 +8,7 @@ type WorkspaceDocument = {
   activeElement: WorkspaceElement | null;
   evictHiddenFocus: boolean;
 };
-type WorkspaceListener = (event: WorkspaceEvent) => void;
+type WorkspaceListener = (event: WorkspaceEvent) => unknown;
 
 class WorkspaceElement {
   readonly dataset: Record<string, string> = {};
@@ -78,10 +78,9 @@ class WorkspaceElement {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
   }
 
-  dispatch(type: string, event: WorkspaceEvent = {}) {
-    for (const listener of this.listeners.get(type) ?? []) {
-      listener({ target: this, ...event });
-    }
+  async dispatch(type: string, event: WorkspaceEvent = {}) {
+    await Promise.all((this.listeners.get(type) ?? []).map((listener) =>
+      listener({ target: this, ...event })));
   }
 
   focus() {

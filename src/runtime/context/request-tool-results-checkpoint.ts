@@ -1,3 +1,5 @@
+import type { CheckpointProjectionOptions } from "./semantic-compaction/checkpoint-message.js";
+import { projectCompactedRegisteredOutputSummary } from "./compacted-capability-result-receipt.js";
 import { CompactionSourceInvariantError } from "./compaction-source-invariant.js";
 import { readSuperWorkerCompactionSidecar } from "./super-worker-compaction-sidecar.js";
 import {
@@ -16,6 +18,7 @@ export function projectRequestToolResultsCheckpointMessage(
   message: ChatMessage,
   checkpoint: SemanticCompactionCheckpoint,
   resultSourceOverrides: ReadonlyMap<string, SemanticCompactionSource>,
+  options: CheckpointProjectionOptions = {},
 ): ChatMessage | undefined {
   const record = parseJsonRecord(message.content);
   if (record?.kind !== "runtime_request_tool_results_v1") return undefined;
@@ -24,7 +27,11 @@ export function projectRequestToolResultsCheckpointMessage(
   }
   const previousProjection = parseRecord(record.semanticCheckpoint);
   const previousScopeId = readNonEmptyString(previousProjection?.scopeId);
-  if (previousScopeId && previousScopeId !== checkpoint.scopeId) {
+  if (
+    previousScopeId &&
+    previousScopeId !== checkpoint.scopeId &&
+    previousScopeId !== options.replacesScopeId
+  ) {
     throw new Error("context_compaction_checkpoint_scope_conflict");
   }
   const view = readBoundRequestToolResultsView(message);
@@ -54,7 +61,10 @@ export function projectRequestToolResultsCheckpointMessage(
         );
       throw new Error("context_compaction_checkpoint_receipt_invalid");
     }
-    coveredResults.set(executionId, receipt);
+    coveredResults.set(
+      executionId,
+      projectCoveredResultSummary(receipt, source, fingerprint),
+    );
   }
   const remainingResults: Record<string, unknown>[] = [];
   for (const result of readRecordArray(record.results)) {
@@ -85,7 +95,11 @@ export function projectRequestToolResultsCheckpointMessage(
     coveredResults.set(
       executionId,
       Object.freeze({
-        ...receipt,
+        ...projectCoveredResultSummary(
+          receipt,
+          source,
+          exact.sourceFingerprint,
+        ),
         sourceFingerprint: exact.sourceFingerprint,
       }),
     );
@@ -101,8 +115,13 @@ export function projectRequestToolResultsCheckpointMessage(
         roleId: checkpoint.roleId,
         callId: checkpoint.callId,
         checkpointSourceRevision: checkpoint.sourceRevision,
+        ...(options.includeContinuation === false
+          ? { authority: "passive_source_evidence" }
+          : {}),
         presenceEffect:
-          "passive_role_continuation_not_user_intent_or_completion",
+          options.includeContinuation === false
+            ? "passive_source_evidence_not_current_intent_or_completion"
+            : "passive_role_continuation_not_user_intent_or_completion",
         coveredSources: checkpoint.sourceDigests.map(
           ({ sourceRef, sourceFingerprint, digest }) => ({
             sourceRef,
@@ -110,7 +129,9 @@ export function projectRequestToolResultsCheckpointMessage(
             digest,
           }),
         ),
-        continuation: checkpoint.continuation,
+        ...(options.includeContinuation === false
+          ? {}
+          : { continuation: checkpoint.continuation }),
         coveredResults: [...coveredResults.values()],
       },
       results: remainingResults,
@@ -160,5 +181,28 @@ function resolveResultSource(
     sourceRef: executionId,
     sourceFingerprint: createSemanticCompactionSha256Fingerprint(content),
     content,
+  };
+}
+
+/** Read aliases only from exact source bytes, including previously covered receipts. */
+function projectCoveredResultSummary(
+  receipt: Record<string, unknown>,
+  source: SemanticCompactionSource | undefined,
+  fingerprint: string,
+): Record<string, unknown> {
+  if (!source || source.sourceFingerprint !== fingerprint) return receipt;
+  const canonical = parseJsonRecord(source.content);
+  if (!canonical || canonical.executionId !== receipt.executionId)
+    return receipt;
+  if (typeof receipt.summary !== "string") return receipt;
+  const adapter = parseRecord(canonical.adapterResult);
+  const result =
+    adapter?.kind === "registered_tool_execution_result_v1"
+      ? parseRecord(adapter.result)
+      : undefined;
+  const output = typeof result?.output === "string" ? result.output : undefined;
+  return {
+    ...receipt,
+    summary: projectCompactedRegisteredOutputSummary(receipt.summary, output),
   };
 }

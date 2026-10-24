@@ -27,6 +27,7 @@ export function projectClient() {
     listProjects: vi.fn<ProjectRequests["listProjects"]>(async () => ({ projects: [] })),
     browseProjectFolders: vi.fn<ProjectRequests["browseProjectFolders"]>(async () => folderPage()),
     createProject: vi.fn<ProjectRequests["createProject"]>(async () => ({ project: project() })),
+    deleteProject: vi.fn<ProjectRequests["deleteProject"]>(async () => ({ ok: true })),
     createProjectSession: vi.fn<ProjectRequests["createProjectSession"]>(async () => ({ sessionId: "created-session", project: project() })),
   };
 }

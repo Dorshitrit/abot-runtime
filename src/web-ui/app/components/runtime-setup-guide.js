@@ -1,3 +1,6 @@
+import { runtimeSetupConnectionInput } from "./runtime-setup/connection-input.js";
+import { createConnectionInspection } from "./runtime-setup/connection-inspection.js";
+import { setupReasoningState } from "./runtime-setup/reasoning-fields.js";
 import { textOf } from "../lib/text-format.js";
 import { renderRuntimeSetup } from "./runtime-setup/rendering.js";
 import { createSetupOptionalSteps } from "./runtime-setup/optional-steps.js";
@@ -20,7 +23,6 @@ import {
 import {
   clearConnectionSecret,
   readConnectionSecret,
-  validateConnectionFields,
   showConnectionFieldError,
 } from "./runtime-setup/connection-form.js";
 import {
@@ -42,6 +44,7 @@ export function createRuntimeSetupGuide({
   container,
   conversationRegion,
   loadSetup,
+  inspectConnection,
   saveSetup,
   applySetup,
   loadEmbeddingStatus,
@@ -60,6 +63,7 @@ export function createRuntimeSetupGuide({
   openConfiguration = () => {},
 }) {
   const state = {
+    ...setupReasoningState(),
     providers: [],
     provider: "",
     modelId: "",
@@ -84,6 +88,7 @@ export function createRuntimeSetupGuide({
   let onCheckAgain = () => {};
   let onApplied = () => {};
   const viewState = createSetupViewState(container);
+  const connectionInspection = createConnectionInspection({ state, container, inspectConnection, onChange: paint, getEnvironmentId });
   const optionalSteps = createSetupOptionalSteps({
     container, getEnvironmentId, getPreferredProvider: () => state.provider,
     loadEmbeddingStatus, discoverEmbeddingModels, saveEmbedding, loadPlugins,
@@ -106,13 +111,15 @@ export function createRuntimeSetupGuide({
   }
 
   function reset() {
+    connectionInspection.reset();
     clearSetupContextWindowFeedback(state, container);
     revision += 1;
     optionalSteps.reset();
     viewState.reset();
     clearSecret();
     Object.assign(state, {
-      providers: [],
+      ...setupReasoningState(),
+    providers: [],
       provider: "",
       modelId: "",
       contextWindowTokens: "",
@@ -196,31 +203,7 @@ export function createRuntimeSetupGuide({
     showConnectionFieldError(container, field);
   }
 
-  function connectionInput() {
-    const result = validateConnectionFields({
-      modelId: state.modelId,
-      contextWindowTokens: state.contextWindowTokens,
-      providerType: state.provider,
-      baseUrl: state.baseUrl,
-    });
-    if (!result.valid) {
-      fieldError(result.field, result.message);
-      return null;
-    }
-    const input = { provider: state.provider, ...result.input };
-    if (state.editableConnection?.revision)
-      input.connectionRevision = state.editableConnection.revision;
-    if (state.provider === "ollama") return input;
-    const apiKey = readConnectionSecret(container);
-    const provider = state.providers.find(
-      (entry) => entry.id === state.provider,
-    );
-    if (provider?.credentialConfigured !== true && !apiKey) {
-      fieldError("api-key", "Enter your OpenAI API key.");
-      return null;
-    }
-    return apiKey ? { ...input, apiKey } : input;
-  }
+  const connectionInput = () => runtimeSetupConnectionInput(state, container, fieldError);
 
   async function submitConnection() {
     const input = connectionInput();
@@ -307,6 +290,7 @@ export function createRuntimeSetupGuide({
   function controlsAreBusy() {
     if (requiresConfigurationRecovery(availability)) return true;
     if (
+      state.checkingConnection ||
       state.loading ||
       state.saving ||
       state.applying ||
@@ -354,6 +338,7 @@ export function createRuntimeSetupGuide({
       return;
     }
     if (!action || controlsAreBusy()) return;
+    if (action === "inspect-model-connection" && state.step === 1) { void connectionInspection.check(); return; }
     const setupWasApplied =
       state.finishAttempted && state.activation?.status === "ready";
     if (setupWasApplied && action !== "check") return;
@@ -404,11 +389,17 @@ export function createRuntimeSetupGuide({
     }
     clearSetupContextWindowFeedback(state, container);
     field.removeAttribute?.("aria-invalid");
-    updateSetupConnectionField(
+    const rerender = updateSetupConnectionField(
       state,
       field.dataset.runtimeSetupField,
-      textOf(field.value),
+      field.type === "checkbox" ? field.checked : textOf(field.value),
     );
+    if (rerender) {
+      const key = readConnectionSecret(container);
+      paint();
+      const input = container.querySelector('[data-runtime-setup-field="api-key"]');
+      if (input) input.value = key;
+    }
     const action = container.querySelector(
       '.runtime-setup-action[type="submit"]',
     );

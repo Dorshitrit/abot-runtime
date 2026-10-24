@@ -219,13 +219,13 @@ describe("local runtime web backend", () => {
       `http://127.0.0.1:${port}/web-api/runtime/memory`,
     );
     const payload = (await response.json()) as Record<string, unknown>;
-
     expect(response.ok).toBe(true);
     expect(payload).toEqual({
       ok: true,
       status: {
         enabled: false,
         emitClientEvents: false,
+        embeddingProfiles: [],
         providers: [{ id: "ollama", type: "ollama" }],
       },
     });

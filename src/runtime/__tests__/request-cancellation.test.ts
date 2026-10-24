@@ -202,7 +202,7 @@ describe.each(ROOT_OUTPUT_POLICIES)("$policyId cancellation", (policy) => {
         1,
       );
       expect(events.some((event) => event.type === "failed")).toBe(false);
-      const nextMessages = rootWorkCalls(invoke)[0]?.[0].messages as {
+      const nextMessages = rootWorkCalls(invoke).find(([input]) => input.modelStep === policy.responseStep)![0].messages as {
         role: string;
         content: string;
       }[];

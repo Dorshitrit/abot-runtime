@@ -50,7 +50,12 @@ const call = {
   depth: 0,
   invocationAttempt: 1,
 };
-const toolResults = { sourceRevision: 1, results: [] };
+const toolResults = { sourceRevision: 1, results: [{
+  executionId: "observation-1", callId: "call-1", invocationAttempt: 1,
+  capabilityId: "observe_0", declaredEffect: "observation" as const,
+  outcome: "succeeded" as const, observedEffect: "none" as const,
+  summary: "The first bounded observation settled.",
+}] };
 
 function formatName(input: ModelInput): string | undefined {
   const format = input.format;
@@ -174,7 +179,7 @@ beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => resetDebugLoggerConfig());
 
 describe("Supervisor optional descriptions across structured repairs", () => {
-  test("reselects an optional brief before both repair admissions on a fresh near-threshold request", async () => {
+  test("reselects an optional brief before both repairs on an evidence-aware near-threshold continuation", async () => {
     const harness = createHarness();
     const initial = harness.projected(32000).context.budget;
     const capacity = Math.ceil(

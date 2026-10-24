@@ -1,3 +1,4 @@
+import { requiresProviderCredential } from "./runtime-setup-auth.js";
 import { RuntimeSetupError } from "./runtime-setup-input.js";
 import {
   hasProviderCredentialBinding,
@@ -17,8 +18,10 @@ import {
 } from "./model-setup-input.js";
 import type { ModelSetupOptions } from "./model-setup-catalog.js";
 
-export function buildNewModelProvider(selection: NewModelProvider) {
-  const config = buildProviderConfig(selection.type, selection.baseUrl);
+export function buildNewModelProvider(selection: NewModelProvider, apiKey?: string) {
+  const apiKeyEnv = selection.apiKeyEnv ??
+    (selection.type === "llamacpp" && (apiKey || selection.useApiKey) ? isolatedProviderCredentialName(selection.id) : undefined);
+  const config = buildProviderConfig(selection.type, selection.baseUrl, apiKeyEnv);
   const needsIsolatedCredentialBinding = selection.type === "openai";
   if (needsIsolatedCredentialBinding)
     config.apiKeyEnv = isolatedProviderCredentialName(selection.id);
@@ -48,7 +51,7 @@ export function planModelProvider(
       "That provider ID already exists. Choose its saved connection or use another ID.",
       409,
     );
-  const provider = buildNewModelProvider(selection);
+  const provider = buildNewModelProvider(selection, input.apiKey);
   const apiKeyEnv = provider.config.apiKeyEnv;
   const hasNewProviderCredentialCollision =
     typeof apiKeyEnv === "string" &&
@@ -67,12 +70,12 @@ export async function prepareModelCredential(
   provider: Record<string, unknown>,
   apiKey?: string,
 ) {
-  const requiresApiKey = provider.type === "openai";
+  const requiresApiKey = requiresProviderCredential(provider);
   if (!requiresApiKey) {
     if (apiKey)
       throw new ModelSetupError(
         "invalid_model_credential",
-        "Only an OpenAI connection accepts an API key here.",
+        "This connection does not have an API key binding.",
       );
     return undefined;
   }
@@ -91,7 +94,7 @@ export async function prepareModelCredential(
   if (!savedKey && !apiKey)
     throw new ModelSetupError(
       "model_credential_required",
-      "Enter an API key for this OpenAI connection.",
+      "Enter an API key for this connection.",
     );
   return { apiKeyEnv, ...(savedKey ? {} : { apiKey }) };
 }

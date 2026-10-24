@@ -37,6 +37,8 @@ export function buildExecutionControlsEvidenceMessage(
       params.steering.updates,
     ),
     callId: params.callId,
+    updates: params.steering.updates,
+    sourceRevision: view.sourceRevision,
     store: params.compaction.store,
     results: view.results.map((result) => ({
       ...result,

@@ -27,11 +27,9 @@ import type {
   RoleCallFrame,
   RoleCallLedgerHead,
 } from "../../orchestration/role-calls/index.js";
-import {
-  projectCapabilityCatalogGroups,
-  projectCapabilityScope,
-  type CapabilityCatalogGroup,
-  type CapabilityDescriptor,
+import type {
+  CapabilityCatalogGroup,
+  CapabilityDescriptor,
 } from "../../orchestration/capability-adapters/index.js";
 import {
   resolveRequestWorkerCapabilities,
@@ -59,6 +57,16 @@ import {
 } from "./format.js";
 import { projectExecutionWorkPlanOptions } from "./work-plan-sources.js";
 import { buildExecutionAgentInstructions } from "./prompt.js";
+import { appendExecutionEvidenceReuseInstructions } from "./evidence-reuse-instructions.js";
+import {
+  assertExecutionAgentCanonicalSource,
+  resolveExecutionCapabilityScope,
+  type ExecutionCapabilityScope,
+} from "./capability-scope.js";
+import {
+  buildExecutionObservationGuidanceInstructions,
+  type ExecutionObservationGuidance,
+} from "./observation-guidance.js";
 import {
   buildExecutionCapabilityCatalogMessage,
   buildExecutionCapabilityGroupCatalogMessage,
@@ -87,53 +95,29 @@ type BuildExecutionAgentInputOptions = Readonly<{
   allowAuditor: boolean;
   memoryRecallMessage?: ChatMessage;
   memoryContext?: ExecutionMemoryProjection;
+  capabilityScope?: ExecutionCapabilityScope;
+  observationGuidance?: readonly ExecutionObservationGuidance[];
 }>;
 
 export function buildExecutionAgentInput(
   request: RequestExecutionScope,
   options: BuildExecutionAgentInputOptions,
 ): ExecutionAgentInput {
-  assertCanonicalSource(request, options.head, options.call);
+  assertExecutionAgentCanonicalSource(request, options.head, options.call);
   const directResponse = resolveDirectResponseOffer(request, options.head, options.call);
-  const allCapabilities =
-    resolveRequestWorkerCapabilities(request).provider.getDescriptors();
-  const capabilityCatalogGroups =
-    projectCapabilityCatalogGroups(allCapabilities);
-  const activeCapabilityCatalogGroupIds =
-    options.call.workerCapabilityScope?.catalogGroupIds ?? null;
+  const {
+    capabilities,
+    capabilityCatalogGroups,
+    activeCapabilityCatalogGroupIds,
+    knownGroupIds,
+    remainingExecutions,
+    capabilityScopeAction,
+  } = options.capabilityScope ?? resolveExecutionCapabilityScope(request, options);
   const eligibleSessionArtifactPaths = projectEligibleSessionArtifactPaths(
     request.sessionArtifactPaths,
     options.head,
     options.call,
   );
-  const remainingExecutions =
-    options.head.policy.limits.maxCapabilityExecutions -
-    options.head.state.capabilityExecutions.length;
-  const scopedCapabilities =
-    activeCapabilityCatalogGroupIds !== null && remainingExecutions > 0
-      ? projectCapabilityScope({
-          entries: allCapabilities,
-          scope: options.call.workerCapabilityScope,
-          descriptorOf: (entry) => entry,
-        }).entries
-      : Object.freeze([]);
-  const capabilities = scopedCapabilities;
-  const knownGroupIds = Object.freeze(
-    capabilityCatalogGroups.map(({ groupId }) => groupId),
-  );
-  const hasInactiveGroup =
-    activeCapabilityCatalogGroupIds !== null &&
-    knownGroupIds.some(
-      (groupId) => !activeCapabilityCatalogGroupIds.includes(groupId),
-    );
-  const capabilityScopeAction =
-    remainingExecutions <= 0 || knownGroupIds.length === 0
-      ? null
-      : activeCapabilityCatalogGroupIds === null
-        ? ("open" as const)
-        : hasInactiveGroup
-          ? ("extend" as const)
-          : null;
   const auditInput = projectAuditorInputState(
     options.head,
     options.call.callId,
@@ -210,6 +194,9 @@ export function buildExecutionAgentInput(
       includeTitle: options.includeTitle,
       includeWorkingDirectory: options.call.workingDirectory === undefined,
     }),
+    ...buildExecutionObservationGuidanceInstructions(
+      capabilities, options.observationGuidance ?? [],
+    ),
     ...buildDirectResponseInstructions(
       directResponse.maxLength, request.runnerConfig, directMemoryAuthoring !== undefined,
     ),
@@ -278,7 +265,10 @@ export function buildExecutionAgentInput(
     maxLength: directResponse.maxLength ?? null,
   });
   const contextInput: Parameters<typeof projectRequestContext>[0] = {
-    instructions: scheduledExecution.instructions,
+    instructions: appendExecutionEvidenceReuseInstructions({
+      instructions: scheduledExecution.instructions,
+      hasCapabilities: capabilities.length > 0,
+    }),
     format,
     ...sessionMemory,
     prompt: request.prompt,
@@ -343,21 +333,4 @@ function projectEligibleSessionArtifactPaths(
       .slice(0, 8)
       .filter((target) => !currentRequestTargets.has(target)),
   );
-}
-
-function assertCanonicalSource(
-  request: RequestExecutionScope,
-  head: RoleCallLedgerHead,
-  call: RoleCallFrame,
-): void {
-  if (
-    head.state.requestId !== request.requestId ||
-    head.state.phase !== "running" ||
-    head.state.rootCallId !== call.callId ||
-    head.state.activeCallId !== call.callId ||
-    call.parentCallId !== null ||
-    call.status !== "active"
-  ) {
-    throw new Error("execution_agent_head_invalid");
-  }
 }

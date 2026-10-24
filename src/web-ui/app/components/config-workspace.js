@@ -1,3 +1,4 @@
+import { confirmDialog } from "./confirmation-dialog.js";
 import { createModelPluginViewState } from "./config-workspace/model-plugin-view-state.js";
 import { createConfigCalibrationDisclosure } from "./config-workspace/calibration-disclosure.js";
 import { createConfigDashboardRendering } from "./config-workspace/dashboard-rendering.js";
@@ -33,7 +34,7 @@ export function createConfigWorkspace({
   onRemoveModel,
   onNavigationChange = () => {},
   recordControlEvent,
-  confirmDiscard = (message) => window.confirm(message),
+  confirmDiscard = (message) => confirmDialog(message, { title: "Discard configuration changes", confirmLabel: "Discard changes", tone: "danger" }),
   eventTarget = window,
 }) {
   const workspaceModel = createConfigWorkspaceModel();

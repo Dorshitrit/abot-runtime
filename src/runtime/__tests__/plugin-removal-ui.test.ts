@@ -89,6 +89,7 @@ test("late completion from another environment cannot replace the current view",
       }),
   });
   const pending = controller.remove("example");
+  await vi.waitFor(() => expect(complete).toBeTypeOf("function"));
   setEnvironment("production");
   controller.resetEnvironment();
   complete({
@@ -268,6 +269,7 @@ test("a late ready failure cannot update another environment", async () => {
       }),
   });
   const pending = h.controller.remove("example");
+  await vi.waitFor(() => expect(reject).toBeTypeOf("function"));
   h.setEnvironment("prod");
   h.controller.resetEnvironment();
   reject(readyFailure());
@@ -300,4 +302,23 @@ test("environment change during failed-removal projection fences later UI update
   expect(h.dependencies.refreshRuntimeConfig).not.toHaveBeenCalled();
   expect(h.dependencies.onConfigurationSettled).not.toHaveBeenCalled();
   expect(h.controller.state.error).toBe("");
+});
+
+test.each(["cancel", "environment", "record", "approve"] as const)("awaits plugin approval and rechecks %s", async (change) => {
+  let approve!: (value: boolean) => void;
+  let record = "revision-1";
+  const h = harness({
+    confirmRemoval: () => new Promise<boolean>((resolve) => { approve = resolve; }),
+    captureRemovalTarget: () => record,
+    canRemoveTarget: (_id: string, target: string) => record === target,
+  });
+  const removing = h.controller.remove("example");
+  expect(h.dependencies.removePlugin).not.toHaveBeenCalled();
+  expect(h.dependencies.beginRuntimeMutation).not.toHaveBeenCalled();
+  if (change === "environment") h.setEnvironment("prod");
+  if (change === "record") record = "revision-2";
+  approve(change !== "cancel");
+  expect(await removing).toBe(change === "approve");
+  expect(h.dependencies.removePlugin).toHaveBeenCalledTimes(change === "approve" ? 1 : 0);
+  expect(h.dependencies.beginRuntimeMutation).toHaveBeenCalledTimes(change === "approve" ? 1 : 0);
 });

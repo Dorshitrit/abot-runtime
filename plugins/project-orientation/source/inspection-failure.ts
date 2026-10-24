@@ -5,7 +5,7 @@ import {
   type ToolImplementationOutput,
 } from "../../../src/plugin-sdk/index.js";
 
-class ProjectInspectionError extends Error {
+export class ProjectInspectionError extends Error {
   constructor(
     readonly code: string,
     message: string,

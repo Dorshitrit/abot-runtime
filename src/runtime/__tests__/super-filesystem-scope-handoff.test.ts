@@ -26,7 +26,7 @@ test("SUPER carries one captured filesystem root through cwd, Planner, Worker, p
   const calls: readonly FilesystemScriptCall[] = [
     {
       step: "supervisor.decision",
-      format: "supervisor_decision",
+      format: "supervisor_delegation",
       output: decision({
         action: "invoke_role",
         roleId: "planner",

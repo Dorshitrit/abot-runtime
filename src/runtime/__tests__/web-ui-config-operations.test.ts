@@ -222,8 +222,10 @@ describe("Configuration Operations workspace", () => {
     const pending = new Promise((_resolve, rejectPromise) => {
       reject = rejectPromise;
     });
-    const f = controllerFixture(() => pending);
+    const loadDashboard = vi.fn(() => pending);
+    const f = controllerFixture(loadDashboard);
     const load = f.workspace.load();
+    await vi.waitFor(() => expect(loadDashboard).toHaveBeenCalledOnce());
     const models = f.dashboard.querySelector(
       "#configModelsPanel",
     ) as OperationElement;

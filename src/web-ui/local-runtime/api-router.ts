@@ -7,6 +7,7 @@ import { ModelSetupRoutes } from "./model-setup-routes.js";
 import { ModelSetupService } from "./model-setup-service.js";
 import { SetupEmbeddingRoutes } from "./setup-embedding-routes.js";
 import { SetupEmbeddingService } from "./setup-embedding-service.js";
+import { MemoryEmbeddingConnectionService } from "./memory-embedding-connection-service.js";
 import { RuntimeSetupRoutes } from "./runtime-setup-routes.js";
 import { RuntimeSetupService } from "./runtime-setup-service.js";
 import {
@@ -77,6 +78,7 @@ export class LocalRuntimeApiRouter {
   private readonly setup: RuntimeSetupRoutes;
   private readonly modelSetup: ModelSetupRoutes;
   private readonly setupEmbedding: SetupEmbeddingRoutes;
+  private readonly memoryConnection: SetupEmbeddingRoutes;
   private readonly plugins: PluginManagementRoutes;
   private readonly skillManagement: PersonalSkillManagementRoutes;
   private readonly memoryManagement: LongTermMemoryManagementRoutes;
@@ -139,6 +141,15 @@ export class LocalRuntimeApiRouter {
           options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
         providerAdapters: options.providerAdapters,
       }),
+    );
+    this.memoryConnection = new SetupEmbeddingRoutes(
+      new MemoryEmbeddingConnectionService({
+        rootDir: options.rootDir ?? process.cwd(),
+        getConfigPath: () =>
+          options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
+        providerAdapters: options.providerAdapters,
+      }),
+      "runtime/memory/connection",
     );
     this.plugins = new PluginManagementRoutes({
       rootDir: options.rootDir ?? process.cwd(),
@@ -233,6 +244,9 @@ export class LocalRuntimeApiRouter {
       })
     )
       return;
+    if (await this.memoryConnection.handle({
+      method, route, request: req, response: res,
+    })) return;
     if (
       method === "PUT" &&
       ["runtime/plugins", "runtime/config/dashboard/file"].includes(route)

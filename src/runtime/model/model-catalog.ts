@@ -1,3 +1,4 @@
+import { supportsModelReasoningBudget } from "../../shared/model-reasoning.js";
 import { MODEL_STEPS } from "../../shared/model-steps.js";
 import type {
   ModelGatewayPolicyConfig,
@@ -15,6 +16,7 @@ export type RuntimeModelCatalogProfile = {
   provider: string;
   model: string;
   supportsThinking: boolean;
+  reasoningControls?: { budgetTokens: boolean };
   capabilities: ModelGatewayProfileCapabilities;
   supportsImageInput: boolean;
 };
@@ -62,6 +64,7 @@ export function projectRuntimeModelCatalog(
         provider: providerConfig.type,
         model: profile.model,
         supportsThinking: profile.supportsThinking === true,
+        ...(supportsModelReasoningBudget({ provider: providerConfig.type, supportsThinking: profile.supportsThinking }) ? { reasoningControls: { budgetTokens: true } } : {}),
         capabilities: profile.capabilities ?? {
           inputModalities: ["text"],
           outputModalities: ["text"],

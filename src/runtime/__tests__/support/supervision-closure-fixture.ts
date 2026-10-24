@@ -25,6 +25,8 @@ export async function supervisionClosureFixture(
     batch?: boolean;
     repeatBoth?: boolean;
     duplicateReference?: boolean;
+    summary?: string;
+    registeredOutput?: string;
   } = {},
 ) {
   const f = semanticContractFixture({ policy: "execution-agent-v1" });
@@ -85,19 +87,11 @@ export async function supervisionClosureFixture(
         outcome: "succeeded",
         observedEffect: "observation",
         outcomeFingerprint: "succeeded",
-        summary: "Read target.",
+        summary: options.summary ?? "Read target.",
         ...(options.duplicateReference
           ? { referenceData: "EXACT_REFERENCE_ONCE" }
           : {}),
-        exactResult: {
-          kind: "generic_capability_result_v1",
-          authority: "capability_adapter",
-          status: "executed",
-          ok: true,
-          payload: options.duplicateReference
-            ? { referenceData: "EXACT_REFERENCE_ONCE" }
-            : { marker: `EXACT_${execution.executionId}` },
-        },
+        exactResult: supervisionFixtureResult(execution.executionId, options),
       }));
     await commit(ledger, {
       authority: "runtime",
@@ -180,4 +174,31 @@ export function readEvidence(messages: readonly ChatMessage[]) {
       return [];
     }
   });
+}
+
+function supervisionFixtureResult(
+  executionId: string,
+  options: { registeredOutput?: string; duplicateReference?: boolean },
+) {
+  if (options.registeredOutput !== undefined)
+    return {
+      kind: "registered_tool_execution_result_v1",
+      authority: "registered_plugin",
+      status: "executed",
+      result: {
+        ok: true,
+        tool: "files.read",
+        output: options.registeredOutput,
+        producedNewInformation: true,
+      },
+    };
+  return {
+    kind: "generic_capability_result_v1",
+    authority: "capability_adapter",
+    status: "executed",
+    ok: true,
+    payload: options.duplicateReference
+      ? { referenceData: "EXACT_REFERENCE_ONCE" }
+      : { marker: `EXACT_${executionId}` },
+  };
 }

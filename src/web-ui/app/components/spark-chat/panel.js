@@ -6,9 +6,13 @@ export function createSparkChatPanel({ documentRoot = document, launcherAnchor }
   root.hidden = true;
   root.innerHTML = `
     <section class="spark-chat-panel" role="dialog" aria-label="ABot SPARK chat" hidden>
-      <header class="spark-chat-header"><button type="button" class="spark-header-mascot" data-spark="mascotButton" aria-label="Minimize SPARK chat" title="Minimize SPARK chat">${mascot}</button><strong>ABot SPARK</strong>
-        <button type="button" data-spark="settingsButton" aria-label="SPARK settings" title="SPARK settings">⚙</button>
-        <button type="button" data-spark="closeButton" aria-label="Minimize SPARK chat" title="Minimize">−</button>
+      <header class="spark-chat-header">
+        <button type="button" class="spark-header-mascot" data-spark="mascotButton" aria-label="Minimize SPARK chat" title="Minimize SPARK chat">${mascot}</button>
+        <div class="spark-chat-identity"><strong>ABot SPARK</strong></div>
+        <div class="spark-header-actions">
+          <button type="button" data-spark="settingsButton" aria-label="SPARK settings" title="SPARK settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16" /><circle cx="9" cy="7" r="3" /><circle cx="15" cy="17" r="3" /></svg></button>
+          <button type="button" data-spark="closeButton" aria-label="Minimize SPARK chat" title="Minimize"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12" /></svg></button>
+        </div>
       </header>
       <div class="spark-chat-content">
         <div class="messages-list spark-messages" data-spark="messagesList" role="log" aria-label="SPARK messages" tabindex="0"></div>

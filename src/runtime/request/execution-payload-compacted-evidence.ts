@@ -28,6 +28,7 @@ export function projectExecutionPayloadCompactedEvidence(
       context.root.updates,
     ),
     callId: context.root.callId,
+    updates: context.root.updates,
     store: request.contextCompactionStore,
     results,
   });

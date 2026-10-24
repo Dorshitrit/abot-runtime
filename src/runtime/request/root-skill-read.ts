@@ -10,12 +10,12 @@ import {
 } from "../orchestration/role-calls/activation-budget.js";
 import { hasSuperContextContract } from "../context/super-context-policy.js";
 import { KnowledgeSkillError } from "../knowledge-skills/personal-contracts.js";
-import { resolveKnowledgeSkillReadTargets } from "../capabilities/knowledge-skills/read-targets.js";
-import type { KnowledgeSkillStore } from "../knowledge-skills/store.js";
+import type { KnowledgeSkillDocument, KnowledgeSkillStore } from "../knowledge-skills/store.js";
 import type { SkillReadDecision } from "../steps/skill-read-decision.js";
 import { emitRuntimeStatus } from "../events/runtime-status.js";
 import type { RequestExecutionScope } from "./execution-scope.js";
 import { resolveRequestSteeringInbox } from "./request-steering.js";
+import { assertRootSkillReadAdmission } from "./root-skill-read-admission.js";
 
 type ReadPayload = RoleSkillReadPayload;
 
@@ -52,6 +52,7 @@ export async function performRootSkillRead(params: {
     reservation,
   );
   if (exhausted) throw new Error(`role_call_ledger_rejected:${exhausted.code}`);
+  assertRootSkillReadAdmission(head, params.decision);
   const payload = readStore(request.knowledgeSkillStore, params.decision);
   request.abortSignal.throwIfAborted();
   if (!steering.isCurrent(params.steeringVersion)) return;
@@ -82,14 +83,19 @@ function readStore(
           skills: store.list().map((skill) => ({ ...skill })),
         },
       };
-    const resolved = resolveKnowledgeSkillReadTargets(store, decision.skillIds);
-    if (!resolved.ok) return failedRead(decision, resolved.errorCode);
+    const skills: KnowledgeSkillDocument[] = [];
+    for (const skillId of decision.skillIds) {
+      const skill = store.read(skillId);
+      if (!isExactRootSkillDocument(skill, skillId))
+        return failedRead(decision, "knowledge_skill_not_found");
+      skills.push({ ...skill });
+    }
     return {
       operation: "read_skills",
       selectors: [...decision.skillIds],
       result: {
         outcome: "completed",
-        skills: resolved.skills.map((skill) => ({ ...skill })),
+        skills,
       },
     };
   } catch (error) {
@@ -97,6 +103,13 @@ function readStore(
       return failedRead(decision, error.code);
     throw error;
   }
+}
+
+function isExactRootSkillDocument(
+  skill: KnowledgeSkillDocument | undefined,
+  skillId: string,
+): skill is KnowledgeSkillDocument {
+  return skill?.skillId === skillId;
 }
 
 function failedRead(

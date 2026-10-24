@@ -42,7 +42,7 @@ test.each(attachments)("passes the current $kind attachment to presentation and 
     seed: { ...harness.request, prompt, attachments: [attachment], shouldGenerateSessionTitle: true,
       historyMessages: [{ id: "previous-message", role: "user", content: "OLD_HISTORY_ATTACHMENT_CONTEXT", createdAt: "2026-10-01T00:00:00.000Z" }] },
     executionPolicy: harness.request.executionPolicy,
-    knowledgeSkillStore: { list: () => [], read: () => undefined },
+    knowledgeSkillStore: { list: () => [{ skillId: "attachment-guide", name: "Attachment guide", description: "Review an attachment." }], read: () => undefined },
     createWorkerCapabilities: () => harness.request.workerCapabilities.provider,
   });
   await expect(runRequestRunner(request)).resolves.toMatchObject({ output: FINAL_RESPONSE });

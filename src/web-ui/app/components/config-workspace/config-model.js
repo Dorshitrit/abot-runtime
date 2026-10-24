@@ -1,3 +1,5 @@
+import { parseReasoningBudgetMode } from "./reasoning-budget.js";
+import { parseReasoningModeBudgets } from "./reasoning-mode-budgets.js";
 import {
   malformedConfigRaw,
   configRequiresRawRepair,
@@ -292,6 +294,10 @@ export function createConfigWorkspaceModel() {
     const type = input.dataset.valueType || "string";
     if (type === "boolean") return input.checked;
     if (type === "number") return parseNumericConfigInputValue(input);
+    if (type === "reasoning-budget-mode")
+      return parseReasoningBudgetMode(input.value, getConfigPathValue(file.config, path));
+    if (type === "reasoning-mode-budgets")
+      return parseReasoningModeBudgets(input.value, getConfigPathValue(file.config, path));
     if (type === "execution-policy") {
       return executionPolicyValueForConfig(
         input.value,

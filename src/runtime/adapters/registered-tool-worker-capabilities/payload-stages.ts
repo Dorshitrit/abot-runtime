@@ -36,6 +36,7 @@ export type StagedOperationPayloadParams = Readonly<{
   executor: PayloadLifecycleEmitter;
   sharedState: ToolExecutionSharedState;
   payloadAuthor?: WorkerCapabilityPayloadAuthor;
+  allowRelatedArtifactLoading: boolean;
   call: Parameters<WorkerCapabilityPayloadAuthor["author"]>[0]["call"];
   assignmentProvenance?: Parameters<
     WorkerCapabilityPayloadAuthor["author"]
@@ -316,6 +317,7 @@ class PayloadStageRunner {
         const relatedArtifactContexts =
           await resolveRegisteredToolPayloadRelatedArtifactContexts({
             contextScope,
+            allowRelatedArtifactLoading: this.params.allowRelatedArtifactLoading,
             targetParam: this.params.plan.targetParam,
             controls: this.params.controls,
             sharedState: this.params.sharedState,

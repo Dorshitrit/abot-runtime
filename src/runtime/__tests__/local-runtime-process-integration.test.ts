@@ -153,14 +153,14 @@ describe("local Runtime across separate processes", () => {
     });
     const pending = await waitForPending(local, job.id);
     expect(local.invoke.mock.calls.map(([input]) => supervisorFormatName(input))).toEqual([
-      "supervisor_presentation", "supervisor_skill_selection", "supervisor_decision",
+      "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate",
     ]);
     release.open();
     await ordinary;
     await local.observer.services.scheduler.tick();
     expect((await local.waitForRun(pending.id)).status).toBe("succeeded");
     const decisions = local.invoke.mock.calls.filter(
-      ([input]) => supervisorFormatName(input) === "supervisor_decision",
+      ([input]) => input.modelStep === "supervisor.response",
     );
     expect(decisions).toHaveLength(2);
     expect(JSON.stringify(scheduledModelMessages(decisions[1][0]))).toContain(
@@ -271,7 +271,7 @@ describe("local Runtime across separate processes", () => {
     expect(await child.call("listRuns")).toEqual([]);
     expect(
       local.invoke.mock.calls.filter(
-        ([input]) => supervisorFormatName(input) === "supervisor_decision",
+        ([input]) => input.modelStep === "supervisor.response",
       ),
     ).toHaveLength(1);
     await expect(

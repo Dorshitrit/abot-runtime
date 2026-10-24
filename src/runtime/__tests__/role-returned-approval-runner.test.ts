@@ -65,6 +65,7 @@ describe("Planner return events across saved approval continuation", () => {
         "supervisor.decision",
         "supervisor.decision",
         "supervisor.decision",
+        "supervisor.decision",
         "planner.decision",
         "worker.decision",
         "capability.controls",

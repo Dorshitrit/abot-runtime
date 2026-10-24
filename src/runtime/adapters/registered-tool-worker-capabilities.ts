@@ -188,6 +188,7 @@ export function createRegisteredToolWorkerCapabilityProvider<TContext>(
           executor,
           sharedState,
           diagnostic,
+          allowRelatedArtifactLoading: params.allowRelatedArtifactLoading ?? true,
           ...(params.payloadAuthor
             ? { payloadAuthor: params.payloadAuthor }
             : {}),

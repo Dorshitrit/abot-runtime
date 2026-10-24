@@ -12,11 +12,11 @@ import {
   recallCapsules,
   RECALL_QUERY,
   REQUEST_PROMPT,
-  responseDecision,
   type RecallModelInput,
   type RecallPolicy,
 } from "./support/memory-recall-runner.js";
 import { deriveTestRequestExecutionScope } from "./support/request-execution-scope.js";
+import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => {
@@ -53,6 +53,8 @@ function availabilityHarness(options: {
   let retrievalCount = 0;
   const harness = createMemoryRecallHarness({
     policy: options.policy,
+    classifyProcedure: () => ({ requiresProcedure: true }),
+    delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Identify the prior preference needed for the answer." }),
     ...(options.limit !== undefined
       ? { memoryRecallLimit: options.limit }
       : {}),
@@ -73,11 +75,14 @@ function availabilityHarness(options: {
       };
     },
     decide(input) {
+      if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
+      if (input.modelStep === "worker.decision") return { action: "return_result" };
+      if (input.modelStep === "worker.result") return "The answer needs the stored preference available to the root.";
       decisions.push(input);
       offered.push(offersRecall(input));
       // The last branch bounds the baseline regression before availability is implemented.
       if (!offersRecall(input) || decisions.length > limit) {
-        return responseDecision(options.policy);
+        return { action: "respond" };
       }
       return {
         action: "recall_memory",
@@ -114,6 +119,10 @@ function expectNormalCompletion(
   );
   for (const [input] of harness.invoke.mock.calls) {
     expect(input.modelStep).not.toBe("degraded.finalization");
+    if (input.modelStep === "worker.decision" || input.modelStep === "worker.result") {
+      expect(recallCapsules(input)).toEqual([]);
+      continue;
+    }
     expect(
       modelMessages(input).filter(
         ({ role, content }) => role === "user" && content === REQUEST_PROMPT,

@@ -4,6 +4,95 @@ All notable changes to this project should be documented in this file.
 
 This project follows semantic versioning after the first public release.
 
+## 2.0.0 - 2026-10-24
+
+ABot 2.0.0 improves continuity through context compaction and steering, adds
+llama.cpp and saved embedding profiles, and refines the Web UI and project
+management. See the upgrade notes below before changing versions.
+
+### Added
+
+- Delete a project from the sidebar without deleting its files or conversations;
+  retained conversations remain available outside that project.
+- Choose Harbor, Midnight, Graphite, Onyx Soft, Onyx or Onyx Steel in Appearance, with
+  live palette previews and an explicit Apply action. The saved choice is shared
+  across the installation; cancelling restores the saved palette.
+- Choose icons only or icons and text in Appearance. Compact navigation narrows
+  the entire sidebar, including its brand, environment picker and docked SPARK.
+- Connect llama.cpp chat and embedding servers through CLI or Web setup, with
+  provider-side input token counting for context admission. ABot connects to an
+  existing server; it does not install or start one.
+- Configure llama.cpp thinking token budgets independently of reasoning depth,
+  including per-mode limits and explicit Off. Preferences are supported in chat,
+  SPARK, schedules and automation agents.
+- Add embedding connections from Memory settings and manage named profiles as
+  selectable cards. Saving a profile is separate from testing and enabling it.
+  Unused profiles can be removed without deleting connections or stored memories;
+  the profile configured for memory is protected.
+- Include an optional explanation when rejecting a tool approval from chat or
+  Home, so the agent receives the reason for the rejection.
+- Discover the built-in What Can I Do? Skill for guidance on ABot's supported
+  uses and the distinction between those uses and currently available tools.
+
+### Changed
+
+- Project collapse choices persist per environment across refresh and reopening.
+  Sidebar search expands matching projects temporarily without overwriting those
+  choices.
+- Destructive actions and unsaved changes use consistent in-app confirmation
+  dialogs, with keyboard cancellation and focus restoration.
+- Memory retrieval appears inside the agent bubble as one compact status row
+  per request. The latest event replaces the earlier status, including failures.
+- Workspace headers share compact sizing and title styling across pages.
+- Skill reads use a compact inline row with a shared icon and label, retaining
+  Skill names, recorded details and failure states.
+- SPARK chat uses simpler messages, a compact composer and quieter handoff
+  actions, with colors that follow the selected workspace palette.
+- Supervisor separates the initial decision to answer or perform work from
+  delegation, using bounded conversation and memory context. Final-response
+  guidance emphasizes settled results and accurate completion claims.
+- Execution Agent selects ranges and other controls directly for ordinary
+  observations. It gathers related source evidence explicitly instead of
+  automatically receiving files merely because they appeared earlier in the run;
+  an editor still loads its selected target.
+- Execution Agent compaction guidance prioritizes exact identifiers, interfaces
+  and their relationships, and treats summaries as records rather than new plans.
+  Continuation guidance favors reusing sufficient evidence. Technical Work
+  guidance avoids redundant reads and unrequested browser interaction tests.
+- Input-token failure diagnostics distinguish failure phases and retain bounded
+  upstream status and transport error codes without logging prompts, credentials
+  or response bodies. Counting and retry behavior are unchanged.
+
+### Fixed
+
+- Sidebar project grouping avoids repeated scans of deleted project IDs as the
+  deletion history and loaded conversations grow.
+- Supervisor Skill selection excludes already-read catalog entries and retains
+  its selection boundary across continuation and approval handling.
+- Compacted tool output is no longer restored through duplicate supervision
+  summaries in either Execution Agent or Supervisor/Worker context.
+- Steering an Execution Agent request preserves eligible compacted evidence
+  while applying the new instruction, instead of restoring the full raw history.
+- Switching conversations preserves loaded session-list pages and scroll
+  position, including when selection saves refresh shared preferences.
+- Newly configured OpenAI profiles use a five-minute literal tool-payload
+  timeout through CLI setup, model addition and Web onboarding. Explicit
+  template timeouts are preserved; existing profiles are not migrated.
+- Project inspection reports a missing target directory explicitly instead of
+  a generic project-orientation failure.
+
+### Upgrade notes
+
+- Integrations that supply their own `RuntimeEnvironmentServices.projects`
+  service must implement the new `catalog()` and `delete(projectId)` methods.
+  The built-in project service already provides them.
+- Existing project registries remain readable. Creating or deleting a project
+  writes the new versioned registry format. Version 1.9.0 cannot read that format;
+  preserve a backup of the environment's `projects/registry.json` before upgrading
+  if you may need to return to 1.9.0.
+- Existing model profiles keep their configured timeouts. The new OpenAI
+  tool-payload timeout defaults apply when configuring a new profile.
+
 ## 1.9.0 - 2026-10-19
 
 ABot 1.9.0 adds reusable personal Skills and a dedicated Skills workspace,
@@ -209,13 +298,6 @@ remain a separate release path.
   are rejected before dispatch. Existing Mac connections also need their
   installation-link handler refreshed; see the
   [macOS connection instructions](docs/installation.md#macos).
-
-### Development
-
-- Add Windows compatibility CI and require explicit requests for private PR CI.
-- Add an internal native Windows desktop QA shell with startup diagnostics,
-  saved workspace state and managed process shutdown. The shell is not included
-  in the public snapshot or npm package; Store packaging remains separate.
 
 ## 1.7.0 - 2026-10-09
 

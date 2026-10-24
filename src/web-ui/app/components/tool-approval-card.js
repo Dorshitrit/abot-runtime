@@ -1,10 +1,12 @@
 import { formatToolName } from "../lib/event-presentation.js";
 import { textOf } from "../lib/text-format.js";
 import { createConversationToolEvidence } from "./conversation-tool-evidence.js";
+import { createToolApprovalRejectionInput } from "./tool-approval-rejection-input.js";
 
 export function createToolApprovalCard({
   event,
   submitted = false,
+  rejectionDraft = { text: "", expanded: false },
   onDecision,
   documentRoot = document,
 }) {
@@ -67,8 +69,14 @@ export function createToolApprovalCard({
   rejectButton.textContent = "Reject";
   rejectButton.disabled = submitted;
   rejectButton.addEventListener("click", () => onDecision(approvalId, false));
-  actions.append(approveButton, rejectButton);
-  bubble.appendChild(actions);
+  const rejection = createToolApprovalRejectionInput({
+    draft: rejectionDraft,
+    submitted,
+    onReject: (reason) => onDecision(approvalId, false, reason),
+    documentRoot,
+  });
+  actions.append(approveButton, rejectButton, rejection.open);
+  bubble.append(actions, rejection.editor);
 
   row.appendChild(bubble);
   return row;

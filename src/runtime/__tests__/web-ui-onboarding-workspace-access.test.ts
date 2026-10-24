@@ -67,7 +67,8 @@ function routeFixture(path: string) {
   };
   const loadSessions = vi.fn(async () => [{ id: "saved-chat" }]);
   const restoreLastSession = vi.fn(async () => {});
-  const changeEnvironment = vi.fn(async (value: string) => {
+  const changeEnvironment = vi.fn(async (value: string, options?: { commitEnvironmentOptions?: () => boolean }) => {
+    if (options?.commitEnvironmentOptions?.() === false) return false;
     environment = value;
     f.shell.runtimeAvailabilityChanged({ status: value === "configured" ? "ready" : "setup_required" });
     return true;
@@ -93,7 +94,7 @@ function routeFixture(path: string) {
 }
 
 describe("initial onboarding workspace access", () => {
-  test("availability subscribers observe updated access even while Home stays selected and can detach", () => {
+  test("availability subscribers observe updated access even while Home stays selected and can detach", async () => {
     const f = fixture();
     const observed: boolean[] = [];
     const detach = f.shell.subscribeRuntimeAvailabilityChange(() => observed.push(f.shell.isWorkspaceAvailable("learning")));
@@ -107,33 +108,33 @@ describe("initial onboarding workspace access", () => {
   });
 
   test.each(["loading", "setup_required", "checking", "error"])(
-    "%s before readiness leaves only Home available and hides Spark", (status) => {
+    "%s before readiness leaves only Home available and hides Spark", async (status) => {
       const f = fixture();
       f.shell.runtimeAvailabilityChanged({ status });
       expectInitialSetupNavigation(f);
-      f.dom.homeWorkspaceButton.dispatch("click");
+      await f.dom.homeWorkspaceButton.dispatch("click");
       expect(f.shell.activeWorkspace()).toBe("home");
     },
   );
 
-  test.each(destinations)("blocks click, direct and prepared entry into %s", (workspace, key) => {
+  test.each(destinations)("blocks click, direct and prepared entry into %s", async (workspace, key) => {
     const guard = vi.fn(() => true);
     const f = fixture({ beforeWorkspaceChange: guard });
     f.shell.runtimeAvailabilityChanged({ status: "setup_required" });
-    f.dom[key].dispatch("click");
-    expect(f.shell.activateWorkspace(workspace)).toBe(false);
-    expect(f.shell.prepareWorkspaceActivation(workspace)).toBeNull();
+    await f.dom[key].dispatch("click");
+    expect(await f.shell.activateWorkspace(workspace)).toBe(false);
+    expect(await f.shell.prepareWorkspaceActivation(workspace)).toBeNull();
     f.flushFrames();
     expect(f.shell.activeWorkspace()).toBe("home");
     expect(f.onWorkspaceChange).not.toHaveBeenCalled();
     expect(guard).not.toHaveBeenCalled();
   });
 
-  test("rechecks eligibility before committing a previously prepared navigation", () => {
+  test("rechecks eligibility before committing a previously prepared navigation", async () => {
     const commitDraftChange = vi.fn();
     const f = fixture({ beforeWorkspaceChange: () => commitDraftChange });
     f.shell.runtimeAvailabilityChanged({ status: "ready" });
-    const activate = f.shell.prepareWorkspaceActivation("chat");
+    const activate = await f.shell.prepareWorkspaceActivation("chat");
     expect(activate).toBeTypeOf("function");
     f.shell.runtimeAvailabilityChanged({ status: "setup_required" });
     expect(activate()).toBe(false);
@@ -141,11 +142,11 @@ describe("initial onboarding workspace access", () => {
     expect(f.shell.activeWorkspace()).toBe("home");
   });
 
-  test.each([390, 1440])("blocks conversation drawer entry at width %i", (width) => {
+  test.each([390, 1440])("blocks conversation drawer entry at width %i", async (width) => {
     const f = fixture({ width });
     f.shell.runtimeAvailabilityChanged({ status: "loading" });
-    expect(f.shell.setSessionsDrawerOpen(true)).toBe(false);
-    f.dom.sessionsToggleButton.dispatch("click");
+    expect(await f.shell.setSessionsDrawerOpen(true)).toBe(false);
+    await f.dom.sessionsToggleButton.dispatch("click");
     f.flushFrames();
     expect(f.shell.activeWorkspace()).toBe("home");
     expect(f.dom.sessionsPanel.hidden).toBe(true);
@@ -153,7 +154,7 @@ describe("initial onboarding workspace access", () => {
     expect(f.dom.panelBackdrop.getAttribute("aria-hidden")).toBe("true");
   });
 
-  test("readiness unlocks the supported pages, removes blocked descriptions and reveals Spark", () => {
+  test("readiness unlocks the supported pages, removes blocked descriptions and reveals Spark", async () => {
     const f = fixture();
     f.shell.runtimeAvailabilityChanged({ status: "setup_required" });
     f.shell.runtimeAvailabilityChanged({ status: "ready" });
@@ -165,34 +166,34 @@ describe("initial onboarding workspace access", () => {
       expect(f.dom[key].getAttribute("aria-description")).toBeNull();
     }
     expect(f.dom.learningWorkspaceButton.hidden).toBe(false);
-    f.dom.learningWorkspaceButton.dispatch("click");
+    await f.dom.learningWorkspaceButton.dispatch("click");
     expect(f.shell.activeWorkspace()).toBe("learning");
   });
 
-  test.each(["ready", "setup_required"])("%s never enables a backend-unsupported page", (status) => {
+  test.each(["ready", "setup_required"])("%s never enables a backend-unsupported page", async (status) => {
     const f = fixture({ backendAllows: (workspace) => workspace !== "schedules" });
     f.shell.runtimeAvailabilityChanged({ status, recovery: "configuration" });
     expect(f.dom.schedulesWorkspaceButton.disabled).toBe(true);
     expect(f.dom.schedulesWorkspaceButton.dataset.onboardingBlocked).toBe("false");
-    expect(f.shell.activateWorkspace("schedules")).toBe(false);
-    expect(f.shell.prepareWorkspaceActivation("schedules")).toBeNull();
+    expect(await f.shell.activateWorkspace("schedules")).toBe(false);
+    expect(await f.shell.prepareWorkspaceActivation("schedules")).toBeNull();
   });
 
-  test("configuration recovery can reach Models and System even when setup is required", () => {
+  test("configuration recovery can reach Models and System even when setup is required", async () => {
     const f = fixture();
     f.shell.runtimeAvailabilityChanged({ status: "setup_required" });
     f.shell.runtimeAvailabilityChanged({ status: "setup_required", recovery: "configuration" });
-    f.dom.modelsWorkspaceButton.dispatch("click");
+    await f.dom.modelsWorkspaceButton.dispatch("click");
     expect(f.shell.activeWorkspace()).toBe("models");
     expect(f.dom.configWorkspacePanel.hidden).toBe(false);
-    f.dom.configWorkspaceButton.dispatch("click");
+    await f.dom.configWorkspaceButton.dispatch("click");
     expect(f.shell.activeWorkspace()).toBe("config");
   });
 
-  test("checking and network errors after readiness preserve the selected workspace and access", () => {
+  test("checking and network errors after readiness preserve the selected workspace and access", async () => {
     const f = fixture();
     f.shell.runtimeAvailabilityChanged({ status: "ready" });
-    f.shell.activateWorkspace("learning");
+    await f.shell.activateWorkspace("learning");
     for (const status of ["checking", "error"]) {
       f.shell.runtimeAvailabilityChanged({ status });
       expect(f.shell.activeWorkspace()).toBe("learning");
@@ -201,12 +202,13 @@ describe("initial onboarding workspace access", () => {
     }
   });
 
-  test.each(["chat", "learning", "models"])("new setup requirement closes %s and returns Home", (workspace) => {
+  test.each(["chat", "learning", "models"])("new setup requirement closes %s and returns Home", async (workspace) => {
     const f = fixture();
     f.shell.runtimeAvailabilityChanged({ status: "ready" });
-    f.shell.activateWorkspace(workspace);
-    if (workspace === "chat") f.shell.setSessionsDrawerOpen(true);
+    await f.shell.activateWorkspace(workspace);
+    if (workspace === "chat") await f.shell.setSessionsDrawerOpen(true);
     f.shell.runtimeAvailabilityChanged({ status: "setup_required" });
+    await vi.waitFor(() => expect(f.shell.activeWorkspace()).toBe("home"));
     f.flushFrames();
     expectInitialSetupNavigation(f);
     expect(f.dom.sessionsPanel.hidden).toBe(true);
@@ -233,7 +235,9 @@ describe("onboarding through real URL restoration", () => {
     await f.controller.restoreInitial();
     f.visit("/chat?environment=configured&session=saved-chat");
     await vi.waitFor(() => expect(f.shell.activeWorkspace()).toBe("chat"));
-    expect(f.changeEnvironment).toHaveBeenCalledExactlyOnceWith("configured", { restoreSession: false });
+    expect(f.changeEnvironment).toHaveBeenCalledExactlyOnceWith("configured", {
+      restoreSession: false, commitEnvironmentOptions: expect.any(Function),
+    });
     expect(f.loadSessions).toHaveBeenCalledOnce();
     expect(f.openSession).toHaveBeenCalledWith("saved-chat", expect.any(Object));
     expect(f.viewport.location.pathname).toBe("/chat");

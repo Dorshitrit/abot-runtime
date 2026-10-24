@@ -32,6 +32,7 @@ export type PersistedRequestSeed = Pick<
   | "attachments"
   | "agentMode"
   | "modelPreference"
+  | "reasoningPreference"
   | "modelPolicy"
   | "toolPermissionMode"
   | "memoryRecallLimit"
@@ -79,6 +80,7 @@ export function snapshotRequestSeed(
     attachments: seed.attachments,
     agentMode: seed.agentMode,
     modelPreference: seed.modelPreference,
+    reasoningPreference: seed.reasoningPreference,
     modelPolicy: seed.modelPolicy,
     toolPermissionMode: seed.toolPermissionMode,
     memoryRecallLimit: seed.memoryRecallLimit,

@@ -1,0 +1,45 @@
+.conversation-memory-bubble { --role-accent: var(--accent); }
+
+.conversation-activity-group,
+.conversation-memory-activity {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.conversation-memory-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 7px;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.conversation-memory-icon {
+  display: inline-flex;
+  align-self: flex-start;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-block-start: 2px;
+}
+
+.conversation-memory-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.conversation-memory-row[data-state="active"] .conversation-memory-label {
+  color: var(--text);
+}
+
+.conversation-memory-row[data-state="failed"] {
+  color: var(--danger);
+}
+
+.conversation-memory-detail {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

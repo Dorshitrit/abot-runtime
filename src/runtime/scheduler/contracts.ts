@@ -1,3 +1,4 @@
+import type { ModelReasoningPreference } from "../../shared/model-reasoning.js";
 import type { AgentMode } from "../../shared/types.js";
 import type { AutomationJournalState } from "../automations/storage-records.js";
 import type { SchedulerToolPermissionMode } from "./tool-permission-mode.js";
@@ -37,6 +38,7 @@ export interface SchedulerJob {
   prompt: string;
   modelProfileId: string;
   agentMode: AgentMode;
+  reasoningPreference?: ModelReasoningPreference;
   toolPermissionMode: SchedulerToolPermissionMode;
   timeZone: string;
   schedule: SchedulerTimedSchedule;
@@ -81,12 +83,13 @@ export interface CreateSchedulerJobInput {
   prompt: string;
   modelProfileId: string;
   agentMode: AgentMode;
+  reasoningPreference?: ModelReasoningPreference;
   timeZone: string;
   schedule: SchedulerScheduleInput;
 }
 export type UpdateSchedulerJobInput = Partial<
-  Omit<CreateSchedulerJobInput, "sessionId">
->;
+  Omit<CreateSchedulerJobInput, "sessionId" | "reasoningPreference">
+> & { reasoningPreference?: ModelReasoningPreference | null };
 export type SchedulerRunStatus =
   | "pending"
   | "running"
@@ -109,6 +112,7 @@ export interface SchedulerRun {
   prompt: string;
   modelProfileId: string;
   agentMode: AgentMode;
+  reasoningPreference?: ModelReasoningPreference;
   timeZone: string;
   jobRevision: number;
   scheduledAt: string;

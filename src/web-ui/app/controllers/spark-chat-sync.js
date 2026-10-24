@@ -111,7 +111,7 @@ export function createSparkChatSync({
         onHistoryReset();
       }
       if (hasReadableGeneration(result.readState)) readGeneration = result.readState.readGeneration;
-      onConfiguration({ ...result, supportsImageInput, supportsThinking: profile?.supportsThinking === true, modelAvailable: Boolean(profile) });
+      onConfiguration({ ...result, supportsImageInput, supportsThinking: profile?.supportsThinking === true, reasoningControls: profile?.reasoningControls, modelAvailable: Boolean(profile) });
       onReadState(result.readState);
       const snapshot = result.snapshot;
       if (shouldHydrateSparkConversation(initialized, rehydrate, snapshot, state)) {

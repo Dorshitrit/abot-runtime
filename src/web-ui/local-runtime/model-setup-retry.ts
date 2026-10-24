@@ -31,7 +31,10 @@ function committedRetryProvider(
 ) {
   if (input.providerId !== undefined)
     return planModelProvider(providers, input);
-  return buildNewModelProvider(input.newProvider);
+  const saved = modelConfigMap(providers[input.newProvider.id]);
+  const apiKeyEnv = input.newProvider.apiKeyEnv ??
+    (saved.type === "llamacpp" && typeof saved.apiKeyEnv === "string" ? saved.apiKeyEnv : undefined);
+  return buildNewModelProvider({ ...input.newProvider, ...(apiKeyEnv ? { apiKeyEnv } : {}) }, input.apiKey);
 }
 
 async function requireUnchangedRetryConfiguration(

@@ -54,6 +54,8 @@ export function buildExecutionAgentInstructions(params: {
       : "No capability is offered in the active scope; do not claim external observations or effects.",
     ...(params.hasCapabilities
       ? [
+          "For observations whose invocation schema exposes selectionControls but no operationObjective, use the supplied capability guidance and current evidence to choose the exact operational values in this decision, including any continuation range or locator. They are frozen and execute without a separate controls-selection step. Use null for an optional control only to omit it intentionally and accept the tool's default, never to request later selection. Reuse supplied coverage when continuing an observation.",
+          "For your direct capability calls, payload authors receive settled evidence already collected in this request, with verified summaries replacing compacted results. They do not automatically load other files from prior artifact references; any shared capability description of Worker artifact loading does not apply to this direct mode. Reuse sufficient supplied evidence, and collect a focused observation only for a concrete missing fact needed by the next operation. An explicitly selected edit target is still loaded by its editor; this does not provide related files.",
           CAPABILITY_ANALYSIS_RESULT_INSTRUCTION,
         ]
       : []),

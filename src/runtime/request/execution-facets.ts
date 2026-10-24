@@ -64,6 +64,7 @@ export function createRequestSeedFacets(
       ? { modelInvocationScope: seed.modelInvocationScope }
       : {}),
     runnerConfig: seed.runnerConfig,
+    ...(seed.reasoningPreference ? { reasoningPreference: seed.reasoningPreference } : {}),
     ...(seed.modelPreference !== undefined
       ? { modelPreference: seed.modelPreference }
       : {}),
@@ -130,6 +131,7 @@ export function createModelInvocationView(
     requestId: enumerableGetter(() => facets.identity.requestId),
     runnerConfig: enumerableGetter(() => facets.model.runnerConfig),
     agentMode: enumerableGetter(() => facets.input.agentMode),
+    ...(facets.model.reasoningPreference ? { reasoningPreference: enumerableGetter(() => facets.model.reasoningPreference!) } : {}),
     ...(facets.model.modelPreference !== undefined
       ? {
           modelPreference: enumerableGetter(

@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/confirmation-dialog.js";
 import { createSessionPinUpdates } from "./session-pin-updates.js";
 import {
   isOlderSessionReadState,
@@ -8,12 +9,14 @@ import { matchesSessionQuery } from "../ui-behavior.js";
 import { escapeAttribute, escapeHtml, textOf } from "../lib/text-format.js";
 import { getNumber } from "../lib/event-presentation.js";
 import { createSessionSidebarController } from "./session-sidebar-controller.js";
+import { captureSessionListViewport, restoreSessionListViewport } from "../components/session-list-viewport.js";
 
 export function createSessionController({
   state,
   dom,
   sessionActionsMenu,
   renderGroups = () => false,
+  getDeletedProjectIds = () => [],
   shell,
   preferences,
   client,
@@ -26,7 +29,7 @@ export function createSessionController({
   onReload,
   onControlEvent,
   onSidebarChange,
-  confirmAction = window.confirm.bind(window),
+  confirmAction = confirmDialog,
   copyText = (value) => navigator.clipboard.writeText(value),
 }) {
   let pagination;
@@ -39,7 +42,7 @@ export function createSessionController({
   const sidebar = createSessionSidebarController({
     state, preferences, updatePinnedSessions, selectedEnvironmentId, showToast: shell?.showToast,
     render: () => { (onSidebarChange ?? render)(); void pagination?.load(); }, getFilteredSessions: filtered,
-    getPageInfo: () => pagination?.info(),
+    getPageInfo: () => pagination?.info(), getDeletedProjectIds,
   });
 
   function filtered() {
@@ -56,14 +59,14 @@ export function createSessionController({
   }
 
   function render() {
-    const scrollTop = dom.sessionsList.scrollTop;
+    const viewportScope = JSON.stringify([selectedEnvironmentId(), state.sessionQuery, sidebar.isArchiveView()]);
+    captureSessionListViewport(dom.sessionsList, viewportScope);
     sessionActionsMenu.reset();
     dom.sessionsList.innerHTML = "";
     const sessions = filtered();
-    dom.sessionsCount.textContent = String(pagination?.info().total ?? sessions.length);
     sidebar.renderSections({ root: dom.sessionsList, sessions, createSessionItem, renderGroups });
     pagination?.renderFooter();
-    dom.sessionsList.scrollTop = scrollTop;
+    restoreSessionListViewport(dom.sessionsList);
   }
 
   function createSessionItem(session, sessionIndex) {
@@ -251,15 +254,34 @@ export function createSessionController({
     }
   }
 
+  function captureSessionMutationTarget(sessionId) {
+    const session = byId(sessionId);
+    return { environmentId: selectedEnvironmentId(), sessionId,
+      currentSessionId: state.currentSessionId, viewVersion: state.sessionViewVersion,
+      recordRevision: JSON.stringify([Boolean(session), session?.title, session?.updatedAt, session?.latestMessageId]) };
+  }
+
+  function isCurrentSessionMutationTarget(target) {
+    if (selectedEnvironmentId() !== target.environmentId) return false;
+    if (state.currentSessionId !== target.currentSessionId) return false;
+    if (state.sessionViewVersion !== target.viewVersion) return false;
+    if (state.busySessionIds.has(target.sessionId)) return false;
+    const session = byId(target.sessionId);
+    return JSON.stringify([Boolean(session), session?.title, session?.updatedAt, session?.latestMessageId]) === target.recordRevision;
+  }
+
   async function clearMessages(sessionId) {
     if (!sessionId || state.busySessionIds.has(sessionId)) return;
+    const target = captureSessionMutationTarget(sessionId);
     if (
-      !confirmAction(
+      !await confirmAction(
         `Clear all messages in "${sessionId}"? The session will stay in the list.`,
+        { title: "Clear conversation", confirmLabel: "Clear messages", tone: "danger" },
       )
     )
       return;
-    const scope = { environmentId: selectedEnvironmentId(), sessionId };
+    if (!isCurrentSessionMutationTarget(target)) return;
+    const scope = { environmentId: target.environmentId, sessionId };
     setBusy(sessionId, true);
     try {
       await client.clearSessionMessages(sessionId, scope.environmentId);
@@ -284,13 +306,16 @@ export function createSessionController({
 
   async function deleteSession(sessionId) {
     if (!sessionId || state.busySessionIds.has(sessionId)) return;
+    const target = captureSessionMutationTarget(sessionId);
     if (
-      !confirmAction(
+      !await confirmAction(
         `Delete "${sessionId}" from this environment and the server?`,
+        { title: "Delete conversation", confirmLabel: "Delete conversation", tone: "danger" },
       )
     )
       return;
-    const scope = { environmentId: selectedEnvironmentId(), sessionId };
+    if (!isCurrentSessionMutationTarget(target)) return;
+    const scope = { environmentId: target.environmentId, sessionId };
     setBusy(sessionId, true);
     try {
       await client.deleteSession(sessionId, scope.environmentId);

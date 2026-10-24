@@ -46,5 +46,5 @@ export function skillActivityFields(meta, tool, completed, ok) {
     ? boundedSkillText(meta.skillTitle, 160)
     : "";
   if (skillId) sent.push({ label: action === "read_skills" ? "Skill references" : referenceLabel, value: skillId });
-  return { activityTitle, target: skillTitle || boundedSkillText(meta.skillName, 160) || skillId, sent };
+  return { activityTitle, target: skillTitle || boundedSkillText(meta.skillName, 160) || skillId, sent, skillRead: readAction };
 }

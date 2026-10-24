@@ -1,3 +1,4 @@
+import { confirmDialog } from "../confirmation-dialog.js";
 import { renderCollectionAccess } from "./collection-access.js";
 import { renderAgent } from "./agent-view.js";
 import { renderComputerUpdateNotice } from "./computer-update-notice.js";
@@ -27,7 +28,7 @@ const defaultTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone |
 
 export function createPassiveLearningMemory({
   actions, showActivityMemories, openComputerAccess,
-  confirmDelete = (message) => window.confirm(message),
+  confirmDelete = (message) => confirmDialog(message, { title: "Delete pending activity", confirmLabel: "Delete activity", tone: "danger" }),
 }) {
   let root = null;
   let settings;
@@ -89,7 +90,7 @@ export function createPassiveLearningMemory({
     }
     const clearPending = event.target.closest("button[data-learning-clear-pending]");
     if (clearPending && root.contains(clearPending)) {
-      deletePending();
+      void deletePending();
       return;
     }
     const setupButton = event.target.closest("button[data-learning-open-setup]") ??
@@ -116,12 +117,18 @@ export function createPassiveLearningMemory({
       showActivityMemories();
   }
 
-  function deletePending() {
+  async function deletePending() {
     const snapshot = actions.snapshot();
     if (!snapshot.status || snapshot.saving) return;
     if (!hasUnprocessedLearningActivity(snapshot.status)) return;
-    if (!confirmDelete("Delete all pending activity, including any review in progress? Saved insights are kept. This cannot be undone.")) return;
-    void actions.clearPending();
+    const environmentId = snapshot.environmentId;
+    const targetRoot = root;
+    const status = JSON.stringify(snapshot.status);
+    if (!await confirmDelete("Delete all pending activity, including any review in progress? Saved insights are kept. This cannot be undone.")) return;
+    const current = actions.snapshot();
+    if (environmentId !== current.environmentId || root !== targetRoot) return;
+    if (current.saving || JSON.stringify(current.status) !== status) return;
+    await actions.clearPending();
   }
 
 

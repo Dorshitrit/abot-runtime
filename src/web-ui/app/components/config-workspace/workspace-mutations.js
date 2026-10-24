@@ -29,6 +29,8 @@ export function createConfigWorkspaceMutations({
   setWorkspaceStatus,
   syncDirtyPresentation,
 }) {
+  let discardRequest = 0;
+
   function mutateConfigFile(kind, id, mutator, options = {}) {
     const file = findConfigFile(kind, id);
     if (!file) return;
@@ -79,7 +81,8 @@ export function createConfigWorkspaceMutations({
     renderConfigDashboard();
   }
 
-  function prepareDiscardChanges(reason = "leave configuration") {
+  async function prepareDiscardChanges(reason = "leave configuration") {
+    discardRequest += 1;
     if (state.externalRuntimeMutationInFlight) {
       setWorkspaceStatus(
         `Wait for the current Runtime update before you ${reason}.`,
@@ -97,13 +100,14 @@ export function createConfigWorkspaceMutations({
     const changed = dirtyFiles();
     if (!changed.length) return prepareConfigDiscardCommit(false);
     const count = changed.length;
-    const confirmed = confirmDiscard(
+    const discard = prepareConfigDiscardCommit(true);
+    const confirmed = await confirmDiscard(
       `Discard unsaved changes in ${count} config ${
         count === 1 ? "file" : "files"
       } and ${reason}?`,
     );
-    if (!confirmed) return null;
-    return prepareConfigDiscardCommit(true);
+    if (!confirmed || !discard.canCommit()) return null;
+    return discard;
   }
 
   function configDraftFingerprint() {
@@ -114,10 +118,16 @@ export function createConfigWorkspaceMutations({
   }
 
   function prepareConfigDiscardCommit(hasChanges) {
+    const request = discardRequest;
     const dashboard = state.configDashboard;
     const fingerprint = configDraftFingerprint();
-    const commit = () => { if (hasChanges) discardAllChanges(); };
+    const commit = () => {
+      if (!commit.canCommit()) return false;
+      if (hasChanges) discardAllChanges();
+      return true;
+    };
     commit.canCommit = () => {
+      if (request !== discardRequest) return false;
       if (state.externalRuntimeMutationInFlight) return false;
       if (state.savingKeys.size > 0) return false;
       if (state.configDashboard !== dashboard) return false;
@@ -126,9 +136,9 @@ export function createConfigWorkspaceMutations({
     return commit;
   }
 
-  function confirmDiscardChanges(reason = "leave configuration") {
-    const discardChanges = prepareDiscardChanges(reason);
-    if (!discardChanges) return false;
+  async function confirmDiscardChanges(reason = "leave configuration") {
+    const discardChanges = await prepareDiscardChanges(reason);
+    if (!discardChanges || !discardChanges.canCommit()) return false;
     discardChanges();
     return true;
   }
@@ -197,13 +207,16 @@ export function createConfigWorkspaceMutations({
     }
   }
 
-  function keepOrDiscardCurrentRawDraft(currentFile, select) {
+  async function keepOrDiscardCurrentRawDraft(currentFile, select) {
+    discardRequest += 1;
     if (!currentFile || !hasRawDraftChanges(currentFile)) return true;
-    const confirmed = confirmDiscard(
+    const original = prepareConfigDiscardCommit(false);
+    const confirmed = await confirmDiscard(
       `Discard the unapplied raw draft for ${textOf(
         currentFile.label || currentFile.id,
       )}?`,
     );
+    if (!original.canCommit()) return false;
     if (!confirmed) {
       select.value = state.selectedRawConfigKey;
       return false;
@@ -217,9 +230,16 @@ export function createConfigWorkspaceMutations({
     return true;
   }
 
-  function changeRawFile(nextKey, select) {
+  async function changeRawFile(nextKey, select) {
     const currentFile = selectedRawConfigFile();
-    if (!keepOrDiscardCurrentRawDraft(currentFile, select)) return;
+    const dashboard = state.configDashboard;
+    const currentKey = state.selectedRawConfigKey;
+    const pending = keepOrDiscardCurrentRawDraft(currentFile, select);
+    const request = discardRequest;
+    if (!await pending) return;
+    if (request !== discardRequest) return;
+    if (dashboard !== state.configDashboard) return;
+    if (currentKey !== state.selectedRawConfigKey) return;
     state.selectedRawConfigKey = nextKey;
     syncDirtyPresentation({ syncRawEditor: true });
   }

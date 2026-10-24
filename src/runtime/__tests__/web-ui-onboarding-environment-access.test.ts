@@ -174,7 +174,7 @@ describe("onboarding access across construction and environment changes", () => 
     expect(f.manager.state.active).toBe(true);
   });
 
-  test.each(["ready", "configuration recovery"])("same-environment checks preserve %s access", (prior) => {
+  test.each(["ready", "configuration recovery"])("same-environment checks preserve %s access", async (prior) => {
     const f = fixture(); f.state.config = { backend: "runtime" };
     f.onboarding.controller.applyCatalog(readyCatalog);
     if (prior === "configuration recovery") f.onboarding.controller.applyCatalog(recoveryCatalog);

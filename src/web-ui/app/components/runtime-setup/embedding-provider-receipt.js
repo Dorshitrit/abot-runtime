@@ -8,6 +8,7 @@ function isSavedEmbeddingProviderReceipt(payload, selection) {
   if (typeof receipt.type !== "string" || !receipt.type.trim()) return false;
   if (receipt.type !== selection.type) return false;
   if (selection.providerId) return receipt.id === selection.providerId;
+  if (selection.newProviderId) return receipt.id === selection.newProviderId;
   return true;
 }
 
@@ -20,6 +21,8 @@ export function applySavedEmbeddingProviderReceipt(state, payload, selection) {
     typeof payload.savedProvider.credentialConfigured === "boolean";
   if (hasCredentialStatus)
     receipt.credentialConfigured = payload.savedProvider.credentialConfigured;
+  if (typeof payload.savedProvider.requiresApiKey === "boolean")
+    receipt.requiresApiKey = payload.savedProvider.requiresApiKey;
   const existing = state.providers.find((provider) => provider.id === id);
   const providers = state.providers.map((provider) =>
     provider.id === id ? { ...provider, ...receipt } : provider,

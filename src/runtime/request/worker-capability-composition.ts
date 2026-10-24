@@ -1,3 +1,4 @@
+import { allowsAutomaticPayloadArtifactLoading } from "./execution-payload-artifact-policy.js";
 import type { KnowledgeSkillStore } from "../knowledge-skills/store.js";
 import {
   projectAvailableSkills,
@@ -91,6 +92,9 @@ export function createRequestWorkerCapabilityProvider(
     createRegisteredToolWorkerCapabilityProvider<RequestCapabilityExecutionView>(
       {
         getRequestToolRegistry,
+        allowRelatedArtifactLoading: allowsAutomaticPayloadArtifactLoading(
+          params.executionPolicyAuthority,
+        ),
         requestId: params.request.requestId,
         ...(params.request.toolResources
           ? { toolResources: params.request.toolResources }

@@ -92,7 +92,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)("saved %s app
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
     expect(scheduleCandidates).not.toHaveBeenCalled();
     expect(processor).not.toHaveBeenCalled();
-    const isPreparation = ["supervisor_presentation", "supervisor_skill_selection"]
+    const isPreparation = ["supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate"]
       .includes(supervisorFormatName(input) ?? "");
     const rootStep = input.modelStep === "execution.decision" || input.modelStep === "execution.response"
       || (input.modelStep === "supervisor.decision" && !isPreparation) || input.modelStep === "supervisor.response";

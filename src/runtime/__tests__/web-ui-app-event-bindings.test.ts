@@ -183,7 +183,7 @@ describe("web ui environment transitions", () => {
     harness.dom.environmentSelect.value = "prod";
     harness.dom.environmentSelect.dispatch("change");
 
-    expect(observedCatalogLoads).toEqual([1]);
+    await vi.waitFor(() => expect(observedCatalogLoads).toEqual([1]));
     expect(harness.controller.isEnvironmentChanging()).toBe(true);
     expect(harness.actions.restoreLastSession).not.toHaveBeenCalled();
     pendingModels.resolve();
@@ -199,7 +199,7 @@ describe("web ui environment transitions", () => {
     harness.dom.environmentSelect.value = "prod";
     harness.dom.environmentSelect.dispatch("change");
 
-    expect(harness.actions.saveEnvironmentId).toHaveBeenCalledWith("prod");
+    await vi.waitFor(() => expect(harness.actions.saveEnvironmentId).toHaveBeenCalledWith("prod"));
     expect(harness.actions.invalidateSessionLoads).toHaveBeenCalledOnce();
     expect(harness.actions.loadModels).toHaveBeenCalledOnce();
     expect(harness.actions.loadAgentMode).toHaveBeenCalledOnce();
@@ -254,7 +254,7 @@ describe("awaitable environment navigation", () => {
     const result = f.controller.changeEnvironment("prod", {
       restoreSession: false,
     });
-    expect(listener).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce());
     expect(f.controller.isEnvironmentChanging()).toBe(true);
     loaded.resolve();
     await expect(result).resolves.toBe(true);
@@ -274,6 +274,7 @@ describe("awaitable environment navigation", () => {
       loadModels: () => (++calls === 1 ? firstLoad.promise : Promise.resolve()),
     });
     const first = f.controller.changeEnvironment("prod");
+    await vi.waitFor(() => expect(calls).toBe(1));
     await f.controller.changeEnvironment("dev");
     firstLoad.resolve();
     await expect(first).resolves.toBe(false);
@@ -324,4 +325,25 @@ test("a failed default save reports the error without rolling back a committed r
   expect(f.state.currentSessionId).toBe("");
   expect(f.state.messages).toEqual([]);
   expect(f.actions.restoreLastSession).toHaveBeenCalledOnce();
+});
+
+test("reasoning menu keeps mode focus primary and leaves advanced input arrow keys native", async () => {
+  const selected = { getAttribute: () => "true", focus: vi.fn() };
+  const preference = { focus: vi.fn() };
+  vi.stubGlobal("requestAnimationFrame", (callback: () => void) => callback());
+  const h = createHarness({ renderAgentMode: vi.fn(), renderPermissionMode: vi.fn() }, (dom) => {
+    Object.assign(dom.agentModeMenu, {
+      querySelector: (selector: string) => selector === "[data-mode]" ? selected : preference,
+      querySelectorAll: () => [selected],
+    });
+  });
+  await h.dom.agentModeButton.dispatch("click");
+  expect(selected.focus).toHaveBeenCalledOnce();
+  expect(preference.focus).not.toHaveBeenCalled();
+  const preventDefault = vi.fn();
+  await h.dom.agentModeMenu.dispatch("keydown", {
+    key: "ArrowUp", target: { closest: () => null }, preventDefault,
+  });
+  expect(preventDefault).not.toHaveBeenCalled();
+  vi.unstubAllGlobals();
 });

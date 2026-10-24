@@ -63,9 +63,15 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       expect(decisions).toHaveLength(1);
       const system = scheduledModelMessages(decisions[0]![0])
         .filter(({ role }) => role === "system").map(({ content }) => content).join("\n");
-      const discovery = buildAvailableSkillsText({ skills: [metadata], budgetTokens: 512 })!;
-      expect(system.startsWith(discovery + "\n")).toBe(true);
-      expect(system).toContain(document.name + " [" + document.skillId + "]: " + document.description);
+      if (policy === "execution-agent-v1") {
+        const discovery = buildAvailableSkillsText({ skills: [metadata], budgetTokens: 512 })!;
+        expect(system.startsWith(discovery + "\n")).toBe(true);
+        expect(system).toContain(document.name + " [" + document.skillId + "]: " + document.description);
+      } else {
+        const catalog = JSON.parse(system.split("\n").find((line) => line.startsWith('{"kind":"runtime_supervisor_skill_candidates_v1"'))!);
+        expect(catalog.skills).toEqual([metadata]);
+        expect(catalog.omittedCount).toBe(0);
+      }
       expect(system).not.toContain(document.content);
       expect(store.read).not.toHaveBeenCalled();
       const result = await fixture.application.services.tools.execute({
@@ -107,7 +113,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
 );
 
 test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
-  "%s admits a large injected catalog as bounded text without loading document bodies",
+  "%s enforces its catalog budget without loading document bodies",
   async (policy) => {
     const documents = Array.from({ length: 1000 }, (_, index) => ({
       ...document, skillId: "entry-" + index,
@@ -118,8 +124,14 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     const fixture = await createSchedulerRuntimeFixture(policy, undefined, undefined, store);
     try {
       await fixture.runOrdinaryRequest("Hello.");
+      if (policy === "supervisor-worker-v1") {
+        expect(fixture.invoke).toHaveBeenCalled();
+        expect(fixture.invoke.mock.calls.some(([input]) => supervisorFormatName(input) === "supervisor_skill_selection")).toBe(false);
+        expect(store.read).not.toHaveBeenCalled();
+        return;
+      }
       const rootStep = policy === "execution-agent-v1" ? "execution.decision" : "supervisor.decision";
-      const root = fixture.invoke.mock.calls.find(([input]) => input.modelStep === rootStep && (policy === "execution-agent-v1" || supervisorFormatName(input) === "supervisor_skill_selection"))![0];
+      const root = fixture.invoke.mock.calls.find(([input]) => input.modelStep === rootStep)![0];
       const text = scheduledModelMessages(root).map(({ content }) => content).join("\\n");
       expect(text).toContain("[entry-0]:");
       expect(text).toContain("Partial catalog");

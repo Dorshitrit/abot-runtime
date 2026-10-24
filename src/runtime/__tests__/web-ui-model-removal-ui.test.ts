@@ -110,7 +110,7 @@ function controllerFixture() {
     refreshRuntimeConfig: vi.fn(async () => true),
     onSaved: vi.fn(),
     setStatus: vi.fn(),
-    confirmRemoval: vi.fn(() => true),
+    confirmRemoval: vi.fn<() => boolean | Promise<boolean>>(() => true),
   };
   const controller = createModelRemovalController(options);
   return { options, controller };
@@ -300,4 +300,19 @@ test("suppresses duplicate clicks while removal is pending", async () => {
   finish({ restartRequired: true });
   await first;
   expect(options.removeModel).toHaveBeenCalledOnce();
+});
+
+test.each(["cancel", "environment", "approve"] as const)("deferred model approval handles %s before persistence", async (change) => {
+  const { controller, options } = controllerFixture();
+  let approve!: (value: boolean) => void;
+  options.confirmRemoval.mockImplementation(() => new Promise<boolean>((resolve) => { approve = resolve; }));
+  const removing = controller.remove(selected);
+  expect(options.removeModel).not.toHaveBeenCalled();
+  expect(options.endRuntimeMutation).not.toHaveBeenCalled();
+  expect(await controller.remove(selected)).toBe(false);
+  if (change === "environment") options.getEnvironmentId.mockReturnValue("dev");
+  approve(change !== "cancel");
+  expect(await removing).toBe(change === "approve");
+  expect(options.removeModel).toHaveBeenCalledTimes(change === "approve" ? 1 : 0);
+  expect(options.endRuntimeMutation).toHaveBeenCalledOnce();
 });

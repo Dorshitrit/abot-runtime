@@ -13,6 +13,7 @@ export type ProjectCreationDraft = {
 
 export type ProjectsControllerState = {
   projects: readonly RuntimeProject[];
+  deletedProjectIds: readonly string[];
   loading: boolean;
   error: string;
   draft: ProjectCreationDraft | null;
@@ -30,6 +31,7 @@ export declare function createProjectsController(options: {
   onChange: (state: ProjectsControllerState) => void;
   notify: (message: string, tone: "failed") => void;
   onSessionCreated?: (sessionId: string) => void;
+  confirmAction?: (message: string) => boolean | Promise<boolean>;
 }): {
   snapshot(): ProjectsControllerState;
   load(): Promise<void>;
@@ -44,4 +46,6 @@ export declare function createProjectsController(options: {
   browse(directory?: string, cursor?: string): Promise<void>;
   create(): Promise<void>;
   newConversation(projectId: string): Promise<void>;
+  deleteProject(projectId: string, projectName?: string): Promise<boolean>;
+  getDeletedProjectIds(): readonly string[];
 };

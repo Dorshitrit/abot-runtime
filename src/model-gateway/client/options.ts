@@ -3,7 +3,7 @@ import type { ModelGatewayPolicyConfig } from "../types.js";
 import type { ModelGatewayClientOptions } from "./contracts.js";
 
 const DEFAULT_STREAM_INACTIVITY_TIMEOUT_MS = 90_000;
-const DEFAULT_INPUT_TOKEN_COUNT_PROVIDERS = Object.freeze(["openai"]);
+const DEFAULT_INPUT_TOKEN_COUNT_PROVIDERS = Object.freeze(["openai", "llamacpp"]);
 
 export type ResolvedModelGatewayClientOptions = {
   baseUrl: string;

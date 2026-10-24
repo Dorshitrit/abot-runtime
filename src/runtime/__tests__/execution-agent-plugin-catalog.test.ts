@@ -165,12 +165,9 @@ describe("EA plugin discovery catalog", () => {
       }) },
       { step: "execution.decision", output: decision({
         action: "invoke_capability", capabilityId: "inspect_opaque_item",
-        intent: "Inspect the selected item.", operationObjective: "Inspect fixture-item.",
-        controlsEvidenceExecutionIds: [], workingDirectory: ".",
+        intent: "Inspect the selected item.",
+        selectionControls: { itemId: "fixture-item" }, workingDirectory: ".",
       }) },
-      { step: "capability.controls", output: decision({ invocations: {
-        invocation_1: { disposition: "execute", controls: { itemId: "fixture-item" } },
-      } }) },
       { step: "execution.decision", output: decision({ action: "respond" }) },
       { step: "execution.response", output: "The selected item was observed." },
     ], (input) => inputs.push(input));
@@ -189,7 +186,7 @@ describe("EA plugin discovery catalog", () => {
       expect(capsules(opened, ACTIVE_KIND)).toEqual([expect.objectContaining({
         capabilities: [{ capabilityId: "inspect_opaque_item", summary: SUMMARY, effect: "observation" }],
       })]);
-      expect(JSON.stringify(inputs[2]!.format)).toContain("itemId");
+      expect(JSON.stringify(opened.format)).toContain("itemId");
       for (const input of inputs) {
         const catalog = messages(input).filter(({ content }) => content.startsWith(GROUP_HEADER));
         if (input.modelStep === "execution.decision") {

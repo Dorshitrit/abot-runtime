@@ -23,6 +23,7 @@ import type { RoleCallFrame } from "../orchestration/role-calls/contracts.js";
 
 export async function resolveRegisteredToolPayloadRelatedArtifactContexts(params: {
   contextScope?: ToolPayloadChannelSpec["contextScope"];
+  allowRelatedArtifactLoading?: boolean;
   targetParam?: string;
   controls: Readonly<Record<string, unknown>>;
   sharedState: ToolExecutionSharedState;
@@ -30,7 +31,7 @@ export async function resolveRegisteredToolPayloadRelatedArtifactContexts(params
   assignmentProvenance?: WorkerCapabilityPayloadSourceProvenance;
   settledCapabilityResults: readonly WorkerSettledCapabilityResult[];
 }): Promise<readonly WorkerCapabilityPayloadRelatedArtifactContext[]> {
-  if (params.contextScope !== "target_with_artifacts") {
+  if (!canLoadRelatedArtifactContexts(params.contextScope, params.allowRelatedArtifactLoading)) {
     return Object.freeze([]);
   }
   const dependencyReceipts = projectWorkerCapabilityDependencyArtifactReceipts(
@@ -45,6 +46,14 @@ export async function resolveRegisteredToolPayloadRelatedArtifactContexts(params
     ...dependencyReceipts,
   ];
   return loadRelatedArtifactContexts(params, receipts);
+}
+
+function canLoadRelatedArtifactContexts(
+  contextScope: ToolPayloadChannelSpec["contextScope"] | undefined,
+  allowRelatedArtifactLoading: boolean | undefined,
+): boolean {
+  if (allowRelatedArtifactLoading === false) return false;
+  return contextScope === "target_with_artifacts";
 }
 
 function projectSameCallArtifactReceipts(

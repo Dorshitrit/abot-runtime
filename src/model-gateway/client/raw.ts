@@ -55,6 +55,7 @@ export async function invokeRawModelGatewayWithOptions(
       ...(params.reasoningOverride
         ? { reasoningOverride: params.reasoningOverride }
         : {}),
+      ...(params.reasoningPreference ? { reasoningPreference: params.reasoningPreference } : {}),
       ...(params.modelPreference
         ? { modelPreference: params.modelPreference }
         : {}),

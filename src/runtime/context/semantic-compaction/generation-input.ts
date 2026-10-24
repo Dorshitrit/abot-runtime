@@ -6,8 +6,9 @@ import type {
 import type { SemanticCompactionSourceSlice } from "./chunking.js";
 import type { SemanticCompactionGenerationParams } from "./generation-contracts.js";
 import { SEMANTIC_COMPACTION_EVIDENCE_SCOPE } from "./evidence-scope.js";
-import { SEMANTIC_COMPACTION_INSTRUCTIONS } from "./prompt.js";
+import { resolveSemanticCompactionInstructions } from "./execution-evidence-instructions.js";
 import { bindSemanticCompactionSourceSlots } from "./source-slots.js";
+import { resolvePriorCompactionSourceDigests } from "./inherited-source-digests.js";
 
 export type SemanticCompactionFoldState = Readonly<{
   continuation: SemanticCompactionContinuation;
@@ -21,7 +22,7 @@ export function buildSemanticCompactionMessages(
   return [
     Object.freeze({
       role: "system" as const,
-      content: SEMANTIC_COMPACTION_INSTRUCTIONS,
+      content: resolveSemanticCompactionInstructions(params.binding.allowedConsumers),
     }),
     Object.freeze({
       role: "user" as const,
@@ -31,16 +32,18 @@ export function buildSemanticCompactionMessages(
         currentRequest: params.request.prompt,
         active: projectActiveAssignment(params),
         ...(params.previous
+          ? { previousContinuation: params.previous.continuation }
+          : {}),
+        ...(resolvePriorCompactionSourceDigests(params).length > 0
           ? {
-              previousContinuation: params.previous.continuation,
               previousSourceDigests: bindSemanticCompactionSourceSlots(
-                params.previous.sourceDigests,
+                resolvePriorCompactionSourceDigests(params),
               ),
             }
           : {}),
         newSources: bindSemanticCompactionSourceSlots(
           params.sources,
-          params.previous?.sourceDigests.length ?? 0,
+          resolvePriorCompactionSourceDigests(params).length,
         ),
       }),
     }),
@@ -56,7 +59,7 @@ export function buildSemanticCompactionSliceMessages(
     Object.freeze({
       role: "system" as const,
       content: [
-        SEMANTIC_COMPACTION_INSTRUCTIONS,
+        resolveSemanticCompactionInstructions(params.binding.allowedConsumers),
         "The supplied source is one exact contiguous UTF-8 range of a larger canonical source.",
         "Return all replacement source digests and one replacement continuation. For the sliced source, preserve every previously supplied range plus this range; do not treat ranges as separate sources. partialSourceFold is the latest summary of the covered ranges and replaces the older checkpoint for this generation.",
       ].join("\n"),
@@ -68,12 +71,14 @@ export function buildSemanticCompactionSliceMessages(
         evidenceScope: SEMANTIC_COMPACTION_EVIDENCE_SCOPE,
         currentRequest: params.request.prompt,
         active: projectActiveAssignment(params),
-        ...(params.previous && !state
+        ...(resolvePriorCompactionSourceDigests(params).length > 0 && !state
           ? {
               previousCheckpoint: {
-                continuation: params.previous.continuation,
+                ...(params.previous
+                  ? { continuation: params.previous.continuation }
+                  : {}),
                 sourceDigests: bindSemanticCompactionSourceSlots(
-                  params.previous.sourceDigests,
+                  resolvePriorCompactionSourceDigests(params),
                 ),
               },
             }
@@ -91,7 +96,7 @@ export function buildSemanticCompactionSliceMessages(
           : {}),
         sourceSlice: bindSemanticCompactionSourceSlots(
           [slice],
-          params.previous?.sourceDigests.length ?? 0,
+          resolvePriorCompactionSourceDigests(params).length,
         )[0],
       }),
     }),

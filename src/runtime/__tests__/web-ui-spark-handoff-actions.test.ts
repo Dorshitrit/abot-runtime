@@ -89,3 +89,33 @@ test("handoff navigation does not replace a workspace selected while the creatio
   const navigate = capture(); workspace = "plugins";
   expect(await navigate("new")).toBe(false); expect(conversation.loadSessions).not.toHaveBeenCalled();
 });
+
+
+test("handoff does not supersede a newer workspace request pending during session refresh", async () => {
+  let finishLoad!: () => void, request = 0;
+  const conversation = { loadSessions: vi.fn(() => new Promise<void>((resolve) => { finishLoad = resolve; })), openSession: vi.fn() };
+  const shell = { activeWorkspace: () => "home", navigationRequestRevision: () => request,
+    prepareWorkspaceActivation: vi.fn() };
+  const capture = createSparkHandoffNavigation({ state: { currentSessionId: "old", sessionViewVersion: 1 },
+    getEnvironmentId: () => "dev", shell, conversation, onNavigationChange: vi.fn() });
+  const pending = capture()("new");
+  request += 1;
+  finishLoad();
+  expect(await pending).toBe(false);
+  expect(shell.prepareWorkspaceActivation).not.toHaveBeenCalled();
+  expect(conversation.openSession).not.toHaveBeenCalled();
+});
+
+test("handoff accepts its own workspace request and commits the loaded target", async () => {
+  const state = { currentSessionId: "old", sessionViewVersion: 1 };
+  let request = 0, workspace = "home";
+  const shell = { activeWorkspace: () => workspace, navigationRequestRevision: () => request,
+    prepareWorkspaceActivation: async () => { request += 1; return Object.assign(() => { workspace = "chat"; return true; }, { canCommit: () => true }); } };
+  const conversation = { loadSessions: vi.fn(), openSession: vi.fn(async (id: string, options: { commitRouteNavigation: () => boolean }) => {
+    if (options.commitRouteNavigation()) state.currentSessionId = id;
+  }) };
+  const capture = createSparkHandoffNavigation({ state, getEnvironmentId: () => "dev", shell, conversation, onNavigationChange: vi.fn() });
+  expect(await capture()("new")).toBe(true);
+  expect(state.currentSessionId).toBe("new");
+  expect(workspace).toBe("chat");
+});

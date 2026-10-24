@@ -1,12 +1,14 @@
+import { isColorPaletteId, PALETTE_PREFERENCE_KEY } from "../app/lib/color-palettes.js";
+import { isNavigationMode, NAVIGATION_PREFERENCE_KEY } from "../app/lib/navigation-display.js";
 import { isDeepStrictEqual } from "node:util";
 import { ClientStateError, type ClientPreferences } from "./contracts.js";
 import { assertPreferenceShape, isPreferenceObject as isObject } from "./preference-shapes.js";
 
-const scalarKeys = new Set(["abot-web.environmentId", "abot-web.lastToolPermissionMode"]);
+const scalarKeys = new Set(["abot-web.environmentId", "abot-web.lastToolPermissionMode", PALETTE_PREFERENCE_KEY, NAVIGATION_PREFERENCE_KEY]);
 const jsonKeys = new Set([
   "abot-web.pinnedSessions", "abot-web.currentSessionByEnvironment", "abot-web.sessionModes",
   "abot-web.sessionModels", "abot-web.lastModelByEnvironment", "abot-web.sessionSidebarByEnvironment",
-  "abot.spark.launcher.position.v1",
+  "abot.spark.launcher.position.v1", "abot-web.reasoningPreferences",
 ]);
 const modes = new Set(["ask", "full_access", "full_plus"]);
 
@@ -33,6 +35,10 @@ export function decodePreference(key: string, value: unknown): unknown {
   if (scalarKeys.has(key)) {
     if (key.endsWith("lastToolPermissionMode") && !modes.has(value))
       throw new ClientStateError("invalid_preferences", "Select Ask, Full or Full+.");
+    if (key === PALETTE_PREFERENCE_KEY && !isColorPaletteId(value))
+      throw new ClientStateError("invalid_preferences", "Select a supported color palette.");
+    if (key === NAVIGATION_PREFERENCE_KEY && !isNavigationMode(value))
+      throw new ClientStateError("invalid_preferences", "Select icons only or icons and text.");
     return value;
   }
   let decoded: unknown;

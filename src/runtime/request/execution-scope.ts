@@ -37,6 +37,7 @@ import {
   REQUEST_EXECUTION_SCOPE,
 } from "./execution-scope-surfaces.js";
 import type { CompiledExecutionPolicy } from "./root-contract.js";
+import { createSupervisorSkillSelectionWindows, type SupervisorSkillSelectionWindows } from "./supervisor-skill-selection-window.js";
 
 /** Request fields required while the request-bound capability catalog is built. */
 export type RequestCapabilityCompositionView =
@@ -103,6 +104,7 @@ export type RequestExecutionScope = RequestExecutionSeed &
     superFailureFinalization?: SuperFailureFinalization;
     workerCapabilities: RequestWorkerCapabilities;
     knowledgeSkillStore?: KnowledgeSkillStore;
+    supervisorSkillSelectionWindows: SupervisorSkillSelectionWindows;
   }>;
 
 export type CompiledRequestExecutionPolicy =
@@ -163,6 +165,7 @@ export function createRequestExecutionScope(
     modelInvocation,
     modelSteps,
     capabilities,
+    supervisorSkillSelectionWindows: createSupervisorSkillSelectionWindows(),
     ...(input.knowledgeSkillStore && !isSkillStoreDeniedForModel(input.seed)
       ? { knowledgeSkillStore: input.knowledgeSkillStore }
       : {}),

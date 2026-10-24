@@ -22,6 +22,7 @@ test("OpenAI setup adds a compaction budget while preserving calibration and its
       ...template.calibration["context.compact"],
       timeoutMs: 300_000,
     },
+    "toolPayload.raw": { timeoutMs: 300_000 },
   });
   expect(profile.generation).toEqual(template.generation);
   expect(template).toEqual(original);
@@ -38,7 +39,7 @@ test.each([45_000, 600_000])(
     };
     expect(
       buildModelConfig({ calibration }, "openai", "fixture-model").calibration,
-    ).toEqual(calibration);
+    ).toEqual({ ...calibration, "toolPayload.raw": { timeoutMs: 300_000 } });
   },
 );
 

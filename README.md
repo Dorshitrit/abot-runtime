@@ -68,7 +68,7 @@ You need:
 
 - Node.js `^20.19.0` or `>=22.12.0`; Node.js 21 is not supported
 - npm
-- An OpenAI or Ollama model connection
+- An OpenAI, Ollama or llama.cpp model connection
 
 Create a directory for your ABot installation:
 
@@ -88,6 +88,10 @@ choosing tools, and optionally enabling semantic memory.
 - **OpenAI:** enter your API key and model ID.
 - **Ollama:** install and start Ollama separately, download your chosen model,
   and provide an address reachable from the Runtime.
+
+- **llama.cpp:** run llama-server separately and connect its model alias and
+  reachable origin. Thinking-capable models can use a token budget. See
+  [llama.cpp setup](docs/llamacpp.md).
 
 ABot includes the provider adapters. You supply the model and any required
 credentials. Configuration and runtime state are stored in your project.

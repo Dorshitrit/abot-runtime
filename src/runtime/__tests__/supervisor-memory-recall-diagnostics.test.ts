@@ -2,6 +2,9 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { processDebugLogger } from "../observability/debug-logger.js";
 import { parseSupervisorDecisionOutput } from "../steps/supervisor-decision/parser.js";
 import { runSupervisorDecision } from "../steps/supervisor-decision/run.js";
+import { createRoleCallLedger, resolveRoleCallTransactions } from "../orchestration/role-calls/index.js";
+import { createRequestRoleCallPolicy } from "../request/role-call-policy.js";
+import { settleRootRecall } from "./support/root-compaction-evidence.js";
 import {
   createMemoryRecallHarness,
   RECALL_QUERY,
@@ -17,7 +20,7 @@ describe.each([true, false])(
       { allowedRoleIds: [] },
       { allowedRoleIds: ["worker"] },
     ] as const)(
-      "matches the offered actions for $allowedRoleIds",
+      "matches the offered actions on a canonical recall continuation for $allowedRoleIds",
       async ({ allowedRoleIds }) => {
         const trace = vi
           .spyOn(processDebugLogger, "trace")
@@ -30,6 +33,10 @@ describe.each([true, false])(
           enabled,
           decide: () => decision,
         });
+        const ledger = createRoleCallLedger({ requestId: harness.request.requestId,
+          policy: createRequestRoleCallPolicy(harness.request.executionPolicy) });
+        expect((await resolveRoleCallTransactions(ledger).createRoot({ expectedHead: ledger.current() })).ok).toBe(true);
+        const memoryRecallMessage = await settleRootRecall(ledger);
 
         await expect(
           runSupervisorDecision(harness.request, {
@@ -38,10 +45,11 @@ describe.each([true, false])(
               callId: "call-1",
               parentCallId: null,
               depth: 0,
-              invocationAttempt: 1,
+              invocationAttempt: ledger.current().state.calls[0]!.activationCount,
             },
             toolResults: { sourceRevision: 1, results: [] },
             allowedRoleIds,
+            memoryRecallMessage,
           }),
         ).resolves.toMatchObject({ decision, steeringVersion: 0 });
 

@@ -380,8 +380,16 @@ export function createAutomationsController({
     eventRefresh.schedule();
   }
 
+  function captureActionScope() {
+    const continuation = captureView().captureContinuation();
+    const draftRevision = state.draft?.revision;
+    const publishedRevision = state.publishedDefinition?.revision;
+    return () => continuation.isCurrent() && draftRevision === state.draft?.revision &&
+      publishedRevision === state.publishedDefinition?.revision;
+  }
+
   return {
-    snapshot, openRoute, refresh, create,
+    snapshot, openRoute, refresh, create, captureActionScope,
     createTemplate: (templateId) => create(templateId), deleteDraft, mutateDraft, saveDefinition,
     saveNode, saveAgent, validate, publishDefinition, setActive, undoDraftMove, restorePublishedDraft,
     archive: () => changeArchiveState(true), restore: () => changeArchiveState(false),

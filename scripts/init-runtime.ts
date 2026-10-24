@@ -1,3 +1,5 @@
+import { supportsProviderAddress } from "./runtime-setup-provider-options.js";
+import { parseSetupCommandOptions, requireSetupCommandProviderOptions, type SetupCommandOptions } from "./runtime-setup-command-options.js";
 import { constants } from "node:fs";
 import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
@@ -22,7 +24,7 @@ import {
   type RuntimeSetupCommandMode,
 } from "./runtime-setup-presentation.js";
 
-type InitOptions = {
+type InitOptions = SetupCommandOptions & {
   rootDir: string;
   provider: Provider;
   model: string;
@@ -63,6 +65,8 @@ function parseArgs(
   argv: string[],
   commandMode: RuntimeSetupCommandMode,
 ): InitOptions {
+  const shared = parseSetupCommandOptions(argv);
+  argv = shared.argv;
   let rootDir = process.cwd();
   let provider: Provider | undefined;
   let model: string | undefined;
@@ -131,11 +135,12 @@ function parseArgs(
   if (!model) {
     throw new Error("--model is required");
   }
-  if (baseUrl && provider !== "ollama") {
-    throw new Error("--base-url is supported only with --provider ollama");
+  if (baseUrl && !supportsProviderAddress(provider)) {
+    throw new Error("--base-url is supported only with --provider ollama or llamacpp");
   }
 
-  return { rootDir, provider, model, baseUrl, force };
+  requireSetupCommandProviderOptions(provider, shared);
+  return { ...shared, rootDir, provider, model, baseUrl, force };
 }
 
 function printHelp(commandMode: RuntimeSetupCommandMode): void {
@@ -154,7 +159,7 @@ function printHelp(commandMode: RuntimeSetupCommandMode): void {
       "- .runtime/prod and .runtime/dev",
       "",
       "Both --provider and --model are required; the runtime has no built-in model choice.",
-      "--base-url configures the Ollama origin when Ollama runs outside the runtime host.",
+      "--base-url configures the Ollama or llama.cpp origin reachable from the Runtime.",
     ].join("\n"),
   );
 }
@@ -208,12 +213,13 @@ async function configureRuntimeProvider(
   configPath: string,
   provider: Provider,
   baseUrl?: string,
+  apiKeyEnv?: string,
 ): Promise<void> {
   const config = await readJsonObject(configPath);
   const models = isRecord(config.models) ? config.models : {};
   const { defaults: _ignoredDefaults, ...modelSettings } = models;
   const providers = {
-    [provider]: buildProviderConfig(provider, baseUrl),
+    [provider]: buildProviderConfig(provider, baseUrl, apiKeyEnv),
   };
 
   config.models = {
@@ -232,9 +238,10 @@ async function configureModelProfile(
   configPath: string,
   provider: Provider,
   model: string,
+  options: SetupCommandOptions,
 ): Promise<void> {
   const config = await readJsonObject(configPath);
-  await writeJsonObject(configPath, buildModelConfig(config, provider, model));
+  await writeJsonObject(configPath, buildModelConfig(config, provider, model, options.contextWindowTokens, options.modelOptions));
 }
 
 async function configureRunner(configPath: string): Promise<void> {
@@ -306,6 +313,7 @@ export async function runInitRuntime(
       configPath,
       options.provider,
       options.baseUrl,
+      options.apiKeyEnv,
     );
   }
   if (requestRunnerConfigStatus !== "kept") {
@@ -316,6 +324,7 @@ export async function runInitRuntime(
       modelConfigPath,
       options.provider,
       options.model,
+      options,
     );
   }
 

@@ -45,6 +45,9 @@ export type {
   ModelGatewayEmbeddingRequest,
   ModelGatewayEmbeddingResult,
   ModelGatewayRequest,
+  ModelReasoningBudget,
+  ModelReasoningBudgetByMode,
+  ModelReasoningPreference,
   ModelProfile,
   ResolvedModelInvocation,
 } from "./types.js";

@@ -22,9 +22,9 @@ const inspectPath = {
   selectionControlIds: ["path"],
 } as const satisfies CapabilityDescriptor;
 
-const readRange = {
-  capabilityId: "read_range",
-  summary: "Read one bounded range from a selected path.",
+const authoredRange = {
+  capabilityId: "author_range_inspection",
+  summary: "Author an inspection over one bounded range from a selected path.",
   effect: "observation",
   controls: {
     type: "object",
@@ -37,14 +37,65 @@ const readRange = {
     required: ["path", "startLine", "endLine"],
   },
   selectionControlIds: ["path"],
+  requiresPayloadAuthoringObjective: true,
 } as const satisfies CapabilityDescriptor;
 
 const options = Object.freeze({
-  capabilities: Object.freeze([inspectPath, readRange]),
+  capabilities: Object.freeze([inspectPath, authoredRange]),
   maxBatchCapabilityExecutions: 2,
 });
 
 describe("Execution Agent operation objective", () => {
+  test("ordinary range observations choose every control without an objective", () => {
+    const { requiresPayloadAuthoringObjective: _, ...rangeControls } =
+      authoredRange;
+    const observation = { ...rangeControls, capabilityId: "read_range" };
+    const observationOptions = { ...options, capabilities: [observation] };
+    const variants = decisionVariants(
+      createExecutionAgentDecisionFormat(observationOptions).schema,
+    ).filter((variant) =>
+      readEnum(variant.properties.action).includes("invoke_capability"),
+    );
+    const variant = variantForCapability(variants, observation.capabilityId);
+    expect(variant.properties).not.toHaveProperty("operationObjective");
+    expect(variant.properties).not.toHaveProperty(
+      "controlsEvidenceExecutionIds",
+    );
+    expect(asRecord(variant.properties.selectionControls)?.required).toEqual([
+      "path",
+      "startLine",
+      "endLine",
+    ]);
+    const controls = {
+      path: "project/index.html",
+      startLine: 241,
+      endLine: 480,
+    };
+    const decision = {
+      action: "invoke_capability",
+      capabilityId: observation.capabilityId,
+      intent: "Continue the bounded read.",
+      selectionControls: controls,
+    };
+    expect(
+      parseExecutionAgentDecisionOutput(
+        JSON.stringify({ decision }),
+        observationOptions,
+      ),
+    ).toMatchObject({
+      ok: true,
+      decision: { selectionControls: controls, controls },
+    });
+    expect(
+      parseExecutionAgentDecisionOutput(
+        JSON.stringify({
+          decision: { ...decision, selectionControls: { path: controls.path } },
+        }),
+        observationOptions,
+      ),
+    ).toMatchObject({ ok: false });
+  });
+
   test("separates identical selection schemas by refinement authority", () => {
     const decisionSchemaVariants = decisionVariants(
       createExecutionAgentDecisionFormat(options).schema,
@@ -58,7 +109,10 @@ describe("Execution Agent operation objective", () => {
     expect(complete.required).not.toContain("operationObjective");
     expect(complete.properties).not.toHaveProperty("operationObjective");
 
-    const refinement = variantForCapability(variants, readRange.capabilityId);
+    const refinement = variantForCapability(
+      variants,
+      authoredRange.capabilityId,
+    );
     expect(refinement.required).toContain("operationObjective");
     expect(refinement.properties.operationObjective).toMatchObject({
       type: "string",
@@ -75,13 +129,13 @@ describe("Execution Agent operation objective", () => {
       variantForCapability(batchVariants, inspectPath.capabilityId).required,
     ).not.toContain("operationObjective");
     expect(
-      variantForCapability(batchVariants, readRange.capabilityId).required,
+      variantForCapability(batchVariants, authoredRange.capabilityId).required,
     ).toContain("operationObjective");
   });
 
-  test("requires the objective only for invocations with remaining controls", () => {
+  test("requires the objective for payload authoring with remaining controls", () => {
     const operationObjective =
-      "Continue reading only lines 241 through 480 from project/index.html.";
+      "Author an inspection of only lines 241 through 480 from project/index.html.";
     expect(
       parseDecision({
         action: "invoke_capabilities",
@@ -92,8 +146,8 @@ describe("Execution Agent operation objective", () => {
             selectionControls: { path: "project/index.html" },
           },
           {
-            capabilityId: readRange.capabilityId,
-            intent: "Continue the bounded read.",
+            capabilityId: authoredRange.capabilityId,
+            intent: "Author the bounded inspection.",
             operationObjective,
             controlsEvidenceExecutionIds: [],
             selectionControls: { path: "project/index.html" },
@@ -112,8 +166,8 @@ describe("Execution Agent operation objective", () => {
             controls: { path: "project/index.html" },
           },
           {
-            capabilityId: readRange.capabilityId,
-            intent: "Continue the bounded read.",
+            capabilityId: authoredRange.capabilityId,
+            intent: "Author the bounded inspection.",
             operationObjective,
             controlsEvidenceExecutionIds: [],
             selectionControls: { path: "project/index.html" },
@@ -125,8 +179,8 @@ describe("Execution Agent operation objective", () => {
     expect(
       parseDecision({
         action: "invoke_capability",
-        capabilityId: readRange.capabilityId,
-        intent: "Continue the bounded read.",
+        capabilityId: authoredRange.capabilityId,
+        intent: "Author the bounded inspection.",
         selectionControls: { path: "project/index.html" },
       }),
     ).toMatchObject({
@@ -158,8 +212,8 @@ describe("Execution Agent operation objective", () => {
     expect(
       parseDecision({
         action: "invoke_capability",
-        capabilityId: readRange.capabilityId,
-        intent: "Continue the bounded read.",
+        capabilityId: authoredRange.capabilityId,
+        intent: "Author the bounded inspection.",
         operationObjective: "x".repeat(
           EXECUTION_AGENT_OPERATION_OBJECTIVE_MAX_LENGTH + 1,
         ),

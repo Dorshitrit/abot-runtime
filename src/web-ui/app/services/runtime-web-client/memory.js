@@ -41,6 +41,27 @@ export function createLongTermMemoryRequests({
       });
     },
 
+    saveMemoryEmbeddingConnection(input, environmentId = getEnvironmentId()) {
+      return requestApi(
+        `/runtime/memory/connection?environment=${environmentQuery(environmentId)}`,
+        { method: "POST", body: JSON.stringify(input) },
+      );
+    },
+
+    saveMemoryEmbeddingProfile(input, environmentId = getEnvironmentId()) {
+      return requestApi("/runtime/memory/profiles", {
+        method: "POST",
+        body: JSON.stringify({ ...input, environment: environmentId }),
+      });
+    },
+
+    removeMemoryEmbeddingProfile({ profileId }, environmentId = getEnvironmentId()) {
+      return requestApi("/runtime/memory/profiles", {
+        method: "DELETE",
+        body: JSON.stringify({ profileId, environment: environmentId }),
+      });
+    },
+
     disableLongTermMemory(environmentId = getEnvironmentId()) {
       return requestApi("/runtime/memory/disable", {
         method: "POST",

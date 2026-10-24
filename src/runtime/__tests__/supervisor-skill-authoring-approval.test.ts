@@ -84,12 +84,28 @@ test.each(scenarios)("SUPER restores $label without selection, reads or reauthor
           expect(JSON.stringify(result)).toContain("knowledge_skill_revision_conflict");
         return { text: answer, meta: {} };
       }
+      if (input.modelStep === "worker.decision")
+        return { text: decision({ action: "return_result" }), meta: {} };
+      if (input.modelStep === "worker.result")
+        return { text: "The personal Skill request is ready for the root's authoring operation.", meta: {} };
       expect(input.modelStep).toBe("supervisor.decision");
       const phase = supervisorFormatName(input);
       if (phase === "supervisor_presentation")
         return { text: decision(defaultSupervisorPresentation(input)), meta: {} };
+      if (phase === "supervisor_procedure_gate")
+        return { text: decision({ requiresProcedure: true }), meta: {} };
+      if (phase === "supervisor_delegation") {
+        expect(JSON.stringify(input.format)).not.toContain('"author_skill"');
+        return { text: decision({ action: "invoke_role", roleId: "worker", objective: "Prepare the requested personal Skill change." }), meta: {} };
+      }
+      if (phase === "supervisor_working_directory")
+        return { text: JSON.stringify({ workingDirectory: "." }), meta: {} };
       if (phase === "supervisor_decision") {
         expect(++routeCalls).toBe(1);
+        expect(capsules(input, "runtime_child_result")).toContainEqual(expect.objectContaining({ roleId: "worker" }));
+        expect(capsules(input, "runtime_core_skill_read_v1")).toContainEqual(expect.objectContaining({
+          document: expect.objectContaining({ skillId: SKILL_CREATOR.skillId, content: SKILL_CREATOR.content }),
+        }));
         return { text: decision({ action: "author_skill" }), meta: {} };
       }
       if (phase === "supervisor_skill_authoring") {
@@ -101,12 +117,11 @@ test.each(scenarios)("SUPER restores $label without selection, reads or reauthor
           : { action: "create_skill", name, description }), meta: {} };
       }
       expect(phase).toBe("supervisor_skill_selection");
-      if (++selectionCalls === 1)
-        return { text: decision({ action: "read_skills", skillIds: [SKILL_CREATOR.skillId] }), meta: {} };
-      expect(selectionCalls).toBe(2);
-      expect(JSON.stringify(messages(input))).not.toContain(SKILL_CREATOR.skillId);
+      selectionCalls += 1;
+      if (selectionCalls === 2) return { text: decision({ action: "continue" }), meta: {} };
+      expect(selectionCalls).toBe(1);
       expect(JSON.stringify(input.format)).not.toContain('"create_skill"');
-      return { text: decision({ action: "continue" }), meta: {} };
+      return { text: decision({ action: "read_skills", skillIds: [SKILL_CREATOR.skillId] }), meta: {} };
     } catch (error) { assertion ??= error; throw error; }
   });
   const events: Record<string, unknown>[] = [];

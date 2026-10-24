@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { traceDebug } from "../../runtime/observability/debug-logger.js";
+import { InputTokenCountDiagnostics } from "../observability/input-token-count-diagnostics.js";
 import { toolMediaSafeMessage } from "../observability/tool-media-privacy.js";
 import type {
   ModelGatewayInputTokenCountParams,
@@ -98,6 +99,11 @@ function updateInputTokenCountCache(
   }
 }
 
+// A local llama.cpp server can change its template/tokenizer without changing the request.
+function canCacheProviderInputTokenCount(provider: string): boolean {
+  return provider !== "llamacpp";
+}
+
 export async function countModelGatewayInputTokensWithOptions(
   params: ModelGatewayInputTokenCountParams,
   options: ModelGatewayClientOptions = {},
@@ -116,7 +122,8 @@ export async function countModelGatewayInputTokensWithOptions(
     modelPolicy,
   );
   const cacheKey = createInputTokenCountCacheKey(provider, requestBody);
-  const cached = cache?.get(cacheKey);
+  const eligibleCache = canCacheProviderInputTokenCount(provider) ? cache : undefined;
+  const cached = eligibleCache?.get(cacheKey);
   if (cached) {
     return cached;
   }
@@ -129,25 +136,38 @@ export async function countModelGatewayInputTokensWithOptions(
     modelStep: params.modelStep,
     messageCount: requestMessages.length,
   });
-  const response = await fetch(`${clientOptions.baseUrl}/input-tokens`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    signal: params.abortSignal,
-    body: JSON.stringify(requestBody),
-  });
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    throw new Error(
-      `bridge_input_token_count_failed:${response.status}:${toolMediaSafeMessage(errorText || "empty error body", requestMessages)}`,
+  const diagnostics = new InputTokenCountDiagnostics("model-gateway.client", requestBody);
+  diagnostics.setProvider(provider);
+  let statusCode: number | undefined;
+  let result: ModelGatewayInputTokenCountResult;
+  try {
+    diagnostics.setPhase("bridge_fetch");
+    const response = await fetch(`${clientOptions.baseUrl}/input-tokens`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      signal: params.abortSignal,
+      body: JSON.stringify(requestBody),
+    });
+    statusCode = response.status;
+    diagnostics.setPhase("bridge_response");
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      throw new Error(
+        `bridge_input_token_count_failed:${response.status}:${toolMediaSafeMessage(errorText || "empty error body", requestMessages)}`,
+      );
+    }
+    diagnostics.setPhase("bridge_parse");
+    result = parseInputTokenCountResult(
+      await response.json().catch(() => undefined),
     );
-  }
-  const result = parseInputTokenCountResult(
-    await response.json().catch(() => undefined),
-  );
-  if (result.provider !== provider) {
-    throw new Error("model_gateway_input_token_count_provider_mismatch");
+    if (result.provider !== provider) {
+      throw new Error("model_gateway_input_token_count_provider_mismatch");
+    }
+  } catch (error) {
+    diagnostics.failed({ kind: "exception", error, statusCode, aborted: params.abortSignal.aborted });
+    throw error;
   }
   traceDebug("model-gateway.client", "input_tokens.request.completed", {
     requestId,
@@ -157,6 +177,6 @@ export async function countModelGatewayInputTokensWithOptions(
     inputTokens: result.inputTokens,
     durationMs: Date.now() - startedAt,
   });
-  updateInputTokenCountCache(cache, cacheKey, result);
+  updateInputTokenCountCache(eligibleCache, cacheKey, result);
   return result;
 }

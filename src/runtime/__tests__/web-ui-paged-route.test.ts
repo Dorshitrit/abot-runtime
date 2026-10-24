@@ -1,6 +1,8 @@
 import { expect, test, vi } from "vitest";
 // @ts-expect-error Browser module.
 import { createWorkspaceRouteController } from "../../web-ui/app/controllers/workspace-route-controller.js";
+// @ts-expect-error Browser module.
+import { createSessionListPagination } from "../../web-ui/app/controllers/session-list-pagination.js";
 import { createPlanLifecycleHarness } from "./support/web-ui-plan-lifecycle-harness.js";
 
 function fixture(path: string) {
@@ -19,7 +21,15 @@ function fixture(path: string) {
     prepareWorkspaceActivation: (target: string) => () => { workspace = target; revision++; return true; },
     showToast: vi.fn(),
   };
-  const loadSessions = vi.fn(async () => Array.from({ length: 20 }, (_, i) => ({ id: `recent-${i}` })));
+  const sessionPageClient = { listSessions: vi.fn(async (_environment: string, options: { cursor?: string }) => {
+    const offset = Number(options.cursor ?? 0);
+    return { sessions: Array.from({ length: 20 }, (_, index) => ({ id: "recent-" + (offset + index) })), nextCursor: String(offset + 20) };
+  }) };
+  const pagination = createSessionListPagination({
+    state: f.state, dom: { sessionsList: {} }, client: sessionPageClient, sessions: {},
+    selectedEnvironmentId: () => "dev", renderSessions: vi.fn(), onSessionListState: vi.fn(),
+  });
+  const loadSessions = vi.fn(() => pagination.load());
   const controller = createWorkspaceRouteController({
     viewport, shell, configuration: { navigationRevision: () => 0 },
     schedules: { navigationRevision: () => 0, selectedJobId: () => "" },
@@ -28,7 +38,7 @@ function fixture(path: string) {
     loadSessions, openSession: f.conversationSession.openSession, restoreLastSession: vi.fn(),
   });
   controller.bind();
-  return { ...f, controller, viewport, shell, loadSessions, async visit(path: string) {
+  return { ...f, controller, viewport, shell, loadSessions, pagination, sessionPageClient, async visit(path: string) {
     viewport.location = new URL(path, viewport.location);
     listeners.get("popstate")!({ state: {} });
     for (let i = 0; i < 30; i++) await Promise.resolve();
@@ -56,4 +66,21 @@ test("a missing routed session leaves the visible conversation and workspace int
   expect(f.state.messages).toBe(previous);
   expect(f.shell.activeWorkspace()).toBe("home");
   expect(f.shell.showToast).toHaveBeenCalledWith("This conversation is unavailable in the selected environment.", "failed");
+});
+
+test("same-environment conversation navigation retains loaded sidebar pages", async () => {
+  const f = fixture("/chat?environment=dev&session=older-session");
+  await f.controller.restoreInitial();
+  await f.pagination.load(true);
+  expect(f.state.sessions).toHaveLength(40);
+  f.loadSessions.mockClear();
+  const sessions = f.state.sessions;
+  await f.visit("/chat?environment=dev&session=another-session");
+  expect(f.state.currentSessionId).toBe("another-session");
+  expect(f.loadSessions).not.toHaveBeenCalled();
+  expect(f.state.sessions).toBe(sessions);
+  expect(f.shell.activeWorkspace()).toBe("chat");
+  await f.pagination.load(true);
+  expect(f.sessionPageClient.listSessions).toHaveBeenLastCalledWith("dev", { cursor: "40", query: "" });
+  expect(f.state.sessions).toHaveLength(60);
 });

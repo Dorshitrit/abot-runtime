@@ -13,6 +13,11 @@ import {
   type RuntimeProjectService,
 } from "./contracts.js";
 
+function hasProjectDeleteTarget(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  return value.trim().length > 0;
+}
+
 export function createRuntimeProjectService(
   config: RuntimeConfig,
   sessions: Pick<SessionStore, "getOrCreateSession">,
@@ -24,6 +29,12 @@ export function createRuntimeProjectService(
     (await repository.list()).find((project) => project.id === id) ?? null;
   return Object.freeze({
     list: () => repository.list(),
+    catalog: () => repository.catalog(),
+    async delete(projectId: string) {
+      if (!hasProjectDeleteTarget(projectId))
+        throw new ProjectOperationError("project_id_required", "Select a project to delete.");
+      await repository.delete(projectId);
+    },
     get,
     async create(input: { name?: string; directory: string }) {
       const directory = await resolveProjectDirectory(input.directory);

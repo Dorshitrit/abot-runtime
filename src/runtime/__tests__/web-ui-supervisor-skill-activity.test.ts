@@ -60,18 +60,19 @@ describe("Supervisor Skill activity in agent cards", () => {
     ], enriched, replay);
 
     expect(rows.map((row) => row.textContent)).toEqual([
-      "Read Skills: Skill Creator", "Read Skills: Technical Work",
+      "Skill Creator", "Technical Work",
     ]);
     expect(rows.every((row) => row.getAttribute("dir") === "auto")).toBe(true);
     const supervisor = model.roleCards.find((card) => card.role === "supervisor")!;
     expect(supervisor.summary).toBe("");
-    expect(supervisor.skillActivities?.map((item) => item.summary)).toEqual(rows.map((row) => row.textContent));
+    expect(supervisor.skillActivities?.map((item) => item.summary)).toEqual(rows.map((row) => row.getAttribute("title")));
     expect(supervisor.toolActions).toEqual([]);
     expect(model.toolCount).toBe(0);
     expect(model.toolActions).toEqual([]);
     expect(model.events).toHaveLength(3);
     expect(model.eventCount).toBe(3);
-    expect(node.textContent.match(/Read Skills: Technical Work/g)).toHaveLength(1);
+    expect(node.textContent.match(/Technical Work/g)).toHaveLength(1);
+    expect(descendants(node, "conversation-skill-read-label")).toHaveLength(1);
     expect(node.textContent).toContain("Planning The Delegated Work");
   });
 
@@ -95,7 +96,7 @@ describe("Supervisor Skill activity in agent cards", () => {
       skillEvent("Read Skills: Technical Work", 11),
     ], true, replay);
     expect(rows.map((row) => row.textContent)).toEqual([
-      "Read Skills: Technical Work", "Read Skills: Technical Work",
+      "Technical Work", "Technical Work",
     ]);
     expect(model.events).toHaveLength(1);
     expect(model.events[0]!.count).toBe(2);
@@ -106,7 +107,8 @@ describe("Supervisor Skill activity in agent cards", () => {
   test("preserves a combined read and comma-containing name as one activity", async () => {
     const summary = "Read Skills: Review (Code, Tests), Technical Work";
     const { rows } = await activity([skillEvent(summary, 10)], true);
-    expect(rows.map((row) => row.textContent)).toEqual([summary]);
+    expect(rows.map((row) => row.textContent)).toEqual(["Review (Code, Tests), Technical Work"]);
+    expect(rows[0]!.getAttribute("title")).toBe(summary);
   });
 
   test.each([false, true])("preserves neutral missing-Skill and actual failure presentation (replay=%s)", async (replay) => {
@@ -142,7 +144,7 @@ describe("Supervisor Skill activity in agent cards", () => {
       { ...worker, eventSequence: 12 },
       { ...skillEvent("Read Skills: Other Request", 13), requestId: "request-2" },
     ], true);
-    expect(rows.map((row) => row.textContent)).toEqual(["Read Skills: Skill Creator"]);
+    expect(rows.map((row) => row.textContent)).toEqual(["Skill Creator"]);
     expect(model.toolCount).toBe(1);
     expect(model.roleCards.find((card) => card.role === "worker")!.skillActivities).toBeUndefined();
     expect(model.roleCards.find((card) => card.role === "worker")!.toolActions).toHaveLength(1);

@@ -13,9 +13,12 @@ export function projectCompactedCapabilityResultReceipt<
   const { adapterResult: _adapterResult, ...metadata } = result;
   const receipt = {
     ...metadata,
-    summary: isSummaryCoveredByCompactedResult(result)
-      ? "Result evidence is available in the verified compacted source."
-      : result.summary,
+    summary: projectCompactedRegisteredOutputSummary(
+      result.summary,
+      result.adapterResult?.kind === "registered_tool_execution_result_v1"
+        ? result.adapterResult.result.output
+        : undefined,
+    ),
   };
   if (!isReferenceDataCoveredByCompactedResult(result))
     return Object.freeze(receipt);
@@ -23,12 +26,14 @@ export function projectCompactedCapabilityResultReceipt<
   return Object.freeze(coveredReceipt);
 }
 
-function isSummaryCoveredByCompactedResult(
-  result: CompactedResultContent,
-): boolean {
-  if (result.adapterResult?.kind !== "registered_tool_execution_result_v1")
-    return false;
-  return result.summary === result.adapterResult.result.output;
+/** The caller must verify that the registered output belongs to the covered source. */
+export function projectCompactedRegisteredOutputSummary(
+  summary: string,
+  registeredOutput: string | undefined,
+): string {
+  return summary === registeredOutput
+    ? "Result evidence is available in the verified compacted source."
+    : summary;
 }
 
 function isReferenceDataCoveredByCompactedResult(

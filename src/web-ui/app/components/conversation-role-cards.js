@@ -1,3 +1,5 @@
+import { createConversationSkillActivity } from "./conversation-skill-activity.js";
+import { createConversationMemoryActivity } from "./conversation-memory-activity.js";
 import { createConversationTools } from "./conversation-tools.js";
 import { createConversationRoleDelegations } from "./conversation-role-delegations.js";
 import { createConversationRoleReturns } from "./conversation-role-returns.js";
@@ -70,7 +72,7 @@ export function createConversationRoleCards({
     }
   }
 
-  function renderCard(requestId, card) {
+  function renderCard(requestId, card, memoryActivities = []) {
     const row = element("li", `conversation-role-card is-${card.tone}`);
     row.dataset.role = card.role;
     row.dataset.cardId = card.id;
@@ -101,15 +103,12 @@ export function createConversationRoleCards({
     }
     content.appendChild(header);
     const message = element("div", "conversation-role-message");
-    for (const activity of card.skillActivities || []) {
-      const skill = textElement(
-        "p",
-        "conversation-role-summary conversation-role-skill-activity",
-        activity.summary,
-      );
-      skill.dataset.tone = activity.tone;
-      message.appendChild(skill);
-    }
+    const memory = createConversationMemoryActivity({ documentRoot, activities: memoryActivities });
+    if (memory) message.appendChild(memory);
+    const skillActivity = createConversationSkillActivity({
+      documentRoot, activities: card.skillActivities,
+    });
+    if (skillActivity) message.appendChild(skillActivity);
     if (card.role === "supervisor") {
       const history = delegations.createNode({
         requestId, delegations: card.delegations || [],
@@ -156,6 +155,7 @@ export function createConversationRoleCards({
   function createNode({
     requestId,
     cards,
+    memoryActivities = [],
     heading,
     timeline,
     hasTimeline,
@@ -184,7 +184,10 @@ export function createConversationRoleCards({
     toggle.setAttribute("aria-controls", panel.id);
     const list = element("ol", "conversation-role-list");
     list.setAttribute("aria-label", "Request agents");
-    for (const card of cards) list.appendChild(renderCard(requestId, card));
+    for (const card of cards) {
+      const requestMemory = card === cards[0] ? memoryActivities : [];
+      list.appendChild(renderCard(requestId, card, requestMemory));
+    }
     panel.append(list, timeline);
     section.append(panel, toolbar);
 

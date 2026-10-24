@@ -16,6 +16,7 @@ import { appendRequestSteeringContext } from "../request/request-steering-contex
 import { createModelStepAbort } from "../steps/model-step-timeout.js";
 import { acceptModelStepOutput } from "./model-step-acceptance.js";
 import { createModelContextAssessment } from "./model-context-assessment.js";
+import { admitOptionalModelContext } from "./optional-context-admission.js";
 import {
   invokeModelProvider,
   projectModelProviderFailureDiagnostics,
@@ -264,6 +265,7 @@ class ModelStepInvocation<T> {
       runnerConfig: request.runnerConfig,
       modelStep: params.modelStep,
       messages: params.messages,
+      configuredInstructionPolicy: params.configuredInstructionPolicy,
     });
     const compactionTriggerEligible = isModelStepCompactionEligible(params);
     const contextCompaction = compactionTriggerEligible
@@ -281,6 +283,7 @@ class ModelStepInvocation<T> {
       runnerConfig: request.runnerConfig,
       agentMode: request.agentMode,
       modelStep: params.modelStep,
+      ...(request.reasoningPreference ? { reasoningPreference: request.reasoningPreference } : {}),
       ...(request.modelPreference
         ? { modelPreference: request.modelPreference }
         : {}),
@@ -294,6 +297,14 @@ class ModelStepInvocation<T> {
       assertCurrent,
     });
     let assessment = await assess(messages);
+    if (params.optionalContextProjection) {
+      const optional = await admitOptionalModelContext({
+        messages, assessment, project: params.optionalContextProjection, assess, assertCurrent,
+        diagnostic: { requestId: request.requestId, modelStep: params.modelStep },
+      });
+      messages = [...optional.messages];
+      assessment = optional.assessment;
+    }
     const invocationId = this.input.nextInvocationId();
     if (requiresContextCompaction(compactionTriggerEligible, assessment)) {
       const admitted = await admitCompactedContext({
@@ -545,7 +556,8 @@ class ModelStepAttempt {
         messages: this.input.messages,
         agentMode: request.agentMode,
         modelStep: params.modelStep,
-        ...(request.modelPreference
+        ...(request.reasoningPreference ? { reasoningPreference: request.reasoningPreference } : {}),
+      ...(request.modelPreference
           ? { modelPreference: request.modelPreference }
           : {}),
         ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),

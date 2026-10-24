@@ -10,7 +10,7 @@ import { createSparkChatEmptyState } from "../../web-ui/app/components/spark-cha
 import { FakeElement } from "./support/model-setup-wizard-harness.js";
 
 const capture = vi.hoisted(() => ({ conversation: null as any, queue: null as any, panel: null as any, empty: null as any }));
-vi.mock("../../web-ui/app/services/workspace-state.js", () => ({ workspaceQueue: () => capture.queue }));
+vi.mock("../../web-ui/app/services/workspace-state.js", () => ({ workspaceQueue: () => capture.queue, workspaceStorage: () => undefined }));
 vi.mock("../../web-ui/app/spark-chat-conversation.js", async (importOriginal) => {
   const actual = await importOriginal<Record<string, (...args: any[]) => any>>();
   return { createSparkChatConversation: (...args: any[]) => (capture.conversation = actual.createSparkChatConversation(...args)) };
@@ -63,7 +63,9 @@ async function harness(modelProfileId: string | null, profiles = [{ id: "model" 
   const ordinary = { connected: true, runtimeAvailability: { status: "ready" }, currentSessionId: "ordinary", agentMode: "deep",
     messages: [{ id: "ordinary-message" }], config: { embedding: { enabled: false }, learning: { proactiveEnabled: false } } };
   const unchanged = structuredClone(ordinary);
-  const shell = { isWorkspaceAvailable: () => true, subscribeRuntimeAvailabilityChange: vi.fn(), showToast: vi.fn(), subscribeWorkspaceChange: vi.fn(), activateWorkspace: vi.fn(() => true) };
+  const activate = vi.fn(() => true);
+  const shell = { isWorkspaceAvailable: () => true, subscribeRuntimeAvailabilityChange: vi.fn(), showToast: vi.fn(),
+    subscribeWorkspaceChange: vi.fn(), prepareWorkspaceActivation: vi.fn(async (): Promise<typeof activate | null> => activate) };
   const listeners: any = {};
   const feature = createSparkChatFeature({ dom, state: ordinary, client, shell, getEnvironmentId: () => dom.environmentSelect.value,
     realtime: { subscribeMessages: (fn: any) => { listeners.message = fn; }, subscribeConnected: vi.fn(), send: () => true } });
@@ -73,7 +75,7 @@ async function harness(modelProfileId: string | null, profiles = [{ id: "model" 
   await feature.open();
   panelDom.composerInput.value = "My draft";
   panelDom.composerInput.dispatchEvent(new Event("input"));
-  return { feature, dom, empty, selector, learningRoot, fakeDocument, panelDom, result, client, shell, ordinary, unchanged, listeners,
+  return { feature, dom, empty, selector, learningRoot, fakeDocument, panelDom, result, client, shell, activate, ordinary, unchanged, listeners,
     conversation: capture.conversation };
 }
 
@@ -92,8 +94,9 @@ describe("SPARK missing-model guidance", () => {
     expect(h.client.postChatMessage).not.toHaveBeenCalled();
     expect(h.client.uploadAttachment).not.toHaveBeenCalled();
     setup!.dispatch("click");
-    expect(h.shell.activateWorkspace).toHaveBeenCalledWith("learning");
-    expect(h.learningRoot.querySelector('[data-learning-panel="settings"]')!.hidden).toBe(false);
+    expect(h.shell.prepareWorkspaceActivation).toHaveBeenCalledWith("learning");
+    await vi.waitFor(() => expect(h.learningRoot.querySelector('[data-learning-panel="settings"]')!.hidden).toBe(false));
+    expect(h.activate).toHaveBeenCalledOnce();
     expect(h.fakeDocument.activeElement).toBe(h.selector);
     expect(capture.panel.setOpen).toHaveBeenLastCalledWith(false, { focus: false });
     expect(h.panelDom.composerInput.value).toBe("My draft");
@@ -126,8 +129,10 @@ describe("SPARK missing-model guidance", () => {
   });
 
   test("navigation veto keeps the setup guidance and current popup open", async () => {
-    const h = await harness(null); h.shell.activateWorkspace.mockReturnValue(false);
+    const h = await harness(null); h.shell.prepareWorkspaceActivation.mockResolvedValueOnce(null);
     h.empty.querySelector("button")!.dispatch("click");
+    await Promise.resolve(); await Promise.resolve();
+    expect(h.activate).not.toHaveBeenCalled();
     expect(capture.panel.isOpen()).toBe(true);
     expect(h.fakeDocument.activeElement).toBeNull();
   });

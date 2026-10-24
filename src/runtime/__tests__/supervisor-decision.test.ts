@@ -2110,7 +2110,7 @@ describe("Supervisor decision feasibility contract", () => {
   test("invokes the dedicated Supervisor step with call-scoped diagnostics", async () => {
     configureDebugLogger({ enabled: true });
     const modelDecisionText = decisionText(
-      directRespondDecision({ title: "Bounded discussion" }),
+      { requiresProcedure: false, responseRecommendation: directRespondDecision().responseRecommendation },
     );
     const invoke = vi.fn(async () => ({
       text: modelDecisionText,
@@ -2162,7 +2162,7 @@ describe("Supervisor decision feasibility contract", () => {
         modelStep: SUPERVISOR_DECISION_MODEL_STEP,
         debugRequestId: request.requestId,
         format: expect.objectContaining({
-          name: "supervisor_decision",
+          name: "supervisor_procedure_gate",
           schema: expect.objectContaining({
             type: "object",
             required: ["decision"],
@@ -2173,12 +2173,7 @@ describe("Supervisor decision feasibility contract", () => {
             }),
           }),
         }),
-        messages: expect.arrayContaining([
-          expect.objectContaining({
-            role: "system",
-            content: expect.stringContaining('"roleId":"planner"'),
-          }),
-        ]),
+        messages: [expect.objectContaining({ role: "system" }), expect.objectContaining({ role: "user", content: request.prompt })],
       }),
     );
     expect(request.onThinkingTrace).toHaveBeenCalledWith({
@@ -2190,17 +2185,6 @@ describe("Supervisor decision feasibility contract", () => {
       expect.arrayContaining([
         expect.objectContaining({
           scope: "runtime.supervisor",
-          event: "context.projected",
-          requestId: request.requestId,
-          rootCallId: "call-1",
-          callId: "call-1",
-          parentCallId: null,
-          depth: 0,
-          invocationAttempt: 1,
-          allowedRoleIds: ["planner"],
-        }),
-        expect.objectContaining({
-          scope: "runtime.supervisor",
           event: "model.started",
           callId: "call-1",
         }),
@@ -2208,7 +2192,7 @@ describe("Supervisor decision feasibility contract", () => {
           scope: "runtime.supervisor",
           event: "model.completed",
           callId: "call-1",
-          selectedAction: "respond",
+          requiresProcedure: false,
         }),
       ]),
     );
@@ -2279,13 +2263,13 @@ describe("Supervisor decision feasibility contract", () => {
       action: "invoke_role" as const,
       roleId: "worker" as const,
       objective,
-      workerCapabilityScope: WORKER_CAPABILITY_SCOPE,
       acknowledgement: "I will update the existing project.",
       title: "Existing project update",
     };
     const invoke = vi
       .fn()
-      .mockResolvedValueOnce({ text: decisionText(routing), meta: {} })
+      .mockResolvedValueOnce({ text: decisionText({ requiresProcedure: true }), meta: {} })
+      .mockResolvedValueOnce({ text: decisionText({ action: routing.action, roleId: routing.roleId, objective }), meta: {} })
       .mockResolvedValueOnce({
         text: JSON.stringify({
           workingDirectory: WORKING_DIRECTORY,
@@ -2352,7 +2336,7 @@ describe("Supervisor decision feasibility contract", () => {
     });
     expect(Object.isFrozen(decision)).toBe(true);
     expect(Object.isFrozen(decision!.decision)).toBe(true);
-    expect(invoke).toHaveBeenCalledTimes(3);
+    expect(invoke).toHaveBeenCalledTimes(4);
     expect(
       invoke.mock.calls.map(([input]) =>
         typeof input.format === "object" && input.format !== null
@@ -2360,11 +2344,12 @@ describe("Supervisor decision feasibility contract", () => {
           : undefined,
       ),
     ).toEqual([
-      "supervisor_decision",
+      "supervisor_procedure_gate",
+      "supervisor_delegation",
       "supervisor_working_directory",
       "supervisor_working_directory",
     ]);
-    const repairMessages = invoke.mock.calls[2]?.[0].messages as readonly {
+    const repairMessages = invoke.mock.calls[3]?.[0].messages as readonly {
       role: string;
       content: string;
     }[];
@@ -2374,15 +2359,15 @@ describe("Supervisor decision feasibility contract", () => {
         "supervisor_working_directory_shape_invalid",
       ),
     });
-    expect(JSON.stringify(invoke.mock.calls[1]?.[0].format)).not.toContain(
+    expect(JSON.stringify(invoke.mock.calls[2]?.[0].format)).not.toContain(
       "roleId",
     );
-    expect(JSON.stringify(invoke.mock.calls[1]?.[0].format)).not.toContain(
+    expect(JSON.stringify(invoke.mock.calls[2]?.[0].format)).not.toContain(
       "catalogGroupIds",
     );
   });
 
-  test("reselects routing when steering arrives between routing and workingDirectory", async () => {
+  test("reselects evidence-aware routing when steering arrives between routing and workingDirectory", async () => {
     configureDebugLogger({ enabled: true });
     const requestSteering = createRequestSteeringInbox({
       requestId: "supervisor-steering-between-phases",
@@ -2473,7 +2458,7 @@ describe("Supervisor decision feasibility contract", () => {
           depth: 0,
           invocationAttempt: 1,
         },
-        toolResults: EMPTY_REQUEST_TOOL_RESULTS,
+        toolResults: REQUEST_TOOL_RESULTS,
         allowedRoleIds: ["planner"],
       });
       logs = consoleLog.mock.calls.map(

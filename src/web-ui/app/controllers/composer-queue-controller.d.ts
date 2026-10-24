@@ -22,7 +22,7 @@ export interface ComposerQueueControllerOptions {
   reportFailure(scope: ComposerScope, summary: string): void;
   reportRecovery?(scope: ComposerScope, summary: string): void;
   onChange?(): void;
-  confirmTakeover?(message: string): boolean;
+  confirmTakeover?(message: string, options?: { title: string; confirmLabel: string }): boolean | Promise<boolean>;
 }
 
 export interface ComposerQueueController {

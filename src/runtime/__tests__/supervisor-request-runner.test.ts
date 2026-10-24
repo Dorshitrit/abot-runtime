@@ -326,19 +326,10 @@ describe("Supervisor-root request runner slice", () => {
         debugRequestId: request.requestId,
         format: expect.objectContaining({
           type: "json_schema",
-          name: "supervisor_decision",
+          name: "supervisor_procedure_gate",
           strict: true,
         }),
         messages: [
-          expect.objectContaining({ role: "system" }),
-          {
-            role: "user",
-            content: "We are discussing one request owner.",
-          },
-          {
-            role: "assistant",
-            content: "The Supervisor can be that owner.",
-          },
           expect.objectContaining({ role: "system" }),
           { role: "user", content: "What do you think?" },
         ],
@@ -593,14 +584,15 @@ describe("Supervisor-root request runner slice", () => {
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
+      SUPERVISOR_DECISION_MODEL_STEP,
       PLANNER_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_RESPONSE_MODEL_STEP,
     ]);
 
-    const routingFormat = gatewayInvoke.mock.calls[1]![0].format;
-    const workingDirectoryFormat = gatewayInvoke.mock.calls[2]![0].format;
-    expect(routingFormat).toMatchObject({ name: "supervisor_decision" });
+    const routingFormat = gatewayInvoke.mock.calls[2]![0].format;
+    const workingDirectoryFormat = gatewayInvoke.mock.calls[3]![0].format;
+    expect(routingFormat).toMatchObject({ name: "supervisor_delegation" });
     expect(JSON.stringify(routingFormat)).not.toContain("workingDirectory");
     expect(workingDirectoryFormat).toMatchObject({
       name: "supervisor_working_directory",
@@ -631,7 +623,7 @@ describe("Supervisor-root request runner slice", () => {
     ).toEqual(["workingDirectory"]);
 
     const frozenInvocation = (
-      gatewayInvoke.mock.calls[2]![0].messages as readonly Readonly<{
+      gatewayInvoke.mock.calls[3]![0].messages as readonly Readonly<{
         content: string;
       }>[]
     ).flatMap((message) => {
@@ -727,9 +719,10 @@ describe("Supervisor-root request runner slice", () => {
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
+      SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_RESPONSE_MODEL_STEP,
     ]);
-    expect(gatewayInvoke.mock.calls[2]![0].format).toMatchObject({
+    expect(gatewayInvoke.mock.calls[3]![0].format).toMatchObject({
       name: "supervisor_working_directory",
     });
     expect(
@@ -1027,7 +1020,7 @@ describe("Supervisor-root request runner slice", () => {
         expect.objectContaining({
           scope: "runtime.supervisor",
           event: "decision.accepted",
-          decisionPhase: "routing",
+          decisionPhase: "delegation",
           selectedAction: "invoke_role",
           selectedRoleId: "planner",
           workingDirectoryIncluded: false,
@@ -1079,7 +1072,7 @@ describe("Supervisor-root request runner slice", () => {
     );
   });
 
-  test("retains a direct Supervisor Worker scope and filters the Worker binding", async () => {
+  test("leaves initial capability selection to the direct Worker", async () => {
     const invoke = vi
       .fn<ModelGatewayClient["invoke"]>()
       .mockResolvedValueOnce({
@@ -1217,6 +1210,9 @@ describe("Supervisor-root request runner slice", () => {
         {
           capabilityId: "inspect_system_state",
         },
+        {
+          capabilityId: "mutate_system_state",
+        },
       ],
       availableChildRoleIds: [],
     });
@@ -1226,7 +1222,7 @@ describe("Supervisor-root request runner slice", () => {
           capabilityId: string;
         }>
       ).map(({ capabilityId }) => capabilityId),
-    ).toEqual(["inspect_system_state"]);
+    ).toEqual(["inspect_system_state", "mutate_system_state"]);
 
     const resumedInvocation = invoke.mock.calls[2]![0];
     const resumedMessages = resumedInvocation.messages as Array<{
@@ -1248,7 +1244,6 @@ describe("Supervisor-root request runner slice", () => {
       objective:
         "Explain one concrete benefit of small implementation checkpoints.",
       workingDirectory: DIRECT_WORKER_WORKING_DIRECTORY,
-      workerCapabilityScope: { catalogGroupIds: ["observe"] },
     });
     expect(JSON.parse(resumedMessages.at(-1)!.content)).toMatchObject({
       kind: "runtime_child_result",

@@ -78,8 +78,14 @@ test.each([{ query: "query", path: "different.txt" }, { query: 42 }, {}])(
   },
 );
 
+const observationDescriptor = {
+  ...evidenceDescriptor,
+  capabilityId: "evidence.read",
+  summary: "Read exact source.",
+  effect: "observation" as const,
+};
 const pending = {
-  capabilityId: evidenceDescriptor.capabilityId, intent: "Read selected evidence.",
+  capabilityId: observationDescriptor.capabilityId, intent: "Read selected evidence.",
   selectionControls: { path: "exact.txt" },
 };
 test.each([false, true])("SUPER preserves native controls and frozen selection, batch=%s", async (batch) => {
@@ -87,7 +93,7 @@ test.each([false, true])("SUPER preserves native controls and frozen selection, 
     ? { pendingCapabilityBatchSelection: [pending, { ...pending, selectionControls: { path: "second.txt" } }] }
     : { pendingCapabilitySelection: pending };
   const format = createWorkerDecisionFormat({
-    capabilities: [evidenceDescriptor], maxBatchCapabilityExecutions: 2, ...selections,
+    capabilities: [observationDescriptor], maxBatchCapabilityExecutions: 2, ...selections,
   });
   const decision = batch
     ? { action: "invoke_capabilities", invocations: {
@@ -95,7 +101,7 @@ test.each([false, true])("SUPER preserves native controls and frozen selection, 
     } }
     : { action: "invoke_capability", controls: { query: "first" } };
   const parse = (text: string) => parseWorkerDecisionOutput(text, undefined, {
-    availableCapabilities: [evidenceDescriptor], decisionPhase: "capability_execution",
+    availableCapabilities: [observationDescriptor], decisionPhase: "capability_execution",
     maxBatchCapabilityExecutions: 2, ...selections,
   });
   const output = await providerResult({ modelStep: "capability.controls", format }, decision);

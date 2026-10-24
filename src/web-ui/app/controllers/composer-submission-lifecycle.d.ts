@@ -2,7 +2,7 @@ import type { SessionComposerQueueItem, ReleasedSessionComposerQueueItem } from 
 import type { ComposerAttachment, ComposerDraft, ComposerDraftSnapshot, ComposerDrafts, ComposerScope } from "./composer-drafts.js";
 
 export type ComposerSubmissionAction = "send" | "send_next" | "steer";
-export type ComposerSubmissionSettings = Pick<SessionComposerQueueItem, "agentMode" | "toolPermissionMode" | "modelPreference">;
+export type ComposerSubmissionSettings = Pick<SessionComposerQueueItem, "agentMode" | "toolPermissionMode" | "modelPreference" | "reasoningPreference">;
 export type ComposerSubmissionPhase = "preparing" | "sending" | "accepted" | "refused" | "uncertain" | "restored";
 
 export interface ComposerSubmissionAttempt<Settings = unknown, Result = unknown> {

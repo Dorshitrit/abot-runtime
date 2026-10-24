@@ -139,7 +139,7 @@ export async function filesystemScopeFixture(
             ? next!.output(input)
             : next!.output;
         return { text, meta: {} };
-      }));
+      }, { classifyProcedure: () => ({ requiresProcedure: true }) }));
       const model: ModelGatewayClient = {
         invoke,
         invokeRaw: vi.fn(async () => {

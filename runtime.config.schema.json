@@ -463,6 +463,52 @@
                     "type": "number",
                     "description": "Nucleus sampling value forwarded to the model provider."
                   },
+                  "reasoningBudget": {
+                    "description": "Reasoning-only budget for a declared budget-capable model. Zero disables thinking. Omit to inherit.",
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["mode", "tokens"],
+                        "properties": {
+                          "mode": { "const": "tokens" },
+                          "tokens": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 2147483647
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["mode"],
+                        "properties": { "mode": { "const": "server-default" } }
+                      }
+                    ]
+                  },
+                  "reasoningBudgetByMode": {
+                    "type": "object",
+                    "description": "Optional llama.cpp token budgets for main-step Low/Reasoning/Deep presets. Omit to inherit; {} clears the inherited map. A provided map replaces the whole parent map. Zero disables thinking; positive mode budgets enable it.",
+                    "additionalProperties": false,
+                    "properties": {
+                      "fast": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      "reasoning": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      "deep": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      }
+                    }
+                  },
                   "reasoningEffort": {
                     "type": "string",
                     "enum": [
@@ -574,6 +620,54 @@
                         "topP": {
                           "type": "number",
                           "description": "Nucleus sampling value forwarded to the model provider."
+                        },
+                        "reasoningBudget": {
+                          "description": "Reasoning-only budget for a declared budget-capable model. Zero disables thinking. Omit to inherit.",
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["mode", "tokens"],
+                              "properties": {
+                                "mode": { "const": "tokens" },
+                                "tokens": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 2147483647
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["mode"],
+                              "properties": {
+                                "mode": { "const": "server-default" }
+                              }
+                            }
+                          ]
+                        },
+                        "reasoningBudgetByMode": {
+                          "type": "object",
+                          "description": "Optional llama.cpp token budgets for main-step Low/Reasoning/Deep presets. Omit to inherit; {} clears the inherited map. A provided map replaces the whole parent map. Zero disables thinking; positive mode budgets enable it.",
+                          "additionalProperties": false,
+                          "properties": {
+                            "fast": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 2147483647
+                            },
+                            "reasoning": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 2147483647
+                            },
+                            "deep": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 2147483647
+                            }
+                          }
                         },
                         "reasoningEffort": {
                           "type": "string",
@@ -689,6 +783,52 @@
                   "topP": {
                     "type": "number",
                     "description": "Nucleus sampling value forwarded to the model provider."
+                  },
+                  "reasoningBudget": {
+                    "description": "Reasoning-only budget for a declared budget-capable model. Zero disables thinking. Omit to inherit.",
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["mode", "tokens"],
+                        "properties": {
+                          "mode": { "const": "tokens" },
+                          "tokens": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 2147483647
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["mode"],
+                        "properties": { "mode": { "const": "server-default" } }
+                      }
+                    ]
+                  },
+                  "reasoningBudgetByMode": {
+                    "type": "object",
+                    "description": "Optional llama.cpp token budgets for main-step Low/Reasoning/Deep presets. Omit to inherit; {} clears the inherited map. A provided map replaces the whole parent map. Zero disables thinking; positive mode budgets enable it.",
+                    "additionalProperties": false,
+                    "properties": {
+                      "fast": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      "reasoning": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      },
+                      "deep": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 2147483647
+                      }
+                    }
                   },
                   "reasoningEffort": {
                     "type": "string",

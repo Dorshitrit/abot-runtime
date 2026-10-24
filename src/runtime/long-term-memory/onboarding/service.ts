@@ -1,10 +1,10 @@
+import { buildRemovedEmbeddingProfile, buildSavedEmbeddingProfile } from "./saved-profiles.js";
 import type { ModelGatewayPolicyConfig } from "../../../model-gateway/types.js";
 import { buildModelConfig } from "../../config/builders.js";
 import { validateRuntimeConfigFile } from "../../config/validation.js";
 import {
   buildDisabledMemoryConfig,
   buildEnabledMemoryConfig,
-  DEFAULT_MEMORY_EMBEDDING_PROFILE_ID,
   projectOnboardingStatus,
   requireConfiguredProvider,
 } from "./configuration.js";
@@ -13,7 +13,7 @@ import type {
   LongTermMemoryOnboardingService,
 } from "./contracts.js";
 
-const PROFILE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
+import { readEmbeddingProfileId } from "./embedding-profile-id.js";
 
 export function createLongTermMemoryOnboardingService(dependencies: {
   repository: LongTermMemoryOnboardingConfigRepository;
@@ -53,7 +53,7 @@ export function createLongTermMemoryOnboardingService(dependencies: {
       const snapshot = await dependencies.repository.read();
       const providerId = requireText(input.providerId, "providerId");
       const model = requireText(input.model, "model");
-      const profileId = readProfileId(input.profileId);
+      const profileId = readEmbeddingProfileId(input.profileId);
       const abortSignal = input.abortSignal ?? new AbortController().signal;
       abortSignal.throwIfAborted();
       requireConfiguredProvider(snapshot.config, providerId);
@@ -83,6 +83,42 @@ export function createLongTermMemoryOnboardingService(dependencies: {
         probe: Object.freeze({ ...probe }),
       });
     },
+    async saveProfile(input) {
+      const snapshot = await dependencies.repository.read();
+      const providerId = requireText(input.providerId, "providerId");
+      const model = requireText(input.model, "model");
+      const label = requireText(input.label, "profile_label");
+      const abortSignal = input.abortSignal ?? new AbortController().signal;
+      abortSignal.throwIfAborted();
+      requireConfiguredProvider(snapshot.config, providerId);
+      const candidate = buildSavedEmbeddingProfile({ config: snapshot.config, providerId, model, label });
+      validateRuntimeConfigFile(candidate.config, snapshot.path);
+      abortSignal.throwIfAborted();
+      const persisted = await dependencies.repository.write(candidate.config, snapshot.config);
+      return Object.freeze({
+        status: projectOnboardingStatus(candidate.config),
+        profileId: candidate.profileId,
+        configPath: persisted.configPath,
+        ...(persisted.backupPath ? { backupPath: persisted.backupPath } : {}),
+      });
+    },
+    async removeProfile(input) {
+      const snapshot = await dependencies.repository.read();
+      const profileId = requireText(input.profileId, "profileId");
+      const abortSignal = input.abortSignal ?? new AbortController().signal;
+      abortSignal.throwIfAborted();
+      const candidate = buildRemovedEmbeddingProfile(snapshot.config, profileId);
+      validateRuntimeConfigFile(candidate, snapshot.path);
+      abortSignal.throwIfAborted();
+      const persisted = await dependencies.repository.write(candidate, snapshot.config);
+      return Object.freeze({
+        removed: true as const,
+        status: projectOnboardingStatus(candidate),
+        profileId,
+        configPath: persisted.configPath,
+        ...(persisted.backupPath ? { backupPath: persisted.backupPath } : {}),
+      });
+    },
     async disable() {
       const snapshot = await dependencies.repository.read();
       const candidate = buildDisabledMemoryConfig(snapshot.config);
@@ -110,14 +146,6 @@ function requireModelPolicy(
     throw new Error("long_term_memory_model_policy_required");
   }
   return modelPolicy;
-}
-
-function readProfileId(value: string | undefined): string {
-  const profileId = value?.trim() || DEFAULT_MEMORY_EMBEDDING_PROFILE_ID;
-  if (!PROFILE_ID_PATTERN.test(profileId)) {
-    throw new Error("long_term_memory_embedding_profile_id_invalid");
-  }
-  return profileId;
 }
 
 function requireText(value: string, field: string): string {

@@ -1,3 +1,4 @@
+import { resolveRuntimeSetupCredentialEnvironment } from "./runtime-setup-auth.js";
 import { commitRuntimeSetupEdit } from "./runtime-setup-edit-transaction.js";
 import {
   withPlannedRuntimeSetupCredentials,
@@ -78,6 +79,7 @@ export async function editRuntimeSetupConnection(params: {
           const provider = buildProviderConfig(
             providerId,
             params.input.baseUrl,
+            resolveRuntimeSetupCredentialEnvironment(providerId, providers[providerId], params.input.apiKey),
           );
           const existing = providers[providerId];
           const owned = Object.hasOwn(params.draft.ownedProviders, providerId);
@@ -105,6 +107,7 @@ export async function editRuntimeSetupConnection(params: {
             typeof contextWindowTokens === "number"
               ? contextWindowTokens
               : undefined,
+            params.input,
           );
           const memory = setupConfigMap(source.config.longTermMemory);
           const retained = retainSetupConnectionProviders({

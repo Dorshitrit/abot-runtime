@@ -40,6 +40,7 @@ export function createGuideHarness(
       "ollama-base-url",
       "api-key",
       "embedding-provider",
+      "embedding-connection-id",
       "embedding-model",
       "embedding-url",
       "embedding-key",
@@ -220,6 +221,10 @@ export function createGuideHarness(
       dispatch("input", { runtimeSetupField: "api-key" }, value),
     inputEmbeddingModel: (value: string) =>
       dispatch("input", { runtimeSetupField: "embedding-model" }, value),
+    inputEmbeddingBaseUrl: (value: string) =>
+      dispatch("input", { runtimeSetupField: "embedding-url" }, value),
+    inputEmbeddingConnectionId: (value: string) =>
+      dispatch("input", { runtimeSetupField: "embedding-connection-id" }, value),
     inputEmbeddingKey: (value: string) =>
       dispatch("input", { runtimeSetupField: "embedding-key" }, value),
     changeEmbeddingProvider: (value: string) =>

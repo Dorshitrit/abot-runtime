@@ -1,3 +1,4 @@
+import { requiresProviderCredential } from "./runtime-setup-auth.js";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { buildRuntimeModelConfiguration } from "../../runtime/config/builders.js";
@@ -41,11 +42,14 @@ export function configuredSetupModel(source: InspectedRuntimeConfigFile) {
   if (!profile?.provider || !profile.model) return undefined;
   const provider = policy?.providers?.[profile.provider];
   if (!provider) return undefined;
-  const apiKeyEnv = provider.apiKeyEnv?.trim() || "OPENAI_API_KEY";
+  const apiKeyEnv = provider.apiKeyEnv?.trim() || (provider.type === "openai" ? "OPENAI_API_KEY" : undefined);
   return {
     provider: provider.type,
     model: profile.model,
     contextWindowTokens: profile.contextWindowTokens,
+    supportsThinking: profile.supportsThinking,
+    reasoningBudget: profile.generation?.reasoningBudget,
+    requiresApiKey: requiresProviderCredential(provider),
     apiKeyEnv,
     baseUrl: configuredSetupBaseUrl(provider.baseUrl),
   };
@@ -56,6 +60,6 @@ export function requiresConfiguredCredential(
   rootDir: string,
 ): boolean {
   const model = configuredSetupModel(source);
-  if (model?.provider !== "openai") return false;
+  if (!model?.requiresApiKey) return false;
   return !readRuntimeSetupCredential(rootDir, model.apiKeyEnv);
 }

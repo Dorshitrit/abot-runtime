@@ -1,0 +1,90 @@
+:root[data-palette="midnight"] {
+  --bg: #090b10;
+  --panel: #10131b;
+  --panel-solid: #10131b;
+  --panel-raised: #202735;
+  --text: #e1e7f1;
+  --text-strong: #f3f6fc;
+  --muted: #a5b1c5;
+  --muted-2: #8e9ab0;
+  --line: #2a3343;
+  --line-strong: #414f65;
+  --accent: #97bdff;
+  --accent-strong: #bed6ff;
+  --green: #8dd5b2;
+  --amber: #e8c386;
+  --danger: #f59aa4;
+  --scrollbar-thumb: rgba(165, 177, 197, .28);
+  --scrollbar-thumb-active: rgba(165, 177, 197, .48);
+}
+
+:root[data-palette="graphite"] {
+  --bg: #101012;
+  --panel: #18181c;
+  --panel-solid: #18181c;
+  --panel-raised: #2a2a32;
+  --text: #e7e5ed;
+  --text-strong: #f6f4fa;
+  --muted: #b4aebf;
+  --muted-2: #9b94a8;
+  --line: #37333f;
+  --line-strong: #51495e;
+  --accent: #c4b5ed;
+  --accent-strong: #ded2ff;
+  --green: #99cbb1;
+  --amber: #dfbe8f;
+  --danger: #ed9ca9;
+  --scrollbar-thumb: rgba(180, 174, 191, .28);
+  --scrollbar-thumb-active: rgba(180, 174, 191, .48);
+}
+
+:root[data-palette="charcoal"] {
+  --bg: #0d0d0d;
+  --panel: #151515;
+  --panel-solid: #151515;
+  --panel-raised: #252525;
+  --text: #dedede;
+  --text-strong: #f2f2f2;
+  --muted: #a7a7a7;
+  --muted-2: #909090;
+  --line: #2d2d2d;
+  --line-strong: #454545;
+  --accent: #c7c7c7;
+  --accent-strong: #e5e5e5;
+  --scrollbar-thumb: rgba(167, 167, 167, .28);
+  --scrollbar-thumb-active: rgba(167, 167, 167, .48);
+}
+
+:root[data-palette="onyx"] {
+  --bg: #070707;
+  --panel: #101010;
+  --panel-solid: #101010;
+  --panel-raised: #242424;
+  --text: #e5e5e5;
+  --text-strong: #ffffff;
+  --muted: #ababab;
+  --muted-2: #919191;
+  --line: #292929;
+  --line-strong: #444444;
+  --accent: #d4d4d4;
+  --accent-strong: #ffffff;
+  --scrollbar-thumb: rgba(170, 170, 170, .28);
+  --scrollbar-thumb-active: rgba(170, 170, 170, .48);
+}
+
+:root[data-palette="sand"] {
+  --bg: #080b0e;
+  --panel: #101519;
+  --panel-solid: #101519;
+  --panel-raised: #20282e;
+  --text: #dce2e6;
+  --text-strong: #f3f6f8;
+  --muted: #a3aeb7;
+  --muted-2: #8c99a3;
+  --line: #283139;
+  --line-strong: #414e58;
+  --accent: #b5c6d2;
+  --accent-strong: #d7e3eb;
+  --scrollbar-thumb: rgba(163, 174, 183, .28);
+  --scrollbar-thumb-active: rgba(163, 174, 183, .48);
+}

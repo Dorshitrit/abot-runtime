@@ -5,9 +5,9 @@ import { SESSION_ARTIFACT_PATHS_MESSAGE_KIND } from "../../context/session-artif
 import { resolveModelContextAdmission } from "../../model/model-context-budget.js";
 import type { ModelGatewayClient } from "../../ports.js";
 import { buildSupervisorCapabilityBriefOptions } from "../../steps/supervisor-decision/capability-brief.js";
-import { buildSupervisorDecisionInput } from "../../steps/supervisor-decision/input.js";
+import { buildSupervisorDelegationInput } from "../../steps/supervisor-decision/delegation-input.js";
 import { runSupervisorDecision } from "../../steps/supervisor-decision/run.js";
-import { deriveTestRequestExecutionScope } from "./request-execution-scope.js";
+import { deriveTestRequestExecutionScope, type TestRequestSeed } from "./request-execution-scope.js";
 import { createReadmissionFixture } from "./supervisor-brief-readmission-fixture.js";
 
 export type ArtifactModelInput = Parameters<ModelGatewayClient["invoke"]>[0];
@@ -38,6 +38,7 @@ export function isArtifactMessage(message: ChatMessage): boolean {
 export function createArtifactReadmissionFixture(
   options: {
     contextWindowTokens?: number;
+    historyMessages?: TestRequestSeed["historyMessages"];
     targets?: readonly string[];
     repairPhase?: "routing" | "directory";
     steeringText?: string;
@@ -57,6 +58,8 @@ export function createArtifactReadmissionFixture(
   let directoryCalls = 0;
   const objective = options.objective ?? "Update the saved news summary.";
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    if (modelFormatName(input) === "supervisor_procedure_gate")
+      return { text: JSON.stringify({ decision: { requiresProcedure: true } }), meta: {} };
     if (modelFormatName(input) === "supervisor_working_directory") {
       directoryCalls += 1;
       return {
@@ -83,7 +86,6 @@ export function createArtifactReadmissionFixture(
                 action: "invoke_role",
                 roleId: "worker",
                 objective,
-                workerCapabilityScope: { catalogGroupIds: ["read"] },
               },
             }),
       meta: {},
@@ -91,6 +93,7 @@ export function createArtifactReadmissionFixture(
   });
   const request = deriveTestRequestExecutionScope(fixture.request, {
     sessionArtifactPaths: options.targets ?? [ARTIFACT_TARGET],
+    historyMessages: options.historyMessages ?? fixture.request.historyMessages,
     modelGatewayClient: {
       invoke,
       invokeRaw: vi.fn(),
@@ -115,7 +118,7 @@ export function createArtifactReadmissionFixture(
     availableWorkerCapabilityCatalog:
       fixture.input.availableWorkerCapabilityCatalog,
   };
-  const input = buildSupervisorDecisionInput(request, {
+  const input = buildSupervisorDelegationInput(request, {
     ...runOptions,
     ...buildSupervisorCapabilityBriefOptions(request, runOptions),
   });
@@ -150,5 +153,8 @@ export function createArtifactReadmissionFixture(
     assess,
     run: () => runSupervisorDecision(request, runOptions),
     inputs: () => invoke.mock.calls.map(([input]) => input),
+    // Existing artifact oracles target the two work phases; the gate has no references.
+    workInputs: () => invoke.mock.calls.map(([input]) => input)
+      .filter((input) => modelFormatName(input) !== "supervisor_procedure_gate"),
   };
 }

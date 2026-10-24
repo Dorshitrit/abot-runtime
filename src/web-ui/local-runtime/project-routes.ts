@@ -25,8 +25,11 @@ function isProjectSessionCreation(segments: readonly string[]): boolean {
   if (segments.length !== 3) return false;
   return segments[2] === "sessions";
 }
+function isProjectDeletion(segments: readonly string[]): boolean {
+  return segments.length === 2;
+}
 function isProjectMutationRequest(method: string): boolean {
-  return method === "POST";
+  return ["POST", "DELETE"].includes(method);
 }
 function acceptProjectRequest(request: ProjectRouteRequest): boolean {
   if (!isProjectMutationRequest(request.method)) return true;
@@ -78,7 +81,12 @@ export class ProjectRoutes {
   ): Promise<void> {
     const { method, segments, body, response } = request;
     if (method === "GET" && isProjectCollection(segments)) {
-      sendJson(response, 200, { ok: true, projects: await service.list() });
+      sendJson(response, 200, { ok: true, ...(await service.catalog()) });
+      return;
+    }
+    if (method === "DELETE" && isProjectDeletion(segments)) {
+      await service.delete(segments[1]!);
+      sendJson(response, 200, { ok: true });
       return;
     }
     if (method === "POST" && isProjectCollection(segments)) {

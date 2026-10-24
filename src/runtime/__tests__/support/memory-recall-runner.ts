@@ -69,6 +69,8 @@ export function createMemoryRecallHarness(
     onInput?: (input: RecallModelInput) => void;
     present?: SupervisorPhaseDecision;
     selectSkills?: SupervisorPhaseDecision;
+    classifyProcedure?: SupervisorPhaseDecision;
+    delegate?: SupervisorPhaseDecision;
   }>,
 ) {
   const enabled = options.enabled ?? true;

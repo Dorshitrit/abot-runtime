@@ -6,6 +6,7 @@ import {
 import type { ModelGatewayClient } from "../ports.js";
 import { SUPERVISOR_WORKER_V1_EXECUTION_POLICY } from "../request/role-executor-composition.js";
 import { runRequestRunner } from "../request/runner.js";
+import { createRequestExecutionScope } from "../request/execution-scope.js";
 import {
   actionFingerprint,
   createApprovalRunnerFixture,
@@ -33,6 +34,11 @@ function createDelegatedApprovalFixture() {
   const invokeRaw = vi.fn<ModelGatewayClient["invokeRaw"]>(async () => {
     throw new Error("unexpected raw gateway call");
   });
+  const store = {
+    list: vi.fn(() => [{ skillId: "approval-guide", name: "Approval guide", description: "Guidance for an approved observation." }]),
+    read: vi.fn(),
+  };
+  const selectSkills = vi.fn(() => ({ action: "continue" }));
   let routeCount = 0;
   let workerCount = 0;
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(
@@ -76,10 +82,10 @@ function createDelegatedApprovalFixture() {
       if (input.modelStep === "supervisor.response")
         return { text: "The delegated action settled.", meta: {} };
       throw new Error(`unexpected model step: ${input.modelStep}`);
-    }),
+    }, { selectSkills }),
   );
-  const makeRequest = () =>
-    deriveTestRequestExecutionScope(
+  const makeRequest = () => {
+    const request = deriveTestRequestExecutionScope(
       rebindTestRequestExecutionPolicy(
         approval.makeRequest(),
         SUPERVISOR_WORKER_V1_EXECUTION_POLICY,
@@ -115,11 +121,16 @@ function createDelegatedApprovalFixture() {
         onEvent,
       },
     );
+    return createRequestExecutionScope({
+      seed: request, executionPolicy: request.executionPolicy, knowledgeSkillStore: store,
+      createWorkerCapabilities: () => request.workerCapabilities.provider,
+    });
+  };
   const delegations = () =>
     onEvent.mock.calls
       .filter(([name]) => name === "role.delegated")
       .map(([, payload]) => payload);
-  return { ...approval, makeRequest, invoke, invokeRaw, delegations };
+  return { ...approval, makeRequest, invoke, invokeRaw, delegations, store, selectSkills };
 }
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
@@ -150,6 +161,8 @@ describe("SUPER delegation events across saved approval continuation", () => {
       ]);
       expect(fixture.prepare).toHaveBeenCalledOnce();
       expect(fixture.performed).not.toHaveBeenCalled();
+      expect(fixture.selectSkills).toHaveBeenCalledOnce();
+      expect(fixture.store.read).not.toHaveBeenCalled();
       const persisted = JSON.parse(JSON.stringify(waiting.continuation));
       expect(persisted.ledger.state.calls).toHaveLength(2);
       expect(persisted.ledger.state.calls[1]).toMatchObject({
@@ -161,12 +174,14 @@ describe("SUPER delegation events across saved approval continuation", () => {
       expect(persisted.callers).toHaveLength(1);
       expect(persisted.preparedGroup.callId).toBe("call-2");
       const beforeResume = fixture.invoke.mock.calls.map(
-        ([input]) => input.modelStep,
+        ([input]) => supervisorFormatName(input) ?? input.modelStep,
       );
       expect(beforeResume).toEqual([
-        "supervisor.decision",
-        "supervisor.decision",
-        "supervisor.decision",
+        "supervisor_presentation",
+        "supervisor_skill_selection",
+        "supervisor_procedure_gate",
+        "supervisor_delegation",
+        "supervisor_working_directory",
         "worker.decision",
         "capability.controls",
       ]);
@@ -187,6 +202,8 @@ describe("SUPER delegation events across saved approval continuation", () => {
         result: { output: "The delegated action settled." },
       });
       expect(fixture.delegations()).toEqual(admittedDelegations);
+      expect(fixture.selectSkills).toHaveBeenCalledTimes(2);
+      expect(fixture.store.read).not.toHaveBeenCalled();
       expect(fixture.prepare).toHaveBeenCalledOnce();
       expect(fixture.restore).toHaveBeenCalledOnce();
       expect(fixture.executed).toHaveBeenCalledExactlyOnceWith(
@@ -201,11 +218,12 @@ describe("SUPER delegation events across saved approval continuation", () => {
       expect(
         fixture.invoke.mock.calls
           .slice(beforeResume.length)
-          .map(([input]) => input.modelStep),
+          .map(([input]) => supervisorFormatName(input) ?? input.modelStep),
       ).toEqual([
         "worker.decision",
         "worker.result",
-        "supervisor.decision",
+        "supervisor_skill_selection",
+        "supervisor_decision",
         "supervisor.response",
       ]);
       expect(fixture.invokeRaw).not.toHaveBeenCalled();

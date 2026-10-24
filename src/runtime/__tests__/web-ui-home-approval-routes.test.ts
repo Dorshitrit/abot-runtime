@@ -157,6 +157,32 @@ describe("Home live approval HTTP authority", () => {
     expect((await f.list("dev")).approvals).toHaveLength(1);
   });
 
+  test("preserves the user's multiline explanation through the scoped HTTP decision", async () => {
+    const f = await fixture();
+    const action = f.pending("explanation");
+    const reason =
+      "The user rejected this action. User explanation:\nUse the existing file.\n<script>is literal text</script>";
+    expect(
+      (await f.decide({ ...action.scope, approved: false, reason })).status,
+    ).toBe(200);
+    expect(await action.decision).toEqual({ approved: false, reason });
+    expect((await f.list()).approvals).toEqual([]);
+  });
+
+  test("preserves an explanation through the legacy realtime decision", async () => {
+    const f = await fixture();
+    const action = f.pending("realtime-explanation");
+    const reason =
+      "The user rejected this action. User explanation:\nInspect before modifying.";
+    f.requests.resolveToolApproval({
+      approvalId: action.scope.approvalId,
+      approved: false,
+      reason,
+    });
+    expect(await action.decision).toEqual({ approved: false, reason });
+    expect((await f.list()).approvals).toEqual([]);
+  });
+
   test("rejects each stale or mismatched identity without consuming the live approval", async () => {
     const f = await fixture();
     const action = f.pending("chosen");

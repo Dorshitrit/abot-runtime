@@ -1,3 +1,5 @@
+import { parseModelReasoningBudgetByMode } from "../../../shared/model-reasoning-modes.js";
+import { parseModelReasoningBudget } from "../../../shared/model-reasoning.js";
 import { hasOwnValue } from "../utils.js";
 import {
   validateOptionalNonNegativeInteger,
@@ -135,6 +137,16 @@ export function validateModelGenerationConfig(
   generation: Record<string, unknown>,
   displayKey: string,
 ): void {
+  try {
+    parseModelReasoningBudget(generation.reasoningBudget);
+  } catch (error) {
+    issues.push(`${displayKey}.reasoningBudget: ${String(error)}`);
+  }
+  try {
+    parseModelReasoningBudgetByMode(generation.reasoningBudgetByMode);
+  } catch (error) {
+    issues.push(`${displayKey}.reasoningBudgetByMode: ${String(error)}`);
+  }
   if (hasOwnValue(generation, "maxOutputTokens")) {
     issues.push(
       `${displayKey}.maxOutputTokens is not supported; remove it and let the provider enforce physical output capacity`,

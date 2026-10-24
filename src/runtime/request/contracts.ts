@@ -1,3 +1,4 @@
+import type { ModelReasoningPreference } from "../../shared/model-reasoning.js";
 import type { KnowledgeSkillStore } from "../knowledge-skills/store.js";
 import type { RequestToolResources } from "../capabilities/request-tool-resources.js";
 import type { CapabilityApprovalGate } from "../orchestration/worker-capabilities/approval-contracts.js";
@@ -44,6 +45,7 @@ export type RunRequestMessage = {
   text?: string;
   agentMode?: unknown;
   modelPreference?: unknown;
+  reasoningPreference?: unknown;
   toolPermissionMode?: unknown;
   attachments?: unknown;
 };
@@ -96,6 +98,7 @@ export type RequestExecutionSeed = Readonly<{
   attachments?: ModelGatewayAttachment[];
   agentMode: AgentMode;
   modelPreference?: ModelPreference;
+  reasoningPreference?: ModelReasoningPreference;
   modelPolicy?: ModelGatewayPolicyConfig;
   modelGatewayClient: Pick<
     ModelGatewayClient,
@@ -152,6 +155,7 @@ export type RequestModelRuntime = Readonly<{
   modelInvocationScope?: RequestExecutionSeed["modelInvocationScope"];
   runnerConfig: RequestExecutionSeed["runnerConfig"];
   modelPreference?: RequestExecutionSeed["modelPreference"];
+  reasoningPreference?: RequestExecutionSeed["reasoningPreference"];
   modelPolicy?: RequestExecutionSeed["modelPolicy"];
   modelGatewayClient: RequestExecutionSeed["modelGatewayClient"];
 }>;
@@ -192,6 +196,7 @@ export type RequestModelInvocationView = Readonly<
     | "runnerConfig"
     | "agentMode"
     | "modelPreference"
+    | "reasoningPreference"
     | "modelPolicy"
     | "modelGatewayClient"
     | "requestSteering"

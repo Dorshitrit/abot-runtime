@@ -7,7 +7,7 @@ import { createSparkChatFeature } from "../../web-ui/app/spark-chat-feature.js";
 import { createAppRealtimeTransport } from "../../web-ui/app/app-realtime-transport.js";
 
 const capture = vi.hoisted(() => ({ conversation: null as any, queue: null as any, panelDom: null as any, transport: null as any, open: false }));
-vi.mock("../../web-ui/app/services/workspace-state.js", () => ({ workspaceQueue: () => capture.queue }));
+vi.mock("../../web-ui/app/services/workspace-state.js", () => ({ workspaceQueue: () => capture.queue, workspaceStorage: () => undefined }));
 vi.mock("../../web-ui/app/spark-chat-conversation.js", async (importOriginal) => {
   const actual = await importOriginal<Record<string, (...args: any[]) => any>>();
   return { createSparkChatConversation: (...args: any[]) => (capture.conversation = actual.createSparkChatConversation(...args)) };

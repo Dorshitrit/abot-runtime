@@ -1,3 +1,4 @@
+import { createConversationReasoningPreferences } from "./conversation-reasoning-preferences.js";
 import { createSessionSidebarPreferences } from "./session-sidebar-preferences.js";
 
 const storageKeys = {
@@ -39,6 +40,7 @@ export function createClientPreferences(storage) {
     subscribe: (listener) => storage.subscribe?.(listener),
     flush: () => storage.flush?.(),
     ...createSessionSidebarPreferences(storage),
+    ...createConversationReasoningPreferences(storage),
     loadPinnedSessions() {
       try {
         const acknowledged = storage.snapshot?.();

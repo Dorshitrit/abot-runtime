@@ -22,7 +22,7 @@ export function createProviderEnvelopeFingerprint(
   payload: Readonly<Record<string, unknown>>,
 ): string {
   return `sha256:${createHash("sha256")
-    .update(serializeTokenBearingEnvelope(payload))
+    .update(serializeFingerprintEnvelope(payload))
     .digest("hex")}`;
 }
 
@@ -64,6 +64,15 @@ function estimatedEnvelopeAssessment(params: {
     source: "runtime_token_estimator" as const,
     measurementBinding: "missing" as const,
   });
+}
+
+// Grammar and template controls bind the measurement but are not prompt prose.
+function serializeFingerprintEnvelope(payload: Readonly<Record<string, unknown>>): string {
+  const selected = projectTokenBearingProviderEnvelope(payload);
+  for (const key of ["response_format", "chat_template_kwargs", "reasoning_effort"]) {
+    if (Object.hasOwn(payload, key)) selected[key] = payload[key];
+  }
+  return JSON.stringify(selected);
 }
 
 function serializeTokenBearingEnvelope(

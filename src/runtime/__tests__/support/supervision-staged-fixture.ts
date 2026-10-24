@@ -34,6 +34,7 @@ export function supervisionStagedFixture(
     oversized?: boolean;
     estimated?: boolean;
     abortDuringCompaction?: boolean;
+    registeredResult?: "aliased-summary" | "independent-summary";
   } = {},
 ) {
   const throughPlanner = true;
@@ -69,27 +70,43 @@ export function supervisionStagedFixture(
       required: ["query"],
     },
   };
+  const registeredOutput = `${STAGED_RAW_MARKER}:${"registered source detail ".repeat(240)}${STAGED_FACT}`;
   const execute = vi.fn(
     async (_input: { controls: Readonly<Record<string, unknown>> }) => ({
       outcome: "succeeded" as const,
       observedEffect: "observation" as const,
-      summary: STAGED_FACT,
+      summary:
+        options.registeredResult === "aliased-summary"
+          ? registeredOutput
+          : STAGED_FACT,
       referenceData: options.estimated
         ? "Estimator source reference."
         : `${STAGED_RAW_MARKER}:${"source detail ".repeat(700)}${STAGED_FACT}`,
       references: [{ kind: "tool_target" as const, target: "report.txt" }],
-      exactResult: {
-        kind: "generic_capability_result_v1" as const,
-        authority: "capability_adapter" as const,
-        status: "executed" as const,
-        ok: true,
-        payload: {
-          fact: STAGED_FACT,
-          ...(options.estimated
-            ? { detail: "exact evidence ".repeat(1300) }
-            : {}),
-        },
-      },
+      exactResult: options.registeredResult
+        ? {
+            kind: "registered_tool_execution_result_v1" as const,
+            authority: "registered_plugin" as const,
+            status: "executed" as const,
+            result: {
+              ok: true,
+              tool: "inspect_record",
+              output: registeredOutput,
+              producedNewInformation: true,
+            },
+          }
+        : {
+            kind: "generic_capability_result_v1" as const,
+            authority: "capability_adapter" as const,
+            status: "executed" as const,
+            ok: true,
+            payload: {
+              fact: STAGED_FACT,
+              ...(options.estimated
+                ? { detail: "exact evidence ".repeat(1300) }
+                : {}),
+            },
+          },
     }),
   );
   const respond = withSupervisorPreparation(async (input) => {
@@ -152,23 +169,12 @@ export function supervisionStagedFixture(
           action: "invoke_capability",
           capabilityId: descriptor.capabilityId,
           intent: "Inspect target.",
-          operationObjective: prompt,
-          controlsEvidenceExecutionIds: [],
+          selectionControls: { query: "same-observation" },
           ...(executionTurns === 2 ? { workingDirectory: "." } : {}),
         });
       return decision({ action: "respond" });
     }
     if (step === "execution.response") return { text: STAGED_FACT, meta: {} };
-    if (step === "capability.controls" && policy === "execution-agent-v1") {
-      return decision({
-        invocations: {
-          invocation_1: {
-            disposition: "execute",
-            controls: { query: "same-observation" },
-          },
-        },
-      });
-    }
     if (step === "capability.controls") {
       controlsTurns += 1;
       return decision({
@@ -237,7 +243,10 @@ export function supervisionStagedFixture(
     throw new Error(`unexpected_staged_model_step:${step}`);
   });
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-    calls.push({ step: input.modelStep!, messages: input.messages as readonly ChatMessage[] });
+    calls.push({
+      step: input.modelStep!,
+      messages: input.messages as readonly ChatMessage[],
+    });
     return respond(input);
   });
   const countInputTokens = vi.fn<
@@ -256,9 +265,16 @@ export function supervisionStagedFixture(
           ({ adapterResult }) => adapterResult !== undefined,
         ),
     );
+    const hasRegisteredBody =
+      options.registeredResult !== undefined &&
+      JSON.stringify(messages).includes(registeredOutput);
     return {
       inputTokens:
-        notice && (options.oversized || hasNativeResults || hasWorkerResults)
+        notice &&
+        (options.oversized ||
+          hasNativeResults ||
+          hasWorkerResults ||
+          hasRegisteredBody)
           ? 24000
           : 1000,
       profileId,
@@ -355,6 +371,7 @@ export function supervisionStagedFixture(
     counted,
     invoke,
     execute,
+    registeredOutput,
     run: () => runRequestRunner(request),
   };
 }

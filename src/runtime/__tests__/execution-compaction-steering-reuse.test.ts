@@ -14,6 +14,7 @@ import { payloadSourceContext } from "./support/compacted-execution-source-fixtu
 import {
   executionCompactionSteeringFixture,
   STEERED_FACT,
+  STEERED_CONTINUATION,
 } from "./support/execution-compaction-steering-fixture.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
@@ -39,6 +40,10 @@ test.each([false, true])(
       steerId: "later",
       text: "Use a different comparison.",
     });
+    // A newer committed checkpoint cannot expand this already accepted assignment.
+    await f.run(response);
+    expect(f.request.contextCompactionStore!.findByCallIds(["call-1"]))
+      .toHaveLength(2);
     const view = f.view();
     const results = view.results as readonly WorkerSettledCapabilityResult[];
     const context = payloadSourceContext(results);
@@ -105,7 +110,7 @@ test.each([false, true])(
   },
 );
 
-test("changed objective rejects old evidence reuse, then regenerates from raw sources without rebinding the old checkpoint", async () => {
+test("changed objective reuses verified evidence without generating or rebinding the old checkpoint", async () => {
   const f = await executionCompactionSteeringFixture();
   await f.run();
   const oldCheckpoint = f.request.contextCompactionStore!.findByCallIds([
@@ -128,26 +133,22 @@ test("changed objective rejects old evidence reuse, then regenerates from raw so
       },
     }).content,
   );
-  expect(controls.compactedSourceEvidence).toBeUndefined();
-  expect(controls.results[0].adapterResult).toEqual(
-    view.results[0]!.adapterResult,
-  );
+  expect(controls.compactedSourceEvidence.sources).toEqual([
+    expect.objectContaining({ executionId: f.executionId, digest: STEERED_FACT }),
+  ]);
+  expect(controls.results[0]).not.toHaveProperty("adapterResult");
   f.invoke.mockClear();
   await f.run();
   const checkpoints = f.request.contextCompactionStore!.findByCallIds([
     "call-1",
   ]);
   expect(checkpoints).toContainEqual(oldCheckpoint);
-  expect(checkpoints).toHaveLength(2);
-  expect(checkpoints[1]!.objectiveFingerprint).not.toBe(
-    oldCheckpoint.objectiveFingerprint,
-  );
-  expect(checkpoints[1]!.scopeId).not.toBe(oldCheckpoint.scopeId);
+  expect(checkpoints).toEqual([oldCheckpoint]);
   expect(
     f.invoke.mock.calls.some(
       ([input]) => input.modelStep === "context.compact",
     ),
-  ).toBe(true);
+  ).toBe(false);
 });
 
 test.each([
@@ -180,14 +181,20 @@ test.each([
     const before = f.request.contextCompactionStore!.findByCallIds(["call-1"]);
     expect(before).toHaveLength(boundary === "provider" ? 1 : 0);
     f.invoke.mockImplementation(invoke);
+    f.invoke.mockClear();
     await f.run(response);
     const after = f.request.contextCompactionStore!.findByCallIds(["call-1"]);
-    expect(after).toHaveLength(before.length + 1);
+    expect(after).toHaveLength(1);
+    expect(
+      f.invoke.mock.calls.filter(
+        ([input]) => input.modelStep === "context.compact",
+      ),
+    ).toHaveLength(boundary === "provider" ? 0 : 1);
     for (const checkpoint of before) expect(after).toContainEqual(checkpoint);
   },
 );
 
-test("all downstream consumers reject the checkpoint from an earlier accepted objective", async () => {
+test("all downstream consumers reuse source evidence across accepted steering without the old continuation", async () => {
   const f = await executionCompactionSteeringFixture();
   await f.run();
   f.steering.append({
@@ -211,8 +218,10 @@ test("all downstream consumers reject the checkpoint from an earlier accepted ob
     },
     results,
   );
-  expect(payload.evidence).toBeUndefined();
-  expect(payload.results).toBe(results);
+  expect(payload.evidence?.sources).toEqual([
+    expect.objectContaining({ executionId: f.executionId, digest: STEERED_FACT }),
+  ]);
+  expect(payload.results[0]).not.toHaveProperty("adapterResult");
   const controls = JSON.parse(
     buildExecutionControlsEvidenceMessage(view, {
       requestId: f.request.requestId,
@@ -224,8 +233,10 @@ test("all downstream consumers reject the checkpoint from an earlier accepted ob
       },
     }).content,
   );
-  expect(controls.compactedSourceEvidence).toBeUndefined();
-  expect(controls.results[0].adapterResult).toEqual(results[0]!.adapterResult);
+  expect(controls.compactedSourceEvidence.sources).toEqual(
+    payload.evidence!.sources,
+  );
+  expect(controls.results[0]).not.toHaveProperty("adapterResult");
   await f.commit({
     authority: "active_role",
     type: "open_child",
@@ -242,6 +253,11 @@ test("all downstream consumers reject the checkpoint from an earlier accepted ob
     head,
     activeEvidenceCall(head),
   );
-  expect(audit.compactedSourceEvidence).toBeUndefined();
-  expect(audit.inventory[0]?.evidencePresentation).toBeUndefined();
+  expect(audit.compactedSourceEvidence?.sources).toEqual(
+    payload.evidence!.sources,
+  );
+  expect(audit.inventory[0]?.evidencePresentation).toBe("compacted");
+  for (const evidence of [payload.evidence, controls, audit]) {
+    expect(JSON.stringify(evidence)).not.toContain(STEERED_CONTINUATION);
+  }
 });

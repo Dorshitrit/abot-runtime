@@ -14,12 +14,12 @@ import {
   FINAL_RESPONSE,
   RECALL_QUERY,
   REQUEST_PROMPT,
-  responseDecision,
 } from "./support/memory-recall-runner.js";
 import {
   createRuntimeConfig,
   disposeCompositionFixtures,
 } from "./support/runtime-composition-fixture.js";
+import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(async () => {
@@ -39,13 +39,18 @@ test.each([
     const offered: boolean[] = [];
     const harness = createMemoryRecallHarness({
       policy,
+      classifyProcedure: () => ({ requiresProcedure: true }),
+      delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Identify the stored preference needed for the answer." }),
       decide(input) {
+        if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
+        if (input.modelStep === "worker.decision") return { action: "return_result" };
+        if (input.modelStep === "worker.result") return "The root needs the user's stored preference.";
         const recallOffered = JSON.stringify(input.format).includes(
           '"recall_memory"',
         );
         offered.push(recallOffered);
         if (!recallOffered || offered.length > limit)
-          return responseDecision(policy);
+          return { action: "respond" };
         return {
           action: "recall_memory",
           query: RECALL_QUERY,

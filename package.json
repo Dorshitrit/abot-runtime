@@ -97,6 +97,7 @@
     "docs/bridge-compatibility.md",
     "docs/configuration.md",
     "docs/installation.md",
+    "docs/llamacpp.md",
     "docs/windows-companion-store.md",
     "docs/known-limitations.md",
     "docs/long-term-memory.md",
@@ -183,5 +184,5 @@
   },
   "type": "module",
   "types": "./dist/src/runtime/index.d.ts",
-  "version": "1.9.0"
+  "version": "2.0.0"
 }

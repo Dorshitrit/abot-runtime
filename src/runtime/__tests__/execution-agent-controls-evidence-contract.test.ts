@@ -20,10 +20,11 @@ const complete = {
   requiresPayloadAuthoringObjective: true,
 } as const satisfies CapabilityDescriptor;
 const remaining = {
-  summary: complete.summary,
+  summary: "Author an inspection using a query grounded in exact evidence.",
   effect: complete.effect,
+  requiresPayloadAuthoringObjective: true,
   selectionControlIds: complete.selectionControlIds,
-  capabilityId: "read_remaining",
+  capabilityId: "author_remaining",
   controls: {
     ...complete.controls,
     properties: { path, query: path },
@@ -35,7 +36,7 @@ const evidence = Object.freeze(["execution-first", "execution-second"]);
 function selection(capabilityId: string = remaining.capabilityId) {
   return {
     capabilityId,
-    intent: "Read the exact result.",
+    intent: "Author the bounded inspection.",
     operationObjective: "Complete the bounded operation on exact.txt.",
     selectionControls: { path: "exact.txt" },
   };

@@ -12,6 +12,14 @@ const state = vi.hoisted(() => ({
   activateCategory: vi.fn(),
   commit: vi.fn(),
   prepare: vi.fn(),
+  memoryOptions: {} as Record<string, any>,
+  connectionOptions: {} as Record<string, any>,
+  connectionOpen: false,
+  openConnection: vi.fn(),
+  memoryLoad: vi.fn(),
+  environmentChanged: vi.fn(),
+  markPending: vi.fn(),
+  markApplied: vi.fn(),
   host: { setActive: vi.fn(), load: vi.fn(), state: { snapshot: null } },
 }));
 
@@ -46,10 +54,19 @@ vi.mock("../../web-ui/app/components/model-setup/wizard.js", () => ({
   createModelSetupWizard: () => ({ isOpen: () => false }),
 }));
 vi.mock("../../web-ui/app/components/runtime-config-activation.js", () => ({
-  createRuntimeConfigActivation: () => ({}),
+  createRuntimeConfigActivation: () => ({ markPending: state.markPending, markApplied: state.markApplied }),
 }));
 vi.mock("../../web-ui/app/components/long-term-memory-setup.js", () => ({
-  createLongTermMemorySetup: () => ({ mount: vi.fn() }),
+  createLongTermMemorySetup: (options: Record<string, any>) => {
+    state.memoryOptions = options;
+    return { mount: vi.fn(), load: state.memoryLoad };
+  },
+}));
+vi.mock("../../web-ui/app/components/long-term-memory/embedding-connection-feature.js", () => ({
+  createMemoryEmbeddingConnectionFeature: (options: Record<string, any>) => {
+    state.connectionOptions = options;
+    return { open: state.openConnection, isOpen: () => state.connectionOpen, environmentChanged: state.environmentChanged };
+  },
 }));
 vi.mock("../../web-ui/app/components/plugins/manager.js", () => ({
   createPluginManager: () => ({ hasConfigurationDraft: () => false }),
@@ -66,6 +83,7 @@ import { createConfigurationFeature } from "../../web-ui/app/configuration-featu
 
 beforeEach(() => {
   vi.resetAllMocks();
+  state.connectionOpen = false;
   state.prepare.mockReturnValue(state.commit);
 });
 
@@ -89,6 +107,7 @@ function harness(runtimeReady = true) {
   const feature = createConfigurationFeature({
     dom: {
       configDashboard: { parentElement: {} },
+      configStatus: { textContent: "" },
       homeWorkspacePanel,
       homeWorkspaceButton: { click: openHome },
       pluginsWorkspaceButton: { click: openPlugins },
@@ -116,18 +135,43 @@ function harness(runtimeReady = true) {
   };
 }
 
-test("configuration navigation keeps the existing deferred commit contract", () => {
+test("configuration navigation keeps the existing deferred commit contract", async () => {
   const { feature } = harness();
-  const commit = feature.prepareDiscardChanges("leave configuration");
+  const commit = await feature.prepareDiscardChanges("leave configuration");
   expect(state.commit).not.toHaveBeenCalled();
   commit();
   expect(state.commit).toHaveBeenCalledOnce();
 });
 
-test("rejected navigation retains the visible setup flow", () => {
+test("Memory connection wiring refreshes saved selection and separates pending from applied", async () => {
+  harness();
+  const options = { profileId: "custom-memory", emitClientEvents: true };
+  await state.memoryOptions.onAddConnection(options);
+  expect(state.openConnection).toHaveBeenCalledWith(options);
+  state.memoryOptions.onEnvironmentChanged();
+  expect(state.environmentChanged).toHaveBeenCalledOnce();
+  state.connectionOptions.onSaved();
+  expect(state.markPending).toHaveBeenCalledOnce();
+  expect(state.markApplied).not.toHaveBeenCalled();
+  await state.connectionOptions.refreshMemory();
+  expect(state.memoryLoad).toHaveBeenCalledWith({ preserveInputs: false });
+  await state.connectionOptions.onApplied();
+  expect(state.markApplied).toHaveBeenCalledOnce();
+});
+
+test("open embedding setup blocks navigation, late commits and model setup", async () => {
+  const { feature } = harness();
+  const prepared = await feature.prepareDiscardChanges("change environment");
+  state.connectionOpen = true;
+  expect(prepared.canCommit()).toBe(false);
+  expect(await feature.prepareDiscardChanges("change environment")).toBeNull();
+  await expect(state.options.onAddModel({})).resolves.toBeUndefined();
+});
+
+test("rejected navigation retains the visible setup flow", async () => {
   const { feature } = harness();
   state.prepare.mockReturnValue(null);
-  expect(feature.prepareDiscardChanges("leave configuration")).toBeNull();
+  expect(await feature.prepareDiscardChanges("leave configuration")).toBeNull();
   expect(state.host.setActive).not.toHaveBeenCalled();
 });
 

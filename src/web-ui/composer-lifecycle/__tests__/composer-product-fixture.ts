@@ -1,3 +1,4 @@
+import type { ComposerSubmissionSettings } from "../../app/controllers/composer-submission-lifecycle.js";
 import { ContextElement } from "../../../runtime/__tests__/support/composer-context-window-dom.js";
 import { vi } from "vitest";
 import { createComposerFeature } from "../../app/controllers/composer-feature.js";
@@ -21,7 +22,7 @@ export function deferred<T = void>() {
   return { promise, resolve, reject };
 }
 
-export async function composerProductFixture(options: { fetchImpl?: typeof fetch } = {}) {
+export async function composerProductFixture(options: { fetchImpl?: typeof fetch; getSettings?: () => ComposerSubmissionSettings; confirmReview?: () => boolean | Promise<boolean> } = {}) {
   const document = { createElement: (tag: string): any => element(tag) };
   function element(tag: string): any {
     const node = Object.assign(new ContextElement(tag), {
@@ -84,12 +85,12 @@ export async function composerProductFixture(options: { fetchImpl?: typeof fetch
   composer = createComposerFeature({ state, dom: workspace.chatDom, shell, client, sessionQueue: queueStore,
     drafts: (workspace as any).drafts, getDraft: (workspace as any).chatView.current,
     conversationSession: session, conversationView: { reset: vi.fn() }, getEnvironmentId,
-    ensureSession: session.ensureSession, getSettings: () => ({ agentMode: "reasoning", toolPermissionMode: "ask", modelPreference: { profileId: "model" } }),
+    ensureSession: session.ensureSession, getSettings: options.getSettings || (() => ({ agentMode: "reasoning", toolPermissionMode: "ask", modelPreference: { profileId: "model" } })),
     steer: vi.fn(async () => {}), composerActions: { primaryAction: () => "send", render: vi.fn() },
     selectedModelSupportsImageInput: () => true, isComposerAvailable: () => true, getSubmissionBlock: () => null,
     onSubmissionBlocked: vi.fn(), isVisible: workspace.isChatVisible,
     renderSessions: vi.fn(), renderMessages: vi.fn(), applyConversationChrome: vi.fn(),
-    setMessageStatus: (message: string) => statuses.push(message), recordControlEvent: vi.fn(), confirmReview: () => true,
+    setMessageStatus: (message: string) => statuses.push(message), recordControlEvent: vi.fn(), confirmReview: options.confirmReview || (() => true),
   });
   const home = createHomeComposerFeature({ workspace, composer,
     selectedModelSupportsImageInput: () => true,

@@ -47,8 +47,8 @@ export function createPassiveLearningFeature({
   home = createPassiveLearningHome({
     actions,
     openLearning,
-    openSetup: () => {
-      if (openLearning() === false) return;
+    openSetup: async () => {
+      if (await openLearning() === false) return;
       if (learningRoot) selectLearningView(learningRoot, "settings");
     },
   });

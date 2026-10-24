@@ -52,7 +52,7 @@ export interface ComposerFeatureOptions {
   recordControlEvent: ReturnType<typeof createRealtimeEventController>["recordControlEvent"];
   drafts?: ComposerDrafts;
   onChange?(): void;
-  confirmReview?(message: string): boolean;
+  confirmReview?(message: string, options?: { title: string; confirmLabel: string }): boolean | Promise<boolean>;
 }
 export interface ComposerFeature extends ComposerSurface {
   queue: ComposerQueueController;

@@ -54,7 +54,7 @@ test.each(policies)("%s admits complete >32K step evidence at decision and respo
   const run = await runAgent(fixture, evidence);
   const expectedPhases = policy === "execution-agent-v1"
     ? ["execution.decision", "execution.response"]
-    : ["supervisor_presentation", "supervisor_decision", "supervisor.response"];
+    : ["supervisor_presentation", "supervisor_procedure_gate", "supervisor.response"];
   expect(run).toMatchObject({ status: "succeeded", report: { modelCalls: expectedPhases.length, toolCalls: 0 } });
   expect(fixture.invoke.mock.calls.map(([call]) => supervisorFormatName(call) ?? call.modelStep))
     .toEqual(expectedPhases);
@@ -83,7 +83,7 @@ test.each(policies)("%s rejects oversized evidence before ordinary inference whi
   const admitted = await runAgent(fixture, "A small complete source finding.");
   const expectedPhases = policy === "execution-agent-v1"
     ? ["execution.decision", "execution.response"]
-    : ["supervisor_presentation", "supervisor_decision", "supervisor.response"];
+    : ["supervisor_presentation", "supervisor_procedure_gate", "supervisor.response"];
   expect(admitted).toMatchObject({ status: "succeeded", report: { modelCalls: expectedPhases.length } });
   expect(fixture.invoke.mock.calls.map(([call]) => supervisorFormatName(call) ?? call.modelStep))
     .toEqual([...failureSteps, ...expectedPhases]);

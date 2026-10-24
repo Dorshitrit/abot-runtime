@@ -10,7 +10,7 @@ function commandForMode(
 
 export function getInitUsage(mode: RuntimeSetupCommandMode): string {
   const command = commandForMode(mode, "npm run init --", "npx abot init");
-  return `Usage: ${command} --provider <provider-adapter> --model <model-id> [--base-url <provider-origin>] [--force] [--root <dir>]`;
+  return `Usage: ${command} --provider <provider-adapter> --model <model-id> [--base-url <provider-origin>] [--context-window <tokens>] [--supports-thinking <true|false>] [--reasoning-budget <tokens|server-default>] [--api-key-env <name>] [--force] [--root <dir>]`;
 }
 
 export function getAddModelUsage(mode: RuntimeSetupCommandMode): string {
@@ -19,7 +19,7 @@ export function getAddModelUsage(mode: RuntimeSetupCommandMode): string {
     "npm run add-model --",
     "npx abot add-model",
   );
-  return `Usage: ${command} --profile <profile-id> --provider <provider-adapter> --model <model-id> [--base-url <provider-origin>] [--default] [--root <dir>]`;
+  return `Usage: ${command} --profile <profile-id> --provider <provider-adapter> --model <model-id> [--base-url <provider-origin>] [--context-window <tokens>] [--supports-thinking <true|false>] [--reasoning-budget <tokens|server-default>] [--api-key-env <name>] [--default] [--root <dir>]`;
 }
 
 export function getMissingInitializationInstruction(

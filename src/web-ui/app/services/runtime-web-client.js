@@ -300,6 +300,7 @@ export function createRuntimeWebClient({
       agentMode,
       toolPermissionMode,
       modelPreference,
+      reasoningPreference,
     }) {
       const permissionError = toolPermissionRequestError(
         toolPermissionMode,
@@ -320,6 +321,7 @@ export function createRuntimeWebClient({
           toolPermissionMode,
           attachments,
           ...(modelPreference ? { modelPreference } : {}),
+          ...(reasoningPreference !== undefined ? { reasoningPreference } : {}),
         }),
       });
       const requestId =

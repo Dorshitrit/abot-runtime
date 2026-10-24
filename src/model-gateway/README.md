@@ -154,6 +154,18 @@ to the API key value.
 New external-provider profiles do not inherit Ollama sampling defaults.
 `supportsThinking` declares support for explicit reasoning controls; it is not
 the user's reasoning preference. An omitted declaration does not disable reasoning.
+llama.cpp may also configure `generation.reasoningBudgetByMode` with non-negative
+`fast`, `reasoning` and `deep` token limits. A matching main-lane mode limit
+overrides the generic budget. Zero disables thinking; a positive mode limit enables
+it, including for Low. Explicit invocation/request controls remain authoritative. Utility steps ignore the map.
+Generation overlays replace the complete map; `{}` removes inherited mappings.
+Manual token budgets and server-default preferences preserve a positive effective
+effort; they enable `medium` only when the ordinary effort is `none`. Explicit
+request Off and invocation effort overrides retain their existing precedence.
+A selected token budget of `0` is equivalent to Off without changing the stored
+effort. An explicit positive invocation effort still overrides Off and drops the
+zero limit. llama.cpp receives `reasoning_effort: none`, `enable_thinking: false`
+and `reasoning_budget_tokens: 0` for disabled reasoning.
 `agentMode`, `reasoningOverride`, and calibrated `generation.reasoningEffort`
 select the requested effort. Without declared control support, the adapter leaves
 reasoning to the provider rather than claiming that it disabled it.
@@ -342,6 +354,14 @@ with the resolved profile, provider, model, and context-window binding. The
 OpenAI adapter uses the official Responses input-token endpoint. Providers that
 do not implement the capability remain on the runtime's existing estimator
 path; in particular, Phase 1 does not change Ollama requests or payloads.
+
+Input-token failures emit an internal `input_tokens.request.failed` diagnostic
+at the client and gateway boundaries. It records the request/model-step binding,
+failure phase, elapsed time, numeric input shape and any upstream HTTP status or
+bounded request ID. Nested transport failures retain only error types and
+allowlisted codes (including aggregate connection errors). Prompt text, schemas,
+headers, response bodies, error messages and stacks are excluded. These records
+do not add retries or change HTTP errors, cancellation, counting or cache behavior.
 
 ## Source layout
 

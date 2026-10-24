@@ -67,7 +67,21 @@ test.each(policies)(
       })),
     );
     expect(localInputs).not.toContain("fixture_attached");
-    expect(localInputs).not.toContain('"attached"');
+    if (policy === "execution-agent-v1") {
+      const scopedInput = local.model.invoke.mock.calls
+        .map(([input]) => input)
+        .find((input) => selectionChannels(input.format, "fixture_dispatch"));
+      expect(scopedInput).toBeDefined();
+      expect(
+        selectionChannels(scopedInput?.format, "fixture_dispatch"),
+      ).toEqual(["local"]);
+      expect(selectionChannels(scopedInput?.format, "fixture_basic")).toEqual([
+        "local",
+        "attached",
+      ]);
+    } else {
+      expect(localInputs).not.toContain('"attached"');
+    }
     expect(fixture.executed).toHaveBeenNthCalledWith(
       1,
       "fixture-local",
@@ -139,3 +153,18 @@ test("overlapping Worker and Execution Agent requests keep separate prepared des
     expect(result.session?.messages.at(-1)?.content).toBe(SNAPSHOT_FINAL);
   }
 });
+
+type SelectionSchema = {
+  properties?: Record<string, SelectionSchema>;
+  anyOf?: SelectionSchema[];
+  enum?: string[];
+};
+
+function selectionChannels(format: unknown, capabilityId: string) {
+  const schema = (format as { schema?: SelectionSchema } | undefined)?.schema;
+  const variants = schema?.properties?.decision?.anyOf ?? [];
+  const choice = variants.find((variant) =>
+    variant.properties?.capabilityId?.enum?.includes(capabilityId),
+  );
+  return choice?.properties?.selectionControls?.properties?.channel?.enum;
+}

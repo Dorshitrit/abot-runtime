@@ -11,6 +11,8 @@ import {
   resolveRoleCallTransactions,
 } from "../orchestration/role-calls/index.js";
 import { runRootExecutionKernel } from "../request/root-execution-kernel.js";
+import { resolveRoleActivationBudget } from "../orchestration/role-calls/activation-budget.js";
+import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 import {
   createMemoryRecallHarness,
   RECALL_QUERY,
@@ -23,11 +25,16 @@ afterEach(() => resetDebugLoggerConfig());
 describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
   "%s memory recall activation budget",
   (policy) => {
-    test("reserves the existing activation bound before retrieval and opens no child or capability", async () => {
+    test("reserves the existing activation bound before extra retrieval after the required entry", async () => {
       let decisions = 0;
       const harness = createMemoryRecallHarness({
         policy,
-        decide() {
+        classifyProcedure: () => ({ requiresProcedure: true }),
+        delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Identify the saved preference needed by the answer." }),
+        decide(input) {
+          if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
+          if (input.modelStep === "worker.decision") return { action: "return_result" };
+          if (input.modelStep === "worker.result") return "The root needs the stored formatting preference.";
           decisions += 1;
           return {
             action: "recall_memory",
@@ -44,7 +51,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
           authority: harness.request.executionPolicy.authority,
           limits: {
             maxDepth: 1,
-            maxCalls: 1,
+            maxCalls: policy === "supervisor-worker-v1" ? 2 : 1,
             maxCapabilityExecutions: 1,
             maxObjectiveChars: ROLE_CALL_OBJECTIVE_MAX_LENGTH,
             maxResultChars: ROLE_CALL_RESULT_MAX_LENGTH,
@@ -56,23 +63,30 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
         expectedHead: ledger.current(),
       });
       expect(created.ok).toBe(true);
+      const maximum = resolveRoleActivationBudget(ledger.current().state, ledger.current().policy)
+        .maximumAcceptedActivationsPerCall;
+      const entryActivations = policy === "supervisor-worker-v1" ? 2 : 1;
+      const expectedRecalls = maximum - entryActivations;
       await expect(
         runRootExecutionKernel({
           request: harness.request,
           ledger,
         }),
       ).rejects.toThrow("role_activation_limit_exceeded");
-      expect(decisions).toBe(3);
-      expect(harness.memory.retrieve).toHaveBeenCalledTimes(2);
-      expect(ledger.current().state.calls).toHaveLength(1);
+      expect(decisions).toBe(expectedRecalls + 1);
+      expect(harness.memory.retrieve).toHaveBeenCalledTimes(expectedRecalls);
+      expect(ledger.current().state.memoryRecalls).toHaveLength(expectedRecalls);
+      expect(ledger.current().state.calls).toHaveLength(entryActivations);
       expect(ledger.current().state.calls[0]).toMatchObject({
         callId: "call-1",
-        activationCount: 3,
+        activationCount: maximum,
         parentCallId: null,
       });
-      expect(ledger.current().state.results).toEqual([]);
+      expect(ledger.current().state.results).toHaveLength(entryActivations - 1);
+      if (policy === "supervisor-worker-v1") expect(ledger.current().state.calls[1])
+        .toMatchObject({ roleId: "worker", parentCallId: "call-1", status: "completed" });
       expect(ledger.current().state.capabilityExecutions).toEqual([]);
-      expect(harness.getAdapters).not.toHaveBeenCalled();
+      expect(harness.getAdapters).toHaveBeenCalledTimes(entryActivations - 1);
     });
   },
 );

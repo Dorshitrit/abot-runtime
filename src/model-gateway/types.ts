@@ -1,3 +1,7 @@
+import type { ModelReasoningBudgetByMode } from "../shared/model-reasoning-modes.js";
+export type { ModelReasoningBudgetByMode } from "../shared/model-reasoning-modes.js";
+import type { ModelReasoningBudget, ModelReasoningPreference } from "../shared/model-reasoning.js";
+export type { ModelReasoningBudget, ModelReasoningPreference } from "../shared/model-reasoning.js";
 import type {
   AgentMode,
   ModelReasoningLevel,
@@ -5,7 +9,7 @@ import type {
 } from "../shared/types.js";
 import type { RuntimeAttachmentReference } from "../shared/attachments.js";
 
-/** Stable adapter identifier. Built-ins currently register `ollama` and `openai`. */
+/** Stable adapter identifier. Built-ins currently register `ollama`, `openai`, and `llamacpp`. */
 export type ModelProvider = string;
 
 export type ChatTextMessage = {
@@ -127,6 +131,8 @@ export type ModelGenerationConfig = {
   temperature?: number;
   topP?: number;
   reasoningEffort?: ModelReasoningLevel;
+  reasoningBudget?: ModelReasoningBudget;
+  reasoningBudgetByMode?: ModelReasoningBudgetByMode;
 };
 
 export type ModelTokenEstimationConfig = {
@@ -221,6 +227,7 @@ export type ModelGatewayRequest = {
   modelStep?: ModelStep | string;
   modelOverride?: string;
   reasoningOverride?: ModelReasoningLevel | string;
+  reasoningPreference?: ModelReasoningPreference;
   format?: unknown;
   modelPreference?: ModelPreference;
   modelPolicy?: ModelGatewayPolicyConfig;
@@ -236,6 +243,7 @@ export type ModelGatewayInputTokenCountParams = {
   modelStep?: ModelStep;
   modelOverride?: string;
   reasoningOverride?: ModelReasoningLevel;
+  reasoningPreference?: ModelReasoningPreference;
   modelPreference?: ModelPreference;
   modelPolicy?: ModelGatewayPolicyConfig;
   abortSignal: AbortSignal;
@@ -274,6 +282,8 @@ export type ResolvedModelInvocation = {
   model: string;
   /** `none` is an explicit disable; only `undefined` permits adapter omission. */
   think?: ModelReasoningLevel;
+  reasoningBudget?: ModelReasoningBudget;
+  reasoningControlSource?: "invocation" | "request" | "configuration" | "agent-mode";
   format?: ModelGatewayFormat;
   instructions?: string[];
 };

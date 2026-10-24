@@ -9,8 +9,6 @@ import {
   EXECUTION_WORKING_DIRECTORY_PATTERN,
   canOfferCapabilityBatchSelection,
   normalizeCapabilityDescriptor,
-  normalizeCapabilityControlsSchema,
-  partitionCapabilityControlsSchema,
   type CapabilityControlsPartition,
   type CapabilityDescriptor,
 } from "../../orchestration/capability-adapters/index.js";
@@ -25,6 +23,7 @@ import {
   EXECUTION_AGENT_TITLE_MAX_LENGTH,
   type ExecutionAgentDecisionContractOptions,
 } from "./contracts.js";
+import { partitionExecutionCapabilityControls } from "./capability-controls-partition.js";
 import { projectCapabilitySelectionProperties } from "./capability-selection-schema.js";
 import { freezeControlsEvidenceEligibility } from "./controls-evidence-contract.js";
 
@@ -286,16 +285,7 @@ export function prepareExecutionAgentDecisionContract(
       if (!normalized.ok) {
         throw new Error("execution_agent_capabilities_invalid");
       }
-      const controls = normalizeCapabilityControlsSchema(
-        normalized.value.controls,
-      );
-      if (!controls.ok) {
-        throw new Error("execution_agent_capabilities_invalid");
-      }
-      const partition = partitionCapabilityControlsSchema(
-        controls.value,
-        normalized.value.selectionControlIds,
-      );
+      const partition = partitionExecutionCapabilityControls(normalized.value);
       if (!partition.ok) {
         throw new Error("execution_agent_capabilities_invalid");
       }

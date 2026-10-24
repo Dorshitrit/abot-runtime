@@ -5,6 +5,23 @@ export type LongTermMemoryOnboardingProvider = Readonly<{
   type: string;
 }>;
 
+export type SavedMemoryEmbeddingProfile = Readonly<{
+  id: string;
+  label: string;
+  providerId: string;
+  model: string;
+}>;
+
+export type LongTermMemoryEmbeddingProfileSaveResult = Readonly<{
+  status: LongTermMemoryOnboardingStatus;
+  profileId: string;
+  configPath: string;
+  backupPath?: string;
+}>;
+
+export type LongTermMemoryEmbeddingProfileRemoveResult =
+  LongTermMemoryEmbeddingProfileSaveResult & Readonly<{ removed: true }>;
+
 export type LongTermMemoryOnboardingStatus = Readonly<{
   enabled: boolean;
   emitClientEvents: boolean;
@@ -12,6 +29,7 @@ export type LongTermMemoryOnboardingStatus = Readonly<{
   providerId?: string;
   model?: string;
   providers: readonly LongTermMemoryOnboardingProvider[];
+  embeddingProfiles: readonly SavedMemoryEmbeddingProfile[];
 }>;
 
 export type LongTermMemoryOnboardingResult = Readonly<{
@@ -55,5 +73,15 @@ export type LongTermMemoryOnboardingService = Readonly<{
       abortSignal?: AbortSignal;
     }>,
   ): Promise<LongTermMemoryOnboardingResult>;
+  saveProfile(input: Readonly<{
+    providerId: string;
+    model: string;
+    label: string;
+    abortSignal?: AbortSignal;
+  }>): Promise<LongTermMemoryEmbeddingProfileSaveResult>;
+  removeProfile(input: Readonly<{
+    profileId: string;
+    abortSignal?: AbortSignal;
+  }>): Promise<LongTermMemoryEmbeddingProfileRemoveResult>;
   disable(): Promise<LongTermMemoryOnboardingResult>;
 }>;

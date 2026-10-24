@@ -1,3 +1,5 @@
+import { renderConnectionInspection } from "./connection-inspection.js";
+import { renderSetupReasoningFields, validateSetupReasoningFields } from "./reasoning-fields.js";
 import { escapeAttribute, escapeHtml, textOf } from "../../lib/text-format.js";
 import { validateContextWindowTokens } from "./context-window.js";
 import { canEditSetupConnection } from "./connection-state.js";
@@ -11,7 +13,7 @@ export function renderProviderChoices(state) {
     .map(
       (provider) => `<label class="runtime-provider-option">
     <input type="radio" name="runtimeSetupProvider" value="${escapeAttribute(provider.id)}" data-runtime-setup-field="provider" ${state.provider === provider.id ? "checked" : ""} />
-    <span><strong>${escapeHtml(provider.label)}</strong><small>${escapeHtml(provider.description || (provider.id === "ollama" ? "A model on your computer or server" : "A hosted model using your API key"))}</small></span>
+    <span><strong>${escapeHtml(provider.label)}</strong><small>${escapeHtml(provider.description || (provider.id !== "openai" ? "A model on your computer or server" : "A hosted model using your API key"))}</small></span>
   </label>`,
     )
     .join("");
@@ -66,10 +68,28 @@ export function renderConnectionFields(state) {
       error: state.contextWindowFeedback?.message,
       step: "1",
       readonly: !canEditSetupConnection(state),
-      help: "Use a value supported by your model. Larger windows need more memory with Ollama. You can change this later in Models.",
+      help: "Use a value supported by your model. Larger windows need more memory on local servers. You can change this later in Models.",
     });
+  const reasoning = renderSetupReasoningFields(state, !canEditSetupConnection(state));
+  if (providerType === "llamacpp") {
+    const address = state.existingProvider ? "" : renderConnectionField({
+      idPrefix, field: "llamacpp-base-url", label: "llama.cpp address", type: "url",
+      value: state.baseUrl, readonly: !canEditSetupConnection(state),
+      placeholder: "http://127.0.0.1:8080",
+      help: "Start llama-server separately. Use the origin reachable from the computer running ABot.",
+    });
+    const preservesExistingNoKeyConnection = state.existingProvider && selectedProvider?.requiresApiKey !== true;
+    const keepsConfiguredCredential = credentialConfigured && state.allowCredentialReplacement === false;
+    const key = preservesExistingNoKeyConnection || keepsConfiguredCredential ? "" : renderConnectionField({
+      idPrefix, field: "api-key", label: "API key (if your server requires one)", type: "password",
+      required: selectedProvider?.requiresApiKey === true && !credentialConfigured,
+      placeholder: credentialConfigured ? "Leave blank to keep your saved key" : "Optional server API key",
+      help: "Saved privately on the ABot server. Leave empty for a server without authentication.",
+    });
+    return model + address + key + renderConnectionInspection(state) + reasoning;
+  }
   if (providerType === "ollama") {
-    if (state.existingProvider) return model;
+    if (state.existingProvider) return model + reasoning;
     return (
       model +
       renderConnectionField({
@@ -81,11 +101,11 @@ export function renderConnectionFields(state) {
         readonly: !canEditSetupConnection(state),
         placeholder: "http://127.0.0.1:11434",
         help: "Use the address reachable from the computer running ABot.",
-      })
+      }) + reasoning
     );
   }
   if (credentialConfigured && state.allowCredentialReplacement === false)
-    return model;
+    return model + reasoning;
   return (
     model +
     renderConnectionField({
@@ -98,7 +118,7 @@ export function renderConnectionFields(state) {
         ? "Leave blank to keep your saved key"
         : "Enter your OpenAI API key",
       help: "Saved privately on the ABot server. Never stored in this browser.",
-    })
+    }) + reasoning
   );
 }
 
@@ -119,6 +139,7 @@ export function validateConnectionFields({
   providerType,
   baseUrl,
   existingProvider = false,
+  supportsThinking, reasoningBudgetMode, reasoningBudgetTokens,
 }) {
   const model = validateRuntimeSetupModelId(modelId);
   if (!model.valid)
@@ -126,17 +147,19 @@ export function validateConnectionFields({
   const context = validateContextWindowTokens(contextWindowTokens);
   if (!context.valid) return context;
   const input = { model: model.value, contextWindowTokens: context.value };
-  if (providerType === "ollama" && !existingProvider) {
+  if (["ollama", "llamacpp"].includes(providerType) && !existingProvider) {
     const address = validateRuntimeSetupBaseUrl(baseUrl);
     if (!address.valid)
       return {
         valid: false,
-        field: "ollama-base-url",
+        field: providerType + "-base-url",
         message: address.message,
       };
     input.baseUrl = address.value;
   }
-  return { valid: true, input };
+  const reasoning = validateSetupReasoningFields({ providerType, supportsThinking, reasoningBudgetMode, reasoningBudgetTokens });
+  if (!reasoning.valid) return reasoning;
+  return { valid: true, input: { ...input, ...reasoning.input } };
 }
 
 export function showConnectionFieldError(

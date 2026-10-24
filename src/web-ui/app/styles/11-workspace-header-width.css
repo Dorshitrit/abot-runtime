@@ -24,7 +24,7 @@
 
 /* Primary headers share one height and title style on every page. */
 .app-shell {
-  --workspace-header-height: 64px;
+  --workspace-header-height: 32px;
 }
 
 .home-workspace-header,
@@ -36,7 +36,7 @@
   flex-shrink: 0;
   align-items: center;
   align-content: center;
-  padding-block: 6px;
+  padding-block: 1px;
 }
 
 .home-workspace-header h1,
@@ -44,11 +44,34 @@
 .chat-header h2 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: var(--font-size-4xl);
+  font-size: var(--font-size-md);
   font-weight: 400;
-  line-height: 1.25;
+  line-height: 16px;
   letter-spacing: -0.015em;
 }
+
+/* Keep header actions readable inside the smaller shared row. */
+.home-workspace-header > button,
+.workspace-page-header > button,
+.workspace-page-header .toolbar-actions button,
+.sidebar-topline .icon-button {
+  height: 24px;
+  min-height: 24px;
+  padding: 1px 6px;
+  font-size: var(--font-size-xs);
+  line-height: 18px;
+}
+.home-workspace-header .home-notifications-entry { white-space: nowrap; }
+.home-notifications-entry > span:not([aria-hidden]) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sidebar-topline .icon-button { width: 24px; min-width: 24px; padding: 0; }
+.sidebar-topline .icon-button svg { width: 15px; height: 15px; }
+#sessionsHeading { font-size: var(--font-size-sm); line-height: 16px; }
+.workspace-page-header .toolbar-actions { gap: 4px; }
+.workspace-page-header .workspace-page-heading { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.workspace-page-header .workspace-page-heading h2 { min-width: 0; order: -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-header .chat-heading-copy { gap: 0; }
+.chat-header .current-project-context { font-size: 10px; line-height: 11px; }
+.workspace-page-header .product-site-link { font-size: 10px; line-height: 14px; }
 
 /* Join the brand, navigation and workspace at the shared baseline. */
 @media (min-width: 761px) {
@@ -67,36 +90,19 @@
   }
 
   .workspace-brand img {
-    width: 36px;
-    height: 36px;
-  }
-
-  .workspace-rail::before,
-  .workspace-rail::after {
-    position: absolute;
-    content: "";
-    pointer-events: none;
+    width: 18px;
+    height: 18px;
   }
 
   .workspace-rail::before {
+    position: absolute;
+    content: "";
+    pointer-events: none;
     top: calc(var(--workspace-header-height) - 1px);
     right: -1px;
     left: 0;
     height: 1px;
     background: var(--line);
-  }
-
-  .workspace-rail::after {
-    top: calc(var(--workspace-header-height) - 61px);
-    right: -100px;
-    width: 200px;
-    height: 120px;
-    background: radial-gradient(
-      ellipse,
-      color-mix(in srgb, var(--accent) 10%, transparent),
-      transparent 70%
-    );
-    filter: blur(18px);
   }
 
   .app-shell .sessions-panel {
@@ -114,8 +120,14 @@
 
 @media (max-width: 760px) {
   .app-shell {
-    --workspace-header-height: 56px;
+    --workspace-header-height: 28px;
   }
+  .home-workspace-header h1,
+  .workspace-page-header h2,
+  .chat-header h2 { font-size: var(--font-size-sm); line-height: 14px; }
+  .chat-header .current-project-context { font-size: 9px; line-height: 10px; }
+  .workspace-page-header { gap: 8px; }
+  .workspace-page-header .workspace-page-heading { gap: 6px; }
 }
 
 /* Keep narrow-screen header actions clear of the shared title. */

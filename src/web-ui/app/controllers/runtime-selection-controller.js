@@ -76,6 +76,7 @@ export function createRuntimeSelectionController({
     const label = selectedOption?.label || selected || "Environment";
     dom.agentPickerButton.hidden = false;
     dom.agentPickerButton.innerHTML = `
+      <span class="rail-icon rail-environment-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5" /></svg></span>
       <span class="rail-button-label">${escapeHtml(label)}</span>
     `;
     dom.agentPickerButton.title = `Environment: ${label}`;
@@ -174,17 +175,28 @@ export function createRuntimeSelectionController({
   }
 
   const {
-    clearSessionMode, currentToolPermissionMode, initializeSessionMode,
+    clearSessionMode, currentToolPermissionMode, initializeSessionMode: initializeToolSessionMode,
     renderPermissionMode, setToolPermissionMode,
   } = createToolPermissionModeController({
     state, dom, preferences, recordControlEvent, getComposerSessionId,
   });
 
-  const { renderAgentMode, loadAgentMode, setAgentMode } = createReasoningModeController({
-    state, dom, client, selectedEnvironmentId,
+  const { renderAgentMode, loadAgentMode, setAgentMode, selectedReasoningPreference } = createReasoningModeController({
+    state, dom, client, selectedEnvironmentId, preferences,
+    getScope: () => ({ environmentId: selectedEnvironmentId(), sessionId: getComposerSessionId() }),
     selectedModelProfile: () => hasModelCatalogFromAnotherEnvironment() ? null : selectedModelProfile(),
     reloadModels: onReasoningConfigurationApplied || loadModels, recordControlEvent,
   });
+
+  function initializeSessionMode(sessionId) {
+    initializeToolSessionMode(sessionId);
+    const environmentId = selectedEnvironmentId();
+    const profileId = dom.modelSelect.value;
+    if (preferences.loadReasoningPreference?.({ environmentId, sessionId }, profileId)) return;
+    const preference = preferences.loadReasoningPreference?.({ environmentId, sessionId: "" }, profileId);
+    if (preference) void Promise.resolve(preferences.saveReasoningPreference({ environmentId, sessionId }, profileId, preference)).catch((error) =>
+      recordControlEvent({ type: "control", name: "Thinking preference save failed", tone: "failed", summary: error.message }));
+  }
 
   function renderModels() {
     dom.modelSelect.innerHTML = "";
@@ -267,6 +279,7 @@ export function createRuntimeSelectionController({
     saveModelPreferences,
     selectedEnvironmentId,
     selectedModelPreference,
+    selectedReasoningPreference,
     selectedModelSupportsImageInput,
     setAgentMode,
     setToolPermissionMode,

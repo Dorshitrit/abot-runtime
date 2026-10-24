@@ -75,12 +75,12 @@ describe("notification backend navigation", () => {
     await f.feature.setReady();
     expect(f.dom.notificationsWorkspaceButton.hidden).toBe(true);
     expect(f.dom.notificationsWorkspaceButton.disabled).toBe(true);
-    expect(f.shell.activateWorkspace("notifications")).toBe(false);
-    expect(f.shell.prepareWorkspaceActivation("notifications")).toBeNull();
-    f.dom.notificationsWorkspaceButton.dispatch("click");
+    expect(await f.shell.activateWorkspace("notifications")).toBe(false);
+    expect(await f.shell.prepareWorkspaceActivation("notifications")).toBeNull();
+    await f.dom.notificationsWorkspaceButton.dispatch("click");
     expect(f.dom.notificationsWorkspacePanel.hidden).toBe(true);
     expect(f.client.listNotifications).not.toHaveBeenCalled();
-    expect(f.shell.activateWorkspace("config")).toBe(true);
+    expect(await f.shell.activateWorkspace("config")).toBe(true);
   });
 
   test("bootstrap enables native navigation and a backend change invalidates prepared and active views", async () => {
@@ -89,13 +89,13 @@ describe("notification backend navigation", () => {
     await f.feature.setReady();
     expect(f.dom.notificationsWorkspaceButton.hidden).toBe(false);
     expect(f.dom.notificationsWorkspaceButton.disabled).toBe(false);
-    const commit = f.shell.prepareWorkspaceActivation("notifications");
+    const commit = await f.shell.prepareWorkspaceActivation("notifications");
     f.setBackend("bridge");
     expect(commit()).toBe(false);
     f.setBackend("runtime");
-    expect(f.shell.activateWorkspace("notifications")).toBe(true);
+    expect(await f.shell.activateWorkspace("notifications")).toBe(true);
     f.setBackend("bridge");
-    expect(f.shell.activeWorkspace()).toBe("chat");
+    await vi.waitFor(() => expect(f.shell.activeWorkspace()).toBe("chat"));
     expect(f.dom.notificationsWorkspacePanel.hidden).toBe(true);
     expect(f.dom.notificationsWorkspaceButton.hidden).toBe(true);
   });
@@ -132,7 +132,7 @@ describe("notification source opening", () => {
     const f = createFixture();
     (window.location as unknown as { href: string }).href = "http://localhost/home";
     await f.feature.setReady();
-    f.shell.activateWorkspace("notifications");
+    await f.shell.activateWorkspace("notifications");
     const openSession = vi.fn(async () => true);
     f.feature.setCompanionChat({ openSession });
     await f.open({ ...notice, kind: "proposal", sessionId: "spark-companion",
@@ -145,7 +145,7 @@ describe("notification source opening", () => {
     const f = createFixture();
     (window.location as unknown as { href: string }).href = "http://localhost/home";
     await f.feature.setReady();
-    f.shell.activateWorkspace("notifications");
+    await f.shell.activateWorkspace("notifications");
     let resolveOpen!: (opened: boolean) => void;
     const openSession = vi.fn(() => new Promise<boolean>((resolve) => { resolveOpen = resolve; }));
     f.feature.setCompanionChat({ openSession });
@@ -153,7 +153,7 @@ describe("notification source opening", () => {
     await vi.waitFor(() => expect(openSession).toHaveBeenCalled());
     expect(openSession).toHaveBeenCalledWith(notice.sessionId, "2", { createdAt: 100, requestId: "r" });
     if (change === "environment") f.setEnvironment("prod");
-    else f.shell.activateWorkspace("home");
+    else await f.shell.activateWorkspace("home");
     resolveOpen(false);
     await pending;
     expect(f.assign).not.toHaveBeenCalled();
@@ -162,7 +162,7 @@ describe("notification source opening", () => {
   test("opens its source even when marking the notification read rejects", async () => {
     const f = createFixture();
     await f.feature.setReady();
-    f.shell.activateWorkspace("notifications");
+    await f.shell.activateWorkspace("notifications");
     f.client.markNotificationsRead.mockRejectedValueOnce(new Error("Read update failed"));
     await f.open();
     expect(f.client.markNotificationsRead).toHaveBeenCalledWith({ ids: ["notice"], read: true }, "dev");
@@ -173,7 +173,7 @@ describe("notification source opening", () => {
   test.each(["environment", "navigation", "backend"])("does not reopen an old source after %s changes during the read", async (change) => {
     const f = createFixture();
     await f.feature.setReady();
-    f.shell.activateWorkspace("notifications");
+    await f.shell.activateWorkspace("notifications");
     let rejectRead!: (error: Error) => void;
     f.client.markNotificationsRead.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectRead = reject; }));
     const pending = f.open();
@@ -182,12 +182,30 @@ describe("notification source opening", () => {
       f.setEnvironment("dev");
     }
     if (change === "navigation") {
-      f.shell.activateWorkspace("home");
-      f.shell.activateWorkspace("notifications");
+      await f.shell.activateWorkspace("home");
+      await f.shell.activateWorkspace("notifications");
     }
     if (change === "backend") f.setBackend("bridge");
     rejectRead(new Error("Late read failure"));
     await pending;
     expect(f.assign).not.toHaveBeenCalled();
   });
+});
+
+
+test("a pending workspace request prevents an older notification read from opening its source", async () => {
+  const f = createFixture();
+  await f.feature.setReady();
+  await f.shell.activateWorkspace("notifications");
+  let finishRead!: () => void, finishNavigation!: (accepted: boolean) => void;
+  f.client.markNotificationsRead.mockReturnValueOnce(new Promise<void>((resolve) => { finishRead = resolve; }));
+  const opening = f.open();
+  f.shell.addWorkspaceGuard(() => new Promise<boolean>((resolve) => { finishNavigation = resolve; }));
+  const navigating = f.shell.activateWorkspace("home");
+  await vi.waitFor(() => expect(finishNavigation).toBeTypeOf("function"));
+  finishRead(); await opening;
+  expect(f.assign).not.toHaveBeenCalled();
+  finishNavigation(false);
+  expect(await navigating).toBe(false);
+  expect(f.shell.activeWorkspace()).toBe("notifications");
 });

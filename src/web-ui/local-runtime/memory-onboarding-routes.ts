@@ -88,6 +88,36 @@ export class LongTermMemoryOnboardingRoutes {
       sendJson(params.response, 200, { ok: true, ...result });
       return true;
     }
+    if (params.method === "POST" && params.route === "runtime/memory/profiles") {
+      if (!acceptConfigMutationRequest(params.request, params.response)) return true;
+      const result = await withHttpRequestAbortSignal({
+        request: params.request,
+        response: params.response,
+        reason: "memory_profile_save_request_aborted",
+        run: (abortSignal) => this.currentService().saveProfile({
+          providerId: getString(params.body?.providerId),
+          model: getString(params.body?.model),
+          label: getString(params.body?.label),
+          abortSignal,
+        }),
+      });
+      sendJson(params.response, 200, { ok: true, ...result });
+      return true;
+    }
+    if (params.method === "DELETE" && params.route === "runtime/memory/profiles") {
+      if (!acceptConfigMutationRequest(params.request, params.response)) return true;
+      const result = await withHttpRequestAbortSignal({
+        request: params.request,
+        response: params.response,
+        reason: "memory_profile_remove_request_aborted",
+        run: (abortSignal) => this.currentService().removeProfile({
+          profileId: getString(params.body?.profileId),
+          abortSignal,
+        }),
+      });
+      sendJson(params.response, 200, { ok: true, ...result });
+      return true;
+    }
     if (params.method === "POST" && params.route === "runtime/memory/disable") {
       if (!acceptConfigMutationRequest(params.request, params.response))
         return true;

@@ -37,6 +37,7 @@ export function createRuntimeOnboardingFeature({
     return createRuntimeSetupGuide({
       ...common,
       loadSetup: () => runtimeClient.getRuntimeSetup(),
+      inspectConnection: (input) => runtimeClient.inspectModelConnection(input, selectedEnvironmentId()),
       openConfiguration: () => dom.modelsWorkspaceButton?.click(),
       saveSetup: (input) => runtimeClient.saveRuntimeSetup(input),
       applySetup: () =>

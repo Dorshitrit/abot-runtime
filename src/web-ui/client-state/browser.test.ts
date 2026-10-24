@@ -252,3 +252,36 @@ test("HTTP LAN browsers without randomUUID still receive distinct queue identiti
   expect(await a.claimBlockedRelease(scope, released.releaseToken)).not.toBeNull();
   expect(await b.claimBlockedRelease(scope, released.releaseToken)).toBeNull();
 });
+
+test("project collapse survives HTTP reopen and merges sibling archive and order changes", async () => {
+  const directory = await root();
+  const first = await serve(directory);
+  const preferences = createClientPreferences(first.client);
+  await preferences.saveSessionSidebar("prod", {
+    archivedSessionIds: ["old"], orderedSessionIds: ["first", "second"],
+  });
+  const second = await serve(directory);
+  const sibling = createClientPreferences(second.client);
+
+  // The sibling still has the legacy two-field record when collapse is saved.
+  await preferences.saveCollapsedProjectIds("prod", ["project-one"]);
+  await sibling.saveSessionSidebar("prod", {
+    archivedSessionIds: ["old", "new"], orderedSessionIds: ["second", "first"],
+  });
+  // This window still has the earlier archive/order values when it changes collapse.
+  await preferences.saveCollapsedProjectIds("prod", ["project-two"]);
+  await preferences.saveCollapsedProjectIds("dev", ["dev-project"]);
+
+  const reopened = createClientPreferences((await serve(directory)).client);
+  expect(reopened.loadCollapsedProjectIds("prod")).toEqual(["project-two"]);
+  expect(reopened.loadCollapsedProjectIds("dev")).toEqual(["dev-project"]);
+  expect(reopened.loadSessionSidebar("prod")).toEqual({
+    archivedSessionIds: ["old", "new"], orderedSessionIds: ["second", "first"],
+  });
+
+  await reopened.saveCollapsedProjectIds("prod", []);
+  const expanded = createClientPreferences((await serve(directory)).client);
+  expect(expanded.loadCollapsedProjectIds("prod")).toEqual([]);
+  expect(expanded.loadCollapsedProjectIds("dev")).toEqual(["dev-project"]);
+  expect(expanded.loadSessionSidebar("prod")).toEqual(reopened.loadSessionSidebar("prod"));
+}, 15_000);

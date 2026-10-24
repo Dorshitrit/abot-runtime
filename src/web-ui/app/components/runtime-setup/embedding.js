@@ -1,8 +1,16 @@
+import {
+  embeddingProviderAcceptsCredential,
+  embeddingProviderHasAddress,
+  isNewEmbeddingProviderChoice,
+  isValidEmbeddingConnectionId,
+  suggestEmbeddingConnectionId,
+} from "./embedding-provider-options.js";
 import { applySavedEmbeddingProviderReceipt } from "./embedding-provider-receipt.js";
 import { textOf } from "../../lib/text-format.js";
 import { renderEmbeddingSetup } from "./embedding-rendering.js";
 import {
   DEFAULT_OLLAMA_BASE_URL,
+  defaultSetupProviderAddress,
   validateRuntimeSetupBaseUrl,
   validateRuntimeSetupModelId,
 } from "./validation.js";
@@ -22,6 +30,8 @@ export function createEmbeddingSetupStep({
     providers: [],
     provider: "",
     model: "",
+    newProviderId: "",
+    useApiKey: false,
     baseUrl: DEFAULT_OLLAMA_BASE_URL,
     models: [],
     busy: false,
@@ -60,6 +70,8 @@ export function createEmbeddingSetupStep({
       providers: [],
       provider: "",
       model: "",
+      newProviderId: "",
+      useApiKey: false,
       baseUrl: DEFAULT_OLLAMA_BASE_URL,
       models: [],
       busy: false,
@@ -70,28 +82,22 @@ export function createEmbeddingSetupStep({
   }
 
   function invalidateConnection() {
-    const { provider, model, baseUrl } = state;
+    const { provider, model, baseUrl, newProviderId, useApiKey } = state;
     const connectionProviderChanged =
       loadedConnectionProvider !== getPreferredProvider();
     reset();
     preferConnectionProvider = connectionProviderChanged;
     state.baseUrl = baseUrl;
     if (connectionProviderChanged) return;
-    Object.assign(state, { provider, model });
+    Object.assign(state, { provider, model, newProviderId, useApiKey });
   }
 
   function retainedEmbeddingProvider() {
     const configured = selectedProvider();
     if (configured) return configured.id;
-    const isNewProviderChoice = ["new:openai", "new:ollama"].includes(
-      state.provider,
-    );
-    if (!isNewProviderChoice) return "";
-    const hasConfiguredType = state.providers.some(
-      (provider) => provider.type === state.provider.slice(4),
-    );
-    if (hasConfiguredType) return "";
-    return state.provider;
+    return isNewEmbeddingProviderChoice(state.provider, state.providers)
+      ? state.provider
+      : "";
   }
 
   function initialEmbeddingProvider(connectionProvider) {
@@ -164,7 +170,12 @@ export function createEmbeddingSetupStep({
   }
 
   async function discover() {
-    if (state.busy || !selectedProvider()) return;
+    if (
+      state.busy ||
+      !selectedProvider() ||
+      selectedProviderType() === "llamacpp"
+    )
+      return;
     await run(
       () => discoverModels(state.provider),
       (payload) => {
@@ -181,7 +192,13 @@ export function createEmbeddingSetupStep({
   }
 
   function apiKeyValue() {
-    if (selectedProviderType() !== "openai") return "";
+    if (
+      !embeddingProviderAcceptsCredential(
+        selectedProviderType(),
+        selectedProvider(),
+      )
+    )
+      return "";
     return textOf(
       container.querySelector('[data-runtime-setup-field="embedding-key"]')
         ?.value,
@@ -207,7 +224,10 @@ export function createEmbeddingSetupStep({
     const input = selectedProvider()
       ? { providerId: state.provider, model: model.value }
       : { provider: selectedProviderType(), model: model.value };
-    if (!selectedProvider() && selectedProviderType() === "ollama") {
+    if (
+      !selectedProvider() &&
+      embeddingProviderHasAddress(selectedProviderType())
+    ) {
       const address = validateRuntimeSetupBaseUrl(state.baseUrl);
       if (!address.valid) {
         state.error = address.message;
@@ -216,10 +236,22 @@ export function createEmbeddingSetupStep({
       }
       input.baseUrl = address.value;
     }
-    if (selectedProviderType() === "openai" && apiKey) input.apiKey = apiKey;
+    if (state.provider === "new:llamacpp") {
+      if (!isValidEmbeddingConnectionId(state.newProviderId)) {
+        state.error =
+          "Enter a connection ID starting with a letter, using letters, numbers, dots, underscores or hyphens.";
+        onChange();
+        return;
+      }
+      state.useApiKey = state.useApiKey || Boolean(apiKey);
+      input.newProviderId = state.newProviderId;
+      input.useApiKey = state.useApiKey;
+    }
+    if (apiKey) input.apiKey = apiKey;
     const providerSelection = {
       type: selectedProviderType(),
       providerId: input.providerId,
+      newProviderId: input.newProviderId,
     };
     let saved = false;
     try {
@@ -247,7 +279,14 @@ export function createEmbeddingSetupStep({
   function input(field, value) {
     if (state.busy) return;
     if (field === "embedding-model") state.model = value;
-    if (field === "embedding-url") state.baseUrl = value;
+    if (field === "embedding-url") {
+      if (state.baseUrl !== value) state.useApiKey = false;
+      state.baseUrl = value;
+    }
+    if (field === "embedding-connection-id") {
+      if (state.newProviderId !== value) state.useApiKey = false;
+      state.newProviderId = value;
+    }
     const action = container.querySelector(
       '.runtime-setup-action[type="submit"]',
     );
@@ -258,6 +297,11 @@ export function createEmbeddingSetupStep({
     if (state.busy || field !== "embedding-provider") return;
     clearSecret();
     state.provider = value;
+    state.useApiKey = false;
+    if (value.startsWith("new:"))
+      state.baseUrl = defaultSetupProviderAddress(selectedProviderType());
+    if (value === "new:llamacpp")
+      state.newProviderId = suggestEmbeddingConnectionId(state.providers);
     state.models = [];
     state.message = "";
     state.error = "";

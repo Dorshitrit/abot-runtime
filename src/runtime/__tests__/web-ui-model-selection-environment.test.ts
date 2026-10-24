@@ -85,7 +85,7 @@ async function fixture() {
   });
   shell.load();
   await selection.loadModels();
-  shell.activateWorkspace("chat", { focus: false });
+  await shell.activateWorkspace("chat", { focus: false });
   saved.mockClear();
   const transition = createEnvironmentTransition({
     state, dom, prepareQueueRecovery: () => true, onNavigationChange: vi.fn(),
@@ -111,7 +111,7 @@ test("automatic Home navigation during an environment change preserves the desti
   });
 
   expect(f.dom.environmentSelect.value).toBe("prod");
-  expect(f.shell.activeWorkspace()).toBe("home");
+  await vi.waitFor(() => expect(f.shell.activeWorkspace()).toBe("home"));
   expect(f.listModels).toHaveBeenLastCalledWith("prod");
   expect(f.state.sessionModels).toEqual(originalSessions);
   expect(f.state.lastModelByEnvironment).toEqual(originalEnvironments);

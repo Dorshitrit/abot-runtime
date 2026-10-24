@@ -218,7 +218,7 @@ describe("Home Co-worker quick action", () => {
     expect(learningRoot.querySelector('[data-learning-panel="insights"]')?.hidden).toBe(false);
     button.dispatch("click");
     expect(openLearning).toHaveBeenCalledTimes(2);
-    expect(learningRoot.querySelector('[data-learning-panel="settings"]')?.hidden).toBe(false);
+    await vi.waitFor(() => expect(learningRoot.querySelector('[data-learning-panel="settings"]')?.hidden).toBe(false));
     expect(learningRoot.querySelector('[data-learning-panel="insights"]')?.hidden).toBe(true);
     expect(client.configurePassiveLearning).toHaveBeenCalledTimes(1);
     expect(feature.snapshot().status.preferences).toEqual(status.preferences);

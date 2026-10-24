@@ -1,3 +1,4 @@
+import { projectCompactedCapabilityResultReceipt } from "./compacted-capability-result-receipt.js";
 import { createCapabilityResultCompactionSource } from "./capability-result-compaction-source.js";
 import { matchesCompactedExecutionResult } from "./execution-compacted-evidence.js";
 import type { OperationSupervisionEvidenceEntry } from "./operation-supervision-evidence.js";
@@ -57,6 +58,11 @@ export function resolveCompactedOperationSupervisionEvidence(
   if (!matchesRegisteredSupervisionResult(source, executionId, evidence))
     return undefined;
 
+  // Only verified output aliases can be replaced; independent summary facts stay.
+  const compactedReceipt = projectCompactedCapabilityResultReceipt({
+    ...receipt,
+    adapterResult: evidence.adapterResult,
+  });
   traceDebug("runtime.context.compaction", "supervision.evidence_reused", {
     requestId: context.requestId,
     modelStep: context.consumer,
@@ -80,7 +86,7 @@ export function resolveCompactedOperationSupervisionEvidence(
       declaredEffect: receipt.declaredEffect,
       outcome: receipt.outcome,
       observedEffect: receipt.observedEffect,
-      summary: receipt.summary,
+      summary: compactedReceipt.summary,
     }),
   });
 }
@@ -95,7 +101,8 @@ function matchesRegisteredSupervisionResult(
     acceptedAction: evidence.acceptedAction,
     adapterResult: evidence.adapterResult,
   };
-  const isNativeResultSource = source.sourceRef === `tool-result:${executionId}`;
+  const isNativeResultSource =
+    source.sourceRef === `tool-result:${executionId}`;
   if (isNativeResultSource)
     return matchesCompactedExecutionResult(source.content, exactResult);
   const canonical = createCapabilityResultCompactionSource(exactResult);

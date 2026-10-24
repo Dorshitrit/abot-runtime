@@ -7,6 +7,7 @@ import { composerProductFixture } from "./composer-product-fixture.js";
 
 type Mutation = Record<string, any>;
 export async function composerHttpFixture(options: {
+  getSettings?: NonNullable<Parameters<typeof composerProductFixture>[0]>["getSettings"];
   beforeMutation?: (input: Mutation) => Promise<Response | void>;
   afterMutation?: (input: Mutation, response: Response) => Promise<void>;
   chat?: (input: Mutation) => Promise<Response>;
@@ -42,9 +43,9 @@ export async function composerHttpFixture(options: {
     if (mutation) await options.afterMutation?.(mutation, result);
     return result;
   };
-  const f = await composerProductFixture({ fetchImpl });
+  const f = await composerProductFixture({ fetchImpl, getSettings: options.getSettings });
   return { ...f, messages, mutations, origin,
-    anotherWindow: () => composerProductFixture({ fetchImpl }),
+    anotherWindow: () => composerProductFixture({ fetchImpl, getSettings: options.getSettings }),
     async close() {
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));

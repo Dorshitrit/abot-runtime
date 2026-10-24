@@ -43,14 +43,14 @@ export async function performRootReferenceAction(
   };
   if (params.decision.action === "recall_memory") {
     await performRootMemoryRecall({ ...params, query: params.decision.query });
-    return params.resume;
+    return projectResumeAfterRootReferenceAction(params.ledger.current(), params.resume);
   }
   await performRootSkillRead({ ...params, decision: params.decision });
-  return projectResumeAfterSkillRead(params.ledger.current(), params.resume);
+  return projectResumeAfterRootReferenceAction(params.ledger.current(), params.resume);
 }
 
 /** A reference read advances the root activation without changing its completed children. */
-function projectResumeAfterSkillRead(
+function projectResumeAfterRootReferenceAction(
   head: RoleCallLedgerHead,
   resume: RoleChildReturnContext | undefined,
 ): RoleChildReturnContext | undefined {

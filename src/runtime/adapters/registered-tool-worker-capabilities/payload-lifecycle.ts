@@ -27,6 +27,7 @@ export async function prepareOperationPayload(
     executor: PayloadLifecycleEmitter;
     sharedState: ToolExecutionSharedState;
     payloadAuthor?: WorkerCapabilityPayloadAuthor;
+    allowRelatedArtifactLoading: boolean;
     call: Parameters<WorkerCapabilityPayloadAuthor["author"]>[0]["call"];
     assignmentProvenance?: Parameters<
       WorkerCapabilityPayloadAuthor["author"]
@@ -68,6 +69,7 @@ export async function prepareOperationPayload(
       handle: params.projection.handle,
       executor: params.executor,
       sharedState: params.sharedState,
+      allowRelatedArtifactLoading: params.allowRelatedArtifactLoading,
       ...(params.payloadAuthor ? { payloadAuthor: params.payloadAuthor } : {}),
       call: params.call,
       ...(params.assignmentProvenance
@@ -122,6 +124,7 @@ export async function prepareOperationPayload(
     const relatedArtifactContexts =
       await resolveRegisteredToolPayloadRelatedArtifactContexts({
         contextScope,
+        allowRelatedArtifactLoading: params.allowRelatedArtifactLoading,
         targetParam: params.projection.payloadContextPlan?.targetParam,
         controls: params.controls,
         sharedState: params.sharedState,

@@ -53,9 +53,9 @@ export function createEnvironmentTransition({ state, dom, actions, prepareQueueR
       if (environmentChangeWasDeclined(preparedQueue)) { restoreSelection(); return false; }
       if (!canCommitEnvironmentPreparations([preparedAdditional, preparedQueue, commitEnvironmentOptions])) { restoreSelection(); return false; }
       const preparedConfig = actions.beforeEnvironmentChange
-        ? actions.beforeEnvironmentChange({ from: previous, to: target }) : true;
-      if (environmentChangeWasDeclined(preparedConfig)) { restoreSelection(); return false; }
+        ? await actions.beforeEnvironmentChange({ from: previous, to: target }) : true;
       if (!hasCurrentEnvironmentSelection(operation, previous)) return false;
+      if (environmentChangeWasDeclined(preparedConfig)) { restoreSelection(); return false; }
       if (!canCommitEnvironmentPreparations([preparedAdditional, preparedQueue, preparedConfig, commitEnvironmentOptions])) { restoreSelection(); return false; }
       if (typeof preparedAdditional === "function") preparedAdditional();
       if (typeof preparedQueue === "function") preparedQueue();

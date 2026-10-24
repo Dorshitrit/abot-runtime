@@ -1,3 +1,4 @@
+import { modelReasoningControlProperties } from "../model-reasoning-controls.js";
 import type {
   ToolNormalInvocationOperation,
   ToolNormalInvocationPropertyInput,
@@ -12,6 +13,7 @@ import {
 const editableJobProperties = {
   jobId: scheduleTextField(200),
   ...scheduleDetailProperties,
+  ...modelReasoningControlProperties,
   modelProfileId: scheduleTextField(200),
   agentMode: { type: "string", enum: ["fast", "reasoning", "deep"] },
   timeZone: scheduleTimingProperties.timeZone,

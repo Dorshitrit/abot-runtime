@@ -113,7 +113,7 @@ function createScript(
   return [
     {
       step: "supervisor.decision",
-      format: "supervisor_decision",
+      format: "supervisor_delegation",
       output: encodeDecision({
         action: "invoke_role",
         roleId: "planner",
@@ -257,7 +257,7 @@ function createSeed(
       },
       defaults: { profileId: "test", steps: {} },
     },
-    modelGatewayClient: { invoke: withSupervisorPreparation(invoke), invokeRaw: vi.fn() },
+    modelGatewayClient: { invoke: withSupervisorPreparation(invoke, { classifyProcedure: () => ({ requiresProcedure: true }) }), invokeRaw: vi.fn() },
     toolPermissionMode: "full_access",
     abortSignal: new AbortController().signal,
     onAcknowledgement: vi.fn(),

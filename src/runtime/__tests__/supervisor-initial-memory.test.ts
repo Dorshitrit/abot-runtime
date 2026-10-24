@@ -9,6 +9,7 @@ import { createRoleCallLedger, resolveRoleCallTransactions } from "../orchestrat
 import { captureRoleCallLedgerCheckpoint } from "../orchestration/role-calls/checkpoint.js";
 import { createRequestRoleCallPolicy } from "../request/role-call-policy.js";
 import { deriveTestRequestExecutionScope } from "./support/request-execution-scope.js";
+import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 import {
   createMemoryRecallHarness, FINAL_RESPONSE, MEMORY_RECORD, modelMessages,
   RECALL_QUERY, REQUEST_PROMPT, recallCapsules, responseDecision,
@@ -27,7 +28,7 @@ function memoryHarness() {
   });
 }
 
-test("SUPER receives stored facts before routing, then separately authors candidates and a RAW answer", async () => {
+test("SUPER retains startup facts for separate candidate and RAW authoring after the minimal gate", async () => {
   const f = memoryHarness();
   const baseMemory = createLongTermMemoryService({
     enabled: true, repository: createInMemoryLongTermMemoryRepository(), emitClientEvents: false,
@@ -41,12 +42,14 @@ test("SUPER receives stored facts before routing, then separately authors candid
   const invoke = f.invoke.getMockImplementation()!;
   f.invoke.mockImplementation(async input => {
     expect(f.memory.retrieve).toHaveBeenCalledOnce();
-    expect(modelMessages(input).filter(message => message.content === initialMessage.content)).toEqual([initialMessage]);
+    const gate = supervisorFormatName(input) === "supervisor_procedure_gate";
+    expect(modelMessages(input).filter(message => message.content === initialMessage.content)).toEqual(gate ? [] : [initialMessage]);
+    expect(JSON.stringify(input.messages)).toContain(MEMORY_RECORD.content);
     expect(modelMessages(input).filter(message => message.role === "user" && message.content === REQUEST_PROMPT)).toHaveLength(1);
     expect(recallCapsules(input)).toEqual([]);
     if (input.modelStep === "supervisor.decision") {
       expect(prepare).not.toHaveBeenCalled();
-      expect(JSON.stringify(input.format)).toContain("recall_memory");
+      expect(JSON.stringify(input.format)).not.toContain("recall_memory");
     } else expect(prepare).toHaveBeenCalledOnce();
     return invoke(input);
   });
@@ -56,7 +59,9 @@ test("SUPER receives stored facts before routing, then separately authors candid
     "supervisor.decision", "supervisor.response", "supervisor.response",
   ]);
   for (const input of inputs) {
-    expect(modelMessages(input).filter(entry => entry.content === initialMessage.content)).toEqual([initialMessage]);
+    const gate = supervisorFormatName(input) === "supervisor_procedure_gate";
+    expect(modelMessages(input).filter(entry => entry.content === initialMessage.content)).toEqual(gate ? [] : [initialMessage]);
+    expect(JSON.stringify(input.messages)).toContain(MEMORY_RECORD.content);
     expect(modelMessages(input).filter(entry => entry.role === "user" && entry.content === REQUEST_PROMPT)).toHaveLength(1);
   }
   expect(inputs[1]!.format).toMatchObject({ name: "supervisor_memory_candidates" });
@@ -68,19 +73,30 @@ test("a model-selected recall replaces the initial reference for subsequent deci
   let decisions = 0;
   const f = createMemoryRecallHarness({
     policy: "supervisor-worker-v1",
+    classifyProcedure: () => ({ requiresProcedure: true }),
+    delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Determine the saved preference needed for the answer." }),
     retrieve: async ({ query }) => ({ available: true,
       records: [{ ...MEMORY_RECORD, content: query === REQUEST_PROMPT ? MEMORY_RECORD.content : "Explicitly recalled preference." }],
       ...(query === REQUEST_PROMPT ? { message: initialMessage } : {}),
     }),
     decide(input) {
+      if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
+      if (input.modelStep === "worker.decision") return { action: "return_result" };
+      if (input.modelStep === "worker.result") return "The answer requires the user's stored formatting preference.";
       decisions += 1;
       if (decisions === 1) {
         expect(modelMessages(input)).toContainEqual(initialMessage);
         return { action: "recall_memory", query: RECALL_QUERY, acknowledgement: "Checking memory." };
       }
+      const returned = modelMessages(input).find(({ content }) => content.includes('"kind":"runtime_child_result"'));
+      expect(returned).toBeDefined();
+      expect(JSON.parse(returned!.content)).toMatchObject({
+        childCallId: "call-2", resultRef: "result-1", roleId: "worker",
+        summary: "The answer requires the user's stored formatting preference.",
+      });
       expect(modelMessages(input)).not.toContainEqual(initialMessage);
       expect(JSON.stringify(recallCapsules(input))).toContain("Explicitly recalled preference.");
-      return responseDecision("supervisor-worker-v1");
+      return { action: "respond" };
     },
   });
   await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
@@ -95,7 +111,9 @@ test("steering retains the startup reference without an automatic refresh", asyn
   const invoke = f.invoke.getMockImplementation()!;
   let decisions = 0;
   f.invoke.mockImplementation(async input => {
-    expect(modelMessages(input)).toContainEqual(initialMessage);
+    if (supervisorFormatName(input) === "supervisor_procedure_gate") expect(modelMessages(input)).not.toContainEqual(initialMessage);
+    else expect(modelMessages(input)).toContainEqual(initialMessage);
+    expect(JSON.stringify(input.messages)).toContain(MEMORY_RECORD.content);
     if (input.modelStep === "supervisor.decision" && ++decisions === 1)
       f.requestSteering.append({ steerId: "change-style", text: "Make the answer even shorter." });
     return invoke(input);

@@ -1,3 +1,4 @@
+import { verifyPackedLlamaCppSetup } from "./packed-llamacpp-setup-probe.js";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import {
@@ -216,6 +217,7 @@ try {
   );
 
   const cliPath = join(packageDir, "dist", "src", "cli", "bin.js");
+  await verifyPackedLlamaCppSetup(cliPath, tempDir);
   const cliSource = await readFile(cliPath, "utf-8");
   if (!cliSource.startsWith("#!/usr/bin/env node")) {
     throw new Error("packed abot CLI is missing its Node.js shebang");
@@ -359,7 +361,8 @@ try {
     Object.keys(cliRunnerConfig.steps ?? {}).join(",") !==
       "context.compact,supervisor.response,execution.response" ||
     hostedModelConfig.execution?.policy !== "execution-agent-v1" ||
-    hostedModelConfig.calibration?.["context.compact"]?.timeoutMs !== 300_000;
+    hostedModelConfig.calibration?.["context.compact"]?.timeoutMs !== 300_000 ||
+    hostedModelConfig.calibration?.["toolPayload.raw"]?.timeoutMs !== 300_000;
   if (packedSetupViolatesModelDefaults) {
     throw new Error(
       "packed abot CLI did not preserve Config v2 and provider model defaults while selecting the requested default",

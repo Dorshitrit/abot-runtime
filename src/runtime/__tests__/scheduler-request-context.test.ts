@@ -89,13 +89,13 @@ describe("Root scheduled request context", () => {
       expect(
         fixture.invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep),
       ).toEqual(policy === "execution-agent-v1" ? [`${root}.decision`, `${root}.response`] : [
-        "supervisor_presentation", "supervisor_skill_selection", "supervisor_decision", "supervisor.response",
+        "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate", "supervisor.response",
       ]);
       for (const [input] of fixture.invoke.mock.calls) {
         const messages = scheduledModelMessages(input);
         expectOneActivePrompt(messages, SCHEDULED_PROMPT);
         const phase = supervisorFormatName(input);
-        if (phase === "supervisor_presentation" || phase === "supervisor_skill_selection") {
+        if (["supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate"].includes(phase ?? "")) {
           expect(originMessages(messages)).toEqual([]);
           expect(JSON.stringify(messages)).not.toContain("Earlier preference: use brief answers.");
           continue;
@@ -188,7 +188,7 @@ describe("Root scheduled request context", () => {
         expect(messages[0].content).toBe(instructions[index]);
         expectOneActivePrompt(messages, prompt);
         const phase = supervisorFormatName(input);
-        if (phase === "supervisor_presentation" || phase === "supervisor_skill_selection") {
+        if (["supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate"].includes(phase ?? "")) {
           expect(JSON.stringify(messages)).not.toContain(SCHEDULED_PROMPT);
           return;
         }

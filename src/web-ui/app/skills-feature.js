@@ -6,9 +6,8 @@ export function createSkillsFeature({ dom, client, shell, getEnvironmentId,
   mountSkillsWorkspace(dom, documentRoot);
   let view;
   const controller = createSkillsController({ client, getEnvironmentId,
-    confirmDiscard: (message) => viewport.confirm(message), render: (snapshot) => view?.render(snapshot) });
-  view = createSkillsWorkspace({ root: dom.skillsRoot, actions: controller,
-    confirmArchive: (message) => viewport.confirm(message) });
+    render: (snapshot) => view?.render(snapshot) });
+  view = createSkillsWorkspace({ root: dom.skillsRoot, actions: controller });
   view.render(controller.snapshot());
   shell.addWorkspaceGuard(({ from, to }) => {
     if (from !== "skills" || to === "skills") return true;

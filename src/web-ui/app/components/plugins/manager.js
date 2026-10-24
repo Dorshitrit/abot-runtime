@@ -68,9 +68,23 @@ export function createPluginManager({
     render,
   });
 
+  function capturePluginRemovalTarget(pluginId) {
+    const plugin = state.snapshot?.plugins?.find((entry) => entry.id === pluginId);
+    return { generation: state.mutationGeneration, plugin: JSON.stringify(plugin) };
+  }
+  function canRemovePluginTarget(pluginId, target) {
+    if (state.busy || installation.state.busy) return false;
+    if (state.mutationGeneration !== target.generation) return false;
+    const plugin = state.snapshot?.plugins?.find((entry) => entry.id === pluginId);
+    if (!plugin?.removable) return false;
+    return JSON.stringify(plugin) === target.plugin;
+  }
+
   const removal = createPluginRemoval({
     removePlugin,
     confirmRemoval,
+    captureRemovalTarget: capturePluginRemovalTarget,
+    canRemoveTarget: canRemovePluginTarget,
     getEnvironmentId,
     beginRuntimeMutation,
     endRuntimeMutation,

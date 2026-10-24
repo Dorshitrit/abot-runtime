@@ -16,7 +16,7 @@ const DEFINITION_EDITABLE = new Set([
 ]);
 const NODE_EDITABLE = new Set([
   "title", "onFailure", "operation", "controls", "payload", "modelProfileId",
-  "agentMode", "roleInstructions", "prompt", "inputs", "tools", "result",
+  "agentMode", "reasoningPreference", "roleInstructions", "prompt", "inputs", "tools", "result",
   "acceptance", "savedAgentOrigin",
 ]);
 
@@ -146,6 +146,10 @@ function mutateNode(root: MutableNode, mutation: DraftMutation): void {
         if (found.node.kind !== "tool") error("automation_graph_invalid");
         delete found.node.payload;
         delete normalized.payload;
+      }
+      if (normalized.reasoningPreference === null) {
+        delete found.node.reasoningPreference;
+        delete normalized.reasoningPreference;
       }
       Object.assign(found.node, normalized);
       return;

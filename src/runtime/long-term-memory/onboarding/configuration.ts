@@ -1,3 +1,4 @@
+import { listSavedEmbeddingProfiles, matchingEmbeddingProfileLabel, readSavedEmbeddingProfiles } from "./saved-profiles.js";
 import type { RuntimeConfigFile } from "../../config/types.js";
 import { isRecord } from "../../config/utils.js";
 import type {
@@ -12,7 +13,7 @@ export function projectOnboardingStatus(
 ): LongTermMemoryOnboardingStatus {
   const memory = isRecord(config.longTermMemory) ? config.longTermMemory : {};
   const profileId = readText(memory.embeddingProfileId);
-  const embeddingProfiles = readEmbeddingProfiles(config);
+  const embeddingProfiles = readSavedEmbeddingProfiles(config);
   const profile = profileId ? embeddingProfiles[profileId] : undefined;
   const providerId = isRecord(profile) ? readText(profile.provider) : undefined;
   const model = isRecord(profile) ? readText(profile.model) : undefined;
@@ -20,6 +21,7 @@ export function projectOnboardingStatus(
     enabled: memory.enabled === true,
     emitClientEvents: memory.emitClientEvents === true,
     providers: listConfiguredProviders(config),
+    embeddingProfiles: listSavedEmbeddingProfiles(config),
     ...(profileId ? { profileId } : {}),
     ...(providerId ? { providerId } : {}),
     ...(model ? { model } : {}),
@@ -37,7 +39,7 @@ export function buildEnabledMemoryConfig(params: {
   const memory = isRecord(params.config.longTermMemory)
     ? params.config.longTermMemory
     : {};
-  const profiles = readEmbeddingProfiles(params.config);
+  const profiles = readSavedEmbeddingProfiles(params.config);
   const existingProfile = profiles[params.profileId];
   const existingOptions = readMatchingProfileOptions({
     profile: existingProfile,
@@ -51,7 +53,7 @@ export function buildEnabledMemoryConfig(params: {
       embeddingProfiles: {
         ...profiles,
         [params.profileId]: {
-          label: "Long-term memory embeddings",
+          label: matchingEmbeddingProfileLabel(existingProfile, params.providerId, params.model) ?? "Long-term memory embeddings",
           provider: params.providerId,
           model: params.model,
           ...(existingOptions ? { options: existingOptions } : {}),
@@ -124,13 +126,6 @@ export function requireConfiguredProvider(
   if (!found) {
     throw new Error(`long_term_memory_provider_not_configured:${providerId}`);
   }
-}
-
-function readEmbeddingProfiles(
-  config: RuntimeConfigFile,
-): Record<string, unknown> {
-  const models = isRecord(config.models) ? config.models : {};
-  return isRecord(models.embeddingProfiles) ? models.embeddingProfiles : {};
 }
 
 function readText(value: unknown): string | undefined {

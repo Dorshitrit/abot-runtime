@@ -584,7 +584,6 @@ __export(index_exports, {
   default: () => index_default
 });
 module.exports = __toCommonJS(index_exports);
-var import_promises5 = require("node:fs/promises");
 
 // src/plugin-sdk/bounds.ts
 function boundText(value, options) {
@@ -1155,6 +1154,26 @@ async function collectProjectTree(context, root, depth, maxEntries, signal) {
   });
 }
 
+// plugins/project-orientation/source/project-target.ts
+var import_promises5 = require("node:fs/promises");
+function isMissingProjectTarget(error) {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+async function readProjectTargetInfo(absolutePath, signal) {
+  try {
+    return await (0, import_promises5.stat)(absolutePath);
+  } catch (error) {
+    throwIfProjectInspectionCancelled(signal);
+    if (isMissingProjectTarget(error)) {
+      throw new ProjectInspectionError(
+        "project_target_not_found",
+        "The requested project directory does not exist."
+      );
+    }
+    throw error;
+  }
+}
+
 // plugins/project-orientation/source/index.ts
 var DEFAULT_DEPTH = 3;
 var DEFAULT_MAX_ENTRIES = 200;
@@ -1189,7 +1208,7 @@ var index_default = defineRuntimePlugin((context) => {
             defaultPath: ".",
             allowedLocations: ["agent_work", "workspace"]
           });
-          const info = await (0, import_promises5.stat)(target.absolutePath);
+          const info = await readProjectTargetInfo(target.absolutePath, signal);
           if (!info.isDirectory()) {
             return failureResult({
               errorCode: "project_target_not_directory",

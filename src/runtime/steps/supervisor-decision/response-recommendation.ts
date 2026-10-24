@@ -16,7 +16,8 @@ export function canRecommendDirectSupervisorResponse(
   }>,
 ): boolean {
   if (options.resume !== undefined) return false;
-  if ((options.skillReadHead?.state.skillReads?.length ?? 0) > 0) return false;
+  // Reading guidance does not settle work. A fresh gate recommendation may
+  // accompany the direct response after preparation, still within this call.
   return options.toolResults.results.length === 0;
 }
 

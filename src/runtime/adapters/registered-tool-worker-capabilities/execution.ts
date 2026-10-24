@@ -54,6 +54,7 @@ export function projectWorkerAdapters<TContext>(
     sharedState: ToolExecutionSharedState;
     diagnostic: RegisteredToolWorkerCapabilityProviderDiagnostic;
     payloadAuthor?: WorkerCapabilityPayloadAuthor;
+    allowRelatedArtifactLoading?: boolean;
   }>,
 ): readonly WorkerCapabilityAdapter<TContext>[] {
   const projections = new Map<
@@ -94,6 +95,7 @@ export function projectWorkerAdapters<TContext>(
         executor: params.executor,
         sharedState: params.sharedState,
         diagnostic: params.diagnostic,
+        allowRelatedArtifactLoading: params.allowRelatedArtifactLoading ?? true,
         ...(params.payloadAuthor
           ? { payloadAuthor: params.payloadAuthor }
           : {}),
@@ -111,6 +113,7 @@ function createWorkerAdapter<TContext>(
     sharedState: ToolExecutionSharedState;
     diagnostic: RegisteredToolWorkerCapabilityProviderDiagnostic;
     payloadAuthor?: WorkerCapabilityPayloadAuthor;
+    allowRelatedArtifactLoading?: boolean;
   }>,
 ): WorkerCapabilityAdapter<TContext> {
   return Object.freeze({
@@ -203,6 +206,7 @@ async function prepareRegisteredToolWorkerCapability<TContext>(
     sharedState: ToolExecutionSharedState;
     diagnostic: RegisteredToolWorkerCapabilityProviderDiagnostic;
     payloadAuthor?: WorkerCapabilityPayloadAuthor;
+    allowRelatedArtifactLoading?: boolean;
   }>,
   input: WorkerCapabilityAdapterPreparationInput<TContext>,
   payloadObservability: ReturnType<typeof createDeferredPayloadObservability>,
@@ -229,6 +233,7 @@ async function prepareRegisteredToolWorkerCapability<TContext>(
     projection: params.projection,
     executor: payloadObservability.lifecycleEmitter,
     sharedState: params.sharedState,
+    allowRelatedArtifactLoading: params.allowRelatedArtifactLoading ?? true,
     ...(params.payloadAuthor ? { payloadAuthor: params.payloadAuthor } : {}),
     call: input.call,
     ...(input.assignmentProvenance

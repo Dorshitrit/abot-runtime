@@ -25,9 +25,27 @@ The production path is:
    canonical RoleCall ledger, attaches the client plan-event observer, creates
    the single canonical root, and starts the shared root kernel.
 3. The selected root contract asks its model for the next semantic action.
-   `supervisor-worker-v1` exposes the behavior-compatible Supervisor contract;
+   `supervisor-worker-v1` exposes the Supervisor contract;
    `execution-agent-v1` exposes the Execution Agent contract and root-owned
    capability actions.
+   After presentation and Skills preparation, a new Supervisor request first
+   classifies whether a procedure is required, using the current request,
+   short system policy and optional bounded passive memory as readable text.
+   Configured routing methodology is excluded from this gate and its budget.
+   Direct replies proceed to response authoring with the existing full memory.
+   Procedural requests separately choose Worker/Planner and a bounded objective,
+   or an eligible initial root memory lookup, without a tool catalog or Worker
+   capability-group selection. This phase sees
+   one exact preceding settled conversation turn (including an assistant
+   initiative) and existing bounded memory/time/path
+   references; execution owners retain captured Skill guidance and source data.
+   An initial lookup always returns to the compact gate with readable, complete
+   facts from its current receipt within the existing memory limit. Canonical
+   recall records allow only one initial lookup per steering version, subject
+   to the request-wide recall limit, even if its result is empty or unavailable.
+   Both decisions bind to the current steering version. Once a child has been
+   invoked, returned work and further memory recalls retain the existing
+   evidence-aware routing, including completion and Reviewer decisions.
 4. The role-executor registry mechanically opens the selected child, runs it,
    commits its result, and returns that result to the exact caller. A
    Supervisor or Planner that directly invokes a Worker may narrow that child
@@ -96,7 +114,9 @@ CREATE/UPDATE. An older request already waiting for approval retains its recorde
 approval through resume. Available Skills projects bounded metadata from the same
 Store; document bodies enter context only after an explicit read.
 
-The packaged read-only catalog contains ABot Studio, Computer Use, Skill Creator and Technical Work. The documents
+The packaged read-only catalog contains ABot Studio, Computer Use, Skill Creator,
+Technical Work and What Can I Do? The latter explains supported uses while
+distinguishing them from the tools actually enabled for a request. The documents
 are packaged source content, not tool action-Skills or system instructions.
 They supply procedural reference under the current objective without granting
 capabilities, permissions or completion authority. Tool catalogs and selected
@@ -318,6 +338,22 @@ work receipts and derived lineage do not cross either raw authoring boundary.
 There is no second payload or adapter pipeline for
 `execution-agent-v1`.
 
+For `execution-agent-v1`, the frozen request policy disables automatic loading
+of related files from prior artifact references before both ordinary and staged
+payload authoring. The Execution Agent gathers required source evidence through
+observation capabilities; those settled results keep their existing downstream
+projection and compaction rules. An explicitly selected edit target retains its
+own target-context loading. Supervisor/Worker artifact loading is unchanged.
+
+For ordinary observation capabilities without payload authoring, the Execution
+Agent selects the complete operation controls in its decision, including optional
+ranges and locators. Only guidance for offered observation capabilities is included
+in that decision. Accepted controls are validated and passed directly to execution;
+optional null values mean omission and retain the tool's defaults. Mutation, mixed
+and payload-authored operations retain staged Controls, and the shared descriptors
+and Supervisor/Worker partition remain unchanged. Observation guidance and the
+expanded decision schema participate in the existing context budget.
+
 When an Execution Agent operation has remaining controls, its decision selects
 `controlsEvidenceExecutionIds` from the settled executions of that same root
 call. The decision state exposes eligible IDs even after root compaction. An
@@ -510,6 +546,13 @@ checkpoint projection identifies its contents as passive evidence from the
 listed sources; an omitted fact does not establish absence or change the active
 assignment, tool authority, approval state, or completion status.
 
+Checkpoints bound exclusively to Execution Agent decision/response consumers
+use preservation guidance for unfinished implementation and transformations,
+including concrete identifiers, interfaces and their associations. Other consumer
+bindings retain their existing instructions. This changes new summary generation
+only: source fingerprints, checkpoint schemas, restore and budget policy stay
+unchanged, and previously saved summaries are not regenerated.
+
 The complete active-request checkpoint (source digests, continuation, and its
 reference envelope) has a shared token budget of 30 percent of the consuming
 model's configured context window. Generation validates the projected checkpoint
@@ -525,8 +568,11 @@ and SUPER Worker decision/result inputs retain an exact action/result reference
 when that lane remains present. If the same owner's verified checkpoint covers
 the canonical result, the notice keeps its accepted action and outcome receipt
 and refers to that checkpoint's partial source digest instead of restoring the
-raw result. The binding uses registered source bytes and fingerprints, never
-model-authored envelope labels. Uncovered and cross-call evidence keeps its
+raw result. Covered receipts replace summaries that exactly repeat registered
+tool output with a compacted-source notice; independent summaries stay unchanged.
+This also applies to the Worker's covered-results list. Canonical source bytes
+and checkpoint fingerprints remain intact. The binding uses registered source
+bytes and fingerprints, never model-authored envelope labels. Uncovered and cross-call evidence keeps its
 canonical original. The final input, including this evidence, passes ordinary
 context admission before a new checkpoint is committed. Controls and payload
 authors do not receive this current supervision capsule.

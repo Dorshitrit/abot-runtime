@@ -29,6 +29,8 @@ export const SUPERVISOR_DECISION_PHASES = Object.freeze([
   "presentation",
   "skill_selection",
   "skill_authoring",
+  "procedure_gate",
+  "delegation",
   "routing",
   "working_directory",
 ] as const);

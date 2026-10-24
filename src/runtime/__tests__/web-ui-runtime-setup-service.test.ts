@@ -69,7 +69,10 @@ describe("Web runtime setup persistence", () => {
     expect(config.models?.profiles?.default).toMatchObject({
       provider: "openai",
       model: "setup-test-model",
-      calibration: { "context.compact": { format: "json", timeoutMs: 300_000 } },
+      calibration: {
+        "context.compact": { format: "json", timeoutMs: 300_000 },
+        "toolPayload.raw": { timeoutMs: 300_000 },
+      },
     });
     const source = await readFile(configPath!, "utf8");
     expect(source).not.toContain("fixture-test-not-a-real-secret");

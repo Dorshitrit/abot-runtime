@@ -34,6 +34,7 @@ export function renderModelProviderChoices(state) {
     description: `${provider.id} · ${provider.type} · existing connection`,
   }));
   providers.push(
+    { id: "new:llamacpp", label: "New llama.cpp connection", description: "A separately running server with token reasoning controls" },
     {
       id: "new:openai",
       label: "New OpenAI connection",
@@ -50,9 +51,9 @@ export function renderModelProviderChoices(state) {
 
 export function renderModelFields(state) {
   const provider = selectedModelProvider(state);
-  const credentialConfigured = !requiresModelCredential(state);
+  const credentialConfigured = provider?.credentialConfigured === true || state.credentialSavedFor === (provider?.id || state.newProviderId);
   return `${!provider ? renderConnectionField({ field: "connection-id", label: "Connection ID", value: state.newProviderId, idPrefix: MODEL_SETUP_ID, help: "A unique name for this provider connection." }) : `<p class="runtime-setup-feedback">Using ${escapeHtml(provider.label || provider.id)} · ${escapeHtml(provider.id)}</p>`}
-    ${renderConnectionFields({ providers: [{ id: state.choice, credentialConfigured }], provider: state.choice, providerType: modelProviderType(state), existingProvider: Boolean(provider), allowCredentialReplacement: false, modelId: state.model, contextWindowTokens: state.contextWindowTokens, baseUrl: state.baseUrl, idPrefix: MODEL_SETUP_ID })}
+    ${renderConnectionFields({ ...state, providers: [{ id: state.choice, credentialConfigured, requiresApiKey: requiresModelCredential(state) }], provider: state.choice, providerType: modelProviderType(state), existingProvider: Boolean(provider), allowCredentialReplacement: false, modelId: state.model, contextWindowTokens: state.contextWindowTokens, baseUrl: state.baseUrl, idPrefix: MODEL_SETUP_ID })}
     ${renderConnectionField({ field: "profile-id", label: "Model profile ID", value: state.profileId, idPrefix: MODEL_SETUP_ID, placeholder: "Suggested from the model ID", help: "A unique name for this model in ABot. Existing model defaults will stay the same." })}`;
 }
 

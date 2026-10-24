@@ -1,3 +1,4 @@
+import type { ModelReasoningPreference } from "../../shared/model-reasoning.js";
 import { resolveModelInvocation } from "../../model-gateway/invocation-policy.js";
 import type {
   ModelGatewayFormat,
@@ -8,14 +9,16 @@ import type {
 import type { AgentMode } from "../../shared/types.js";
 import type { ModelStep } from "../../shared/model-steps.js";
 import type { RequestRunnerConfig } from "../config/runner/contracts.js";
-import { estimateConfiguredStepInstructionReserveTokens } from "../config/runner/step-instructions.js";
+import { estimateConfiguredStepInstructionReserveTokens, type ConfiguredStepInstructionPolicy } from "../config/runner/step-instructions.js";
 import type { RequestContextBudget } from "../context/request-context-contracts.js";
 
 export function resolveModelContextBudget(params: {
   runnerConfig: RequestRunnerConfig;
   agentMode: AgentMode;
   modelStep: ModelStep;
+  configuredInstructionPolicy?: ConfiguredStepInstructionPolicy;
   modelPreference?: ModelPreference;
+  reasoningPreference?: ModelReasoningPreference;
   modelPolicy?: ModelGatewayPolicyConfig;
 }): RequestContextBudget {
   const admission = resolveModelContextAdmission(params);
@@ -23,6 +26,7 @@ export function resolveModelContextBudget(params: {
     estimateConfiguredStepInstructionReserveTokens({
       runnerConfig: params.runnerConfig,
       modelStep: params.modelStep,
+      configuredInstructionPolicy: params.configuredInstructionPolicy,
       ...(admission.budget.tokenEstimation
         ? { tokenEstimation: admission.budget.tokenEstimation }
         : {}),
@@ -46,6 +50,7 @@ export function resolveModelContextAdmission(params: {
   agentMode: AgentMode;
   modelStep: ModelStep;
   modelPreference?: ModelPreference;
+  reasoningPreference?: ModelReasoningPreference;
   modelPolicy?: ModelGatewayPolicyConfig;
   requestFormat?: ModelGatewayFormat;
 }): ResolvedModelContextAdmission {
@@ -53,7 +58,8 @@ export function resolveModelContextAdmission(params: {
     agentMode: params.agentMode,
     modelStep: params.modelStep,
     ...(params.requestFormat === undefined ? {} : { format: params.requestFormat }),
-    ...(params.modelPreference
+    ...(params.reasoningPreference ? { reasoningPreference: params.reasoningPreference } : {}),
+      ...(params.modelPreference
       ? { modelPreference: params.modelPreference }
       : {}),
     ...(params.modelPolicy ? { modelPolicy: params.modelPolicy } : {}),

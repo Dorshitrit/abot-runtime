@@ -15,8 +15,25 @@ import {
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(resetDebugLoggerConfig);
 
-function supervisionSourceFixture(policy: "EA" | "SUPER") {
-  const result = settledSource();
+function supervisionSourceFixture(
+  policy: "EA" | "SUPER",
+  summary?: string,
+  output = summary,
+) {
+  const original = settledSource();
+  if (original.adapterResult?.kind !== "registered_tool_execution_result_v1")
+    throw new Error("expected_registered_result");
+  const result = {
+    ...original,
+    summary: summary ?? original.summary,
+    adapterResult: {
+      ...original.adapterResult,
+      result: {
+        ...original.adapterResult.result,
+        output: output ?? "Artifact written.",
+      },
+    },
+  };
   const { adapterResult, ...receipt } = result;
   const acceptedAction = {
     executionId: result.executionId,
@@ -81,6 +98,56 @@ test.each(["EA", "SUPER"] as const)(
     expect(
       f.store.materializeSource(result!.sourceRef, result!.sourceFingerprint),
     ).toEqual(f.source);
+  },
+);
+
+test.each(["EA", "SUPER"] as const)(
+  "%s compacted receipt does not re-embed a full result under summary",
+  (policy) => {
+    const summary = "FULL_RESULT_SUMMARY:" + "source detail ".repeat(500);
+    const f = supervisionSourceFixture(policy, summary);
+    const sourceBefore = f.store.materializeSource(
+      f.source.sourceRef,
+      f.source.sourceFingerprint,
+    );
+    const projected = resolveCompactedOperationSupervisionEvidence(
+      f.result.executionId,
+      f.evidence,
+      f.context,
+      f.compaction,
+    );
+    expect(projected).toBeDefined();
+    expect(projected!.receipt).toMatchObject({
+      executionId: f.result.executionId,
+      outcome: f.result.outcome,
+      observedEffect: f.result.observedEffect,
+    });
+    expect(projected!.receipt.summary).not.toBe(summary);
+    expect(JSON.stringify(projected)).not.toContain(summary);
+    expect(f.evidence.receipt.summary).toBe(summary);
+    expect(
+      f.store.materializeSource(f.source.sourceRef, f.source.sourceFingerprint),
+    ).toEqual(sourceBefore);
+  },
+);
+
+test.each(["EA", "SUPER"] as const)(
+  "%s preserves independent summary supplements after result compaction",
+  (policy) => {
+    for (const summary of [
+      "Output with a caveat.",
+      "Full output",
+      "Full output\n",
+    ]) {
+      const f = supervisionSourceFixture(policy, summary, "Full output ");
+      const projected = resolveCompactedOperationSupervisionEvidence(
+        f.result.executionId,
+        f.evidence,
+        f.context,
+        f.compaction,
+      );
+      expect(projected!.receipt.summary).toBe(summary);
+    }
   },
 );
 

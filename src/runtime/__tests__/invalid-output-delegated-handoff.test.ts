@@ -434,7 +434,7 @@ describe("invalid output across the complete delegated request", () => {
         output: FINAL_OUTPUT,
       });
       expect(next).toBe(script.length);
-      expect(rootWorkCalls(invoke)).toHaveLength(script.length);
+      expect(rootWorkCalls(invoke)).toHaveLength(script.length + 1);
       expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).not.toContain(
         "degraded.finalization",
       );

@@ -1,6 +1,8 @@
+import { projectSessionDisplayGroups } from "../lib/session-project-groups.js";
 import { escapeHtml } from "../lib/text-format.js";
 import { matchesSessionQuery } from "../ui-behavior.js";
 import { renderProjectSessionPreview } from "./project-session-preview.js";
+import { createProjectGroupActions } from "./project-group-actions.js";
 
 function shouldExpandProjectGroup(projectId, query, collapsedProjectIds) {
   if (String(query ?? "").trim()) return true;
@@ -9,7 +11,7 @@ function shouldExpandProjectGroup(projectId, query, collapsedProjectIds) {
 
 function createProjectGroup({
   group, query, collapsedProjectIds, busyProjectId,
-  onToggleGroup, onNewConversation, documentRoot,
+  onToggleGroup, onNewConversation, onDeleteProject, documentRoot,
 }) {
   const section = documentRoot.createElement("section");
   section.className = "project-session-group";
@@ -29,15 +31,12 @@ function createProjectGroup({
   title.dir = "auto";
   title.textContent = group.name;
   toggle.appendChild(title);
-  const chevron = documentRoot.createElement("span");
-  chevron.className = "project-group-chevron";
-  chevron.setAttribute("aria-hidden", "true");
-  toggle.appendChild(chevron);
   toggle.addEventListener("click", () => {
     content.hidden = !content.hidden;
     toggle.setAttribute("aria-expanded", String(!content.hidden));
     onToggleGroup(group.id, content.hidden);
   });
+  header.appendChild(toggle);
   const create = documentRoot.createElement("button");
   create.type = "button";
   create.className = "project-group-new";
@@ -46,7 +45,12 @@ function createProjectGroup({
   create.disabled = Boolean(busyProjectId);
   create.textContent = busyProjectId === group.id ? "…" : "+";
   create.addEventListener("click", () => void onNewConversation(group.id));
-  header.append(toggle, create);
+  const controls = documentRoot.createElement("div");
+  controls.className = "project-group-controls";
+  controls.append(create, createProjectGroupActions({
+    group, disabled: Boolean(busyProjectId), onDeleteProject, documentRoot,
+  }));
+  header.appendChild(controls);
   section.append(header, content);
   return { section, content };
 }
@@ -54,13 +58,16 @@ function createProjectGroup({
 export function renderProjectSessionGroups({
   root,
   projects,
+  deletedProjectIds = [],
   sessions,
   createSessionItem,
+  newProjectButton,
   query,
   loading,
   error,
   busyProjectId,
   onNewConversation,
+  onDeleteProject = () => {},
   onRetry,
   collapsedProjectIds = new Set(),
   expandedProjectSessionIds = new Set(),
@@ -68,31 +75,10 @@ export function renderProjectSessionGroups({
   onToggleProjectSessions = () => {},
   documentRoot = document,
 }) {
-  const groups = new Map(
-    projects.map((project) => [project.id, { ...project, sessions: [] }]),
-  );
-  const ordinary = [];
-  for (const session of sessions) {
-    const projectId = session.projectId || session.project?.id;
-    if (!projectId) {
-      ordinary.push(session);
-      continue;
-    }
-    const group = groups.get(projectId) ?? {
-      id: projectId,
-      name: session.project?.name || "Project",
-      directory: session.project?.directory || "",
-      sessions: [],
-    };
-    group.sessions.push(session);
-    groups.set(projectId, group);
-  }
+  const { groups, ordinary } = projectSessionDisplayGroups(projects, sessions, deletedProjectIds);
   let index = 0;
-  const heading = documentRoot.createElement("div");
-  heading.className = "project-section-heading";
-  heading.textContent = "Projects";
-  root.appendChild(heading);
-  for (const group of groups.values()) {
+  if (newProjectButton) root.appendChild(newProjectButton);
+  for (const group of groups) {
     const matchesProject = matchesSessionQuery(
       [group.name, group.directory],
       query,
@@ -100,7 +86,7 @@ export function renderProjectSessionGroups({
     if (!matchesProject && group.sessions.length === 0) continue;
     const { section, content } = createProjectGroup({
       group, query, collapsedProjectIds, busyProjectId,
-      onToggleGroup, onNewConversation, documentRoot,
+      onToggleGroup, onNewConversation, onDeleteProject, documentRoot,
     });
     renderProjectSessionPreview({
       content, group, query, documentRoot,

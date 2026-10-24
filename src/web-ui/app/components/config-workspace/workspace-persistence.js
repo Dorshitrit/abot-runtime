@@ -78,7 +78,7 @@ export function createConfigWorkspacePersistence({
 
   async function loadRuntimeConfig(options = {}) {
     const protectUnsaved = options.protectUnsaved !== false;
-    if (protectUnsaved && !confirmDiscardChanges("refresh configuration")) {
+    if (protectUnsaved && !await confirmDiscardChanges("refresh configuration")) {
       return false;
     }
     if (options.clearBeforeLoad === true) {

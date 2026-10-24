@@ -57,6 +57,7 @@ describe("core knowledge document store", () => {
       { skillId: "computer-use", name: "Computer Use" },
       { skillId: "skill-creator", name: "Skill Creator" },
       { skillId: "technical-work", name: "Technical Work" },
+      { skillId: "what-can-i-do", name: "What Can I Do?" },
     ]);
     for (const entry of metadata) {
       expect(entry).not.toHaveProperty("content");

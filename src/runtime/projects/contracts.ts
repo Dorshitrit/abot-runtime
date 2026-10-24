@@ -1,6 +1,10 @@
 import type { SessionProject } from "../../sessions/project-binding.js";
 
 export type RuntimeProject = SessionProject & Readonly<{ createdAt: string }>;
+export type RuntimeProjectCatalog = Readonly<{
+  projects: readonly RuntimeProject[];
+  deletedProjectIds: readonly string[];
+}>;
 export type ProjectFolder = Readonly<{ name: string; path: string }>;
 export type ProjectFolderPage = Readonly<{
   directory: string;
@@ -12,6 +16,8 @@ export type ProjectFolderPage = Readonly<{
 }>;
 export type RuntimeProjectService = Readonly<{
   list: () => Promise<readonly RuntimeProject[]>;
+  catalog: () => Promise<RuntimeProjectCatalog>;
+  delete: (projectId: string) => Promise<void>;
   get: (id: string) => Promise<RuntimeProject | null>;
   create: (input: {
     name?: string;

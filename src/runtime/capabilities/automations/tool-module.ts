@@ -1,3 +1,5 @@
+import { readCreatedModelReasoningControls, readUpdatedModelReasoningControls } from "../model-reasoning-controls.js";
+import { findAutomationStep } from "../../automations/step-evidence-effects.js";
 import { CORE_TOOL_CONTRACTS } from "../core-tool-contracts.js";
 import { Buffer } from "node:buffer";
 import { AUTOMATION_TOOL_EVENT_PRESENTATION } from "./event-presentation.js";
@@ -53,11 +55,15 @@ function jsonArray(params: Record<string, unknown>, key: string): unknown[] {
   return value;
 }
 
-function supplied(params: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
-  const patch = Object.fromEntries(keys
+function supplied(
+  params: Record<string, unknown>, keys: readonly string[],
+  parsedPatch: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const patch = { ...Object.fromEntries(keys
     .filter((key) => params[key] !== undefined)
-    .map((key) => [key, params[key]]));
-  if (Object.keys(patch).length === 0) throw new Error("automation_graph_invalid");
+    .map((key) => [key, params[key]])), ...parsedPatch };
+  const hasNoSuppliedFields = Object.keys(patch).length === 0;
+  if (hasNoSuppliedFields) throw new Error("automation_graph_invalid");
   return patch;
 }
 
@@ -198,6 +204,7 @@ async function execute(
       index: requiredInteger(params, "index"), nodeWithoutId: {
         kind: "agent", title: params.title, onFailure: params.onFailure,
         modelProfileId: params.modelProfileId, agentMode: params.agentMode,
+        ...readCreatedModelReasoningControls(params, params.modelProfileId),
         roleInstructions: params.roleInstructions, prompt: params.prompt,
         inputs: {}, tools: [], result: { kind: "text" },
       } });
@@ -223,8 +230,15 @@ async function execute(
       } });
 
   const nodeId = requiredText(params, "nodeId");
-  if (action === "edit_agent") return mutate(service, params, { kind: "update_node", nodeId,
-    patch: supplied(params, ["modelProfileId", "agentMode", "roleInstructions", "prompt"]) });
+  if (action === "edit_agent") {
+    const draft = await service.getDraft(automationId);
+    const target = draft && findAutomationStep(draft.definition.body, nodeId);
+    const previousProfileId = target?.kind === "agent" ? target.modelProfileId : undefined;
+    const profileId = params.modelProfileId ?? previousProfileId;
+    return mutate(service, params, { kind: "update_node", nodeId,
+      patch: supplied(params, ["modelProfileId", "agentMode", "roleInstructions", "prompt"],
+        readUpdatedModelReasoningControls(params, previousProfileId, profileId)) });
+  }
   if (action === "set_step_policy") return mutate(service, params, { kind: "update_node", nodeId,
     patch: supplied(params, ["title", "onFailure"]) });
   if (action === "set_agent_inputs") return mutate(service, params, { kind: "update_node", nodeId,

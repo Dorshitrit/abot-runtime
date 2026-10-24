@@ -1,3 +1,4 @@
+import { requiresProviderCredential } from "./runtime-setup-auth.js";
 import { readDefaultContextWindowTokens } from "../../../scripts/runtime-setup-files.js";
 import { getConfigDashboardSnapshot } from "../config-dashboard-backend.js";
 import { inspectRuntimeConfigFileWithMeta } from "../../runtime/config/loader.js";
@@ -35,7 +36,7 @@ export async function getModelSetupCatalog(options: ModelSetupOptions) {
       async ([id, value]) => {
         const provider = modelConfigMap(value);
         const type = String(provider.type);
-        const requiresApiKey = type === "openai";
+        const requiresApiKey = requiresProviderCredential(provider);
         const apiKeyEnv =
           typeof provider.apiKeyEnv === "string"
             ? provider.apiKeyEnv
@@ -45,6 +46,7 @@ export async function getModelSetupCatalog(options: ModelSetupOptions) {
           type,
           label: id,
           requiresApiKey,
+          ...(type === "llamacpp" ? { supportsOptionalApiKey: true } : {}),
           credentialConfigured:
             requiresApiKey &&
             (await hasRuntimeSetupCredential(options.rootDir, apiKeyEnv)),

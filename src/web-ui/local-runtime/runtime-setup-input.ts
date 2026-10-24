@@ -3,6 +3,9 @@ import {
   parseContextWindowTokens,
 } from "../../../scripts/runtime-setup-files.js";
 
+import { parseSetupModelOptions, type SetupModelOptions } from "../../../scripts/runtime-setup-model-options.js";
+import { defaultProviderAddress, supportsProviderAddress } from "../../../scripts/runtime-setup-provider-options.js";
+
 export class RuntimeSetupError extends Error {
   constructor(
     readonly code: string,
@@ -13,8 +16,8 @@ export class RuntimeSetupError extends Error {
   }
 }
 
-export type RuntimeSetupInput = Readonly<{
-  provider: "openai" | "ollama";
+export type RuntimeSetupInput = SetupModelOptions & Readonly<{
+  provider: "openai" | "ollama" | "llamacpp";
   model: string;
   contextWindowTokens?: number;
   baseUrl?: string;
@@ -77,13 +80,21 @@ export function parseRuntimeSetupInput(
       "Context window must be a positive whole number of tokens.",
     );
   }
+  let modelOptions: SetupModelOptions;
+  try {
+    modelOptions = parseSetupModelOptions(body ?? {});
+  } catch (error) {
+    throw new RuntimeSetupError("invalid_setup_reasoning", (error as Error).message);
+  }
   const provider = readSetupString(body?.provider);
-  if (provider !== "openai" && provider !== "ollama") {
+  if (provider !== "openai" && provider !== "ollama" && provider !== "llamacpp") {
     throw new RuntimeSetupError(
       "invalid_setup_provider",
-      "Choose OpenAI or Ollama.",
+      "Choose OpenAI, Ollama or llama.cpp.",
     );
   }
+  if (modelOptions.reasoningBudget && provider !== "llamacpp")
+    throw new RuntimeSetupError("invalid_setup_reasoning", "A token reasoning budget requires llama.cpp.");
   const model = readSetupString(body?.model);
   if (!isUsableModelIdentifier(model)) {
     throw new RuntimeSetupError(
@@ -108,13 +119,13 @@ export function parseRuntimeSetupInput(
   if (provider === "openai" && requestedBaseUrl) {
     throw new RuntimeSetupError(
       "unexpected_setup_base_url",
-      "A custom address is available for Ollama.",
+      "A custom address is available for Ollama or llama.cpp.",
     );
   }
   let baseUrl: string | undefined;
-  if (provider === "ollama") {
+  if (supportsProviderAddress(provider)) {
     try {
-      baseUrl = parseBaseUrl(requestedBaseUrl || "http://127.0.0.1:11434");
+      baseUrl = parseBaseUrl(requestedBaseUrl || defaultProviderAddress(provider)!);
     } catch {
       throw new RuntimeSetupError(
         "invalid_setup_base_url",
@@ -123,6 +134,7 @@ export function parseRuntimeSetupInput(
     }
   }
   return {
+    ...modelOptions,
     provider,
     model,
     ...(contextWindowTokens !== undefined ? { contextWindowTokens } : {}),

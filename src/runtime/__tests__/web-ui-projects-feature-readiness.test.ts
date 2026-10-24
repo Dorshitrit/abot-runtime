@@ -27,7 +27,7 @@ function fixture() {
     currentProjectContext: element(), sessionsPanel: element(), sessionsToggleButton: element() };
   const client = projectClient();
   const state = { currentSessionId: "existing", sessionViewVersion: 1, sessions: [] };
-  const shell = { showToast: vi.fn(), activateWorkspace: vi.fn(() => true), setSessionsDrawerOpen: vi.fn() };
+  const shell = { showToast: vi.fn(), activateWorkspace: vi.fn<() => boolean | Promise<boolean>>(() => true), setSessionsDrawerOpen: vi.fn() };
   const conversationSession = { openSession: vi.fn(async () => {}), loadSessions: vi.fn(async () => {}) };
   projectView.render.mockClear();
   const feature = createProjectsFeature({ dom, client, state, shell, conversationSession,
@@ -53,7 +53,7 @@ describe("Projects feature readiness wiring", () => {
     expect(f.client.listProjects).toHaveBeenCalledExactlyOnceWith("prod");
     f.dom.newProjectButton.dispatch("click");
     expect(f.shell.activateWorkspace).toHaveBeenCalledOnce();
-    expect(f.dom.messagesList.inert).toBe(true);
+    await vi.waitFor(() => expect(f.dom.messagesList.inert).toBe(true));
   });
 
   test("readiness loss releases the draft overlay, then restores its input without touching the conversation", async () => {
@@ -61,6 +61,7 @@ describe("Projects feature readiness wiring", () => {
     f.setReady(true);
     await f.feature.runtimeAvailabilityChanged();
     f.dom.newProjectButton.dispatch("click");
+    await vi.waitFor(() => expect(f.dom.messagesList.inert).toBe(true));
     projectView.updateDraft("name", "Unsubmitted project");
     projectView.updateDraft("directory", "/chosen/folder");
     f.setReady(false);
@@ -73,10 +74,25 @@ describe("Projects feature readiness wiring", () => {
     await f.feature.runtimeAvailabilityChanged();
     const restored: ProjectCreationDraft = projectView.render.mock.calls.at(-1)![0];
     expect(restored).toMatchObject({ name: "Unsubmitted project", directory: "/chosen/folder", saving: false });
-    expect(f.dom.messagesList.inert).toBe(true);
+    await vi.waitFor(() => expect(f.dom.messagesList.inert).toBe(true));
     expect(f.state.currentSessionId).toBe("existing");
     expect(f.conversationSession.openSession).not.toHaveBeenCalled();
     expect(f.client.createProject).not.toHaveBeenCalled();
     expect(f.client.createProjectSession).not.toHaveBeenCalled();
   });
+});
+
+test.each(["cancel", "conversation", "ready", "approve"] as const)("project creation awaits workspace approval and rechecks %s", async (change) => {
+  const f = fixture();
+  f.setReady(true);
+  await f.feature.runtimeAvailabilityChanged();
+  let approve!: (value: boolean) => void;
+  f.shell.activateWorkspace.mockImplementation(() => new Promise<boolean>((resolve) => { approve = resolve; }));
+  f.dom.newProjectButton.dispatch("click");
+  expect(f.dom.messagesList.inert).toBe(false);
+  if (change === "conversation") f.state.sessionViewVersion += 1;
+  if (change === "ready") f.setReady(false);
+  approve(change !== "cancel");
+  await Promise.resolve();
+  expect(f.dom.messagesList.inert).toBe(change === "approve");
 });

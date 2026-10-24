@@ -1,19 +1,35 @@
-import { escapeAttribute, escapeHtml, textOf } from "../lib/text-format.js";
+import {
+  bindSavedEmbeddingProfiles,
+  matchingSelectedEmbeddingProfile,
+  hasUnavailableSelectedEmbeddingProfile,
+  isConfiguredEmbeddingProfile,
+  savedEmbeddingProfiles,
+  selectedEmbeddingProfile,
+} from "./long-term-memory/saved-embedding-profiles.js";
+import { renderMemorySetup } from "./long-term-memory/setup-rendering.js";
+import { textOf } from "../lib/text-format.js";
 
 export function createLongTermMemorySetup({
   getEnvironmentId = () => "",
   loadStatus,
   discoverModels,
   enableMemory,
+  saveProfile,
+  removeProfile,
   disableMemory,
   recordControlEvent,
   beginRuntimeMutation = () => true,
   refreshRuntimeConfig = async () => true,
   endRuntimeMutation = () => {},
+  onAddConnection,
+  onEnvironmentChanged = () => {},
 }) {
   const state = {
     root: null,
     status: null,
+    selectedProfileId: "",
+    removingProfileId: "",
+    profileLabel: "",
     models: [],
     discoverySupported: false,
     busy: "",
@@ -29,20 +45,25 @@ export function createLongTermMemorySetup({
     render();
   }
 
-  async function load() {
+  async function load(options = {}) {
     const revision = ++state.loadRevision;
     state.actionRevision += 1;
     const environmentId = getEnvironmentId();
     const environmentChanged = state.environmentId !== environmentId;
     if (environmentChanged) {
+      onEnvironmentChanged();
       state.environmentId = environmentId;
       state.status = null;
+      state.selectedProfileId = "";
+      state.removingProfileId = "";
+      state.profileLabel = "";
       state.models = [];
       state.discoverySupported = false;
     }
     state.busy = "status";
     clearFeedback();
-    render({ preserveInputs: !environmentChanged });
+    const preserveInputs = !environmentChanged && options.preserveInputs !== false;
+    render({ preserveInputs });
     try {
       const payload = await loadStatus(environmentId);
       if (
@@ -51,7 +72,12 @@ export function createLongTermMemorySetup({
       ) {
         return false;
       }
+      const hadStatus = Boolean(state.status);
       state.status = payload.status || null;
+      if (!preserveInputs || !hadStatus) {
+        state.selectedProfileId = state.status?.profileId || "";
+        state.profileLabel = selectedEmbeddingProfile(state)?.label || "";
+      }
       return true;
     } catch (error) {
       if (
@@ -68,7 +94,7 @@ export function createLongTermMemorySetup({
         environmentId === getEnvironmentId()
       ) {
         state.busy = "";
-        render();
+        render({ preserveInputs });
       }
     }
   }
@@ -93,6 +119,15 @@ export function createLongTermMemorySetup({
   }
 
   async function enable() {
+    if (state.busy) return;
+    if (saveProfile && !selectedEmbeddingProfile(state)) {
+      showError("Save the profile before testing and enabling memory.");
+      return;
+    }
+    if (hasUnavailableSelectedEmbeddingProfile(state)) {
+      showError("This saved profile's provider is unavailable. Choose an available profile or connection.");
+      return;
+    }
     const providerId = selectedProviderId();
     const model = textOf(
       state.root?.querySelector("[data-memory-model]")?.value,
@@ -111,14 +146,46 @@ export function createLongTermMemorySetup({
             providerId,
             model,
             emitClientEvents,
+            ...(matchingSelectedEmbeddingProfile(state, providerId, model)
+              ? { profileId: state.selectedProfileId }
+              : {}),
           },
           environmentId,
         ),
       (payload) => {
         state.status = payload.status || null;
+        state.selectedProfileId = state.status?.profileId || state.selectedProfileId;
         state.message =
-          "Embedding probe passed. Memory is enabled; restart ABot to apply it.";
+          "Connection test passed. Memory configuration saved. Apply the configuration to use it.";
         recordResult("Long-term memory enabled", payload);
+      },
+    );
+  }
+
+  async function saveEmbeddingProfile() {
+    if (!saveProfile || state.busy || selectedEmbeddingProfile(state)) return;
+    if (hasUnavailableSelectedEmbeddingProfile(state)) {
+      showError("This saved profile's provider is unavailable. Choose an available profile or connection.");
+      return;
+    }
+    const providerId = selectedProviderId();
+    const model = currentModelValue();
+    const label = state.profileLabel.trim();
+    if (!providerId || !model || !label) {
+      showError("Choose a provider, enter a model ID and give the profile a name.");
+      return;
+    }
+    await runRuntimeMutation(
+      "save-profile",
+      (environmentId) => saveProfile({ providerId, model, label }, environmentId),
+      (payload) => {
+        state.status = payload.status || null;
+        state.selectedProfileId = payload.profileId || "";
+        state.profileLabel = selectedEmbeddingProfile(state)?.label || label;
+        state.message = "Embedding profile saved. The active memory configuration has not changed.";
+        recordControlEvent({
+          type: "control", name: "Embedding profile saved", tone: "done", summary: label,
+        });
       },
     );
   }
@@ -133,6 +200,19 @@ export function createLongTermMemorySetup({
         recordResult("Long-term memory disabled", payload);
       },
     );
+  }
+
+  async function addConnection() {
+    if (state.busy || !onAddConnection) return;
+    try {
+      await onAddConnection({
+        emitClientEvents:
+          state.root?.querySelector("[data-memory-events]")?.checked === true,
+        ...(state.status?.profileId ? { profileId: state.status.profileId } : {}),
+      });
+    } catch {
+      showError("Embedding connection setup could not be opened. Try again.");
+    }
   }
 
   async function runRuntimeMutation(name, request, applyResult) {
@@ -198,58 +278,62 @@ export function createLongTermMemorySetup({
   function render(options = {}) {
     if (!state.root) return;
     const status = state.status || {};
-    const providers = Array.isArray(status.providers) ? status.providers : [];
+    const profile = selectedEmbeddingProfile(state);
     const preserveInputs = options.preserveInputs !== false;
-    const selectedProvider =
-      (preserveInputs ? selectedProviderId() : "") ||
-      status.providerId ||
-      providers[0]?.id ||
-      "";
-    const selectedModel =
-      (preserveInputs ? currentModelValue() : "") || status.model || "";
-    const enabled = status.enabled === true;
-    state.root.innerHTML = `
-      <section class="memory-setup-card" aria-busy="${state.busy ? "true" : "false"}">
-        <div class="memory-setup-heading">
-          <div>
-            <p class="eyebrow">passive memory</p>
-            <h4>Long-term memory</h4>
-            <p>Retrieve relevant memories across sessions while keeping storage and policy in the Runtime core.</p>
-          </div>
-          <span class="memory-status ${enabled ? "enabled" : "disabled"}">${enabled ? "Enabled" : "Disabled"}</span>
-        </div>
-        <div class="memory-setup-fields">
-          <label>
-            <span>Embedding provider</span>
-            <select data-memory-provider ${state.busy ? "disabled" : ""}>
-              ${providerOptions(providers, selectedProvider)}
-            </select>
-          </label>
-          <label>
-            <span>Embedding model</span>
-            <input data-memory-model list="memoryEmbeddingModels" value="${escapeAttribute(selectedModel)}" placeholder="Enter a provider model ID" ${state.busy ? "disabled" : ""} />
-            <datalist id="memoryEmbeddingModels">${state.models
-              .map(
-                (model) =>
-                  `<option value="${escapeAttribute(textOf(model))}"></option>`,
-              )
-              .join("")}</datalist>
-          </label>
-          <label class="memory-events-toggle">
-            <input data-memory-events type="checkbox" ${status.emitClientEvents === true ? "checked" : ""} ${state.busy ? "disabled" : ""} />
-            <span>Show bounded memory lifecycle events to clients</span>
-          </label>
-        </div>
-        <div class="memory-setup-actions">
-          <button type="button" data-memory-action="discover" ${state.busy ? "disabled" : ""}>Discover models</button>
-          <button type="button" data-memory-action="enable" ${state.busy ? "disabled" : ""}>Probe and enable</button>
-          <button type="button" data-memory-action="disable" ${!enabled || state.busy ? "disabled" : ""}>Disable</button>
-        </div>
-        ${feedbackMarkup()}
-        <p class="memory-setup-note">ABot never chooses or installs an embedding model. Configuration is written only after a real probe succeeds.</p>
-      </section>
-    `;
+    const defaultProvider = profile?.providerId || status.providerId || status.providers?.[0]?.id || "";
+    const defaultModel = profile?.model || (saveProfile ? "" : status.model || "");
+    const selectedProvider = preserveInputs && !profile
+      ? state.root.querySelector("[data-memory-provider]")?.value ?? defaultProvider
+      : defaultProvider;
+    const selectedModel = preserveInputs && !profile
+      ? state.root.querySelector("[data-memory-model]")?.value ?? defaultModel
+      : defaultModel;
+    const emitClientEvents = preserveInputs
+      ? state.root.querySelector("[data-memory-events]")?.checked ?? status.emitClientEvents === true
+      : status.emitClientEvents === true;
+    state.root.innerHTML = renderMemorySetup({
+      state, selectedProvider, selectedModel, emitClientEvents,
+      canSave: Boolean(saveProfile), canRemove: Boolean(removeProfile),
+      canAddConnection: Boolean(onAddConnection),
+    });
+    bindSavedEmbeddingProfiles({
+      state,
+      onSelected: () => {
+        state.models = [];
+        clearFeedback();
+        render({ preserveInputs: false });
+      },
+      onChange: render,
+      onRemove: removeEmbeddingProfile,
+    });
     bindActions();
+  }
+
+  async function removeEmbeddingProfile(profileId) {
+    if (!removeProfile || state.busy) return;
+    if (isConfiguredEmbeddingProfile(state, profileId)) {
+      showError("Choose another memory profile before removing this one.");
+      return;
+    }
+    const profile = savedEmbeddingProfiles(state.status).find((entry) => entry.id === profileId);
+    if (!profile || state.removingProfileId !== profileId) return;
+    await runRuntimeMutation(
+      "remove-profile",
+      (environmentId) => removeProfile({ profileId }, environmentId),
+      (payload) => {
+        state.status = payload.status || null;
+        state.removingProfileId = "";
+        if (state.selectedProfileId === profileId) {
+          state.selectedProfileId = state.status?.profileId || "";
+          state.profileLabel = selectedEmbeddingProfile(state)?.label || "";
+          render({ preserveInputs: false });
+        }
+        state.message = "Profile removed. Stored memories and connections are unchanged.";
+        recordControlEvent({
+          type: "control", name: "Embedding profile removed", tone: "done", summary: profile.label,
+        });
+      },
+    );
   }
 
   function bindActions() {
@@ -258,7 +342,9 @@ export function createLongTermMemorySetup({
         const action = button.dataset.memoryAction;
         if (action === "discover") void discover();
         else if (action === "enable") void enable();
+        else if (action === "save-profile") void saveEmbeddingProfile();
         else if (action === "disable") void disable();
+        else if (action === "add-connection") void addConnection();
       });
     });
   }
@@ -294,15 +380,6 @@ export function createLongTermMemorySetup({
       : "The provider returned no installed models.";
   }
 
-  function feedbackMarkup() {
-    if (state.error) {
-      return `<p class="memory-setup-feedback error-text" role="alert">${escapeHtml(state.error)}</p>`;
-    }
-    return state.message
-      ? `<p class="memory-setup-feedback" role="status">${escapeHtml(state.message)}</p>`
-      : "";
-  }
-
   function recordResult(name, payload) {
     recordControlEvent({
       type: "control",
@@ -315,18 +392,6 @@ export function createLongTermMemorySetup({
   }
 
   return { load, mount };
-}
-
-function providerOptions(providers, selectedProvider) {
-  if (providers.length === 0) {
-    return '<option value="">No configured providers</option>';
-  }
-  return providers
-    .map((provider) => {
-      const selected = provider.id === selectedProvider ? "selected" : "";
-      return `<option value="${escapeAttribute(provider.id)}" ${selected}>${escapeHtml(provider.id)} · ${escapeHtml(provider.type)}</option>`;
-    })
-    .join("");
 }
 
 function errorMessage(error) {

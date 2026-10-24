@@ -24,7 +24,11 @@
 
 @media (min-width: 761px) {
   .workspace-brand {
-    flex-direction: column;
-    gap: 1px;
+    flex-direction: row;
+    gap: 7px;
+  }
+  .workspace-brand .product-site-link {
+    font-size: 10px;
+    line-height: 14px;
   }
 }

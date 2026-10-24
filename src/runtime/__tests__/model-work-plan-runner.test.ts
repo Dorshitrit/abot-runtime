@@ -322,10 +322,11 @@ describe("EA model work-plan declarations through the shared request runner", ()
       if (decisions === 3)
         return {
           action: "invoke_capability",
-          capabilityId: "fixture.observe",
-          intent: "Inspect record-1.txt.",
+          capabilityId: "fixture.update",
+          intent: "Update record-1.txt.",
           workingDirectory: ".",
-          operationObjective: "Inspect the first requested record.",
+          operationObjective:
+            "Apply the bounded update to the first requested record.",
           controlsEvidenceExecutionIds: [],
           workPlan: report(state, "adopt", [
             { itemId: "write", status: "in_progress" },
@@ -337,9 +338,16 @@ describe("EA model work-plan declarations through the shared request runner", ()
     });
     const original =
       fixture.request.workerCapabilities.provider.getAdapters()[0]!;
-    const descriptor = { ...original.descriptor, selectionControlIds: [] };
+    const descriptor = {
+      ...original.descriptor,
+      capabilityId: "fixture.update",
+      summary: "Apply one bounded record update.",
+      effect: "mutation" as const,
+      selectionControlIds: [],
+    };
     const request = createTestRequestExecutionScope({
       ...fixture.request,
+      prompt: "Update both supplied records and report the result.",
       workerCapabilityProvider: {
         getDescriptors: () => [descriptor],
         getAdapters: () => [{ ...original, descriptor }],

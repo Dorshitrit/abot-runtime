@@ -1,3 +1,4 @@
+import { ModelReasoningConfigurationError } from "../../shared/model-reasoning.js";
 import {
   ModelInvocationResolutionError, resolveModelInvocation,
 } from "../../model-gateway/invocation-policy.js";
@@ -49,6 +50,7 @@ function invocationDependency(input: {
   try {
     const invocation = resolveModelInvocation({
       agentMode: input.node.agentMode, modelPreference,
+      ...(input.node.reasoningPreference ? { reasoningPreference: input.node.reasoningPreference } : {}),
       modelStep: input.modelStep, modelPolicy: input.modelPolicy,
     });
     // Unused calibration slots and display labels are not execution dependencies.
@@ -59,7 +61,7 @@ function invocationDependency(input: {
     });
     return { ...dependency, ...invocation, profile, timeoutMs: timeout.timeoutMs };
   } catch (error) {
-    if (!(error instanceof ModelInvocationResolutionError)) throw error;
+    if (!(error instanceof ModelInvocationResolutionError) && !(error instanceof ModelReasoningConfigurationError)) throw error;
     return { ...dependency, unavailable: error.code };
   }
 }
@@ -74,7 +76,7 @@ export function projectAutomationModelDependencies(config: RuntimeConfig, nodes:
     : config.models;
   const selected = new Map<string, { node: AgentNode; hasTools: boolean }>();
   for (const node of nodes) {
-    const key = JSON.stringify([node.modelProfileId, node.agentMode]);
+    const key = JSON.stringify(node.reasoningPreference ? [node.modelProfileId, node.agentMode, node.reasoningPreference] : [node.modelProfileId, node.agentMode]);
     const hasTools = node.tools.length > 0 || selected.get(key)?.hasTools === true;
     selected.set(key, { node, hasTools });
   }

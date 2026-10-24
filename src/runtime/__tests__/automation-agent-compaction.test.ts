@@ -1,4 +1,5 @@
-import { semanticCompactionDigestSlots } from "./support/semantic-compaction-model-fixture.js";
+import { semanticCompactionReplacementSlots } from "./support/semantic-compaction-replacement-fixture.js";
+import { readCompactionEnvelope } from "./support/semantic-compaction-contract-fixture.js";
 import { afterEach, expect, test } from "vitest";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import { createAutomationAgentAssignment } from "../automations/agent-assignment.js";
@@ -11,10 +12,8 @@ import {
 } from "./support/automation-agent-tool-fixture.js";
 
 type Fixture = Awaited<ReturnType<typeof createSchedulerRuntimeFixture>>;
-type CompactionInput = Readonly<{
+type CompactionInput = ReturnType<typeof readCompactionEnvelope> & Readonly<{
   currentRequest: string;
-  newSources?: readonly Readonly<{ sourceRef: string; content: string }>[];
-  sourceSlice?: Readonly<{ sourceRef: string }>;
 }>;
 
 const fixtures: Fixture[] = [];
@@ -46,9 +45,7 @@ function compactedOutput(input: CompactionInput) {
       blockers: [],
       nextStep: "Return the grounded result under the original assignment.",
     },
-    sourceDigests: semanticCompactionDigestSlots(
-      sourceRefs.map(() => sourceFact),
-    ),
+    sourceDigests: semanticCompactionReplacementSlots(input, () => sourceFact),
   });
 }
 
@@ -95,9 +92,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       }
       if (input.modelStep !== "context.compact") return scriptedInvoke(input);
       const messages = input.messages as readonly ChatMessage[];
-      const compactInput = JSON.parse(
-        messages.at(-1)!.content,
-      ) as CompactionInput;
+      const compactInput = readCompactionEnvelope(messages) as CompactionInput;
       compactInputs.push(compactInput);
       return { text: compactedOutput(compactInput), meta: {} };
     });

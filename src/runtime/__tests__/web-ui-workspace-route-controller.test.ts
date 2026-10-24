@@ -110,8 +110,10 @@ function createHarness(
     sessionId = "session-a";
     onNavigationChange();
   });
-  const changeEnvironment = vi.fn(async (value: string) => {
+  const changeEnvironment = vi.fn(async (value: string, options?: { commitEnvironmentOptions?: (() => boolean) & { canCommit?: () => boolean } }) => {
     if (!allowEnvironment) return false;
+    if (options?.commitEnvironmentOptions?.canCommit?.() === false) return false;
+    if (options?.commitEnvironmentOptions?.() === false) return false;
     environment = value;
     sessionId = "";
     return true;
@@ -308,17 +310,18 @@ describe("Web UI route restoration", () => {
     f.dom.modelsWorkspaceButton.dispatch("click");
     await settle();
     f.dom.configWorkspaceButton.dispatch("click");
+    await settle();
     f.shell.activateOperationsTab("health");
     await settle();
-    expect(f.entries).toHaveLength(3);
-    f.viewport.history.go(-1);
+    expect(f.entries).toHaveLength(4);
+    f.viewport.history.go(-2);
     await settle();
     expect(f.configuration.activeCategory()).toBe("models");
     expect(f.address()).toBe("/models?environment=dev");
     f.viewport.history.go(-1);
     await settle();
     expect(f.shell.activeWorkspace()).toBe("home");
-    f.viewport.history.go(2);
+    f.viewport.history.go(3);
     await settle();
     expect(f.configuration.activeCategory()).toBe("operations");
     expect(f.shell.activeOperationsTab()).toBe("health");
@@ -327,7 +330,7 @@ describe("Web UI route restoration", () => {
   test("canceled Back preserves the guarded screen and history entries", async () => {
     const f = createHarness();
     await f.start();
-    f.shell.activateWorkspace("config");
+    await f.shell.activateWorkspace("config");
     await settle();
     const address = f.address();
     f.allowWorkspace(false);
@@ -402,7 +405,7 @@ describe("Web UI route restoration", () => {
 
     await f.visit("/chat?environment=dev&session=session-b");
     expect(f.loadSessions).toHaveBeenCalledOnce();
-    f.shell.activateWorkspace("config");
+    await f.shell.activateWorkspace("config");
     finishLoading([{ id: "session-b" }]);
     await settle();
 
@@ -465,7 +468,7 @@ describe("Web UI route restoration", () => {
         commitRouteNavigation: expect.any(Function),
       }),
     );
-    f.shell.activateWorkspace("config");
+    await f.shell.activateWorkspace("config");
     finishOpening();
     await starting;
 
@@ -500,7 +503,7 @@ describe("Web UI route restoration", () => {
     f.allowEnvironment(false);
     await f.visit("/chat?environment=prod&session=session-b");
     expect(f.changeEnvironment).toHaveBeenCalledWith("prod", {
-      restoreSession: false,
+      restoreSession: false, commitEnvironmentOptions: expect.any(Function),
     });
     expect(f.openSession).toHaveBeenCalledTimes(1);
     expect(f.address()).toBe("/chat?environment=dev&session=session-a");

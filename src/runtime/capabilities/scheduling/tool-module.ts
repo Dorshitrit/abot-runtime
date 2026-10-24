@@ -1,3 +1,4 @@
+import { readCreatedModelReasoningControls, readUpdatedModelReasoningControls } from "../model-reasoning-controls.js";
 import { CORE_TOOL_CONTRACTS } from "../core-tool-contracts.js";
 import type {
   ToolExecutionContext,
@@ -57,11 +58,13 @@ function scheduleInput(
 function updateInput(
   params: Record<string, unknown>,
   config: RuntimeConfig,
+  modelProfileId: string,
 ): UpdateSchedulerJobInput {
   if (params.modelProfileId !== undefined) {
     requireAvailableScheduleModel(config, params.modelProfileId);
   }
   return {
+    ...readUpdatedModelReasoningControls(params, modelProfileId, params.modelProfileId ?? modelProfileId),
     ...(params.title !== undefined
       ? { title: requireText(params.title, "title") }
       : {}),
@@ -120,6 +123,7 @@ export function createSchedulingToolModule(
           "model",
         ),
         agentMode: selection.agentMode,
+        ...readCreatedModelReasoningControls(params, selection.execution.primaryProfileId),
         timeZone: params.timeZone
           ? requireText(params.timeZone, "time_zone")
           : Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -136,7 +140,7 @@ export function createSchedulingToolModule(
         runs: [...(await service.listRuns(id, { limit: 20 }))].reverse(),
       };
     if (action === "update")
-      return service.update(id, updateInput(params, config));
+      return service.update(id, updateInput(params, config, job.modelProfileId));
     if (action === "pause") return service.pause(id);
     if (action === "resume") return service.resume(id);
     if (action === "cancel") return service.cancel(id);

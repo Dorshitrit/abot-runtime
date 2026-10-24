@@ -90,17 +90,17 @@ describe("native schedule backend availability", () => {
       const { dom, feature, shell, fetchImpl } = fixture;
       expect(dom.schedulesWorkspaceButton.hidden).toBe(true);
       expect(dom.schedulesWorkspaceButton.disabled).toBe(true);
-      expect(shell.activateWorkspace("schedules")).toBe(false);
-      expect(shell.prepareWorkspaceActivation("schedules")).toBeNull();
-      dom.schedulesWorkspaceButton.dispatch("click");
+      expect(await shell.activateWorkspace("schedules")).toBe(false);
+      expect(await shell.prepareWorkspaceActivation("schedules")).toBeNull();
+      await dom.schedulesWorkspaceButton.dispatch("click");
       feature.openJob("historical-job");
       feature.setActive(true);
       await Promise.resolve();
       expect(fetchImpl).not.toHaveBeenCalled();
       expect(dom.schedulesWorkspacePanel.hidden).toBe(true);
-      expect(shell.activateWorkspace("config")).toBe(true);
+      expect(await shell.activateWorkspace("config")).toBe(true);
       expect(dom.configWorkspacePanel.hidden).toBe(false);
-      expect(shell.activateWorkspace("chat")).toBe(true);
+      expect(await shell.activateWorkspace("chat")).toBe(true);
       expect(dom.chatPanel.hidden).toBe(false);
     },
   );
@@ -111,7 +111,7 @@ describe("native schedule backend availability", () => {
     setBackend("runtime");
     expect(dom.schedulesWorkspaceButton.hidden).toBe(false);
     expect(dom.schedulesWorkspaceButton.disabled).toBe(false);
-    expect(shell.activateWorkspace("schedules")).toBe(true);
+    expect(await shell.activateWorkspace("schedules")).toBe(true);
     await vi.waitFor(() =>
       expect(fetchImpl).toHaveBeenCalledWith(
         "/web-api/schedules?environment=dev",
@@ -119,12 +119,12 @@ describe("native schedule backend availability", () => {
       ),
     );
     expect(dom.schedulesWorkspacePanel.hidden).toBe(false);
-    shell.activateWorkspace("chat");
+    await shell.activateWorkspace("chat");
   });
 
-  test("a prepared navigation cannot activate schedules after backend availability changed", () => {
+  test("a prepared navigation cannot activate schedules after backend availability changed", async () => {
     const { shell, setBackend, dom } = createAvailabilityFixture("runtime");
-    const commit = shell.prepareWorkspaceActivation("schedules");
+    const commit = await shell.prepareWorkspaceActivation("schedules");
     setBackend("bridge");
     expect(commit()).toBe(false);
     expect(dom.homeWorkspacePanel.hidden).toBe(false);
@@ -134,7 +134,7 @@ describe("native schedule backend availability", () => {
 
   test("matching resource events coalesce and hidden, unrelated or inactive changes are ignored", async () => {
     const f = createAvailabilityFixture("runtime");
-    f.shell.activateWorkspace("schedules");
+    await f.shell.activateWorkspace("schedules");
     await vi.advanceTimersByTimeAsync(0);
     const count = () =>
       f.fetchImpl.mock.calls.filter(([url]) =>
@@ -178,7 +178,7 @@ describe("native schedule backend availability", () => {
     f.feature.reconnect();
     await vi.advanceTimersByTimeAsync(0);
     expect(count()).toBe(4);
-    f.shell.activateWorkspace("chat");
+    await f.shell.activateWorkspace("chat");
     f.feature.handleRealtime({
       type: "event",
       name: "scheduler.changed",
@@ -190,7 +190,7 @@ describe("native schedule backend availability", () => {
 
   test("committed session events refresh schedule conversation labels once per burst", async () => {
     const f = createAvailabilityFixture("runtime");
-    f.shell.activateWorkspace("schedules");
+    await f.shell.activateWorkspace("schedules");
     await vi.advanceTimersByTimeAsync(0);
     const sessionReads = () =>
       f.fetchImpl.mock.calls.filter(([url]) =>
@@ -231,7 +231,7 @@ describe("native schedule backend availability", () => {
 
   test("an already-open workspace refreshes once when runtime readiness returns", async () => {
     const f = createAvailabilityFixture("runtime", false);
-    f.shell.activateWorkspace("schedules");
+    await f.shell.activateWorkspace("schedules");
     await vi.advanceTimersByTimeAsync(0);
     expect(f.fetchImpl).not.toHaveBeenCalled();
     f.setReady(true);
@@ -271,7 +271,7 @@ describe("native schedule backend availability", () => {
     expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
-  test("historical cards keep their prompt but disable unavailable Job links", () => {
+  test("historical cards keep their prompt but disable unavailable Job links", async () => {
     const open = vi.fn();
     const card = createConversationSchedule({
       documentRoot: { createElement: (tag: string) => new ContextElement(tag) },
@@ -288,7 +288,7 @@ describe("native schedule backend availability", () => {
     });
     const button = card.querySelector("button");
     expect(button.disabled).toBe(true);
-    button.dispatch("click");
+    await button.dispatch("click");
     expect(open).not.toHaveBeenCalled();
     expect(card.querySelector("pre").textContent).toBe(
       "Original historical prompt",

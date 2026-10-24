@@ -7,6 +7,7 @@ import { filterSessionsByArchiveState } from "../lib/session-archive-visibility.
 
 export function createSessionSidebarController({
   state, preferences, updatePinnedSessions, selectedEnvironmentId = () => "", render, showToast, getFilteredSessions, getPageInfo = () => undefined,
+  getDeletedProjectIds = () => [],
 }) {
   let showingArchived = false;
   let environmentId = selectedEnvironmentId();
@@ -38,7 +39,7 @@ export function createSessionSidebarController({
     return canReorderSidebarSessions(
       sessions.find((session) => session.id === sourceId),
       sessions.find((session) => session.id === targetId),
-      state.pinnedSessionIds,
+      state.pinnedSessionIds, getDeletedProjectIds(),
     );
   }
 
@@ -74,9 +75,9 @@ export function createSessionSidebarController({
   }
 
   async function moveInDirection(session, direction) {
-    const group = sessionSidebarGroup(session, state.pinnedSessionIds);
+    const group = sessionSidebarGroup(session, state.pinnedSessionIds, getDeletedProjectIds());
     const siblings = getFilteredSessions().filter(isSessionVisibleInSidebar).filter((candidate) =>
-      sessionSidebarGroup(candidate, state.pinnedSessionIds) === group,
+      sessionSidebarGroup(candidate, state.pinnedSessionIds, getDeletedProjectIds()) === group,
     );
     const index = siblings.findIndex((candidate) => candidate.id === session.id);
     if (index < 0) return;

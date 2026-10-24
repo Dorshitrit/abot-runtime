@@ -1,3 +1,4 @@
+import { parseBoundModelReasoningPreference } from "../../shared/model-reasoning.js";
 import { randomUUID } from "node:crypto";
 import type {
   SchedulerJob,
@@ -24,6 +25,7 @@ export function makeSchedulerRun(
     prompt: job.prompt,
     modelProfileId: job.modelProfileId,
     agentMode: job.agentMode,
+    ...(job.reasoningPreference ? { reasoningPreference: parseBoundModelReasoningPreference(job.reasoningPreference, job.modelProfileId) } : {}),
     toolPermissionMode: job.toolPermissionMode,
     timeZone: job.timeZone,
     jobRevision: job.revision,

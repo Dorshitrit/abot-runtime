@@ -1,4 +1,5 @@
-import type { ModelReasoningLevel } from "../../shared/types.js";
+import { resolveInvocationReasoning } from "./reasoning-policy.js";
+export { normalizeReasoning, resolveThink } from "./reasoning-policy.js";
 import {
   type InvocationProfileCandidate,
   normalizeModelPreference,
@@ -29,28 +30,6 @@ export class ModelInvocationResolutionError extends Error {
     super(`${code}: ${detail}`);
     this.name = "ModelInvocationResolutionError";
   }
-}
-
-export function resolveThink(agentMode: unknown): ModelReasoningLevel {
-  const mode = String(agentMode || "reasoning").toLowerCase();
-  if (mode === "deep") return "high";
-  if (mode === "fast") return "none";
-  return "medium";
-}
-
-export function normalizeReasoning(
-  value: unknown,
-): ModelReasoningLevel | undefined {
-  const normalized = String(value || "")
-    .trim()
-    .toLowerCase();
-  if (normalized === "none") return "none";
-  if (normalized === "minimal") return "minimal";
-  if (normalized === "low") return "low";
-  if (normalized === "medium") return "medium";
-  if (normalized === "high") return "high";
-  if (normalized === "xhigh") return "xhigh";
-  return undefined;
 }
 
 function applyInvocationProfileOverlay(
@@ -228,15 +207,11 @@ export function resolveModelInvocation(
       : calibration.profile;
   const selectedInvocationProfile =
     calibration.invocationProfile ?? selectedCandidate.invocationProfile;
-  const think =
-    normalizeReasoning(requestBody?.reasoningOverride) ??
-    profile.generation.reasoningEffort ??
-    resolveThink(requestBody?.agentMode);
 
   return {
     model: profile.model,
     profile,
-    think: profile.supportsThinking ? think : undefined,
+    ...resolveInvocationReasoning(requestBody, profile),
     ...(selectedInvocationProfile?.format
       ? { format: selectedInvocationProfile.format }
       : {}),

@@ -20,9 +20,9 @@ import {
 
 const text = { type: "string", minLength: 1 } as const;
 export const evidenceDescriptor: CapabilityDescriptor = {
-  capabilityId: "evidence.read",
-  summary: "Read exact source.",
-  effect: "observation",
+  capabilityId: "evidence.apply",
+  summary: "Apply an update query grounded in exact source evidence.",
+  effect: "mutation",
   catalogGroups: ["evidence"],
   selectionControlIds: ["path"],
   controls: {
@@ -31,6 +31,13 @@ export const evidenceDescriptor: CapabilityDescriptor = {
     properties: { path: { ...text, maxLength: 4096 }, query: text },
     required: ["path", "query"],
   },
+};
+// Source observations and the evidence-backed mutation have different owners.
+const sourceDescriptor: CapabilityDescriptor = {
+  ...evidenceDescriptor,
+  capabilityId: "evidence.read",
+  summary: "Read exact source.",
+  effect: "observation",
 };
 export const controlsReply = (
   controls: Record<string, unknown> = { query: "exact query" },
@@ -122,7 +129,7 @@ export async function createControlsEvidenceFixture(
     agentMode: "reasoning",
     modelGatewayClient: { invoke, invokeRaw: vi.fn(), countInputTokens },
     workerCapabilityProvider: {
-      getDescriptors: () => [evidenceDescriptor],
+      getDescriptors: () => [sourceDescriptor, evidenceDescriptor],
       getAdapters: () => [],
     },
     requestSteering: steering,
@@ -188,7 +195,7 @@ export async function createControlsEvidenceFixture(
       call: activeEvidenceCall(ledger.current()),
       adapters: [
         {
-          descriptor: evidenceDescriptor,
+          descriptor: sourceDescriptor,
           execute: vi.fn(async () =>
             options.failed
               ? {
@@ -206,7 +213,7 @@ export async function createControlsEvidenceFixture(
         },
       ],
     }).execute({
-      capabilityId: evidenceDescriptor.capabilityId,
+      capabilityId: sourceDescriptor.capabilityId,
       intent: "Read source.",
       controls: {
         path: options.target ?? "exact.txt",

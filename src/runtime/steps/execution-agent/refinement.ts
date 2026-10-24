@@ -12,7 +12,6 @@ import {
   CAPABILITY_CONTROLS_MODEL_STEP,
   materializeCapabilityControlsIfComplete,
   mergeCapabilityControls,
-  partitionCapabilityControlsSchema,
   type CapabilityControl,
   type CapabilityControls,
   type CapabilityControlsSchema,
@@ -23,6 +22,10 @@ import {
   type RequestExecutionScope,
 } from "../../request/execution-scope.js";
 import type { RequestSteeringSnapshot } from "../../request/request-steering.js";
+import {
+  ownsExecutionObservationControls,
+  partitionExecutionCapabilityControls,
+} from "./capability-controls-partition.js";
 import { requiresExecutionOperationObjective } from "./capability-invocation-contract.js";
 import { type ExecutionAgentCapabilityInvocation } from "./contracts.js";
 import { buildExecutionControlsRefinementInstructions } from "./refinement-prompt.js";
@@ -58,9 +61,20 @@ type ParsedRefinementEntry = Readonly<{
   controls: CapabilityControls;
 }>;
 
+function canExecuteWithSelectedControls(
+  descriptor: CapabilityDescriptor,
+  controls: CapabilityControls | undefined,
+  guidance: string,
+): boolean {
+  if (controls === undefined) return false;
+  if (ownsExecutionObservationControls(descriptor)) return true;
+  return guidance.length === 0;
+}
+
 /**
- * Loads guidance for every selected capability, then asks the same Execution
- * Agent to complete only the remaining controls. Capability identity,
+ * Loads guidance for staged capabilities, then asks the same Execution Agent
+ * to complete only their remaining controls. Ordinary observations already
+ * received their guidance at decision and need no second model step. Identity,
  * selection controls, and ordering remain immutable. Client intent is retained
  * separately for lifecycle presentation. This is not a child-role call.
  */
@@ -78,10 +92,7 @@ export async function refineExecutionCapabilityInvocations(
     if (!descriptor) {
       throw new Error("execution_capability_refinement_descriptor_missing");
     }
-    const partition = partitionCapabilityControlsSchema(
-      descriptor.controls,
-      descriptor.selectionControlIds,
-    );
+    const partition = partitionExecutionCapabilityControls(descriptor);
     if (!partition.ok) {
       throw new Error("execution_capability_refinement_schema_invalid");
     }
@@ -121,7 +132,11 @@ export async function refineExecutionCapabilityInvocations(
   const guidanceByCapabilityId = new Map(
     await Promise.all(
       [
-        ...new Set(prepared.map(({ descriptor }) => descriptor.capabilityId)),
+        ...new Set(
+          prepared
+            .filter(({ descriptor }) => !ownsExecutionObservationControls(descriptor))
+            .map(({ descriptor }) => descriptor.capabilityId),
+        ),
       ].map(
         async (capabilityId) =>
           [
@@ -139,7 +154,8 @@ export async function refineExecutionCapabilityInvocations(
     prepared.flatMap((entry) => {
       const guidance =
         guidanceByCapabilityId.get(entry.descriptor.capabilityId) ?? "";
-      if (entry.controls !== undefined && guidance.length === 0) return [];
+      if (canExecuteWithSelectedControls(entry.descriptor, entry.controls, guidance))
+        return [];
       return [
         Object.freeze({
           index: entry.index,

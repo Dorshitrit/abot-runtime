@@ -1,3 +1,5 @@
+import { parseModelReasoningBudgetByMode } from "../../shared/model-reasoning-modes.js";
+import { parseModelReasoningBudget } from "../../shared/model-reasoning.js";
 import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 
@@ -474,6 +476,8 @@ export function buildModelGenerationConfig(
   if (!isRecord(value)) {
     return undefined;
   }
+  const reasoningBudget = parseModelReasoningBudget(value.reasoningBudget);
+  const reasoningBudgetByMode = parseModelReasoningBudgetByMode(value.reasoningBudgetByMode);
   const temperature = readOptionalNumber(value, "temperature");
   const topP = readOptionalNumber(value, "topP");
   const reasoningEffort =
@@ -489,6 +493,8 @@ export function buildModelGenerationConfig(
     ...(temperature !== undefined ? { temperature } : {}),
     ...(topP !== undefined ? { topP } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),
+    ...(reasoningBudget ? { reasoningBudget } : {}),
+    ...(reasoningBudgetByMode ? { reasoningBudgetByMode } : {}),
   };
   return Object.keys(config).length > 0 ? config : undefined;
 }

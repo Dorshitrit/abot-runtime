@@ -89,6 +89,7 @@ export async function validateApprovalResume(
         rawAttachments: [],
         rawAgentMode: snapshot.seed.agentMode,
         rawModelPreference: snapshot.seed.modelPreference,
+        rawReasoningPreference: snapshot.seed.reasoningPreference,
         toolPermissionMode: snapshot.seed.toolPermissionMode,
       },
       temporalContext:

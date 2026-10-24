@@ -137,6 +137,7 @@ export function projectAutomationAuthoringCatalogIndex(
       id: model.id, label: model.label.slice(0, LABEL_MAX_LENGTH),
       labelTruncated: model.label.length > LABEL_MAX_LENGTH,
       ...(model.provider ? { provider: model.provider } : {}),
+      ...(model.reasoningControls ? { reasoningControls: model.reasoningControls } : {}),
     })), offset);
   const savedAgents = catalogPage([...catalog.savedAgents]
     .sort((left, right) => left.id.localeCompare(right.id))

@@ -1,4 +1,3 @@
-import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 import { afterEach, describe, expect, test } from "vitest";
 import type WebSocket from "ws";
 import { resetDebugLoggerConfig } from "../observability/debug-logger.js";
@@ -167,7 +166,7 @@ describe("scheduled request provenance", () => {
         ([input]) =>
           policy === "execution-agent-v1"
             ? input.modelStep === "execution.decision"
-            : supervisorFormatName(input) === "supervisor_decision",
+            : input.modelStep === "supervisor.response",
       )![0];
       const messages = scheduledModelMessages(decision);
       expect(

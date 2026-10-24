@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { createClientPreferences } from "../../web-ui/app/services/client-preferences.js";
+import { decodePreference } from "../../web-ui/client-state/preferences.js";
 // @ts-expect-error Browser-only module has no declaration surface.
 import { canReorderSidebarSessions, moveSidebarSession, orderSidebarSessions } from "../../web-ui/app/lib/session-sidebar-order.js";
 
@@ -69,4 +70,61 @@ describe("conversation sidebar ordering", () => {
     expect(canReorderSidebarSessions(project, sibling, ["one"])).toBe(false);
     expect(canReorderSidebarSessions(undefined, sibling, [])).toBe(false);
   });
+});
+
+describe("collapsed project preferences", () => {
+  test("keeps project collapse separate from the existing sidebar loader contract", () => {
+    const saved = storage();
+    const preferences = createClientPreferences(saved);
+    const sidebar = { archivedSessionIds: ["archived"], orderedSessionIds: ["second", "first"] };
+    preferences.saveSessionSidebar("prod", sidebar);
+    expect(preferences.loadCollapsedProjectIds("prod")).toEqual([]);
+    expect(preferences.loadCollapsedProjectIds("missing")).toEqual([]);
+
+    preferences.saveCollapsedProjectIds("prod", ["project-one", "project-one", ""]);
+    expect(preferences.loadSessionSidebar("prod")).toEqual(sidebar);
+    expect(preferences.loadCollapsedProjectIds("prod")).toEqual(["project-one"]);
+    preferences.saveSessionSidebar("prod", { archivedSessionIds: [], orderedSessionIds: ["first", "second"] });
+    expect(preferences.loadCollapsedProjectIds("prod")).toEqual(["project-one"]);
+
+    preferences.saveCollapsedProjectIds("dev", ["dev-project"]);
+    preferences.saveCollapsedProjectIds("prod", []);
+    const reopened = createClientPreferences(saved);
+    expect(reopened.loadCollapsedProjectIds("prod")).toEqual([]);
+    expect(reopened.loadCollapsedProjectIds("dev")).toEqual(["dev-project"]);
+    expect(reopened.loadSessionSidebar("prod")).toEqual({ archivedSessionIds: [], orderedSessionIds: ["first", "second"] });
+  });
+
+  test("normalizes invalid project IDs and safely supports reserved environment names", () => {
+    const saved = storage();
+    saved.setItem("abot-web.sessionSidebarByEnvironment", JSON.stringify({
+      prod: { archivedSessionIds: [], orderedSessionIds: [], collapsedProjectIds: ["one", null, 7, "", "one"] },
+      dev: { archivedSessionIds: [], orderedSessionIds: [], collapsedProjectIds: {} },
+    }));
+    const preferences = createClientPreferences(saved);
+    expect(preferences.loadCollapsedProjectIds("prod")).toEqual(["one"]);
+    expect(preferences.loadCollapsedProjectIds("dev")).toEqual([]);
+    preferences.saveCollapsedProjectIds("__proto__", ["safe", "safe", ""]);
+    expect(preferences.loadCollapsedProjectIds("__proto__")).toEqual(["safe"]);
+    expect(preferences.loadCollapsedProjectIds("prod")).toEqual(["one"]);
+    expect(Object.hasOwn(Object.prototype, "collapsedProjectIds")).toBe(false);
+  });
+
+  test("validates both legacy sidebar records and the optional project list", () => {
+    const key = "abot-web.sessionSidebarByEnvironment";
+    const legacy = { archivedSessionIds: ["old"], orderedSessionIds: ["one"] };
+    const value = { prod: legacy, dev: { ...legacy, collapsedProjectIds: ["project"] } };
+    expect(decodePreference(key, JSON.stringify(value))).toEqual(value);
+    const empty = { prod: { ...legacy, collapsedProjectIds: [] } };
+    expect(decodePreference(key, JSON.stringify(empty))).toEqual(empty);
+  });
+
+  test.each([null, {}, 1, "project", ["project", null], ["project", 1]])(
+    "rejects malformed collapsed project lists: %j",
+    (collapsedProjectIds) => {
+      expect(() => decodePreference("abot-web.sessionSidebarByEnvironment", JSON.stringify({
+        prod: { archivedSessionIds: [], orderedSessionIds: [], collapsedProjectIds },
+      }))).toThrow("Invalid workspace preferences");
+    },
+  );
 });

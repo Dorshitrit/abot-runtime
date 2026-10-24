@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/confirmation-dialog.js";
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -13,6 +14,7 @@ export function createProjectsController({
   onChange,
   notify,
   onSessionCreated = () => {},
+  confirmAction = (message) => confirmDialog(message, { title: "Delete project", confirmLabel: "Delete project", tone: "danger" }),
 }) {
   let revision = 0;
   let currentEnvironment = getEnvironmentId();
@@ -22,6 +24,7 @@ export function createProjectsController({
   let activationRevision = 0;
   let state = {
     projects: [],
+    deletedProjectIds: [],
     loading: false,
     error: "",
     draft: null,
@@ -90,7 +93,7 @@ export function createProjectsController({
     const token = revision;
     const listToken = ++listRevision;
     if (!canUseProjects()) {
-      state = { ...state, projects: [], loading: false, error: "" };
+      state = { ...state, projects: [], deletedProjectIds: [], loading: false, error: "" };
       publish();
       return;
     }
@@ -99,7 +102,8 @@ export function createProjectsController({
     try {
       const result = await client.listProjects(environmentId);
       if (!canApplyProjectList(environmentId, token, listToken)) return;
-      state = { ...state, projects: result.projects ?? [], loading: false };
+      state = { ...state, projects: result.projects ?? [],
+        deletedProjectIds: result.deletedProjectIds ?? [], loading: false };
     } catch (error) {
       if (!canApplyProjectList(environmentId, token, listToken)) return;
       state = { ...state, loading: false, error: errorMessage(error) };
@@ -265,6 +269,61 @@ export function createProjectsController({
     }
   }
 
+  function getDeletedProjectIds() {
+    if (currentEnvironment !== getEnvironmentId()) return [];
+    if (!canUseProjects()) return [];
+    return state.deletedProjectIds;
+  }
+
+  function canDeleteProject(projectId) {
+    if (!projectId) return false;
+    if (!canUseProjects()) return false;
+    if (state.busyProjectId) return false;
+    return !state.deletedProjectIds.includes(projectId);
+  }
+
+  async function deleteProject(projectId, projectName = projectId) {
+    synchronizeProjectRuntime();
+    if (!canDeleteProject(projectId)) return false;
+    const environmentId = getEnvironmentId();
+    const token = revision;
+    const target = JSON.stringify(state.projects.find((project) => project.id === projectId));
+    const confirmed = await confirmAction(
+      'Delete "' + projectName + '"? Its conversations will move to Conversations. The working folder and its files will not be deleted.',
+    );
+    if (!confirmed) return false;
+    if (!isCurrentEnvironment(environmentId, token)) return false;
+    if (!canDeleteProject(projectId)) return false;
+    if (JSON.stringify(state.projects.find((project) => project.id === projectId)) !== target) return false;
+    listRevision += 1;
+    state = { ...state, busyProjectId: projectId, loading: false };
+    publish();
+    let deleted = false;
+    try {
+      await client.deleteProject(projectId, environmentId);
+      if (!isCurrentEnvironment(environmentId, token)) return false;
+      deleted = true;
+      listRevision += 1;
+      state = { ...state,
+        projects: state.projects.filter((project) => project.id !== projectId),
+        deletedProjectIds: [...new Set([...state.deletedProjectIds, projectId])],
+        loading: false,
+      };
+      publish();
+      await loadSessions();
+      return isCurrentEnvironment(environmentId, token);
+    } catch (error) {
+      if (!isCurrentEnvironment(environmentId, token)) return false;
+      notify(errorMessage(error), "failed");
+      return deleted;
+    } finally {
+      if (isCurrentEnvironment(environmentId, token)) {
+        state = { ...state, busyProjectId: "" };
+        publish();
+      }
+    }
+  }
+
   function retainedProjectDraft(environmentChanged) {
     if (environmentChanged) return null;
     if (!state.draft) return null;
@@ -289,7 +348,7 @@ export function createProjectsController({
     listRevision += 1;
     browseRevision += 1;
     activationRevision += 1;
-    state = { projects: [], loading: false, error: "", draft, busyProjectId: "" };
+    state = { projects: [], deletedProjectIds: [], loading: false, error: "", draft, busyProjectId: "" };
     publish();
     return true;
   }
@@ -314,5 +373,7 @@ export function createProjectsController({
     browse,
     create,
     newConversation,
+    deleteProject,
+    getDeletedProjectIds,
   };
 }

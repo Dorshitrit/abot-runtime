@@ -254,6 +254,7 @@ export function createAutomationAgentStepExecutor(options: {
       const outcome = await handleRunRequestWithOutcome(ws, {
         type: "run_request", requestId, sessionId, text: prompt,
         agentMode: node.agentMode,
+        ...(node.reasoningPreference ? { reasoningPreference: node.reasoningPreference } : {}),
         modelPreference: { profileId: node.modelProfileId, scope: "all" },
         toolPermissionMode: capturedGrant?.mode ?? "full_access",
       }, {

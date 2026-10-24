@@ -153,6 +153,8 @@ describe("runtime composition", () => {
       personalSkills: defaults.services.personalSkills,
       projects: {
         list: expect.any(Function),
+        catalog: expect.any(Function),
+        delete: expect.any(Function),
         get: expect.any(Function),
         create: expect.any(Function),
         browseFolders: expect.any(Function),

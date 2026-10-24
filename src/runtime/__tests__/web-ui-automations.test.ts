@@ -311,7 +311,7 @@ describe("ABot Studio persistence boundary", () => {
     ]);
   });
 
-  test("offers a visible editable authoring chat and manual creation", () => {
+  test("offers a visible editable authoring chat and manual creation", async () => {
     const list = renderAutomationList({ automations: [], loading: false, error: "" });
     expect(list).toContain('data-action="describe">Describe your automation');
     expect(list).toContain('data-action="create">Build manually');
@@ -331,9 +331,9 @@ describe("ABot Studio persistence boundary", () => {
     let workspace = "automations";
     const composer = { value: "", focus: vi.fn(), dispatchEvent: vi.fn(),
       ownerDocument: { defaultView: { Event: class { constructor(public type: string) {} } } } };
-    const start = vi.fn(() => { workspace = "chat"; });
-    expect(openAutomationAuthoringChat({
-      dom: { composerInput: composer, newSessionButton: { click: start } },
+    const start = vi.fn(async () => { workspace = "chat"; return true; });
+    expect(await openAutomationAuthoringChat({
+      dom: { composerInput: composer }, startNewConversation: start,
       shell: { activeWorkspace: () => workspace },
       automationId: "automation-one", revision: 3,
     })).toBe(true);
@@ -341,8 +341,8 @@ describe("ABot Studio persistence boundary", () => {
     expect(composer.value).toContain("automation-one (draft revision 3)");
     expect(composer.focus).toHaveBeenCalledOnce();
     expect(composer.dispatchEvent).toHaveBeenCalledOnce();
-    expect(openAutomationAuthoringChat({
-      dom: { composerInput: composer, newSessionButton: { click: start } },
+    expect(await openAutomationAuthoringChat({
+      dom: { composerInput: composer }, startNewConversation: start,
       shell: { activeWorkspace: () => workspace }, confirmReplace: () => false,
     })).toBe(false);
     expect(start).toHaveBeenCalledOnce();

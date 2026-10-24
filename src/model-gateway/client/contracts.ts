@@ -1,3 +1,4 @@
+import type { ModelReasoningPreference } from "../../shared/model-reasoning.js";
 import type {
   AgentMode,
   ModelReasoningLevel,
@@ -30,6 +31,7 @@ export type InvokeModelGatewayParams = StreamCallbacks & {
   modelOverride?: string;
   reasoningOverride?: ModelReasoningLevel;
   modelPreference?: ModelPreference;
+  reasoningPreference?: ModelReasoningPreference;
   modelPolicy?: ModelGatewayPolicyConfig;
   abortSignal: AbortSignal;
   debugRequestId?: string;
@@ -44,6 +46,7 @@ export type InvokeRawModelGatewayParams = {
   modelOverride?: string;
   reasoningOverride?: ModelReasoningLevel;
   modelPreference?: ModelPreference;
+  reasoningPreference?: ModelReasoningPreference;
   modelPolicy?: ModelGatewayPolicyConfig;
   abortSignal: AbortSignal;
   debugRequestId?: string;

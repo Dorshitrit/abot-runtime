@@ -40,7 +40,7 @@ test.each(["abot_skills", "*"].flatMap((selector) =>
     meta: {},
   })));
   await fixture.runOrdinaryRequest("Read the private guide.");
-  const decisions = fixture.invoke.mock.calls.filter(([input]) => supervisorFormatName(input) === "supervisor_decision");
+  const decisions = fixture.invoke.mock.calls.filter(([input]) => supervisorFormatName(input) === "supervisor_procedure_gate");
   expect(decisions.length).toBeGreaterThan(0);
   for (const [input] of decisions) {
     expect(JSON.stringify(input.format)).not.toContain('"list_skills"');
@@ -66,15 +66,16 @@ test("SUPER READ needs no ASK approval even without a registered Skill tool", as
     meta: {},
   }), { selectSkills(input) {
     expect(JSON.stringify(input.format)).not.toContain('"list_skills"');
-    return ++selections === 1
-      ? { action: "read_skills", skillIds: [document.skillId] }
-      : { action: "continue" };
+    selections += 1;
+    return { action: "read_skills", skillIds: [document.skillId] };
   },
   }));
   await fixture.runOrdinaryRequest("Read the private guide.");
-  expect(selections).toBe(2);
+  expect(selections).toBe(1);
   expect(store.read).toHaveBeenCalledExactlyOnceWith(document.skillId);
-  const secondDecision = fixture.invoke.mock.calls.filter(([input]) =>
-    supervisorFormatName(input) === "supervisor_decision")[0]![0];
-  expect(JSON.stringify(scheduledModelMessages(secondDecision))).toContain(document.content);
+  const gates = fixture.invoke.mock.calls.filter(([input]) => supervisorFormatName(input) === "supervisor_procedure_gate");
+  expect(gates).toHaveLength(1);
+  expect(JSON.stringify(scheduledModelMessages(gates[0]![0]))).not.toContain(document.content);
+  const response = fixture.invoke.mock.calls.find(([input]) => input.modelStep === "supervisor.response")!;
+  expect(JSON.stringify(scheduledModelMessages(response[0]))).toContain(document.content);
 });

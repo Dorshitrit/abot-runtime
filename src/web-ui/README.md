@@ -95,6 +95,27 @@ Stored plugin data is retained, and the Plugins step reloads the saved selection
 when revisited. Other Memory settings and CLI configuration keep their existing
 plugin policy.
 
+Memory → Setup also offers **Add connection**, using the shared embedding form
+without restarting first-run onboarding. Its `/runtime/memory/connection`
+endpoint reuses connection persistence and the ordinary memory onboarding
+service, preserving the memory plugin policy, profile and event settings.
+Partial saves return the existing safe provider receipt for retry. The dialog
+holds configuration mutation ownership through canonical refresh, discards
+stale environment results and applies saved settings only on explicit action.
+
+Memory → Setup shows saved embedding profiles as selectable cards.
+**New profile → Save profile** stores a named provider/model choice without
+probing, changing the active memory binding, or copying credentials. Separate
+connection IDs keep the same model on Ollama and llama.cpp distinct.
+Selecting a card only selects its saved settings; **Test & enable memory**
+probes that exact profile and saves the memory binding after success. Applying
+the configuration remains a separate explicit action. Saved profile options and
+embedding-fingerprint compatibility checks are retained.
+**Remove** deletes only the selected saved definition after inline confirmation;
+it never deletes connections or stored memories. The profile configured for
+memory is protected, including while memory is disabled. Choose another memory
+profile before removing it.
+
 When a scheduled request finishes outside the displayed conversation, its
 correlated terminal event refreshes the session list from the backend. The
 sidebar receives the saved preview and unread state without selecting that

@@ -60,16 +60,20 @@ export function createSparkChatFeature({ dom, state: appState, client, shell, re
     if (Number.isFinite(readState.unreadCount)) panel.setUnread(readState.unreadCount);
     if (readState.readStateStatus === "unavailable") conversation.status("Read status is temporarily unavailable.");
   }
-  function openSettings() {
-    if (!shell.activateWorkspace("learning")) return;
-    selectLearningView(dom.learningRoot, "chat", true);
+  async function openLearningSettings(view) {
+    const scope = getEnvironmentId();
+    const revision = accessRevision;
+    const activate = await shell.prepareWorkspaceActivation("learning");
+    if (!activate || !canCompleteSparkOpening(scope, revision)) return false;
+    if (!activate()) return false;
+    selectLearningView(dom.learningRoot, view, true);
     panel.setOpen(false, { focus: false });
+    return true;
   }
-  function openModelSettings() {
-    if (!shell.activateWorkspace("learning")) return;
-    selectLearningView(dom.learningRoot, "settings", true);
+  const openSettings = () => openLearningSettings("chat");
+  async function openModelSettings() {
+    if (!await openLearningSettings("settings")) return;
     dom.learningRoot.querySelector('[data-learning-setting="proactiveModelProfileId"]')?.focus();
-    panel.setOpen(false, { focus: false });
   }
   conversation = createSparkChatConversation({
     dom: panel.dom, client, shell, getEnvironmentId,
@@ -100,6 +104,8 @@ export function createSparkChatFeature({ dom, state: appState, client, shell, re
   settings = createSparkChatSettings({
     root: dom.learningRoot, getWebConfig: () => appState.config,
     getAgentMode: () => conversation.state.agentMode,
+    getReasoningPreference: () => conversation.getReasoningPreference(),
+    onReasoningPreferenceChange: (preference) => conversation.setReasoningPreference(preference),
     onAgentModeChange: (mode) => conversation.setAgentMode(mode),
     onSave: async (toolPermissionMode) => {
       const scope = getEnvironmentId();

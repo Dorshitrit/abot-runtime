@@ -1,3 +1,4 @@
+import { readReasoningPreferenceField } from "../../lib/reasoning-preference.js";
 import { renderReasoningModeField, retainedReasoningMode } from "../../lib/reasoning-controls.js";
 import { escapeHtml } from "../../lib/text-format.js";
 import { readBindingFields, renderBindingFields } from "./binding-fields.js";
@@ -135,7 +136,7 @@ function renderAgentEditor(node, catalog, producers) {
   return `${producers.length ? `<p class="automation-input-notice" data-input-connection="${connected ? "connected" : "none"}"${connected ? " hidden" : ""}>No earlier step output is connected. Connect an output below if this agent should use it.</p>` : ""}
     ${renderBindingFields(node.inputs, null, { name: "inputs", allowAdd: true, producers })}
     ${renderModelChoice(node, catalog)}
-    ${renderReasoningModeField(node.agentMode || "fast", catalog?.models?.find((model) => model.id === node.modelProfileId))}
+    ${renderReasoningModeField(node.agentMode || "fast", catalog?.models?.find((model) => model.id === node.modelProfileId), undefined, node.reasoningPreference)}
     <label>Role instructions<textarea name="roleInstructions" dir="auto">${escapeHtml(node.roleInstructions || "")}</textarea></label>
     <label>Prompt<textarea name="prompt" dir="auto" required>${escapeHtml(node.prompt || "")}</textarea></label>
     <details class="automation-node-contract"><summary>Result contract · ${node.result?.kind === "json" ? "Structured JSON" : "Text"}</summary>
@@ -219,6 +220,9 @@ export function readAutomationNodePatch(form, node, catalog) {
   if (node.kind === "agent") {
     patch.modelProfileId = String(fields.get("modelProfileId") || "");
     patch.agentMode = retainedReasoningMode(form, node.agentMode || "fast");
+    const preference = readReasoningPreferenceField(form);
+    if (preference) patch.reasoningPreference = preference;
+    else if (node.reasoningPreference) patch.reasoningPreference = null;
     patch.roleInstructions = String(fields.get("roleInstructions") || "");
     patch.prompt = String(fields.get("prompt") || "");
     patch.inputs = readBindingFields(form, "inputs");

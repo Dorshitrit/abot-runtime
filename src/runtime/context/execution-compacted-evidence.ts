@@ -1,11 +1,6 @@
-import { executionCompactionScopeId } from "./execution-compaction-objective.js";
+import { resolveExecutionEvidenceCheckpoint } from "./execution-compaction-checkpoint-selection.js";
 import { isDeepStrictEqual } from "node:util";
-import { MODEL_STEPS } from "../../shared/model-steps.js";
-import {
-  createSemanticCompactionSha256Fingerprint,
-  type SemanticCompactionCheckpoint,
-  type SemanticCompactionDigest,
-} from "./semantic-compaction/contracts.js";
+import { type SemanticCompactionDigest } from "./semantic-compaction/contracts.js";
 import type { RequestContextCompactionStore } from "./semantic-compaction/store.js";
 
 type ExecutionEvidenceIdentity = Readonly<{
@@ -31,6 +26,8 @@ type ExecutionEvidenceProjection = Readonly<{
   objective: string;
   callId: string;
   store?: RequestContextCompactionStore;
+  updates?: readonly Readonly<{ text: string }>[];
+  sourceRevision?: number;
   results: readonly ExecutionEvidenceIdentity[];
 }>;
 
@@ -40,9 +37,7 @@ export function resolveExecutionCompactedSources(
 ): ExecutionCompactedSources | undefined {
   const store = params.store;
   if (!store) return undefined;
-  const checkpoint = store
-    .findByCallIds([params.callId])
-    .find((candidate) => canReuseExecutionCheckpoint(candidate, params));
+  const checkpoint = resolveExecutionEvidenceCheckpoint(params);
   if (!checkpoint) return undefined;
   const digests = new Map(
     checkpoint.sourceDigests.map((digest) => [digest.sourceRef, digest]),
@@ -66,27 +61,6 @@ export function resolveExecutionCompactedSources(
     sourceRevision: checkpoint.sourceRevision,
     sources: Object.freeze(sources),
   });
-}
-
-function canReuseExecutionCheckpoint(
-  checkpoint: SemanticCompactionCheckpoint,
-  params: ExecutionEvidenceProjection,
-): boolean {
-  if (checkpoint.requestId !== params.requestId) return false;
-  if (checkpoint.callId !== params.callId) return false;
-  if (checkpoint.roleId !== "supervisor") return false;
-  if (checkpoint.scopeId !== executionCompactionScopeId(params)) return false;
-  if (
-    checkpoint.currentRequestFingerprint !==
-    createSemanticCompactionSha256Fingerprint(params.prompt)
-  )
-    return false;
-  if (
-    checkpoint.objectiveFingerprint !==
-    createSemanticCompactionSha256Fingerprint(params.objective)
-  )
-    return false;
-  return checkpoint.allowedConsumers.includes(MODEL_STEPS.EXECUTION_DECISION);
 }
 
 export function matchesCompactedExecutionResult(

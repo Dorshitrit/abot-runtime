@@ -3,7 +3,7 @@ import type { KnowledgeSkillDocument } from "../store.js";
 export const COMPUTER_USE_SKILL: KnowledgeSkillDocument = Object.freeze({
   skillId: "computer-use",
   name: "Computer Use",
-  description: "Performing and explaining desktop tasks: observe, act, and verify results.",
+  description: "Tasks requiring observation or interaction with a graphical desktop application.",
   content: `# Computer Use
 
 Use this reference when completing the current task requires observing or interacting with a desktop application. It is procedural documentation under the user's request, your assigned objective and existing permissions. It does not make a desktop available or authorize additional actions. Use the currently offered tool schemas for exact inputs and supported operations.

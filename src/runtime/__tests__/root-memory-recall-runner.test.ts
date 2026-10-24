@@ -5,6 +5,7 @@ import {
   resetDebugLoggerConfig,
 } from "../observability/debug-logger.js";
 import { runRequestRunner } from "../request/runner.js";
+import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 import {
   createMemoryRecallHarness,
   FINAL_RESPONSE,
@@ -30,7 +31,12 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
       let decisionCount = 0;
       const harness = createMemoryRecallHarness({
         policy,
+        classifyProcedure: () => ({ requiresProcedure: true }),
+        delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Identify the saved preference needed for the answer." }),
         decide(input) {
+          if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
+          if (input.modelStep === "worker.decision") return { action: "return_result" };
+          if (input.modelStep === "worker.result") return "The answer needs the stored preference available to the root.";
           decisionCount += 1;
           if (decisionCount === 1) {
             expect(recallCapsules(input)).toEqual([]);
@@ -43,8 +49,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
           expect(decisionCount).toBe(2);
           const messages = modelMessages(input);
           expect(() => validateModelGatewayMessages(messages)).not.toThrow();
-          expect(messages.slice(-3)).toMatchObject([
-            { role: "user", content: REQUEST_PROMPT },
+          expect(messages.slice(-2)).toMatchObject([
             {
               role: "assistant",
               toolCalls: [{ callId: "recall-1", name: "recall_memory" }],
@@ -69,7 +74,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
               ],
             }),
           ]);
-          return responseDecision(policy);
+          return { action: "respond" };
         },
       });
       await expect(runRequestRunner(harness.request)).resolves.toMatchObject({
@@ -86,9 +91,18 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
       expect(harness.memory.retrieve.mock.calls.map(([input]) => input.query)).toEqual(
         [REQUEST_PROMPT, RECALL_QUERY],
       );
-      expect(harness.getAdapters).not.toHaveBeenCalled();
+      expect(harness.getAdapters).toHaveBeenCalledTimes(policy === "supervisor-worker-v1" ? 1 : 0);
       expect(harness.invokeRaw).not.toHaveBeenCalled();
-      const inputs = harness.invoke.mock.calls.map(([input]) => input);
+      const allInputs = harness.invoke.mock.calls.map(([input]) => input);
+      const inputs = allInputs.filter((input) =>
+        input.modelStep !== "worker.decision" && input.modelStep !== "worker.result"
+        && supervisorFormatName(input) !== "supervisor_working_directory");
+      const workerSteps = allInputs.filter(({ modelStep }) => modelStep === "worker.decision" || modelStep === "worker.result");
+      expect(workerSteps.map(({ modelStep }) => modelStep))
+        .toEqual(policy === "supervisor-worker-v1" ? ["worker.decision", "worker.result"] : []);
+      for (const input of workerSteps) expect(recallCapsules(input)).toEqual([]);
+      if (policy === "supervisor-worker-v1") expect(modelMessages(inputs[1]!))
+        .toContainEqual(expect.objectContaining({ content: expect.stringContaining('"kind":"runtime_child_result"') }));
       const responseInputs = inputs.filter(
         ({ modelStep }) =>
           modelStep === "supervisor.response" ||
@@ -143,8 +157,13 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
         let decisionCount = 0;
         const harness = createMemoryRecallHarness({
           policy,
+          classifyProcedure: () => ({ requiresProcedure: true }),
+          delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Identify whether stored preferences are required." }),
           retrieve: async () => retrieval,
           decide(input) {
+            if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
+            if (input.modelStep === "worker.decision") return { action: "return_result" };
+            if (input.modelStep === "worker.result") return "The root should check the relevant stored preference.";
             decisionCount += 1;
             if (decisionCount === 1) {
               return {
@@ -158,7 +177,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
                 recalls: [expect.objectContaining({ outcome, memories: [] })],
               }),
             ]);
-            return responseDecision(policy);
+            return { action: "respond" };
           },
         });
         await expect(runRequestRunner(harness.request)).resolves.toMatchObject({
@@ -166,7 +185,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
         });
         expect(decisionCount).toBe(2);
         expect(harness.memory.retrieve).toHaveBeenCalledTimes(2);
-        expect(harness.getAdapters).not.toHaveBeenCalled();
+        expect(harness.getAdapters).toHaveBeenCalledTimes(policy === "supervisor-worker-v1" ? 1 : 0);
       },
     );
 

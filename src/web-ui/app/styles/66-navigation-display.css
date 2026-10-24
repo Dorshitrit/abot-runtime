@@ -1,0 +1,30 @@
+.workspace-rail .rail-environment-icon { display: none; }
+
+/* Keep the entire compact rail on one width, including its utility controls. */
+:root[data-navigation="icons"] .workspace-rail .rail-button > .rail-button-label,
+:root[data-navigation="icons"] .workspace-rail .spark-launcher-label,
+:root[data-navigation="icons"] .workspace-brand .product-site-link { display: none; }
+
+:root[data-navigation="icons"] .workspace-rail button.rail-button,
+:root[data-navigation="icons"] .workspace-rail button.spark-launcher {
+  justify-content: center;
+  gap: 0;
+  padding-inline: 0;
+}
+
+:root[data-navigation="icons"] .workspace-rail .rail-environment-icon { display: inline-grid; }
+:root[data-navigation="icons"] .workspace-rail .rail-environment-button { overflow: visible; }
+:root[data-navigation="icons"] .workspace-rail #connectionLabel { top: 2px; right: 1px; }
+
+@media (min-width: 761px) {
+  :root[data-navigation="icons"] { --workspace-rail-width: 64px; }
+  :root[data-navigation="icons"] .workspace-rail { padding-inline: 8px; }
+  :root[data-navigation="icons"] .workspace-brand { align-self: stretch; justify-content: center; padding-inline: 0; }
+  :root[data-navigation="icons"] .workspace-rail .rail-runtime { padding: 3px 0; }
+  :root[data-navigation="icons"] .workspace-rail button.spark-launcher { height: 44px; min-height: 44px; }
+}
+
+@media (max-width: 760px) {
+  :root[data-navigation="icons"] .app-shell .workspace-rail.workspace-rail { grid-auto-columns: 52px; }
+  :root[data-navigation="icons"] .workspace-rail button.rail-button { flex-direction: row; }
+}

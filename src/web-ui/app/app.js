@@ -1,3 +1,4 @@
+import { createAppearanceFeature } from "./appearance-feature.js";
 import { createComposerFeature } from "./controllers/composer-feature.js";
 import { isWorkspaceChange } from "./lib/workspace-change.js";
 import { prepareEnvironmentWorkspaceChanges } from "./controllers/environment-workspace-preparation.js";
@@ -46,6 +47,7 @@ const dom = findAppDom();
 
 const storage = await initializeWorkspaceState();
 const preferences = createClientPreferences(storage);
+createAppearanceFeature({ mount: dom.appearanceRoot, storage });
 const runtimeClient = createRuntimeWebClient({
   getConfig: () => state.config,
   getEnvironmentId: selectedEnvironmentId,
@@ -180,8 +182,8 @@ passiveLearning = createPassiveLearningFeature({
   learningRoot: dom.learningRoot,
   openLearning: () => shell.activateWorkspace("learning"),
   openComputerAccess: () => configWorkspace?.openComputerSetup(),
-  showActivityMemories: () => {
-    if (shell.activateWorkspace("memory"))
+  showActivityMemories: async () => {
+    if (await shell.activateWorkspace("memory"))
       configWorkspace?.showActivityMemories();
   },
 });
@@ -234,6 +236,7 @@ const sessionController = createSessionController({
   onSidebarChange: renderSessions,
   sessionActionsMenu,
   renderGroups: (input) => projectsFeature?.renderSessionGroups(input) ?? false,
+  getDeletedProjectIds: () => projectsFeature?.getDeletedProjectIds() ?? [],
   shell,
   preferences,
   client: runtimeClient,
@@ -328,7 +331,7 @@ composerFeature = createComposerFeature({
   ensureSession: () => conversationSession.ensureSession(),
   getSettings: () => {
     rememberCurrentModelSelection();
-    return { agentMode: state.agentMode, toolPermissionMode: currentToolPermissionMode(), modelPreference: selectedModelPreference() };
+    return { agentMode: state.agentMode, toolPermissionMode: currentToolPermissionMode(), modelPreference: selectedModelPreference(), reasoningPreference: runtimeSelection.selectedReasoningPreference() };
   },
   steer: steerController.steer, composerActions,
   selectedModelSupportsImageInput: () => runtimeSelection.selectedModelSupportsImageInput(
@@ -344,6 +347,7 @@ composerAttachments = composerFeature.attachments;
 composerQueueController = composerFeature.queue;
 composerSubmitController = composerFeature.submit;
 projectsFeature = createProjectsFeature({
+  preferences,
   isRuntimeReady: runtimeOnboarding.isReady,
   onSessionCreated: (sessionId) =>
     runtimeSelection.initializeSessionMode(sessionId),
@@ -389,6 +393,7 @@ const modelSelector = createModelSelector({
   menu: dom.modelSelectMenu,
   onOpen: () => {
     state.agentModeMenuOpen = false;
+    state.reasoningBudgetMenuOpen = false;
     state.permissionModeMenuOpen = false;
     renderAgentModeControl();
     renderPermissionModeControl();

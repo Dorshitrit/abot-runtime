@@ -76,7 +76,7 @@ test.each(["ordinary", "scheduled"] as const)(
       expect(runs).toMatchObject([{ status: "interrupted" }]);
     }
     expect(fixture.invoke.mock.calls.map(([input]) => supervisorFormatName(input))).toEqual([
-      "supervisor_presentation", "supervisor_skill_selection", "supervisor_decision",
+      "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate",
     ]);
     if (pending) expect(await pending).toBe("local_runtime_connection_lost");
   },
@@ -104,7 +104,7 @@ test("shutdown rejects an ordinary request queued behind scheduled work before i
   const replacement = await fixture.connect();
   await pending;
   expect(fixture.invoke.mock.calls.map(([input]) => supervisorFormatName(input))).toEqual([
-    "supervisor_presentation", "supervisor_skill_selection", "supervisor_decision",
+    "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate",
   ]);
   const session = (await replacement.call("sessions.getSessionById", [
     "session",

@@ -1,6 +1,5 @@
 import {
   createInitialWorkspaceShellState,
-  normalizeWorkspaceDestination,
   toggleWorkspaceSheet,
 } from "../ui-behavior.js";
 import { createOnboardingWorkspaceAccess } from "./onboarding-workspace-access.js";
@@ -10,6 +9,8 @@ import {
   resolveConversationSidebarLayout,
 } from "./conversation-sidebar-layout.js";
 import { createOperationsSection } from "./operations-section.js";
+import { createWorkspaceTransitions } from "./workspace-transitions.js";
+import { captureSessionListViewport, restoreSessionListViewport } from "./session-list-viewport.js";
 import { isConfigurationWorkspace, renderConfigurationPageHeading } from "../lib/configuration-pages.js";
 
 export function createWorkspaceShell({
@@ -31,6 +32,12 @@ export function createWorkspaceShell({
   const workspaceListeners = new Set();
   const runtimeAvailabilityListeners = new Set();
   const workspaceGuards = new Set();
+  const transitions = createWorkspaceTransitions({
+    getWorkspace: () => shellState.workspace,
+    getNavigationRevision: () => navigationRevision,
+    isAvailable: workspaceAccess.isAvailable,
+    getGuards: () => [beforeWorkspaceChange, ...workspaceGuards],
+  });
   function notifyWorkspaceListeners(workspace) {
     onWorkspaceChange(workspace);
     for (const listener of workspaceListeners) listener(workspace);
@@ -66,6 +73,7 @@ export function createWorkspaceShell({
   }
 
   function syncShell() {
+    captureSessionListViewport(dom.sessionsList);
     workspaceAccess.render();
     const homeWorkspace = shellState.workspace === "home";
     const chatWorkspace = shellState.workspace === "chat";
@@ -142,6 +150,7 @@ export function createWorkspaceShell({
     }
     setCurrentPage(dom.notificationsWorkspaceButton, notificationsWorkspace);
     dom.sessionsPanel.hidden = !sessions.visible;
+    restoreSessionListViewport(dom.sessionsList);
     dom.sessionsPanel.inert = !sessions.visible;
     dom.sessionsPanel.setAttribute(
       "aria-hidden",
@@ -183,7 +192,7 @@ export function createWorkspaceShell({
       dom.closeSessionsButton.focus();
       return;
     }
-    const sidebarControl = dom.sessionSearchInput ?? dom.refreshSessionsButton;
+    const sidebarControl = dom.sessionSearchToggleButton ?? dom.refreshSessionsButton;
     (sidebarControl ?? dom.chatWorkspaceButton).focus();
   }
 
@@ -218,35 +227,9 @@ export function createWorkspaceShell({
     visibleNavigationButton.focus();
   }
 
-  function prepareWorkspaceTransition(destination) {
-    const nextWorkspace = normalizeWorkspaceDestination(destination);
-    if (!workspaceAccess.isAvailable(nextWorkspace)) return null;
-    if (nextWorkspace === shellState.workspace) {
-      return { nextWorkspace, commitBeforeChange: () => {} };
-    }
-    const preparedChange = beforeWorkspaceChange({
-      from: shellState.workspace,
-      to: nextWorkspace,
-    });
-    if (preparedChange === false || preparedChange === null) return null;
-    const additionalChanges = [];
-    for (const guard of workspaceGuards) {
-      const change = guard({ from: shellState.workspace, to: nextWorkspace });
-      if (change === false || change === null) return null;
-      if (typeof change === "function") additionalChanges.push(change);
-    }
-    return {
-      nextWorkspace,
-      commitBeforeChange() {
-        if (typeof preparedChange === "function") preparedChange();
-        for (const change of additionalChanges) change();
-      },
-    };
-  }
-
   function commitWorkspaceActivation(preparedTransition, options = {}) {
     if (!workspaceAccess.isAvailable(preparedTransition.nextWorkspace)) return false;
-    preparedTransition.commitBeforeChange();
+    if (!preparedTransition.commitBeforeChange()) return false;
     const nextWorkspace = preparedTransition.nextWorkspace;
     const previousWorkspace = shellState.workspace;
     const previousSheet = shellState.activeSheet;
@@ -285,27 +268,34 @@ export function createWorkspaceShell({
     return true;
   }
 
-  function prepareWorkspaceActivation(destination, options = {}) {
-    const preparedTransition = prepareWorkspaceTransition(destination);
+  async function prepareWorkspaceActivation(destination, options = {}) {
+    const preparedTransition = await transitions.prepare(destination);
     if (!preparedTransition) return null;
     let committed = false;
-    return () => {
+    const activate = () => {
       if (committed) return true;
       const activated = commitWorkspaceActivation(preparedTransition, options);
       committed = activated;
       return activated;
     };
+    activate.canCommit = () => committed || preparedTransition.canCommit();
+    return activate;
   }
 
-  function activateWorkspace(destination, options = {}) {
-    const preparedActivation = prepareWorkspaceActivation(destination, options);
+  async function activateWorkspace(destination, options = {}) {
+    const preparedActivation = await prepareWorkspaceActivation(destination, options);
     return preparedActivation ? preparedActivation() : false;
   }
 
   function setSessionsDrawerOpen(open, options = {}) {
-    const preparedTransition = prepareWorkspaceTransition("chat");
-    if (!preparedTransition) return false;
-    preparedTransition.commitBeforeChange();
+    if (shellState.workspace === "chat") return commitSessionsDrawer(open, options);
+    return transitions.prepare("chat").then((prepared) => {
+      if (!prepared?.commitBeforeChange()) return false;
+      return commitSessionsDrawer(open, options);
+    });
+  }
+
+  function commitSessionsDrawer(open, options) {
     const wasOpen = shellState.activeSheet === "sessions";
     shellState.workspace = "chat";
     const useDrawer = open && sidebarViewport?.matches !== true;
@@ -351,7 +341,8 @@ export function createWorkspaceShell({
       return true;
     }
     if (["config", "models", "plugins", "schedules", "automations", "learning", "memory", "skills", "notifications"].includes(shellState.workspace)) {
-      return activateWorkspace("chat");
+      void activateWorkspace("chat");
+      return true;
     }
     return false;
   }
@@ -433,6 +424,7 @@ export function createWorkspaceShell({
     runtimeAvailabilityChanged,
     workspaceUnavailableMessage: workspaceAccess.unavailableMessage,
     navigationRevision: () => navigationRevision,
+    navigationRequestRevision: transitions.requestRevision,
     subscribeRuntimeAvailabilityChange(listener) {
       runtimeAvailabilityListeners.add(listener);
       return () => runtimeAvailabilityListeners.delete(listener);

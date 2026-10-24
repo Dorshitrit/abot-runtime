@@ -35,6 +35,7 @@ import type {
   ModelGatewayEmbeddingResult,
   ModelGatewayPolicyConfig,
   ModelPreference,
+  ModelReasoningPreference,
   ModelTokenUsage,
 } from "../model-gateway/types.js";
 import type { RuntimeAttachmentStore } from "./attachments/store.js";
@@ -355,6 +356,7 @@ export type ModelGatewayInvokeParams = StreamCallbacks & {
   modelOverride?: string;
   reasoningOverride?: ModelReasoningLevel;
   modelPreference?: ModelPreference;
+  reasoningPreference?: ModelReasoningPreference;
   modelPolicy?: ModelGatewayPolicyConfig;
   abortSignal: AbortSignal;
   debugRequestId?: string;
@@ -369,6 +371,7 @@ export type ModelGatewayRawInvokeParams = {
   modelOverride?: string;
   reasoningOverride?: ModelReasoningLevel;
   modelPreference?: ModelPreference;
+  reasoningPreference?: ModelReasoningPreference;
   modelPolicy?: ModelGatewayPolicyConfig;
   abortSignal: AbortSignal;
   debugRequestId?: string;

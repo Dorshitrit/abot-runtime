@@ -143,6 +143,7 @@
             <span class="rail-button-label">System</span>
           </button>
         </div>
+        <div id="appearanceRoot"></div>
         <div class="rail-spacer"></div>
         <div class="rail-runtime">
           <select
@@ -206,6 +207,10 @@
             <h1 id="sessionsHeading">Conversations</h1>
           </div>
           <div class="sheet-heading-actions">
+            <button id="sessionSearchToggleButton" class="icon-button" type="button"
+              aria-label="Search conversations" title="Search conversations" aria-controls="sessionSearchField" aria-expanded="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+            </button>
             <button
               id="refreshSessionsButton"
               class="icon-button"
@@ -233,7 +238,16 @@
           </div>
         </div>
 
-        <div class="session-create-row">
+        <div class="session-navigation-tools">
+          <label id="sessionSearchField" class="session-search" hidden>
+            <span class="sr-only">Search conversations</span>
+            <input
+              id="sessionSearchInput"
+              type="search"
+              placeholder="Search conversations"
+              autocomplete="off"
+            />
+          </label>
           <button
             id="newSessionButton"
             class="sessions-new-button"
@@ -246,41 +260,25 @@
             </svg>
             <span>New chat</span>
           </button>
-          <button
-            id="newProjectButton"
-            class="sessions-project-button"
-            type="button"
-            disabled
-            aria-label="Create a project"
-            title="Create a project"
-            aria-controls="projectCreationRoot"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M3 7V5h6l2 2h10v13H3ZM12 10v7M8.5 13.5h7" />
-            </svg>
-            <span>New project</span>
-          </button>
         </div>
 
         <section class="sessions-section" aria-labelledby="sessionsHeading">
-          <div class="sessions-heading-row">
-            <span class="sessions-list-label">Recent conversations</span>
-            <span id="sessionsCount" class="count-badge">0</span>
+          <div id="sessionsList" class="sessions-list">
+            <button
+              id="newProjectButton"
+              class="sessions-project-button"
+              type="button"
+              disabled
+              aria-label="Create a project"
+              title="Create a project"
+              aria-controls="projectCreationRoot"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 7V5h6l2 2h10v13H3ZM12 10v7M8.5 13.5h7" />
+              </svg>
+              <span>New project</span>
+            </button>
           </div>
-          <label class="session-search">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="11" cy="11" r="6.5" />
-              <path d="m16 16 4 4" />
-            </svg>
-            <span class="sr-only">Search conversations</span>
-            <input
-              id="sessionSearchInput"
-              type="search"
-              placeholder="Search conversations"
-              autocomplete="off"
-            />
-          </label>
-          <div id="sessionsList" class="sessions-list"></div>
         </section>
       </aside>
 
@@ -436,6 +434,14 @@
                     Reasoning
                   </button>
                   <div id="agentModeMenu" class="agent-mode-menu"></div>
+                </div>
+                <div id="reasoningBudgetControl" class="control-cluster reasoning-budget-control" hidden>
+                  <span class="control-label">Budget</span>
+                  <button id="reasoningBudgetButton" class="agent-mode-button reasoning-budget-button"
+                    type="button" aria-controls="reasoningBudgetMenu" aria-haspopup="dialog" aria-expanded="false">
+                    Profile default
+                  </button>
+                  <div id="reasoningBudgetMenu" class="agent-mode-menu reasoning-budget-menu" hidden></div>
                 </div>
                 <div
                   id="composerContextWindow"

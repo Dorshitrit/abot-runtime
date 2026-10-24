@@ -6,8 +6,10 @@ import { createSparkChatFeature } from "../../web-ui/app/spark-chat-feature.js";
 // @ts-expect-error Browser composition module.
 import { createAppEventBindings } from "../../web-ui/app/controllers/app-event-bindings.js";
 
+vi.mock("../../web-ui/app/components/confirmation-dialog.js", () => ({ confirmDialog: vi.fn(async () => true) }));
+
 const capture = vi.hoisted(() => ({ conversation: null as any, queue: null as any, panelDom: null as any, open: false }));
-vi.mock("../../web-ui/app/services/workspace-state.js", () => ({ workspaceQueue: () => capture.queue }));
+vi.mock("../../web-ui/app/services/workspace-state.js", () => ({ workspaceQueue: () => capture.queue, workspaceStorage: () => undefined }));
 vi.mock("../../web-ui/app/spark-chat-conversation.js", async (importOriginal) => {
   const actual = await importOriginal<Record<string, (...args: any[]) => any>>();
   return { createSparkChatConversation: (...args: any[]) => (capture.conversation = actual.createSparkChatConversation(...args)) };
@@ -29,7 +31,6 @@ const addedFile = { ...file, id: "added-file", storageRef: "spark-companion/adde
 async function harness() {
   capture.open = false;
   const documentRoot = installSparkDocument();
-  vi.stubGlobal("confirm", vi.fn(() => true));
   const queueFixture = createSparkQueueFixture();
   capture.queue = queueFixture.queue;
   let savedEnvironment = "dev";
@@ -46,7 +47,7 @@ async function harness() {
     uploadAttachment: vi.fn(async () => addedFile),
   };
   const ordinaryState = { connected: true, runtimeAvailability: { status: "ready" }, currentSessionId: "ordinary", messages: [{ id: "ordinary-answer" }] };
-  const shell = { isWorkspaceAvailable: () => true, subscribeRuntimeAvailabilityChange: vi.fn(), showToast: vi.fn(), subscribeWorkspaceChange: vi.fn(), prepareWorkspaceActivation: () => () => true };
+  const shell = { isWorkspaceAvailable: () => true, subscribeRuntimeAvailabilityChange: vi.fn(), showToast: vi.fn(), subscribeWorkspaceChange: vi.fn(), prepareWorkspaceActivation: async () => () => true };
   const feature = createSparkChatFeature({ dom, state: ordinaryState, client, shell,
     realtime: { subscribeMessages: vi.fn(), subscribeConnected: vi.fn(), send: () => true }, getEnvironmentId: () => dom.environmentSelect.value });
   feature.bind(); feature.environmentChanged();

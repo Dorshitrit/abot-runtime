@@ -1,0 +1,32 @@
+.confirmation-dialog {
+  width: min(420px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-solid);
+  color: var(--text);
+  box-shadow: 0 18px 64px #0006;
+}
+.confirmation-dialog::backdrop { background: #0008; }
+.confirmation-content { padding: 24px; }
+.confirmation-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.confirmation-heading h2 { margin: 2px 0 0; color: var(--text-strong); font-size: 18px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.confirmation-close { flex: none; min-height: 28px; width: 28px; margin: -2px -6px 0 0; padding: 0; border-color: transparent; background: transparent; color: var(--muted); font-size: 22px; line-height: 1; }
+.confirmation-close:hover { border-color: transparent; background: var(--control-bg); color: var(--text); }
+.confirmation-description { margin: 14px 0 24px; color: var(--muted); font-size: 13px; line-height: 1.65; white-space: pre-line; overflow-wrap: anywhere; }
+.confirmation-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.confirmation-actions button { min-height: 34px; padding: 7px 13px; font-size: 12px; line-height: 1.4; }
+.confirmation-actions [data-confirmation-cancel] { background: transparent; }
+.confirmation-actions [data-confirmation-cancel]:hover { background: var(--control-bg-hover); }
+.confirmation-actions [data-confirmation-accept] { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: var(--accent-soft); color: var(--accent); }
+.confirmation-actions [data-confirmation-accept]:hover { background: color-mix(in srgb, var(--accent) 20%, var(--panel)); }
+.confirmation-dialog[data-tone="danger"] [data-confirmation-accept] { border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); background: color-mix(in srgb, var(--danger) 12%, var(--panel)); color: var(--danger); }
+.confirmation-dialog[data-tone="danger"] [data-confirmation-accept]:hover { background: color-mix(in srgb, var(--danger) 20%, var(--panel)); }
+.confirmation-dialog button:focus-visible { outline: 2px solid var(--text-strong); outline-offset: 3px; }
+@media (max-width: 480px) {
+  .confirmation-content { padding: 20px; }
+}

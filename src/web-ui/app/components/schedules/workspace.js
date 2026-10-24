@@ -1,3 +1,4 @@
+import { confirmDialog } from "../confirmation-dialog.js";
 import { updateLiveRegion } from "../../lib/live-region.js";
 import { escapeHtml } from "../../lib/text-format.js";
 import { scheduleTimeLabel } from "../../lib/schedule-message.js";
@@ -18,11 +19,13 @@ export function createSchedulesWorkspace({
   root,
   actions,
   getCurrentSessionId,
+  getEnvironmentId = () => "",
   getAgentModes,
   documentRoot = document,
-  confirmDiscard = (message) => window.confirm(message),
+  confirmDiscard = (message) => confirmDialog(message, { title: "Unsaved schedule", confirmLabel: "Discard changes", tone: "danger" }),
 }) {
   let editorIdentity = null;
+  let leaveRevision = 0;
   root.innerHTML = `<div class="schedules-content"><div class="schedules-toolbar"><label class="schedule-search"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input type="search" placeholder="Search schedules…" aria-label="Search schedules"></label>
     <select aria-label="Filter schedule status"><option value="current">Active &amp; paused</option><option value="active">Active</option><option value="paused">Paused</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="all">All statuses</option></select>
     <button type="button" data-refresh>Refresh</button><button type="button" class="primary-button" data-create>New schedule</button></div>
@@ -40,49 +43,58 @@ export function createSchedulesWorkspace({
   const workspaceState = root.querySelector(".schedule-workspace-state");
   search.addEventListener("input", applyFilter);
   filter.addEventListener("change", applyFilter);
-  root.querySelector("[data-refresh]").addEventListener("click", () => {
-    if (prepareLeave()) void actions.load();
+  root.querySelector("[data-refresh]").addEventListener("click", async () => {
+    if (await prepareLeave()) void actions.load();
   });
-  createButton.addEventListener("click", () => {
-    if (prepareLeave()) actions.beginEdit();
+  createButton.addEventListener("click", async () => {
+    if (await prepareLeave()) actions.beginEdit();
   });
 
-  function prepareLeave() {
-    const prepared = prepareEnvironmentChange();
-    if (!prepared) return false;
+  async function prepareLeave() {
+    const prepared = await prepareEnvironmentChange();
+    if (!prepared || prepared.canCommit() === false) return false;
     prepared();
     return true;
   }
 
-  function prepareEnvironmentChange() {
+  async function prepareEnvironmentChange() {
+    const request = ++leaveRevision;
+    const environmentId = getEnvironmentId();
     const editor = actions.snapshot().editor;
-    if (editor && !canDiscardScheduleDraft()) return null;
     const form = details.querySelector(".schedule-editor");
     const fingerprint = scheduleDraftFingerprint(form);
-    const commit = () => { if (editor) actions.cancelEdit(); };
+    const commit = () => {
+      if (!commit.canCommit()) return false;
+      if (editor) actions.cancelEdit();
+      return true;
+    };
     commit.canCommit = () => {
+      if (request !== leaveRevision) return false;
+      if (environmentId !== getEnvironmentId()) return false;
       if (actions.snapshot().mutation) return false;
       if (actions.snapshot().editor !== editor) return false;
       if (details.querySelector(".schedule-editor") !== form) return false;
       return scheduleDraftFingerprint(form) === fingerprint;
     };
-    return commit;
+    if (editor && !await canDiscardScheduleDraft()) return null;
+    return commit.canCommit() ? commit : null;
   }
 
   function scheduleDraftFingerprint(form) {
     return form ? JSON.stringify([...new FormData(form)]) : "";
   }
 
-  function canDiscardScheduleDraft() {
+  async function canDiscardScheduleDraft() {
     const form = details.querySelector(".schedule-editor");
     if (form?.dataset.dirty !== "true") return true;
-    return confirmDiscard("Discard this unsaved schedule?");
+    return await confirmDiscard("Discard this unsaved schedule?");
   }
 
-  function applyFilter() {
+  async function applyFilter() {
     const query = search.value;
     const status = filter.value;
-    if (!prepareLeave()) {
+    if (!await prepareLeave()) {
+      if (search.value !== query || filter.value !== status) return;
       const snapshot = actions.snapshot();
       search.value = snapshot.query;
       filter.value = snapshot.filter;
@@ -93,9 +105,9 @@ export function createSchedulesWorkspace({
 
   function bindListActions() {
     for (const button of list.querySelectorAll("[data-job-id]")) {
-      button.addEventListener("click", () => {
+      button.addEventListener("click", async () => {
         if (button.dataset.jobId === actions.snapshot().selectedId) return;
-        if (prepareLeave()) void actions.select(button.dataset.jobId);
+        if (await prepareLeave()) void actions.select(button.dataset.jobId);
       });
     }
   }

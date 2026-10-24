@@ -1,4 +1,4 @@
-import { syncReasoningModeField } from "../../lib/reasoning-controls.js";
+import { clearReasoningOffForMode, syncReasoningModeField } from "../../lib/reasoning-controls.js";
 import { escapeHtml } from "../../lib/text-format.js";
 import { listAvailableAutomationProducers } from "../../lib/automation-binding-producers.js";
 import { findAutomationNode } from "./timeline.js";
@@ -165,7 +165,9 @@ export function createAutomationStepEditorDialog({ root, actions, documentRoot, 
     if (target.matches("[data-agent-tool-search]")) { updateAgentToolPicker(form); return; }
     if (!form.contains(target) || entry.saving) return;
     entry.dirty = true;
-    if (event.type === "change" && target.matches('[name="modelProfileId"]'))
+    if (event.type === "change" && target.matches("[data-reasoning-mode]"))
+      clearReasoningOffForMode(form, entry.catalog?.models);
+    if (event.type === "change" && target.matches('[name="modelProfileId"], [data-reasoning-preference-mode]'))
       syncReasoningModeField(form, entry.catalog?.models);
     if (target.matches("[data-agent-tool]")) updateAgentToolPicker(form);
     if (event.type === "change" && target.matches('[name="toolOperation"]')) {

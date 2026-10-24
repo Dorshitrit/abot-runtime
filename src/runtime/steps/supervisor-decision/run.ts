@@ -1,5 +1,4 @@
 import { resolveMemoryRecallSteeringVersion } from "../../long-term-memory/recall-binding.js";
-import { canOfferMemoryRecall } from "../../long-term-memory/recall-policy.js";
 import type { RequestToolResultsView } from "../../context/request-tool-results.js";
 import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
 import { superCompactionFailureOwner } from "../../context/super-compaction-failure-owner.js";
@@ -37,6 +36,10 @@ import { isSupervisorSkillLookup } from "./skill-selection.js";
 import { assertBoundModelStepSteeringCurrent } from "../../model/model-step-steering.js";
 import { canOfferSupervisorSkillAuthoring } from "../supervisor-skill-authoring/input.js";
 import { runSupervisorSkillAuthoring } from "../supervisor-skill-authoring/run.js";
+import { canRecallSupervisorMemory, projectSupervisorProcedureEntry } from "./procedure-entry.js";
+import { traceDebug } from "../../observability/debug-logger.js";
+import { runSupervisorProcedureGate } from "./procedure-gate.js";
+import { buildSupervisorDelegationInput } from "./delegation-input.js";
 
 export async function runSupervisorDecision(
   request: RequestExecutionScope,
@@ -59,7 +62,7 @@ export async function runSupervisorDecision(
     skillReadHead?: RoleCallLedgerHead;
   }>,
 ): Promise<SupervisorDecisionOutcome> {
-  const boundSteeringVersion = resolveMemoryRecallSteeringVersion(
+  const recallSteeringVersion = resolveMemoryRecallSteeringVersion(
     options.memoryRecallMessage,
     request.requestId,
     options.call.callId,
@@ -69,9 +72,22 @@ export async function runSupervisorDecision(
     modelStep: SUPERVISOR_DECISION_MODEL_STEP,
     ...options.call,
   };
+  const requestSteering = resolveRequestSteeringInbox(request.requestSteering);
+  const entrySteeringVersion = requestSteering.snapshot().version;
+  const procedureState = projectSupervisorProcedureEntry(options, entrySteeringVersion);
+  const procedureEntry = procedureState.classifyProcedure;
+  // Eligibility and recalled facts describe this exact intent, including when
+  // the canonical receipt was omitted by the caller and regenerated above.
+  const boundSteeringVersion = procedureEntry ? entrySteeringVersion : recallSteeringVersion;
+  traceDebug("runtime.supervisor", "procedure.entry.projected", {
+    ...baseDiagnostic, classifyProcedure: procedureEntry,
+    allowInitialMemoryRecall: procedureState.allowInitialMemoryRecall,
+    hasRecallReceipt: procedureState.memoryRecallMessage !== undefined,
+    steeringVersion: entrySteeringVersion,
+  });
   const routingDiagnostic: SupervisorDecisionDiagnosticContext = Object.freeze({
     ...baseDiagnostic,
-    decisionPhase: "routing",
+    decisionPhase: procedureEntry ? "delegation" : "routing",
   });
   const workingDirectoryDiagnostic: SupervisorDecisionDiagnosticContext =
     Object.freeze({
@@ -79,12 +95,15 @@ export async function runSupervisorDecision(
       decisionPhase: "working_directory",
     });
   const memoryRecallMessage = request.longTermMemory?.enabled
-    ? options.memoryRecallMessage
+    ? procedureState.memoryRecallMessage
     : undefined;
   const initialMemoryMessage = request.longTermMemory?.enabled
     ? options.initialMemoryMessage
     : undefined;
-  const requestSteering = resolveRequestSteeringInbox(request.requestSteering);
+  const skillSelectionWindow = request.supervisorSkillSelectionWindows.bind({
+    rootCallId: options.call.rootCallId,
+    ...(options.resume ? { returnedResultRef: options.resume.returnedResultRef } : {}),
+  });
   const contextCompaction = createSessionMemoryAwareCompactionController(
     request,
     createModelStepCompactionController(request, {
@@ -123,15 +142,36 @@ export async function runSupervisorDecision(
       includeTitle: options.resume === undefined && (options.includeTitle ?? request.shouldGenerateSessionTitle ?? false),
       allowSkillReads: request.knowledgeSkillStore !== undefined && options.allowSkillReads !== false,
       skillReadHead: options.skillReadHead,
+      ...(options.resume ? { resume: options.resume } : {}),
+      skillSelectionWindow,
       boundSteeringVersion,
     });
     assertBoundModelStepSteeringCurrent(requestSteering, preparation.steeringVersion);
     if (isSupervisorSkillLookup(preparation.selection)) {
       return createDecisionOutcome({ ...preparation.selection, ...preparation.presentation }, preparation.steeringVersion);
     }
-    const input = buildSupervisorDecisionInput(request, {
+    const gate = procedureEntry
+      ? await runSupervisorProcedureGate(request, {
+        diagnostic: { ...baseDiagnostic, decisionPhase: "procedure_gate" },
+        boundSteeringVersion: preparation.steeringVersion,
+        ...(initialMemoryMessage ? { initialMemoryMessage } : {}),
+        ...(memoryRecallMessage ? { memoryRecallMessage } : {}),
+      })
+      : undefined;
+    if (gate) assertBoundModelStepSteeringCurrent(requestSteering, gate.steeringVersion);
+    if (gate?.decision.requiresProcedure === false) {
+      return createDecisionOutcome({
+        action: "respond",
+        responseRecommendation: gate.decision.responseRecommendation,
+        ...preparation.presentation,
+      }, gate.steeringVersion);
+    }
+    const buildRoutingInput = procedureEntry
+      ? buildSupervisorDelegationInput
+      : buildSupervisorDecisionInput;
+    const input = buildRoutingInput(request, {
       allowSkillAuthoring: canOfferSupervisorSkillAuthoring(request, options),
-      allowMemoryRecall: canOfferMemoryRecall({
+      allowMemoryRecall: canRecallSupervisorMemory(procedureState, {
         enabled: request.longTermMemory?.enabled === true,
         recallCount: options.memoryRecallCount ?? 0,
         maxRecallCallsPerRequest: request.memoryRecallLimit,
@@ -229,6 +269,8 @@ export async function runSupervisorDecision(
       input: workingDirectoryInput,
       boundSteeringVersion,
       frozenDecision: routing.decision,
+      exactContext: procedureEntry,
+      artifactPathsProjection: input.artifactPathsProjection,
       diagnostic: workingDirectoryDiagnostic,
       contextCompaction: createSupervisorArtifactPathsReadmissionController(
         request,

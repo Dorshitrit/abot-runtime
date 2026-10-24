@@ -10,6 +10,7 @@ import { prepareSystemRequestModules } from "../../../plugins/system/source/requ
 import { createExecApprovalScript } from "./support/exec-sensitive-approval-script.js";
 import { createSchedulerRuntimeFixture } from "./support/scheduler-runtime-fixture.js";
 import { makeOwnerControlPeer } from "./support/local-runtime-owner-peer.js";
+import { withPlannerApprovalScope } from "./support/planner-approval-scope.js";
 import {
   connectedSystemHost,
   selectedSystemModules,
@@ -105,7 +106,11 @@ for (const policy of ["execution-agent-v1", "supervisor-worker-v1"] as const) {
         [{ capabilityId: "record_approval_effect", controls: {} }],
         "approval_fixture",
       );
-      if (mixedScope) includeSystemScope(model);
+      if (mixedScope && policy === "execution-agent-v1") includeSystemScope(model);
+      if (mixedScope && policy === "supervisor-worker-v1")
+        model.invoke.mockImplementation(withPlannerApprovalScope(
+          model.invoke.getMockImplementation()!, ["approval_fixture", "system"],
+        ));
       const { peer } = makeOwnerControlPeer("computer-reconnect");
       const start = async () => {
         const owner = await createLocalRuntimeOwner(base.config, {

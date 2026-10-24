@@ -56,7 +56,7 @@ function harness(files = [malformedFile()]) {
   return { model, mutations, persistence, rendering, editor, status, saveFile, confirmDiscard, draft };
 }
 
-test("malformed linked files open the conditional repair editor with their exact clean baseline", () => {
+test("malformed linked files open the conditional repair editor with their exact clean baseline", async () => {
   const file = malformedFile();
   const h = harness([file]);
   expect(h.model.state.activeCategory).toBe("models");
@@ -64,7 +64,7 @@ test("malformed linked files open the conditional repair editor with their exact
   expect(h.model.selectedRawConfigFile()).toBe(file);
   expect(h.editor.value).toBe(file.invalidJson.raw);
   expect(h.model.hasUnsavedChanges()).toBe(false);
-  expect(h.mutations.confirmDiscardChanges()).toBe(true);
+  expect(await h.mutations.confirmDiscardChanges()).toBe(true);
   expect(h.confirmDiscard).not.toHaveBeenCalled();
   const markup = h.rendering.renderConfigMap();
   expect(markup).toContain("Correct the JSON");
@@ -88,7 +88,7 @@ test("an empty object repair stays dirty after Apply draft and saves with the or
   expect(h.rendering.renderConfigMap()).not.toContain("Correct the JSON");
 });
 
-test("reset and confirmed discard restore malformed raw bytes after a parsed repair", () => {
+test("reset and confirmed discard restore malformed raw bytes after a parsed repair", async () => {
   const file = malformedFile();
   const h = harness([file]);
   h.draft('{ "fixed": true }');
@@ -99,7 +99,7 @@ test("reset and confirmed discard restore malformed raw bytes after a parsed rep
   expect(h.model.hasUnsavedChanges()).toBe(false);
   h.draft("{}");
   h.mutations.applyRawDraft();
-  expect(h.mutations.confirmDiscardChanges("close")).toBe(true);
+  expect(await h.mutations.confirmDiscardChanges("close")).toBe(true);
   expect(h.confirmDiscard).toHaveBeenCalledOnce();
   expect(h.editor.value).toBe(file.invalidJson.raw);
   expect(h.model.hasUnsavedChanges()).toBe(false);
@@ -130,7 +130,7 @@ test("an untouched malformed sibling stays clean and does not block repairing an
   await h.persistence.saveConfigFile(runner.kind, runner.id);
   expect(h.model.dirtyFiles()).toEqual([]);
   expect(model.invalidJson.raw).toBe('{ "broken-model": ');
-  h.mutations.changeRawFile("model:broken-model", { value: "" });
+  await h.mutations.changeRawFile("model:broken-model", { value: "" });
   expect(h.model.rawDraftFor(model)).toBe(model.invalidJson.raw);
   expect(h.confirmDiscard).not.toHaveBeenCalled();
 });
@@ -163,12 +163,12 @@ test("structured edits cannot replace the malformed placeholder before raw repai
   expect(h.model.isFileDirty(file)).toBe(true);
 });
 
-test("changing raw selection can discard an unapplied repair back to its original baseline", () => {
+test("changing raw selection can discard an unapplied repair back to its original baseline", async () => {
   const runner = malformedFile();
   const model = malformedFile("model", "broken-model");
   const h = harness([runner, model]);
   h.draft("unfinished repair");
-  h.mutations.changeRawFile("model:broken-model", { value: "" });
+  await h.mutations.changeRawFile("model:broken-model", { value: "" });
   expect(h.confirmDiscard).toHaveBeenCalledOnce();
   expect(h.model.rawDraftFor(runner)).toBe(runner.invalidJson.raw);
   expect(h.model.hasUnsavedChanges()).toBe(false);

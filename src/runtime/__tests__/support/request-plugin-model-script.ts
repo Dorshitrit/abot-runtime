@@ -35,20 +35,7 @@ export function createSnapshotModelScript(input: {
       return { text: SNAPSHOT_FINAL, meta: {} };
     if (modelInput.modelStep === "capability.controls") {
       expect(visible).toContain(input.channel);
-      if (input.policy === "execution-agent-v1")
-        return {
-          text: JSON.stringify({
-            decision: {
-              invocations: {
-                invocation_1: {
-                  disposition: "execute",
-                  controls: { channel: input.channel },
-                },
-              },
-            },
-          }),
-          meta: {},
-        };
+      expect(input.policy).toBe("supervisor-worker-v1");
       return {
         text: JSON.stringify({
           decision: {
@@ -62,7 +49,7 @@ export function createSnapshotModelScript(input: {
     decisions += 1;
     const decision =
       input.policy === "execution-agent-v1"
-        ? directDecision(decisions, input.capabilityId)
+        ? directDecision(decisions, input.capabilityId, input.channel)
         : delegatedDecision(decisions, input.capabilityId);
     if (
       modelInput.modelStep === "supervisor.decision" &&
@@ -75,7 +62,10 @@ export function createSnapshotModelScript(input: {
   });
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (modelInput) => {
     await input.beforeModel?.(modelInput, ++calls);
-    const visible = JSON.stringify({ messages: modelInput.messages, format: modelInput.format });
+    const visible = JSON.stringify({
+      messages: modelInput.messages,
+      format: modelInput.format,
+    });
     expect(visible).not.toContain("private-destination-");
     expect(visible).not.toContain("connectionId");
     expect(visible).not.toContain("host_id");
@@ -84,7 +74,7 @@ export function createSnapshotModelScript(input: {
   return { invoke, invokeRaw: vi.fn<ModelGatewayClient["invokeRaw"]>() };
 }
 
-function directDecision(index: number, capabilityId: string) {
+function directDecision(index: number, capabilityId: string, channel: string) {
   if (index === 1)
     return {
       action: "open_capability_scope",
@@ -96,8 +86,7 @@ function directDecision(index: number, capabilityId: string) {
       action: "invoke_capability",
       capabilityId,
       intent: "Observe the requested fixture.",
-      operationObjective: "Observe the requested fixture.",
-      controlsEvidenceExecutionIds: [],
+      selectionControls: { channel },
       workingDirectory: ".",
     };
   expect(index).toBe(3);

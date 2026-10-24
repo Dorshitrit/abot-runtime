@@ -1,3 +1,4 @@
+import { projectCompactedCapabilityResultReceipt } from "./compacted-capability-result-receipt.js";
 import { projectCurrentRequestToolResults } from "./request-tool-results-supersession.js";
 export { projectCurrentRequestToolResults } from "./request-tool-results-supersession.js";
 import { bindSuperWorkerCompactionSources } from "./super-worker-compaction-sidecar.js";
@@ -198,11 +199,8 @@ export function buildCompactedRequestToolResultsMessage(
   const coveredResults = modelVisibleResults
     .filter(({ executionId }) => coveredExecutionIds.has(executionId))
     .map((result) => {
-      const {
-        referenceData: _referenceData,
-        adapterResult: _adapterResult,
-        ...receipt
-      } = result;
+      const { referenceData: _referenceData, ...sourceReceipt } = result;
+      const receipt = projectCompactedCapabilityResultReceipt(sourceReceipt);
       return Object.freeze({
         ...receipt,
         sourceFingerprint: digestByExecutionId.get(result.executionId)!

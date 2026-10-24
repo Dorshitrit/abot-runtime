@@ -3,7 +3,7 @@
 `abot` is a runtime library plus local service entrypoints. A complete
 source-checkout setup usually has:
 
-- a model provider, such as Ollama or OpenAI
+- a model provider, such as Ollama, OpenAI or llama.cpp
 - the model gateway process
 - the runtime bridge client process
 - optionally the local web UI proxy
@@ -78,6 +78,12 @@ Docker Desktop can usually reach Ollama on its Windows or macOS host at
 hosts may use a different address. Run the `/api/tags` check against the chosen
 URL from the runtime environment. You can also edit
 `models.providers.ollama.baseUrl` in `local/runtime.config.json` later.
+
+### llama.cpp
+
+See [llama.cpp setup](llamacpp.md) for a separately managed server, reachable origin,
+optional authentication and thinking-budget configuration. Model server lifecycle
+is independent of ABot and its internal model gateway.
 
 ### OpenAI
 

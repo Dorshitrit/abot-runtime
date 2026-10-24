@@ -40,7 +40,7 @@ function validIdentifier(value, provider) {
 
 export function validateModelDraft(state) {
   const provider = selectedModelProvider(state);
-  if (!provider && !["new:openai", "new:ollama"].includes(state.choice))
+  if (!provider && !["new:openai", "new:ollama", "new:llamacpp"].includes(state.choice))
     return { valid: false, field: "provider", message: "Choose a provider." };
   if (!provider && !validIdentifier(state.newProviderId, true))
     return {
@@ -66,6 +66,7 @@ export function validateModelDraft(state) {
       message: "Use a model ID of up to 256 characters.",
     };
   const connection = validateConnectionFields({
+    ...state,
     modelId: state.model,
     contextWindowTokens: state.contextWindowTokens,
     providerType: modelProviderType(state),
@@ -94,7 +95,7 @@ export function requiresModelCredential(state) {
   const configured =
     provider?.credentialConfigured === true ||
     state.credentialSavedFor === (provider?.id || state.newProviderId);
-  return modelProviderType(state) === "openai" && !configured;
+  return (modelProviderType(state) === "openai" || provider?.requiresApiKey === true) && !configured;
 }
 
 export function requiresModelSaveCredential(state) {
@@ -110,6 +111,7 @@ export function modelSetupInput(state, validated, apiKey) {
         newProvider: {
           id: state.newProviderId,
           type: modelProviderType(state),
+          ...(modelProviderType(state) === "llamacpp" && (apiKey || state.credentialSavedFor === state.newProviderId) ? { useApiKey: true } : {}),
           ...(validated.input.baseUrl
             ? { baseUrl: validated.input.baseUrl }
             : {}),
@@ -119,6 +121,8 @@ export function modelSetupInput(state, validated, apiKey) {
     profileId: state.profileId,
     model: validated.input.model,
     contextWindowTokens: validated.input.contextWindowTokens,
+    ...(validated.input.supportsThinking !== undefined ? { supportsThinking: validated.input.supportsThinking } : {}),
+    ...(validated.input.reasoningBudget ? { reasoningBudget: validated.input.reasoningBudget } : {}),
     ...connection,
     ...(apiKey ? { apiKey } : {}),
   };

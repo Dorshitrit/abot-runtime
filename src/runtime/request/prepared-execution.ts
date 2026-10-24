@@ -1,3 +1,4 @@
+import { captureRequestReasoningPreference } from "./reasoning-preference.js";
 import { bindRequestWorkingDirectory } from "../capabilities/request-working-directory.js";
 import { createRuntimeToolPathResolver } from "../capabilities/runtime-target-path.js";
 import { isSparkSession } from "../../sessions/spark-session.js";
@@ -88,6 +89,7 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
       ? { modelExecutionPolicies: loaded.modelExecutionPolicies }
       : {}),
   });
+  const reasoningPreference = captureRequestReasoningPreference(input.rawReasoningPreference, selection);
   const executionPolicy = resolveRequestExecutionPolicy(
     resume?.snapshot.seed.executionPolicySelection?.policy ??
       selection.execution.policy,
@@ -189,6 +191,7 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
     executionPolicySelection: selection.execution,
     ...(modelAttachments?.length ? { attachments: modelAttachments } : {}),
     agentMode: selection.agentMode,
+    ...(reasoningPreference ? { reasoningPreference } : {}),
     ...(selection.modelPreference
       ? { modelPreference: selection.modelPreference }
       : {}),

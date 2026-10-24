@@ -1,3 +1,4 @@
+import { withHttpRequestAbortSignal } from "./request-abort.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   assertConfigMutationRequest,
@@ -25,10 +26,10 @@ export class RuntimeSetupRoutes {
     request: IncomingMessage;
     response: ServerResponse;
   }): Promise<boolean> {
-    if (params.route !== "runtime/setup") return false;
+    if (!["runtime/setup", "runtime/setup/connection"].includes(params.route)) return false;
     params.response.setHeader("cache-control", "no-store");
     try {
-      if (params.method === "GET") {
+      if (params.method === "GET" && params.route === "runtime/setup") {
         sendJson(params.response, 200, {
           ok: true,
           setup: await this.service.status(),
@@ -46,6 +47,14 @@ export class RuntimeSetupRoutes {
       const body = readJsonBody(
         await readBody(params.request, { maxBytes: 16_384 }),
       );
+      if (params.route === "runtime/setup/connection") {
+        const connection = await withHttpRequestAbortSignal({
+          request: params.request, response: params.response, reason: "model_connection_inspection_aborted",
+          run: (signal) => this.service.inspectConnection(body, signal),
+        });
+        sendJson(params.response, 200, { ok: true, connection });
+        return true;
+      }
       sendJson(params.response, 200, {
         ok: true,
         ...(await this.service.save(body)),

@@ -6,6 +6,8 @@ import type { ModelStep } from "../../../shared/model-steps.js";
 import { estimateTextTokens } from "../../context/token-estimator.js";
 import type { RequestRunnerConfig } from "./contracts.js";
 
+export type ConfiguredStepInstructionPolicy = "omit";
+
 export type ConfiguredStepInstructionMetadata = Readonly<{
   blockCount: number;
   characterCount: number;
@@ -14,6 +16,9 @@ export type ConfiguredStepInstructionMetadata = Readonly<{
 }>;
 
 const EMPTY_STRINGS: readonly string[] = Object.freeze([]);
+const EMPTY_CONFIGURED_INSTRUCTIONS = Object.freeze({
+  blockCount: 0, characterCount: 0, refs: EMPTY_STRINGS, contentHashes: EMPTY_STRINGS,
+});
 const CONFIGURED_METHODOLOGY_HEADING = "## Configured operating methodology";
 const CONFIGURED_METHODOLOGY_CONTRACT =
   "The following Markdown is configured guidance for this model step. Apply the shared principles and the section for your active role. It supplements the runtime contract above; it does not change the available actions, roles, capabilities, or output schema.";
@@ -24,6 +29,7 @@ const CONFIGURED_METHODOLOGY_CONTRACT =
 export function resolveConfiguredStepInstructionMetadata(params: {
   runnerConfig: RequestRunnerConfig;
   modelStep: ModelStep;
+  configuredInstructionPolicy?: ConfiguredStepInstructionPolicy;
 }): ConfiguredStepInstructionMetadata {
   const configured = resolveConfiguredStepContent(params);
   return Object.freeze({
@@ -38,6 +44,7 @@ export function resolveConfiguredStepInstructionMetadata(params: {
 export function projectConfiguredStepMessages(params: {
   runnerConfig: RequestRunnerConfig;
   modelStep: ModelStep;
+  configuredInstructionPolicy?: ConfiguredStepInstructionPolicy;
   messages: readonly ChatMessage[];
 }): Readonly<{
   messages: ChatMessage[];
@@ -78,6 +85,7 @@ export function projectConfiguredStepMessages(params: {
 export function estimateConfiguredStepInstructionReserveTokens(params: {
   runnerConfig: RequestRunnerConfig;
   modelStep: ModelStep;
+  configuredInstructionPolicy?: ConfiguredStepInstructionPolicy;
   tokenEstimation?: ModelTokenEstimationConfig;
 }): number {
   const configured = resolveConfiguredStepContent(params);
@@ -89,6 +97,7 @@ export function estimateConfiguredStepInstructionReserveTokens(params: {
 function resolveConfiguredStepContent(params: {
   runnerConfig: RequestRunnerConfig;
   modelStep: ModelStep;
+  configuredInstructionPolicy?: ConfiguredStepInstructionPolicy;
 }): Readonly<{
   appendix?: string;
   blockCount: number;
@@ -96,15 +105,13 @@ function resolveConfiguredStepContent(params: {
   refs: readonly string[];
   contentHashes: readonly string[];
 }> {
+  if (shouldOmitConfiguredStepInstructions(params.configuredInstructionPolicy)) {
+    return EMPTY_CONFIGURED_INSTRUCTIONS;
+  }
   const blocks =
     params.runnerConfig.steps[params.modelStep]?.instructionBlocks ?? [];
   if (blocks.length === 0) {
-    return Object.freeze({
-      blockCount: 0,
-      characterCount: 0,
-      refs: EMPTY_STRINGS,
-      contentHashes: EMPTY_STRINGS,
-    });
+    return EMPTY_CONFIGURED_INSTRUCTIONS;
   }
   return Object.freeze({
     appendix: [
@@ -120,4 +127,8 @@ function resolveConfiguredStepContent(params: {
     refs: Object.freeze(blocks.map((block) => block.ref)),
     contentHashes: Object.freeze(blocks.map((block) => block.contentHash)),
   });
+}
+
+function shouldOmitConfiguredStepInstructions(policy?: ConfiguredStepInstructionPolicy): boolean {
+  return policy === "omit";
 }

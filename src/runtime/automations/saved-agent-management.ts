@@ -29,6 +29,7 @@ function snapshotAgent(agent: AgentNode, id: string): AgentNode {
     onFailure: agent.onFailure,
     modelProfileId: agent.modelProfileId,
     agentMode: agent.agentMode,
+    ...(agent.reasoningPreference ? { reasoningPreference: agent.reasoningPreference } : {}),
     roleInstructions: agent.roleInstructions,
     prompt: agent.prompt,
     inputs: {},

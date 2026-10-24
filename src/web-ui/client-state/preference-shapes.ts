@@ -1,3 +1,4 @@
+import { isReasoningPreferenceMap } from "./reasoning-preference-shape.js";
 import { ClientStateError } from "./contracts.js";
 
 const modes = new Set(["ask", "full_access", "full_plus"]);
@@ -18,7 +19,8 @@ function isSessionMode(value: unknown): boolean {
 }
 function isSidebarPreference(value: unknown): boolean {
   if (!isPreferenceObject(value)) return false;
-  if (!hasOnlyFields(value, ["archivedSessionIds", "orderedSessionIds"])) return false;
+  if (!hasOnlyFields(value, ["archivedSessionIds", "orderedSessionIds", "collapsedProjectIds"])) return false;
+  if (value.collapsedProjectIds !== undefined && !isStringList(value.collapsedProjectIds)) return false;
   return isStringList(value.archivedSessionIds) && isStringList(value.orderedSessionIds);
 }
 function isLauncherPosition(value: unknown): boolean {
@@ -44,6 +46,7 @@ function isGuidancePreference(value: unknown): boolean {
   return true;
 }
 function hasPreferenceShape(key: string, value: unknown): boolean {
+  if (key === "abot-web.reasoningPreferences") return isReasoningPreferenceMap(value);
   if (key === "abot-web.pinnedSessions") return isStringList(value);
   if (key === "abot.spark.launcher.position.v1") return isLauncherPosition(value);
   if (key.startsWith("abot-web.homeGuidance.")) return isGuidancePreference(value);

@@ -33,11 +33,11 @@ function createNavigation(width = 1440) {
 }
 
 describe("standalone configuration sidebar pages", () => {
-  test.each([1259, 1440])("reuses the editing panel with one current page at width %i", (width) => {
-    const f = createNavigation(width);
+  test.each([1259, 1440])("reuses the editing panel with one current page at width %i", async (width) => {
+    const f = await createNavigation(width);
     const panel = f.dom.configWorkspacePanel;
     for (const page of pages) {
-      f.dom[page.button].dispatch("click");
+      await f.dom[page.button].dispatch("click");
       f.flushFrames();
       expect(f.shell.activeWorkspace()).toBe(page.workspace);
       expect(f.dom.configWorkspacePanel).toBe(panel);
@@ -55,7 +55,7 @@ describe("standalone configuration sidebar pages", () => {
         expect(f.dom[candidate.button].getAttribute("aria-current")).toBe(current);
       }
     }
-    f.dom.homeWorkspaceButton.dispatch("click");
+    await f.dom.homeWorkspaceButton.dispatch("click");
     expect(panel.hidden).toBe(true);
     for (const page of pages) expect(f.dom[page.button].getAttribute("aria-current")).toBeNull();
   });
@@ -63,13 +63,13 @@ describe("standalone configuration sidebar pages", () => {
   const transitions = pages.flatMap((from) =>
     pages.filter((to) => to !== from).map((to) => ({ from, to })),
   );
-  test.each(transitions)("guards unsaved changes from $from.title to $to.title", ({ from, to }) => {
-    const f = createNavigation();
-    f.dom[from.button].dispatch("click");
+  test.each(transitions)("guards unsaved changes from $from.title to $to.title", async ({ from, to }) => {
+    const f = await createNavigation();
+    await f.dom[from.button].dispatch("click");
     f.flushFrames();
     f.prepareDiscard.mockReturnValue(false);
     const originalCategoryCalls = f.setCategory.mock.calls.length;
-    f.dom[to.button].dispatch("click");
+    await f.dom[to.button].dispatch("click");
     f.flushFrames();
     expect(f.prepareDiscard).toHaveBeenCalledOnce();
     expect(f.shell.activeWorkspace()).toBe(from.workspace);
@@ -79,33 +79,34 @@ describe("standalone configuration sidebar pages", () => {
     expect(f.setCategory).toHaveBeenCalledTimes(originalCategoryCalls);
     const discard = vi.fn();
     f.prepareDiscard.mockReturnValue(discard);
-    f.dom[to.button].dispatch("click");
+    await f.dom[to.button].dispatch("click");
     expect(discard).toHaveBeenCalledOnce();
     expect(f.shell.activeWorkspace()).toBe(to.workspace);
     expect(f.setCategory).toHaveBeenLastCalledWith(to.category);
   });
 
-  test.each(pages)("protects $title drafts on Escape and Back to chat", (page: Page) => {
-    const f = createNavigation();
-    f.dom[page.button].dispatch("click");
+  test.each(pages)("protects $title drafts on Escape and Back to chat", async (page: Page) => {
+    const f = await createNavigation();
+    await f.dom[page.button].dispatch("click");
     f.prepareDiscard.mockReturnValue(false);
-    expect(f.shell.closeOverlaysOnEscape()).toBe(false);
-    f.dom.closeConfigWorkspaceButton.dispatch("click");
+    // Escape is consumed even when the asynchronous discard is declined.
+    expect(f.shell.closeOverlaysOnEscape()).toBe(true);
+    await f.dom.closeConfigWorkspaceButton.dispatch("click");
     expect(f.shell.activeWorkspace()).toBe(page.workspace);
     expect(f.prepareDiscard).toHaveBeenCalledTimes(2);
-    f.dom[page.button].dispatch("click");
+    await f.dom[page.button].dispatch("click");
     expect(f.prepareDiscard).toHaveBeenCalledTimes(2);
     f.prepareDiscard.mockReturnValue(true);
     expect(f.shell.closeOverlaysOnEscape()).toBe(true);
-    expect(f.shell.activeWorkspace()).toBe("chat");
+    await vi.waitFor(() => expect(f.shell.activeWorkspace()).toBe("chat"));
   });
 
-  test("defers draft discard until prepared sidebar navigation commits", () => {
-    const f = createNavigation();
-    f.dom.modelsWorkspaceButton.dispatch("click");
+  test("defers draft discard until prepared sidebar navigation commits", async () => {
+    const f = await createNavigation();
+    await f.dom.modelsWorkspaceButton.dispatch("click");
     const discard = vi.fn();
     f.prepareDiscard.mockReturnValue(discard);
-    const activate = f.shell.prepareWorkspaceActivation("plugins", { focus: false });
+    const activate = await f.shell.prepareWorkspaceActivation("plugins", { focus: false });
     expect(discard).not.toHaveBeenCalled();
     expect(f.shell.activeWorkspace()).toBe("models");
     expect(activate()).toBe(true);

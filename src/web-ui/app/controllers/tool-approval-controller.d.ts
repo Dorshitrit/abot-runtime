@@ -5,6 +5,7 @@ import type {
 
 export interface ToolApprovalControllerState {
   connected: boolean;
+  currentSessionId?: string;
   events: ToolApprovalEvent[];
   submittedToolApprovalIds: Set<string>;
   messages?: Array<Record<string, unknown>>;
@@ -27,5 +28,5 @@ export declare function createToolApprovalController(
   isPending(event: ToolApprovalEvent | undefined): boolean;
   pendingEvent(): ToolApprovalEvent | undefined;
   pendingEvents(): ToolApprovalEvent[];
-  submit(approvalId: string, approved: boolean): boolean;
+  submit(approvalId: string, approved: boolean, reason?: string): boolean;
 };

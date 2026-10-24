@@ -14,6 +14,7 @@ import { createMessageAttachments } from "./message-attachments.js";
 import { createMessageTimestamp } from "./message-timestamp.js";
 import { createMessageLinkPreviews } from "./message-link-previews.js";
 import { projectApprovalContinuations } from "../lib/request-lifecycle-view.js";
+import { captureApprovalRejectionFocus } from "./tool-approval-rejection-input.js";
 
 export function createConversationView({
   dom,
@@ -253,6 +254,10 @@ export function createConversationView({
     conversationReasoning.beginRender(messages);
     messageLinkPreviews.reset();
     conversationStatus.reset();
+    const restoreRejectionFocus = captureApprovalRejectionFocus(
+      dom.messagesList,
+      documentRoot,
+    );
     dom.messagesList.innerHTML = "";
     if (messages.length === 0) {
       renderEmptyState();
@@ -267,6 +272,7 @@ export function createConversationView({
     for (const pendingApproval of getPendingApprovals()) {
       dom.messagesList.appendChild(createApprovalCard(pendingApproval));
     }
+    restoreRejectionFocus();
     historyPager?.renderControls(dom.messagesList);
     if (scrollBehavior) {
       scrollBehavior.afterRender();

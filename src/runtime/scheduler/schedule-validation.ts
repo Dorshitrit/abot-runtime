@@ -1,3 +1,4 @@
+import { parseBoundModelReasoningPreference } from "../../shared/model-reasoning.js";
 import type {
   CreateSchedulerJobInput,
   SchedulerSchedule,
@@ -53,6 +54,7 @@ export function validateSchedulerJobInput(
       "agentMode is invalid",
     );
   }
+  parseBoundModelReasoningPreference(input.reasoningPreference, input.modelProfileId);
   requireSchedulerToolPermissionMode(input.toolPermissionMode);
   validateTimeZone(input.timeZone);
 }

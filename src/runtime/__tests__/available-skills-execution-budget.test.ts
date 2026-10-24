@@ -59,7 +59,9 @@ test("SUPER discovery depends on core read availability, not Worker or tool slot
   expect(buildSupervisorCapabilityBriefOptions(request, options)).not.toHaveProperty("availableSkills");
   expect(list).not.toHaveBeenCalled();
   const selection = buildSupervisorSkillSelectionInput(request);
-  expect(JSON.stringify(selection.context.messages)).toContain("[budget-guide]:");
+  const catalogLine = selection.context.messages[0]!.content.split("\n")
+    .find((line) => line.startsWith('{"kind":"runtime_supervisor_skill_candidates_v1"'))!;
+  expect(JSON.parse(catalogLine).skills).toEqual(skills);
   expect(JSON.stringify(selection.format)).toContain('"read_skills"');
   expect(list).toHaveBeenCalledOnce();
   expect(f.getAvailableSkills).not.toHaveBeenCalled();

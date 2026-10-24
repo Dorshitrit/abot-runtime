@@ -194,6 +194,7 @@ function startCapturedRun(
         title: run.title,
         modelProfileId: run.modelProfileId,
         agentMode: run.agentMode,
+        reasoningPreference: run.reasoningPreference,
         toolPermissionMode: run.toolPermissionMode ?? "full_access",
         timeZone: run.timeZone,
         revision: run.jobRevision,

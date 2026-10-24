@@ -2,6 +2,8 @@ import {
   mergeRuntimeModelAddition,
   parseRuntimeModelProfileId,
 } from "./runtime-model-addition.js";
+import { supportsProviderAddress } from "./runtime-setup-provider-options.js";
+import { parseSetupCommandOptions, requireSetupCommandProviderOptions, type SetupCommandOptions } from "./runtime-setup-command-options.js";
 import { constants } from "node:fs";
 import { access, mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -28,7 +30,7 @@ import {
   type RuntimeSetupCommandMode,
 } from "./runtime-setup-presentation.js";
 
-type AddModelOptions = Readonly<{
+type AddModelOptions = SetupCommandOptions & Readonly<{
   rootDir: string;
   provider: Provider;
   model: string;
@@ -57,6 +59,8 @@ function parseArgs(
   argv: string[],
   commandMode: RuntimeSetupCommandMode,
 ): AddModelOptions {
+  const shared = parseSetupCommandOptions(argv);
+  argv = shared.argv;
   let rootDir = process.cwd();
   let provider: Provider | undefined;
   let model: string | undefined;
@@ -130,10 +134,11 @@ function parseArgs(
   if (!provider) throw new Error("--provider is required");
   if (!model) throw new Error("--model is required");
   if (!profile) throw new Error("--profile is required");
-  if (baseUrl && provider !== "ollama") {
-    throw new Error("--base-url is supported only with --provider ollama");
+  if (baseUrl && !supportsProviderAddress(provider)) {
+    throw new Error("--base-url is supported only with --provider ollama or llamacpp");
   }
-  return { rootDir, provider, model, profile, baseUrl, setDefault };
+  requireSetupCommandProviderOptions(provider, shared);
+  return { ...shared, rootDir, provider, model, profile, baseUrl, setDefault };
 }
 
 function printHelp(commandMode: RuntimeSetupCommandMode): void {
@@ -231,7 +236,7 @@ export async function runAddRuntimeModel(
   const merged = mergeRuntimeModelAddition(runtimeConfig, {
     profileId: options.profile,
     providerId: options.provider,
-    provider: buildProviderConfig(options.provider, options.baseUrl),
+    provider: buildProviderConfig(options.provider, options.baseUrl, options.apiKeyEnv),
     profile: { configRef: `./models/${options.profile}.config.json` },
     baseUrl: options.baseUrl,
   });
@@ -242,6 +247,8 @@ export async function runAddRuntimeModel(
     modelTemplate,
     options.provider,
     options.model,
+    options.contextWindowTokens,
+    options.modelOptions,
   );
 
   await mkdir(dirname(modelConfigPath), { recursive: true });
@@ -261,6 +268,7 @@ export async function runAddRuntimeModel(
       ...(options.provider === "openai"
         ? ["credential: set OPENAI_API_KEY in .env"]
         : []),
+      ...(options.apiKeyEnv ? ["credential: set " + options.apiKeyEnv + " in .env"] : []),
       getRestartInstruction(commandMode),
     ].join("\n"),
   );

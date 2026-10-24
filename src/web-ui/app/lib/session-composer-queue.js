@@ -1,3 +1,4 @@
+import { isReasoningPreference } from "./reasoning-preference.js";
 import { hasValidQueueOwnership, canUpdateBlockedRelease, canBindBlockedRelease, createQueueOwnership } from "./session-composer-queue-ownership.js";
 
 export const SESSION_COMPOSER_QUEUE_STORAGE_KEY =
@@ -53,6 +54,8 @@ function isQueueItem(value) {
     value.attachments.every(isAttachmentRef) &&
     isNonEmptyString(value.agentMode) &&
     isNonEmptyString(value.toolPermissionMode) &&
+    (value.reasoningPreference === undefined || (isReasoningPreference(value.reasoningPreference)
+      && value.reasoningPreference.profileId === value.modelPreference?.profileId)) &&
     (value.modelPreference === null ||
       (isRecord(value.modelPreference) && isJsonValue(value.modelPreference))),
   );
@@ -114,6 +117,7 @@ function snapshotQueueItem(item) {
     agentMode: item?.agentMode,
     toolPermissionMode: item?.toolPermissionMode,
     modelPreference: item?.modelPreference ?? null,
+    ...(item?.reasoningPreference !== undefined ? { reasoningPreference: item.reasoningPreference } : {}),
   };
   if (!isQueueItem(snapshot)) {
     throw new TypeError("Invalid session composer queue item");

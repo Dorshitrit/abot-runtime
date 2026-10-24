@@ -11,7 +11,7 @@ type WorkspaceGuard = (
   change: WorkspaceChange,
 ) => boolean | null | (() => void);
 
-function createNavigation(
+async function createNavigation(
   width = 1259,
   beforeWorkspaceChange: WorkspaceGuard = () => true,
   options: { matchMedia?: boolean; evictHiddenFocus?: boolean } = {},
@@ -20,7 +20,7 @@ function createNavigation(
   const shell = createWorkspaceShell({ ...harness, beforeWorkspaceChange });
   shell.bind();
   shell.load();
-  shell.activateWorkspace("chat", { focus: false });
+  await shell.activateWorkspace("chat", { focus: false });
   return { ...harness, shell };
 }
 
@@ -60,7 +60,7 @@ function expectConfigWithoutSessions(
 }
 
 describe("responsive workspace navigation", () => {
-  test("starts on Home and keeps conversation reading behind explicit Chat navigation", () => {
+  test("starts on Home and keeps conversation reading behind explicit Chat navigation", async () => {
     const harness = createWorkspaceShellHarness(1440);
     const onWorkspaceChange = vi.fn();
     const shell = createWorkspaceShell({ ...harness, onWorkspaceChange });
@@ -72,27 +72,27 @@ describe("responsive workspace navigation", () => {
     expect(harness.dom.chatPanel.inert).toBe(true);
     expect(harness.dom.sessionsPanel.hidden).toBe(true);
     expect(shell.closeOverlaysOnEscape()).toBe(false);
-    harness.dom.chatWorkspaceButton.dispatch("click");
+    await harness.dom.chatWorkspaceButton.dispatch("click");
     expectDockedChat(harness.dom);
-    harness.dom.homeWorkspaceButton.dispatch("click");
+    await harness.dom.homeWorkspaceButton.dispatch("click");
     expect(shell.activeWorkspace()).toBe("home");
     expect(harness.documentRoot.activeElement).toBe(harness.dom.composerInput);
     expect(onWorkspaceChange.mock.calls.map(([workspace]) => workspace)).toEqual(["chat", "home"]);
   });
-  test("opens Schedules as a full workspace while honoring the configuration discard guard", () => {
+  test("opens Schedules as a full workspace while honoring the configuration discard guard", async () => {
     let mayLeave = false;
     const guard = vi.fn(
       ({ from }: WorkspaceChange) => from !== "config" || mayLeave,
     );
-    const { dom, shell, flushFrames, documentRoot } = createNavigation(
+    const { dom, shell, flushFrames, documentRoot } = await createNavigation(
       1260,
       guard,
     );
-    shell.activateWorkspace("config");
-    expect(shell.activateWorkspace("schedules")).toBe(false);
+    await shell.activateWorkspace("config");
+    expect(await shell.activateWorkspace("schedules")).toBe(false);
     expect(dom.schedulesWorkspacePanel.hidden).toBe(true);
     mayLeave = true;
-    expect(shell.activateWorkspace("schedules")).toBe(true);
+    expect(await shell.activateWorkspace("schedules")).toBe(true);
     flushFrames();
     expect(dom.schedulesWorkspacePanel.hidden).toBe(false);
     expect(dom.schedulesWorkspacePanel.inert).toBe(false);
@@ -104,12 +104,13 @@ describe("responsive workspace navigation", () => {
       "page",
     );
     expect(shell.closeOverlaysOnEscape()).toBe(true);
+    await vi.waitFor(() => expect(shell.activeWorkspace()).toBe("chat"));
     expectDockedChat(dom);
   });
 
-  test("opens Learning from the sidebar as an independent workspace", () => {
-    const { dom, shell, flushFrames, documentRoot } = createNavigation(1260);
-    dom.learningWorkspaceButton.dispatch("click");
+  test("opens Learning from the sidebar as an independent workspace", async () => {
+    const { dom, shell, flushFrames, documentRoot } = await createNavigation(1260);
+    await dom.learningWorkspaceButton.dispatch("click");
     flushFrames();
     expect(shell.activeWorkspace()).toBe("learning");
     expect(dom.learningWorkspacePanel.hidden).toBe(false);
@@ -120,7 +121,7 @@ describe("responsive workspace navigation", () => {
     expect(dom.chatPanel.hidden).toBe(true);
     expect(dom.sessionsPanel.hidden).toBe(true);
     expect(documentRoot.activeElement).toBe(dom.closeLearningWorkspaceButton);
-    dom.closeLearningWorkspaceButton.dispatch("click");
+    await dom.closeLearningWorkspaceButton.dispatch("click");
     expectDockedChat(dom);
     expect(dom.learningWorkspacePanel.hidden).toBe(true);
     expect(dom.learningWorkspacePanel.inert).toBe(true);
@@ -128,9 +129,9 @@ describe("responsive workspace navigation", () => {
     expect(dom.learningWorkspaceButton.getAttribute("aria-current")).toBeNull();
   });
 
-  test("opens Memory from the sidebar with its own scroll panel and close action", () => {
-    const { dom, shell, flushFrames, documentRoot } = createNavigation(390);
-    dom.memoryWorkspaceButton.dispatch("click");
+  test("opens Memory from the sidebar with its own scroll panel and close action", async () => {
+    const { dom, shell, flushFrames, documentRoot } = await createNavigation(390);
+    await dom.memoryWorkspaceButton.dispatch("click");
     flushFrames();
     expect(shell.activeWorkspace()).toBe("memory");
     expect(dom.memoryWorkspacePanel.hidden).toBe(false);
@@ -139,36 +140,37 @@ describe("responsive workspace navigation", () => {
     expect(dom.memoryWorkspaceButton.getAttribute("aria-current")).toBe("page");
     expect(dom.chatPanel.hidden).toBe(true);
     expect(documentRoot.activeElement).toBe(dom.closeMemoryWorkspaceButton);
-    dom.openMemoryRestartControlsButton.dispatch("click");
+    await dom.openMemoryRestartControlsButton.dispatch("click");
     expect(shell.activeWorkspace()).toBe("config");
     expect(dom.memoryWorkspacePanel.hidden).toBe(true);
     expect(dom.configWorkspacePanel.hidden).toBe(false);
-    shell.activateWorkspace("memory");
+    await shell.activateWorkspace("memory");
     expect(shell.closeOverlaysOnEscape()).toBe(true);
+    await vi.waitFor(() => expect(shell.activeWorkspace()).toBe("chat"));
     expect(dom.memoryWorkspacePanel.hidden).toBe(true);
     expect(dom.chatPanel.hidden).toBe(false);
   });
 
-  test("docks conversations at the exact wide breakpoint without making Chat modal", () => {
-    const { dom, shell, mediaQueries } = createNavigation(1260);
+  test("docks conversations at the exact wide breakpoint without making Chat modal", async () => {
+    const { dom, shell, mediaQueries } = await createNavigation(1260);
 
     expect(mediaQueries).toContain("(min-width: 1260px)");
     expectDockedChat(dom);
-    expect(shell.setSessionsDrawerOpen(false)).toBe(true);
+    expect(await shell.setSessionsDrawerOpen(false)).toBe(true);
     expectDockedChat(dom);
     expect(shell.closeOverlaysOnEscape()).toBe(false);
     expectDockedChat(dom);
   });
 
-  test("keeps narrow conversations closed until their toggle opens the overlay", () => {
-    const { dom, documentRoot, flushFrames } = createNavigation(1259);
+  test("keeps narrow conversations closed until their toggle opens the overlay", async () => {
+    const { dom, documentRoot, flushFrames } = await createNavigation(1259);
 
     expect(dom.sessionsPanel.hidden).toBe(true);
     expect(dom.chatPanel.inert).toBe(false);
     expect(dom.sessionsToggleButton.hidden).toBe(false);
     expectBackdropHidden(dom);
 
-    dom.sessionsToggleButton.dispatch("click");
+    await dom.sessionsToggleButton.dispatch("click");
     flushFrames();
 
     expect(dom.sessionsPanel.hidden).toBe(false);
@@ -184,15 +186,15 @@ describe("responsive workspace navigation", () => {
 
   test.each(["close button", "backdrop", "Escape"])(
     "%s closes a narrow overlay and restores focus to its visible toggle",
-    (closeAction) => {
-      const { dom, shell, documentRoot, flushFrames } = createNavigation();
-      shell.setSessionsDrawerOpen(true);
+    async (closeAction) => {
+      const { dom, shell, documentRoot, flushFrames } = await createNavigation();
+      await shell.setSessionsDrawerOpen(true);
       flushFrames();
 
       if (closeAction === "close button") {
-        dom.closeSessionsButton.dispatch("click");
+        await dom.closeSessionsButton.dispatch("click");
       }
-      if (closeAction === "backdrop") dom.panelBackdrop.dispatch("click");
+      if (closeAction === "backdrop") await dom.panelBackdrop.dispatch("click");
       if (closeAction === "Escape") {
         expect(shell.closeOverlaysOnEscape()).toBe(true);
       }
@@ -211,10 +213,10 @@ describe("responsive workspace navigation", () => {
 
   test.each(["close", "toggle"])(
     "repairs focus from the %s control when an open overlay becomes docked",
-    (focusedControl) => {
+    async (focusedControl) => {
       const { dom, shell, documentRoot, flushFrames, resize } =
-        createNavigation();
-      shell.setSessionsDrawerOpen(true);
+        await createNavigation();
+      await shell.setSessionsDrawerOpen(true);
       flushFrames();
       const previouslyFocused =
         focusedControl === "close"
@@ -231,11 +233,11 @@ describe("responsive workspace navigation", () => {
     },
   );
 
-  test("does not run stale narrow focus work after the drawer has become docked", () => {
+  test("does not run stale narrow focus work after the drawer has become docked", async () => {
     const { dom, shell, documentRoot, flushFrames, resize } =
-      createNavigation();
+      await createNavigation();
     dom.sessionsToggleButton.focus();
-    shell.setSessionsDrawerOpen(true);
+    await shell.setSessionsDrawerOpen(true);
 
     resize(1260);
     flushFrames();
@@ -248,8 +250,8 @@ describe("responsive workspace navigation", () => {
 
   test.each([false, true])(
     "restores sidebar focus when docking ends, with browser focus eviction %s",
-    (evictHiddenFocus) => {
-      const { dom, documentRoot, flushFrames, resize } = createNavigation(
+    async (evictHiddenFocus) => {
+      const { dom, documentRoot, flushFrames, resize } = await createNavigation(
         1260,
         () => true,
         { evictHiddenFocus },
@@ -271,11 +273,11 @@ describe("responsive workspace navigation", () => {
 
   test.each([1259, 1260])(
     "hides conversations throughout Config navigation and resizing from width %i",
-    (width) => {
-      const { dom, shell, resize, flushFrames } = createNavigation(width);
-      shell.setSessionsDrawerOpen(true);
+    async (width) => {
+      const { dom, shell, resize, flushFrames } = await createNavigation(width);
+      await shell.setSessionsDrawerOpen(true);
       flushFrames();
-      dom.configWorkspaceButton.dispatch("click");
+      await dom.configWorkspaceButton.dispatch("click");
       flushFrames();
       expectConfigWithoutSessions(dom);
       expect(dom.configWorkspaceButton.getAttribute("aria-current")).toBe(
@@ -286,7 +288,7 @@ describe("responsive workspace navigation", () => {
       flushFrames();
       expectConfigWithoutSessions(dom);
 
-      dom.chatWorkspaceButton.dispatch("click");
+      await dom.chatWorkspaceButton.dispatch("click");
       flushFrames();
       expect(dom.configWorkspacePanel.hidden).toBe(true);
       expect(dom.chatPanel.hidden).toBe(false);
@@ -296,26 +298,26 @@ describe("responsive workspace navigation", () => {
     },
   );
 
-  test("retains narrow behavior for legacy viewport shims without matchMedia", () => {
-    const { dom, shell } = createNavigation(1800, () => true, {
+  test("retains narrow behavior for legacy viewport shims without matchMedia", async () => {
+    const { dom, shell } = await createNavigation(1800, () => true, {
       matchMedia: false,
     });
     expect(dom.sessionsPanel.hidden).toBe(true);
-    expect(shell.setSessionsDrawerOpen(true, { focus: false })).toBe(true);
+    expect(await shell.setSessionsDrawerOpen(true, { focus: false })).toBe(true);
     expect(dom.sessionsPanel.hidden).toBe(false);
     expect(dom.chatPanel.inert).toBe(true);
   });
 });
 
 describe("Configuration owns Operations without bypassing draft protection", () => {
-  test("switches all internal operation tabs and keyboard focus without leaving Config", () => {
+  test("switches all internal operation tabs and keyboard focus without leaving Config", async () => {
     const guard = vi.fn<WorkspaceGuard>(() => true);
-    const { dom, shell, documentRoot } = createNavigation(1260, guard);
-    shell.activateWorkspace("config", { focus: false });
+    const { dom, shell, documentRoot } = await createNavigation(1260, guard);
+    await shell.activateWorkspace("config", { focus: false });
     guard.mockClear();
 
     for (const button of dom.operationsTabButtons) {
-      button.dispatch("click");
+      await button.dispatch("click");
       expectConfigWithoutSessions(dom);
       expect(button.getAttribute("aria-selected")).toBe("true");
       expect(button.tabIndex).toBe(0);
@@ -327,7 +329,7 @@ describe("Configuration owns Operations without bypassing draft protection", () 
     }
 
     const preventDefault = vi.fn();
-    dom.operationsTabButtons[2].dispatch("keydown", {
+    await dom.operationsTabButtons[2].dispatch("keydown", {
       key: "ArrowRight",
       preventDefault,
     });
@@ -339,23 +341,24 @@ describe("Configuration owns Operations without bypassing draft protection", () 
 
   test.each([1259, 1260])(
     "preserves Config when Chat, sessions, close, or Escape is vetoed at width %i",
-    (width) => {
+    async (width) => {
       const guard = vi.fn<WorkspaceGuard>(({ from }) => from !== "config");
-      const { dom, shell, documentRoot, flushFrames } = createNavigation(
+      const { dom, shell, documentRoot, flushFrames } = await createNavigation(
         width,
         guard,
       );
-      dom.configWorkspaceButton.dispatch("click");
+      await dom.configWorkspaceButton.dispatch("click");
       flushFrames();
       const configFocus = documentRoot.activeElement;
       guard.mockClear();
 
-      expect(shell.activateWorkspace("chat")).toBe(false);
-      expect(shell.setSessionsDrawerOpen(true)).toBe(false);
-      expect(shell.closeOverlaysOnEscape()).toBe(false);
-      dom.closeConfigWorkspaceButton.dispatch("click");
-      dom.chatWorkspaceButton.dispatch("click");
-      expect(shell.prepareWorkspaceActivation("chat")).toBeNull();
+      expect(await shell.activateWorkspace("chat")).toBe(false);
+      expect(await shell.setSessionsDrawerOpen(true)).toBe(false);
+      // Escape is consumed immediately; approval still controls the eventual navigation.
+      expect(shell.closeOverlaysOnEscape()).toBe(true);
+      await dom.closeConfigWorkspaceButton.dispatch("click");
+      await dom.chatWorkspaceButton.dispatch("click");
+      expect(await shell.prepareWorkspaceActivation("chat")).toBeNull();
       flushFrames();
 
       expectConfigWithoutSessions(dom);
@@ -367,15 +370,15 @@ describe("Configuration owns Operations without bypassing draft protection", () 
     },
   );
 
-  test("defers draft discard until prepared Chat activation and commits it only once", () => {
+  test("defers draft discard until prepared Chat activation and commits it only once", async () => {
     const discardDraft = vi.fn();
-    const { dom, shell } = createNavigation(1260, ({ from }) => {
+    const { dom, shell } = await createNavigation(1260, ({ from }) => {
       if (from === "config") return discardDraft;
       return true;
     });
-    shell.activateWorkspace("config", { focus: false });
+    await shell.activateWorkspace("config", { focus: false });
 
-    const activateChat = shell.prepareWorkspaceActivation("chat", {
+    const activateChat = await shell.prepareWorkspaceActivation("chat", {
       focus: false,
     });
     expect(activateChat).toBeTypeOf("function");

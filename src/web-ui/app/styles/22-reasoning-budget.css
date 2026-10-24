@@ -1,0 +1,39 @@
+[data-reasoning-preference]:not([hidden]) { display: grid; gap: 10px; }
+[data-reasoning-preference] label:not([hidden]) { display: grid; gap: 6px; font-size: 12px; }
+[data-reasoning-preference] select,
+[data-reasoning-preference] input {
+  box-sizing: border-box; width: 100%; min-width: 0; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 7px; background: var(--panel);
+  color: var(--text); font: inherit;
+}
+[data-reasoning-preference] small,
+[data-reasoning-model-change-note] { color: var(--muted); font-size: 11px; line-height: 1.5; }
+[data-reasoning-preference] [hidden] { display: none; }
+[data-save-budget], [data-spark-save-thinking] {
+  margin-top: 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 7px;
+  background: var(--panel); color: var(--accent); font: inherit; font-size: 12px; cursor: pointer;
+}
+[data-budget-error] { color: var(--danger); font-size: 12px; }
+[data-spark-thinking-budget]:not(:empty) { padding: 14px 0; border-top: 1px solid var(--line); }
+
+.reasoning-mode-default-note { display: block; color: var(--muted); font-size: 11px; line-height: 1.5; margin: 8px; }
+[data-mode-error] { color: var(--danger); font-size: 12px; margin: 8px; }
+.reasoning-budget-control { flex: none; }
+.reasoning-budget-control[hidden] { display: none; }
+.reasoning-budget-menu { width: min(300px, calc(100vw - 32px)); padding: 14px; }
+.reasoning-budget-button { max-width: 150px; white-space: nowrap; }
+@container (max-width: 600px) {
+  .composer-model-controls { flex-wrap: wrap; }
+  .agent-mode-control, .reasoning-budget-control { position: static; }
+  #agentModeMenu, .reasoning-budget-menu { left: 0; right: auto; }
+}
+@container (max-width: 400px) {
+  .agent-mode-control, .agent-mode-control .agent-mode-button, .reasoning-budget-button { width: auto; }
+  .agent-mode-control .agent-mode-button { padding: 0 6px; }
+  .agent-mode-control .agent-mode-icon { display: none; }
+  .agent-mode-control .agent-mode-button > span:last-child {
+    position: static; width: auto; height: auto; padding: 0; clip-path: none; overflow: hidden;
+  }
+  .reasoning-budget-button { padding: 0 6px; }
+  .reasoning-budget-menu { left: 0; right: auto; width: min(300px, 100%); }
+}

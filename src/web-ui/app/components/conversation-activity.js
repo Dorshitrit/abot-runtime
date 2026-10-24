@@ -16,6 +16,8 @@ import {
   summarizeConversationTools,
 } from "../lib/tool-activity-model.js";
 import { isNonToolTimelineEvent } from "../lib/tool-timeline.js";
+import { buildMemoryActivities, isMemoryRetrievalEvent } from "../lib/memory-activity-model.js";
+import { createConversationMemoryActivity } from "./conversation-memory-activity.js";
 
 function textOf(value, fallback = "") {
   return typeof value === "string" ? value : fallback;
@@ -113,6 +115,7 @@ export function buildConversationActivityModel({
     return {
       requestId: "",
       events: [],
+      memoryActivities: [],
       roleCards: [],
       sources: [],
       toolActions: [],
@@ -134,7 +137,12 @@ export function buildConversationActivityModel({
         .map(presentEvent)
     : [];
   const toolCount = countToolInvocations(scopedEvents);
-  const timeline = buildEventTimelineEntries(scopedEvents);
+  const memoryActivities = buildMemoryActivities({
+    requestId: normalizedRequestId, events: scopedEvents, streaming,
+  });
+  const timeline = buildEventTimelineEntries(scopedEvents.filter(
+    (event) => !isMemoryRetrievalEvent(event),
+  ));
   const progress = normalizeProgress(taskProgress, normalizedRequestId);
   const contextWindowModel = projectContextWindowDisplay(
     contextWindow,
@@ -155,6 +163,7 @@ export function buildConversationActivityModel({
   return {
     requestId: normalizedRequestId,
     events: timeline,
+    memoryActivities,
     roleCards: buildConversationRoleCards({
       requestId: normalizedRequestId,
       events: scopedEvents,
@@ -179,7 +188,7 @@ export function buildConversationActivityModel({
         "Working"
       : "",
     openByDefault: Boolean(streaming),
-    hasContent: Boolean(progress || timeline.length > 0),
+    hasContent: Boolean(progress || timeline.length > 0 || memoryActivities.length > 0),
   };
 }
 
@@ -263,6 +272,25 @@ export function createConversationActivity({
   function createNode(input = {}) {
     const model = buildConversationActivityModel(input);
     if (!model.hasContent) return null;
+    if (model.roleCards.length > 0) return createActivityNode(model);
+    const memory = createConversationMemoryActivity({
+      documentRoot, activities: model.memoryActivities,
+    });
+    const bubble = documentRoot.createElement("div");
+    bubble.className = "conversation-role-message conversation-memory-bubble";
+    bubble.dataset.requestId = model.requestId;
+    if (memory) bubble.appendChild(memory);
+    if (!model.events.length && !model.progress) return bubble;
+    const activity = createActivityNode(model);
+    if (!memory) return activity;
+    const group = documentRoot.createElement("div");
+    group.className = "conversation-activity-group";
+    group.dataset.requestId = model.requestId;
+    group.append(bubble, activity);
+    return group;
+  }
+
+  function createActivityNode(model) {
     const hasFailures = model.failureCount > 0;
     const hasRoleCards = model.roleCards.length > 0;
 
@@ -352,12 +380,13 @@ export function createConversationActivity({
 
     const body = documentRoot.createElement("div");
     body.className = "conversation-activity-body";
-    if (model.events.length > 0) {
+    if (model.events.length > 0 || hasRoleCards) {
       const timelineEvents = model.events.filter(isNonToolTimelineEvent);
       body.appendChild(
         roleCards.createNode({
           requestId: model.requestId,
           cards: model.roleCards,
+          memoryActivities: model.memoryActivities,
           heading: summary,
           timeline: renderTimeline(documentRoot, timelineEvents),
           hasTimeline: timelineEvents.length > 0,

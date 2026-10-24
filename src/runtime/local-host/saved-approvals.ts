@@ -401,6 +401,7 @@ export class SavedRequestApprovals {
           text: snapshot.originalPrompt,
           agentMode: snapshot.seed.agentMode,
           modelPreference: snapshot.seed.modelPreference,
+          reasoningPreference: snapshot.seed.reasoningPreference,
           toolPermissionMode: snapshot.seed.toolPermissionMode,
         },
         {

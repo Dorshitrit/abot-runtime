@@ -198,6 +198,7 @@ export function projectToolActivityEvent(message) {
   const activity = skill ?? automationActivityFields(meta, tool);
   return {
     ...(fileReference ? { fileReference } : {}),
+    ...(skill?.skillRead ? { skillRead: true } : {}),
     ...(activity?.activityTitle ? { activityTitle: activity.activityTitle } : {}),
     name,
     tool,

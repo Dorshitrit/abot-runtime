@@ -5,14 +5,14 @@ import { createAutomationDraftRecoveryCommands } from "./draft-recovery-actions.
 import { activateAutomationLibraryTab, automationLibraryTabForKey, renderAutomationLibraryTabs } from "./library-tabs.js";
 import { readAutomationDefinitionPatch, renderAutomationEditor, renderAutomationToolResults, toolDisplayName } from "./editor.js";
 import { createAutomationStepEditorDialog } from "./step-editor-dialog.js";
-import { focusSelectedAutomationStep } from "./run-steps-view.js";
 import { renderAutomationRun } from "./run.js";
 import { createAutomationRunHistoryControls } from "./run-history-controls.js";
 import { findAutomationPosition } from "../../lib/automation-graph-position.js";
 import { canWrapAutomationSequence } from "../../lib/automation-parallel-depth.js";
 import { createAutomationTimelineCamera } from "./timeline-camera.js";
 import { createAutomationLiveView } from "./live-view.js";
-import { automationRerunConfirmation } from "./rerun-confirmation.js";
+import { createAutomationConfirmations, createAutomationDestructiveCommands } from "./confirmation-actions.js";
+import { createAutomationWorkspaceNavigation } from "./workspace-navigation.js";
 import { matchesAutomationGrant, requiresFullPlus, selectedAutomationOperations } from "./permission-selection.js";
 
 const DRAG_TYPE = "application/x-abot-automation-step";
@@ -34,6 +34,7 @@ export function paletteNode(target, catalog) {
   return {
     kind: "agent", title: agent.title || "New agent", onFailure: agent.onFailure || "stop",
     modelProfileId: agent.modelProfileId || "", agentMode: agent.agentMode || "fast",
+    ...(agent.reasoningPreference ? { reasoningPreference: { ...agent.reasoningPreference } } : {}),
     roleInstructions: agent.roleInstructions || "", prompt: agent.prompt || "",
     inputs: agent.inputs || {}, tools: agent.tools || [], result: agent.result || { kind: "text" },
     ...(Array.isArray(agent.acceptance) ? { acceptance: agent.acceptance } : {}),
@@ -53,10 +54,11 @@ function permissionDialogMarkup(selection, purpose, revision) {
 
 export function createAutomationsWorkspace({
   root, actions, documentRoot = document,
-  confirmDiscard = (message) => window.confirm(message),
+  confirmDiscard,
 }) {
   let current = actions.snapshot();
   let definitionDirty = false;
+  let editRevision = 0;
   let insertion = null;
   let permissionDialog = null;
   let paletteQuery = "";
@@ -72,6 +74,9 @@ export function createAutomationsWorkspace({
   });
   const liveView = createAutomationLiveView(root);
   const runHistory = createAutomationRunHistoryControls({ root, actions });
+  const confirmationScope = { actions, getCurrent: () => current, getEditRevision: () => editRevision };
+  const confirmations = createAutomationConfirmations({ ...confirmationScope, confirm: confirmDiscard });
+  const navigation = createAutomationWorkspaceNavigation({ ...confirmationScope, prepareLeave, root });
 
   function isDirty() { return definitionDirty || stepEditor.isDirty(); }
 
@@ -83,10 +88,12 @@ export function createAutomationsWorkspace({
   function prepareLeave() {
     if (!stepEditor.prepareLeave()) return false;
     if (permissionDialog?.open) permissionDialog.close();
-    if (!isDirty()) return true;
-    if (!confirmDiscard("Discard unsaved automation changes?")) return false;
-    definitionDirty = false;
-    return true;
+    if (!isDirty()) { confirmations.invalidate(); return true; }
+    return confirmations.prepare("Discard unsaved automation changes?",
+      { title: "Discard changes", confirmLabel: "Discard", tone: "danger" }, () => {
+        definitionDirty = false;
+        return true;
+      });
   }
 
   function requireSavedGraph() {
@@ -166,7 +173,7 @@ export function createAutomationsWorkspace({
   async function selectLibraryTab(name, focus = false) {
     if (name === activeLibraryTab) return;
     if (name === "templates" && current.selectedAutomationId) {
-      if (!prepareLeave() || !await actions.openRoute("", "")) return;
+      if (!await navigation.leave(() => actions.openRoute("", ""))) return;
     }
     activeLibraryTab = name;
     activateAutomationLibraryTab(root, name, { focus });
@@ -233,13 +240,6 @@ export function createAutomationsWorkspace({
     await actions.mutateDraft({ kind: "wrap_parallel", nodeIds: [current.selectedNodeId, position.next.id] });
   }
 
-  async function removeStep() {
-    if (!requireSavedGraph()) return;
-    if (!confirmDiscard("Remove this step from the draft?")) return;
-    const removed = await actions.mutateDraft({ kind: "remove_node", nodeId: current.selectedNodeId });
-    if (removed) actions.selectNode("");
-  }
-
   function openPermissionDialog(purpose) {
     if (permissionDialog?.open) return;
     const selectedAutomation = current.automations.find((item) => item.id === current.selectedAutomationId);
@@ -292,23 +292,20 @@ export function createAutomationsWorkspace({
   }
 
   const command = {
-    ...createAutomationDraftRecoveryCommands({ actions, requireSavedGraph, confirmDiscard,
+    ...createAutomationDraftRecoveryCommands({ actions, requireSavedGraph,
+      confirmDiscard: (message, options) => confirmations.run(message, options, () => true),
       onRestored: () => { definitionDirty = false; insertion = null; } }),
     ...createAutomationArchiveCommands({ actions, getCurrent: () => current, requireSavedGraph,
-      confirmDiscard, onFilterChange: (archived) => { showArchived = archived; } }),
+      confirmations, onFilterChange: (archived) => { showArchived = archived; } }),
+    ...createAutomationDestructiveCommands({ actions, getCurrent: () => current, requireSavedGraph,
+      confirmations, onDraftDeleted: () => { definitionDirty = false; insertion = null; } }),
     "show-full-step-output": () => actions.showFullStepOutput(),
     refresh: () => actions.refresh(), create: () => actions.create(),
     describe: () => actions.openAuthoringChat(current.selectedAutomationId, current.draft?.revision),
-    back: () => { if (prepareLeave()) return actions.openRoute("", ""); },
+    back: () => navigation.leave(() => actions.openRoute("", "")),
     "save-draft": saveDefinition,
     "edit-step": () => stepEditor.open(root.querySelector('[data-action="edit-step"]')),
     "toggle-details": () => { detailsCollapsed = !detailsCollapsed; updateDetailsVisibility(); },
-    "delete-draft": async () => {
-      if (!current.draft || current.publishedDefinition ||
-          current.automations.find((item) => item.id === current.selectedAutomationId)?.publishedRevision) return;
-      if (!confirmDiscard("Delete this unpublished automation draft and all its steps? This cannot be undone.")) return;
-      if (await actions.deleteDraft()) { definitionDirty = false; insertion = null; }
-    },
     "save-agent": () => { if (requireSavedGraph()) return actions.saveAgent(); },
     validate: () => { if (requireSavedGraph()) return actions.validate(); },
     publish: async () => {
@@ -319,19 +316,16 @@ export function createAutomationsWorkspace({
     run: () => { if (requireSavedGraph()) return actions.startRun(); },
     "toggle-active": () => current.automations.find((item) => item.id === current.selectedAutomationId)?.status === "active"
       ? actions.setActive(false) : openPermissionDialog("activate"),
-    "show-runs": () => {
-      if (!prepareLeave()) return;
+    "show-runs": () => navigation.leave(() => {
       const runId = current.runs[0]?.id || current.lastViewedRunId;
       return runId ? actions.openRun(runId) : notify("No runs yet.");
-    },
-    editor: () => { if (prepareLeave()) return actions.openRoute(current.selectedAutomationId, ""); },
+    }),
+    editor: () => navigation.leave(() => actions.openRoute(current.selectedAutomationId, "")),
     stop: () => actions.stopRun(),
-    rerun: () => current.run &&
-      confirmDiscard(automationRerunConfirmation(current.run)) && actions.rerun(),
     "open-chat-run": () => actions.showChatRun(current.selectedRunId),
     "move-up": () => moveStep(-1), "move-down": () => moveStep(1),
     "move-to-slot": moveToSlot,
-    parallel: wrapParallel, "remove-node": removeStep,
+    parallel: wrapParallel,
   };
 
   root.addEventListener("input", (event) => {
@@ -340,10 +334,10 @@ export function createAutomationsWorkspace({
       refreshToolPalette();
       return;
     }
-    if (event.target.closest("[data-automation-definition-form]")) definitionDirty = true;
+    if (event.target.closest("[data-automation-definition-form]")) { definitionDirty = true; editRevision += 1; }
   });
   root.addEventListener("change", (event) => {
-    if (event.target.closest("[data-automation-definition-form]")) definitionDirty = true;
+    if (event.target.closest("[data-automation-definition-form]")) { definitionDirty = true; editRevision += 1; }
   });
   root.addEventListener("click", (event) => {
     const element = event.target.closest("button");
@@ -362,28 +356,19 @@ export function createAutomationsWorkspace({
       return;
     }
     if (element.dataset.selectAutomation !== undefined) {
-      if (prepareLeave()) void actions.openRoute(element.dataset.selectAutomation, "");
+      void navigation.leave(() => actions.openRoute(element.dataset.selectAutomation, ""));
       return;
     }
     if (element.dataset.templateId !== undefined) {
-      if (prepareLeave()) void actions.createTemplate(element.dataset.templateId);
+      void navigation.leave(() => actions.createTemplate(element.dataset.templateId));
       return;
     }
     if (element.dataset.selectRun !== undefined) {
-      if (prepareLeave()) void actions.openRun(element.dataset.selectRun);
+      void navigation.leave(() => actions.openRun(element.dataset.selectRun));
       return;
     }
     if (element.dataset.selectNode !== undefined || element.dataset.automationNode !== undefined) {
-      if (!prepareLeave()) return;
-      const nodeId = element.dataset.selectNode || element.dataset.automationNode || "";
-      if (nodeId === current.selectedNodeId || !nodeId) { actions.selectNode(""); return; }
-      const nodeButton = element.dataset.automationNode !== undefined ? element
-        : [...root.querySelectorAll("[data-automation-node]")]
-          .find((item) => item.dataset.automationNode === nodeId);
-      if (element.dataset.selectNode !== undefined)
-        nodeButton?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-      actions.selectNode(nodeId);
-      if (current.selectedRunId) focusSelectedAutomationStep(root);
+      void navigation.selectNode(element);
       return;
     }
     if (element.dataset.insertParent !== undefined) {

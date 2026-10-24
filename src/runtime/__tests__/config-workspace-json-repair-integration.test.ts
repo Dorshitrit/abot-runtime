@@ -80,7 +80,7 @@ test("real malformed linked files can be repaired from browser state through can
   expect(await setup.status()).toMatchObject({ status: "required", recovery: "configuration" });
   expect(model.findConfigFile("model", modelId).invalidJson.raw).toBe("{broken-model");
 
-  mutations.changeRawFile(`model:${modelId}`, { value: "" });
+  await mutations.changeRawFile(`model:${modelId}`, { value: "" });
   expect(editor.value).toBe("{broken-model");
   editor.value = originalModel;
   model.state.rawDraftsByKey.set(model.state.selectedRawConfigKey, originalModel);

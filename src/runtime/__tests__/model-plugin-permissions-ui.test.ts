@@ -265,6 +265,7 @@ describe("model plugin restrictions", () => {
     });
     await workspace.load();
     const oldLoad = workspace.load();
+    await vi.waitFor(() => expect(loadModelPlugins).toHaveBeenCalledTimes(2));
     expect(configDashboard.setAttribute).toHaveBeenLastCalledWith(
       "aria-busy",
       "true",

@@ -37,7 +37,8 @@ vi.mock("../../web-ui/app/components/schedules/workspace.js", () => ({
     actions: typeof views.scheduleActions;
   }) => {
     views.scheduleActions = actions;
-    return { render: vi.fn(), prepareLeave: () => true };
+    return { render: vi.fn(), prepareEnvironmentChange: async () =>
+      Object.assign(() => true, { canCommit: () => true }) };
   },
 }));
 afterEach(() => vi.unstubAllGlobals());
@@ -71,7 +72,9 @@ function featureFixture(modelProfileId = "selected-model") {
     environmentSelect: { addEventListener: vi.fn() },
     schedulesWorkspaceButton: { hidden: false, disabled: false, dataset: {} },
   };
-  const shell = { activateWorkspace: vi.fn(() => true) };
+  const activate = vi.fn(() => true);
+  const shell = { activateWorkspace: vi.fn(async () => true),
+    prepareWorkspaceActivation: vi.fn(async () => activate) };
   const schedules = createSchedulesFeature({
     dom,
     client,
@@ -92,7 +95,7 @@ function featureFixture(modelProfileId = "selected-model") {
     openSession: vi.fn(),
     isComposerAvailable: () => true,
   });
-  return { client, shell };
+  return { client, shell, activate };
 }
 
 describe("Dashboard Job drafts", () => {
@@ -102,7 +105,8 @@ describe("Dashboard Job drafts", () => {
     await vi.waitFor(() =>
       expect(views.scheduleActions!.snapshot().editor).not.toBeNull(),
     );
-    expect(f.shell.activateWorkspace).toHaveBeenCalledWith("schedules");
+    expect(f.shell.prepareWorkspaceActivation).toHaveBeenCalledWith("schedules");
+    expect(f.activate).toHaveBeenCalledOnce();
     expect(views.scheduleActions!.snapshot().editor).toMatchObject({
       job: null,
       environmentId: "dev",

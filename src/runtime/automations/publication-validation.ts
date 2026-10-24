@@ -1,3 +1,4 @@
+import { captureRequestReasoningPreference } from "../request/reasoning-preference.js";
 import type { RuntimeConfig } from "../ports.js";
 import { resolveModelSelection } from "../model/model-selection.js";
 import {
@@ -148,6 +149,11 @@ export function validateAutomationPublication(input: {
       modelPolicy: input.config.models,
       modelExecutionPolicies: input.config.modelExecutionPolicies,
     });
+    try {
+      captureRequestReasoningPreference(node.reasoningPreference, selection);
+    } catch (error) {
+      issues.push({ code: "automation_model_unavailable", path: `nodes.${node.id}.reasoningPreference`, message: String(error) });
+    }
     if (selection.execution.primaryProfileId !== node.modelProfileId) {
       issues.push({
         code: "automation_model_unavailable",

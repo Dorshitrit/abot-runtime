@@ -1,10 +1,14 @@
 import { textOf } from "../../lib/text-format.js";
 
-const PROVIDERS = new Set(["ollama", "openai"]);
+const PROVIDERS = new Set(["ollama", "openai", "llamacpp"]);
 const SAFE_MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_@+.:/=-]*$/;
 const SAFE_ORIGIN_HOST_PATTERN =
   /^(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+)(?::[0-9]+)?$/;
 export const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+export const DEFAULT_LLAMACPP_BASE_URL = "http://127.0.0.1:8080";
+export function defaultSetupProviderAddress(provider) {
+  return provider === "llamacpp" ? DEFAULT_LLAMACPP_BASE_URL : DEFAULT_OLLAMA_BASE_URL;
+}
 
 export function normalizeProvider(value) {
   const provider = textOf(value).trim().toLowerCase();

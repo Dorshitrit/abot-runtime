@@ -1,3 +1,4 @@
+import { confirmDialog } from "../confirmation-dialog.js";
 import { escapeAttribute, escapeHtml } from "../../lib/text-format.js";
 
 /** Mounts the existing shell's navigation/panel contract without growing index.html. */
@@ -30,7 +31,7 @@ export function renderSkillRows(snapshot) {
   return items.map((item) => `<button type="button" class="config-model-button skills-list-item" data-skill-id="${escapeAttribute(item.skillId)}" aria-pressed="${item.skillId === snapshot.skill?.skillId}"><strong dir="auto">${escapeHtml(item.name)}</strong><span dir="auto">${escapeHtml(item.description)}</span></button>`).join("");
 }
 
-export function createSkillsWorkspace({ root, actions, confirmArchive = (message) => window.confirm(message) }) {
+export function createSkillsWorkspace({ root, actions, confirmArchive = (message) => confirmDialog(message, { title: "Archive Skill", confirmLabel: "Archive", tone: "danger" }) }) {
   root.innerHTML = `<div class="config-dashboard skills-workspace-content"><div class="skills-toolbar"><div class="skills-filters" role="group" aria-label="Skill status"><button type="button" class="config-category-tab" data-skills-filter="active" aria-pressed="true">Active</button><button type="button" class="config-category-tab" data-skills-filter="archived" aria-pressed="false">Archived</button></div><div class="skills-toolbar-actions"><button type="button" data-skills-refresh>Refresh</button><button type="button" class="primary-button" data-skills-new>New Skill</button></div></div><p class="skills-intro">Personal Skills guide how ABot works. Built-in Skills are maintained by ABot.</p><p class="skills-feedback" role="alert" data-skills-error hidden></p><p class="skills-feedback" role="status" data-skills-message hidden></p><div class="skills-layout"><div class="skills-list" data-skills-list></div><section class="skills-detail" data-skills-detail><p class="skills-empty" data-skills-placeholder>Select a Skill to read or edit it.</p><form data-skills-form hidden><div data-skills-creation-fields hidden><h3>New Skill</h3><label class="skills-creation-label">Name<input type="text" data-skills-new-name maxlength="160" dir="auto" required disabled></label><label class="skills-creation-label">Description<textarea data-skills-new-description rows="3" maxlength="512" dir="auto" required disabled></textarea></label></div><div data-skills-saved-metadata><h3 dir="auto" data-skills-name></h3><p dir="auto" class="skills-description" data-skills-description></p><p class="skills-id">ID: <span dir="ltr" data-skills-id></span></p></div><label class="skills-content-label">Content<textarea data-skills-content rows="16" dir="auto" maxlength="65536" required></textarea></label><p class="skills-archived-note" data-skills-archived-note hidden>Archived Skills are unavailable to models. Restore this Skill to use or edit it.</p><div class="skills-editor-actions"><button class="primary-button" type="submit" data-skills-save>Save changes</button><button type="button" data-skills-cancel hidden>Cancel</button><button type="button" data-skills-reload>Reload saved</button><button type="button" data-skills-archive>Archive</button><button type="button" data-skills-restore hidden>Restore</button></div></form></section></div></div>`;
   const find = (selector) => root.querySelector(selector);
   const list = find("[data-skills-list]");
@@ -40,7 +41,7 @@ export function createSkillsWorkspace({ root, actions, confirmArchive = (message
   const descriptionInput = find("[data-skills-new-description]");
   let current;
   let listMarkup = "";
-  root.addEventListener("click", (event) => {
+  root.addEventListener("click", async (event) => {
     const selected = event.target.closest?.("[data-skill-id]");
     if (selected) void actions.select(selected.dataset.skillId);
     const filter = event.target.closest?.("[data-skills-filter]");
@@ -51,8 +52,11 @@ export function createSkillsWorkspace({ root, actions, confirmArchive = (message
     if (event.target.closest?.("[data-skills-reload]")) void actions.reloadSelected();
     if (event.target.closest?.("[data-skills-restore]")) void actions.restore();
     if (event.target.closest?.("[data-skills-archive]")) {
+      const original = current;
       const warning = current?.dirty ? " Unsaved edits will be discarded." : "";
-      if (confirmArchive(`Archive this Skill? Models will no longer discover or read it.${warning}`)) void actions.archive();
+      if (!await confirmArchive(`Archive this Skill? Models will no longer discover or read it.${warning}`)) return;
+      if (current.skill !== original.skill || current.draft !== original.draft) return;
+      void actions.archive();
     }
   });
   nameInput.addEventListener("input", () => actions.setCreationField("name", nameInput.value));

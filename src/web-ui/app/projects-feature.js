@@ -6,6 +6,8 @@ import { renderProjectSessionGroups } from "./components/project-session-groups.
 export function createProjectsFeature({
   dom,
   state,
+  preferences,
+  confirmAction,
   client,
   shell,
   selectedEnvironmentId,
@@ -23,6 +25,7 @@ export function createProjectsFeature({
   const expandedProjectSessionIds = new Set();
   const controller = createProjectsController({
     client,
+    confirmAction,
     getEnvironmentId: selectedEnvironmentId,
     isRuntimeReady,
     getConversationRevision: () =>
@@ -76,21 +79,40 @@ export function createProjectsFeature({
 
   function syncProjectGroupEnvironment() {
     const environmentId = selectedEnvironmentId();
-    if (groupEnvironmentId === environmentId) return;
-    groupEnvironmentId = environmentId;
+    if (groupEnvironmentId !== environmentId) {
+      groupEnvironmentId = environmentId;
+      collapsedProjectIds.clear();
+      expandedProjectSessionIds.clear();
+    }
+    const saved = preferences?.loadCollapsedProjectIds?.(environmentId);
+    if (!saved) return;
     collapsedProjectIds.clear();
-    expandedProjectSessionIds.clear();
+    for (const projectId of saved) collapsedProjectIds.add(projectId);
   }
 
-  function rememberProjectGroupCollapse(projectId, collapsed) {
+  async function rememberProjectGroupCollapse(projectId, collapsed) {
     syncProjectGroupEnvironment();
     const isSearchingSessions = Boolean(String(state.sessionQuery ?? "").trim());
     if (isSearchingSessions) return;
-    if (collapsed) {
-      collapsedProjectIds.add(projectId);
-      return;
-    }
     collapsedProjectIds.delete(projectId);
+    if (collapsed) collapsedProjectIds.add(projectId);
+    try {
+      await preferences?.saveCollapsedProjectIds?.(groupEnvironmentId, [...collapsedProjectIds]);
+    } catch {
+      renderSessions();
+      shell.showToast("Could not save project visibility in ABot", "failed");
+    }
+  }
+
+  async function requestProjectDeletion(projectId, projectName) {
+    const environmentId = selectedEnvironmentId();
+    await controller.deleteProject(projectId, projectName);
+    if (selectedEnvironmentId() !== environmentId) return;
+    if (dom.sessionsPanel.hidden) return;
+    const documentRoot = dom.sessionsList.ownerDocument;
+    if (!documentRoot) return;
+    if (documentRoot.activeElement !== documentRoot.body) return;
+    dom.newProjectButton.focus();
   }
 
   function rememberProjectSessionExpansion(projectId, expanded) {
@@ -117,6 +139,7 @@ export function createProjectsFeature({
 
   return {
     load: controller.load,
+    getDeletedProjectIds: controller.getDeletedProjectIds,
     refreshAvailability,
     runtimeAvailabilityChanged() {
       refreshAvailability();
@@ -139,21 +162,28 @@ export function createProjectsFeature({
         root,
         sessions,
         createSessionItem,
+        newProjectButton: dom.newProjectButton,
         ...controller.snapshot(),
+        deletedProjectIds: controller.getDeletedProjectIds(),
         query: state.sessionQuery,
         collapsedProjectIds,
         expandedProjectSessionIds,
         onToggleGroup: rememberProjectGroupCollapse,
         onToggleProjectSessions: rememberProjectSessionExpansion,
         onNewConversation: controller.newConversation,
+        onDeleteProject: requestProjectDeletion,
         onRetry: () => void controller.load(),
       });
       return true;
     },
     bind() {
-      dom.newProjectButton.addEventListener("click", () => {
+      dom.newProjectButton.addEventListener("click", async () => {
         if (!canUseProjects()) return;
-        if (!shell.activateWorkspace("chat", { focus: false })) return;
+        const environmentId = selectedEnvironmentId();
+        const conversationRevision = JSON.stringify([state.currentSessionId, state.sessionViewVersion]);
+        if (!await shell.activateWorkspace("chat", { focus: false })) return;
+        if (environmentId !== selectedEnvironmentId() || !canUseProjects()) return;
+        if (conversationRevision !== JSON.stringify([state.currentSessionId, state.sessionViewVersion])) return;
         shell.setSessionsDrawerOpen(false);
         closeFilePreview();
         controller.openCreate();

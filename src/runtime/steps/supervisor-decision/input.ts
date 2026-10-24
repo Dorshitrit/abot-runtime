@@ -100,6 +100,7 @@ export function buildSupervisorDecisionInput(
   includeAcknowledgement: boolean;
   includeTitle: boolean;
   includeResponseRecommendation: boolean;
+  delegationOnly?: boolean;
   allowMemoryRecall: boolean;
   allowSkillAuthoring: boolean;
   allowedRoleIds: readonly SupervisorDelegateRoleId[];

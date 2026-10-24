@@ -17,8 +17,13 @@ export function createNotificationsFeature({ dom, state, client, shell, getEnvir
   let environmentRevision = 0;
   const homeEntry = createHomeNotificationsEntry({
     homePanel: dom.homeWorkspacePanel,
-    onOpen: () => {
-      if (!shell.activateWorkspace("notifications")) return;
+    onOpen: async () => {
+      const environment = getEnvironmentId();
+      const revision = environmentRevision;
+      const activate = await shell.prepareWorkspaceActivation("notifications");
+      if (!activate || revision !== environmentRevision) return;
+      if (environment !== getEnvironmentId()) return;
+      if (!activate()) return;
       controller.setFilter("unread");
     },
   });
@@ -53,14 +58,17 @@ export function createNotificationsFeature({ dom, state, client, shell, getEnvir
     if (!source) return;
     const environmentVersion = environmentRevision;
     const navigationVersion = shell.navigationRevision();
+    const navigationRequest = shell.navigationRequestRevision?.();
     await controller.markRead(item.id, true);
     if (!canOpenNotificationSource(item)) return;
     if (environmentVersion !== environmentRevision) return;
     if (navigationVersion !== shell.navigationRevision()) return;
+    if (navigationRequest !== shell.navigationRequestRevision?.()) return;
     if (await openCompanionSource(item, source)) return;
     if (!canOpenNotificationSource(item)) return;
     if (environmentVersion !== environmentRevision) return;
     if (navigationVersion !== shell.navigationRevision()) return;
+    if (navigationRequest !== shell.navigationRequestRevision?.()) return;
     window.location.assign(source);
   }
   function refreshAvailability() {

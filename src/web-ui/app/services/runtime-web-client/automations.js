@@ -60,10 +60,12 @@ export function createAutomationRequests({ requestApi, getEnvironmentId, getConf
         requestAutomation(`${path("/catalog", environmentId)}&automation=${encodeURIComponent(automationId)}`),
         requestAutomation(`/chat/models?environment=${encodeURIComponent(environmentId)}`),
       ]);
-      return { ...catalog, models: (catalog.models || []).map((model) => ({
-        ...model,
-        supportsThinking: modelCatalog.profiles?.find((profile) => profile.id === model.id)?.supportsThinking === true,
-      })) };
+      return { ...catalog, models: (catalog.models || []).map((model) => {
+        const profile = modelCatalog.profiles?.find((item) => item.id === model.id);
+        const { reasoningControls: _authoringControls, ...metadata } = model;
+        return { ...metadata, supportsThinking: profile?.supportsThinking === true,
+          ...(profile?.reasoningControls ? { reasoningControls: profile.reasoningControls } : {}) };
+      }) };
     },
     startAutomationRun: (automationId, idempotencyKey, environmentId) =>
       post(path(`/${encodeURIComponent(automationId)}/run`, environmentId), { idempotencyKey }),

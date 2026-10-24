@@ -73,10 +73,10 @@ function createVisibilityHarness() {
 
 async function openDrawerWithUnreadAnswer() {
   const harness = createVisibilityHarness();
-  harness.shell.activateWorkspace("chat", { focus: false });
+  await harness.shell.activateWorkspace("chat", { focus: false });
   await harness.flushReads();
   harness.client.markSessionRead.mockClear();
-  harness.shell.setSessionsDrawerOpen(true, { focus: false });
+  await harness.shell.setSessionsDrawerOpen(true, { focus: false });
   await harness.flushReads();
   harness.addCompletedAnswer();
   return harness;
@@ -91,9 +91,9 @@ describe("workspace drawer read visibility", () => {
       expect(harness.client.markSessionRead).not.toHaveBeenCalled();
 
       if (closeAction === "close button")
-        harness.dom.closeSessionsButton.dispatch("click");
+        await harness.dom.closeSessionsButton.dispatch("click");
       if (closeAction === "backdrop")
-        harness.dom.panelBackdrop.dispatch("click");
+        await harness.dom.panelBackdrop.dispatch("click");
       if (closeAction === "Escape") harness.shell.closeOverlaysOnEscape();
       expect(harness.dom.chatPanel.inert).toBe(false);
       await harness.flushReads();
@@ -124,9 +124,9 @@ describe("workspace drawer read visibility", () => {
 
   test("does not acknowledge a queued visible-Chat read after the drawer opens", async () => {
     const harness = createVisibilityHarness();
-    harness.shell.activateWorkspace("chat", { focus: false });
+    await harness.shell.activateWorkspace("chat", { focus: false });
 
-    harness.shell.setSessionsDrawerOpen(true, { focus: false });
+    await harness.shell.setSessionsDrawerOpen(true, { focus: false });
     await harness.flushReads();
 
     expect(harness.dom.chatPanel.inert).toBe(true);
@@ -139,7 +139,7 @@ describe("workspace drawer read visibility", () => {
       const harness = await openDrawerWithUnreadAnswer();
       harness.setDocumentVisible(false);
 
-      if (revealAction === "close") harness.shell.setSessionsDrawerOpen(false);
+      if (revealAction === "close") await harness.shell.setSessionsDrawerOpen(false);
       if (revealAction === "resize") harness.resize(1260);
       await harness.flushReads();
 
@@ -152,7 +152,7 @@ describe("workspace drawer read visibility", () => {
     "does not acknowledge the background Chat or notify an unchanged workspace on resize: %s",
     async (workspace) => {
       const harness = createVisibilityHarness();
-      harness.shell.activateWorkspace(workspace, { focus: false });
+      await harness.shell.activateWorkspace(workspace, { focus: false });
       harness.onWorkspaceChange.mockClear();
 
       harness.resize(1260);

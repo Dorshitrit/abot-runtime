@@ -3,7 +3,6 @@ import {
   configureDebugLogger,
   resetDebugLoggerConfig,
 } from "../observability/debug-logger.js";
-import { directRespondDecision } from "./support/supervisor-direct-respond.js";
 import { defaultSupervisorPresentation, supervisorFormatName } from "./support/supervisor-model-phases.js";
 import {
   capabilityResults,
@@ -47,6 +46,15 @@ function assertAvailableSkills(input: KnowledgeModelInput) {
     .map(({ content }) => content).join("\n");
   for (const { skillId, name, description } of KNOWLEDGE_FIXTURE_DOCUMENTS) {
     expect(system).toContain(name + " [" + skillId + "]: " + description);
+  }
+}
+
+function assertSupervisorCandidateMetadata(input: KnowledgeModelInput) {
+  assertNoStoredContent(input);
+  const system = messages(input).filter(({ role }) => role === "system")
+    .map(({ content }) => content).join("\n");
+  for (const { skillId, name, description } of KNOWLEDGE_FIXTURE_DOCUMENTS) {
+    expect(system).toContain(JSON.stringify({ skillId, name, description }));
   }
 }
 
@@ -115,17 +123,19 @@ test("SUPER supplies captured Skills to Planner and Worker without copying guida
     } },
     { step: "supervisor.decision", output: (input) => {
       expect(supervisorFormatName(input)).toBe("supervisor_skill_selection");
-      assertAvailableSkills(input);
+      assertSupervisorCandidateMetadata(input);
       return decision({ action: "read_skills", skillIds: [studio.skillId, computer.skillId] });
     } },
     { step: "supervisor.decision", output: (input) => {
-      expect(supervisorFormatName(input)).toBe("supervisor_skill_selection");
+      expect(supervisorFormatName(input)).toBe("supervisor_procedure_gate");
       assertNoStoredContent(input);
-      return decision({ action: "continue" });
+      expect(capsules(input, "runtime_core_skill_read_v1")).toEqual([]);
+      return decision({ requiresProcedure: true });
     } },
     { step: "supervisor.decision", output: (input) => {
-      expect(supervisorFormatName(input)).toBe("supervisor_decision");
-      checkGuidance(input);
+      expect(supervisorFormatName(input)).toBe("supervisor_delegation");
+      assertNoStoredContent(input);
+      expect(capsules(input, "runtime_core_skill_read_v1")).toEqual([]);
       return decision({
         action: "invoke_role", roleId: "planner",
         objective: "Coordinate an explanation of the two supplied reference checks.",
@@ -166,10 +176,6 @@ test("SUPER supplies captured Skills to Planner and Worker without copying guida
       return decision({ action: "return_result", result: answer });
     } },
     { step: "supervisor.decision", output: (input) => {
-      expect(supervisorFormatName(input)).toBe("supervisor_skill_selection");
-      return decision({ action: "continue" });
-    } },
-    { step: "supervisor.decision", output: (input) => {
       expect(supervisorFormatName(input)).toBe("supervisor_decision");
       checkGuidance(input);
       expect(capsules(input, "runtime_child_result")).toEqual(expect.arrayContaining([
@@ -199,7 +205,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       } },
       { step: "supervisor.decision", output: (input) => {
         expect(supervisorFormatName(input)).toBe("supervisor_skill_selection");
-        assertAvailableSkills(input);
+        assertSupervisorCandidateMetadata(input);
         return decision({ action: "continue" });
       } },
     ];
@@ -207,10 +213,13 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       ...preparation,
       { step: rootStep + ".decision" as "execution.decision" | "supervisor.decision", output: (input) => {
         if (policy === "execution-agent-v1") assertAvailableSkills(input);
-        else assertNoStoredContent(input);
+        else {
+          expect(supervisorFormatName(input)).toBe("supervisor_procedure_gate");
+          assertNoStoredContent(input);
+        }
         return decision(policy === "execution-agent-v1"
           ? { action: "respond", acknowledgement: "Hello." }
-          : directRespondDecision());
+          : { requiresProcedure: false, responseRecommendation: "Greet the user briefly." });
       } },
       { step: rootStep + ".response" as "execution.response" | "supervisor.response", output: (input) => {
         assertNoStoredContent(input);

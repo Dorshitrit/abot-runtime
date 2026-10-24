@@ -1,3 +1,4 @@
+import type { ModelReasoningPreference } from "../../shared/model-reasoning.js";
 import type {
   AgentMode,
   ModelReasoningLevel,
@@ -179,6 +180,7 @@ export function buildChatGatewayRequestBody(
     modelOverride?: string;
     reasoningOverride?: ModelReasoningLevel;
     modelPreference?: ModelPreference;
+  reasoningPreference?: ModelReasoningPreference;
     debugRequestId?: string;
     format?: "json" | Record<string, unknown>;
   }>,
@@ -203,6 +205,7 @@ export function buildChatGatewayRequestBody(
     ...(params.reasoningOverride
       ? { reasoningOverride: params.reasoningOverride }
       : {}),
+    ...(params.reasoningPreference ? { reasoningPreference: params.reasoningPreference } : {}),
     ...(params.modelPreference
       ? { modelPreference: params.modelPreference }
       : {}),

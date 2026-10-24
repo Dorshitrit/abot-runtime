@@ -73,6 +73,21 @@ test("project HTTP lifecycle persists empty projects and bound sessions without 
     expect((await post("/projects", { directory: "relative" })).status).toBe(
       400,
     );
+    const deletionPath = origin + `/projects/${project.id}`;
+    const deleteProject = (headers: Record<string, string>) =>
+      fetch(deletionPath, { method: "DELETE", headers, body: "{}" });
+    expect((await deleteProject({ origin: "https://external.invalid", "content-type": "application/json" })).status).toBe(403);
+    expect((await deleteProject({ origin })).status).toBe(415);
+    expect(await projects.get(project.id)).toEqual(project);
+    const deleted = await deleteProject({ origin, "content-type": "application/json" });
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toEqual({ ok: true });
+    expect((await deleteProject({ origin, "content-type": "application/json" })).status).toBe(200);
+    expect(await (await fetch(origin + "/projects")).json()).toEqual({
+      ok: true, projects: [], deletedProjectIds: [project.id],
+    });
+    expect((await sessions.getSessionById(sessionId))?.project).toEqual(binding);
+    expect((await post(`/projects/${project.id}/sessions`, {})).status).toBe(404);
   } finally {
     server.closeAllConnections();
     await new Promise<void>((done, reject) =>

@@ -26,6 +26,8 @@ import {
 import { createExecutionAgentCompactionController } from "./compaction.js";
 import { createSessionMemoryAwareCompactionController } from "../../context/session-memory/index.js";
 import { buildExecutionAgentInput } from "./input.js";
+import { resolveExecutionCapabilityScope } from "./capability-scope.js";
+import { loadExecutionObservationGuidance } from "./observation-guidance.js";
 import { parseExecutionAgentDecisionOutput } from "./parser.js";
 import { refineExecutionCapabilityInvocations } from "./refinement.js";
 import { createRefinementInvalidOutputCause } from "./refinement-reconsideration.js";
@@ -61,7 +63,11 @@ export async function runExecutionAgentDecision(
   const memoryContext = projectExecutionAgentMemory(
     request, options.head.state.initialMemory, options.steeringSnapshot,
   );
-  const input = buildExecutionAgentInput(request, { ...options, memoryContext });
+  const capabilityScope = resolveExecutionCapabilityScope(request, options);
+  const observationGuidance = await loadExecutionObservationGuidance(request, capabilityScope);
+  const input = buildExecutionAgentInput(request, {
+    ...options, memoryContext, capabilityScope, observationGuidance,
+  });
   const accepted = await invokeStructuredModelStep({
     request,
     boundSteeringVersion: options.steeringSnapshot.version,

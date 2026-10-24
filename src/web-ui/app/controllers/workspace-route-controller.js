@@ -109,6 +109,7 @@ export function createWorkspaceRouteController({
   function routeNavigationRevisions() {
     return {
       shell: shell.navigationRevision(),
+      shellRequest: shell.navigationRequestRevision?.() || 0,
       configuration: configuration.navigationRevision(),
       schedules: schedules.navigationRevision(),
       automations: automations?.navigationRevision() || 0,
@@ -117,6 +118,7 @@ export function createWorkspaceRouteController({
 
   function hasCurrentRouteNavigation(revisions) {
     if (shell.navigationRevision() !== revisions.shell) return false;
+    if ((shell.navigationRequestRevision?.() || 0) !== revisions.shellRequest) return false;
     if (configuration.navigationRevision() !== revisions.configuration)
       return false;
     if (schedules.navigationRevision() !== revisions.schedules) return false;
@@ -129,6 +131,7 @@ export function createWorkspaceRouteController({
     environmentId,
     routeActivationIsCurrent,
     commitLinkedConversationRoute,
+    reloadSessionList,
   ) {
     if (route.workspace === "chat" && route.automationRun) return true;
     if (!routeCarriesConversation(route)) {
@@ -136,7 +139,7 @@ export function createWorkspaceRouteController({
       return true;
     }
     if (route.session === getSessionId()) return true;
-    await loadSessions();
+    if (reloadSessionList) await loadSessions();
     if (!routeActivationIsCurrent()) return false;
     if (environmentId !== getEnvironmentId()) return false;
     let routeCommitted = false;
@@ -161,7 +164,10 @@ export function createWorkspaceRouteController({
   }
 
   async function applyRoute(route, { initial = false } = {}) {
-    if (automations?.prepareRouteChange?.(route) === false) return false;
+    const navigationRevisions = routeNavigationRevisions();
+    const preparedRouteChange = await automations?.prepareRouteChange?.(route);
+    if (preparedRouteChange === false || preparedRouteChange === null) return false;
+    if (!hasCurrentRouteNavigation(navigationRevisions)) return false;
     if (!routeEnvironmentIsAvailable(route)) {
       shell.showToast("This environment is no longer available.", "failed");
       return false;
@@ -170,12 +176,22 @@ export function createWorkspaceRouteController({
       shell.showToast("This workspace is unavailable with the current backend.", "failed");
       return false;
     }
-    const navigationRevisions = routeNavigationRevisions();
-    if (routeChangesEnvironment(route, getEnvironmentId())) {
-      if (
-        !(await changeEnvironment(route.environment, { restoreSession: false }))
-      )
-        return false;
+    let routeChangeCommitted = false;
+    const environmentChanged = routeChangesEnvironment(route, getEnvironmentId());
+    if (environmentChanged) {
+      const commitRouteChange = () => {
+        if (preparedRouteChange?.canCommit?.() === false) return false;
+        if (typeof preparedRouteChange === "function" && preparedRouteChange() === false) return false;
+        routeChangeCommitted = true;
+        return true;
+      };
+      commitRouteChange.canCommit = () => hasCurrentRouteNavigation(navigationRevisions) &&
+        preparedRouteChange?.canCommit?.() !== false;
+      const options = { restoreSession: false, commitEnvironmentOptions: commitRouteChange };
+      if (!await changeEnvironment(route.environment, options)) return false;
+      if (shell.navigationRevision() !== navigationRevisions.shell) return false;
+      if ((shell.navigationRequestRevision?.() || 0) !== navigationRevisions.shellRequest) return false;
+      Object.assign(navigationRevisions, routeNavigationRevisions());
     }
     if (!hasCurrentRouteNavigation(navigationRevisions)) return false;
     if (!routeWorkspaceIsAvailable(route)) {
@@ -186,18 +202,26 @@ export function createWorkspaceRouteController({
       return false;
     }
     const environmentId = getEnvironmentId();
-    const activate = shell.prepareWorkspaceActivation(route.workspace, {
+    const activate = await shell.prepareWorkspaceActivation(route.workspace, {
       focus: false,
     });
     if (!activate) return false;
+    if (activate.canCommit?.() === false) return false;
+    navigationRevisions.shellRequest = shell.navigationRequestRevision?.() || 0;
+    if (!hasCurrentRouteNavigation(navigationRevisions)) return false;
+    if (environmentId !== getEnvironmentId()) return false;
     let linkedConversationActivated = false;
     function routeActivationIsCurrent() {
       if (!hasCurrentRouteNavigation(navigationRevisions)) return false;
+      if (!routeChangeCommitted && preparedRouteChange?.canCommit?.() === false) return false;
       if (environmentId !== getEnvironmentId()) return false;
       return !initialRouteWasSuperseded(initial, pendingInitialHistory);
     }
     function commitLinkedConversationRoute() {
       if (!routeActivationIsCurrent()) return false;
+      if (activate.canCommit?.() === false) return false;
+      if (!routeChangeCommitted && typeof preparedRouteChange === "function" && preparedRouteChange() === false) return false;
+      routeChangeCommitted = true;
       if (!activate()) return false;
       navigationRevisions.shell = shell.navigationRevision();
       linkedConversationActivated = true;
@@ -210,11 +234,12 @@ export function createWorkspaceRouteController({
         environmentId,
         routeActivationIsCurrent,
         commitLinkedConversationRoute,
+        shouldReloadRouteSessionList(initial, environmentChanged, shell.activeWorkspace()),
       ))
     )
       return false;
     if (!routeActivationIsCurrent()) return false;
-    if (!linkedConversationActivated && !activate()) return false;
+    if (!linkedConversationActivated && !commitLinkedConversationRoute()) return false;
     const category = configurationCategoryForWorkspace(route.workspace);
     if (category) {
       if (configuration.activateCategory(category) === false)
@@ -355,4 +380,10 @@ function routeChangesEnvironment(route, selectedEnvironment) {
 function initialRouteWasSuperseded(initial, pendingHistory) {
   if (!initial) return false;
   return Boolean(pendingHistory);
+}
+
+function shouldReloadRouteSessionList(initial, environmentChanged, currentWorkspace) {
+  if (initial) return true;
+  if (environmentChanged) return true;
+  return currentWorkspace !== "chat";
 }

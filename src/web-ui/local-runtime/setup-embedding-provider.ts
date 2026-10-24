@@ -1,3 +1,7 @@
+import {
+  planNewLlamaEmbeddingProvider,
+  commitLlamaEmbeddingProvider,
+} from "./setup-embedding-llamacpp.js";
 import { buildProviderConfig } from "../../../scripts/runtime-setup-files.js";
 import { createFileLongTermMemoryOnboardingConfigRepository } from "../../runtime/adapters/long-term-memory/onboarding-config-repository.js";
 import { isRecord } from "../../runtime/config/utils.js";
@@ -97,10 +101,14 @@ function requirePreservedProviderSettings(
       409,
     );
   }
-  if (input.apiKey && provider.type !== "openai") {
+  if (
+    input.apiKey &&
+    provider.type !== "openai" &&
+    provider.type !== "llamacpp"
+  ) {
     throw new RuntimeSetupError(
       "invalid_embedding_credential",
-      "Only an OpenAI connection accepts an API key here.",
+      "This connection does not support an API key.",
     );
   }
 }
@@ -117,18 +125,26 @@ export async function prepareSetupEmbeddingProvider(
     createFileLongTermMemoryOnboardingConfigRepository(options);
   const snapshot = await repository.read();
   const providers = readProviderMap(snapshot.config.models);
-  const providerId = resolveSetupEmbeddingProviderId(providers, input);
+  const llamaConnection =
+    input.provider === "llamacpp"
+      ? planNewLlamaEmbeddingProvider(providers, input)
+      : undefined;
+  const providerId =
+    llamaConnection?.providerId ??
+    resolveSetupEmbeddingProviderId(providers, input);
   const existing = providers[providerId];
   if (input.providerId && !isRecord(existing)) {
     throw new RuntimeSetupError(
       "embedding_provider_not_configured",
-      "Choose a configured provider or add an OpenAI or Ollama connection.",
+      "Choose a configured provider or add an OpenAI, Ollama or llama.cpp connection.",
       404,
     );
   }
-  const provider = isRecord(existing)
-    ? existing
-    : buildProviderConfig(input.provider!, input.baseUrl);
+  const provider =
+    llamaConnection?.provider ??
+    (isRecord(existing)
+      ? existing
+      : buildProviderConfig(input.provider!, input.baseUrl));
   const isolatedCredential = needsIsolatedEmbeddingCredential(
     existing,
     input,
@@ -181,7 +197,17 @@ export async function prepareSetupEmbeddingProvider(
       preserveExistingCredential: true,
     });
   }
-  if (!isRecord(existing)) await repository.write(candidate, snapshot.config);
+  const persistProvider = async () => {
+    if (!isRecord(existing)) await repository.write(candidate, snapshot.config);
+  };
+  if (provider.type === "llamacpp")
+    await commitLlamaEmbeddingProvider(
+      { rootDir: options.rootDir, configPath: snapshot.path },
+      provider,
+      input,
+      persistProvider,
+    );
+  else await persistProvider();
   return {
     providerId,
     savedProvider: { id: providerId, type: provider.type as string },

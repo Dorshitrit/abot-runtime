@@ -94,7 +94,7 @@
   grid-column: 2;
   grid-row: 1;
   display: grid;
-  grid-template-columns: repeat(2, minmax(76px, auto));
+  grid-template-columns: repeat(3, minmax(76px, auto));
   gap: 8px;
 }
 
@@ -131,6 +131,7 @@
 }
 
 .tool-approval-button:focus-visible,
+.tool-approval-rejection-text:focus-visible,
 .approval-message-explanation > summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
@@ -140,6 +141,40 @@
   cursor: wait;
   opacity: 0.55;
   box-shadow: none;
+}
+
+.tool-approval-rejection-editor {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.tool-approval-rejection-label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+}
+
+.tool-approval-rejection-text {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 90px;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+  text-align: start;
+}
+
+.tool-approval-rejection-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 @media (max-width: 600px) {
@@ -157,5 +192,7 @@
     grid-column: 1;
     grid-row: auto;
     justify-self: stretch;
+    display: flex;
+    flex-wrap: wrap;
   }
 }

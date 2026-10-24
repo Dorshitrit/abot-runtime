@@ -1,11 +1,16 @@
 import { textOf } from "../../lib/text-format.js";
-import { normalizeProvider } from "./validation.js";
+import { setupReasoningState, updateSetupReasoningField } from "./reasoning-fields.js";
+import { normalizeProvider, defaultSetupProviderAddress } from "./validation.js";
 import { readSetupContextWindowFeedback } from "./context-window-feedback.js";
 
 export function selectSetupProvider(state, value) {
   const provider = normalizeProvider(value);
   const providerChanged = state.provider !== provider;
-  if (providerChanged) state.modelId = "";
+  if (providerChanged) {
+    state.modelId = "";
+    state.baseUrl = defaultSetupProviderAddress(provider);
+    Object.assign(state, setupReasoningState());
+  }
   state.provider = provider;
 }
 
@@ -21,7 +26,14 @@ export function hasSetupConnectionChanges(state) {
   if (state.modelId.trim() !== saved.model) return true;
   if (Number(state.contextWindowTokens) !== saved.contextWindowTokens)
     return true;
-  if (state.provider !== "ollama") return false;
+  if (state.supportsThinking !== saved.supportsThinking) return true;
+  if (state.provider === "llamacpp") {
+    const reasoning = setupReasoningState(saved);
+    if (state.supportsThinking !== reasoning.supportsThinking) return true;
+    if (state.reasoningBudgetMode !== reasoning.reasoningBudgetMode) return true;
+    if (state.reasoningBudgetTokens !== reasoning.reasoningBudgetTokens) return true;
+  }
+  if (!["ollama", "llamacpp"].includes(state.provider)) return false;
   return state.baseUrl.trim().replace(/\/$/u, "") !== saved.baseUrl;
 }
 
@@ -54,12 +66,14 @@ export function updateSetupConnectionField(state, field, value) {
   if (!canEditSetupConnection(state)) return;
   if (field === "model-id") state.modelId = value;
   if (field === "context-window") state.contextWindowTokens = value;
-  if (field === "ollama-base-url") state.baseUrl = value;
+  if (["ollama-base-url", "llamacpp-base-url"].includes(field)) state.baseUrl = value;
+  return updateSetupReasoningField(state, field, value);
 }
 
 export function receiveSetupConnection(state, setup) {
   state.editableConnection = setup?.editableConnection || null;
   state.existingModel = setup?.existingModel || null;
+  Object.assign(state, setupReasoningState(state.existingModel || {}));
   state.contextWindowTokens = textOf(
     state.existingModel?.contextWindowTokens ??
       setup?.defaultContextWindowTokens,

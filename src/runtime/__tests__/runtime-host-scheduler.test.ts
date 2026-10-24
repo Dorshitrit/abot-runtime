@@ -198,7 +198,7 @@ describe("compatibility host scheduler ownership", () => {
       await scheduler.tick();
       expect((await scheduler.listRuns())[0].status).toBe("pending");
       expect(fixture.invoke.mock.calls.map(([input]) => supervisorFormatName(input))).toEqual([
-        "supervisor_presentation", "supervisor_skill_selection", "supervisor_decision",
+        "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate",
       ]);
       await effective.sessions.deleteSession("custom-session");
     } finally {

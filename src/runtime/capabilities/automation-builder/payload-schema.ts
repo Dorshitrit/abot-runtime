@@ -1,3 +1,4 @@
+import { modelReasoningPreferenceSchema } from "../../../shared/model-reasoning-schema.js";
 import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
 import { AUTOMATION_DRAFT_BATCH_LIMITS } from "../../automations/draft-batch.js";
 import { AUTOMATION_GRAPH_LIMITS, DEFAULT_AUTOMATION_LIMITS } from "../../automations/limits.js";
@@ -61,12 +62,13 @@ const agentTools = { $ref: "#/$defs/selectedTools" };
 const savedOrigin = object({ agentId: text(1), revision: integer });
 const sharedNode = { title: text(1), onFailure: choices("stop", "skip") };
 const toolFields = { operation, controls: map(binding), payload: binding };
-const agentFields = { modelProfileId: text(1), agentMode: choices("fast", "reasoning", "deep"),
+const reasoningPreference = { $ref: "#/$defs/reasoningPreference" };
+const agentFields = { reasoningPreference, modelProfileId: text(1), agentMode: choices("fast", "reasoning", "deep"),
   roleInstructions: text(), prompt: text(), inputs: map(binding), tools: agentTools,
   result, acceptance, savedAgentOrigin: savedOrigin };
 const toolNode = object({ kind: choices("tool"), ...sharedNode, ...toolFields }, ["payload"]);
-const agentNode = object({ kind: choices("agent"), ...sharedNode, ...agentFields }, ["acceptance", "savedAgentOrigin"]);
-const editableNodeFields = { ...sharedNode, ...toolFields, ...agentFields, payload: nullable(binding) };
+const agentNode = object({ kind: choices("agent"), ...sharedNode, ...agentFields }, ["acceptance", "savedAgentOrigin", "reasoningPreference"]);
+const editableNodeFields = { ...sharedNode, ...toolFields, ...agentFields, payload: nullable(binding), reasoningPreference: nullable(reasoningPreference) };
 const nodePatch = object(editableNodeFields, Object.keys(editableNodeFields));
 
 const schedule = { anyOf: [
@@ -105,7 +107,7 @@ const command = { anyOf: [
 const recipeStep = { anyOf: [
   object({ key: text(1), kind: choices("tool"), ...sharedNode, ...toolFields }, ["onFailure", "controls", "payload"]),
   object({ key: text(1), kind: choices("agent"), ...sharedNode, ...agentFields },
-    ["onFailure", "agentMode", "roleInstructions", "inputs", "tools", "result", "acceptance", "savedAgentOrigin"]),
+    ["onFailure", "agentMode", "reasoningPreference", "roleInstructions", "inputs", "tools", "result", "acceptance", "savedAgentOrigin"]),
   object({ key: text(1), kind: choices("parallel"), branches:
     array(array({ $ref: "#/properties/steps/items" }, AUTOMATION_CREATION_RECIPE_LIMITS.executableNodes, 1),
       AUTOMATION_GRAPH_LIMITS.branchesPerGroup, 2) }),
@@ -113,7 +115,7 @@ const recipeStep = { anyOf: [
 const schema = { ...object({ version: { type: "integer", const: 1 },
   commands: array(command, AUTOMATION_DRAFT_BATCH_LIMITS.commands, 1),
   settings: { $ref: "#/$defs/definitionPatch" }, steps: array(recipeStep, AUTOMATION_CREATION_RECIPE_LIMITS.executableNodes),
-}, ["commands", "settings", "steps"]), $defs: { valueBinding, definitionPatch, operationReference, selectedTools } };
+}, ["commands", "settings", "steps"]), $defs: { valueBinding, definitionPatch, operationReference, selectedTools, reasoningPreference: modelReasoningPreferenceSchema } };
 
 /** Structural generation grammar. Canonical parsers own route exclusivity, references, bounds and graph semantics. */
 export const AUTOMATION_BUILDER_PAYLOAD_FORMAT: ModelGatewayJsonSchemaFormat = Object.freeze({

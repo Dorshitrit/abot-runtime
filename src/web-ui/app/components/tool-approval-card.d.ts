@@ -13,7 +13,8 @@ export type ToolApprovalEvent = Record<string, unknown> & {
 export interface ToolApprovalCardOptions {
   event?: ToolApprovalEvent;
   submitted?: boolean;
-  onDecision: (approvalId: string, approved: boolean) => void;
+  rejectionDraft?: { text: string; expanded: boolean };
+  onDecision: (approvalId: string, approved: boolean, reason?: string) => void;
   documentRoot?: Document;
 }
 

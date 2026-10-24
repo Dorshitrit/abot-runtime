@@ -92,6 +92,35 @@ test("S03/S06: exact surviving native action/result keeps one reference and repe
   );
 });
 
+test("compacted supervision removes a full result carried in summary while retaining its source and outcome", async () => {
+  const summary = "FULL_RESULT_SUMMARY:" + "source detail ".repeat(500).trim();
+  const f = await supervisionClosureFixture({
+    summary,
+    registeredOutput: summary,
+  });
+  expect(JSON.stringify(f.controller().project(f.messages))).toContain(summary);
+  const original = JSON.stringify(f.head.state);
+  const checkpoint = f.installCheckpoint();
+  const projected = f.controller().project(f.messages);
+  const evidence = readEvidence(projected)[0].entries[0].evidence;
+  expect(evidence.receipt).toMatchObject({
+    executionId: "capability-execution-2",
+    outcome: "succeeded",
+    observedEffect: "observation",
+  });
+  expect(evidence.receipt.summary).not.toBe(summary);
+  expect(JSON.stringify(projected)).not.toContain(summary);
+  expectCompactedSupervisionReference(
+    projected,
+    evidence,
+    "tool-result:capability-execution-2",
+  );
+  expect(f.controller().project(projected)).toEqual(projected);
+  expect(f.store.get(checkpoint.scopeId)).toEqual(checkpoint);
+  expect(JSON.stringify(f.head.state)).toBe(original);
+  expect(f.head.state.capabilityExecutions[1]!.summary).toBe(summary);
+});
+
 test.each([false, true])(
   "S05: native batch stays closed and covered notice origins link to their own digest (both=%s)",
   async (repeatBoth) => {
@@ -264,7 +293,12 @@ test("S07: an otherwise matching future checkpoint is rejected with current prot
 });
 
 test("S14: serialized canonical state and checkpoint reconstruct private evidence instead of serialized authority", async () => {
-  const f = await supervisionClosureFixture();
+  const summary =
+    "RESTORED_FULL_SUMMARY:" + "source detail ".repeat(500).trim();
+  const f = await supervisionClosureFixture({
+    summary,
+    registeredOutput: summary,
+  });
   const checkpoint = f.installCheckpoint();
   await commit(f.ledger, {
     authority: "active_role",
@@ -322,6 +356,7 @@ test("S14: serialized canonical state and checkpoint reconstruct private evidenc
     head,
     call,
   )!;
+  expect(head.state.capabilityExecutions[1]!.summary).toBe(summary);
   expect(capsule).not.toBe(f.capsule);
   expect(readOperationSupervisionEvidenceBinding(capsule)).toBeDefined();
   const projected = createModelStepCompactionController(
@@ -332,6 +367,7 @@ test("S14: serialized canonical state and checkpoint reconstruct private evidenc
       sourceRevision: head.revision,
     },
   ).project([capsule, ...buildExecutionContinuationMessages(head, call)]);
+  expect(JSON.stringify(projected)).not.toContain(summary);
   expectCompactedSupervisionReference(
     projected,
     readEvidence(projected)[0].entries[0].evidence,

@@ -12,6 +12,9 @@ function withProviderCredentialStatus(provider, catalog) {
   return {
     ...projected,
     credentialConfigured: matched.credentialConfigured === true,
+    ...(provider.type === "llamacpp"
+      ? { requiresApiKey: matched.requiresApiKey === true }
+      : {}),
   };
 }
 

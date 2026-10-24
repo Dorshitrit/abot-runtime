@@ -1,3 +1,4 @@
+import type { MemoryEmbeddingConnectionInput } from "../../local-runtime/memory-embedding-connection-input.js";
 import type { NotificationRequests } from "./runtime-web-client/notifications.js";
 import type { SparkChatRequests } from "./runtime-web-client/spark-chat.js";
 import type { ProjectRequests } from "./runtime-web-client/projects.js";
@@ -114,7 +115,9 @@ export declare function createRuntimeWebClient(options: {
   listProjects: ProjectRequests["listProjects"];
   browseProjectFolders: ProjectRequests["browseProjectFolders"];
   createProject: ProjectRequests["createProject"];
+  deleteProject: ProjectRequests["deleteProject"];
   createProjectSession: ProjectRequests["createProjectSession"];
+  inspectModelConnection(input: Record<string, unknown>, environmentId?: string): Promise<{ connection: { models: readonly string[] } }>;
   getRuntimeSetup(environmentId?: string): Promise<Record<string, unknown>>;
   saveRuntimeSetup(
     input: {
@@ -261,6 +264,7 @@ export declare function createRuntimeWebClient(options: {
     agentMode: string;
     toolPermissionMode: string;
     modelPreference?: Record<string, unknown> | null;
+    reasoningPreference?: import("../../../shared/model-reasoning.js").ModelReasoningPreference;
   }): Promise<string>;
   loadModelSetup(environmentId?: string): Promise<Record<string, unknown>>;
   addRuntimeModel(
@@ -296,6 +300,18 @@ export declare function createRuntimeWebClient(options: {
     profileId?: string;
     emitClientEvents: boolean;
   }): Promise<Record<string, unknown>>;
+  saveMemoryEmbeddingConnection(
+    input: MemoryEmbeddingConnectionInput,
+    environmentId?: string,
+  ): Promise<Record<string, unknown>>;
+  saveMemoryEmbeddingProfile(
+    input: { providerId: string; model: string; label: string },
+    environmentId?: string,
+  ): Promise<Record<string, unknown>>;
+  removeMemoryEmbeddingProfile(
+    input: { profileId: string },
+    environmentId?: string,
+  ): Promise<Record<string, unknown>>;
   disableLongTermMemory(
     environmentId?: string,
   ): Promise<Record<string, unknown>>;

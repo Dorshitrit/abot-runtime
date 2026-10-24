@@ -1,11 +1,7 @@
-function approvalIdentity(approval) {
-  return JSON.stringify([
-    approval.environmentId,
-    approval.sessionId,
-    approval.requestId,
-    approval.approvalId,
-  ]);
-}
+import {
+  approvalRejectionIdentity as approvalIdentity,
+  createApprovalRejectionDrafts,
+} from "../lib/tool-approval-rejection-drafts.js";
 
 export function createDashboardApprovalsController({
   client,
@@ -21,6 +17,7 @@ export function createDashboardApprovalsController({
   let scopeRevision = 0;
   let readRevision = 0;
   const submitting = new Set();
+  const rejectionDrafts = createApprovalRejectionDrafts();
 
   function snapshot() {
     return {
@@ -29,6 +26,7 @@ export function createDashboardApprovalsController({
           ? approvals.map((approval) => ({
               ...approval,
               submitted: submitting.has(approvalIdentity(approval)),
+              rejectionDraft: rejectionDrafts.get(approval),
             }))
           : [],
       supportsToolApprovals: client.supportsToolApprovals(),
@@ -58,6 +56,7 @@ export function createDashboardApprovalsController({
     error = "";
     decisionError = "";
     submitting.clear();
+    rejectionDrafts.clear();
   }
 
   async function refresh() {
@@ -79,6 +78,7 @@ export function createDashboardApprovalsController({
       const result = await client.listToolApprovals(scope);
       if (!hasCurrentRead(scope, revision)) return;
       approvals = result.approvals;
+      rejectionDrafts.retain(approvals);
       error = "";
     } catch (failure) {
       if (!hasCurrentRead(scope, revision)) return;
@@ -99,7 +99,7 @@ export function createDashboardApprovalsController({
     return approvals.some((pending) => approvalIdentity(pending) === identity);
   }
 
-  async function submit(approval, approved) {
+  async function submit(approval, approved, reason) {
     const identity = approvalIdentity(approval);
     if (!canSubmitApproval(approval, identity)) return false;
     const scope = approval.environmentId;
@@ -114,6 +114,7 @@ export function createDashboardApprovalsController({
         requestId: approval.requestId,
         approvalId: approval.approvalId,
         approved,
+        ...(reason !== undefined ? { reason } : {}),
         ...approvalDecisionCommand(approval, approved),
       });
       if (!hasCurrentScope(scope, revision)) return true;

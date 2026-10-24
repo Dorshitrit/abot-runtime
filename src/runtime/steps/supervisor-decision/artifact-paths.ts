@@ -10,7 +10,7 @@ import type { projectRequestContext } from "../../context/request-context.js";
 import { buildSessionArtifactPathsMessage } from "../../context/session-artifact-paths.js";
 import { estimateMessageTokens } from "../../context/token-estimator.js";
 import { resolveModelContextAdmission } from "../../model/model-context-budget.js";
-import type { ModelStepContextCompactionController } from "../../model/model-step-port.js";
+import type { ModelStepContextCompactionController, ModelStepOptionalContextProjection } from "../../model/model-step-port.js";
 import type { RequestExecutionScope } from "../../request/execution-scope.js";
 import { buildSupervisorCapabilityBriefOptions } from "./capability-brief.js";
 import { SUPERVISOR_DECISION_MODEL_STEP } from "./contracts.js";
@@ -52,6 +52,23 @@ export function projectSupervisorArtifactPaths(params: Readonly<{
     instructions,
     baseInstructions: params.context.instructions,
     message: artifactPaths.message,
+  };
+}
+
+/** Exact phases may omit this bound optional reference without invoking compaction. */
+export function createSupervisorArtifactPathsOptionalProjection(options: Readonly<{
+  projection?: SupervisorArtifactPathsProjection;
+  includeInstructions: boolean;
+}>): ModelStepOptionalContextProjection | undefined {
+  const { projection } = options;
+  if (!projection) return undefined;
+  return (messages) => {
+    const index = messages.findIndex((message) => matchesBoundArtifactMessage(message, projection.message));
+    if (index < 0) return messages;
+    const withoutArtifact = messages.filter((_, candidate) => candidate !== index);
+    return options.includeInstructions
+      ? replaceBoundInstructionPrefix(withoutArtifact, projection.instructions, projection.baseInstructions)
+      : withoutArtifact;
   };
 }
 

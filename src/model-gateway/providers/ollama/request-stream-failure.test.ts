@@ -37,7 +37,7 @@ const DECISION_FRAME = {
   message: {
     content: JSON.stringify({
       decision: {
-        action: "respond",
+        requiresProcedure: false,
         responseRecommendation: "Synthetic QA response",
       },
     }),
@@ -158,7 +158,7 @@ test.each([
     ]);
     expect(gatewayRequests.slice(0, 2).map((request) => request.format)).toEqual([
       expect.objectContaining({ name: "supervisor_presentation" }),
-      expect.objectContaining({ name: "supervisor_decision" }),
+      expect.objectContaining({ name: "supervisor_procedure_gate" }),
     ]);
     expect(providerFetch).toHaveBeenCalledTimes(4);
     expect(responses).toEqual([]);

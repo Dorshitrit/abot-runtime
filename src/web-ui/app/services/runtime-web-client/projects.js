@@ -25,6 +25,10 @@ export function createProjectRequests({
         method: "POST",
         body: JSON.stringify(input),
       }),
+    deleteProject: (projectId, environmentId) =>
+      requestProjects(path("/" + encodeURIComponent(projectId), environmentId), {
+        method: "DELETE", body: "{}",
+      }),
     createProjectSession: (projectId, environmentId) =>
       requestProjects(
         path(`/${encodeURIComponent(projectId)}/sessions`, environmentId),

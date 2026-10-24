@@ -6,6 +6,7 @@ import { createHomeGuidance } from "./components/home-guidance/home-guidance.js"
 import { createConfigWorkspace } from "./components/config-workspace.js";
 import { createModelRemovalController } from "./components/config-workspace/model-removal.js";
 import { createLongTermMemorySetup } from "./components/long-term-memory-setup.js";
+import { createMemoryEmbeddingConnectionFeature } from "./components/long-term-memory/embedding-connection-feature.js";
 import { createLongTermMemoryManager } from "./components/long-term-memory/manager.js";
 import { createMemoryWorkspace } from "./components/long-term-memory/workspace.js";
 import { createLongTermMemoryController } from "./controllers/long-term-memory/controller.js";
@@ -28,7 +29,24 @@ export function createConfigurationFeature({
   let activation;
   let modelSetup;
   let modelRemoval;
+  const memoryConnection = createMemoryEmbeddingConnectionFeature({
+    root: dom.memoryWorkspacePanel,
+    runtimeClient,
+    getEnvironmentId: selectedEnvironmentId,
+    getWorkspace: () => configWorkspace,
+    canOpen: () => !modelSetup?.isOpen() && !pluginManager.hasConfigurationDraft(),
+    refreshMemory: () => longTermMemorySetup.load({ preserveInputs: false }),
+    onSaved: () => activation?.markPending(),
+    onApplied: async () => {
+      activation?.markApplied();
+      pluginManager.markApplied?.();
+      await onConfigurationApplied();
+    },
+    onClosed: () => onConfigurationSettled(),
+  });
   const longTermMemorySetup = createLongTermMemorySetup({
+    onAddConnection: (options) => memoryConnection.open(options),
+    onEnvironmentChanged: () => memoryConnection.environmentChanged(),
     getEnvironmentId: selectedEnvironmentId,
     loadStatus: (environmentId) =>
       runtimeClient.loadLongTermMemoryStatus(environmentId),
@@ -45,6 +63,10 @@ export function createConfigurationFeature({
       activation?.markPending();
       return result;
     },
+    saveProfile: (input, environmentId) =>
+      runtimeClient.saveMemoryEmbeddingProfile(input, environmentId),
+    removeProfile: (input, environmentId) =>
+      runtimeClient.removeMemoryEmbeddingProfile(input, environmentId),
     disableMemory: async (environmentId) => {
       const result = await runtimeClient.disableLongTermMemory(environmentId);
       activation?.markPending();
@@ -67,6 +89,7 @@ export function createConfigurationFeature({
   });
   longTermMemoryManager = createLongTermMemoryManager({
     actions: longTermMemoryController,
+    getEnvironmentId: selectedEnvironmentId,
   });
   longTermMemorySetup.mount(dom.memorySetupRoot);
   longTermMemoryManager.mount(dom.memoryManagementRoot);
@@ -140,7 +163,7 @@ export function createConfigurationFeature({
     getOperationsSummary,
     onNavigationChange,
     onRemoveModel: (model) => {
-      if (modelSetup?.isOpen()) return;
+      if (modelSetup?.isOpen() || memoryConnection.isOpen()) return;
       return modelRemoval.remove(model);
     },
     dom: {
@@ -164,7 +187,7 @@ export function createConfigurationFeature({
       return result;
     },
     onAddModel: async (options) => {
-      if (modelSetup?.isOpen()) return;
+      if (modelSetup?.isOpen() || memoryConnection.isOpen()) return;
       if (!configWorkspace.beginExternalRuntimeMutation("model setup")) return;
       configWorkspace.endExternalRuntimeMutation();
       try {
@@ -215,6 +238,7 @@ export function createConfigurationFeature({
     root: dom.configDashboard.parentElement,
     getEnvironmentId: selectedEnvironmentId,
     loadSetup: () => runtimeClient.loadModelSetup(selectedEnvironmentId()),
+    inspectConnection: (input) => runtimeClient.inspectModelConnection(input, selectedEnvironmentId()),
     saveModel: (input) =>
       runtimeClient.addRuntimeModel(input, selectedEnvironmentId()),
     applySetup: () =>
@@ -269,7 +293,7 @@ export function createConfigurationFeature({
       void longTermMemoryController.setOriginFilter("passive_observation");
       longTermMemoryManager.focus();
     },
-    prepareDiscardChanges: (...args) => {
+    prepareDiscardChanges: async (...args) => {
       if (pluginManager.hasConfigurationDraft()) {
         dom.configStatus.textContent =
           "Finish or cancel plugin configuration before leaving.";
@@ -280,12 +304,18 @@ export function createConfigurationFeature({
           "Finish or cancel model setup before leaving configuration.";
         return null;
       }
-      const prepared = prepareDiscardChanges(...args);
+      if (memoryConnection.isOpen()) {
+        dom.configStatus.textContent =
+          "Finish or cancel embedding connection setup before leaving.";
+        return null;
+      }
+      const prepared = await prepareDiscardChanges(...args);
       if (typeof prepared !== "function") return prepared;
       const commit = () => prepared();
       commit.canCommit = () => {
         if (pluginManager.hasConfigurationDraft()) return false;
         if (modelSetup.isOpen()) return false;
+        if (memoryConnection.isOpen()) return false;
         return prepared.canCommit?.() !== false;
       };
       return commit;

@@ -216,6 +216,17 @@ describe("init-runtime", () => {
       expect(compactionTimeout.timeoutMs).toBe(
         provider === "openai" ? 300_000 : 180_000,
       );
+      const rawPayloadTimeout = resolveModelStepTimeout({
+        modelStep: "tool_payload.raw",
+        fallbackTimeoutMs: loadedRunner.steps["tool_payload.raw"].timeoutMs,
+        modelPolicy: createRequestModelPolicy({
+          platformPolicy: loaded.models, runnerConfig: loadedRunner,
+        }),
+      });
+      expect(rawPayloadTimeout).toMatchObject({
+        timeoutMs: provider === "openai" ? 300_000 : 90_000,
+        source: provider === "openai" ? "model_calibration" : "runner",
+      });
       const otherStepTimeouts = Object.entries(loadedRunner.steps)
         .filter(([stepId]) => stepId !== "context.compact")
         .map(([, step]) => step.timeoutMs);

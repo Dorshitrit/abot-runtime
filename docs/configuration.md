@@ -83,7 +83,7 @@ Provider configs should reference env var names:
 }
 ```
 
-Ollama and OpenAI adapters are included. A host may register another adapter
+Ollama, OpenAI and llama.cpp adapters are included. See [llama.cpp setup and reasoning budgets](llamacpp.md). A host may register another adapter
 through `@abot-ai/runtime/model-gateway`; its config uses that adapter's `type` and
 may place adapter-owned JSON-safe values under `settings`. Merely naming an
 unknown type never selects a fallback provider.
@@ -610,13 +610,15 @@ The common slots and their first tuning targets are:
 | Context compaction              | `context.compact`                                                                                                                                                     | Structured format and preservation of facts that later steps still require; physical capacity remains profile-owned.                                                                    |
 | Literal tool payloads           | `toolPayload.raw`                                                                                                                                                     | Literal-payload instructions and any intentional provider-native output controls. Verify the produced payload or artifact directly, not the model's description of it.                  |
 
-New OpenAI profiles created through CLI setup or Web onboarding set
-`calibration["context.compact"].timeoutMs` to `300000` (five minutes). This
-profile override takes precedence over the shared 180-second compaction
-default; other steps retain their own timeouts. An explicit template timeout
-is preserved, and existing profiles are not migrated automatically. To apply
-the same setting to an existing GPT profile, add `"timeoutMs": 300000` to its
-`calibration["context.compact"]` object. This does not change reasoning effort.
+New OpenAI profiles created through CLI setup, Web onboarding, or model
+addition set `timeoutMs` to `300000` (five minutes) in both
+`calibration["context.compact"]` and `calibration["toolPayload.raw"]`. These
+profile overrides take precedence over the shared 180-second compaction and
+90-second literal-payload defaults; other steps retain their own timeouts.
+Explicit template timeouts are preserved, and existing profiles are not
+migrated automatically. To apply these settings to an existing GPT profile,
+add `"timeoutMs": 300000` to each of those calibration objects, preserving
+their other fields. This does not change reasoning effort.
 
 `timeoutMs` addresses provider latency only; raising it does not improve model
 reasoning. Top-level `contextWindowTokens` declares the concrete model

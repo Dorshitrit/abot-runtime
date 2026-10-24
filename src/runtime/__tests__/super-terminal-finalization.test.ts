@@ -145,7 +145,7 @@ test("SUPER never fabricates a role commit when the response limit cannot hold a
   ).toBeLessThanOrEqual(1);
 });
 
-test("a root compaction read failure permits fresh presentation but blocks history-dependent routing", async () => {
+test("a root compaction read failure permits fresh classification but blocks history-dependent response", async () => {
   const canonicalStore = createRequestContextCompactionStore();
   const store = {
     ...canonicalStore,
@@ -159,7 +159,7 @@ test("a root compaction read failure permits fresh presentation but blocks histo
       nextStep: "Please try again.",
     }),
     meta: {},
-  })));
+  }), { classifyProcedure: () => ({ requiresProcedure: false }) }));
   const request = createRootInvalidOutputRequest(
     invoke,
     "supervisor-worker-v1",
@@ -177,6 +177,7 @@ test("a root compaction read failure permits fresh presentation but blocks histo
   expect(result.output).toContain("Cannot finish this request.");
   expect(invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
     "supervisor_presentation",
+    "supervisor_procedure_gate",
     "degraded.finalization",
   ]);
   expect(JSON.stringify(invoke.mock.calls[0]![0].messages)).not.toContain("PRIVATE_PREVIOUS_HISTORY");

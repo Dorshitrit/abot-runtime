@@ -1,3 +1,6 @@
+import { createConnectionInspection } from "../runtime-setup/connection-inspection.js";
+import { setupReasoningState, updateSetupReasoningField } from "../runtime-setup/reasoning-fields.js";
+import { defaultSetupProviderAddress } from "../runtime-setup/validation.js";
 import { textOf } from "../../lib/text-format.js";
 import {
   clearConnectionSecret,
@@ -34,6 +37,7 @@ export function createModelSetupWizard({
   root,
   getEnvironmentId = () => "",
   loadSetup,
+  inspectConnection,
   saveModel,
   applySetup,
   beginRuntimeMutation = () => true,
@@ -53,6 +57,10 @@ export function createModelSetupWizard({
   let modelForm = null;
   let formChoice = "";
   let requestedProviderId = "";
+  const connectionInspection = createConnectionInspection({
+    state, container: dialog, inspectConnection, getEnvironmentId,
+    onChange: () => { formChoice = ""; render(); },
+  });
   const beginOperation = () => ({
     generation: ++generation,
     environment: getEnvironmentId(),
@@ -66,9 +74,11 @@ export function createModelSetupWizard({
   };
 
   function reset() {
+    connectionInspection.reset();
     clearSecret();
     viewState.reset();
     Object.assign(state, {
+      ...setupReasoningState(),
       providers: [],
       profileIds: [],
       choice: "",
@@ -94,7 +104,7 @@ export function createModelSetupWizard({
   }
 
   function close(completed = false) {
-    if (state.busy) return false;
+    if (state.busy || state.checkingConnection) return false;
     const wasOpen = dialog.open;
     generation += 1;
     clearSecret();
@@ -264,7 +274,7 @@ export function createModelSetupWizard({
   }
 
   function next() {
-    if (state.busy || !state.loaded) return;
+    if (state.busy || state.checkingConnection || !state.loaded) return;
     if (state.step === 0 && state.choice) {
       state.step = 1;
       state.error = "";
@@ -284,7 +294,7 @@ export function createModelSetupWizard({
   }
 
   function input(event) {
-    if (state.busy || state.saved || state.step !== 1) return;
+    if (state.busy || state.checkingConnection || state.saved || state.step !== 1) return;
     const field = event.target.dataset.runtimeSetupField;
     if (field === "api-key") {
       event.target.removeAttribute("aria-invalid");
@@ -310,7 +320,14 @@ export function createModelSetupWizard({
       state.profileEdited = true;
     }
     if (field === "connection-id") state.newProviderId = value;
-    if (field === "ollama-base-url") state.baseUrl = value;
+    if (["ollama-base-url", "llamacpp-base-url"].includes(field)) state.baseUrl = value;
+    if (updateSetupReasoningField(state, field, event.target.type === "checkbox" ? event.target.checked : value)) {
+      const apiKey = readConnectionSecret(modelForm);
+      formChoice = "";
+      render();
+      const keyInput = modelForm.querySelector('[data-runtime-setup-field="api-key"]');
+      if (keyInput) keyInput.value = apiKey;
+    }
     const key = modelForm.querySelector('[data-runtime-setup-field="api-key"]');
     if (key) key.required = requiresModelSaveCredential(state);
     event.target.removeAttribute("aria-invalid");
@@ -320,6 +337,7 @@ export function createModelSetupWizard({
   dialog.addEventListener("change", (event) => {
     if (
       state.busy ||
+      state.checkingConnection ||
       state.saved ||
       state.step !== 0 ||
       event.target.dataset.runtimeSetupField !== "provider"
@@ -333,6 +351,10 @@ export function createModelSetupWizard({
     const resetSuggestedProfile = providerChanged && !state.profileEdited;
     if (resetSuggestedProfile) state.profileId = "";
     state.choice = event.target.value;
+    if (providerChanged) {
+      state.baseUrl = defaultSetupProviderAddress(state.choice.replace("new:", ""));
+      Object.assign(state, setupReasoningState());
+    }
     state.newProviderId = selectedModelProvider(state)
       ? ""
       : suggestIdentifier(
@@ -353,7 +375,8 @@ export function createModelSetupWizard({
   dialog.addEventListener("click", (event) => {
     const action = event.target.closest?.("[data-model-action]")?.dataset
       .modelAction;
-    if (!action || state.busy) return;
+    if (!action || state.busy || state.checkingConnection) return;
+    if (action === "inspect-model-connection") { void connectionInspection.check(); return; }
     if (action === "cancel") close();
     if (action === "reload") void load();
     if (action === "next") next();

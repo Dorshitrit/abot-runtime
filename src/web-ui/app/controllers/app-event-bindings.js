@@ -1,3 +1,5 @@
+import { bindSessionSearchDisclosure } from "../components/session-search-disclosure.js";
+import { bindReasoningBudgetMenu } from "./reasoning-budget-menu-events.js";
 import { beginConversationNavigation, canNavigateConversation } from "./conversation-navigation-intent.js";
 import {
   focusSelectedMenuItem,
@@ -34,6 +36,7 @@ export function createAppEventBindings({
     }
     const isCurrentNavigation = beginConversationNavigation(state);
     const navigationRevision = shell.navigationRevision?.();
+    const navigationRequest = shell.navigationRequestRevision?.();
     const environment = actions.selectedEnvironmentId?.();
     const session = state.currentSessionId;
     const prepared = await prepareQueueRecovery();
@@ -43,6 +46,7 @@ export function createAppEventBindings({
     if (prepared?.canCommit?.() === false) return false;
     const hasCurrentWorkspaceNavigation = navigationRevision === shell.navigationRevision?.();
     if (!hasCurrentWorkspaceNavigation) return false;
+    if (navigationRequest !== shell.navigationRequestRevision?.()) return false;
     if (actions.selectedEnvironmentId?.() !== environment) return false;
     if (state.currentSessionId !== session) return false;
     return () => {
@@ -57,7 +61,42 @@ export function createAppEventBindings({
     };
   }
 
+  async function newConversation({ canCommit = () => true } = {}) {
+    if (!canCommit()) return false;
+    const recovery = await prepareCurrentQueueRecovery();
+    if (!recovery || !canCommit()) return false;
+    const preparedWorkspaceActivation = await shell.prepareWorkspaceActivation(
+      "chat",
+      { focus: false },
+    );
+    if (!preparedWorkspaceActivation || !canCommit()) return false;
+    if (preparedWorkspaceActivation.canCommit?.() === false) return false;
+    if (recovery() === false) return false;
+    if (preparedWorkspaceActivation() === false) return false;
+    state.currentSessionId = createWebSessionId();
+    onSessionCreated(state.currentSessionId);
+    actions.saveSessionId(
+      actions.selectedEnvironmentId(),
+      state.currentSessionId,
+    );
+    actions.rememberModelSelection();
+    state.messages = [];
+    actions.resetLiveRequestView();
+    actions.setCurrentSessionTitle(state.currentSessionId);
+    actions.applyConversationChrome();
+    actions.subscribeSession(state.currentSessionId);
+    actions.renderSessions();
+    actions.renderMessages();
+    shell.setSessionsDrawerOpen(false);
+    dom.composerInput.focus();
+    return true;
+  }
+
   function bind() {
+    bindReasoningBudgetMenu({ state, dom, actions, modelSelector, documentRoot });
+    bindSessionSearchDisclosure({
+      toggle: dom.sessionSearchToggleButton, field: dom.sessionSearchField, input: dom.sessionSearchInput,
+    });
     let searchTimer;
     dom.sessionSearchInput.addEventListener("input", () => {
       state.sessionQuery = dom.sessionSearchInput.value;
@@ -69,33 +108,7 @@ export function createAppEventBindings({
       "click",
       () => void actions.loadSessions(),
     );
-    dom.newSessionButton.addEventListener("click", async () => {
-      const recovery = await prepareCurrentQueueRecovery();
-      if (!recovery) return;
-      const preparedWorkspaceActivation = shell.prepareWorkspaceActivation(
-        "chat",
-        { focus: false },
-      );
-      if (!preparedWorkspaceActivation) return;
-      if (recovery() === false) return;
-      if (preparedWorkspaceActivation() === false) return;
-      state.currentSessionId = createWebSessionId();
-      onSessionCreated(state.currentSessionId);
-      actions.saveSessionId(
-        actions.selectedEnvironmentId(),
-        state.currentSessionId,
-      );
-      actions.rememberModelSelection();
-      state.messages = [];
-      actions.resetLiveRequestView();
-      actions.setCurrentSessionTitle(state.currentSessionId);
-      actions.applyConversationChrome();
-      actions.subscribeSession(state.currentSessionId);
-      actions.renderSessions();
-      actions.renderMessages();
-      shell.setSessionsDrawerOpen(false);
-      dom.composerInput.focus();
-    });
+    dom.newSessionButton.addEventListener("click", () => newConversation());
     dom.environmentSelect.addEventListener("change", environmentTransition.onSelectChange, true);
     dom.agentPickerButton.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -199,7 +212,9 @@ export function createAppEventBindings({
         actions.renderPermissionMode();
       }
       actions.renderAgentMode();
-      if (state.agentModeMenuOpen) focusSelectedMenuItem(dom.agentModeMenu);
+      if (state.agentModeMenuOpen) {
+        focusSelectedMenuItem(dom.agentModeMenu);
+      }
     });
     dom.agentModeButton.addEventListener("keydown", (event) => {
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -218,7 +233,7 @@ export function createAppEventBindings({
       event.stopPropagation(),
     );
     dom.agentModeMenu.addEventListener("keydown", (event) => {
-      handleMenuNavigation(event, dom.agentModeMenu);
+      if (event.target.closest?.("[data-mode]")) handleMenuNavigation(event, dom.agentModeMenu);
     });
     documentRoot.addEventListener("click", (event) => {
       if (
@@ -306,6 +321,7 @@ export function createAppEventBindings({
 
   return {
     bind,
+    newConversation,
     ...environmentTransition,
   };
 }

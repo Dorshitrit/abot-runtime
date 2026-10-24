@@ -1,3 +1,5 @@
+import { validateEffectiveReasoningBudgets } from "./model-reasoning-validation.js";
+import { validateLlamaCppProfileCapabilities } from "./llamacpp-profile-validation.js";
 import type { ModelGatewayPolicyConfig } from "../../model-gateway/types.js";
 import {
   validateProfileContextCapacity,
@@ -113,6 +115,8 @@ export function validateEffectiveRuntimeModelConfig(params: {
 }): void {
   const issues: string[] = [];
   const capacityIssues: ModelContextCapacityIssue[] = [];
+  validateEffectiveReasoningBudgets(issues, params.modelPolicy);
+  validateLlamaCppProfileCapabilities(issues, params.modelPolicy);
   const providers = params.modelPolicy?.providers ?? {};
   const profiles = params.modelPolicy?.profiles ?? {};
   const invocationProfiles = params.modelPolicy?.invocationProfiles ?? {};

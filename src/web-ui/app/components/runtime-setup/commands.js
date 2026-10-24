@@ -22,7 +22,7 @@ export function buildRuntimeSetupCommands(
   const packaged = setupCommandMode === "package";
   const initPrefix = packaged ? "npx abot init" : "npm run init --";
   const init = `${initPrefix} --provider ${providerArgument} --model ${modelArgument}${
-    selectedProvider === "ollama" ? ` --base-url ${baseUrlArgument}` : ""
+    ["ollama", "llamacpp"].includes(selectedProvider) ? ` --base-url ${baseUrlArgument}` : ""
   }`;
   return {
     "ollama-pull": `ollama pull ${modelArgument}`,

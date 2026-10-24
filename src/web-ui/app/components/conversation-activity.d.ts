@@ -1,3 +1,4 @@
+import type { MemoryActivity } from "../lib/memory-activity-model.js";
 import type { ContextWindowDisplay } from "../lib/context-window-state.js";
 import type { ConversationFileReference } from "../lib/conversation-file-reference.js";
 import type { buildConversationRoleCards } from "../lib/conversation-role-model.js";
@@ -25,6 +26,7 @@ export declare function buildConversationActivityModel(
 ): {
   requestId: string;
   events: ConversationActivityEvent[];
+  memoryActivities: MemoryActivity[];
   roleCards: ReturnType<typeof buildConversationRoleCards>;
   sources: ConversationSourcesGroup[];
   toolActions: ConversationToolAction[];

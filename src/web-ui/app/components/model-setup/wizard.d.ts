@@ -16,6 +16,7 @@ export type ModelSetupProvider = Readonly<{
 export interface ModelSetupWizardDependencies {
   root: HTMLElement;
   getEnvironmentId?: () => string;
+  inspectConnection?: (input: Record<string, unknown>) => Promise<{ connection: { models: readonly string[] } }>;
   loadSetup: () => Promise<{
     providers: readonly ModelSetupProvider[];
     profileIds: readonly string[];

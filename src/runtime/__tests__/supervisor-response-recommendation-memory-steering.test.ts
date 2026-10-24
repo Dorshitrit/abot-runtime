@@ -1,6 +1,7 @@
-import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
+import { supervisorFormatName, withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { LongTermMemoryService } from "../long-term-memory/contracts.js";
+import { projectLongTermMemoryMessage } from "../long-term-memory/projection.js";
 import {
   configureDebugLogger,
   resetDebugLoggerConfig,
@@ -11,7 +12,6 @@ import { runRequestRunner } from "../request/runner.js";
 import { SUPERVISOR_RESPONSE_RECOMMENDATION_KIND } from "../steps/supervisor-response/response-recommendation.js";
 import { runSupervisorAuthoredResponse } from "../steps/supervisor-response/run.js";
 import { createTestRequestExecutionScope } from "./support/request-execution-scope.js";
-import { directRespondDecision } from "./support/supervisor-direct-respond.js";
 
 type ModelInput = Parameters<ModelGatewayClient["invoke"]>[0];
 const PROMPT = "Explain the supplied distinction.";
@@ -19,6 +19,7 @@ const STEERING = "Explain only the first point.";
 const OLD_RECOMMENDATION = "Explain both points in the supplied distinction.";
 const FRESH_RECOMMENDATION =
   "Explain only the first point in the supplied distinction.";
+const PASSIVE_MEMORY_TEXT = "PASSIVE_MEMORY_SENTINEL: use the stored presentation preference.";
 const STALE_CANDIDATE = { content: "Old candidate.", tags: [] };
 const FRESH_CANDIDATE = { content: "Fresh candidate.", tags: [] };
 const CALL = {
@@ -104,7 +105,7 @@ function createHarness(
 }
 
 function invocationPhase(input: ModelInput): string {
-  if (input.modelStep === "supervisor.decision") return "decision";
+  if (supervisorFormatName(input) === "supervisor_procedure_gate") return "gate";
   if (input.format === undefined) return "response";
   return "memory";
 }
@@ -119,12 +120,9 @@ function assertMemoryInput(input: ModelInput): void {
   expect(JSON.stringify(input.messages)).not.toContain(FRESH_RECOMMENDATION);
 }
 
-function respond(recommendation: string): string {
+function directResponseGate(recommendation: string): string {
   return JSON.stringify({
-    decision: directRespondDecision({
-      responseRecommendation: recommendation,
-      acknowledgement: "I will explain the distinction.",
-    }),
+    decision: { requiresProcedure: false, responseRecommendation: recommendation },
   });
 }
 
@@ -148,13 +146,16 @@ test("stale entry prevents memory retrieval and every provider invocation", asyn
   expect(invoke).not.toHaveBeenCalled();
 });
 
-test("steering during startup retrieval reaches the first routing decision and later authoring", async () => {
+test("startup steering and readable passive memory reach the gate while response keeps the original capsule", async () => {
   let decisionCount = 0;
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-    if (invocationPhase(input) === "decision") {
+    if (invocationPhase(input) === "gate") {
       decisionCount += 1;
+      expect(JSON.stringify(input.messages)).toContain(STEERING);
+      expect(JSON.stringify(input.messages)).toContain(PASSIVE_MEMORY_TEXT);
+      expect(JSON.stringify(input.messages)).not.toContain("runtime_long_term_memory_reference_v1");
       return {
-        text: respond(FRESH_RECOMMENDATION),
+        text: directResponseGate(FRESH_RECOMMENDATION),
         meta: {},
       };
     }
@@ -169,6 +170,8 @@ test("steering during startup retrieval reaches the first routing decision and l
     }
     expect(JSON.stringify(input.messages)).toContain(FRESH_RECOMMENDATION);
     expect(JSON.stringify(input.messages)).not.toContain(OLD_RECOMMENDATION);
+    expect(JSON.stringify(input.messages)).toContain(PASSIVE_MEMORY_TEXT);
+    expect(JSON.stringify(input.messages)).toContain("runtime_long_term_memory_reference_v1");
     return { text: "Fresh answer.", meta: {} };
   });
   const { request, memory } = createHarness(invoke, async () => {
@@ -177,14 +180,19 @@ test("steering during startup retrieval reaches the first routing decision and l
         steerId: "during-retrieval",
         text: STEERING,
       });
-    return { available: true, records: [] };
+    const records = [{
+      id: "presentation-preference", content: PASSIVE_MEMORY_TEXT, tags: ["presentation"],
+      provenance: { kind: "passive_response", sourceRequestId: "prior-request", sourceSessionId: "prior-session" },
+      createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z",
+    }] as const;
+    return { available: true, records, message: projectLongTermMemoryMessage(records) };
   });
   await expect(runRequestRunner(request)).resolves.toEqual({
     output: "Fresh answer.",
     memoryCandidates: [FRESH_CANDIDATE],
   });
   expect(invoke.mock.calls.map(([input]) => invocationPhase(input))).toEqual([
-    "decision",
+    "gate",
     "memory",
     "response",
   ]);
@@ -207,10 +215,10 @@ test.each([
   async ({ output }) => {
     let decisionCount = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      if (invocationPhase(input) === "decision") {
+      if (invocationPhase(input) === "gate") {
         decisionCount += 1;
         return {
-          text: respond(
+          text: directResponseGate(
             decisionCount === 1 ? OLD_RECOMMENDATION : FRESH_RECOMMENDATION,
           ),
           meta: {},
@@ -242,9 +250,9 @@ test.each([
       memoryCandidates: [FRESH_CANDIDATE],
     });
     expect(invoke.mock.calls.map(([input]) => invocationPhase(input))).toEqual([
-      "decision",
+      "gate",
       "memory",
-      "decision",
+      "gate",
       "memory",
       "response",
     ]);

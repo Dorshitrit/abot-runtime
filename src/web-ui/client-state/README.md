@@ -73,3 +73,5 @@ tests cover SPARK, navigation, Stop/Steer, onboarding and model context display.
 The timing fixture measures click feedback and time to HTTP POST separately; it
 is not a model benchmark. Browser startup and Windows storage tests use isolated
 installations, not the user's QA data.
+
+Thinking overrides use the `abot-web.reasoningPreferences` preference map, keyed by environment, conversation and model profile. Profile default removes the override; off, server default and a non-negative token budget are explicit choices; a token budget of 0 disables thinking. Each submitted or queued message captures its own profile-bound choice, so later control changes affect later messages. Unsupported saved choices must be cleared explicitly before sending.

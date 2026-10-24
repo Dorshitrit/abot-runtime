@@ -1,3 +1,4 @@
+import type { ModelReasoningBudget } from "../../../shared/model-reasoning.js";
 import type { SetupEmbeddingInput } from "../../local-runtime/setup-embedding-input.js";
 
 export type RuntimeSetupValidation = Readonly<{
@@ -12,7 +13,7 @@ export type RuntimeSetupCommands = Readonly<{
   "web-ui": string;
 }>;
 export type RuntimeSetupProvider = Readonly<{
-  id: "openai" | "ollama";
+  id: "openai" | "ollama" | "llamacpp";
   label: string;
   requiresApiKey: boolean;
   credentialConfigured: boolean;
@@ -26,16 +27,20 @@ export type RuntimeSetupSnapshot = Readonly<{
   defaultContextWindowTokens: number;
   editableConnection?: { revision: string };
   existingModel?: {
-    provider: "openai" | "ollama";
+    provider: "openai" | "ollama" | "llamacpp";
     model: string;
     contextWindowTokens?: number;
+    supportsThinking?: boolean;
+    reasoningBudget?: ModelReasoningBudget;
     baseUrl?: string;
   };
 }>;
 export type RuntimeSetupInput = {
-  provider: "openai" | "ollama";
+  provider: "openai" | "ollama" | "llamacpp";
   model: string;
   contextWindowTokens?: number;
+  supportsThinking?: boolean;
+  reasoningBudget?: ModelReasoningBudget;
   baseUrl?: string;
   apiKey?: string;
   deferActivation?: boolean;
@@ -49,6 +54,7 @@ export type RuntimeSetupResponse = {
 export interface RuntimeSetupGuideDependencies {
   readonly container: HTMLElement;
   readonly conversationRegion: HTMLElement;
+  readonly inspectConnection?: (input: Record<string, unknown>) => Promise<{ connection: { models: readonly string[] } }>;
   readonly loadSetup: () => Promise<{ setup: RuntimeSetupSnapshot }>;
   readonly applySetup: () => Promise<{
     activation: RuntimeSetupResponse["activation"];

@@ -13,6 +13,7 @@ This guide covers three entry points:
 - TypeScript-capable host project if using the library directly
 - Optional: an installed and running Ollama service for Ollama model profiles
 - Optional: OpenAI API key for OpenAI model profiles
+- Optional: a running llama.cpp server for [llama.cpp model profiles](llamacpp.md)
 
 ## Prepare Ollama (If Selected)
 
@@ -64,12 +65,15 @@ npx abot start
 
 Open [http://127.0.0.1:5177](http://127.0.0.1:5177). The command binds to
 loopback by default. On a fresh installation, the setup wizard lets you select
-OpenAI or Ollama, enter a concrete model ID, and save the connection. OpenAI
+OpenAI, Ollama or llama.cpp, enter a concrete model ID, and save the connection. OpenAI
 accepts the API key directly in the form and stores it privately in the
 consumer's `.env`. The key is not returned to the browser or stored in runtime
 JSON. Existing OpenAI configurations missing a key open the same completion flow.
 
-For Ollama, the server must already be running with the selected model available.
+For Ollama and llama.cpp, the server must already be running with the selected model available.
+Every provider's model registration includes an explicit thinking-support checkbox.
+llama.cpp additionally offers per-segment token budgets and a metadata-only
+connection check; see [llama.cpp setup](llamacpp.md).
 Its address is resolved from the ABot host, even when you use the UI from a phone.
 Continue through the optional **Embedding** step to configure semantic memory,
 or choose to set it up later. **Plugins** starts with all tools selected for a
@@ -93,7 +97,7 @@ managed by a separate process remains under that process's lifecycle; the UI
 reports when saved changes require that owner to restart.
 
 In the Web UI, open **Models → Add model** to add another model.
-Choose a saved provider connection or create a new OpenAI/Ollama connection.
+Choose a saved provider connection or create a new OpenAI/Ollama/llama.cpp connection.
 Each provider card also has an **Add model** shortcut. Review the model, then
 choose **Save and apply**. Saved API keys are reused; existing model profiles and
 the default model are preserved. The added model is selected in the Models list.
@@ -133,8 +137,10 @@ npx abot memory enable --provider <provider-id> --model <embedding-model-id>
 
 ABot does not install or choose the embedding model. The enable command performs
 a real probe, writes config only after it succeeds, and reports that the Runtime
-must be restarted. OpenAI users enter the embedding model id manually; Ollama
-users can discover model ids installed at the configured Ollama endpoint.
+must be restarted. OpenAI and llama.cpp users enter the embedding model id
+manually; Ollama users can discover model ids installed at the configured Ollama
+endpoint. For llama.cpp, use an embedding-enabled server and, if needed, a
+[separate connection from chat](llamacpp.md#embeddings-and-semantic-memory).
 
 See [Passive Long-Term Memory](long-term-memory.md) before enabling persistence.
 

@@ -25,6 +25,7 @@ export async function buildModelSetupProfile(
       String(provider.config.type),
       input.model,
       input.contextWindowTokens,
+      input,
     ),
     provider: provider.id,
   };

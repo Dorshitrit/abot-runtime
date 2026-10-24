@@ -32,6 +32,8 @@ export const LOCAL_SESSION_METHODS = [
 
 export const LOCAL_PROJECT_METHODS = [
   "list",
+  "catalog",
+  "delete",
   "get",
   "create",
   "browseFolders",

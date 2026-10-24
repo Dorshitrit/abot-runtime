@@ -41,7 +41,7 @@ function controlsHarness(enabled = true, processingPaused = false) {
   };
   const configure = vi.fn();
   const clearPending = vi.fn();
-  const confirmDelete = vi.fn(() => true);
+  const confirmDelete = vi.fn<() => boolean | Promise<boolean>>(() => true);
   const view = createPassiveLearningMemory({
     actions: { snapshot: () => snapshot, configure, clearPending, refresh: vi.fn(), selectBatch: vi.fn() },
     showActivityMemories: vi.fn(), downloadSetup: vi.fn(), confirmDelete,
@@ -101,7 +101,7 @@ describe("independent passive learning controls", () => {
     expect(h.configure.mock.calls[0]?.[0]).not.toHaveProperty("processingPaused");
   });
 
-  test("deleting pending activity requires its own explicit confirmation", () => {
+  test("deleting pending activity requires its own explicit confirmation", async () => {
     const h = controlsHarness(false, true);
     h.root.querySelector('[data-learning-tab="activity"]')!.dispatch("click");
     const remove = h.root.querySelector("[data-learning-clear-pending]")!;
@@ -110,7 +110,7 @@ describe("independent passive learning controls", () => {
     expect(h.clearPending).not.toHaveBeenCalled();
     remove.dispatch("click");
     expect(h.confirmDelete).toHaveBeenCalledTimes(2);
-    expect(h.clearPending).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(h.clearPending).toHaveBeenCalledTimes(1));
     expect(h.configure).not.toHaveBeenCalled();
   });
 
@@ -126,7 +126,7 @@ describe("independent passive learning controls", () => {
     expect(h.root.querySelector("[data-learning-clear-pending]")?.disabled).toBe(true);
   });
 
-  test("blocked evidence is deletable but never presented as waiting in Co-worker or Home", () => {
+  test("blocked evidence is deletable but never presented as waiting in Co-worker or Home", async () => {
     const h = controlsHarness();
     const status = Object.assign(h.snapshot.status, { pendingObservations: 0, blockedObservations: 23 });
     h.view.render({ ...h.snapshot, status });
@@ -134,7 +134,7 @@ describe("independent passive learning controls", () => {
     expect(h.root.querySelector("[data-learning-clear-pending]")?.disabled).toBe(false);
     h.root.querySelector('[data-learning-tab="activity"]')!.dispatch("click");
     h.root.querySelector("[data-learning-clear-pending]")!.dispatch("click");
-    expect(h.clearPending).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(h.clearPending).toHaveBeenCalledOnce());
     const root = createRoot();
     const home = createPassiveLearningHome({ openLearning: vi.fn() });
     home.mount(root);
@@ -233,4 +233,18 @@ describe("pending activity deletion transport", () => {
     expect(controller.snapshot().statusError).toBe("Access denied");
     expect(controller.snapshot().status).toEqual(status);
   });
+});
+
+test.each(["cancel", "environment", "activity", "approve"] as const)("pending activity confirmation rejects stale %s", async (change) => {
+  const h = controlsHarness();
+  let approve!: (value: boolean) => void;
+  h.confirmDelete.mockImplementation(() => new Promise<boolean>((resolve) => { approve = resolve; }));
+  h.root.querySelector('[data-learning-tab="activity"]')!.dispatch("click");
+  h.root.querySelector("[data-learning-clear-pending]")!.dispatch("click");
+  expect(h.clearPending).not.toHaveBeenCalled();
+  if (change === "environment") h.snapshot.environmentId = "prod";
+  if (change === "activity") h.snapshot.status.pendingObservations += 1;
+  approve(change !== "cancel");
+  await Promise.resolve();
+  expect(h.clearPending).toHaveBeenCalledTimes(change === "approve" ? 1 : 0);
 });

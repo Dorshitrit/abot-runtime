@@ -1,5 +1,6 @@
 import { createStartupScreen } from "./components/startup-screen.js";
 import { createWorkspaceRouteController } from "./controllers/workspace-route-controller.js";
+import { createPreferenceViewSync } from "./controllers/preference-view-sync.js";
 import { textOf } from "./lib/text-format.js";
 import { createAutomationsFeature } from "./automations-feature.js";
 import { createSparkChatFeature } from "./spark-chat-feature.js";
@@ -41,6 +42,7 @@ export async function bootstrapWebApp({
   notifications?.setCompanionChat?.(spark);
   const automations = createAutomationsFeature({
     dom, client, shell, realtime,
+    startNewConversation: (options) => navigation?.bindings.newConversation(options) ?? Promise.resolve(false),
     getEnvironmentId: () => dom.environmentSelect.value,
     onNavigationChange: () => routes?.sync(),
   });
@@ -62,16 +64,12 @@ export async function bootstrapWebApp({
     : null;
   onNavigationReady(routes);
   routes?.bind();
-  let preferenceViewsReady = false;
-  function synchronizePreferences() {
-    selection.loadPreferences();
-    if (!preferenceViewsReady) return;
-    selection.applyModelSelection();
-    selection.renderPermissionMode();
-    void dashboard.refresh();
-    void navigation?.conversation.loadSessions();
-  }
-  preferences.subscribe?.(synchronizePreferences);
+  const preferenceViews = createPreferenceViewSync({
+    preferences, selection, dashboard,
+    getEnvironmentId: () => dom.environmentSelect.value,
+    loadSessions: () => navigation?.conversation.loadSessions(),
+  });
+  preferences.subscribe?.(preferenceViews.synchronize);
   selection.loadPreferences();
   shell.load();
   homeComposer.setWorkspace(shell.activeWorkspace());
@@ -122,8 +120,7 @@ export async function bootstrapWebApp({
     await spark.open(initialAddress.searchParams.get("message") || undefined, sparkNotificationReference(initialAddress));
   dashboard.setReady();
   notifications?.setReady();
-  preferenceViewsReady = true;
-  synchronizePreferences();
+  preferenceViews.setReady();
 }
 
 export async function startWebApp(options) {

@@ -1,12 +1,14 @@
+import { confirmDialog } from "../components/confirmation-dialog.js";
 /** Owns personal Skill drafts and environment-bound reads/mutations. */
 export function createSkillsController({ client, getEnvironmentId, render,
-  confirmDiscard = (message) => window.confirm(message) }) {
+  confirmDiscard = (message) => confirmDialog(message, { title: "Unsaved Skill", confirmLabel: "Discard changes", tone: "danger" }) }) {
   const state = { items: [], skill: null, draft: "", archived: false, creating: false, name: "", description: "",
     loading: false, reading: false, mutation: "", error: "", message: "" };
   let epoch = 0;
   let listRead = 0;
   let detailRead = 0;
   let draftRevision = 0;
+  let leaveRevision = 0;
   let active = false;
   const snapshot = () => ({ ...state, items: [...state.items], dirty: isDirty() });
   const publish = () => render(snapshot());
@@ -35,24 +37,39 @@ export function createSkillsController({ client, getEnvironmentId, render,
     if (!state.skill || state.skill.archived) return false;
     return state.skill.source === "personal";
   }
-  function prepareLeave() {
+  async function prepareLeave() {
+    const request = ++leaveRevision;
     if (state.mutation) return false;
     if (!isDirty()) return true;
-    if (!confirmDiscard("Discard unsaved Skill changes?")) return false;
     const revision = draftRevision;
     const scope = capture();
+    if (!await confirmDiscard("Discard unsaved Skill changes?")) return false;
+    if (!isCurrent(scope) || revision !== draftRevision) return false;
     const commit = () => {
-      if (!commit.canCommit()) return;
+      if (!commit.canCommit()) return false;
       if (state.creating) clearEditor();
       else { state.draft = state.skill.content; draftRevision += 1; }
       publish();
+      return true;
     };
-    commit.canCommit = () => isCurrent(scope) && revision === draftRevision;
+    commit.canCommit = () => {
+      if (state.mutation) return false;
+      if (request !== leaveRevision) return false;
+      if (!isCurrent(scope)) return false;
+      return revision === draftRevision;
+    };
     return commit;
   }
-  function acceptLeave() {
-    const prepared = prepareLeave();
-    if (prepared === false) return false;
+  async function acceptLeave() {
+    const scope = capture();
+    const revision = draftRevision;
+    const pending = prepareLeave();
+    const request = leaveRevision;
+    const prepared = await pending;
+    if (request !== leaveRevision) return false;
+    if (!isCurrent(scope) || revision !== draftRevision) return false;
+    if (state.mutation) return false;
+    if (prepared === false || prepared?.canCommit?.() === false) return false;
     if (typeof prepared === "function") prepared();
     return true;
   }
@@ -75,7 +92,7 @@ export function createSkillsController({ client, getEnvironmentId, render,
   }
   async function select(skillId) {
     if (state.skill?.skillId === skillId) return true;
-    if (!acceptLeave()) return false;
+    if (!await acceptLeave()) return false;
     if (!state.items.some((item) => item.skillId === skillId)) return false;
     return loadSkill(skillId);
   }
@@ -109,8 +126,8 @@ export function createSkillsController({ client, getEnvironmentId, render,
     state.message = "";
     publish();
   }
-  function beginCreate() {
-    if (!acceptLeave()) return false;
+  async function beginCreate() {
+    if (!await acceptLeave()) return false;
     clearEditor();
     Object.assign(state, { creating: true, archived: false, error: "", message: "" });
     publish();
@@ -124,8 +141,8 @@ export function createSkillsController({ client, getEnvironmentId, render,
     state.message = "";
     publish();
   }
-  function cancelCreate() {
-    if (!state.creating || !acceptLeave()) return false;
+  async function cancelCreate() {
+    if (!state.creating || !await acceptLeave()) return false;
     clearEditor();
     state.error = "";
     publish();
@@ -163,9 +180,9 @@ export function createSkillsController({ client, getEnvironmentId, render,
       if (isCurrent(scope)) { state.mutation = ""; publish(); }
     }
   }
-  function setArchived(archived) {
+  async function setArchived(archived) {
     if (state.archived === archived) return true;
-    if (!acceptLeave()) return false;
+    if (!await acceptLeave()) return false;
     state.archived = archived;
     state.error = "";
     state.message = "";
@@ -174,7 +191,7 @@ export function createSkillsController({ client, getEnvironmentId, render,
     return true;
   }
   async function reloadSelected() {
-    if (!state.skill || !acceptLeave()) return false;
+    if (!state.skill || !await acceptLeave()) return false;
     return loadSkill(state.skill.skillId);
   }
   async function mutate(action) {

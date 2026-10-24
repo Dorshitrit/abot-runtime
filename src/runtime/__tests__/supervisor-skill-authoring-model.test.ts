@@ -54,13 +54,15 @@ test("routing adds only the gated author_skill action and keeps memory schema co
 
 test.each([false, true])("separate selection runs only after author_skill (selected=%s)", async (author) => {
   const fixture = await createCoreSkillContextFixture();
+  await fixture.open("worker");
+  const resume = await fixture.finish();
   const formats: string[] = [];
   fixture.invoke.mockImplementation(async (input) => {
     const name = supervisorFormatName(input)!;
     formats.push(name);
     const decision = name === "supervisor_skill_selection" ? { action: "continue" }
       : name === "supervisor_skill_authoring" ? { action: "create_skill", name: "Personal", description: "Requested conventions" }
-        : author ? { action: "author_skill" } : { action: "respond", responseRecommendation: "Answer the user." };
+        : author ? { action: "author_skill" } : { action: "respond" };
     return { text: output(decision), meta: {} };
   });
   const request = createRequestExecutionScope({
@@ -71,7 +73,7 @@ test.each([false, true])("separate selection runs only after author_skill (selec
   });
   const result = await runSupervisorDecision(request, {
     call: projectSupervisorCallIdentity(fixture.ledger.current()), skillReadHead: fixture.ledger.current(),
-    toolResults: fixture.toolResults(), availableSkillWriteOperationIds,
+    toolResults: fixture.toolResults(), availableSkillWriteOperationIds, resume,
   });
   expect(result.decision.action).toBe(author ? "create_skill" : "respond");
   expect(formats).toEqual(["supervisor_skill_selection", "supervisor_decision", ...(author ? ["supervisor_skill_authoring"] : [])]);
@@ -89,6 +91,8 @@ test("an unrelated failed read does not block create and authoring never invokes
     operation: "read_skills", selectors: ["missing"],
     result: { outcome: "failed", errorCode: "knowledge_skill_not_found", skills: [] },
   });
+  await fixture.open("worker");
+  const resume = await fixture.finish();
   const formats: string[] = [];
   fixture.invoke.mockImplementation(async (input) => {
     const name = supervisorFormatName(input)!;
@@ -104,7 +108,7 @@ test("an unrelated failed read does not block create and authoring never invokes
   });
   expect((await runSupervisorDecision(request, {
     call: projectSupervisorCallIdentity(fixture.ledger.current()), skillReadHead: fixture.ledger.current(),
-    toolResults: fixture.toolResults(), availableSkillWriteOperationIds,
+    toolResults: fixture.toolResults(), availableSkillWriteOperationIds, resume,
   })).decision.action).toBe("create_skill");
   expect(formats).toEqual(["supervisor_decision", "supervisor_skill_authoring"]);
 });

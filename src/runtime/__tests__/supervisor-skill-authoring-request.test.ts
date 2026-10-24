@@ -24,6 +24,7 @@ async function runAuthoring(f: Fixture, options: {
   requestId: string;
   selection: SupervisorSkillAuthoringSelection;
   discoveryIds?: readonly string[];
+  expectedDiscoveryCalls?: number;
   body?: string;
   beforeAuthoring?: () => Promise<void>;
   inspectRouting?: (input: KnowledgeModelInput) => void;
@@ -46,11 +47,25 @@ async function runAuthoring(f: Fixture, options: {
         options.inspectResponse?.(input);
         return { text: "The requested Skill operation is complete.", meta: {} };
       }
+      if (input.modelStep === "worker.decision") {
+        phases.push("worker.decision");
+        return { text: decision({ action: "return_result" }), meta: {} };
+      }
+      if (input.modelStep === "worker.result") {
+        phases.push("worker.result");
+        return { text: "The requested personal guidance is ready for the root's authoring operation.", meta: {} };
+      }
       expect(input.modelStep).toBe("supervisor.decision");
       const phase = supervisorFormatName(input);
       if (!phase) throw new Error("Missing supervisor format");
       phases.push(phase);
       if (phase === "supervisor_presentation") return { text: decision(defaultSupervisorPresentation(input)), meta: {} };
+      if (phase === "supervisor_procedure_gate") return { text: decision({ requiresProcedure: true }), meta: {} };
+      if (phase === "supervisor_delegation") {
+        expect(JSON.stringify(input.format)).not.toContain('"author_skill"');
+        return { text: decision({ action: "invoke_role", roleId: "worker", objective: "Prepare the requested personal Skill change." }), meta: {} };
+      }
+      if (phase === "supervisor_working_directory") return { text: JSON.stringify({ workingDirectory: "." }), meta: {} };
       if (phase === "supervisor_skill_selection") {
         expect(phases).not.toContain("supervisor_skill_authoring");
         expect(JSON.stringify(input.format)).not.toContain('"create_skill"');
@@ -59,6 +74,7 @@ async function runAuthoring(f: Fixture, options: {
       }
       if (phase === "supervisor_decision") {
         expect(phases.filter((entry) => entry === phase)).toHaveLength(1);
+        expect(capsules(input, "runtime_child_result")).toContainEqual(expect.objectContaining({ roleId: "worker" }));
         options.inspectRouting?.(input);
         return { text: decision({ action: "author_skill" }), meta: {} };
       }
@@ -77,6 +93,9 @@ async function runAuthoring(f: Fixture, options: {
   if (assertion) throw assertion;
   expect(events.filter(({ type }) => type === "failed")).toEqual([]);
   expect(events).toContainEqual(expect.objectContaining({ type: "completed" }));
+  expect(discoveryCalls).toBe(options.expectedDiscoveryCalls ?? 2);
+  expect(phases.filter((phase) => ["supervisor_procedure_gate", "supervisor_delegation", "worker.decision", "worker.result", "supervisor_decision"].includes(phase)))
+    .toEqual(["supervisor_procedure_gate", "supervisor_delegation", "worker.decision", "worker.result", "supervisor_decision"]);
   expect(phases.slice(phases.indexOf("supervisor_skill_authoring") + 1))
     .toEqual(options.body ? ["raw", "response"] : ["response"]);
   return { phases, events };
@@ -142,7 +161,7 @@ test.each([false, true])("SUPER edits an exact target without a second selection
 
 test("a failed unrelated lookup does not disable a requested create", async () => {
   const f = await createSchedulerRuntimeFixture("supervisor-worker-v1"); fixtures.push(f);
-  await runAuthoring(f, { requestId: "lookup-failed", discoveryIds: ["missing-skill"],
+  await runAuthoring(f, { requestId: "lookup-failed", discoveryIds: ["missing-skill"], expectedDiscoveryCalls: 3,
     selection: { action: "create_skill", ...metadata }, body });
   expect(createRuntimeKnowledgeSkillStore(f.config.paths.runtimeDir).list()).toContainEqual(expect.objectContaining(metadata));
 });

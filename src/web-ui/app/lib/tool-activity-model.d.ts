@@ -6,6 +6,7 @@ export interface ToolActivityField {
 
 export interface ConversationToolAction {
   fileReference?: ConversationFileReference;
+  skillRead?: true;
   id: string;
   tool: string;
   executorRole?: string;

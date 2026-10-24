@@ -19,10 +19,10 @@ function fakeRoot() {
   };
 }
 
-function fakeInteractiveRoot() {
+function fakeInteractiveRoot(emitClientEvents = false) {
   let providerValue = "";
   let modelValue = "";
-  const buttons = ["discover", "enable", "disable"].map((action) => ({
+  const buttons = ["discover", "enable", "disable", "add-connection"].map((action) => ({
     dataset: { memoryAction: action },
     listener: null as null | (() => void),
     addEventListener(_type: string, listener: () => void) {
@@ -41,7 +41,7 @@ function fakeInteractiveRoot() {
         return { value: providerValue };
       }
       if (selector === "[data-memory-model]") return { value: modelValue };
-      if (selector === "[data-memory-events]") return { checked: false };
+      if (selector === "[data-memory-events]") return { checked: emitClientEvents };
       return null;
     },
     querySelectorAll(selector: string) {
@@ -55,6 +55,37 @@ function fakeInteractiveRoot() {
 }
 
 describe("long-term memory setup environment isolation", () => {
+  test("opens connection setup with current events and the saved profile, then reloads canonical selection", async () => {
+    let environmentId = "dev";
+    const onAddConnection = vi.fn();
+    const onEnvironmentChanged = vi.fn();
+    const loadStatus = vi.fn().mockResolvedValue({ status: {
+      enabled: true, profileId: "custom-memory", emitClientEvents: false,
+      providerId: "old-server", model: "old-model", providers: [{ id: "old-server", type: "ollama" }],
+    } });
+    const setup = createLongTermMemorySetup({
+      getEnvironmentId: () => environmentId,
+      loadStatus, onAddConnection, onEnvironmentChanged,
+    });
+    const root = fakeInteractiveRoot(true);
+    root.setFields("old-server", "old-model");
+    setup.mount(root);
+    await setup.load();
+    expect(root.innerHTML).toContain("Add connection");
+    root.click("add-connection");
+    expect(onAddConnection).toHaveBeenCalledWith({ emitClientEvents: true, profileId: "custom-memory" });
+    loadStatus.mockResolvedValue({ status: {
+      enabled: true, providerId: "new-server", model: "new-model", providers: [{ id: "new-server", type: "llamacpp" }],
+    } });
+    await setup.load({ preserveInputs: false });
+    expect(root.innerHTML).toContain('value="new-model"');
+    expect(root.innerHTML).not.toContain('value="old-model"');
+    onEnvironmentChanged.mockClear();
+    environmentId = "prod";
+    await setup.load();
+    expect(onEnvironmentChanged).toHaveBeenCalledOnce();
+  });
+
   test("ignores a stale status response after the environment changes", async () => {
     const devStatus = deferred<Record<string, unknown>>();
     const prodStatus = deferred<Record<string, unknown>>();

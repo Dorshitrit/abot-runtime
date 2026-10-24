@@ -55,7 +55,8 @@ describe("core passive memory availability at root decisions", () => {
     const enabledMessages = modelMessages(enabled.decisions[0]!);
     const disabledMessages = modelMessages(disabled.decisions[0]!);
     expect(enabledMessages[0]!.role).toBe("system");
-    expect(enabledMessages[0]!.content).not.toBe(disabledMessages[0]!.content);
+    if (policy === "supervisor-worker-v1") expect(enabledMessages).toEqual(disabledMessages);
+    else expect(enabledMessages[0]!.content).not.toBe(disabledMessages[0]!.content);
     expect(enabledMessages.slice(1)).toEqual(disabledMessages.slice(1));
     for (const messages of [enabledMessages, disabledMessages]) {
       expect(messages.filter(({ role, content }) => role === "user" && content === prompt)).toHaveLength(1);

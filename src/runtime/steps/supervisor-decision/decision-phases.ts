@@ -6,6 +6,8 @@ import type { SupervisorDecision, SupervisorDecisionOutcome, SupervisorDecisionD
 import { traceSupervisorDecisionPhaseSuperseded, traceSupervisorModelCompleted, traceSupervisorModelFailed, traceSupervisorModelStarted, traceSupervisorWorkingDirectoryModelStarted } from "./diagnostics.js";
 import { buildSupervisorDecisionInput } from "./input.js";
 import { parseSupervisorDecisionOutput } from "./parser.js";
+import { parseSupervisorDelegationOutput } from "./delegation-contract.js";
+import { createSupervisorArtifactPathsOptionalProjection, type SupervisorArtifactPathsProjection } from "./artifact-paths.js";
 import { buildSupervisorWorkingDirectoryInput, mergeSupervisorWorkingDirectory, parseSupervisorWorkingDirectoryOutput } from "./working-directory.js";
 
 type AcceptedSupervisorPhase<T> = Readonly<{ decision: T; steeringVersion: number }>;
@@ -43,18 +45,28 @@ export async function runRoutingPhase(params: {
   });
 
   try {
+    const parseRoutingOutput = params.input.delegationOnly
+      ? parseSupervisorDelegationOutput
+      : parseSupervisorDecisionOutput;
     const accepted = await invokeStructuredModelStep({
       request: params.request,
       boundSteeringVersion: params.boundSteeringVersion,
       modelStep: params.input.modelStep,
       format: params.input.format,
       messages: params.input.context.messages,
-      contextCompaction: params.contextCompaction,
+      ...(params.input.delegationOnly
+        ? {
+            contextRetention: "exact" as const,
+            optionalContextProjection: createSupervisorArtifactPathsOptionalProjection({
+              projection: params.input.artifactPathsProjection, includeInstructions: true,
+            }),
+          }
+        : { contextCompaction: params.contextCompaction }),
       timeoutReason: "supervisor_decision_timeout",
       invalidOutputReason: "invalid_supervisor_decision",
       parse: (text) =>
         captureAcceptedPhase(
-          parseSupervisorDecisionOutput(text, {
+          parseRoutingOutput(text, {
             includeAcknowledgement: params.input.includeAcknowledgement,
             includeTitle: params.input.includeTitle,
             includeResponseRecommendation:
@@ -89,6 +101,8 @@ export async function runWorkingDirectoryPhase(params: {
   frozenDecision: SupervisorWorkingDirectoryRoutingDecision;
   diagnostic: SupervisorDecisionDiagnosticContext;
   contextCompaction: ModelStepContextCompactionController;
+  exactContext?: boolean;
+  artifactPathsProjection?: SupervisorArtifactPathsProjection;
 }): Promise<AcceptedSupervisorPhase<SupervisorWorkingDirectoryDecision>> {
   const startedAt = Date.now();
   traceSupervisorWorkingDirectoryModelStarted({
@@ -108,7 +122,14 @@ export async function runWorkingDirectoryPhase(params: {
       modelStep: params.input.modelStep,
       format: params.input.format,
       messages: params.input.messages,
-      contextCompaction: params.contextCompaction,
+      ...(params.exactContext
+        ? {
+            contextRetention: "exact" as const,
+            optionalContextProjection: createSupervisorArtifactPathsOptionalProjection({
+              projection: params.artifactPathsProjection, includeInstructions: false,
+            }),
+          }
+        : { contextCompaction: params.contextCompaction }),
       timeoutReason: "supervisor_decision_timeout",
       invalidOutputReason: "invalid_supervisor_decision",
       parse: (text) =>

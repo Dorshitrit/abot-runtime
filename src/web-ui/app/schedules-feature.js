@@ -19,6 +19,7 @@ export function createSchedulesFeature({
   let view;
   let active = false;
   let navigationRevision = 0;
+  let navigationRequest = 0;
   let runtimeReady = isRuntimeReady();
   const controller = createSchedulesController({
     client,
@@ -56,6 +57,7 @@ export function createSchedulesFeature({
     root: dom.schedulesRoot,
     actions: controller,
     getCurrentSessionId,
+    getEnvironmentId: selectedEnvironmentId,
     getAgentModes,
   });
   view.render(controller.snapshot());
@@ -78,7 +80,7 @@ export function createSchedulesFeature({
       if (destination !== "schedules") return true;
       return client.supportsSchedules();
     },
-    prepareLeave: view.prepareLeave,
+    prepareLeave: view.prepareEnvironmentChange,
     prepareEnvironmentChange: view.prepareEnvironmentChange,
     navigationRevision: () => navigationRevision,
     selectedJobId: () => controller.snapshot().selectedId,
@@ -88,17 +90,38 @@ export function createSchedulesFeature({
     },
     async openJob(jobId) {
       if (!client.supportsSchedules()) return false;
-      if (!view.prepareLeave()) return false;
-      if (!shell.activateWorkspace("schedules")) return false;
+      if (!await commitScheduleNavigation()) return false;
       await controller.openJob(jobId);
       return true;
     },
-    createJob(initialValues) {
+    async createJob(initialValues) {
       if (!client.supportsSchedules()) return;
-      if (!shell.activateWorkspace("schedules")) return;
+      if (!await commitScheduleNavigation()) return;
       void controller.openCreate(initialValues);
     },
   };
+
+  async function commitScheduleNavigation() {
+    const request = ++navigationRequest;
+    const environment = selectedEnvironmentId();
+    const revision = navigationRevision;
+    const workspaceRequest = shell.navigationRequestRevision?.();
+    const preparedDiscard = await view.prepareEnvironmentChange();
+    if (!preparedDiscard) return false;
+    if (!isCurrentScheduleNavigation()) return false;
+    if (workspaceRequest !== shell.navigationRequestRevision?.()) return false;
+    const activate = await shell.prepareWorkspaceActivation("schedules");
+    if (!activate || !isCurrentScheduleNavigation()) return false;
+    if (activate.canCommit?.() === false) return false;
+    if (!preparedDiscard()) return false;
+    return activate();
+    function isCurrentScheduleNavigation() {
+      if (request !== navigationRequest) return false;
+      if (environment !== selectedEnvironmentId()) return false;
+      if (revision !== navigationRevision) return false;
+      return preparedDiscard.canCommit() !== false;
+    }
+  }
 
   function isScheduleSurfaceReady() {
     if (documentRoot?.visibilityState === "hidden") return false;

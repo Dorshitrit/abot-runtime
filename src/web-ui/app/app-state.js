@@ -10,6 +10,7 @@ export function createAppState() {
     agentMode: "reasoning",
     supportedAgentModes: ["fast", "reasoning", "deep", "auto"],
     agentModeMenuOpen: false,
+    reasoningBudgetMenuOpen: false,
     permissionModeMenuOpen: false,
     agentPickerOpen: false,
     busySessionIds: new Set(),

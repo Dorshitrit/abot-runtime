@@ -40,29 +40,30 @@ test("editor keeps metadata read-only and treats the content as literal text", (
   f.root.querySelector("[data-skills-form]")!.dispatch("submit"); expect(f.actions.save).toHaveBeenCalledOnce();
 });
 
-test("archive requires confirmation; archived records offer restore without editing", () => {
+test("archive requires confirmation; archived records offer restore without editing", async () => {
   const f = createView(); f.root.querySelector("[data-skills-archive]")!.dispatch("click");
   expect(f.actions.archive).not.toHaveBeenCalled();
   f.confirmArchive.mockReturnValue(true); f.root.querySelector("[data-skills-archive]")!.dispatch("click");
-  expect(f.actions.archive).toHaveBeenCalledOnce();
+  await vi.waitFor(() => expect(f.actions.archive).toHaveBeenCalledOnce());
   f.view.render({ ...snapshot, skill: { ...skill, archived: true }, archived: true });
   expect(f.root.querySelector("[data-skills-save]")!.hidden).toBe(true);
   expect(f.root.querySelector("[data-skills-archive]")!.hidden).toBe(true);
   f.root.querySelector("[data-skills-restore]")!.dispatch("click"); expect(f.actions.restore).toHaveBeenCalledOnce();
 });
 
-test("Skills navigation uses the existing shell, focus and discard guard", () => {
+test("Skills navigation uses the existing shell, focus and discard guard", async () => {
   const h = createWorkspaceShellHarness(1440);
   let mayLeave = false;
   const shell = createWorkspaceShell({ ...h });
   shell.addWorkspaceGuard(({ from }: { from: string }) => from !== "skills" || mayLeave);
-  shell.bind(); shell.load(); h.dom.skillsWorkspaceButton.dispatch("click"); h.flushFrames();
+  shell.bind(); shell.load(); h.dom.skillsWorkspaceButton.dispatch("click"); await vi.waitFor(() => expect(shell.activeWorkspace()).toBe("skills")); h.flushFrames();
   expect(shell.activeWorkspace()).toBe("skills");
   expect(h.dom.skillsWorkspacePanel.hidden).toBe(false);
   expect(h.dom.skillsWorkspacePanel.inert).toBe(false);
   expect(h.documentRoot.activeElement).toBe(h.dom.closeSkillsWorkspaceButton);
-  expect(shell.closeOverlaysOnEscape()).toBe(false);
+  expect(await shell.activateWorkspace("chat")).toBe(false);
   mayLeave = true; expect(shell.closeOverlaysOnEscape()).toBe(true);
+  await vi.waitFor(() => expect(shell.activeWorkspace()).toBe("chat"));
   expect(h.dom.skillsWorkspacePanel.hidden).toBe(true);
 });
 

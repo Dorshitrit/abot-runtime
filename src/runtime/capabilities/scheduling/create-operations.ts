@@ -1,3 +1,4 @@
+import { modelReasoningControlProperties } from "../model-reasoning-controls.js";
 import type { ToolNormalInvocationOperation } from "../../../capabilities/tool-types.js";
 import type { SchedulerScheduleInput } from "../../scheduler/contracts.js";
 import {
@@ -22,6 +23,7 @@ function createScheduleOperation(
       additionalProperties: false,
       properties: {
         ...scheduleDetailProperties,
+  ...modelReasoningControlProperties,
         timeZone: scheduleTimingProperties.timeZone,
         ...Object.fromEntries(
           timingFields.map((field) => [field, scheduleTimingProperties[field]]),

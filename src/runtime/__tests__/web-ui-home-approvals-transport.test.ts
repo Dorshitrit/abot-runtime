@@ -34,6 +34,46 @@ describe("Home approval client transport", () => {
     );
   });
 
+  test("forwards an existing reason unchanged in the HTTP decision", async () => {
+    const requestApi = vi.fn(async () => ({
+      ok: true,
+      approvalId: "approval",
+    }));
+    const client = createToolApprovalRequests({
+      requestApi,
+      getConfig: () => ({ backend: "runtime" }),
+      getEnvironmentId: () => "prod",
+    });
+    const reason = "User explanation:\nPlease choose another target.";
+    await client.decideToolApproval({
+      environmentId: "prod",
+      sessionId: "session",
+      requestId: "request",
+      approvalId: "approval",
+      approved: false,
+      reason,
+      generation: "generation",
+      waitId: "wait",
+      revision: 3,
+      commandId: "decision",
+    });
+    const body = JSON.parse(
+      (requestApi.mock.calls[0] as unknown as [string, RequestInit])[1]
+        .body as string,
+    );
+    expect(body).toEqual({
+      environment: "prod",
+      sessionId: "session",
+      requestId: "request",
+      approved: false,
+      reason,
+      generation: "generation",
+      waitId: "wait",
+      revision: 3,
+      commandId: "decision",
+    });
+  });
+
   test("bridge makes no unsupported requests", async () => {
     const requestApi = vi.fn(async () => ({}));
     const client = createToolApprovalRequests({

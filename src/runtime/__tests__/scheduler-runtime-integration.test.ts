@@ -80,7 +80,7 @@ describe("scheduled requests through runtime composition", () => {
       const decisionInput = invoke.mock.calls.find(
         ([input]) => policy === "execution-agent-v1"
           ? input.modelStep === decisionStep
-          : supervisorFormatName(input) === "supervisor_decision",
+          : input.modelStep === "supervisor.response",
       )![0];
       const messages = scheduledModelMessages(decisionInput);
       expect(
@@ -162,7 +162,7 @@ describe("scheduled requests through runtime composition", () => {
     const pending = await scheduler.runNow(job.id);
     await scheduler.tick();
     expect(invoke.mock.calls.map(([input]) => supervisorFormatName(input))).toEqual([
-      "supervisor_presentation", "supervisor_skill_selection", "supervisor_decision",
+      "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate",
     ]);
     expect((await scheduler.listRuns())[0].status).toBe("pending");
     release.open();
@@ -170,7 +170,7 @@ describe("scheduled requests through runtime composition", () => {
     await scheduler.tick();
     expect((await waitForRun(pending.id)).status).toBe("succeeded");
     const decisions = invoke.mock.calls.filter(
-      ([input]) => supervisorFormatName(input) === "supervisor_decision",
+      ([input]) => input.modelStep === "supervisor.response",
     );
     expect(decisions).toHaveLength(2);
     expect(JSON.stringify(scheduledModelMessages(decisions[1][0]))).toContain(

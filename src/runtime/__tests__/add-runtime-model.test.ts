@@ -111,7 +111,10 @@ describe("add-runtime-model", () => {
       model: "gpt-5.6-luna",
       execution: { policy: "execution-agent-v1" },
       context: { formatTokenAccounting: { mode: "estimate" } },
-      calibration: { "context.compact": { format: "json", timeoutMs: 300_000 } },
+      calibration: {
+        "context.compact": { format: "json", timeoutMs: 300_000 },
+        "toolPayload.raw": { timeoutMs: 300_000 },
+      },
     });
   });
 

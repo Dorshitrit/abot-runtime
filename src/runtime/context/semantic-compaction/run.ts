@@ -2,6 +2,11 @@ import type {
   SemanticCompactionGenerationParams,
   SemanticCompactionRequest,
 } from "./generation-contracts.js";
+import {
+  assertInheritedCompactionSourceDigests,
+  projectCompactionBatchParams,
+  resolvePriorCompactionSourceDigests,
+} from "./inherited-source-digests.js";
 import { registerSemanticCompactionSources } from "./generation-source-registration.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import { projectConfiguredStepMessages } from "../../config/runner/step-instructions.js";
@@ -96,7 +101,7 @@ export async function generateSemanticCompactionCandidate(
     modelStep: CONTEXT_COMPACTION_MODEL_STEP,
     scopeId: params.scopeId,
     sourceRevision: params.sourceRevision,
-    previousCoveredSourceCount: params.previous?.sourceDigests.length ?? 0,
+    previousCoveredSourceCount: resolvePriorCompactionSourceDigests(params).length,
     newSourceCount: params.sources.length,
     inputCharacterCount: prepared.messages.reduce(
       (total, message) => total + message.content.length,
@@ -145,7 +150,7 @@ export async function generateSemanticCompactionCandidate(
       replacementCheckpoint: true,
       digestMode: "rolling_replacement",
       previousDigestCharacters: semanticCompactionDigestTotalLength(
-        params.previous?.sourceDigests ?? [],
+        resolvePriorCompactionSourceDigests(params),
       ),
       replacementDigestCharacters: semanticCompactionDigestTotalLength(
         candidate.sourceDigests,
@@ -174,6 +179,7 @@ export async function generateSemanticCompactionCandidate(
 export async function generateSemanticCompactionCandidateBatched(
   params: SemanticCompactionGenerationParams,
 ): Promise<SemanticCompactionCandidate> {
+  assertInheritedCompactionSourceDigests(params);
   registerSemanticCompactionSources(params);
   let candidate = params.previous;
   let nextSourceIndex = 0;
@@ -190,11 +196,7 @@ export async function generateSemanticCompactionCandidateBatched(
       const batch = Object.freeze(
         params.sources.slice(nextSourceIndex, endSourceIndex),
       );
-      const batchParams: SemanticCompactionGenerationParams = Object.freeze({
-        ...params,
-        ...(candidate ? { previous: candidate } : { previous: undefined }),
-        sources: batch,
-      });
+      const batchParams = projectCompactionBatchParams(params, candidate, batch);
       if ((await assessSemanticCompactionInputForAdmission(batchParams)).fits) {
         selectedParams = batchParams;
         break;
@@ -206,11 +208,9 @@ export async function generateSemanticCompactionCandidateBatched(
       continue;
     }
     const source = params.sources[nextSourceIndex]!;
-    const slicedParams: SemanticCompactionGenerationParams = Object.freeze({
-      ...params,
-      ...(candidate ? { previous: candidate } : { previous: undefined }),
-      sources: Object.freeze([source]),
-    });
+    const slicedParams = projectCompactionBatchParams(
+      params, candidate, Object.freeze([source]),
+    );
     candidate = await generateSemanticCompactionSlicedSource(
       slicedParams,
       source,

@@ -1,8 +1,10 @@
+import { canChooseReasoningBudget, isReasoningPreference } from "./lib/reasoning-preference.js";
+import { createConversationReasoningPreferences } from "./services/conversation-reasoning-preferences.js";
 import { canChooseReasoning } from "./lib/reasoning-controls.js";
 import { createComposerFeature } from "./controllers/composer-feature.js";
 import { createComposerDrafts } from "./controllers/composer-drafts.js";
 import { createComposerDraftView } from "./controllers/composer-draft-view.js";
-import { workspaceQueue } from "./services/workspace-state.js";
+import { workspaceQueue, workspaceStorage } from "./services/workspace-state.js";
 import { createAppState } from "./app-state.js";
 import { createConversationViewFeature } from "./controllers/conversation-view-feature.js";
 import { createConversationSessionController } from "./controllers/conversation-session-controller.js";
@@ -27,6 +29,7 @@ export function createSparkChatConversation({
   captureHandoffNavigation, onHandoffOpened,
 }) {
   const state = createAppState();
+  const thinkingPreferences = createConversationReasoningPreferences(workspaceStorage());
   const drafts = createComposerDrafts();
   const draftView = createComposerDraftView({ input: dom.composerInput,
     getDraft: () => drafts.open({ environmentId: getEnvironmentId(), sessionId: state.currentSessionId }), isVisible: isOpen });
@@ -53,6 +56,14 @@ export function createSparkChatConversation({
     return profileId ? { profileId } : undefined;
   };
   const scope = () => ({ environmentId: getEnvironmentId(), sessionId: state.currentSessionId });
+  const reasoningScope = () => ({ environmentId: getEnvironmentId(), sessionId: getConfiguration()?.sessionId || state.currentSessionId });
+  function getReasoningPreference() {
+    const profileId = getConfiguration()?.modelProfileId || "";
+    const preference = thinkingPreferences.loadReasoningPreference(reasoningScope(), profileId);
+    if (preference && !canChooseReasoningBudget(getConfiguration()))
+      throw new Error("SPARK's model no longer supports this thinking override. Choose Profile default.");
+    return preference;
+  }
   const isScopeCurrent = (candidate) => candidate.environmentId === getEnvironmentId() && candidate.sessionId === state.currentSessionId;
   const steer = createSteerController({
     sendRealtime,
@@ -126,7 +137,7 @@ export function createSparkChatConversation({
     state, dom: { ...dom, composerInput: draftView.surface }, shell, client, sessionQueue,
     drafts, getDraft: draftView.current, conversationSession: session, conversationView: view,
     getEnvironmentId, ensureSession: () => session.ensureSession(),
-    getSettings: () => ({ agentMode: state.agentMode, toolPermissionMode: getToolPermissionMode(), modelPreference: getModelPreference() }),
+    getSettings: () => ({ agentMode: state.agentMode, toolPermissionMode: getToolPermissionMode(), modelPreference: getModelPreference(), reasoningPreference: getReasoningPreference() }),
     steer: steer.steer, composerActions: actions,
     selectedModelSupportsImageInput: () => getConfiguration()?.supportsImageInput === true,
     isComposerAvailable: () => !getSubmissionBlock(), getSubmissionBlock,
@@ -189,8 +200,23 @@ export function createSparkChatConversation({
   }
   return {
     state, session, view, attachments, render, handleRealtime, bind, queue,
+    getReasoningPreference: () => thinkingPreferences.loadReasoningPreference(reasoningScope(), getConfiguration()?.modelProfileId || ""),
+    setReasoningPreference(preference) {
+      const profileId = getConfiguration()?.modelProfileId || "";
+      if (preference && (!canChooseReasoningBudget(getConfiguration()) || !isReasoningPreference(preference) || preference.profileId !== profileId))
+        throw new Error("Select a thinking preference supported by SPARK's current model.");
+      return thinkingPreferences.saveReasoningPreference(reasoningScope(), profileId, preference);
+    },
     prepareEnvironmentChange: () => queue.prepareRecoveryForNavigation(),
-    setAgentMode(mode) { if (canChooseReasoning(getConfiguration())) state.agentMode = mode; },
+    async setAgentMode(mode) {
+      if (!canChooseReasoning(getConfiguration())) return;
+      const selectedScope = reasoningScope();
+      const profileId = getConfiguration()?.modelProfileId || "";
+      const preference = thinkingPreferences.loadReasoningPreference(selectedScope, profileId);
+      if (preference?.mode === "off") await thinkingPreferences.saveReasoningPreference(selectedScope, profileId, undefined);
+      if (JSON.stringify(selectedScope) !== JSON.stringify(reasoningScope()) || profileId !== getConfiguration()?.modelProfileId) return;
+      state.agentMode = mode;
+    },
     update() {
       state.connected = isConnected();
       draftView.display(); composer.changed(); updateSendState(); renderActivityStatus();

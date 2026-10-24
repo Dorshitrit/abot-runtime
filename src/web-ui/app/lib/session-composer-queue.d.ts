@@ -1,3 +1,5 @@
+import type { ModelReasoningPreference } from "../../../shared/model-reasoning.js";
+
 export interface SessionComposerQueueScope {
   environmentId: string;
   sessionId: string;
@@ -10,6 +12,7 @@ export interface SessionComposerQueueItem {
   waitForRequestId: string;
   text: string;
   attachments: SessionComposerAttachmentRef[];
+  reasoningPreference?: ModelReasoningPreference;
   agentMode: string;
   toolPermissionMode: string;
   modelPreference: SessionComposerModelPreference | null;
@@ -19,6 +22,7 @@ export interface SessionComposerQueueItemInput {
   waitForRequestId: string;
   text: string;
   attachments: SessionComposerAttachmentRef[];
+  reasoningPreference?: ModelReasoningPreference;
   agentMode: string;
   toolPermissionMode: string;
   modelPreference?: SessionComposerModelPreference | null;

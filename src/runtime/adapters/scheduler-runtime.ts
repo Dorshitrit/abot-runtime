@@ -94,6 +94,7 @@ export function createRuntimeScheduler(options: {
       return finish(failedScheduledRequestOutcome("session_deleted"));
     const selection = resolveModelSelection({
       agentMode: job.agentMode,
+      ...(job.reasoningPreference ? { reasoningPreference: job.reasoningPreference } : {}),
       modelPreference: { profileId: job.modelProfileId, scope: "all" },
       modelPolicy: options.config.models,
     });
@@ -122,6 +123,7 @@ export function createRuntimeScheduler(options: {
       sessionId: job.sessionId,
       text: run.prompt,
       agentMode: job.agentMode,
+      ...(job.reasoningPreference ? { reasoningPreference: job.reasoningPreference } : {}),
       modelPreference: { profileId: job.modelProfileId, scope: "all" as const },
       toolPermissionMode: run.toolPermissionMode ?? "full_access",
     };

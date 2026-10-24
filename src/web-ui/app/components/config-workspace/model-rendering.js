@@ -1,3 +1,5 @@
+import { isTokenBudgetModel, renderReasoningBudget, renderReasoningEffort } from "./reasoning-budget.js";
+import { renderReasoningModeBudgets } from "./reasoning-mode-budgets.js";
 import { configRequiresRawRepair } from "./raw-config-repair.js";
 import { escapeAttribute, escapeHtml, textOf } from "../../lib/text-format.js";
 import { isConfigObject } from "./config-model.js";
@@ -128,22 +130,9 @@ export function createConfigModelRendering({
               [...basePath, "generation", "topP"],
               { type: "number", step: "0.01" },
             )}</label>
-            <label><span>Reasoning</span>${renderConfigInput(
-              file,
-              [...basePath, "generation", "reasoningEffort"],
-              {
-                type: "select",
-                values: [
-                  "",
-                  "none",
-                  "minimal",
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                ],
-              },
-            )}</label>
+            ${renderReasoningBudget(file, [...basePath, "generation"], renderConfigInput, { supported: isTokenBudgetModel(file, state.configDashboard, profile), dashboard: state.configDashboard })}
+            ${renderReasoningEffort(file, [...basePath, "generation"], renderConfigInput)}
+            ${renderReasoningModeBudgets(file, [...basePath, "generation"], renderConfigInput, { supported: isTokenBudgetModel(file, state.configDashboard, profile) })}
           </div>
           <button
             class="config-icon-button config-calibration-remove"
@@ -239,6 +228,9 @@ export function createConfigModelRendering({
               ["contextWindowTokens"],
               { type: "number", min: "1", step: "1" },
             )}</label>
+            ${isTokenBudgetModel(model, state.configDashboard) ? renderReasoningEffort(model, ["generation"], renderConfigInput) : ""}
+            ${renderReasoningBudget(model, ["generation"], renderConfigInput, { supported: isTokenBudgetModel(model, state.configDashboard), dashboard: state.configDashboard })}
+            ${renderReasoningModeBudgets(model, ["generation"], renderConfigInput, { supported: isTokenBudgetModel(model, state.configDashboard) })}
           </div>
           ${renderExecutionRoute(model)}
         </div>

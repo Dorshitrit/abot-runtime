@@ -42,6 +42,13 @@ test("managed service clients share canonical project/session state through owne
     await expect(
       client.projects.createSession("missing"),
     ).rejects.toMatchObject({ code: "project_not_found" });
+    expect(await client.projects.catalog()).toEqual({ projects: [project], deletedProjectIds: [] });
+    await client.projects.delete(project.id);
+    await client.projects.delete(project.id);
+    expect(await client.projects.get(project.id)).toBeNull();
+    expect(await client.projects.catalog()).toEqual({ projects: [], deletedProjectIds: [project.id] });
+    expect((await client.sessions.getSessionById(opened.sessionId))?.project).toEqual(opened.project);
+    await expect(client.projects.createSession(project.id)).rejects.toMatchObject({ code: "project_not_found" });
     await expect(connection.call("projects.constructor", [])).rejects.toThrow(
       "local_runtime_method_unknown",
     );
