@@ -22,8 +22,15 @@ import {
   resetDebugLoggerConfig,
 } from "../observability/debug-logger.js";
 import type { ModelStep } from "../../shared/model-steps.js";
+import { executeRoleWithModelOutputFailure } from "../orchestration/role-executors/activation/model-output-failure.js";
 
 const PRIVATE_OUTPUT = "Untrusted rejected model text must stay private.";
+const SUPER_COMPACTION_STEPS = [
+  "super.compact.coverage",
+  "super.compact.content",
+  "super.compact.merge",
+  "super.compact.continuation",
+] as const;
 
 function structuredFailure(reason: string, step: ModelStep) {
   return new StructuredModelInvalidOutputError(reason, step, {
@@ -139,7 +146,14 @@ describe("exhausted child model output", () => {
       "worker",
       () => structuredFailure("invalid_worker_decision", "worker.decision"),
     ],
+    [
+      "worker",
+      () => structuredFailure("invalid_worker_evidence_assessment", "worker.evidence"),
+    ],
     ["worker", workerResultFailure],
+    ["worker", () => incompleteOutput("worker.evidence")],
+    ["worker", () => timeoutOutput("worker.evidence")],
+    ["worker", () => providerFailure("worker.evidence")],
     ["worker", () => incompleteOutput("worker.decision")],
     ["worker", () => incompleteOutput("worker.result")],
     ["planner", () => incompleteOutput("planner.decision")],
@@ -159,6 +173,13 @@ describe("exhausted child model output", () => {
     ["planner", () => providerFailure("planner.graph")],
     ["reviewer", () => providerFailure("reviewer.decision")],
     ["reviewer", () => providerFailure("auditor.decision")],
+    ...SUPER_COMPACTION_STEPS.flatMap((step) =>
+      (["planner", "worker", "reviewer"] as const).flatMap((roleId) => [
+        [roleId, () => providerFailure(step)] as const,
+        [roleId, () => timeoutOutput(step)] as const,
+        [roleId, () => incompleteOutput(step)] as const,
+      ]),
+    ),
     ["planner", () => providerFailure("context.compact")],
     ["worker", () => providerFailure("context.compact")],
     ["reviewer", () => providerFailure("context.compact")],
@@ -227,6 +248,32 @@ describe("exhausted child model output", () => {
     },
   );
 
+  test.each(SUPER_COMPACTION_STEPS)(
+    "%s failures retain root ownership",
+    async (modelStep) => {
+      const ledger = await createLedger();
+      const head = ledger.current();
+      const error = providerFailure(modelStep);
+      await expect(
+        executeRoleWithModelOutputFailure(
+          {
+            roleId: "worker",
+            async execute() { throw error; },
+          },
+          {
+            context: undefined,
+            call: head.state.calls[0]!,
+            ledger,
+            availableChildRoleIds: [],
+          },
+          ROLE_CALL_RESULT_MAX_LENGTH,
+          "invalid-child",
+        ),
+      ).rejects.toBe(error);
+      expect(ledger.current()).toBe(head);
+    },
+  );
+
   test("a legal tiny result limit still returns failed without inventing evidence", async () => {
     const ledger = await createLedger(1);
     const returned = await invokeChild(ledger, {
@@ -258,6 +305,8 @@ describe("exhausted child model output", () => {
     providerFailure("tool_payload.raw"),
     new Error("output_incomplete"),
     new Error("worker_result_timeout"),
+    new Error("worker_evidence_timeout"),
+    new Error("worker_evidence_canonical_context_stale"),
     { code: "worker_result_timeout", modelStep: "worker.result" },
     timeoutOutput("supervisor.decision"),
     timeoutOutput("reviewer.decision"),
@@ -272,6 +321,7 @@ describe("exhausted child model output", () => {
     new DOMException("Request cancelled.", "AbortError"),
     structuredFailure("invalid_supervisor_decision", "supervisor.decision"),
     structuredFailure("unknown_contract_invalid", "worker.decision"),
+    structuredFailure("invalid_worker_evidence_assessment", "worker.decision"),
   ])(
     "preserves provider, cancellation, invariant and foreign output errors",
     async (error) => {
@@ -284,6 +334,20 @@ describe("exhausted child model output", () => {
           },
         }),
       ).rejects.toBe(error);
+      expect(ledger.current().state.results).toHaveLength(0);
+      expect(ledger.current().state.activeCallId).toBe("call-2");
+    },
+  );
+
+  test.each(["planner", "reviewer"] as const)(
+    "does not contain worker.evidence failures in a foreign %s call",
+    async (roleId) => {
+      const ledger = await createLedger();
+      const error = providerFailure("worker.evidence");
+      await expect(invokeChild(ledger, {
+        roleId,
+        async execute() { throw error; },
+      })).rejects.toBe(error);
       expect(ledger.current().state.results).toHaveLength(0);
       expect(ledger.current().state.activeCallId).toBe("call-2");
     },

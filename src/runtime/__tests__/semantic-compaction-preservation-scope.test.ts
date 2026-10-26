@@ -5,7 +5,7 @@ import {
   EXECUTION_AGENT_COMPACTION_REQUIREMENTS,
   resolveSemanticCompactionInstructions,
 } from "../context/semantic-compaction/execution-evidence-instructions.js";
-import { SEMANTIC_COMPACTION_INSTRUCTIONS } from "../context/semantic-compaction/prompt.js";
+import { SEMANTIC_COMPACTION_INSTRUCTIONS, EXECUTION_SEMANTIC_COMPACTION_INSTRUCTIONS } from "../context/semantic-compaction/prompt.js";
 import {
   COMPACTION_FACT,
   compactContinuation,
@@ -34,7 +34,7 @@ test.each(scopeCases)(
   ({ consumers, executionAgentOnly }) => {
     const instructions = resolveSemanticCompactionInstructions(consumers);
     const expected = executionAgentOnly
-      ? [SEMANTIC_COMPACTION_INSTRUCTIONS, EXECUTION_AGENT_COMPACTION_REQUIREMENTS].join("\n")
+      ? [EXECUTION_SEMANTIC_COMPACTION_INSTRUCTIONS, EXECUTION_AGENT_COMPACTION_REQUIREMENTS].join("\n")
       : SEMANTIC_COMPACTION_INSTRUCTIONS;
     // Assert assembly identity and scope, never a snapshot of instruction prose.
     expect(instructions).toBe(expected);

@@ -7,7 +7,7 @@ import { assertSuperWorkerCompactionSidecarBinding } from "../context/super-work
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { ModelStep } from "../../shared/model-steps.js";
 import { projectRequestContext } from "../context/request-context.js";
-import { createModelStepCompactionController } from "../context/model-step-compaction.js";
+import { createPolicyModelStepCompactionController } from "../context/super-compaction/routing.js";
 import { type SemanticCompactionSource } from "../context/semantic-compaction/index.js";
 import {
   buildRequestSourceMessage,
@@ -32,7 +32,7 @@ import {
   type WorkerCapabilityPayloadResponseFormat,
   type WorkerCapabilityPayloadValidationCode,
 } from "../orchestration/worker-capabilities/index.js";
-import type { ExecutionPolicyCapabilityAuthority } from "../orchestration/role-calls/index.js";
+import type { ExecutionPolicyAuthoritySnapshot, ExecutionPolicyCapabilityAuthority } from "../orchestration/role-calls/index.js";
 import type {
   BoundRequestModelInvocationContext,
   RequestExecutionSeed,
@@ -97,6 +97,7 @@ export function createRequestWorkerCapabilityPayloadAuthor(
   request: RequestWorkerCapabilityPayloadContext,
   capabilityAuthorities?: readonly ExecutionPolicyCapabilityAuthority[],
   filesystemScope?: RuntimeFilesystemScope,
+  executionPolicyAuthority?: ExecutionPolicyAuthoritySnapshot,
 ): WorkerCapabilityPayloadAuthor {
   const frozenAuthorities = capabilityAuthorities
     ? Object.freeze([...capabilityAuthorities])
@@ -121,6 +122,7 @@ export function createRequestWorkerCapabilityPayloadAuthor(
                 workingDirectory: authorInput.call.workingDirectory,
                 capabilities: [authorInput.descriptor],
               }),
+              executionPolicyAuthority,
             ),
         }),
       }).author(prepareSupervisorSkillPayloadInput(authorInput));
@@ -132,6 +134,7 @@ async function invokePayloadModel(
   request: RequestWorkerCapabilityPayloadContext,
   input: WorkerCapabilityPayloadModelRequest,
   filesystemMessage?: ChatMessage,
+  executionPolicyAuthority?: ExecutionPolicyAuthoritySnapshot,
 ): Promise<string> {
   const compactionOptions = payloadCompactionOptions(input);
   if (input.superWorkerCompaction)
@@ -146,7 +149,7 @@ async function invokePayloadModel(
       modelStep: input.modelStep,
       messages: projection.messages,
       contextCompaction: createSupervisorSkillPayloadCompactionController(
-        input, request, createModelStepCompactionController(request, {
+        input, request, createPolicyModelStepCompactionController(request, {
           consumer: input.modelStep,
           hasVerifiedCompactedEvidence: projection.hasVerifiedCompactedEvidence,
           call: payloadCompactionCall(request.prompt, input),
@@ -164,7 +167,7 @@ async function invokePayloadModel(
           resultSourceOverrides:
             compactionOptions.resultSourceOverrides ??
             projection.resultSourceOverrides,
-        }),
+        }, executionPolicyAuthority),
       ),
       timeoutReason: "worker_capability_payload_timeout",
       ...(input.responseFormat ? { format: input.responseFormat } : {}),

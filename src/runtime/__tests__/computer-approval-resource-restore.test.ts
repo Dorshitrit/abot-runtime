@@ -72,7 +72,7 @@ async function prepareComputerRequest(
   return { resources, modules, executor, execute, nextApprovalId, onEvent };
 }
 
-function prepareDesktopObservation(
+async function prepareDesktopObservation(
   request: Awaited<ReturnType<typeof prepareComputerRequest>>,
   desktopRef: string,
 ) {
@@ -80,7 +80,7 @@ function prepareDesktopObservation(
     (entry) => entry.operation.operationId === "observe_computer_desktop",
   );
   if (!operation) throw new Error("fixture_computer_operation_missing");
-  const prepared = request.executor.prepare({
+  const prepared = await request.executor.prepare({
     handle: operation.handle,
     controls: { desktop_ref: desktopRef },
   });
@@ -112,14 +112,14 @@ describe("prepared computer approval resource restoration", () => {
     const [native, companion] = computerCapsule(saved).entries;
     expect(native!.routeIdentity).toContain('"native"');
     expect(companion!.routeIdentity).toContain('"companion"');
-    const prepared = prepareDesktopObservation(first, native!.ref);
+    const prepared = await prepareDesktopObservation(first, native!.ref);
     const invocation = JSON.parse(JSON.stringify(prepared.snapshot));
     await first.resources.dispose();
     changeCompanionConnection(system);
 
     const second = await prepareComputerRequest(system, saved);
     expect(() => second.resources.assertRestoredStateClaimed()).not.toThrow();
-    const restored = second.executor.restore(invocation);
+    const restored = await second.executor.restore(invocation);
     expect(restored).toMatchObject({
       status: "prepared",
       actionFingerprint: prepared.actionFingerprint,
@@ -140,14 +140,14 @@ describe("prepared computer approval resource restoration", () => {
       JSON.stringify(first.resources.snapshot()),
     ) as RequestToolResourcesSnapshot;
     const [native, companion] = computerCapsule(saved).entries;
-    const prepared = prepareDesktopObservation(first, companion!.ref);
+    const prepared = await prepareDesktopObservation(first, companion!.ref);
     await first.resources.dispose();
     changeCompanionConnection(system);
 
     const second = await prepareComputerRequest(system, saved);
-    expect(() =>
+    await expect(
       second.executor.restore(JSON.parse(JSON.stringify(prepared.snapshot))),
-    ).toThrow("registered_tool_snapshot_incompatible");
+    ).rejects.toThrow("registered_tool_snapshot_incompatible");
     expect(computerCapsule(second.resources.snapshot()).entries).toEqual([
       native,
     ]);

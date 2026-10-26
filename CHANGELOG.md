@@ -4,6 +4,86 @@ All notable changes to this project should be documented in this file.
 
 This project follows semantic versioning after the first public release.
 
+## 2.1.0 - 2026-10-26
+
+ABot 2.1.0 adds personal Resources for Execution Agent, improves context
+compaction and delegated-work continuity, and refines navigation, scheduling
+activity and source management.
+
+### Added
+
+- Manage a personal source library in Resources using existing local text files
+  and text-bearing PDFs, with a saved embedding profile, background indexing,
+  semantic search and bounded reads. Execution Agent can discover and read ready
+  sources across conversations without enabling long-term memory.
+- Select supported files from a folder in one batch and manage source status,
+  filters and indexing settings. Removing a source leaves the original file
+  intact. Changed or missing sources require explicit re-indexing or relinking.
+- Home surfaces source problems with actions to reindex, relink a file, review
+  the source or open embedding settings. Source health checks exclude changed or
+  missing files from model discovery and source lists.
+- Offer a scoped timeout increase when a model step reaches its deadline.
+  The suggestion doubles that step's limit, applies through a restart when the
+  Runtime is idle, and remains available when reopening the conversation.
+- Tools can require explicit approval based on the current execution target,
+  with captured identities and revision checks preserved across approval resume.
+  Existing synchronous execution-binding adapters remain supported.
+
+### Changed
+
+- Resources retrieval is available only to Execution Agent when a compatible
+  ready index exists. SUPER, Planner and Worker do not receive Resources tools
+  or the Information Basket Skill. Historical conversation records remain readable.
+- SUPER Worker assesses completed evidence and remaining work in a separate
+  stage before selecting its next action.
+- SUPER uses independent staged RAW context compaction, processing bounded
+  source windows before merging retained evidence and continuation state.
+- OpenAI Execution Agent decisions and semantic compaction use native structured
+  function output while retaining the existing result schemas and validation.
+- Execution Agent preserves completed child-call results in their original
+  call/result order through decisions, responses and compaction.
+- Execution Agent decision and response steps use a 90% soft compaction threshold;
+  output and safety reserves can still require earlier compaction. Other steps
+  retain their existing threshold.
+- Project inspection starts with a flat overview and returns cursor-based pages
+  of at most 40 entries and 4,000 characters. Changed listings invalidate cursors,
+  and oversized traversals require a narrower target.
+- Sidebar groups load conversations independently, with five initial
+  conversations per project and pinned conversations outside those page limits.
+  Compact navigation adds overflow controls and keeps focused items visible.
+- Unread conversations use a compact status dot with counts retained in
+  accessible labels and hover text. Dragging the floating SPARK launcher onto
+  navigation docks it there.
+- Chat activity identifies schedule operations and Resources searches and reads.
+  Resource labels show bounded source names and result counts.
+- Tool-result presentation can extract bounded scalar metadata from JSON-string
+  outputs without changing the canonical result or model-visible evidence.
+
+### Fixed
+
+- Finish active context compaction before applying steering so the new
+  instruction retains coherent history. Explicit cancellation still stops work.
+- Retry nonreducing Execution Agent compaction once from the original sources
+  with minimal guidance and a measurable size target.
+- Preserve sidebar conversation membership and ordering when restoring loaded
+  groups and session-list pages.
+- Require approval when FULL modifies a FULL+ schedule, and reject schedule
+  mutations whose captured target identity or revision has changed.
+- Contain Worker evidence-stage failures and empty delegated SUPER compaction
+  output within the existing failure boundaries.
+
+### Upgrade notes
+
+- Resources requires an embedding profile and supports text and text-bearing
+  PDFs; OCR and Office formats are not included. Browser file drops do not
+  upload contents: link files on the Runtime host.
+- Project-inspection consumers should follow data.pagination.nextCursor until
+  hasMore is false. The default depth is now 0 instead of 3, with 40 entries per
+  page instead of the previous 200-entry default.
+- Existing EA checkpoints without child-call ordering metadata retain their
+  prior passive summaries. Source-health validation preserves saved conversation
+  evidence and does not require a stored-schema migration.
+
 ## 2.0.0 - 2026-10-24
 
 ABot 2.0.0 improves continuity through context compaction and steering, adds

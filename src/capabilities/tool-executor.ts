@@ -10,6 +10,7 @@ import type {
 } from "./tool-types.js";
 
 type ToolExecutorOptions = {
+  executionAuthority?: ToolExecutionContext["executionAuthority"];
   requestWork?: ToolExecutionContext["requestWork"];
   requestState?: ToolExecutionContext["requestState"];
   media?: ToolExecutionContext["media"];
@@ -141,6 +142,7 @@ export async function executeToolCall(
       throw createToolAbortError(options.abortSignal.reason);
     }
     const execution = execute(call.params, {
+      executionAuthority: options.executionAuthority,
       requestWork: options.requestWork,
       requestState: options.requestState,
       media: options.media,

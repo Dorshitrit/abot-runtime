@@ -24,11 +24,13 @@ test.each(["eof", "done"] as const)("valid decision ending at %s cannot execute 
   try {
     const { request, execute } = createCompletionDecisionRequest(fixture);
     const ledger = await createRootInvalidOutputLedger("execution-agent-v1");
-    await expect(runRootExecutionKernel({ request, ledger })).rejects.toThrow("openai response not completed");
+    await expect(runRootExecutionKernel({ request, ledger })).rejects.toThrow("openai function response not completed");
     expect(execute).not.toHaveBeenCalled();
     expect(ledger.current().state.capabilityExecutions).toEqual([]);
     expect(ledger.current().state.results).toEqual([]);
     expect(fixture.invoke).toHaveBeenCalledTimes(2);
+    expect(ledger.current().state.calls[0]!.workerCapabilityScope)
+      .toEqual({ catalogGroupIds: ["files"] });
   } finally {
     await fixture.dispose();
   }

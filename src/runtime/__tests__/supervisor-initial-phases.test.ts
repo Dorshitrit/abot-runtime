@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import { createRequestExecutionScope } from "../request/execution-scope.js";
@@ -34,7 +35,7 @@ function fixture(options: Parameters<typeof createMemoryRecallHarness>[0]) {
 function finishWorker(input: RecallModelInput) {
   if (supervisorFormatName(input) === "supervisor_working_directory")
     return JSON.stringify({ workingDirectory: "." });
-  if (input.modelStep === "worker.decision") return { action: "return_result" };
+  if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
   expect(input.modelStep).toBe("worker.result");
   return "The requested explanation is complete.";
 }
@@ -169,7 +170,7 @@ test("steering during routing revises the route without reopening an accepted Sk
   expect(routes).toBe(2);
   expect(f.store.read).not.toHaveBeenCalled();
   expect(f.store.list).toHaveBeenCalledOnce();
-  expect(f.gatewayInvoke.mock.calls.some(([input]) => input.modelStep === "worker.decision")).toBe(false);
+  expect(f.gatewayInvoke.mock.calls.some(([input]) => input.modelStep === "worker.evidence")).toBe(false);
 });
 
 test.each([true, false])("complete supplied metadata offers every candidate without a LIST action (read: %s)", async (read) => {
@@ -249,7 +250,7 @@ test("after a role return a repeated successful ID is repaired without a second 
   expect(f.store.read.mock.calls).toEqual([[skill.skillId]]);
   expect(f.gatewayInvoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
     "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate", "supervisor_delegation", "supervisor_working_directory",
-    "worker.decision", "worker.result", "supervisor_skill_selection",
+    "worker.evidence", "worker.result", "supervisor_skill_selection",
     "supervisor_skill_selection", "supervisor_decision", "supervisor.response",
   ]);
 });
@@ -352,7 +353,7 @@ test("persistent repeated IDs exhaust exactly two repairs and use existing failu
   expect(f.store.list).toHaveBeenCalledTimes(2);
   expect(f.gatewayInvoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
     "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate", "supervisor_delegation", "supervisor_working_directory",
-    "worker.decision", "worker.result", "supervisor_skill_selection",
+    "worker.evidence", "worker.result", "supervisor_skill_selection",
     "supervisor_skill_selection", "supervisor_skill_selection", "degraded.finalization",
   ]);
 });

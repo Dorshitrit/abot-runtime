@@ -29,7 +29,7 @@ describe.each(["chat", "raw"] as const)("OpenAI %s structured output contract", 
     "selects the same final answer in %s mode", async (agentMode, effort) => {
       vi.stubEnv("OPENAI_PHASE_TEST_KEY", "test-key");
       const requestBody: ModelGatewayRequest = {
-        agentMode, modelStep: "execution.decision", modelPolicy: policy,
+        agentMode, modelStep: "worker.decision", modelPolicy: policy,
         messages: [{ role: "user", content: "Choose the next action." }],
         format: { type: "object", properties: { action: { type: "string" } }, required: ["action"], additionalProperties: false },
       };
@@ -42,6 +42,8 @@ describe.each(["chat", "raw"] as const)("OpenAI %s structured output contract", 
       expect(fetchImpl).toHaveBeenCalledOnce();
       const payload = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body));
       expect(payload.reasoning).toEqual({ effort });
+      expect(payload.text.format.type).toBe("json_schema");
+      expect(payload).not.toHaveProperty("tools");
       expect(result.kind).toBe(endpoint);
       if (result.kind === "chat") {
         const events: ModelGatewayEvent[] = [];

@@ -152,7 +152,7 @@ test("a direct answer can use verified compacted history without a response call
     .mockImplementation(async (input) => ({
       inputTokens: input.modelStep === "context.compact"
         || JSON.stringify(input.messages).includes("runtime_session_memory_checkpoint_v1")
-        ? 1000 : 24000,
+        ? 1000 : 29_000,
       profileId: "compaction-test", provider: "openai", model: "compaction-test-model",
       contextWindowTokens: 32000, source: "provider_input_token_count",
     }));
@@ -262,7 +262,7 @@ test.each([
   expect(retrieve).toHaveBeenCalledTimes(memoryEnabled ? 1 : 0);
 });
 
-test.each([24_000, 40_000])("a measured %i-token input still uses the existing context guard with direct response offered", async inputTokens => {
+test.each([28_800, 40_000])("a measured %i-token input still uses the existing context guard with direct response offered", async inputTokens => {
   const invoke = vi.fn<ModelGatewayClient["invoke"]>();
   const countInputTokens = vi.fn<NonNullable<ModelGatewayClient["countInputTokens"]>>(async input => {
     expect(offersDirectResponse(input.format)).toBe(true);

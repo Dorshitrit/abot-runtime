@@ -1,3 +1,7 @@
+import { bindKnowledgeSkillsToRequest } from "../knowledge-skills/request-store.js";
+import type { InformationBasketService } from "../information-basket/contracts.js";
+import { hasInformationBasketReadAccess } from "../information-basket/request-candidates.js";
+import type { InformationBasketCandidateSource } from "../information-basket/request-candidates.js";
 import { matchesToolSelectionId } from "../../shared/tool-selection.js";
 import { CORE_TOOL_CONTRACTS } from "../capabilities/core-tool-contracts.js";
 import { captureModelPluginConfig } from "../config/model-plugin-config.js";
@@ -77,7 +81,7 @@ export type RequestCapabilityExecutionView = Readonly<
 export type RequestWorkerCapabilities = Readonly<{
   filesystemScope?: RuntimeFilesystemScope;
   provider: WorkerCapabilityAdapterProvider<RequestCapabilityExecutionView> &
-    Partial<ToolAvailabilitySource & AvailableSkillsSource>;
+    Partial<ToolAvailabilitySource & AvailableSkillsSource & InformationBasketCandidateSource>;
   executionContext: RequestCapabilityExecutionView;
 }>;
 
@@ -104,6 +108,7 @@ export type RequestExecutionScope = RequestExecutionSeed &
     superFailureFinalization?: SuperFailureFinalization;
     workerCapabilities: RequestWorkerCapabilities;
     knowledgeSkillStore?: KnowledgeSkillStore;
+    informationBasket?: InformationBasketService;
     supervisorSkillSelectionWindows: SupervisorSkillSelectionWindows;
   }>;
 
@@ -124,13 +129,14 @@ export function createRequestExecutionScope(
   input: Readonly<{
     seed: RequestExecutionSeed;
     knowledgeSkillStore?: KnowledgeSkillStore;
+    informationBasket?: InformationBasketService;
     requestWorkingDirectory?: string;
     executionPolicy: CompiledRequestExecutionPolicy;
     superFailureFinalization?: SuperFailureFinalization;
     createWorkerCapabilities(
       view: RequestCapabilityCompositionView,
       filesystemScope?: RuntimeFilesystemScope,
-    ): WorkerCapabilityAdapterProvider<RequestCapabilityExecutionView>;
+    ): RequestWorkerCapabilities["provider"];
   }>,
 ): RequestExecutionScope {
   const facets = createRequestSeedFacets(input.seed);
@@ -166,8 +172,10 @@ export function createRequestExecutionScope(
     modelSteps,
     capabilities,
     supervisorSkillSelectionWindows: createSupervisorSkillSelectionWindows(),
+    ...(input.informationBasket && hasInformationBasketReadAccess(provider.getAvailableTools?.() ?? [])
+      ? { informationBasket: input.informationBasket } : {}),
     ...(input.knowledgeSkillStore && !isSkillStoreDeniedForModel(input.seed)
-      ? { knowledgeSkillStore: input.knowledgeSkillStore }
+      ? { knowledgeSkillStore: bindKnowledgeSkillsToRequest(input.knowledgeSkillStore, input.executionPolicy.rootContract.contractId) }
       : {}),
     superFailureFinalization:
       input.superFailureFinalization ??

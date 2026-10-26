@@ -41,7 +41,8 @@ export async function tickScheduler(context: SchedulerContext): Promise<void> {
   const hasDue = snapshot.jobs.some((job) => isDueJob(job, now));
   if (hasDue) await enqueueDueOccurrences(context, now);
   await enqueueDueAutomationOccurrences(context, now);
-  const pending = (await context.store.read()).runs.filter(
+  const pendingSnapshot = await context.store.read();
+  const pending = pendingSnapshot.runs.filter(
     (run) => run.status === "pending",
   );
   for (const run of pending) {
@@ -50,7 +51,9 @@ export async function tickScheduler(context: SchedulerContext): Promise<void> {
       await dispatchPendingAutomationRun(context, run);
       continue;
     }
-    await dispatchPendingRun(context, run);
+    const job = pendingSnapshot.jobs.find((candidate) => candidate.id === run.jobId);
+    if (!job || !isRequestSchedulerJob(job)) continue;
+    await dispatchPendingRun(context, run, job.revision);
   }
 }
 function isDueJob(job: SchedulerStoredJob, now: number): job is SchedulerJob {
@@ -88,6 +91,7 @@ function canRecordScheduledOccurrence(
 async function dispatchPendingRun(
   context: SchedulerContext,
   pending: SchedulerRun,
+  revision: number,
 ): Promise<void> {
   const epoch = jobEpoch(context, pending.jobId);
   const exists = await lookupPendingRunSession(context, pending);
@@ -97,17 +101,17 @@ async function dispatchPendingRun(
     await removeDeletedSession(context, pending.sessionId);
     return;
   }
-  if (!canBeginRequestSchedulerRun(context, pending.jobId, pending.sessionId, epoch))
+  if (!canBeginRequestSchedulerRun(context, pending.jobId, pending.sessionId, revision, epoch))
     return;
   const release = await context.executor.tryReserve(pending.sessionId);
   if (!release) return;
   let delegated = false;
   try {
-    const claimed = await claimPendingRun(context, pending, epoch);
+    const claimed = await claimPendingRun(context, pending, revision, epoch);
     if (!claimed) return;
     // Last validity guard and start invocation are in the same synchronous turn.
     if (
-      !canBeginRequestSchedulerRun(context, pending.jobId, pending.sessionId, epoch)
+      !canBeginRequestSchedulerRun(context, pending.jobId, pending.sessionId, revision, epoch)
     ) {
       await cancelClaimedRun(context, pending.id);
       return;
@@ -162,10 +166,11 @@ async function lookupPendingRunSession(
 async function claimPendingRun(
   context: SchedulerContext,
   pending: SchedulerRun,
+  revision: number,
   epoch: number,
 ): Promise<{ job: SchedulerJob; run: SchedulerRun } | null> {
   return context.store.update((state) => {
-    if (!canBeginRequestSchedulerRun(context, pending.jobId, pending.sessionId, epoch))
+    if (!canBeginRequestSchedulerRun(context, pending.jobId, pending.sessionId, revision, epoch))
       return null;
     const job = state.jobs.find((item) => item.id === pending.jobId);
     if (!job || !isRequestSchedulerJob(job)) return null;

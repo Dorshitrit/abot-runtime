@@ -8,6 +8,7 @@ export function resolveWorkerDecisionAllowedActions(
     requestToolResultCount: number;
     canInvokeSingleCapability: boolean;
     canInvokeCapabilityBatch: boolean;
+    evidenceAssessmentRequiresExecution?: boolean;
   }>,
 ): readonly WorkerDecision["action"][] {
   const capabilitySelectionIsReconsidering =
@@ -17,7 +18,8 @@ export function resolveWorkerDecisionAllowedActions(
     params.capabilitySelectionRejectionPresent &&
     params.capabilityExecutionPending;
   const canReturnResult =
-    !params.capabilityExecutionPending && !capabilitySelectionIsReconsidering;
+    !params.capabilityExecutionPending && !capabilitySelectionIsReconsidering &&
+    !params.evidenceAssessmentRequiresExecution;
   const canReturnFailure = !capabilityExecutionWasReaffirmed;
 
   return Object.freeze([

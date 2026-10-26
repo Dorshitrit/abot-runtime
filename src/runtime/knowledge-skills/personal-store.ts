@@ -15,6 +15,8 @@ export function createRuntimeKnowledgeSkillStore(
   const personal = createPersonalSkillManagement(repository, system);
   return Object.freeze<ManagedKnowledgeSkillStore>({
     personalSkills: personal.service,
+    getRequestExcludedSkillIds: rootContractId => system.getRequestExcludedSkillIds?.(rootContractId) ?? [],
+    getDiscoveryRequirements: skillId => system.getDiscoveryRequirements?.(skillId),
     list() {
       return [
         ...system.list().map((skill) => ({ ...skill, source: "system" as const })),

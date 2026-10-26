@@ -3,6 +3,8 @@ import { getDashboardJobTemplates } from "../../lib/dashboard-job-templates.js";
 import { renderDashboardActivity } from "./activity.js";
 import { renderDashboardConversations } from "./recent-conversations.js";
 import { renderDashboardAutomations } from "./automations.js";
+import { createBasketSourcePicker } from "../information-basket/source-picker.js";
+import { renderDashboardResources, dashboardResourcesSummary, hasDashboardResourceAttention } from "./resources-attention.js";
 import { createCompactHomeLayout } from "./compact-layout.js";
 import { dashboardWidgetSummaries } from "./widget-summaries.js";
 import {
@@ -16,6 +18,7 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
     <div class="home-workspace-content">
       <section class="home-panel home-learning-panel" data-dashboard-learning hidden><div data-dashboard-learning-content></div></section>
       <section class="home-automation-status" aria-label="Automations in progress" aria-live="polite" data-dashboard-automations hidden></section>
+      <section class="home-panel home-resources-panel" aria-label="Resources needing attention" data-dashboard-resources hidden></section>
       <div class="home-overview">
         <section class="home-panel home-activity-panel" aria-label="Recent activity" data-dashboard-activity></section>
         <section class="home-panel home-recent-panel" aria-label="Recent conversations" data-dashboard-conversations></section>
@@ -39,6 +42,11 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
   const setupHost = root.querySelector("[data-dashboard-setup]");
   const learningPanel = root.querySelector("[data-dashboard-learning]");
   const automationPanel = root.querySelector("[data-dashboard-automations]");
+  const resourcesPanel = root.querySelector("[data-dashboard-resources]");
+  const resourcePicker = actions.resourcePicker ? createBasketSourcePicker({
+    root, actions: actions.resourcePicker, documentRoot: root.ownerDocument,
+    idPrefix: "home-resource-picker", heading: "Relink source", actionLabel: "Relink source",
+  }) : null;
   let currentSnapshot = {};
   function approvalHome() {
     if (hasPendingDashboardApprovals(currentSnapshot)) return approvalDock;
@@ -58,6 +66,11 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
     isAvailable: () => id !== "learning" || Boolean(passiveLearning),
     getSummary: () => dashboardWidgetSummaries(currentSnapshot, passiveLearning?.snapshot?.())[id],
   });
+  compactWidgets.register({
+    id: "resources", label: "Resources", icon: "conversations", element: resourcesPanel,
+    isAvailable: () => hasDashboardResourceAttention(currentSnapshot.resourceAttention),
+    getSummary: () => dashboardResourcesSummary(currentSnapshot.resourceAttention),
+  });
   passiveLearning?.mountHome(root.querySelector("[data-dashboard-learning-content]"), compactWidgets.refresh);
   const composerNote = root.querySelector(".home-composer-note");
   const handlers = {
@@ -72,14 +85,23 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
     refresh: () => actions.refresh(),
   };
   root.addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-dashboard-action]");
+    const button = event.target.closest("button[data-dashboard-action], button[data-dashboard-resource-action]");
     if (!button || !root.contains(button) || button.disabled) return;
+    if (button.dataset.dashboardResourceAction) {
+      void actions.resourceAction?.(button.dataset.dashboardResourceAction,
+        button.dataset.sourceId, Number(button.dataset.sourceRevision));
+      return;
+    }
     handlers[button.dataset.dashboardAction]?.(button);
   });
 
   function render(snapshot) {
     currentSnapshot = snapshot;
     const setupRequired = snapshot.composerAvailable === false;
+    const resourceAttention = snapshot.resourceAttention || {};
+    resourcesPanel.hidden = setupRequired || !hasDashboardResourceAttention(resourceAttention);
+    const pickerState = resourceAttention.picker || { open: false };
+    resourcePicker?.render({ ...pickerState, open: !setupRequired && pickerState.open }, resourceAttention.mutation);
     compactWidgets.setEnabled(!setupRequired);
     const pendingApprovals = hasPendingDashboardApprovals(snapshot);
     approvalDock.hidden = setupRequired || !pendingApprovals;
@@ -103,9 +125,12 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
       automationPanel.innerHTML = "";
       conversations.innerHTML = "";
       approvals.innerHTML = "";
+      resourcesPanel.innerHTML = "";
       return;
     }
 
+    updateLiveRegion(resourcesPanel, renderDashboardResources(resourceAttention));
+    resourcesPanel.setAttribute("aria-busy", String(Boolean(resourceAttention.loading || resourceAttention.mutation)));
     renderDashboardApprovals({
       root: approvals,
       snapshot,

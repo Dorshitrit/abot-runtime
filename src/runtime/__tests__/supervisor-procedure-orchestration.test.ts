@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import { runRequestRunner } from "../request/runner.js";
@@ -54,7 +55,7 @@ test("unscoped delegation minimizes its context and preserves exact source plus 
       return { action: "invoke_role", roleId: "worker", objective };
     }
     if (phase === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-    if (input.modelStep === "worker.decision") {
+    if (input.modelStep === "worker.evidence") {
       const text = JSON.stringify(input.messages);
       for (const capability of PROCEDURE_CAPABILITIES) expect(text).toContain(capability.capabilityId);
       expect(text).toContain(PROCEDURE_SKILL.content);
@@ -64,7 +65,7 @@ test("unscoped delegation minimizes its context and preserves exact source plus 
         } });
       expect(procedureCapsules(input).find(({ kind }) => kind === "runtime_worker_assignment"))
         .toMatchObject({ objective });
-      return { action: "return_result" };
+      return workerEvidenceDecision(input, false);
     }
     if (input.modelStep === "worker.result") return "The bounded assignment returned its result.";
     if (phase === "supervisor_decision") {
@@ -82,7 +83,7 @@ test("unscoped delegation minimizes its context and preserves exact source plus 
   await expect(runRequestRunner(f.request)).resolves.toEqual({ output: finalAnswer });
   expect(f.invoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
     "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate", "supervisor_delegation",
-    "supervisor_working_directory", "worker.decision", "worker.result", "supervisor_decision", "supervisor.response",
+    "supervisor_working_directory", "worker.evidence", "worker.result", "supervisor_decision", "supervisor.response",
   ]);
   expect(f.store.read).toHaveBeenCalledOnce();
 });
@@ -117,7 +118,7 @@ test.each(["gate", "delegation"] as const)("steering during %s discards the stal
   await expect(runRequestRunner(f.request)).resolves.toEqual({ output: finalAnswer });
   expect(gates).toBe(2);
   expect(delegations).toBe(checkpoint === "delegation" ? 1 : 0);
-  expect(f.invoke.mock.calls.some(([input]) => input.modelStep === "worker.decision")).toBe(false);
+  expect(f.invoke.mock.calls.some(([input]) => input.modelStep === "worker.evidence")).toBe(false);
   expect(JSON.stringify(vi.mocked(f.request.onEvent).mock.calls)).not.toContain('"name":"role.delegated"');
   expect(f.request.onAnswerToken).toHaveBeenCalledExactlyOnceWith(finalAnswer);
 });

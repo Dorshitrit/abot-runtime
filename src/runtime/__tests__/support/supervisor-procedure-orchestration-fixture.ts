@@ -68,7 +68,7 @@ export function createProcedureOrchestrationFixture(
       models: { defaults: { profileId: "test", steps: {} } },
       context: { outputReserveTokens: 1000, safetyReserveTokens: 200, attachmentReserveTokens: 100 },
       steps: Object.fromEntries([
-        "supervisor.decision", "supervisor.response", "worker.decision", "worker.result", "planner.decision",
+        "supervisor.decision", "supervisor.response", "worker.evidence", "worker.decision", "worker.result", "planner.decision",
       ].map((step) => [step, { timeoutMs: 20_000 }])),
     },
     agentMode: "reasoning",

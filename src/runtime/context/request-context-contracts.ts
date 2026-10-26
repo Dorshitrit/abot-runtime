@@ -21,6 +21,8 @@ export type RequestContextBudget = Readonly<{
   outputReserveTokens: number;
   safetyReserveTokens: number;
   attachmentReserveTokens: number;
+  /** Internal soft-trigger policy; omitted budgets retain the default threshold. */
+  compactionTriggerRatio?: number;
   /** Configured methodology not yet present during early context projection. */
   configuredInstructionReserveTokens?: number;
   formatTokenAccounting?: ModelFormatTokenAccountingConfig;

@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "system-probe",
   "version": "1.0.0",
-  "description": "Inspect machine health and available disk capacity.",
+  "description": "Report host CPU, memory, uptime and disk-volume capacity.",
   "extensions": {
     "ai.abot.compatibility": {
       "version": 1,
@@ -14,7 +14,7 @@
       "catalogGroups": ["read", "system"],
       "capabilities": {
         "system_probe": {
-          "description": "Inspect current machine state such as uptime, load average, memory usage, CPU count, and disk usage. A path is optional and affects only the disk-usage scope.",
+          "description": "Measure host resources: CPU count and load, RAM usage, uptime, and filesystem capacity in bytes. An optional existing path selects the filesystem volume for capacity measurement.",
           "routingCapability": "filesystem_inspection",
           "developmentRoles": ["inspect", "verify"],
           "eventPresentation": {
@@ -32,7 +32,7 @@
           "controlsRefinement": "mechanical_when_complete",
           "operations": {
             "inspect_system_state": {
-              "summary": "Inspect current uptime, load, memory, CPU and root-filesystem disk state.",
+              "summary": "Measure host CPU count and load, RAM usage, uptime, and default-filesystem capacity in bytes.",
               "input": {
                 "type": "object",
                 "additionalProperties": false,
@@ -43,7 +43,7 @@
               "approval": "request_policy"
             },
             "inspect_disk_state_for_path": {
-              "summary": "Inspect machine state while scoping disk statistics to one explicit existing filesystem path.",
+              "summary": "Measure filesystem capacity (total, used and free bytes), plus host CPU, RAM, load and uptime. Requires an existing path selecting the filesystem volume.",
               "input": {
                 "type": "object",
                 "additionalProperties": false,

@@ -12,6 +12,7 @@ import { createOperationsSection } from "./operations-section.js";
 import { createWorkspaceTransitions } from "./workspace-transitions.js";
 import { captureSessionListViewport, restoreSessionListViewport } from "./session-list-viewport.js";
 import { isConfigurationWorkspace, renderConfigurationPageHeading } from "../lib/configuration-pages.js";
+import { createWorkspaceRailScroll } from "./workspace-rail-scroll.js";
 
 export function createWorkspaceShell({
   dom,
@@ -83,6 +84,7 @@ export function createWorkspaceShell({
     const learningWorkspace = shellState.workspace === "learning";
     const memoryWorkspace = shellState.workspace === "memory";
     const skillsWorkspace = shellState.workspace === "skills";
+    const resourcesWorkspace = shellState.workspace === "resources";
     const notificationsWorkspace = shellState.workspace === "notifications";
     const sessions = sidebarLayout();
     const showSessionsToggle = chatWorkspace && !sessions.docked;
@@ -143,6 +145,12 @@ export function createWorkspaceShell({
       dom.skillsWorkspacePanel.setAttribute("aria-hidden", String(!skillsWorkspace));
     }
     setCurrentPage(dom.skillsWorkspaceButton, skillsWorkspace);
+    if (dom.resourcesWorkspacePanel) {
+      dom.resourcesWorkspacePanel.hidden = !resourcesWorkspace;
+      dom.resourcesWorkspacePanel.inert = !resourcesWorkspace;
+      dom.resourcesWorkspacePanel.setAttribute("aria-hidden", String(!resourcesWorkspace));
+    }
+    setCurrentPage(dom.resourcesWorkspaceButton, resourcesWorkspace);
     if (dom.notificationsWorkspacePanel) {
       dom.notificationsWorkspacePanel.hidden = !notificationsWorkspace;
       dom.notificationsWorkspacePanel.inert = !notificationsWorkspace;
@@ -254,6 +262,7 @@ export function createWorkspaceShell({
           learning: dom.closeLearningWorkspaceButton,
           memory: dom.closeMemoryWorkspaceButton,
           skills: dom.closeSkillsWorkspaceButton,
+          resources: dom.closeResourcesWorkspaceButton,
           config: dom.closeConfigWorkspaceButton,
           models: dom.closeConfigWorkspaceButton,
           plugins: dom.closeConfigWorkspaceButton,
@@ -340,7 +349,7 @@ export function createWorkspaceShell({
       setSessionsDrawerOpen(false, { restoreFocus: true });
       return true;
     }
-    if (["config", "models", "plugins", "schedules", "automations", "learning", "memory", "skills", "notifications"].includes(shellState.workspace)) {
+    if (["config", "models", "plugins", "schedules", "automations", "learning", "memory", "skills", "resources", "notifications"].includes(shellState.workspace)) {
       void activateWorkspace("chat");
       return true;
     }
@@ -350,6 +359,9 @@ export function createWorkspaceShell({
   function bind() {
     if (shellState.bound) return;
     shellState.bound = true;
+    createWorkspaceRailScroll({ rail: dom.app.querySelector?.(".workspace-rail"), documentRoot, viewport });
+    dom.resourcesWorkspaceButton?.addEventListener("click", () => activateWorkspace("resources"));
+    dom.closeResourcesWorkspaceButton?.addEventListener("click", () => activateWorkspace("chat"));
     dom.skillsWorkspaceButton?.addEventListener("click", () => activateWorkspace("skills"));
     dom.closeSkillsWorkspaceButton?.addEventListener("click", () => activateWorkspace("chat"));
     dom.notificationsWorkspaceButton?.addEventListener("click", () => activateWorkspace("notifications"));

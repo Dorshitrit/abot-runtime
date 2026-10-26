@@ -160,6 +160,7 @@ export async function createExecApprovalFixture(disabled = false) {
           steps: Object.fromEntries(
             [
               "supervisor.decision",
+              "worker.evidence",
               "worker.decision",
               "worker.result",
               "supervisor.response",

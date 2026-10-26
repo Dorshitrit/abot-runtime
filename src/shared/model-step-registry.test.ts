@@ -34,6 +34,7 @@ describe("model invocation step registry", () => {
       [
         MODEL_STEPS.SUPERVISOR_DECISION,
         MODEL_STEPS.SUPERVISOR_RESPONSE,
+        MODEL_STEPS.WORKER_EVIDENCE,
         MODEL_STEPS.WORKER_DECISION,
         MODEL_STEPS.WORKER_RESULT,
         MODEL_STEPS.CAPABILITY_CONTROLS,
@@ -53,6 +54,7 @@ describe("model invocation step registry", () => {
   test("marks only explicit runtime-core decisions with the fixed output policy", () => {
     const coreDecisionSteps = [
       MODEL_STEPS.SUPERVISOR_DECISION,
+      MODEL_STEPS.WORKER_EVIDENCE,
       MODEL_STEPS.WORKER_DECISION,
       MODEL_STEPS.PLANNER_DECISION,
       MODEL_STEPS.REVIEWER_DECISION,
@@ -121,6 +123,7 @@ describe("model invocation step registry", () => {
       "planner_graph_proposal",
       "none",
     ],
+    [MODEL_STEPS.WORKER_EVIDENCE, "worker", "json", "worker_evidence", "none"],
     [MODEL_STEPS.WORKER_DECISION, "worker", "json", "worker_decision", "none"],
     [MODEL_STEPS.WORKER_RESULT, "worker", "raw", "worker_result", "none"],
     [
@@ -221,6 +224,7 @@ describe("model invocation role policy", () => {
     [MODEL_STEPS.SUPERVISOR_RESPONSE, "supervisor"],
     [MODEL_STEPS.PLANNER_DECISION, "planner"],
     [MODEL_STEPS.PLANNER_GRAPH, "planner"],
+    [MODEL_STEPS.WORKER_EVIDENCE, "worker"],
     [MODEL_STEPS.WORKER_DECISION, "worker"],
     [MODEL_STEPS.WORKER_RESULT, "worker"],
     [MODEL_STEPS.CAPABILITY_CONTROLS, "utility"],

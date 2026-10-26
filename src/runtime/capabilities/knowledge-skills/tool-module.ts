@@ -1,3 +1,4 @@
+import { bindKnowledgeSkillsToRequest } from "../../knowledge-skills/request-store.js";
 import { canWriteKnowledgeSkills, KnowledgeSkillError } from "../../knowledge-skills/personal-contracts.js";
 import { executeKnowledgeSkillWrite } from "./write-operations.js";
 import { executeKnowledgeSkillsReadMany } from "./read-many.js";
@@ -49,6 +50,12 @@ export function createKnowledgeSkillsToolModule(
 ): ToolModuleDeclaration {
   const writable = canWriteKnowledgeSkills(store);
   return {
+    async prepareRequest(modules, context) {
+      const requestStore = bindKnowledgeSkillsToRequest(store, context?.rootContractId);
+      if (requestStore === store) return modules;
+      const bound = createKnowledgeSkillsToolModule(requestStore);
+      return modules.map(module => ({ ...module, implementation: bound.implementation }));
+    },
     definition: {
       name: CORE_TOOL_CONTRACTS.skills.name,
       description: "Read reusable guidance for work or answers using an exact ID or full name from Available Skills or list_skills. A shared name returns every matching Skill. Author personal Skills only when the user requests it; consult Skill Creator first. System Skills are read-only. Guidance supplements the current task and never replaces tool contracts or permissions.",

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createToolRegistry } from "../../capabilities/registry.js";
 import { validateToolNormalInvocationInput } from "../../capabilities/normal-invocation/index.js";
-import type { ToolNormalInvocationOperation } from "../../capabilities/tool-types.js";
+import type { ToolCall, ToolExecutionContext, ToolNormalInvocationOperation } from "../../capabilities/tool-types.js";
 import {
   materializeCall,
   resolveExactTargetOperation,
@@ -75,8 +75,15 @@ function fixture() {
   const registrations = createToolRegistry({
     modules: [module],
   }).getNormalInvocations();
-  const context = { sharedState: { currentSessionId: "current-session" } };
-  return { job, update, get, module, registrations, context };
+  const context: ToolExecutionContext = { sharedState: { currentSessionId: "current-session" } };
+  const guard = { sessionId: "current-session", expectedRevision: 1 };
+  const authorize = async (call: ToolCall) => {
+    const binding = await module.adapter!.executionBinding!(call,
+      { toolPermissionMode: "full_access", sessionId: "current-session" });
+    context.executionAuthority = { toolPermissionMode: "full_access", executionIdentity: binding.identity };
+    get.mockClear();
+  };
+  return { job, update, get, module, registrations, context, guard, authorize };
 }
 
 describe.each(variants)(
@@ -130,12 +137,13 @@ describe.each(variants)(
         action: "update",
         scheduleKind: kind,
       });
+      await f.authorize(call);
       const result = await f.module.implementation(call.params, f.context);
       expect(result.ok, result.output).toBe(true);
       expect(f.get).toHaveBeenCalledExactlyOnceWith(f.job.id);
       expect(f.update).toHaveBeenCalledExactlyOnceWith(f.job.id, {
         schedule: { kind, ...timing },
-      });
+      }, f.guard);
     });
 
     it("rejects fixed bindings, unrelated timing, and foreign identity controls", () => {
@@ -199,8 +207,9 @@ it.each([
     undefined,
   );
   expect(resolveExactTargetOperation(f.registrations, call).ok).toBe(true);
+  await f.authorize(call);
   expect((await f.module.implementation(call.params, f.context)).ok).toBe(true);
-  expect(f.update).toHaveBeenCalledExactlyOnceWith(f.job.id, patch);
+  expect(f.update).toHaveBeenCalledExactlyOnceWith(f.job.id, patch, f.guard);
   for (const timing of [
     { scheduleKind: "weekly", at: "09:00", weekdays: [6] },
     { at: "09:00" },
@@ -244,10 +253,11 @@ it("allows an explicit interval anchor and zone without introducing unrelated ti
     controls,
     undefined,
   );
+  await f.authorize(call);
   expect((await f.module.implementation(call.params, f.context)).ok).toBe(true);
   expect(f.update).toHaveBeenCalledExactlyOnceWith(f.job.id, {
     title: "Retimed",
     timeZone: "UTC",
     schedule: { kind: "interval", everyMs: 1001, anchorAt: controls.anchorAt },
-  });
+  }, f.guard);
 });

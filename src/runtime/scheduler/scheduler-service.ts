@@ -41,6 +41,8 @@ import {
   isRequestSchedulerRun,
 } from "./scheduler-target.js";
 
+import { GuardedSchedulerJobMutations } from "./guarded-job-mutations.js";
+
 export interface SchedulerServiceOptions {
   environmentId: string;
   store: SchedulerStore;
@@ -70,6 +72,7 @@ export function createSchedulerService(
     generation: 0,
     jobEpochs: new Map(),
     pendingJobMutations: new Set(),
+    guardedJobMutations: new GuardedSchedulerJobMutations(),
     deletedSessions: new SchedulerSessionDeletionState(),
     pendingCompletions: new Map(),
     pendingAutomationCompletions: new Map(),
@@ -176,11 +179,11 @@ export function createSchedulerService(
           null
         );
       }),
-    update: (jobId, patch) => updateSchedulerJob(context, jobId, patch),
-    pause: (jobId) => changeSchedulerJobState(context, jobId, "paused"),
-    resume: (jobId) => changeSchedulerJobState(context, jobId, "active"),
-    cancel: (jobId) => changeSchedulerJobState(context, jobId, "cancelled"),
-    runNow: (jobId) => requestSchedulerRunNow(context, jobId),
+    update: (jobId, patch, guard) => updateSchedulerJob(context, jobId, patch, guard),
+    pause: (jobId, guard) => changeSchedulerJobState(context, jobId, "paused", guard),
+    resume: (jobId, guard) => changeSchedulerJobState(context, jobId, "active", guard),
+    cancel: (jobId, guard) => changeSchedulerJobState(context, jobId, "cancelled", guard),
+    runNow: (jobId, guard) => requestSchedulerRunNow(context, jobId, guard),
     deleteSession: (sessionId) => deleteSchedulerSession(context, sessionId),
     listRuns: (jobId, query) =>
       context.enqueue(async () => {

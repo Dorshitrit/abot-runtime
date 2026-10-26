@@ -1,6 +1,6 @@
 import { resolveMemoryRecallSteeringVersion } from "../../long-term-memory/recall-binding.js";
 import type { RequestToolResultsView } from "../../context/request-tool-results.js";
-import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
+import { createPolicyModelStepCompactionController } from "../../context/super-compaction/routing.js";
 import { superCompactionFailureOwner } from "../../context/super-compaction-failure-owner.js";
 import { createSessionMemoryAwareCompactionController } from "../../context/session-memory/index.js";
 import type { RequestExecutionScope } from "../../request/execution-scope.js";
@@ -106,7 +106,7 @@ export async function runSupervisorDecision(
   });
   const contextCompaction = createSessionMemoryAwareCompactionController(
     request,
-    createModelStepCompactionController(request, {
+    createPolicyModelStepCompactionController(request, {
       consumer: SUPERVISOR_DECISION_MODEL_STEP,
       superFailureOwner: superCompactionFailureOwner(
         request.executionPolicy.authority,
@@ -132,7 +132,7 @@ export async function runSupervisorDecision(
         SUPERVISOR_DECISION_MODEL_STEP,
         SUPERVISOR_RESPONSE_MODEL_STEP,
       ]),
-    }),
+    }, request.executionPolicy.authority),
   );
 
   for (;;) {

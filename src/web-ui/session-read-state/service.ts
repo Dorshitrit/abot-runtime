@@ -1,5 +1,7 @@
 import { sessionListOverview } from "./overview.js";
-import { sessionMetadataPage, type SessionPageQuery } from "./pagination.js";
+import { sessionMetadataPage } from "./pagination.js";
+import { sidebarMetadataPage, type SidebarSessionPageQuery } from "./sidebar-pagination.js";
+import type { RuntimeProjectCatalog } from "../../runtime/projects/contracts.js";
 import { webPageSize } from "../local-runtime/history-pagination.js";
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
@@ -112,14 +114,14 @@ export class WebSessionReadStates {
     });
   }
 
-  async list(environmentId: string, query?: SessionPageQuery) {
+  async list(environmentId: string, query?: SidebarSessionPageQuery, catalog?: RuntimeProjectCatalog) {
     const { sessionsDir } =
       this.getEnvironment(environmentId).services.config.paths;
     const records = await listSessionMetadata(sessionsDir);
     const projectedSessions = records.filter((record) => record.interactive)
       .filter((record) => !isSparkSession(record.summary));
-    const page = query ? sessionMetadataPage(projectedSessions, query, webPageSize(this.getEnvironment(environmentId).services.config))
-      : { records: projectedSessions, nextCursor: null };
+    const limit = webPageSize(this.getEnvironment(environmentId).services.config);
+    const page = this.listPage(projectedSessions, query, limit, catalog);
     const { records: selected, ...pageInfo } = page;
     const result = await captureReadStateAvailability(() =>
       this.store(environmentId).transaction((state) => {
@@ -142,5 +144,13 @@ export class WebSessionReadStates {
         ...(query && !query.cursor ? { overview: sessionListOverview(projectedSessions, query.archivedSessionIds) } : {}),
       };
     return result.value;
+  }
+
+  private listPage(records: Awaited<ReturnType<typeof listSessionMetadata>>, query: SidebarSessionPageQuery | undefined,
+    limit: number, catalog?: RuntimeProjectCatalog) {
+    if (!query) return { records, nextCursor: null };
+    if (query.sidebar !== true) return sessionMetadataPage(records, query, limit);
+    if (!catalog) throw new Error("projects_unavailable");
+    return sidebarMetadataPage(records, query, limit, catalog);
   }
 }

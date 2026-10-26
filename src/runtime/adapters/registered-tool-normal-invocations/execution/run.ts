@@ -30,18 +30,18 @@ export async function executeNormalInvocation(params: {
   operationByHandle: WeakMap<object, BoundOperation>;
   input: RegisteredToolNormalInvocationExecutionInput;
 }): Promise<RegisteredToolNormalInvocationResult> {
-  const prepared = prepareNormalInvocation(params);
+  const prepared = await prepareNormalInvocation(params);
   return prepared.status === "prepared"
     ? prepared.execute()
     : Promise.resolve(prepared);
 }
 
-export function prepareNormalInvocation(params: {
+export async function prepareNormalInvocation(params: {
   executor: RegisteredToolNormalInvocationExecutorParams;
   registrations: readonly RegisteredToolNormalInvocation[];
   operationByHandle: WeakMap<object, BoundOperation>;
   input: RegisteredToolNormalInvocationPreparationInput;
-}): RegisteredToolNormalInvocationPreparation {
+}): Promise<RegisteredToolNormalInvocationPreparation> {
   const executor = params.executor;
   executor.abortSignal.throwIfAborted();
   const source = params.operationByHandle.get(params.input.handle);
@@ -117,9 +117,10 @@ export function prepareNormalInvocation(params: {
     );
   }
 
-  const executionBinding = captureExecutionBinding(
+  const executionBinding = await captureExecutionBinding(
     target.binding.registration.adapter,
     normalizedCall.call,
+    executor,
   );
   if (!executionBinding.ok) return executionBinding.rejection;
   const intentMeta = buildToolIntentEventMetadata(
@@ -131,6 +132,7 @@ export function prepareNormalInvocation(params: {
     ? { ...executionBinding.metadata, ...intentMeta }
     : intentMeta;
   const actionFingerprint = createRegisteredToolActionFingerprint({
+    requiresApproval: executionBinding.requiresApproval,
     contractVersion: target.binding.registration.contract.version,
     operationId: target.binding.operation.operationId,
     call: normalizedCall.call,
@@ -139,6 +141,7 @@ export function prepareNormalInvocation(params: {
       : {}),
   });
   return createPreparedNormalInvocation({
+    requiresApproval: executionBinding.requiresApproval,
     executor,
     source,
     target: target.binding,

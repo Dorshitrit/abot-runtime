@@ -2,6 +2,7 @@ import type { ModelReasoningPreference } from "../../shared/model-reasoning.js";
 import type { AgentMode } from "../../shared/types.js";
 import type { AutomationJournalState } from "../automations/storage-records.js";
 import type { SchedulerToolPermissionMode } from "./tool-permission-mode.js";
+import type { SchedulerJobMutationGuard } from "./job-mutation-guard.js";
 
 export type SchedulerScheduleInput =
   | { kind: "timer"; delayMs: number }
@@ -298,11 +299,11 @@ export interface SchedulerService {
   create(input: CreateSchedulerJobInput): Promise<SchedulerJob>;
   list(filter?: SchedulerListFilter): Promise<SchedulerJob[]>;
   get(jobId: string): Promise<SchedulerJob | null>;
-  update(jobId: string, patch: UpdateSchedulerJobInput): Promise<SchedulerJob>;
-  pause(jobId: string): Promise<SchedulerJob>;
-  resume(jobId: string): Promise<SchedulerJob>;
-  cancel(jobId: string): Promise<SchedulerJob>;
-  runNow(jobId: string): Promise<SchedulerRun>;
+  update(jobId: string, patch: UpdateSchedulerJobInput, guard?: SchedulerJobMutationGuard): Promise<SchedulerJob>;
+  pause(jobId: string, guard?: SchedulerJobMutationGuard): Promise<SchedulerJob>;
+  resume(jobId: string, guard?: SchedulerJobMutationGuard): Promise<SchedulerJob>;
+  cancel(jobId: string, guard?: SchedulerJobMutationGuard): Promise<SchedulerJob>;
+  runNow(jobId: string, guard?: SchedulerJobMutationGuard): Promise<SchedulerRun>;
   deleteSession(sessionId: string): Promise<void>;
   listRuns(
     jobId?: string,

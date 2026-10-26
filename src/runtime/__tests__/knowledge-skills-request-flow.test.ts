@@ -1,3 +1,4 @@
+import { workerEvidenceReply } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -157,10 +158,10 @@ test("SUPER supplies captured Skills to Planner and Worker without copying guida
         selectedItemIndexes: [0],
       });
     } },
-    { step: "worker.decision", output: (input) => {
+    { step: "worker.evidence", output: (input) => {
       checkGuidance(input);
       expect(capsules(input, "runtime_worker_assignment")[0]?.objective).toBe(objective);
-      return decision({ action: "return_result" });
+      return workerEvidenceReply(input, false).text;
     } },
     { step: "worker.result", output: (input) => {
       checkGuidance(input);

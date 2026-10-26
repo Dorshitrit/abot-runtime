@@ -96,7 +96,7 @@ function hasConsistentCheckpointRevision(
   );
   const minimumCommits =
     state.calls.length + state.results.length + begins.size + settlements.size +
-    (state.skillReads?.length ?? 0);
+    (state.skillReads?.length ?? 0) + (state.basketReferences?.length ?? 0);
   if (revision < minimumCommits) return false;
   return state.results.every(
     (result) =>

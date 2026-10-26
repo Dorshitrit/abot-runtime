@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -129,7 +130,7 @@ test.each([false, true])(
         }
         const delegatedSteps = [
           "planner.decision",
-          "worker.decision",
+          "worker.evidence",
           "worker.result",
           "reviewer.decision",
         ];
@@ -236,8 +237,8 @@ test.each([false, true])(
           });
           return { action: "return_result", result: PLANNER_RESULT };
         }
-        if (input.modelStep === "worker.decision") {
-          return { action: "return_result" };
+        if (input.modelStep === "worker.evidence") {
+          return workerEvidenceDecision(input, false);
         }
         if (input.modelStep === "worker.result") return WORKER_RESULT;
         expect(input.modelStep).toBe("reviewer.decision");
@@ -289,7 +290,7 @@ test.each([false, true])(
       .map(([input]) => input.modelStep);
     expect(modelSteps).toEqual([
       "planner.decision",
-      "worker.decision",
+      "worker.evidence",
       "worker.result",
       "planner.decision",
       "supervisor.decision",

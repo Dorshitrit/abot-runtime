@@ -13,6 +13,7 @@ export const SEMANTIC_COMPACTION_BATCH_SOURCE_MAX_COUNT = 5_000 - 12;
 export function createSemanticCompactionFormat(
   expectedSources: readonly SemanticCompactionSourceIdentity[],
   checkpointTokenAllowance: number,
+  calibrationInstructions?: "omit",
 ): ModelGatewayJsonSchemaFormat {
   if (expectedSources.length > SEMANTIC_COMPACTION_BATCH_SOURCE_MAX_COUNT) {
     throw new Error("context_compaction_source_count_exceeds_schema_limit");
@@ -41,6 +42,7 @@ export function createSemanticCompactionFormat(
   );
   return Object.freeze({
     type: "json_schema" as const,
+    ...(calibrationInstructions ? { calibrationInstructions } : {}),
     name: "context_compaction",
     strict: true,
     postValidatedSchemaConstraints: Object.freeze([

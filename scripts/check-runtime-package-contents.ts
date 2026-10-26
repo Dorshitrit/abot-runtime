@@ -46,7 +46,27 @@ for (const path of paths) {
 }
 
 const requiredPaths = [
+  "dist/src/web-ui/app/information-basket-feature.js",
+  "dist/src/web-ui/app/components/information-basket/workspace.js",
+  "dist/src/web-ui/app/components/information-basket/source-picker.js",
+  "dist/src/web-ui/app/controllers/information-basket-controller.js",
+  "dist/src/web-ui/app/services/runtime-web-client/information-basket.js",
+  "dist/src/web-ui/app/styles/40-information-basket.css",
+  "dist/src/web-ui/app/components/dashboard/resources-attention.js",
+  "dist/src/web-ui/app/components/dashboard/resources-attention.d.ts",
+  "dist/src/web-ui/app/controllers/dashboard-resources-controller.js",
+  "dist/src/web-ui/app/lib/information-basket-attention.js",
+  "dist/src/web-ui/app/lib/information-basket-attention.d.ts",
+  "dist/src/web-ui/app/styles/19-dashboard-resources.css",
+  "dist/src/web-ui/app/lib/tool-basket-activity-fields.js",
   ...[
+    "runtime/information-basket/service", "runtime/information-basket/contracts", "runtime/information-basket/readiness",
+    "runtime/information-basket/pdf-source-parser", "runtime/information-basket/pdf-source-reader",
+    "runtime/information-basket/service-work", "runtime/information-basket/request-candidates",
+    "runtime/information-basket/presentation", "runtime/capabilities/information-basket/event-presentation",
+    "runtime/capabilities/information-basket/tool-module", "runtime/capabilities/information-basket/tool-contract",
+    "runtime/knowledge-skills/request-store", "runtime/context/semantic-compaction/basket-reference-source",
+    "web-ui/local-runtime/information-basket-routes",
     "model-gateway/providers/llamacpp/input-token-count",
     "model-gateway/policy/reasoning-mode-budget", "shared/model-reasoning-modes",
     "capabilities/tool-media", "model-gateway/observability/tool-media-privacy",
@@ -97,6 +117,7 @@ const requiredPaths = [
     "runtime/long-term-memory/observation-receipt-retention",
     "shared/passive-observation",
     "web-ui/local-runtime/learning-routes",
+    "web-ui/session-read-state/sidebar-pagination",
     "web-ui/system-host-setup/companion-linux",
     "computer-access/companion/native-loopback-lookup",
     "computer-access/command-output-protection",
@@ -533,6 +554,7 @@ const requiredPaths = [
   ...[
     "capabilities/tool-definition-validator/event-result-metadata",
     "capabilities/tool-result-event-projection",
+    "capabilities/tool-result-json-projection",
     "runtime/adapters/registered-tool-normal-invocations/execution/rejection-event",
     "web-ui/app/components/conversation-tools",
     "web-ui/app/lib/tool-activity-event",
@@ -598,8 +620,10 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // contract. Each emitted runtime module contributes both .js and .d.ts files,
 // so legitimate production modules can move the count by more than one.
 // These ceilings bound the approved public package inventory and unpacked size.
-const maxFileCount = 4_247;
-const maxUnpackedSizeBytes = 13_300_000;
+// Includes Information Basket modules/declarations and Web assets.
+// Also includes EA compaction policy and project-orientation paging sources/bundles.
+const maxFileCount = 4_452;
+const maxUnpackedSizeBytes = 13_813_000;
 
 if (paths.length > maxFileCount) {
   fail(`package includes too many files: ${paths.length} > ${maxFileCount}`);

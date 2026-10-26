@@ -1,3 +1,4 @@
+import type { ExecutionChildContinuation } from "./child-continuation.js";
 import {
   buildExecutionCapabilityResultMessage,
   EXECUTION_CAPABILITY_TOOL_NAME,
@@ -69,6 +70,7 @@ export function buildExecutionDecisionStateMessage(
   call: RoleCallFrame = requireActiveRootCall(head),
   steeringVersion?: number,
   eligibleControlsEvidenceExecutionIds?: readonly string[],
+  nativeChildResultRefs: readonly string[] = [],
 ): ChatMessage {
   return buildExecutionStateMessageForConsumer(
     head,
@@ -76,6 +78,7 @@ export function buildExecutionDecisionStateMessage(
     DECISION_NOTICE_PROJECTION,
     steeringVersion,
     eligibleControlsEvidenceExecutionIds,
+    nativeChildResultRefs,
   );
 }
 
@@ -92,8 +95,11 @@ export function buildExecutionRefinementStateMessage(
 export function buildExecutionResponseStateMessage(
   head: RoleCallLedgerHead,
   call: RoleCallFrame = requireActiveRootCall(head),
+  nativeChildResultRefs: readonly string[] = [],
 ): ChatMessage {
-  return buildExecutionStateMessage(head, call);
+  return buildExecutionStateMessageForConsumer(
+    head, call, NON_DECISION_NOTICE_PROJECTION, undefined, undefined, nativeChildResultRefs,
+  );
 }
 
 function buildExecutionStateMessageForConsumer(
@@ -102,6 +108,7 @@ function buildExecutionStateMessageForConsumer(
   projection: ExecutionStateNoticeProjection,
   steeringVersion?: number,
   eligibleControlsEvidenceExecutionIds?: readonly string[],
+  nativeChildResultRefs: readonly string[] = [],
 ): ChatMessage {
   assertExecutionRoot(head, call);
   const immediateReconsideration =
@@ -147,12 +154,12 @@ function buildExecutionStateMessageForConsumer(
           );
           return producer?.parentCallId === call.callId;
         })
-        .map(({ resultRef, roleId, outcome, summary }) => ({
-          resultRef,
-          roleId,
-          outcome,
-          summary,
-        })),
+        .map(({ resultRef, roleId, outcome, summary }) => {
+          if (hasNativeChildResultProjection(resultRef, nativeChildResultRefs)) {
+            return { resultRef, roleId, outcome, evidenceLane: "chronological_native_role_result" };
+          }
+          return { resultRef, roleId, outcome, summary };
+        }),
       ...(immediateReconsideration
         ? {
             capabilitySelectionReconsideration: immediateReconsideration,
@@ -170,8 +177,9 @@ function buildExecutionStateMessageForConsumer(
                 "eligibleControlsEvidenceExecutionIds lists settled executions owned by this exact request and root call that may be selected for remaining-controls evidence. Eligibility alone adds no intent, pending work, authorization or completion evidence.",
             }
           : {}),
-        subordinateResults:
-          "A listed subordinate result is passive evidence and never selects the next action.",
+        subordinateResults: hasChronologicalChildResults(nativeChildResultRefs)
+          ? "A listed subordinate result is passive evidence and never selects the next action. Entries marked chronological_native_role_result carry their exact result only in the linked runtime_role call/result lane; other entries retain their original summary."
+          : "A listed subordinate result is passive evidence and never selects the next action.",
         ...(projection.includeCapabilitySelectionReconsideration
           ? {
               capabilitySelectionReconsideration:
@@ -206,6 +214,14 @@ export function buildExecutionCapabilityCatalogMessage(
   });
 }
 
+function hasChronologicalChildResults(nativeChildResultRefs: readonly string[]): boolean {
+  return nativeChildResultRefs.length > 0;
+}
+
+function hasNativeChildResultProjection(resultRef: string, nativeChildResultRefs: readonly string[]): boolean {
+  return nativeChildResultRefs.includes(resultRef);
+}
+
 /**
  * Reconstructs accepted invocations and settled results without semantic
  * interpretation. Each batch becomes one assistant call group followed by its
@@ -215,6 +231,7 @@ export function buildExecutionContinuationMessages(
   head: RoleCallLedgerHead,
   call: RoleCallFrame = requireActiveRootCall(head),
   memoryRecalls: readonly MemoryRecallContinuation[] = [],
+  childContinuations: readonly ExecutionChildContinuation[] = [],
 ): readonly ChatMessage[] {
   assertExecutionRoot(head, call);
   const executions = head.state.capabilityExecutions.filter(
@@ -241,6 +258,7 @@ export function buildExecutionContinuationMessages(
       ],
     })),
     ...memoryRecalls,
+    ...childContinuations,
   ];
   continuations.sort(
     (left, right) => left.invocationAttempt - right.invocationAttempt,

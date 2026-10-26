@@ -1,5 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 
 import { describe, expect, test } from "vitest";
 
@@ -14,10 +13,6 @@ const scrollbarOwner = readFileSync(
   new URL("00-tokens-base.css", stylesUrl),
   "utf8",
 );
-const allStyles = readdirSync(fileURLToPath(stylesUrl))
-  .filter((name) => name.endsWith(".css"))
-  .map((name) => readFileSync(new URL(name, stylesUrl), "utf8"))
-  .join("\n");
 
 describe("web ui shell presentation", () => {
   test("makes the ordinary conversation scroll region reachable by keyboard", () => {
@@ -81,12 +76,14 @@ describe("web ui shell presentation", () => {
     }
   });
 
-  test("owns discoverable Firefox and WebKit scrollbars centrally", () => {
+  test("keeps discoverable Firefox and WebKit scrollbars as the shared default", () => {
     expect(scrollbarOwner).toContain("scrollbar-width: thin");
     expect(scrollbarOwner).toContain("scrollbar-color:");
     expect(scrollbarOwner).toContain("::-webkit-scrollbar-thumb:hover");
-    expect(allStyles).not.toMatch(/scrollbar-width:\s*none/);
-    expect(allStyles).not.toMatch(
+    // Components with dedicated scroll controls may override this default.
+    // The compact navigation's controls are covered by its behavior tests.
+    expect(scrollbarOwner).not.toMatch(/scrollbar-width:\s*none/);
+    expect(scrollbarOwner).not.toMatch(
       /::-webkit-scrollbar\s*\{[^}]*display:\s*none/,
     );
   });

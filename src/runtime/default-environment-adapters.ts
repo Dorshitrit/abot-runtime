@@ -1,3 +1,5 @@
+import { createInformationBasketToolModule } from "./capabilities/information-basket/tool-module.js";
+import type { InformationBasketService } from "./information-basket/contracts.js";
 import { createRuntimeKnowledgeSkillStore } from "./knowledge-skills/personal-store.js";
 import { builtinKnowledgeSkillStore } from "./knowledge-skills/catalog.js";
 import type { KnowledgeSkillStore } from "./knowledge-skills/store.js";
@@ -80,10 +82,12 @@ export function createDefaultToolRegistry(
   scheduling?: { service: SchedulerService; ready: () => Promise<void> },
   authoring?: { getService: () => AutomationService; ready: () => Promise<void> },
   knowledgeSkillStore: KnowledgeSkillStore = config ? createRuntimeKnowledgeSkillStore(config.paths.runtimeDir) : builtinKnowledgeSkillStore,
+  informationBasket?: InformationBasketService,
 ): ToolRegistry {
   const plugins = loadRuntimeCapabilityPlugins(config);
   return createConfiguredToolRegistry(config, [
     createKnowledgeSkillsToolModule(knowledgeSkillStore),
+    ...(informationBasket ? [createInformationBasketToolModule(informationBasket)] : []),
     ...runtimePluginsToToolModules(plugins),
     ...(config && scheduling
       ? [

@@ -29,9 +29,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       contextWindowTokens: 32000,
     });
     await pressured.run();
-    expect(pressured.counts.map(({ inputTokens }) => inputTokens)).toEqual([
-      23814, 22673, 18000,
-    ]);
+    expect(pressured.counts.map(({ inputTokens }) => inputTokens)).toEqual(pressured.pressureCounts);
     expect(pressured.rootInputs).toHaveLength(1);
     const lifecycle = pressured.events.filter(({ name }) =>
       name.startsWith("context.compaction."),
@@ -44,7 +42,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       invocationId: lifecycle[0]!.invocationId,
       profileId: "compaction-small",
       contextWindowTokens: 32000,
-      beforeInputTokens: 23814,
+      beforeInputTokens: pressured.pressureCounts[0],
       afterInputTokens: 18000,
     });
     expect(

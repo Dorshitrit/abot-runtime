@@ -2,7 +2,7 @@ import { createHomeWidgetCard } from "./widget-card.js";
 import { createHomeWidgetDialog } from "./widget-dialog.js";
 
 export const HOME_WIDGET_MEDIA_QUERY = "(max-width: 1440px)";
-const widgetOrder = ["learning", "conversations", "approvals", "activity", "automations", "computer"];
+const widgetOrder = ["learning", "conversations", "approvals", "activity", "automations", "resources", "computer"];
 
 /** Home-only presentation; component owners keep their data, DOM and actions. */
 export function createCompactHomeLayout({

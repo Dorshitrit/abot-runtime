@@ -39,6 +39,7 @@ export type ProjectManifestSummary = Readonly<{
   private?: boolean;
   scripts?: readonly string[];
   scriptsTruncated?: boolean;
+  identityTruncated?: boolean;
   status?: "invalid_json" | "too_large";
 }>;
 
@@ -56,6 +57,14 @@ function stringField(
   return typeof value === "string"
     ? sanitizeJsonText(value).slice(0, MANIFEST_IDENTITY_MAX_CHARS)
     : undefined;
+}
+
+function hasTruncatedManifestIdentity(record: Readonly<Record<string, unknown>>): boolean {
+  return ["name", "version"].some((key) => {
+    const value = record[key];
+    if (typeof value !== "string") return false;
+    return sanitizeJsonText(value).length > MANIFEST_IDENTITY_MAX_CHARS;
+  });
 }
 
 function boundedScriptName(value: string): string {
@@ -139,6 +148,7 @@ export async function readProjectManifests(
             ? { version: stringField(record, "version") }
             : {}),
           ...(record.private === true ? { private: true } : {}),
+          ...(hasTruncatedManifestIdentity(record) ? { identityTruncated: true } : {}),
           scripts: Object.freeze(scriptNames.slice(0, PACKAGE_SCRIPT_LIMIT)),
           ...(rawScriptNames.length > PACKAGE_SCRIPT_LIMIT ||
           rawScriptNames.some((name, index) => name !== scriptNames[index])

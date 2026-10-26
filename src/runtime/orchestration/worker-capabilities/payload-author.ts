@@ -1,8 +1,8 @@
 import { immutableSnapshot } from "./payload-context-snapshot.js";
 import { projectWorkerPayloadCompactionInput } from "./payload-compaction-transport.js";
+import { isWorkerPayloadDependencyContextValid } from "./payload-dependency-validation.js";
 import {
   isRoleCapabilityId,
-  isRoleCallResultText,
   ROLE_CAPABILITY_REFERENCE_DATA_MAX_LENGTH,
   ROLE_CAPABILITY_RESULT_REFERENCE_LIMIT_MAX,
   ROLE_CAPABILITY_RESULT_REFERENCE_TARGET_MAX_LENGTH,
@@ -39,7 +39,6 @@ import {
   WORKER_CAPABILITY_STRUCTURED_PAYLOAD_INSTRUCTIONS,
 } from "./payload-instructions.js";
 import { normalizePayloadBody } from "./payload-body-normalization.js";
-import { isRuntimeDelegateRoleId } from "../roles.js";
 import { projectWorkerPayloadRequestSourceProjection } from "./payload-source-provenance.js";
 import { isWorkerCapabilityPayloadAssignmentValid } from "./payload-assignment-validation.js";
 type PayloadAuthorInput = Parameters<WorkerCapabilityPayloadAuthor["author"]>[0];
@@ -252,7 +251,7 @@ function capturePayloadContext(
     !validPayloadStageContract(input, contextScope) ||
     !validPayloadEvidenceContext(input, contextScope) ||
     !validStageOwnedPayloadInputs(input) ||
-    !validDependencyResults(input.dependencyResults, input.call) ||
+    !isWorkerPayloadDependencyContextValid(input.dependencyResults, input.call) ||
     !validSettledCapabilityResults(
       input.settledCapabilityResults,
       input.call,
@@ -377,51 +376,6 @@ function validStageOwnedPayloadInputs(input: PayloadAuthorInput): boolean {
     input.targetContext !== undefined ||
     input.contract.responseFormat !== undefined;
   return !hasStageOwnedInput || input.stage !== undefined;
-}
-
-function validDependencyResults(
-  results: PayloadAuthorInput["dependencyResults"],
-  call: RoleCallFrame,
-): boolean {
-  const projected = results ?? [];
-  if (
-    !Array.isArray(projected) ||
-    projected.length !== call.dependencyResultRefs.length
-  ) {
-    return false;
-  }
-  return projected.every((candidate, index) => {
-    if (!isObjectRecord(candidate)) return false;
-    const keys = Object.keys(candidate);
-    const semanticCheckpoints = candidate.semanticCheckpoints;
-    return (
-      keys.length >= 5 &&
-      keys.length <= 6 &&
-      keys.every(
-        (key) =>
-          key === "resultRef" ||
-          key === "producerCallId" ||
-          key === "roleId" ||
-          key === "outcome" ||
-          key === "summary" ||
-          key === "semanticCheckpoints",
-      ) &&
-      candidate.resultRef === call.dependencyResultRefs[index] &&
-      typeof candidate.producerCallId === "string" &&
-      candidate.producerCallId.length > 0 &&
-      isRuntimeDelegateRoleId(candidate.roleId) &&
-      (candidate.outcome === "completed" || candidate.outcome === "failed") &&
-      isRoleCallResultText(candidate.summary) &&
-      (semanticCheckpoints === undefined ||
-        (Array.isArray(semanticCheckpoints) &&
-          semanticCheckpoints.length > 0 &&
-          semanticCheckpoints.every(
-            (checkpoint) =>
-              isObjectRecord(checkpoint) &&
-              checkpoint.kind === "runtime_semantic_compaction_checkpoint_v2",
-          )))
-    );
-  });
 }
 
 function normalizeRootRequestSteering(

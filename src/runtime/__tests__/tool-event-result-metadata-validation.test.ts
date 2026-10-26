@@ -42,10 +42,30 @@ describe("result presentation declaration validation", () => {
     ).toEqual({ metadata: {}, resultMetadata: PROJECTION });
   });
 
+  test("accepts bounded output JSON selectors through both declaration validators", () => {
+    const projection = {
+      title: { path: "output", jsonPath: "sources.0.displayName", kind: "preview" },
+      count: { path: "output", jsonPath: "omittedCount", kind: "number" },
+      flag: { path: "output", jsonPath: "complete", kind: "boolean" },
+    };
+    expect(parseEventPresentation("reader", { metadata: {}, resultMetadata: projection }))
+      .toEqual({ metadata: {}, resultMetadata: projection });
+    const raw = JSON.parse(readFileSync("plugins/memory/plugin.json", "utf8"));
+    raw.extensions["ai.abot.runtime"].capabilities.memory_get.eventPresentation.resultMetadata = projection;
+    expect(parseAgentPluginManifest(raw, "memory").extensions["ai.abot.runtime"]
+      .capabilities.memory_get.eventPresentation?.resultMetadata).toEqual(projection);
+  });
+
   test.each([
     null,
     [],
     { outputPreview: { path: "output", kind: "string" } },
+    ...[null, undefined, 3, false, {}, "", "sources..name", "sources.01.name", "sources.256.name",
+      "sources.-1.name", "sources.*.name", "sources[0].name", "a.b.c.d.e",
+      "__proto__", "sources.0.constructor", "prototype.name"].map(jsonPath => ({
+        title: { path: "output", jsonPath, kind: "preview" },
+      })),
+    { title: { path: "data.itemCount", jsonPath: "name", kind: "preview" } },
     { outputPreview: { path: "params.content", kind: "preview" } },
     { outputPreview: { path: "data.__proto__.value", kind: "preview" } },
     { outputPreview: { path: "data.constructor.name", kind: "preview" } },

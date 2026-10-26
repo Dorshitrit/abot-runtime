@@ -129,7 +129,7 @@ describe("system actions use existing per-invocation approval", () => {
       const h = harness(mode, { requestToolApproval });
       expect(h.registry.getDefinition("system_command")).toBeDefined();
       const pending = h.execute();
-      expect(requestToolApproval).toHaveBeenCalledOnce();
+      await vi.waitFor(() => expect(requestToolApproval).toHaveBeenCalledOnce());
       expect(h.run).not.toHaveBeenCalled();
       expect(requestToolApproval.mock.calls[0]![0].call).toEqual({
         tool: "system_command",
@@ -155,7 +155,7 @@ describe("system actions use existing per-invocation approval", () => {
           ?.toolPermissionMode,
       ).toBe(mode);
       const second = h.execute();
-      expect(requestToolApproval).toHaveBeenCalledTimes(2);
+      await vi.waitFor(() => expect(requestToolApproval).toHaveBeenCalledTimes(2));
       expect(h.run).toHaveBeenCalledOnce();
       decide({ approved: false });
       expect(await second).toMatchObject({
@@ -222,13 +222,15 @@ describe("system actions use existing per-invocation approval", () => {
 
   test("abort after approval was requested prevents dispatch even if the controller grants", async () => {
     let decide!: (decision: ToolApprovalDecision) => void;
-    const h = harness("full_access", {
-      requestToolApproval: () =>
+    const requestToolApproval = vi.fn<ToolApprovalController["requestToolApproval"]>(
+      () =>
         new Promise((resolve) => {
           decide = resolve;
         }),
-    });
+    );
+    const h = harness("full_access", { requestToolApproval });
     const pending = h.execute();
+    await vi.waitFor(() => expect(requestToolApproval).toHaveBeenCalledOnce());
     h.controller.abort();
     decide({ approved: true });
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });

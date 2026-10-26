@@ -13,6 +13,7 @@ import {
 } from "./super-worker-compaction-failure.js";
 import { projectRequestToolResultsCheckpointMessage } from "./request-tool-results-checkpoint.js";
 import { bindRequestToolResultsMessage } from "./request-tool-results-message-binding.js";
+import { projectSuperContinuation } from "./super-compaction/continuation-projection.js";
 import {
   assertSuperWorkerCompactionSidecarBinding,
   readSuperWorkerCompactionSidecar,
@@ -49,6 +50,7 @@ export function projectSuperCompactedRequestToolResults(
         message,
         checkpoint,
         new Map(sources.map((source) => [source.sourceRef, source])),
+        { projectContinuation: projectSuperContinuation },
       );
       if (!projected)
         throw new Error("context_compaction_source_message_binding_invalid");

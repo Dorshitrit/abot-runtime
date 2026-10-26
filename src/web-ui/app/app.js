@@ -1,8 +1,10 @@
 import { createAppearanceFeature } from "./appearance-feature.js";
+import { createStepTimeoutFeature } from "./step-timeout-feature.js";
 import { createComposerFeature } from "./controllers/composer-feature.js";
 import { isWorkspaceChange } from "./lib/workspace-change.js";
 import { prepareEnvironmentWorkspaceChanges } from "./controllers/environment-workspace-preparation.js";
 import { createAppState } from "./app-state.js";
+import { createInformationBasketFeature } from "./information-basket-feature.js";
 import { createSkillsFeature } from "./skills-feature.js";
 import { createProjectsFeature } from "./projects-feature.js";
 import { createComposerSurfaceController } from "./controllers/composer-surface-controller.js";
@@ -70,6 +72,8 @@ let projectsFeature;
 let workspaceRoutes;
 let notifications;
 let skills;
+let informationBasket;
+let stepTimeouts;
 const operationsController = createOperationsController({
   onSummaryChange: () => configWorkspace?.syncSummary(),
   dom,
@@ -107,6 +111,7 @@ const shell = createWorkspaceShell({
   onNavigationChange: () => { configWorkspace?.syncSummary(); workspaceRoutes?.sync(); },
   isWorkspaceAvailable: (destination) => {
     if (skills?.isWorkspaceAvailable(destination) === false) return false;
+    if (informationBasket?.isWorkspaceAvailable(destination) === false) return false;
     if (!notifications?.isWorkspaceAvailable(destination)) return false;
     return schedulesFeature?.isWorkspaceAvailable(destination) ?? false;
   },
@@ -136,6 +141,12 @@ const shell = createWorkspaceShell({
   },
 });
 skills = createSkillsFeature({ dom, client: runtimeClient, shell, getEnvironmentId: selectedEnvironmentId });
+informationBasket = createInformationBasketFeature({ dom, client: runtimeClient, shell, realtime: realtimeTransport, getEnvironmentId: selectedEnvironmentId });
+stepTimeouts = createStepTimeoutFeature({
+  state, client: runtimeClient, shell,
+  getEnvironmentId: selectedEnvironmentId,
+  onApplied: () => configWorkspace?.reloadAppliedEnvironmentModels(),
+});
 notifications = createNotificationsFeature({
   dom, state, client: runtimeClient, shell, getEnvironmentId: selectedEnvironmentId, send: sendRealtime,
 });
@@ -568,6 +579,7 @@ function renderSessions() {
 }
 
 function renderMessages() {
+  stepTimeouts?.syncScope();
   notifications?.presenceChanged();
   conversationView.render();
   workspaceRoutes?.sync();
@@ -607,6 +619,7 @@ async function loadAgentMode() {
 
 function recordEvent(message) {
   realtimeEvents.recordEvent(message);
+  void stepTimeouts?.handleEvent(message);
 }
 
 function recordControlEvent(event) {
@@ -628,6 +641,7 @@ function handleRealtimeMessage(message) {
   passiveLearning?.handleRealtime(message);
   notifications?.handleRealtime(message);
   if (!isWorkspaceChange(message)) realtimeEvents.handle(message);
+  void stepTimeouts?.handleEvent(message);
 }
 
 function sendRealtime(payload) {
@@ -672,6 +686,7 @@ void startWebApp({
   learning: passiveLearning,
   notifications,
   skills,
+  informationBasket,
   schedules: schedulesFeature,
   projects: projectsFeature,
   selection: runtimeSelection,

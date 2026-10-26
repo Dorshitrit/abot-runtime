@@ -1,5 +1,6 @@
 import { createWorkspaceConversationOpener } from "./controllers/workspace-conversation-opener.js";
 import { createDashboardWorkspace } from "./components/dashboard/workspace.js";
+import { createDashboardResourcesController } from "./controllers/dashboard-resources-controller.js";
 import { createDashboardController } from "./controllers/dashboard-controller.js";
 import { createDashboardApprovalsController } from "./controllers/dashboard-approvals-controller.js";
 import { dashboardJobInitialValues } from "./lib/dashboard-job-templates.js";
@@ -21,6 +22,28 @@ export function createDashboardFeature({
   const openConversation = createWorkspaceConversationOpener({ state, shell, openSession });
   let view;
   let controller;
+  function canManageHomeResources() {
+    if (!isComposerAvailable()) return false;
+    if (shell.activeWorkspace() !== "home") return false;
+    return document.visibilityState !== "hidden";
+  }
+  const resources = createDashboardResourcesController({
+    client, getEnvironmentId: selectedEnvironmentId,
+    render: () => controller?.publish(), isInteractive: canManageHomeResources,
+    notify: (message) => shell.showToast(message, "success"),
+  });
+  async function handleResourceAction(action, sourceId, expectedRevision) {
+    if (!canManageHomeResources()) return false;
+    if (action === "refresh") return resources.refresh();
+    if (action === "reindex") return resources.reindex(sourceId, expectedRevision);
+    if (action === "relink") {
+      view.compactWidgets.close();
+      return resources.relink(sourceId, expectedRevision);
+    }
+    if (!["resources", "settings", "review"].includes(action)) return false;
+    view.compactWidgets.close({ restoreFocus: false });
+    return shell.activateWorkspace("resources");
+  }
   const approvals = createDashboardApprovalsController({
     client,
     getEnvironmentId: selectedEnvironmentId,
@@ -33,6 +56,7 @@ export function createDashboardFeature({
     loadSessions,
     isRuntimeReady: isComposerAvailable,
     approvalData: approvals,
+    resourceData: resources,
     render: (snapshot) => {
       const sessions = filterSessionsByArchiveState(snapshot.sessions,
         preferences?.loadSessionSidebar?.(selectedEnvironmentId())?.archivedSessionIds);
@@ -43,6 +67,8 @@ export function createDashboardFeature({
     root: dom.homeDashboardRoot,
     passiveLearning,
     actions: {
+      resourceAction: handleResourceAction,
+      resourcePicker: resources.picker,
       createJob: (templateId) =>
         schedules.createJob(
           dashboardJobInitialValues(templateId, dom.modelSelect.value),

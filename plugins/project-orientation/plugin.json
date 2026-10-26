@@ -11,13 +11,13 @@
       "catalogGroups": ["read"],
       "settings": {
         "defaults": {
-          "defaultDepth": 3,
-          "maxEntries": 200
+          "defaultDepth": 0,
+          "maxEntries": 40
         }
       },
       "capabilities": {
         "inspect_project": {
-          "description": "Inspect a bounded project tree. Path `.` and relative paths resolve inside the configured agent work directory; `workspace/...` targets configured workspace sources.",
+          "description": "Inspect a project overview in bounded pages. Start with depth 0, then inspect a selected subdirectory or continue with nextCursor. Path `.` and relative paths resolve inside the configured agent work directory; `workspace/...` targets configured workspace sources.",
           "routingCapability": "semantic_lookup",
           "eventPresentation": {
             "metadata": {
@@ -30,7 +30,8 @@
               "depth": { "path": "data.depth", "kind": "number" },
               "maxEntries": { "path": "data.maxEntries", "kind": "number" },
               "sourceTruncated": { "path": "data.truncation.tree", "kind": "boolean" },
-              "outputTruncated": { "path": "data.truncation.output.truncated", "kind": "boolean" }
+              "outputTruncated": { "path": "data.truncation.output.truncated", "kind": "boolean" },
+              "hasMore": { "path": "data.pagination.hasMore", "kind": "boolean" }
             }
           },
           "runtimePathBindings": [
@@ -44,7 +45,7 @@
           "skills": ["project_orientation_skill"],
           "operations": {
             "inspect_project": {
-              "summary": "Inspect structure and manifest metadata beneath the configured agent work directory, or beneath configured workspace sources when `workspace/...` is explicit.",
+              "summary": "Inspect a flat project overview by default; select a subdirectory for detail. Each page has at most 40 entries and a 4000-character total result, including explicit depth or entry requests. Use the returned cursor with the same path and depth to continue. A scan beyond 1000 visited entries requires a narrower path or depth.",
               "input": {
                 "type": "object",
                 "additionalProperties": false,
@@ -63,6 +64,11 @@
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 250
+                  },
+                  "cursor": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
                   }
                 },
                 "required": []

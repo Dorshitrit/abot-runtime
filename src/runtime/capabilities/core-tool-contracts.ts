@@ -1,3 +1,4 @@
+import { informationBasketToolContract } from "./information-basket/tool-contract.js";
 import type { ToolNormalInvocationContract, ToolNormalInvocationOperation } from "../../capabilities/tool-types.js";
 import { schedulingToolContract } from "./scheduling/tool-contract.js";
 import { automationModelToolContract } from "./automations/model-tool-contract.js";
@@ -20,6 +21,7 @@ function coreToolContract(
 
 /** One source for native definitions and their reserved plugin identities. */
 export const CORE_TOOL_CONTRACTS = Object.freeze({
+  informationBasket: coreToolContract("information_basket", informationBasketToolContract, "automatic"),
   skills: coreToolContract("abot_skills", knowledgeSkillsToolContract, "automatic"),
   scheduling: coreToolContract("schedules", schedulingToolContract),
   automations: coreToolContract("automations", automationModelToolContract),

@@ -6,6 +6,7 @@ import { AUTOMATION_AUTHORING_REFERENCE } from "../capabilities/automation-build
 import type { readAutomationAuthoringCatalogIndex } from "../capabilities/automations/authoring-catalog.js";
 import type { readAutomationAuthoringPreparation } from "../capabilities/automations/authoring-preparation.js";
 import { completeAuthoringPlan, createCompleteAuthoringFixture } from "./support/automation-complete-authoring-fixture.js";
+import { workerEvidenceReply } from "./support/worker-evidence-script.js";
 import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 
 type Fixture = Awaited<ReturnType<typeof createCompleteAuthoringFixture>>;
@@ -87,6 +88,12 @@ it("carries scoped catalog evidence through the full SUPER draft-authoring and r
       });
       return decision({ action: "return_result", result: savedResult() });
     }
+    if (input.modelStep === "worker.evidence") {
+      const requiresExecution = workerTurns < 4;
+      if (!requiresExecution)
+        expect(exactReceipt(messages, "validate_draft")).toEqual({ issues: [] });
+      return workerEvidenceReply(input, requiresExecution);
+    }
     if (input.modelStep === "worker.decision") {
       workerTurns += 1;
       if (workerTurns === 1) return decision({ action: "invoke_capability", capabilityId: "browse_catalog",
@@ -122,9 +129,7 @@ it("carries scoped catalog evidence through the full SUPER draft-authoring and r
         return decision({ action: "invoke_capability", capabilityId: "validate_draft",
           intent: "Validate the exact saved draft.", selectionControls: { automationId: created.automationId } });
       }
-      expect(workerTurns).toBe(5);
-      expect(exactReceipt(messages, "validate_draft")).toEqual({ issues: [] });
-      return decision({ action: "return_result" });
+      throw new Error("unexpected_worker_selection_after_validation");
     }
     if (input.modelStep === "tool_payload.raw") {
       expect(prepared).toBeDefined();
@@ -176,8 +181,9 @@ it("carries scoped catalog evidence through the full SUPER draft-authoring and r
     toolPermissionMode: "full_access",
   });
   expect(events.at(-1), JSON.stringify({ phases, terminal: events.at(-1) })).not.toMatchObject({ type: "failed" });
-  expect(phases).toEqual(["supervisor.decision", "planner.decision", "worker.decision", "worker.decision",
-    "worker.decision", "tool_payload.raw", "worker.decision", "worker.decision", "worker.result",
+  expect(phases).toEqual(["supervisor.decision", "planner.decision", "worker.evidence", "worker.decision",
+    "worker.evidence", "worker.decision", "worker.evidence", "worker.decision", "tool_payload.raw",
+    "worker.evidence", "worker.decision", "worker.evidence", "worker.result",
     "planner.decision", "supervisor.decision", "reviewer.decision", "supervisor.decision", "supervisor.response"]);
   expect(fixture.execute.mock.calls.map(([call]) => call.params.action)).toEqual([
     "browse_catalog", "prepare_draft", "create_automation_draft", "validate_draft",

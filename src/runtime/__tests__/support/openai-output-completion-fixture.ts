@@ -28,12 +28,40 @@ async function close(server: Server): Promise<void> {
   });
 }
 
-function responseFrames(output: ProviderOutput): string {
+function responseFrames(output: ProviderOutput, functionName?: string): string {
   const frame = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`;
-  const text = frame({ type: "response.output_text.delta", delta: output.text });
-  if (output.ending === "eof") return text;
-  if (output.ending === "done") return text + "data: [DONE]\n\n";
-  return text + frame({ type: "response.completed", response: { status: "completed" } });
+  const call = functionName === undefined ? undefined : {
+    type: "function_call", id: "fixture-function", call_id: "fixture-call",
+    name: functionName, arguments: output.text, status: "completed",
+  };
+  const provisional = call ? [
+    { type: "response.output_item.added", output_index: 0,
+      item: { ...call, status: "in_progress", arguments: "" } },
+    { type: "response.function_call_arguments.delta", output_index: 0,
+      item_id: call.id, delta: output.text },
+    { type: "response.function_call_arguments.done", output_index: 0,
+      item_id: call.id, arguments: output.text },
+    { type: "response.output_item.done", output_index: 0, item: call },
+  ].map(frame).join("") : frame({ type: "response.output_text.delta", delta: output.text });
+  if (output.ending === "eof") return provisional;
+  if (output.ending === "done") return provisional + "data: [DONE]\n\n";
+  return provisional + frame({ type: "response.completed", response: {
+    status: "completed", ...(call ? { output: [call] } : {}),
+  } });
+}
+
+function readRequestedFunctionName(requestJson: string): string | undefined {
+  const request = JSON.parse(requestJson) as {
+    tool_choice?: { type?: string; name?: string };
+    tools?: readonly { type?: string; name?: string }[];
+  };
+  if (request.tool_choice?.type !== "function") return undefined;
+  const name = request.tool_choice.name;
+  if (typeof name !== "string") throw new Error("fixture_function_name_missing");
+  if (!Array.isArray(request.tools)) throw new Error("fixture_function_tools_missing");
+  const hasMatchingOfferedFunction = request.tools.some((tool) => tool.type === "function" && tool.name === name);
+  if (!hasMatchingOfferedFunction) throw new Error("fixture_function_not_offered");
+  return name;
 }
 
 /** Real HTTP gateway and OpenAI adapter; only the remote provider is scripted. */
@@ -44,7 +72,9 @@ export async function openAICompletionGateway(outputs: readonly ProviderOutput[]
   vi.stubEnv("COMPLETION_INTEGRATION_KEY", "local-provider-fixture");
   let outputIndex = 0;
   const provider = createServer((req, res) => {
-    req.resume();
+    let requestJson = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk: string) => { requestJson += chunk; });
     req.on("end", () => {
       const output = outputs[outputIndex++];
       if (!output) {
@@ -52,8 +82,14 @@ export async function openAICompletionGateway(outputs: readonly ProviderOutput[]
         res.end("unexpected_provider_invocation");
         return;
       }
-      res.writeHead(200, { "Content-Type": "text/event-stream" });
-      res.end(responseFrames(output));
+      try {
+        const frames = responseFrames(output, readRequestedFunctionName(requestJson));
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.end(frames);
+      } catch {
+        res.writeHead(400);
+        res.end("invalid_completion_fixture_request");
+      }
     });
   });
   const modelPolicy = {

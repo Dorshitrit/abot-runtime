@@ -145,7 +145,7 @@ export function createProjectsFeature({
       refreshAvailability();
       return controller.runtimeAvailabilityChanged();
     },
-    renderSessionGroups({ root, sessions, createSessionItem }) {
+    renderSessionGroups({ root, sessions, createSessionItem, pageInfo, onLoadProject }) {
       syncProjectGroupEnvironment();
       const project = state.sessions.find(
         (session) => session.id === state.currentSessionId,
@@ -162,6 +162,8 @@ export function createProjectsFeature({
         root,
         sessions,
         createSessionItem,
+        pageInfo,
+        onLoadProject,
         newProjectButton: dom.newProjectButton,
         ...controller.snapshot(),
         deletedProjectIds: controller.getDeletedProjectIds(),

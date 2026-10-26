@@ -154,10 +154,11 @@ test.each(["supervisor-worker-v1", "execution-agent-v1"] as const)(
       policy === "execution-agent-v1"
         ? "execution.decision"
         : "worker.decision";
-    expect(
-      inputs.filter(({ modelStep }) => modelStep === selectingStep).length,
-    ).toBeGreaterThan(1);
+    const selectionCalls = inputs.filter(({ modelStep }) => modelStep === selectingStep);
+    if (policy === "execution-agent-v1") expect(selectionCalls.length).toBeGreaterThan(1);
     if (policy === "supervisor-worker-v1") {
+      expect(selectionCalls).toHaveLength(1);
+      expect(inputs.filter(({ modelStep }) => modelStep === "worker.evidence")).toHaveLength(2);
       const worker = inputs.find(({ modelStep }) => modelStep === selectingStep)!;
       const content = messages(worker).map(({ content }) => content).join("\n");
       for (const entry of result.offered)

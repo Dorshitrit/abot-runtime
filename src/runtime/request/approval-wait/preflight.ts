@@ -13,6 +13,7 @@ import { validateRequestApprovalContinuation } from "../approval-continuation.js
 import { restoreApprovalExecutionFreshness } from "../capability-execution-freshness.js";
 import { createRequestSteeringInbox } from "../request-steering.js";
 import { resolveRequestDependencies } from "../dependencies.js";
+import { SESSION_MEMORY_COMPACTORS } from "../../context/super-compaction/history-routing.js";
 import { prepareRequestExecution } from "../prepared-execution.js";
 import { createRequestRoleCallPolicy } from "../role-call-policy.js";
 import type { RequestHandlerOptions } from "../contracts.js";
@@ -68,6 +69,7 @@ export async function validateApprovalResume(
       modelGatewayClient: models,
       eventSinkFactory: { create: () => events },
       sessionMemoryCompactor: services.sessionMemoryCompactor,
+      [SESSION_MEMORY_COMPACTORS]: services[SESSION_MEMORY_COMPACTORS],
       longTermMemory: services.longTermMemory,
       approvalExecution: {
         activation: current.activation!,

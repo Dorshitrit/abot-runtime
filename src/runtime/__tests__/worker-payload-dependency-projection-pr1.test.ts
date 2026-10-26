@@ -51,6 +51,7 @@ describe("PR1 Worker payload dependency projection", () => {
       Object.freeze({
         resultRef: "result-1",
         producerCallId: "call-2",
+        producerObjective: 'Read only source-01.md and preserve its exact "MID FACT" code.',
         roleId: "worker" as const,
         outcome: "completed" as const,
         summary: "The prerequisite result is settled.",
@@ -65,6 +66,7 @@ describe("PR1 Worker payload dependency projection", () => {
       {
         resultRef: "result-1",
         producerCallId: "call-2",
+        producerObjective: 'Read only source-01.md and preserve its exact "MID FACT" code.',
         roleId: "worker",
         outcome: "completed",
         summary: "The prerequisite result is settled.",

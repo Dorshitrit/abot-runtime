@@ -101,7 +101,7 @@ async function writeThroughRuntime(
       },
     },
   });
-  const invocation = executor.prepare({
+  const invocation = await executor.prepare({
     handle: executor.operations[0]!.handle,
     controls: { path: options.path ?? "result.md", content },
   });

@@ -165,14 +165,14 @@ describe("SYSTEM native Windows filesystem directory handoff", () => {
         toolPermissionMode: mode,
         toolApprovalController: { requestToolApproval },
       });
-      const prepared = executor.prepare({
+      const prepared = await executor.prepare({
         handle: executor.operations[0]!.handle,
         controls: { target: "windows", command, cwd: "." },
         intent: "Run the requested generated script.",
       });
       expect(prepared.status).toBe("prepared");
       if (prepared.status !== "prepared") throw new Error(prepared.code);
-      const restored = executor.restore(
+      const restored = await executor.restore(
         JSON.parse(JSON.stringify(prepared.snapshot)),
       );
       expect(restored.status).toBe("prepared");

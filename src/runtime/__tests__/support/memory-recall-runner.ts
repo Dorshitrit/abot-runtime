@@ -128,7 +128,7 @@ export function createMemoryRecallHarness(
     "execution.decision",
     "execution.response",
     "planner.decision",
-    "worker.decision",
+    "worker.evidence", "worker.decision",
     "worker.result",
     "reviewer.decision",
   ];

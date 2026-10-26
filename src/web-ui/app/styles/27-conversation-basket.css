@@ -1,0 +1,62 @@
+.conversation-basket-collection {
+  min-width: 0;
+  margin-block-start: 8px;
+}
+
+.conversation-basket-collection:first-child {
+  margin-block-start: 0;
+}
+
+.conversation-role-message:has(> .conversation-basket-collection) {
+  width: 100%;
+}
+
+.conversation-basket-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+}
+
+.conversation-basket-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation-basket-activity {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding-block: 6px;
+  min-width: 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.conversation-basket-activity + .conversation-basket-activity {
+  border-block-start: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+
+.conversation-basket-label {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.conversation-basket-status {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+}
+
+.conversation-basket-activity[data-status="completed"] .conversation-basket-status {
+  color: var(--green);
+}
+
+.conversation-basket-activity[data-status="unavailable"] .conversation-basket-status {
+  color: var(--danger);
+}

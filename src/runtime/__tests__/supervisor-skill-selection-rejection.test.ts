@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import { createRequestExecutionScope } from "../request/execution-scope.js";
@@ -41,7 +42,7 @@ function fixture(options: Parameters<typeof createMemoryRecallHarness>[0]) {
 function finishWorker(input: RecallModelInput) {
   if (supervisorFormatName(input) === "supervisor_working_directory")
     return JSON.stringify({ workingDirectory: "." });
-  if (input.modelStep === "worker.decision") return { action: "return_result" };
+  if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
   expect(input.modelStep).toBe("worker.result");
   return "The requested verification is complete.";
 }

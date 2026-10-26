@@ -65,7 +65,7 @@ describe.each([
         backslashes: "projects\\שלום project",
         absolute: project,
       };
-      const result = await inspect({ path: paths[form] });
+      const result = await inspect({ path: paths[form], depth: 1 });
       expect(result).toMatchObject({
         ok: true,
         data: {
@@ -91,6 +91,9 @@ describe.each([
       expect(serialized).not.toContain(JSON.stringify(root).slice(1, -1));
       expect(serialized).not.toContain("SECRET_COMMAND");
       expect(serialized).not.toContain("PRIVATE_MANIFEST_BODY");
+      expect(serialized.length).toBeLessThanOrEqual(4_000);
+      expect(result.output).not.toContain("src/index.ts");
+      expect(result.output).not.toContain("Package scripts:");
       expect(await readFile(packagePath, "utf8")).toBe(original);
     },
     20_000,
@@ -105,7 +108,11 @@ describe.each([
     );
     expect(await inspect({})).toMatchObject({
       ok: true,
-      data: { target: ".", tree: { files: ["root-only.txt"] } },
+      data: {
+        target: ".", depth: 0, maxEntries: 40,
+        tree: { files: ["root-only.txt"], truncatedPathCount: 0 },
+        pagination: { hasMore: false, nextCursor: null },
+      },
     });
     expect(await inspect({ path: "workspace" })).toMatchObject({
       ok: true,
@@ -185,7 +192,11 @@ describe.each([
     );
     expect(await inspect({ maxEntries: 5 })).toMatchObject({
       ok: true,
-      data: { maxEntries: 5, tree: { entries: 5, truncated: true } },
+      data: {
+        maxEntries: 5,
+        tree: { entries: 5, truncated: true, truncatedPathCount: 0 },
+        pagination: { hasMore: true, nextCursor: expect.any(String) },
+      },
     });
   });
 

@@ -1,4 +1,5 @@
 import { createConversationSkillActivity } from "./conversation-skill-activity.js";
+import { createConversationBasketActivity } from "./conversation-basket-activity.js";
 import { createConversationMemoryActivity } from "./conversation-memory-activity.js";
 import { createConversationTools } from "./conversation-tools.js";
 import { createConversationRoleDelegations } from "./conversation-role-delegations.js";
@@ -109,6 +110,10 @@ export function createConversationRoleCards({
       documentRoot, activities: card.skillActivities,
     });
     if (skillActivity) message.appendChild(skillActivity);
+    const basketActivity = createConversationBasketActivity({
+      documentRoot, activities: card.basketActivities,
+    });
+    if (basketActivity) message.appendChild(basketActivity);
     if (card.role === "supervisor") {
       const history = delegations.createNode({
         requestId, delegations: card.delegations || [],

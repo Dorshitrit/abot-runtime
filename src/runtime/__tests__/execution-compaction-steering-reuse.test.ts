@@ -179,7 +179,7 @@ test.each([
       ),
     ).toHaveLength(boundary === "provider" ? 1 : 0);
     const before = f.request.contextCompactionStore!.findByCallIds(["call-1"]);
-    expect(before).toHaveLength(boundary === "provider" ? 1 : 0);
+    expect(before).toHaveLength(1);
     f.invoke.mockImplementation(invoke);
     f.invoke.mockClear();
     await f.run(response);
@@ -189,7 +189,7 @@ test.each([
       f.invoke.mock.calls.filter(
         ([input]) => input.modelStep === "context.compact",
       ),
-    ).toHaveLength(boundary === "provider" ? 0 : 1);
+    ).toHaveLength(0);
     for (const checkpoint of before) expect(after).toContainEqual(checkpoint);
   },
 );

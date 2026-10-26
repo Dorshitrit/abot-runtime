@@ -183,6 +183,18 @@
   font-weight: 400;
 }
 
+.session-unread-dot {
+  display: block;
+  width: 7px;
+  height: 7px;
+  margin-inline: 4px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--green) 12%, transparent),
+    0 0 9px color-mix(in srgb, var(--green) 48%, transparent);
+}
+
 .session-actions {
   top: 3px;
   right: 3px;

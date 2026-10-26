@@ -48,6 +48,8 @@ export class LocalRuntimeWebBackend {
       requestOptions: (run) => requests.scheduledRequestOptions(run),
       publish: (event) => requests.publishScheduled(event),
       publishLearning: createLearningChangeNotifier(clients),
+      publishInformationBasket: (environmentId) =>
+        createWorkspaceChangeNotifier(clients)(environmentId, ["information-basket"]),
     });
     const desktop = new DesktopNotificationDelivery(
       options.rootDir ?? process.cwd(),

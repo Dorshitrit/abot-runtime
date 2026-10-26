@@ -1,3 +1,4 @@
+import { workerEvidenceReply } from "./worker-evidence-script.js";
 import { semanticCompactionDigestSlots } from "./semantic-compaction-model-fixture.js";
 import { vi } from "vitest";
 import { withSupervisorPreparation } from "./supervisor-model-phases.js";
@@ -42,6 +43,15 @@ export function supervisionStagedFixture(
   const prompt =
     "Inspect report.txt, compare observations, and review the evidence.";
   const profileId = "staged-super";
+  const pressuredInputTokens = policy === "execution-agent-v1" ? 29_000 : 24_000;
+  const compactionSteps = policy === "supervisor-worker-v1"
+    ? [
+        "super.compact.coverage",
+        "super.compact.content",
+        "super.compact.merge",
+        "super.compact.continuation",
+      ]
+    : ["context.compact"];
   const calls: Array<{ step: string; messages: readonly ChatMessage[] }> = [];
   const events: Array<{ name: string; data?: Record<string, unknown> }> = [];
   let supervisorTurns = 0;
@@ -146,15 +156,14 @@ export function supervisionStagedFixture(
         });
       return decision({ action: "return_result", result: STAGED_FACT });
     }
+    if (step === "worker.evidence") return workerEvidenceReply(input, workerTurns < 3, STAGED_FACT);
     if (step === "worker.decision") {
       workerTurns += 1;
-      if (workerTurns % 4 !== 0)
-        return decision({
+      return decision({
           action: "invoke_capability",
           capabilityId: descriptor.capabilityId,
           intent: "Inspect the canonical target.",
         });
-      return decision({ action: "return_result" });
     }
     if (step === "execution.decision") {
       executionTurns += 1;
@@ -183,6 +192,11 @@ export function supervisionStagedFixture(
           query: "same-observation",
         },
       });
+    }
+    if (policy === "supervisor-worker-v1" && compactionSteps.includes(step)) {
+      if (options.abortDuringCompaction)
+        abort.abort(new Error("cancel_supervision_compaction"));
+      return { text: STAGED_FACT, meta: {} };
     }
     if (step === "context.compact") {
       if (options.abortDuringCompaction)
@@ -275,7 +289,7 @@ export function supervisionStagedFixture(
           hasNativeResults ||
           hasWorkerResults ||
           hasRegisteredBody)
-          ? 24000
+          ? pressuredInputTokens
           : 1000,
       profileId,
       provider: "openai",
@@ -327,11 +341,12 @@ export function supervisionStagedFixture(
           "supervisor.decision",
           "supervisor.response",
           "planner.decision",
+          "worker.evidence",
           "worker.decision",
           "worker.result",
           "capability.controls",
           "reviewer.decision",
-          "context.compact",
+          ...compactionSteps,
         ].map((step) => [step, { timeoutMs: 20000 }]),
       ),
     } as RequestRunnerConfig,

@@ -1,3 +1,4 @@
+import { workerEvidenceReply } from "./support/worker-evidence-script.js";
 import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
@@ -61,7 +62,7 @@ function createReviewedWorkScript(): Entry[] {
         selectedItemIndexes: [0],
       }),
     },
-    { step: "worker.decision", output: decision({ action: "return_result" }) },
+    { step: "worker.evidence", output: (input) => workerEvidenceReply(input, false).text },
     { step: "worker.result", output: WORK_RESULT },
     {
       step: "planner.decision",

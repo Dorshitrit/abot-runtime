@@ -28,6 +28,44 @@ const BOUNDARIES = [
 type Boundary = (typeof BOUNDARIES)[number];
 
 describe("admission steering freshness", () => {
+  test.each(["optional_context", "compaction_projection"] as const)(
+    "keeps steering freshness during %s before semantic compaction starts",
+    async (projection) => {
+      const harness = createAdmissionFixture({ counts: [23814, 1000] });
+      const active = createAdmissionStage("active_request", "active");
+      const controller = createAdmissionController([active]);
+      const project = (messages: readonly ChatMessage[]) => [...messages];
+      const count = harness.countInputTokens.getMockImplementation()!;
+      harness.countInputTokens.mockImplementation(async (...args) => {
+        const result = await count(...args);
+        if (harness.countInputTokens.mock.calls.length === 2)
+          harness.steering.append({ steerId: "one", text: "new direction" });
+        return result;
+      });
+      await expect(harness.invoker.invoke({
+        modelStep: "supervisor.decision",
+        messages: ADMISSION_MESSAGES,
+        timeoutReason: "admission_test_timeout",
+        boundSteeringVersion: 0,
+        contextCompaction: {
+          ...controller,
+          ...(projection === "compaction_projection"
+            ? { projectForCompaction: project }
+            : {}),
+        },
+        ...(projection === "optional_context"
+          ? { optionalContextProjection: project }
+          : {}),
+        accept: (text) => text,
+      })).rejects.toBeInstanceOf(ModelStepSteeringSupersededError);
+      expect(active.prepare).not.toHaveBeenCalled();
+      expect(active.commit).not.toHaveBeenCalled();
+      expect(harness.invoke).not.toHaveBeenCalled();
+      expect(harness.events.some(([name]) => name === "context.compaction.started"))
+        .toBe(false);
+    },
+  );
+
   test("clears the Web UI pending state when the fresh attempt needs no new compaction", async () => {
     const fixture = createSteeringFixture("history_prepare");
     await fixture.harness.run(fixture.controller);
@@ -46,7 +84,7 @@ describe("admission steering freshness", () => {
           "staged-admission",
         )?.pendingCompaction;
       if (name === "context.compaction.started") expect(pending).not.toBeNull();
-      if (name === "context.compaction.failed") expect(pending).toBeNull();
+      if (name === "context.compaction.completed") expect(pending).toBeNull();
     }
     expect(
       ui.state.contextWindowByRequest.get("staged-admission")
@@ -69,9 +107,12 @@ describe("admission steering freshness", () => {
       expect(fixture.harness.invoke).not.toHaveBeenCalled();
       expect(fixture.controller.project).toHaveBeenCalledOnce();
       expect(fixture.active.commit).toHaveBeenCalledTimes(
-        boundary === "active_commit" ? 1 : 0,
+        boundary === "initial_count" ? 0 : 1,
       );
-      assertSupersededLifecycle(fixture.harness, boundary);
+      expect(fixture.history.commit).toHaveBeenCalledTimes(
+        boundary === "initial_count" ? 0 : 1,
+      );
+      assertCompletedLifecycle(fixture.harness, boundary);
     },
   );
 
@@ -93,7 +134,13 @@ describe("admission steering freshness", () => {
       ).toContain("new direction");
       expect(fixture.history.prepare.mock.calls.length).toBeLessThanOrEqual(1);
       expect(fixture.active.prepare.mock.calls.length).toBeLessThanOrEqual(1);
-      assertSupersededLifecycle(fixture.harness, boundary);
+      expect(fixture.history.commit).toHaveBeenCalledTimes(
+        boundary === "initial_count" ? 0 : 1,
+      );
+      expect(fixture.active.commit).toHaveBeenCalledTimes(
+        boundary === "initial_count" ? 0 : 1,
+      );
+      assertCompletedLifecycle(fixture.harness, boundary);
     },
   );
 
@@ -310,7 +357,8 @@ function createSteeringFixture(boundary: Boundary, child = false) {
   const count = harness.countInputTokens.getMockImplementation()!;
   harness.countInputTokens.mockImplementation(async (...args) => {
     const result = await count(...args);
-    if (changed && !child) return { ...result!, inputTokens: 1000 };
+    if (changed && !child && boundary === "initial_count")
+      return { ...result!, inputTokens: 1000 };
     const target = { initial_count: 1, history_count: 2, active_count: 3 }[
       boundary as "initial_count" | "history_count" | "active_count"
     ];
@@ -337,7 +385,7 @@ function createSteeringFixture(boundary: Boundary, child = false) {
   };
 }
 
-function assertSupersededLifecycle(
+function assertCompletedLifecycle(
   harness: ReturnType<typeof createAdmissionFixture>,
   boundary: Boundary,
 ) {
@@ -351,11 +399,8 @@ function assertSupersededLifecycle(
   expect(cycles).toEqual([
     ["context.compaction.started", expect.any(Object)],
     [
-      "context.compaction.failed",
-      expect.objectContaining({
-        reason: "steering_superseded",
-        issueCode: "model_step_steering_superseded",
-      }),
+      "context.compaction.completed",
+      expect.any(Object),
     ],
   ]);
 }

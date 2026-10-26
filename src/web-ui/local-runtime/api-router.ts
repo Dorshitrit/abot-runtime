@@ -1,4 +1,7 @@
+import { InformationBasketRoutes } from "./information-basket-routes.js";
 import { PersonalSkillManagementRoutes } from "./skill-management-routes.js";
+import { StepTimeoutRoutes } from "./step-timeout-routes.js";
+import { StepTimeoutService } from "./step-timeout-service.js";
 import { ProjectRoutes } from "./project-routes.js";
 import { cancelWebRequest } from "./request-cancellation-route.js";
 import { ConversationFileRoutes } from "./conversation-file-routes.js";
@@ -73,6 +76,7 @@ function sendRuntimeSetupRequired(
 }
 
 export class LocalRuntimeApiRouter {
+  private readonly stepTimeouts: StepTimeoutRoutes;
   private readonly conversationFiles: ConversationFileRoutes;
   private readonly attachments = new LocalAttachmentRoutes();
   private readonly setup: RuntimeSetupRoutes;
@@ -80,6 +84,7 @@ export class LocalRuntimeApiRouter {
   private readonly setupEmbedding: SetupEmbeddingRoutes;
   private readonly memoryConnection: SetupEmbeddingRoutes;
   private readonly plugins: PluginManagementRoutes;
+  private readonly informationBasket: InformationBasketRoutes;
   private readonly skillManagement: PersonalSkillManagementRoutes;
   private readonly memoryManagement: LongTermMemoryManagementRoutes;
   private readonly memoryOnboarding: LongTermMemoryOnboardingRoutes;
@@ -98,6 +103,13 @@ export class LocalRuntimeApiRouter {
     private readonly requests: LocalRequestExecution,
     notifyWorkspaceChanged?: WorkspaceChangeNotifier,
   ) {
+    this.stepTimeouts = new StepTimeoutRoutes(new StepTimeoutService({
+      rootDir: options.rootDir ?? process.cwd(),
+      getConfigPath: () => options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
+      getEnvironment: (id) => this.environments.get(id),
+      activeReplayForSession: (requestId, sessionId, environment) =>
+        this.requests.activeReplayForSession(requestId, sessionId, environment),
+    }));
     this.toolApprovals = new ToolApprovalRoutes(
       new ManagedWebToolApprovals((id) => environments.get(id), requests),
     );
@@ -179,6 +191,9 @@ export class LocalRuntimeApiRouter {
         configPath: options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
       }),
     );
+    this.informationBasket = new InformationBasketRoutes(
+      (id) => this.environments.get(id).services.informationBasket,
+    );
     this.skillManagement = new PersonalSkillManagementRoutes(
       (id) => this.environments.get(id).services.personalSkills,
     );
@@ -222,6 +237,7 @@ export class LocalRuntimeApiRouter {
     const method = req.method || "GET";
     const segments = pathSegments(pathname);
     const route = segments.join("/");
+    if (await this.stepTimeouts.handle({ method, route, request: req, response: res, url })) return;
     if (await this.conversationFiles.handle(route, req, res)) return;
 
     if (
@@ -376,6 +392,10 @@ export class LocalRuntimeApiRouter {
     ) {
       return;
     }
+
+    if (await this.informationBasket.handle({
+      method, segments, url, body, environmentId, request: req, response: res,
+    })) return;
 
     if (await this.skillManagement.handle({
       method, segments, body, environmentId, request: req, response: res,

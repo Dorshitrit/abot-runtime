@@ -1,3 +1,4 @@
+import { readExecutionChildResultEvidence, type ExecutionChildResultReference } from "./support/execution-child-result-evidence.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -35,11 +36,7 @@ type RootState = {
     reason: string;
     pendingEvidenceIds: string[] | null;
   };
-  completedSubordinateResults: {
-    roleId: string;
-    outcome: string;
-    summary: string;
-  }[];
+  completedSubordinateResults: readonly ExecutionChildResultReference[];
 };
 type Proof = {
   selectedEvidenceIds: string[];
@@ -60,7 +57,7 @@ function coverageCase(scenario: Scenario) {
       rootDecisions += 1;
       if (rootDecisions <= 3) return auditRootPrelude(rootDecisions, 2);
       const state = readAuditCapsule<RootState>(input, STATE);
-      const returned = state.completedSubordinateResults.at(-1)!;
+      const returned = readExecutionChildResultEvidence(input).at(-1)!;
       expect(returned.roleId).toBe("reviewer");
       expect(returned.outcome).toBe("completed");
       const receipt = JSON.parse(returned.summary) as Receipt;

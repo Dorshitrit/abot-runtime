@@ -1,3 +1,4 @@
+import { basketActivitySummary, basketStatusLabel } from "./tool-basket-activity-fields.js";
 import { textOf } from "./text-format.js";
 import { isStopResult } from "./request-stop-state.js";
 import {
@@ -142,6 +143,8 @@ function isMissingSkillLookup(message) {
 }
 
 export function formatEventLabel(message) {
+  const basketStatus = basketStatusLabel(message);
+  if (basketStatus !== undefined) return basketStatus;
   const receipt = projectRoleReturnEvent(message);
   if (receipt) return receipt.outcome === "failed" ? "Planner failed" : "Returned result";
   const delegation = projectRoleDelegationEvent(message);
@@ -207,6 +210,9 @@ function uncompletedToolLabel(message, name) {
 }
 
 export function formatEventDetail(message) {
+  if (basketStatusLabel(message) !== undefined) return "";
+  const basketSummary = basketActivitySummary(message);
+  if (basketSummary !== undefined) return basketSummary;
   const receipt = projectRoleReturnEvent(message);
   if (receipt) return receipt.summary;
   const delegation = projectRoleDelegationEvent(message);
@@ -295,6 +301,7 @@ export function isLowValueActivityEvent(message) {
     name === "thinking.completed" ||
     name === "context.window.snapshot" ||
     name === "context.window.provider_usage" ||
+    name === "model.step.timed_out" ||
     name === "answer.started" ||
     name === "token" ||
     name === "request.completed" ||

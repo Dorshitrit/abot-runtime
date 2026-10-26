@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { KnowledgeSkillDocument, KnowledgeSkillStore } from "../knowledge-skills/store.js";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
@@ -74,10 +75,10 @@ test("a failed read after child return suppresses later selection while retainin
         return JSON.stringify({ workingDirectory: "." });
       expect(JSON.stringify(input.messages)).toContain(guide.content);
       if (input.modelStep === "worker.result") return "The runtime owns canonical state.";
-      if (input.modelStep === "worker.decision") {
+      if (input.modelStep === "worker.evidence") {
         workers++;
         expect(harness.requestSteering.append({ steerId: `after-worker-${workers}`, text: `Finish after Worker ${workers}.` }).ok).toBe(true);
-        return { action: "return_result" };
+        return workerEvidenceDecision(input, false);
       }
       expect(input.modelStep).toBe("supervisor.decision");
       routes++;
@@ -96,7 +97,7 @@ test("a failed read after child return suppresses later selection while retainin
   expect(selections).toBe(2);
   expect(routes).toBe(3);
   expect(store.read.mock.calls).toEqual([[guide.skillId], ["missing-guide"]]);
-  expect(harness.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.decision")).toHaveLength(2);
+  expect(harness.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.evidence")).toHaveLength(2);
   expect(JSON.stringify(harness.gatewayInvoke.mock.calls.at(-1)![0].messages)).toContain(guide.content);
   expect(skillEvents(harness)).toEqual([
     ["runtime.state", { stage: "supervisor", phase: "skills", message: "Read Skills: First guide" }],
@@ -163,7 +164,7 @@ test("a child return permits one additional Skill batch in the same request", as
       if (supervisorFormatName(input) === "supervisor_working_directory")
         return JSON.stringify({ workingDirectory: "." });
       expect(JSON.stringify(input.messages)).toContain(guide.content);
-      if (input.modelStep === "worker.decision") return { action: "return_result" };
+      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
       if (input.modelStep === "worker.result") return "The first guide was applied.";
       expect(input.modelStep).toBe("supervisor.decision");
       routes++;

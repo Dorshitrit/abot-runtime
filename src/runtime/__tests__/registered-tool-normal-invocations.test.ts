@@ -56,17 +56,17 @@ describe("registered ordinary tool invocation executor", () => {
     });
     const handle = executor.operations[0]!.handle;
 
-    const first = executor.prepare({
+    const first = await executor.prepare({
       handle,
       controls: { path: "notes.txt", start_line: 1, end_line: 20 },
       intent: "Read the first range.",
     });
-    const sameActionDifferentIntent = executor.prepare({
+    const sameActionDifferentIntent = await executor.prepare({
       handle,
       controls: { end_line: 20, path: "notes.txt", start_line: 1 },
       intent: "Use different presentation text.",
     });
-    const differentRange = executor.prepare({
+    const differentRange = await executor.prepare({
       handle,
       controls: { path: "notes.txt", start_line: 21, end_line: 40 },
     });
@@ -114,7 +114,7 @@ describe("registered ordinary tool invocation executor", () => {
     ]);
   });
 
-  test("keeps distinct web-query values as distinct normalized actions", () => {
+  test("keeps distinct web-query values as distinct normalized actions", async () => {
     const execute = vi.fn(async () => ({
       ok: true,
       tool: "web_search",
@@ -126,17 +126,17 @@ describe("registered ordinary tool invocation executor", () => {
       execute,
     });
     const handle = executor.operations[0]!.handle;
-    const first = executor.prepare({
+    const first = await executor.prepare({
       handle,
       controls: { query: "runtime supervision" },
       intent: "Search for the first topic.",
     });
-    const sameQuery = executor.prepare({
+    const sameQuery = await executor.prepare({
       handle,
       controls: { query: "runtime supervision" },
       intent: "Use different presentation text.",
     });
-    const differentQuery = executor.prepare({
+    const differentQuery = await executor.prepare({
       handle,
       controls: { query: "batch execution contracts" },
       intent: "Search for the second topic.",

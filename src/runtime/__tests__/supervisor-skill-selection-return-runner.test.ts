@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import { createRequestExecutionScope } from "../request/execution-scope.js";
@@ -85,8 +86,9 @@ test.each(["completed", "failed"] as const)(
             expect(returnedContext![key]).toEqual(child[key]);
           return { action: "respond" };
         }
-        if (input.modelStep === "worker.decision")
-          return { action: outcome === "completed" ? "return_result" : "invalid_worker_action" };
+        if (input.modelStep === "worker.evidence")
+          return workerEvidenceDecision(input, outcome !== "completed");
+        if (input.modelStep === "worker.decision") return { action: "invalid_worker_action" };
         expect(input.modelStep).toBe("worker.result");
         return summary;
       },
@@ -101,7 +103,8 @@ test.each(["completed", "failed"] as const)(
     }
     expect(inputs.some(({ modelStep }) => modelStep === "degraded.finalization")).toBe(false);
     expect(inputs.filter(({ modelStep }) => modelStep === "worker.decision"))
-      .toHaveLength(outcome === "completed" ? 1 : 3);
+      .toHaveLength(outcome === "completed" ? 0 : 3);
+    expect(inputs.filter(({ modelStep }) => modelStep === "worker.evidence")).toHaveLength(1);
   },
 );
 

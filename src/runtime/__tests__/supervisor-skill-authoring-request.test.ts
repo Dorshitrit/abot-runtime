@@ -1,3 +1,4 @@
+import { workerEvidenceReply } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type WebSocket from "ws";
 import * as capabilityComposition from "../request/worker-capability-composition.js";
@@ -47,9 +48,9 @@ async function runAuthoring(f: Fixture, options: {
         options.inspectResponse?.(input);
         return { text: "The requested Skill operation is complete.", meta: {} };
       }
-      if (input.modelStep === "worker.decision") {
-        phases.push("worker.decision");
-        return { text: decision({ action: "return_result" }), meta: {} };
+      if (input.modelStep === "worker.evidence") {
+        phases.push("worker.evidence");
+        return workerEvidenceReply(input, false);
       }
       if (input.modelStep === "worker.result") {
         phases.push("worker.result");
@@ -94,8 +95,8 @@ async function runAuthoring(f: Fixture, options: {
   expect(events.filter(({ type }) => type === "failed")).toEqual([]);
   expect(events).toContainEqual(expect.objectContaining({ type: "completed" }));
   expect(discoveryCalls).toBe(options.expectedDiscoveryCalls ?? 2);
-  expect(phases.filter((phase) => ["supervisor_procedure_gate", "supervisor_delegation", "worker.decision", "worker.result", "supervisor_decision"].includes(phase)))
-    .toEqual(["supervisor_procedure_gate", "supervisor_delegation", "worker.decision", "worker.result", "supervisor_decision"]);
+  expect(phases.filter((phase) => ["supervisor_procedure_gate", "supervisor_delegation", "worker.evidence", "worker.result", "supervisor_decision"].includes(phase)))
+    .toEqual(["supervisor_procedure_gate", "supervisor_delegation", "worker.evidence", "worker.result", "supervisor_decision"]);
   expect(phases.slice(phases.indexOf("supervisor_skill_authoring") + 1))
     .toEqual(options.body ? ["raw", "response"] : ["response"]);
   return { phases, events };

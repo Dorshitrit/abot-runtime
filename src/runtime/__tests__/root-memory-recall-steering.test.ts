@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -123,7 +124,7 @@ function createRecallAfterChildHarness(options: Parameters<typeof createMemoryRe
     delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Check whether the saved preference is needed." }),
     decide(input) {
       if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-      if (input.modelStep === "worker.decision") return { action: "return_result" };
+      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
       if (input.modelStep === "worker.result") return "The current request requires the saved preference.";
       expect(supervisorFormatName(input)).toBe("supervisor_decision");
       return options.decide(input);
@@ -197,7 +198,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
         harness.memory.retrieve.mock.calls.map(([input]) => input.query),
       ).toEqual([REQUEST_PROMPT, RECALL_QUERY, FRESH_QUERY]);
       if (policy === "execution-agent-v1") expect(harness.getAdapters).not.toHaveBeenCalled();
-      else expect(harness.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.decision")).toHaveLength(1);
+      else expect(harness.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.evidence")).toHaveLength(1);
       expect(harness.request.onAnswerToken).toHaveBeenCalledExactlyOnceWith(
         FINAL_RESPONSE,
       );

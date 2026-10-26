@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { runRequestRunner } from "../request/runner.js";
 import { prepareInitialMemory } from "../long-term-memory/initial-context.js";
@@ -81,7 +82,7 @@ test("a model-selected recall replaces the initial reference for subsequent deci
     }),
     decide(input) {
       if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-      if (input.modelStep === "worker.decision") return { action: "return_result" };
+      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
       if (input.modelStep === "worker.result") return "The answer requires the user's stored formatting preference.";
       decisions += 1;
       if (decisions === 1) {

@@ -1,3 +1,4 @@
+import { workerEvidenceReply } from "./support/worker-evidence-script.js";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -52,6 +53,7 @@ test("SUPER carries one captured filesystem root through cwd, Planner, Worker, p
         workerCapabilityScope: { catalogGroupIds: ["write"] },
       }),
     },
+    { step: "worker.evidence", output: (input) => workerEvidenceReply(input, true).text },
     {
       step: "worker.decision",
       output: decision({
@@ -63,7 +65,7 @@ test("SUPER carries one captured filesystem root through cwd, Planner, Worker, p
       }),
     },
     { step: "tool_payload.raw", output: body },
-    { step: "worker.decision", output: decision({ action: "return_result" }) },
+    { step: "worker.evidence", output: (input) => workerEvidenceReply(input, false).text },
     {
       step: "worker.result",
       output: "Created index.html with the exact content.",
@@ -159,7 +161,7 @@ test("SUPER carries one captured filesystem root through cwd, Planner, Worker, p
     ) {
       assertFilesystemScope(input, root, null, true);
     } else if (
-      ["worker.decision", "capability.controls", "tool_payload.raw"].includes(
+      ["worker.evidence", "worker.decision", "worker.result", "capability.controls", "tool_payload.raw"].includes(
         input.modelStep!,
       )
     ) {
@@ -167,7 +169,7 @@ test("SUPER carries one captured filesystem root through cwd, Planner, Worker, p
     } else {
       expect(capsules(input, RUNTIME_FILESYSTEM_SCOPE_KIND)).toEqual([]);
     }
-    if (input.modelStep === "worker.decision") {
+    if (["worker.evidence", "worker.decision", "worker.result"].includes(input.modelStep!)) {
       expect(capsules(input, "runtime_worker_assignment")).toEqual([
         expect.objectContaining({
           workingDirectory: "LUNA",

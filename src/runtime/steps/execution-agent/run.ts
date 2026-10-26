@@ -74,6 +74,7 @@ export async function runExecutionAgentDecision(
     modelStep: input.modelStep,
     format: input.format,
     messages: input.messages,
+    ...(input.basketCandidates ? { optionalContextProjection: input.basketCandidates.remove } : {}),
     contextCompaction: createSessionMemoryAwareCompactionController(
       request,
       createExecutionAgentCompactionController(request, {

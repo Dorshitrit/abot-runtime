@@ -17,7 +17,7 @@ export function projectToolMediaMessages(params: {
 }
 
 function isToolMediaConsumer(step: ModelStep): boolean {
-  return ["execution.decision", "execution.response", "worker.decision", "worker.result"].includes(step);
+  return ["execution.decision", "execution.response", "capability.controls", "worker.evidence", "worker.decision", "worker.result"].includes(step);
 }
 
 function projectMessage(message: ChatMessage, params: Parameters<typeof projectToolMediaMessages>[0]): ChatMessage {
@@ -62,7 +62,8 @@ function readOriginalEvidence(message: ChatMessage, content: Record<string, unkn
     if (!result || result.executionId !== message.toolCallId) throw new Error("tool_media_result_binding_invalid");
     return readExecutionEvidence(result);
   }
-  if (!step.startsWith("worker.") || message.role !== "user") return [];
+  const usesWorkerEvidenceLane = step.startsWith("worker.") || step === "capability.controls";
+  if (!usesWorkerEvidenceLane || message.role !== "user") return [];
   if (content.kind !== "runtime_request_tool_results_v1") return [];
   if (!Array.isArray(content.results)) return [];
   return content.results.flatMap((entry) => {

@@ -38,6 +38,7 @@ function matchesCanonicalDependencyResult(
   if (!expected) return false;
   if (result.resultRef !== expected.resultRef) return false;
   if (result.producerCallId !== expected.producerCallId) return false;
+  if (result.producerObjective !== expected.producerObjective) return false;
   if (result.roleId !== expected.roleId) return false;
   if (result.outcome !== expected.outcome) return false;
   return result.summary === expected.summary;

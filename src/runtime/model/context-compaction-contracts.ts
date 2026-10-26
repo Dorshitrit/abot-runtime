@@ -2,6 +2,19 @@ import type { ChatMessage } from "../../model-gateway/types.js";
 
 export type ModelStepCompactionScope = "session_history" | "active_request";
 
+/** Feedback from the consumer envelope, local to one additional compaction cycle. */
+export type ContextCompactionProjectionRepair = Readonly<{
+  reason: "projection_not_reduced";
+  originalInputTokens: number;
+  candidateInputTokens: number;
+  targetInputTokens: number;
+}>;
+
+export type ModelStepCompactionPreparationContext = Readonly<{
+  boundSteeringVersion?: number;
+  projectionRepair?: ContextCompactionProjectionRepair;
+}>;
+
 /** Provisional checkpoint. Active-request owners commit synchronously. */
 export type ModelStepContextCompactionPreparation = Readonly<{
   messages: readonly ChatMessage[];
@@ -26,9 +39,11 @@ export type ModelStepCompactionStageOutcome =
 export type ModelStepCompactionStage = Readonly<{
   compactionScope: ModelStepCompactionScope;
   scopeId: string;
+  /** The owning compactor supports a minimal-instruction projection repair. */
+  supportsProjectionRepair?: true;
   prepare(
     messages: readonly ChatMessage[],
-    context?: Readonly<{ boundSteeringVersion?: number }>,
+    context?: ModelStepCompactionPreparationContext,
   ): Promise<ModelStepCompactionStageOutcome>;
 }>;
 

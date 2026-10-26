@@ -1,3 +1,4 @@
+import { workerEvidenceReply } from "./worker-evidence-script.js";
 import { vi } from "vitest";
 import type { ModelGatewayClient } from "../../ports.js";
 import { SUPERVISOR_WORKER_V1_EXECUTION_POLICY } from "../../request/role-executor-composition.js";
@@ -69,6 +70,7 @@ export function createPlannerReturnApprovalFixture(approved: boolean) {
           meta: {},
         };
       }
+      if (input.modelStep === "worker.evidence") return workerEvidenceReply(input, workerCount === 0);
       if (input.modelStep === "worker.decision") {
         workerCount += 1;
         return {
@@ -114,6 +116,7 @@ export function createPlannerReturnApprovalFixture(approved: boolean) {
             "supervisor.decision": { timeoutMs: 20_000 },
             "supervisor.response": { timeoutMs: 20_000 },
             "planner.decision": { timeoutMs: 20_000 },
+            "worker.evidence": { timeoutMs: 20_000 },
             "worker.decision": { timeoutMs: 20_000 },
             "worker.result": { timeoutMs: 20_000 },
             "capability.controls": { timeoutMs: 20_000 },

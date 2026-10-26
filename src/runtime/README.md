@@ -58,9 +58,16 @@ The production path is:
 5. An authority permitted by the frozen policy may select one or more
    capabilities from its effective request-scoped catalog. The shared binding
    executes them, commits the settled results, and resumes that same canonical
-   call. Execution Agent results are projected through a provider-native,
-   mechanically linked tool-call/result lane; the runtime does not select the
-   next semantic action. Before its first direct capability execution, the
+   call. Execution Agent capability and completed child-role results are
+   projected through a provider-native, mechanically linked call/result lane;
+   the runtime does not select the next semantic action. The reducer records
+   the parent activation when opening each child, so accepted child objectives
+   and results interleave with capabilities and memory recalls without guessing
+   from prose or call IDs. EA decisions and response authoring share these exact
+   evidence bytes and compaction identities; response authoring remains
+   presentation-only. State carries result references instead of duplicate
+   child summaries. Older checkpoints without child ordering metadata retain
+   their original passive summary projection. Before its first direct capability execution, the
    kernel establishes one immutable normalized working directory on the root
    call from the accepted Execution Agent decision; an explicit `null`
    selection resolves to `.`.
@@ -530,7 +537,10 @@ Current-session conversation continuity is core-owned. The raw transcript stays
 canonical, while root decision and response steps receive one passive session
 checkpoint plus every uncovered settled turn. A standalone assistant initiative
 is a settled turn with no user message; it stays in ordinary chronological history
-and follows the same retention policy. At the shared 70 percent context threshold,
+and follows the same retention policy. EA decision and response steps use a
+90 percent soft context threshold; other steps retain 70 percent. Input admission
+still preserves configured output and safety reserves, which can require
+compaction before the soft threshold. At the selected threshold,
 the runtime summarizes only the old settled prefix and keeps the latest ten turns
 raw. The checkpoint is persisted with exact message fingerprints and an optimistic
 source revision; it is not

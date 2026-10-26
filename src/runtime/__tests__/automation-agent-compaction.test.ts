@@ -62,6 +62,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
   async (policy) => {
     const phases: string[] = [];
     const compactInputs: CompactionInput[] = [];
+    const superCompactInputs: Array<{ currentRequest: string }> = [];
     const tools = probeTools();
     tools.execute.mockImplementation(async (call) => {
       phases.push("tool.settled");
@@ -90,6 +91,15 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
         expect(JSON.stringify(input.messages)).toContain(sourceFact);
         return { text: sourceFact, meta: {} };
       }
+      const isSuperCompactionStage = policy === "supervisor-worker-v1" &&
+        input.modelStep?.startsWith("super.compact.");
+      if (isSuperCompactionStage) {
+        const messages = input.messages as readonly ChatMessage[];
+        const envelope = JSON.parse(messages.find(({ role }) => role === "user")!.content);
+        expect(envelope.kind).toBe("runtime_super_compaction_stage_input_v1");
+        superCompactInputs.push(envelope.baseCapsule);
+        return { text: sourceFact, meta: {} };
+      }
       if (input.modelStep !== "context.compact") return scriptedInvoke(input);
       const messages = input.messages as readonly ChatMessage[];
       const compactInput = readCompactionEnvelope(messages) as CompactionInput;
@@ -100,6 +110,13 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     const studio = fixture.application.services.automations!;
     let draft = await studio.create("Compacted source evidence");
     draft = await addAgent(studio, draft, "Observe and report");
+    if (policy === "supervisor-worker-v1") {
+      // This large-source fixture exercises several RAW windows and merge stages.
+      draft = await studio.updateDraft(draft.automationId, draft.revision, {
+        kind: "update_definition",
+        patch: { limits: { ...draft.definition.limits, maxModelCallsPerRun: 128 } },
+      });
+    }
     const nodeId = draft.definition.body.children[0]!.id;
     draft = await studio.updateDraft(draft.automationId, draft.revision, {
       kind: "update_node",
@@ -143,15 +160,21 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     expect(tools.execute).toHaveBeenCalledOnce();
     expect(fixture.invokeRaw).not.toHaveBeenCalled();
 
-    expect(compactInputs.length).toBeGreaterThan(0);
-    expect(phases.indexOf("context.compact")).toBeGreaterThan(
+    const observedCompactionInputs = policy === "execution-agent-v1"
+      ? compactInputs : superCompactInputs;
+    const firstCompactionStep = policy === "execution-agent-v1"
+      ? "context.compact" : "super.compact.coverage";
+    expect(observedCompactionInputs.length).toBeGreaterThan(0);
+    expect(phases.indexOf(firstCompactionStep)).toBeGreaterThan(
       phases.indexOf("tool.settled"),
     );
     expect(
-      compactInputs.some((input) => JSON.stringify(input).includes(sourceFact)),
+      observedCompactionInputs.some((input) => JSON.stringify(input).includes(sourceFact)),
     ).toBe(true);
-    for (const input of compactInputs)
+    for (const input of observedCompactionInputs)
       expect(input.currentRequest).toBe(expectedAssignment);
+    if (policy === "supervisor-worker-v1")
+      expect(compactInputs).toHaveLength(0);
 
     const prefix = policy === "execution-agent-v1" ? "execution" : "supervisor";
     const modelCalls = fixture.invoke.mock.calls.map(([call]) => call);
@@ -170,7 +193,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     const resumedStep =
       policy === "execution-agent-v1"
         ? "execution.decision"
-        : "worker.decision";
+        : "worker.evidence";
     const resumed = modelCalls
       .filter((call) => call.modelStep === resumedStep)
       .at(-1)!;

@@ -27,6 +27,7 @@ export function createInvalidOutputRequest(
         [
           "supervisor.decision",
           "planner.decision",
+          "worker.evidence",
           "worker.decision",
           "worker.result",
           "reviewer.decision",

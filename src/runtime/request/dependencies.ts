@@ -9,7 +9,10 @@ import type { EventSinkFactory, ModelGatewayClient } from "../ports.js";
 import { loadRequestRunnerConfig } from "../config/runner/loader.js";
 import { createRequestModelPolicy } from "../config/runner/model-policy.js";
 import type { RequestHandlerOptions } from "./contracts.js";
-import { createModelSessionMemoryCompactor } from "../context/session-memory/index.js";
+import {
+  composeSessionMemoryCompactors,
+  SESSION_MEMORY_COMPACTORS,
+} from "../context/super-compaction/history-routing.js";
 import { createInMemoryLongTermMemoryRepository } from "../adapters/long-term-memory/in-memory-repository.js";
 import { createLongTermMemoryService } from "../long-term-memory/service.js";
 
@@ -30,13 +33,17 @@ const defaultLongTermMemoryService = createLongTermMemoryService({
 });
 
 export function resolveRequestDependencies(options: RequestHandlerOptions) {
+  const sessionMemoryCompactors = composeSessionMemoryCompactors(
+    options.sessionMemoryCompactor,
+    options[SESSION_MEMORY_COMPACTORS],
+  );
   return {
     eventSinkFactory: options.eventSinkFactory ?? defaultEventSinkFactory,
     modelGatewayClient: options.modelGatewayClient ?? defaultModelGatewayClient,
     sessionStore: options.sessionStore ?? defaultRuntimeSessionStore,
     attachmentStore: options.attachmentStore,
-    sessionMemoryCompactor:
-      options.sessionMemoryCompactor ?? createModelSessionMemoryCompactor(),
+    sessionMemoryCompactor: sessionMemoryCompactors.legacy,
+    superSessionMemoryCompactor: sessionMemoryCompactors.super,
     longTermMemory: options.longTermMemory ?? defaultLongTermMemoryService,
     toolApprovalController: options.toolApprovalController,
     loadDecisionEnvironment: () => {

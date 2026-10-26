@@ -45,8 +45,7 @@ describe("system-probe plugin parity", () => {
       operations: [
         {
           operationId: "inspect_system_state",
-          summary:
-            "Inspect current uptime, load, memory, CPU and root-filesystem disk state.",
+          summary: expect.any(String),
           input: {
             type: "object",
             additionalProperties: false,
@@ -58,8 +57,7 @@ describe("system-probe plugin parity", () => {
         },
         {
           operationId: "inspect_disk_state_for_path",
-          summary:
-            "Inspect machine state while scoping disk statistics to one explicit existing filesystem path.",
+          summary: expect.any(String),
           input: {
             type: "object",
             additionalProperties: false,

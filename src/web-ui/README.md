@@ -68,6 +68,14 @@ their applied configuration. Saved edits remain on disk for a later explicit
 Apply. A failed restoration is reported as unavailable, and shutdown never
 restarts a gateway or environment during rollback.
 
+A model step reaching its Runtime timeout shows a dismissible suggestion in the
+current conversation. **Double & restart** saves twice the recorded limit for
+that model's specific calibration step, then uses the existing idle-only Apply.
+If work is still active, the change stays saved and Restart can be requested
+later. Shared or changed configuration targets open Model settings instead of
+being changed automatically. Network errors and user cancellation do not trigger
+the suggestion; it does not replace the agent's response or retry its request.
+
 An external local gateway is retained when its effective configuration inputs
 are unchanged from every active Runtime environment's startup snapshot. Plugin
 selection alone does not require replacing that gateway. Changed model policy,
@@ -436,3 +444,24 @@ need a token. The web server resolves it in this order:
    The web server does not read adjacent application or bridge project files.
    Production bridge URLs and tokens must be provided explicitly through the
    environment.
+
+## Information basket
+
+The local Runtime backend exposes Resources at `/resources`. The personal basket
+is available across chats in the selected Runtime environment. Its sources remain
+at their original filesystem paths; this workspace never uploads or copies files.
+The Runtime picker returns actual host paths. External browser drops retain only
+filenames in the current view until the user explicitly links their source paths.
+
+The table shows canonical indexing status, source metadata and last indexing time.
+Search and status filters are local projections. Re-index and removal carry the
+observed source revision; removal deletes only the basket registration. Embedding
+profile and enable changes use explicit Save settings and a settings revision.
+Supported formats come from the basket service. No conversation identity is saved
+in the Resources address.
+
+Committed `workspace_changed` invalidations for `information-basket` refresh the
+active visible workspace. Bursts coalesce, and reconnect, visibility return and
+accepted environment changes reconcile through a fresh service read. Stale reads
+and mutations cannot update another environment. The external bridge has no
+basket management adapter.

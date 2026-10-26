@@ -1,7 +1,4 @@
-import { semanticCompactionReplacementSlots } from "./semantic-compaction-replacement-fixture.js";
-import { readCompactionEnvelope } from "./semantic-compaction-contract-fixture.js";
 import { vi } from "vitest";
-import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { ModelGatewayClient } from "../../ports.js";
 import type { RequestRunnerConfig } from "../../config/runner/contracts.js";
 import { projectRequestToolResults } from "../../context/request-tool-results.js";
@@ -12,7 +9,11 @@ import type {
 } from "../../orchestration/role-calls/index.js";
 import { buildWorkerDecisionInput } from "../../steps/worker-decision/input.js";
 import { completeWorkerHandoffEvidence } from "../../steps/worker-decision/worker-handoff-compaction.js";
-import { createTestRequestExecutionScope } from "./request-execution-scope.js";
+import {
+  createTestRequestExecutionScope,
+  deriveTestRequestExecutionScope,
+} from "./request-execution-scope.js";
+import { projectSuperCompactionConfiguration } from "../../context/super-compaction/configuration.js";
 import {
   commit,
   mixedWorkerFixture,
@@ -42,37 +43,27 @@ export async function createWorkerHandoffFixture(
   });
   const abort = new AbortController();
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-    if (input.modelStep === "worker.decision")
+    if (input.modelStep === "worker.evidence")
       return {
-        text: JSON.stringify({ decision: { action: "return_result" } }),
+        text: JSON.stringify({
+          decision: {
+            requiresExecution: false,
+            established:
+              "The supplied observations establish the bounded inspection.",
+            remaining: "",
+            evidenceRefs: view.results.map(({ executionId }) => executionId),
+          },
+        }),
         meta: {},
       };
     if (input.modelStep === "worker.result")
       return { text: LATE_HANDOFF_MARKER, meta: {} };
-    if (input.modelStep !== "context.compact")
+    if (!input.modelStep?.startsWith("super.compact."))
       throw new Error("unexpected_handoff_model_step");
-    const messages = input.messages as readonly ChatMessage[];
-    const envelope = readCompactionEnvelope(messages);
     await options.duringCompaction?.({ ledger: base.ledger, call, abort });
-    return {
-      text: JSON.stringify({
-        continuation: {
-          ...base.checkpoint.continuation,
-          findings: [LATE_HANDOFF_MARKER],
-          evidenceRefs: [
-            ...base.checkpoint.continuation.evidenceRefs,
-            ...envelope.newSources!.map(({ sourceRef }) => sourceRef),
-          ],
-        },
-        sourceDigests: semanticCompactionReplacementSlots(
-          envelope,
-          () => LATE_HANDOFF_MARKER,
-        ),
-      }),
-      meta: {},
-    };
+    return { text: LATE_HANDOFF_MARKER, meta: {} };
   });
-  const request = createTestRequestExecutionScope({
+  const original = createTestRequestExecutionScope({
     requestId: head.state.requestId,
     sessionId: "worker-handoff-session",
     prompt: "Inspect the target.",
@@ -87,6 +78,7 @@ export async function createWorkerHandoffFixture(
         attachmentReserveTokens: 0,
       },
       steps: {
+        "worker.evidence": { timeoutMs: 20000 },
         "worker.decision": { timeoutMs: 20000 },
         "worker.result": { timeoutMs: 20000 },
         "context.compact": { timeoutMs: 20000 },
@@ -100,6 +92,7 @@ export async function createWorkerHandoffFixture(
       defaults: {
         profileId: "test",
         steps: {
+          "worker.evidence": "test",
           "worker.decision": "test",
           "worker.result": "test",
           "context.compact": "test",
@@ -121,6 +114,13 @@ export async function createWorkerHandoffFixture(
     onAnswerToken: vi.fn(),
     onEvent: vi.fn(),
   });
+  const request = deriveTestRequestExecutionScope(
+    original,
+    projectSuperCompactionConfiguration(
+      original,
+      original.executionPolicy.authority,
+    ),
+  );
   const decisionOptions: Parameters<typeof buildWorkerDecisionInput>[1] = {
     call,
     requestToolResults: view,

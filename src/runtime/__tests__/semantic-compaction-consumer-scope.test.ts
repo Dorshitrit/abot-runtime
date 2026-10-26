@@ -10,6 +10,7 @@ import {
 } from "../context/request-tool-results.js";
 import { projectSemanticCompactionDependencyResults } from "../context/semantic-compaction/dependency-results.js";
 import { SEMANTIC_COMPACTION_EVIDENCE_SCOPE } from "../context/semantic-compaction/evidence-scope.js";
+import { projectSuperContinuation } from "../context/super-compaction/continuation-projection.js";
 import { createSemanticCompactionSha256Fingerprint as hash } from "../context/semantic-compaction/contracts.js";
 import {
   captureRequestContextCompaction,
@@ -34,9 +35,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
         temporalContext,
       });
       await fixture.run();
-      expect(fixture.counts.map(({ inputTokens }) => inputTokens)).toEqual([
-        23814, 22673, 18000,
-      ]);
+      expect(fixture.counts.map(({ inputTokens }) => inputTokens)).toEqual(fixture.pressureCounts);
       const before = fixture.counts[0]!.messages.filter(
         ({ content }) => content === capsule.content,
       );
@@ -47,15 +46,18 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
           ({ content }) => content === capsule.content,
         ),
       ).toEqual(before);
-      const activeCompactor = fixture.modelInputs.find(
-        ({ step, messages }) =>
-          step === "context.compact" &&
-          messages.some(({ content }) =>
+      const activeCompactors = fixture.modelInputs.filter(({ step, messages }) => {
+        if (policy === "execution-agent-v1")
+          return step === "context.compact" && messages.some(({ content }) =>
             content.includes("runtime_semantic_compaction_input_v2"),
-          ),
-      );
-      expect(activeCompactor).toBeDefined();
-      expect(JSON.stringify(activeCompactor)).not.toContain(
+          );
+        if (!step.startsWith("super.compact.")) return false;
+        const { baseCapsule } = JSON.parse(messages.find(({ role }) => role === "user")!.content);
+        return baseCapsule.authority === "settled_evidence" ||
+          baseCapsule.sourceAuthority === "settled_evidence";
+      });
+      expect(activeCompactors.length).toBeGreaterThan(0);
+      expect(JSON.stringify(activeCompactors)).not.toContain(
         temporalContext.currentDateTime,
       );
       expect(fixture.request.temporalContext).toEqual(temporalContext);
@@ -83,6 +85,9 @@ test("legacy result projection derives source-only scope without changing exact 
     SEMANTIC_COMPACTION_EVIDENCE_SCOPE,
   );
   expect(projected.results).toEqual([]);
+  expect(projected.semanticCheckpoint.continuation).toEqual(
+    legacyCheckpoint.continuation,
+  );
   expect(
     projected.semanticCheckpoint.coveredResults.map(
       (result: { acceptedAction: unknown }) => result.acceptedAction,
@@ -113,6 +118,9 @@ test("bound SUPER checkpoint projection adds passive scope after canonical sourc
   );
   expect(projected.semanticCheckpoint.coveredSources).toEqual(
     checkpoint.sourceDigests,
+  );
+  expect(projected.semanticCheckpoint.continuation).toEqual(
+    projectSuperContinuation(checkpoint.continuation),
   );
   expect(
     projected.semanticCheckpoint.coveredResults.map(

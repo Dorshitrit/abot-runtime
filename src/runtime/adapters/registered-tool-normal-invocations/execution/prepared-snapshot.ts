@@ -41,15 +41,17 @@ export type RegisteredToolInvocationSnapshot = Readonly<{
   intent?: string;
   eventMeta?: Record<string, unknown>;
   executionIdentity?: string;
+  requiresApproval?: boolean;
   approvalRequest?: ToolApprovalRequest;
 }>;
 
 /** Validate a saved exact call; restoration never invokes normalization or payload authoring. */
-export function restoreNormalInvocation(params: {
+export async function restoreNormalInvocation(params: {
   executor: RegisteredToolNormalInvocationExecutorParams;
   registrations: readonly RegisteredToolNormalInvocation[];
   snapshot: unknown;
-}): RegisteredToolNormalInvocationPreparation {
+}): Promise<RegisteredToolNormalInvocationPreparation> {
+  params.executor.abortSignal.throwIfAborted();
   const value = params.snapshot as RegisteredToolInvocationSnapshot | null;
   if (!isInvocationSnapshot(value)) throw invalid();
   if (value.toolPermissionMode !== params.executor.toolPermissionMode)
@@ -83,9 +85,12 @@ export function restoreNormalInvocation(params: {
     failedMessage: "The saved invocation could not be validated.",
   });
   if (!validation.ok) throw invalid();
-  const binding = captureExecutionBinding(target.registration.adapter, call);
+  const binding = await captureExecutionBinding(target.registration.adapter, call, params.executor);
   if (!binding.ok) throw invalid();
+  if ((binding.requiresApproval === true) !== (value.requiresApproval === true))
+    throw invalid();
   const fingerprint = createRegisteredToolActionFingerprint({
+    requiresApproval: binding.requiresApproval,
     contractVersion: target.registration.contract.version,
     operationId: target.operation.operationId,
     call,
@@ -99,19 +104,21 @@ export function restoreNormalInvocation(params: {
   const force =
     source.operation.approval === "always" ||
     target.operation.approval === "always";
-  const required = requiresRegisteredToolActionApproval(
+  const required = binding.requiresApproval === true || requiresRegisteredToolActionApproval(
     params.executor.toolPermissionMode, source, target,
   );
   const missingRequiredApproval = required && !value.approvalRequest;
   if (missingRequiredApproval) throw invalid();
   // Existing ASK approvals remain valid even when core reads no longer need new ones.
   const unexpectedRecordedApproval = value.approvalRequest &&
+    binding.requiresApproval !== true &&
     !requiresToolActionApproval(params.executor.toolPermissionMode, force);
   if (unexpectedRecordedApproval) throw invalid();
   if (value.approvalRequest) {
     if (!isRequestApproval(value.approvalRequest, params.executor.requestId))
       throw invalid();
     const approvalFingerprint = createRegisteredToolActionFingerprint({
+      requiresApproval: binding.requiresApproval,
       contractVersion: target.registration.contract.version,
       operationId: target.operation.operationId,
       call: value.approvalRequest.call,
@@ -120,6 +127,7 @@ export function restoreNormalInvocation(params: {
     if (approvalFingerprint !== fingerprint) throw invalid();
   }
   return createPreparedNormalInvocation({
+    requiresApproval: binding.requiresApproval,
     executor: params.executor,
     source,
     target,
@@ -152,6 +160,7 @@ function isInvocationSnapshot(
     (value.eventMeta === undefined || isRecord(value.eventMeta)) &&
     (value.executionIdentity === undefined ||
       typeof value.executionIdentity === "string") &&
+    (value.requiresApproval === undefined || typeof value.requiresApproval === "boolean") &&
     (value.approvalRequest === undefined || isRecord(value.approvalRequest))
   );
 }

@@ -1,3 +1,4 @@
+import { projectCheckpointContinuation } from "./semantic-compaction/continuation-projection.js";
 import type { CheckpointProjectionOptions } from "./semantic-compaction/checkpoint-message.js";
 import { projectCompactedRegisteredOutputSummary } from "./compacted-capability-result-receipt.js";
 import { CompactionSourceInvariantError } from "./compaction-source-invariant.js";
@@ -131,7 +132,7 @@ export function projectRequestToolResultsCheckpointMessage(
         ),
         ...(options.includeContinuation === false
           ? {}
-          : { continuation: checkpoint.continuation }),
+          : { continuation: projectCheckpointContinuation(checkpoint.continuation, options.projectContinuation) }),
         coveredResults: [...coveredResults.values()],
       },
       results: remainingResults,

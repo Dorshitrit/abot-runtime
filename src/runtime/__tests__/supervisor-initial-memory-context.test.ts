@@ -41,7 +41,7 @@ test("session compaction retains initial memory in response authoring after the 
   });
   const original = f.invoke.getMockImplementation()!;
   f.invoke.mockImplementation(withSupervisorPreparation(async input => {
-    if (input.modelStep === "context.compact") return original(input);
+    if (input.modelStep === "context.compact" || input.modelStep?.startsWith("super.compact.")) return original(input);
     if (supervisorFormatName(input) === "supervisor_procedure_gate") {
       expect(modelMessages(input)).not.toContainEqual(message);
       expect(JSON.stringify(input.messages)).toContain(MEMORY_RECORD.content);
@@ -61,16 +61,18 @@ test("session compaction retains initial memory in response authoring after the 
   }));
   vi.mocked(f.request.modelGatewayClient.countInputTokens!).mockImplementation(async input => ({
     inputTokens: input.modelStep === "context.compact"
+      || input.modelStep?.startsWith("super.compact.")
       || JSON.stringify(input.messages).includes("runtime_session_memory_checkpoint_v1") ? 1000 : 24000,
     profileId: "compaction-test", provider: "openai", model: "compaction-test-model",
     contextWindowTokens: 32000, source: "provider_input_token_count",
   }));
   await expect(runRequestRunner(request)).resolves.toMatchObject({ output: "A memory-informed answer." });
   expect(f.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-    "supervisor.decision", "supervisor.decision", "context.compact", "supervisor.response", "supervisor.response",
+    "supervisor.decision", "supervisor.decision", "super.compact.coverage", "super.compact.content",
+    "supervisor.response", "supervisor.response",
   ]);
   for (const [input] of f.invoke.mock.calls) {
-    if (input.modelStep === "context.compact") continue;
+    if (input.modelStep === "context.compact" || input.modelStep?.startsWith("super.compact.")) continue;
     if (["supervisor_presentation", "supervisor_procedure_gate"].includes(supervisorFormatName(input) ?? "")) {
       expect(modelMessages(input)).not.toContainEqual(message);
       if (supervisorFormatName(input) === "supervisor_procedure_gate") expect(JSON.stringify(input.messages)).toContain(MEMORY_RECORD.content);

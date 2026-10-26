@@ -9,6 +9,7 @@ class ElementStub extends EventTarget {
   parentNode: ElementStub | null = null;
   ownerDocument: { body: ElementStub; activeElement: ElementStub | null } | undefined;
   capture: number | null = null;
+  closest() { return this.parentNode; }
   constructor(readonly box = { left: 12, top: 650, width: 146, height: 52 }) { super(); }
   append(node: ElementStub) {
     if (node.parentNode !== this && node.ownerDocument?.activeElement === node) node.ownerDocument.activeElement = null;
@@ -38,7 +39,8 @@ function fixture(saved: unknown = null, storageUnavailable = false) {
   const body = new ElementStub();
   const documentRoot = { body, activeElement: null as ElementStub | null };
   const root = new ElementStub(); root.ownerDocument = documentRoot;
-  const dockAnchor = new ElementStub();
+  const navigation = new ElementStub({ left: 0, top: 0, width: 166, height: 800 });
+  const dockAnchor = new ElementStub(); navigation.append(dockAnchor);
   const launcher = new ElementStub(); launcher.ownerDocument = documentRoot; dockAnchor.append(launcher);
   const panel = new ElementStub({ left: 0, top: 0, width: 390, height: 560 });
   const notice = new ElementStub({ left: 0, top: 0, width: 260, height: 90 });
@@ -53,9 +55,9 @@ function fixture(saved: unknown = null, storageUnavailable = false) {
     const rect = launcher.getBoundingClientRect();
     fire(launcher, "pointerdown", { button: 0, pointerId: 1, clientX: rect.left + 5, clientY: rect.top + 5 });
     fire(windowRoot, "pointermove", { pointerId: 1, clientX: x, clientY: y });
-    fire(windowRoot, "pointerup", { pointerId: 1 });
+    fire(windowRoot, "pointerup", { pointerId: 1, clientX: x, clientY: y });
   };
-  return { body, documentRoot, root, dockAnchor, launcher, panel, notice, windowRoot, storage, placement, move };
+  return { body, documentRoot, root, navigation, dockAnchor, launcher, panel, notice, windowRoot, storage, placement, move };
 }
 
 describe("SPARK browser placement", () => {
@@ -84,6 +86,55 @@ describe("SPARK browser placement", () => {
     expect(fire(f.launcher, "click").defaultPrevented).toBe(true); expect(open).not.toHaveBeenCalled();
     fire(f.launcher, "click"); expect(open).toHaveBeenCalledOnce();
     expect(f.launcher.capture).toBeNull();
+  });
+
+  test("dropping anywhere in the navigation restores the original dock and clears saved coordinates", () => {
+    const f = fixture({ x: 500, y: 400 });
+    f.dockAnchor.box.width = 0; f.dockAnchor.box.height = 0;
+    f.launcher.focus();
+    const open = vi.fn(); f.launcher.addEventListener("click", open);
+    f.move(80, 120);
+    expect(f.placement.isDocked()).toBe(true);
+    expect(f.launcher.parentNode).toBe(f.dockAnchor);
+    expect(f.launcher.classes.has("spark-launcher-floating")).toBe(false);
+    expect(f.launcher.style).toMatchObject({ position: "", left: "", top: "" });
+    expect(f.storage.removeItem).toHaveBeenCalledWith("abot.spark.launcher.position.v1");
+    expect(f.storage.setItem).not.toHaveBeenCalled();
+    expect(f.documentRoot.activeElement).toBe(f.launcher);
+    expect(fire(f.launcher, "click").defaultPrevented).toBe(true);
+    expect(open).not.toHaveBeenCalled();
+    fire(f.launcher, "click"); expect(open).toHaveBeenCalledOnce();
+  });
+
+  test("the release position decides docking, including a horizontal navigation bar", () => {
+    const f = fixture({ x: 500, y: 400 });
+    Object.assign(f.navigation.box, { left: 0, top: 0, width: 1000, height: 60 });
+    fire(f.launcher, "pointerdown", { button: 0, pointerId: 1, clientX: 505, clientY: 405 });
+    fire(f.windowRoot, "pointermove", { pointerId: 1, clientX: 600, clientY: 300 });
+    fire(f.windowRoot, "pointerup", { pointerId: 1, clientX: 600, clientY: 30 });
+    expect(f.placement.isDocked()).toBe(true);
+    expect(f.launcher.parentNode).toBe(f.dockAnchor);
+  });
+
+  test("cancelled drags over the navigation stay floating", () => {
+    const f = fixture({ x: 500, y: 400 });
+    fire(f.launcher, "pointerdown", { button: 0, pointerId: 1, clientX: 505, clientY: 405 });
+    fire(f.windowRoot, "pointermove", { pointerId: 1, clientX: 80, clientY: 120 });
+    fire(f.windowRoot, "pointercancel", { pointerId: 1, clientX: 80, clientY: 120 });
+    expect(f.placement.isDocked()).toBe(false);
+    expect(f.launcher.parentNode).toBe(f.body);
+    expect(f.storage.removeItem).not.toHaveBeenCalled();
+    expect(f.launcher.capture).toBeNull();
+  });
+
+  test("hidden navigation and drops just outside its bounds stay floating", () => {
+    const f = fixture({ x: 500, y: 400 });
+    f.move(167, 120);
+    expect(f.placement.isDocked()).toBe(false);
+    f.navigation.box.height = 0;
+    f.move(80, 0);
+    expect(f.placement.isDocked()).toBe(false);
+    expect(f.storage.removeItem).not.toHaveBeenCalled();
   });
 
   test("stored top, bottom and middle positions keep the popup above or below the icon", () => {

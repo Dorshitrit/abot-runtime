@@ -234,7 +234,7 @@ describe("FULL+ request authority", () => {
       toolPermissionMode: "full_access",
       nextApprovalId: () => "never",
     });
-    const result = executor.prepare({
+    const result = await executor.prepare({
       handle: executor.operations.find(
         ({ operation }) => operation.operationId === "ordinary",
       )!.handle,

@@ -1,3 +1,4 @@
+import { projectExecutionChildContinuations } from "./child-continuation.js";
 import { buildSparkConversationInstructions } from "../../context/spark-conversation-policy.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
@@ -58,9 +59,12 @@ export function buildExecutionAgentResponseInput(
       : {}),
     ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),
   });
+  const childContinuations = projectExecutionChildContinuations(options.head, options.call);
   const continuationMessages = buildExecutionContinuationMessages(
     options.head,
     options.call,
+    [],
+    childContinuations,
   );
   const operationSupervisionEvidenceMessage =
     buildImmediateOperationSupervisionEvidenceMessage(
@@ -100,7 +104,9 @@ export function buildExecutionAgentResponseInput(
         options.steeringSnapshot,
         options.memoryAuthoringMaxResponseChars !== undefined,
       ),
-      buildExecutionResponseStateMessage(options.head, options.call),
+      buildExecutionResponseStateMessage(
+        options.head, options.call, childContinuations.map(({ resultRef }) => resultRef),
+      ),
       ...(operationSupervisionEvidenceMessage
         ? [operationSupervisionEvidenceMessage]
         : []),

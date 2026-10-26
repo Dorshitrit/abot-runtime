@@ -157,7 +157,7 @@ export function createObservationControlsFixture(options: {
   });
   const countInputTokens = vi.fn<NonNullable<ModelGatewayClient["countInputTokens"]>>(async (input) => ({
     inputTokens: options.compactFirstRead && input.modelStep === "execution.decision" &&
-      JSON.stringify(input.messages).includes(rawMarker) ? 24000 : 1000,
+      JSON.stringify(input.messages).includes(rawMarker) ? 29_000 : 1000,
     profileId: "observation-test", provider: "openai", model: "observation-test",
     contextWindowTokens: 32000, source: "provider_input_token_count",
   }));

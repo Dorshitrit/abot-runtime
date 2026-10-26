@@ -54,10 +54,13 @@ test("schedule tool model updates clear only stale omitted reasoning controls", 
   });
   await service.runNow(job.id);
   const module = createSchedulingToolModule(service, config, async () => undefined);
-  const edit = (params: Record<string, unknown>) => module.implementation(
-    { action: "update", jobId: job.id, ...params },
-    { sharedState: { currentSessionId: "session" } },
-  );
+  const edit = async (params: Record<string, unknown>) => {
+    const input = { action: "update", jobId: job.id, ...params };
+    const binding = await module.adapter!.executionBinding!({ tool: "schedules", params: input },
+      { toolPermissionMode: "full_access", sessionId: "session" });
+    return module.implementation(input, { sharedState: { currentSessionId: "session" },
+      executionAuthority: { toolPermissionMode: "full_access", executionIdentity: binding.identity } });
+  };
   expect((await edit({ modelProfileId: "local" })).ok).toBe(true);
   expect((await service.get(job.id))?.reasoningPreference).toEqual(original);
   expect((await edit({ title: "Renamed" })).ok).toBe(true);

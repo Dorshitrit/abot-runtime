@@ -42,7 +42,8 @@ export function createSessionController({
   const sidebar = createSessionSidebarController({
     state, preferences, updatePinnedSessions, selectedEnvironmentId, showToast: shell?.showToast,
     render: () => { (onSidebarChange ?? render)(); void pagination?.load(); }, getFilteredSessions: filtered,
-    getPageInfo: () => pagination?.info(), getDeletedProjectIds,
+    getPageInfo: () => pagination?.info(),
+    getDeletedProjectIds: () => [...new Set([...getDeletedProjectIds(), ...(pagination?.info().deletedProjectIds ?? [])])],
   });
 
   function filtered() {
@@ -64,7 +65,9 @@ export function createSessionController({
     sessionActionsMenu.reset();
     dom.sessionsList.innerHTML = "";
     const sessions = filtered();
-    sidebar.renderSections({ root: dom.sessionsList, sessions, createSessionItem, renderGroups });
+    sidebar.renderSections({ root: dom.sessionsList, sessions, createSessionItem,
+      renderGroups: (options) => renderGroups({ ...options, pageInfo: pagination?.info(), onLoadProject: pagination?.loadProject }),
+    });
     pagination?.renderFooter();
     restoreSessionListViewport(dom.sessionsList);
   }
@@ -74,6 +77,7 @@ export function createSessionController({
     const pinned = isPinned(sessionId);
     const busy = state.busySessionIds.has(sessionId);
     const unreadCount = getNumber(session.unreadCount, 0);
+    const unreadLabel = `${unreadCount || 1} unread message${unreadCount > 1 ? "s" : ""}`;
     const unreadUnavailable = isSessionReadStateUnavailable(session);
     const hasUnread = unreadUnavailable
       ? false
@@ -91,9 +95,7 @@ export function createSessionController({
           ${unreadUnavailable ? '<span class="session-unread-badge" title="Unread status unavailable" aria-label="Unread status unavailable">?</span>' : ""}
           ${
             hasUnread
-              ? `<span class="session-unread-badge" title="${escapeAttribute(
-                  `${unreadCount || 1} unread`,
-                )}">${unreadCount > 99 ? "99+" : unreadCount || 1} unread</span>`
+              ? `<span class="session-unread-dot" role="img" title="${escapeAttribute(unreadLabel)}" aria-label="${escapeAttribute(unreadLabel)}"></span>`
               : ""
           }
         </div>
@@ -358,7 +360,7 @@ export function createSessionController({
 
   return {
     setPagination: (value) => { pagination = value; },
-    paginationQuery: sidebar.paginationQuery,
+    paginationQuery: () => ({ ...sidebar.paginationQuery(), ...(client?.supportsProjects?.() ? { sidebar: true } : {}) }),
     archiveSession: (sessionId) => sidebar.archiveSession(sessionId),
     applyReadState,
     applyTitle,

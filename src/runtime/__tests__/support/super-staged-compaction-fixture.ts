@@ -1,15 +1,15 @@
-import { semanticCompactionReplacementSlots } from "./semantic-compaction-replacement-fixture.js";
+import { workerEvidenceReply } from "./worker-evidence-script.js";
 import { vi } from "vitest";
 import { withSupervisorPreparation } from "./supervisor-model-phases.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { ModelGatewayClient } from "../../ports.js";
 import type { RequestRunnerConfig } from "../../config/runner/contracts.js";
 import { runRequestRunner } from "../../request/runner.js";
-import { createTestRequestExecutionScope } from "./request-execution-scope.js";
 import {
-  compactContinuation,
-  readCompactionEnvelope,
-} from "./semantic-compaction-contract-fixture.js";
+  createTestRequestExecutionScope,
+  deriveTestRequestExecutionScope,
+} from "./request-execution-scope.js";
+import { projectSuperCompactionConfiguration } from "../../context/super-compaction/configuration.js";
 
 export const STAGED_FACT =
   "report.txt: expected=ready; observed=failed; verification=reviewed";
@@ -30,7 +30,7 @@ function decodeCapsules(
 
 export function stagedSuperFixture(
   throughPlanner: boolean,
-  options: { twoWorkers?: boolean; repairCompactions?: boolean } = {},
+  options: { twoWorkers?: boolean } = {},
 ) {
   const prompt =
     "Inspect report.txt, compare observations, and review the evidence.";
@@ -41,7 +41,6 @@ export function stagedSuperFixture(
   let plannerTurns = 0;
   let workerTurns = 0;
   let controlsTurns = 0;
-  let compactionTurns = 0;
   const decision = (value: unknown) => ({
     text: JSON.stringify({ decision: value }),
     meta: {},
@@ -125,15 +124,18 @@ export function stagedSuperFixture(
         });
       return decision({ action: "return_result", result: STAGED_FACT });
     }
+    if (step === "worker.evidence") {
+      if (workerTurns !== 3) return workerEvidenceReply(input, true);
+      workerTurns = 0;
+      return workerEvidenceReply(input, false, STAGED_FACT);
+    }
     if (step === "worker.decision") {
       workerTurns += 1;
-      if (workerTurns % 4 !== 0)
-        return decision({
-          action: "invoke_capability",
-          capabilityId: descriptor.capabilityId,
-          intent: "Inspect the canonical target.",
-        });
-      return decision({ action: "return_result" });
+      return decision({
+        action: "invoke_capability",
+        capabilityId: descriptor.capabilityId,
+        intent: "Inspect the canonical target.",
+      });
     }
     if (step === "capability.controls") {
       controlsTurns += 1;
@@ -152,34 +154,8 @@ export function stagedSuperFixture(
         },
       });
     }
-    if (step === "context.compact") {
-      compactionTurns += 1;
-      const envelope = readCompactionEnvelope(messages);
-      const repairRequired =
-        options.repairCompactions && compactionTurns % 2 === 1;
-      return {
-        text: JSON.stringify({
-          continuation: repairRequired
-            ? compactContinuation({
-                currentState: "x".repeat(2001),
-                nextStep: "n".repeat(2000),
-                findings: ["a".repeat(2000), "b".repeat(2000), "x"],
-              })
-            : compactContinuation({
-                currentState: STAGED_FACT,
-                findings: [STAGED_FACT],
-                evidenceRefs: envelope.newSources!.map(
-                  ({ sourceRef }) => sourceRef,
-                ),
-              }),
-          sourceDigests: semanticCompactionReplacementSlots(
-            envelope,
-            () => STAGED_FACT,
-          ),
-        }),
-        meta: {},
-      };
-    }
+    if (step.startsWith("super.compact."))
+      return { text: STAGED_FACT, meta: {} };
     if (step === "worker.result") return { text: STAGED_FACT, meta: {} };
     if (step === "reviewer.decision") {
       const audit = decodeCapsules(messages).find(
@@ -211,14 +187,17 @@ export function stagedSuperFixture(
     throw new Error(`unexpected_staged_model_step:${step}`);
   });
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-    calls.push({ step: input.modelStep!, messages: input.messages as readonly ChatMessage[] });
+    calls.push({
+      step: input.modelStep!,
+      messages: input.messages as readonly ChatMessage[],
+    });
     return respond(input);
   });
   const countInputTokens = vi.fn<
     NonNullable<ModelGatewayClient["countInputTokens"]>
   >(async (input) => ({
     inputTokens:
-      input.modelStep === "worker.decision" &&
+      input.modelStep === "worker.evidence" &&
       decodeCapsules(input.messages as readonly ChatMessage[]).some(
         (capsule) =>
           capsule.kind === "runtime_request_tool_results_v1" &&
@@ -232,7 +211,7 @@ export function stagedSuperFixture(
     contextWindowTokens: 32000,
     source: "provider_input_token_count",
   }));
-  const request = createTestRequestExecutionScope({
+  const original = createTestRequestExecutionScope({
     requestId: `staged-super-${throughPlanner}`,
     sessionId: "staged-session",
     prompt,
@@ -251,6 +230,7 @@ export function stagedSuperFixture(
           "supervisor.decision",
           "supervisor.response",
           "planner.decision",
+          "worker.evidence",
           "worker.decision",
           "worker.result",
           "capability.controls",
@@ -284,6 +264,13 @@ export function stagedSuperFixture(
     onAnswerToken: vi.fn(),
     onEvent: (name, data) => events.push({ name, data }),
   });
+  const request = deriveTestRequestExecutionScope(
+    original,
+    projectSuperCompactionConfiguration(
+      original,
+      original.executionPolicy.authority,
+    ),
+  );
   return {
     request,
     calls,

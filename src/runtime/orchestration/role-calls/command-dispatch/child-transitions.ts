@@ -92,6 +92,7 @@ export function openChild(
   const child: RoleCallFrame = {
     callId: childCallId,
     parentCallId: callerCallId,
+    parentInvocationAttempt: caller.activationCount,
     roleId,
     depth,
     objective: objective.trim(),

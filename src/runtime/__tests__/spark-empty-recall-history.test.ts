@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { validateModelGatewayMessages } from "../../model-gateway/message-contract.js";
 import { buildSparkConversationInstructions } from "../context/spark-conversation-policy.js";
@@ -27,7 +28,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
         retrieve: async () => ({ available: true, records: [] }),
         decide(input) {
           if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-          if (input.modelStep === "worker.decision") return { action: "return_result" };
+          if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
           if (input.modelStep === "worker.result") return "The earlier suggestion should be checked by the root.";
           decisionCount += 1;
           if (decisionCount === 1) {
@@ -60,7 +61,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
         { role: "user", content: prompt }];
       const conversationContents = new Set(expectedConversation.map(({ content }) => content));
       const inputs = harness.invoke.mock.calls.map(([input]) => input)
-        .filter((input) => input.modelStep !== "worker.decision" && input.modelStep !== "worker.result"
+        .filter((input) => input.modelStep !== "worker.evidence" && input.modelStep !== "worker.result"
           && supervisorFormatName(input) !== "supervisor_working_directory");
       expect(inputs.filter(({ modelStep }) => String(modelStep).endsWith("response")).length).toBeGreaterThan(0);
       for (const [index, input] of inputs.entries()) {

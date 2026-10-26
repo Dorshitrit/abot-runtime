@@ -1,4 +1,3 @@
-import { semanticCompactionReplacementSlots } from "./support/semantic-compaction-replacement-fixture.js";
 import {
   readModelMessages,
   semanticCompactionDigestSlots,
@@ -19,7 +18,11 @@ import {
 import type { RequestToolResultsView } from "../context/request-tool-results.js";
 import type { RoleCallFrame } from "../orchestration/role-calls/index.js";
 import { WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS } from "../orchestration/worker-capabilities/index.js";
-import { createTestRequestExecutionScope } from "./support/request-execution-scope.js";
+import {
+  createTestRequestExecutionScope,
+  deriveTestRequestExecutionScope,
+} from "./support/request-execution-scope.js";
+import { projectSuperCompactionConfiguration } from "../context/super-compaction/configuration.js";
 import {
   runWorkerDecision,
   WORKER_DECISION_MODEL_STEP,
@@ -41,37 +44,6 @@ function createContinuation(
     blockers: Object.freeze([]),
     nextStep: "Resume from the semantic checkpoint.",
     ...overrides,
-  });
-}
-
-function createCumulativeContinuation(
-  sourceRefs: readonly string[],
-  previous?: SemanticCompactionContinuation,
-): SemanticCompactionContinuation {
-  const newSourceRefs = sourceRefs.filter(
-    (ref) => !previous?.evidenceRefs.includes(ref),
-  );
-  return createContinuation({
-    completed: Object.freeze([
-      ...(previous?.completed ?? []),
-      ...newSourceRefs.map((sourceRef) => `Compacted ${sourceRef}.`),
-    ]),
-    currentState: `Covered through ${sourceRefs.at(-1) ?? "the prior source"}.`,
-    findings: Object.freeze([
-      ...(previous?.findings ?? []),
-      ...newSourceRefs.map((sourceRef) => `Task-relevant ${sourceRef} facts.`),
-    ]),
-    evidenceRefs: Object.freeze([
-      ...(previous?.evidenceRefs ?? []),
-      ...newSourceRefs,
-    ]),
-    artifacts: Object.freeze([...(previous?.artifacts ?? [])]),
-    decisions: Object.freeze([...(previous?.decisions ?? [])]),
-    failedApproaches: Object.freeze([...(previous?.failedApproaches ?? [])]),
-    openWork: Object.freeze(["Continue the active Worker objective."]),
-    blockers: Object.freeze([...(previous?.blockers ?? [])]),
-    nextStep:
-      "Continue the active Worker objective without rereading evidence.",
   });
 }
 
@@ -311,60 +283,45 @@ describe("semantic request-context compaction", () => {
     let authorResult = false;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
       modelInputs.push(input);
-      const compactionInput =
-        input.modelStep === CONTEXT_COMPACTION_MODEL_STEP
-          ? (JSON.parse(readModelMessages(input.messages).at(-1)!.content) as {
-              newSources?: readonly { sourceRef: string }[];
-              previousContinuation?: SemanticCompactionContinuation;
-              previousCheckpoint?: Readonly<{
-                continuation: SemanticCompactionContinuation;
-              }>;
-              partialSourceFold?: Readonly<{
-                continuation: SemanticCompactionContinuation;
-              }>;
-              sourceSlice?: Readonly<{ sourceRef: string }>;
-            })
-          : undefined;
-      const compactedSourceRefs = compactionInput
-        ? (compactionInput.newSources?.map(({ sourceRef }) => sourceRef) ??
-          (compactionInput.sourceSlice
-            ? [compactionInput.sourceSlice.sourceRef]
-            : []))
-        : [];
-      const previousContinuation =
-        compactionInput?.partialSourceFold?.continuation ??
-        compactionInput?.previousContinuation ??
-        compactionInput?.previousCheckpoint?.continuation;
+      if (input.modelStep?.startsWith("super.compact.")) {
+        const capsule = JSON.parse(
+          readModelMessages(input.messages)[1]!.content,
+        ).baseCapsule;
+        const sourceRef = (capsule.sourceSlice ?? capsule.source).sourceRef;
+        const fact = `Task-relevant ${sourceRef} facts.`;
+        return {
+          text:
+            input.modelStep === "super.compact.continuation"
+              ? [
+                  ...new Set([
+                    ...(capsule.previousContinuation?.content.match(
+                      /Task-relevant execution-\d+ facts\./g,
+                    ) ?? []),
+                    fact,
+                  ]),
+                ].join("\n")
+              : fact,
+          meta: {},
+        };
+      }
       return {
-        text: compactionInput
-          ? JSON.stringify({
-              continuation: createCumulativeContinuation(
-                compactedSourceRefs,
-                previousContinuation,
-              ),
-              sourceDigests: semanticCompactionReplacementSlots(
-                compactionInput,
-                (sourceRef) => `Task-relevant ${sourceRef} facts.`,
-              ),
-            })
-          : input.modelStep === WORKER_RESULT_MODEL_STEP
+        text:
+          input.modelStep === WORKER_RESULT_MODEL_STEP
             ? "Compacted evidence handoff."
             : JSON.stringify({
-                decision: {
-                  ...(authorResult
-                    ? { action: "return_result" }
-                    : {
-                        action: "return_failure",
-                        reason: "Test stop after context projection.",
-                      }),
-                },
+                decision: authorResult
+                  ? { action: "return_result" }
+                  : {
+                      action: "return_failure",
+                      reason: "Test stop after context projection.",
+                    },
               }),
         meta: {},
       };
     });
     const onEvent = vi.fn();
     const contextCompactionStore = createRequestContextCompactionStore();
-    const request = createTestRequestExecutionScope({
+    const original = createTestRequestExecutionScope({
       requestId: "compact-request",
       sessionId: "compact-session",
       prompt: "Use the collected evidence.",
@@ -388,6 +345,13 @@ describe("semantic request-context compaction", () => {
       onAnswerToken: vi.fn(),
       onEvent,
     });
+    const request = deriveTestRequestExecutionScope(
+      original,
+      projectSuperCompactionConfiguration(
+        original,
+        original.executionPolicy.authority,
+      ),
+    );
     const call: RoleCallFrame = Object.freeze({
       callId: "call-worker",
       parentCallId: "call-root",
@@ -429,12 +393,14 @@ describe("semantic request-context compaction", () => {
     await runWorkerDecision(request, { call, requestToolResults });
 
     const firstCompactionInputs = modelInputs.filter(
-      ({ modelStep }) => modelStep === CONTEXT_COMPACTION_MODEL_STEP,
+      ({ modelStep }) => modelStep === "super.compact.coverage",
     );
     expect(firstCompactionInputs.length).toBeGreaterThanOrEqual(3);
     const suppliedSources = firstCompactionInputs.flatMap(({ messages }) => {
-      const payload = JSON.parse(readModelMessages(messages).at(-1)!.content);
-      return payload.newSources ?? [payload.sourceSlice];
+      const payload = JSON.parse(
+        readModelMessages(messages)[1]!.content,
+      ).baseCapsule;
+      return [payload.sourceSlice];
     });
     expect([
       ...new Set(suppliedSources.map(({ sourceRef }) => sourceRef)),
@@ -484,15 +450,16 @@ describe("semantic request-context compaction", () => {
         sourceFingerprint: createSemanticCompactionSha256Fingerprint(
           JSON.stringify(result),
         ),
-        digest: `Task-relevant ${result.executionId} facts.`,
+        digest: expect.stringContaining(
+          `Task-relevant ${result.executionId} facts.`,
+        ),
       })),
       continuation: {
-        findings: [
+        currentState: [
           "Task-relevant execution-1 facts.",
           "Task-relevant execution-2 facts.",
           "Task-relevant execution-3 facts.",
-        ],
-        evidenceRefs: ["execution-1", "execution-2", "execution-3"],
+        ].join("\n"),
       },
     });
     expect(
@@ -537,7 +504,7 @@ describe("semantic request-context compaction", () => {
     });
 
     const compactionInputs = modelInputs.filter(
-      ({ modelStep }) => modelStep === CONTEXT_COMPACTION_MODEL_STEP,
+      ({ modelStep }) => modelStep === "super.compact.coverage",
     );
     const freshCompactionInputs = compactionInputs.slice(
       firstCompactionInputs.length,
@@ -559,15 +526,17 @@ describe("semantic request-context compaction", () => {
         sourceFingerprint: createSemanticCompactionSha256Fingerprint(
           JSON.stringify(result),
         ),
-        digest: `Task-relevant ${result.executionId} facts.`,
+        digest: expect.stringContaining(
+          `Task-relevant ${result.executionId} facts.`,
+        ),
       })),
       continuation: {
-        findings: [
+        currentState: [
           "Task-relevant execution-1 facts.",
           "Task-relevant execution-2 facts.",
           "Task-relevant execution-3 facts.",
           "Task-relevant execution-4 facts.",
-        ],
+        ].join("\n"),
       },
     });
 
@@ -611,16 +580,20 @@ describe("semantic request-context compaction", () => {
       "RAW_EVIDENCE_5",
     );
     const handoffCompactionInputs = modelInputs.filter(
-      ({ modelStep }) => modelStep === CONTEXT_COMPACTION_MODEL_STEP,
+      ({ modelStep }) => modelStep === "super.compact.coverage",
     );
     expect(handoffCompactionInputs).toHaveLength(compactionInputs.length + 1);
+    const handoffContinuation = modelInputs
+      .filter(({ modelStep }) => modelStep === "super.compact.continuation")
+      .at(-1)!;
     expect(
-      JSON.parse(
-        readModelMessages(handoffCompactionInputs.at(-1)!.messages).at(-1)!
-          .content,
-      ),
+      JSON.parse(readModelMessages(handoffContinuation.messages)[1]!.content)
+        .baseCapsule,
     ).toMatchObject({
-      newSources: [expect.objectContaining({ sourceRef: "execution-5" })],
+      sourceSlice: {
+        sourceRef: "execution-5",
+        content: JSON.stringify(handoffRequestToolResults.results.at(-1)!),
+      },
     });
     const resultAuthorInputs = modelInputs.filter(
       ({ modelStep }) => modelStep === WORKER_RESULT_MODEL_STEP,
@@ -647,15 +620,13 @@ describe("semantic request-context compaction", () => {
           sourceFingerprint: createSemanticCompactionSha256Fingerprint(
             JSON.stringify(handoffRequestToolResults.results.at(-1)!),
           ),
-          digest: "Task-relevant execution-5 facts.",
+          digest: expect.stringContaining("Task-relevant execution-5 facts."),
         },
       ]),
       continuation: {
-        findings: expect.arrayContaining([
-          "Task-relevant execution-1 facts.",
-          "Task-relevant execution-4 facts.",
-          "Task-relevant execution-5 facts.",
-        ]),
+        currentState: [1, 2, 3, 4, 5]
+          .map((index) => `Task-relevant execution-${index} facts.`)
+          .join("\n"),
       },
     });
 
@@ -730,11 +701,13 @@ describe("semantic request-context compaction", () => {
     expect(remediationMessages).not.toContain("RAW_EVIDENCE_6");
     expect(remediationMessages).not.toContain("RAW_EVIDENCE_7");
     const remediationSources = modelInputs
-      .filter(({ modelStep }) => modelStep === CONTEXT_COMPACTION_MODEL_STEP)
+      .filter(({ modelStep }) => modelStep === "super.compact.coverage")
       .slice(handoffCompactionInputs.length)
       .flatMap(({ messages }) => {
-        const payload = JSON.parse(readModelMessages(messages).at(-1)!.content);
-        return payload.newSources ?? [payload.sourceSlice];
+        const payload = JSON.parse(
+          readModelMessages(messages)[1]!.content,
+        ).baseCapsule;
+        return [payload.sourceSlice];
       });
     expect([
       ...new Set(remediationSources.map(({ sourceRef }) => sourceRef)),

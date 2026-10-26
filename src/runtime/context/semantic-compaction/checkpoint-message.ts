@@ -1,10 +1,15 @@
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { SemanticCompactionCheckpoint } from "./contracts.js";
+import {
+  projectCheckpointContinuation,
+  type CheckpointContinuationProjector,
+} from "./continuation-projection.js";
 import { SEMANTIC_COMPACTION_EVIDENCE_SCOPE } from "./evidence-scope.js";
 
 export type CheckpointProjectionOptions = Readonly<{
   includeContinuation?: boolean;
   replacesScopeId?: string;
+  projectContinuation?: CheckpointContinuationProjector;
 }>;
 
 export function buildCheckpointMessage(
@@ -37,7 +42,12 @@ export function buildCheckpointMessage(
       ),
       ...(options.includeContinuation === false
         ? {}
-        : { continuation: checkpoint.continuation }),
+        : {
+            continuation: projectCheckpointContinuation(
+              checkpoint.continuation,
+              options.projectContinuation,
+            ),
+          }),
     }),
   });
 }

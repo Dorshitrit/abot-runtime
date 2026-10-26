@@ -45,7 +45,7 @@ function fixture(
     return executor.prepare({ handle: operation.handle, controls });
   };
   const execute = async (operationId: string, controls: Record<string, unknown>) => {
-    const prepared = prepare(operationId, controls);
+    const prepared = await prepare(operationId, controls);
     expect(prepared.status).toBe("prepared");
     if (prepared.status !== "prepared") throw new Error("fixture_preparation_rejected");
     return prepared.execute("knowledge-execution");
@@ -134,10 +134,10 @@ describe("knowledge Skills as an ordinary core tool", () => {
     expect(JSON.stringify(f.onEvent.mock.calls)).not.toContain("PRIVATE_BODY_94c");
   });
 
-  test("missing or malformed read controls fail before Store access", () => {
+  test("missing or malformed read controls fail before Store access", async () => {
     const f = fixture();
     for (const controls of [{}, { skillId: "" }, { skillId: 42 }]) {
-      expect(f.prepare("read_skill", controls)).toMatchObject({
+      expect(await f.prepare("read_skill", controls)).toMatchObject({
         status: "rejected", code: "normal_invocation_input_invalid",
       });
     }
@@ -201,7 +201,7 @@ describe("knowledge Skills as an ordinary core tool", () => {
       async () => ({ approved: false, reason: "Denied by the user." }),
     );
     const f = fixture("ask", withController ? { requestToolApproval } : undefined);
-    const prepared = f.prepare(operationId, controls);
+    const prepared = await f.prepare(operationId, controls);
     if (prepared.status !== "prepared") throw new Error("fixture_preparation_rejected");
     expect(prepared.approvalRequest).toBeUndefined();
     expect(await prepared.execute()).toMatchObject({ status: "executed", result: { ok: true } });
@@ -212,9 +212,9 @@ describe("knowledge Skills as an ordinary core tool", () => {
 
   test.each(readSelections)("ASK $operationId snapshot restores without approval", async ({ operationId, controls }) => {
     const f = fixture("ask");
-    const prepared = f.prepare(operationId, controls);
+    const prepared = await f.prepare(operationId, controls);
     if (prepared.status !== "prepared") throw new Error("fixture_preparation_rejected");
-    const restored = f.executor.restore(JSON.parse(JSON.stringify(prepared.snapshot)));
+    const restored = await f.executor.restore(JSON.parse(JSON.stringify(prepared.snapshot)));
     if (restored.status !== "prepared") throw new Error("fixture_restore_rejected");
     expect(restored.approvalRequest).toBeUndefined();
     expect(restored.actionFingerprint).toBe(prepared.actionFingerprint);
@@ -229,14 +229,14 @@ describe("knowledge Skills as an ordinary core tool", () => {
       async () => ({ approved, reason: "Saved request decision." }),
     );
     const f = fixture("ask", { requestToolApproval });
-    const prepared = f.prepare("read_skill", { skillId: document.skillId });
+    const prepared = await f.prepare("read_skill", { skillId: document.skillId });
     if (prepared.status !== "prepared") throw new Error("fixture_preparation_rejected");
     const snapshot = structuredClone(prepared.snapshot) as RegisteredToolInvocationSnapshot;
     const approvalRequest = {
       requestId: "knowledge-skills-contract", approvalId: "previous-version-approval", call: snapshot.call,
     };
     const saved = JSON.parse(JSON.stringify({ ...snapshot, approvalRequest }));
-    const restored = f.executor.restore(saved);
+    const restored = await f.executor.restore(saved);
     if (restored.status !== "prepared") throw new Error("fixture_restore_rejected");
     expect(restored.approvalRequest).toEqual(approvalRequest);
     expect(f.store.read).not.toHaveBeenCalled();
@@ -272,10 +272,10 @@ describe("knowledge Skills as an ordinary core tool", () => {
       return [core, ordinary];
     });
     const selected = route === "core_to_ordinary" ? "read_skill" : "inspect_reference";
-    const prepared = f.prepare(selected, { skillId: document.skillId });
+    const prepared = await f.prepare(selected, { skillId: document.skillId });
     if (prepared.status !== "prepared") throw new Error("fixture_preparation_rejected");
     expect(prepared.approvalRequest).toBeDefined();
-    const restored = f.executor.restore(JSON.parse(JSON.stringify(prepared.snapshot)));
+    const restored = await f.executor.restore(JSON.parse(JSON.stringify(prepared.snapshot)));
     if (restored.status !== "prepared") throw new Error("fixture_restore_rejected");
     expect(restored.approvalRequest).toEqual(prepared.approvalRequest);
     expect(await restored.execute()).toMatchObject({ status: "rejected", code: "tool_approval_rejected" });
@@ -294,7 +294,7 @@ describe("knowledge Skills as an ordinary core tool", () => {
         operations: core.normalInvocation.operations.map((operation) => ({ ...operation, approval: "always" })),
       },
     }]);
-    const prepared = f.prepare("read_skill", { skillId: document.skillId });
+    const prepared = await f.prepare("read_skill", { skillId: document.skillId });
     if (prepared.status !== "prepared") throw new Error("fixture_preparation_rejected");
     expect(prepared.approvalRequest).toBeDefined();
     expect(await prepared.execute()).toMatchObject({ status: "rejected", code: "tool_approval_rejected" });
@@ -303,15 +303,15 @@ describe("knowledge Skills as an ordinary core tool", () => {
     expect(f.onEvent.mock.calls.some(([name]) => name === "tool.started")).toBe(false);
   });
 
-  test("a legacy Skill approval with substituted controls is rejected before Store access", () => {
+  test("a legacy Skill approval with substituted controls is rejected before Store access", async () => {
     const f = fixture("ask");
-    const prepared = f.prepare("read_skill", { skillId: document.skillId });
+    const prepared = await f.prepare("read_skill", { skillId: document.skillId });
     if (prepared.status !== "prepared") throw new Error("fixture_preparation_rejected");
     const snapshot = structuredClone(prepared.snapshot) as RegisteredToolInvocationSnapshot;
-    expect(() => f.executor.restore({ ...snapshot, approvalRequest: {
+    await expect(f.executor.restore({ ...snapshot, approvalRequest: {
       requestId: "knowledge-skills-contract", approvalId: "previous-version-approval",
       call: { ...snapshot.call, params: { action: "read_skill", skillId: "another-skill" } },
-    } })).toThrow("registered_tool_snapshot_incompatible");
+    } })).rejects.toThrow("registered_tool_snapshot_incompatible");
     expect(f.store.read).not.toHaveBeenCalled();
   });
 });

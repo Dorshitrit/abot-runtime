@@ -1,3 +1,4 @@
+import { workerEvidenceReply } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -61,6 +62,7 @@ function createDelegatedApprovalFixture() {
           meta: {},
         };
       }
+      if (input.modelStep === "worker.evidence") return workerEvidenceReply(input, workerCount === 0);
       if (input.modelStep === "worker.decision") {
         workerCount += 1;
         return {
@@ -101,6 +103,7 @@ function createDelegatedApprovalFixture() {
           steps: {
             "supervisor.decision": { timeoutMs: 20_000 },
             "supervisor.response": { timeoutMs: 20_000 },
+            "worker.evidence": { timeoutMs: 20_000 },
             "worker.decision": { timeoutMs: 20_000 },
             "worker.result": { timeoutMs: 20_000 },
             "capability.controls": { timeoutMs: 20_000 },
@@ -182,6 +185,7 @@ describe("SUPER delegation events across saved approval continuation", () => {
         "supervisor_procedure_gate",
         "supervisor_delegation",
         "supervisor_working_directory",
+        "worker.evidence",
         "worker.decision",
         "capability.controls",
       ]);
@@ -220,7 +224,7 @@ describe("SUPER delegation events across saved approval continuation", () => {
           .slice(beforeResume.length)
           .map(([input]) => supervisorFormatName(input) ?? input.modelStep),
       ).toEqual([
-        "worker.decision",
+        "worker.evidence",
         "worker.result",
         "supervisor_skill_selection",
         "supervisor_decision",

@@ -1,6 +1,9 @@
+import {
+  assessSemanticCompactionMessages,
+  assessSemanticCompactionMessagesForAdmission,
+} from "./generation-admission.js";
 import type {
   SemanticCompactionGenerationParams,
-  SemanticCompactionRequest,
 } from "./generation-contracts.js";
 import {
   assertInheritedCompactionSourceDigests,
@@ -8,17 +11,10 @@ import {
   resolvePriorCompactionSourceDigests,
 } from "./inherited-source-digests.js";
 import { registerSemanticCompactionSources } from "./generation-source-registration.js";
-import type { ChatMessage } from "../../../model-gateway/types.js";
-import { projectConfiguredStepMessages } from "../../config/runner/step-instructions.js";
 import {
-  assessRequestMessagesBudget,
   resolveRequestBudgetInputTokens,
 } from "../request-context-budget.js";
 import { invokeStructuredModelStep } from "../../model/invoke-structured-step.js";
-import { countModelInputTokens } from "../../model/input-token-count.js";
-import { assertBoundModelStepSteeringCurrent } from "../../model/model-step-steering.js";
-import { resolveRequestSteeringInbox } from "../../request/request-steering.js";
-import { resolveModelContextAdmission } from "../../model/model-context-budget.js";
 import { ModelOutputIncompleteError } from "../../model/provider-completion.js";
 import { traceDebug } from "../../observability/debug-logger.js";
 import {
@@ -121,6 +117,7 @@ export async function generateSemanticCompactionCandidate(
       boundSteeringVersion: params.boundSteeringVersion,
       messages: prepared.messages,
       format: prepared.format,
+      configuredInstructionPolicy: params.projectionRepair ? "omit" : undefined,
       timeoutReason: "context_compaction_timeout",
       invalidOutputReason: "invalid_context_compaction_output",
       parse: (text, abortSignal) =>
@@ -350,12 +347,14 @@ function prepareSemanticCompactionSliceInput(
   const format = createSemanticCompactionFormat(
     expectedSources,
     checkpointTokenAllowance,
+    params.projectionRepair ? "omit" : undefined,
   );
   const messages = buildSemanticCompactionSliceMessages(params, slice, state);
   const assessment = assessSemanticCompactionMessages(
     params.request,
     messages,
     format,
+    params.projectionRepair ? "omit" : undefined,
   );
   return Object.freeze({
     messages,
@@ -376,6 +375,7 @@ async function prepareSemanticCompactionSliceInputForAdmission(
     prepared.messages,
     prepared.format,
     params.boundSteeringVersion,
+    params.projectionRepair ? "omit" : undefined,
   );
   const repairHeadroom = assessSemanticCompactionRepairHeadroom({
     assessment: admission.assessment,
@@ -408,6 +408,7 @@ async function invokeSemanticCompactionSlice(
     boundSteeringVersion: params.boundSteeringVersion,
     messages: prepared.messages,
     format: prepared.format,
+    configuredInstructionPolicy: params.projectionRepair ? "omit" : undefined,
     timeoutReason: "context_compaction_timeout",
     invalidOutputReason: "invalid_context_compaction_output",
     parse: (text, abortSignal) =>
@@ -472,11 +473,13 @@ function prepareSemanticCompactionInput(
   const format = createSemanticCompactionFormat(
     expectedSources,
     checkpointTokenAllowance,
+    params.projectionRepair ? "omit" : undefined,
   );
   const assessment = assessSemanticCompactionMessages(
     params.request,
     messages,
     format,
+    params.projectionRepair ? "omit" : undefined,
   );
   return Object.freeze({
     messages,
@@ -495,6 +498,7 @@ async function prepareSemanticCompactionInputForAdmission(
     prepared.messages,
     prepared.format,
     params.boundSteeringVersion,
+    params.projectionRepair ? "omit" : undefined,
   );
   const repairHeadroom = assessSemanticCompactionRepairHeadroom({
     assessment: admission.assessment,
@@ -508,122 +512,4 @@ async function prepareSemanticCompactionInputForAdmission(
     assessment: admission.assessment,
     repairHeadroom,
   });
-}
-
-function assessSemanticCompactionMessages(
-  request: SemanticCompactionRequest,
-  messages: readonly ChatMessage[],
-  format: ReturnType<typeof createSemanticCompactionFormat>,
-) {
-  const projectedMessages = projectSemanticCompactionMessages(
-    request,
-    messages,
-  );
-  return assessSemanticCompactionMessagesWithAdmission({
-    admission: resolveSemanticCompactionAdmission(request, format),
-    messages: projectedMessages,
-  });
-}
-
-async function assessSemanticCompactionMessagesForAdmission(
-  request: SemanticCompactionRequest,
-  messages: readonly ChatMessage[],
-  format: ReturnType<typeof createSemanticCompactionFormat>,
-  boundSteeringVersion: number | undefined,
-) {
-  const requestSteering = resolveRequestSteeringInbox(request.requestSteering);
-  assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
-  const admission = resolveSemanticCompactionAdmission(request, format);
-  const projectedMessages = projectSemanticCompactionMessages(
-    request,
-    messages,
-  );
-  const measuredInputTokens = await countModelInputTokens({
-    request,
-    invocation: admission.invocation,
-    modelStep: CONTEXT_COMPACTION_MODEL_STEP,
-    messages: projectedMessages,
-    format,
-  });
-  assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
-  const assessment = assessSemanticCompactionMessagesWithAdmission({
-    admission,
-    messages: projectedMessages,
-    ...(measuredInputTokens !== undefined ? { measuredInputTokens } : {}),
-  });
-  return Object.freeze({
-    assessment,
-    ...(admission.budget.tokenEstimation !== undefined
-      ? { tokenEstimation: admission.budget.tokenEstimation }
-      : {}),
-  });
-}
-
-function projectSemanticCompactionMessages(
-  request: SemanticCompactionRequest,
-  messages: readonly ChatMessage[],
-): ChatMessage[] {
-  return projectConfiguredStepMessages({
-    runnerConfig: request.runnerConfig,
-    modelStep: CONTEXT_COMPACTION_MODEL_STEP,
-    messages,
-  }).messages;
-}
-
-function resolveSemanticCompactionAdmission(
-  request: SemanticCompactionRequest,
-  format: ReturnType<typeof createSemanticCompactionFormat>,
-) {
-  return resolveModelContextAdmission({
-    runnerConfig: request.runnerConfig,
-    agentMode: request.agentMode,
-    modelStep: CONTEXT_COMPACTION_MODEL_STEP,
-    requestFormat: format,
-    ...(request.modelPreference
-      ? { modelPreference: request.modelPreference }
-      : {}),
-    ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),
-  });
-}
-
-function assessSemanticCompactionMessagesWithAdmission(params: {
-  admission: ReturnType<typeof resolveModelContextAdmission>;
-  messages: readonly ChatMessage[];
-  measuredInputTokens?: number;
-}) {
-  const calibrationInstructions = (
-    params.admission.invocation.instructions ?? []
-  )
-    .map((instruction) => instruction.trim())
-    .filter((instruction) => instruction.length > 0);
-  const effectiveFormat = params.admission.effectiveFormat;
-  return assessRequestMessagesBudget({
-    messages:
-      calibrationInstructions.length > 0
-        ? [
-            Object.freeze({
-              role: "system" as const,
-              content: calibrationInstructions.join("\n"),
-            }),
-            ...params.messages,
-          ]
-        : params.messages,
-    ...(isSchemaFormat(effectiveFormat)
-      ? { format: { schema: effectiveFormat.schema } }
-      : {}),
-    budget: params.admission.budget,
-    ...(params.measuredInputTokens !== undefined
-      ? { measuredInputTokens: params.measuredInputTokens }
-      : {}),
-  });
-}
-
-function isSchemaFormat(
-  format: "json" | Record<string, unknown> | undefined,
-): format is Record<string, unknown> & { schema: unknown } {
-  return (
-    format !== null &&
-    typeof format === "object" &&
-    Object.hasOwn(format, "schema")
-  );
 }

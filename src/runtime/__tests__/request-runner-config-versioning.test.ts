@@ -115,6 +115,8 @@ describe("request runner config versioning", () => {
       "capability.controls",
     );
     expect(loaded.steps["capability.controls"]?.timeoutMs).toBe(90_000);
+    expect(loaded.models.defaults.steps["worker.evidence"]).toBe("worker.evidence");
+    expect(loaded.steps["worker.evidence"]?.timeoutMs).toBe(90_000);
     expect(Object.keys(loaded.models.defaults.steps)).toEqual([
       ...REQUEST_INVOKED_STEP_IDS,
     ]);
@@ -129,6 +131,7 @@ describe("request runner config versioning", () => {
 
     expect(sha256(raw)).toBe(publicV1ModelFixtureSha256);
     expect(calibration).not.toHaveProperty("capability.controls");
+    expect(calibration).not.toHaveProperty("worker.evidence");
   });
 
   test("normalizes equivalent legacy and sparse v2 files identically", () => {

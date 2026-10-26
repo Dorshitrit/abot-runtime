@@ -1,3 +1,4 @@
+import { workerEvidenceReply } from "./support/worker-evidence-script.js";
 import { rootWorkCalls } from "./support/root-invalid-output-fixture.js";
 import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -144,6 +145,7 @@ function createScript(
       }),
     },
   ];
+  script.push({ step: "worker.evidence", output: (input) => workerEvidenceReply(input, failureStep === "worker.decision", RESULT).text });
   if (failureStep === "worker.decision") {
     script.push(
       ...invalidAttempts(
@@ -154,10 +156,6 @@ function createScript(
       ),
     );
   } else {
-    script.push({
-      step: "worker.decision",
-      output: decision({ action: "return_result" }),
-    });
     script.push(
       ...(failureStep === "worker.result"
         ? invalidAttempts(

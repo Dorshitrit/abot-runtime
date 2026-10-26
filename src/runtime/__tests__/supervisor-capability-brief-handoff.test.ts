@@ -1,3 +1,4 @@
+import { workerEvidenceReply } from "./support/worker-evidence-script.js";
 import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -139,6 +140,7 @@ function createScript(
         workerCapabilityScope: { catalogGroupIds: ["write"] },
       }),
     },
+    { step: "worker.evidence", output: (input) => workerEvidenceReply(input, true).text },
     {
       step: "worker.decision",
       output: encodeDecision({
@@ -151,8 +153,8 @@ function createScript(
     },
     { step: "tool_payload.raw", output: artifactBody },
     {
-      step: "worker.decision",
-      output: encodeDecision({ action: "return_result" }),
+      step: "worker.evidence",
+      output: (input) => workerEvidenceReply(input, false).text,
     },
     { step: "worker.result", output: workerResult },
     {

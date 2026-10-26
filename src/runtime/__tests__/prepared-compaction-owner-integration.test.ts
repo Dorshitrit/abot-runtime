@@ -40,20 +40,20 @@ function historySession(id: string): SessionRecord {
 test.each([
   {
     withHistory: false,
-    historyTokens: 25000,
-    finalTokens: 23000,
+    historyTokens: 30_000,
+    finalTokens: 29_000,
     admitted: true,
   },
   {
     withHistory: true,
-    historyTokens: 25000,
-    finalTokens: 23000,
+    historyTokens: 30_000,
+    finalTokens: 29_000,
     admitted: true,
   },
   {
     withHistory: true,
-    historyTokens: 28000,
-    finalTokens: 23000,
+    historyTokens: 31_000,
+    finalTokens: 29_000,
     admitted: false,
   },
 ])(
@@ -81,7 +81,7 @@ test.each([
       if (content.includes(STEERED_RAW))
         inputTokens = content.includes("COMPACT_HISTORY_ONLY")
           ? historyTokens
-          : 28000;
+          : 31_000;
       if (input.modelStep === "context.compact") inputTokens = 1000;
       // Checkpoint validation measures its capsule separately from the full input.
       if (Array.isArray(input.messages) && input.messages.length === 1)

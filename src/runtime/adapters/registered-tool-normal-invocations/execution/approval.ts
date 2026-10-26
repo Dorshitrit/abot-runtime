@@ -52,12 +52,15 @@ export async function requestNormalInvocationApproval(params: {
   force: boolean;
   /** Captured operation policy; omitted for ordinary direct approval callers. */
   requiredByOperationPolicy?: boolean;
+  /** A tool-owned explicit requirement cannot be waived by any permission mode. */
+  requiresExplicitApproval?: boolean;
 }): Promise<
   | Readonly<{ ok: true }>
   | Readonly<{ ok: false; rejection: RegisteredToolNormalInvocationRejection }>
 > {
-  const required = params.requiredByOperationPolicy ??
-    requiresToolActionApproval(params.toolPermissionMode, params.force);
+  const required = params.requiresExplicitApproval === true ||
+    (params.requiredByOperationPolicy ??
+      requiresToolActionApproval(params.toolPermissionMode, params.force));
   if (!required) {
     return Object.freeze({ ok: true as const });
   }
@@ -71,7 +74,7 @@ export async function requestNormalInvocationApproval(params: {
     ...(params.executionId ? { executionId: params.executionId } : {}),
     approvalId,
     tool: params.call.tool,
-    ...(recommendsFullPlusForForcedAction(
+    ...(!params.requiresExplicitApproval && recommendsFullPlusForForcedAction(
       params.toolPermissionMode,
       params.force,
     )

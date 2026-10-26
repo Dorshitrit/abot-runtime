@@ -75,6 +75,22 @@ function unavailableSession(id = "session-one"): Session {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Web UI unread availability", () => {
+  test.each([1, 4, 103])("unread count %i is accessible on a textless indicator that clears after reading", (count) => {
+    const harness = sessionHarness({
+      id: "session-one", unreadCount: count, hasUnread: true,
+    });
+    harness.controller.render();
+    const html = harness.rows.at(-1)?.innerHTML ?? "";
+    const label = `${count} unread message${count === 1 ? "" : "s"}`;
+    expect(html).toContain(`class="session-unread-dot" role="img" title="${label}" aria-label="${label}"></span>`);
+    harness.open();
+    expect(harness.onOpen).toHaveBeenCalledExactlyOnceWith("session-one");
+    harness.controller.applyReadState("session-one", {
+      unreadCount: 0, hasUnread: false, lastReadAt: 300, lastReadMessageId: "11",
+    });
+    expect(harness.rows.at(-1)?.innerHTML).not.toContain("session-unread-dot");
+  });
+
   test("an unavailable list preserves known read state and fresh conversation metadata", () => {
     const incoming = unavailableSession();
     const merged = mergeSessionListReadState(
@@ -106,7 +122,7 @@ describe("Web UI unread availability", () => {
     expect(harness.rows.at(-1)?.innerHTML).toContain(
       "Unread status unavailable",
     );
-    expect(harness.rows.at(-1)?.innerHTML).not.toContain('title="3 unread"');
+    expect(harness.rows.at(-1)?.innerHTML).not.toContain("session-unread-dot");
     harness.open();
     expect(harness.onOpen).toHaveBeenCalledExactlyOnceWith("session-one");
   });

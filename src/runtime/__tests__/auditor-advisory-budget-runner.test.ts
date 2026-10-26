@@ -1,3 +1,4 @@
+import { readExecutionChildResultEvidence, type ExecutionChildResultReference } from "./support/execution-child-result-evidence.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   createRoleCallLedger,
@@ -31,11 +32,7 @@ type RootState = {
     reason: string;
     pendingEvidenceIds: string[] | null;
   };
-  completedSubordinateResults: {
-    roleId: string;
-    outcome: string;
-    summary: string;
-  }[];
+  completedSubordinateResults: readonly ExecutionChildResultReference[];
 };
 type Receipt = {
   verdict: string;
@@ -69,7 +66,7 @@ test("returns the largest offered escaped evidence request intact and resumes re
         input,
         "runtime_execution_state_v1",
       );
-      const returned = state.completedSubordinateResults.at(-1)!;
+      const returned = readExecutionChildResultEvidence(input).at(-1)!;
       expect(returned.roleId).toBe("reviewer");
       expect(returned.outcome).toBe("completed");
       expect(returned.summary.length).toBeLessThanOrEqual(

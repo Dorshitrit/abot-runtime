@@ -1,5 +1,4 @@
 import { expect, test } from "vitest";
-import { SEMANTIC_COMPACTION_INSTRUCTIONS } from "../context/semantic-compaction/prompt.js";
 import {
   stagedSuperFixture,
   STAGED_FACT,
@@ -28,25 +27,51 @@ test.each([false, true])(
     expect(JSON.stringify(controls[2]!.messages)).not.toContain(
       STAGED_RAW_MARKER,
     );
-    const compactions = fixture.calls.filter(
-      ({ step }) => step === "context.compact",
+    const compactions = fixture.calls.filter(({ step }) =>
+      step.startsWith("super.compact."),
     );
-    expect(compactions).toHaveLength(2);
-    for (const { messages } of compactions) {
+    expect(fixture.calls.some(({ step }) => step === "context.compact")).toBe(
+      false,
+    );
+    const coverage = compactions.filter(
+      ({ step }) => step === "super.compact.coverage",
+    );
+    const content = compactions.filter(
+      ({ step }) => step === "super.compact.content",
+    );
+    expect(coverage.length).toBeGreaterThan(2);
+    expect(content).toHaveLength(coverage.length);
+    const slices = coverage.map(({ messages }, index) => {
+      const capsule = JSON.parse(messages[1]!.content).baseCapsule;
       expect(
-        messages.some(({ content }) =>
-          content.includes(SEMANTIC_COMPACTION_INSTRUCTIONS),
-        ),
-      ).toBe(true);
+        JSON.parse(content[index]!.messages[1]!.content).baseCapsule,
+      ).toEqual(capsule);
+      return capsule.sourceSlice;
+    });
+    for (const sourceRef of new Set(slices.map((slice) => slice.sourceRef))) {
+      const windows = slices.filter((slice) => slice.sourceRef === sourceRef);
+      const source = fixture.request.contextCompactionStore!.materializeSource(
+        sourceRef,
+        windows[0]!.sourceFingerprint,
+      )!;
+      expect(windows.map((window) => window.content).join("")).toBe(
+        source.content,
+      );
+      expect(windows[0]!.range.startByte).toBe(0);
+      for (let index = 1; index < windows.length; index++)
+        expect(windows[index]!.range.startByte).toBe(
+          windows[index - 1]!.range.endByteExclusive,
+        );
+      expect(windows.at(-1)!.range.endByteExclusive).toBe(
+        Buffer.byteLength(source.content),
+      );
     }
     const checkpoints =
       fixture.request.contextCompactionStore!.snapshot!().checkpoints;
     expect(checkpoints).toHaveLength(1);
     expect(checkpoints[0]!.sourceDigests).toHaveLength(2);
-    expect(checkpoints[0]!.sourceDigests.map(({ digest }) => digest)).toEqual([
-      STAGED_FACT,
-      STAGED_FACT,
-    ]);
+    for (const { digest } of checkpoints[0]!.sourceDigests)
+      expect(digest).toContain(STAGED_FACT);
     const result = fixture.calls.find(({ step }) => step === "worker.result")!;
     expect(JSON.stringify(result.messages)).toContain(STAGED_FACT);
     expect(JSON.stringify(result.messages)).not.toContain(STAGED_RAW_MARKER);
@@ -90,10 +115,9 @@ test.each([false, true])(
   },
 );
 
-test("S8: multiple Workers preserve separate evidence through bounded repairs and the full Planner review chain", async () => {
+test("S8: multiple Workers preserve separate evidence through independent SUPER stages and the full Planner review chain", async () => {
   const fixture = stagedSuperFixture(true, {
     twoWorkers: true,
-    repairCompactions: true,
   });
   await expect(fixture.run()).resolves.toMatchObject({ output: STAGED_FACT });
   expect(fixture.execute).toHaveBeenCalledTimes(4);
@@ -134,13 +158,15 @@ test("S8: multiple Workers preserve separate evidence through bounded repairs an
   for (const checkpoint of checkpoints) {
     expect(checkpoint.continuation.currentState).toBe(STAGED_FACT);
     expect(
-      checkpoint.sourceDigests.every(({ digest }) => digest === STAGED_FACT),
+      checkpoint.sourceDigests.every(({ digest }) =>
+        digest.includes(STAGED_FACT),
+      ),
     ).toBe(true);
   }
   const compactCalls = fixture.calls.filter(
-    ({ step }) => step === "context.compact",
+    ({ step }) => step === "super.compact.continuation",
   );
-  expect(compactCalls).toHaveLength(8);
+  expect(compactCalls).toHaveLength(4);
   expect(
     fixture.events.filter(
       ({ name }) => name === "context.compaction.completed",

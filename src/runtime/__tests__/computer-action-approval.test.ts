@@ -83,11 +83,15 @@ describe("computer operations use existing exact-action approvals", () => {
             scalarFixture(schema),
           ]),
         );
+        const priorApprovalCount = h.requestToolApproval.mock.calls.length;
         const pending = h.executor.execute({
           handle: registration.handle,
           controls,
           intent: "Perform the explicitly requested desktop operation.",
         });
+        await vi.waitFor(() =>
+          expect(h.requestToolApproval).toHaveBeenCalledTimes(priorApprovalCount + 1),
+        );
         const approval = h.requestToolApproval.mock.calls.at(-1);
         expect(approval).toBeDefined();
         expect(h.dispatch).not.toHaveBeenCalled();
@@ -216,11 +220,15 @@ describe("prepared computer action disclosure", () => {
           observation_ref: "source-observation",
           ...controls,
         };
+        const priorApprovalCount = h.requestToolApproval.mock.calls.length;
         const pending = h.executor.execute({
           handle: registration.handle,
           controls: acceptedControls,
           intent: "Same model rationale for all actions.",
         });
+        await vi.waitFor(() =>
+          expect(h.requestToolApproval).toHaveBeenCalledTimes(priorApprovalCount + 1),
+        );
         const event = [...h.events]
           .reverse()
           .find((entry) => entry.name === "tool.approval.required")!;
@@ -279,6 +287,7 @@ describe("prepared computer action disclosure", () => {
         },
         intent: "This intent must not replace the literal text.",
       });
+      await vi.waitFor(() => expect(h.requestToolApproval).toHaveBeenCalledOnce());
       const event = [...h.events]
         .reverse()
         .find((entry) => entry.name === "tool.approval.required")!;

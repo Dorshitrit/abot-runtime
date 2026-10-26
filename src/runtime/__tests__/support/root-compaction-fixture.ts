@@ -25,7 +25,9 @@ import { runExecutionAgentDecision } from "../../steps/execution-agent/run.js";
 import { runExecutionAgentResponse } from "../../steps/execution-agent/response-run.js";
 import { runSupervisorDecision } from "../../steps/supervisor-decision/run.js";
 import { runSupervisorResponse } from "../../steps/supervisor-response/run.js";
-import { createTestRequestExecutionScope } from "./request-execution-scope.js";
+import { createTestRequestExecutionScope, deriveTestRequestExecutionScope } from "./request-execution-scope.js";
+import { createSuperSessionMemoryCompactor } from "../../context/super-compaction/history.js";
+import { projectSuperCompactionConfiguration } from "../../context/super-compaction/configuration.js";
 
 import {
   ROOT_REQUEST,
@@ -62,10 +64,15 @@ export async function createRootCompactionFixture(
     prompt?: string;
     noActiveEvidence?: boolean;
     temporalContext?: RequestTemporalContext;
+    abortSignal?: AbortSignal;
   }> = {},
 ) {
   const profileId = options.profileId ?? "compaction-test";
   const contextWindowTokens = options.contextWindowTokens ?? 32000;
+  // Keep both staged replacements under pressure at each root's soft trigger.
+  const pressureCounts = policy === "execution-agent-v1"
+    ? [29_814, 28_673, 18_000] as const
+    : [23_814, 22_673, 18_000] as const;
   const prompt = options.prompt ?? ROOT_REQUEST;
   const sessionId = `root-compaction-${policy}-session`;
   const requestId = `root-compaction-${policy}-${++nextRequestSequence}`;
@@ -92,7 +99,9 @@ export async function createRootCompactionFixture(
     sessionId,
     session,
     repository: sessionStore,
-    compactor: createModelSessionMemoryCompactor(),
+    compactor: policy === "supervisor-worker-v1"
+      ? createSuperSessionMemoryCompactor()
+      : createModelSessionMemoryCompactor(),
   });
   const executionPolicy =
     policy === "execution-agent-v1"
@@ -144,6 +153,17 @@ export async function createRootCompactionFixture(
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
     const messages = input.messages as readonly ChatMessage[];
     modelInputs.push({ step: input.modelStep!, messages });
+    if (input.modelStep?.startsWith("super.compact.")) {
+      const envelope = JSON.parse(messages.find(({ role }) => role === "user")!.content);
+      const source = JSON.stringify(envelope.baseCapsule);
+      const facts = [HISTORY_FACT, ACTIVE_FACT, RECALL_FACT].filter((fact) =>
+        source.includes(fact),
+      );
+      const text = input.modelStep === "super.compact.coverage"
+        ? `Supplied range: ${JSON.stringify(envelope.baseCapsule.sourceSlice.range)}.`
+        : facts.join("\n") || "No additional fixture fact occurs in this source.";
+      return { text, meta: {} };
+    }
     if (input.modelStep !== "context.compact") {
       rootInputs.push([...messages]);
       const text = options.response
@@ -199,6 +219,7 @@ export async function createRootCompactionFixture(
           input.modelStep,
           serialized,
           options.baseInputTokens,
+          pressureCounts,
         );
     if (input.modelStep === rootStep && !checkpointMeasurement)
       counts.push({
@@ -215,7 +236,7 @@ export async function createRootCompactionFixture(
     };
   });
   const events: Array<{ name: string; [key: string]: unknown }> = [];
-  const request = createTestRequestExecutionScope({
+  const initialRequest = createTestRequestExecutionScope({
     requestId,
     sessionId,
     prompt,
@@ -278,7 +299,7 @@ export async function createRootCompactionFixture(
       getAdapters: () => [],
     },
     toolPermissionMode: "full_access",
-    abortSignal: new AbortController().signal,
+    abortSignal: options.abortSignal ?? new AbortController().signal,
     onAcknowledgement: vi.fn(),
     onSessionTitle: vi.fn(),
     onThinkingDelta: vi.fn(),
@@ -288,6 +309,11 @@ export async function createRootCompactionFixture(
       events.push({ name, ...extra });
     },
   });
+  const request = policy === "supervisor-worker-v1"
+    ? deriveTestRequestExecutionScope(initialRequest, projectSuperCompactionConfiguration(
+        initialRequest, initialRequest.executionPolicy.authority,
+      ))
+    : initialRequest;
   const executionOptions = {
     head,
     call,
@@ -340,6 +366,7 @@ export async function createRootCompactionFixture(
     rootInputs,
     modelInputs,
     counts,
+    pressureCounts,
     events,
     invoke,
   };
@@ -348,11 +375,12 @@ export async function createRootCompactionFixture(
 function compactionInputCount(
   modelStep: string | undefined,
   serialized: string,
-  baseInputTokens = 23814,
+  baseInputTokens: number | undefined,
+  pressureCounts: readonly [number, number, number],
 ) {
-  if (modelStep === "context.compact") return 2012;
+  if (modelStep === "context.compact" || modelStep?.startsWith("super.compact.")) return 2012;
   if (serialized.includes("runtime_semantic_compaction_checkpoint_v2"))
-    return 18000;
-  if (serialized.includes("runtime_session_memory_checkpoint_v1")) return 22673;
-  return baseInputTokens;
+    return pressureCounts[2];
+  if (serialized.includes("runtime_session_memory_checkpoint_v1")) return pressureCounts[1];
+  return baseInputTokens ?? pressureCounts[0];
 }

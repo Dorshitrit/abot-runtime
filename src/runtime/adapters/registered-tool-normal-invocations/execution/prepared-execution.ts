@@ -42,11 +42,13 @@ export function createPreparedNormalInvocation(params: {
   intent?: string;
   eventMeta?: Record<string, unknown>;
   executionIdentity?: string;
+  requiresApproval?: boolean;
   executionMetadata?: Readonly<Record<string, unknown>>;
   restoredApprovalRequest?: ToolApprovalRequest;
 }): RegisteredToolPreparedNormalInvocation {
   // Keep an already-recorded approval pending across upgrades; new core reads skip it.
-  const requiresApproval = params.restoredApprovalRequest !== undefined ||
+  const requiresApproval = params.requiresApproval === true ||
+    params.restoredApprovalRequest !== undefined ||
     requiresRegisteredToolActionApproval(
       params.executor.toolPermissionMode, params.source, params.target,
     );
@@ -75,6 +77,7 @@ export function createPreparedNormalInvocation(params: {
       acceptedControls: params.acceptedControls,
       actionFingerprint: params.actionFingerprint,
       toolPermissionMode: params.executor.toolPermissionMode,
+      ...(params.requiresApproval === true ? { requiresApproval: true } : {}),
       ...(params.intent ? { intent: params.intent } : {}),
       ...(params.eventMeta ? { eventMeta: params.eventMeta } : {}),
       ...(params.executionIdentity
@@ -135,6 +138,8 @@ async function executePreparedNormalInvocation(params: {
   eventMeta?: ReturnType<typeof buildToolIntentEventMetadata>;
   executionMetadata?: Readonly<Record<string, unknown>>;
   intent?: string;
+  executionIdentity?: string;
+  requiresApproval?: boolean;
   approvalRequest?: ToolApprovalRequest;
   decision?: ToolApprovalDecision;
   decisionRecorded?: boolean;
@@ -146,7 +151,9 @@ async function executePreparedNormalInvocation(params: {
   });
   assertRegisteredToolResultMetadataFits(resultBudget);
   const approval = await requestNormalInvocationApproval({
-    requiredByOperationPolicy: params.approvalRequest !== undefined ||
+    requiresExplicitApproval: params.requiresApproval === true,
+    requiredByOperationPolicy: params.requiresApproval === true ||
+      params.approvalRequest !== undefined ||
       requiresRegisteredToolActionApproval(
         params.executor.toolPermissionMode, params.source, params.target,
       ),
@@ -233,6 +240,12 @@ async function executePreparedNormalInvocation(params: {
           }
         : {}),
       options: {
+        executionAuthority: Object.freeze({
+          toolPermissionMode: params.executor.toolPermissionMode,
+          ...(params.executionIdentity
+            ? { executionIdentity: params.executionIdentity }
+            : {}),
+        }),
         abortSignal: params.executor.abortSignal,
         resultBudget,
         ...(effectAdmission ? { trustedEffectAdmission: effectAdmission } : {}),

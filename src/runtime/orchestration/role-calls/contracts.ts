@@ -18,6 +18,7 @@ import type { RoleCapabilitySelectionReconsiderationCause } from "./reconsiderat
 import type { RoleCallResultReceipt } from "./result-receipt.js";
 import type { RoleInitialMemory, RoleMemoryRecall, RoleMemoryRecallCommand, RoleMemoryRecallCommitEffect, RoleMemoryRecallTransactions } from "./memory-recall-contract.js";
 import type { AdoptedModelWorkPlan, UpdateModelWorkPlanCommand, ModelWorkPlanCommitEffect, ModelWorkPlanTransactions } from "./work-plan-contracts.js";
+import type { RoleBasketReference } from "./basket-reference.js";
 import type { RecordRoleSkillReadCommand, RoleSkillRead, RoleSkillReadCommitEffect } from "./skill-read.js";
 
 export const ROLE_CALL_LEDGER_CONTRACT_VERSION = 18;
@@ -135,6 +136,8 @@ export type RoleCapabilitySelectionReconsideration = Readonly<{
 export type RoleCallFrame = Readonly<{
   callId: string;
   parentCallId: string | null;
+  /** Immutable caller activation at opening; omitted on legacy child frames. */
+  parentInvocationAttempt?: number;
   roleId: RuntimeRoleId;
   depth: number;
   objective: string | null;
@@ -268,6 +271,8 @@ export type RoleCallState = Readonly<{
   memoryRecalls: readonly RoleMemoryRecall[];
   /** Immutable core reference reads; omitted on older checkpoints. */
   skillReads?: readonly RoleSkillRead[];
+  /** Captured explicit basket retrieval; omitted on older checkpoints. */
+  basketReferences?: readonly RoleBasketReference[];
   initialMemory?: RoleInitialMemory;
   operationSupervision: RoleOperationSupervisionState;
   capabilitySelectionSupervision: RoleCapabilitySelectionSupervisionState;

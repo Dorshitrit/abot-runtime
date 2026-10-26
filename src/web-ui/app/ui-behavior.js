@@ -43,6 +43,7 @@ export function normalizeWorkspaceDestination(value) {
   if (destination === "learning") return "learning";
   if (destination === "memory") return "memory";
   if (destination === "skills") return "skills";
+  if (destination === "resources") return "resources";
   if (destination === "home") return "home";
   if (destination === "models") return "models";
   if (destination === "plugins") return "plugins";

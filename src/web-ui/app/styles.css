@@ -16,6 +16,7 @@
 @import url("./styles/26-message-content.css");
 @import url("./styles/27-conversation-tools.css");
 @import url("./styles/27-conversation-skills.css");
+@import url("./styles/27-conversation-basket.css");
 @import url("./styles/27-conversation-memory.css");
 @import url("./styles/28-conversation-status.css");
 @import url("./styles/29-conversation-file-preview.css");
@@ -34,6 +35,7 @@
 @import url("./styles/39-memory-workspace.css");
 @import url("./styles/35-embedding-profiles.css");
 @import url("./styles/40-skills.css");
+@import url("./styles/40-information-basket.css");
 @import url("./styles/39-passive-learning.css");
 @import url("./styles/37-config-operations.css");
 @import url("./styles/37-runtime-activation.css");
@@ -44,6 +46,7 @@
 @import url("./styles/18-dashboard.css");
 @import url("./styles/19-dashboard-automations.css");
 @import url("./styles/19-dashboard-approvals.css");
+@import url("./styles/19-dashboard-resources.css");
 @import url("./styles/19-home-guidance.css");
 @import url("./styles/92-dashboard-responsive.css");
 @import url("./styles/45-bridge-setup.css");
@@ -72,4 +75,6 @@
 @import url("./styles/95-home-widgets.css");
 @import url("./styles/65-appearance.css");
 @import url("./styles/66-navigation-display.css");
+@import url("./styles/66-navigation-scroll.css");
 @import url("./styles/67-confirmation-dialog.css");
+@import url("./styles/68-step-timeout.css");

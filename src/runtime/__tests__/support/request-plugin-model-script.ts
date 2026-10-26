@@ -1,6 +1,7 @@
 import { expect, vi } from "vitest";
 import type { ModelGatewayClient } from "../../ports.js";
-import { withSupervisorPreparation } from "./supervisor-model-phases.js";
+import { workerEvidenceReply } from "./worker-evidence-script.js";
+import { supervisorFormatName, withSupervisorPreparation } from "./supervisor-model-phases.js";
 
 export type SnapshotPolicy = "supervisor-worker-v1" | "execution-agent-v1";
 export type SnapshotModelInput = Parameters<ModelGatewayClient["invoke"]>[0];
@@ -18,10 +19,14 @@ export function createSnapshotModelScript(input: {
   let decisions = 0;
   let calls = 0;
   const respond = withSupervisorPreparation(async (modelInput) => {
+    if (supervisorFormatName(modelInput) === "supervisor_basket_selection")
+      return { text: JSON.stringify({ decision: { action: "continue" } }), meta: {} };
     const visible = JSON.stringify({
       messages: modelInput.messages,
       format: modelInput.format,
     });
+    if (modelInput.modelStep === "worker.evidence")
+      return workerEvidenceReply(modelInput, decisions < 3);
     if (modelInput.modelStep === "worker.result")
       return { text: SNAPSHOT_FINAL, meta: {} };
     if (modelInput.modelStep === "supervisor.response")
@@ -109,7 +114,6 @@ function delegatedDecision(index: number, capabilityId: string) {
       capabilityId,
       intent: "Observe the requested fixture.",
     };
-  if (index === 4) return { action: "return_result" };
-  expect(index).toBe(5);
+  expect(index).toBe(4);
   return { action: "respond" };
 }

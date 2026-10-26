@@ -132,7 +132,7 @@ export async function executeAutomationToolStep(input: {
       contractVersion: registered.contract.version,
     }));
   if (!selected) return { kind: "rejected", code: "automation_operation_unavailable", message: "The selected operation could not be bound." };
-  const prepared = executor.prepare({
+  const prepared = await executor.prepare({
     handle: selected.handle,
     controls: input.controls,
     ...(input.payload !== undefined ? { payload: input.payload } : {}),

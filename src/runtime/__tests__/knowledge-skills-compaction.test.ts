@@ -24,6 +24,11 @@ import {
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => resetDebugLoggerConfig());
 
+const SUPER_COMPACTION_STEPS = [
+  "super.compact.coverage", "super.compact.content", "super.compact.merge", "super.compact.continuation",
+];
+const isCompactionStep = (step: string) => step === "context.compact" || SUPER_COMPACTION_STEPS.includes(step);
+
 test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
   "%s carries its Skill-read path through presentation, semantic compaction and serialized source restore",
   async (policy) => {
@@ -74,9 +79,11 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     fixture.forceCompaction();
     await fixture.runDecision();
     const compactedCalls = fixture.modelInputs.slice(startCompaction);
-    expect(compactedCalls.some(({ step }) => step === "context.compact")).toBe(true);
+    const expectedCompactionSteps = policy === "execution-agent-v1" ? ["context.compact"] : SUPER_COMPACTION_STEPS;
+    expect(new Set(compactedCalls.filter(({ step }) => isCompactionStep(step)).map(({ step }) => step)))
+      .toEqual(new Set(expectedCompactionSteps));
     expect(fixture.measuredInputs.some(({ inputTokens }) => inputTokens === 63_500)).toBe(true);
-    for (const { messages } of compactedCalls.filter(({ step }) => step !== "context.compact")) {
+    for (const { messages } of compactedCalls.filter(({ step }) => !isCompactionStep(step))) {
       expect(() => validateModelGatewayMessages(messages)).not.toThrow();
       expect(JSON.stringify(messages)).toContain(SKILL_COMPACTION_FACT);
       expect(JSON.stringify(messages)).not.toContain(SKILL_COMPACTION_PADDING);
@@ -114,7 +121,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     if (policy === "execution-agent-v1")
       await expect(fixture.runRootResponse(restoredRequest)).resolves.toBe(SKILL_COMPACTION_ANSWER);
     const resumedCalls = fixture.modelInputs.slice(afterRestore);
-    expect(resumedCalls.some(({ step }) => step === "context.compact")).toBe(false);
+    expect(resumedCalls.some(({ step }) => isCompactionStep(step))).toBe(false);
     const resumedPresentation = resumedCalls.find(({ step }) => step === presentationStep)!;
     expect(resumedPresentation).toBeDefined();
     expect(JSON.stringify(resumedPresentation.messages)).toContain(SKILL_COMPACTION_FACT);

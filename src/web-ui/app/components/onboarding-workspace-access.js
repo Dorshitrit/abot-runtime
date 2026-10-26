@@ -1,5 +1,6 @@
 const navigation = Object.freeze({
   home: "homeWorkspaceButton", chat: "chatWorkspaceButton", learning: "learningWorkspaceButton",
+  resources: "resourcesWorkspaceButton",
   skills: "skillsWorkspaceButton", memory: "memoryWorkspaceButton", schedules: "schedulesWorkspaceButton", automations: "automationsWorkspaceButton", models: "modelsWorkspaceButton",
   plugins: "pluginsWorkspaceButton", notifications: "notificationsWorkspaceButton", config: "configWorkspaceButton",
 });

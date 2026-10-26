@@ -59,8 +59,9 @@ test.each(["count", "admission", "compaction", "refinement"] as const)(
   "C15: steering during %s returns to EA without executing the superseded operation",
   async (boundary) => {
     const fixture = executionControlsLifecycleFixture({ boundary });
+    const request = fixture.makeRequest();
     await expect(
-      runRequestRunner(fixture.makeRequest()),
+      runRequestRunner(request),
     ).resolves.toMatchObject({ output: "The request settled." });
     expect(fixture.steering.snapshot().version).toBe(1);
     expect(fixture.performed).not.toHaveBeenCalled();
@@ -82,12 +83,18 @@ test.each(["count", "admission", "compaction", "refinement"] as const)(
         fixture.calls.filter(({ step }) => step === "context.compact"),
       ).toHaveLength(1);
       expect(
-        fixture.events.some(
-          ({ name, data }) =>
-            name === "context.compaction.failed" &&
-            data?.reason === "steering_superseded",
-        ),
-      ).toBe(true);
+        fixture.events
+          .filter(({ name }) => name.startsWith("context.compaction."))
+          .map(({ name }) => name),
+      ).toEqual(["context.compaction.started", "context.compaction.completed"]);
+      expect(request.contextCompactionStore!.snapshot!().checkpoints).toEqual([
+        expect.objectContaining({
+          allowedConsumers: ["capability.controls"],
+          sourceDigests: [
+            expect.objectContaining({ sourceRef: "capability-execution-1" }),
+          ],
+        }),
+      ]);
     }
   },
 );

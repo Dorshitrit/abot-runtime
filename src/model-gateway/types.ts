@@ -59,6 +59,8 @@ export type ModelGatewayAttachment = RuntimeAttachmentReference & {
 
 export type ModelGatewayJsonSchemaFormat = {
   type: "json_schema";
+  /** Caller-owned compaction repair may omit calibration prose without changing tuning. */
+  calibrationInstructions?: "omit";
   name: string;
   schema: Record<string, unknown>;
   description?: string;
@@ -74,7 +76,7 @@ export type ModelGatewayJsonSchemaFormat = {
   }>[];
 };
 
-/** Text requests may set calibrationInstructions: "omit" to retain only caller-owned instructions. */
+/** Text and context.compact JSON-schema requests may omit calibration prose while retaining tuning. */
 export type ModelGatewayFormat =
   | "json"
   | ModelGatewayJsonSchemaFormat

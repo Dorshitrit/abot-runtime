@@ -1,5 +1,6 @@
 import { handleRunRequest } from "./handler.js";
 import type { RequestHandlerOptions } from "./contracts.js";
+import { SESSION_MEMORY_COMPACTORS } from "../context/super-compaction/history-routing.js";
 import type {
   RuntimeEnvironmentServices,
   RuntimeRequestHandler,
@@ -16,7 +17,9 @@ export function createBoundRuntimeRequestHandler(
     attachmentStore: services.attachments,
     toolRegistry: services.tools,
     knowledgeSkillStore: services.knowledgeSkillStore,
+    informationBasket: services.informationBasket,
     sessionMemoryCompactor: services.sessionMemoryCompactor,
+    [SESSION_MEMORY_COMPACTORS]: services[SESSION_MEMORY_COMPACTORS],
     longTermMemory: services.longTermMemory,
   };
   return Object.freeze({

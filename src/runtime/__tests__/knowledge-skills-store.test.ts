@@ -55,6 +55,7 @@ describe("core knowledge document store", () => {
     expect(metadata.map(({ skillId, name }) => ({ skillId, name }))).toEqual([
       { skillId: "abot-studio", name: "ABot Studio" },
       { skillId: "computer-use", name: "Computer Use" },
+      { skillId: "information-basket", name: "Information Basket" },
       { skillId: "skill-creator", name: "Skill Creator" },
       { skillId: "technical-work", name: "Technical Work" },
       { skillId: "what-can-i-do", name: "What Can I Do?" },

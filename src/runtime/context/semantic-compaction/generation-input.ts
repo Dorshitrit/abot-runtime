@@ -7,6 +7,7 @@ import type { SemanticCompactionSourceSlice } from "./chunking.js";
 import type { SemanticCompactionGenerationParams } from "./generation-contracts.js";
 import { SEMANTIC_COMPACTION_EVIDENCE_SCOPE } from "./evidence-scope.js";
 import { resolveSemanticCompactionInstructions } from "./execution-evidence-instructions.js";
+import { buildMinimalSemanticCompactionInstructions } from "./minimal-instructions.js";
 import { bindSemanticCompactionSourceSlots } from "./source-slots.js";
 import { resolvePriorCompactionSourceDigests } from "./inherited-source-digests.js";
 
@@ -22,7 +23,7 @@ export function buildSemanticCompactionMessages(
   return [
     Object.freeze({
       role: "system" as const,
-      content: resolveSemanticCompactionInstructions(params.binding.allowedConsumers),
+      content: resolveGenerationInstructions(params),
     }),
     Object.freeze({
       role: "user" as const,
@@ -59,7 +60,7 @@ export function buildSemanticCompactionSliceMessages(
     Object.freeze({
       role: "system" as const,
       content: [
-        resolveSemanticCompactionInstructions(params.binding.allowedConsumers),
+        resolveGenerationInstructions(params),
         "The supplied source is one exact contiguous UTF-8 range of a larger canonical source.",
         "Return all replacement source digests and one replacement continuation. For the sliced source, preserve every previously supplied range plus this range; do not treat ranges as separate sources. partialSourceFold is the latest summary of the covered ranges and replaces the older checkpoint for this generation.",
       ].join("\n"),
@@ -110,4 +111,9 @@ function projectActiveAssignment(params: SemanticCompactionGenerationParams) {
     preservationObjective: params.preservationObjective,
     allowedConsumers: params.binding.allowedConsumers,
   };
+}
+
+function resolveGenerationInstructions(params: SemanticCompactionGenerationParams): string {
+  if (params.projectionRepair) return buildMinimalSemanticCompactionInstructions(params.projectionRepair);
+  return resolveSemanticCompactionInstructions(params.binding.allowedConsumers);
 }

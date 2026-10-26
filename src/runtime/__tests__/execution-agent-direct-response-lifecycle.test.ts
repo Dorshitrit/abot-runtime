@@ -90,7 +90,7 @@ test.each(["eof", "done"] as const)(
       });
       const ledger = await createRootInvalidOutputLedger("execution-agent-v1");
       await expect(runRootExecutionKernel({ request, ledger }))
-        .rejects.toThrow("openai response not completed");
+        .rejects.toThrow("openai function response not completed");
       expect(request.onAnswerToken).not.toHaveBeenCalled();
       expect(ledger.current().state.results).toEqual([]);
       expect(fixture.invoke).toHaveBeenCalledOnce();

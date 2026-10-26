@@ -1,3 +1,5 @@
+import { startRuntimeInformationBasket } from "./adapters/information-basket-runtime.js";
+import { createInformationBasketService } from "./information-basket/service.js";
 import { canManageKnowledgeSkills } from "./knowledge-skills/personal-contracts.js";
 import { createRuntimeKnowledgeSkillStore } from "./knowledge-skills/personal-store.js";
 import { createRuntimeProjectService } from "./projects/service.js";
@@ -12,7 +14,11 @@ import {
   createDefaultToolRegistry,
 } from "./default-environment-adapters.js";
 import { createBoundRuntimeRequestHandler } from "./request/bound-runtime-handler.js";
-import { createModelSessionMemoryCompactor } from "./context/session-memory/index.js";
+import {
+  composeSessionMemoryCompactors,
+  SESSION_MEMORY_COMPACTORS,
+  type SessionMemoryCompactors,
+} from "./context/super-compaction/history-routing.js";
 import { createSessionLifecycleStore } from "./session/session-lifecycle-store.js";
 import { createSparkSessionClearBoundary } from "./session/spark-session-clear.js";
 import {
@@ -56,7 +62,12 @@ const environmentCompositions = new WeakMap<
 export function createRuntimeEnvironment(
   config: RuntimeConfig,
   overrides: RuntimeApplicationOverrides = {},
+  boundSessionMemoryCompactors?: SessionMemoryCompactors,
 ) {
+  const sessionMemoryCompactors = composeSessionMemoryCompactors(
+    overrides.sessionMemoryCompactor,
+    boundSessionMemoryCompactors,
+  );
   const backingSessions =
     overrides.sessions ?? createDefaultSessionStore(config);
   const attachments =
@@ -113,6 +124,9 @@ export function createRuntimeEnvironment(
   const usesDefaultToolRegistry = overrides.tools === undefined;
   const knowledgeSkillStore = overrides.knowledgeSkillStore ??
     (usesDefaultToolRegistry ? createRuntimeKnowledgeSkillStore(config.paths.runtimeDir) : undefined);
+  const models = overrides.models ?? createDefaultModelGatewayClient(config);
+  const informationBasket = overrides.informationBasket ??
+    (usesDefaultToolRegistry ? createInformationBasketService({ config, models }) : undefined);
   const tools =
     overrides.tools ??
     createDefaultToolRegistry(config, {
@@ -121,8 +135,7 @@ export function createRuntimeEnvironment(
     }, {
       getService: requireAutomations,
       ready: scheduling.ensureStarted,
-    }, knowledgeSkillStore);
-  const models = overrides.models ?? createDefaultModelGatewayClient(config);
+    }, knowledgeSkillStore, informationBasket);
   const automationPersistence = createAutomationPersistence(scheduling.store);
   const automationResults = createAutomationResultStore(config.paths.runtimeDir);
   const automationTransactions = createAutomationNodeTransactions({
@@ -272,12 +285,13 @@ export function createRuntimeEnvironment(
     attachments,
     tools,
     knowledgeSkillStore,
+    informationBasket,
     ...(knowledgeSkillStore && canManageKnowledgeSkills(knowledgeSkillStore)
       ? { personalSkills: knowledgeSkillStore.personalSkills } : {}),
     models,
     events: overrides.events ?? createDefaultEventSinkFactory(config),
-    sessionMemoryCompactor:
-      overrides.sessionMemoryCompactor ?? createModelSessionMemoryCompactor(),
+    sessionMemoryCompactor: sessionMemoryCompactors.legacy,
+    [SESSION_MEMORY_COMPACTORS]: sessionMemoryCompactors,
     longTermMemory,
     passiveLearning,
     automations,
@@ -309,6 +323,7 @@ export function createRuntimeEnvironment(
     services,
     requests,
     async start() {
+      await startRuntimeInformationBasket(informationBasket);
       await scheduling.start();
       await longTermMemory.retention?.start();
       const notifyInjectedLearning =
@@ -332,6 +347,7 @@ export function createRuntimeEnvironment(
       unsubscribeInjectedLearning?.();
       unsubscribeInjectedLearning = undefined;
       await Promise.all([
+        informationBasket?.stop(),
         passiveLearning.stop(),
         scheduling.stop(),
         longTermMemory.retention?.stop(),
@@ -358,14 +374,19 @@ export function recomposeRuntimeEnvironment(
       : resolved.sessions;
   const preservesSkillStoreBinding =
     resolved.tools === undefined || resolved.tools === bound?.tools;
+  const preservesBasketBinding = preservesSkillStoreBinding &&
+    bound?.config === config &&
+    (resolved.models === undefined || resolved.models === bound?.models);
   return createRuntimeEnvironment(config, {
     ...resolved,
     sessions,
     tools,
+    informationBasket: resolved.informationBasket ??
+      (preservesBasketBinding ? bound?.informationBasket : undefined),
     knowledgeSkillStore: resolved.knowledgeSkillStore ??
       (preservesSkillStoreBinding ? bound?.knowledgeSkillStore : undefined),
     scheduledRequestOptions: previous?.scheduledRequestOptions,
-  }).services;
+  }, bound?.[SESSION_MEMORY_COMPACTORS]).services;
 }
 
 export function rebindRuntimeEnvironmentEvents(

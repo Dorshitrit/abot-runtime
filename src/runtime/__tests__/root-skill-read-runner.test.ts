@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -221,7 +222,7 @@ test("hands the read snapshot to Planner and its Worker without objective copies
         };
         return { action: "return_result", result: "The requested distinction was explained." };
       }
-      if (input.modelStep === "worker.decision") return { action: "return_result" };
+      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
       expect(input.modelStep).toBe("worker.result");
       return "The owner controls state and the adapter executes effects.";
     },
@@ -230,7 +231,7 @@ test("hands the read snapshot to Planner and its Worker without objective copies
   expect(store.read).toHaveBeenCalledExactlyOnceWith(document.skillId);
   expect(selection).toBe(1);
   expect(harness.request.onAcknowledgement).toHaveBeenCalledOnce();
-  expect(harness.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.decision")).toHaveLength(1);
+  expect(harness.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.evidence")).toHaveLength(1);
   for (const [input] of harness.gatewayInvoke.mock.calls) {
     const assignments = jsonMessages(input).filter(({ kind }) => String(kind).includes("assignment"));
     for (const assignment of assignments) expect(assignment.objective).toBe(objective);

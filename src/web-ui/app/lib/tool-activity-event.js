@@ -3,6 +3,8 @@ import { projectConversationFileReference } from "./conversation-file-reference.
 import { computerInputFields } from "./tool-computer-activity-fields.js";
 import { automationActivityFields } from "./tool-automation-activity-fields.js";
 import { skillActivityFields } from "./tool-skill-activity-fields.js";
+import { scheduleActivityFields } from "./tool-schedule-activity-fields.js";
+import { basketActivityFields } from "./tool-basket-activity-fields.js";
 import {
   processInputFields,
   processResultFields,
@@ -195,7 +197,8 @@ export function projectToolActivityEvent(message) {
   const inputMeta = { ...meta, params };
   const fileReference = projectConversationFileReference(message);
   const skill = skillActivityFields(meta, tool, completed, message.ok);
-  const activity = skill ?? automationActivityFields(meta, tool);
+  const basket = basketActivityFields(meta, tool, terminal, message.ok);
+  const activity = basket ?? skill ?? automationActivityFields(meta, tool) ?? scheduleActivityFields(meta, tool);
   return {
     ...(fileReference ? { fileReference } : {}),
     ...(skill?.skillRead ? { skillRead: true } : {}),
@@ -207,8 +210,8 @@ export function projectToolActivityEvent(message) {
     roleCallId: boundedText(message.roleCallId, 200).trim(),
     ...payloadStageMetadata(message),
     beforeExternalExecution: message.stage === "before_external_execution",
-    intent: boundedText(message.intent || meta.intent),
-    target: boundedText(
+    intent: basket ? "" : boundedText(message.intent || meta.intent),
+    target: basket ? basket.target : boundedText(
       activity?.target ||
         meta.source ||
         meta.displayTarget ||
@@ -218,14 +221,14 @@ export function projectToolActivityEvent(message) {
         meta.id ||
         meta.savedId,
     ),
-    sent: [...inputFields(inputMeta, completed, tool), ...(activity?.sent || [])],
-    received: terminal ? resultFields(meta, tool, message.ok) : [],
-    preview: terminal && !skill ? boundedText(meta.outputPreview, 1_200) : "",
-    previewTruncated: terminal && !skill && hasClippedPreview(meta),
-    partial: terminal && hasPartialSource(meta),
-    outcome: completedOutcome(meta),
+    sent: basket ? basket.sent : [...inputFields(inputMeta, completed, tool), ...(activity?.sent || [])],
+    received: basket ? basket.received : terminal ? resultFields(meta, tool, message.ok) : [],
+    preview: terminal && !skill && !basket ? boundedText(meta.outputPreview, 1_200) : "",
+    previewTruncated: terminal && !skill && !basket && hasClippedPreview(meta),
+    partial: basket ? false : terminal && hasPartialSource(meta),
+    outcome: basket ? basket.outcome : completedOutcome(meta),
     ok: typeof message.ok === "boolean" ? message.ok : null,
-    error: boundedText(message.error || message.reason || meta.errorCode),
+    error: basket ? basket.error : boundedText(message.error || message.reason || meta.errorCode),
   };
 }
 

@@ -72,7 +72,7 @@ export async function restorePreparedWorkerInvocation<TContext>(
     )
   )
     throw invalid();
-  const normal = params.executor.restore(snapshot.normal);
+  const normal = await params.executor.restore(snapshot.normal);
   if (
     normal.status !== "prepared" ||
     !isDeepStrictEqual(normal.acceptedControls, input.controls)

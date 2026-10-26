@@ -40,10 +40,10 @@ describe("system plugin binds implicit destinations before approval", () => {
       );
       expect(h.readHostStatus).toHaveBeenCalledOnce();
       expect(h.native).not.toHaveBeenCalled();
-      const binding = module.adapter!.executionBinding!({
+      const binding = await module.adapter!.executionBinding!({
         tool: operation,
         params,
-      });
+      }, { toolPermissionMode: "full_access" });
       expect(binding.identity).toContain(requestConnectionId);
       expect(binding.metadata).toMatchObject({
         displayTarget: "windows",
@@ -72,7 +72,7 @@ describe("system plugin binds implicit destinations before approval", () => {
       expect(call).toMatchObject({ hostId: requestHostId, connectionId: requestConnectionId });
     expect(h.native).not.toHaveBeenCalled();
     expect(h.readHostStatus).toHaveBeenCalledOnce();
-    expect(module!.adapter!.executionBinding!({ tool: "system_command", params }).identity).toContain(requestConnectionId);
+    expect((await module!.adapter!.executionBinding!({ tool: "system_command", params }, { toolPermissionMode: "full_access" })).identity).toContain(requestConnectionId);
   });
 
   test.each(["host_id", "hostId", "connectionId"])(
@@ -167,13 +167,13 @@ describe("system plugin binds implicit destinations before approval", () => {
       connectionId: replacement,
     });
     const call = { tool: "system_command", params: { target: "windows" } };
-    const firstBinding = first!.adapter!.executionBinding!(call).identity;
+    const firstBinding = (await first!.adapter!.executionBinding!(call, { toolPermissionMode: "full_access" })).identity;
     const [second] = await h.prepare(["system_command"]);
     expect(firstBinding).toContain(requestConnectionId);
-    expect(second!.adapter!.executionBinding!(call).identity).toContain(
+    expect((await second!.adapter!.executionBinding!(call, { toolPermissionMode: "full_access" })).identity).toContain(
       replacement,
     );
-    expect(first!.adapter!.executionBinding!(call).identity).toBe(firstBinding);
+    expect((await first!.adapter!.executionBinding!(call, { toolPermissionMode: "full_access" })).identity).toBe(firstBinding);
     await first!.implementation(call.params);
     expect(h.executeHostOperation.mock.calls[0]![1].connectionId).toBe(
       requestConnectionId,

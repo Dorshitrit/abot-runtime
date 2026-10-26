@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import { runRequestRunner } from "../request/runner.js";
@@ -19,7 +20,7 @@ test("recall after a child with no tool results stays on evidence-aware routing"
     delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Explain the requested distinction." }),
     decide(input) {
       if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-      if (input.modelStep === "worker.decision") return { action: "return_result" };
+      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
       if (input.modelStep === "worker.result") return childResult;
       expect(supervisorFormatName(input)).toBe("supervisor_decision");
       expect(JSON.stringify(input.messages)).toContain(childResult);
@@ -49,7 +50,7 @@ test("an initial recall still consumes the global limit on later post-child rout
     },
     decide(input) {
       if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-      if (input.modelStep === "worker.decision") return { action: "return_result" };
+      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
       if (input.modelStep === "worker.result") return "No external observation was available.";
       expect(supervisorFormatName(input)).toBe("supervisor_decision");
       expect(JSON.stringify(input.format)).not.toContain('"recall_memory"');
@@ -131,7 +132,7 @@ test("steering cannot reset a recall budget already consumed by a superseded loo
     },
     decide(input) {
       if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-      if (input.modelStep === "worker.decision") return { action: "return_result" };
+      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
       if (input.modelStep === "worker.result") return "Current state remains unknown.";
       expect(supervisorFormatName(input)).toBe("supervisor_decision");
       expect(JSON.stringify(input.format)).not.toContain('"recall_memory"');

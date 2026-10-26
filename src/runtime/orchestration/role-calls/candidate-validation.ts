@@ -13,6 +13,7 @@ import {
 import { isValidRoleCapabilitySelectionSupervision } from "./capability-selection-supervision-validation.js";
 import { hasInitialMemoryContext, validateRoleMemoryRecalls } from "./memory-recall-state-validation.js";
 import { isValidAdoptedModelWorkPlan } from "./work-plan-validation.js";
+import { validateRoleBasketReferences } from "./basket-reference.js";
 import { validateRoleSkillReads } from "./skill-read.js";
 import {
   isRoleOperationFingerprint,
@@ -43,6 +44,7 @@ import {
   type RoleCapabilityExecution,
 } from "./contracts.js";
 import { validateRoleCallPlans } from "./plan.js";
+import { validateRoleCallParentInvocations } from "./parent-invocation-validation.js";
 import { isRoleCallResultReceiptValidForStoredResult } from "./result-receipt.js";
 import { findRoleActivationBudgetIssue } from "./activation-budget.js";
 import { isRoleCallWorkerCapabilityScope } from "./worker-capability-scope.js";
@@ -297,10 +299,12 @@ export function validateRoleCallState(
       );
     }
   }
+  issues.push(...validateRoleCallParentInvocations(state));
   issues.push(...validateRoleCallPlans(state, policy));
   validateCapabilityExecutions(state, policy, issues);
   issues.push(...validateRoleMemoryRecalls(state));
   issues.push(...validateRoleSkillReads(state, policy));
+  issues.push(...validateRoleBasketReferences(state, policy));
   if (!isValidRoleOperationSupervision(state, policy)) {
     issues.push(
       issue("invalid_role_operation_supervision", "state.operationSupervision"),

@@ -2,7 +2,7 @@ import type { RealtimeClientHub } from "./realtime-hub.js";
 
 export type WorkspaceChangeNotifier = (
   environmentId: string,
-  resources: readonly ("sessions" | "approvals")[],
+  resources: readonly ("sessions" | "approvals" | "information-basket")[],
 ) => void;
 
 /** Invalidate client projections only; a disconnected observer cannot undo a commit. */

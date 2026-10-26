@@ -59,6 +59,23 @@ the completion-event boundary: tool output, canonical evidence and model context
 are unchanged. The Web UI does not fetch a file or memory record again to recreate
 historical evidence. Passive Runtime memory remains outside tool activity.
 
+`tool-basket-activity-fields.js` presents declared basket actions, document names
+and result counts. It displays at most five names, each capped at 120 Unicode
+characters after removing control/format characters. Returned sources without a
+displayed name and further omitted results remain separate counts. Basket activity
+never falls back to source IDs, paths, queries, model intent, raw outputs or input/
+output previews; this applies to tool disclosures and live/replayed timeline
+summaries. Other tools retain their existing preview policy. Bounded Runtime
+`information_basket` status messages keep their exact filename punctuation and
+casing, and do not count as tool invocations or override the active-tool status.
+`basket-activity-model.js` projects these recorded statuses into a separate Sources
+section in a positively identified Supervisor card, using the same ordered events
+for live and replay views. Passive matches remain distinct from explicit search/read
+statuses. Counts and names use the existing bounded display labels; the UI never
+parses outcomes or pairs starts with completions from text or adjacency. A Started
+row records an observed start, not an inferred running execution. Basket events do
+not change role ownership, tool counts, model context or Runtime behavior.
+
 `tool-process-activity-fields.js` projects declared process display fields without
 branching on tool identities. Opted-in commands retain up to 4,096 characters and
 whitespace; shared `conversation-tool-evidence.js` renders them as inert
@@ -278,6 +295,17 @@ including projects with no sessions. The session's saved project snapshot also
 provides the visible working-folder label. Neither project presentation nor client
 request payloads overwrite global runtime paths.
 
+Sidebar requests opt into grouped metadata pages: all project headers are
+available immediately, each project starts with five unpinned conversations,
+and ordinary conversations have their own configured page size and total.
+Pins do not consume either quota. `session-read-state/sidebar-pagination.ts`
+owns group selection and query-bound cursors; `session-list-pagination.js`
+keeps independent pending, error and continuation state per project. Expanding
+one project never advances another group's cursor. A changed deletion catalog
+restarts only the ordinary window so newly regrouped conversations remain
+reachable. Selected summaries retain global order for automatic restoration.
+Legacy list requests retain their existing response behavior.
+
 Project grouping and sidebar reordering share the saved project ID and the
 owner's deleted-project catalog. Deleting a project moves its conversations into
 the ordinary list without modifying session snapshots, history or working folders.
@@ -398,3 +426,33 @@ then opens the returned ordinary session through its existing session controller
 It submits no chat message or model request. Old suggestions without saved context
 show a disabled action and explanation. Legacy Keep/Not interested and Not now
 controls are removed; their stored historical preferences and statuses remain.
+
+## Information basket workspace
+
+`information-basket-feature.js` dynamically mounts Resources without expanding
+`index.html`, then composes its controller, view and existing shell/realtime seams.
+`information-basket-controller.js` owns the environment-bound management projection,
+revision-bound mutations, explicit settings drafts and stale-response guards.
+`information-basket-picker-controller.js` separately owns Runtime directory reads,
+pagination and selected source paths. Browser drops retain filenames only; they
+never read file bytes or synthesize absolute paths.
+
+The focused components under `components/information-basket/` render the wide drop
+area, responsive source table, source details and native picker dialog. They receive
+actions and snapshots and never call HTTP. The transport module under
+`services/runtime-web-client/information-basket.js` owns URLs and serialization.
+The Runtime basket service remains canonical; the browser holds no vector index,
+source content or persisted duplicate resource registry.
+
+Home projects already-detected source problems through
+`lib/information-basket-attention.js`; `dashboard-resources-controller.js` owns
+its metadata reads and revision-bound quick actions. It joins the existing Home
+refresh/event gates without polling or rescanning files. Environment/readiness
+changes invalidate pending results; onboarding hides the card and picker.
+The Resources panel joins the shared compact Home widget/dialog layout.
+
+Reindex retains the source path. Relink reuses the Runtime file picker to select
+one explicit replacement path for the same source ID and expected revision.
+The management service queues the replacement; the UI does not report indexing
+success until canonical source state does. This does not add model tools or
+change retrieval, prompts or request execution.

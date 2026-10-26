@@ -49,7 +49,8 @@ export class WebSessionRoutes {
       return true;
     }
     if (method === "POST" && sessionId === "page" && !action) {
-      sendJson(response, 200, { ok: true, ...(await this.readStates.list(environmentId, body ?? {})) });
+      const catalog = await this.sidebarProjectCatalog(environment, body);
+      sendJson(response, 200, { ok: true, ...(await this.readStates.list(environmentId, body ?? {}, catalog)) });
       return true;
     }
     if (!sessionId) return false;
@@ -138,5 +139,12 @@ export class WebSessionRoutes {
       return true;
     }
     return false;
+  }
+
+  private async sidebarProjectCatalog(environment: RuntimeEnvironment, body: JsonObject | null) {
+    if (body?.sidebar !== true) return undefined;
+    const projects = environment.services.projects;
+    if (!projects) throw new Error("projects_unavailable");
+    return projects.catalog();
   }
 }

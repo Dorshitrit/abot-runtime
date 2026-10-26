@@ -9,6 +9,7 @@ const WORKSPACE_PATHS = Object.freeze({
   learning: "/learning",
   memory: "/memory",
   skills: "/skills",
+  resources: "/resources",
   models: "/models",
   plugins: "/plugins",
   config: "/system",

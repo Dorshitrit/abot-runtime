@@ -72,7 +72,7 @@ test.each([false, true])(
     f.invoke.mockClear();
     f.countInputTokens.mockClear();
     f.countInputTokens.mockResolvedValue({
-      inputTokens: 23_000, profileId: "test", provider: "openai", model: "test",
+      inputTokens: 29_000, profileId: "test", provider: "openai", model: "test",
       contextWindowTokens: 32_000, source: "provider_input_token_count",
     });
     await f.run(response);

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { ModelGatewayClient } from "../ports.js";
 import type { RequestRunnerConfig } from "../config/runner/contracts.js";
+import { createWorkerDecisionRunnerConfig, createWorkerDecisionModelPolicy, createWorkerEvidenceModel } from "./support/worker-decision-model-fixture.js";
 import type { RequestToolResultsView } from "../context/request-tool-results.js";
 import {
   configureDebugLogger,
@@ -36,51 +37,8 @@ import {
   WORKER_RESULT_MODEL_STEP,
 } from "../steps/worker-decision/index.js";
 
-const runnerConfig: RequestRunnerConfig = {
-  models: {
-    defaults: {
-      profileId: "runtime-default",
-      steps: {
-        [WORKER_DECISION_MODEL_STEP]: "worker.decision",
-        [WORKER_RESULT_MODEL_STEP]: "supervisor.response",
-        [CAPABILITY_CONTROLS_MODEL_STEP]: "capability.controls",
-      },
-    },
-  },
-  context: {
-    outputReserveTokens: 1_000,
-    safetyReserveTokens: 200,
-    attachmentReserveTokens: 100,
-  },
-  steps: {
-    [WORKER_DECISION_MODEL_STEP]: { timeoutMs: 20_000 },
-    [WORKER_RESULT_MODEL_STEP]: { timeoutMs: 20_000 },
-    [CAPABILITY_CONTROLS_MODEL_STEP]: { timeoutMs: 20_000 },
-  } as RequestRunnerConfig["steps"],
-};
-
-const modelPolicy = {
-  providers: { local: { type: "ollama" as const } },
-  profiles: {
-    "runtime-default": {
-      provider: "local",
-      model: "runtime-default:latest",
-      contextWindowTokens: 10_000,
-      supportsThinking: true,
-      calibration: {
-        "worker.decision": {},
-      },
-    },
-  },
-  defaults: {
-    profileId: "runtime-default",
-    steps: {
-      [WORKER_DECISION_MODEL_STEP]: "worker.decision",
-      [WORKER_RESULT_MODEL_STEP]: "supervisor.response",
-      [CAPABILITY_CONTROLS_MODEL_STEP]: "capability.controls",
-    },
-  },
-};
+const runnerConfig = createWorkerDecisionRunnerConfig();
+const modelPolicy = createWorkerDecisionModelPolicy(10_000);
 
 const operationSupervisionModelPolicy = {
   ...modelPolicy,
@@ -289,7 +247,7 @@ async function createWorkerWithDependency(): Promise<{
 }
 
 function createRequest(
-  invoke: ModelGatewayClient["invoke"] = vi.fn(async (input) => ({
+  invoke: ModelGatewayClient["invoke"] = createWorkerEvidenceModel(async (input) => ({
     text:
       input.modelStep === WORKER_RESULT_MODEL_STEP
         ? "Small checkpoints expose incorrect assumptions early."
@@ -699,6 +657,7 @@ describe("generic Worker no-tool decision contract", () => {
       {
         resultRef: "result-1",
         producerCallId: "call-3",
+        producerObjective: "Observe the current source state.",
         roleId: "worker",
         outcome: "completed",
         summary: dependencySummary,
@@ -715,6 +674,7 @@ describe("generic Worker no-tool decision contract", () => {
       {
         resultRef: "result-1",
         producerCallId: "call-3",
+        producerObjective: "Observe the current source state.",
         roleId: "worker",
         outcome: "completed",
         summary: dependencySummary,
@@ -803,7 +763,7 @@ describe("generic Worker no-tool decision contract", () => {
     configureDebugLogger({ enabled: true });
     const secretResult = "RESULT_SECRET_SHOULD_NOT_BE_LOGGED";
     let invocationIndex = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       invocationIndex += 1;
       if (invocationIndex === 1) {
         expect(input.modelStep).toBe(WORKER_DECISION_MODEL_STEP);
@@ -913,7 +873,7 @@ describe("generic Worker no-tool decision contract", () => {
   test("projects one request tool-results block into decision and result without duplicating its summary", async () => {
     const sharedSummary = "SHARED_TOOL_SUMMARY_MUST_APPEAR_ONCE";
     const sharedView = requestToolResults(sharedSummary);
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       const messages = input.messages as readonly Readonly<{
         role: string;
         content: string;
@@ -980,7 +940,7 @@ describe("generic Worker no-tool decision contract", () => {
 
   test("rejects an empty raw result with result-author diagnostics", async () => {
     configureDebugLogger({ enabled: true });
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => ({
+    const invoke = createWorkerEvidenceModel(async (input) => ({
       text:
         input.modelStep === WORKER_RESULT_MODEL_STEP
           ? "   "
@@ -1035,7 +995,7 @@ describe("generic Worker no-tool decision contract", () => {
 
   test("accepts a long raw result without repair or loss of content", async () => {
     const longResult = "complete finding ".repeat(1_000);
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       if (input.modelStep === WORKER_DECISION_MODEL_STEP) {
         return { text: workerDecisionText({ action: "return_result" }), meta: {} };
       }
@@ -1052,7 +1012,7 @@ describe("generic Worker no-tool decision contract", () => {
   });
 
   test("surfaces an explicitly truncated raw result without role completion", async () => {
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       if (input.modelStep !== WORKER_RESULT_MODEL_STEP) {
         return {
           text: workerDecisionText({ action: "return_result" }),
@@ -1087,13 +1047,10 @@ describe("generic Worker no-tool decision contract", () => {
       );
     if (!canonicalCall) throw new Error("canonical Worker call missing");
     const completedRequest = createRequest(
-      vi.fn(async (input) => ({
-        text:
-          input.modelStep === WORKER_RESULT_MODEL_STEP
-            ? "The requested bounded result."
-            : workerDecisionText({ action: "return_result" }),
-        meta: {},
-      })),
+      createWorkerEvidenceModel(async (input) => {
+        expect(input.modelStep).toBe(WORKER_RESULT_MODEL_STEP);
+        return { text: "The requested bounded result.", meta: {} };
+      }).withEvidenceDecisions(false),
     );
     await expect(
       GENERIC_WORKER_EXECUTOR.execute({
@@ -1108,7 +1065,7 @@ describe("generic Worker no-tool decision contract", () => {
       summary: "The requested bounded result.",
     });
 
-    const failedInvoke = vi.fn<ModelGatewayClient["invoke"]>(async () => ({
+    const failedInvoke = createWorkerEvidenceModel(async () => ({
       text: workerDecisionText({
         action: "return_failure",
         reason: "A current external observation is required.",
@@ -1128,7 +1085,7 @@ describe("generic Worker no-tool decision contract", () => {
       outcome: "failed",
       summary: "A current external observation is required.",
     });
-    expect(failedInvoke).toHaveBeenCalledOnce();
+    expect(failedInvoke.mock.calls.map(([input]) => input.modelStep)).toEqual(["worker.evidence", WORKER_DECISION_MODEL_STEP]);
   });
 
   test("merges controls with the frozen single-capability selection and does not carry guidance into re-entry", async () => {
@@ -1176,7 +1133,7 @@ describe("generic Worker no-tool decision contract", () => {
       }),
     };
     let modelInvocation = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       modelInvocation += 1;
       const messages = input.messages as readonly Readonly<{
         role: string;
@@ -1232,27 +1189,12 @@ describe("generic Worker no-tool decision contract", () => {
           meta: {},
         };
       }
-      if (modelInvocation === 3) {
-        timeline.push("model.reentry");
-        expect(input.modelStep).toBe(WORKER_DECISION_MODEL_STEP);
-        expect(serializedMessages).not.toContain(skillSecret);
-        expect(
-          hasRuntimeMessageKind(
-            messages,
-            "runtime_worker_capability_execution_assignment",
-          ),
-        ).toBe(false);
-        return {
-          text: workerDecisionText({ action: "return_result" }),
-          meta: {},
-        };
-      }
       timeline.push("model.result");
       expect(input.modelStep).toBe(WORKER_RESULT_MODEL_STEP);
       expect(input).not.toHaveProperty("format");
       expect(serializedMessages).not.toContain(skillSecret);
       return { text: "The exact observed value is cobalt.", meta: {} };
-    });
+    }).withEvidenceDecisions(true, false);
     const getExecutionGuidance = vi.fn(async (capabilityId: string) => {
       timeline.push(`skill.load:${capabilityId}`);
       return skillSecret;
@@ -1312,9 +1254,13 @@ describe("generic Worker no-tool decision contract", () => {
       "skill.load:example.observe",
       "model.execution",
       "tool.execute",
-      "model.reentry",
       "model.result",
     ]);
+    expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
+      "worker.evidence", WORKER_DECISION_MODEL_STEP, CAPABILITY_CONTROLS_MODEL_STEP, "worker.evidence", WORKER_RESULT_MODEL_STEP,
+    ]);
+    expect(JSON.stringify(invoke.mock.calls[3]![0].messages)).not.toContain(skillSecret);
+    expect(hasRuntimeMessageKind(invoke.mock.calls[3]![0].messages, "runtime_worker_capability_execution_assignment")).toBe(false);
     expect(request.onThinkingDelta).toHaveBeenCalledExactlyOnceWith(
       `${canonicalIntent}\n\n`,
     );
@@ -1386,7 +1332,7 @@ describe("generic Worker no-tool decision contract", () => {
       },
       execute,
     };
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       const serializedFormat = JSON.stringify(modelFormatSchema(input.format));
       const serializedMessages = JSON.stringify(input.messages);
       expect(serializedFormat).toContain('"selectionControls"');
@@ -1430,7 +1376,7 @@ describe("generic Worker no-tool decision contract", () => {
         executionId: "capability-execution-1",
       },
     });
-    expect(invoke).toHaveBeenCalledOnce();
+    expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual(["worker.evidence", WORKER_DECISION_MODEL_STEP]);
     expect(getExecutionGuidance).toHaveBeenCalledExactlyOnceWith(
       "write_complete_file",
     );
@@ -1476,7 +1422,7 @@ describe("generic Worker no-tool decision contract", () => {
     expect(JSON.stringify(logs)).not.toContain("products.json");
   });
 
-  test("keeps a selected non-path capability on the baseline one-call path when a registry exists", async () => {
+  test("keeps a selected non-path capability free of controls refinement when a registry exists", async () => {
     const ledger = await createWorkerLedger();
     const call = ledger
       .current()
@@ -1544,15 +1490,15 @@ describe("generic Worker no-tool decision contract", () => {
         },
         execute: queryExecute,
       };
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       expect(input.modelStep).toBe(WORKER_DECISION_MODEL_STEP);
       expect(
         hasRuntimeMessageKind(
           input.messages,
           "runtime_session_artifact_paths_v1",
         ),
-      ).toBe(false);
-      expect(JSON.stringify(input.messages)).not.toContain("news/news.txt");
+      ).toBe(true);
+      expect(runtimeMessageByKind(input.messages, "runtime_session_artifact_paths_v1")).toMatchObject({ targets: ["news/news.txt"] });
       return {
         text: workerDecisionText({
           action: "invoke_capability",
@@ -1589,7 +1535,7 @@ describe("generic Worker no-tool decision contract", () => {
         executionId: "capability-execution-1",
       },
     });
-    expect(invoke).toHaveBeenCalledOnce();
+    expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual(["worker.evidence", WORKER_DECISION_MODEL_STEP]);
     expect(getExecutionGuidance).toHaveBeenCalledExactlyOnceWith(
       queryAdapter.descriptor.capabilityId,
     );
@@ -1643,7 +1589,7 @@ describe("generic Worker no-tool decision contract", () => {
       execute,
     };
     let invocationIndex = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       invocationIndex += 1;
       const serializedFormat = JSON.stringify(modelFormatSchema(input.format));
       if (invocationIndex === 1) {
@@ -1653,7 +1599,7 @@ describe("generic Worker no-tool decision contract", () => {
             input.messages,
             "runtime_session_artifact_paths_v1",
           ),
-        ).toBe(false);
+        ).toBe(true);
         return {
           text: workerDecisionText({
             action: "invoke_capability",
@@ -1717,7 +1663,12 @@ describe("generic Worker no-tool decision contract", () => {
         executionId: "capability-execution-1",
       },
     });
-    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
+      "worker.evidence", WORKER_DECISION_MODEL_STEP, CAPABILITY_CONTROLS_MODEL_STEP,
+    ]);
+    expect(new Set(invoke.mock.calls.map(([input]) => JSON.stringify(
+      runtimeMessageByKind(input.messages, "runtime_session_artifact_paths_v1"),
+    ))).size).toBe(1);
     expect(getExecutionGuidance).toHaveBeenCalledExactlyOnceWith(
       "write_complete_file",
     );
@@ -1736,8 +1687,8 @@ describe("generic Worker no-tool decision contract", () => {
           sessionArtifactPathAvailableCount: 10,
           sessionArtifactPathBoundedCount: 8,
           sessionArtifactPathEligibleCount: 8,
-          sessionArtifactPathProjectedCount: 0,
-          sessionArtifactPathOmittedCount: 10,
+          sessionArtifactPathProjectedCount: 8,
+          sessionArtifactPathOmittedCount: 2,
         }),
         expect.objectContaining({
           scope: "runtime.worker",
@@ -1747,8 +1698,8 @@ describe("generic Worker no-tool decision contract", () => {
           sessionArtifactPathAvailableCount: 10,
           sessionArtifactPathBoundedCount: 8,
           sessionArtifactPathEligibleCount: 8,
-          sessionArtifactPathProjectedCount: 8,
-          sessionArtifactPathOmittedCount: 2,
+          sessionArtifactPathProjectedCount: 0,
+          sessionArtifactPathOmittedCount: 10,
         }),
       ]),
     );
@@ -1791,7 +1742,7 @@ describe("generic Worker no-tool decision contract", () => {
       runtimePathControlIds: Object.freeze(["path"]),
       catalogGroups: Object.freeze(["write" as const]),
     });
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       expect(JSON.stringify(modelFormatSchema(input.format))).toContain(
         '"selectionControls"',
       );
@@ -1843,7 +1794,7 @@ describe("generic Worker no-tool decision contract", () => {
       intent: canonicalIntent,
       controls: { path: "artifact-current.txt" },
     });
-    expect(invoke).toHaveBeenCalledOnce();
+    expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual(["worker.evidence", WORKER_DECISION_MODEL_STEP]);
 
     const logs = consoleLog.mock.calls.map(
       ([line]) => JSON.parse(String(line)) as Record<string, unknown>,
@@ -1940,7 +1891,7 @@ describe("generic Worker no-tool decision contract", () => {
         })),
       };
     let modelInvocation = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       modelInvocation += 1;
       const messages = input.messages as readonly Readonly<{
         role: string;
@@ -1952,7 +1903,7 @@ describe("generic Worker no-tool decision contract", () => {
         expect(serializedFormat).not.toContain('"selectionControls"');
         expect(
           hasRuntimeMessageKind(messages, "runtime_session_artifact_paths_v1"),
-        ).toBe(false);
+        ).toBe(true);
         return {
           text: workerDecisionText({
             action: "invoke_capabilities",
@@ -2075,24 +2026,12 @@ describe("generic Worker no-tool decision contract", () => {
           meta: {},
         };
       }
-      if (modelInvocation === 3) {
-        const serialized = JSON.stringify(messages);
-        expect(serialized).toContain("capability-execution-1");
-        expect(serialized).toContain("capability-execution-2");
-        expect(
-          hasRuntimeMessageKind(
-            messages,
-            "runtime_worker_capability_execution_assignment",
-          ),
-        ).toBe(false);
-        return {
-          text: workerDecisionText({ action: "return_result" }),
-          meta: {},
-        };
-      }
+      expect(JSON.stringify(messages)).toContain("capability-execution-1");
+      expect(JSON.stringify(messages)).toContain("capability-execution-2");
+      expect(hasRuntimeMessageKind(messages, "runtime_worker_capability_execution_assignment")).toBe(false);
       expect(input.modelStep).toBe(WORKER_RESULT_MODEL_STEP);
       return { text: "Both independent sources were observed.", meta: {} };
-    });
+    }).withEvidenceDecisions(true, false);
     const getExecutionGuidance = vi.fn(async (capabilityId: string) =>
       capabilityId === "inspect_project" ? "PROJECT_GUIDANCE" : "JSON_GUIDANCE",
     );
@@ -2185,7 +2124,11 @@ describe("generic Worker no-tool decision contract", () => {
     expect(request.onThinkingDelta).toHaveBeenCalledExactlyOnceWith(
       `${intentA}\n${intentB}\n\n`,
     );
-    expect(invoke).toHaveBeenCalledTimes(4);
+    expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
+      "worker.evidence", WORKER_DECISION_MODEL_STEP, CAPABILITY_CONTROLS_MODEL_STEP, "worker.evidence", WORKER_RESULT_MODEL_STEP,
+    ]);
+    expect(JSON.stringify(invoke.mock.calls[3]![0].messages)).toContain("capability-execution-1");
+    expect(JSON.stringify(invoke.mock.calls[3]![0].messages)).toContain("capability-execution-2");
     const logs = consoleLog.mock.calls.map(
       ([line]) => JSON.parse(String(line)) as Record<string, unknown>,
     );
@@ -2248,7 +2191,7 @@ describe("generic Worker no-tool decision contract", () => {
       execute: directExecute,
     };
     let modelInvocation = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async () => {
+    const invoke = createWorkerEvidenceModel(async () => {
       modelInvocation += 1;
       return modelInvocation % 2 === 1
         ? {
@@ -2422,7 +2365,7 @@ describe("generic Worker no-tool decision contract", () => {
       }),
     };
     let modelInvocation = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       modelInvocation += 1;
       const assignment = runtimeMessageByKind(
         input.messages as readonly Readonly<{ content: string }>[],

@@ -4,6 +4,7 @@ import type {
   RoleCallResult,
 } from "./contracts.js";
 import { traceDebug } from "../../observability/debug-logger.js";
+import { hasSuperContextContract } from "../../context/super-context-policy.js";
 
 const ROLE_DEPENDENCY_LOG_SCOPE = "runtime.role_dependencies";
 
@@ -16,7 +17,10 @@ export type RoleCallDependencyResult = Readonly<
     | "outcome"
     | "summary"
     | "receipt"
-  >
+  > & {
+    /** Historical assignment of the canonical producer, not a new objective. */
+    producerObjective?: string;
+  }
 >;
 
 /**
@@ -114,7 +118,21 @@ function projectRoleCallDependencyResultsUnchecked(
       outcome: result.outcome,
       summary: result.summary,
       ...(result.receipt ? { receipt: result.receipt } : {}),
+      ...projectSuperWorkerDependencyProvenance(head, call, producer),
     });
   });
   return Object.freeze(results);
+}
+
+function projectSuperWorkerDependencyProvenance(
+  head: RoleCallLedgerHead,
+  consumer: RoleCallFrame,
+  producer: RoleCallFrame,
+): Readonly<{ producerObjective?: string }> {
+  if (consumer.roleId !== "worker") return {};
+  if (!hasSuperContextContract(head.policy.authority, "delegated.worker"))
+    return {};
+  if (producer.objective === null)
+    throw new Error("role_call_dependency_projection_invalid");
+  return { producerObjective: producer.objective };
 }

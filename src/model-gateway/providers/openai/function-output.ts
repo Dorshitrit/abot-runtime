@@ -11,8 +11,11 @@ type OpenAIFunctionOutput = Readonly<{
   parallel_tool_calls: false;
 }>;
 
-function isCapabilityControlsStep(modelStep: unknown): boolean {
-  return resolveModelInvocationStep(modelStep)?.outputContract === "capability_controls";
+function hasNativeFunctionOutputContract(modelStep: unknown): boolean {
+  const contract = resolveModelInvocationStep(modelStep)?.outputContract;
+  if (contract === "capability_controls") return true;
+  if (contract === "execution_agent_decision") return true;
+  return contract === "context_compaction";
 }
 
 function hasFunctionParametersSchema(
@@ -22,13 +25,13 @@ function hasFunctionParametersSchema(
   return format.schema.type === "object";
 }
 
-// Transport the existing controls envelope as one function's arguments. The
-// Runtime still owns validation, frozen-control merging and execution authority.
+// Transport the existing structured envelope as one function's arguments.
+// The Runtime still owns validation, canonical state and execution authority.
 export function projectOpenAIFunctionOutput(
   modelStep: unknown,
   format: unknown,
 ): OpenAIFunctionOutput | undefined {
-  if (!isCapabilityControlsStep(modelStep)) return undefined;
+  if (!hasNativeFunctionOutputContract(modelStep)) return undefined;
   if (!hasFunctionParametersSchema(format)) return undefined;
   return {
     tools: [{

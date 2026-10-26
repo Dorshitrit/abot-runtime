@@ -1,4 +1,6 @@
 import type { ToolResultBudget } from "./result-budget.js";
+import type { ToolExecutionAuthority, ToolExecutionBinding, ToolExecutionBindingContext } from "./tool-execution-binding.js";
+export type { ToolExecutionAuthority, ToolExecutionBinding, ToolExecutionBindingContext } from "./tool-execution-binding.js";
 import type { ToolContextTextField } from "./tool-context-text.js";
 import type {
   ToolRequestWork,
@@ -96,6 +98,8 @@ export type ToolEventLifecycleCopy = Readonly<{
 
 export type ToolEventResultMetadataProjection = Readonly<{
   path: string;
+  /** Optional bounded own-property selector within JSON output; requires path "output". */
+  jsonPath?: string;
   kind: "preview" | "number" | "boolean";
 }>;
 
@@ -303,6 +307,8 @@ export type ToolModelInvoker = Readonly<{
 }>;
 
 export type ToolExecutionContext = {
+  /** Host-captured authority; never populated from model-supplied tool parameters. */
+  executionAuthority?: ToolExecutionAuthority;
   /** Delivery-envelope measurement; unrelated to the model context budget. */
   resultBudget?: ToolResultBudget;
   requestWork?: ToolRequestWork;
@@ -335,11 +341,10 @@ export type ToolCallAdapter = {
     input: ToolCallAdapterInput,
   ) => { error: string; repairHint?: string } | null;
   /** Request-captured execution authority; never projected into model controls. */
-  executionBinding?: (input: ToolCallAdapterInput) => Readonly<{
-    identity: string;
-    /** Human approval/activity disclosure only, never tool-result evidence. */
-    metadata?: Readonly<Record<string, unknown>>;
-  }>;
+  executionBinding?: (
+    input: ToolCallAdapterInput,
+    context: ToolExecutionBindingContext,
+  ) => ToolExecutionBinding | Promise<ToolExecutionBinding>;
 };
 
 export type ToolModule = {

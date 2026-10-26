@@ -13,7 +13,7 @@ import type { RequestRoleExecutionHandoff } from "../../request/result.js";
 import type { PlannerGraphOutcome } from "./contracts.js";
 import { PLANNER_GRAPH_MODEL_STEP } from "./contracts.js";
 import { PLANNER_DECISION_MODEL_STEP } from "../planner-decision/contracts.js";
-import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
+import { createPolicyModelStepCompactionController } from "../../context/super-compaction/routing.js";
 import { buildPlannerGraphInput } from "./input.js";
 import { parsePlannerGraphOutput } from "./parser.js";
 
@@ -28,7 +28,7 @@ export async function runPlannerGraph(
     modelStep: input.modelStep,
     format: input.format,
     messages: input.context.messages,
-    contextCompaction: createModelStepCompactionController(request, {
+    contextCompaction: createPolicyModelStepCompactionController(request, {
       consumer: PLANNER_GRAPH_MODEL_STEP,
       call,
       sourceRevision: head.revision,
@@ -36,7 +36,7 @@ export async function runPlannerGraph(
         PLANNER_DECISION_MODEL_STEP,
         PLANNER_GRAPH_MODEL_STEP,
       ]),
-    }),
+    }, request.executionPolicy.authority),
     timeoutReason: "planner_graph_timeout",
     invalidOutputReason: "invalid_planner_graph",
     parse: (text) => parsePlannerGraphOutput(text, input.limits),

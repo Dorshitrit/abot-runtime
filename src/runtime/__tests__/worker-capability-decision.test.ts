@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { ModelGatewayClient } from "../ports.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
-import type { RequestRunnerConfig } from "../config/runner/contracts.js";
+import { createWorkerDecisionRunnerConfig, createWorkerDecisionModelPolicy, createWorkerEvidenceModel } from "./support/worker-decision-model-fixture.js";
 import {
   buildCompactedRequestToolResultsMessage,
   buildRequestToolResultsMessage,
@@ -61,55 +61,11 @@ const EMPTY_REQUEST_TOOL_RESULTS: RequestToolResultsView = Object.freeze({
   results: Object.freeze([]),
 });
 
-const runnerConfig: RequestRunnerConfig = {
-  models: {
-    defaults: {
-      profileId: "runtime-default",
-      steps: {
-        [WORKER_DECISION_MODEL_STEP]: "worker.decision",
-        [WORKER_RESULT_MODEL_STEP]: "supervisor.response",
-        [CAPABILITY_CONTROLS_MODEL_STEP]: "capability.controls",
-      },
-    },
-  },
-  context: {
-    outputReserveTokens: 1_000,
-    safetyReserveTokens: 200,
-    attachmentReserveTokens: 100,
-  },
-  steps: {
-    [WORKER_DECISION_MODEL_STEP]: { timeoutMs: 20_000 },
-    [WORKER_RESULT_MODEL_STEP]: { timeoutMs: 20_000 },
-    [CAPABILITY_CONTROLS_MODEL_STEP]: { timeoutMs: 20_000 },
-  } as RequestRunnerConfig["steps"],
-};
-
-const modelPolicy = {
-  providers: { local: { type: "ollama" as const } },
-  profiles: {
-    "runtime-default": {
-      provider: "local",
-      model: "runtime-default:latest",
-      contextWindowTokens: 8_000,
-      supportsThinking: true,
-      calibration: {
-        "worker.decision": {},
-        "capability.controls": {},
-      },
-    },
-  },
-  defaults: {
-    profileId: "runtime-default",
-    steps: {
-      [WORKER_DECISION_MODEL_STEP]: "worker.decision",
-      [WORKER_RESULT_MODEL_STEP]: "supervisor.response",
-      [CAPABILITY_CONTROLS_MODEL_STEP]: "capability.controls",
-    },
-  },
-};
+const runnerConfig = createWorkerDecisionRunnerConfig();
+const modelPolicy = createWorkerDecisionModelPolicy(8_000, true);
 
 function createRequest(
-  invoke: ModelGatewayClient["invoke"] = vi.fn(async () => ({
+  invoke: ModelGatewayClient["invoke"] = createWorkerEvidenceModel(async () => ({
     text: workerDecisionText({
       action: "invoke_capability",
       capabilityId: "example.observe",
@@ -423,7 +379,7 @@ function hasRuntimeMessageKind(input: unknown, kind: string): boolean {
 }
 
 describe("generic Worker capability decision boundary", () => {
-  test("projects stored paths only in the exact phase that authors a runtime path control", async () => {
+  test("shares passive stored paths while only controls author the runtime target", async () => {
     const { ledger, call } = await openWorkerLedger(undefined, "news");
     const adapter: WorkerCapabilityAdapter<TestContext> = {
       descriptor: {
@@ -462,7 +418,7 @@ describe("generic Worker capability decision boundary", () => {
         selectionInput.context.messages,
         "runtime_session_artifact_paths_v1",
       ),
-    ).toBe(false);
+    ).toBe(true);
 
     const executionInput = buildWorkerDecisionInput(request, {
       call,
@@ -1777,25 +1733,11 @@ describe("generic Worker capability decision boundary", () => {
       checkpoint,
     );
 
-    const seenEvidence: Record<string, unknown>[] = [];
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
-      const messages = input.messages as readonly ChatMessage[];
-      seenEvidence.push(
-        runtimeMessageByKind(
-          messages,
-          OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND,
-        ),
-      );
-      return input.modelStep === WORKER_DECISION_MODEL_STEP
-        ? {
-            text: workerDecisionText({ action: "return_result" }),
-            meta: {},
-          }
-        : {
-            text: "Returned the exact value established by capability-execution-2.",
-            meta: {},
-          };
+    const invoke = createWorkerEvidenceModel(async (input) => {
+      expect(input.modelStep).toBe(WORKER_RESULT_MODEL_STEP);
+      return { text: "Returned the exact value established by capability-execution-2.", meta: {} };
     });
+    invoke.withEvidenceDecisions(false);
     const request = createRequest(invoke, { contextWindowTokens: 32_000 });
     request.contextCompactionStore?.registerSourcesAtomically!([compactedSource]);
     request.contextCompactionStore?.commit(checkpoint);
@@ -1813,6 +1755,9 @@ describe("generic Worker capability decision boundary", () => {
       action: "return_result",
       result: "Returned the exact value established by capability-execution-2.",
     });
+    const seenEvidence = invoke.mock.calls.map(([input]) => runtimeMessageByKind(
+      input.messages, OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND,
+    ));
     expect(seenEvidence).toHaveLength(2);
     for (const evidence of seenEvidence) {
       expect(evidence).toMatchObject({
@@ -3594,7 +3539,7 @@ describe("generic Worker capability decision boundary", () => {
     const { ledger, call } = await openWorkerLedger();
     const binding = createBinding(ledger, call);
     let invocation = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       invocation += 1;
       const schema = JSON.stringify(input.format);
       if (invocation === 1) {
@@ -3635,7 +3580,7 @@ describe("generic Worker capability decision boundary", () => {
       controls: {},
     });
     expect(invoke).toHaveBeenNthCalledWith(
-      1,
+      2,
       expect.objectContaining({
         modelStep: WORKER_DECISION_MODEL_STEP,
         format: expect.objectContaining({
@@ -3659,7 +3604,7 @@ describe("generic Worker capability decision boundary", () => {
         }),
       }),
     );
-    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke).toHaveBeenCalledTimes(3);
     expect(ledger.current().state.capabilityExecutions).toEqual([]);
   });
 
@@ -3685,7 +3630,7 @@ describe("generic Worker capability decision boundary", () => {
       execute: vi.fn(),
     };
     const binding = createBinding(ledger, call, adapter);
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async () => ({
+    const invoke = createWorkerEvidenceModel(async () => ({
       text: workerDecisionText({
         action: "invoke_capability",
         capabilityId: "example.write",
@@ -3707,7 +3652,7 @@ describe("generic Worker capability decision boundary", () => {
       intent,
       controls: { path: "products.json" },
     });
-    expect(invoke).toHaveBeenCalledOnce();
+    expect(invoke).toHaveBeenCalledTimes(2);
     expect(adapter.execute).not.toHaveBeenCalled();
     expect(ledger.current().state.capabilityExecutions).toEqual([]);
   });
@@ -3724,7 +3669,7 @@ describe("generic Worker capability decision boundary", () => {
     const adapter = observationAdapter();
     const binding = createBinding(ledger, call, adapter);
     let invocation = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       invocation += 1;
       if (invocation === 1) {
         return {
@@ -3780,7 +3725,7 @@ describe("generic Worker capability decision boundary", () => {
       intent,
       controls: {},
     });
-    expect(invoke).toHaveBeenCalledTimes(3);
+    expect(invoke).toHaveBeenCalledTimes(4);
     expect(getExecutionGuidance).toHaveBeenCalledExactlyOnceWith(
       "example.observe",
     );
@@ -3809,7 +3754,7 @@ describe("generic Worker capability decision boundary", () => {
     };
     const binding = createBinding(ledger, call, adapter);
     let invocation = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       invocation += 1;
       if (invocation === 1) {
         return {
@@ -3855,7 +3800,7 @@ describe("generic Worker capability decision boundary", () => {
       intent,
       controls: {},
     });
-    expect(invoke).toHaveBeenCalledTimes(3);
+    expect(invoke).toHaveBeenCalledTimes(4);
     expect(adapter.execute).not.toHaveBeenCalled();
     expect(ledger.current().state.capabilityExecutions).toEqual([]);
   });
@@ -3884,7 +3829,7 @@ describe("generic Worker capability decision boundary", () => {
     let executionMessages:
       | readonly Readonly<{ role: string; content: string }>[]
       | undefined;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       invocation += 1;
       if (invocation === 1) {
         return {
@@ -3959,7 +3904,7 @@ describe("generic Worker capability decision boundary", () => {
       intent,
       controls: { query: "current cobalt value" },
     });
-    expect(invoke).toHaveBeenCalledTimes(3);
+    expect(invoke).toHaveBeenCalledTimes(4);
     expect(adapter.execute).not.toHaveBeenCalled();
     expect(ledger.current().state.capabilityExecutions).toEqual([]);
   });
@@ -4006,7 +3951,7 @@ describe("generic Worker capability decision boundary", () => {
         : "Confirm the selected mutation before execution.",
     );
     let invocation = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       invocation += 1;
       const messages = asChatMessages(input.messages)
         .map(({ content }) => content)
@@ -4071,7 +4016,7 @@ describe("generic Worker capability decision boundary", () => {
           ),
         ).toBe(false);
         expect(
-          runtimeMessageByKind(input.messages, "runtime_worker_assignment"),
+          runtimeMessageByKind(input.messages, "runtime_worker_capability_selection"),
         ).toMatchObject({
           capabilitySelectionRejection: {
             rejectedSelectionKind: "single",
@@ -4158,7 +4103,7 @@ describe("generic Worker capability decision boundary", () => {
       intent: "Create the required artifact.",
       controls: {},
     });
-    expect(invoke).toHaveBeenCalledTimes(5);
+    expect(invoke).toHaveBeenCalledTimes(6);
     expect(getExecutionGuidance).toHaveBeenNthCalledWith(1, "example.observe");
     expect(getExecutionGuidance).toHaveBeenNthCalledWith(2, "example.mutate");
     expect(rejectedExecute).not.toHaveBeenCalled();
@@ -4222,7 +4167,7 @@ describe("generic Worker capability decision boundary", () => {
       ],
     });
     let invocation = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       invocation += 1;
       if (invocation === 1) {
         return {
@@ -4311,7 +4256,7 @@ describe("generic Worker capability decision boundary", () => {
         { capabilityId: "example.wait.secondary", controls: {} },
       ],
     });
-    expect(invoke).toHaveBeenCalledTimes(4);
+    expect(invoke).toHaveBeenCalledTimes(5);
     expect(rejectedExecute).not.toHaveBeenCalled();
     expect(selectedExecute).not.toHaveBeenCalled();
     expect(ledger.current().state.capabilityExecutions).toEqual([]);
@@ -4353,7 +4298,7 @@ describe("generic Worker capability decision boundary", () => {
       adapters,
     });
     let invocation = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       invocation += 1;
       const messages = asChatMessages(input.messages)
         .map(({ content }) => content)
@@ -4376,7 +4321,7 @@ describe("generic Worker capability decision boundary", () => {
         expect(format).toContain("write.one");
         expect(format).not.toContain("select_capability_group");
         expect(format).not.toContain("reselect_capability_group");
-        expect(format).toContain("return_result");
+        expect(format).not.toContain("return_result");
         expect(format).toContain("return_failure");
         return {
           text: workerDecisionText({
@@ -4411,8 +4356,8 @@ describe("generic Worker capability decision boundary", () => {
       expect(capsule).not.toHaveProperty("availableCapabilityCatalog");
       expect(capsule).not.toHaveProperty("capabilitiesAvailable");
       expect(capsule).not.toHaveProperty("availableChildRoleIds");
-      expect(messages).not.toContain("read.two");
-      expect(messages).not.toContain("write.one");
+      expect(JSON.stringify(capsule)).not.toContain("read.two");
+      expect(JSON.stringify(capsule)).not.toContain("write.one");
       expect(format).not.toContain('"capabilityId"');
       expect(format).not.toContain('"intent"');
       expect(format).not.toContain("read.two");
@@ -4442,7 +4387,7 @@ describe("generic Worker capability decision boundary", () => {
       intent: "Read the required current value.",
       controls: {},
     });
-    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke).toHaveBeenCalledTimes(3);
   });
 
   test("exposes only the Worker call scoped catalog to selection and guidance", async () => {
@@ -4478,7 +4423,7 @@ describe("generic Worker capability decision boundary", () => {
     });
     const loadGuidance = vi.fn(async () => "Use exact current evidence.");
     let invocation = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       invocation += 1;
       const serialized = JSON.stringify({
         format: input.format,
@@ -4556,7 +4501,7 @@ describe("generic Worker capability decision boundary", () => {
       adapters,
     });
     let invocation = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       invocation += 1;
       const messages = asChatMessages(input.messages)
         .map(({ content }) => content)
@@ -4567,7 +4512,7 @@ describe("generic Worker capability decision boundary", () => {
       );
       if (invocation === 1) {
         expect(messages).toContain("availableCapabilities");
-        expect(messages).not.toContain("availableCapabilityCatalog");
+        expect(runtimeMessageByKind(input.messages, "runtime_worker_assignment")).not.toHaveProperty("availableCapabilityCatalog");
         expect(messages).toContain("Observe bounded value 1.");
       }
       return {
@@ -4596,7 +4541,7 @@ describe("generic Worker capability decision boundary", () => {
       intent: "Read one bounded value.",
       controls: {},
     });
-    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke).toHaveBeenCalledTimes(3);
   });
 
   test("executes one canonical capability sub-turn and consumes its result on Worker re-entry", async () => {
@@ -4618,7 +4563,7 @@ describe("generic Worker capability decision boundary", () => {
     };
     const firstBinding = createBinding(ledger, firstCall, adapter);
     let modelInvocation = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = createWorkerEvidenceModel(async (input) => {
       modelInvocation += 1;
       if (modelInvocation === 1) {
         return {
@@ -4660,11 +4605,8 @@ describe("generic Worker capability decision boundary", () => {
       }
       if (input.modelStep === WORKER_RESULT_MODEL_STEP) {
         expect(input).not.toHaveProperty("format");
-        expect(messages).toHaveLength(4);
-        const authorAssignment = JSON.parse(messages[3]!.content) as Record<
-          string,
-          unknown
-        >;
+        expect(messages).toHaveLength(6);
+        const authorAssignment = runtimeMessageByKind(messages, "runtime_worker_result_assignment");
         expect(authorAssignment).toEqual({
           kind: "runtime_worker_result_assignment",
           callId: secondCall.callId,
@@ -4673,8 +4615,8 @@ describe("generic Worker capability decision boundary", () => {
           invocationAttempt: secondCall.activationCount,
           objective: secondCall.objective,
         });
-        expect(messages[3]!.content).not.toContain("availableCapabilities");
-        expect(JSON.parse(messages[2]!.content)).toMatchObject({
+        expect(JSON.stringify(authorAssignment)).not.toContain("availableCapabilities");
+        expect(runtimeMessageByKind(messages, "runtime_request_tool_results_v1")).toMatchObject({
           kind: "runtime_request_tool_results_v1",
           results: [
             {
@@ -4691,34 +4633,9 @@ describe("generic Worker capability decision boundary", () => {
           meta: {},
         };
       }
-      expect(messages).toHaveLength(4);
-      expect(JSON.parse(messages[2]!.content)).toMatchObject({
-        kind: "runtime_worker_assignment",
-        callId: secondCall.callId,
-      });
-      const resultCapsule = JSON.parse(messages[3]!.content) as {
-        kind?: unknown;
-        results?: unknown;
-      };
-      expect(resultCapsule).toEqual(
-        expect.objectContaining({
-          kind: "runtime_request_tool_results_v1",
-          results: [
-            expect.objectContaining({
-              executionId: "capability-execution-1",
-              summary: opaqueObservation,
-            }),
-          ],
-        }),
-      );
-      expect(
-        messages.filter(({ content }) => content.includes(opaqueObservation)),
-      ).toHaveLength(1);
-      return {
-        text: workerDecisionText({ action: "return_result" }),
-        meta: {},
-      };
+      throw new Error("unexpected_model_step_after_ready_evidence");
     });
+    invoke.withEvidenceDecisions(true, false);
     const request = createRequest(invoke, { contextWindowTokens: 10_000 });
 
     const firstDecision = await runWorkerDecision(request, {
@@ -4770,6 +4687,16 @@ describe("generic Worker capability decision boundary", () => {
       },
     });
 
+    const evidenceCalls = invoke.mock.calls.filter(([input]) => input.modelStep === "worker.evidence");
+    expect(evidenceCalls).toHaveLength(2);
+    const reentryMessages = asChatMessages(evidenceCalls[1]![0].messages);
+    expect(runtimeMessageByKind(reentryMessages, "runtime_worker_assignment")).toMatchObject({
+      callId: secondCall.callId,
+    });
+    expect(runtimeMessageByKind(reentryMessages, "runtime_request_tool_results_v1")).toMatchObject({
+      results: [{ executionId: "capability-execution-1", summary: opaqueObservation }],
+    });
+    expect(reentryMessages.filter(({ content }) => content.includes(opaqueObservation))).toHaveLength(1);
     expect(secondDecision).toEqual({
       action: "return_result",
       result: "Consumed canonical evidence from capability-execution-1.",
@@ -4782,7 +4709,7 @@ describe("generic Worker capability decision boundary", () => {
       controls: {},
       settledCapabilityResults: [],
     });
-    expect(invoke).toHaveBeenCalledTimes(4);
+    expect(invoke).toHaveBeenCalledTimes(5);
     expect(ledger.current()).toBe(settledHead);
     expect(ledger.current().state.capabilityExecutions).toEqual([
       expect.objectContaining({
@@ -4813,7 +4740,7 @@ describe("generic Worker capability decision boundary", () => {
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
     const { ledger, call } = await openWorkerLedger();
     const binding = createBinding(ledger, call);
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async () => {
+    const invoke = createWorkerEvidenceModel(async () => {
       const error = new TypeError("model invocation failed");
       error.name = errorSecret;
       throw error;

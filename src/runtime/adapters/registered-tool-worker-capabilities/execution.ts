@@ -270,7 +270,7 @@ async function prepareRegisteredToolWorkerCapability<TContext>(
     });
   }
 
-  const normalPreparation = params.executor.prepare({
+  const normalPreparation = await params.executor.prepare({
     handle: params.projection.handle,
     controls: effectiveControls,
     ...(preparedPayload.body === undefined

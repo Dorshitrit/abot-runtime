@@ -12,6 +12,7 @@ export function createDashboardController({
   setTimer = setTimeout,
   clearTimer = clearTimeout,
   approvalData,
+  resourceData,
 }) {
   const state = {
     runs: [],
@@ -47,6 +48,7 @@ export function createDashboardController({
       environmentId: getEnvironmentId(),
       supportsSchedules: client.supportsSchedules(),
       ...approvalData?.snapshot(),
+      ...resourceData?.snapshot(),
     };
   }
   const publish = () => render(snapshot());
@@ -139,12 +141,13 @@ export function createDashboardController({
       activity: refreshActivity,
       automations: refreshAutomations,
       approvals: () => approvalData?.refresh(),
+      "information-basket": () => resourceData?.refresh(),
     };
     await Promise.allSettled(resources.map((resource) => readers[resource]()));
   }
   function refresh() {
     if (!canRefresh()) return Promise.resolve();
-    for (const resource of ["sessions", "activity", "automations", "approvals"])
+    for (const resource of ["sessions", "activity", "automations", "approvals", "information-basket"])
       pendingResources.add(resource);
     return eventRefresh.run();
   }
@@ -170,6 +173,7 @@ export function createDashboardController({
       revision += 1;
       automationRevision += 1;
       if (!available) approvalData?.invalidate();
+      if (!available) resourceData?.invalidate();
       cancelRefresh();
       state.activityError = "";
       state.sessionsError = "";
@@ -187,6 +191,7 @@ export function createDashboardController({
     setActive(value) {
       const entering = value && !active;
       active = value;
+      if (!active) resourceData?.closePicker();
       cancelRefresh();
       if (entering) void refresh();
     },
@@ -205,6 +210,7 @@ export function createDashboardController({
       revision += 1;
       automationRevision += 1;
       approvalData?.invalidate();
+      resourceData?.invalidate();
       sessionsEnvironmentId = "";
       activitySettled = false;
       Object.assign(state, {
@@ -221,6 +227,7 @@ export function createDashboardController({
     },
     visibilityChanged() {
       cancelRefresh();
+      if (!isVisible()) resourceData?.closePicker();
       if (canRefresh()) void refresh();
     },
   };

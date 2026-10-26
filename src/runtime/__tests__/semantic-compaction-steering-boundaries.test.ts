@@ -32,23 +32,27 @@ type GenerationPath = (typeof GENERATION_PATHS)[number];
 type CompactionEnvelope = ReturnType<typeof readCompactionEnvelope>;
 
 test.each(GENERATION_PATHS)(
-  "bound EA stops nested %s generation after steering without committing a checkpoint",
+  "bound EA completes nested %s compaction before returning pending steering to root",
   async (path) => {
     const f = createNestedCompactionFixture(path, "execution.decision");
     await expect(f.run(0)).rejects.toBeInstanceOf(
       ModelStepSteeringSupersededError,
     );
-    assertStoppedBeforeFurtherGeneration(f, path);
+    assertCompletedGeneration(f, path);
     expect(f.parentCalls()).toHaveLength(0);
+    const compactedCalls = f.compactionCalls().length;
+    await expect(f.run(1)).resolves.toBe("ok");
+    expect(f.compactionCalls()).toHaveLength(compactedCalls);
+    expect(f.parentCalls()).toHaveLength(1);
   },
 );
 
 test.each(GENERATION_PATHS)(
-  "unbound SUPER restarts its parent after superseded %s generation",
+  "unbound SUPER completes nested %s compaction before rebuilding its parent",
   async (path) => {
     const f = createNestedCompactionFixture(path, "supervisor.decision");
     await expect(f.run()).resolves.toBe("ok");
-    assertStoppedBeforeFurtherGeneration(f, path);
+    assertCompletedGeneration(f, path);
     const parentCalls = f.parentCalls();
     expect(parentCalls).toHaveLength(1);
     const messages = parentCalls[0]![0].messages as readonly ChatMessage[];
@@ -81,19 +85,16 @@ test.each(GENERATION_PATHS)(
 );
 
 test.each(["batch", "slice"] as const)(
-  "bound EA stops after the in-flight %s admission count becomes stale",
+  "bound EA completes compaction after steering during its nested %s admission count",
   async (path) => {
     const f = createNestedCompactionFixture(path, "execution.decision");
     const countsAfterSteering = steerDuringCompactionAdmission(f, path);
     await expect(f.run(0)).rejects.toBeInstanceOf(
       ModelStepSteeringSupersededError,
     );
-    expect(countsAfterSteering()).toEqual([]);
-    expect(f.compactionCalls()).toEqual([]);
+    expect(countsAfterSteering().length).toBeGreaterThan(0);
+    assertCompletedGeneration(f, path);
     expect(f.parentCalls()).toEqual([]);
-    expect(f.store.snapshot!().checkpoints).toEqual([]);
-    expect(f.store.snapshot!().sources.map(({ content }) => JSON.parse(content)))
-      .toEqual(f.evidence);
   },
 );
 
@@ -103,9 +104,8 @@ test.each(["batch", "slice"] as const)(
     const f = createNestedCompactionFixture(path, "supervisor.decision");
     const countsAfterSteering = steerDuringCompactionAdmission(f, path);
     await expect(f.run()).resolves.toBe("ok");
-    expect(countsAfterSteering()).toEqual([]);
-    expect(f.compactionCalls()).toEqual([]);
-    expect(f.store.snapshot!().checkpoints).toEqual([]);
+    expect(countsAfterSteering().length).toBeGreaterThan(0);
+    assertCompletedGeneration(f, path);
     expect(f.parentCalls()).toHaveLength(1);
     const messages = f.parentCalls()[0]![0].messages as readonly ChatMessage[];
     expect(JSON.parse(messages.at(-1)!.content)).toMatchObject({
@@ -132,7 +132,7 @@ test.each(["batch", "slice"] as const)(
   },
 );
 
-test("the production EA decision controller propagates its accepted version into every batch", async () => {
+test("the production EA decision controller finishes every frozen batch before returning to root", async () => {
   const f = await executionCompactionSteeringFixture();
   await f.addResult("second settled source");
   await f.addResult("third settled source");
@@ -157,9 +157,21 @@ test("the production EA decision controller propagates its accepted version into
   await expect(f.run()).rejects.toBeInstanceOf(
     ModelStepSteeringSupersededError,
   );
+  expect(f.invoke.mock.calls.length).toBeGreaterThan(1);
+  expect(f.invoke.mock.calls.every(([input]) => input.modelStep === "context.compact")).toBe(true);
+  const visited = f.invoke.mock.calls.flatMap(([input]) =>
+    readCompactionEnvelope(input.messages as ChatMessage[]).newSources ?? [],
+  );
+  expect(visited.every((source) => source.sourceRef)).toBe(true);
+  expect(new Set(visited.map(({ sourceRef }) => sourceRef)).size).toBe(visited.length);
+  const checkpoints = f.request.contextCompactionStore!.snapshot!().checkpoints;
+  expect(checkpoints).toHaveLength(1);
+  expect(checkpoints[0]!.sourceDigests.map(({ sourceRef }) => sourceRef))
+    .toEqual(visited.map(({ sourceRef }) => sourceRef));
+  f.invoke.mockClear();
+  await f.run();
   expect(f.invoke).toHaveBeenCalledOnce();
-  expect(f.invoke.mock.calls[0]![0].modelStep).toBe("context.compact");
-  expect(f.request.contextCompactionStore!.snapshot!().checkpoints).toEqual([]);
+  expect(f.invoke.mock.calls[0]![0].modelStep).toBe("execution.decision");
   expect(f.view().results).toHaveLength(3);
 });
 
@@ -228,14 +240,8 @@ function createNestedCompactionFixture(
     if (input.modelStep === "context.compact") {
       const envelope = readCompactionEnvelope(messages);
       inputTokens = generationInputTokens(envelope, sliced);
-    } else if (
-      messages.some(({ role }) => role === "tool") &&
-      !(
-        modelStep === "supervisor.decision" &&
-        harness.steering.snapshot().version
-      )
-    ) {
-      inputTokens = 24_000;
+    } else if (messages.some(({ role }) => role === "tool")) {
+      inputTokens = modelStep === "execution.decision" ? 29_000 : 24_000;
     }
     return {
       inputTokens,
@@ -307,12 +313,14 @@ function generationInputTokens(
   return envelope.sourceSlice.content.length > 4_000 ? 31_000 : 1_000;
 }
 
-function assertStoppedBeforeFurtherGeneration(
+function assertCompletedGeneration(
   f: ReturnType<typeof createNestedCompactionFixture>,
   path: GenerationPath,
 ) {
-  expect(f.compactionCalls()).toHaveLength(1);
-  expect(f.store.snapshot!().checkpoints).toEqual([]);
+  expect(f.compactionCalls().length).toBeGreaterThan(1);
+  const checkpoints = f.store.snapshot!().checkpoints;
+  expect(checkpoints).toHaveLength(1);
+  expect(checkpoints[0]!.sourceDigests).toHaveLength(f.evidence.length);
   expect(
     f.store.snapshot!().sources.map(({ content }) => JSON.parse(content)),
   ).toEqual(f.evidence);
@@ -327,11 +335,8 @@ function assertStoppedBeforeFurtherGeneration(
   ).toEqual([
     ["context.compaction.started", expect.any(Object)],
     [
-      "context.compaction.failed",
-      expect.objectContaining({
-        reason: "steering_superseded",
-        issueCode: "model_step_steering_superseded",
-      }),
+      "context.compaction.completed",
+      expect.objectContaining({ coveredSourceCount: f.evidence.length }),
     ],
   ]);
 }

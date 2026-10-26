@@ -105,16 +105,16 @@ test("cached plugin entrypoint prepares the selected catalog once per request wi
     "second",
   ]);
   expect(
-    first.getAdapter!("first")!.executionBinding!({
+    await first.getAdapter!("first")!.executionBinding!({
       tool: "first",
       params: {},
-    }),
+    }, { toolPermissionMode: "full_access" }),
   ).toEqual({ identity: "private-1" });
   expect(
-    second.getAdapter!("first")!.executionBinding!({
+    await second.getAdapter!("first")!.executionBinding!({
       tool: "first",
       params: {},
-    }),
+    }, { toolPermissionMode: "full_access" }),
   ).toEqual({ identity: "private-2" });
   expect(
     await first.execute({ tool: "second", params: { destination: "one" } }),

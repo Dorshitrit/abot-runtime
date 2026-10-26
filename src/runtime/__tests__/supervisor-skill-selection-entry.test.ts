@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import { createRequestExecutionScope } from "../request/execution-scope.js";
@@ -32,7 +33,7 @@ function fixture(options: Parameters<typeof createMemoryRecallHarness>[0]) {
 
 function finishWorker(input: RecallModelInput) {
   if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-  if (input.modelStep === "worker.decision") return { action: "return_result" };
+  if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
   expect(input.modelStep).toBe("worker.result");
   return "The initial check is complete.";
 }
@@ -65,7 +66,7 @@ test.each([false, true])("the returned-entry selection stays closed through reca
   expect(f.store.list).toHaveBeenCalledTimes(2);
   expect(f.store.read.mock.calls).toEqual(read ? selected.map(({ skillId }) => [skillId]) : []);
   expect(f.memory.retrieve.mock.calls.filter(([input]) => input.query === RECALL_QUERY)).toHaveLength(1);
-  expect(f.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.decision")).toHaveLength(1);
+  expect(f.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.evidence")).toHaveLength(1);
 });
 
 test("each direct Worker, Planner and Reviewer return opens one selection, while a nested Worker return does not", async () => {
@@ -114,7 +115,7 @@ test("each direct Worker, Planner and Reviewer return opens one selection, while
         expect(selections).toBe(2);
         return { action: "return_result", result: "The requested verification was explained." };
       }
-      if (input.modelStep === "worker.decision") return { action: "return_result" };
+      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
       if (input.modelStep === "worker.result") {
         workerReturns++;
         return "The requested verification is complete.";
@@ -170,7 +171,7 @@ test("repairing a rejected delegation cannot reopen selection before the child r
   expect(selectSkills).toHaveBeenCalledTimes(2);
   expect(f.store.list).toHaveBeenCalledTimes(2);
   expect(f.store.read).not.toHaveBeenCalled();
-  expect(f.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.decision")).toHaveLength(1);
+  expect(f.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "worker.evidence")).toHaveLength(1);
 });
 
 test("steering during working-directory selection reroutes without opening another Skill selection", async () => {
@@ -200,7 +201,7 @@ test("steering during working-directory selection reroutes without opening anoth
   expect(selectSkills).toHaveBeenCalledOnce();
   expect(f.store.list).toHaveBeenCalledOnce();
   expect(f.store.read).not.toHaveBeenCalled();
-  expect(f.gatewayInvoke.mock.calls.some(([input]) => input.modelStep === "worker.decision")).toBe(false);
+  expect(f.gatewayInvoke.mock.calls.some(([input]) => input.modelStep === "worker.evidence")).toBe(false);
 });
 
 test("an empty returned-entry catalog stays closed even when metadata becomes available during recall", async () => {

@@ -1,3 +1,4 @@
+import type { InformationBasketService } from "../information-basket/contracts.js";
 import type { PersonalSkillManagementService } from "../knowledge-skills/personal-contracts.js";
 import type { RuntimeEnvironmentServices } from "../composition.js";
 import type { RuntimeAttachmentStore } from "../attachments/store.js";
@@ -95,6 +96,10 @@ export const LOCAL_PERSONAL_SKILL_METHODS = [
   "list", "get", "create", "updateContent", "archive", "restore",
 ] as const satisfies readonly (keyof PersonalSkillManagementService)[];
 
+export const LOCAL_INFORMATION_BASKET_METHODS = [
+  "list", "updateSettings", "browseFiles", "addSources", "removeSource", "refreshSource", "relinkSource",
+] as const satisfies readonly (keyof InformationBasketService)[];
+
 type ServiceTarget = Record<string, unknown>;
 
 function selectServiceMethod(
@@ -118,6 +123,8 @@ export async function dispatchLocalServiceCall(
 ): Promise<unknown> {
   const [service, operation, extra] = method.split(".");
   if (!operation || extra) throw new Error("local_runtime_method_unknown");
+  if (service === "informationBasket")
+    return selectServiceMethod(services.informationBasket, operation, LOCAL_INFORMATION_BASKET_METHODS)(...args);
   if (service === "personalSkills")
     return selectServiceMethod(services.personalSkills, operation, LOCAL_PERSONAL_SKILL_METHODS)(...args);
   if (service === "sessions")

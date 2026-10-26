@@ -1,3 +1,4 @@
+import { resolveContextCompactionTriggerRatio } from "../context/request-context-budget.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import { resolveModelInvocationStep } from "../../shared/model-step-registry.js";
 import { projectConfiguredStepMessages } from "../config/runner/step-instructions.js";
@@ -15,6 +16,11 @@ import {
 import { appendRequestSteeringContext } from "../request/request-steering-context.js";
 import { createModelStepAbort } from "../steps/model-step-timeout.js";
 import { acceptModelStepOutput } from "./model-step-acceptance.js";
+import {
+  MODEL_STEP_TIMED_OUT_EVENT,
+  projectModelStepTimeoutEvent,
+  type ModelStepTimeoutIdentity,
+} from "./model-step-timeout-event.js";
 import { createModelContextAssessment } from "./model-context-assessment.js";
 import { admitOptionalModelContext } from "./optional-context-admission.js";
 import {
@@ -252,6 +258,7 @@ class ModelStepInvocation<T> {
     const { request, params } = this.input;
     request.abortSignal.throwIfAborted();
     const steeringSnapshot = this.input.requestSteering.snapshot();
+    const assertNotAborted = () => request.abortSignal.throwIfAborted();
     const assertCurrent = () =>
       assertModelStepAdmissionCurrent({
         abortSignal: request.abortSignal,
@@ -294,9 +301,11 @@ class ModelStepInvocation<T> {
       request,
       params,
       admission,
-      assertCurrent,
+      assertCurrent: assertNotAborted,
     });
+    assertCurrent();
     let assessment = await assess(messages);
+    assertCurrent();
     if (params.optionalContextProjection) {
       const optional = await admitOptionalModelContext({
         messages, assessment, project: params.optionalContextProjection, assess, assertCurrent,
@@ -313,9 +322,7 @@ class ModelStepInvocation<T> {
         controller: contextCompaction,
         assess,
         assertCurrent,
-        boundSteeringVersion:
-          params.boundSteeringVersion ??
-          (this.input.ownsRequestSteering ? steeringSnapshot.version : undefined),
+        assertNotAborted,
         abortSignal: request.abortSignal,
         identity: {
           requestId: request.requestId,
@@ -375,7 +382,7 @@ class ModelStepInvocation<T> {
           ? "provider_input_token_count"
           : "runtime_token_estimator",
       admissionOutcome: assessment.fits ? "accepted" : "rejected",
-      compactionTriggerPercent: 70,
+      compactionTriggerPercent: resolveContextCompactionTriggerRatio(admission.budget) * 100,
       compactionTriggerEligible,
       compactionRequired: false,
       remainingContextPercent: Math.max(
@@ -421,8 +428,12 @@ class ModelStepInvocation<T> {
       params,
       messages: projectMedia(messages),
       steeringSnapshot,
-      invocationId,
-      profileId: admission.invocation.profile.id,
+      identity: {
+        invocationId,
+        profileId: admission.invocation.profile.id,
+        provider: admission.invocation.profile.provider,
+        model: admission.invocation.model,
+      },
       stepAbort,
       ...(this.input.onContextEvent
         ? { onContextEvent: this.input.onContextEvent }
@@ -522,6 +533,17 @@ class ModelStepInvocation<T> {
       supersededAttemptCount: this.supersededAttemptCount,
       ...(outputDiagnostics ?? {}),
     });
+    const timeoutEvent = projectModelStepTimeoutEvent({
+      requestId: request.requestId,
+      modelStep: params.modelStep,
+      identity: attempt.identity,
+      parentSignal: request.abortSignal,
+      attemptSignal: attempt.signal,
+      configuredTimeoutMs: this.input.configuredTimeoutMs,
+      timeout: this.input.timeout,
+      ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),
+    });
+    if (timeoutEvent) this.input.onContextEvent?.(MODEL_STEP_TIMED_OUT_EVENT, timeoutEvent);
   }
 }
 
@@ -530,8 +552,7 @@ type ModelStepAttemptConstructor<T> = Readonly<{
   params: ModelStepInvocationInput<T>;
   messages: ChatMessage[];
   steeringSnapshot: RequestSteeringSnapshot;
-  invocationId: string;
-  profileId: string;
+  identity: ModelStepTimeoutIdentity;
   stepAbort: ReturnType<typeof createModelStepAbort>;
   onThinking: (delta: string) => void;
   onContextEvent?: (name: string, extra?: Record<string, unknown>) => void;
@@ -540,9 +561,11 @@ type ModelStepAttemptConstructor<T> = Readonly<{
 /** Owns one provider attempt and its disposable child abort scope. */
 class ModelStepAttempt {
   readonly steeringSnapshot: RequestSteeringSnapshot;
+  readonly identity: ModelStepTimeoutIdentity;
 
   constructor(private readonly input: ModelStepAttemptConstructor<unknown>) {
     this.steeringSnapshot = input.steeringSnapshot;
+    this.identity = input.identity;
   }
 
   get signal(): AbortSignal {
@@ -585,9 +608,9 @@ class ModelStepAttempt {
         stage: "context_window",
         phase: "provider_completed",
         requestId: this.input.request.requestId,
-        invocationId: this.input.invocationId,
+        invocationId: this.identity.invocationId,
         modelStep: this.input.params.modelStep,
-        profileId: this.input.profileId,
+        profileId: this.identity.profileId,
         measurement: "actual",
         source: "provider_reported",
         ...(outputDiagnostics.providerInputTokens !== undefined

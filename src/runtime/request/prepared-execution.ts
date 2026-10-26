@@ -41,6 +41,8 @@ import {
 import { createRequestContextCompactionStore } from "../context/semantic-compaction/index.js";
 import { restoreApprovalCompaction } from "./approval-wait/super-compaction-restore.js";
 import { createRequestSessionMemory } from "../context/session-memory/index.js";
+import { projectSuperCompactionConfiguration } from "../context/super-compaction/configuration.js";
+import { resolvePolicySessionMemoryCompactor } from "../context/super-compaction/history-routing.js";
 import { restoreRequestSessionMemory } from "../context/session-memory/snapshot.js";
 import { snapshotSessionArtifactPathTargets } from "./session-artifact-path-persistence.js";
 import {
@@ -128,19 +130,24 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
   const historyMessages =
     resume?.snapshot.seed.historyMessages ??
     snapshotRequestHistory(opened!.session);
+  const sessionMemoryCompactor = resolvePolicySessionMemoryCompactor(
+    dependencies.sessionMemoryCompactor,
+    dependencies.superSessionMemoryCompactor,
+    executionPolicy.authority,
+  );
   let sessionMemory;
   if (resume?.snapshot.sessionMemory) {
     sessionMemory = restoreRequestSessionMemory(resume.snapshot.sessionMemory, {
       sessionId,
       repository: sessionStore,
-      compactor: dependencies.sessionMemoryCompactor,
+      compactor: sessionMemoryCompactor,
     });
   } else if (!resume) {
     sessionMemory = createRequestSessionMemory({
       sessionId,
       session: opened!.session,
       repository: sessionStore,
-      compactor: dependencies.sessionMemoryCompactor,
+      compactor: sessionMemoryCompactor,
     });
   }
   const initialized = resume
@@ -208,8 +215,13 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
     ),
     ...(memoryRecallLimit !== undefined ? { memoryRecallLimit } : {}),
   };
+  const compactionConfiguration = projectSuperCompactionConfiguration(
+    baseSeed,
+    executionPolicy.authority,
+  );
   const preparedSeed: RequestExecutionSeed = {
     ...baseSeed,
+    ...compactionConfiguration,
     ...(schedule ? { scheduledExecution: schedule } : {}),
     toolResources: resources,
     modelGatewayClient,
@@ -270,6 +282,7 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
     : preparedSeed;
   const toolRegistry = options.toolRegistry?.prepareRequest
     ? await options.toolRegistry.prepareRequest({
+        rootContractId: executionPolicy.rootContract.contractId,
         runtimePathResolver: createRuntimeToolPathResolver(
           bindRequestWorkingDirectory(
             options.toolRegistry.prepareSharedState?.() ?? {},
@@ -284,6 +297,7 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
   resources.assertRestoredStateClaimed();
   const request = createRequestExecutionScope({
     seed,
+    ...(options.informationBasket ? { informationBasket: options.informationBasket } : {}),
     ...(options.knowledgeSkillStore ? { knowledgeSkillStore: options.knowledgeSkillStore } : {}),
     requestWorkingDirectory,
     executionPolicy,
@@ -303,6 +317,7 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
           : {}),
         ...(toolRegistry ? { toolRegistryOverride: toolRegistry } : {}),
         knowledgeSkillStore: options.knowledgeSkillStore,
+        informationBasket: options.informationBasket,
       }),
   });
   return {

@@ -10,6 +10,11 @@ import type {
   UpdateSchedulerJobInput,
 } from "./contracts.js";
 import { nextSchedulerOccurrence } from "./next-occurrence.js";
+import {
+  requireSchedulerJobMutationGuard,
+  reserveSchedulerJobMutation,
+  type SchedulerJobMutationGuard,
+} from "./job-mutation-guard.js";
 import { normalizeSchedulerScheduleUpdate } from "./schedule-update.js";
 import { requireRepresentableIntervalRecurrence } from "./interval-range.js";
 import {
@@ -23,7 +28,6 @@ import {
   validateSchedulerJobInput,
 } from "./schedule-validation.js";
 import {
-  invalidateJob,
   requireRunningScheduler,
   type SchedulerContext,
 } from "./service-context.js";
@@ -77,13 +81,15 @@ export function updateSchedulerJob(
   context: SchedulerContext,
   jobId: string,
   patch: UpdateSchedulerJobInput,
+  guard?: SchedulerJobMutationGuard,
 ): Promise<SchedulerJob> {
-  const settleInvalidation = invalidateJob(context, jobId);
+  const mutation = reserveSchedulerJobMutation(context, jobId, guard);
   return context
     .enqueue(async () => {
       requireRunningScheduler(context);
       return context.store.update((state) => {
         const job = requireSchedulerJob(state, jobId);
+        mutation.accept(job);
         if (job.state === "cancelled")
           throw new Error("scheduler_job_cancelled");
         const editable = pickEditableFields(patch);
@@ -123,7 +129,7 @@ export function updateSchedulerJob(
         return job;
       });
     })
-    .finally(settleInvalidation);
+    .finally(mutation.release);
 }
 function hasSchedulerTimingChanges(
   job: SchedulerJob,
@@ -181,13 +187,15 @@ export function changeSchedulerJobState(
   context: SchedulerContext,
   jobId: string,
   target: SchedulerJobState,
+  guard?: SchedulerJobMutationGuard,
 ): Promise<SchedulerJob> {
-  const settleInvalidation = invalidateJob(context, jobId);
+  const mutation = reserveSchedulerJobMutation(context, jobId, guard);
   return context
     .enqueue(async () => {
       requireRunningScheduler(context);
       return context.store.update((state) => {
         const job = requireSchedulerJob(state, jobId);
+        mutation.accept(job);
         if (job.state === "cancelled" && target !== "cancelled") {
           throw new Error("scheduler_job_cancelled");
         }
@@ -210,19 +218,23 @@ export function changeSchedulerJobState(
         return job;
       });
     })
-    .finally(settleInvalidation);
+    .finally(mutation.release);
 }
 export function requestSchedulerRunNow(
   context: SchedulerContext,
   jobId: string,
+  guard?: SchedulerJobMutationGuard,
 ): Promise<SchedulerRun> {
+  const expected = guard ? { ...guard } : undefined;
   return context.enqueue(async () => {
     requireRunningScheduler(context);
     const existing = await context.store.read();
     const owner = requireSchedulerJob(existing, jobId);
+    requireSchedulerJobMutationGuard(owner, expected);
     await requireExistingSession(context, owner.sessionId);
     return context.store.update((state) => {
       const job = requireSchedulerJob(state, jobId);
+      requireSchedulerJobMutationGuard(job, expected);
       if (job.state === "cancelled") throw new Error("scheduler_job_cancelled");
       if (context.deletedSessions.has(job.sessionId))
         throw new Error("scheduler_session_deleted");

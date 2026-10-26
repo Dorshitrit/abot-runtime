@@ -5,6 +5,7 @@ export type WorkerPayloadDependencyResult = Readonly<
     SemanticCompactionDependencyResult,
     | "resultRef"
     | "producerCallId"
+    | "producerObjective"
     | "roleId"
     | "outcome"
     | "summary"
@@ -25,6 +26,9 @@ export function projectWorkerPayloadDependencyResults(
       Object.freeze({
         resultRef: result.resultRef,
         producerCallId: result.producerCallId,
+        ...(result.producerObjective !== undefined
+          ? { producerObjective: result.producerObjective }
+          : {}),
         roleId: result.roleId,
         outcome: result.outcome,
         summary: result.summary,

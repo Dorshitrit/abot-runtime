@@ -15,10 +15,17 @@ export type RequestMessagesBudgetAssessment = Readonly<{
 
 export const CONTEXT_COMPACTION_TRIGGER_RATIO = 0.7;
 
+export function resolveContextCompactionTriggerRatio(
+  budget: Pick<RequestContextBudget, "compactionTriggerRatio">,
+): number {
+  return budget.compactionTriggerRatio ?? CONTEXT_COMPACTION_TRIGGER_RATIO;
+}
+
 export function resolveContextCompactionTriggerInputTokens(
   contextWindowTokens: number,
+  ratio = CONTEXT_COMPACTION_TRIGGER_RATIO,
 ): number {
-  return Math.ceil(contextWindowTokens * CONTEXT_COMPACTION_TRIGGER_RATIO);
+  return Math.ceil(contextWindowTokens * ratio);
 }
 
 export function assessRequestMessagesBudget(params: {
@@ -87,6 +94,7 @@ export function assessRequestMessagesBudget(params: {
       usedContextPercent,
       compactionTriggerInputTokens: resolveContextCompactionTriggerInputTokens(
         params.budget.contextWindowTokens,
+        resolveContextCompactionTriggerRatio(params.budget),
       ),
     }),
   });

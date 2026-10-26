@@ -54,7 +54,7 @@ test("SPARK presentation stays on the root across Planner, Worker, Reviewer and 
     expect(preparation.map(([input]) => supervisorFormatName(input))).toEqual(["supervisor_presentation"]);
     for (const [input] of preparation) expect(JSON.stringify(input.messages)).not.toContain(policy);
     expect(rootPresentationSteps).toEqual(["supervisor.decision", "supervisor.decision", "supervisor.decision", "supervisor.response"]);
-    expect(childSteps).toEqual(expect.arrayContaining(["planner.decision", "worker.decision", "worker.result", "reviewer.decision", "capability.controls"]));
+    expect(childSteps).toEqual(expect.arrayContaining(["planner.decision", "worker.evidence", "worker.decision", "worker.result", "reviewer.decision", "capability.controls"]));
     expect(fixture.executeHostOperation).toHaveBeenCalledTimes(2);
     expect(seed.toolApprovalController!.requestToolApproval).toHaveBeenCalledTimes(2);
     expect(seed.onAnswerToken).toHaveBeenCalledExactlyOnceWith(finalDispatchReport);

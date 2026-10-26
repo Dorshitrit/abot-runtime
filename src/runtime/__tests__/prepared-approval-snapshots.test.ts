@@ -187,7 +187,7 @@ describe("prepared approval snapshots", () => {
   test("hydrates an exact normal call without normalization or allocating a new approval", async () => {
     const f = fixture();
     const source = f.createExecutor();
-    const prepared = source.prepare({
+    const prepared = await source.prepare({
       handle: source.operations[0]!.handle,
       controls: { query: "unchanged" },
     });
@@ -197,7 +197,7 @@ describe("prepared approval snapshots", () => {
     f.normalize.mockImplementation(() => {
       throw new Error("normalization must not run");
     });
-    const restored = f.createExecutor().restore(saved);
+    const restored = await f.createExecutor().restore(saved);
     if (restored.status !== "prepared") throw new Error("restore");
     expect(restored.approvalRequest).toEqual(prepared.approvalRequest);
     expect(f.execute).not.toHaveBeenCalled();

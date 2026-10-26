@@ -110,8 +110,8 @@ describe("filesystem output presentation boundary", () => {
       events,
       resolver,
       write,
-      run: (target: string, content: string) => {
-        const prepared = executor.prepare({
+      run: async (target: string, content: string) => {
+        const prepared = await executor.prepare({
           handle: executor.operations[0]!.handle,
           controls: { path: target, content },
         });

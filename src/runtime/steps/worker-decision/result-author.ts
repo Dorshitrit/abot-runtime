@@ -1,6 +1,6 @@
 import { readSuperWorkerCompactionSidecar } from "../../context/super-worker-compaction-sidecar.js";
 import { projectRequestContext } from "../../context/request-context.js";
-import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
+import { createPolicyModelStepCompactionController } from "../../context/super-compaction/routing.js";
 import { isRequestToolResultsMessageBoundToView } from "../../context/request-tool-results-message-binding.js";
 import { isRequestToolResultsViewValidForCallScope } from "../../context/request-tool-results-scope.js";
 import {
@@ -31,6 +31,10 @@ import {
   buildWorkerResultInstructions,
   buildWorkerResultRepairHint,
 } from "./prompt.js";
+import {
+  buildWorkerEvidenceAssessmentMessage,
+  type WorkerEvidenceAssessmentReceipt,
+} from "./evidence-assessment.js";
 
 const WORKER_RESULT_MAX_REPAIR_ATTEMPTS = 1;
 
@@ -39,13 +43,16 @@ export async function runWorkerResultAuthor(
   options: Readonly<{
     diagnostic: WorkerDecisionDiagnosticContext;
     source: WorkerResultAuthorSource;
+    evidenceAssessment?: WorkerEvidenceAssessmentReceipt;
   }>,
 ): Promise<string> {
   const diagnostic = {
     requestId: request.requestId,
     role: "worker",
     modelStep: WORKER_RESULT_MODEL_STEP,
-    sourceDecisionPhase: options.diagnostic.decisionPhase,
+    sourceDecisionPhase: options.evidenceAssessment
+      ? "evidence_assessment"
+      : options.diagnostic.decisionPhase,
     callId: options.diagnostic.callId,
     parentCallId: options.diagnostic.parentCallId,
     depth: options.diagnostic.depth,
@@ -55,6 +62,9 @@ export async function runWorkerResultAuthor(
   let modelStarted = false;
   try {
     validateSource(options.source, options.diagnostic, request.requestId);
+    if (options.evidenceAssessment?.decision.requiresExecution) {
+      throw new Error("worker_result_evidence_requires_execution");
+    }
     const budget = resolveModelContextBudget({
       runnerConfig: request.runnerConfig,
       agentMode: request.agentMode,
@@ -71,7 +81,7 @@ export async function runWorkerResultAuthor(
       depth: options.source.depth,
       invocationAttempt: options.source.invocationAttempt,
       objective: options.source.objective,
-      ...(options.source.dependencyResults.length > 0
+      ...(!options.evidenceAssessment && options.source.dependencyResults.length > 0
         ? { dependencyResults: options.source.dependencyResults }
         : {}),
     });
@@ -88,7 +98,12 @@ export async function runWorkerResultAuthor(
             modelStep: WORKER_RESULT_MODEL_STEP,
             callId: options.source.callId,
           });
-    const referenceMessages = Object.freeze([
+    const referenceMessages = options.evidenceAssessment
+      ? Object.freeze([
+          ...options.evidenceAssessment.contextMessages,
+          buildWorkerEvidenceAssessmentMessage(options.evidenceAssessment),
+        ])
+      : Object.freeze([
       ...(options.source.coreSkillReadMessages ?? []),
       ...(requestSource ? [buildRequestSourceMessage(requestSource)] : []),
       ...(options.source.requestToolResultsContextMessage
@@ -99,7 +114,9 @@ export async function runWorkerResultAuthor(
         : []),
     ]);
     const context = projectRequestContext({
-      instructions: buildWorkerResultInstructions(),
+      instructions: buildWorkerResultInstructions({
+        evidenceAssessmentAvailable: options.evidenceAssessment !== undefined,
+      }),
       historyMessages: [],
       prompt,
       referenceMessages,
@@ -141,7 +158,7 @@ export async function runWorkerResultAuthor(
       request,
       modelStep: WORKER_RESULT_MODEL_STEP,
       messages: context.messages,
-      contextCompaction: createModelStepCompactionController(request, {
+      contextCompaction: createPolicyModelStepCompactionController(request, {
         consumer: WORKER_RESULT_MODEL_STEP,
         call: {
           roleId: "worker",
@@ -158,7 +175,7 @@ export async function runWorkerResultAuthor(
         scopeId: workerCapabilityContextCompactionScopeId(
           options.source.callId,
         ),
-      }),
+      }, request.executionPolicy.authority),
       timeoutReason: "worker_result_timeout",
       maxRepairAttempts: WORKER_RESULT_MAX_REPAIR_ATTEMPTS,
       validate: validateCompleteWorkerResult,

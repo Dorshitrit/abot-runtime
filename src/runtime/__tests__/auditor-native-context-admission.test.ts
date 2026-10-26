@@ -1,3 +1,4 @@
+import { readExecutionChildResultEvidence, type ExecutionChildResultReference } from "./support/execution-child-result-evidence.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ModelGatewayClient } from "../ports.js";
 import {
@@ -29,11 +30,7 @@ type AuditReceipt = {
 };
 type RootState = {
   auditAvailability: { available: boolean; reason: string };
-  completedSubordinateResults: {
-    roleId: string;
-    outcome: string;
-    summary: string;
-  }[];
+  completedSubordinateResults: readonly ExecutionChildResultReference[];
 };
 type BudgetCaseOptions = {
   reviewTokens?: readonly number[];
@@ -53,6 +50,7 @@ function createBudgetCase(options: BudgetCaseOptions) {
   let reviewAttempts = 0;
   let reviewCounts = 0;
   let finalState: RootState | undefined;
+  let finalResults: ReturnType<typeof readExecutionChildResultEvidence> | undefined;
   const fixture = createAuditorRunnerFixture((input) => {
     if (input.modelStep === "execution.decision") {
       rootDecisions += 1;
@@ -68,6 +66,7 @@ function createBudgetCase(options: BudgetCaseOptions) {
         input,
         "runtime_execution_state_v1",
       );
+      finalResults = readExecutionChildResultEvidence(input);
       expect(finalState.auditAvailability).toMatchObject({
         available: false,
         reason: "audit_finished_for_work",
@@ -171,10 +170,10 @@ function createBudgetCase(options: BudgetCaseOptions) {
     onEvent,
     reviewCounts: () => reviewCounts,
     reviewAttempts: () => reviewAttempts,
-    finalResult: () => finalState!.completedSubordinateResults[0]!,
+    finalResult: () => finalResults![0]!,
     receipt: () =>
       JSON.parse(
-        finalState!.completedSubordinateResults[0]!.summary,
+        finalResults![0]!.summary,
       ) as AuditReceipt,
     snapshots: () =>
       onEvent.mock.calls

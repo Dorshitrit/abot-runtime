@@ -28,6 +28,16 @@
       "outputContract": "supervisor_response",
       "attachmentPolicy": "conversation"
     },
+    "WORKER_EVIDENCE": {
+      "id": "worker.evidence",
+      "owner": "runtime-core",
+      "role": "worker",
+      "lane": "main",
+      "defaultFormat": "json",
+      "outputContract": "worker_evidence",
+      "outputTokenPolicy": "core_decision",
+      "attachmentPolicy": "none"
+    },
     "WORKER_DECISION": {
       "id": "worker.decision",
       "owner": "runtime-core",
@@ -138,6 +148,42 @@
       "lane": "utility",
       "defaultFormat": "raw",
       "outputContract": "tool_payload_text"
+    },
+    "SUPER_COMPACTION_COVERAGE": {
+      "id": "super.compact.coverage",
+      "owner": "runtime-core",
+      "role": "utility",
+      "lane": "utility",
+      "defaultFormat": "raw",
+      "outputContract": "super_compaction_coverage",
+      "attachmentPolicy": "none"
+    },
+    "SUPER_COMPACTION_CONTENT": {
+      "id": "super.compact.content",
+      "owner": "runtime-core",
+      "role": "utility",
+      "lane": "utility",
+      "defaultFormat": "raw",
+      "outputContract": "super_compaction_content",
+      "attachmentPolicy": "none"
+    },
+    "SUPER_COMPACTION_CONTINUATION": {
+      "id": "super.compact.continuation",
+      "owner": "runtime-core",
+      "role": "utility",
+      "lane": "utility",
+      "defaultFormat": "raw",
+      "outputContract": "super_compaction_continuation",
+      "attachmentPolicy": "none"
+    },
+    "SUPER_COMPACTION_MERGE": {
+      "id": "super.compact.merge",
+      "owner": "runtime-core",
+      "role": "utility",
+      "lane": "utility",
+      "defaultFormat": "raw",
+      "outputContract": "super_compaction_merge",
+      "attachmentPolicy": "none"
     }
   }
 }

@@ -1,3 +1,4 @@
+import { workerEvidenceReply } from "./support/worker-evidence-script.js";
 import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ModelGatewayClient } from "../ports.js";
@@ -122,7 +123,7 @@ function createLongResultScript(plannerFailed: boolean): ModelEntry[] {
         selectedItemIndexes: [0],
       }),
     },
-    { step: "worker.decision", output: decision({ action: "return_result" }) },
+    { step: "worker.evidence", output: (input) => workerEvidenceReply(input, false).text },
     { step: "worker.result", output: WORKER_RESULT },
     {
       step: "planner.decision",
@@ -148,16 +149,21 @@ function createLongResultScript(plannerFailed: boolean): ModelEntry[] {
       },
     },
     {
-      step: "worker.decision",
+      step: "worker.evidence",
       output(input) {
         assertSourceDependency(input, "runtime_worker_assignment", true);
-        return decision({ action: "return_result" });
+        return workerEvidenceReply(input, false).text;
       },
     },
     {
       step: "worker.result",
       output(input) {
-        assertSourceDependency(input, "runtime_worker_result_assignment", false);
+        const assignment = readInvalidOutputCapsules(input, "runtime_worker_result_assignment").at(-1)!;
+        expect(assignment).toMatchObject({
+          callId: "call-4", parentCallId: "call-2", objective: "Assess the returned source detail.",
+        });
+        expect(assignment).not.toHaveProperty("dependencyResults");
+        assertSourceDependency(input, "runtime_worker_assignment", true);
         return SECOND_RESULT;
       },
     },

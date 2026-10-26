@@ -215,7 +215,7 @@ The system command plugin declares its full 4,096-character command bound;
 clients render that recorded command as inert text, separately from model intent.
 
 `eventPresentation.resultMetadata` maps optional display keys to existing tool
-result fields through `{path, kind}` descriptors. Paths select `output` or an
+result fields through `{path, kind, jsonPath?}` descriptors. Paths select `output` or an
 own-property path under `data` (at most four segments). Kinds are `preview`,
 `number` and `boolean`, with at most 16 mappings. A preview is limited to 1,200
 characters and 20 lines, with a 2,400-character total preview budget per event;
@@ -226,6 +226,14 @@ the existing fallback metadata. Projection
 does not mutate tool results, canonical evidence, action references or model
 context. The client renders excerpts as inert text and never reconstructs an
 old result by re-reading the current file or memory store.
+
+For JSON-string tool outputs, an optional `jsonPath` selects a scalar inside
+`path: "output"`. Selectors contain at most four dot-separated own-property
+segments; arrays accept only canonical indexes from 0 to 255. Prototype keys,
+expressions and wildcards are not allowed. JSON is parsed lazily at most once per
+projection, with a 256 KiB UTF-8 output ceiling. Oversized, malformed, missing or
+mistyped values are omitted without failing tool execution. Existing descriptors
+without `jsonPath` keep their previous behavior and preview budgets.
 
 ## ToolRegistry
 

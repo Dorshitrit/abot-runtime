@@ -137,11 +137,11 @@ test.each(["read_skill", "read_skills"])("%s accepts the full personal-name limi
   });
   const handle = executor.operations.find(({ operation }) => operation.operationId === action)!.handle;
   const controls = (name: string) => action === "read_skill" ? { skillId: name } : { skillIds: [name] };
-  const invalid = executor.prepare({ handle, controls: controls(document.name + "ש") });
+  const invalid = await executor.prepare({ handle, controls: controls(document.name + "ש") });
   expect(invalid).toMatchObject({ status: "rejected", code: "normal_invocation_input_invalid" });
   expect(f.store.read).not.toHaveBeenCalled();
   expect(f.store.list).not.toHaveBeenCalled();
-  const prepared = executor.prepare({ handle, controls: controls(document.name) });
+  const prepared = await executor.prepare({ handle, controls: controls(document.name) });
   expect(prepared.status).toBe("prepared");
   if (prepared.status !== "prepared") throw new Error("fixture_preparation_rejected");
   const result = await prepared.execute("skill-name-read");

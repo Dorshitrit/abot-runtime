@@ -1,6 +1,9 @@
+import { projectCheckpointContinuation } from "./semantic-compaction/continuation-projection.js";
 import { buildCheckpointMessage, type CheckpointProjectionOptions } from "./semantic-compaction/checkpoint-message.js";
 import { SEMANTIC_COMPACTION_EVIDENCE_SCOPE } from "./semantic-compaction/evidence-scope.js";
 import { readOperationSupervisionEvidenceBinding } from "./operation-supervision-evidence-binding.js";
+import { BASKET_REFERENCE_MESSAGE_KIND, basketReferenceSourceRef } from "../information-basket/reference-context.js";
+import { toBasketReferenceStorageMessage } from "../information-basket/reference-storage.js";
 import { CORE_SKILL_READ_MESSAGE_KIND, coreSkillReadSourceRef } from "./core-skill-read-context.js";
 import { OPERATION_SUPERVISION_EVIDENCE_MESSAGE_KIND } from "./operation-supervision-evidence.js";
 import { projectRequestToolResultsCheckpointMessage } from "./request-tool-results-checkpoint.js";
@@ -156,6 +159,13 @@ function resolveMessageSources(
     );
   }
   const record = parseJsonRecord(message.content);
+  if (record?.kind === BASKET_REFERENCE_MESSAGE_KIND) {
+    const reference = record.reference as { referenceId?: unknown } | undefined;
+    const referenceId = readNonEmptyString(reference?.referenceId);
+    return referenceId ? Object.freeze([createMessageSource(
+      basketReferenceSourceRef(referenceId), toBasketReferenceStorageMessage(message),
+    )]) : Object.freeze([]);
+  }
   if (record?.kind === CORE_SKILL_READ_MESSAGE_KIND) {
     const read = record.read as { readId?: unknown } | undefined;
     const document = record.document as { skillId?: unknown } | undefined;
@@ -356,7 +366,7 @@ function projectPayloadContextCheckpointMessage(
         ),
         ...(options.includeContinuation === false
           ? {}
-          : { continuation: checkpoint.continuation }),
+          : { continuation: projectCheckpointContinuation(checkpoint.continuation, options.projectContinuation) }),
         coveredResults: [...coveredResults.values()],
       },
       settledCapabilityResults: remainingResults,

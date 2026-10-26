@@ -1,3 +1,4 @@
+import { readExecutionChildResultEvidence, type ExecutionChildResultReference } from "./support/execution-child-result-evidence.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -34,7 +35,7 @@ type RootState = {
     reason: string;
     pendingEvidenceIds: string[] | null;
   };
-  completedSubordinateResults: { roleId: string; summary: string }[];
+  completedSubordinateResults: readonly ExecutionChildResultReference[];
 };
 type Proof = {
   evidence: { executionId: string; adapterResult: unknown }[];
@@ -104,6 +105,7 @@ function createCase(mode: "all" | "expand" | "limited") {
   let selections = 0;
   let reviews = 0;
   let finalState: RootState | undefined;
+  let finalResults: ReturnType<typeof readExecutionChildResultEvidence> | undefined;
   const requestedBundles: string[][] = [];
   const fixture = createAuditorRunnerFixture((input: AuditRunnerInput) => {
     if (input.modelStep === "planner.graph") return WORK_PLAN_GRAPH;
@@ -122,9 +124,10 @@ function createCase(mode: "all" | "expand" | "limited") {
           objective: "Propose the requested artifact writes and audit.",
         };
       const state = readAuditCapsule<RootState>(input, STATE);
+      const childResults = readExecutionChildResultEvidence(input);
       expect(state.completedSubordinateResults[0]!.roleId).toBe("planner");
       expect(
-        JSON.parse(state.completedSubordinateResults[0]!.summary).kind,
+        JSON.parse(childResults[0]!.summary).kind,
       ).toBe("runtime_execution_agent_planner_advisory_v1");
       const record = records[rootDecisions - 3];
       if (record)
@@ -141,7 +144,7 @@ function createCase(mode: "all" | "expand" | "limited") {
           criterionIds: AUDIT_CRITERION_IDS,
         };
       const receipt = JSON.parse(
-        state.completedSubordinateResults.at(-1)!.summary,
+        childResults.at(-1)!.summary,
       ) as Receipt;
       if (receipt.verdict === "needs_evidence") {
         expect(state.auditAvailability).toMatchObject({
@@ -153,6 +156,7 @@ function createCase(mode: "all" | "expand" | "limited") {
         return { action: "invoke_auditor", criterionIds: AUDIT_CRITERION_IDS };
       }
       finalState = state;
+      finalResults = childResults;
       expect(JSON.stringify(input.format)).not.toContain('"invoke_auditor"');
       return { action: "respond" };
     }
@@ -254,6 +258,7 @@ function createCase(mode: "all" | "expand" | "limited") {
     requestedBundles,
     counts: () => ({ selections, reviews }),
     finalState: () => finalState!,
+    finalResults: () => finalResults!,
   };
 }
 
@@ -272,7 +277,7 @@ describe("Auditor admission uses configured context for complete registered proo
         output: AUDIT_RUNNER_FINAL,
       });
       const state = fixture.finalState();
-      const receipts = state.completedSubordinateResults
+      const receipts = fixture.finalResults()
         .slice(1)
         .map(({ summary }) => JSON.parse(summary) as Receipt);
       expect(
@@ -326,7 +331,7 @@ describe("Auditor admission uses configured context for complete registered proo
     });
     const state = fixture.finalState();
     const receipt = JSON.parse(
-      state.completedSubordinateResults.at(-1)!.summary,
+      fixture.finalResults().at(-1)!.summary,
     ) as Receipt;
     expect(receipt).toMatchObject({
       verdict: "failed",

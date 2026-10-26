@@ -82,6 +82,8 @@ export function prepareWorkerDecisionContract(
     requestToolResultCount: params.options.requestToolResults.results.length,
     canInvokeSingleCapability,
     canInvokeCapabilityBatch,
+    evidenceAssessmentRequiresExecution:
+      params.options.evidenceAssessment?.decision.requiresExecution,
   });
   const remainingCapabilityExecutions = params.canonicalSource
     ? params.canonicalSource.head.policy.limits.maxCapabilityExecutions -

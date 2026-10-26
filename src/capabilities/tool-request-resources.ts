@@ -15,6 +15,8 @@ export type ToolRequestState = Readonly<{
   ): void;
 }>;
 export type ToolRequestPreparationContext = Readonly<{
+  /** Frozen request owner, shared by the root and every delegated call. */
+  rootContractId?: string;
   /** Same immutable request roots used by execution, including approval resume. */
   runtimePathResolver?: RuntimeToolPathResolver;
   requestState?: ToolRequestState;

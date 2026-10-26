@@ -22,9 +22,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     await expect(fixture.run()).resolves.toMatchObject({
       decision: { action: "respond" },
     });
-    expect(fixture.counts.map(({ inputTokens }) => inputTokens)).toEqual([
-      23814, 22673, 18000,
-    ]);
+    expect(fixture.counts.map(({ inputTokens }) => inputTokens)).toEqual(fixture.pressureCounts);
     expect(fixture.rootInputs).toHaveLength(1);
     const messages = fixture.rootInputs[0]!;
     expect(() => validateModelGatewayMessages(messages)).not.toThrow();
@@ -59,6 +57,23 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     expect(active.sources.length).toBeGreaterThan(0);
     expect(active.checkpoints[0]!.currentRequestFingerprint).toBeDefined();
     if (policy === "supervisor-worker-v1") {
+      const compactors = fixture.modelInputs.filter(({ step }) => step.startsWith("super.compact."));
+      expect(compactors.map(({ step }) => step)).toEqual([
+        "super.compact.coverage", "super.compact.content",
+        "super.compact.coverage", "super.compact.content", "super.compact.continuation",
+      ]);
+      const capsules = compactors.map(({ messages }) =>
+        JSON.parse(messages.find(({ role }) => role === "user")!.content).baseCapsule,
+      );
+      expect(capsules[0]).toMatchObject({
+        authority: "prior_conversation", currentRequest: "",
+        sourceSlice: { sourceRef: "settled-history" },
+      });
+      expect(capsules[0]).toEqual(capsules[1]);
+      expect(capsules[2]).toMatchObject({ authority: "settled_evidence", currentRequest: ROOT_REQUEST });
+      expect(capsules[2]).toEqual(capsules[3]);
+      expect(capsules[3]).toEqual(capsules[4]);
+      expect(fixture.modelInputs.some(({ step }) => step === "context.compact")).toBe(false);
       const integrity = {
         requestId: fixture.request.requestId,
         prompt: ROOT_REQUEST,
@@ -80,7 +95,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     ]);
     expect(lifecycle[1]).toMatchObject({
       compactionScope: "session_history",
-      beforeInputTokens: 23814,
+      beforeInputTokens: fixture.pressureCounts[0],
       afterInputTokens: 18000,
       coveredSourceCount: 2,
     });
@@ -97,9 +112,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     await expect(fixture.run()).resolves.toBe(
       "The source observation is available.",
     );
-    expect(fixture.counts.map(({ inputTokens }) => inputTokens)).toEqual([
-      23814, 22673, 18000,
-    ]);
+    expect(fixture.counts.map(({ inputTokens }) => inputTokens)).toEqual(fixture.pressureCounts);
     expect(fixture.rootInputs).toHaveLength(1);
     expect(() =>
       validateModelGatewayMessages(fixture.rootInputs[0]!),
@@ -199,8 +212,6 @@ test("D22: completed Planner, Worker, Reviewer handoffs remain canonical through
     "reviewer_verdict_v1",
   );
   expect(JSON.stringify(snapshot.sources)).toContain(results[2]!.resultRef);
-  expect(fixture.counts.map(({ inputTokens }) => inputTokens)).toEqual([
-    23814, 22673, 18000,
-  ]);
+  expect(fixture.counts.map(({ inputTokens }) => inputTokens)).toEqual(fixture.pressureCounts);
   expect(fixture.rootInputs).toHaveLength(1);
 });

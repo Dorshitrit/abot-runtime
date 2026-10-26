@@ -1,3 +1,4 @@
+import type { CheckpointContinuationProjector } from "./semantic-compaction/continuation-projection.js";
 import { readInheritedCompactionCheckpoint } from "./model-step-compaction-inheritance.js";
 import { projectCheckpointMessages, scanCompactionSources, createResultSourceOverrideMap } from "./model-step-compaction-projection.js";
 import { createVerifiedCompactionProjection } from "./verified-compaction-projection.js";
@@ -46,12 +47,15 @@ type ModelStepCompactionOptions = Readonly<{
   requireSuperWorkerSources?: boolean;
   consumer?: ModelStep;
   superFailureOwner?: SuperCompactionFailureOwner;
+  projectContinuation?: CheckpointContinuationProjector;
+  supportsProjectionRepair?: true;
   hasVerifiedCompactedEvidence?(messages: readonly ChatMessage[]): boolean;
 }>;
 
 export function createModelStepCompactionController(
   request: SemanticCompactionRequest,
   options: ModelStepCompactionOptions,
+  generateCandidate = generateSemanticCompactionCandidateBatched,
 ): ModelStepContextCompactionController {
   if (!options.call.objective) {
     throw new Error("context_compaction_active_objective_required");
@@ -155,6 +159,7 @@ export function createModelStepCompactionController(
   const activeStage = Object.freeze<ModelStepCompactionStage>({
     compactionScope: "active_request",
     scopeId,
+    ...(options.supportsProjectionRepair ? { supportsProjectionRepair: true } : {}),
     async prepare(messages, context) {
       const {
         sidecar,
@@ -200,13 +205,14 @@ export function createModelStepCompactionController(
           reason: evidence ? "no_new_sources" : "no_eligible_sources",
         });
       }
-      const candidate = await generateSemanticCompactionCandidateBatched({
+      const candidate = await generateCandidate({
         request,
         scopeId,
         binding,
         sourceRevision: options.sourceRevision,
         preservationObjective: options.call.objective!,
         boundSteeringVersion: context?.boundSteeringVersion,
+        projectionRepair: context?.projectionRepair,
         consumer: options.consumer,
         ...(previous ? { previous } : {}),
         ...(!previous && inherited
@@ -227,7 +233,7 @@ export function createModelStepCompactionController(
             resultSourceOverrides,
             failureOwner !== undefined,
             undefined,
-            { replacesScopeId: inherited?.scopeId },
+            { replacesScopeId: inherited?.scopeId, projectContinuation: options.projectContinuation },
           ),
           candidate,
         ),
@@ -278,6 +284,7 @@ export function createModelStepCompactionController(
                 verifiedProjection.record,
                 {
                   includeContinuation: previous !== undefined,
+                  projectContinuation: options.projectContinuation,
                   replacesScopeId: inherited?.scopeId,
                 },
               )

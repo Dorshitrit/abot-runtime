@@ -44,7 +44,7 @@ export function resolveCapabilityBriefMessageHeadroom(
   }>,
 ): number {
   const { budget } = assessRequestMessagesBudget(params);
-  // Reserve instructions not yet inserted against both the 70% threshold
+  // Reserve instructions not yet inserted against both the selected trigger
   // and the input ceiling. Strictly below: admission triggers on >=.
   const instructionReserve =
     params.budget.configuredInstructionReserveTokens ?? 0;

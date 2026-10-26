@@ -14,7 +14,10 @@ describe("admission of already compacted evidence", () => {
   ] as const)(
     "%s admits verified exhausted sources above trigger but within hard input budget",
     async (modelStep) => {
-      const harness = createAdmissionFixture({ modelStep, counts: [26_704] });
+      const pressure = modelStep === "execution.decision"
+        ? { contextWindowTokens: 100_000, counts: [91_000] }
+        : { counts: [26_704] };
+      const harness = createAdmissionFixture({ modelStep, ...pressure });
       const stage = createAdmissionStage("active_request", "unused");
       const proof = vi.fn(() => true);
       await expect(

@@ -1,3 +1,4 @@
+import type { InformationBasketService } from "./information-basket/contracts.js";
 import type { PersonalSkillManagementService } from "./knowledge-skills/personal-contracts.js";
 import type { KnowledgeSkillStore } from "./knowledge-skills/store.js";
 import type WebSocket from "ws";
@@ -23,6 +24,10 @@ import type {
   RunRequestMessage,
 } from "./request/contracts.js";
 import type { SessionMemoryCompactor } from "./context/session-memory/index.js";
+import {
+  SESSION_MEMORY_COMPACTORS,
+  type SessionMemoryCompactorComposition,
+} from "./context/super-compaction/history-routing.js";
 import type { LongTermMemoryService } from "./long-term-memory/contracts.js";
 import type { SchedulerRun, SchedulerService } from "./scheduler/contracts.js";
 import { SessionRequestAdmission } from "./request/session-admission.js";
@@ -30,7 +35,7 @@ import type { RequestSteeringAppendResult } from "./request/request-steering.js"
 import type { PassiveLearningService } from "./passive-learning/contracts.js";
 import type { AutomationService } from "./automations/service.js";
 
-export type RuntimeEnvironmentServices = Readonly<{
+export type RuntimeEnvironmentServices = SessionMemoryCompactorComposition & Readonly<{
   config: RuntimeConfig;
   sessions: SessionStore;
   projects?: RuntimeProjectService;
@@ -38,6 +43,7 @@ export type RuntimeEnvironmentServices = Readonly<{
   tools: ToolRegistry;
   knowledgeSkillStore?: KnowledgeSkillStore;
   personalSkills?: PersonalSkillManagementService;
+  informationBasket?: InformationBasketService;
   models: ModelGatewayClient;
   events: EventSinkFactory;
   sessionMemoryCompactor: SessionMemoryCompactor;
@@ -96,6 +102,7 @@ export type RuntimeDependencies = {
   attachments: RuntimeAttachmentStore;
   tools: ToolRegistry;
   knowledgeSkillStore?: KnowledgeSkillStore;
+  informationBasket?: InformationBasketService;
   models: ModelGatewayClient;
   events: EventSinkFactory;
   sessionMemoryCompactor: SessionMemoryCompactor;
@@ -161,8 +168,8 @@ export function createDefaultRuntimeDependencies(
   overrides: RuntimeDependencyOverrides = {},
 ): RuntimeDependencies {
   const application = createRuntimeApplication(config, overrides);
-  return {
+  return Object.defineProperty({
     ...application.services,
     host: application.host,
-  };
+  }, SESSION_MEMORY_COMPACTORS, { enumerable: false });
 }

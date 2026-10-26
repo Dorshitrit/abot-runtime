@@ -10,6 +10,7 @@ describe("exhausted model output failure classification", () => {
     ["invalid_supervisor_decision", "supervisor.decision"],
     ["invalid_execution_agent_decision", "execution.decision"],
     ["invalid_planner_decision", "planner.decision"],
+    ["invalid_worker_evidence_assessment", "worker.evidence"],
     ["invalid_worker_decision", "worker.decision"],
     ["invalid_worker_decision", "capability.controls"],
     ["invalid_reviewer_decision", "reviewer.decision"],
@@ -160,6 +161,8 @@ describe("exhausted model output failure classification", () => {
         providerCompletionReason: "length",
       }),
       structuredError("invalid_worker_decision", "supervisor.decision"),
+      structuredError("invalid_worker_evidence_assessment", "worker.decision"),
+      structuredError("invalid_worker_decision", "worker.evidence"),
       structuredError("invalid_auditor_decision", "auditor.decision"),
       structuredError(
         "invalid_execution_capability_refinement",

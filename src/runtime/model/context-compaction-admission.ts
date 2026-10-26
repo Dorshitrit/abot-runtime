@@ -20,6 +20,7 @@ import {
 } from "./context-compaction-diagnostics.js";
 import { isCompactionSteeringSuperseded } from "./model-step-steering.js";
 import { ModelStepTimeoutError } from "../steps/model-step-timeout.js";
+import { prepareProjectionRepair } from "./context-compaction-projection-repair.js";
 
 type CompactionEnvelope = Readonly<{
   messages: readonly ChatMessage[];
@@ -106,7 +107,7 @@ export async function admitCompactedContext(
         messages: readonly ChatMessage[],
       ): Promise<RequestMessagesBudgetAssessment>;
       assertCurrent(): void;
-      boundSteeringVersion?: number;
+      assertNotAborted(): void;
       abortSignal: AbortSignal;
       identity: ContextCompactionIdentity;
       onEvent?: (name: string, extra?: Record<string, unknown>) => void;
@@ -173,17 +174,18 @@ export async function admitCompactedContext(
       });
       return current;
     }
+    params.assertCurrent();
     diagnostics.start();
     if (!params.controller)
       throw new Error("request_context_compaction_required");
 
+    // Finish the captured compaction cycle before its caller applies new steering.
+    // Cancellation still fences every preparation, measurement and commit.
     for (const [stageIndex, stage] of stages.entries()) {
       activeStage = stage;
-      params.assertCurrent();
-      const outcome = await stage.prepare(current.messages, {
-        boundSteeringVersion: params.boundSteeringVersion,
-      });
-      params.assertCurrent();
+      params.assertNotAborted();
+      const outcome = await stage.prepare(current.messages);
+      params.assertNotAborted();
       const stageMetadata = {
         stageIndex,
         compactionScope: stage.compactionScope,
@@ -206,13 +208,13 @@ export async function admitCompactedContext(
         });
         continue;
       }
-      const prepared = outcome.preparation;
+      let prepared = outcome.preparation;
       assertPreparationStageBinding(stage, prepared);
-      params.assertCurrent();
-      const candidate = await params.assess(prepared.messages);
+      params.assertNotAborted();
+      let candidate = await params.assess(prepared.messages);
       lastCandidate = candidate;
-      params.assertCurrent();
-      const candidateMetadata = {
+      params.assertNotAborted();
+      let candidateMetadata = {
         ...stageMetadata,
         ...compactionMeasurement(candidate),
         candidateInputTokens: resolveRequestBudgetInputTokens(candidate.budget),
@@ -224,7 +226,35 @@ export async function admitCompactedContext(
           ...candidateMetadata,
           outcome: "discarded_not_reduced",
         });
-        continue;
+        const repaired = await prepareProjectionRepair({
+          stage,
+          messages: current.messages,
+          current: current.assessment,
+          rejected: candidate,
+          preparation: prepared,
+          diagnostics,
+          assertNotAborted: params.assertNotAborted,
+          assess: params.assess,
+        });
+        if (!repaired) continue;
+        prepared = repaired.preparation;
+        candidate = repaired.assessment;
+        lastCandidate = candidate;
+        candidateMetadata = {
+          ...stageMetadata,
+          ...compactionMeasurement(candidate),
+          candidateInputTokens: resolveRequestBudgetInputTokens(candidate.budget),
+          sourceRevision: prepared.sourceRevision,
+          coveredSourceCount: prepared.coveredSourceCount,
+        };
+        if (!hasReducedProjection(candidate, current.assessment)) {
+          diagnostics.trace("stage", {
+            ...candidateMetadata,
+            outcome: "discarded_not_reduced",
+            projectionRepair: true,
+          });
+          continue;
+        }
       }
       current = { messages: prepared.messages, assessment: candidate };
       retained.push({
@@ -267,7 +297,7 @@ export async function admitCompactedContext(
     }
 
     for (const entry of retained) {
-      params.assertCurrent();
+      params.assertNotAborted();
       commitInProgress = entry.compactionScope;
       diagnostics.trace("commit", {
         outcome: "started",
@@ -286,9 +316,9 @@ export async function admitCompactedContext(
         scopeId: entry.preparation.scopeId,
         committedScopes: [...committedScopes],
       });
-      params.assertCurrent();
+      params.assertNotAborted();
     }
-    params.assertCurrent();
+    params.assertNotAborted();
     diagnostics.trace("admitted", {
       outcome: "admitted",
       committedScopes,
@@ -298,7 +328,7 @@ export async function admitCompactedContext(
       ),
     });
     diagnostics.complete(current.assessment, retained[0]!);
-    params.assertCurrent();
+    params.assertNotAborted();
     return current;
   } catch (error: unknown) {
     const primary = params.abortSignal.aborted

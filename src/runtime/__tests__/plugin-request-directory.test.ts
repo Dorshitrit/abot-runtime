@@ -303,7 +303,6 @@ describe("bundled plugins with request-scoped working directories", () => {
         tool: "local_search",
         params: { path: "needle.txt", query: "needle", mode: "content" },
       },
-      { tool: "inspect_project", params: { path: ".", depth: 0 } },
       { tool: "inspect_json", params: { path: "marker.json" } },
       { tool: "inspect_code_outline", params: { path: "src/app.ts" } },
     ];
@@ -313,5 +312,10 @@ describe("bundled plugins with request-scoped working directories", () => {
       expect(result.ok).toBe(true);
       expect(result.output).toContain("configuredOnly");
     }
+    const orientation = await implementations.inspect_project!({ path: ".", depth: 0 });
+    expect(orientation).toMatchObject({
+      ok: true,
+      data: { manifests: [{ file: "package.json", name: "configuredOnly", scripts: ["configuredOnly"] }] },
+    });
   });
 });

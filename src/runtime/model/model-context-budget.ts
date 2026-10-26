@@ -1,3 +1,4 @@
+import { resolveModelStepCompactionPolicy } from "./model-context-compaction-policy.js";
 import type { ModelReasoningPreference } from "../../shared/model-reasoning.js";
 import { resolveModelInvocation } from "../../model-gateway/invocation-policy.js";
 import type {
@@ -69,6 +70,7 @@ export function resolveModelContextAdmission(params: {
 
   const budget = Object.freeze({
     contextWindowTokens: invocation.profile.contextWindowTokens,
+    ...resolveModelStepCompactionPolicy(params.modelStep),
     outputReserveTokens: params.runnerConfig.context.outputReserveTokens,
     safetyReserveTokens: params.runnerConfig.context.safetyReserveTokens,
     attachmentReserveTokens:

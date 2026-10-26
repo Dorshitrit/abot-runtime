@@ -280,6 +280,7 @@ export type ConversationContextProvider = {
 };
 
 export type ToolExecutionOptions = {
+  executionAuthority?: ToolExecutionContext["executionAuthority"];
   /** Opaque internal admission from the normal-invocation boundary. */
   trustedEffectAdmission?: object;
   /** Trusted lifecycle observer; abort may settle the result before the implementation. */

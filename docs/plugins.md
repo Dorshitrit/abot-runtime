@@ -520,11 +520,21 @@ input contract cannot change. Disabled tools are never passed to the hook and
 cannot be returned. A preparation failure fails the request; it does not silently
 restore the unprepared catalog. Prepared state is not cached across requests.
 
-A call adapter may provide `executionBinding(call)` with an opaque `identity` and
-optional human-facing `metadata`. The identity participates in the normalized
-action fingerprint before approval; it is not a model input or tool result.
-Metadata is for approval and Activity disclosure only. The bound implementation
-must enforce that same captured destination at dispatch and reject stale bindings.
+A call adapter may provide `executionBinding(call, context)`, synchronously or
+asynchronously. The host supplies the captured `toolPermissionMode`, optional
+`sessionId`, and cancellation signal in `context`; none come from tool arguments.
+This preflight must only inspect the target, without performing the requested effect.
+Return an opaque `identity`, optional human-facing `metadata`, and optionally
+`requiresApproval: true` to require explicit approval even in FULL+. Omitting it
+or returning false preserves the host's existing approval policy; it cannot weaken it.
+
+The identity and additional requirement participate in the normalized action
+fingerprint and saved approval. Restoration checks both again and rejects changed
+bindings. After approval, the handler receives `context.executionAuthority` with
+the captured permission mode and `executionIdentity`. The plugin owns target and
+permission checks and must atomically reject stale targets when applying effects.
+Metadata is only for approval and Activity disclosure; the binding is neither a
+model input nor tool-result evidence. Existing synchronous adapters remain valid.
 Both supported execution policies consume this same prepared registry.
 
 The loader rejects missing or unexpected handlers. Plugin settings defaults

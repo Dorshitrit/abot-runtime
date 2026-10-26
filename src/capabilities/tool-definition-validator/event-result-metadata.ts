@@ -1,3 +1,4 @@
+import { isToolResultJsonPath } from "../tool-result-json-projection.js";
 import type { ToolEventPresentation } from "../tool-types.js";
 import { isToolDefinitionRecordValue } from "./definition-shape.js";
 
@@ -39,7 +40,11 @@ export function parseEventResultMetadata(
       if (!isResultProjectionKind(value.kind)) {
         throw new Error(`${path}.${key}.kind is not supported`);
       }
-      return [key, { path: value.path, kind: value.kind }];
+      if (Object.hasOwn(value, "jsonPath") && !hasSupportedJsonOutputSelector(value)) {
+        throw new Error(`${path}.${key}.jsonPath must select bounded own properties within output JSON`);
+      }
+      return [key, { path: value.path, kind: value.kind,
+        ...(typeof value.jsonPath === "string" ? { jsonPath: value.jsonPath } : {}) }];
     }),
   );
   for (const [key, projection] of Object.entries(result)) {
@@ -70,7 +75,7 @@ function hasUnknownResultProjectionFields(
   value: Record<string, unknown>,
 ): boolean {
   return Object.keys(value).some(
-    (field) => field !== "path" && field !== "kind",
+    (field) => field !== "path" && field !== "kind" && field !== "jsonPath",
   );
 }
 
@@ -85,4 +90,9 @@ function isResultProjectionKind(
   return RESULT_PROJECTION_KINDS.includes(
     value as (typeof RESULT_PROJECTION_KINDS)[number],
   );
+}
+
+function hasSupportedJsonOutputSelector(value: Record<string, unknown>): boolean {
+  if (value.path !== "output") return false;
+  return isToolResultJsonPath(value.jsonPath);
 }

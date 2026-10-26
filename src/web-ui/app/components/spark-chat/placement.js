@@ -24,6 +24,16 @@ function popupOpensAbove(desiredHeight, above, below) {
   return above >= below;
 }
 
+function isDropInsideNavigation(event, dockAnchor) {
+  if (event.type !== "pointerup") return false;
+  const navigation = dockAnchor.closest?.(".workspace-rail") ?? dockAnchor;
+  const rect = navigation.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return false;
+  if (event.clientX < rect.left || event.clientX > rect.right) return false;
+  if (event.clientY < rect.top || event.clientY > rect.bottom) return false;
+  return Number.isFinite(event.clientX) && Number.isFinite(event.clientY);
+}
+
 function hasMovedPastDragThreshold(pointer, event) {
   return Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) >= dragThreshold;
 }
@@ -141,7 +151,8 @@ export function createSparkChatPlacement({ root, launcher, panel, notice, dockAn
     launcher.classList.remove("spark-launcher-dragging");
     if (!dragged) return;
     const captured = motion.capture([launcher, panel, notice]);
-    position = { x: Math.round(position.x / positionGrid) * positionGrid, y: Math.round(position.y / positionGrid) * positionGrid };
+    position = isDropInsideNavigation(event, dockAnchor) ? null
+      : { x: Math.round(position.x / positionGrid) * positionGrid, y: Math.round(position.y / positionGrid) * positionGrid };
     refresh();
     persist();
     motion.settle(captured);

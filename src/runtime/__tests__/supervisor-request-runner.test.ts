@@ -4,10 +4,12 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { MODEL_STEPS } from "../../shared/model-steps.js";
+import { workerEvidenceReply } from "./support/worker-evidence-script.js";
 import { createDefaultToolRegistry } from "../default-adapters.js";
 import { directRespondText } from "./support/supervisor-direct-respond.js";
 import { expectDirectDelegation } from "./support/supervisor-delegation-events.js";
-import { separateSupervisorRunnerModelPhases } from "./support/supervisor-runner-model-phases.js";
+import { modelPolicy, runnerConfig, separateSupervisorRunnerModelPhases } from "./support/supervisor-runner-model-phases.js";
 import type {
   ModelGatewayClient,
   RuntimeConfig,
@@ -18,7 +20,6 @@ import type {
   ToolExecutionResult,
   ToolNormalInvocationOperation,
 } from "../../capabilities/tool-types.js";
-import type { RequestRunnerConfig } from "../config/runner/contracts.js";
 import {
   configureDebugLogger,
   resetDebugLoggerConfig,
@@ -69,39 +70,6 @@ import {
   WORKER_RESULT_MODEL_STEP,
 } from "../steps/worker-decision/index.js";
 
-const runnerConfig: RequestRunnerConfig = {
-  models: {
-    defaults: {
-      profileId: "runtime-default",
-      steps: {
-        [SUPERVISOR_DECISION_MODEL_STEP]: "supervisor.decision",
-        [SUPERVISOR_RESPONSE_MODEL_STEP]: "supervisor.response",
-        [PLANNER_DECISION_MODEL_STEP]: "planner.decision",
-        [REVIEWER_DECISION_MODEL_STEP]: "reviewer.decision",
-        [WORKER_DECISION_MODEL_STEP]: "worker.decision",
-        [WORKER_RESULT_MODEL_STEP]: "supervisor.response",
-        [CAPABILITY_CONTROLS_MODEL_STEP]: "capability.controls",
-        [WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP]: "toolPayload.raw",
-      },
-    },
-  },
-  context: {
-    outputReserveTokens: 1_000,
-    safetyReserveTokens: 200,
-    attachmentReserveTokens: 100,
-  },
-  steps: {
-    [SUPERVISOR_DECISION_MODEL_STEP]: { timeoutMs: 20_000 },
-    [SUPERVISOR_RESPONSE_MODEL_STEP]: { timeoutMs: 20_000 },
-    [PLANNER_DECISION_MODEL_STEP]: { timeoutMs: 20_000 },
-    [REVIEWER_DECISION_MODEL_STEP]: { timeoutMs: 20_000 },
-    [WORKER_DECISION_MODEL_STEP]: { timeoutMs: 20_000 },
-    [WORKER_RESULT_MODEL_STEP]: { timeoutMs: 20_000 },
-    [CAPABILITY_CONTROLS_MODEL_STEP]: { timeoutMs: 20_000 },
-    [WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP]: { timeoutMs: 20_000 },
-  } as RequestRunnerConfig["steps"],
-};
-
 const capabilityRunnerConfig = runnerConfig;
 const mutationRunnerConfig = runnerConfig;
 const REQUEST_ACKNOWLEDGEMENT =
@@ -127,40 +95,6 @@ function findSteeringMessage(
     }
   });
 }
-
-const modelPolicy = {
-  providers: { local: { type: "ollama" as const } },
-  profiles: {
-    "runtime-default": {
-      provider: "local",
-      model: "runtime-default:latest",
-      contextWindowTokens: 32_000,
-      supportsThinking: true,
-      calibration: {
-        "supervisor.decision": {},
-        "supervisor.response": {},
-        "planner.decision": {},
-        "reviewer.decision": {},
-        "worker.decision": {},
-        "capability.controls": {},
-        "tool_payload.raw": {},
-      },
-    },
-  },
-  defaults: {
-    profileId: "runtime-default",
-    steps: {
-      [SUPERVISOR_DECISION_MODEL_STEP]: "supervisor.decision",
-      [SUPERVISOR_RESPONSE_MODEL_STEP]: "supervisor.response",
-      [PLANNER_DECISION_MODEL_STEP]: "planner.decision",
-      [REVIEWER_DECISION_MODEL_STEP]: "reviewer.decision",
-      [WORKER_DECISION_MODEL_STEP]: "worker.decision",
-      [WORKER_RESULT_MODEL_STEP]: "supervisor.response",
-      [CAPABILITY_CONTROLS_MODEL_STEP]: "capability.controls",
-      [WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP]: "toolPayload.raw",
-    },
-  },
-};
 
 function createRequest(
   invoke: ModelGatewayClient["invoke"],
@@ -465,9 +399,8 @@ describe("Supervisor-root request runner slice", () => {
           meta: {},
         };
       }
-      if (input.modelStep === WORKER_DECISION_MODEL_STEP) {
-        return workerResponse;
-      }
+      if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE) return workerEvidenceReply(input, false);
+      if (input.modelStep === WORKER_RESULT_MODEL_STEP) return workerResponse;
       if (input.modelStep === SUPERVISOR_RESPONSE_MODEL_STEP) {
         return { text: "I included the requested update.", meta: {} };
       }
@@ -479,7 +412,7 @@ describe("Supervisor-root request runner slice", () => {
     await vi.waitFor(() =>
       expect(
         invoke.mock.calls.some(
-          ([input]) => input.modelStep === WORKER_DECISION_MODEL_STEP,
+          ([input]) => input.modelStep === WORKER_RESULT_MODEL_STEP,
         ),
       ).toBe(true),
     );
@@ -488,10 +421,7 @@ describe("Supervisor-root request runner slice", () => {
       text: "Also save the outcome in a dated file",
     });
     resolveWorker?.({
-      text: encodeDecision({
-        action: "return_result",
-        result: "The bounded source material is ready.",
-      }),
+      text: "The bounded source material is ready.",
       meta: {},
     });
 
@@ -500,15 +430,16 @@ describe("Supervisor-root request runner slice", () => {
     });
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
-      WORKER_DECISION_MODEL_STEP,
+      MODEL_STEPS.WORKER_EVIDENCE,
+      WORKER_RESULT_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_RESPONSE_MODEL_STEP,
     ]);
-    const workerMessages = invoke.mock.calls[1]?.[0]?.messages as
+    const workerMessages = invoke.mock.calls[2]?.[0]?.messages as
       | readonly Readonly<{ role: string; content: string }>[]
       | undefined;
     expect(findSteeringMessage(workerMessages)).toBeUndefined();
-    const resumedSupervisorMessages = invoke.mock.calls[2]?.[0]?.messages as
+    const resumedSupervisorMessages = invoke.mock.calls[3]?.[0]?.messages as
       | readonly Readonly<{ role: string; content: string }>[]
       | undefined;
     expect(findSteeringMessage(resumedSupervisorMessages)).toBeDefined();
@@ -762,6 +693,7 @@ describe("Supervisor-root request runner slice", () => {
     );
     let invocationIndex = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE) return workerEvidenceReply(input, false);
       invocationIndex += 1;
       switch (invocationIndex) {
         case 1:
@@ -805,14 +737,8 @@ describe("Supervisor-root request runner slice", () => {
             meta: {},
           };
         case 3:
-          expect(input.modelStep).toBe(WORKER_DECISION_MODEL_STEP);
-          return {
-            text: encodeDecision({
-              action: "return_result",
-              result: workerResult,
-            }),
-            meta: {},
-          };
+          expect(input.modelStep).toBe(WORKER_RESULT_MODEL_STEP);
+          return { text: workerResult, meta: {} };
         case 4: {
           expect(input.modelStep).toBe(PLANNER_DECISION_MODEL_STEP);
           const messages = input.messages as readonly Readonly<{
@@ -862,7 +788,8 @@ describe("Supervisor-root request runner slice", () => {
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
       PLANNER_DECISION_MODEL_STEP,
-      WORKER_DECISION_MODEL_STEP,
+      MODEL_STEPS.WORKER_EVIDENCE,
+      WORKER_RESULT_MODEL_STEP,
       PLANNER_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_RESPONSE_MODEL_STEP,
@@ -996,7 +923,7 @@ describe("Supervisor-root request runner slice", () => {
       ],
     ]);
 
-    const resumedSupervisorInvocation = invoke.mock.calls[4]![0];
+    const resumedSupervisorInvocation = invoke.mock.calls[5]![0];
     const resumedSupervisorMessages =
       resumedSupervisorInvocation.messages as Array<{
         role: string;
@@ -1086,12 +1013,9 @@ describe("Supervisor-root request runner slice", () => {
         }),
         meta: {},
       })
+      .mockImplementationOnce(async (input) => workerEvidenceReply(input, false))
       .mockResolvedValueOnce({
-        text: encodeDecision({
-          action: "return_result",
-          result:
-            "They localize the first failing change for faster debugging.",
-        }),
+        text: "They localize the first failing change for faster debugging.",
         meta: {},
       })
       .mockResolvedValueOnce({
@@ -1157,10 +1081,11 @@ describe("Supervisor-root request runner slice", () => {
       output: "Small checkpoints make failures easier to localize.",
     });
 
-    expect(invoke).toHaveBeenCalledTimes(4);
+    expect(invoke).toHaveBeenCalledTimes(5);
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
-      WORKER_DECISION_MODEL_STEP,
+      MODEL_STEPS.WORKER_EVIDENCE,
+      WORKER_RESULT_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_RESPONSE_MODEL_STEP,
     ]);
@@ -1174,10 +1099,10 @@ describe("Supervisor-root request runner slice", () => {
     expect(supervisorMessages[0]!.content).not.toContain("mutate_system_state");
     const workerInvocation = invoke.mock.calls[1]![0];
     expect(workerInvocation).toMatchObject({
-      modelStep: WORKER_DECISION_MODEL_STEP,
+      modelStep: MODEL_STEPS.WORKER_EVIDENCE,
       format: {
         type: "json_schema",
-        name: "worker_decision",
+        name: "worker_evidence_assessment",
         strict: true,
       },
     });
@@ -1185,7 +1110,7 @@ describe("Supervisor-root request runner slice", () => {
       role: string;
       content: string;
     }>;
-    expect(workerMessages).toHaveLength(3);
+    expect(workerMessages).toHaveLength(4);
     expect(JSON.parse(workerMessages[1]!.content)).toEqual({
       kind: "runtime_request_source_v1",
       authority: "reference_data",
@@ -1224,7 +1149,7 @@ describe("Supervisor-root request runner slice", () => {
       ).map(({ capabilityId }) => capabilityId),
     ).toEqual(["inspect_system_state", "mutate_system_state"]);
 
-    const resumedInvocation = invoke.mock.calls[2]![0];
+    const resumedInvocation = invoke.mock.calls[3]![0];
     const resumedMessages = resumedInvocation.messages as Array<{
       role: string;
       content: string;
@@ -1291,6 +1216,7 @@ describe("Supervisor-root request runner slice", () => {
       "The recommendation incorporates the reported actionable signal.";
     let invocationIndex = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE) return workerEvidenceReply(input, false);
       invocationIndex += 1;
       const messages = input.messages as readonly Readonly<{
         role: string;
@@ -1309,14 +1235,8 @@ describe("Supervisor-root request runner slice", () => {
             meta: {},
           };
         case 2:
-          expect(input.modelStep).toBe(WORKER_DECISION_MODEL_STEP);
-          return {
-            text: encodeDecision({
-              action: "return_result",
-              result: workerResult,
-            }),
-            meta: {},
-          };
+          expect(input.modelStep).toBe(WORKER_RESULT_MODEL_STEP);
+          return { text: workerResult, meta: {} };
         case 3:
           expect(input.modelStep).toBe(SUPERVISOR_DECISION_MODEL_STEP);
           expect(readRuntimeChildResults(messages)).toMatchObject([
@@ -1418,7 +1338,8 @@ describe("Supervisor-root request runner slice", () => {
 
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
-      WORKER_DECISION_MODEL_STEP,
+      MODEL_STEPS.WORKER_EVIDENCE,
+      WORKER_RESULT_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       PLANNER_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
@@ -1487,6 +1408,7 @@ describe("Supervisor-root request runner slice", () => {
       "The revised bounded approach is ready for the Supervisor.";
     let invocationIndex = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE) return workerEvidenceReply(input, true);
       invocationIndex += 1;
       const messages = input.messages as readonly Readonly<{
         role: string;
@@ -1603,6 +1525,7 @@ describe("Supervisor-root request runner slice", () => {
 
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
+      MODEL_STEPS.WORKER_EVIDENCE,
       WORKER_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       PLANNER_DECISION_MODEL_STEP,
@@ -1667,7 +1590,7 @@ describe("Supervisor-root request runner slice", () => {
     configureDebugLogger({ enabled: true });
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
     let supervisorDecisionCount = 0;
-    let workerDecisionCount = 0;
+    let workerResultCount = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
       if (input.modelStep === SUPERVISOR_DECISION_MODEL_STEP) {
         supervisorDecisionCount += 1;
@@ -1683,15 +1606,10 @@ describe("Supervisor-root request runner slice", () => {
           meta: {},
         };
       }
-      if (input.modelStep === WORKER_DECISION_MODEL_STEP) {
-        workerDecisionCount += 1;
-        return {
-          text: encodeDecision({
-            action: "return_result",
-            result: `Bounded child ${workerDecisionCount} completed.`,
-          }),
-          meta: {},
-        };
+      if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE) return workerEvidenceReply(input, false);
+      if (input.modelStep === WORKER_RESULT_MODEL_STEP) {
+        workerResultCount += 1;
+        return { text: `Bounded child ${workerResultCount} completed.`, meta: {} };
       }
       throw new Error(`unexpected model step ${input.modelStep}`);
     });
@@ -1713,7 +1631,7 @@ describe("Supervisor-root request runner slice", () => {
     );
 
     expect(supervisorDecisionCount).toBe(48);
-    expect(workerDecisionCount).toBe(47);
+    expect(workerResultCount).toBe(47);
     expect(
       invoke.mock.calls.some(
         ([input]) => input.modelStep === SUPERVISOR_RESPONSE_MODEL_STEP,
@@ -1753,6 +1671,10 @@ describe("Supervisor-root request runner slice", () => {
     const observation = "SYSTEM_STATE_7_4";
     let invocationIndex = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE && invocationIndex === 1)
+        return workerEvidenceReply(input, true);
+      if (input.modelStep === WORKER_RESULT_MODEL_STEP)
+        return { text: `Consumed canonical observation: ${observation}`, meta: {} };
       invocationIndex += 1;
       switch (invocationIndex) {
         case 1:
@@ -1804,13 +1726,8 @@ describe("Supervisor-root request runner slice", () => {
               },
             ],
           });
-          return {
-            text: encodeDecision({
-              action: "return_result",
-              result: `Consumed canonical observation: ${observation}`,
-            }),
-            meta: {},
-          };
+          expect(input.modelStep).toBe(MODEL_STEPS.WORKER_EVIDENCE);
+          return workerEvidenceReply(input, false);
         }
         case 5:
           return {
@@ -1871,9 +1788,11 @@ describe("Supervisor-root request runner slice", () => {
 
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
+      MODEL_STEPS.WORKER_EVIDENCE,
       WORKER_DECISION_MODEL_STEP,
       CAPABILITY_CONTROLS_MODEL_STEP,
-      WORKER_DECISION_MODEL_STEP,
+      MODEL_STEPS.WORKER_EVIDENCE,
+      WORKER_RESULT_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       SUPERVISOR_RESPONSE_MODEL_STEP,
     ]);
@@ -2021,6 +1940,10 @@ describe("Supervisor-root request runner slice", () => {
     const invokeRaw = vi.fn<ModelGatewayClient["invokeRaw"]>();
     let invocationIndex = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE && invocationIndex === 1)
+        return workerEvidenceReply(input, true);
+      if (input.modelStep === WORKER_RESULT_MODEL_STEP)
+        return { text: "The requested file was created.", meta: {} };
       invocationIndex += 1;
       switch (invocationIndex) {
         case 1:
@@ -2090,7 +2013,7 @@ describe("Supervisor-root request runner slice", () => {
           return { text: body, meta: {} };
         }
         case 4: {
-          expect(input.modelStep).toBe(WORKER_DECISION_MODEL_STEP);
+          expect(input.modelStep).toBe(MODEL_STEPS.WORKER_EVIDENCE);
           const messages = input.messages as readonly Readonly<{
             role: string;
             content: string;
@@ -2111,13 +2034,7 @@ describe("Supervisor-root request runner slice", () => {
               },
             ],
           });
-          return {
-            text: encodeDecision({
-              action: "return_result",
-              result: "The requested file was created.",
-            }),
-            meta: {},
-          };
+          return workerEvidenceReply(input, false);
         }
         case 5:
           expect(input.modelStep).toBe(SUPERVISOR_DECISION_MODEL_STEP);
@@ -2161,9 +2078,11 @@ describe("Supervisor-root request runner slice", () => {
 
       expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
         SUPERVISOR_DECISION_MODEL_STEP,
+        MODEL_STEPS.WORKER_EVIDENCE,
         WORKER_DECISION_MODEL_STEP,
         WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP,
-        WORKER_DECISION_MODEL_STEP,
+        MODEL_STEPS.WORKER_EVIDENCE,
+        WORKER_RESULT_MODEL_STEP,
         SUPERVISOR_DECISION_MODEL_STEP,
         SUPERVISOR_RESPONSE_MODEL_STEP,
       ]);
@@ -2336,6 +2255,7 @@ describe("Supervisor-root request runner slice", () => {
     let invocationIndex = 0;
     let reviewerDecision: Record<string, unknown> | undefined;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      if (input.modelStep === MODEL_STEPS.WORKER_EVIDENCE) return workerEvidenceReply(input, false);
       invocationIndex += 1;
       switch (invocationIndex) {
         case 1:
@@ -2369,14 +2289,8 @@ describe("Supervisor-root request runner slice", () => {
             meta: {},
           };
         case 3:
-          expect(input.modelStep).toBe(WORKER_DECISION_MODEL_STEP);
-          return {
-            text: encodeDecision({
-              action: "return_result",
-              result: workerResult,
-            }),
-            meta: {},
-          };
+          expect(input.modelStep).toBe(WORKER_RESULT_MODEL_STEP);
+          return { text: workerResult, meta: {} };
         case 4:
           expect(input.modelStep).toBe(PLANNER_DECISION_MODEL_STEP);
           return {
@@ -2489,7 +2403,8 @@ describe("Supervisor-root request runner slice", () => {
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       SUPERVISOR_DECISION_MODEL_STEP,
       PLANNER_DECISION_MODEL_STEP,
-      WORKER_DECISION_MODEL_STEP,
+      MODEL_STEPS.WORKER_EVIDENCE,
+      WORKER_RESULT_MODEL_STEP,
       PLANNER_DECISION_MODEL_STEP,
       SUPERVISOR_DECISION_MODEL_STEP,
       REVIEWER_DECISION_MODEL_STEP,
@@ -2498,7 +2413,7 @@ describe("Supervisor-root request runner slice", () => {
     ]);
     expect(
       invoke.mock.calls.filter(
-        ([input]) => input.modelStep === WORKER_DECISION_MODEL_STEP,
+        ([input]) => input.modelStep === WORKER_RESULT_MODEL_STEP,
       ),
     ).toHaveLength(1);
   });

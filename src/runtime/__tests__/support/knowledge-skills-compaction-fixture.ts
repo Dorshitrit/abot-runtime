@@ -19,6 +19,7 @@ import { runExecutionAgentResponse } from "../../steps/execution-agent/response-
 import { runWorkerDecision } from "../../steps/worker-decision/run.js";
 import { createTestRequestExecutionScope } from "./request-execution-scope.js";
 import { compactContinuation, readCompactionEnvelope } from "./semantic-compaction-contract-fixture.js";
+import { workerEvidenceReply } from "./worker-evidence-script.js";
 import { semanticCompactionReplacementSlots } from "./semantic-compaction-replacement-fixture.js";
 
 export const SKILL_COMPACTION_FACT = "Read the exact current state before choosing an input action.";
@@ -36,6 +37,9 @@ export async function createKnowledgeSkillsCompactionFixture(policy: RequestExec
   const requestId = `skills-compaction-${policy}`;
   const sessionId = `session-${requestId}`;
   const profileId = "skills-compaction-model";
+  const compactionSteps = policy === "supervisor-worker-v1"
+    ? ["super.compact.coverage", "super.compact.content", "super.compact.merge", "super.compact.continuation"]
+    : ["context.compact"];
   const store = createKnowledgeSkillStore([
     { skillId: "abot-studio", name: "ABot Studio", description: "A procedural reference.", content: SKILL_COMPACTION_CONTENT },
     { skillId: "other", name: "Other", description: "An unrelated reference.", content: UNREQUESTED_SKILL_CONTENT },
@@ -54,6 +58,8 @@ export async function createKnowledgeSkillsCompactionFixture(policy: RequestExec
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
     const messages = input.messages as readonly ChatMessage[];
     modelInputs.push({ step: input.modelStep!, messages });
+    if (policy === "supervisor-worker-v1" && compactionSteps.includes(input.modelStep!))
+      return { text: SKILL_COMPACTION_FACT, meta: {} };
     if (input.modelStep === "context.compact") {
       const envelope = readCompactionEnvelope(messages);
       const refs = envelope.sourceSlice
@@ -73,14 +79,14 @@ export async function createKnowledgeSkillsCompactionFixture(policy: RequestExec
     }
     if (input.modelStep === "execution.decision")
       return { text: JSON.stringify({ decision: { action: "respond" } }), meta: {} };
-    if (input.modelStep === "worker.decision")
-      return { text: JSON.stringify({ decision: { action: "return_result" } }), meta: {} };
+    if (input.modelStep === "worker.evidence")
+      return workerEvidenceReply(input, false, SKILL_COMPACTION_FACT);
     if (input.modelStep === "execution.response" || input.modelStep === "worker.result")
       return { text: SKILL_COMPACTION_ANSWER, meta: {} };
     throw new Error(`unexpected_skill_compaction_step:${input.modelStep}`);
   });
   const countInputTokens = vi.fn<NonNullable<ModelGatewayClient["countInputTokens"]>>(async (input) => {
-    const isUncompactedConsumer = input.modelStep !== "context.compact" &&
+    const isUncompactedConsumer = !compactionSteps.includes(input.modelStep!) &&
       JSON.stringify(input.messages).includes(SKILL_COMPACTION_PADDING);
     const inputTokens = forceCompaction && isUncompactedConsumer ? 63_500 : 1_000;
     measuredInputs.push({ step: input.modelStep!, inputTokens });
@@ -89,7 +95,7 @@ export async function createKnowledgeSkillsCompactionFixture(policy: RequestExec
       contextWindowTokens: 64_000, source: "provider_input_token_count",
     };
   });
-  const steps = ["execution.decision", "execution.response", "worker.decision", "worker.result", "context.compact"];
+  const steps = ["execution.decision", "execution.response", "worker.evidence", "worker.decision", "worker.result", ...compactionSteps];
   const baseRequest = createTestRequestExecutionScope({
     requestId, sessionId, prompt: SKILL_COMPACTION_PROMPT,
     historyMessages: [], shouldGenerateSessionTitle: false, agentMode: "reasoning",

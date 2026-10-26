@@ -116,7 +116,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       .map(([input]) => input)
       .filter(
         ({ modelStep }) =>
-          modelStep === "execution.decision" || modelStep === "worker.decision",
+          modelStep === "execution.decision" || modelStep === "worker.evidence",
       )
       .at(-1)!;
     expect(JSON.stringify(lastDecision.messages)).toContain("y target two");

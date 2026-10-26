@@ -6,6 +6,7 @@ import type {
 import type { SchedulerRunCompletion } from "./run-completion.js";
 import type { AutomationSchedulerRunCompletion } from "./automation-run-completion.js";
 import type { SchedulerSessionDeletionState } from "./session-deletion-state.js";
+import type { GuardedSchedulerJobMutations } from "./guarded-job-mutations.js";
 
 export interface SchedulerContext {
   environmentId: string;
@@ -17,6 +18,7 @@ export interface SchedulerContext {
   generation: number;
   jobEpochs: Map<string, number>;
   pendingJobMutations: Set<string>;
+  guardedJobMutations: GuardedSchedulerJobMutations;
   deletedSessions: SchedulerSessionDeletionState;
   pendingCompletions: Map<string, SchedulerRunCompletion>;
   pendingAutomationCompletions: Map<string, AutomationSchedulerRunCompletion>;
@@ -55,8 +57,10 @@ export function canBeginRequestSchedulerRun(
   context: SchedulerContext,
   jobId: string,
   sessionId: string,
+  revision: number,
   epoch: number,
 ): boolean {
   if (context.deletedSessions.has(sessionId)) return false;
+  if (context.guardedJobMutations.hasPending(jobId, sessionId, revision)) return false;
   return canBeginSchedulerRun(context, jobId, epoch);
 }

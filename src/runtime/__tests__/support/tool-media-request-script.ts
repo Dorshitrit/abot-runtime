@@ -35,10 +35,16 @@ export function createMediaRequestScript(policy: MediaPolicy) {
       expect(JSON.stringify(input.messages)).toContain(MEDIA_FINAL);
       return reply({ action: "return_result", result: MEDIA_FINAL });
     }
-    if (step === "worker.decision") {
-      if (turn === 1) return reply({ action: "invoke_capability", capabilityId: "capture_fixture", intent: "Observe the fixture." });
+    if (step === "worker.evidence") {
+      const assignment = readHandoffCapsule(input, "runtime_worker_evidence_assignment_v1");
+      if (turn === 1) return reply({ requiresExecution: true, established: "", remaining: "Observe the fixture.", evidenceRefs: [] });
       expect(turn).toBe(2);
-      return reply({ action: "return_result" });
+      expect(assignment.evidenceRefs).toHaveLength(1);
+      return reply({ requiresExecution: false, established: MEDIA_FINAL, remaining: "", evidenceRefs: assignment.evidenceRefs });
+    }
+    if (step === "worker.decision") {
+      expect(turn).toBe(1);
+      return reply({ action: "invoke_capability", capabilityId: "capture_fixture", intent: "Observe the fixture." });
     }
     if (step === "reviewer.decision") {
       const audit = readHandoffCapsule(input, "runtime_reviewer_audit_v4");

@@ -9,7 +9,6 @@ import type {
 } from "./request-context-contracts.js";
 import {
   assessRequestMessagesBudget,
-  resolveContextCompactionTriggerInputTokens,
   type RequestMessagesBudgetAssessment,
 } from "./request-context-budget.js";
 import { estimateMessagesTokens } from "./token-estimator.js";
@@ -63,9 +62,8 @@ export function projectPinnedContext(params: {
     ...params.continuationParts,
   ]);
   const fullProjection = assessStates(params, states);
-  const triggerInputTokens = resolveContextCompactionTriggerInputTokens(
-    params.budget.contextWindowTokens,
-  );
+  const triggerInputTokens =
+    fullProjection.assessment.budget.compactionTriggerInputTokens;
   const thresholdCrossed =
     fullProjection.assessment.budget.estimatedInputTokens >=
     triggerInputTokens;

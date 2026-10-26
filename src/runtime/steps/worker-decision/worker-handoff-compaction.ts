@@ -1,4 +1,4 @@
-import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
+import { createPolicyModelStepCompactionController } from "../../context/super-compaction/routing.js";
 import { buildCompactedRequestToolResultsMessage } from "../../context/request-tool-results.js";
 import { readSuperWorkerCompactionSidecar } from "../../context/super-worker-compaction-sidecar.js";
 import type {
@@ -45,7 +45,7 @@ export async function completeWorkerHandoffEvidence(
         (message) => message !== immediatePresentationEvidence,
       )
     : input.context.messages;
-  const controller = createModelStepCompactionController(request, {
+  const controller = createPolicyModelStepCompactionController(request, {
     call: options.call,
     sourceRevision: options.requestToolResults.sourceRevision,
     superWorkerCompaction: readSuperWorkerCompactionSidecar(
@@ -57,7 +57,7 @@ export async function completeWorkerHandoffEvidence(
     allowedConsumers: WORKER_CAPABILITY_CONTEXT_COMPACTION_ALLOWED_CONSUMERS,
     scopeId,
     consumer: WORKER_DECISION_MODEL_STEP,
-  });
+  }, request.executionPolicy.authority);
   const stage = requireWorkerHandoffCompactionStage(
     controller.getStages(),
     scopeId,

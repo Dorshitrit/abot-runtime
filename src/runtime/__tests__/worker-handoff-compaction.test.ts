@@ -49,10 +49,12 @@ test("refreshes late canonical evidence before return_result and preserves the p
     checkpoint.sourceDigests.slice(0, fixture.checkpoint.sourceDigests.length),
   ).toEqual(fixture.checkpoint.sourceDigests);
   expect(checkpoint.sourceDigests.at(-1)?.sourceRef).toBe(lateExecutionId);
-  expect(checkpoint.sourceDigests.at(-1)?.digest).toBe(LATE_HANDOFF_MARKER);
+  expect(checkpoint.sourceDigests.at(-1)?.digest).toContain(
+    LATE_HANDOFF_MARKER,
+  );
   expect(fixture.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-    "worker.decision",
-    "context.compact",
+    "worker.evidence",
+    "super.compact.continuation",
     "worker.result",
   ]);
   const resultInput = fixture.invoke.mock.calls.find(
@@ -76,7 +78,7 @@ test("does not commit the handoff candidate when request cancellation arrives du
     before,
   );
   expect(fixture.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-    "context.compact",
+    "super.compact.continuation",
   ]);
 });
 
@@ -107,6 +109,6 @@ test("does not commit a handoff candidate against a changed canonical Worker hea
     before,
   );
   expect(fixture.invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-    "context.compact",
+    "super.compact.continuation",
   ]);
 });

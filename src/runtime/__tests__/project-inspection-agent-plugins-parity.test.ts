@@ -65,7 +65,7 @@ describe("project inspection Agent Plugins parity", () => {
     ];
 
     expect(extension.settings).toEqual({
-      defaults: { defaultDepth: 3, maxEntries: 200 },
+      defaults: { defaultDepth: 0, maxEntries: 40 },
     });
     const capability = extension.capabilities.inspect_project;
     expect(capability.routingCapability).toBe("semantic_lookup");
@@ -118,20 +118,20 @@ describe("project inspection Agent Plugins parity", () => {
     expect(handler).toBeTypeOf("function");
     await expect(handler?.({ path: "." })).resolves.toMatchObject({
       ok: true,
-      output: expect.stringContaining("Project target: ."),
       producedNewInformation: true,
       data: {
         location: "agent_work",
         target: ".",
-        depth: 3,
-        maxEntries: 200,
+        depth: 0,
+        maxEntries: 40,
         tree: {
           directories: ["src"],
-          files: ["package.json", "src/index.ts"],
-          entries: 3,
+          files: ["package.json"],
+          entries: 2,
           truncated: false,
-          sampling: "bounded_directory_iteration",
+          truncatedPathCount: 0,
         },
+        pagination: { hasMore: false, nextCursor: null },
         manifests: [
           {
             file: "package.json",
@@ -144,6 +144,14 @@ describe("project inspection Agent Plugins parity", () => {
           kind: "volatile_external",
           carryPolicy: "never",
         },
+      },
+    });
+    await expect(handler?.({ path: ".", depth: 1 })).resolves.toMatchObject({
+      ok: true,
+      data: {
+        depth: 1,
+        tree: { files: ["package.json", "src/index.ts"], entries: 3 },
+        pagination: { hasMore: false, nextCursor: null },
       },
     });
     await expect(handler?.({ path: "../outside" })).resolves.toMatchObject({
@@ -179,7 +187,8 @@ describe("project inspection Agent Plugins parity", () => {
     ).resolves.toMatchObject({
       ok: true,
       data: {
-        tree: { entries: 3, truncated: true },
+        tree: { entries: 3, truncated: true, truncatedPathCount: 0 },
+        pagination: { hasMore: true, nextCursor: expect.any(String) },
       },
     });
 

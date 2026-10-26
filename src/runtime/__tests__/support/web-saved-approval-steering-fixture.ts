@@ -91,6 +91,7 @@ export async function createWebSavedApprovalSteeringFixture(
     return client;
   });
   const approvals = new ManagedWebToolApprovals(resolve, requests);
+  await client.start();
   return {
     base,
     effect,

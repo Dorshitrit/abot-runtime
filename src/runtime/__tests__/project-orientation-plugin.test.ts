@@ -14,8 +14,8 @@ type PluginToolResult = {
   data?: {
     location?: string;
     target?: string;
-    tree?: { files?: string[] };
-    truncation?: { pathCount?: number };
+    tree?: { files?: string[]; entries?: number; truncatedPathCount?: number };
+    pagination?: { hasMore: boolean; nextCursor: string | null };
     manifests?: Array<{ file?: string; scripts?: string[] }>;
   };
 };
@@ -75,7 +75,9 @@ describe("project orientation plugin", () => {
     expect(result.data?.tree?.files).toContain("generated.txt");
     expect(result.data?.tree?.files).not.toContain("runtime-only.txt");
     expect(result.data?.manifests?.[0]?.scripts).toEqual(["build", "validate"]);
-    expect(result.output).toContain("Project target: .");
+    expect(result.output).not.toContain("generated.txt");
+    expect(result.output).not.toContain("Package scripts:");
+    expect(JSON.stringify(result).length).toBeLessThanOrEqual(4_000);
   });
 
   test("resolves bare project names relative to agentWorkDir", async () => {
@@ -123,17 +125,14 @@ describe("project orientation plugin", () => {
     expect(runtimeAbsolute.ok).toBe(false);
   });
 
-  test("bounds every projected tree path and the complete tool result", async () => {
+  test("pages complete Unicode paths within the serialized result budget", async () => {
     const roots = await createRoots("project-orientation-result-bound");
-    for (let index = 0; index < 500; index += 1) {
-      await writeFile(
-        join(
-          roots.agentWorkDir,
-          `${String(index).padStart(3, "0")}-${"long-segment-".repeat(9)}.txt`,
-        ),
-        "x",
-        "utf8",
-      );
+    const filenames = Array.from(
+      { length: 500 },
+      (_, index) => `${String(index).padStart(3, "0")}-${"שלום-segment-".repeat(9)}.txt`,
+    );
+    for (const filename of filenames) {
+      await writeFile(join(roots.agentWorkDir, filename), "x", "utf8");
     }
     const handler = createPlugin({
       rootDir: roots.rootDir,
@@ -145,12 +144,30 @@ describe("project orientation plugin", () => {
     const result = await handler({ path: ".", depth: 0, maxEntries: 250 });
 
     expect(result.ok).toBe(true);
-    expect(result.data?.truncation?.pathCount).toBeGreaterThan(0);
-    expect(
-      result.data?.tree?.files?.every((path) => [...path].length <= 64),
-    ).toBe(true);
+    const files = result.data?.tree?.files ?? [];
+    expect(files.length).toBeGreaterThan(0);
+    expect(files).toEqual(filenames.slice(0, files.length));
+    expect(result.data?.tree?.entries).toBeLessThanOrEqual(40);
+    expect(result.data?.tree?.truncatedPathCount).toBe(0);
+    expect(result.data?.pagination).toEqual({
+      hasMore: true,
+      nextCursor: expect.any(String),
+    });
+    expect(JSON.stringify(result).length).toBeLessThanOrEqual(4_000);
     expect(Buffer.byteLength(JSON.stringify(result), "utf8")).toBeLessThan(
       CAPABILITY_ADAPTER_RESULT_SERIALIZED_MAX_BYTES,
     );
+    const next = await handler({
+      path: ".", depth: 0, maxEntries: 250,
+      cursor: result.data?.pagination?.nextCursor,
+    });
+    expect(next.ok).toBe(true);
+    const nextFiles = next.data?.tree?.files ?? [];
+    expect(nextFiles.length).toBeGreaterThan(0);
+    expect([...files, ...nextFiles]).toEqual(
+      filenames.slice(0, files.length + nextFiles.length),
+    );
+    expect(next.data?.tree?.truncatedPathCount).toBe(0);
+    expect(JSON.stringify(next).length).toBeLessThanOrEqual(4_000);
   });
 });

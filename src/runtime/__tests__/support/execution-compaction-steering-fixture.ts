@@ -22,20 +22,24 @@ export async function executionCompactionSteeringFixture(
 ) {
   const fixture = await createControlsEvidenceFixture(overrides);
   const executionId = await fixture.addResult(STEERED_RAW);
-  fixture.countInputTokens.mockImplementation(async (input) => ({
-    inputTokens:
-      input.modelStep !== "context.compact" &&
-      ((input.messages as readonly ChatMessage[]).some(
-        ({ role }) => role === "tool",
-      ) || JSON.stringify(input.messages).includes("UNCOMPACTED_EVIDENCE_"))
-        ? 24000
-        : 1000,
-    profileId: "test",
-    provider: "openai",
-    model: "test",
-    contextWindowTokens: 32000,
-    source: "provider_input_token_count",
-  }));
+  fixture.countInputTokens.mockImplementation(async (input) => {
+    const mainEaConsumer = input.modelStep === "execution.decision" || input.modelStep === "execution.response";
+    const pressuredInputTokens = mainEaConsumer ? 29_000 : 24_000;
+    return {
+      inputTokens:
+        input.modelStep !== "context.compact" &&
+        ((input.messages as readonly ChatMessage[]).some(
+          ({ role }) => role === "tool",
+        ) || JSON.stringify(input.messages).includes("UNCOMPACTED_EVIDENCE_"))
+          ? pressuredInputTokens
+          : 1000,
+      profileId: "test",
+      provider: "openai",
+      model: "test",
+      contextWindowTokens: 32000,
+      source: "provider_input_token_count",
+    };
+  });
   fixture.invoke.mockImplementation(async (input) => {
     if (input.modelStep !== "context.compact")
       return {

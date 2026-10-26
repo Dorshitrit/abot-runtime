@@ -1,4 +1,7 @@
+import type { InformationBasketService } from "../information-basket/contracts.js";
+import { createInformationBasketCandidateSource, type InformationBasketCandidateSource } from "../information-basket/request-candidates.js";
 import { allowsAutomaticPayloadArtifactLoading } from "./execution-payload-artifact-policy.js";
+import { bindKnowledgeSkillsToRequest } from "../knowledge-skills/request-store.js";
 import type { KnowledgeSkillStore } from "../knowledge-skills/store.js";
 import {
   projectAvailableSkills,
@@ -44,6 +47,7 @@ type RequestWorkerCapabilityProviderParams<TRequest> = Readonly<{
   runtimeConfig?: RuntimeConfig;
   toolRegistryOverride?: ToolRegistry;
   knowledgeSkillStore?: KnowledgeSkillStore;
+  informationBasket?: InformationBasketService;
 }>;
 
 /**
@@ -53,7 +57,7 @@ type RequestWorkerCapabilityProviderParams<TRequest> = Readonly<{
 export function createRequestWorkerCapabilityProvider(
   params: RequestWorkerCapabilityProviderParams<RequestCapabilityCompositionView>,
 ): WorkerCapabilityAdapterProvider<RequestCapabilityExecutionView> &
-  ToolAvailabilitySource & AvailableSkillsSource {
+  ToolAvailabilitySource & AvailableSkillsSource & InformationBasketCandidateSource {
   let requestToolRegistry: ToolRegistry | undefined;
   let requestSkillProvider: SkillProvider | undefined;
 
@@ -118,6 +122,7 @@ export function createRequestWorkerCapabilityProvider(
           params.request,
           params.executionPolicyAuthority?.capabilityAuthorities,
           params.filesystemScope,
+          params.executionPolicyAuthority,
         ),
         loadActionSkillContext: (toolName) =>
           getRequestSkillProvider().getActionContext(toolName),
@@ -130,11 +135,17 @@ export function createRequestWorkerCapabilityProvider(
     );
   const getAvailableTools = () =>
     projectAvailableTools(getRequestToolRegistry().listNormalInvocations?.());
+  const candidates = createInformationBasketCandidateSource({
+    request: params.request, service: params.informationBasket, getAvailableTools: () => getAvailableTools() ?? [],
+  });
   return Object.freeze({
     ...provider,
+    ...candidates,
     getAvailableTools,
     getAvailableSkills: () => projectAvailableSkills(
-      params.knowledgeSkillStore,
+      params.knowledgeSkillStore
+        ? bindKnowledgeSkillsToRequest(params.knowledgeSkillStore, params.executionPolicyAuthority?.rootContractId)
+        : undefined,
       getAvailableTools(),
     ),
   });

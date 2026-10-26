@@ -29,10 +29,20 @@ describe.each([
   "worker.decision",
   "tool_payload.raw",
 ] as const)("%s prepared compaction admission", (modelStep) => {
-  test.each([22400, 23000, 26704])(
+  // Keep the same trigger-to-hard-limit gap with EA's 90% soft trigger.
+  const offset = modelStep === "execution.decision" ? 64000 : 0;
+  const pressure = {
+    trigger: 22400 + offset, reduced: 23000 + offset, retained: 24000 + offset,
+    hardLimit: 26704 + offset, original: 28000 + offset, expanded: 29000 + offset,
+  };
+  const fixture = (counts: readonly number[]) => createAdmissionFixture({
+    modelStep, contextWindowTokens: 32000 + offset, counts,
+  });
+
+  test.each([pressure.trigger, pressure.reduced, pressure.hardLimit])(
     "admits exhausted active evidence within budget at %s tokens",
     async (tokens) => {
-      const h = createAdmissionFixture({ modelStep, counts: [28000, tokens] });
+      const h = fixture([pressure.original, tokens]);
       const active = preparedStage("active_request", true);
       await expect(h.run(createAdmissionController([active]))).resolves.toBe(
         "ok",
@@ -47,7 +57,7 @@ describe.each([
   test.each([false, undefined])(
     "rejects without exhaustion proof (%s)",
     async (proof) => {
-      const h = createAdmissionFixture({ modelStep, counts: [28000, 23000] });
+      const h = fixture([pressure.original, pressure.reduced]);
       const active = preparedStage("active_request", proof);
       await expect(h.run(createAdmissionController([active]))).rejects.toThrow(
         "context_compaction_projection_not_reduced",
@@ -57,10 +67,10 @@ describe.each([
     },
   );
 
-  test.each([26705, 28000])(
+  test.each([pressure.hardLimit + 1, pressure.original])(
     "rejects over-budget or unreduced candidate at %s",
     async (tokens) => {
-      const h = createAdmissionFixture({ modelStep, counts: [28000, tokens] });
+      const h = fixture([pressure.original, tokens]);
       const active = preparedStage("active_request", true);
       await expect(h.run(createAdmissionController([active]))).rejects.toThrow(
         "context_compaction_projection_not_reduced",
@@ -71,10 +81,7 @@ describe.each([
   );
 
   test("requires both scopes to be retained and exhausted, then commits in order", async () => {
-    const h = createAdmissionFixture({
-      modelStep,
-      counts: [28000, 24000, 23000],
-    });
+    const h = fixture([pressure.original, pressure.retained, pressure.reduced]);
     const history = preparedStage("session_history", true);
     const active = preparedStage("active_request", true);
     const committed: string[] = [];
@@ -96,13 +103,10 @@ describe.each([
     );
   });
 
-  test.each([28000, 29000])(
+  test.each([pressure.original, pressure.expanded])(
     "cannot reuse discarded history proof at %s tokens",
     async (historyTokens) => {
-      const h = createAdmissionFixture({
-        modelStep,
-        counts: [28000, historyTokens, 23000],
-      });
+      const h = fixture([pressure.original, historyTokens, pressure.reduced]);
       const history = preparedStage("session_history", true);
       const active = preparedStage("active_request", true);
       await expect(
@@ -118,10 +122,7 @@ describe.each([
   test.each([false, undefined])(
     "cannot ignore retained but unexhausted history (%s)",
     async (proof) => {
-      const h = createAdmissionFixture({
-        modelStep,
-        counts: [28000, 24000, 23000],
-      });
+      const h = fixture([pressure.original, pressure.retained, pressure.reduced]);
       const history = preparedStage("session_history", proof);
       const active = preparedStage("active_request", true);
       await expect(
@@ -134,7 +135,7 @@ describe.each([
   );
 
   test("does not treat unavailable history as an exhaustion proof", async () => {
-    const h = createAdmissionFixture({ modelStep, counts: [28000, 23000] });
+    const h = fixture([pressure.original, pressure.reduced]);
     const history = preparedStage("session_history", true);
     history.prepare.mockResolvedValue({
       kind: "unavailable",

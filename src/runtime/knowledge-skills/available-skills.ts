@@ -1,3 +1,4 @@
+import { projectDiscoverableSkills } from "./discovery-availability.js";
 import { isKnowledgeSkillStorageFailure } from "./personal-contracts.js";
 import type { ToolAvailabilityEntry } from "../../capabilities/tool-types.js";
 import { CORE_TOOL_CONTRACTS } from "../capabilities/core-tool-contracts.js";
@@ -16,7 +17,7 @@ export function projectAvailableSkills(
     toolName === CORE_TOOL_CONTRACTS.skills.name && (operationId === "read_skill" || operationId === "read_skills"));
   if (!canRead || !store) return [];
   try {
-    return store.list().map(({ skillId, name, description }) => ({ skillId, name, description }));
+    return projectDiscoverableSkills(store, tools);
   } catch (error) {
     // Discovery is optional; the ordinary tool path reports the storage failure.
     if (isKnowledgeSkillStorageFailure(error)) return [];

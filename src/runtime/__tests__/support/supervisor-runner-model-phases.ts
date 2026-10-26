@@ -1,12 +1,19 @@
+import { MODEL_STEPS } from "../../../shared/model-steps.js";
+import type { RequestRunnerConfig } from "../../config/runner/contracts.js";
+import { CAPABILITY_CONTROLS_MODEL_STEP, WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP } from "../../orchestration/worker-capabilities/index.js";
+import { PLANNER_DECISION_MODEL_STEP } from "../../steps/planner-decision/index.js";
+import { REVIEWER_DECISION_MODEL_STEP } from "../../steps/reviewer-decision/index.js";
+import { SUPERVISOR_DECISION_MODEL_STEP } from "../../steps/supervisor-decision/index.js";
+import { SUPERVISOR_RESPONSE_MODEL_STEP } from "../../steps/supervisor-response/index.js";
+import { WORKER_DECISION_MODEL_STEP, WORKER_RESULT_MODEL_STEP } from "../../steps/worker-decision/index.js";
 import type { ModelGatewayClient } from "../../ports.js";
 import { supervisorFormatName, withSupervisorPreparation } from "./supervisor-model-phases.js";
 
-/** Preserves the older runner scripts while exercising the real split authoring calls. */
+/** Handles only Supervisor preparation; Worker stages remain explicit in each scenario. */
 export function separateSupervisorRunnerModelPhases(
   invoke: ModelGatewayClient["invoke"],
   workingDirectories: Readonly<{ planner: string; worker: string }>,
 ): ModelGatewayClient["invoke"] {
-  const pendingWorkerResults: string[] = [];
   return withSupervisorPreparation(async (input) => {
     if (supervisorFormatName(input) === "supervisor_working_directory") {
       const frozenInvocation = (
@@ -24,23 +31,77 @@ export function separateSupervisorRunnerModelPhases(
         meta: {},
       };
     }
-    if (input.modelStep === "worker.result") {
-      const result = pendingWorkerResults.shift();
-      if (result === undefined) throw new Error("worker_result_test_fixture_missing");
-      return { text: result, meta: {} };
-    }
-    const response = await invoke(input);
-    if (input.modelStep !== "worker.decision") return response;
-    let decoded: unknown;
-    try { decoded = JSON.parse(response.text); }
-    catch { return response; }
-    const decision = typeof decoded === "object" && decoded !== null && !Array.isArray(decoded)
-      ? (decoded as Record<string, unknown>).decision : undefined;
-    if (typeof decision !== "object" || decision === null || Array.isArray(decision)) return response;
-    if ((decision as Record<string, unknown>).action !== "return_result") return response;
-    const result = (decision as Record<string, unknown>).result;
-    if (typeof result !== "string") return response;
-    pendingWorkerResults.push(result);
-    return { ...response, text: JSON.stringify({ decision: { action: "return_result" } }) };
+    return invoke(input);
   });
 }
+
+export const runnerConfig: RequestRunnerConfig = {
+  models: {
+    defaults: {
+      profileId: "runtime-default",
+      steps: {
+        [SUPERVISOR_DECISION_MODEL_STEP]: "supervisor.decision",
+        [SUPERVISOR_RESPONSE_MODEL_STEP]: "supervisor.response",
+        [PLANNER_DECISION_MODEL_STEP]: "planner.decision",
+        [REVIEWER_DECISION_MODEL_STEP]: "reviewer.decision",
+        [MODEL_STEPS.WORKER_EVIDENCE]: "worker.evidence",
+        [WORKER_DECISION_MODEL_STEP]: "worker.decision",
+        [WORKER_RESULT_MODEL_STEP]: "supervisor.response",
+        [CAPABILITY_CONTROLS_MODEL_STEP]: "capability.controls",
+        [WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP]: "toolPayload.raw",
+      },
+    },
+  },
+  context: {
+    outputReserveTokens: 1_000,
+    safetyReserveTokens: 200,
+    attachmentReserveTokens: 100,
+  },
+  steps: {
+    [SUPERVISOR_DECISION_MODEL_STEP]: { timeoutMs: 20_000 },
+    [SUPERVISOR_RESPONSE_MODEL_STEP]: { timeoutMs: 20_000 },
+    [PLANNER_DECISION_MODEL_STEP]: { timeoutMs: 20_000 },
+    [REVIEWER_DECISION_MODEL_STEP]: { timeoutMs: 20_000 },
+    [MODEL_STEPS.WORKER_EVIDENCE]: { timeoutMs: 20_000 },
+    [WORKER_DECISION_MODEL_STEP]: { timeoutMs: 20_000 },
+    [WORKER_RESULT_MODEL_STEP]: { timeoutMs: 20_000 },
+    [CAPABILITY_CONTROLS_MODEL_STEP]: { timeoutMs: 20_000 },
+    [WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP]: { timeoutMs: 20_000 },
+  } as RequestRunnerConfig["steps"],
+};
+
+export const modelPolicy = {
+  providers: { local: { type: "ollama" as const } },
+  profiles: {
+    "runtime-default": {
+      provider: "local",
+      model: "runtime-default:latest",
+      contextWindowTokens: 32_000,
+      supportsThinking: true,
+      calibration: {
+        "supervisor.decision": {},
+        "supervisor.response": {},
+        "planner.decision": {},
+        "reviewer.decision": {},
+        "worker.evidence": {},
+        "worker.decision": {},
+        "capability.controls": {},
+        "tool_payload.raw": {},
+      },
+    },
+  },
+  defaults: {
+    profileId: "runtime-default",
+    steps: {
+      [SUPERVISOR_DECISION_MODEL_STEP]: "supervisor.decision",
+      [SUPERVISOR_RESPONSE_MODEL_STEP]: "supervisor.response",
+      [PLANNER_DECISION_MODEL_STEP]: "planner.decision",
+      [REVIEWER_DECISION_MODEL_STEP]: "reviewer.decision",
+      [MODEL_STEPS.WORKER_EVIDENCE]: "worker.evidence",
+      [WORKER_DECISION_MODEL_STEP]: "worker.decision",
+      [WORKER_RESULT_MODEL_STEP]: "supervisor.response",
+      [CAPABILITY_CONTROLS_MODEL_STEP]: "capability.controls",
+      [WORKER_CAPABILITY_RAW_PAYLOAD_MODEL_STEP]: "toolPayload.raw",
+    },
+  },
+};

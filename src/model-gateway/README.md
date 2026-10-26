@@ -180,13 +180,17 @@ output capacity; the input context guard and configured sampling controls retain
 semantics. This policy does not discover model capabilities or assume support
 for a particular effort level.
 
-For `capability.controls` requests with an object JSON schema, OpenAI receives
-one forced native function with that schema as its parameters and parallel calls
-disabled. This carries the existing EA or SUPER controls envelope; it does not
-expose tool handlers or grant execution authority. Only one matching call from a
-completed response supplies arguments to the existing Runtime validators and
-frozen-control merge. Commentary and argument deltas remain provisional. Missing,
-duplicate, mismatched or malformed calls fail explicitly; a truncated response,
+For `capability.controls`, `execution.decision` and `context.compact` requests with an object JSON
+schema, OpenAI receives one forced native function with that schema as its
+parameters and parallel calls disabled. This carries the existing EA decision,
+EA/SUPER controls or semantic-compaction envelope;
+it does not expose tool handlers or grant execution authority. Only one matching
+call from a completed response supplies its exact arguments to the existing
+Runtime validators, decision parser, frozen-control merge and checkpoint validation as applicable.
+No extra model invocation or decision is added. Canonical native tool history
+retains its call/result identities and arguments. Commentary and argument deltas
+remain provisional. Missing, duplicate, mismatched or malformed calls fail
+explicitly; a truncated response,
 EOF or `[DONE]` without a completed response cannot authorize execution.
 Token counting includes the same function declaration as generation. Request
 messages, reasoning, timeouts, retries, capability permissions and continuation

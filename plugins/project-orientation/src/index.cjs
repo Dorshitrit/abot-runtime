@@ -586,25 +586,6 @@ __export(index_exports, {
 module.exports = __toCommonJS(index_exports);
 
 // src/plugin-sdk/bounds.ts
-function boundText(value, options) {
-  if (!Number.isSafeInteger(options.maxChars) || options.maxChars < 0) {
-    throw new RangeError("maxChars must be a non-negative safe integer");
-  }
-  const marker = options.marker ?? "\n[truncated]";
-  const truncated = value.length > options.maxChars;
-  const boundedMarker = marker.slice(0, options.maxChars);
-  const sourceChars = truncated ? Math.max(options.maxChars - boundedMarker.length, 0) : value.length;
-  const text = truncated ? value.slice(0, sourceChars) + boundedMarker : value;
-  return Object.freeze({
-    text,
-    metadata: Object.freeze({
-      truncated,
-      originalChars: value.length,
-      returnedChars: text.length,
-      omittedChars: Math.max(value.length - sourceChars, 0)
-    })
-  });
-}
 function sanitizeJsonText(value) {
   return [...value].map((character) => {
     const codePoint = character.codePointAt(0) ?? 0;
@@ -988,6 +969,13 @@ function stringField(record, key) {
   const value = record[key];
   return typeof value === "string" ? sanitizeJsonText(value).slice(0, MANIFEST_IDENTITY_MAX_CHARS) : void 0;
 }
+function hasTruncatedManifestIdentity(record) {
+  return ["name", "version"].some((key) => {
+    const value = record[key];
+    if (typeof value !== "string") return false;
+    return sanitizeJsonText(value).length > MANIFEST_IDENTITY_MAX_CHARS;
+  });
+}
 function boundedScriptName(value) {
   return [...sanitizeJsonText(value)].slice(0, SCRIPT_NAME_MAX_CHARS).join("");
 }
@@ -1047,6 +1035,7 @@ async function readProjectManifests(context, root, signal) {
           ...stringField(record, "name") ? { name: stringField(record, "name") } : {},
           ...stringField(record, "version") ? { version: stringField(record, "version") } : {},
           ...record.private === true ? { private: true } : {},
+          ...hasTruncatedManifestIdentity(record) ? { identityTruncated: true } : {},
           scripts: Object.freeze(scriptNames.slice(0, PACKAGE_SCRIPT_LIMIT)),
           ...rawScriptNames.length > PACKAGE_SCRIPT_LIMIT || rawScriptNames.some((name2, index) => name2 !== scriptNames[index]) ? { scriptsTruncated: true } : {}
         })
@@ -1068,90 +1057,62 @@ async function readProjectManifests(context, root, signal) {
 var import_promises4 = require("node:fs/promises");
 var import_node_path5 = require("node:path");
 var IGNORED_NAMES = /* @__PURE__ */ new Set([".git", "node_modules", "dist", "coverage"]);
-var DISPLAY_PATH_MAX_CHARS = 64;
+var PROJECT_SCAN_ENTRY_LIMIT = 1e3;
 function childLogicalPath(parent, childName) {
-  if (parent.logicalPath === ".") return childName;
-  return import_node_path5.posix.join(parent.logicalPath, childName);
+  return parent.logicalPath === "." ? childName : import_node_path5.posix.join(parent.logicalPath, childName);
 }
-function relativeDisplayPath(root, child) {
+function relativeEntryPath(root, child) {
   if (child.logicalPath === root.logicalPath) return ".";
   if (root.logicalPath === ".") return child.logicalPath;
   const prefix = `${root.logicalPath}/`;
   return child.logicalPath.startsWith(prefix) ? child.logicalPath.slice(prefix.length) : child.logicalPath;
 }
-function boundedDisplayPath(path) {
-  const characters = [...sanitizeJsonText(path)];
-  if (characters.length <= DISPLAY_PATH_MAX_CHARS) {
-    return Object.freeze({ path, truncated: false });
-  }
-  const separator = "…";
-  const sideChars = Math.floor((DISPLAY_PATH_MAX_CHARS - separator.length) / 2);
-  return Object.freeze({
-    path: `${characters.slice(0, sideChars).join("")}${separator}${characters.slice(-sideChars).join("")}`,
-    truncated: true
-  });
+function compareNames(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
-async function collectProjectTree(context, root, depth, maxEntries, signal) {
-  const directories = [];
-  const files = [];
-  let entries = 0;
-  let truncated = false;
-  let truncatedPathCount = 0;
+async function collectProjectTree(context, root, depth, signal) {
+  const entries = [];
+  let scannedEntries = 0;
   const queue = [{ target: root, remainingDepth: depth }];
-  while (queue.length > 0 && entries < maxEntries) {
+  while (queue.length > 0) {
     throwIfProjectInspectionCancelled(signal);
     const current = queue.shift();
     if (!current) break;
-    const sampled = [];
+    const names = [];
     const directory = await (0, import_promises4.opendir)(current.target.absolutePath);
     for await (const entry of directory) {
       throwIfProjectInspectionCancelled(signal);
-      if (entry.isDirectory() && IGNORED_NAMES.has(entry.name)) continue;
-      if (entries + sampled.length >= maxEntries) {
-        truncated = true;
-        break;
+      scannedEntries += 1;
+      if (scannedEntries > PROJECT_SCAN_ENTRY_LIMIT) {
+        throw new ProjectInspectionError(
+          "project_scan_limit",
+          "Project inspection exceeds the 1000-entry scan limit. Use depth 0 or a narrower project path; no complete listing or continuation was produced."
+        );
       }
-      sampled.push({ name: entry.name, isDirectory: entry.isDirectory() });
+      if (entry.isDirectory() && IGNORED_NAMES.has(entry.name)) continue;
+      names.push(entry.name);
     }
-    sampled.sort((left, right) => left.name.localeCompare(right.name));
-    for (const entry of sampled) {
+    names.sort(compareNames);
+    for (const name of names) {
       throwIfProjectInspectionCancelled(signal);
-      const child = resolvePluginPath(
-        context,
-        childLogicalPath(current.target, entry.name),
-        {
-          requirePath: true,
-          allowedLocations: ["agent_work", "workspace"]
-        }
-      );
+      const child = resolvePluginPath(context, childLogicalPath(current.target, name), {
+        requirePath: true,
+        allowedLocations: ["agent_work", "workspace"]
+      });
       const info = await (0, import_promises4.stat)(child.absolutePath);
-      const display = boundedDisplayPath(relativeDisplayPath(root, child));
-      if (display.truncated) truncatedPathCount += 1;
-      entries += 1;
+      const path = relativeEntryPath(root, child);
       if (info.isDirectory()) {
-        directories.push(display.path);
+        entries.push(Object.freeze({ path, kind: "directory" }));
         if (current.remainingDepth > 0) {
-          queue.push({
-            target: child,
-            remainingDepth: current.remainingDepth - 1
-          });
+          queue.push({ target: child, remainingDepth: current.remainingDepth - 1 });
         }
       } else if (info.isFile()) {
-        files.push(display.path);
+        entries.push(Object.freeze({ path, kind: "file" }));
       }
     }
   }
-  if (queue.length > 0) truncated = true;
-  directories.sort((left, right) => left.localeCompare(right));
-  files.sort((left, right) => left.localeCompare(right));
-  return Object.freeze({
-    directories: Object.freeze(directories),
-    files: Object.freeze(files),
-    entries,
-    truncated,
-    truncatedPathCount,
-    sampling: "bounded_directory_iteration"
-  });
+  throwIfProjectInspectionCancelled(signal);
+  return Object.freeze({ entries: Object.freeze(entries), scannedEntries });
 }
 
 // plugins/project-orientation/source/project-target.ts
@@ -1174,12 +1135,242 @@ async function readProjectTargetInfo(absolutePath, signal) {
   }
 }
 
+// plugins/project-orientation/source/page-cursor.ts
+var import_node_crypto = require("node:crypto");
+var CURSOR_PREFIX = "po1.";
+var CURSOR_MAX_CHARS = 512;
+var HASH_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+function fingerprint(value) {
+  return (0, import_node_crypto.createHash)("sha256").update(JSON.stringify(value)).digest("base64url");
+}
+function bindProjectPageCursor(target, depth, listing) {
+  return Object.freeze({
+    query: fingerprint([target.rootPath, target.absolutePath, target.logicalPath, target.location, depth]),
+    listing: fingerprint(listing.entries),
+    entryCount: listing.entries.length
+  });
+}
+function encodeProjectPageCursor(binding, offset) {
+  const payload = { v: 1, q: binding.query, l: binding.listing, o: offset };
+  const checked = { ...payload, c: fingerprint(payload) };
+  return CURSOR_PREFIX + Buffer.from(JSON.stringify(checked), "utf8").toString("base64url");
+}
+function invalidCursor() {
+  throw new ProjectInspectionError(
+    "project_cursor_invalid",
+    "The project continuation cursor is invalid. Start a fresh inspection without a cursor."
+  );
+}
+function isCursorRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function hasSupportedCursorFormat(cursor) {
+  if (!cursor.startsWith(CURSOR_PREFIX)) return false;
+  return cursor.length <= CURSOR_MAX_CHARS;
+}
+function isCursorFingerprint(value) {
+  if (typeof value !== "string") return false;
+  return HASH_PATTERN.test(value);
+}
+function isContinuationOffset(value) {
+  if (typeof value !== "number") return false;
+  if (!Number.isSafeInteger(value)) return false;
+  return value > 0;
+}
+function hasValidCursorFields(value) {
+  if (!isCursorRecord(value)) return false;
+  const hasExactFields = Object.keys(value).sort().join(",") === "c,l,o,q,v";
+  if (!hasExactFields) return false;
+  if (value.v !== 1) return false;
+  if (!isCursorFingerprint(value.q)) return false;
+  if (!isCursorFingerprint(value.l)) return false;
+  if (typeof value.c !== "string") return false;
+  return isContinuationOffset(value.o);
+}
+function decodeCursor(cursor) {
+  if (!hasSupportedCursorFormat(cursor)) invalidCursor();
+  const encoded = cursor.slice(CURSOR_PREFIX.length);
+  let parsed;
+  try {
+    const bytes = Buffer.from(encoded, "base64url");
+    if (bytes.toString("base64url") !== encoded) invalidCursor();
+    parsed = JSON.parse(bytes.toString("utf8"));
+  } catch {
+    invalidCursor();
+  }
+  if (!hasValidCursorFields(parsed)) invalidCursor();
+  const payload = { v: 1, q: parsed.q, l: parsed.l, o: parsed.o };
+  const hasMatchingChecksum = parsed.c === fingerprint(payload);
+  if (!hasMatchingChecksum) invalidCursor();
+  const canonical = CURSOR_PREFIX + Buffer.from(
+    JSON.stringify({ ...payload, c: parsed.c }),
+    "utf8"
+  ).toString("base64url");
+  if (canonical !== cursor) invalidCursor();
+  return payload;
+}
+function resolveProjectPageOffset(cursor, binding) {
+  if (cursor === void 0) return 0;
+  const payload = decodeCursor(cursor);
+  const targetsCurrentQuery = payload.q === binding.query;
+  if (!targetsCurrentQuery) {
+    throw new ProjectInspectionError(
+      "project_cursor_query_mismatch",
+      "The project cursor belongs to a different target or depth. Start a fresh inspection without a cursor."
+    );
+  }
+  const targetsCurrentListing = payload.l === binding.listing;
+  if (!targetsCurrentListing) {
+    throw new ProjectInspectionError(
+      "project_cursor_stale",
+      "The project listing changed. Start a fresh inspection without a cursor."
+    );
+  }
+  if (payload.o >= binding.entryCount) invalidCursor();
+  return payload.o;
+}
+
+// plugins/project-orientation/source/result-page.ts
+var PROJECT_PAGE_ENTRY_LIMIT = 40;
+var PROJECT_RESULT_MAX_CHARS = 4e3;
+function fitsResultBudget(result) {
+  return JSON.stringify(result).length <= PROJECT_RESULT_MAX_CHARS;
+}
+function hasManifestOmissions(source, projected) {
+  return source.some((manifest) => manifest.scriptsTruncated === true || manifest.identityTruncated === true) || JSON.stringify(source) !== JSON.stringify(projected);
+}
+function pageCandidate(context, entries, manifests) {
+  const { input, binding, offset } = context;
+  const directories = entries.filter((entry) => entry.kind === "directory").map((entry) => entry.path);
+  const files = entries.filter((entry) => entry.kind === "file").map((entry) => entry.path);
+  const nextOffset = offset + entries.length;
+  const hasMore = nextOffset < input.listing.entries.length;
+  const treeTruncated = offset > 0 || hasMore;
+  const output = `Project overview: ${directories.length} directories and ${files.length} files in this page. ${hasMore ? "More entries are available using the continuation cursor." : "No further entries in this listing."}`;
+  return {
+    ok: true,
+    output,
+    producedNewInformation: true,
+    data: {
+      location: input.target.location,
+      target: input.target.logicalPath,
+      depth: input.depth,
+      maxEntries: input.maxEntries,
+      tree: {
+        directories,
+        files,
+        entries: entries.length,
+        truncated: treeTruncated,
+        truncatedPathCount: 0,
+        sampling: "complete_bounded_directory_scan"
+      },
+      manifests,
+      pagination: {
+        hasMore,
+        nextCursor: hasMore ? encodeProjectPageCursor(binding, nextOffset) : null
+      },
+      truncation: {
+        output: { truncated: false, originalChars: output.length, returnedChars: output.length, omittedChars: 0 },
+        tree: treeTruncated,
+        pathCount: 0,
+        manifests: hasManifestOmissions(input.manifests, manifests)
+      },
+      observationMeta: { kind: "volatile_external", carryPolicy: "never" }
+    }
+  };
+}
+function replaceManifest(manifests, index, replacement) {
+  return manifests.map((manifest, position) => position === index ? replacement : manifest);
+}
+function fitManifestDetails(context, entries, manifests, index) {
+  const source = context.input.manifests[index];
+  let projected = manifests;
+  for (const field of ["name", "version", "private"]) {
+    if (source[field] === void 0) continue;
+    const candidate = replaceManifest(projected, index, { ...projected[index], [field]: source[field] });
+    if (fitsResultBudget(pageCandidate(context, entries, candidate))) projected = candidate;
+  }
+  if (!source.scripts) return projected;
+  const scripts = [];
+  for (const script of source.scripts) {
+    const next = [...scripts, script];
+    const candidate = replaceManifest(projected, index, {
+      ...projected[index],
+      scripts: next,
+      scriptsTruncated: source.scriptsTruncated === true || next.length < source.scripts.length
+    });
+    if (!fitsResultBudget(pageCandidate(context, entries, candidate))) break;
+    scripts.push(script);
+    projected = candidate;
+  }
+  return projected;
+}
+function fitManifests(context, entries) {
+  let projected = [];
+  for (const source of context.input.manifests) {
+    const hasOmittedScripts = source.scriptsTruncated === true || (source.scripts?.length ?? 0) > 0;
+    const binding = {
+      file: source.file,
+      ...source.status ? { status: source.status } : {},
+      ...source.identityTruncated ? { identityTruncated: true } : {},
+      ...hasOmittedScripts ? { scriptsTruncated: true } : {}
+    };
+    const candidate = [...projected, binding];
+    if (!fitsResultBudget(pageCandidate(context, entries, candidate))) break;
+    projected = candidate;
+  }
+  for (let index = 0; index < projected.length; index += 1) {
+    const source = context.input.manifests[index];
+    const complete = replaceManifest(projected, index, source);
+    if (fitsResultBudget(pageCandidate(context, entries, complete))) {
+      projected = complete;
+      continue;
+    }
+    projected = fitManifestDetails(context, entries, projected, index);
+  }
+  return projected;
+}
+function unrepresentableEntry() {
+  return failureResult({
+    errorCode: "project_entry_exceeds_budget",
+    message: "A complete project path cannot fit within the 4000-character result limit. Inspect a nearer parent with depth 0 or a narrower target; no abbreviated path or continuation was returned."
+  });
+}
+function buildProjectInspectionPage(input) {
+  const binding = bindProjectPageCursor(input.target, input.depth, input.listing);
+  const offset = resolveProjectPageOffset(input.cursor, binding);
+  const context = { input, binding, offset };
+  const pageLimit = Math.min(input.maxEntries, PROJECT_PAGE_ENTRY_LIMIT);
+  const entries = input.listing.entries.slice(offset, offset + pageLimit);
+  while (entries.length > 0 && !fitsResultBudget(pageCandidate(context, entries, []))) {
+    entries.pop();
+  }
+  if (entries.length === 0 && offset < input.listing.entries.length) return unrepresentableEntry();
+  if (!fitsResultBudget(pageCandidate(context, entries, []))) return unrepresentableEntry();
+  const manifests = fitManifests(context, entries);
+  const result = pageCandidate(context, entries, manifests);
+  return successResult({ output: result.output, producedNewInformation: true, data: result.data });
+}
+function boundProjectInspectionFailure(result) {
+  if (fitsResultBudget(result)) return result;
+  const bounded = failureResult({
+    errorCode: result.errorCode ?? "project_orientation_failed",
+    message: "Project inspection failed. Error details exceeded the bounded result limit.",
+    ...result.interruption ? { interruption: result.interruption } : {}
+  });
+  if (fitsResultBudget(bounded)) return bounded;
+  return failureResult({
+    errorCode: "project_orientation_failed",
+    message: "Project inspection failed. Error metadata exceeded the bounded result limit.",
+    ...result.interruption ? { interruption: result.interruption } : {}
+  });
+}
+
 // plugins/project-orientation/source/index.ts
-var DEFAULT_DEPTH = 3;
-var DEFAULT_MAX_ENTRIES = 200;
+var DEFAULT_DEPTH = 0;
+var DEFAULT_MAX_ENTRIES = 40;
 var MAX_DEPTH = 6;
 var MAX_ENTRIES = 250;
-var OUTPUT_MAX_CHARS = 8e3;
 var index_default = defineRuntimePlugin((context) => {
   const defaultDepth = readBoundedInteger(context.config?.defaultDepth, {
     defaultValue: DEFAULT_DEPTH,
@@ -1227,48 +1418,27 @@ var index_default = defineRuntimePlugin((context) => {
             maximum: MAX_ENTRIES,
             name: "maxEntries"
           });
-          const [tree, manifests] = await Promise.all([
-            collectProjectTree(pathContext, target, depth, maxEntries, signal),
+          const cursor = readOptionalString(params.cursor, {
+            name: "cursor",
+            trim: false,
+            minLength: 1,
+            maxLength: 1024
+          });
+          const [listing, manifests] = await Promise.all([
+            collectProjectTree(pathContext, target, depth, signal),
             readProjectManifests(pathContext, target, signal)
           ]);
           throwIfProjectInspectionCancelled(signal);
-          const packageManifest = manifests.find(
-            ({ file }) => file === "package.json"
-          );
-          const rawOutput = [
-            `Project target: ${target.logicalPath}`,
-            `Directories (${tree.directories.length}${tree.truncated ? ", bounded sample" : ""}): ${tree.directories.join(", ") || "none"}`,
-            `Files (${tree.files.length}${tree.truncated ? ", bounded sample" : ""}): ${tree.files.join(", ") || "none"}`,
-            `Manifests: ${manifests.map(({ file }) => file).join(", ") || "none"}`,
-            packageManifest?.scripts?.length ? `Package scripts: ${packageManifest.scripts.join(", ")}` : ""
-          ].filter(Boolean).join("\n");
-          const output = boundText(rawOutput, {
-            maxChars: OUTPUT_MAX_CHARS,
-            marker: "\n[project orientation output truncated]"
-          });
-          return successResult({
-            output: output.text,
-            producedNewInformation: true,
-            data: {
-              location: target.location,
-              target: target.logicalPath,
-              depth,
-              maxEntries,
-              tree,
-              manifests,
-              truncation: {
-                output: output.metadata,
-                tree: tree.truncated,
-                pathCount: tree.truncatedPathCount
-              },
-              observationMeta: {
-                kind: "volatile_external",
-                carryPolicy: "never"
-              }
-            }
+          return buildProjectInspectionPage({
+            target,
+            depth,
+            maxEntries,
+            cursor,
+            listing,
+            manifests
           });
         } catch (error) {
-          return projectInspectionFailure(error, signal);
+          return boundProjectInspectionFailure(projectInspectionFailure(error, signal));
         }
       }
     }

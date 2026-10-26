@@ -17,6 +17,11 @@ import { countToolInvocations } from "./tool-invocation-count.js";
 import { projectToolActivityEvent } from "./tool-activity-event.js";
 import { correlateToolApprovalActivity } from "./tool-approval-activity.js";
 import {
+  hasSupervisorBasketActivity,
+  isBasketStatusEvent,
+  projectBasketActivityEvent,
+} from "./basket-activity-model.js";
+import {
   buildConversationToolActions,
   summarizeConversationTools,
 } from "./tool-activity-model.js";
@@ -159,6 +164,7 @@ function createRoleGroup(role, event) {
     toolEvents: [],
     toolActions: [],
     skillActivities: [],
+    basketActivities: [],
     delegations: [],
     returns: [],
     summarySupersededByReturn: false,
@@ -198,6 +204,9 @@ function buildRoleCard(group, activeRole, streaming) {
     ...(group.skillActivities.length > 0
       ? { skillActivities: group.skillActivities }
       : {}),
+    ...(group.basketActivities.length > 0
+      ? { basketActivities: group.basketActivities }
+      : {}),
     ...(group.delegations.length > 0 ? { delegations: group.delegations } : {}),
     ...(group.returns.length > 0 ? { returns: group.returns } : {}),
     toolActions: group.toolActions,
@@ -227,6 +236,7 @@ export function buildConversationRoleCards({
     correlateToolApprovalActivity(activityEvents, normalizedRequestId),
     normalizedRequestId,
   );
+  const supervisorBasketIdentified = hasSupervisorBasketActivity(orderedEvents);
   const executionOwners = recordedExecutionOwners(orderedEvents);
   const toolEvents = [];
   for (const event of orderedEvents) {
@@ -236,6 +246,16 @@ export function buildConversationRoleCards({
       activeRole = "";
       continue;
     }
+
+    const basketActivity = supervisorBasketIdentified
+      ? projectBasketActivityEvent(event)
+      : null;
+    if (basketActivity) {
+      const group = groups.get("supervisor") || createRoleGroup("supervisor", null);
+      group.basketActivities.push(basketActivity);
+      groups.set("supervisor", group);
+    }
+    if (isBasketStatusEvent(event)) continue;
 
     const delegation = projectRoleDelegationEvent(event);
     if (delegation) {

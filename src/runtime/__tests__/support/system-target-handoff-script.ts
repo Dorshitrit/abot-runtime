@@ -1,3 +1,4 @@
+import { workerEvidenceReply } from "./worker-evidence-script.js";
 import { expect } from "vitest";
 import type { ModelGatewayClient } from "../../ports.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
@@ -86,7 +87,9 @@ export function createTargetHandoffScript(
         workerCapabilityScope: { catalogGroupIds: ["system"] },
       }),
     },
+    { step: "worker.evidence", output: (input) => workerEvidenceReply(input, true).text },
     ...selectApplication(),
+    { step: "worker.evidence", output: (input) => workerEvidenceReply(input, true).text },
     {
       step: "worker.decision",
       output: (input) => {
@@ -112,12 +115,12 @@ export function createTargetHandoffScript(
       }),
     },
     {
-      step: "worker.decision",
+      step: "worker.evidence",
       output: (input) => {
         expect(JSON.stringify(input.messages)).toContain(
           "launch_request_dispatch",
         );
-        return decision({ action: "return_result" });
+        return workerEvidenceReply(input, false).text;
       },
     },
     { step: "worker.result", output: finalDispatchReport },

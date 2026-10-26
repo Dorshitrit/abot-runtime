@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ChatTextMessage } from "../../model-gateway/types.js";
 import { projectLongTermMemoryMessage } from "../long-term-memory/projection.js";
@@ -129,7 +130,7 @@ test("a memory-informed false gate goes straight to response with the original f
   await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
   expect(f.memory.retrieve).toHaveBeenCalledOnce();
   const calls = f.gatewayInvoke.mock.calls.map(([input]) => input);
-  expect(calls.some(input => input.modelStep === "worker.decision")).toBe(false);
+  expect(calls.some(input => input.modelStep === "worker.evidence")).toBe(false);
   const response = calls.find(input => input.modelStep === "supervisor.response")!;
   expect(modelMessages(response)).toContainEqual(message);
   expect(modelMessages(response)).not.toContainEqual(projectSupervisorProcedureMemory(message)!.message);
@@ -147,15 +148,15 @@ test("memory does not override a true gate or alter delegation and Worker contex
     },
     decide(input) {
       if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-      if (input.modelStep === "worker.decision") {
+      if (input.modelStep === "worker.evidence") {
         expect(JSON.stringify(input.messages)).not.toContain(fact);
-        return { action: "return_result" };
+        return workerEvidenceDecision(input, false);
       }
       if (input.modelStep === "worker.result") return "The assigned observation could not be performed.";
       return { action: "respond" };
     },
   });
   await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
-  expect(f.gatewayInvoke.mock.calls.some(([input]) => input.modelStep === "worker.decision")).toBe(true);
+  expect(f.gatewayInvoke.mock.calls.some(([input]) => input.modelStep === "worker.evidence")).toBe(true);
   expect(f.memory.retrieve).toHaveBeenCalledOnce();
 });

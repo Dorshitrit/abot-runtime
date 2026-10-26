@@ -1,11 +1,9 @@
 import {
-  boundText,
   defineRuntimePlugin,
   failureResult,
   readBoundedInteger,
   readOptionalString,
   resolvePluginPath,
-  successResult,
 } from "../../../src/plugin-sdk/index.js";
 
 import {
@@ -15,12 +13,12 @@ import {
 import { readProjectManifests } from "./manifest-summary.js";
 import { collectProjectTree } from "./tree.js";
 import { readProjectTargetInfo } from "./project-target.js";
+import { boundProjectInspectionFailure, buildProjectInspectionPage } from "./result-page.js";
 
-const DEFAULT_DEPTH = 3;
-const DEFAULT_MAX_ENTRIES = 200;
+const DEFAULT_DEPTH = 0;
+const DEFAULT_MAX_ENTRIES = 40;
 const MAX_DEPTH = 6;
 const MAX_ENTRIES = 250;
-const OUTPUT_MAX_CHARS = 8_000;
 
 export default defineRuntimePlugin((context) => {
   const defaultDepth = readBoundedInteger(context.config?.defaultDepth, {
@@ -72,52 +70,19 @@ export default defineRuntimePlugin((context) => {
             maximum: MAX_ENTRIES,
             name: "maxEntries",
           });
-          const [tree, manifests] = await Promise.all([
-            collectProjectTree(pathContext, target, depth, maxEntries, signal),
+          const cursor = readOptionalString(params.cursor, {
+            name: "cursor", trim: false, minLength: 1, maxLength: 1024,
+          });
+          const [listing, manifests] = await Promise.all([
+            collectProjectTree(pathContext, target, depth, signal),
             readProjectManifests(pathContext, target, signal),
           ]);
           throwIfProjectInspectionCancelled(signal);
-          const packageManifest = manifests.find(
-            ({ file }) => file === "package.json",
-          );
-          const rawOutput = [
-            `Project target: ${target.logicalPath}`,
-            `Directories (${tree.directories.length}${tree.truncated ? ", bounded sample" : ""}): ${tree.directories.join(", ") || "none"}`,
-            `Files (${tree.files.length}${tree.truncated ? ", bounded sample" : ""}): ${tree.files.join(", ") || "none"}`,
-            `Manifests: ${manifests.map(({ file }) => file).join(", ") || "none"}`,
-            packageManifest?.scripts?.length
-              ? `Package scripts: ${packageManifest.scripts.join(", ")}`
-              : "",
-          ]
-            .filter(Boolean)
-            .join("\n");
-          const output = boundText(rawOutput, {
-            maxChars: OUTPUT_MAX_CHARS,
-            marker: "\n[project orientation output truncated]",
-          });
-          return successResult({
-            output: output.text,
-            producedNewInformation: true,
-            data: {
-              location: target.location,
-              target: target.logicalPath,
-              depth,
-              maxEntries,
-              tree,
-              manifests,
-              truncation: {
-                output: output.metadata,
-                tree: tree.truncated,
-                pathCount: tree.truncatedPathCount,
-              },
-              observationMeta: {
-                kind: "volatile_external",
-                carryPolicy: "never",
-              },
-            },
+          return buildProjectInspectionPage({
+            target, depth, maxEntries, cursor, listing, manifests,
           });
         } catch (error) {
-          return projectInspectionFailure(error, signal);
+          return boundProjectInspectionFailure(projectInspectionFailure(error, signal));
         }
       },
     },

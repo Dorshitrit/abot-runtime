@@ -17,6 +17,7 @@ const STRUCTURED_OUTPUT_FAILURE_STEPS: ReadonlyMap<
   ["invalid_supervisor_decision", ["supervisor.decision"]],
   ["invalid_execution_agent_decision", ["execution.decision"]],
   ["invalid_planner_decision", ["planner.decision"]],
+  ["invalid_worker_evidence_assessment", ["worker.evidence"]],
   ["invalid_worker_decision", ["worker.decision", "capability.controls"]],
   ["invalid_reviewer_decision", ["reviewer.decision"]],
   ["invalid_execution_agent_authored_response", ["execution.response"]],
@@ -39,6 +40,22 @@ const RAW_OUTPUT_FAILURE_CONTRACTS: ReadonlyMap<
   [
     "invalid_execution_agent_response",
     { modelStep: "execution.response", validationStage: "response_contract" },
+  ],
+  [
+    "invalid_super_compaction_coverage_output",
+    { modelStep: "super.compact.coverage", validationStage: "raw_compaction_coverage" },
+  ],
+  [
+    "invalid_super_compaction_content_output",
+    { modelStep: "super.compact.content", validationStage: "raw_compaction_content" },
+  ],
+  [
+    "invalid_super_compaction_merge_output",
+    { modelStep: "super.compact.merge", validationStage: "raw_compaction_merge" },
+  ],
+  [
+    "invalid_super_compaction_continuation_output",
+    { modelStep: "super.compact.continuation", validationStage: "raw_compaction_continuation" },
   ],
 ]);
 

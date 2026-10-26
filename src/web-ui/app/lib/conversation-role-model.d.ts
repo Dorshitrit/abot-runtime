@@ -1,3 +1,4 @@
+import type { BasketActivity } from "./basket-activity-model.js";
 import type { ConversationToolAction } from "./tool-activity-model.js";
 import type { RoleDelegation } from "./role-delegation-event.js";
 import type { RoleReturn } from "./role-return-event.js";
@@ -20,6 +21,7 @@ export interface ConversationRoleCard {
   facts: string[];
   toolActions?: ConversationToolAction[];
   skillActivities?: { summary: string; tone: string }[];
+  basketActivities?: BasketActivity[];
   delegations?: RoleDelegation[];
   returns?: RoleReturn[];
   active: boolean;

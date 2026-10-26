@@ -223,7 +223,7 @@ export function supervisionApprovalFixture() {
               '{"kind":"runtime_operation_supervision_evidence_v1"',
             ),
         )
-          ? 24_000
+          ? 29_000
           : 1_000,
       profileId,
       provider: "openai",

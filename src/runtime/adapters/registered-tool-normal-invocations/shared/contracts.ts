@@ -111,7 +111,7 @@ export type RegisteredToolNormalInvocationPayloadLifecyclePreparation =
 
 export type RegisteredToolNormalInvocationExecutor = Readonly<{
   operations: readonly RegisteredToolNormalInvocationProjection[];
-  restore(snapshot: unknown): RegisteredToolNormalInvocationPreparation;
+  restore(snapshot: unknown): Promise<RegisteredToolNormalInvocationPreparation>;
   /** Prepares client-only rejection reporting for a registered source handle. */
   prepareRejectionEvent(
     input: Readonly<{
@@ -167,7 +167,7 @@ export type RegisteredToolNormalInvocationExecutor = Readonly<{
       /** Client-facing lifecycle metadata; never part of tool parameters. */
       intent?: string;
     }>,
-  ): RegisteredToolNormalInvocationPreparation;
+  ): Promise<RegisteredToolNormalInvocationPreparation>;
   execute(
     input: Readonly<{
       handle: RegisteredToolNormalInvocationHandle;

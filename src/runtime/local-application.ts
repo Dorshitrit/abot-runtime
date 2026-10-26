@@ -13,6 +13,7 @@ import { createLocalRuntimeOwner } from "./local-host/app-owner.js";
 import { LocalRuntimeClientRequests } from "./local-host/client-requests.js";
 import { createLocalMemoryClient } from "./local-host/client-memory.js";
 import { createLocalServiceClients } from "./local-host/client-services.js";
+import { createLocalInformationBasketClient } from "./local-host/client-information-basket.js";
 import { createLocalLearningClient } from "./local-host/client-learning.js";
 import { createLocalNativePermissionClient } from "./local-host/client-native-permissions.js";
 
@@ -50,6 +51,7 @@ export function createLocalRuntimeApplication(
     config.longTermMemory?.enabled === true,
   );
   const learning = createLocalLearningClient(call);
+  const basket = createLocalInformationBasketClient(call);
   const nativePermissions = createLocalNativePermissionClient((method, args) => {
     if (stopped || !connection) return Promise.reject(new Error("local_runtime_not_started"));
     return connection.call(method, args);
@@ -59,6 +61,7 @@ export function createLocalRuntimeApplication(
     ...createLocalServiceClients(call),
     longTermMemory: memory.service,
     passiveLearning: learning.service,
+    informationBasket: basket.service,
   });
 
   async function attachApprovalConnection(): Promise<void> {
@@ -79,6 +82,7 @@ export function createLocalRuntimeApplication(
       current.onClose(() => {
         client.close(true);
         learning.close();
+        // Basket observers survive explicit same-owner reconnect until application shutdown.
       });
       current.setClientHandler(async (method, args) => {
         if (method === "memory.event") {
@@ -90,6 +94,7 @@ export function createLocalRuntimeApplication(
       current.subscribe((event) => {
         client.receive(event);
         learning.receive(event);
+        basket.receive(event);
       });
       if (options.scheduledRequestOptions) {
         await current.call("controls.register", []);
@@ -126,6 +131,7 @@ export function createLocalRuntimeApplication(
       } finally {
         client.close();
         learning.close();
+        basket.close();
         await connection?.close();
       }
     },
@@ -139,10 +145,12 @@ export function createLocalRuntimeApplication(
       stopped = true;
       client.close();
       learning.close();
+      basket.close();
       return closing;
     },
     subscribeScheduledEvents: client.subscribe.bind(client),
     subscribeLearningEvents: learning.subscribe,
+    subscribeInformationBasketEvents: basket.subscribe,
   });
 }
 

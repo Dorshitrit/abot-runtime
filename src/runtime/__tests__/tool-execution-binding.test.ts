@@ -4,7 +4,7 @@ import { createConfiguredToolRegistry } from "../capabilities/configured-tool-re
 import { createRegisteredToolNormalInvocationExecutor } from "../adapters/registered-tool-normal-invocations.js";
 import type { ToolApprovalController, ToolPermissionMode } from "../ports.js";
 
-function harness(
+async function harness(
   identity: string | null,
   mode: ToolPermissionMode = "ask",
   approval?: ToolApprovalController,
@@ -52,7 +52,7 @@ function harness(
     onEvent,
     ...(approval ? { toolApprovalController: approval } : {}),
   });
-  const prepared = executor.prepare({
+  const prepared = await executor.prepare({
     handle: executor.operations[0]!.handle,
     controls: {},
   });
@@ -60,10 +60,10 @@ function harness(
 }
 
 describe("private execution authority", () => {
-  test("binds destination before action identity and never exposes the identifier as controls", () => {
-    const first = harness("opaque-A");
-    const equivalent = harness("opaque-A");
-    const second = harness("opaque-B");
+  test("binds destination before action identity and never exposes the identifier as controls", async () => {
+    const first = await harness("opaque-A");
+    const equivalent = await harness("opaque-A");
+    const second = await harness("opaque-B");
     expect(first.prepared.status).toBe("prepared");
     if (
       first.prepared.status !== "prepared" ||
@@ -97,7 +97,7 @@ describe("private execution authority", () => {
             approve = () => resolve({ approved: true });
           }),
       );
-      const h = harness("opaque-A", mode, { requestToolApproval });
+      const h = await harness("opaque-A", mode, { requestToolApproval });
       if (h.prepared.status !== "prepared")
         throw new Error("missing preparation");
       const pending = h.prepared.execute();
@@ -125,7 +125,7 @@ describe("private execution authority", () => {
 
   test("FULL+ skips approval but still captures binding", async () => {
     const requestToolApproval = vi.fn();
-    const h = harness("opaque-A", "full_plus", { requestToolApproval });
+    const h = await harness("opaque-A", "full_plus", { requestToolApproval });
     if (h.prepared.status !== "prepared")
       throw new Error("missing preparation");
     await h.prepared.execute();
@@ -134,8 +134,8 @@ describe("private execution authority", () => {
     expect(h.implementation).toHaveBeenCalledOnce();
   });
 
-  test("missing execution identity fails closed without approval or effects", () => {
-    const h = harness(null);
+  test("missing execution identity fails closed without approval or effects", async () => {
+    const h = await harness(null);
     expect(h.prepared).toMatchObject({
       status: "rejected",
       code: "normal_invocation_execution_binding_unavailable",

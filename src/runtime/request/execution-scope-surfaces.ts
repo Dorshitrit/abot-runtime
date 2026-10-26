@@ -1,3 +1,4 @@
+import type { InformationBasketService } from "../information-basket/contracts.js";
 import type { KnowledgeSkillStore } from "../knowledge-skills/store.js";
 import type { SuperFailureFinalization } from "./super-failure-explanation.js";
 import type { SupervisorSkillSelectionWindows } from "./supervisor-skill-selection-window.js";
@@ -126,6 +127,7 @@ export function createScopeSurface(
     modelSteps: RequestModelStepPort;
     capabilities: RequestWorkerCapabilities;
     knowledgeSkillStore?: KnowledgeSkillStore;
+    informationBasket?: InformationBasketService;
     superFailureFinalization?: SuperFailureFinalization | undefined;
     supervisorSkillSelectionWindows: SupervisorSkillSelectionWindows;
   }>,
@@ -182,6 +184,7 @@ export function createScopeSurface(
     capabilities: hiddenValue(capabilities),
     supervisorSkillSelectionWindows: hiddenValue(input.supervisorSkillSelectionWindows),
     ...(input.knowledgeSkillStore ? { knowledgeSkillStore: hiddenValue(input.knowledgeSkillStore) } : {}),
+    ...(input.informationBasket ? { informationBasket: hiddenValue(input.informationBasket) } : {}),
     ...(input.superFailureFinalization
       ? {
           superFailureFinalization: hiddenValue(input.superFailureFinalization),

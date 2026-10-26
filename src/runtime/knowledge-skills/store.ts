@@ -1,3 +1,5 @@
+import { snapshotSkillDiscoveryRequirements } from "./discovery-availability.js";
+
 export type KnowledgeSkillMetadata = Readonly<{
   skillId: string;
   name: string;
@@ -8,9 +10,19 @@ export type KnowledgeSkillMetadata = Readonly<{
 export type KnowledgeSkillDocument = KnowledgeSkillMetadata &
   Readonly<{ content: string; revision?: number }>;
 
+export type KnowledgeSkillOperationReference = Readonly<{ toolName: string; operationId: string }>;
+
+/** Runtime-owned definition policy is separate from model-visible documents and metadata. */
+export type KnowledgeSkillDefinition = KnowledgeSkillDocument & Readonly<{
+  requestRootContracts?: readonly string[];
+  discovery?: Readonly<{ requiredOperations: readonly KnowledgeSkillOperationReference[] }>;
+}>;
+
 export interface KnowledgeSkillStore {
   list(): readonly KnowledgeSkillMetadata[];
   read(skillId: string): KnowledgeSkillDocument | undefined;
+  getRequestExcludedSkillIds?(rootContractId: string): readonly string[];
+  getDiscoveryRequirements?(skillId: string): readonly KnowledgeSkillOperationReference[] | undefined;
 }
 
 export const KNOWLEDGE_SKILL_ID_MAX_LENGTH = 128;
@@ -32,10 +44,12 @@ function hasKnowledgeSkillDocumentText(document: KnowledgeSkillDocument): boolea
 
 /** An immutable document catalog. It has no role, plugin or context lifecycle. */
 export function createKnowledgeSkillStore(
-  definitions: readonly KnowledgeSkillDocument[],
+  definitions: readonly KnowledgeSkillDefinition[],
 ): KnowledgeSkillStore {
   const documents = new Map<string, KnowledgeSkillDocument>();
   const metadata: KnowledgeSkillMetadata[] = [];
+  const rootContracts = new Map<string, readonly string[] | undefined>();
+  const discovery = new Map<string, readonly KnowledgeSkillOperationReference[] | undefined>();
   for (const definition of definitions) {
     if (!isKnowledgeSkillId(definition.skillId))
       throw new Error("knowledge_skill_id_invalid");
@@ -49,6 +63,9 @@ export function createKnowledgeSkillStore(
       description: definition.description,
     });
     metadata.push(entry);
+    rootContracts.set(entry.skillId, definition.requestRootContracts
+      ? Object.freeze([...definition.requestRootContracts]) : undefined);
+    discovery.set(entry.skillId, snapshotSkillDiscoveryRequirements(definition.discovery?.requiredOperations));
     documents.set(
       entry.skillId,
       Object.freeze({ ...entry, content: definition.content }),
@@ -58,5 +75,9 @@ export function createKnowledgeSkillStore(
   return Object.freeze({
     list: () => catalog,
     read: (skillId: string) => documents.get(skillId),
+    getRequestExcludedSkillIds: (rootContractId: string) => [...rootContracts]
+      .filter(([, contracts]) => contracts !== undefined && !contracts.includes(rootContractId))
+      .map(([skillId]) => skillId),
+    getDiscoveryRequirements: (skillId: string) => discovery.get(skillId),
   });
 }

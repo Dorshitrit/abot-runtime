@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import { runRequestRunner } from "../request/runner.js";
@@ -89,6 +90,7 @@ test("the builtin overview still reaches direct response without adding a final-
     decide: () => { throw new Error("Unexpected legacy routing or child"); },
   });
   const store = {
+    ...builtinKnowledgeSkillStore,
     list: vi.fn(() => builtinKnowledgeSkillStore.list()),
     read: vi.fn((skillId: string) => builtinKnowledgeSkillStore.read(skillId)),
   };
@@ -136,9 +138,9 @@ test.each(["found", "empty", "unavailable", "oversized"] as const)(
       },
       decide(input) {
         if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-        if (input.modelStep === "worker.decision") {
+        if (input.modelStep === "worker.evidence") {
           expect(JSON.stringify(input.messages)).toContain(objective);
-          return { action: "return_result" };
+          return workerEvidenceDecision(input, false);
         }
         if (input.modelStep === "worker.result") return "The assigned observation is unavailable.";
         expect(supervisorFormatName(input)).toBe("supervisor_decision");
@@ -151,7 +153,7 @@ test.each(["found", "empty", "unavailable", "oversized"] as const)(
     await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
     const calls = f.gatewayInvoke.mock.calls.map(([input]) => input);
     expect(calls.filter(input => supervisorFormatName(input) === "supervisor_procedure_gate")).toHaveLength(2);
-    expect(calls.filter(input => input.modelStep === "worker.decision")).toHaveLength(1);
+    expect(calls.filter(input => input.modelStep === "worker.evidence")).toHaveLength(1);
     expect(delegations).toBe(2);
     expect(f.memory.retrieve).toHaveBeenCalledTimes(2);
   },
@@ -180,7 +182,7 @@ test("a true re-gate can select Planner and preserve its completed child result"
         };
         return { action: "return_result", result };
       }
-      if (input.modelStep === "worker.decision") return { action: "return_result" };
+      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
       if (input.modelStep === "worker.result") return result;
       expect(supervisorFormatName(input)).toBe("supervisor_decision");
       expect(jsonMessages(input)).toContainEqual(expect.objectContaining({
@@ -206,7 +208,7 @@ test("disabled memory does not expose recall at the initial delegation boundary"
     },
     decide(input) {
       if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-      if (input.modelStep === "worker.decision") return { action: "return_result" };
+      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
       if (input.modelStep === "worker.result") return "No external observation was available.";
       return { action: "respond" };
     },

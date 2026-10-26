@@ -14,6 +14,12 @@ import { resolveModelSelection } from "../../model/model-selection.js";
 import { requireCreateCalendarTimeZone } from "./create-time-zone.js";
 import { requireAvailableScheduleModel } from "./model-validation.js";
 import { createSchedulerJobPage } from "./job-list-page.js";
+import { SCHEDULING_TOOL_EVENT_PRESENTATION } from "./event-presentation.js";
+import {
+  createSchedulingExecutionAdapter,
+  isScheduleTargetMutation,
+  requireScheduleExecutionGuard,
+} from "./execution-binding.js";
 
 function requireText(value: unknown, field: string): string {
   if (typeof value !== "string") throw new Error(`schedule_${field}_required`);
@@ -139,13 +145,14 @@ export function createSchedulingToolModule(
         job,
         runs: [...(await service.listRuns(id, { limit: 20 }))].reverse(),
       };
+    if (!isScheduleTargetMutation(action)) throw new Error("schedule_action_unknown");
+    const guard = requireScheduleExecutionGuard(job, action, context?.executionAuthority);
     if (action === "update")
-      return service.update(id, updateInput(params, config, job.modelProfileId));
-    if (action === "pause") return service.pause(id);
-    if (action === "resume") return service.resume(id);
-    if (action === "cancel") return service.cancel(id);
-    if (action === "run_now") return service.runNow(id);
-    throw new Error("schedule_action_unknown");
+      return service.update(id, updateInput(params, config, job.modelProfileId), guard);
+    if (action === "pause") return service.pause(id, guard);
+    if (action === "resume") return service.resume(id, guard);
+    if (action === "cancel") return service.cancel(id, guard);
+    return service.runNow(id, guard);
   }
 
   return {
@@ -157,8 +164,10 @@ export function createSchedulingToolModule(
       catalogGroups: ["scheduling"],
       developmentRoles: ["auxiliary"],
       controlsRefinement: "mechanical_when_complete",
+      eventPresentation: SCHEDULING_TOOL_EVENT_PRESENTATION,
     },
     normalInvocation: CORE_TOOL_CONTRACTS.scheduling.normalInvocation,
+    adapter: createSchedulingExecutionAdapter(service, ready),
     async implementation(params, context) {
       try {
         const result = await execute(params, context);

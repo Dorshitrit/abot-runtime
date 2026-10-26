@@ -43,7 +43,8 @@ function createProjectGroup({
   create.title = "New conversation in " + group.name;
   create.setAttribute("aria-label", create.title);
   create.disabled = Boolean(busyProjectId);
-  create.textContent = busyProjectId === group.id ? "…" : "+";
+  create.innerHTML = busyProjectId === group.id ? "…"
+    : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
   create.addEventListener("click", () => void onNewConversation(group.id));
   const controls = documentRoot.createElement("div");
   controls.className = "project-group-controls";
@@ -61,6 +62,8 @@ export function renderProjectSessionGroups({
   deletedProjectIds = [],
   sessions,
   createSessionItem,
+  pageInfo,
+  onLoadProject,
   newProjectButton,
   query,
   loading,
@@ -75,7 +78,9 @@ export function renderProjectSessionGroups({
   onToggleProjectSessions = () => {},
   documentRoot = document,
 }) {
-  const { groups, ordinary } = projectSessionDisplayGroups(projects, sessions, deletedProjectIds);
+  const catalog = [...new Map([...(pageInfo?.projects ?? []), ...projects].map((project) => [project.id, project])).values()];
+  const deleted = [...new Set([...(pageInfo?.deletedProjectIds ?? []), ...deletedProjectIds])];
+  const { groups, ordinary } = projectSessionDisplayGroups(catalog, sessions, deleted);
   let index = 0;
   if (newProjectButton) root.appendChild(newProjectButton);
   for (const group of groups) {
@@ -90,6 +95,8 @@ export function renderProjectSessionGroups({
     });
     renderProjectSessionPreview({
       content, group, query, documentRoot,
+      page: pageInfo?.projectPages?.find((page) => page.projectId === group.id),
+      onLoadMore: () => onLoadProject?.(group.id),
       expanded: expandedProjectSessionIds.has(group.id),
       createSessionItem: (session) => createSessionItem(session, index++),
       onToggleExpanded: onToggleProjectSessions,
@@ -122,7 +129,8 @@ export function renderProjectSessionGroups({
   const regularHeading = documentRoot.createElement("div");
   regularHeading.className =
     "project-section-heading ordinary-conversations-heading";
-  regularHeading.textContent = "Conversations";
+  regularHeading.textContent = pageInfo?.ordinaryTotal === undefined
+    ? "Conversations" : `Conversations (${pageInfo.ordinaryTotal})`;
   root.appendChild(regularHeading);
   for (const session of ordinary)
     root.appendChild(createSessionItem(session, index++));

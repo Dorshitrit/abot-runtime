@@ -87,11 +87,15 @@ export function assertOperationSupervisionEvidenceContext(
   const permittedConsumer =
     context.consumer === "execution.decision" ||
     context.consumer === "execution.response" ||
+    context.consumer === "capability.controls" ||
+    context.consumer === "worker.evidence" ||
     context.consumer === "worker.decision" ||
     context.consumer === "worker.result";
   const matchesRole =
     binding.roleId === "worker"
-      ? context.consumer === "worker.decision" ||
+      ? context.consumer === "capability.controls" ||
+        context.consumer === "worker.evidence" ||
+        context.consumer === "worker.decision" ||
         context.consumer === "worker.result"
       : context.consumer === "execution.decision" ||
         context.consumer === "execution.response";

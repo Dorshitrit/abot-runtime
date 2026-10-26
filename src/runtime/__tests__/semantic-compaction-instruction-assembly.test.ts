@@ -3,7 +3,7 @@ import {
   generateSemanticCompactionCandidateBatched,
   createSemanticCompactionSha256Fingerprint as hash,
 } from "../context/semantic-compaction/index.js";
-import { SEMANTIC_COMPACTION_INSTRUCTIONS } from "../context/semantic-compaction/prompt.js";
+import { resolveSemanticCompactionInstructions } from "../context/semantic-compaction/execution-evidence-instructions.js";
 import {
   semanticContractFixture,
   compactContinuation,
@@ -59,7 +59,7 @@ for (const policy of ["execution-agent-v1", "supervisor-worker-v1"] as const) {
         // Assembly identity, not a snapshot of the instruction's prose.
         expect(
           policyMessages.some(({ content }) =>
-            content.includes(SEMANTIC_COMPACTION_INSTRUCTIONS),
+            content.includes(resolveSemanticCompactionInstructions(fixture.params.binding.allowedConsumers)),
           ),
         ).toBe(true);
         expect(
@@ -80,7 +80,7 @@ for (const policy of ["execution-agent-v1", "supervisor-worker-v1"] as const) {
           .join("\n");
         expect(input).toContain(CALIBRATED_COMPACTION_GUIDANCE);
         expect(input).toContain(CONFIGURED_COMPACTION_GUIDANCE);
-        expect(input).toContain(SEMANTIC_COMPACTION_INSTRUCTIONS);
+        expect(input).toContain(resolveSemanticCompactionInstructions(fixture.params.binding.allowedConsumers));
       }
       const envelopes = fixture.captured.map(readCompactionEnvelope);
       if (!sliced) {

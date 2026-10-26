@@ -1,8 +1,10 @@
+import { workerEvidenceReply } from "./support/worker-evidence-script.js";
 import {
   captureRequestContextCompaction,
   restoreRequestContextCompaction,
 } from "../context/semantic-compaction/snapshot.js";
 import { expect, test, vi } from "vitest";
+import type { ModelGatewayClient } from "../ports.js";
 import type { RequestRunnerConfig } from "../config/runner/contracts.js";
 import {
   projectRoleChildReturnContext,
@@ -27,13 +29,9 @@ import {
 test("B1: mixed supervision and execution checkpoint survives Worker result handoff", async () => {
   const { ledger, head, call, view, store, checkpoint } =
     await mixedWorkerFixture();
-  const invoke = vi.fn(async (input: { modelStep?: string }) => ({
-    text:
-      input.modelStep === "worker.result"
-        ? "Target evidence was read."
-        : JSON.stringify({ decision: { action: "return_result" } }),
-    meta: {},
-  }));
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => input.modelStep === "worker.evidence"
+    ? workerEvidenceReply(input, false, "Target evidence was read.")
+    : { text: "Target evidence was read.", meta: {} });
   const request = createTestRequestExecutionScope({
     requestId: head.state.requestId,
     sessionId: "mixed-session",
@@ -49,6 +47,7 @@ test("B1: mixed supervision and execution checkpoint survives Worker result hand
         attachmentReserveTokens: 0,
       },
       steps: {
+        "worker.evidence": { timeoutMs: 20000 },
         "worker.decision": { timeoutMs: 20000 },
         "worker.result": { timeoutMs: 20000 },
         "context.compact": { timeoutMs: 20000 },
@@ -62,6 +61,7 @@ test("B1: mixed supervision and execution checkpoint survives Worker result hand
       defaults: {
         profileId: "test",
         steps: {
+          "worker.evidence": "test",
           "worker.decision": "test",
           "worker.result": "test",
           "context.compact": "test",
@@ -106,7 +106,7 @@ test("B1: mixed supervision and execution checkpoint survives Worker result hand
     checkpoint.sourceDigests,
   );
   expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
-    "worker.decision",
+    "worker.evidence",
     "worker.result",
   ]);
 });

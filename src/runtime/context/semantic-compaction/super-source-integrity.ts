@@ -22,6 +22,7 @@ import { assertHistoricalOperationSource } from "./super-operation-source.js";
 import { assertHistoricalChildResultSource } from "./super-child-result-source.js";
 import { assertHistoricalReviewerSource } from "./super-reviewer-source.js";
 import { readStoredSourceMessage } from "./super-source-message.js";
+import { assertBasketReferenceSource } from "./basket-reference-source.js";
 import { CORE_SKILL_READ_MESSAGE_KIND } from "../core-skill-read-context.js";
 import { assertCoreSkillReadSource } from "./core-skill-read-source.js";
 
@@ -222,9 +223,12 @@ function assertOwnedSource(
       );
     return;
   }
+  if (source.sourceRef.startsWith("information-basket-reference:")) {
+    assertBasketReferenceSource({ source, head: params.head, ...(scopeCall ? { scopeCall } : {}) });
+    return;
+  }
   const message = readStoredSourceMessage(source);
   const record = readSourceCapsuleHeader(message.content);
-
   if (record.kind === CORE_SKILL_READ_MESSAGE_KIND) {
     assertCoreSkillReadSource({ source, record, head: params.head, ...(scopeCall ? { scopeCall } : {}) });
     return;

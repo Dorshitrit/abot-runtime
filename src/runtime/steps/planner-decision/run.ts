@@ -8,7 +8,7 @@ import {
   projectRequestToolResults,
   type RequestToolResultsView,
 } from "../../context/request-tool-results.js";
-import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
+import { createPolicyModelStepCompactionController } from "../../context/super-compaction/routing.js";
 import { superCompactionFailureOwner } from "../../context/super-compaction-failure-owner.js";
 import type {
   RoleCallFrame,
@@ -75,7 +75,7 @@ export async function runPlannerDecision(
         request,
         {
           input,
-          controller: createModelStepCompactionController(request, {
+          controller: createPolicyModelStepCompactionController(request, {
             consumer: PLANNER_DECISION_MODEL_STEP,
             call: options.call,
             superFailureOwner: superCompactionFailureOwner(
@@ -97,7 +97,7 @@ export async function runPlannerDecision(
               PLANNER_DECISION_MODEL_STEP,
               PLANNER_GRAPH_MODEL_STEP,
             ]),
-          }),
+          }, request.executionPolicy.authority),
         },
       ),
       timeoutReason: "planner_decision_timeout",

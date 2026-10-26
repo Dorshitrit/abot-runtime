@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { writeFile } from "node:fs/promises";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type WebSocket from "ws";
@@ -43,7 +44,7 @@ test.each([
       delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Identify the stored preference needed for the answer." }),
       decide(input) {
         if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-        if (input.modelStep === "worker.decision") return { action: "return_result" };
+        if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
         if (input.modelStep === "worker.result") return "The root needs the user's stored preference.";
         const recallOffered = JSON.stringify(input.format).includes(
           '"recall_memory"',

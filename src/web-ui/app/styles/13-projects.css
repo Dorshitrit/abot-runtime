@@ -411,7 +411,9 @@
   pointer-events: auto;
 }
 
+.project-group-controls .project-group-new > svg,
 .project-group-actions .session-menu-button svg {
+  display: block;
   width: 12px;
   height: 12px;
   fill: none;

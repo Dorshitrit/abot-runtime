@@ -125,6 +125,7 @@ export function targetHandoffSeed(
         [
           "supervisor.decision",
           "planner.decision",
+          "worker.evidence",
           "worker.decision",
           CAPABILITY_CONTROLS_MODEL_STEP,
           "worker.result",

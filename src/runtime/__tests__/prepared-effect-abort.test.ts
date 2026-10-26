@@ -4,7 +4,7 @@ import type { RegisteredToolEffectPersistence } from "../adapters/registered-too
 import { createSchedulerTestGate } from "./support/scheduler-runtime-fixture.js";
 import { probeTools } from "./support/automation-agent-tool-fixture.js";
 
-function fixture(effectPersistence?: RegisteredToolEffectPersistence) {
+async function fixture(effectPersistence?: RegisteredToolEffectPersistence) {
   const tools = probeTools("mutating");
   const controller = new AbortController();
   const onEvent = vi.fn();
@@ -14,7 +14,7 @@ function fixture(effectPersistence?: RegisteredToolEffectPersistence) {
     toolPermissionMode: "full_access", nextApprovalId: () => "approval", onEvent,
     ...(effectPersistence ? { effectPersistence } : {}),
   });
-  const prepared = executor.prepare({ handle: executor.operations[0]!.handle, controls: {} });
+  const prepared = await executor.prepare({ handle: executor.operations[0]!.handle, controls: {} });
   if (prepared.status !== "prepared") throw new Error(prepared.code);
   return { ...tools, controller, onEvent, prepared };
 }
@@ -23,7 +23,7 @@ test("an abort after durable admission records a definite rejection and preserve
   const entered = createSchedulerTestGate();
   const resume = createSchedulerTestGate();
   const afterEffect = vi.fn<RegisteredToolEffectPersistence["afterEffect"]>(async () => undefined);
-  const f = fixture({
+  const f = await fixture({
     beforeEffect: async () => { entered.open(); await resume.waiting; return {}; },
     afterEffect,
   });
@@ -45,7 +45,7 @@ test("an abort after durable admission records a definite rejection and preserve
 
 test("failure to persist the abort receipt stays observable without dispatch", async () => {
   const failedReceipt = new Error("receipt_commit_failed");
-  const f = fixture({
+  const f = await fixture({
     beforeEffect: async () => { f.controller.abort(new Error("stopped")); return {}; },
     afterEffect: async () => { throw failedReceipt; },
   });
@@ -55,7 +55,7 @@ test("failure to persist the abort receipt stays observable without dispatch", a
 
 test("an exception after dispatch still persists uncertainty", async () => {
   const afterEffect = vi.fn<RegisteredToolEffectPersistence["afterEffect"]>(async () => undefined);
-  const f = fixture({ beforeEffect: async () => ({}), afterEffect });
+  const f = await fixture({ beforeEffect: async () => ({}), afterEffect });
   const failure = new Error("effect_failed");
   f.execute.mockRejectedValueOnce(failure);
   await expect(f.prepared.execute("effect-1")).rejects.toBe(failure);
@@ -68,14 +68,14 @@ test("an exception after dispatch still persists uncertainty", async () => {
 test("an admission rejection has no settled effect receipt", async () => {
   const afterEffect = vi.fn<RegisteredToolEffectPersistence["afterEffect"]>(async () => undefined);
   const failure = new Error("admission_failed");
-  const f = fixture({ beforeEffect: async () => { throw failure; }, afterEffect });
+  const f = await fixture({ beforeEffect: async () => { throw failure; }, afterEffect });
   await expect(f.prepared.execute("effect-1")).rejects.toBe(failure);
   expect(afterEffect).not.toHaveBeenCalled();
   expect(f.execute).not.toHaveBeenCalled();
 });
 
 test.each([false, true])("ordinary invocation parity when stopped=%s", async (stopped) => {
-  const f = fixture();
+  const f = await fixture();
   const reason = new Error("ordinary_stop");
   if (stopped) f.controller.abort(reason);
   const running = f.prepared.execute("ordinary-effect");

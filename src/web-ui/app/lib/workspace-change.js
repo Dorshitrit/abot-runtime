@@ -16,7 +16,7 @@ export function dashboardRefreshResources(rawMessage, environmentId) {
   if (message.type === "workspace_changed") {
     const resources = Array.isArray(message.resources) ? message.resources : [];
     return resources.filter(
-      (resource) => ["sessions", "approvals", "automations"].includes(resource),
+      (resource) => ["sessions", "approvals", "automations", "information-basket"].includes(resource),
     );
   }
   if (message.type === "event" && message.name === "scheduler.changed")

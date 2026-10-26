@@ -10,6 +10,7 @@ import type {
   RequestExecutionSeed,
 } from "../../request/contracts.js";
 import type { SuperCompactionFailureOwner } from "../super-compaction-failure-owner.js";
+import type { ContextCompactionProjectionRepair } from "../../model/context-compaction-contracts.js";
 
 export type SemanticCompactionGenerationParams = Readonly<{
   request: SemanticCompactionRequest;
@@ -19,6 +20,7 @@ export type SemanticCompactionGenerationParams = Readonly<{
   preservationObjective: string;
   /** Invocation-local freshness binding; never part of a saved checkpoint. */
   boundSteeringVersion?: number;
+  projectionRepair?: ContextCompactionProjectionRepair;
   previous?: SemanticCompactionCheckpoint;
   /** Verified EA predecessor evidence only; exclusive with previous and never persisted. */
   inheritedSourceDigests?: readonly SemanticCompactionDigest[];

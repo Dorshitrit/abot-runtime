@@ -1,3 +1,6 @@
+import { projectExecutionChildContinuations } from "./child-continuation.js";
+import { informationBasketModelInstructions } from "../../information-basket/model-guidance.js";
+import { projectInformationBasketCandidates, type BasketCandidateProjection } from "../../information-basket/candidate-context.js";
 import { projectAvailableSkillsInstructions } from "../../knowledge-skills/available-skills-projection.js";
 import {
   buildRuntimeFilesystemScopeMessage,
@@ -83,6 +86,7 @@ export type ExecutionAgentInput = Readonly<{
   capabilityCatalogGroups: readonly CapabilityCatalogGroup[];
   capabilities: readonly CapabilityDescriptor[];
   eligibleSessionArtifactPaths: readonly string[];
+  basketCandidates?: BasketCandidateProjection;
 }>;
 
 type BuildExecutionAgentInputOptions = Readonly<{
@@ -224,6 +228,7 @@ export function buildExecutionAgentInput(
       options.head,
       options.call,
     );
+  const childContinuations = projectExecutionChildContinuations(options.head, options.call);
   const referenceMessages = [
     ...(filesystemMessage ? [filesystemMessage] : []),
     ...scheduledExecution.referenceMessages,
@@ -240,6 +245,7 @@ export function buildExecutionAgentInput(
       hasControlsEvidenceSelection
         ? contract.eligibleControlsEvidenceExecutionIds
         : undefined,
+      childContinuations.map(({ resultRef }) => resultRef),
     ),
     ...(operationSupervisionEvidenceMessage
       ? [operationSupervisionEvidenceMessage]
@@ -258,7 +264,14 @@ export function buildExecutionAgentInput(
     options.head,
     options.call,
     projectMemoryRecallContinuations(memoryRecallMessage),
+    childContinuations,
   );
+  traceDebug("runtime.execution-agent", "continuation.projected", {
+    requestId: request.requestId, callId: options.call.callId,
+    invocationAttempt: options.call.activationCount,
+    nativeChildResultCount: childContinuations.length,
+    nativeChildResultRefs: childContinuations.map(({ resultRef }) => resultRef),
+  });
   const sessionMemory = projectRootSessionMemory(request);
   traceDebug("runtime.execution-agent", "direct_response.offer", {
     requestId: request.requestId, reason: directResponse.reason,
@@ -266,7 +279,9 @@ export function buildExecutionAgentInput(
   });
   const contextInput: Parameters<typeof projectRequestContext>[0] = {
     instructions: appendExecutionEvidenceReuseInstructions({
-      instructions: scheduledExecution.instructions,
+      instructions: [scheduledExecution.instructions,
+        ...informationBasketModelInstructions(remainingExecutions > 0 && request.informationBasket !== undefined),
+      ].join("\n"),
       hasCapabilities: capabilities.length > 0,
     }),
     format,
@@ -287,11 +302,16 @@ export function buildExecutionAgentInput(
   const skills = remainingExecutions > 0
     ? resolveRequestWorkerCapabilities(request).provider.getAvailableSkills?.() ?? []
     : [];
+  const instructionsWithSkills = projectAvailableSkillsInstructions({ skills, context: contextInput });
+  const basketCandidates = remainingExecutions > 0 ? projectInformationBasketCandidates({
+    snapshot: request.workerCapabilities.provider.getInformationBasketCandidates?.(options.steeringSnapshot.version),
+    context: { ...contextInput, instructions: instructionsWithSkills },
+    additionalBudgetMessages: appendRequestSteeringContext([], options.steeringSnapshot),
+  }) : undefined;
+  if (basketCandidates) referenceMessages.push(basketCandidates.message);
   const context = projectRequestContext({
     ...contextInput,
-    instructions: projectAvailableSkillsInstructions({
-      skills, context: contextInput,
-    }),
+    instructions: instructionsWithSkills,
   });
   return Object.freeze({
     context,
@@ -305,6 +325,7 @@ export function buildExecutionAgentInput(
     capabilityCatalogGroups,
     capabilities,
     eligibleSessionArtifactPaths,
+    ...(basketCandidates ? { basketCandidates } : {}),
   });
 }
 

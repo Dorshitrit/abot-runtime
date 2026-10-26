@@ -1,3 +1,4 @@
+import { readExecutionChildResultEvidence, type ExecutionChildResultReference } from "./support/execution-child-result-evidence.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -39,11 +40,7 @@ type RootAuditState = {
     pendingEvidenceIds: readonly string[] | null;
     reviewedBundleCount: number;
   };
-  completedSubordinateResults: readonly {
-    roleId: string;
-    outcome: string;
-    summary: string;
-  }[];
+  completedSubordinateResults: readonly ExecutionChildResultReference[];
 };
 type AuditReceipt = {
   kind: string;
@@ -60,8 +57,7 @@ type AuditReceipt = {
 };
 
 function returnedAuditReceipts(input: AuditRunnerInput): AuditReceipt[] {
-  const state = readAuditCapsule<RootAuditState>(input, STATE_KIND);
-  return state.completedSubordinateResults.map(({ roleId, summary }) => {
+  return readExecutionChildResultEvidence(input).map(({ roleId, summary }) => {
     expect(roleId).toBe("reviewer");
     const receipt = JSON.parse(summary) as AuditReceipt;
     expect(receipt.kind).toBe("runtime_execution_agent_auditor_advisory_v1");

@@ -33,6 +33,7 @@ import {
   type WorkerResultAuthorSource,
 } from "../contracts.js";
 import { projectWorkerCapabilityResumeContext } from "../ledger-projection.js";
+import type { WorkerEvidenceAssessmentReceipt } from "../evidence-assessment.js";
 
 export type WorkerDecisionInputRequest = Pick<
   RequestExecutionSeed,
@@ -117,6 +118,7 @@ export type WorkerDecisionInputOptions = Readonly<{
   capabilitySelectionRejection?: WorkerCapabilitySelectionRejection;
   requestToolResultsContextMessage?: ChatMessage;
   diagnostic?: WorkerDecisionDiagnosticContext;
+  evidenceAssessment?: WorkerEvidenceAssessmentReceipt;
 }>;
 
 export type PreparedWorkerCapabilitySelection = Readonly<{
@@ -190,6 +192,7 @@ export type ProjectedWorkerDecisionContext = Readonly<{
     typeof buildSessionArtifactPathsMessage
   >;
   referenceMessages: readonly ChatMessage[];
+  sharedContextMessages: readonly ChatMessage[];
   context: RequestContextProjection;
 }>;
 

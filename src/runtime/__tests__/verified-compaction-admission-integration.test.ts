@@ -1,3 +1,4 @@
+import { workerEvidenceReply } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ModelGatewayClient } from "../ports.js";
 import type { RequestSessionMemory } from "../context/session-memory/index.js";
@@ -17,6 +18,7 @@ beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => resetDebugLoggerConfig());
 
 const SOFT_EXCEEDED = 23_000;
+const EA_SOFT_EXCEEDED = 29_000;
 const HARD_EXCEEDED = 32_000;
 type Fixture = Awaited<ReturnType<typeof executionCompactionSteeringFixture>>;
 
@@ -30,7 +32,9 @@ async function compactedRoot() {
   await f.run();
   expect(f.invoke.mock.calls.some(([input]) => input.modelStep === "context.compact")).toBe(true);
   f.invoke.mockClear();
-  f.countInputTokens.mockImplementation(async () => measured(SOFT_EXCEEDED));
+  f.countInputTokens.mockImplementation(async (input) => measured(
+    input.modelStep === "execution.decision" ? EA_SOFT_EXCEEDED : SOFT_EXCEEDED,
+  ));
   return f;
 }
 
@@ -159,13 +163,11 @@ test("actual Controls refinement rejects reused evidence beyond the hard budget"
 
 test.each([SOFT_EXCEEDED, HARD_EXCEEDED])("actual Worker decision checks reused mixed evidence at %i tokens", async (tokens) => {
   const f = await mixedWorkerFixture();
-  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => ({
-    text: input.modelStep === "worker.result" ? "Target evidence was read."
-      : JSON.stringify({ decision: { action: "return_result" } }),
-    meta: {},
-  }));
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => input.modelStep === "worker.evidence"
+    ? workerEvidenceReply(input, false, "Target evidence was read.")
+    : { text: "Target evidence was read.", meta: {} });
   const countInputTokens = vi.fn<NonNullable<ModelGatewayClient["countInputTokens"]>>(
-    async (input) => measured(input.modelStep === "worker.decision" ? tokens : 1000),
+    async (input) => measured(input.modelStep === "worker.evidence" ? tokens : 1000),
   );
   const request = createTestRequestExecutionScope({
     requestId: f.head.state.requestId, sessionId: "mixed-admission", prompt: "Inspect the target.",
@@ -173,7 +175,7 @@ test.each([SOFT_EXCEEDED, HARD_EXCEEDED])("actual Worker decision checks reused 
     runnerConfig: {
       models: { defaults: { profileId: "test", steps: {} } },
       context: { outputReserveTokens: 2048, safetyReserveTokens: 512, attachmentReserveTokens: 0 },
-      steps: { "worker.decision": { timeoutMs: 20000 }, "worker.result": { timeoutMs: 20000 }, "context.compact": { timeoutMs: 20000 } },
+      steps: { "worker.evidence": { timeoutMs: 20000 }, "worker.decision": { timeoutMs: 20000 }, "worker.result": { timeoutMs: 20000 }, "context.compact": { timeoutMs: 20000 } },
     },
     modelPolicy: {
       providers: { test: { type: "openai" } },
@@ -200,7 +202,7 @@ test.each([SOFT_EXCEEDED, HARD_EXCEEDED])("actual Worker decision checks reused 
     expect(invoke).not.toHaveBeenCalled();
   } else {
     await expect(result).resolves.toMatchObject({ action: "return_result", result: "Target evidence was read." });
-    expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual(["worker.decision", "worker.result"]);
+    expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual(["worker.evidence", "worker.result"]);
     expect(JSON.stringify(invoke.mock.calls[0]![0].messages)).toContain("Preserved exact evidence.");
   }
 });

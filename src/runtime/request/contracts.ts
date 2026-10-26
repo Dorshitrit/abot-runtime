@@ -1,3 +1,4 @@
+import type { InformationBasketService } from "../information-basket/contracts.js";
 import type { ModelReasoningPreference } from "../../shared/model-reasoning.js";
 import type { KnowledgeSkillStore } from "../knowledge-skills/store.js";
 import type { RequestToolResources } from "../capabilities/request-tool-resources.js";
@@ -24,6 +25,7 @@ import type { RequestRunnerConfig } from "../config/runner/contracts.js";
 import type { RequestExecutionPolicySelection } from "../config/model-execution-policy.js";
 import type { RequestHistoryMessage } from "../context/request-context-contracts.js";
 import type { RequestContextCompactionStore } from "../context/semantic-compaction/index.js";
+import type { SessionMemoryCompactorComposition } from "../context/super-compaction/history-routing.js";
 import type { RequestTemporalContext } from "../context/request-temporal-context.js";
 import type { RequestSessionStore } from "./session-store.js";
 import type { RequestSteeringInbox } from "./request-steering.js";
@@ -50,7 +52,7 @@ export type RunRequestMessage = {
   attachments?: unknown;
 };
 
-export type RequestHandlerOptions = {
+export type RequestHandlerOptions = SessionMemoryCompactorComposition & {
   /** Opted-in client; the managed owner supplies the trusted activation below. */
   durableApprovals?: boolean;
   approvalExecution?: RequestApprovalExecution;
@@ -64,6 +66,7 @@ export type RequestHandlerOptions = {
   attachmentStore?: RuntimeAttachmentStore;
   toolRegistry?: ToolRegistry;
   knowledgeSkillStore?: KnowledgeSkillStore;
+  informationBasket?: InformationBasketService;
   toolApprovalController?: ToolApprovalController;
   requestSteering?: RequestSteeringInbox;
   /** Trusted automation-only receipt boundary; never accepted from client JSON. */

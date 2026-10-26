@@ -78,6 +78,7 @@ function isModelOutputFailureOwnedByRole(
     case "planner.graph":
     case "planner.decision":
       return roleId === "planner";
+    case "worker.evidence":
     case "worker.decision":
     case "worker.result":
     case "capability.controls":
@@ -86,6 +87,10 @@ function isModelOutputFailureOwnedByRole(
     case "reviewer.decision":
       return roleId === "reviewer";
     case "context.compact":
+    case "super.compact.coverage":
+    case "super.compact.content":
+    case "super.compact.merge":
+    case "super.compact.continuation":
       return isDelegatedModelOutputRole(roleId);
     default:
       return false;

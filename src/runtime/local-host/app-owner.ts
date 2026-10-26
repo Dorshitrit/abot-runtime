@@ -71,6 +71,9 @@ export async function createLocalRuntimeOwner(
       publish({ type: "learning.changed", ...(event ? { event } : {}) });
     },
   );
+  const unsubscribeBasket = application.services.informationBasket?.subscribeChanges(() => {
+    publish({ type: "information-basket.changed" });
+  });
   try {
     await savedApprovals.recover();
     await application.start();
@@ -79,6 +82,7 @@ export async function createLocalRuntimeOwner(
     application.services.requestAdmission?.close();
     unsubscribe();
     unsubscribeLearning?.();
+    unsubscribeBasket?.();
     await application.stop();
     throw error;
   }
@@ -186,6 +190,7 @@ export async function createLocalRuntimeOwner(
       controls.stop();
       unsubscribe();
       unsubscribeLearning?.();
+      unsubscribeBasket?.();
       listeners.clear();
       shutdown = application.stop();
       return shutdown;

@@ -283,7 +283,7 @@ describe("registered tool lifecycle execution correlation", () => {
       controls: {},
       phase: "started",
     });
-    const invocation = executor.prepare({
+    const invocation = await executor.prepare({
       handle,
       controls: {},
       payload: "Requested text.",

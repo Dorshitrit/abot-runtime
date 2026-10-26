@@ -8,7 +8,6 @@ import {
   createDefaultModelGatewayClient,
   createDefaultSessionStore,
 } from "./default-environment-adapters.js";
-import { createModelSessionMemoryCompactor } from "./context/session-memory/index.js";
 import {
   rebindRuntimeEnvironmentEvents,
   recomposeRuntimeEnvironment,
@@ -54,8 +53,7 @@ export function resolveRuntimeHostEnvironmentServices(
     (mayReuseBound ? bound.events : undefined) ??
     (mayUseLegacyDefaults ? params.defaults.eventSinkFactory : undefined) ??
     createDefaultEventSinkFactory(runtimeConfig);
-  const sessionMemoryCompactor =
-    bound?.sessionMemoryCompactor ?? createModelSessionMemoryCompactor();
+  const sessionMemoryCompactor = bound?.sessionMemoryCompactor;
   const mayReuseBoundLongTermMemory = mayReuseBound && models === bound?.models;
   const longTermMemory =
     params.options.longTermMemoryService ??

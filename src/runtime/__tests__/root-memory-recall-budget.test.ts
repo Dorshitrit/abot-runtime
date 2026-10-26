@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   configureDebugLogger,
@@ -33,7 +34,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
         delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Identify the saved preference needed by the answer." }),
         decide(input) {
           if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-          if (input.modelStep === "worker.decision") return { action: "return_result" };
+          if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
           if (input.modelStep === "worker.result") return "The root needs the stored formatting preference.";
           decisions += 1;
           return {

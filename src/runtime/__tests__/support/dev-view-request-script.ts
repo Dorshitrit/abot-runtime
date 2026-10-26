@@ -1,6 +1,7 @@
 import { expect, vi } from "vitest";
 import type { ModelGatewayClient } from "../../ports.js";
 import { isRecord } from "../../validation/strict-record.js";
+import { workerEvidenceReply } from "./worker-evidence-script.js";
 import { withSupervisorPreparation } from "./supervisor-model-phases.js";
 
 export type DevViewRequestPolicy =
@@ -67,6 +68,8 @@ export function createDevViewRequestScript(
   let workerTurns = 0;
   let controlsTurns = 0;
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
+    if (input.modelStep === "worker.evidence")
+      return workerEvidenceReply(input, workerTurns < 2);
     if (input.modelStep === "worker.result")
       return { text: DEV_VIEW_REQUEST_FINAL, meta: {} };
     if (input.modelStep === "execution.response")
@@ -101,9 +104,8 @@ export function createDevViewRequestScript(
       };
     if (input.modelStep === "worker.decision") {
       workerTurns += 1;
-      const decision =
-        workerTurns <= 2 ? invocation : { action: "return_result" };
-      return { text: JSON.stringify({ decision }), meta: {} };
+      expect(workerTurns).toBeLessThanOrEqual(2);
+      return { text: JSON.stringify({ decision: invocation }), meta: {} };
     }
     rootTurns += 1;
     if (rootTurns >= 2) {

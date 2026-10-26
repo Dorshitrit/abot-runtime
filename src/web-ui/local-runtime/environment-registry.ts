@@ -50,6 +50,7 @@ export class RuntimeEnvironmentRegistry {
     private readonly schedulerBindings: {
       requestOptions?: LocalRuntimeApplicationOptions["scheduledRequestOptions"];
       publish?: (event: Record<string, unknown>) => void;
+      publishInformationBasket?: (environmentId: string) => void;
       publishLearning?: (
         environmentId: string,
         event?: LearningChangedEvent,
@@ -308,6 +309,9 @@ export class RuntimeEnvironmentRegistry {
     if (this.schedulerBindings.publish) {
       environment.subscribeScheduledEvents(this.schedulerBindings.publish);
     }
+    environment.subscribeInformationBasketEvents?.(() =>
+      this.schedulerBindings.publishInformationBasket?.(environmentId),
+    );
     environment.subscribeLearningEvents?.((event) =>
       this.schedulerBindings.publishLearning?.(environmentId, event),
     );

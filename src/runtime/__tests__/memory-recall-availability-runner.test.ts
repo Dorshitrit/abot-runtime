@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -76,7 +77,7 @@ function availabilityHarness(options: {
     },
     decide(input) {
       if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-      if (input.modelStep === "worker.decision") return { action: "return_result" };
+      if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
       if (input.modelStep === "worker.result") return "The answer needs the stored preference available to the root.";
       decisions.push(input);
       offered.push(offersRecall(input));
@@ -119,7 +120,7 @@ function expectNormalCompletion(
   );
   for (const [input] of harness.invoke.mock.calls) {
     expect(input.modelStep).not.toBe("degraded.finalization");
-    if (input.modelStep === "worker.decision" || input.modelStep === "worker.result") {
+    if (input.modelStep === "worker.evidence" || input.modelStep === "worker.result") {
       expect(recallCapsules(input)).toEqual([]);
       continue;
     }

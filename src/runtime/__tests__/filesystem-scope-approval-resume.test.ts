@@ -103,7 +103,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
         assertFilesystemScope(input, originalRoot, null, true);
       } else if (
         input.modelStep === "capability.controls" ||
-        input.modelStep === "worker.decision"
+        ["worker.evidence", "worker.decision", "worker.result"].includes(input.modelStep!)
       ) {
         assertFilesystemScope(input, originalRoot, "LUNA", false);
       } else if (input.modelStep === "execution.decision") {

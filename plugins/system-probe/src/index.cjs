@@ -336,7 +336,7 @@ var index_default = defineRuntimePlugin((context) => ({
             if (code === "ENOENT" || code === "ENOTDIR") {
               return failureResult({
                 errorCode: "system_probe_path_not_found",
-                message: "The requested disk-probe path does not exist."
+                message: "No disk-capacity measurement was taken: the supplied path does not exist. Capacity measurements require an existing path on the filesystem to be measured."
               });
             }
             if (code === "EACCES" || code === "EPERM") {

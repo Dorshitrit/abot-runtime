@@ -1,4 +1,5 @@
 import type { MemoryEmbeddingConnectionInput } from "../../local-runtime/memory-embedding-connection-input.js";
+import type { StepTimeoutRequests } from "./runtime-web-client/step-timeout.js";
 import type { NotificationRequests } from "./runtime-web-client/notifications.js";
 import type { SparkChatRequests } from "./runtime-web-client/spark-chat.js";
 import type { ProjectRequests } from "./runtime-web-client/projects.js";
@@ -112,6 +113,8 @@ export declare function createRuntimeWebClient(options: {
   createSystemHostPairing(): Promise<Record<string, unknown>>;
   revokeSystemHostConnection(): Promise<Record<string, unknown>>;
   supportsProjects: ProjectRequests["supportsProjects"];
+  inspectStepTimeout: StepTimeoutRequests["inspectStepTimeout"];
+  increaseStepTimeout: StepTimeoutRequests["increaseStepTimeout"];
   listProjects: ProjectRequests["listProjects"];
   browseProjectFolders: ProjectRequests["browseProjectFolders"];
   createProject: ProjectRequests["createProject"];

@@ -1,0 +1,31 @@
+.step-timeout-notice {
+  position: fixed;
+  inset-inline-end: 20px;
+  bottom: 84px;
+  z-index: 45;
+  width: min(330px, calc(100vw - 32px));
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-solid);
+  color: var(--muted);
+  box-shadow: 0 4px 18px #0002;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+.step-timeout-notice p { margin: 0 0 7px; }
+.step-timeout-notice .step-timeout-heading { color: var(--text); padding-inline-end: 20px; font-weight: 600; }
+.step-timeout-target { overflow-wrap: anywhere; }
+.step-timeout-notice .step-timeout-dismiss {
+  position: absolute; inset-inline-end: 6px; top: 6px;
+  border: 0; background: transparent; color: var(--muted);
+  width: 28px; height: 28px; padding: 0; font-size: 18px;
+}
+.step-timeout-actions { display: flex; gap: 14px; margin-top: 10px; }
+.step-timeout-actions button {
+  background: transparent; border: 0; padding: 2px 0;
+  color: var(--accent); font: inherit;
+}
+.step-timeout-actions button:hover { text-decoration: underline; }
+.step-timeout-actions button:disabled { color: var(--muted); cursor: wait; }
+.step-timeout-notice .step-timeout-status { margin: 8px 0 0; }

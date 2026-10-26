@@ -34,7 +34,17 @@ test.each([
     expect(f.execute).toHaveBeenCalledTimes(2);
     expect(
       f.calls.filter(({ step }) => step === "context.compact"),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
+    const compactionSteps = [
+      "super.compact.coverage",
+      "super.compact.content",
+      "super.compact.merge",
+      "super.compact.continuation",
+    ];
+    expect(new Set(f.calls
+      .map(({ step }) => step)
+      .filter((step) => compactionSteps.includes(step)),
+    )).toEqual(new Set(compactionSteps));
     const stages: string[] = [];
     for (const call of f.calls) {
       const capsule = call.messages.flatMap(({ content }) => {
@@ -95,7 +105,6 @@ test.each([
       }
       if (
         [
-          "capability.controls",
           "planner.decision",
           "reviewer.decision",
           "supervisor.decision",
@@ -106,13 +115,25 @@ test.each([
       }
     }
     expect(stages).toEqual([
+      "worker.evidence:warning",
       "worker.decision:warning",
-      "worker.decision:intervention",
+      "capability.controls:warning",
+      "worker.evidence:intervention",
       "worker.result:intervention",
     ]);
     expect(
       f.calls.filter(({ step }) => step === "capability.controls"),
     ).toHaveLength(3);
+    for (const [input] of f.invoke.mock.calls.filter(([input]) => input.modelStep === "capability.controls")) {
+      expect(JSON.stringify(input.format)).not.toContain('"capabilityId"');
+      expect(JSON.stringify(input.format)).not.toContain('"intent"');
+      const assignment = (input.messages as readonly { content: string }[]).flatMap(({ content }) => {
+        try { const value = JSON.parse(content); return value.kind === "runtime_worker_capability_execution_assignment" ? [value] : []; }
+        catch { return []; }
+      });
+      expect(assignment).toHaveLength(1);
+      expect(assignment[0].pendingCapabilitySelection.capabilityId).toBe("inspect_record");
+    }
     expect(f.execute.mock.calls.map(([input]) => input.controls)).toEqual([
       { query: "same-observation" },
       { query: "same-observation" },
@@ -120,7 +141,7 @@ test.each([
     const chain = f.calls
       .map(({ step }) => step)
       .filter(
-        (step) => !["context.compact", "capability.controls"].includes(step),
+        (step) => ![...compactionSteps, "capability.controls"].includes(step),
       );
     expect(chain).toEqual([
       "supervisor.decision",
@@ -128,10 +149,13 @@ test.each([
       "supervisor.decision",
       "supervisor.decision",
       "planner.decision",
+      "worker.evidence",
       "worker.decision",
+      "worker.evidence",
       "worker.decision",
+      "worker.evidence",
       "worker.decision",
-      "worker.decision",
+      "worker.evidence",
       "worker.result",
       "planner.decision",
       "supervisor.decision",

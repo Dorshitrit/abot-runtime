@@ -1,3 +1,4 @@
+import { createToolResultJsonReader } from "./tool-result-json-projection.js";
 import type {
   ToolEventMetadata,
   ToolEventPresentation,
@@ -16,9 +17,10 @@ export function projectToolResultEventMetadata(
 ): ToolEventMetadata | undefined {
   if (!projections) return undefined;
   const metadata: ToolEventMetadata = {};
+  const readJsonValue = createToolResultJsonReader(result.output);
   let remainingCharacters = EVENT_PREVIEW_CHARACTER_LIMIT;
   for (const [key, projection] of Object.entries(projections)) {
-    const value = readProjectedResultValue(result, projection);
+    const value = readProjectedResultValue(result, projection, readJsonValue);
     if (value === undefined) continue;
     if (typeof value !== "string") {
       metadata[key] = value;
@@ -35,8 +37,12 @@ export function projectToolResultEventMetadata(
 function readProjectedResultValue(
   result: ToolExecutionResult,
   projection: ToolEventResultMetadataProjection,
+  readJsonValue: (path: string) => unknown,
 ): string | number | boolean | undefined {
-  const value = readOwnResultPath(result, projection.path);
+  if (projection.jsonPath !== undefined && projection.path !== "output") return undefined;
+  const value = projection.jsonPath === undefined
+    ? readOwnResultPath(result, projection.path)
+    : readJsonValue(projection.jsonPath);
   if (projection.kind === "number") {
     return isFiniteResultNumber(value) ? value : undefined;
   }

@@ -1,3 +1,4 @@
+import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { validateModelGatewayMessages } from "../../model-gateway/message-contract.js";
 import {
@@ -35,7 +36,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
         delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Identify the saved preference needed for the answer." }),
         decide(input) {
           if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-          if (input.modelStep === "worker.decision") return { action: "return_result" };
+          if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
           if (input.modelStep === "worker.result") return "The answer needs the stored preference available to the root.";
           decisionCount += 1;
           if (decisionCount === 1) {
@@ -95,11 +96,11 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
       expect(harness.invokeRaw).not.toHaveBeenCalled();
       const allInputs = harness.invoke.mock.calls.map(([input]) => input);
       const inputs = allInputs.filter((input) =>
-        input.modelStep !== "worker.decision" && input.modelStep !== "worker.result"
+        input.modelStep !== "worker.evidence" && input.modelStep !== "worker.result"
         && supervisorFormatName(input) !== "supervisor_working_directory");
-      const workerSteps = allInputs.filter(({ modelStep }) => modelStep === "worker.decision" || modelStep === "worker.result");
+      const workerSteps = allInputs.filter(({ modelStep }) => modelStep === "worker.evidence" || modelStep === "worker.result");
       expect(workerSteps.map(({ modelStep }) => modelStep))
-        .toEqual(policy === "supervisor-worker-v1" ? ["worker.decision", "worker.result"] : []);
+        .toEqual(policy === "supervisor-worker-v1" ? ["worker.evidence", "worker.result"] : []);
       for (const input of workerSteps) expect(recallCapsules(input)).toEqual([]);
       if (policy === "supervisor-worker-v1") expect(modelMessages(inputs[1]!))
         .toContainEqual(expect.objectContaining({ content: expect.stringContaining('"kind":"runtime_child_result"') }));
@@ -128,7 +129,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
       }
       const forbiddenSteps = new Set([
         "planner.decision",
-        "worker.decision",
+        "worker.evidence", "worker.decision",
         "reviewer.decision",
         "capability.controls",
         "tool_payload.raw",
@@ -162,7 +163,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
           retrieve: async () => retrieval,
           decide(input) {
             if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
-            if (input.modelStep === "worker.decision") return { action: "return_result" };
+            if (input.modelStep === "worker.evidence") return workerEvidenceDecision(input, false);
             if (input.modelStep === "worker.result") return "The root should check the relevant stored preference.";
             decisionCount += 1;
             if (decisionCount === 1) {

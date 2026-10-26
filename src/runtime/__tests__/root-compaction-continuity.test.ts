@@ -46,9 +46,7 @@ test.each([false, true])(
       contextWindowTokens: 32000,
     });
     await pressured.run();
-    expect(pressured.counts.map(({ inputTokens }) => inputTokens)).toEqual([
-      23814, 22673, 18000,
-    ]);
+    expect(pressured.counts.map(({ inputTokens }) => inputTokens)).toEqual(pressured.pressureCounts);
     expect(
       pressured.events.find(
         ({ name }) => name === "context.compaction.started",
@@ -71,7 +69,7 @@ test("D20: increasing capacity preserves committed history without regenerating 
   expect(large.modelInputs.map(({ step }) => step)).toEqual([
     "execution.decision",
   ]);
-  expect(large.counts.map(({ inputTokens }) => inputTokens)).toEqual([22673]);
+  expect(large.counts.map(({ inputTokens }) => inputTokens)).toEqual([large.pressureCounts[1]]);
   expect(large.sessionMemory.project().historyMessages).toHaveLength(20);
   expect(JSON.stringify(large.rootInputs[0])).toContain(HISTORY_FACT);
   expect(JSON.stringify(large.rootInputs[0])).not.toContain("old detail");

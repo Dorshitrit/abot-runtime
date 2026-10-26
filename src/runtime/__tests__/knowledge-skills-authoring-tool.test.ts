@@ -30,7 +30,7 @@ async function setup(mode: ToolPermissionMode = "full_access") {
     return executor.prepare({ handle: operation.handle, controls: selection, payload });
   };
   const execute = async (id: string, selection: Record<string, unknown>, payload?: string) => {
-    const prepared = prepare(id, selection, payload);
+    const prepared = await prepare(id, selection, payload);
     expect(prepared.status).toBe("prepared");
     if (prepared.status !== "prepared") throw new Error("preparation_failed");
     return prepared.execute("execution-1");
@@ -75,10 +75,10 @@ test.each(["create_skill", "update_skill"])("ASK rejects %s before the Store is 
     : { skillId: existing.skillId, expectedRevision: existing.revision };
   const before = f.store.read(existing.skillId);
   const metadataBefore = f.store.list();
-  const prepared = f.prepare(operationId, selection, "Replacement guidance.");
+  const prepared = await f.prepare(operationId, selection, "Replacement guidance.");
   if (prepared.status !== "prepared") throw new Error("preparation_failed");
   expect(prepared.approvalRequest).toBeDefined();
-  const restored = f.executor.restore(JSON.parse(JSON.stringify(prepared.snapshot)));
+  const restored = await f.executor.restore(JSON.parse(JSON.stringify(prepared.snapshot)));
   if (restored.status !== "prepared") throw new Error("restore_failed");
   expect(restored.approvalRequest).toEqual(prepared.approvalRequest);
   const result = await restored.execute();
@@ -93,9 +93,9 @@ test.each(["create_skill", "update_skill"])("ASK rejects %s before the Store is 
 
 test("invalid controls or a missing body fail preparation and packaged updates return read-only failure", async () => {
   const f = await setup();
-  expect(f.prepare("create_skill", controls).status).toBe("rejected");
-  expect(f.prepare("create_skill", { name: "Name only" }, body).status).toBe("rejected");
-  expect(f.prepare("update_skill", { skillId: "abot-studio" }, body).status).toBe("rejected");
+  expect((await f.prepare("create_skill", controls)).status).toBe("rejected");
+  expect((await f.prepare("create_skill", { name: "Name only" }, body)).status).toBe("rejected");
+  expect((await f.prepare("update_skill", { skillId: "abot-studio" }, body)).status).toBe("rejected");
   expect(f.store.create).not.toHaveBeenCalled();
   expect(f.store.update).not.toHaveBeenCalled();
   expect(await f.execute("update_skill", { skillId: "abot-studio", expectedRevision: 1 }, body))

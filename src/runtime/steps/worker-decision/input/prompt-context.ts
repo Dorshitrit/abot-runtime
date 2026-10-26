@@ -5,12 +5,18 @@ import {
 } from "../../../context/request-context.js";
 import { buildSessionArtifactPathsMessage } from "../../../context/session-artifact-paths.js";
 import { resolveModelContextBudget } from "../../../model/model-context-budget.js";
+import { hasSuperContextContract } from "../../../context/super-context-policy.js";
 import type { WorkerCapabilityDescriptor } from "../../../orchestration/worker-capabilities/index.js";
 import {
   buildWorkerCapabilityExecutionInstructions,
   buildWorkerDecisionInstructions,
 } from "../prompt.js";
 import { WORKER_SESSION_ARTIFACT_PATH_PROJECTION_MAX } from "../runtime-path-refinement.js";
+import { buildWorkerEvidenceAssessmentMessage } from "../evidence-assessment.js";
+import {
+  buildWorkerEvidenceCapabilitySelectionInstructions,
+  WORKER_ACCEPTED_EVIDENCE_INSTRUCTION,
+} from "../evidence-stage-instructions.js";
 import { projectWorkerCapabilityExecutionGuidance } from "./execution-guidance.js";
 import type {
   PreparedWorkerDecisionSession,
@@ -58,7 +64,9 @@ export function prepareWorkerPromptContext(
         returnResultAvailable: allowedActions.includes("return_result"),
         returnFailureAvailable: allowedActions.includes("return_failure"),
       })
-    : buildWorkerDecisionInstructions({
+    : options.evidenceAssessment
+      ? buildWorkerEvidenceCapabilitySelectionInstructions()
+      : buildWorkerDecisionInstructions({
         capabilitiesAvailable,
         workingDirectoryAvailable: options.call.workingDirectory !== undefined,
         hasCapabilityResult: resume !== undefined,
@@ -71,6 +79,9 @@ export function prepareWorkerPromptContext(
       });
   const builtInInstructions = [
     baseInstructions,
+    ...(capabilityExecutionPending && options.evidenceAssessment
+      ? [WORKER_ACCEPTED_EVIDENCE_INSTRUCTION]
+      : []),
     ...(capabilityExecutionPending
       ? projectWorkerCapabilityExecutionGuidance({
           selectedCapabilityExecution,
@@ -115,40 +126,67 @@ export function projectWorkerDecisionContext(
     continuationMessages,
   } = references;
   const { budget, instructions, prompt } = promptContext;
-  const sessionArtifactPathProjection = buildSessionArtifactPathsMessage({
-    targets: eligibleSessionArtifactPaths,
-    availableTargetCount: sessionArtifactPathAvailableCount,
-    applicable: phaseAuthorsRuntimePathControl(
-      capabilities,
-      capabilityExecutionPending,
-    ),
-    maxTargets: WORKER_SESSION_ARTIFACT_PATH_PROJECTION_MAX,
-    fits: (message) =>
-      assessRequestMessagesBudget({
-        messages: [
-          { role: "system", content: instructions },
-          message,
-          ...baseReferenceMessages,
-          { role: "user", content: prompt },
-          ...continuationMessages,
-        ],
-        format,
-        budget,
-      }).fits,
-  });
+  const authority =
+    session.canonicalState.canonicalSource?.head.policy.authority;
+  const usesSharedEvidenceContext =
+    authority !== undefined &&
+    hasSuperContextContract(authority, "delegated.worker");
+  const sessionArtifactPathProjection = options.evidenceAssessment
+    ? undefined
+    : buildSessionArtifactPathsMessage({
+        targets: eligibleSessionArtifactPaths,
+        availableTargetCount: sessionArtifactPathAvailableCount,
+        applicable: usesSharedEvidenceContext
+          ? capabilities.some(
+              (capability) =>
+                (capability.runtimePathControlIds?.length ?? 0) > 0,
+            )
+          : phaseAuthorsRuntimePathControl(
+              capabilities,
+              capabilityExecutionPending,
+            ),
+        maxTargets: WORKER_SESSION_ARTIFACT_PATH_PROJECTION_MAX,
+        fits: (message) =>
+          assessRequestMessagesBudget({
+            messages: [
+              { role: "system", content: instructions },
+              message,
+              ...baseReferenceMessages,
+              { role: "user", content: prompt },
+              ...continuationMessages,
+            ],
+            format,
+            budget,
+          }).fits,
+      });
   const referenceMessages = Object.freeze([
     ...(sessionArtifactPathProjection
       ? [sessionArtifactPathProjection.message]
       : []),
-    ...baseReferenceMessages,
+    ...(options.evidenceAssessment
+      ? [
+          ...options.evidenceAssessment.contextMessages,
+          buildWorkerEvidenceAssessmentMessage(options.evidenceAssessment),
+        ]
+      : baseReferenceMessages),
   ]);
+  // Reuse original message objects so evidence provenance survives every phase.
+  const sharedContextMessages =
+    options.evidenceAssessment?.contextMessages ??
+    Object.freeze([
+      ...referenceMessages,
+      Object.freeze({ role: "user" as const, content: prompt }),
+      ...continuationMessages,
+    ].map((message) => Object.freeze(message)));
   const context = projectRequestContext({
     instructions,
     format,
     historyMessages: [],
     prompt,
     referenceMessages,
-    ...(continuationMessages.length > 0 ? { continuationMessages } : {}),
+    ...(!options.evidenceAssessment && continuationMessages.length > 0
+      ? { continuationMessages }
+      : {}),
     budget,
     diagnostic,
     ...(request.onEvent ? { onEvent: request.onEvent } : {}),
@@ -158,6 +196,7 @@ export function projectWorkerDecisionContext(
   return Object.freeze({
     sessionArtifactPathProjection,
     referenceMessages,
+    sharedContextMessages,
     context,
   });
 }
@@ -178,6 +217,13 @@ export function buildWorkerAssignmentPrompt(
     capabilityPromptPayload,
     capabilitySelectionRejection,
   } = session.contract;
+  if (options.evidenceAssessment && !capabilityExecutionPending) {
+    return JSON.stringify({
+      kind: "runtime_worker_capability_selection",
+      callId: callIdentity.callId,
+      ...(capabilitySelectionRejection ? { capabilitySelectionRejection } : {}),
+    });
+  }
   const identity = {
     callId: callIdentity.callId,
     parentCallId: callIdentity.parentCallId,

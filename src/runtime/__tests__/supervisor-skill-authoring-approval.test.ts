@@ -1,3 +1,4 @@
+import { workerEvidenceReply } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { createLocalRuntimeOwner } from "../local-host/app-owner.js";
 import type { LocalPendingToolApproval } from "../local-host/request-approval-contracts.js";
@@ -84,8 +85,8 @@ test.each(scenarios)("SUPER restores $label without selection, reads or reauthor
           expect(JSON.stringify(result)).toContain("knowledge_skill_revision_conflict");
         return { text: answer, meta: {} };
       }
-      if (input.modelStep === "worker.decision")
-        return { text: decision({ action: "return_result" }), meta: {} };
+      if (input.modelStep === "worker.evidence")
+        return workerEvidenceReply(input, false);
       if (input.modelStep === "worker.result")
         return { text: "The personal Skill request is ready for the root's authoring operation.", meta: {} };
       expect(input.modelStep).toBe("supervisor.decision");

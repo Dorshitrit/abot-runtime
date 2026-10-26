@@ -1,5 +1,6 @@
 import { expect, vi } from "vitest";
 import type { ModelGatewayClient } from "../../ports.js";
+import { workerEvidenceReply } from "./worker-evidence-script.js";
 import { withSupervisorPreparation } from "./supervisor-model-phases.js";
 
 export type ExecRequestPolicy = "execution-agent-v1" | "supervisor-worker-v1";
@@ -40,8 +41,7 @@ function delegatedDecision(turn: number) {
       capabilityId: "execute_command",
       intent: "Verify the project.",
     };
-  if (turn === 4) return { action: "return_result" };
-  expect(turn).toBe(5);
+  expect(turn).toBe(4);
   return { action: "respond" };
 }
 
@@ -51,6 +51,8 @@ export function createExecRequestScript(
 ) {
   let decisions = 0;
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
+    if (input.modelStep === "worker.evidence")
+      return workerEvidenceReply(input, decisions < 3);
     if (input.modelStep === "worker.result")
       return { text: EXEC_REQUEST_FINAL, meta: {} };
     if (input.modelStep === "execution.response")

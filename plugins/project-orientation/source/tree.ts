@@ -6,31 +6,35 @@ import type {
   RuntimePluginLoadContext,
 } from "../../../src/plugin-sdk/index.js";
 import { resolvePluginPath } from "../../../src/plugin-sdk/index.js";
-import { sanitizeJsonText } from "../../../src/plugin-sdk/index.js";
 
-import { throwIfProjectInspectionCancelled } from "./inspection-failure.js";
+import {
+  ProjectInspectionError,
+  throwIfProjectInspectionCancelled,
+} from "./inspection-failure.js";
 
 const IGNORED_NAMES = new Set([".git", "node_modules", "dist", "coverage"]);
-const DISPLAY_PATH_MAX_CHARS = 64;
+export const PROJECT_SCAN_ENTRY_LIMIT = 1_000;
 
-export type ProjectTree = Readonly<{
-  directories: readonly string[];
-  files: readonly string[];
-  entries: number;
-  truncated: boolean;
-  truncatedPathCount: number;
-  sampling: "bounded_directory_iteration";
+export type ProjectTreeEntry = Readonly<{
+  path: string;
+  kind: "directory" | "file";
+}>;
+
+export type ProjectTreeListing = Readonly<{
+  entries: readonly ProjectTreeEntry[];
+  scannedEntries: number;
 }>;
 
 function childLogicalPath(
   parent: ResolvedRuntimeToolPath,
   childName: string,
 ): string {
-  if (parent.logicalPath === ".") return childName;
-  return posix.join(parent.logicalPath, childName);
+  return parent.logicalPath === "."
+    ? childName
+    : posix.join(parent.logicalPath, childName);
 }
 
-function relativeDisplayPath(
+function relativeEntryPath(
   root: ResolvedRuntimeToolPath,
   child: ResolvedRuntimeToolPath,
 ): string {
@@ -42,91 +46,60 @@ function relativeDisplayPath(
     : child.logicalPath;
 }
 
-function boundedDisplayPath(path: string): Readonly<{
-  path: string;
-  truncated: boolean;
-}> {
-  const characters = [...sanitizeJsonText(path)];
-  if (characters.length <= DISPLAY_PATH_MAX_CHARS) {
-    return Object.freeze({ path, truncated: false });
-  }
-  const separator = "…";
-  const sideChars = Math.floor((DISPLAY_PATH_MAX_CHARS - separator.length) / 2);
-  return Object.freeze({
-    path: `${characters.slice(0, sideChars).join("")}${separator}${characters.slice(-sideChars).join("")}`,
-    truncated: true,
-  });
+function compareNames(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 export async function collectProjectTree(
   context: RuntimePluginLoadContext,
   root: ResolvedRuntimeToolPath,
   depth: number,
-  maxEntries: number,
   signal?: AbortSignal,
-): Promise<ProjectTree> {
-  const directories: string[] = [];
-  const files: string[] = [];
-  let entries = 0;
-  let truncated = false;
-  let truncatedPathCount = 0;
+): Promise<ProjectTreeListing> {
+  const entries: ProjectTreeEntry[] = [];
+  let scannedEntries = 0;
   const queue: Readonly<{
     target: ResolvedRuntimeToolPath;
     remainingDepth: number;
   }>[] = [{ target: root, remainingDepth: depth }];
 
-  while (queue.length > 0 && entries < maxEntries) {
+  while (queue.length > 0) {
     throwIfProjectInspectionCancelled(signal);
     const current = queue.shift();
     if (!current) break;
-    const sampled: Readonly<{ name: string; isDirectory: boolean }>[] = [];
+    const names: string[] = [];
     const directory = await opendir(current.target.absolutePath);
     for await (const entry of directory) {
       throwIfProjectInspectionCancelled(signal);
-      if (entry.isDirectory() && IGNORED_NAMES.has(entry.name)) continue;
-      if (entries + sampled.length >= maxEntries) {
-        truncated = true;
-        break;
+      scannedEntries += 1;
+      if (scannedEntries > PROJECT_SCAN_ENTRY_LIMIT) {
+        throw new ProjectInspectionError(
+          "project_scan_limit",
+          "Project inspection exceeds the 1000-entry scan limit. Use depth 0 or a narrower project path; no complete listing or continuation was produced.",
+        );
       }
-      sampled.push({ name: entry.name, isDirectory: entry.isDirectory() });
+      if (entry.isDirectory() && IGNORED_NAMES.has(entry.name)) continue;
+      names.push(entry.name);
     }
-    sampled.sort((left, right) => left.name.localeCompare(right.name));
-    for (const entry of sampled) {
+    names.sort(compareNames);
+    for (const name of names) {
       throwIfProjectInspectionCancelled(signal);
-      const child = resolvePluginPath(
-        context,
-        childLogicalPath(current.target, entry.name),
-        {
-          requirePath: true,
-          allowedLocations: ["agent_work", "workspace"],
-        },
-      );
+      const child = resolvePluginPath(context, childLogicalPath(current.target, name), {
+        requirePath: true,
+        allowedLocations: ["agent_work", "workspace"],
+      });
       const info = await stat(child.absolutePath);
-      const display = boundedDisplayPath(relativeDisplayPath(root, child));
-      if (display.truncated) truncatedPathCount += 1;
-      entries += 1;
+      const path = relativeEntryPath(root, child);
       if (info.isDirectory()) {
-        directories.push(display.path);
+        entries.push(Object.freeze({ path, kind: "directory" }));
         if (current.remainingDepth > 0) {
-          queue.push({
-            target: child,
-            remainingDepth: current.remainingDepth - 1,
-          });
+          queue.push({ target: child, remainingDepth: current.remainingDepth - 1 });
         }
       } else if (info.isFile()) {
-        files.push(display.path);
+        entries.push(Object.freeze({ path, kind: "file" }));
       }
     }
   }
-  if (queue.length > 0) truncated = true;
-  directories.sort((left, right) => left.localeCompare(right));
-  files.sort((left, right) => left.localeCompare(right));
-  return Object.freeze({
-    directories: Object.freeze(directories),
-    files: Object.freeze(files),
-    entries,
-    truncated,
-    truncatedPathCount,
-    sampling: "bounded_directory_iteration" as const,
-  });
+  throwIfProjectInspectionCancelled(signal);
+  return Object.freeze({ entries: Object.freeze(entries), scannedEntries });
 }

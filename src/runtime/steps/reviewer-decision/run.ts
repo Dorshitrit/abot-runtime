@@ -5,7 +5,7 @@ import {
 } from "../../model/invoke-structured-step.js";
 import { emitRuntimeStatus } from "../../events/runtime-status.js";
 import { classifyRuntimeErrorType } from "../../observability/error-type.js";
-import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
+import { createPolicyModelStepCompactionController } from "../../context/super-compaction/routing.js";
 import { buildCoreSkillReadContextMessages } from "../../context/core-skill-read-context.js";
 import { superCompactionFailureOwner } from "../../context/super-compaction-failure-owner.js";
 import type { RoleExecutor } from "../../orchestration/role-executors/index.js";
@@ -64,7 +64,7 @@ export async function runReviewerDecision(
       modelStep: input.modelStep,
       format: input.format,
       messages: input.context.messages,
-      contextCompaction: createModelStepCompactionController(request, {
+      contextCompaction: createPolicyModelStepCompactionController(request, {
         consumer: REVIEWER_DECISION_MODEL_STEP,
         call: options.call,
         superFailureOwner: superCompactionFailureOwner(
@@ -83,7 +83,7 @@ export async function runReviewerDecision(
         ),
         sourceRevision: options.snapshot.sourceRevision,
         allowedConsumers: Object.freeze([REVIEWER_DECISION_MODEL_STEP]),
-      }),
+      }, request.executionPolicy.authority),
       timeoutReason: "reviewer_decision_timeout",
       invalidOutputReason: "invalid_reviewer_decision",
       parse: (text) =>

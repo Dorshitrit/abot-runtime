@@ -215,16 +215,18 @@ export function resolveModelInvocation(
     ...(selectedInvocationProfile?.format
       ? { format: selectedInvocationProfile.format }
       : {}),
-    ...(calibration.instructions && !omitsCalibrationInstructions(requestBody.format)
+    ...(calibration.instructions && !omitsCalibrationInstructions(requestBody)
       ? { instructions: calibration.instructions }
       : {}),
   };
 }
 
-/** A caller-owned text contract may isolate itself from the selected slot's prose. */
-function omitsCalibrationInstructions(format: unknown): boolean {
+/** An explicit caller-owned contract may isolate itself from the selected slot's prose. */
+function omitsCalibrationInstructions(request: Pick<ModelGatewayRequest, "format" | "modelStep">): boolean {
+  const format = request.format;
   if (!format || typeof format !== "object" || Array.isArray(format)) return false;
   const requested = format as Record<string, unknown>;
-  if (requested.type !== "text") return false;
+  const callerOwnsCompactionSchema = requested.type === "json_schema" && request.modelStep === "context.compact";
+  if (requested.type !== "text" && !callerOwnsCompactionSchema) return false;
   return requested.calibrationInstructions === "omit";
 }

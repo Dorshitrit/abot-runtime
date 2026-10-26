@@ -1,3 +1,4 @@
+import { readExecutionChildResultEvidence, type ExecutionChildResultReference } from "./support/execution-child-result-evidence.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -20,11 +21,7 @@ const STATE_KIND = "runtime_execution_state_v1";
 type AuditAssignment = { auditId: string };
 type RootAuditState = {
   auditAvailability: { workFingerprint: string };
-  completedSubordinateResults: readonly {
-    roleId: string;
-    outcome: string;
-    summary: string;
-  }[];
+  completedSubordinateResults: readonly ExecutionChildResultReference[];
 };
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
@@ -62,7 +59,7 @@ test("closes the work snapshot when selected exact proof exceeds the Auditor con
       expect(JSON.stringify(input.format)).not.toContain('"invoke_auditor"');
       expect(JSON.stringify(input.format)).toContain('"respond"');
       expect(state.completedSubordinateResults[0]!.outcome).toBe("failed");
-      const returned = state.completedSubordinateResults[0]!;
+      const returned = readExecutionChildResultEvidence(input)[0]!;
       expect(returned.roleId).toBe("reviewer");
       const receipt = JSON.parse(returned.summary) as Record<string, unknown>;
       expect(receipt.kind).toBe("runtime_execution_agent_auditor_advisory_v1");

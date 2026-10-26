@@ -17,6 +17,7 @@ import type {
   ToolModuleRequestPreparation,
 } from "../capabilities/tool-types.js";
 import type { ToolNormalInvocationContract } from "../capabilities/normal-invocation/contracts.js";
+export type { ToolExecutionAuthority, ToolExecutionBinding, ToolExecutionBindingContext } from "../capabilities/tool-execution-binding.js";
 
 export type RuntimePluginLoadContext = {
   id: string;

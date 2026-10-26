@@ -4,6 +4,7 @@ import type { AutomationDraftRecord } from "../../automations/storage-records.js
 import type { ToolRegistry } from "../../ports.js";
 import type { createSchedulerRuntimeFixture } from "./scheduler-runtime-fixture.js";
 import { withSupervisorPreparation } from "./supervisor-model-phases.js";
+import { workerEvidenceReply } from "./worker-evidence-script.js";
 
 type Fixture = Awaited<ReturnType<typeof createSchedulerRuntimeFixture>>;
 type Studio = NonNullable<Fixture["application"]["services"]["automations"]>;
@@ -38,7 +39,7 @@ export function probeTools(effect: "read_only" | "mutating" = "read_only") {
 export function scriptToolUsingAgent(fixture: Fixture, policy: Policy) {
   let executionDecisions = 0;
   let supervisorDecisions = 0;
-  let workerDecisions = 0;
+  let workerAssessments = 0;
   fixture.invoke.mockImplementation(withSupervisorPreparation(async (input) => {
     if (input.modelStep === "execution.decision") {
       const action = [
@@ -60,13 +61,11 @@ export function scriptToolUsingAgent(fixture: Fixture, policy: Policy) {
         : { action: "respond" };
       return { text: JSON.stringify({ decision: action }), meta: {} };
     }
-    if (input.modelStep === "worker.decision") {
-      const action = workerDecisions++ % 2 === 0
-        ? { action: "invoke_capability", capabilityId: operation.operationId,
-          intent: "Observe the fixture." }
-        : { action: "return_result" };
-      return { text: JSON.stringify({ decision: action }), meta: {} };
-    }
+    if (input.modelStep === "worker.evidence")
+      return workerEvidenceReply(input, workerAssessments++ % 2 === 0);
+    if (input.modelStep === "worker.decision")
+      return { text: JSON.stringify({ decision: { action: "invoke_capability",
+        capabilityId: operation.operationId, intent: "Observe the fixture." } }), meta: {} };
     if (input.modelStep === "capability.controls")
       return { text: JSON.stringify({ decision: { action: "invoke_capability", controls: {} } }), meta: {} };
     if (input.modelStep === "worker.result")

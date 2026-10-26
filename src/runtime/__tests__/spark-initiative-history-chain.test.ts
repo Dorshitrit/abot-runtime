@@ -98,7 +98,7 @@ test.each([true, false])("ordinary initiative history preserves the complete del
       expect(JSON.stringify(messages)).not.toContain(session.messages[0]!.initiative!.handoffBrief);
     }
     expect(rootSteps).toEqual(["supervisor.decision", "supervisor.decision", "supervisor.decision", "supervisor.response"]);
-    expect(childSteps).toEqual(expect.arrayContaining(["planner.decision", "worker.decision", "worker.result", "reviewer.decision", "capability.controls"]));
+    expect(childSteps).toEqual(expect.arrayContaining(["planner.decision", "worker.evidence", "worker.decision", "worker.result", "reviewer.decision", "capability.controls"]));
     expect(fixture.executeHostOperation).toHaveBeenCalledTimes(2);
     expect(seed.toolApprovalController!.requestToolApproval).toHaveBeenCalledTimes(2);
     expect(seed.onAnswerToken).toHaveBeenCalledExactlyOnceWith(finalDispatchReport);

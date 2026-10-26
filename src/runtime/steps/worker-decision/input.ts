@@ -1,4 +1,4 @@
-import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
+import type { ChatMessage, ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
 import type { RoleCallDependencyResult } from "../../orchestration/role-calls/index.js";
 import type { WorkerCapabilityDescriptor } from "../../orchestration/worker-capabilities/index.js";
@@ -39,6 +39,7 @@ export function buildWorkerDecisionInput(
   options: WorkerDecisionInputOptions,
 ): {
   context: RequestContextProjection;
+  sharedContextMessages: readonly ChatMessage[];
   format: ModelGatewayJsonSchemaFormat;
   modelStep:
     | typeof WORKER_DECISION_MODEL_STEP
@@ -78,6 +79,7 @@ function projectBuiltWorkerDecisionInput(
   } = session.contract;
   return {
     context: assembly.projection.context,
+    sharedContextMessages: assembly.projection.sharedContextMessages,
     format,
     modelStep: diagnostic.modelStep,
     diagnostic,

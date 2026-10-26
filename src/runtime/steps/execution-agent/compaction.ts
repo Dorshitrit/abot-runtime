@@ -49,6 +49,7 @@ export function createExecutionAgentCompactionController(
   });
   return createModelStepCompactionController(request, {
     call,
+    supportsProjectionRepair: true,
     sourceRevision: options.head.revision,
     resultSourceOverrides: options.head.state.capabilityExecutions
       .filter(function isSettledExecutionOfCall(execution) {

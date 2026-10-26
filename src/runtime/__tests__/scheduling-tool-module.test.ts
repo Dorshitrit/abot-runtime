@@ -115,7 +115,14 @@ function createFixture() {
     },
   };
   const module = createSchedulingToolModule(service, config, ready);
-  return { config, job, run, service, ready, context, module };
+  const authorize = async (action: string) => {
+    const binding = await module.adapter!.executionBinding!({ tool: "schedules", params: { action, jobId: job.id } },
+      { toolPermissionMode: "ask", sessionId: job.sessionId });
+    context.executionAuthority = { toolPermissionMode: "ask", executionIdentity: binding.identity };
+    service.get.mockClear();
+    ready.mockClear();
+  };
+  return { config, job, run, service, ready, context, module, authorize };
 }
 
 const createParams = {
@@ -305,7 +312,8 @@ describe("native scheduling tool binding", () => {
   test.each(["pause", "resume", "cancel", "run_now"])(
     "dispatches %s only after checking the owned Job",
     async (action) => {
-      const { module, service, context } = createFixture();
+      const { module, service, context, authorize } = createFixture();
+      await authorize(action);
       const result = await module.implementation(
         { action, jobId: "job" },
         context,
@@ -316,13 +324,14 @@ describe("native scheduling tool binding", () => {
         action === "run_now"
           ? service.runNow
           : service[action as "pause" | "resume" | "cancel"];
-      expect(method).toHaveBeenCalledExactlyOnceWith("job");
+      expect(method).toHaveBeenCalledExactlyOnceWith("job", { sessionId: "current-session", expectedRevision: 1 });
       expect(result.data?.mutationEvidence).toBe(true);
     },
   );
 
   test("edits supplied Job settings, clears old model bindings and cannot alter session or FULL permissions", async () => {
-    const { module, service, context } = createFixture();
+    const { module, service, context, authorize } = createFixture();
+    await authorize("update");
     const result = await module.implementation(
       {
         action: "update",
@@ -341,7 +350,7 @@ describe("native scheduling tool binding", () => {
       modelProfileId: "default",
       reasoningPreference: null,
       agentMode: "fast",
-    });
+    }, { sessionId: "current-session", expectedRevision: 1 });
   });
 
   test.each([
@@ -350,7 +359,8 @@ describe("native scheduling tool binding", () => {
   ])(
     "rejects an unavailable model before updating any Job field: $modelProfileId, override=$overrideClientPreference",
     async ({ modelProfileId, overrideClientPreference }) => {
-      const { module, service, context, config } = createFixture();
+      const { module, service, context, config, authorize } = createFixture();
+      await authorize("update");
       config.models!.defaults!.overrideClientPreference =
         overrideClientPreference;
       const result = await module.implementation(
@@ -377,7 +387,8 @@ describe("native scheduling tool binding", () => {
   ])(
     "retains the saved time zone and model when editing $label",
     async ({ patch }) => {
-      const { module, service, context } = createFixture();
+      const { module, service, context, authorize } = createFixture();
+      await authorize("update");
       const result = await module.implementation(
         { action: "update", jobId: "job", ...patch },
         context,
