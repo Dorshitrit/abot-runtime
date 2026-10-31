@@ -1,3 +1,4 @@
+import { applyProviderTokenEstimationDefaults } from "./provider-token-estimation.js";
 import type {
   ModelContextConfig,
   ModelGatewayProfileCapabilities,
@@ -43,7 +44,10 @@ function normalizeConfiguredProfile(
     declaredContextWindowTokens,
     providerAllocatedContextWindowTokens ?? declaredContextWindowTokens,
   );
-  const context = mergeContextConfig(policy?.defaults?.context, config.context);
+  const context = applyProviderTokenEstimationDefaults(
+    providerConfig.type,
+    mergeContextConfig(policy?.defaults?.context, config.context),
+  );
   const generation = mergeGenerationConfig(config.generation);
   const capabilities = mergeProfileCapabilities(config.capabilities);
   return {

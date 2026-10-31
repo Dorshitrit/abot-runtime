@@ -8,6 +8,7 @@ import {
   type RequestMessagesBudgetAssessment,
 } from "../context/request-context-budget.js";
 import type {
+  ContextCompactionProjectionRepair,
   ModelStepCompactionStage,
   ModelStepContextCompactionController,
   ModelStepContextCompactionPreparation,
@@ -20,6 +21,7 @@ import {
 } from "./context-compaction-diagnostics.js";
 import { isCompactionSteeringSuperseded } from "./model-step-steering.js";
 import { ModelStepTimeoutError } from "../steps/model-step-timeout.js";
+import { awaitModelStepWork } from "./model-step-acceptance.js";
 import {
   prepareProjectionRepair,
   resolveProjectionRepairReason,
@@ -60,7 +62,9 @@ export function hasReducedProjection(
 export function isCompactedEnvelopeAdmissible(
   candidate: RequestMessagesBudgetAssessment,
   original: RequestMessagesBudgetAssessment,
+  targetInputTokens?: number,
 ): boolean {
+  if (!fitsCompactionTarget(candidate, targetInputTokens)) return false;
   if (!candidate.fits) return false;
   if (requiresContextCompaction(true, candidate)) return false;
   return hasReducedProjection(candidate, original);
@@ -71,7 +75,9 @@ function canAdmitPreparedCompactedContext(
   original: RequestMessagesBudgetAssessment,
   retained: readonly RetainedStage[],
   plannedStageCount: number,
+  targetInputTokens?: number,
 ): boolean {
+  if (!fitsCompactionTarget(candidate.assessment, targetInputTokens)) return false;
   if (isCompactedEnvelopeAdmissible(candidate.assessment, original))
     return true;
   if (!candidate.assessment.fits) return false;
@@ -82,6 +88,11 @@ function canAdmitPreparedCompactedContext(
   return retained.every(
     ({ preparation }) => preparation.hasExhaustedCompactionSources === true,
   );
+}
+
+function fitsCompactionTarget(assessment: RequestMessagesBudgetAssessment, target: number | undefined): boolean {
+  if (target === undefined) return true;
+  return resolveRequestBudgetInputTokens(assessment.budget) <= target;
 }
 
 function canAdmitReusedCompactedContext(
@@ -114,6 +125,7 @@ export async function admitCompactedContext(
       abortSignal: AbortSignal;
       identity: ContextCompactionIdentity;
       onEvent?: (name: string, extra?: Record<string, unknown>) => void;
+      providerOverflowRepair?: ContextCompactionProjectionRepair;
     }>,
 ): Promise<CompactionEnvelope> {
   params.assertCurrent();
@@ -124,6 +136,7 @@ export async function admitCompactedContext(
     params.assessment,
     stages[0]?.compactionScope,
     params.onEvent,
+    params.providerOverflowRepair ? "provider_context_overflow" : undefined,
   );
   let current: CompactionEnvelope = params;
   const retained: RetainedStage[] = [];
@@ -146,7 +159,7 @@ export async function admitCompactedContext(
       params.assertCurrent();
       current = { messages: optionalProjection, assessment };
     }
-    if (isCompactedEnvelopeAdmissible(current.assessment, params.assessment)) {
+    if (isCompactedEnvelopeAdmissible(current.assessment, params.assessment, params.providerOverflowRepair?.targetInputTokens)) {
       diagnostics.trace("admitted", {
         outcome: "admitted",
         reason: "optional_context_removed_within_budget",
@@ -159,7 +172,7 @@ export async function admitCompactedContext(
       return current;
     }
     if (
-      canAdmitReusedCompactedContext(
+      !params.providerOverflowRepair && canAdmitReusedCompactedContext(
         current.assessment,
         params.controller,
         current.messages,
@@ -188,7 +201,17 @@ export async function admitCompactedContext(
       activeStage = stage;
       params.assertNotAborted();
       const onProgress = diagnostics.observePreparation(stage, 1);
-      const outcome = await stage.prepare(current.messages, { onProgress });
+      const prepare = () => stage.prepare(current.messages, {
+        onProgress,
+        ...(params.providerOverflowRepair ? {
+          projectionRepair: params.providerOverflowRepair,
+          recompactFromSources: true as const,
+          abortSignal: params.abortSignal,
+        } : {}),
+      });
+      const outcome = params.providerOverflowRepair
+        ? await awaitModelStepWork(prepare, params.abortSignal)
+        : await prepare();
       params.assertNotAborted();
       const stageMetadata = {
         stageIndex,
@@ -227,6 +250,7 @@ export async function admitCompactedContext(
         coveredSourceCount: prepared.coveredSourceCount,
       };
       const repairReason = resolveProjectionRepairReason({
+        providerOverflowRecovery: params.providerOverflowRepair !== undefined,
         stage,
         projectionReduced: hasReducedProjection(candidate, current.assessment),
         candidateFits: candidate.fits,
@@ -282,6 +306,7 @@ export async function admitCompactedContext(
           params.assessment,
           retained,
           stages.length,
+          params.providerOverflowRepair?.targetInputTokens,
         )
       )
         break;
@@ -293,6 +318,7 @@ export async function admitCompactedContext(
         params.assessment,
         retained,
         stages.length,
+        params.providerOverflowRepair?.targetInputTokens,
       )
     ) {
       diagnostics.trace("exhausted", {

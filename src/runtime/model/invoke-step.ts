@@ -26,11 +26,12 @@ import {
   projectModelStepTimeoutEvent,
   type ModelStepTimeoutIdentity,
 } from "./model-step-timeout-event.js";
-import { projectPromptCacheBoundary } from "./prompt-cache-boundary.js";
+import { ModelStepAttempt } from "./model-step-provider-attempt.js";
+import { withModelInvocationAbort } from "./scoped-model-abort.js";
+import { ProviderContextRecovery, createProviderContextRecoveryPreparation } from "./provider-context-recovery.js";
 import { createModelContextAssessment } from "./model-context-assessment.js";
 import { admitOptionalModelContext } from "./optional-context-admission.js";
 import {
-  invokeModelProvider,
   projectModelProviderFailureDiagnostics,
 } from "./provider-failure.js";
 import {
@@ -109,7 +110,7 @@ export class RequestModelStepInvoker implements RequestModelStepPort {
       resolveModelInvocationStep(params.modelStep)?.role === "supervisor";
 
     return new ModelStepInvocation({
-      request: this.request,
+      request: withModelInvocationAbort(this.request, params.abortSignal),
       params,
       configuredTimeoutMs: config.timeoutMs,
       timeout,
@@ -152,6 +153,7 @@ type ModelStepInvocationConstructor<T> = Readonly<{
 class ModelStepInvocation<T> {
   private thinkingText = "";
   private supersededAttemptCount = 0;
+  private readonly contextRecovery = new ProviderContextRecovery();
 
   constructor(private readonly input: ModelStepInvocationConstructor<T>) {}
 
@@ -446,6 +448,19 @@ class ModelStepInvocation<T> {
       ...(this.input.onContextEvent
         ? { onContextEvent: this.input.onContextEvent }
         : {}),
+      contextRecovery: this.contextRecovery,
+      ...(contextCompaction ? {
+        recoverContext: createProviderContextRecoveryPreparation({
+          request, params, admission, messages, assessment, controller: contextCompaction,
+          assertCurrent,
+          identity: {
+            requestId: request.requestId, invocationId, modelStep: params.modelStep,
+            profileId: admission.invocation.profile.id, provider: admission.invocation.profile.provider,
+            model: admission.invocation.model,
+          },
+          onEvent: this.input.onContextEvent,
+        }),
+      } : {}),
       onThinking: (delta) => this.recordThinkingDelta(delta),
     });
   }
@@ -557,90 +572,6 @@ class ModelStepInvocation<T> {
   }
 }
 
-type ModelStepAttemptConstructor<T> = Readonly<{
-  request: RequestModelInvocationView;
-  params: ModelStepInvocationInput<T>;
-  messages: ChatMessage[];
-  steeringSnapshot: RequestSteeringSnapshot;
-  identity: ModelStepTimeoutIdentity;
-  stepAbort: ReturnType<typeof createModelStepAbort>;
-  onThinking: (delta: string) => void;
-  onContextEvent?: (name: string, extra?: Record<string, unknown>) => void;
-}>;
-
-/** Owns one provider attempt and its disposable child abort scope. */
-class ModelStepAttempt {
-  readonly steeringSnapshot: RequestSteeringSnapshot;
-  readonly identity: ModelStepTimeoutIdentity;
-
-  constructor(private readonly input: ModelStepAttemptConstructor<unknown>) {
-    this.steeringSnapshot = input.steeringSnapshot;
-    this.identity = input.identity;
-  }
-
-  get signal(): AbortSignal {
-    return this.input.stepAbort.signal;
-  }
-
-  invokeProvider() {
-    const { request, params } = this.input;
-    return invokeModelProvider(params.modelStep, () =>
-      request.modelGatewayClient.invoke({
-        messages: this.input.messages,
-        ...projectPromptCacheBoundary({ messages: this.input.messages, beforeMessage: params.promptCacheBoundaryBeforeMessage }),
-        agentMode: request.agentMode,
-        modelStep: params.modelStep,
-        ...(request.reasoningPreference ? { reasoningPreference: request.reasoningPreference } : {}),
-      ...(request.modelPreference
-          ? { modelPreference: request.modelPreference }
-          : {}),
-        ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),
-        abortSignal: this.input.stepAbort.signal,
-        debugRequestId: request.requestId,
-        ...(params.format === undefined ? {} : { format: params.format }),
-        onThinking: this.input.onThinking,
-      }),
-    );
-  }
-
-  recordOutputReceived(outputDiagnostics: ModelStepOutputDiagnostics): void {
-    traceDebug("runtime.model", "step.output_received", {
-      requestId: this.input.request.requestId,
-      modelStep: this.input.params.modelStep,
-      steeringVersion: this.steeringSnapshot.version,
-      ...outputDiagnostics,
-    });
-    if (
-      outputDiagnostics.providerInputTokens !== undefined ||
-      outputDiagnostics.providerOutputTokens !== undefined ||
-      outputDiagnostics.providerTotalTokens !== undefined
-    ) {
-      this.input.onContextEvent?.("context.window.provider_usage", {
-        stage: "context_window",
-        phase: "provider_completed",
-        requestId: this.input.request.requestId,
-        invocationId: this.identity.invocationId,
-        modelStep: this.input.params.modelStep,
-        profileId: this.identity.profileId,
-        measurement: "actual",
-        source: "provider_reported",
-        ...(outputDiagnostics.providerInputTokens !== undefined
-          ? { inputTokens: outputDiagnostics.providerInputTokens }
-          : {}),
-        ...(outputDiagnostics.providerOutputTokens !== undefined
-          ? { outputTokens: outputDiagnostics.providerOutputTokens }
-          : {}),
-        ...(outputDiagnostics.providerTotalTokens !== undefined
-          ? { totalTokens: outputDiagnostics.providerTotalTokens }
-          : {}),
-      });
-    }
-  }
-
-  dispose(): void {
-    this.input.stepAbort.dispose();
-  }
-}
 
 function projectOutputDiagnostics(
   text: string,

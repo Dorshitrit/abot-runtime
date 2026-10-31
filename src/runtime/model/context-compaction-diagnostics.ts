@@ -30,6 +30,7 @@ export class ContextCompactionDiagnostics {
       name: string,
       extra?: Record<string, unknown>,
     ) => void,
+    private readonly reason = "context_window_threshold",
   ) {}
 
   start(): void {
@@ -38,7 +39,7 @@ export class ContextCompactionDiagnostics {
       ...this.base(),
       stage: "context_compaction",
       phase: "started",
-      reason: "context_window_threshold",
+      reason: this.reason,
       compactionScope: this.firstScope,
     });
   }
@@ -88,7 +89,7 @@ export class ContextCompactionDiagnostics {
       ...this.base(),
       stage: "context_compaction",
       phase: "completed",
-      reason: "context_window_threshold",
+      reason: this.reason,
       compactionScope: firstCommitted.compactionScope,
       scopeId: firstCommitted.preparation.scopeId,
       sourceRevision: firstCommitted.preparation.sourceRevision,

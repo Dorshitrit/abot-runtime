@@ -76,9 +76,19 @@ developer messages in their original positions; existing forced function schemas
 are supplied using `additional_tools`. No credentials enter model context.
 
 The ChatGPT adapter advertises neither embeddings nor exact provider input-token
-counting. It uses the existing input-size estimator and the explicitly configured
-context capacity. Configure embeddings separately if needed. Custom API origins,
+counting. It uses provider-specific input estimates and the explicitly configured
+context capacity and reserves. Explicit estimation overrides remain supported;
+estimated counts are not exact provider measurements. Configure embeddings
+separately if needed. Custom API origins,
 API-key overrides and unsupported SIWC request fields are not forwarded.
+
+A structured context-capacity rejection can trigger one additional compaction
+cycle before the model decision is accepted. Eligible evidence is rebuilt from
+its original sources and must satisfy a smaller input target within the existing
+budget before retrying. The retry shares the original attempt's deadline and
+cancellation; completed tools are not repeated. Exact-retention steps and the
+compactor itself are excluded. Other errors and an unsuccessful recovery retain
+their failure behavior. This recovery applies only to the ChatGPT connection.
 
 ## Official references
 

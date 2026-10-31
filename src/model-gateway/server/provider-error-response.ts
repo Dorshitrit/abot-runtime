@@ -1,3 +1,4 @@
+import { PROVIDER_CONTEXT_OVERFLOW_HEADER, readProviderContextOverflow } from "../protocol/provider-context-overflow.js";
 import { permitsModelContentTrace } from "../observability/content-trace-policy.js";
 import {
   encodeProviderUserError,
@@ -18,5 +19,7 @@ export function sendProviderError(
     const header = encodeProviderUserError(result.presentation);
     if (header) response.setHeader(PROVIDER_USER_ERROR_HEADER, header);
   }
+  const contextOverflow = readProviderContextOverflow(result.contextOverflow);
+  if (contextOverflow) response.setHeader(PROVIDER_CONTEXT_OVERFLOW_HEADER, contextOverflow);
   sendText(response, result.statusCode, result.message);
 }

@@ -1,3 +1,5 @@
+import { readOpenAIStreamContextOverflow } from "./context-overflow.js";
+import type { ProviderContextOverflow } from "../../protocol/provider-context-overflow.js";
 import { readOpenAIFunctionResult } from "./function-result.js";
 import { isOpenAIRefusalEvent } from "./refusal.js";
 import { OpenAICompletedFunctionItems } from "./completed-function-items.js";
@@ -16,6 +18,7 @@ export type OpenAIResponsesStreamOptions = Readonly<{
   structuredOutput?: boolean;
   requireCompletedResponse?: boolean;
   assembleCompletedFunctionItems?: boolean;
+  contextOverflowRecovery?: true;
   functionOutputName?: string;
   onMessageOutputDiagnostic?: (
     diagnostic: OpenAIMessageOutputNormalizationDiagnostic,
@@ -30,7 +33,7 @@ export type NormalizedOpenAIStreamEvent =
       usage?: ModelTokenUsage;
       doneReason?: string;
     }
-  | { type: "error"; error: string };
+  | { type: "error"; error: string; contextOverflow?: ProviderContextOverflow };
 
 function readRecord(value: unknown): Record<string, unknown> {
   const isRecord =
@@ -114,7 +117,7 @@ export class OpenAIResponsesStreamNormalizer {
     this.completedFunctionItems?.observe(event);
     const isFailedResponse = event.type === "response.failed";
     if (isFailedResponse) {
-      return this.fail(readOpenAIError(event.response));
+      return this.fail(readOpenAIError(event.response), readOpenAIStreamContextOverflow(event, this.options.contextOverflowRecovery));
     }
     if (isOpenAIRefusalEvent(event)) {
       return this.fail("openai response refused");
@@ -132,8 +135,7 @@ export class OpenAIResponsesStreamNormalizer {
       return this.consumeIncompleteResponse(data);
     }
     if (event.type === "error") {
-      this.terminal = true;
-      return [{ type: "error", error: readOpenAIError(data) }];
+      return this.fail(readOpenAIError(data), readOpenAIStreamContextOverflow(event, this.options.contextOverflowRecovery));
     }
     return [];
   }
@@ -192,9 +194,9 @@ export class OpenAIResponsesStreamNormalizer {
     return contentEvents([...pending, ...result.text]);
   }
 
-  private fail(error: string): NormalizedOpenAIStreamEvent[] {
+  private fail(error: string, contextOverflow?: ProviderContextOverflow): NormalizedOpenAIStreamEvent[] {
     this.terminal = true;
-    return [{ type: "error", error }];
+    return [{ type: "error", error, ...(contextOverflow ? { contextOverflow } : {}) }];
   }
 
   private finishFunctionOutput(response: unknown, name: string): NormalizedOpenAIStreamEvent[] {

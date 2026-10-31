@@ -1,3 +1,4 @@
+import type { ProviderContextOverflow } from "./protocol/provider-context-overflow.js";
 import type { ModelReasoningBudgetByMode } from "../shared/model-reasoning-modes.js";
 export type { ModelReasoningBudgetByMode } from "../shared/model-reasoning-modes.js";
 import type { ModelReasoningBudget, ModelReasoningPreference } from "../shared/model-reasoning.js";
@@ -296,7 +297,7 @@ export type ResolvedModelInvocation = {
 export type ModelGatewayEvent =
   | { type: "thinking"; text: string }
   | { type: "content"; text: string }
-  | { type: "error"; error: string }
+  | { type: "error"; error: string; contextOverflow?: ProviderContextOverflow }
   | {
       type: "done";
       done: true;

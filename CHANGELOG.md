@@ -4,6 +4,21 @@ All notable changes to this project should be documented in this file.
 
 This project follows semantic versioning after the first public release.
 
+## 2.2.1 - 2026-10-31
+
+### Fixed
+
+- Continue with ChatGPT now uses provider-specific input estimates, avoiding
+  unnecessary compaction and rejection of fresh requests that fit the configured
+  context window. Explicit estimation settings, context limits and reserves are
+  preserved; estimates remain distinct from provider-reported token usage.
+- A structured ChatGPT context-capacity rejection can trigger one additional
+  compaction cycle and retry the same model call before accepting a decision.
+  Recovery rebuilds eligible evidence from its original sources, requires a
+  smaller input within budget, and preserves cancellation and the original
+  attempt deadline. Completed tools are not executed again. Other providers
+  retain their existing admission and failure behavior.
+
 ## 2.2.0 - 2026-10-30
 
 ABot 2.2.0 adds Continue with ChatGPT, expands Resources and introduces Git

@@ -1,3 +1,4 @@
+import { PROVIDER_CONTEXT_OVERFLOW_HEADER, providerContextOverflowCause } from "../protocol/provider-context-overflow.js";
 import { fetchModelGatewayResponse } from "./invocation-error.js";
 import { attachModelGatewayHttpUserMessage } from "./user-message.js";
 import { PROVIDER_USER_ERROR_HEADER } from "../protocol/provider-user-error.js";
@@ -85,6 +86,7 @@ export async function invokeRawModelGatewayWithOptions(
     });
     throw attachModelGatewayHttpUserMessage(new Error(
       `bridge_raw_failed:${response.status}:${toolMediaSafeMessage(errorText || "empty error body", params.prompt)}`,
+      providerContextOverflowCause(response.headers.get(PROVIDER_CONTEXT_OVERFLOW_HEADER)),
     ), response.status, response.headers.get(PROVIDER_USER_ERROR_HEADER), permitsModelContentTrace(modelStep, params.prompt));
   }
 

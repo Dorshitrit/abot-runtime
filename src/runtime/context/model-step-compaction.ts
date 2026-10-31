@@ -3,6 +3,8 @@ import { readInheritedCompactionCheckpoint } from "./model-step-compaction-inher
 import { createResultSourceOverrideMap } from "./model-step-compaction-projection.js";
 import { resolveSuperDependencyObservationCompaction } from "./super-dependency-observation-compaction.js";
 import { createVerifiedCompactionProjection } from "./verified-compaction-projection.js";
+import { resolveModelStepCompactionGenerationSources } from "./model-step-recompaction-sources.js";
+import { withModelAbortSignal } from "../model/scoped-model-abort.js";
 import { readOperationSupervisionEvidenceBinding } from "./operation-supervision-evidence-binding.js";
 import { projectOperationSupervisionEvidenceClosure } from "./operation-supervision-evidence-projection.js";
 import { superWorkerCompactionFailureOwner } from "./super-worker-compaction-failure.js";
@@ -201,15 +203,21 @@ export function createModelStepCompactionController(
             return false;
           }),
       );
-      const hasNewCompactionSources = newSources.length > 0;
-      if (!hasNewCompactionSources) {
+      const generationSources = withSuperCompactionFailure(failureOwner, () =>
+        resolveModelStepCompactionGenerationSources({
+          store, previous, inherited, newSources,
+          recompactFromSources: context?.recompactFromSources,
+        }),
+      );
+      const hasCompactionSources = generationSources.sources.length > 0;
+      if (!hasCompactionSources) {
         return Object.freeze({
           kind: "unavailable",
           reason: evidence ? "no_new_sources" : "no_eligible_sources",
         });
       }
       const candidate = await generateCandidate({
-        request,
+        request: withModelAbortSignal(request, context?.abortSignal),
         scopeId,
         binding,
         sourceRevision: options.sourceRevision,
@@ -218,11 +226,7 @@ export function createModelStepCompactionController(
         projectionRepair: context?.projectionRepair,
         onProgress: context?.onProgress,
         consumer: options.consumer,
-        ...(previous ? { previous } : {}),
-        ...(!previous && inherited
-          ? { inheritedSourceDigests: inherited.sourceDigests }
-          : {}),
-        sources: newSources,
+        ...generationSources,
         ...(sidecar || failureOwner
           ? { registrationMode: "atomic" as const }
           : {}),

@@ -12,6 +12,7 @@ export function createModelContextAssessment(input: {
   params: Pick<ModelStepInvocationInput<unknown>, "modelStep" | "format" | "promptCacheBoundaryBeforeMessage">;
   admission: ResolvedModelContextAdmission;
   assertCurrent(): void;
+  abortSignal?: AbortSignal;
 }) {
   const { request, params, admission, assertCurrent } = input;
   const calibrationInstructions = (admission.invocation.instructions ?? [])
@@ -36,6 +37,7 @@ export function createModelContextAssessment(input: {
       invocation: admission.invocation,
       modelStep: params.modelStep,
       messages: projected,
+      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
       ...(params.promptCacheBoundaryBeforeMessage
         ? { promptCacheBoundaryBeforeMessage: params.promptCacheBoundaryBeforeMessage } : {}),
       ...(params.format !== undefined ? { format: params.format } : {}),

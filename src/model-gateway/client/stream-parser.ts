@@ -1,3 +1,4 @@
+import { providerContextOverflowCause } from "../protocol/provider-context-overflow.js";
 import type { ModelTokenUsage } from "../types.js";
 import { normalizeModelTokenUsage } from "../protocol/usage.js";
 import { ModelGatewayInvocationError } from "./invocation-error.js";
@@ -28,6 +29,7 @@ type ParsedStreamEvent = {
   delta?: unknown;
   data?: unknown;
   error?: unknown;
+  contextOverflow?: unknown;
   message?: unknown;
   usage?: unknown;
   doneReason?: unknown;
@@ -109,6 +111,7 @@ function throwStreamError(
   throw new ModelGatewayInvocationError(
     "stream",
     `model_stream_error: ${errorText}`,
+    providerContextOverflowCause(message.contextOverflow),
   );
 }
 

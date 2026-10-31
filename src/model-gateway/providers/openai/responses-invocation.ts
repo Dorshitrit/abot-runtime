@@ -1,3 +1,4 @@
+import { readOpenAIHttpContextOverflow } from "./context-overflow.js";
 import { fetchProviderWithTrace } from "../../model-io-trace.js";
 import { toolMediaSafeError, toolMediaSafeEvent, toolMediaSafeMessage } from "../../observability/tool-media-privacy.js";
 import type { ModelProviderInvocationParams, ModelProviderInvocationResult } from "../contracts.js";
@@ -24,12 +25,14 @@ export async function invokeOpenAIResponses(
     payload: Record<string, unknown>;
     requireCompletedResponse?: boolean;
     assembleCompletedFunctionItems?: boolean;
+    contextOverflowRecovery?: true;
   }>,
 ): Promise<ModelProviderInvocationResult> {
   const { payload } = options;
   const functionOutputName = resolveOpenAIFunctionOutputName(payload);
   const completionOptions = {
     functionOutputName,
+    ...(options.contextOverflowRecovery ? { contextOverflowRecovery: true as const } : {}),
     ...(options.requireCompletedResponse ? { requireCompletedResponse: true } : {}),
     ...(options.assembleCompletedFunctionItems ? { assembleCompletedFunctionItems: true } : {}),
   };
@@ -61,10 +64,12 @@ export async function invokeOpenAIResponses(
   if (!response.ok || !response.body) {
     const message = await response.text();
     await responseTrace;
+    const contextOverflow = readOpenAIHttpContextOverflow(response.status, message, options.contextOverflowRecovery);
     return {
       kind: "error",
       statusCode: response.status || 502,
       message: toolMediaSafeMessage(message || "openai error", params.requestBody),
+      ...(contextOverflow ? { contextOverflow } : {}),
     };
   }
 

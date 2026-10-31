@@ -37,6 +37,7 @@ export function createChatGptProviderAdapter(options: Readonly<{
       }, {
         url: CHATGPT_RESPONSES_URL, accessToken, payload, requireCompletedResponse: true,
         assembleCompletedFunctionItems: true,
+        contextOverflowRecovery: true,
       });
     },
   });

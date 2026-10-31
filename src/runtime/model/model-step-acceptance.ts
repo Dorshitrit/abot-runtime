@@ -30,3 +30,6 @@ export function acceptModelStepOutput<T>(
       );
   });
 }
+
+/** The same deadline boundary also applies while awaiting shared model preparation. */
+export { acceptModelStepOutput as awaitModelStepWork };

@@ -1,4 +1,5 @@
 import type { ModelStepCompactionPreparationContext } from "../../model/context-compaction-contracts.js";
+import { withModelAbortSignal } from "../../model/scoped-model-abort.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type {
   ModelStepContextCompactionController,
@@ -42,7 +43,7 @@ export function createSessionMemoryAwareCompactionController(
             messages: readonly ChatMessage[],
             context?: ModelStepCompactionPreparationContext,
           ): Promise<ModelStepCompactionStageOutcome> {
-            const prepared = await sessionMemory.prepare(request, context?.onProgress);
+            const prepared = await sessionMemory.prepare(withModelAbortSignal(request, context?.abortSignal), context?.onProgress);
             return Object.freeze({
               kind: "prepared",
               preparation: Object.freeze({

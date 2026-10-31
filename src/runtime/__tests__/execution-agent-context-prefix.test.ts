@@ -97,7 +97,17 @@ describe("OpenAI API EA decision stable context prefix", () => {
     const baseline = buildInput(fixture, withProvider(fixture.request, "ollama"));
     const input = buildInput(fixture, withProvider(fixture.request, provider));
     expect(input.promptCacheBoundaryBeforeMessage).toBeUndefined();
-    expect(input.context).toEqual(baseline.context);
+    if (provider === "openai-chatgpt") {
+      const { budget, ...context } = input.context;
+      const { budget: baselineBudget, ...baselineContext } = baseline.context;
+      expect(context).toEqual(baselineContext);
+      for (const key of ["contextWindowTokens", "availableInputTokens", "compactionTriggerInputTokens",
+        "outputReserveTokens", "safetyReserveTokens", "attachmentReserveTokens"] as const)
+        expect(budget[key]).toBe(baselineBudget[key]);
+      expect(budget.estimatedInputTokens).toBeLessThan(baselineBudget.estimatedInputTokens);
+    } else {
+      expect(input.context).toEqual(baseline.context);
+    }
     expect(input.messages).toEqual(baseline.messages);
     const stateIndex = capsuleIndex(input.messages, "runtime_execution_state_v1");
     expect(stateIndex).toBeLessThan(input.messages.findIndex(({ content }) => content === fixture.request.prompt));

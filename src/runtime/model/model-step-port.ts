@@ -35,6 +35,8 @@ export type ModelStepInvocationInput<T> = Readonly<{
   /** Invocation-local exact reference; never serialized with message or session state. */
   promptCacheBoundaryBeforeMessage?: ChatMessage;
   timeoutReason: string;
+  /** Optional tighter parent deadline for nested work, without replacing request cancellation. */
+  abortSignal?: AbortSignal;
   /** A frozen caller decision; supersession returns control instead of retrying this step. */
   boundSteeringVersion?: number;
   /** Exact user updates returned to a Planner by its own yielded Worker. */

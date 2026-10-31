@@ -6,6 +6,7 @@ import type {
   ResolvedEmbeddingProfile,
   ResolvedModelInvocation,
 } from "../types.js";
+import type { ProviderContextOverflow } from "../protocol/provider-context-overflow.js";
 import type { ProviderUserErrorPresentation } from "../protocol/provider-user-error.js";
 
 export type ModelProviderEventSink = Readonly<{
@@ -16,6 +17,8 @@ export type ModelProviderInvocationError = Readonly<{
   kind: "error";
   statusCode: number;
   message: string;
+  /** Validated adapter-owned provider rejection; no upstream diagnostic text. */
+  contextOverflow?: ProviderContextOverflow;
   /** Adapter-owned facts; never decoded from an upstream error body or headers. */
   presentation?: ProviderUserErrorPresentation;
 }>;

@@ -47,6 +47,15 @@ for (const path of paths) {
 
 const requiredPaths = [
   ...[
+    "model-gateway/policy/provider-token-estimation",
+    "model-gateway/protocol/provider-context-overflow",
+    "model-gateway/providers/openai/context-overflow",
+    "runtime/context/model-step-recompaction-sources",
+    "runtime/model/model-step-provider-attempt",
+    "runtime/model/provider-context-recovery",
+    "runtime/model/scoped-model-abort",
+  ].flatMap((path) => [`dist/src/${path}.js`, `dist/src/${path}.d.ts`]),
+  ...[
     "provider-auth/chatgpt/service", "provider-auth/chatgpt/authorization",
     "provider-auth/chatgpt/account-store", "provider-auth/chatgpt/token-session",
     "model-gateway/providers/openai-chatgpt/adapter",
@@ -698,8 +707,9 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // Confirmed Runtime cleanup and SPARK visibility add 27 emitted modules/declarations.
 // Automation snapshot ownership adds one production module and its declaration.
 // Published-loopback ChatGPT callbacks add five modules and their declarations.
-const maxFileCount = 4_789;
-const maxUnpackedSizeBytes = 14_477_000;
+// ChatGPT context admission/recovery adds seven modules and their declarations.
+const maxFileCount = 4_803;
+const maxUnpackedSizeBytes = 14_505_000;
 
 if (paths.length > maxFileCount) {
   fail(`package includes too many files: ${paths.length} > ${maxFileCount}`);

@@ -1,3 +1,4 @@
+import { PROVIDER_CONTEXT_OVERFLOW_HEADER, providerContextOverflowCause } from "../protocol/provider-context-overflow.js";
 import { attachModelGatewayHttpUserMessage } from "./user-message.js";
 import { PROVIDER_USER_ERROR_HEADER } from "../protocol/provider-user-error.js";
 import { traceDebug } from "../../runtime/observability/debug-logger.js";
@@ -89,6 +90,7 @@ export async function invokeModelGatewayWithOptions(
     throw attachModelGatewayHttpUserMessage(new ModelGatewayInvocationError(
       "http",
       `bridge_request_failed:${response.status}:${permitsModelContentTrace(params.modelStep, params.messages) ? errorText || "empty error body" : "content omitted"}`,
+      providerContextOverflowCause(response.headers.get(PROVIDER_CONTEXT_OVERFLOW_HEADER)),
     ), response.status, response.headers.get(PROVIDER_USER_ERROR_HEADER), permitsModelContentTrace(params.modelStep, params.messages));
   }
 

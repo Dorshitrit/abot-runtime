@@ -1,3 +1,4 @@
+import { applyProviderTokenEstimationDefaults } from "./provider-token-estimation.js";
 import { resolveInvocationReasoning } from "./reasoning-policy.js";
 export { normalizeReasoning, resolveThink } from "./reasoning-policy.js";
 import {
@@ -46,10 +47,10 @@ function applyInvocationProfileOverlay(
       ...candidate.profile.generation,
       ...(overlay.generation ?? {}),
     },
-    context: {
+    context: applyProviderTokenEstimationDefaults(candidate.profile.provider, {
       ...candidate.profile.context,
       ...(overlay.context ?? {}),
-    },
+    }),
   };
 }
 

@@ -11,13 +11,19 @@ export const MINIMAL_COMPACTION_EVIDENCE_REQUIREMENTS: readonly string[] = Objec
 export function buildProjectionRepairInstructions(
   repair: ContextCompactionProjectionRepair,
 ): readonly string[] {
-  const rejection = repair.reason === "envelope_exceeds_available_input"
-    ? "reduced the complete consumer input but still exceeded its available input budget"
-    : "did not reduce the complete consumer input";
+  const rejection = describeProjectionRejection(repair.reason);
   return Object.freeze([
     `The earlier candidate ${rejection}: original ${repair.originalInputTokens} tokens, candidate ${repair.candidateInputTokens} tokens. Produce a substantially more compact replacement from the supplied canonical sources and accepted prior checkpoint. The rejected candidate is not evidence.`,
     `The complete consumer input, including its unchanged instructions and schema, must reach at most ${repair.targetInputTokens} tokens. This is not a new allowance for your output. Obey the supplied checkpoint or stage budget as well; the runtime independently checks the assembled consumer input.`,
   ]);
+}
+
+function describeProjectionRejection(reason: ContextCompactionProjectionRepair["reason"]): string {
+  if (reason === "provider_context_overflow")
+    return "was rejected by the provider for context capacity despite passing the local budget assessment";
+  if (reason === "envelope_exceeds_available_input")
+    return "reduced the complete consumer input but still exceeded its available input budget";
+  return "did not reduce the complete consumer input";
 }
 
 export function buildMinimalSemanticCompactionInstructions(

@@ -5,7 +5,7 @@ export type ModelStepCompactionScope = "session_history" | "active_request";
 
 /** Feedback from the consumer envelope, local to one additional compaction cycle. */
 export type ContextCompactionProjectionRepair = Readonly<{
-  reason: "projection_not_reduced" | "envelope_exceeds_available_input";
+  reason: "projection_not_reduced" | "envelope_exceeds_available_input" | "provider_context_overflow";
   originalInputTokens: number;
   candidateInputTokens: number;
   targetInputTokens: number;
@@ -15,6 +15,10 @@ export type ModelStepCompactionPreparationContext = Readonly<{
   boundSteeringVersion?: number;
   onProgress?: CompactionProgressObserver;
   projectionRepair?: ContextCompactionProjectionRepair;
+  /** One rejected provider call may replace covered summaries from original sources. */
+  recompactFromSources?: true;
+  /** Recovery shares the rejected model attempt's deadline. */
+  abortSignal?: AbortSignal;
 }>;
 
 /** Provisional checkpoint. Active-request owners commit synchronously. */

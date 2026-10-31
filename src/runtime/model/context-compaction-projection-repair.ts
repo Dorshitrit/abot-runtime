@@ -16,7 +16,9 @@ export function resolveProjectionRepairReason(params: Readonly<{
   projectionReduced: boolean;
   candidateFits: boolean;
   isFinalStage: boolean;
+  providerOverflowRecovery?: boolean;
 }>): ContextCompactionProjectionRepair["reason"] | undefined {
+  if (params.providerOverflowRecovery) return undefined;
   if (!params.projectionReduced) return "projection_not_reduced";
   if (params.candidateFits) return undefined;
   if (!params.isFinalStage) return undefined;

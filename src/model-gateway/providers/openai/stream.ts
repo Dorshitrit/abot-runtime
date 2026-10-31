@@ -1,3 +1,4 @@
+import { providerContextOverflowCause } from "../../protocol/provider-context-overflow.js";
 import type { ModelTokenUsage } from "../../types.js";
 import type { ModelProviderEventSink } from "../contracts.js";
 import { readOpenAIDataFrames } from "./sse-data.js";
@@ -49,7 +50,7 @@ function applyCollectedEvent(
       collected.doneReason = event.doneReason;
       return;
     case "error":
-      throw new Error(`openai_stream_error: ${event.error}`);
+      throw new Error(`openai_stream_error: ${event.error}`, providerContextOverflowCause(event.contextOverflow));
   }
 }
 
