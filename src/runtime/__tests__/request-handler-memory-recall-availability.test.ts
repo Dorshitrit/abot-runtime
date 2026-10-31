@@ -55,7 +55,7 @@ test.each([
         return {
           action: "recall_memory",
           query: RECALL_QUERY,
-          ...(offered.length === 1
+          ...(policy === "supervisor-worker-v1" && offered.length === 1
             ? { acknowledgement: "I will check the stored preference." }
             : {}),
         };

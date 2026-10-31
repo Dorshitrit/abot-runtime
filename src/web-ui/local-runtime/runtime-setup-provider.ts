@@ -1,3 +1,5 @@
+import { isOpenAIPromptCacheEnabled } from "../../model-gateway/providers/openai/prompt-cache.js";
+import { chatGptSetupMetadata } from "./chatgpt-setup-binding.js";
 import { requiresProviderCredential } from "./runtime-setup-auth.js";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -48,8 +50,10 @@ export function configuredSetupModel(source: InspectedRuntimeConfigFile) {
     model: profile.model,
     contextWindowTokens: profile.contextWindowTokens,
     supportsThinking: profile.supportsThinking,
+    ...(provider.type === "openai" && isOpenAIPromptCacheEnabled(profile.options ?? {}) ? { promptCache: true } : {}),
     reasoningBudget: profile.generation?.reasoningBudget,
     requiresApiKey: requiresProviderCredential(provider),
+    ...chatGptSetupMetadata(provider),
     apiKeyEnv,
     baseUrl: configuredSetupBaseUrl(provider.baseUrl),
   };

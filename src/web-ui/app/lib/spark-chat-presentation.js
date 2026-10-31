@@ -1,3 +1,5 @@
+import { isSparkConversationMessage } from "./spark-message-visibility.js";
+
 const ROUTINE_STATUS = new Set([
   "ABot response completed.", "ABot is working.",
   "Sending an update to the active request.", "Update accepted. ABot is working.",
@@ -10,7 +12,10 @@ export function sparkMessageStatus(text) {
   return ROUTINE_STATUS.has(value) ? "" : value;
 }
 
-export function sparkWorkingStatus(model) {
-  if (!model || !model.animate) return model;
-  return { ...model, label: "SPARK is working…" };
+export function sparkWorkingStatus() {
+  return null;
+}
+
+export function sparkConversationMessages(messages) {
+  return messages.filter(isSparkConversationMessage);
 }

@@ -44,7 +44,7 @@ test.each([
     expect(new Set(f.calls
       .map(({ step }) => step)
       .filter((step) => compactionSteps.includes(step)),
-    )).toEqual(new Set(compactionSteps));
+    )).toEqual(new Set(compactionSteps.filter((step) => step !== "super.compact.merge")));
     const stages: string[] = [];
     for (const call of f.calls) {
       const capsule = call.messages.flatMap(({ content }) => {

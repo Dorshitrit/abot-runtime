@@ -31,6 +31,7 @@ export function createConfigWorkspace({
   pluginManagement,
   getOperationsSummary,
   onAddModel,
+  onChatgptAccounts,
   onRemoveModel,
   onNavigationChange = () => {},
   recordControlEvent,
@@ -170,6 +171,7 @@ export function createConfigWorkspace({
   const workspaceEvents = createConfigWorkspaceEvents({
     modelPluginViewState,
     onAddModel,
+    onChatgptAccounts,
     onRemoveModel,
     state,
     dom,

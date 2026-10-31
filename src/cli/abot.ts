@@ -11,6 +11,8 @@ import { RuntimeSetupGateway } from "../web-ui/runtime-setup-gateway.js";
 import { startWebUiServer } from "../web-ui/server.js";
 import { resolveWebUiAddress } from "../web-ui/web-ui-address.js";
 import { runHostCompanionCli } from "./host-companion.js";
+import { runtimeStartupDiagnostic } from "./startup-diagnostic.js";
+import { runtimePackageVersion } from "./package-version.js";
 
 function printHelp(): void {
   console.log(
@@ -22,6 +24,7 @@ function printHelp(): void {
       "  abot add-model --profile <profile-id> --provider <provider> --model <model-id> [options]",
       "  abot memory <status|models|enable|disable> [options]",
       "  abot start",
+      "  abot --version",
       "  abot host <connect|status|disconnect|uninstall|run>",
       "",
       "Commands:",
@@ -51,11 +54,10 @@ async function runStart(args: string[]): Promise<void> {
   const providerAdapters = resolveProviderAdapters({});
   const gateway = new RuntimeSetupGateway({ rootDir, providerAdapters });
   try {
-    await gateway.activate(process.env.LLM_RUNTIME_CONFIG_FILE);
-  } catch {
-    console.log(
-      "Complete model setup in the Web UI to start the model gateway.",
-    );
+    const activation = await gateway.activate(process.env.LLM_RUNTIME_CONFIG_FILE);
+    if (activation.status === "restart_required") console.warn(activation.message);
+  } catch (error) {
+    console.error(runtimeStartupDiagnostic(rootDir, process.env.LLM_RUNTIME_CONFIG_FILE, error));
   }
 
   const webUi = startWebUiServer({
@@ -91,6 +93,10 @@ export async function runAbotCli(
   argv: string[] = process.argv.slice(2),
 ): Promise<void> {
   const [command, ...args] = argv;
+  if (command === "--version" || command === "-v") {
+    console.log(runtimePackageVersion());
+    return;
+  }
   if (
     !command ||
     command === "help" ||

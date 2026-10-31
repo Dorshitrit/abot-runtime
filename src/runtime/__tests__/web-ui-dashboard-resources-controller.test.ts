@@ -85,7 +85,7 @@ describe("Home Resources metadata and action ownership", () => {
     const f = resourcesFixture();
     await f.controller.refresh();
     f.client.listInformationBasket.mockResolvedValue({
-      ...basketView(), settings: { revision: 3, enabled: false, embeddingProfileId: "local-embed" },
+      ...basketView(), settings: { matchMode: "balanced" as const, indexChatUploads: false, revision: 3, enabled: false, embeddingProfileId: "local-embed" },
     });
     await f.controller.refresh();
     expect(f.attention().issues[0]).toMatchObject({ sourceId: "source-a", action: "settings" });

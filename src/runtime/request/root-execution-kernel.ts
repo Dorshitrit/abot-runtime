@@ -1,3 +1,6 @@
+import { projectExecutionHistoryObservation } from "../steps/execution-agent/history-observation.js";
+import { publishRootUserInteraction } from "../user-interactions/root-publication.js";
+import { projectSuperWorkerDelegationSteering } from "./super-worker-steering.js";
 import { prepareRootCapabilityBinding, requireRootCallFrame } from "./root-capability-binding.js";
 import { captureRootCapabilityCatalog } from "./root-capability-catalog.js";
 import { prepareSupervisorSkillWrite } from "./supervisor-skill-write-preparation.js";
@@ -195,6 +198,9 @@ class RootExecutionSession {
       ) {
         return CONTINUE_ROOT_EXECUTION;
       }
+      attempt.failureStage = "publish_interaction";
+      if (!publishRootUserInteraction(this.request, decisionActivation))
+        return CONTINUE_ROOT_EXECUTION;
       return await this.executeDecision(decisionActivation, attempt);
     } catch (error: unknown) {
       if (isModelStepSteeringSuperseded(error)) {
@@ -289,6 +295,7 @@ class RootExecutionSession {
     return Object.freeze({
       ...activation,
       decision: decisionOutcome.decision,
+      ...(decisionOutcome.interaction ? { interaction: decisionOutcome.interaction } : {}),
       decisionSteeringVersion: decisionOutcome.steeringVersion,
       requiresFreshPresentation,
       deferPresentation: requiresFreshPresentation && isTerminalDecision,
@@ -415,6 +422,7 @@ class RootExecutionSession {
       expectedHead: activation.head,
       roleId: decision.roleId,
       objective: decision.objective,
+      ...projectSuperWorkerDelegationSteering(this.request, decision.roleId, activation.decisionSteeringVersion),
       ...(decision.roleId === "planner" || decision.roleId === "worker"
         ? { workingDirectory: decision.workingDirectory }
         : {}),
@@ -623,7 +631,7 @@ class RootExecutionSession {
       return CONTINUE_ROOT_EXECUTION;
     }
     attempt.failureStage = "project_observation";
-    const finalObservation = this.observationHandoff
+    let finalObservation = this.observationHandoff
       ? projectSupervisorFinalObservation(this.observationHandoff, this.resume)
       : undefined;
     attempt.publishDeferredTitle = () =>
@@ -661,6 +669,9 @@ class RootExecutionSession {
     ) {
       return CONTINUE_ROOT_EXECUTION;
     }
+    finalObservation = projectExecutionHistoryObservation(
+      this.request, activation.head, activation.call,
+    ) ?? finalObservation;
     attempt.failureStage = "seal_response";
     this.request.abortSignal.throwIfAborted();
     if (!this.requestSteering.seal(activation.decisionSteeringVersion)) {

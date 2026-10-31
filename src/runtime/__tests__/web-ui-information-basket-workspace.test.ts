@@ -13,7 +13,7 @@ import { readWorkspaceRoute, workspaceRouteUrl } from "../../web-ui/app/lib/work
 
 const source = { sourceId: "source-a", displayName: "Notes.md", path: "/documents/Notes.md", revision: 3,
   status: "ready", sizeBytes: 100, chunkCount: 2, indexedAt: "2026-10-25T10:00:00Z", reason: null };
-const settings = { revision: 1, enabled: true, embeddingProfileId: "local" };
+const settings = { matchMode: "balanced", indexChatUploads: false, revision: 1, enabled: true, embeddingProfileId: "local" };
 const snapshot = { view: { settings, sources: [source], embeddingProfiles: [{ id: "local", label: "Local", model: "embed" }], supportedExtensions: [".md", ".pdf"] },
   settingsDraft: settings, settingsDirty: false, sources: [source], visibleSources: [source], selected: [], detail: null,
   loading: false, mutation: "", error: "", message: "", picker: { open: false, page: null, selectedPaths: [], pathDraft: "" } };
@@ -23,8 +23,8 @@ function fixture() {
   document.documentElement = document.createElement("html"); document.body = document.createElement("body");
   const root = document.createElement("section"); document.body.append(root);
   const actions = { picker: { open: vi.fn(), close: vi.fn(), browse: vi.fn(), select: vi.fn(), selectAll: vi.fn(), clearSelection: vi.fn(), submit: vi.fn(), setPath: vi.fn(), browseDraft: vi.fn(), addDraft: vi.fn(), more: vi.fn() },
-    refresh: vi.fn(), saveSettings: vi.fn(), resetSettings: vi.fn(), showDetails: vi.fn(), link: vi.fn(), reindex: vi.fn(), remove: vi.fn(),
-    setQuery: vi.fn(), setFilter: vi.fn(), changeSettings: vi.fn(), select: vi.fn(), selectVisible: vi.fn(), receiveDrop: vi.fn() };
+    refresh: vi.fn(), saveSettings: vi.fn(), resetSettings: vi.fn(), showDetails: vi.fn(), reindex: vi.fn(), remove: vi.fn(),
+    setQuery: vi.fn(), setFilter: vi.fn(), changeSettings: vi.fn(), select: vi.fn(), selectVisible: vi.fn() };
   const view = createInformationBasketWorkspace({ root, actions, documentRoot: document });
   view.render(snapshot);
   return { root, actions, view };
@@ -46,10 +46,9 @@ test("real UI actions target source IDs and source path linking remains explicit
   f.root.querySelector("[data-basket-detail]")!.dispatch("click"); expect(f.actions.showDetails).toHaveBeenCalledWith(source.sourceId);
   f.root.querySelector("[data-basket-reindex]")!.dispatch("click"); expect(f.actions.reindex).toHaveBeenCalledWith([source.sourceId]);
   f.root.querySelector("[data-basket-remove]")!.dispatch("click"); expect(f.actions.remove).toHaveBeenCalledWith([source.sourceId]);
-  const pending = { ...source, sourceId: "pending-1", status: "pending_path", path: "" };
-  f.view.render({ ...snapshot, sources: [pending], visibleSources: [pending] });
-  expect(f.root.querySelector("[data-basket-reindex]")).toBe(null);
-  f.root.querySelector("[data-basket-link]")!.dispatch("click"); expect(f.actions.link).toHaveBeenCalledWith("pending-1");
+  expect(f.root.querySelector("[data-basket-link]")).toBe(null);
+  expect(f.root.querySelector("[data-basket-drop]")).toBe(null);
+  expect(f.root.querySelector("[data-basket-add-sources]")).not.toBe(null);
 });
 
 test("profile settings require Save and declared formats come from the server", () => {
@@ -121,7 +120,7 @@ test("status controls show canonical groups and preserve search and selection wh
   const sources = [source, { ...source, sourceId: "queued", status: "queued" },
     { ...source, sourceId: "indexing", status: "indexing" },
     { ...source, sourceId: "missing", status: "missing" },
-    { ...source, sourceId: "pending", status: "pending_path" }];
+    { ...source, sourceId: "stale", status: "stale" }];
   f.view.render({ ...snapshot, sources, selected: [source.sourceId], query: "Notes", filter: "ready" });
   const filters = f.root.querySelectorAll("[data-basket-filter]");
   expect(filters.map((button) => button.querySelector("[data-basket-filter-count]")!.textContent)).toEqual(["5", "1", "2", "2"]);
@@ -136,4 +135,32 @@ test("status controls show canonical groups and preserve search and selection wh
   expect(f.actions.setQuery).toHaveBeenCalledWith("report");
   f.root.querySelector("[data-basket-refresh]")!.dispatch("click");
   expect(f.actions.refresh).toHaveBeenCalledOnce();
+});
+
+
+test("chat upload switch starts off, edits the settings draft and follows busy state", () => {
+  const f = fixture();
+  const toggle = f.root.querySelector("[data-basket-chat-uploads]")! as FakeElement & { checked: boolean };
+  expect(toggle.checked).toBe(false);
+  toggle.checked = true; toggle.dispatch("change");
+  expect(f.actions.changeSettings).toHaveBeenCalledWith("indexChatUploads", true);
+  expect(f.actions.saveSettings).not.toHaveBeenCalled();
+  f.view.render({ ...snapshot, settingsDraft: { ...settings, indexChatUploads: true }, mutation: "settings" });
+  expect(toggle.checked).toBe(true);
+  expect(toggle.disabled).toBe(true);
+});
+
+
+test("matching selector offers three modes, saves explicitly and disables during mutations", () => {
+  const f = fixture();
+  const select = f.root.querySelector("[data-basket-match-mode]")!;
+  expect(select.value).toBe("balanced");
+  expect(select.querySelectorAll("option").map(option => option.attributes.get("value")))
+    .toEqual(["flexible", "balanced", "strict"]);
+  select.value = "strict"; select.dispatch("change");
+  expect(f.actions.changeSettings).toHaveBeenCalledWith("matchMode", "strict");
+  expect(f.actions.saveSettings).not.toHaveBeenCalled();
+  f.view.render({ ...snapshot, settingsDraft: { ...settings, matchMode: "strict" }, mutation: "settings" });
+  expect(select.value).toBe("strict");
+  expect(select.disabled).toBe(true);
 });

@@ -92,10 +92,9 @@ test("a third control-authoring call is blocked before the tool and retains the 
   let decisions = 0;
   fixture.invoke.mockImplementation(async () => ({
     text: JSON.stringify({ decision: decisions++ === 0
-      ? { action: "open_capability_scope", catalogGroupIds: ["identity_probe"],
-          acknowledgement: "I will inspect the fixture." }
+      ? { action: "open_capability_scope", catalogGroupIds: ["identity_probe"] }
       : { action: "invoke_capability", capabilityId: operation.operationId,
-          intent: "Observe the fixture.", operationObjective: "Observe the selected fixture value.",
+          operationObjective: "Observe the selected fixture value.",
           controlsEvidenceExecutionIds: [],
           workingDirectory: fixture.config.paths.agentWorkDir } }), meta: {},
   }));

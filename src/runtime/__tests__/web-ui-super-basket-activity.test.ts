@@ -106,9 +106,15 @@ test.each([false, true])("deduplicates event identity while retaining order and 
   expect(model.toolCount).toBe(0);
 });
 
-test.each([false, true])("discovery waits for positive SUPER identity and unknown phases create no basket rows (replay=%s)", async replay => {
+test.each([false, true])("discovery alone renders once in the root bubble and unknown phases create no basket rows (replay=%s)", async replay => {
   const discovery = basket("discovery_found", 1, "Found 1 relevant information basket source: plan.md.");
-  expect((await activity([discovery], replay)).rows).toEqual([]);
+  const rootRun = await activity([discovery], replay);
+  expect(rootRun.rows).toHaveLength(1);
+  expect(rootRun.rows[0]!.querySelector(".conversation-basket-label")!.textContent).toBe(discovery.message);
+  expect(rootRun.model.roleCards[0]).toMatchObject({ title: "Root agent", active: false, toolActions: [] });
+  expect(rootRun.model.events).toEqual([]);
+  expect(rootRun.model.eventCount).toBe(0);
+  expect(rootRun.model.hasContent).toBe(true);
   const superRun = await activity([
     discovery, stage("supervisor", 2, { phase: "skills", message: "Read Skills: Information Basket" }),
   ], replay);
@@ -120,14 +126,15 @@ test.each([false, true])("discovery waits for positive SUPER identity and unknow
   expect(unknown.model.roleCards.find(card => card.role === "supervisor")!.basketActivities ?? []).toEqual([]);
 });
 
-test.each([false, true])("EA resuming status does not establish SUPER ownership of passive discovery (replay=%s)", async replay => {
+test.each([false, true])("EA resuming keeps passive discovery in the existing root bubble (replay=%s)", async replay => {
   const { model, node, rows } = await activity([
     basket("discovery_found", 1, "Found 1 relevant information basket source: plan.md."),
     stage("supervisor", 2, { phase: "resuming", message: "Processing the completed tool result." }),
   ], replay);
-  expect(rows).toEqual([]);
-  expect(descendants(node, "conversation-basket-collection")).toEqual([]);
-  expect(model.roleCards.find(card => card.role === "supervisor")!.basketActivities ?? []).toEqual([]);
+  expect(rows).toHaveLength(1);
+  expect(descendants(node, "conversation-basket-collection")).toHaveLength(1);
+  expect(model.roleCards.find(card => card.role === "supervisor")!.basketActivities).toHaveLength(1);
+  expect(model.events.some(event => event.phase === "discovery_found")).toBe(false);
   expect(model.toolCount).toBe(0);
 });
 
@@ -152,7 +159,7 @@ test.each([false, true])("committed SUPER delegation owns passive discovery with
   expect(model.toolCount).toBe(0);
 });
 
-test.each([false, true])("invalid or another request's delegation cannot claim passive sources (replay=%s)", async replay => {
+test.each([false, true])("invalid or another request's delegation cannot relabel root source discovery (replay=%s)", async replay => {
   for (const overrides of [
     { callerRole: "worker" }, { childCallId: "" }, { objective: "" }, { requestId: "request-2" },
   ]) {
@@ -161,9 +168,12 @@ test.each([false, true])("invalid or another request's delegation cannot claim p
     const { model, rows, node } = await activity([
       assigned, basket("discovery_found", 2, "Found 1 relevant information basket source: plan.md."),
     ], replay);
-    expect(rows).toEqual([]);
-    expect(descendants(node, "conversation-basket-collection")).toEqual([]);
-    expect(model.roleCards.find(card => card.role === "supervisor")?.basketActivities ?? []).toEqual([]);
+    expect(rows).toHaveLength(1);
+    expect(descendants(node, "conversation-basket-collection")).toHaveLength(1);
+    const root = model.roleCards.find(card => card.role === "supervisor")!;
+    expect(root.title).toBe("Root agent");
+    expect(root.delegations ?? []).toEqual([]);
+    expect(root.basketActivities).toHaveLength(1);
     expect(model.toolCount).toBe(0);
   }
 });
@@ -218,7 +228,7 @@ test.each(phases)("basket %s preserves the active Worker owner for legacy tools"
   expect(model.toolActions).toHaveLength(1);
 });
 
-test.each([false, true])("EA discovery and ordinary basket tools do not create duplicate SUPER basket rows (replay=%s)", async replay => {
+test.each([false, true])("EA discovery stays separate from ordinary basket tool execution (replay=%s)", async replay => {
   const read = stage("supervisor", 3, {
     name: "tool.completed", tool: "information_basket", ok: true, executionId: "ea-read",
     executorRole: "supervisor", meta: { basketAction: "read_information_source", itemCount: 1, documentName: "plan.md" },
@@ -227,12 +237,29 @@ test.each([false, true])("EA discovery and ordinary basket tools do not create d
     basket("discovery_found", 1, "Found 1 relevant information basket source: plan.md."),
     { ...read, name: "tool.started", eventSequence: 2, ok: undefined }, read,
   ], replay);
-  expect(rows).toEqual([]);
-  expect(descendants(node, "conversation-basket-collection")).toEqual([]);
+  expect(rows).toHaveLength(1);
+  expect(descendants(node, "conversation-basket-collection")).toHaveLength(1);
+  expect(model.events.some(event => event.phase === "discovery_found")).toBe(false);
   expect(model.toolCount).toBe(1);
   expect(model.toolActions).toHaveLength(1);
   expect(model.toolActions[0]!.title).toBe("Read information source");
   expect(model.roleCards.flatMap(card => card.toolActions ?? [])).toHaveLength(1);
+});
+
+test.each([false, true])("discovery routing uses structured fields, not visible text (replay=%s)", async replay => {
+  const label = "נמצאו מקורות: תכנית.md, הערות.txt";
+  const { model, rows } = await activity([
+    basket("discovery_found", 1, label),
+    stage("worker", 2, { message: "Found 2 relevant information basket sources: other.md, notes.txt." }),
+    basket("discovery_found", 3, "OTHER_REQUEST", { requestId: "request-2" }),
+  ], replay);
+  expect(rows).toHaveLength(1);
+  expect(rows[0]!.querySelector(".conversation-basket-label")!.textContent).toBe(label);
+  expect(model.events).toHaveLength(1);
+  expect(model.events[0]!.stage).toBe("worker");
+  expect(model.roleCards.flatMap(card => card.basketActivities ?? [])).toEqual([
+    { phase: "discovery_found", status: "matched", label },
+  ]);
 });
 
 test.each([false, true])("labels use only bounded status text and render source names as plain text (replay=%s)", async replay => {

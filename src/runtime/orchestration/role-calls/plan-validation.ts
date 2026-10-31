@@ -1,8 +1,15 @@
 import {
+  hasValidPlanSteeringRetirement,
+  isUnboundRetiredPlanItem,
+  isValidRetiredPlanChild,
+} from "./plan-steering-retirement.js";
+import {
   ROLE_CALL_PLAN_ITEM_TITLE_MAX_LENGTH,
   type RoleCallFrame,
   type RoleCallPlanBinding,
   type RoleCallPolicy,
+  type RoleCallResult,
+  type RoleCallPlanItemStatus,
   type RoleCallState,
   type RoleCallValidationIssue,
 } from "./contracts.js";
@@ -81,12 +88,18 @@ export function validateRoleCallPlanExtension(params: {
   const issues: RoleCallValidationIssue[] = [];
   const remainingCallCapacity =
     params.policy.limits.maxCalls - params.state.calls.length;
+  const remainingDefinitionCapacity =
+    params.policy.limits.maxCalls - params.planItemStates.length;
+  const remainingExtensionCapacity = Math.min(
+    remainingCallCapacity,
+    remainingDefinitionCapacity,
+  );
   if (
     params.planItemStates.some(
       (item) => item.status === "pending" || item.status === "in_progress",
     ) ||
     params.binding.extension.items.length === 0 ||
-    params.binding.extension.items.length > remainingCallCapacity ||
+    params.binding.extension.items.length > remainingExtensionCapacity ||
     !selectProposedPlanItems(
       params.binding.extension.items,
       params.binding.selectedItemIndexes,
@@ -188,13 +201,15 @@ export function validateRoleCallPlans(
         ) ||
         !isBoundedText(definition.objective, policy.limits.maxObjectiveChars) ||
         itemState?.itemId !== definition.itemId ||
-        !["pending", "in_progress", "done", "blocked"].includes(
+        !hasValidPlanSteeringRetirement(state, planner, itemState) ||
+        !["pending", "in_progress", "done", "blocked", "retired"].includes(
           itemState.status,
         )
       ) {
         issues.push(issue("invalid_role_call_plan_item", itemPath));
         continue;
       }
+      if (isUnboundRetiredPlanItem(itemState)) continue;
       if (itemState.status === "pending") {
         if (itemState.childCallId !== null) {
           issues.push(issue("invalid_role_call_plan_item", itemPath));
@@ -234,15 +249,7 @@ export function validateRoleCallPlans(
       }
       boundChildCallIds.add(child.callId);
       const status = group[0]!.state.status;
-      const validStatus =
-        status === "in_progress"
-          ? child.status !== "completed" && child.resultRef === null
-          : (status === "done" || status === "blocked") &&
-            child.status === "completed" &&
-            result?.producerCallId === child.callId &&
-            (status === "done"
-              ? result.outcome === "completed"
-              : result.outcome === "failed");
+      const validStatus = isValidBoundPlanItemStatus(status, child, result);
       if (status === "in_progress") activeGroupCount += 1;
       if (!validStatus) {
         for (const entry of group) {
@@ -260,6 +267,21 @@ export function validateRoleCallPlans(
     }
   }
   return issues;
+}
+
+function isValidBoundPlanItemStatus(
+  status: RoleCallPlanItemStatus,
+  child: RoleCallFrame,
+  result: RoleCallResult | undefined,
+): boolean {
+  if (status === "retired") return isValidRetiredPlanChild(child, result);
+  if (status === "in_progress")
+    return child.status !== "completed" && child.resultRef === null;
+  if (child.status !== "completed") return false;
+  if (result?.producerCallId !== child.callId) return false;
+  if (status === "done") return result.outcome === "completed";
+  if (status === "blocked") return result.outcome === "failed";
+  return false;
 }
 
 function isBoundedText(value: unknown, maximumLength: number): value is string {

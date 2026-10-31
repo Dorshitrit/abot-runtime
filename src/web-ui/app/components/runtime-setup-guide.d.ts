@@ -1,3 +1,4 @@
+import type { ChatgptAccountRequests } from "../services/runtime-web-client/chatgpt-accounts.js";
 import type { ModelReasoningBudget } from "../../../shared/model-reasoning.js";
 import type { SetupEmbeddingInput } from "../../local-runtime/setup-embedding-input.js";
 
@@ -13,7 +14,7 @@ export type RuntimeSetupCommands = Readonly<{
   "web-ui": string;
 }>;
 export type RuntimeSetupProvider = Readonly<{
-  id: "openai" | "ollama" | "llamacpp";
+  id: "openai" | "openai-chatgpt" | "ollama" | "llamacpp";
   label: string;
   requiresApiKey: boolean;
   credentialConfigured: boolean;
@@ -27,22 +28,26 @@ export type RuntimeSetupSnapshot = Readonly<{
   defaultContextWindowTokens: number;
   editableConnection?: { revision: string };
   existingModel?: {
-    provider: "openai" | "ollama" | "llamacpp";
+    provider: "openai" | "openai-chatgpt" | "ollama" | "llamacpp";
+    accountRef?: string;
     model: string;
     contextWindowTokens?: number;
     supportsThinking?: boolean;
+    promptCache?: boolean;
     reasoningBudget?: ModelReasoningBudget;
     baseUrl?: string;
   };
 }>;
 export type RuntimeSetupInput = {
-  provider: "openai" | "ollama" | "llamacpp";
+  provider: "openai" | "openai-chatgpt" | "ollama" | "llamacpp";
   model: string;
   contextWindowTokens?: number;
   supportsThinking?: boolean;
+  promptCache?: boolean;
   reasoningBudget?: ModelReasoningBudget;
   baseUrl?: string;
   apiKey?: string;
+  accountRef?: string;
   deferActivation?: boolean;
   connectionRevision?: string;
 };
@@ -53,6 +58,7 @@ export type RuntimeSetupResponse = {
 };
 export interface RuntimeSetupGuideDependencies {
   readonly container: HTMLElement;
+  readonly chatgptClient?: ChatgptAccountRequests;
   readonly conversationRegion: HTMLElement;
   readonly inspectConnection?: (input: Record<string, unknown>) => Promise<{ connection: { models: readonly string[] } }>;
   readonly loadSetup: () => Promise<{ setup: RuntimeSetupSnapshot }>;

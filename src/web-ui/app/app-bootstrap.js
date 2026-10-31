@@ -41,6 +41,7 @@ export async function bootstrapWebApp({
     onOpenSchedule: (jobId) => schedules.openJob(jobId) });
   navigation?.bindings.setEnvironmentChangePreparation(spark.prepareEnvironmentChange, spark.refreshComposerSubmissionState);
   notifications?.setCompanionChat?.(spark);
+  operations.setCompanionResetHandler?.(spark.sessionsReset);
   const automations = createAutomationsFeature({
     dom, client, shell, realtime,
     startNewConversation: (options) => navigation?.bindings.newConversation(options) ?? Promise.resolve(false),

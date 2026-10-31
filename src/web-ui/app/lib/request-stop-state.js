@@ -1,3 +1,4 @@
+import { isUserInteractionMessage } from "./user-interaction-event.js";
 export function isStopResult(message) {
   return (message?.error ?? message?.payload?.error) === "request_cancelled";
 }
@@ -25,6 +26,7 @@ export function restoreStoppedResponses(messages, requests) {
       messages.some(
         (message) =>
           message.role === "assistant" &&
+          !isUserInteractionMessage(message) &&
           message.kind !== "tool_approval_request" &&
           message.requestId === request.requestId,
       )

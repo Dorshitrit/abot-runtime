@@ -1,3 +1,4 @@
+import { projectPlannerRetiredItems } from "./planner-retired-item-projection.js";
 import {
   projectRequestPlanCommit,
   type RequestPlanClientEvent,
@@ -157,5 +158,5 @@ function projectPlannerPlanState(
   const plan = state.plans.find(
     (candidate) => candidate.definition.plannerCallId === plannerCallId,
   );
-  return plan ? Object.freeze({ plan }) : Object.freeze({});
+  return plan ? Object.freeze({ plan: projectPlannerRetiredItems(plan) }) : Object.freeze({});
 }

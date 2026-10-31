@@ -86,7 +86,7 @@ describe.each([false, true])("OpenAI completion guards with tracing=%s", (enable
       },
     );
 
-    describe.each(["decision", "payload"] as const)("%s completion", (mode) => {
+    describe.each(["decision", "payload", "ordinary"] as const)("%s completion", (mode) => {
       test.each(["eof", "done"] as const)("rejects valid content ending in %s", async (ending) => {
         tracing.enabled = enabled;
         await expect(invokeResponse(endpoint, mode, ending)).rejects.toThrow("openai response not completed");

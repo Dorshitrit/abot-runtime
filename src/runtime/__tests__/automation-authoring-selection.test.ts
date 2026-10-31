@@ -72,7 +72,7 @@ async function fixture() {
   );
   const refine = async (capabilityId: string, selectionControls: Record<string, unknown>) => {
     const parsed = parse({ action: "invoke_capability", capabilityId,
-      intent: "Use the selected draft.", selectionControls });
+      selectionControls });
     expect(parsed.ok).toBe(true);
     if (!parsed.ok || parsed.decision.action !== "invoke_capability")
       throw new Error("expected_authoring_invocation");
@@ -150,7 +150,7 @@ describe("automation authoring mechanical selection controls", () => {
   ])("rejects incomplete or invalid %s selection before execution", async (capabilityId, selectionControls) => {
     const f = await fixture();
     expect(f.parse({ action: "invoke_capability", capabilityId,
-      intent: "Use the selected draft.", selectionControls }).ok).toBe(false);
+      selectionControls }).ok).toBe(false);
     expect((await f.drafts.get(f.draft.automationId))?.revision).toBe(1);
     expect(f.invoke).not.toHaveBeenCalled();
   });
@@ -164,7 +164,7 @@ describe("automation authoring mechanical selection controls", () => {
     ]);
     for (const operation of selected) expect(operation.selectionControlIds?.length).toBeGreaterThan(0);
     for (const capabilityId of ["create_draft", "add_agent", "add_tool", "set_details", "bind_step_result"])
-      expect(f.parse({ action: "invoke_capability", capabilityId, intent: "Edit the draft.",
+      expect(f.parse({ action: "invoke_capability", capabilityId,
         operationObjective: "Configure a step." }).ok).toBe(false);
     const preparation = await f.refine("prepare_draft", { operationRefs: [] });
     expect(preparation.invocations[0]?.controls).toEqual({ operationRefs: [] });

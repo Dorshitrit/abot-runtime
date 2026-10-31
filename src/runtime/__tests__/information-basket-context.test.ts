@@ -2,7 +2,7 @@ import type { ChatMessage } from "../../model-gateway/types.js";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { projectOllamaFormat, toOpenAIResponsesTextFormat } from "../../model-gateway/structured-output.js";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
-import { INFORMATION_BASKET_CANDIDATES_KIND, projectInformationBasketCandidates } from "../information-basket/candidate-context.js";
+import { INFORMATION_BASKET_CANDIDATE_MAX_TOKENS, INFORMATION_BASKET_CANDIDATES_KIND, projectInformationBasketCandidates } from "../information-basket/candidate-context.js";
 import type { RequestBasketCandidates } from "../information-basket/request-candidates.js";
 import { createRequestExecutionScope } from "../request/execution-scope.js";
 import { buildExecutionAgentInput } from "../steps/execution-agent/input.js";
@@ -11,6 +11,7 @@ import { createSupervisorDecisionFormat } from "../steps/supervisor-decision/for
 import { createSupervisorDelegationFormat } from "../steps/supervisor-decision/delegation-contract.js";
 import { parseSupervisorDecisionOutput } from "../steps/supervisor-decision/parser.js";
 import { runSupervisorDecision } from "../steps/supervisor-decision/run.js";
+import { estimateMessageTokens } from "../context/token-estimator.js";
 import { projectRequestToolResults } from "../context/request-tool-results.js";
 import { createRoleCallLedger } from "../orchestration/role-calls/index.js";
 import { createRequestRoleCallPolicy } from "../request/role-call-policy.js";
@@ -29,7 +30,7 @@ const candidate: RequestBasketCandidates = {
   }] },
 };
 
-test("EA receives bounded source cards with exact relevant offsets only at its decision", async () => {
+test("EA receives only source names and exact read bindings at its decision", async () => {
   const f = await createKnowledgeSkillsCompactionFixture("execution-agent-v1");
   const request = createRequestExecutionScope({
     seed: f.request, executionPolicy: f.request.executionPolicy,
@@ -43,8 +44,7 @@ test("EA receives bounded source cards with exact relevant offsets only at its d
   const capsule = projected.messages.find(({ content }) => content.includes(INFORMATION_BASKET_CANDIDATES_KIND))!;
   expect(capsule.role).toBe("assistant");
   expect(JSON.parse(capsule.content).sources).toEqual([{
-    sourceId, expectedRevision: 7, displayName: "UNTRUSTED_DOCUMENT_NAME", path: "/registered/plan.md", score: 0.9,
-    match: { chunkId: "chunk-4", startChar: 6400, endChar: 8200 },
+    sourceId, expectedRevision: 7, displayName: "UNTRUSTED_DOCUMENT_NAME",
   }]);
   expect(capsule.content).not.toContain("BODY_MUST_NOT_BE_PROJECTED");
   expect(projected.basketCandidates!.remove(structuredClone(projected.messages))).toEqual(baseline.messages);
@@ -53,6 +53,50 @@ test("EA receives bounded source cards with exact relevant offsets only at its d
   expect(buildExecutionAgentResponseInput(request, options).messages)
     .toEqual(buildExecutionAgentResponseInput(f.request, options).messages);
   expect(f.ledger.current().state).not.toHaveProperty("basketReferences");
+});
+
+test("default 512-token budget retains three named bindings despite long upload paths", () => {
+  const names = ["תלושי שכר לדוגמה.pdf", "email.txt", "runtime-compaction-notes-2026-10-17.txt"];
+  const sources = names.map((displayName, index) => ({
+    ...candidate.result.sources[0]!, sourceId: sourceId.slice(0, -1) + index,
+    expectedRevision: index + 1, displayName,
+    path: "/runtime/attachments/" + "long-directory/".repeat(30) + displayName,
+  }));
+  const context = {
+    instructions: "System", prompt: "Do you have my saved documents?", historyMessages: [], referenceMessages: [],
+    budget: { contextWindowTokens: 32768, outputReserveTokens: 4096, safetyReserveTokens: 512, attachmentReserveTokens: 0 },
+  };
+  const snapshot = { ...candidate, requestId: "web-1793051994854-5swyba",
+    result: { ...candidate.result, omittedCount: 2, sources } };
+  const projection = projectInformationBasketCandidates({ snapshot, context })!;
+  expect(projection).toBeDefined();
+  expect(estimateMessageTokens(projection.message)).toBeLessThanOrEqual(INFORMATION_BASKET_CANDIDATE_MAX_TOKENS);
+  expect(JSON.parse(projection.message.content)).toMatchObject({
+    requestId: snapshot.requestId, steeringVersion: 0, discoveryRevision: 1,
+    relevantSourceCount: 3, omittedCount: 2,
+    sources: sources.map(({ sourceId, expectedRevision, displayName }) => ({ sourceId, expectedRevision, displayName })),
+  });
+  expect(Object.keys(JSON.parse(projection.message.content).sources[0]).sort())
+    .toEqual(["displayName", "expectedRevision", "sourceId"]);
+});
+
+test("oversized multilingual names retain exact bindings and account for omitted sources", () => {
+  const sources = Array.from({ length: 5 }, (_, index) => ({ ...candidate.result.sources[0]!,
+    sourceId: sourceId.slice(0, -1) + index, displayName: "文".repeat(200), expectedRevision: 7 + index,
+  }));
+  const context = {
+    instructions: "System", prompt: "Find a source", historyMessages: [], referenceMessages: [],
+    budget: { contextWindowTokens: 32768, outputReserveTokens: 4096, safetyReserveTokens: 512, attachmentReserveTokens: 0 },
+  };
+  const projection = projectInformationBasketCandidates({ snapshot: { ...candidate,
+    result: { ...candidate.result, omittedCount: 2, sources } }, context })!;
+  const content = JSON.parse(projection.message.content);
+  expect(content.sources.length).toBeGreaterThan(0);
+  expect(content.sources.length).toBeLessThan(sources.length);
+  expect(content.omittedCount).toBe(2 + sources.length - content.sources.length);
+  expect(content.sources[0]).toEqual({ sourceId: sources[0]!.sourceId, expectedRevision: 7,
+    displayName: sources[0]!.displayName.slice(0, 120) });
+  expect(estimateMessageTokens(projection.message)).toBeLessThanOrEqual(INFORMATION_BASKET_CANDIDATE_MAX_TOKENS);
 });
 
 test("insufficient budget and empty source batches do not alter mandatory context", () => {

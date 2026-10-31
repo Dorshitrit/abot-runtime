@@ -1,6 +1,7 @@
 import type { ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
 import { directResponseVariants } from "./direct-response-contract.js";
 import { createMemoryRecallDecisionSchema } from "../memory-recall-decision.js";
+import { addExecutionInteractionSchemas } from "./interaction-decision.js";
 import { createExecutionWorkPlanDecisionSchema } from "./work-plan-schema.js";
 import { isToolCatalogGroupId } from "../../../capabilities/tool-types.js";
 import {
@@ -177,7 +178,7 @@ export function createExecutionAgentDecisionFormat(
       : []),
   ];
   const schema = createExecutionWorkPlanDecisionSchema(
-    variants,
+    addExecutionInteractionSchemas(variants, options.allowUserInteraction === true),
     options.workPlan,
   );
   return {

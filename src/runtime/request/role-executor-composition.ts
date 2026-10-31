@@ -24,6 +24,7 @@ import {
 import { SUPERVISOR_ROOT_CONTRACT } from "./supervisor-root-execution.js";
 import { EXECUTION_AGENT_ROOT_CONTRACT } from "./execution-agent-root-execution.js";
 import { containSuperContextFailures } from "./super-context-failure-executor.js";
+import { bindSuperWorkerSteeringExecutor } from "./super-worker-steering-executor.js";
 
 type RequestRoleExecutor = RoleExecutor<
   RequestExecutionScope,
@@ -37,7 +38,7 @@ const REQUEST_ROLE_EXECUTOR_CATALOG = sealRequestRoleExecutorCatalog([
   },
   {
     contractId: "delegated.worker",
-    executor: containSuperContextFailures(GENERIC_WORKER_EXECUTOR, "delegated.worker"),
+    executor: bindSuperWorkerSteeringExecutor(containSuperContextFailures(GENERIC_WORKER_EXECUTOR, "delegated.worker")),
   },
   {
     contractId: "delegated.reviewer",

@@ -1,3 +1,4 @@
+import { DocumentTextError } from "../../../src/plugin-sdk/document-text.js";
 import {
   failureFromError,
   failureResult,
@@ -29,7 +30,7 @@ function hasNodeErrorCode(error: unknown, code: string): boolean {
 }
 
 export function rethrowDocumentIoError(error: unknown): never {
-  if (error instanceof DocumentReaderError) throw error;
+  if (isDocumentReaderFailure(error)) throw error;
   if (hasNodeErrorCode(error, "ENOENT")) {
     failDocument(
       "document_not_found",
@@ -60,7 +61,7 @@ export function rethrowDocumentIoError(error: unknown): never {
 export function documentReaderFailure(
   error: unknown,
 ): ToolImplementationOutput {
-  if (error instanceof DocumentReaderError) {
+  if (isDocumentReaderFailure(error)) {
     return failureResult({
       errorCode: error.code,
       message: error.message,
@@ -72,4 +73,9 @@ export function documentReaderFailure(
     fallbackMessage: "Document reading failed.",
     operation: "read_document",
   });
+}
+
+function isDocumentReaderFailure(error: unknown): error is DocumentReaderError | DocumentTextError {
+  if (error instanceof DocumentReaderError) return true;
+  return error instanceof DocumentTextError;
 }

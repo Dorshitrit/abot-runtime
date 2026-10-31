@@ -87,7 +87,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       });
     }
     const lifecycle = fixture.events.filter(({ name }) =>
-      name.startsWith("context.compaction."),
+      /^context\.compaction\.(started|completed|failed)$/u.test(name),
     );
     expect(lifecycle.map(({ name }) => name)).toEqual([
       "context.compaction.started",

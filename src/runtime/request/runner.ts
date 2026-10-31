@@ -1,6 +1,9 @@
 import { prepareInitialMemory } from "../long-term-memory/initial-context.js";
 import { createRequestRoleCallPolicy } from "./role-call-policy.js";
-import { restoreApprovalExecutionFreshness } from "./capability-execution-freshness.js";
+import {
+  restoreBoundApprovalFreshness,
+  settleSupersededWorkerApprovalBeforePark,
+} from "./worker-approval-freshness.js";
 import { captureRoleCallLedgerCheckpoint } from "../orchestration/role-calls/checkpoint.js";
 import { isRoleApprovalWait } from "../orchestration/role-executors/approval-continuation.js";
 import type { BoundApprovalDecision } from "../orchestration/worker-capabilities/approval-contracts.js";
@@ -98,9 +101,10 @@ export async function runRequestRunner(
         request.workerCapabilities.provider.getDescriptors(),
       );
       request.abortSignal.throwIfAborted();
-      const executionFreshness = restoreApprovalExecutionFreshness(
-        options.continuation.preparedGroup.executionFreshnessToken,
+      const executionFreshness = restoreBoundApprovalFreshness(
+        options.continuation.preparedGroup,
         request.requestSteering,
+        ledger.current(),
       );
       const prepared = await restoreCapabilityApprovalGroup({
         ...(executionFreshness ? { executionFreshness } : {}),
@@ -110,9 +114,10 @@ export async function runRequestRunner(
         group: options.continuation.preparedGroup,
       });
       request.abortSignal.throwIfAborted();
-      restoreApprovalExecutionFreshness(
-        options.continuation.preparedGroup.executionFreshnessToken,
+      restoreBoundApprovalFreshness(
+        options.continuation.preparedGroup,
         request.requestSteering,
+        ledger.current(),
       );
       const settled = await prepared.execute(options.decisions ?? []);
       continuation = createRoleApprovalContinuation(
@@ -147,7 +152,7 @@ export async function runRequestRunner(
     throw error;
   }
 
-  if (isRoleApprovalWait(result)) {
+  while (isRoleApprovalWait(result)) {
     if (!options.durableApproval)
       throw new Error("request_durable_approval_not_enabled");
     const continuation = Object.freeze({
@@ -170,7 +175,27 @@ export async function runRequestRunner(
         ? { persistArtifactPaths: options.persistArtifactPaths }
         : {}),
     });
-    return Object.freeze({ kind: "awaiting_approval", continuation });
+    const resumed = await settleSupersededWorkerApprovalBeforePark(
+      request, ledger, continuation,
+    );
+    if (!resumed)
+      return Object.freeze({ kind: "awaiting_approval", continuation });
+    try {
+      result = await runRootExecutionKernel({
+        request, ledger, durableApproval: true,
+        continuation: resumed, presentation: continuation.root,
+      });
+    } catch (error: unknown) {
+      await persistSettledSessionArtifactPaths({
+        head: ledger.current(),
+        sessionId: request.sessionId,
+        trigger: "root_failed",
+        ...(options.persistArtifactPaths
+          ? { persistArtifactPaths: options.persistArtifactPaths }
+          : {}),
+      });
+      throw error;
+    }
   }
 
   await persistSettledSessionArtifactPaths({

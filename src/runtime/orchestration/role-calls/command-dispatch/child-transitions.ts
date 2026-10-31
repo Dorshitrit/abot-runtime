@@ -1,3 +1,5 @@
+import { isValidRoleResultSteeringVersion, isValidWorkerSteeringBinding } from "../worker-steering.js";
+import { retireRoleCallPlanForSteering } from "../plan-steering-retirement.js";
 import { isRuntimeDelegateRoleId, RUNTIME_ROOT_ROLE_ID } from "../../roles.js";
 import { resetRoleCapabilitySelectionSupervisionState } from "../capability-selection-supervision.js";
 import type {
@@ -36,6 +38,7 @@ export function openChild(
     callerCallId,
     objective,
     workerCapabilityScope,
+    workerSteeringVersion,
     workingDirectory,
     dependencyResultRefs = [],
     plannerPlan,
@@ -57,6 +60,9 @@ export function openChild(
     return reject(state, "invalid_command");
   }
   if (!isWorkingDirectoryAllowedForRole(roleId, workingDirectory)) {
+    return reject(state, "invalid_command");
+  }
+  if (!isValidWorkerSteeringBinding({ roleId: command.roleId, workerSteeringVersion }, policy)) {
     return reject(state, "invalid_command");
   }
   const caller = findActiveChildCaller(state, callerCallId);
@@ -97,6 +103,7 @@ export function openChild(
     depth,
     objective: objective.trim(),
     ...(workerCapabilityScope ? { workerCapabilityScope } : {}),
+    ...(workerSteeringVersion !== undefined ? { workerSteeringVersion } : {}),
     ...(workingDirectory !== undefined ? { workingDirectory } : {}),
     dependencyResultRefs: [...dependencyResultRefs],
     status: "active",
@@ -154,6 +161,9 @@ export function returnChild(
   if (!hasValidChildReturnPayload(child, outcome, summary)) {
     return reject(state, "invalid_command");
   }
+  if (!isValidRoleResultSteeringVersion(command, child, policy)) {
+    return reject(state, "invalid_command");
+  }
   const resultRef = nextResultRef(state);
   const receiptResolution = resolveCanonicalResultReceiptForReturn({
     state,
@@ -161,6 +171,7 @@ export function returnChild(
     child,
     resultRef,
     outcome,
+    ...(command.steeringVersion !== undefined ? { steeringVersion: command.steeringVersion } : {}),
     policy,
     admittedHeadRevision,
     ...(receipt ? { suppliedReceipt: receipt } : {}),
@@ -172,13 +183,16 @@ export function returnChild(
     roleId: child.roleId,
     outcome,
     summary: summary.trim(),
+    ...(command.steeringVersion !== undefined ? { steeringVersion: command.steeringVersion } : {}),
     ...(receiptResolution.receipt
       ? { receipt: receiptResolution.receipt } : {}),
   };
   if (hasIncompleteCompletedPlannerPlan(state, child, outcome)) {
     return reject(state, "planner_plan_incomplete");
   }
-  const planSettlement = settleRoleCallPlanChild({
+  const planSettlement = outcome === "yielded"
+    ? retireRoleCallPlanForSteering({ state, caller, childCallId, steeringVersion: command.steeringVersion! })
+    : settleRoleCallPlanChild({
     state,
     caller,
     childCallId,
@@ -284,7 +298,7 @@ function hasValidChildReturnPayload(
   summary: string,
 ): child is ReturnableChildFrame {
   if (child.roleId === RUNTIME_ROOT_ROLE_ID) return false;
-  if (outcome !== "completed" && outcome !== "failed") return false;
+  if (outcome !== "completed" && outcome !== "failed" && outcome !== "yielded") return false;
   return isRoleCallResultText(summary);
 }
 

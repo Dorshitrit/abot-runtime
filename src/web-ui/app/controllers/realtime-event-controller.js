@@ -1,3 +1,9 @@
+import { isBlockedCompletion } from "../lib/completion-presentation.js";
+import { recordedPresentationRole } from "../lib/role-presentation.js";
+import { failureResponseText } from "../lib/failure-presentation.js";
+import { isAcknowledgementPresentationEvent } from "../lib/conversation-work-timeline-model.js";
+import { isUserInteractionEvent } from "../lib/user-interaction-event.js";
+import { acceptsUserInteractionScope, applyUserInteractionEvent } from "../lib/request-interaction-messages.js";
 import { createScheduleRealtimeController } from "./schedule-realtime.js";
 import {
   isStopResult,
@@ -37,6 +43,16 @@ import { ownsToolApprovalAcknowledgement } from "../lib/tool-approval-acknowledg
 export { normalizeRealtimeMessage } from "../lib/realtime-message.js";
 export { taskStatusClass } from "../lib/task-progress.js";
 
+function hasCurrentAcknowledgementScope(state, message, environmentId) {
+  if (!isAcknowledgementPresentationEvent(message)) return true;
+  return acceptsUserInteractionScope(state, message, environmentId);
+}
+
+function shouldOmitActivityEvent(message) {
+  if (isAcknowledgementPresentationEvent(message)) return false;
+  return isLowValueActivityEvent(message);
+}
+
 function hasOriginalEventSequence(value) {
   return Number.isSafeInteger(value) && value > 0;
 }
@@ -51,6 +67,7 @@ function hasRecordedOriginalEvent(events, requestId, eventSequence) {
 
 function canMergeUnsequencedActivity(
   previous,
+  incoming,
   key,
   eventSequence,
   webSources,
@@ -58,6 +75,8 @@ function canMergeUnsequencedActivity(
   roleDelegation,
   roleReturn,
 ) {
+  if (isAcknowledgementPresentationEvent(previous)) return false;
+  if (isAcknowledgementPresentationEvent(incoming)) return false;
   if (eventSequence !== undefined) return false;
   if (webSources || previous?.webSources) return false;
   if (toolActivity || previous?.toolActivity) return false;
@@ -157,6 +176,14 @@ export function createRealtimeEventController({
   }
 
   function recordEvent(message) {
+    if (!hasCurrentAcknowledgementScope(state, message, selectedEnvironmentId())) return;
+    if (isUserInteractionEvent(message)) {
+      if (!acceptsUserInteractionScope(state, message, selectedEnvironmentId())) return;
+      const changed = applyUserInteractionEvent(state, message, selectedEnvironmentId());
+      trackSeq(message);
+      if (changed) scheduleMessageRender();
+      return;
+    }
     if (isWorkspaceChange(message)) {
       trackSeq(message);
       return;
@@ -181,7 +208,7 @@ export function createRealtimeEventController({
     }
     updateTaskProgress(message);
     const eventName = textOf(message.name || message.rawType || message.type);
-    if (isLowValueActivityEvent(message)) {
+    if (shouldOmitActivityEvent(message)) {
       trackSeq(message);
       return;
     }
@@ -189,6 +216,7 @@ export function createRealtimeEventController({
     const summary = formatEventDetail(message);
     const tone = eventTone(message);
     const stage = textOf(message.stage);
+    const presentationRole = recordedPresentationRole(message.executorRole || stage, message.presentationRole);
     const phase = textOf(message.phase);
     const key = eventKeyFor({ ...message, requestId }, name, tone);
     const webSources = projectWebSourceEvent(message);
@@ -201,6 +229,7 @@ export function createRealtimeEventController({
     if (
       canMergeUnsequencedActivity(
         lastEvent,
+        message,
         key,
         eventSequence,
         webSources,
@@ -213,6 +242,7 @@ export function createRealtimeEventController({
       lastEvent.summary = summary;
       lastEvent.updatedAt = Date.now();
       Object.assign(lastEvent, contextOrder);
+      if (presentationRole) lastEvent.presentationRole = presentationRole;
       if (typeof message.seqNo === "number")
         lastEvent.lastSeqNo = message.seqNo;
       lastEvent.eventName = eventName || lastEvent.eventName;
@@ -226,12 +256,17 @@ export function createRealtimeEventController({
         lastSeqNo:
           typeof message.seqNo === "number" ? message.seqNo : undefined,
         eventSequence,
+        generation: textOf(message.generation),
+        ...(isAcknowledgementPresentationEvent(message)
+          ? { presentationKind: "acknowledgement", text: textOf(message.text || message.delta) } : {}),
         ...contextOrder,
         updatedAt: Date.now(),
         type: message.type,
+        ...(isBlockedCompletion(message) ? { disposition: "blocked" } : {}),
         rawType: message.rawType,
         eventName,
         stage,
+        ...(presentationRole ? { presentationRole } : {}),
         phase,
         name,
         summary,
@@ -367,6 +402,10 @@ export function createRealtimeEventController({
         applySessionTitleUpdate(message.sessionId, message.title);
         return;
       }
+      if (isAcknowledgementPresentationEvent(message)) {
+        recordEvent(message);
+        return;
+      }
       if (eventName === "thinking.delta" && requestId) {
         const assistant = activeAssistantForRequest(requestId);
         const incoming = textOf(message.text);
@@ -400,7 +439,7 @@ export function createRealtimeEventController({
       renderActivityStatus();
       cancelScheduledThinkingRender();
       renderMessages();
-      setMessageActivityStatus("ABot response completed.");
+      setMessageActivityStatus(isBlockedCompletion(message) ? "ABot request blocked." : "ABot response completed.");
       markCurrentSessionReadSoon();
       settleTerminal(message, terminalRequestId);
       void loadSessions();
@@ -415,7 +454,7 @@ export function createRealtimeEventController({
         assistant.streaming = false;
         assistant.text = isStopResult(message)
           ? stoppedResponseText(assistant.text, message)
-          : textOf(message.error, "Request failed.");
+          : failureResponseText(message);
       }
       recordEvent(message);
       cancelScheduledThinkingRender();

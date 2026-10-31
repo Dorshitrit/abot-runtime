@@ -1,3 +1,5 @@
+import { appendRequestSteeringContext } from "../../request/request-steering-context.js";
+import type { RequestSteeringSnapshot } from "../../request/request-steering.js";
 import { projectSupervisorWorkerCapabilityBriefEntries } from "../../orchestration/worker-capabilities/supervisor-skill-authority.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import { createCapabilityBriefReadmissionController } from "../../context/capability-brief-readmission.js";
@@ -20,6 +22,7 @@ type BriefRequest = Omit<
 export function buildPlannerCapabilityBriefOptions(
   request: BriefRequest,
   groups: readonly WorkerCapabilityCatalogGroup[],
+  steering?: RequestSteeringSnapshot,
 ) {
   const admission = resolveModelContextAdmission({
     runnerConfig: request.runnerConfig,
@@ -31,10 +34,12 @@ export function buildPlannerCapabilityBriefOptions(
   const instructions = (admission.invocation.instructions ?? [])
     .map((instruction) => instruction.trim())
     .filter((instruction) => instruction.length > 0);
-  const additionalBudgetMessages: readonly ChatMessage[] =
-    instructions.length > 0
-      ? [{ role: "system", content: instructions.join("\n") }]
-      : [];
+  const configuredMessages: readonly ChatMessage[] = instructions.length > 0
+    ? [{ role: "system", content: instructions.join("\n") }]
+    : [];
+  const additionalBudgetMessages = steering
+    ? appendRequestSteeringContext(configuredMessages, steering)
+    : configuredMessages;
   return Object.freeze({
     entries: projectSupervisorWorkerCapabilityBriefEntries({
       authority: request.executionPolicy.authority,
@@ -42,18 +47,18 @@ export function buildPlannerCapabilityBriefOptions(
     }),
     groups,
     budget: admission.budget,
-    // Root steering is deliberately not inherited by this bounded child.
+    // Only a canonical Worker handoff adds caller-owned steering to this budget.
     additionalBudgetMessages,
   });
 }
 
-/** Reuses optional-brief admission without inheriting root steering authority. */
+/** Reuses optional-brief admission with the exact caller decision envelope. */
 export function createPlannerCapabilityBriefReadmissionController(
   request: BriefRequest & { requestId: string },
   options: Readonly<{
     input: Pick<
       ReturnType<typeof buildPlannerDecisionInput>,
-      "format" | "availableWorkerCapabilityCatalog"
+      "format" | "availableWorkerCapabilityCatalog" | "steering"
     >;
     controller: ModelStepContextCompactionController;
   }>,
@@ -64,6 +69,7 @@ export function createPlannerCapabilityBriefReadmissionController(
       ...buildPlannerCapabilityBriefOptions(
         request,
         options.input.availableWorkerCapabilityCatalog,
+        options.input.steering,
       ),
       format: options.input.format,
     }),

@@ -130,9 +130,10 @@ describe("optional projection before measured context compaction", () => {
     await expect(harness.run(controller)).resolves.toBe("ok");
 
     expect(controller.projectForCompaction).toHaveBeenCalledOnce();
-    expect(historyStage.prepare).toHaveBeenCalledExactlyOnceWith(mandatory);
+    expect(historyStage.prepare).toHaveBeenCalledExactlyOnceWith(mandatory, { onProgress: expect.any(Function) });
     expect(active.prepare).toHaveBeenCalledExactlyOnceWith(
       [...mandatory, { role: "system", content: "history-checkpoint" }],
+      { onProgress: expect.any(Function) },
     );
     expect(commits).toEqual(["history", "active"]);
     expect(harness.countInputTokens).toHaveBeenCalledTimes(4);
@@ -166,6 +167,7 @@ describe("optional projection before measured context compaction", () => {
       );
       expect(active.prepare).toHaveBeenCalledExactlyOnceWith(
         kind === "absent" ? ADMISSION_MESSAGES : withOptional,
+        { onProgress: expect.any(Function) },
       );
       expect(active.commit).toHaveBeenCalledOnce();
       expect(harness.invoke).toHaveBeenCalledOnce();
@@ -194,7 +196,7 @@ describe("optional projection before measured context compaction", () => {
       const controller = optionalController([active]);
       await expect(harness.run(controller)).resolves.toBe("ok");
       expect(controller.projectForCompaction).toHaveBeenCalledOnce();
-      expect(active.prepare).toHaveBeenCalledExactlyOnceWith(mandatory);
+      expect(active.prepare).toHaveBeenCalledExactlyOnceWith(mandatory, { onProgress: expect.any(Function) });
       expect(active.commit).toHaveBeenCalledOnce();
       expect(harness.countInputTokens).toHaveBeenCalledTimes(3);
       expect(harness.invoke).toHaveBeenCalledOnce();
@@ -214,7 +216,7 @@ describe("optional projection before measured context compaction", () => {
     );
     expect(controller.projectForCompaction).toHaveBeenCalledOnce();
     expect(harness.countInputTokens).toHaveBeenCalledTimes(2);
-    expect(active.prepare).toHaveBeenCalledExactlyOnceWith(mandatory);
+    expect(active.prepare).toHaveBeenCalledExactlyOnceWith(mandatory, { onProgress: expect.any(Function) });
     expect(active.commit).not.toHaveBeenCalled();
     expect(harness.invoke).not.toHaveBeenCalled();
   });

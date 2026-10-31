@@ -1,7 +1,9 @@
+import { isUserInteractionMessage } from "../lib/user-interaction-event.js";
 import { textOf } from "../lib/text-format.js";
 
 function latestDisplayedAssistant(messages) {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (isUserInteractionMessage(messages[index])) continue;
     if (messages[index].role === "assistant") return messages[index];
   }
   return null;

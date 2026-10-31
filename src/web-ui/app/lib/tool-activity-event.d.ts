@@ -9,6 +9,7 @@ export interface ToolActivityEvent {
   activityTitle?: string;
   executionId: string;
   executorRole: string;
+  presentationRole?: "execution_agent" | "auditor";
   roleCallId: string;
   payloadStage?: number;
   payloadStageCount?: number;

@@ -15,7 +15,9 @@ import {
   type RegisteredToolWorkerCapabilityProviderDiagnostic,
 } from "../registered-tool-worker-capability-diagnostics.js";
 import { executionFreshnessRejection } from "./payload-lifecycle.js";
-import { payloadRejection } from "./payload-rejection.js";
+import {
+  payloadRejection, STEERING_SUPERSEDED_BEFORE_EXTERNAL_EXECUTION,
+} from "./payload-rejection.js";
 import { RegisteredToolWorkerCapabilityExecutionError } from "./errors.js";
 import {
   observeExternalResult,
@@ -31,7 +33,7 @@ export function createPreparedWorkerInvocation(
   },
   input: {
     call: RoleCallFrame;
-    intent: string;
+    intent?: string;
     controls: Readonly<Record<string, unknown>>;
     executionFreshness?: WorkerCapabilityExecutionFreshness;
   },
@@ -81,7 +83,7 @@ export function createPreparedWorkerInvocation(
           operationId,
           input.call,
           executionId,
-          input.intent.length,
+          input.intent?.length ?? 0,
           Object.keys(input.controls).length,
         );
         const rejectedExecution = executionFreshnessRejection(
@@ -97,6 +99,15 @@ export function createPreparedWorkerInvocation(
           executionId,
           input.call,
           selectedTargetReferences,
+          input.executionFreshness?.token.kind === "worker_steering_v1"
+            ? input.executionFreshness : undefined,
+        );
+        if (
+          input.executionFreshness?.token.kind === "worker_steering_v1" &&
+          externalResult.status === "rejected" &&
+          externalResult.code === STEERING_SUPERSEDED_BEFORE_EXTERNAL_EXECUTION
+        ) return rejectBeforeExecution(
+          executionId, externalResult.code, externalResult.message,
         );
         const observed = observeExternalResult(
           externalResult,

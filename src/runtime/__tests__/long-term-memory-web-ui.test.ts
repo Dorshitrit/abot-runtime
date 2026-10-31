@@ -20,7 +20,7 @@ import type {
 
 const STORED_RECORD = Object.freeze({
   id: "memory/1",
-  content: "Dor prefers concise answers.",
+  content: "Alex prefers concise answers.",
   tags: Object.freeze(["preference", "writing"]),
   origin: "passive_response",
   createdAt: "2026-08-26T08:00:00.000Z",
@@ -333,7 +333,7 @@ describe("long-term memory Web UI presentation", () => {
     expect(buildMemoryDeleteConfirmation(STORED_RECORD)).toContain(
       STORED_RECORD.content,
     );
-    expect(markup).toContain("Dor prefers concise answers.");
+    expect(markup).toContain("Alex prefers concise answers.");
     expect(markup).toContain('aria-label="Edit memory"');
     expect(markup).toContain('aria-label="Delete memory"');
     expect(markup).not.toContain(">Edit</button>");

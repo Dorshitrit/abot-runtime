@@ -1,4 +1,5 @@
 import type { SessionThinkingTraceEntry } from "../../sessions/types.js";
+import { blockedCompletionFields } from "../../shared/completion-disposition.js";
 import { throwIfRequestCancelled } from "../request/cancellation.js";
 import type { AgentMode } from "../../shared/types.js";
 import type { EventSink } from "../ports.js";
@@ -7,6 +8,7 @@ import { RequestLifecycle } from "../orchestration/lifecycle/request-lifecycle.j
 import type {
   RequestObservation,
   RequestOutputTextMode,
+  RequestCompletionDisposition,
 } from "../request/result.js";
 import type { RequestSessionStore } from "../request/session-store.js";
 import type {
@@ -32,6 +34,7 @@ export function failRequest(params: {
 
 export async function finalizeRequest(params: {
   rawOutput: string;
+  disposition?: RequestCompletionDisposition;
   outputTextMode?: RequestOutputTextMode;
   events: EventSink;
   lifecycle: RequestLifecycle;
@@ -89,6 +92,7 @@ export async function finalizeRequest(params: {
     requestId: params.requestId,
     agentMode: params.agentMode,
     output,
+    ...blockedCompletionFields(params.disposition),
     grounding: "conversation",
     thinkingTrace: params.thinkingTrace,
     ...(finalObservation

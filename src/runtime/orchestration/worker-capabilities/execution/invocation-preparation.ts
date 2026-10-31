@@ -19,7 +19,7 @@ import { createWorkerCapabilityPreparationFailureFingerprint } from "../preparat
 
 export type PreparedBoundInvocation<TContext> = Readonly<{
   adapter: WorkerCapabilityAdapter<TContext>;
-  intent: string;
+  intent?: string;
   authoringObjective?: string;
   controls: WorkerCapabilityControls;
   prepared: WorkerCapabilityPreparedExecution;
@@ -30,7 +30,7 @@ type BoundInvocationPreparationParams<TContext> = Readonly<{
   call: RoleCallFrame;
   assignmentProvenance?: WorkerCapabilityPayloadSourceProvenance;
   adapter: WorkerCapabilityAdapter<TContext>;
-  intent: string;
+  intent?: string;
   authoringObjective?: string;
   controls: WorkerCapabilityControls;
   preparationId: string;
@@ -52,7 +52,7 @@ export async function prepareBoundInvocation<TContext>(
     ...(params.assignmentProvenance
       ? { assignmentProvenance: params.assignmentProvenance }
       : {}),
-    intent: params.intent,
+    ...(params.intent !== undefined ? { intent: params.intent } : {}),
     ...(params.authoringObjective
       ? { authoringObjective: params.authoringObjective }
       : {}),

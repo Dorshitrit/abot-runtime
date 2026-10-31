@@ -1,3 +1,5 @@
+import { isOptionalRoleCapabilityIntent } from "./capability-intent.js";
+import { isValidRoleResultSteeringVersion, isValidWorkerSteeringBinding } from "./worker-steering.js";
 import {
   isRuntimeDelegateRoleId,
   RUNTIME_ROOT_ROLE_ID,
@@ -33,7 +35,6 @@ import { isReconsiderationCauseBoundToInvocationCount } from "./reconsideration-
 import {
   isRoleCapabilityId,
   ROLE_CAPABILITY_EXECUTION_LIMIT_MAX,
-  ROLE_CAPABILITY_INVOCATION_INTENT_MAX_LENGTH,
   ROLE_CAPABILITY_REFERENCE_DATA_MAX_LENGTH,
   ROLE_CALL_LEDGER_CONTRACT_VERSION,
   type ExecutionPolicyAuthoritySnapshot,
@@ -230,6 +231,7 @@ export function validateRoleCallState(
       (call.parentCallId === null
         ? call.objective !== null || call.dependencyResultRefs.length !== 0
         : !isBoundedText(call.objective, policy.limits.maxObjectiveChars)) ||
+      !isValidWorkerSteeringBinding(call, policy) ||
       !isValidCapabilitySelectionReconsideration(call, policy, state) ||
       !isValidAdoptedModelWorkPlan(state, call, policy)
     ) {
@@ -282,7 +284,7 @@ export function validateRoleCallState(
       producer.resultRef !== result.resultRef ||
       producer.status !== "completed" ||
       producer.roleId !== result.roleId ||
-      (result.outcome !== "completed" && result.outcome !== "failed") ||
+      !isValidRoleResultSteeringVersion(result, producer, policy) ||
       !isRoleCallResultText(result.summary) ||
       !isRoleCallResultReceiptValidForStoredResult({
         receipt: result.receipt,
@@ -411,10 +413,7 @@ function validateCapabilityExecutions(
       execution.invocationAttempt < 1 ||
       !isRoleCapabilityId(execution.capabilityId) ||
       !isRoleCapabilityDeclaredEffect(execution.declaredEffect) ||
-      !isBoundedText(
-        execution.intent,
-        ROLE_CAPABILITY_INVOCATION_INTENT_MAX_LENGTH,
-      ) ||
+      !isOptionalRoleCapabilityIntent(execution.intent) ||
       !isExactJsonObjectString(execution.controlsJson) ||
       !isValidExecutionActionFingerprint(execution) ||
       (execution.status !== "running" && execution.status !== "settled")

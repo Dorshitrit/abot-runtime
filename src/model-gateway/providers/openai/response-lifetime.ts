@@ -15,7 +15,8 @@ function observeResponseFrame(
 // receive the terminal bytes and EOF, even if the provider keeps HTTP open.
 export function bindOpenAIResponseLifetime(
   response: Response,
-  options: Pick<OpenAIResponsesStreamOptions, "functionOutputName"> = {},
+  options: Pick<OpenAIResponsesStreamOptions,
+    "functionOutputName" | "requireCompletedResponse" | "assembleCompletedFunctionItems"> = {},
 ): Response {
   if (!response.ok || !response.body) return response;
   const reader = response.body.getReader();

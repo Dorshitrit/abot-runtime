@@ -15,13 +15,13 @@ export function createBasketSourcePicker({ root, actions, documentRoot = documen
   const dialog = documentRoot.createElement("dialog");
   dialog.className = "basket-picker-dialog";
   dialog.setAttribute("aria-labelledby", `${idPrefix}-title`);
-  dialog.innerHTML = `<header class="basket-picker-heading"><div><h2 id="${escapeAttribute(idPrefix)}-title">${escapeHtml(heading)}</h2><p data-basket-picker-caption></p></div><button type="button" class="basket-text-button" data-basket-picker-close>Close</button></header>
+  dialog.innerHTML = `<div class="basket-picker-content"><header class="basket-picker-heading"><div><h2 id="${escapeAttribute(idPrefix)}-title">${escapeHtml(heading)}</h2><p data-basket-picker-caption></p></div><button type="button" class="basket-text-button" data-basket-picker-close autofocus>Close</button></header>
     <p class="basket-note">Select files on the computer running ABot. Original files stay in place.</p><nav class="basket-picker-roots" aria-label="Available locations" data-basket-picker-roots></nav>
     <form class="basket-picker-path" data-basket-path-form><label>File or folder path<input type="text" dir="ltr" spellcheck="false" autocomplete="off" data-basket-path aria-label="Source file or folder path"></label><button type="submit" data-basket-path-go>Open folder</button><button type="button" data-basket-path-add>Link file path</button></form>
     <p class="basket-feedback" role="alert" data-basket-picker-error hidden></p><div class="basket-picker-location"><button type="button" data-basket-parent>Up one folder</button><span dir="ltr" data-basket-directory-name></span></div>
     <div class="basket-picker-selection" data-basket-picker-selection><button type="button" class="basket-text-button" data-basket-picker-select-all aria-describedby="${escapeAttribute(idPrefix)}-selection-note">Select all files in this folder</button><button type="button" class="basket-text-button" data-basket-picker-clear>Clear selection</button><span id="${escapeAttribute(idPrefix)}-selection-note" class="basket-note">Supported files only; subfolders are excluded.</span></div>
     <div class="basket-picker-entries" data-basket-picker-entries></div><button type="button" class="basket-text-button" data-basket-picker-more hidden>Load more files</button>
-    <footer class="basket-picker-footer"><span role="status" aria-live="polite" aria-atomic="true" data-basket-picker-count></span><button type="button" class="primary-button" data-basket-picker-add>Add selected</button></footer>`;
+    </div><footer class="basket-picker-footer"><span role="status" aria-live="polite" aria-atomic="true" data-basket-picker-count></span><button type="button" class="primary-button" data-basket-picker-add>Add selected</button></footer>`;
   root.append(dialog);
   const find = (selector) => dialog.querySelector(selector);
   let current;

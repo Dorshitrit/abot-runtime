@@ -1,3 +1,4 @@
+import { isSparkAssistantMessage, isSparkConversationMessage } from "../app/lib/spark-message-visibility.js";
 import type { SessionMessageIdentity } from "../../sessions/snapshot.js";
 import type { WebReadState } from "./store.js";
 import { randomUUID } from "node:crypto";
@@ -45,7 +46,7 @@ function ensureVisibleReadState(state: WebReadState, sessionId: string): Visible
   return initial;
 }
 
-function receiptIdentity(messageId: string | number, createdAt: number, requestId: string | null): string {
+export function visibleMessageReceiptIdentity(messageId: string | number, createdAt: number, requestId: string | null): string {
   return JSON.stringify([String(messageId), createdAt, requestId || null]);
 }
 
@@ -81,15 +82,15 @@ export function markVisibleAssistantMessages(
   const previous = ensureVisibleReadState(state, sessionId);
   if (generation !== previous.generation) throw new Error("read_generation_changed");
   const stored = new Map(state.visibleMessages ?? []);
-  const assistants = messages.filter((message) => message.role === "assistant");
-  const canonical = new Set(assistants.map((message) => receiptIdentity(message.id, message.createdAt, message.requestId)));
-  const requested = new Set(observations.map((receipt) => receiptIdentity(receipt.messageId, receipt.createdAt, receipt.requestId)));
+  const assistants = messages.filter(isSparkAssistantMessage);
+  const canonical = new Set(assistants.map((message) => visibleMessageReceiptIdentity(message.id, message.createdAt, message.requestId)));
+  const requested = new Set(observations.map((receipt) => visibleMessageReceiptIdentity(receipt.messageId, receipt.createdAt, receipt.requestId)));
   for (const identity of requested) {
     if (!canonical.has(identity)) throw new Error("visible_message_receipt_stale");
   }
-  const prior = new Set(previous.messages.map((receipt) => receiptIdentity(receipt.messageId, receipt.createdAt, receipt.requestId)));
+  const prior = new Set(previous.messages.map((receipt) => visibleMessageReceiptIdentity(receipt.messageId, receipt.createdAt, receipt.requestId)));
   const receipts = messages.filter((message) => message.role === "assistant").filter((message) => {
-    const identity = receiptIdentity(message.id, message.createdAt, message.requestId);
+    const identity = visibleMessageReceiptIdentity(message.id, message.createdAt, message.requestId);
     if (requested.has(identity)) return true;
     return prior.has(identity);
   }).map((message) => ({ messageId: String(message.id), createdAt: message.createdAt, requestId: message.requestId }));
@@ -102,9 +103,9 @@ export function projectVisibleSessionReadState(
   state: WebReadState, sessionId: string, messages: SessionMessageIdentity[],
 ) {
   const saved = ensureVisibleReadState(state, sessionId);
-  const assistants = messages.filter((message) => message.role === "assistant");
-  const identities = new Set(saved.messages.map((receipt) => receiptIdentity(receipt.messageId, receipt.createdAt, receipt.requestId)));
-  const wasRead = (message: SessionMessageIdentity) => identities.has(receiptIdentity(message.id, message.createdAt, message.requestId));
+  const assistants = messages.filter(isSparkAssistantMessage);
+  const identities = new Set(saved.messages.map((receipt) => visibleMessageReceiptIdentity(receipt.messageId, receipt.createdAt, receipt.requestId)));
+  const wasRead = (message: SessionMessageIdentity) => identities.has(visibleMessageReceiptIdentity(message.id, message.createdAt, message.requestId));
   const unread = assistants.filter((message) => !wasRead(message));
   const lastRead = [...assistants].reverse().find(wasRead);
   return {
@@ -115,7 +116,7 @@ export function projectVisibleSessionReadState(
     readGeneration: saved.generation,
     lastReadAt: saved?.revision ?? state.initializedAt,
     lastReadMessageId: lastRead?.id ?? null,
-    latestMessageId: messages.at(-1)?.id ?? null,
+    latestMessageId: messages.filter(isSparkConversationMessage).at(-1)?.id ?? null,
     latestAssistantMessageId: assistants.at(-1)?.id ?? null,
   };
 }

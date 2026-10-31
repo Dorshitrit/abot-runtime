@@ -33,7 +33,7 @@ async function fixture() {
     changed: vi.fn(), desktop: async () => ({ available: true }), deliver,
     now: () => 2000,
   });
-  const store = new WebNotificationStore(notificationStorePath({ ...paths, environmentId: "dev" }), "dev");
+  const store = new WebNotificationStore(notificationStorePath({ ...paths, environmentId: "dev" }), "dev", { now: () => 2000 });
   return { sessions, deliver, error, createService, store };
 }
 

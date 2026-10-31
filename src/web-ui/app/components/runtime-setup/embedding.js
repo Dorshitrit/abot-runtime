@@ -184,7 +184,7 @@ export function createEmbeddingSetupStep({
           : [];
         state.message =
           payload.catalog?.supported === true
-            ? `${state.models.length} installed models found. Choose an embedding model.`
+            ? `${state.models.length} installed models found. Embedding support is not verified; choose a model that supports embeddings.`
             : "This provider does not list models. Enter an embedding model ID.";
       },
       "Could not discover models. You can enter an embedding model ID manually.",

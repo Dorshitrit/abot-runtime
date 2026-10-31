@@ -17,7 +17,7 @@ export function createNotificationsController({
   let environmentRevision = 0;
   let readRevision = 0;
   const refreshEvents = createEventRefresh({
-    canRefresh: () => ready && isVisible(),
+    canRefresh: () => ready,
     refresh: () => refresh(),
     setTimer, clearTimer,
   });
@@ -138,8 +138,9 @@ export function createNotificationsController({
         refreshEvents.schedule();
     },
     visibilityChanged() {
+      if (!isVisible()) return;
       refreshEvents.cancel();
-      if (isVisible()) void refresh();
+      void refresh();
     },
     dispose: refreshEvents.cancel,
   };

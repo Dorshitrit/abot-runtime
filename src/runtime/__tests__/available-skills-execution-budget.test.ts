@@ -66,3 +66,28 @@ test("SUPER discovery depends on core read availability, not Worker or tool slot
   expect(list).toHaveBeenCalledOnce();
   expect(f.getAvailableSkills).not.toHaveBeenCalled();
 });
+
+
+test("EA exposes every small-catalog identity without changing the active request or other context lanes", async () => {
+  const f = await fixture();
+  const catalog = Array.from({ length: 8 }, (_, index) => ({
+    skillId: `skill-${index}`, name: `Skill ${index}`,
+    description: (index < 6 ? "English guidance " : "הנחיות בעברית ").repeat(12),
+  }));
+  const build = () => buildExecutionAgentInput(f.request, {
+    head: f.ledger.current(), call: activeEvidenceCall(f.ledger.current()),
+    steeringSnapshot: f.steering.snapshot(),
+    includeAcknowledgement: false, includeTitle: false, allowPlanner: false, allowAuditor: false,
+  });
+  f.getAvailableSkills.mockReturnValue([]);
+  const withoutDiscovery = build();
+  f.getAvailableSkills.mockReturnValue(catalog);
+  const projected = build();
+  for (const entry of catalog) expect(projected.messages[0]!.content).toContain(`[${entry.skillId}]`);
+  expect(projected.messages[0]!.content).not.toContain("Partial catalog");
+  expect(projected.messages.map(({ role }) => role)).toEqual(withoutDiscovery.messages.map(({ role }) => role));
+  expect(projected.messages.slice(1)).toEqual(withoutDiscovery.messages.slice(1));
+  expect(projected.capabilities).toEqual(withoutDiscovery.capabilities);
+  expect(projected.contract).toEqual(withoutDiscovery.contract);
+  expect(projected.messages.filter(({ role, content }) => role === "user" && content === f.request.prompt)).toHaveLength(1);
+});

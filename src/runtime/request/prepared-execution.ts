@@ -1,3 +1,5 @@
+import { projectRolePresentationEvent } from "../events/role-presentation.js";
+import { hasExecutionHistoryAuthority } from "../context/execution-history-policy.js";
 import { captureRequestReasoningPreference } from "./reasoning-preference.js";
 import { bindRequestWorkingDirectory } from "../capabilities/request-working-directory.js";
 import { createRuntimeToolPathResolver } from "../capabilities/runtime-target-path.js";
@@ -121,6 +123,7 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
   if (durable) params.initialEvents.dispose();
   const callbacks = createRequestCallbacks(
     events,
+    requestId,
     resume?.snapshot.presentation,
   );
   params.onEventsReady(events, callbacks, durable);
@@ -146,6 +149,8 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
     sessionMemory = createRequestSessionMemory({
       sessionId,
       session: opened!.session,
+      ...(hasExecutionHistoryAuthority(executionPolicy.authority)
+        ? { scope: "execution_agent" as const } : {}),
       repository: sessionStore,
       compactor: sessionMemoryCompactor,
     });
@@ -245,6 +250,7 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
         }
       : {}),
     abortSignal: lifecycle.signal,
+    userInteractions: callbacks.userInteractions,
     onAcknowledgement: callbacks.onAcknowledgement,
     onSessionTitle: createRequestSessionTitleUpdater({
       shouldGenerateTitle: generateSessionTitle,
@@ -258,7 +264,7 @@ export async function prepareRequestExecution(params: RequestPreparationInput) {
     onThinkingTrace: callbacks.onThinkingTrace,
     onAnswerToken: callbacks.onAnswerToken,
     onEvent: (name, extra) => {
-      events.event(name, extra);
+      events.event(name, projectRolePresentationEvent(executionPolicy.rootContract.contractId, name, extra));
     },
   };
   const superFailureFinalization = createSuperFailureFinalization({

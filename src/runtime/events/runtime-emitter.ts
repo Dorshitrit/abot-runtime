@@ -1,4 +1,5 @@
 import type WebSocket from "ws";
+import { blockedCompletionFields } from "../../shared/completion-disposition.js";
 
 import { traceDebug } from "../observability/debug-logger.js";
 import { enrichEventPayload } from "./event-status.js";
@@ -137,9 +138,10 @@ export class RuntimeEventBus {
     });
   }
 
-  completed(output: string): void {
+  completed(output: string, disposition?: "blocked"): void {
     this.publish({
       type: "completed",
+      ...blockedCompletionFields(disposition),
       requestId: this.options.requestId,
       output,
     });

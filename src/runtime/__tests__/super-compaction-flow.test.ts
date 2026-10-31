@@ -25,6 +25,7 @@ function fixture(
     coverageOutput?: string;
     contentOutput?: string;
     mergeOutput?: string;
+    continuationOutput?: string;
   } = {},
 ) {
   const calls: Array<{
@@ -53,7 +54,7 @@ function fixture(
           : step === "super.compact.merge"
             ? (options.mergeOutput ??
               "Read lines14-21/84; next22; incomplete. ttl=0 gives Infinity; selected tests1 failed2 passed; full suite not run.")
-            : "The observed zero-TTL case fails; no mutation or full-suite pass is evidenced.";
+            : (options.continuationOutput ?? "The observed zero-TTL case fails; no mutation or full-suite pass is evidenced.");
     return {
       text,
       meta: options.incomplete ? { providerCompletionReason: "length" } : {},
@@ -133,7 +134,16 @@ describe("independent SUPER compaction flow", () => {
     expect(
       f.calls.filter((call) => call.step === "super.compact.continuation"),
     ).toHaveLength(1);
-    expect(f.calls.at(-1)!.capsule).toBe(f.calls.at(-2)!.capsule);
+    expect(f.calls.filter((call) => call.step === "super.compact.merge")).toHaveLength(0);
+    const continuationInput = f.invoke.mock.calls.at(-1)![0];
+    const continuationEnvelope = JSON.parse((continuationInput.messages as readonly ChatMessage[])[1]!.content);
+    expect(continuationEnvelope.baseCapsule.source).toMatchObject({
+      sourceRef: f.source.sourceRef, sourceFingerprint: f.source.sourceFingerprint,
+      range: { startByte: 0, endByteExclusive: Buffer.byteLength(f.source.content) },
+    });
+    expect(continuationEnvelope.baseCapsule.children).toHaveLength(2);
+    const digest = candidate.sourceDigests[0]!.digest;
+    expect(continuationEnvelope.derivedStageOutputs.outputs.content).toBe(digest.slice(digest.indexOf("\n") + 1));
     expect(
       extractionCalls.every(
         (call) => !Object.hasOwn(call.data, "previousFold"),
@@ -255,7 +265,6 @@ describe("independent SUPER compaction flow", () => {
       new Set([
         "super.compact.coverage",
         "super.compact.content",
-        "super.compact.merge",
       ]),
     );
     expect(
@@ -274,4 +283,21 @@ describe("independent SUPER compaction flow", () => {
         historyWindows[index + 1]!.capsule,
       );
   });
+});
+
+
+test("a long folded RAW handoff changes neither model inputs nor stage count", async () => {
+  const control = fixture();
+  await generateSuperCompactionCandidate(control.params);
+  const handoff = "Observed fact; pending verification. ".repeat(70).trim();
+  expect(handoff.length).toBeGreaterThan(2_000);
+  const changed = fixture({ continuationOutput: handoff });
+  const candidate = await generateSuperCompactionCandidate(changed.params);
+  expect(candidate.continuation.currentState).toBe(handoff);
+  expect(changed.calls).toEqual(control.calls);
+  changed.request.contextCompactionStore!.commit(candidate);
+  const restored = restoreRequestContextCompaction(JSON.parse(JSON.stringify(
+    captureRequestContextCompaction(changed.request.contextCompactionStore!),
+  )));
+  expect(restored.get(candidate.scopeId)).toEqual(candidate);
 });

@@ -92,7 +92,7 @@ export async function parkRequestApproval(params: {
   const approvalIntents = continuation.preparedGroup.entries.flatMap(
     (entry) => {
       if (!entry.approvalRequest) return [];
-      const intent = entry.intent.trim();
+      const intent = entry.intent?.trim();
       return intent ? [intent] : [];
     },
   );

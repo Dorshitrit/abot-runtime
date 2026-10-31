@@ -11,13 +11,11 @@ function executionDecision(turn: number) {
     return {
       action: "open_capability_scope",
       catalogGroupIds: ["exec"],
-      acknowledgement: "I will verify the project.",
     };
   if (turn === 2)
     return {
       action: "invoke_capability",
       capabilityId: "execute_command",
-      intent: "Verify the project.",
       operationObjective: "Verify the project.",
       controlsEvidenceExecutionIds: [],
       workingDirectory: ".",

@@ -44,7 +44,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
             return {
               action: "recall_memory",
               query: RECALL_QUERY,
-              acknowledgement: "I will recall the relevant preference.",
+              ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will recall the relevant preference." } : {}),
             };
           }
           expect(decisionCount).toBe(2);
@@ -170,7 +170,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
               return {
                 action: "recall_memory",
                 query: RECALL_QUERY,
-                acknowledgement: "I will check memory.",
+                ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will check memory." } : {}),
               };
             }
             expect(recallCapsules(input)).toEqual([
@@ -199,7 +199,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
           expect(recallCapsules(input)).toEqual([]);
           return {
             ...responseDecision(policy),
-            acknowledgement: "I will answer the request.",
+            ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will answer the request." } : {}),
           };
         },
       });
@@ -218,7 +218,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
           expect(harness.memory.retrieve).toHaveBeenCalledTimes(1);
           return {
             ...responseDecision(policy),
-            acknowledgement: "I will answer the request.",
+            ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will answer the request." } : {}),
           };
         },
       });

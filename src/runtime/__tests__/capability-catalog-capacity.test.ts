@@ -237,13 +237,12 @@ test("Worker and Execution Agent formats and parsers retain the last capability 
   const decision = {
     action: "invoke_capability",
     capabilityId: "observe_129",
-    intent: "Observe the selected source.",
   };
   expect(() =>
     createWorkerDecisionFormat({ capabilities: descriptors }),
   ).not.toThrow();
   expect(
-    parseWorkerDecisionOutput(JSON.stringify({ decision }), undefined, {
+    parseWorkerDecisionOutput(JSON.stringify({ decision: { ...decision, intent: "Observe the selected source." } }), undefined, {
       availableCapabilities: descriptors,
     }),
   ).toMatchObject({ ok: true, decision: { capabilityId: "observe_129" } });
@@ -303,7 +302,6 @@ test("larger catalogs do not raise the Execution Agent batch contract above 64",
   ).toThrow("execution_agent_capabilities_invalid");
   const invocations = descriptors.slice(0, 65).map(({ capabilityId }) => ({
     capabilityId,
-    intent: "Observe source.",
   }));
   expect(
     parseExecutionAgentDecisionOutput(

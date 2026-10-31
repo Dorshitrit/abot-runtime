@@ -5,6 +5,9 @@ import { StepTimeoutService } from "./step-timeout-service.js";
 import { ProjectRoutes } from "./project-routes.js";
 import { cancelWebRequest } from "./request-cancellation-route.js";
 import { ConversationFileRoutes } from "./conversation-file-routes.js";
+import { ConversationFileAccess } from "./conversation-file-access.js";
+import { ProjectChangesRoutes } from "../project-changes/routes.js";
+import { ChatGptAuthRoutes } from "../chatgpt-auth/routes.js";
 import { ConfigFileConflictError } from "../../runtime/adapters/config-file-transaction.js";
 import { ModelSetupRoutes } from "./model-setup-routes.js";
 import { ModelSetupService } from "./model-setup-service.js";
@@ -22,7 +25,7 @@ import { acceptConfigMutationRequest } from "./config-mutation-request.js";
 import { WebSessionRoutes } from "./session-routes.js";
 import type { WorkspaceChangeNotifier } from "./workspace-notifications.js";
 import { ToolApprovalRoutes } from "./tool-approval-routes.js";
-import { ManagedWebToolApprovals } from "./managed-tool-approvals.js";
+import { ManagedWebToolApprovals, type WebToolApprovalAcceptedObserver } from "./managed-tool-approvals.js";
 import { WebSessionReadStates } from "../session-read-state/service.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -60,6 +63,8 @@ import { LongTermMemoryManagementRoutes } from "./memory-management-routes.js";
 import { LongTermMemoryOnboardingRoutes } from "./memory-onboarding-routes.js";
 import { ScheduleManagementRoutes } from "./schedule-management-routes.js";
 import { PassiveLearningRoutes } from "./learning-routes.js";
+import { RuntimeMaintenanceRoutes } from "./runtime-maintenance-routes.js";
+import { createRuntimeSessionResetClientState } from "../client-state/session-reset.js";
 import { AutomationRoutes } from "./automation-routes.js";
 import { SparkChatRoutes } from "./spark-chat-routes.js";
 
@@ -78,6 +83,8 @@ function sendRuntimeSetupRequired(
 export class LocalRuntimeApiRouter {
   private readonly stepTimeouts: StepTimeoutRoutes;
   private readonly conversationFiles: ConversationFileRoutes;
+  private readonly projectChanges: ProjectChangesRoutes;
+  private readonly chatGptAuth: ChatGptAuthRoutes;
   private readonly attachments = new LocalAttachmentRoutes();
   private readonly setup: RuntimeSetupRoutes;
   private readonly modelSetup: ModelSetupRoutes;
@@ -94,6 +101,7 @@ export class LocalRuntimeApiRouter {
   private readonly projects = new ProjectRoutes();
   private readonly toolApprovals: ToolApprovalRoutes;
   private readonly learning: PassiveLearningRoutes;
+  private readonly maintenance: RuntimeMaintenanceRoutes;
   private readonly automations: AutomationRoutes;
   private readonly sparkChat: SparkChatRoutes;
 
@@ -102,7 +110,11 @@ export class LocalRuntimeApiRouter {
     private readonly environments: RuntimeEnvironmentRegistry,
     private readonly requests: LocalRequestExecution,
     notifyWorkspaceChanged?: WorkspaceChangeNotifier,
+    readStates?: WebSessionReadStates,
+    onSessionRead?: (environmentId: string, sessionId: string) => void,
+    onApprovalAccepted?: WebToolApprovalAcceptedObserver,
   ) {
+    this.chatGptAuth = options.chatGptAuthRoutes ?? new ChatGptAuthRoutes();
     this.stepTimeouts = new StepTimeoutRoutes(new StepTimeoutService({
       rootDir: options.rootDir ?? process.cwd(),
       getConfigPath: () => options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
@@ -111,12 +123,16 @@ export class LocalRuntimeApiRouter {
         this.requests.activeReplayForSession(requestId, sessionId, environment),
     }));
     this.toolApprovals = new ToolApprovalRoutes(
-      new ManagedWebToolApprovals((id) => environments.get(id), requests),
+      new ManagedWebToolApprovals((id) => environments.get(id), requests, onApprovalAccepted),
     );
     this.learning = new PassiveLearningRoutes(
       (id) => this.environments.get(id).services.passiveLearning,
     );
     this.automations = new AutomationRoutes((id) => this.environments.get(id));
+    this.projectChanges = new ProjectChangesRoutes(
+      environments, () => this.options.defaultEnvironmentId,
+      new ConversationFileAccess(environments, requests, () => this.options.defaultEnvironmentId),
+    );
     this.conversationFiles = new ConversationFileRoutes(
       environments,
       requests,
@@ -173,14 +189,19 @@ export class LocalRuntimeApiRouter {
       getConfigPath: () =>
         options.configPath ?? process.env.LLM_RUNTIME_CONFIG_FILE,
     });
-    this.readStates = new WebSessionReadStates((id) =>
+    this.readStates = readStates ?? new WebSessionReadStates((id) =>
       this.environments.get(id),
+    );
+    this.maintenance = new RuntimeMaintenanceRoutes(
+      (id) => this.environments.get(id), this.readStates, notifyWorkspaceChanged,
+      createRuntimeSessionResetClientState(options.rootDir ?? process.cwd()),
     );
     this.sessions = new WebSessionRoutes(
       this.readStates,
       notifyWorkspaceChanged,
+      onSessionRead,
     );
-    this.sparkChat = new SparkChatRoutes((id) => this.environments.get(id), this.readStates, notifyWorkspaceChanged);
+    this.sparkChat = new SparkChatRoutes((id) => this.environments.get(id), this.readStates, notifyWorkspaceChanged, onSessionRead);
     this.schedules = new ScheduleManagementRoutes((id) =>
       this.environments.get(id),
     );
@@ -237,8 +258,10 @@ export class LocalRuntimeApiRouter {
     const method = req.method || "GET";
     const segments = pathSegments(pathname);
     const route = segments.join("/");
+    if (await this.chatGptAuth.handle(route, req, res)) return;
     if (await this.stepTimeouts.handle({ method, route, request: req, response: res, url })) return;
     if (await this.conversationFiles.handle(route, req, res)) return;
+    if (await this.projectChanges.handle(route, req, res)) return;
 
     if (
       await this.modelSetup.handle({
@@ -316,6 +339,10 @@ export class LocalRuntimeApiRouter {
       body,
       this.options.defaultEnvironmentId,
     );
+
+    if (await this.maintenance.handle({
+      method, route, body, environmentId, request: req, response: res,
+    })) return;
 
     if (method === "POST" && route === "chat/stop") {
       await cancelWebRequest({ request: req, response: res, body, environment: this.environments.get(environmentId) });
@@ -546,6 +573,7 @@ export class LocalRuntimeApiRouter {
       const replay = await environment.services.sessions.getRequestReplayById(
         segments[1],
         normalizedAfterSeq,
+        url.searchParams.get("sessionId") || undefined,
       );
       if (!replay) {
         const active = this.requests.activeReplay(

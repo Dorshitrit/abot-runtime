@@ -34,6 +34,8 @@ export function createRealtimeContextHarness() {
   const renderMessages = vi.fn();
   const scheduleMessageRender = vi.fn();
   const shouldAcceptMessage = vi.fn(() => true);
+  const applySessionTitleUpdate = vi.fn();
+  const setMessageActivityStatus = vi.fn();
   const controller = createRealtimeEventController({
     state,
     shell: { showToast: vi.fn() },
@@ -52,8 +54,8 @@ export function createRealtimeContextHarness() {
     cancelScheduledMessageRender: vi.fn(),
     cancelScheduledThinkingRender: vi.fn(),
     markCurrentSessionReadSoon: vi.fn(),
-    applySessionTitleUpdate: vi.fn(),
-    setMessageActivityStatus: vi.fn(),
+    applySessionTitleUpdate,
+    setMessageActivityStatus,
     updateComposerSendState: vi.fn(),
     drainQueuedComposerMessage: vi.fn(),
     loadSessions: vi.fn(),
@@ -67,5 +69,7 @@ export function createRealtimeContextHarness() {
     renderActivityStatus,
     scheduleMessageRender,
     shouldAcceptMessage,
+    applySessionTitleUpdate,
+    setMessageActivityStatus,
   };
 }

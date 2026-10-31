@@ -13,6 +13,7 @@ This guide covers three entry points:
 - TypeScript-capable host project if using the library directly
 - Optional: an installed and running Ollama service for Ollama model profiles
 - Optional: OpenAI API key for OpenAI model profiles
+- Optional: a ChatGPT account for [Continue with ChatGPT](continue-with-chatgpt.md) on the same computer
 - Optional: a running llama.cpp server for [llama.cpp model profiles](llamacpp.md)
 
 ## Prepare Ollama (If Selected)
@@ -22,6 +23,9 @@ weights. Install Ollama from the
 [official download page](https://ollama.com/download), choose a concrete
 `<model-id>` from the [Ollama model library](https://ollama.com/library), and
 start the Ollama service using the instructions for your platform.
+
+If the Linux installer reports that `zstd` is required for extraction, install
+your distribution's `zstd` package and retry the Ollama installer.
 
 After the service is running, pull the chosen model and confirm the API lists
 it:
@@ -65,7 +69,7 @@ npx abot start
 
 Open [http://127.0.0.1:5177](http://127.0.0.1:5177). The command binds to
 loopback by default. On a fresh installation, the setup wizard lets you select
-OpenAI, Ollama or llama.cpp, enter a concrete model ID, and save the connection. OpenAI
+OpenAI, Continue with ChatGPT, Ollama or llama.cpp, choose a concrete model, and save the connection. OpenAI API-key setup
 accepts the API key directly in the form and stores it privately in the
 consumer's `.env`. The key is not returned to the browser or stored in runtime
 JSON. Existing OpenAI configurations missing a key open the same completion flow.
@@ -78,7 +82,9 @@ Its address is resolved from the ABot host, even when you use the UI from a phon
 Continue through the optional **Embedding** step to configure semantic memory,
 or choose to set it up later. **Plugins** starts with all tools selected for a
 fresh installation; turn off any plugin or individual tool you do not want.
-Choose **Finish setup** to apply the selections, then **Start chatting**.
+Choose **Finish setup** to apply the selections. Successful activation opens Home
+automatically. If **Start chatting** remains visible, use it to check model
+availability again.
 Complete initial setup on Home before opening other workspaces. Spark appears
 when setup is ready; Computer access remains available throughout setup.
 Saving chat connection details does not make a paid model request. Explicitly
@@ -97,7 +103,7 @@ managed by a separate process remains under that process's lifecycle; the UI
 reports when saved changes require that owner to restart.
 
 In the Web UI, open **Models → Add model** to add another model.
-Choose a saved provider connection or create a new OpenAI/Ollama/llama.cpp connection.
+Choose a saved provider connection or create a new OpenAI, ChatGPT, Ollama or llama.cpp connection.
 Each provider card also has an **Add model** shortcut. Review the model, then
 choose **Save and apply**. Saved API keys are reused; existing model profiles and
 the default model are preserved. The added model is selected in the Models list.
@@ -339,9 +345,44 @@ See [Connecting a Docker Runtime to its computer](projects-and-full-plus.md#conn
 for connection limits and removal. Importing ABot as a library never changes host
 configuration or starts background collection.
 
-## Use As A Library
+## Multiple Local Installations
 
-After the package is published:
+Each running installation needs its own Web UI and model gateway ports. For a
+second installation, start it with unused ports, for example:
+
+```bash
+LLM_RUNTIME_WEB_PORT=5178 MODEL_GATEWAY_URL=http://127.0.0.1:3001 npx abot start
+```
+
+Use the same values each time you start that installation, or save them in its
+`.env`. The gateway address can also be set with `modelGatewayUrl` in
+`local/runtime.config.json`; `MODEL_GATEWAY_URL` takes precedence. The Web UI
+port is independent of the gateway port. If another process already listens on
+the gateway address, choose a free port for this installation. Restart only the
+ABot instance whose settings you changed.
+
+## Setup Checks and Profile Names
+
+`npx abot --version` prints the installed package version. The packaged CLI rejects
+provider adapters that its gateway does not include. Source and library hosts
+can still configure their own injected adapters.
+
+For Ollama, **Discover models** on the connection step lists installed models
+without generating a response. CLI setup also tries a short metadata check and
+warns when the model is missing or Ollama is unavailable; settings can still be
+saved offline. Embedding discovery lists installed models without proving their
+embedding support. Choose an embedding-capable model and use **Test and save**.
+
+Use `--label` to distinguish profiles that share a model:
+
+```bash
+npx abot add-model --profile qwen-super --provider ollama --model qwen2.5:3b --label "Qwen SUPER"
+```
+
+The label is display text; execution policy remains a separate model setting.
+Existing labels can be changed in **Models**.
+
+## Use As A Library
 
 ```bash
 npm install @abot-ai/runtime
@@ -396,8 +437,8 @@ cache boundaries.
 ## Run From Source
 
 ```bash
-git clone <repo-url>
-cd abot
+git clone https://github.com/Dorshitrit/abot-runtime.git
+cd abot-runtime
 npm install
 npm run init -- --provider ollama --model <model-id>
 npm run build

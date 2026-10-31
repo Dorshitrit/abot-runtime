@@ -161,11 +161,9 @@ describe("EA plugin discovery catalog", () => {
     const scripted = fixture.script([
       { step: "execution.decision", output: decision({
         action: "open_capability_scope", catalogGroupIds: ["desktop"],
-        acknowledgement: "I will inspect the selected item.",
       }) },
       { step: "execution.decision", output: decision({
         action: "invoke_capability", capabilityId: "inspect_opaque_item",
-        intent: "Inspect the selected item.",
         selectionControls: { itemId: "fixture-item" }, workingDirectory: ".",
       }) },
       { step: "execution.decision", output: decision({ action: "respond" }) },

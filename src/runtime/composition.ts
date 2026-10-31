@@ -65,6 +65,8 @@ export type RuntimeRequestOptions = Pick<
   | "durableApprovals"
   | "approvalExecution"
   | "effectPersistence"
+  | "onAccepted"
+  | "sessionAdmission"
 >;
 
 export type RuntimeRequestHandler = Readonly<{

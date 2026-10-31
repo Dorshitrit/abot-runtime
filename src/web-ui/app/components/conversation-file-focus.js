@@ -52,6 +52,7 @@ export function createConversationFileFocus({
   documentRoot,
   viewport,
   onClose,
+  resolveReturnTarget,
 }) {
   const overlayQuery = viewport.matchMedia?.("(max-width: 1200px)");
   const previewInertNodes = new Set();
@@ -96,6 +97,8 @@ export function createConversationFileFocus({
 
   function findReturnTarget() {
     if (opener?.isConnected) return fileReturnTarget(opener);
+    const resolved = visibleFileReturnTarget(resolveReturnTarget?.(openerIdentity));
+    if (resolved) return resolved;
     if (!openerIdentity) return null;
     const replacement = [
       ...host.querySelectorAll(".conversation-tool-file-action"),
@@ -103,7 +106,7 @@ export function createConversationFileFocus({
     return fileReturnTarget(replacement);
   }
 
-  function show(nextOpener) {
+  function show(nextOpener, { focusOnOpen = true } = {}) {
     const wasOpen = open;
     open = true;
     if (nextOpener) {
@@ -111,7 +114,7 @@ export function createConversationFileFocus({
       openerIdentity = { ...nextOpener.dataset };
     }
     syncLayout();
-    if (!wasOpen) closeButton.focus({ preventScroll: true });
+    if (!wasOpen && focusOnOpen) closeButton.focus({ preventScroll: true });
   }
 
   function hide(restoreFocus) {

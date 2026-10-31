@@ -94,6 +94,8 @@ jobs:
         run: npm run check:plugin-build
       - name: Typecheck
         if: env.RUN_FULL_VALIDATION == 'true'
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: npm run typecheck:all
       - name: Build
         run: npm run build
@@ -152,7 +154,7 @@ jobs:
           NODE
       - name: Run test shard
         run: >-
-          npm test -- --run --shard="$SHARD/$SHARD_COUNT"
+          npm test -- --run --shard="$SHARD/$SHARD_COUNT" --maxWorkers=100%
           --reporter=default --reporter=json
           --outputFile.json="$REPORT_DIR/results.json"
       - name: Upload test evidence
@@ -324,6 +326,8 @@ jobs:
       - name: Check plugin build
         run: npm run check:plugin-build
       - name: Typecheck
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: npm run typecheck:all
       - name: Build
         run: npm run build
@@ -418,7 +422,7 @@ jobs:
           src/runtime/__tests__/windows-system-filesystem-handoff.test.ts
           src/runtime/__tests__/windows-system-plugin-privacy.test.ts
           src/runtime/__tests__/windows-system-plugin-initialization.test.ts
-          --maxWorkers=4 --reporter=default --reporter=json
+          --maxWorkers=2 --reporter=default --reporter=json
           --outputFile.json=.codex/artifacts/ci-windows-compatibility/public-plugins-results.json
       - name: Validate native Windows private plugins
         if: github.event.repository.private == true

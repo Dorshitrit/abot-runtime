@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { createConfiguredToolRegistry } from "../capabilities/configured-tool-registry.js";
 import { createKnowledgeSkillStore } from "../knowledge-skills/store.js";
 import { withSupervisorPreparation, supervisorFormatName } from "./support/supervisor-model-phases.js";
+import { capsules } from "./support/knowledge-skills-request-fixture.js";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import {
   createSchedulerRuntimeFixture,
@@ -75,7 +76,8 @@ test("SUPER READ needs no ASK approval even without a registered Skill tool", as
   expect(store.read).toHaveBeenCalledExactlyOnceWith(document.skillId);
   const gates = fixture.invoke.mock.calls.filter(([input]) => supervisorFormatName(input) === "supervisor_procedure_gate");
   expect(gates).toHaveLength(1);
-  expect(JSON.stringify(scheduledModelMessages(gates[0]![0]))).not.toContain(document.content);
+  expect(capsules(gates[0]![0], "runtime_core_skill_read_v1").map(({ document }) => document))
+    .toEqual([document]);
   const response = fixture.invoke.mock.calls.find(([input]) => input.modelStep === "supervisor.response")!;
   expect(JSON.stringify(scheduledModelMessages(response[0]))).toContain(document.content);
 });

@@ -134,7 +134,7 @@ test.each(["direct", "deferred"])("%s authoring ignores extra knowledge fields a
     if (input.modelStep === "execution.response")
       return { text: JSON.stringify({ finalResponse: "Complete answer.", memoryCandidates: [] }), meta: {} };
     return { text: JSON.stringify({ decision: {
-      action: "respond", acknowledgement: "I will answer.",
+      action: "respond",
       ...(route === "direct" ? { response: "Complete answer.", memoryCandidates: [] } : {}),
     } }), meta: {} };
   });
@@ -209,8 +209,8 @@ test.each(["direct", "deferred"])("%s answers preserve custom text roles and att
     const harness = createMemoryRecallHarness({ policy: "execution-agent-v1",
       retrieve: async () => ({ available: true, records: [], message }),
       decide: () => route === "direct"
-        ? { action: "respond", response: "Complete answer.", memoryCandidates: [], acknowledgement: "I will answer." }
-        : { action: "respond", acknowledgement: "I will answer." },
+        ? { action: "respond", response: "Complete answer.", memoryCandidates: [] }
+        : { action: "respond" },
     });
     await runRequestRunner(harness.request);
     expect(harness.invoke).toHaveBeenCalledTimes(route === "direct" ? 1 : 2);

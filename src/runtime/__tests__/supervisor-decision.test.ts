@@ -1363,7 +1363,7 @@ describe("Supervisor decision feasibility contract", () => {
           completedChildCallIds: ["call-2", "call-3"],
           completedResultRefs: ["result-1", "result-2"],
           completedChildRoles: ["planner", "worker"],
-          completedChildOutcomeCounts: { completed: 1, failed: 1 },
+          completedChildOutcomeCounts: { completed: 1, failed: 1, yielded: 0 },
           completedChildSummaryLength:
             firstSecretSummary.length + secondSecretSummary.length,
           continuationMessageCount: 4,

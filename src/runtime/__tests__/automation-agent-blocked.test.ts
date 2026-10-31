@@ -40,9 +40,9 @@ test(
     const f = await createSchedulerRuntimeFixture("execution-agent-v1", undefined, tools.registry);
     fixtures.push(f);
     f.invoke.mockImplementation(withSupervisorPreparation(async (input) => {
-      if (input.modelStep === "execution.decision" || input.modelStep === "supervisor.decision")
+      if (input.modelStep === "execution.decision")
         return { text: JSON.stringify({ decision: { action: "blocked",
-          acknowledgement: "I cannot complete this step.", response: "The requested evidence is unavailable." } }), meta: {} };
+          response: "The requested evidence is unavailable." } }), meta: {} };
       throw new Error(`unexpected_model_step:${input.modelStep}`);
     }));
     const studio = f.application.services.automations!;
@@ -92,8 +92,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       if (input.modelStep === "supervisor.decision")
         return { text: directRespondText("I will return the requested text."), meta: {} };
       if (input.modelStep === "execution.decision")
-        return { text: JSON.stringify({ decision: { action: "respond",
-          acknowledgement: "I will return the requested text." } }), meta: {} };
+        return { text: JSON.stringify({ decision: { action: "respond" } }), meta: {} };
       if (input.modelStep === "execution.response" || input.modelStep === "supervisor.response")
         return { text, meta: {} };
       throw new Error(`unexpected_model_step:${input.modelStep}`);

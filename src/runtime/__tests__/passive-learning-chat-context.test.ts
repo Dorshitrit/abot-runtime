@@ -43,7 +43,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
         retrieve: (input) => memory.retrieve(input),
         decide: () => ({
           ...responseDecision(policy),
-          acknowledgement: "I will answer using the relevant context.",
+          ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will answer using the relevant context." } : {}),
         }),
       });
       await runRequestRunner(harness.request);

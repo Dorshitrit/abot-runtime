@@ -1,7 +1,9 @@
+import { isUserInteractionMessage } from "../lib/user-interaction-event.js";
+import { orderRequestInteractionMessages } from "../lib/request-interaction-messages.js";
 import { normalizeConversationMessage } from "./conversation-session-controller.js";
 import { rememberRequestLifecycle, sameConversationMessage } from "../lib/request-lifecycle-view.js";
 
-export function mergeSparkSnapshotMessages(snapshot, current, hasNewer = false) {
+function mergeSnapshotResponses(snapshot, current, hasNewer) {
   const canonical = (snapshot.messages || []).map(normalizeConversationMessage);
   if (hasNewer) return current.map((message) => canonical.find((entry) => sameConversationMessage(message, entry)) || message);
   const activeRequestIds = new Set((snapshot.requests || []).filter((request) => request.status === "streaming").map((request) => request.requestId));
@@ -15,6 +17,23 @@ export function mergeSparkSnapshotMessages(snapshot, current, hasNewer = false) 
   const firstIndex = canonical.length ? settled.findIndex((message) => sameConversationMessage(message, canonical[0])) : -1;
   const older = firstIndex >= 0 ? settled.slice(0, firstIndex) : [];
   return [...older, ...canonical, ...unsettled];
+}
+
+function isRetainedSparkInteraction(message, visibleRequests, generations) {
+  if (!isUserInteractionMessage(message)) return false;
+  if (!visibleRequests.has(message.requestId)) return false;
+  const generation = generations.get(message.requestId);
+  return !generation || !message.interactionGeneration || generation === message.interactionGeneration;
+}
+
+export function mergeSparkSnapshotMessages(snapshot, current, hasNewer = false) {
+  const merged = mergeSnapshotResponses(snapshot, current.filter((message) => !isUserInteractionMessage(message)), hasNewer);
+  const visibleRequests = new Set(merged.map((message) => message.requestId).filter(Boolean));
+  for (const request of snapshot.requests || [])
+    if (request.status === "streaming") visibleRequests.add(request.requestId);
+  const generations = new Map((snapshot.requests || []).map((request) => [request.requestId, request.lifecycle?.generation]));
+  const interactions = current.filter((message) => isRetainedSparkInteraction(message, visibleRequests, generations));
+  return orderRequestInteractionMessages([...merged, ...interactions]);
 }
 
 function needsRequestLifecycleHydration(snapshot, state) {
@@ -111,7 +130,7 @@ export function createSparkChatSync({
         onHistoryReset();
       }
       if (hasReadableGeneration(result.readState)) readGeneration = result.readState.readGeneration;
-      onConfiguration({ ...result, supportsImageInput, supportsThinking: profile?.supportsThinking === true, reasoningControls: profile?.reasoningControls, modelAvailable: Boolean(profile) });
+      onConfiguration({ ...result, usingChatgptPlan: profile?.provider === "openai-chatgpt", supportsImageInput, supportsThinking: profile?.supportsThinking === true, reasoningControls: profile?.reasoningControls, modelAvailable: Boolean(profile) });
       onReadState(result.readState);
       const snapshot = result.snapshot;
       if (shouldHydrateSparkConversation(initialized, rehydrate, snapshot, state)) {
@@ -126,7 +145,7 @@ export function createSparkChatSync({
         state.messages = mergeSparkSnapshotMessages(snapshot, state.messages, conversation.session.history?.hasNewer());
         for (const request of snapshot.requests || []) rememberRequestLifecycle(state, request.lifecycle);
         for (const message of state.messages) {
-          if (message.role !== "assistant" || !message.requestId) continue;
+          if (isUserInteractionMessage(message) || message.role !== "assistant" || !message.requestId) continue;
           state.requestMessages.set(message.requestId, message.id);
         }
         conversation.render();

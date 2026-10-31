@@ -138,7 +138,7 @@ test("fresh OpenAI onboarding defaults offer a one-call greeting with response m
     }
     return {
       text: JSON.stringify({
-        decision: { action: "respond", acknowledgement: "אענה לברכה.", response: answer },
+        decision: { action: "respond", response: answer },
       }),
       meta: {},
     };

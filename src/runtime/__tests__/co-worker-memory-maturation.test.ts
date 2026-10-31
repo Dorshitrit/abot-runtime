@@ -127,11 +127,12 @@ describe("Co-worker memory maturation", () => {
     expect((await f.repository.read()).revision).toBe(0);
   });
 
-  it("requires new index compatibility without silently rebuilding or duplicating candidates", async () => {
+  it("refreshes candidate embeddings without duplicating candidates after a model change", async () => {
     const f = fixture();
     await f.memory.learning!.apply(await f.input("a"));
     f.embed.mockResolvedValue({ modelFingerprint: "changed", dimensions: 2, vectors: [[1, 0]] });
-    await expect(f.input("b")).rejects.toThrow("learning_embedding_reindex_required");
+    expect((await f.input("b")).context.entries).toHaveLength(1);
+    expect((await f.memory.learning!.list())[0]!.embedding.modelFingerprint).toBe("changed");
     expect(await f.memory.learning!.list()).toHaveLength(1);
   });
 

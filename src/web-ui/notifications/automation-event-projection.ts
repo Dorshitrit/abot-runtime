@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { automationNotificationIdentity } from "./identity.js";
 import type { WebNotification } from "./contracts.js";
 import { eventText, hasNotificationIdentity, notificationBody } from "./event-fields.js";
 
@@ -43,9 +43,7 @@ export function projectAutomationRunNotificationEvent(
   const name = notificationBody(eventText(event.title)) || "Automation";
   const title = phase === "started" ? "Automation started" : TERMINAL_TITLES[status as AutomationRunStatus];
   const parameters = new URLSearchParams({ environment: environmentId, automation: automationId, run: runId });
-  const id = createHash("sha256")
-    .update(JSON.stringify([environmentId, "automation", runId, phase]))
-    .digest("hex");
+  const id = automationNotificationIdentity(environmentId, runId, phase);
   return {
     id,
     kind: "automation",

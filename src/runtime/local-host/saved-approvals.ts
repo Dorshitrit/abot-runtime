@@ -1,3 +1,5 @@
+import { createSavedApprovalDecisionQueue } from "./saved-approval-decision-queue.js";
+import type { SessionRequestAdmissionClaim } from "../request/session-admission.js";
 import { randomUUID } from "node:crypto";
 import type WebSocket from "ws";
 import type { RuntimeApplication } from "../composition.js";
@@ -61,6 +63,7 @@ function expectation(
 export class SavedRequestApprovals {
   readonly ownerEpoch = randomUUID();
   private readonly retiring = new Map<string, Promise<unknown>>();
+  private readonly decisions = createSavedApprovalDecisionQueue();
   private readonly store;
 
   constructor(
@@ -203,7 +206,16 @@ export class SavedRequestApprovals {
     input: unknown,
     peer: LocalRuntimePeer,
   ): Promise<LocalToolApprovalDecisionResult | undefined> {
-    if (!this.store || !hasApprovalDecisionIdentity(input)) return undefined;
+    if (!hasApprovalDecisionIdentity(input)) return undefined;
+    return this.decisions(input.sessionId, input.requestId, () =>
+      this.decideSaved(input, peer));
+  }
+
+  private async decideSaved(
+    input: LocalToolApprovalDecisionInput,
+    peer: LocalRuntimePeer,
+  ): Promise<LocalToolApprovalDecisionResult | undefined> {
+    if (!this.store) return undefined;
     const current = await this.store.get(input.sessionId, input.requestId);
     const isDurable =
       current?.status === "awaiting_approval" || input.waitId !== undefined;
@@ -247,8 +259,8 @@ export class SavedRequestApprovals {
       return { accepted: false, reason: "approval_not_pending" };
     const finalDecision = remaining.length === 1;
     let snapshot: RequestApprovalSnapshot | undefined;
+    await this.retiring.get(input.requestId)?.catch(() => undefined);
     if (finalDecision) {
-      await this.retiring.get(input.requestId)?.catch(() => undefined);
       try {
         const reference = await this.store.getContinuation(
           input.sessionId,
@@ -277,11 +289,11 @@ export class SavedRequestApprovals {
         return { accepted: false, reason: "approval_resume_unavailable" };
       }
     }
-    const commit = () =>
-      this.commitDecisionAndResume(input, expected, snapshot, peer);
+    const commit = (claim?: SessionRequestAdmissionClaim) =>
+      this.commitDecisionAndResume(input, expected, snapshot, peer, claim);
     const admission = this.application.services.requestAdmission;
     // Acquire admission while the saved wait still blocks the scheduler. The
-    // resumed handler enters the same admission synchronously before release.
+    // resumed handler retains this exact claim before the decision releases it.
     return admission ? admission.run(input.sessionId, commit, true) : commit();
   }
 
@@ -290,6 +302,7 @@ export class SavedRequestApprovals {
     expected: SessionWaitExpectation,
     snapshot: RequestApprovalSnapshot | undefined,
     peer: LocalRuntimePeer,
+    claim?: SessionRequestAdmissionClaim,
   ): Promise<LocalToolApprovalDecisionResult> {
     this.activity.assertAcceptingRequests();
     const activation = snapshot ? this.activation() : undefined;
@@ -317,7 +330,7 @@ export class SavedRequestApprovals {
       void this.activity
         .run(() =>
           this.track(input.requestId, () =>
-            this.resume(acceptedSnapshot, resumed, expected, peer),
+            this.resume(acceptedSnapshot, resumed, expected, peer, claim),
           ),
         )
         .catch(async (error) => {
@@ -346,6 +359,7 @@ export class SavedRequestApprovals {
     current: SessionRequestLifecycleSnapshot,
     consumedWait: SessionWaitExpectation,
     peer: LocalRuntimePeer,
+    claim?: SessionRequestAdmissionClaim,
   ): Promise<void> {
     const { requestId, sessionId } = current;
     const diagnosticFields = {
@@ -406,6 +420,7 @@ export class SavedRequestApprovals {
         },
         {
           ...options,
+          sessionAdmission: claim,
           approvalExecution: {
             activation: current.activation!,
             resume: { snapshot, current, decisions },

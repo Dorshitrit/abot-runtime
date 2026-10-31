@@ -17,8 +17,8 @@ export function createMediaRequestScript(policy: MediaPolicy) {
       ? { invocations: { invocation_1: { disposition: "execute", controls: {} } } }
       : { action: "invoke_capability", controls: {} });
     if (step === "execution.decision") {
-      if (turn === 1) return reply({ action: "open_capability_scope", catalogGroupIds: ["fixture"], acknowledgement: "I will inspect the fixture." });
-      if (turn === 2) return reply({ action: "invoke_capability", capabilityId: "capture_fixture", intent: "Observe the fixture.", workingDirectory: "." });
+      if (turn === 1) return reply({ action: "open_capability_scope", catalogGroupIds: ["fixture"] });
+      if (turn === 2) return reply({ action: "invoke_capability", capabilityId: "capture_fixture", workingDirectory: "." });
       expect(turn).toBe(3);
       return reply({ action: "respond" });
     }

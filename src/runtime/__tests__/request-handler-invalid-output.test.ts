@@ -1,5 +1,4 @@
 import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
-import { buildDegradedFinalizationFallback } from "../steps/degraded-finalization/fallback.js";
 import { writeFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type WebSocket from "ws";
@@ -39,7 +38,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
       ["decision", "provider_failure"],
       ["response", "provider_failure"],
     ] as const)(
-      "invalid %s with %s degraded output publishes only a model-authored answer",
+      "invalid %s ignores the unavailable %s explanation model and publishes one verified failure notice",
       async (phase, degradedOutcome) => {
         const { memory } = createMemoryRecallHarness({
           policy: policy.policyId,
@@ -139,43 +138,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
           },
         );
 
-        if (
-          degradedOutcome !== "valid" &&
-          policy.policyId === "execution-agent-v1"
-        ) {
-          expect(events.filter(({ type }) => type === "failed")).toHaveLength(
-            1,
-          );
-          expect(events.filter(({ type }) => type === "completed")).toEqual([]);
-          expect(
-            appendMessage.mock.calls.filter(([, role]) => role === "assistant"),
-          ).toEqual([]);
-          const session = await sessionStore.getSessionById(
-            "invalid-lifecycle-session",
-          );
-          expect(
-            session?.messages.filter(({ role }) => role === "assistant"),
-          ).toEqual([]);
-          expect(memory.scheduleCandidates).not.toHaveBeenCalled();
-          expect(memory.processCandidates).not.toHaveBeenCalled();
-          expect(
-            invoke.mock.calls.filter(
-              ([input]) => input.modelStep === "degraded.finalization",
-            ),
-          ).toHaveLength(degradedOutcome === "invalid" ? 3 : 1);
-          return;
-        }
-
-        const expected =
-          degradedOutcome === "valid"
-            ? `${phrasing.failureNotice}\n\n${phrasing.nextStep}`
-            : buildDegradedFinalizationFallback({
-                problem: {
-                  stage: policy.decisionStep,
-                  code: policy.invalidDecision,
-                },
-                progress: null,
-              });
+        const expected = expect.stringContaining("model returned an invalid decision or response");
         expect(events.filter(({ type }) => type === "failed")).toEqual([]);
         expect(events.filter(({ type }) => type === "completed")).toEqual([
           expect.objectContaining({
@@ -187,7 +150,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
           ([, role]) => role === "assistant",
         );
         expect(assistantWrites).toHaveLength(1);
-        expect(assistantWrites[0]![2]).toBe(expected);
+        expect(assistantWrites[0]![2]).toEqual(expected);
         const session = await sessionStore.getSessionById(
           "invalid-lifecycle-session",
         );
@@ -208,7 +171,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
           invoke.mock.calls.filter(
             ([input]) => input.modelStep === "degraded.finalization",
           ),
-        ).toHaveLength(1);
+        ).toHaveLength(0);
         const expectedResponseAttempts = phase === "decision" ? 0 : 3;
         expect(
           invoke.mock.calls.filter(

@@ -5,5 +5,5 @@ export declare function createConversationToolEvidence(
     ConversationToolAction,
     "sent" | "received" | "target" | "executed" | "preview"
   >,
-  options?: { documentRoot?: Document; hideRepeatedTarget?: boolean },
+  options?: { documentRoot?: Document; hideRepeatedTarget?: boolean; createFileChanges?(excerpt: HTMLElement | null): HTMLElement | null },
 ): HTMLElement | null;

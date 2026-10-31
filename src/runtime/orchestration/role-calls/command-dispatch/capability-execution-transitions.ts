@@ -83,7 +83,7 @@ export function beginCapabilityExecution(
     invocationAttempt,
     capabilityId,
     declaredEffect,
-    intent,
+    ...(intent !== undefined ? { intent } : {}),
     controlsJson,
     actionFingerprint,
   });

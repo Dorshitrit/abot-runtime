@@ -30,7 +30,7 @@ The production path is:
    capability actions.
    After presentation and Skills preparation, a new Supervisor request first
    classifies whether a procedure is required, using the current request,
-   short system policy and optional bounded passive memory as readable text.
+   short system policy, captured Skill guidance and optional bounded passive memory as readable text.
    Configured routing methodology is excluded from this gate and its budget.
    Direct replies proceed to response authoring with the existing full memory.
    Procedural requests separately choose Worker/Planner and a bounded objective,
@@ -38,7 +38,9 @@ The production path is:
    capability-group selection. This phase sees
    one exact preceding settled conversation turn (including an assistant
    initiative) and existing bounded memory/time/path
-   references; execution owners retain captured Skill guidance and source data.
+   references, together with the same captured Skill guidance. Skills remain
+   passive under the current request and are not copied into delegated objectives;
+   execution owners retain their existing guidance and source-data projection.
    An initial lookup always returns to the compact gate with readable, complete
    facts from its current receipt within the existing memory limit. Canonical
    recall records allow only one initial lookup per steering version, subject
@@ -84,12 +86,18 @@ The production path is:
 While a request is active, the bridge may append ordered user steering
 messages to its request-scoped inbox. The active root contract receives the
 accumulated messages as user-authority context and decides their effect on the root
-request. A bounded child role keeps its delegated objective unchanged, returns
-its current result to its caller, and does not reinterpret steering as an
-implicit expansion of that objective. A root output completed against an older
-inbox version is discarded before a role, capability, ledger, or final-response
-commit and is recomputed with the current messages. The runtime transports
-these messages mechanically; their meaning remains a root-model decision.
+request. Under SUPER, a Worker binds to the steering version of its assignment.
+A newer update yields that Worker to its exact caller (Supervisor or Planner)
+at the next safe boundary, preserving settled evidence and preventing another
+stale capability execution. Pending live approval wakes on the update; an old
+approval cannot authorize execution. The caller receives the user updates and
+may stop, change the remaining work and tool allocation, or delegate a fresh
+Worker. A Planner retires its old unfinished remainder without marking it done
+or blocked. The Worker never receives the updates as expanded authority.
+Root and resumed Planner decisions made against an older inbox version are
+discarded before dispatch and recomputed with current messages. Other role and
+EA steering behavior remains unchanged. The runtime transports updates and
+hands off control mechanically; their meaning remains the caller's decision.
 
 The bridge and Web UI backend call `handleRunRequest(...)` through this path.
 Do not add another runner, request classifier, profile router, or fallback
@@ -345,12 +353,12 @@ work receipts and derived lineage do not cross either raw authoring boundary.
 There is no second payload or adapter pipeline for
 `execution-agent-v1`.
 
-For `execution-agent-v1`, the frozen request policy disables automatic loading
-of related files from prior artifact references before both ordinary and staged
-payload authoring. The Execution Agent gathers required source evidence through
+For `execution-agent-v1` and `supervisor-worker-v1`, the frozen request policy
+disables automatic loading of related files from prior artifact references before
+both ordinary and staged payload authoring. Required source evidence comes from
 observation capabilities; those settled results keep their existing downstream
 projection and compaction rules. An explicitly selected edit target retains its
-own target-context loading. Supervisor/Worker artifact loading is unchanged.
+own target-context loading.
 
 For ordinary observation capabilities without payload authoring, the Execution
 Agent selects the complete operation controls in its decision, including optional
@@ -364,7 +372,8 @@ expanded decision schema participate in the existing context budget.
 When an Execution Agent operation has remaining controls, its decision selects
 `controlsEvidenceExecutionIds` from the settled executions of that same root
 call. The decision state exposes eligible IDs even after root compaction. An
-empty selection supplies no prior tool-result bodies to Controls. Selected
+empty selection supplies no current-request tool-result bodies to Controls.
+Historical tool references, when available, remain separate passive request sources. Selected
 results use the canonical evidence projection once per batch; each slot retains
 its own evidence bindings and bounded operation objective. Results already
 covered by the same EA call's verified checkpoint use their source digests;
@@ -540,11 +549,19 @@ is a settled turn with no user message; it stays in ordinary chronological histo
 and follows the same retention policy. EA decision and response steps use a
 90 percent soft context threshold; other steps retain 70 percent. Input admission
 still preserves configured output and safety reserves, which can require
-compaction before the soft threshold. At the selected threshold,
-the runtime summarizes only the old settled prefix and keeps the latest ten turns
-raw. The checkpoint is persisted with exact message fingerprints and an optimistic
-source revision; it is not
-projected to Planner, Worker, Reviewer, Auditor, payload authors, or tools.
+compaction before the soft threshold. The default/SUPER history keeps the latest
+ten turns raw and summarizes only the older settled prefix. EA history also
+includes its settled tool observations, so its recent turns may be compacted
+when admission requires it. EA uses a separate checkpoint slot and evidence-aware
+source fingerprints; SUPER retains its original source, checkpoint and author.
+EA Controls and root payload authoring keep their existing request-source layout.
+Only when scoped history contains tool observations do they add passive tool
+references and the existing summary covering those observations; older ordinary
+conversation is not replayed. Compaction replaces covered references and the
+preceding pair together. Legacy snapshots and ordinary history keep their original
+consumer path. Old results never enter the current execution ledger. Planner,
+Worker, Reviewer and Auditor history contracts are unchanged. Checkpoints retain
+exact message fingerprints and optimistic source revisions.
 Profiles cannot cap conversation messages independently. Client lifecycle uses
 the existing `context.compaction.*` events, with `session_history` retained as
 diagnostic scope metadata.
@@ -586,6 +603,21 @@ bytes and fingerprints, never model-authored envelope labels. Uncovered and cros
 canonical original. The final input, including this evidence, passes ordinary
 context admission before a new checkpoint is committed. Controls and payload
 authors do not receive this current supervision capsule.
+
+SUPER Workers also receive settled observations from their selected dependency
+results, including verified producer dependencies and completed child calls.
+The projection retains original execution identities and canonical source bytes;
+matching checkpoints replace covered observations through the existing compactor.
+Controls reuse observations already present in the accepted evidence context.
+For final bounded RAW edits, SUPER retains the full current selected target from
+the existing read and supplies the stage contract once as instructions. Writable
+bounds stay unchanged, and target-only selection excludes dependency observations.
+These projections do not change EA context or load related files implicitly.
+Dependency-observation scanning and checkpoint projection belong to
+`context/super-dependency-observation-compaction.ts` and require a canonical SUPER
+sidecar. Without that binding, the controller uses the ordinary source scanner
+and checkpoint projector directly; Worker-shaped user JSON remains user data in
+EA, including during checkpoint restoration.
 
 Every tool and skill binding is declared once by a package under root
 `plugins/`. Runtime config applies `plugins.enabled`, `plugins.allow`,
@@ -698,6 +730,11 @@ returns a passive proposal or decline. It does not replace, extend, or mutate
 
 ## Client and Persistence Contracts
 
+Execution Agent may attach optional user-facing messages to continuing decisions.
+The shared request interaction owner publishes them independently of reasoning
+and the final response. See [user interactions](user-interactions/README.md) for
+contracts, context lifetime, approval restoration and extension boundaries.
+
 Existing request, session, tool, and event contracts remain stable.
 
 Bridge registration advertises `request_steering_v1`. A compatible bridge may
@@ -796,9 +833,18 @@ Scheduled terminal events are published once after the handler settles. Success
 requires the correlated assistant reply in canonical session storage; missing or
 failed persistence is published as failure instead of an earlier completion.
 
-Session admission defers scheduled work while ordinary requests are active;
-subsequent ordinary requests wait for a running scheduled reservation. Existing
-ordinary-request concurrency is unchanged when no scheduled reservation exists.
+Session admission allows one active request per session. A second ordinary
+request is rejected with `session_busy` before user history, model calls or tools
+start; different sessions remain concurrent. The claim spans request cleanup and
+passes to the same request when a saved ASK approval resumes. Saved waits block
+new requests across owner restarts. Scheduled work still defers while ordinary
+requests are active; ordinary requests wait for a running scheduled reservation.
+The Web API acknowledges a submission only after admission, returns HTTP 409 for
+`session_busy`, and preserves the rejected draft. A persisted ASK wait retains
+its `session_awaiting_approval` code and receives the same HTTP refusal behavior.
+Bridge callers receive a failed request event carrying the corresponding code.
+Steering updates still target the active request inbox without acquiring a new
+session claim; session exclusion does not block STEER.
 The composed SessionStore facade serializes mutations and marks deletion intent
 synchronously. It uses the injected backing store but intentionally does not
 preserve that object's identity: all callers must use the composed facade for

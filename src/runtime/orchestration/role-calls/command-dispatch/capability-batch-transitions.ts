@@ -75,7 +75,7 @@ export function beginCapabilityBatch(
       invocationAttempt,
       capabilityId: entry.capabilityId,
       declaredEffect: "observation",
-      intent: entry.intent,
+      ...(entry.intent !== undefined ? { intent: entry.intent } : {}),
       controlsJson: entry.controlsJson,
       actionFingerprint: entry.actionFingerprint,
     }),

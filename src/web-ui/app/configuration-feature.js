@@ -1,3 +1,4 @@
+import { createChatgptAccountSettings } from "./components/chatgpt-accounts/settings-dialog.js";
 import { createModelSetupWizard } from "./components/model-setup/wizard.js";
 import { createRuntimeConfigActivation } from "./components/runtime-config-activation.js";
 import { createPluginManager } from "./components/plugins/manager.js";
@@ -29,6 +30,7 @@ export function createConfigurationFeature({
   let activation;
   let modelSetup;
   let modelRemoval;
+  const chatgptSettings = createChatgptAccountSettings({ root: dom.configDashboard.parentElement, client: runtimeClient, getEnvironmentId: selectedEnvironmentId });
   const memoryConnection = createMemoryEmbeddingConnectionFeature({
     root: dom.memoryWorkspacePanel,
     runtimeClient,
@@ -162,6 +164,10 @@ export function createConfigurationFeature({
   configWorkspace = createConfigWorkspace({
     getOperationsSummary,
     onNavigationChange,
+    onChatgptAccounts: (accountRef) => {
+      if (modelSetup?.isOpen() || memoryConnection.isOpen()) return;
+      chatgptSettings.open(accountRef);
+    },
     onRemoveModel: (model) => {
       if (modelSetup?.isOpen() || memoryConnection.isOpen()) return;
       return modelRemoval.remove(model);
@@ -239,6 +245,7 @@ export function createConfigurationFeature({
     getEnvironmentId: selectedEnvironmentId,
     loadSetup: () => runtimeClient.loadModelSetup(selectedEnvironmentId()),
     inspectConnection: (input) => runtimeClient.inspectModelConnection(input, selectedEnvironmentId()),
+    chatgptClient: runtimeClient,
     saveModel: (input) =>
       runtimeClient.addRuntimeModel(input, selectedEnvironmentId()),
     applySetup: () =>
@@ -294,6 +301,7 @@ export function createConfigurationFeature({
       longTermMemoryManager.focus();
     },
     prepareDiscardChanges: async (...args) => {
+      chatgptSettings.close();
       if (pluginManager.hasConfigurationDraft()) {
         dom.configStatus.textContent =
           "Finish or cancel plugin configuration before leaving.";

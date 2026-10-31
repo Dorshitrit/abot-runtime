@@ -33,26 +33,57 @@ export function buildAvailableSkillsText(params: Readonly<{
   if (params.skills.length === 0 || params.budgetTokens <= 0) return undefined;
   const partialNotice = params.includeListHint === false
     ? "Partial catalog; some entries are omitted." : PARTIAL;
-  const entries: string[] = [];
-  let partial = false;
-  for (const skill of params.skills) {
-    if (!canDisplaySkillIdentity(skill.skillId)) {
-      partial = true;
-      continue;
-    }
-    const name = shortenSkillMetadataText(skill.name, AVAILABLE_SKILLS_NAME_MAX_LENGTH);
-    const description = shortenSkillMetadataText(skill.description, AVAILABLE_SKILLS_DESCRIPTION_MAX_LENGTH);
-    const entry = name + " [" + encodeURIComponent(skill.skillId) + "]: " + description;
-    // Reserve the omission notice before adding an entry; never cut an ID.
-    const candidate = HEADER + [...entries, entry].join(" | ") + "\n" + partialNotice;
-    if (!fitsSkillDiscoveryBudget(candidate, params)) {
-      partial = true;
-      break;
-    }
-    entries.push(entry);
+  const candidates = params.skills.filter((skill) => canDisplaySkillIdentity(skill.skillId)).map((skill) => ({
+    identity: shortenSkillMetadataText(skill.name, AVAILABLE_SKILLS_NAME_MAX_LENGTH)
+      + " [" + encodeURIComponent(skill.skillId) + "]",
+    description: skill.description,
+  }));
+  const fullNotice = candidates.length < params.skills.length ? partialNotice : undefined;
+  let selected = candidates;
+  // A complete catalog does not spend tokens on an unnecessary omission notice.
+  if (!fitsSkillDiscoveryBudget(renderSkillDiscovery(candidates, 0, fullNotice), params))
+    selected = selectSkillIdentityPrefix(candidates, partialNotice, params);
+  const notice = selected.length < params.skills.length ? partialNotice : undefined;
+  const identities = renderSkillDiscovery(selected, 0, notice);
+  if (!fitsSkillDiscoveryBudget(identities, params)) return undefined;
+  const entries = selected.map((entry) => ({ ...entry,
+    description: shortenSkillMetadataText(entry.description, AVAILABLE_SKILLS_DESCRIPTION_MAX_LENGTH),
+  }));
+  // Exhaustive bounded search handles the non-monotonic cost of ellipses and Unicode.
+  for (let length = AVAILABLE_SKILLS_DESCRIPTION_MAX_LENGTH; length > 0; length -= 1) {
+    const candidate = renderSkillDiscovery(entries, length, notice);
+    if (fitsSkillDiscoveryBudget(candidate, params)) return candidate;
   }
-  const text = HEADER + entries.join(" | ") + (partial ? "\n" + partialNotice : "");
-  return fitsSkillDiscoveryBudget(text, params) ? text : undefined;
+  return identities;
+}
+
+type SkillDiscoveryEntry = Readonly<{ identity: string; description: string }>;
+type SkillDiscoveryBudget = Readonly<{
+  budgetTokens: number;
+  tokenEstimation?: ContextInput["budget"]["tokenEstimation"];
+}>;
+
+function selectSkillIdentityPrefix(
+  candidates: readonly SkillDiscoveryEntry[], notice: string, budget: SkillDiscoveryBudget,
+): SkillDiscoveryEntry[] {
+  const selected: SkillDiscoveryEntry[] = [];
+  for (const entry of candidates) {
+    const candidate = renderSkillDiscovery([...selected, entry], 0, notice);
+    if (!fitsSkillDiscoveryBudget(candidate, budget)) break;
+    selected.push(entry);
+  }
+  return selected;
+}
+
+function renderSkillDiscovery(
+  entries: readonly SkillDiscoveryEntry[], descriptionLength: number, notice?: string,
+): string {
+  const text = entries.map((entry) => {
+    if (descriptionLength === 0) return entry.identity;
+    const description = shortenSkillMetadataText(entry.description, descriptionLength);
+    return description ? entry.identity + ": " + description : entry.identity;
+  }).join(" | ");
+  return HEADER + text + (notice ? "\n" + notice : "");
 }
 
 function canDisplaySkillIdentity(value: string): boolean {
@@ -73,10 +104,7 @@ function shortenSkillMetadataText(value: string, maxLength: number): string {
 
 function fitsSkillDiscoveryBudget(
   content: string,
-  params: Readonly<{
-    budgetTokens: number;
-    tokenEstimation?: ContextInput["budget"]["tokenEstimation"];
-  }>,
+  params: SkillDiscoveryBudget,
 ): boolean {
   return estimateMessageTokens({ role: "system", content }, params.tokenEstimation)
     <= params.budgetTokens;

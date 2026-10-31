@@ -44,6 +44,7 @@ export type RequestSteeringInbox = Readonly<{
   isCurrent(version: number): boolean;
   seal(version: number): boolean;
   snapshot(): RequestSteeringSnapshot;
+  subscribe?(listener: () => void): () => void;
 }>;
 
 const LOG_SCOPE = "runtime.request_steering";
@@ -97,6 +98,7 @@ export function createRequestSteeringInbox(params: {
   };
   const updates: RequestSteeringUpdate[] = [];
   const bySteerId = new Map<string, RequestSteeringUpdate>();
+  const listeners = new Set<() => void>();
   let closed = false;
   let sealed = false;
   let persistenceBound = false;
@@ -203,6 +205,7 @@ export function createRequestSteeringInbox(params: {
       updates.push(update);
       bySteerId.set(steerId, update);
       schedulePersistence(update);
+      for (const listener of listeners) listener();
       traceRequestControl(LOG_SCOPE, "update.accepted", {
         ...diagnosticIdentity,
         requestId: params.requestId,
@@ -216,6 +219,12 @@ export function createRequestSteeringInbox(params: {
         duplicate: false,
         update,
       });
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
     bindPersistence(persist) {
       if (persistenceBound) {
@@ -239,6 +248,7 @@ export function createRequestSteeringInbox(params: {
       }
       closed = true;
       sealed = true;
+      listeners.clear();
       traceRequestControl(LOG_SCOPE, "inbox.closing", {
         ...diagnosticIdentity,
         requestId: params.requestId,

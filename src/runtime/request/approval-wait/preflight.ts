@@ -10,7 +10,7 @@ import { createRoleCallLedger } from "../../orchestration/role-calls/index.js";
 import { restoreCapabilityApprovalGroup } from "../../orchestration/worker-capabilities/index.js";
 import { captureRequestTemporalContext } from "../../context/request-temporal-context.js";
 import { validateRequestApprovalContinuation } from "../approval-continuation.js";
-import { restoreApprovalExecutionFreshness } from "../capability-execution-freshness.js";
+import { restoreBoundApprovalFreshness } from "../worker-approval-freshness.js";
 import { createRequestSteeringInbox } from "../request-steering.js";
 import { resolveRequestDependencies } from "../dependencies.js";
 import { SESSION_MEMORY_COMPACTORS } from "../../context/super-compaction/history-routing.js";
@@ -109,9 +109,10 @@ export async function validateApprovalResume(
       ledger,
       prepared.request.workerCapabilities.provider.getDescriptors(),
     );
-    const executionFreshness = restoreApprovalExecutionFreshness(
-      snapshot.runner.preparedGroup.executionFreshnessToken,
+    const executionFreshness = restoreBoundApprovalFreshness(
+      snapshot.runner.preparedGroup,
       steering,
+      ledger.current(),
     );
     await restoreCapabilityApprovalGroup({
       ledger,

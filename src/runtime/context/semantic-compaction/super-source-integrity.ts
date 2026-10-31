@@ -1,3 +1,4 @@
+import { projectSelectedDependencyObservations } from "../super-dependency-observation-lineage.js";
 import { CompactionSourceInvariantError } from "../compaction-source-invariant.js";
 import type {
   RoleCallFrame,
@@ -196,7 +197,8 @@ function assertOwnedSource(
     (candidate) => candidate.executionId === source.sourceRef,
   );
   if (execution) {
-    if (scopeCall && scopeCall.callId !== execution.callId)
+    if (scopeCall && scopeCall.callId !== execution.callId &&
+      !projectSelectedDependencyObservations(params.head, scopeCall).some((result) => result.executionId === execution.executionId))
       throw new CompactionSourceInvariantError(
         "context_compaction_execution_owner_invalid",
         source.sourceRef,

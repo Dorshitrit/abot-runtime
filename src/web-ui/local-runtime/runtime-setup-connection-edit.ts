@@ -80,6 +80,7 @@ export async function editRuntimeSetupConnection(params: {
             providerId,
             params.input.baseUrl,
             resolveRuntimeSetupCredentialEnvironment(providerId, providers[providerId], params.input.apiKey),
+            params.input.accountRef,
           );
           const existing = providers[providerId];
           const owned = Object.hasOwn(params.draft.ownedProviders, providerId);
@@ -101,7 +102,7 @@ export async function editRuntimeSetupConnection(params: {
             params.input.contextWindowTokens ??
             params.draft.modelConfig.contextWindowTokens;
           const modelConfig = buildModelConfig(
-            modelTemplate,
+            { ...modelTemplate, options: params.draft.modelConfig.options },
             providerId,
             params.input.model,
             typeof contextWindowTokens === "number"

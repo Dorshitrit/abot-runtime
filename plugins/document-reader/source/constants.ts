@@ -8,10 +8,6 @@ export const MAX_OUTPUT_CHARS = 48_000;
 export const MAX_OUTPUT_JSON_BYTES = 64 * 1024;
 export const MAX_IDENTITY_CHARS = 512;
 
-export const MAX_ARCHIVE_ENTRIES = 4_096;
-export const MAX_ARCHIVE_DECLARED_BYTES = 256 * 1024 * 1024;
-export const MAX_XML_ENTRY_BYTES = 8 * 1024 * 1024;
-export const MAX_TOTAL_XML_BYTES = 24 * 1024 * 1024;
 export const MAX_PDF_PAGES = 10_000;
 export const PDF_PAGE_BATCH_SIZE = 1;
 export const PDF_EXTRACTION_TIMEOUT_MS = 30_000;

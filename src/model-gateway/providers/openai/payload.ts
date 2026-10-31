@@ -12,6 +12,7 @@ import {
 } from "../../structured-output/projection.js";
 import { projectOpenAIFunctionOutput } from "./function-output.js";
 import type { ModelGatewayRequest } from "../../types.js";
+import { markOpenAIPromptCacheItem, normalizeOpenAIPromptCacheItem, resolveOpenAIPromptCacheBoundary } from "./prompt-cache.js";
 
 export type OpenAIPayloadBuildOptions = Readonly<{
   onFormatProjection?: (
@@ -54,43 +55,66 @@ function resolveUnprojectedInput(requestBody: ModelGatewayRequest): unknown {
   return typeof requestBody.text === "string" ? requestBody.text : "";
 }
 
-function projectOpenAIInputItems(input: unknown): unknown {
-  if (!Array.isArray(input)) {
-    return input;
+function projectOpenAIInputItem(item: unknown): unknown[] {
+  if (isAssistantToolCallMessage(item)) {
+    return item.toolCalls.map((call) => ({
+      type: "function_call",
+      call_id: call.callId,
+      name: call.name,
+      arguments: call.arguments,
+    }));
   }
-  return input.flatMap((item) => {
-    if (isAssistantToolCallMessage(item)) {
-      return item.toolCalls.map((call) => ({
-        type: "function_call",
-        call_id: call.callId,
-        name: call.name,
-        arguments: call.arguments,
-      }));
-    }
-    if (isToolResultMessage(item)) {
-      return [
-        {
-          type: "function_call_output",
-          call_id: item.toolCallId,
-          output: item.attachments?.length
-            ? [{ type: "input_text", text: item.content }, ...openAIImageContents(item.attachments)]
-            : item.content,
-        },
-      ];
-    }
-    return [projectOpenAIImageMessage(item)];
+  if (isToolResultMessage(item)) {
+    return [
+      {
+        type: "function_call_output",
+        call_id: item.toolCallId,
+        output: item.attachments?.length
+          ? [{ type: "input_text", text: item.content }, ...openAIImageContents(item.attachments)]
+          : item.content,
+      },
+    ];
+  }
+  return [projectOpenAIImageMessage(item)];
+}
+
+function projectOpenAIInputItems(input: unknown, boundaryIndex?: number) {
+  let cacheBreakpointApplied = false;
+  if (!Array.isArray(input)) return { input, cacheBreakpointApplied };
+  const projected = input.flatMap((item, index) => {
+    const items = projectOpenAIInputItem(item);
+    if (!isPromptCacheBoundaryItem(index, boundaryIndex, items)) return items;
+    const marked = markOpenAIPromptCacheItem(items[0]);
+    if (!marked) return items;
+    cacheBreakpointApplied = true;
+    return [marked];
   });
+  return {
+    input: cacheBreakpointApplied ? projected.map(normalizeOpenAIPromptCacheItem) : projected,
+    cacheBreakpointApplied,
+  };
+}
+
+function isPromptCacheBoundaryItem(index: number, boundaryIndex: number | undefined, items: readonly unknown[]): boolean {
+  if (boundaryIndex === undefined) return false;
+  if (index !== boundaryIndex - 1) return false;
+  return items.length === 1;
 }
 
 function resolveInputWithProviderInstructions(
   requestBody: ModelGatewayRequest,
   providerInstructions: readonly string[],
-): unknown {
+  boundaryIndex?: number,
+) {
   const invocation = resolveModelInvocation(requestBody);
-  return prependInstructionInput({
-    input: projectOpenAIInputItems(resolveUnprojectedInput(requestBody)),
-    instructions: [...(invocation.instructions ?? []), ...providerInstructions],
-  });
+  const projected = projectOpenAIInputItems(resolveUnprojectedInput(requestBody), boundaryIndex);
+  return {
+    input: prependInstructionInput({
+      input: projected.input,
+      instructions: [...(invocation.instructions ?? []), ...providerInstructions],
+    }),
+    cacheBreakpointApplied: projected.cacheBreakpointApplied,
+  };
 }
 
 function readFiniteNumber(value: unknown): number | undefined {
@@ -124,12 +148,15 @@ export function buildOpenAIResponsesPayload(
     invocation.profile.supportsThinking &&
     reasoningEffort !== undefined;
 
+  const projectedInput = resolveInputWithProviderInstructions(
+    requestBody,
+    formatProjection.instructions,
+    resolveOpenAIPromptCacheBoundary(requestBody, invocation.profile),
+  );
   const payload: Record<string, unknown> = {
     model: invocation.model,
-    input: resolveInputWithProviderInstructions(
-      requestBody,
-      formatProjection.instructions,
-    ),
+    input: projectedInput.input,
+    ...(projectedInput.cacheBreakpointApplied ? { prompt_cache_options: { mode: "implicit" } } : {}),
     stream: true,
   };
   if (canUseSamplingControls && temperature !== undefined) {
@@ -160,5 +187,6 @@ export function buildOpenAIInputTokenCountPayload(
   delete payload.stream;
   delete payload.temperature;
   delete payload.top_p;
+  delete payload.prompt_cache_options;
   return payload;
 }

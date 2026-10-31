@@ -56,7 +56,7 @@ export class WebClientStateStore {
       await replacePreparedSessionFile(temporary, this.path);
     } finally { await rm(temporary, { force: true }); }
   }
-  async transaction<T>(operation: (state: ClientState) => T): Promise<{ result: T; state: ClientState }> {
+  async transaction<T>(operation: (state: ClientState) => T | Promise<T>): Promise<{ result: T; state: ClientState }> {
     const initializing = this.initialization ??= ensurePrivateRuntimeDirectory(this.directory);
     try { await initializing; }
     catch (error) {
@@ -67,7 +67,7 @@ export class WebClientStateStore {
     return serializeClientStateTransaction(this.path, () => withFileLock(join(this.directory, "state.lock"), async () => {
       const state = await this.load();
       const before = JSON.stringify(state);
-      const result = operation(state);
+      const result = await operation(state);
       if (JSON.stringify(state) !== before) {
         state.revision += 1;
         await this.save(state);

@@ -82,8 +82,10 @@ const carriers: ReadonlyArray<readonly [string, readonly ChatMessage[]]> = [
 
 describe("SUPER continuation presentation", () => {
   test("preserves nonempty legacy fields without asserting empty categories", () => {
+    const { format, ...legacyFields } = checkpoint.continuation;
+    void format;
     const legacy = {
-      ...checkpoint.continuation,
+      ...legacyFields,
       completed: ["Inspected service state"],
       findings: ["The health check failed"],
       evidenceRefs: ["receipt-1"],

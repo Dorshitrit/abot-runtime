@@ -1,11 +1,10 @@
+import { isOptionalRoleCapabilityIntent } from "../capability-intent.js";
 import {
   isRoleCapabilityId,
-  ROLE_CAPABILITY_INVOCATION_INTENT_MAX_LENGTH,
   type BeginRoleCapabilityExecutionCommand,
   type RoleCapabilityDeclaredEffect,
 } from "../contracts.js";
 import {
-  isBoundedText,
   isExactJsonObjectString,
   isRoleCapabilityDeclaredEffect,
 } from "../reducer-primitives.js";
@@ -27,13 +26,6 @@ export function hasValidCapabilityInvocation(
     return false;
   }
   if (!isRoleCapabilityDeclaredEffect(invocation.declaredEffect)) return false;
-  if (
-    !isBoundedText(
-      invocation.intent,
-      ROLE_CAPABILITY_INVOCATION_INTENT_MAX_LENGTH,
-    )
-  ) {
-    return false;
-  }
+  if (!isOptionalRoleCapabilityIntent(invocation.intent)) return false;
   return isExactJsonObjectString(invocation.controlsJson);
 }

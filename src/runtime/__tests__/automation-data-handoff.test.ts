@@ -110,7 +110,7 @@ function scriptModel(fixture: Fixture) {
       text: directRespondText("Step completed."), meta: {},
     };
     if (input.modelStep === "execution.decision") return {
-      text: JSON.stringify({ decision: { action: "respond", acknowledgement: "Step completed." } }),
+      text: JSON.stringify({ decision: { action: "respond" } }),
       meta: {},
     };
     if (input.modelStep === "supervisor.response" || input.modelStep === "execution.response")
@@ -158,7 +158,7 @@ test.each([
   fixtures.push(fixture);
   fixture.invoke.mockImplementation(async (input) => {
     if (input.modelStep === "execution.decision") return {
-      text: JSON.stringify({ decision: { action: "respond", acknowledgement: "Completed the step." } }), meta: {},
+      text: JSON.stringify({ decision: { action: "respond" } }), meta: {},
     };
     if (input.modelStep === "execution.response") return {
       text: JSON.stringify({ ready, summary: "Result from the bound source" }), meta: {},

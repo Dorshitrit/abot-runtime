@@ -1,3 +1,4 @@
+import { syncChatgptPlanIndicator } from "./components/chatgpt-plan-indicator.js";
 import { createSparkChatPanel } from "./components/spark-chat/panel.js";
 import { isSparkModelUnavailable } from "./components/spark-chat/empty-state.js";
 import { createSparkChatSettings } from "./components/spark-chat/settings.js";
@@ -91,6 +92,7 @@ export function createSparkChatFeature({ dom, state: appState, client, shell, re
     onConfiguration: (next) => {
       const changedModel = configuration?.modelProfileId !== next.modelProfileId;
       configuration = next; settings?.render(next, getEnvironmentId());
+      syncChatgptPlanIndicator({ anchor: panel.dom.composerForm, documentRoot: document, usingPlan: next.usingChatgptPlan === true });
       if (changedModel) conversation.attachments.removeUnsupportedImages();
     },
     onReadState: applyReadState,
@@ -194,6 +196,7 @@ export function createSparkChatFeature({ dom, state: appState, client, shell, re
     if (!hasSparkAccessChanged(next, nextAvailable)) return;
     environmentId = next; available = nextAvailable; accessRevision += 1;
     configuration = undefined; readState = undefined;
+    syncChatgptPlanIndicator({ anchor: panel.dom.composerForm, documentRoot: document, usingPlan: false });
     awaitingOpening = panel.isOpen();
     sync.reset(); reading.reset(); notices.reset(); conversation.reset(); panel.hideNotice();
     settings.render(undefined, next);
@@ -221,6 +224,14 @@ export function createSparkChatFeature({ dom, state: appState, client, shell, re
   }
   return {
     open, environmentChanged,
+    async sessionsReset(result, scope) {
+      conversation.clearResetDraftData(scope, result.clearedSessionIds);
+      if (scope !== getEnvironmentId()) return;
+      if (!result.clearedSessionIds.includes(configuration?.sessionId)) return;
+      conversation.reset(); reading.reset(); notices.reset(); readState = undefined;
+      sync.reset(); panel.hideNotice(); awaitingOpening = panel.isOpen();
+      await sync.refresh({ wait: true, consolidated: true });
+    },
     prepareEnvironmentChange: conversation.prepareEnvironmentChange,
     async openSession(sessionId, messageId, reference) {
       if (!isSparkAvailable()) return false;

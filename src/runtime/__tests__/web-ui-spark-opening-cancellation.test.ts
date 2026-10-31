@@ -51,12 +51,13 @@ function createPanelDocument() {
   documentRoot.hasFocus = () => true;
   const panel = new ElementStub(documentRoot), notice = new ElementStub(documentRoot);
   panel.hidden = true; notice.hidden = true;
-  const names = ["settingsButton", "launcherButton", "messagesList", "composerInput", "closeButton", "mascotButton",
+  const names = ["settingsButton", "launcherButton", "messagesList", "composerInput", "composerForm", "closeButton", "mascotButton",
     "noticeButton", "dismissNoticeButton", "sendNextMenu", "unreadBadge"];
   const nodes = Object.fromEntries(names.map((name) => {
     const node = new ElementStub(documentRoot); node.dataset.spark = name;
     return [name, node];
   }));
+  nodes.composerForm!.parentElement = panel;
   nodes.sendNextMenu!.hidden = true;
   documentRoot.createElement = (tag: string) => {
     const node = new ElementStub(documentRoot);

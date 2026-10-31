@@ -11,7 +11,7 @@ async function runAvailabilityCase(policy: RecallPolicy, enabled: boolean, promp
     policy, enabled, memoryRecallLimit: 0,
     decide: () => {
       memoryReadsAtDecision = f.memory.retrieve.mock.calls.length;
-      return { ...responseDecision(policy), acknowledgement: "I will answer." };
+      return { ...responseDecision(policy), ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will answer." } : {}) };
     },
   });
   const request = deriveTestRequestExecutionScope(f.request, { prompt });

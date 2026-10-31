@@ -28,6 +28,12 @@ const REPAIR: ContextCompactionProjectionRepair = Object.freeze({
   candidateInputTokens: 24_056,
   targetInputTokens: 22_937,
 });
+const BUDGET_REPAIR: ContextCompactionProjectionRepair = Object.freeze({
+  reason: "envelope_exceeds_available_input",
+  originalInputTokens: 39_545,
+  candidateInputTokens: 28_708,
+  targetInputTokens: 26_704,
+});
 
 /** The public owners, rather than a model-step name, choose eligibility. */
 test("EA opts in while shared, SUPER and session-history stages retain their defaults", async () => {
@@ -156,21 +162,23 @@ function controllerFixture(mode: EvidenceMode) {
   return { ...f, controller, generate, generated, original, previous, canonicalSource, currentScope };
 }
 
-test.each<EvidenceMode>(["fresh", "previous", "inherited"])(
-  "repair preserves %s evidence bindings and commits only the selected candidate",
-  async (mode) => {
+test.each((["fresh", "previous", "inherited"] as const).flatMap((mode) =>
+  [REPAIR, BUDGET_REPAIR].map((repair) => ({ mode, repair })),
+))(
+  "$repair.reason repair preserves $mode evidence bindings and commits only the selected candidate",
+  async ({ mode, repair }) => {
     const f = controllerFixture(mode);
     const stage = f.controller.getStages()[0]!;
     const before = captureRequestContextCompaction(f.store);
     const rejected = await stage.prepare(f.original);
-    const repaired = await stage.prepare(f.original, { projectionRepair: REPAIR });
+    const repaired = await stage.prepare(f.original, { projectionRepair: repair });
     expect(rejected.kind).toBe("prepared");
     expect(repaired.kind).toBe("prepared");
     if (rejected.kind !== "prepared" || repaired.kind !== "prepared") throw new Error("expected_preparations");
     expect(f.generate).toHaveBeenCalledTimes(2);
     const [first, second] = f.generate.mock.calls.map(([params]) => params);
     expect(first!.projectionRepair).toBeUndefined();
-    expect(second!.projectionRepair).toBe(REPAIR);
+    expect(second!.projectionRepair).toBe(repair);
     expect(second!.sources).toEqual([f.canonicalSource]);
     expect(second!.sources).toEqual(first!.sources);
     expect(second!.binding).toEqual(first!.binding);

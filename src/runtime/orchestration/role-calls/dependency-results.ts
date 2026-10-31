@@ -15,6 +15,7 @@ export type RoleCallDependencyResult = Readonly<
     | "producerCallId"
     | "roleId"
     | "outcome"
+    | "steeringVersion"
     | "summary"
     | "receipt"
   > & {
@@ -51,7 +52,7 @@ export function projectRoleCallDependencyResults(
           ...counts,
           [result.outcome]: counts[result.outcome] + 1,
         }),
-        { completed: 0, failed: 0 },
+        { completed: 0, failed: 0, yielded: 0 },
       ),
       dependencySummaryLength: results.reduce(
         (total, result) => total + result.summary.length,
@@ -116,6 +117,7 @@ function projectRoleCallDependencyResultsUnchecked(
       producerCallId: result.producerCallId,
       roleId: result.roleId,
       outcome: result.outcome,
+      ...(result.steeringVersion !== undefined ? { steeringVersion: result.steeringVersion } : {}),
       summary: result.summary,
       ...(result.receipt ? { receipt: result.receipt } : {}),
       ...projectSuperWorkerDependencyProvenance(head, call, producer),

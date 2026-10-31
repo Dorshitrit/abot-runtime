@@ -189,6 +189,7 @@ export function createRegisteredToolWorkerCapabilityProvider<TContext>(
           sharedState,
           diagnostic,
           allowRelatedArtifactLoading: params.allowRelatedArtifactLoading ?? true,
+          preserveFullBoundedTargetContext: params.preserveFullBoundedTargetContext,
           ...(params.payloadAuthor
             ? { payloadAuthor: params.payloadAuthor }
             : {}),

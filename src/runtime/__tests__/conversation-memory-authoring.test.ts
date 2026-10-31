@@ -181,7 +181,7 @@ describe("shared conversation memory authoring", () => {
     f.invoke.mockImplementation(async (input) => {
       // Exercise the real local-provider schema boundary before its model call.
       toOllamaFormat(input.format);
-      if (input.modelStep?.endsWith(".decision")) return { text: JSON.stringify({ decision: { ...responseDecision(policy), acknowledgement: "I will answer." } }), meta: {} };
+      if (input.modelStep?.endsWith(".decision")) return { text: JSON.stringify({ decision: { ...responseDecision(policy), ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will answer." } : {}) } }), meta: {} };
       if (!input.format) return { text: "Complete answer", meta: {} };
       return { text: JSON.stringify({ ...(policy === "execution-agent-v1" ? { finalResponse: "Complete answer" } : {}), memoryCandidates: [PROPOSAL] }), meta: {} };
     });
@@ -209,7 +209,7 @@ describe("shared conversation memory authoring", () => {
     const prompt = "Remember that I prefer brief explanations.";
     const request = deriveTestRequestExecutionScope(f.request, { prompt });
     f.invoke.mockImplementation(async (input) => {
-      if (input.modelStep?.endsWith(".decision")) return { text: JSON.stringify({ decision: { ...responseDecision(policy), acknowledgement: "I will answer." } }), meta: {} };
+      if (input.modelStep?.endsWith(".decision")) return { text: JSON.stringify({ decision: { ...responseDecision(policy), ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will answer." } : {}) } }), meta: {} };
       if (!input.format) return { text: "Complete answer", meta: {} };
       toOllamaFormat(input.format);
       return { text: JSON.stringify({ ...(policy === "execution-agent-v1" ? { finalResponse: "Complete answer" } : {}), memoryCandidates: [{
@@ -225,7 +225,7 @@ describe("shared conversation memory authoring", () => {
     const f = fixture(policy);
     const request = deriveTestRequestExecutionScope(f.request, { longTermMemory: { ...f.memory, enabled: false } });
     f.invoke.mockImplementation(async (input) => ({
-      text: input.modelStep?.endsWith(".decision") ? JSON.stringify({ decision: { ...responseDecision(policy), acknowledgement: "I will answer." } }) : "Plain answer",
+      text: input.modelStep?.endsWith(".decision") ? JSON.stringify({ decision: { ...responseDecision(policy), ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will answer." } : {}) } }) : "Plain answer",
       meta: {},
     }));
     const result = await runRequestRunner(request);
@@ -240,7 +240,7 @@ describe("shared conversation memory authoring", () => {
     const f = fixture(policy);
     f.prepare.mockRejectedValue(new Error("embedding unavailable"));
     f.invoke.mockImplementation(async (input) => ({
-      text: input.modelStep?.endsWith(".decision") ? JSON.stringify({ decision: { ...responseDecision(policy), acknowledgement: "I will answer." } }) : "Plain answer",
+      text: input.modelStep?.endsWith(".decision") ? JSON.stringify({ decision: { ...responseDecision(policy), ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will answer." } : {}) } }) : "Plain answer",
       meta: {},
     }));
     const result = await runRequestRunner(f.request);
@@ -257,7 +257,7 @@ describe("shared conversation memory authoring", () => {
       return structuredClone(KNOWLEDGE);
     });
     f.invoke.mockImplementation(async (input) => {
-      if (input.modelStep?.endsWith(".decision")) return { text: JSON.stringify({ decision: { ...responseDecision(policy), acknowledgement: "I will answer." } }), meta: {} };
+      if (input.modelStep?.endsWith(".decision")) return { text: JSON.stringify({ decision: { ...responseDecision(policy), ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will answer." } : {}) } }), meta: {} };
       if (!input.format) return { text: "Updated answer", meta: {} };
       return { text: JSON.stringify({ ...(policy === "execution-agent-v1" ? { finalResponse: "Updated answer" } : {}), memoryCandidates: [{ ...PROPOSAL, content: "Prefers fuller explanations." }] }), meta: {} };
     });

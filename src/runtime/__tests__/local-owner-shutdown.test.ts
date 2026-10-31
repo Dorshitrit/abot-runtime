@@ -1,5 +1,6 @@
 import { supervisorFormatName } from "./support/supervisor-model-phases.js";
 import { afterEach, expect, test, vi } from "vitest";
+import { SessionRequestAdmission } from "../request/session-admission.js";
 import { createLocalRuntimeOwner } from "../local-host/app-owner.js";
 import type { LocalRuntimePeer } from "../local-host/contracts.js";
 import type { LongTermMemoryService } from "../long-term-memory/contracts.js";
@@ -16,6 +17,7 @@ const cleanups: (() => Promise<void>)[] = [];
 type Session = NonNullable<Awaited<ReturnType<SessionStore["getSessionById"]>>>;
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  vi.restoreAllMocks();
 });
 
 test.each(["ordinary", "scheduled"] as const)(
@@ -91,18 +93,23 @@ test("shutdown rejects an ordinary request queued behind scheduled work before i
   await fixture.owner.call("scheduler.runNow", [job.id]);
   await fixture.owner.call("scheduler.tick");
   await fixture.entered.waiting;
-  const accepted = createSchedulerTestGate();
+  const accepted = vi.fn();
+  const admission = vi.spyOn(SessionRequestAdmission.prototype, "run");
   fixture.owner.setClientHandler(async (method) => {
-    if (method === "request.accepted") accepted.open();
+    if (method === "request.accepted") accepted();
   });
   const pending = fixture.owner
     .call("request.run", [ordinaryOwnerRequest("must-not-start")])
     .catch((error: Error) => error.message);
-  await accepted.waiting;
+  await vi.waitFor(() => {
+    expect(admission.mock.calls.some(([sessionId]) => sessionId === "session")).toBe(true);
+  });
+  expect(accepted).not.toHaveBeenCalled();
   await fixture.owner.close();
   fixture.completion.open();
   const replacement = await fixture.connect();
   await pending;
+  expect(accepted).not.toHaveBeenCalled();
   expect(fixture.invoke.mock.calls.map(([input]) => supervisorFormatName(input))).toEqual([
     "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate",
   ]);

@@ -181,6 +181,7 @@ export async function generateSemanticCompactionCandidateBatched(
   let candidate = params.previous;
   let nextSourceIndex = 0;
   while (nextSourceIndex < params.sources.length) {
+    params.onProgress?.({ step: "processing", unit: "sources", completedUnits: nextSourceIndex, totalUnits: params.sources.length });
     let selectedParams: SemanticCompactionGenerationParams | undefined;
     for (
       let endSourceIndex = Math.min(
@@ -202,6 +203,7 @@ export async function generateSemanticCompactionCandidateBatched(
     if (selectedParams) {
       candidate = await generateSemanticCompactionCandidate(selectedParams);
       nextSourceIndex += selectedParams.sources.length;
+      params.onProgress?.({ step: "processing", unit: "sources", completedUnits: nextSourceIndex, totalUnits: params.sources.length });
       continue;
     }
     const source = params.sources[nextSourceIndex]!;
@@ -209,10 +211,13 @@ export async function generateSemanticCompactionCandidateBatched(
       params, candidate, Object.freeze([source]),
     );
     candidate = await generateSemanticCompactionSlicedSource(
-      slicedParams,
+      { ...slicedParams, onProgress: (progress) => params.onProgress?.({
+        ...progress, unit: "sources", completedUnits: nextSourceIndex, totalUnits: params.sources.length,
+      }) },
       source,
     );
     nextSourceIndex += 1;
+    params.onProgress?.({ step: "processing", unit: "sources", completedUnits: nextSourceIndex, totalUnits: params.sources.length });
   }
   if (!candidate) {
     throw new Error("context_compaction_sources_empty");
@@ -266,6 +271,7 @@ async function generateSemanticCompactionSlicedSource(
     if (!selected) {
       throw new Error("context_compaction_source_slice_exceeds_budget");
     }
+    params.onProgress?.({ step: "processing", completedBytes: selected.slice.range.startByte, totalBytes: selected.slice.range.totalBytes });
     let generated: Awaited<ReturnType<typeof invokeSemanticCompactionSlice>>;
     try {
       generated = await invokeSemanticCompactionSlice(
@@ -299,6 +305,7 @@ async function generateSemanticCompactionSlicedSource(
       sourceDigests: generated.sourceDigests,
       coveredThroughByte: selected.slice.range.endByteExclusive,
     });
+    params.onProgress?.({ step: "processing", completedBytes: selected.slice.range.endByteExclusive, totalBytes: selected.slice.range.totalBytes });
     startBoundaryIndex = selected.endBoundaryIndex;
     outputIncompleteRetryEndBoundaryIndex = undefined;
   }

@@ -1,4 +1,6 @@
 export * from "./contracts.js";
+export * from "./worker-steering.js";
+export * from "./plan-steering-retirement.js";
 export * from "./activation-budget.js";
 export * from "./operation-supervision.js";
 export * from "./operation-supervision-projection.js";

@@ -1,4 +1,5 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+import { stagedSuperFixture } from "./support/super-staged-compaction-fixture.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { ModelStepInvocationInput } from "../model/model-step-port.js";
 import type { BoundRequestModelInvocationContext } from "../request/contracts.js";
@@ -23,7 +24,7 @@ type MergeCapsule = {
   }>;
 };
 
-function fixture(count = 4) {
+function fixture(count = 4, maxCharacters = 256) {
   const calls: Array<{
     input: ModelStepInvocationInput<unknown>;
     capsule: MergeCapsule;
@@ -34,8 +35,10 @@ function fixture(count = 4) {
     content,
     sourceFingerprint: createSemanticCompactionSha256Fingerprint(content),
   };
-  const signal = new AbortController().signal;
+  const abort = new AbortController();
+  const signal = abort.signal;
   const request = {
+    ...stagedSuperFixture(false).request,
     abortSignal: signal,
     modelSteps: {
       async invoke<T>(input: ModelStepInvocationInput<T>): Promise<T> {
@@ -72,10 +75,10 @@ function fixture(count = 4) {
     source,
     currentRequest: "Preserve the observed facts.",
     assignment: { objective: "Continue bounded work" },
-    maxCharacters: 500,
+    maxCharacters,
     drafts,
   };
-  return { params, calls, drafts };
+  return { params, calls, drafts, abort, countTokens: vi.mocked(request.modelGatewayClient.countInputTokens!) };
 }
 
 describe("SUPER independent-window merge", () => {
@@ -171,6 +174,105 @@ describe("SUPER independent-window merge", () => {
         drafts: f.drafts.filter((_, index) => index !== 1),
       }),
     ).rejects.toThrow("super_compaction_window_coverage_invalid");
+    expect(f.calls).toHaveLength(0);
+  });
+});
+
+
+describe("SUPER lossless merge retention", () => {
+  test.each(["settled_evidence", "prior_conversation"] as const)("retains all ordered derived evidence without a model call (%s)", async (authority) => {
+    const f = fixture(5, 2400);
+    f.drafts[0] = { ...f.drafts[0]!, content: "Status=failed; ID=אבג-42; 🔍; partial coverage only." };
+    f.drafts[4] = { ...f.drafts[4]!, content: "Status=ready; ID=אבג-42; contradiction unresolved." };
+    const before = structuredClone(f.drafts);
+    const result = await mergeSuperCompactionWindows({ ...f.params, authority });
+    expect(f.calls).toHaveLength(0);
+    expect(result.digest.length).toBeLessThanOrEqual(f.params.maxCharacters);
+    let position = -1;
+    for (const draft of f.drafts) {
+      expect(result.digest).toContain(draft.coverage);
+      const next = result.digest.indexOf(draft.content);
+      expect(next).toBeGreaterThan(position);
+      position = next;
+    }
+    expect(f.drafts).toEqual(before);
+    const base = JSON.parse(result.baseMessages[0]!.content);
+    expect(base).toMatchObject({ sourceAuthority: authority,
+      source: { sourceRef: f.params.source.sourceRef, sourceFingerprint: f.params.source.sourceFingerprint,
+        range: { startByte: 0, endByteExclusive: 500, totalBytes: 500 } } });
+    expect(base.source).not.toHaveProperty("content");
+    expect(result.derived.content).toContain(f.drafts[4]!.content);
+  });
+
+  test("joins fitting pairs and asks the model only to reduce their oversized parent", async () => {
+    const f = fixture(4, 500);
+    const result = await mergeSuperCompactionWindows(f.params);
+    expect(f.calls).toHaveLength(1);
+    expect(f.calls[0]!.capsule.children.map(({ range }) => [range.startByte, range.endByteExclusive]))
+      .toEqual([[0, 200], [200, 400]]);
+    for (const draft of f.drafts) expect(result.digest).toContain(draft.content);
+  });
+
+  test("counts source/range wrappers in the retained character budget", async () => {
+    const fitting = fixture(2, 1000);
+    const joined = await mergeSuperCompactionWindows(fitting.params);
+    expect(fitting.calls).toHaveLength(0);
+    const constrained = fixture(2, joined.digest.length - 1);
+    await mergeSuperCompactionWindows(constrained.params);
+    expect(constrained.calls).toHaveLength(1);
+    expect(constrained.countTokens).not.toHaveBeenCalled();
+  });
+
+  test("uses the model when the actual merge envelope exceeds input admission", async () => {
+    const f = fixture(2, 1000);
+    const count = f.countTokens.getMockImplementation()!;
+    f.countTokens.mockImplementation(async (input) => ({ ...(await count(input))!, inputTokens: 32000 }));
+    await mergeSuperCompactionWindows(f.params);
+    expect(f.calls).toHaveLength(1);
+    expect(f.countTokens.mock.calls[0]![0].modelStep).toBe("super.compact.merge");
+  });
+
+  test("admits the exact continuation envelope with both children and the retained text", async () => {
+    const f = fixture(2, 1000);
+    const result = await mergeSuperCompactionWindows({ ...f.params, continuationMaxCharacters: 1000 });
+    expect(f.calls).toHaveLength(0);
+    const input = f.countTokens.mock.calls.find(([input]) => input.modelStep === "super.compact.continuation")![0];
+    const messages = input.messages as readonly ChatMessage[];
+    expect(messages.map(({ role }) => role)).toEqual(["system", "user"]);
+    const envelope = JSON.parse(messages[1]!.content);
+    expect(envelope.baseCapsule).toEqual(JSON.parse(result.baseMessages[0]!.content));
+    expect(envelope.baseCapsule.currentRequest).toBe(f.params.currentRequest);
+    expect(envelope.derivedStageOutputs.outputs).toEqual(result.derived);
+    expect(envelope.baseCapsule.children).toHaveLength(2);
+  });
+
+  test("reduces with the model when retained text would overflow continuation input", async () => {
+    const f = fixture(2, 1000);
+    const count = f.countTokens.getMockImplementation()!;
+    f.countTokens.mockImplementation(async (input) => ({ ...(await count(input))!,
+      inputTokens: input.modelStep === "super.compact.continuation" ? 32000 : 1000 }));
+    await mergeSuperCompactionWindows({ ...f.params, continuationMaxCharacters: 1000 });
+    expect(f.calls).toHaveLength(1);
+    expect(f.calls[0]!.input.modelStep).toBe("super.compact.merge");
+  });
+
+  test("uses the existing complete-envelope estimate when provider counting is unavailable", async () => {
+    const f = fixture(2, 1000);
+    f.countTokens.mockResolvedValue(undefined);
+    const result = await mergeSuperCompactionWindows({ ...f.params, continuationMaxCharacters: 1000 });
+    expect(f.calls).toHaveLength(0);
+    for (const draft of f.drafts) expect(result.digest).toContain(draft.content);
+  });
+
+  test("cancellation during admission cannot accept a joined draft or call the model", async () => {
+    const f = fixture(2, 1000);
+    const count = f.countTokens.getMockImplementation()!;
+    f.countTokens.mockImplementation(async (input) => {
+      const result = await count(input);
+      f.abort.abort(new Error("cancelled-during-merge-admission"));
+      return result;
+    });
+    await expect(mergeSuperCompactionWindows(f.params)).rejects.toThrow("cancelled-during-merge-admission");
     expect(f.calls).toHaveLength(0);
   });
 });

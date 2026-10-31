@@ -10,7 +10,7 @@ function commandForMode(
 
 export function getInitUsage(mode: RuntimeSetupCommandMode): string {
   const command = commandForMode(mode, "npm run init --", "npx abot init");
-  return `Usage: ${command} --provider <provider-adapter> --model <model-id> [--base-url <provider-origin>] [--context-window <tokens>] [--supports-thinking <true|false>] [--reasoning-budget <tokens|server-default>] [--api-key-env <name>] [--force] [--root <dir>]`;
+  return `Usage: ${command} --provider <provider-adapter> --model <model-id> [--label <display-name>] [--base-url <provider-origin>] [--context-window <tokens>] [--supports-thinking <true|false>] [--reasoning-budget <tokens|server-default>] [--api-key-env <name>] [--prompt-cache <true|false>] [--force] [--root <dir>]\n--prompt-cache true: Optimize caching for Execution Agent decisions on OpenAI API models supporting explicit boundaries (GPT-5.6+ or compatible). Omitted/false keeps provider defaults.`;
 }
 
 export function getAddModelUsage(mode: RuntimeSetupCommandMode): string {
@@ -19,7 +19,7 @@ export function getAddModelUsage(mode: RuntimeSetupCommandMode): string {
     "npm run add-model --",
     "npx abot add-model",
   );
-  return `Usage: ${command} --profile <profile-id> --provider <provider-adapter> --model <model-id> [--base-url <provider-origin>] [--context-window <tokens>] [--supports-thinking <true|false>] [--reasoning-budget <tokens|server-default>] [--api-key-env <name>] [--default] [--root <dir>]`;
+  return `Usage: ${command} --profile <profile-id> --provider <provider-adapter> --model <model-id> [--label <display-name>] [--base-url <provider-origin>] [--context-window <tokens>] [--supports-thinking <true|false>] [--reasoning-budget <tokens|server-default>] [--api-key-env <name>] [--prompt-cache <true|false>] [--default] [--root <dir>]\n--prompt-cache true: Optimize caching for Execution Agent decisions on OpenAI API models supporting explicit boundaries (GPT-5.6+ or compatible). Omitted/false keeps provider defaults.`;
 }
 
 export function getMissingInitializationInstruction(

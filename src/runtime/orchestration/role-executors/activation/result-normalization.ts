@@ -8,6 +8,7 @@ import {
 } from "../../role-calls/index.js";
 import { isRuntimeDelegateRoleId } from "../../roles.js";
 import { isRoleApprovalWait } from "../approval-continuation.js";
+import { isRuntimeRoleSteeringYield } from "./steering-yield.js";
 import type {
   RoleExecutionResult,
   RoleExecutorActivationResult,
@@ -27,6 +28,7 @@ export function normalizeRoleExecutorActivationResult<TValue>(
     return { ok: false, issueCode: "result_not_object" };
   }
   if (isRoleApprovalWait(input)) return { ok: true, value: input };
+  if (isRuntimeRoleSteeringYield(input)) return { ok: true, value: input };
   if (input.kind === "terminal") {
     const receipt = normalizeRoleCallResultReceipt(input.receipt);
     if (
@@ -70,7 +72,7 @@ export function normalizeRoleExecutorActivationResult<TValue>(
       !hasExactKeys(
         input,
         ["kind", "roleId", "objective"],
-        ["plannerPlan", "workerCapabilityScope", "workingDirectory"],
+        ["plannerPlan", "workerCapabilityScope", "workingDirectory", "workerSteeringVersion"],
       ) ||
       !isRuntimeDelegateRoleId(input.roleId) ||
       typeof input.objective !== "string" ||
@@ -79,6 +81,7 @@ export function normalizeRoleExecutorActivationResult<TValue>(
       (input.plannerPlan !== undefined && !plannerPlan) ||
       (input.workerCapabilityScope !== undefined && !workerCapabilityScope) ||
       (workerCapabilityScope !== undefined && input.roleId !== "worker") ||
+      !isWorkerDelegationSteeringValid(input.roleId, input.workerSteeringVersion) ||
       (input.workingDirectory !== undefined && !workingDirectory) ||
       (workingDirectory !== undefined &&
         !isRoleCallWorkingDirectoryRoleId(input.roleId))
@@ -91,6 +94,9 @@ export function normalizeRoleExecutorActivationResult<TValue>(
         kind: "invoke_role",
         roleId: input.roleId,
         objective: input.objective.trim(),
+        ...(input.workerSteeringVersion !== undefined
+          ? { workerSteeringVersion: input.workerSteeringVersion }
+          : {}),
         ...(workerCapabilityScope ? { workerCapabilityScope } : {}),
         ...(workingDirectory !== undefined ? { workingDirectory } : {}),
         ...(plannerPlan ? { plannerPlan } : {}),
@@ -157,6 +163,13 @@ export function normalizeRoleExecutorActivationResult<TValue>(
     };
   }
   return { ok: false, issueCode: "continuation_shape_invalid" };
+}
+
+function isWorkerDelegationSteeringValid(roleId: string, version: number | undefined): boolean {
+  if (version === undefined) return true;
+  if (roleId !== "worker") return false;
+  if (!Number.isSafeInteger(version)) return false;
+  return version >= 0;
 }
 
 function hasExactKeys(

@@ -196,9 +196,11 @@ test.each(approvingCases)(
       const signal = options?.abortSignal;
       if (!signal)
         throw new Error("Approval fixture requires a cancellation signal");
-      expect(signal).toBe(fixture.controller.signal);
+      if (policy === "execution-agent-v1")
+        expect(signal).toBe(fixture.controller.signal);
       expect(signal.aborted).toBe(false);
       fixture.controller.abort(new Error("owner cancelled"));
+      expect(signal.aborted).toBe(true);
       return { approved: true };
     });
     const run = fixture.start({

@@ -1,3 +1,4 @@
+import { setupPromptCacheState, updateSetupPromptCacheField } from "./prompt-cache-fields.js";
 import { textOf } from "../../lib/text-format.js";
 import { setupReasoningState, updateSetupReasoningField } from "./reasoning-fields.js";
 import { normalizeProvider, defaultSetupProviderAddress } from "./validation.js";
@@ -9,7 +10,7 @@ export function selectSetupProvider(state, value) {
   if (providerChanged) {
     state.modelId = "";
     state.baseUrl = defaultSetupProviderAddress(provider);
-    Object.assign(state, setupReasoningState());
+    Object.assign(state, setupReasoningState(), setupPromptCacheState());
   }
   state.provider = provider;
 }
@@ -23,10 +24,12 @@ export function hasSetupConnectionChanges(state) {
   const saved = state.existingModel;
   if (!saved) return true;
   if (state.provider !== saved.provider) return true;
+  if (state.provider === "openai-chatgpt" && state.accountRef !== saved.accountRef) return true;
   if (state.modelId.trim() !== saved.model) return true;
   if (Number(state.contextWindowTokens) !== saved.contextWindowTokens)
     return true;
   if (state.supportsThinking !== saved.supportsThinking) return true;
+  if (state.provider === "openai" && (state.promptCache === true) !== (saved.promptCache === true)) return true;
   if (state.provider === "llamacpp") {
     const reasoning = setupReasoningState(saved);
     if (state.supportsThinking !== reasoning.supportsThinking) return true;
@@ -67,19 +70,21 @@ export function updateSetupConnectionField(state, field, value) {
   if (field === "model-id") state.modelId = value;
   if (field === "context-window") state.contextWindowTokens = value;
   if (["ollama-base-url", "llamacpp-base-url"].includes(field)) state.baseUrl = value;
+  if (updateSetupPromptCacheField(state, field, value)) return true;
   return updateSetupReasoningField(state, field, value);
 }
 
 export function receiveSetupConnection(state, setup) {
   state.editableConnection = setup?.editableConnection || null;
   state.existingModel = setup?.existingModel || null;
-  Object.assign(state, setupReasoningState(state.existingModel || {}));
+  Object.assign(state, setupReasoningState(state.existingModel || {}), setupPromptCacheState(state.existingModel || {}));
   state.contextWindowTokens = textOf(
     state.existingModel?.contextWindowTokens ??
       setup?.defaultContextWindowTokens,
   );
   if (!state.existingModel) return;
   state.provider = state.existingModel.provider;
+  state.accountRef = state.existingModel.accountRef || "";
   state.modelId = state.existingModel.model;
   state.baseUrl = state.existingModel.baseUrl || state.baseUrl;
   state.step = 1;

@@ -1,3 +1,4 @@
+import { createRuntimeMaintenanceFeature } from "../runtime-maintenance-feature.js";
 import { displayReasoningMode } from "../lib/reasoning-controls.js";
 import { escapeHtml, formatTime, shortId, textOf } from "../lib/text-format.js";
 import { formatDurationMs, latestHealthEvent, projectOperationsSummary } from "../components/operations-summary.js";
@@ -21,7 +22,9 @@ function renderRuntimeRows(rows) {
   `;
 }
 
-export function createOperationsController({ dom, client, getEnvironmentId = () => undefined, onSummaryChange = () => {} }) {
+export function createOperationsController({ dom, client, getEnvironmentId = () => undefined, onSummaryChange = () => {}, onSessionsReset }) {
+  const maintenance = createRuntimeMaintenanceFeature({ root: dom.runtimeMaintenance, client, getEnvironmentId, onSessionsReset,
+    onLogsReset: () => controller.loadRuntimeLogs() });
   let statusRevision = 0;
   let logsRevision = 0;
   let healthRevision = 0;
@@ -39,10 +42,13 @@ export function createOperationsController({ dom, client, getEnvironmentId = () 
     return revision === healthRevision;
   }
   const controller = {
+    setCompanionResetHandler: maintenance.setCompanionResetHandler,
+    observeRealtimeMessage: maintenance.observeRealtimeMessage,
     summary(tab) {
       return projectOperationsSummary(tab, reads, getEnvironmentId());
     },
     environmentChanged() {
+      maintenance.environmentChanged();
       const environmentId = getEnvironmentId();
       if (displayedEnvironment === environmentId) return;
       displayedEnvironment = environmentId;
@@ -50,6 +56,7 @@ export function createOperationsController({ dom, client, getEnvironmentId = () 
       void controller.loadRuntimeLogs();
     },
     async loadRuntimeStatus() {
+      maintenance.environmentChanged();
       const environmentId = getEnvironmentId();
       const revision = ++statusRevision;
       dom.runtimeStatus.textContent = "Loading...";

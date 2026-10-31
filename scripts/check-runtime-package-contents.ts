@@ -46,6 +46,58 @@ for (const path of paths) {
 }
 
 const requiredPaths = [
+  ...[
+    "provider-auth/chatgpt/service", "provider-auth/chatgpt/authorization",
+    "provider-auth/chatgpt/account-store", "provider-auth/chatgpt/token-session",
+    "model-gateway/providers/openai-chatgpt/adapter",
+    "model-gateway/providers/openai/responses-invocation",
+    "web-ui/chatgpt-auth/routes", "web-ui/local-runtime/chatgpt-setup-binding",
+    "web-ui/chatgpt-auth/attempt-owner", "web-ui/chatgpt-auth/published-callback",
+    "web-ui/chatgpt-auth/request-authority", "web-ui/chatgpt-auth/web-integration",
+    "web-ui/app/controllers/chatgpt-account-errors",
+    "web-ui/app/components/chatgpt-accounts/connection",
+    "web-ui/app/controllers/chatgpt-account-controller",
+    "web-ui/app/services/runtime-web-client/chatgpt-accounts",
+  ].flatMap((path) => [`dist/src/${path}.js`, `dist/src/${path}.d.ts`]),
+  "dist/src/web-ui/app/styles/54-chatgpt-accounts.css",
+  "dist/src/web-ui/app/chatgpt-logo-white.svg",
+  "docs/continue-with-chatgpt.md",
+  ...[
+    "web-ui/project-changes/access", "web-ui/project-changes/contracts",
+    "web-ui/project-changes/file-state", "web-ui/project-changes/git-process",
+    "web-ui/project-changes/line-diff", "web-ui/project-changes/metadata",
+    "web-ui/project-changes/normalization", "web-ui/project-changes/patch",
+    "web-ui/project-changes/read-list", "web-ui/project-changes/repository",
+    "web-ui/project-changes/recorded-file",
+    "web-ui/project-changes/routes", "web-ui/project-changes/service",
+    "web-ui/app/components/project-changes-preview", "web-ui/app/components/project-diff",
+    "web-ui/app/controllers/project-changes-controller",
+    "web-ui/app/controllers/project-changes-feature", "web-ui/app/controllers/project-file-changes-feature",
+    "web-ui/app/lib/project-diff-lines",
+    "web-ui/app/services/runtime-web-client/project-changes",
+  ].flatMap((path) => [`dist/src/${path}.js`, `dist/src/${path}.d.ts`]),
+  "dist/src/web-ui/app/styles/53-project-changes.css",
+  "dist/src/web-ui/app/components/conversation-work-timeline.js",
+  "dist/src/web-ui/app/components/conversation-work-timeline.d.ts",
+  "dist/src/web-ui/app/lib/conversation-work-timeline-model.js",
+  "dist/src/web-ui/app/lib/conversation-work-timeline-model.d.ts",
+  "dist/src/web-ui/app/lib/conversation-final-answer.js",
+  "dist/src/web-ui/app/lib/conversation-final-answer.d.ts",
+  "dist/src/web-ui/app/components/notifications/favicon.js",
+  "dist/src/web-ui/app/components/notifications/favicon.d.ts",
+  "dist/src/web-ui/app/styles/26-conversation-work-timeline.css",
+  "dist/src/web-ui/app/favicon-unread.svg",
+  "dist/src/web-ui/notifications/retention.js",
+  "dist/src/web-ui/notifications/retention.d.ts",
+  "dist/src/web-ui/notifications/storage-fields.js",
+  "dist/src/web-ui/notifications/storage-fields.d.ts",
+  "dist/src/web-ui/notifications/storage-metadata.js",
+  "dist/src/web-ui/notifications/storage-metadata.d.ts",
+  "dist/src/web-ui/notifications/reply-read-sync.js",
+  "dist/src/web-ui/notifications/reply-read-sync.d.ts",
+  "dist/src/web-ui/session-read-state/assistant-read-evidence.js",
+  "dist/src/web-ui/session-read-state/assistant-read-evidence.d.ts",
+
   "dist/src/web-ui/app/information-basket-feature.js",
   "dist/src/web-ui/app/components/information-basket/workspace.js",
   "dist/src/web-ui/app/components/information-basket/source-picker.js",
@@ -97,6 +149,11 @@ const requiredPaths = [
     "runtime/automations/starter-template-builder",
     "runtime/automations/starter-template-contracts", "runtime/automations/starter-template-showcases",
     "runtime/automations/starter-template-structure",
+    "runtime/context/execution-history-policy", "runtime/context/session-memory/compaction/input",
+    "runtime/context/session-memory/compaction/turn-fold", "runtime/context/session-memory/execution-coordination",
+    "runtime/context/session-memory/execution-reference-memory",
+    "runtime/request/execution-payload-history", "runtime/steps/execution-agent/history-observation",
+    "sessions/memory/checkpoint-scope", "sessions/memory/execution-observation",
     "runtime/attachments/tool-image-validation",
     "runtime/capabilities/request-property-narrowing",
     "runtime/capabilities/request-tool-resources",
@@ -622,8 +679,27 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // These ceilings bound the approved public package inventory and unpacked size.
 // Includes Information Basket modules/declarations and Web assets.
 // Also includes EA compaction policy and project-orientation paging sources/bundles.
-const maxFileCount = 4_452;
-const maxUnpackedSizeBytes = 13_813_000;
+// Chat-upload registration adds three production modules with declarations.
+// Includes SUPER Worker steering handoff and approval freshness modules.
+// EA tool history adds nine production modules plus their declarations.
+// SUPER edit context and selected observations add six modules with declarations.
+// EA interactions and optional capability intent add eight runtime and three Web modules with declarations.
+// Grouped progress updates add one Web stylesheet.
+// Unified work timeline and unread tab indicator add four Web modules with declarations and two assets.
+// Notification read synchronization and bounded history add five modules with declarations.
+// Read-only project diffs add twenty Web modules with declarations and one stylesheet.
+// Local ChatGPT sign-in adds 54 emitted modules/declarations/assets/documentation files.
+// OpenAI completion/cache handling and setup add 19 emitted modules, declarations and UI assets.
+// 2.1.0 QA fixes add 37 CLI, provider-error and UI presentation modules/declarations.
+// Session admission adds five production modules and their declarations.
+// Bounded session replay adds one production module and its declaration.
+// Registered file-name matching adds one production module and its declaration.
+// Shared memory/candidate reindexing adds one production module and its declaration.
+// Confirmed Runtime cleanup and SPARK visibility add 27 emitted modules/declarations.
+// Automation snapshot ownership adds one production module and its declaration.
+// Published-loopback ChatGPT callbacks add five modules and their declarations.
+const maxFileCount = 4_789;
+const maxUnpackedSizeBytes = 14_477_000;
 
 if (paths.length > maxFileCount) {
   fail(`package includes too many files: ${paths.length} > ${maxFileCount}`);

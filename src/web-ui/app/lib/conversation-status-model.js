@@ -5,10 +5,11 @@ import { textOf } from "./text-format.js";
 const MODEL_STEP_LABELS = Object.freeze({
   "supervisor.decision": "Making a decision",
   "execution.decision": "Making a decision",
+  "worker.evidence": "Verifying",
   "worker.decision": "Making a decision",
-  "capability.controls": "Making a decision",
+  "capability.controls": "Preparing tool",
   "planner.decision": "Planning",
-  "planner.graph": "Planning",
+  "planner.graph": "Building a plan",
   "reviewer.decision": "Reviewing",
   "auditor.decision": "Reviewing",
   "worker.result": "Summarizing results",
@@ -104,7 +105,9 @@ export function buildConversationStatus({
   }
   if (hasToolStatus(tools, "running")) return activeStatus("Running tool");
   if (hasPendingRequestCompaction(contextWindow, activeRequestId)) {
-    return activeStatus("Compacting context");
+    const progress = contextWindow.pendingCompaction.progress;
+    if (!progress) return activeStatus("Compacting context");
+    return { ...activeStatus(progress.status), progressAt: progress.progressAt };
   }
   if (hasToolStatus(tools, "preparing")) return activeStatus("Working");
   if (!hasAcceptedRequestSnapshot(contextWindow, activeRequestId)) {

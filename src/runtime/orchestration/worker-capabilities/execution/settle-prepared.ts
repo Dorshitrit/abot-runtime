@@ -27,7 +27,7 @@ export async function settleAdmittedPreparedGroup<TContext>(params: {
       params.diagnostic,
       invocation.adapter.descriptor,
       params.executionIds[index]!,
-      invocation.intent.length,
+      invocation.intent?.length ?? 0,
       Object.keys(invocation.prepared.acceptedControls).length,
     );
   });

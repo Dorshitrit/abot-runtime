@@ -3,7 +3,6 @@ import {
   type SuperCompactionIntegrityInput,
 } from "./semantic-compaction/super-source-integrity.js";
 import type { SemanticCompactionCheckpoint } from "./semantic-compaction/contracts.js";
-import { projectCanonicalCapabilityResultCompactionSources } from "./capability-result-compaction-source.js";
 import type { RequestToolResultsView } from "./request-tool-results.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import { MODEL_STEPS } from "../../shared/model-steps.js";
@@ -42,14 +41,10 @@ export function projectSuperCompactedRequestToolResults(
     ),
     () => {
       assertSuperCompactionCheckpointIntegrity({ ...integrity, checkpoint });
-      const sources = projectCanonicalCapabilityResultCompactionSources({
-        head: integrity.head,
-        callId: checkpoint.callId,
-      });
       const projected = projectRequestToolResultsCheckpointMessage(
         message,
         checkpoint,
-        new Map(sources.map((source) => [source.sourceRef, source])),
+        new Map(sidecar.sources.map((source) => [source.sourceRef, source])),
         { projectContinuation: projectSuperContinuation },
       );
       if (!projected)

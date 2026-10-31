@@ -46,6 +46,16 @@ Candidates default to 30 days without reinforcement, at most 500 records or 2 Mi
 whichever is reached first. Provenance is capped at eight sources and three proof
 entries. Existing stored memories are not bulk-demoted or deleted by the upgrade.
 
+Embedding-model changes rebuild the derived index for stored memories and unexpired
+learning candidates together. Retrieval preparation and learning writes share this
+index owner, including scheduled reviews that do not prepare a search first.
+Refreshing vectors preserves candidate identity, semantic revision, evidence,
+scores and retention deadlines; it never counts as reinforcement. Concurrent
+edits or deletions cannot be overwritten by an embedding computed from old data.
+Coherent no-change reviews still reuse their existing embeddings. If larger vectors
+would exceed the current learning storage limit, migration fails atomically with
+a specific capacity reason and preserves the original index and candidates.
+
 Core retention starts with the memory service and schedules only the next storage
 expiry, including when Co-worker or embeddings are disabled. Commits re-arm that
 deadline; an empty store has no maintenance timer. Standalone owners should await

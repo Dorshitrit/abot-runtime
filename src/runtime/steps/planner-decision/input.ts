@@ -1,3 +1,5 @@
+import { projectPlannerRetiredWork } from "./steering.js";
+import type { RequestSteeringSnapshot } from "../../request/request-steering.js";
 import { projectSupervisorWorkerCapabilityDescriptors } from "../../orchestration/worker-capabilities/supervisor-skill-authority.js";
 import {
   buildRuntimeFilesystemScopeMessage,
@@ -97,6 +99,7 @@ export function buildPlannerDecisionInput(
     dependencyHead?: RoleCallLedgerHead;
     progress?: PlannerDecisionProgressSource;
     planContext?: PlannerDecisionPlanContext;
+    steering?: RequestSteeringSnapshot;
     diagnostic?: PlannerDecisionDiagnosticContext;
   }>,
 ): {
@@ -112,6 +115,7 @@ export function buildPlannerDecisionInput(
   inheritedWorkingDirectory?: string;
   planContext?: PlannerDecisionPlanContext;
   childResume?: RoleChildReturnContext;
+  steering?: RequestSteeringSnapshot;
 } {
   const callIdentity = projectPlannerDecisionCallIdentity(options.call);
   const diagnostic =
@@ -222,6 +226,7 @@ export function buildPlannerDecisionInput(
     });
   const instructions = buildPlannerDecisionInstructions({
     childRolesAvailable: childInvocationAvailable,
+    hasWorkerSteering: options.steering !== undefined,
     hasCompletedChildResults: childResume !== undefined,
     hasDependencyResults: dependencyResults.length > 0,
     workerRoleAvailable: availableChildRoleIds.includes("worker"),
@@ -241,6 +246,9 @@ export function buildPlannerDecisionInput(
       depth: callIdentity.depth,
       invocationAttempt: callIdentity.invocationAttempt,
       objective: options.call.objective!,
+      ...(options.steering
+        ? { retiredWork: projectPlannerRetiredWork(options.dependencyHead, options.call) }
+        : {}),
       ...(inheritedWorkingDirectory !== undefined
         ? { workingDirectory: inheritedWorkingDirectory }
         : {}),
@@ -261,6 +269,7 @@ export function buildPlannerDecisionInput(
   const briefOptions = buildPlannerCapabilityBriefOptions(
     request,
     availableWorkerCapabilityCatalog,
+    options.steering,
   );
   const capabilityBrief = projectCapabilityBrief({
     groups: availableWorkerCapabilityCatalog,
@@ -335,6 +344,7 @@ export function buildPlannerDecisionInput(
     dependencyResults,
     availableWorkerCapabilityCatalog,
     capabilityBrief,
+    ...(options.steering ? { steering: options.steering } : {}),
     ...(inheritedWorkingDirectory !== undefined
       ? { inheritedWorkingDirectory }
       : {}),

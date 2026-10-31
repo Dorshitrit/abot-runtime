@@ -1,3 +1,5 @@
+import { isBlockedCompletion } from "./completion-presentation.js";
+import { failureResponseText, presentFailureText } from "./failure-presentation.js";
 import { basketActivitySummary, basketStatusLabel } from "./tool-basket-activity-fields.js";
 import { textOf } from "./text-format.js";
 import { isStopResult } from "./request-stop-state.js";
@@ -26,6 +28,7 @@ function canMergeEventTimelineEntries(previous, event, name, summary) {
 export function buildEventTimelineEntries(events) {
   const entries = [];
   for (const event of events) {
+    if (isGenericRequestProcessingEvent(event)) continue;
     const name = textOf(event.name || event.rawType || event.type);
     if (!name) continue;
     const summary = textOf(event.summary);
@@ -179,7 +182,7 @@ export function formatEventLabel(message) {
   }
   if (name === "answer.started" || name === "token") return "Answering";
   if (name === "request.completed" || message.type === "completed") {
-    return "Response ready";
+    return isBlockedCompletion(message) ? "Request blocked" : "Response ready";
   }
   if (name === "request.failed" || message.type === "failed") {
     return isStopResult(message) ? "Response stopped" : "Response failed";
@@ -221,6 +224,7 @@ export function formatEventDetail(message) {
   if (isStopResult(message)) return "Stopped by you.";
   const parts = [];
   const name = textOf(message.name || message.rawType || message.type);
+  if (message.type === "failed" || name === "request.failed") return failureResponseText(message);
   const plan = getPlanPayload(message);
   if (plan?.summary) parts.push(plan.summary);
   const item = getPlanItemPayload(message);
@@ -241,7 +245,7 @@ export function formatEventDetail(message) {
   if (message.output && message.name !== "runtime.state") {
     parts.push(textOf(message.output).slice(0, 120));
   }
-  if (message.error) parts.push(`error=${message.error}`);
+  if (message.error) parts.push("error=" + presentFailureText(message.error));
   if (message.reason) parts.push(textOf(message.reason));
   return parts.join(" | ");
 }
@@ -251,6 +255,7 @@ export function eventTone(message) {
   const name = textOf(message.name || message.type);
   const normalized = name.toLowerCase();
   if (isStopResult(message)) return "neutral";
+  if (isBlockedCompletion(message)) return "failed";
   if (isUncompletedToolEvent(message)) return "neutral";
   if (isMissingSkillLookup(message)) return "neutral";
   if (
@@ -287,14 +292,28 @@ export function isUncompletedToolEvent(message) {
   ].includes(name);
 }
 
+function isGenericRequestProcessingEvent(message) {
+  if (message.type !== "event") return false;
+  if (message.stage !== "supervisor" || message.phase !== "working") return false;
+  if (message.tone === "failed" || message.error || eventTone(message) === "failed") return false;
+  const name = textOf(message.eventName || message.name || message.rawType);
+  const label = name === "runtime.state"
+    ? textOf(message.message || message.status || message.output || message.summary || message.name)
+    : name;
+  return /^processing the request(?:\.{3}|…)?$/i.test(label.trim());
+}
+
 export function isLowValueActivityEvent(message) {
   const name = textOf(message.name || message.rawType || message.type);
   const type = textOf(message.type);
-  if (type === "failed" || name === "request.failed") return false;
+  if (type === "failed" || name === "request.failed" || isBlockedCompletion(message)) return false;
   return (
+    isGenericRequestProcessingEvent(message) ||
     name === "request_started" ||
     name === "request.started" ||
     name === "request_progress" ||
+    name === "session.title.updated" ||
+    name === "request.lifecycle.changed" ||
     name === "planning.started" ||
     name === "thinking.started" ||
     name === "thinking.delta" ||

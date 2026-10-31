@@ -1,5 +1,7 @@
+import { createChatgptSetupBinding } from "./chatgpt-accounts/setup-binding.js";
 import { runtimeSetupConnectionInput } from "./runtime-setup/connection-input.js";
 import { createConnectionInspection } from "./runtime-setup/connection-inspection.js";
+import { setupPromptCacheState } from "./runtime-setup/prompt-cache-fields.js";
 import { setupReasoningState } from "./runtime-setup/reasoning-fields.js";
 import { textOf } from "../lib/text-format.js";
 import { renderRuntimeSetup } from "./runtime-setup/rendering.js";
@@ -45,6 +47,7 @@ export function createRuntimeSetupGuide({
   conversationRegion,
   loadSetup,
   inspectConnection,
+  chatgptClient,
   saveSetup,
   applySetup,
   loadEmbeddingStatus,
@@ -64,6 +67,7 @@ export function createRuntimeSetupGuide({
 }) {
   const state = {
     ...setupReasoningState(),
+    ...setupPromptCacheState(),
     providers: [],
     provider: "",
     modelId: "",
@@ -88,6 +92,10 @@ export function createRuntimeSetupGuide({
   let onCheckAgain = () => {};
   let onApplied = () => {};
   const viewState = createSetupViewState(container);
+  const chatgpt = createChatgptSetupBinding({ state, client: chatgptClient, getEnvironmentId,
+    getContainer: () => state.step === 1 ? container : null,
+    getProvider: () => ({ type: state.provider }), getAccountRef: () => state.accountRef || "",
+    render: paint, modelField: "modelId" });
   const connectionInspection = createConnectionInspection({ state, container, inspectConnection, onChange: paint, getEnvironmentId });
   const optionalSteps = createSetupOptionalSteps({
     container, getEnvironmentId, getPreferredProvider: () => state.provider,
@@ -111,6 +119,7 @@ export function createRuntimeSetupGuide({
   }
 
   function reset() {
+    chatgpt.reset();
     connectionInspection.reset();
     clearSetupContextWindowFeedback(state, container);
     revision += 1;
@@ -119,6 +128,7 @@ export function createRuntimeSetupGuide({
     clearSecret();
     Object.assign(state, {
       ...setupReasoningState(),
+    ...setupPromptCacheState(),
     providers: [],
       provider: "",
       modelId: "",
@@ -161,6 +171,7 @@ export function createRuntimeSetupGuide({
     clearSecret();
     const optional = optionalSteps.projection(state.step);
     container.innerHTML = renderRuntimeSetup(state, availability, optional);
+    chatgpt.mount();
     optionalSteps.afterPaint(state.step, { restoreFocus: viewState.canRestoreFocus() });
     viewState.restore({ focus, busy: controlsAreBusy() });
   }
@@ -287,10 +298,10 @@ export function createRuntimeSetupGuide({
     }
   }
 
-  function controlsAreBusy() {
+  function controlsAreBusy(includeConnectionInspection = true) {
     if (requiresConfigurationRecovery(availability)) return true;
     if (
-      state.checkingConnection ||
+      (includeConnectionInspection && state.checkingConnection) ||
       state.loading ||
       state.saving ||
       state.applying ||
@@ -380,9 +391,10 @@ export function createRuntimeSetupGuide({
   }
 
   function input(event) {
-    if (controlsAreBusy()) return;
+    if (controlsAreBusy(false)) return;
     const field = event.target.closest?.("[data-runtime-setup-field]");
     if (!field) return;
+    if (["ollama-base-url", "llamacpp-base-url", "api-key"].includes(field.dataset.runtimeSetupField)) connectionInspection.reset();
     if (state.step === 2) {
       embedding.input(field.dataset.runtimeSetupField, textOf(field.value));
       return;
@@ -394,6 +406,7 @@ export function createRuntimeSetupGuide({
       field.dataset.runtimeSetupField,
       field.type === "checkbox" ? field.checked : textOf(field.value),
     );
+    if (field.dataset.runtimeSetupField === "model-id") connectionInspection.refreshModelWarning();
     if (rerender) {
       const key = readConnectionSecret(container);
       paint();
@@ -424,6 +437,7 @@ export function createRuntimeSetupGuide({
       return;
     clearSetupContextWindowFeedback(state, container);
     selectSetupProvider(state, field.value);
+    connectionInspection.reset();
     state.error = "";
     paint();
     container

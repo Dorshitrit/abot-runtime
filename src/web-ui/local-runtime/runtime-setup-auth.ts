@@ -6,7 +6,7 @@ export function resolveRuntimeSetupCredentialEnvironment(
   savedProvider: unknown,
   apiKey?: string,
 ): string | undefined {
-  if (provider === "ollama") return undefined;
+  if (provider === "ollama" || provider === "openai-chatgpt") return undefined;
   if (isRecord(savedProvider) && typeof savedProvider.apiKeyEnv === "string")
     return savedProvider.apiKeyEnv;
   if (provider === "openai") return "OPENAI_API_KEY";

@@ -5,5 +5,6 @@ export function allowsAutomaticPayloadArtifactLoading(
   authority: ExecutionPolicyAuthoritySnapshot | undefined,
 ): boolean {
   if (authority?.id === "execution-agent-v1") return false;
+  if (authority?.id === "supervisor-worker-v1") return false;
   return true;
 }

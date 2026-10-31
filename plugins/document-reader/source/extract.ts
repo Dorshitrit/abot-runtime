@@ -1,5 +1,6 @@
+import { MAX_RETAINED_TEXT_CHARS } from "./constants.js";
 import { failDocument } from "./errors.js";
-import { extractDocxText, extractPptxText, extractXlsxText } from "./ooxml.js";
+import { extractDocxText, extractPptxText, extractXlsxText } from "../../../src/plugin-sdk/document-text.js";
 import { extractPdfText } from "./pdf.js";
 import { extractedTextResult } from "./text-accumulator.js";
 import type { DocumentReference, ExtractedDocument } from "./types.js";
@@ -23,11 +24,11 @@ export async function extractDocumentText(
     case "application/pdf":
       return extractPdfText(bytes, pdfParseEntrypoint, signal);
     case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-      return extractDocxText(bytes, signal);
+      return extractDocxText(bytes, MAX_RETAINED_TEXT_CHARS, signal);
     case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
-      return extractXlsxText(bytes, signal);
+      return extractXlsxText(bytes, MAX_RETAINED_TEXT_CHARS, signal);
     case "application/vnd.openxmlformats-officedocument.presentationml.presentation":
-      return extractPptxText(bytes, signal);
+      return extractPptxText(bytes, MAX_RETAINED_TEXT_CHARS, signal);
     case "application/json": {
       try {
         const parsed = JSON.parse(

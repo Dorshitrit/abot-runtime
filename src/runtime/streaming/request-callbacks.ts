@@ -1,4 +1,6 @@
 import type WebSocket from "ws";
+import { createRequestUserInteractions } from "../user-interactions/request-service.js";
+import type { RequestUserInteractions, UserInteractionSnapshot } from "../user-interactions/contracts.js";
 
 import type { SessionThinkingTraceEntry } from "../../sessions/types.js";
 import type { RuntimeThinkingTrace } from "../model/thinking-trace.js";
@@ -38,6 +40,7 @@ export function createPersistentRequestEvents(params: {
 }
 
 export type RequestPresentationSnapshot = Readonly<{
+  userInteractions?: UserInteractionSnapshot;
   answerText: string;
   thinkingText: string;
   thinkingTrace: readonly RuntimeThinkingTrace[];
@@ -45,8 +48,10 @@ export type RequestPresentationSnapshot = Readonly<{
 
 export function createRequestCallbacks(
   events: EventSink,
+  requestId: string,
   restored?: RequestPresentationSnapshot,
 ): {
+  userInteractions: RequestUserInteractions;
   onAcknowledgement: (acknowledgement: string) => void;
   onThinkingDelta: (delta: string) => void;
   onThinkingTrace: (entry: RuntimeThinkingTrace) => void;
@@ -55,6 +60,9 @@ export function createRequestCallbacks(
   getThinkingTrace: () => SessionThinkingTraceEntry[] | undefined;
   snapshot: () => RequestPresentationSnapshot;
 } {
+  const userInteractions = createRequestUserInteractions({
+    requestId, events, restored: restored?.userInteractions,
+  });
   let accumulatedAnswer = restored?.answerText ?? "";
   let accumulatedThinking = restored?.thinkingText ?? "";
   const thinkingTrace: RuntimeThinkingTrace[] = structuredClone([
@@ -62,15 +70,21 @@ export function createRequestCallbacks(
   ]);
 
   return {
+    userInteractions,
     snapshot: () =>
       structuredClone({
         answerText: accumulatedAnswer,
         thinkingText: accumulatedThinking,
         thinkingTrace,
+        ...(userInteractions.snapshot() ? { userInteractions: userInteractions.snapshot() } : {}),
       }),
     onAcknowledgement: (acknowledgement) => {
       const delta = `${acknowledgement}\n\n`;
-      events.thinkingDelta(delta, delta);
+      events.event("thinking.delta", {
+        delta,
+        text: delta,
+        presentationKind: "acknowledgement",
+      });
     },
     onThinkingDelta: (delta) => {
       accumulatedThinking += delta;

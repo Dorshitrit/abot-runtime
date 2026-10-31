@@ -76,6 +76,16 @@ describe("SPARK exact visibility", () => {
 });
 
 describe("SPARK new-message notices", () => {
+  test("hidden approval presentations do not generate message previews", () => {
+    const showNotice = vi.fn();
+    const notices = createSparkChatNotices({ showNotice, setUnread: vi.fn(), isVisible: () => true });
+    notices.reconcile({ messages: [] }, readState([]));
+    const approval = { ...assistant("approval"), kind: "tool_approval_request" };
+    notices.reconcile({ messages: [approval] }, readState([]));
+    expect(showNotice).not.toHaveBeenCalled();
+    notices.reconcile({ messages: [approval, assistant("reply", "Your answer")] }, readState(["reply"]));
+    expect(showNotice).toHaveBeenCalledExactlyOnceWith("Your answer");
+  });
   test("a new request with reused ID and timestamp still raises a new notice", () => {
     const showNotice = vi.fn();
     const notices = createSparkChatNotices({ showNotice, setUnread: vi.fn(), isVisible: () => true });
@@ -120,6 +130,14 @@ function syncHarness() {
 }
 
 describe("SPARK durable reconciliation", () => {
+  test.each([["openai-chatgpt", true], ["openai", false], [undefined, false]])("projects ChatGPT plan usage only from provider %s", async (provider, expected) => {
+    const h = syncHarness();
+    h.client.listModels.mockResolvedValue({ profiles: [{ id: "spark-model", ...{ provider, label: "ChatGPT" } }] });
+    await h.controller.refresh({ wait: true });
+    expect(h.onConfiguration).toHaveBeenCalledWith(expect.objectContaining({ usingChatgptPlan: expected }));
+    expect(h.client.listModels).toHaveBeenCalledTimes(1);
+  });
+
   test("hydrates once then refreshes messages without reopening the session or touching a composer draft", async () => {
     const h = syncHarness();
     await h.controller.refresh({ wait: true });

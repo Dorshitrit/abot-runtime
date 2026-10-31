@@ -1,3 +1,4 @@
+import type { UserInteractionKind, UserInteractionProposal } from "../user-interactions/contracts.js";
 import type { SupervisorSkillWriteSelection } from "../steps/supervisor-skill-authoring/contract.js";
 import type { SkillReadDecision } from "../steps/skill-read-decision.js";
 import type { ModelStep } from "../../shared/model-steps.js";
@@ -69,7 +70,7 @@ type RootContractAction =
   | Readonly<{
       action: "invoke_capability";
       capabilityId: string;
-      intent: string;
+      intent?: string;
       authoringObjective?: string;
       controls: WorkerCapabilityControls;
       workingDirectory?: string;
@@ -80,7 +81,7 @@ type RootContractAction =
       action: "invoke_capabilities";
       invocations: readonly Readonly<{
         capabilityId: string;
-        intent: string;
+        intent?: string;
         authoringObjective?: string;
         controls: WorkerCapabilityControls;
       }>[];
@@ -106,12 +107,15 @@ export type RootContractDecision = RootContractAction &
   Readonly<{ workPlan?: ModelWorkPlanUpdate }>;
 
 export type RootContractDecisionOutcome = Readonly<{
+  interaction?: UserInteractionProposal;
   decision: RootContractDecision;
   steeringVersion: number;
 }>;
 
 export type RootContractAdapter<TRequest> = Readonly<{
   contractId: string;
+  /** Presentation support only; does not grant execution or completion authority. */
+  supportedInteractionKinds?: readonly UserInteractionKind[];
   decisionModelStep: ModelStep;
   responseModelStep: ModelStep;
   /** Preserve legacy Supervisor timing unless a contract opts into sealed presentation. */

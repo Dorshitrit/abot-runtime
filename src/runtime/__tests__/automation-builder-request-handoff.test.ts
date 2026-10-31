@@ -66,7 +66,7 @@ afterEach(async () => {
 
 describe("automation builder request handoff", () => {
   it.each(["Save the requested connected draft.", "Preparing the workflow for your review."])(
-    "authors the exact connected assignment with presentation %s", async (intent) => {
+    "authors the exact connected assignment with presentation %s", async (presentation) => {
     const fixture = await createSchedulerRuntimeFixture("execution-agent-v1");
     fixtures.push(fixture);
     const service = fixture.application.services.automations!;
@@ -89,7 +89,7 @@ describe("automation builder request handoff", () => {
           controls: created ? { automationId: created.automationId, expectedRevision: 1 } : { title: "Connected authoring" },
         });
         expect(assignment.acceptedCapability).not.toHaveProperty("intent");
-        expect(JSON.stringify(assignment)).not.toContain(intent);
+        expect(JSON.stringify(assignment)).not.toContain(presentation);
         const payload = created ? { version: 1, commands: [{ mutation: {
           kind: "update_definition", patch: { objective: "A new researched summary for every run." },
         } }] } : createPlan;
@@ -101,12 +101,11 @@ describe("automation builder request handoff", () => {
       activation += 1;
       if (activation === 1) return { text: JSON.stringify({ decision: {
         action: "open_capability_scope", catalogGroupIds: ["automations"],
-        acknowledgement: "I will build and save the connected draft.",
       } }), meta: {} };
       if (activation === 2) return { text: JSON.stringify({ decision: {
         action: "invoke_capability", capabilityId: "create_automation_draft",
         operationObjective: createAssignment,
-        intent, selectionControls: { title: "Connected authoring" },
+        interaction: { kind: "message", text: presentation }, selectionControls: { title: "Connected authoring" },
         workingDirectory: ".",
       } }), meta: {} };
       if (activation === 3) {
@@ -120,7 +119,6 @@ describe("automation builder request handoff", () => {
         return { text: JSON.stringify({ decision: {
           action: "invoke_capability", capabilityId: "apply_automation_draft_changes",
           operationObjective: updateAssignment,
-          intent: "Add the requested objective to this same draft.",
           selectionControls: { automationId: created.automationId, expectedRevision: created.revision },
         } }), meta: {} };
       }
@@ -214,12 +212,11 @@ describe("automation builder request handoff", () => {
       activation += 1;
       if (activation === 1) return { text: JSON.stringify({ decision: {
         action: "open_capability_scope", catalogGroupIds: ["automations"],
-        acknowledgement: "I will build and save the connected draft.",
       } }), meta: {} };
       if (activation === 2) return { text: JSON.stringify({ decision: {
         action: "invoke_capability", capabilityId: "create_automation_draft",
         operationObjective: createAssignment,
-        intent: "Save the requested connected draft.", selectionControls: { title: "Corrected authoring" },
+        selectionControls: { title: "Corrected authoring" },
         workingDirectory: ".",
       } }), meta: {} };
       if (activation === 3) {
@@ -240,7 +237,6 @@ describe("automation builder request handoff", () => {
         return { text: JSON.stringify({ decision: {
           action: "invoke_capability", capabilityId: "create_automation_draft",
           operationObjective: correctionAssignment,
-          intent: "Correct the rejected parent reference and save the same connected graph.",
           selectionControls: { title: "Corrected authoring" },
         } }), meta: {} };
       }

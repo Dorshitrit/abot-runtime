@@ -191,13 +191,13 @@ describe("web ui plan lifecycle", () => {
 
     expect(restored.plan()).toEqual(live.plan());
     expect(restored.client.fetchRequestEvents).toHaveBeenCalledWith({
-      requestId: "request-1",
+      requestId: "request-1", sessionId: "session-1",
       afterSeq: 1,
       environmentId: "dev",
     });
     expect(restored.sendRealtime).toHaveBeenLastCalledWith({
       type: "resume_request",
-      requestId: "request-1",
+      requestId: "request-1", sessionId: "session-1",
       afterSeq: 4,
       environment: "dev",
     });
@@ -293,7 +293,7 @@ describe("web ui plan lifecycle", () => {
       requestId: "request-1",
     });
     expect(harness.client.fetchRequestEvents).toHaveBeenCalledWith({
-      requestId: "request-1",
+      requestId: "request-1", sessionId: "session-1",
       afterSeq: 0,
       environmentId: "dev",
     });

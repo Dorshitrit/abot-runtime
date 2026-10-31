@@ -11,6 +11,7 @@ const boundary = vi.hoisted(() => ({
   publish: undefined as ((event: Record<string, unknown>) => void) | undefined,
   replays: new Map<string, Record<string, unknown>>(),
   executeHostOperation: vi.fn(),
+  decide: vi.fn(async () => ({ accepted: true, duplicate: false })),
 }));
 
 // Stand in for the Runtime owner only. The Web backend's publisher, realtime
@@ -33,6 +34,7 @@ vi.mock("../../web-ui/local-runtime/environment-registry.js", () => ({
       if (!["dev", "prod"].includes(id))
         throw new Error("Unknown fixture environment");
       return {
+        approvals: { list: async () => [], decide: boundary.decide },
         services: {
           config: {
             paths: {
@@ -63,6 +65,7 @@ const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   boundary.replays.clear();
+  boundary.decide.mockReset().mockResolvedValue({ accepted: true, duplicate: false });
   boundary.publish = undefined;
   expect(boundary.executeHostOperation).not.toHaveBeenCalled();
   boundary.executeHostOperation.mockClear();
@@ -148,6 +151,7 @@ async function fixture() {
     return result;
   };
   return {
+    request,
     inbox: (environment = "dev"): Promise<NotificationPage> =>
       request(`/web-api/notifications?environment=${environment}`),
     read: (id: string) =>
@@ -302,4 +306,45 @@ test("resuming stored request events sends a terminal reply to the browser witho
   expect((await f.inbox()).items.map((item) => item.requestId)).toEqual([
     "new-request",
   ]);
+});
+
+test.each([true, false])("accepted approval %s marks only its notification read across HTTP and WebSocket", async (approved) => {
+  const f = await fixture();
+  const event = { type: "event", name: "tool.approval.required", environment: "dev",
+    sessionId: "conversation", requestId: "request-1", approvalId: "approval-1" };
+  for (const value of [event, { ...event, approvalId: "approval-2" }, { ...event, environment: "prod" }]) f.publish(value);
+  await expect.poll(async () => (await f.inbox()).unreadCount).toBe(2);
+  const decision = { ...event, approved, waitId: "wait-1", generation: "generation-1", revision: 1, commandId: "command-1" };
+  if (approved) {
+    await f.request("/web-api/chat/approvals/approval-1", decision);
+  } else {
+    const socket = realtimeClient();
+    f.connect(socket.client);
+    socket.message({ ...decision, type: "tool_approval_response" });
+    await expect.poll(() => socket.sent.find((message) => message.type === "tool_approval_ack")?.accepted).toBe(true);
+  }
+  await expect.poll(async () => (await f.inbox()).unreadCount).toBe(1);
+  expect((await f.inbox("prod")).unreadCount).toBe(1);
+  const readItem = (await f.inbox()).items.find((item) => item.readAt !== null)!;
+  await f.request("/web-api/notifications/read", { environment: "dev", ids: [readItem.id], read: false });
+  boundary.decide.mockResolvedValue({ accepted: true, duplicate: true });
+  await f.request("/web-api/chat/approvals/approval-1", decision);
+  await f.restart();
+  f.publish(event);
+  expect((await f.inbox()).unreadCount).toBe(2);
+});
+
+test.each(["conflict", "failure"])("an approval %s leaves its notification unread", async (mode) => {
+  const f = await fixture(), socket = realtimeClient();
+  f.connect(socket.client);
+  f.publish({ type: "event", name: "tool.approval.required", environment: "dev",
+    sessionId: "conversation", requestId: "request-1", approvalId: "approval-1" });
+  await expect.poll(async () => (await f.inbox()).unreadCount).toBe(1);
+  if (mode === "failure") boundary.decide.mockRejectedValueOnce(new Error("decision unavailable"));
+  else boundary.decide.mockResolvedValueOnce({ accepted: false, duplicate: false });
+  socket.message({ type: "tool_approval_response", environment: "dev", sessionId: "conversation",
+    requestId: "request-1", approvalId: "approval-1", waitId: "wait-1", approved: true });
+  await expect.poll(() => socket.sent.some((message) => message.type === "tool_approval_ack" ||
+    message.name === "local_runtime_realtime_error")).toBe(true);
+  expect((await f.inbox()).unreadCount).toBe(1);
 });

@@ -3,6 +3,7 @@ import { createNotificationsWorkspace } from "./components/notifications/workspa
 import { createNotificationsController } from "./controllers/notifications-controller.js";
 import { createNotificationPresence } from "./controllers/notification-presence.js";
 import { createHomeNotificationsEntry } from "./components/notifications/home-entry.js";
+import { createNotificationFavicon } from "./components/notifications/favicon.js";
 import { notificationSourceUrl } from "./components/notifications/presentation.js";
 import { sparkNotificationReference } from "./lib/spark-chat-address.js";
 
@@ -12,6 +13,7 @@ function isNotificationSummaryWorkspace(workspace) {
 
 export function createNotificationsFeature({ dom, state, client, shell, getEnvironmentId, send }) {
   mountNotificationsDom(dom);
+  const favicon = createNotificationFavicon();
   let view;
   let companionChat;
   let environmentRevision = 0;
@@ -72,6 +74,7 @@ export function createNotificationsFeature({ dom, state, client, shell, getEnvir
     window.location.assign(source);
   }
   function refreshAvailability() {
+    favicon.render(controller.snapshot());
     const available = client.supportsNotifications();
     dom.notificationsWorkspaceButton.hidden = !available;
     dom.notificationsWorkspaceButton.disabled = !available || dom.notificationsWorkspaceButton.dataset.onboardingBlocked === "true";

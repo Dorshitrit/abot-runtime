@@ -10,7 +10,7 @@ export type PreparedApprovalGroupEntry = Readonly<{
   executionId: string;
   capabilityId: string;
   declaredEffect: RoleCapabilityDeclaredEffect;
-  intent: string;
+  intent?: string;
   authoringObjective?: string;
   controls: WorkerCapabilityControls;
   actionFingerprint: string;
@@ -46,11 +46,13 @@ export type WorkerCapabilityApprovalWait = Readonly<{
 export type CapabilityApprovalGate = Readonly<{
   resolve(
     group: PreparedApprovalGroup,
+    freshness?: WorkerCapabilityExecutionFreshness,
   ): Promise<
     | Readonly<{
         kind: "awaiting_approval";
         decisions?: readonly BoundApprovalDecision[];
       }>
+    | Readonly<{ kind: "superseded" }>
     | Readonly<{
         kind: "decisions";
         decisions: readonly BoundApprovalDecision[];

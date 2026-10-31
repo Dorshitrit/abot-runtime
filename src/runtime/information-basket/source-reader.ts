@@ -5,6 +5,7 @@ import { readBoundedRegularFile } from "../../plugin-sdk/files.js";
 import { InformationBasketError } from "./contracts.js";
 import type { BasketSourceDocument } from "./index-records.js";
 import { BASKET_LIMITS, BASKET_SUPPORTED_EXTENSIONS } from "./limits.js";
+import { extractBasketDocxText } from "./docx-source-reader.js";
 import { extractBasketPdfText } from "./pdf-source-reader.js";
 import { basketFileIdentity } from "./source-identity.js";
 
@@ -63,9 +64,7 @@ export async function readBasketSourceDocument(path: string, signal?: AbortSigna
       rootPath: dirname(path), maxBytes: BASKET_LIMITS.maxSourceBytes, signal,
     });
     if (!file.ok) throw new InformationBasketError("basket_source_" + file.reason);
-    const text = extname(path).toLowerCase() === ".pdf"
-      ? await extractBasketPdfText(file.bytes, signal)
-      : decodeBasketText(file.bytes);
+    const text = await extractBasketSourceText(path, file.bytes, signal);
     signal?.throwIfAborted();
     const after = await stat(path, { bigint: true });
     const fileIdentity = basketFileIdentity(before);
@@ -83,4 +82,11 @@ export async function readBasketSourceDocument(path: string, signal?: AbortSigna
     if (signal?.aborted) throw error;
     throw basketIoFailure(error);
   }
+}
+
+function extractBasketSourceText(path: string, bytes: Uint8Array, signal?: AbortSignal): string | Promise<string> {
+  const extension = extname(path).toLowerCase();
+  if (extension === ".pdf") return extractBasketPdfText(bytes, signal);
+  if (extension === ".docx") return extractBasketDocxText(bytes, signal);
+  return decodeBasketText(bytes);
 }

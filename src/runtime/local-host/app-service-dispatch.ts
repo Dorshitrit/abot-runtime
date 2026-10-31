@@ -64,6 +64,7 @@ export const LOCAL_SCHEDULER_METHODS = [
 ] as const satisfies readonly (keyof SchedulerService)[];
 
 export const LOCAL_AUTOMATION_METHODS = [
+  "listAttachmentOwners",
   "list",
   "create",
   "createDraftPlan",
@@ -97,6 +98,7 @@ export const LOCAL_PERSONAL_SKILL_METHODS = [
 ] as const satisfies readonly (keyof PersonalSkillManagementService)[];
 
 export const LOCAL_INFORMATION_BASKET_METHODS = [
+  "captureChatUpload", "registerChatUpload",
   "list", "updateSettings", "browseFiles", "addSources", "removeSource", "refreshSource", "relinkSource",
 ] as const satisfies readonly (keyof InformationBasketService)[];
 

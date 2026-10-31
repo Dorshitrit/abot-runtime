@@ -100,7 +100,7 @@ test("empty selection remains explicit and does not invent a target from omissio
 });
 
 function fixture(policy: RecallPolicy = "execution-agent-v1") {
-  const harness = createMemoryRecallHarness({ policy, decide: () => ({ ...responseDecision(policy), acknowledgement: "I will answer." }) });
+  const harness = createMemoryRecallHarness({ policy, decide: () => ({ ...responseDecision(policy), ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will answer." } : {}) }) });
   const prepare = vi.fn(async () => structuredClone(KNOWLEDGE));
   const learning: LearningMemoryService = {
     prepare, policy: vi.fn(), configurePolicy: vi.fn(), reviewAdmission: vi.fn(),
@@ -149,7 +149,7 @@ test("EA direct answer receives one plain reference before the single active use
     expect(messages.filter(({ role, content }) => role === "user" && content === f.request.prompt)).toHaveLength(1);
     expect(referenceIndex).toBeLessThan(messages.findIndex(({ role, content }) => role === "user" && content === f.request.prompt));
     return { text: JSON.stringify({ decision: { action: "respond", response: "Complete answer.",
-      acknowledgement: "I will answer.", memoryCandidates: [{ content: "Updated fact.", tags: [], target: "k1",
+      memoryCandidates: [{ content: "Updated fact.", tags: [], target: "k1",
         score: 91, reason: "Fresh support.", reinforced: true, explicitRequestQuote: null }] } }), meta: {} };
   });
   const result = await runRequestRunner(f.request);

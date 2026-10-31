@@ -66,6 +66,7 @@ export function traceRoleExecutorCompleted(
   context: RoleExecutorDiagnosticContext,
   result: Readonly<{
     outcome: RoleExecutionOutcome;
+    steeringVersion?: number;
     summaryLength: number;
     hasValue: boolean;
     turnCount: number;
@@ -154,6 +155,7 @@ export function traceRoleExecutorChildCompleted(
     childCallId: string;
     childRoleId: RuntimeDelegateRoleId;
     outcome: RoleExecutionOutcome;
+    steeringVersion?: number;
     summaryLength: number;
     turnCount: number;
   }>,

@@ -3,12 +3,14 @@ import type { ConversationFileClient } from "../services/runtime-web-client/conv
 import type { ConversationFileScope } from "./conversation-file-preview-controller.js";
 export declare function createConversationFilePreviewFeature(options: {
   client?: ConversationFileClient;
+  onBeforeOpen?(): void;
   getScope: () => ConversationFileScope;
   scrollRoot: HTMLElement;
   documentRoot: Document;
   viewport: Window;
 }): {
   canOpen(): boolean;
+  isOpen(): boolean;
   open?: (
     reference: ConversationFileReference,
     opener?: HTMLElement,
@@ -17,3 +19,5 @@ export declare function createConversationFilePreviewFeature(options: {
   syncScope(): void;
   setWorkspace(workspace: string): void;
 };
+
+export declare function preserveConversationScroll(scrollRoot: HTMLElement, change: () => void): void;

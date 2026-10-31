@@ -25,6 +25,10 @@ export function isBasketStatusEvent(event) {
   return Object.hasOwn(BASKET_ACTIVITY_STATUSES, event.phase);
 }
 
+export function isBasketDiscoveryEvent(event) {
+  return isBasketStatusEvent(event) && event.phase === "discovery_found";
+}
+
 function isSupervisorBasketRequestEvidence(event) {
   if (isToolLifecycleEvent(event)) return false;
   if (projectRoleDelegationEvent(event)) return true;

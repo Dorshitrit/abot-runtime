@@ -22,8 +22,8 @@ type Entry = Readonly<{
 const decision = (value: unknown) => JSON.stringify({ decision: value });
 const WORK_RESULT = "The requested distinction has been explained.";
 const PHRASING = {
-  failureNotice: "The final model output did not complete.",
-  nextStep: "Continue from the recorded work in a follow-up request.",
+  failureNotice: "The model reached its output-token limit before finishing its decision or response.",
+  nextStep: "Review the selected model and reasoning settings before continuing.",
 };
 
 function returnedChild(input: InvalidOutputModelInput) {
@@ -155,10 +155,6 @@ test.each(["decision", "response"] as const)(
         incomplete: true,
       });
     }
-    script.push({
-      step: "degraded.finalization",
-      output: JSON.stringify(PHRASING),
-    });
     let next = 0;
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
       const entry = script[next++];
@@ -191,6 +187,7 @@ test.each(["decision", "response"] as const)(
     expect(result.finalObservation).toBeUndefined();
     expect(result.memoryCandidates).toBeUndefined();
     expect(next).toBe(script.length);
+    expect(invoke.mock.calls.some(([input]) => input.modelStep === "degraded.finalization")).toBe(false);
     expect(request.onAnswerToken).toHaveBeenCalledExactlyOnceWith(expected);
     expect(request.modelGatewayClient.invokeRaw).not.toHaveBeenCalled();
   },

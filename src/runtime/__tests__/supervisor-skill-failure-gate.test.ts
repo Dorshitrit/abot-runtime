@@ -66,7 +66,10 @@ test("a failed read after child return suppresses later selection while retainin
     },
     classifyProcedure: () => ({ requiresProcedure: true }),
     delegate(input) {
-      expect(JSON.stringify(input.messages)).not.toContain(guide.content);
+      expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1"))
+        .toEqual([expect.objectContaining({
+          authority: "passive_reference", purpose: "skill_guidance", document: guide,
+        })]);
       expect(selections).toBe(++routes);
       return { action: "invoke_role", roleId: "worker", objective: "Explain the owning layer." };
     },
@@ -122,7 +125,10 @@ test.each([false, true])("a new request can read the same Skill after a prior re
     selectSkills: () => ++selections === 1
       ? { action: "read_skills", skillIds: [guide.skillId] } : { action: "continue" },
     classifyProcedure(input) {
-      expect(JSON.stringify(input.messages)).not.toContain(guide.content);
+      expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1"))
+        .toEqual([expect.objectContaining({
+          authority: "passive_reference", purpose: "skill_guidance", document: guide,
+        })]);
       return { requiresProcedure: false, responseRecommendation: "Answer the request using the guide." };
     },
     onInput(input) {
@@ -156,7 +162,10 @@ test("a child return permits one additional Skill batch in the same request", as
     },
     classifyProcedure: () => ({ requiresProcedure: true }),
     delegate(input) {
-      expect(JSON.stringify(input.messages)).not.toContain(guide.content);
+      expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1"))
+        .toEqual([expect.objectContaining({
+          authority: "passive_reference", purpose: "skill_guidance", document: guide,
+        })]);
       expect(selections).toBe(++routes);
       return { action: "invoke_role", roleId: "worker", objective: "Apply the first guide." };
     },

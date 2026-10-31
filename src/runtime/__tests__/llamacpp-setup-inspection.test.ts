@@ -38,7 +38,7 @@ describe("explicit metadata-only llama connection inspection", () => {
     expect(inspect.mock.calls[0]?.[0]).not.toHaveProperty("apiKey");
   });
   test("rejects unsupported selections and unsafe addresses before network access", async () => {
-    await expect(inspectModelSetupConnection({ rootDir, configPath }, { providerId: "local" }, new AbortController().signal)).rejects.toMatchObject({ code: "unsupported_connection_inspection" });
+    await expect(inspectModelSetupConnection({ rootDir, configPath }, { provider: "openai" }, new AbortController().signal)).rejects.toMatchObject({ code: "unsupported_connection_inspection" });
     await expect(inspectModelSetupConnection({ rootDir, configPath }, { provider: "llamacpp", baseUrl: "http://user:pass@server:8080" }, new AbortController().signal)).rejects.toMatchObject({ code: "invalid_connection_address" });
     expect(inspect).not.toHaveBeenCalled();
   });

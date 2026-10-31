@@ -62,7 +62,7 @@ async function fixture(capabilities: readonly CapabilityDescriptor[]) {
   const head = ledger.current();
   const call = head.state.calls.find((entry) => entry.callId === head.state.activeCallId)!;
   const parse = (decision: unknown) => parseExecutionAgentDecisionOutput(
-    JSON.stringify({ decision }), { capabilities, maxBatchCapabilityExecutions: 8 },
+    JSON.stringify({ decision }), { capabilities, maxBatchCapabilityExecutions: 8, allowUserInteraction: true },
   );
   const refine = async (decision: unknown) => {
     const parsed = parse(decision);
@@ -81,12 +81,12 @@ describe("Execution Agent payload operation assignment", () => {
   it("requires a bounded payload assignment even when all controls are selected", async () => {
     const f = await fixture([capability("payload", true), capability("read", false)]);
     const selection = { action: "invoke_capability", capabilityId: "payload",
-      intent: "Show this status only.", selectionControls: { target: "a.txt" } };
+      interaction: { kind: "message", text: "Show this status only." }, selectionControls: { target: "a.txt" } };
     expect(f.parse(selection).ok).toBe(false);
     expect(f.parse({ ...selection, operationObjective: " " }).ok).toBe(false);
     expect(f.parse({ ...selection, capabilityId: "read" }).ok).toBe(true);
     const first = await f.refine({ ...selection, operationObjective: "Extract only totals from a.txt." });
-    const second = await f.refine({ ...selection, intent: "A different presentation.",
+    const second = await f.refine({ ...selection, interaction: { kind: "message", text: "A different presentation." },
       operationObjective: "Extract only totals from a.txt." });
     expect(first.invocations[0]).toMatchObject({ authoringObjective: "Extract only totals from a.txt.",
       controls: { target: "a.txt" } });
@@ -98,9 +98,9 @@ describe("Execution Agent payload operation assignment", () => {
   it("keeps each payload assignment with its exact batch slot", async () => {
     const f = await fixture([capability("payload", true)]);
     const result = await f.refine({ action: "invoke_capabilities", invocations: [
-      { capabilityId: "payload", intent: "First status.", operationObjective: "Extract totals from a.txt.",
+      { capabilityId: "payload", operationObjective: "Extract totals from a.txt.",
         selectionControls: { target: "a.txt" } },
-      { capabilityId: "payload", intent: "Second status.", operationObjective: "Extract names from b.txt.",
+      { capabilityId: "payload", operationObjective: "Extract names from b.txt.",
         selectionControls: { target: "b.txt" } },
     ] });
     expect(result.invocations.map(({ authoringObjective, controls }) => ({ authoringObjective, controls }))).toEqual([
@@ -115,7 +115,6 @@ describe("Execution Agent payload operation assignment", () => {
     const result = await f.refine({
       action: "invoke_capability",
       capabilityId: "selected",
-      intent: "Read the selected document.",
       selectionControls: { target: "document.txt" },
     });
     expect(result.invocations[0]?.controls).toEqual({ target: "document.txt" });
@@ -128,7 +127,6 @@ describe("Execution Agent payload operation assignment", () => {
     const result = await f.refine({
       action: "invoke_capability",
       capabilityId: "selected",
-      intent: "Display progress.",
       operationObjective: "Read the selected document.",
       controlsEvidenceExecutionIds: [],
     });
@@ -144,7 +142,7 @@ describe("Execution Agent payload operation assignment", () => {
       controls: { type: "object" as const, additionalProperties: false as const, properties: {}, required: [] } };
     const f = await fixture([descriptor]);
     const result = await f.refine({ action: "invoke_capability", capabilityId: "payload",
-      intent: "Display progress.", operationObjective: "Prepare the exact requested content." });
+      operationObjective: "Prepare the exact requested content." });
     expect(result.invocations[0]).toMatchObject({ controls: {}, authoringObjective: "Prepare the exact requested content." });
     expect(f.invoke).not.toHaveBeenCalled();
   });

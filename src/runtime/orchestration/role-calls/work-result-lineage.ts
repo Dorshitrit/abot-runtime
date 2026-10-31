@@ -6,6 +6,7 @@ import type {
   RoleCallResult,
   RoleCallState,
 } from "./contracts.js";
+import { hasValidWorkResultSteeringIdentity } from "./worker-steering.js";
 import type { RoleCallWorkResultReceipt } from "./work-result-receipt.js";
 
 export const ROLE_CALL_WORK_RESULT_LINEAGE_KIND =
@@ -20,6 +21,7 @@ export type RoleCallWorkResultPlanItem = Readonly<{
   itemId: string;
   status: TerminalPlanItemStatus;
   resultRef: string | null;
+  retiredBySteeringVersion?: number;
 }>;
 
 export type RoleCallWorkResultPlanSnapshot = Readonly<{
@@ -42,6 +44,7 @@ export type CanonicalRoleCallWorkResultLineageInput = Readonly<{
   producer: RoleCallFrame;
   resultRef: string;
   outcome: RoleCallResult["outcome"];
+  steeringVersion?: number;
   sourceRevision: number;
 }>;
 
@@ -64,6 +67,8 @@ export function createCanonicalRoleCallWorkResultLineage(
     callerCallId,
     roleId: input.producer.roleId,
     outcome: input.outcome,
+    ...(input.steeringVersion !== undefined ? { steeringVersion: input.steeringVersion } : {}),
+    ...(input.producer.workerSteeringVersion !== undefined ? { workerSteeringVersion: input.producer.workerSteeringVersion } : {}),
     sourceRevision: input.sourceRevision,
     dependencyResultRefs: input.producer.dependencyResultRefs,
     capabilityExecutionIds,
@@ -95,6 +100,7 @@ export function projectRoleCallWorkResultLineage(input: {
     producer,
     resultRef: result.resultRef,
     outcome: result.outcome,
+    ...(result.steeringVersion !== undefined ? { steeringVersion: result.steeringVersion } : {}),
     sourceRevision: input.receipt.sourceRevision,
   });
   if (!lineage) return null;
@@ -113,7 +119,7 @@ function hasCanonicalWorkResultIdentity(
   }
   if (!input.producer.parentCallId) return false;
   if (!input.resultRef.trim()) return false;
-  if (input.outcome !== "completed" && input.outcome !== "failed") return false;
+  if (!hasValidWorkResultSteeringIdentity(input, input.producer)) return false;
   return Number.isSafeInteger(input.sourceRevision) && input.sourceRevision >= 0;
 }
 
@@ -185,6 +191,9 @@ function resolveTerminalPlanItem(
   item: RoleCallState["plans"][number]["itemStates"][number],
 ): RoleCallWorkResultPlanItem | null {
   if (item.status === "in_progress") return null;
+  if (item.status === "retired" && item.childCallId === null) {
+    return Object.freeze({ itemId: item.itemId, status: item.status, resultRef: null, retiredBySteeringVersion: item.retiredBySteeringVersion });
+  }
   if (item.status === "pending") {
     if (item.childCallId !== null) return null;
     return Object.freeze({
@@ -206,6 +215,7 @@ function resolveTerminalPlanItem(
     itemId: item.itemId,
     status: item.status,
     resultRef: result.resultRef,
+    ...(item.retiredBySteeringVersion !== undefined ? { retiredBySteeringVersion: item.retiredBySteeringVersion } : {}),
   });
 }
 

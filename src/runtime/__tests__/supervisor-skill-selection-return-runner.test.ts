@@ -43,6 +43,7 @@ test.each(["completed", "failed"] as const)(
     let selections = 0;
     let routes = 0;
     let returnedContext: Record<string, unknown> | undefined;
+    let capturedGuidance: Record<string, unknown>[] | undefined;
     const f = fixture({
       policy: "supervisor-worker-v1", enabled: false,
       selectSkills(input) {
@@ -67,17 +68,30 @@ test.each(["completed", "failed"] as const)(
         if (outcome === "completed") expect(returnedContext.summary).toBe(summary);
         return { action: "continue" };
       },
-      classifyProcedure: () => ({ requiresProcedure: true }),
+      classifyProcedure(input) {
+        capturedGuidance = jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1");
+        expect(capturedGuidance).toEqual([expect.objectContaining({
+          authority: "passive_reference", purpose: "skill_guidance",
+          document: documents[0],
+        })]);
+        return { requiresProcedure: true };
+      },
       delegate(input) {
-        expect(JSON.stringify(input.messages)).not.toContain(documents[0]!.content);
+        expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1"))
+          .toEqual(capturedGuidance);
         routes++;
         return { action: "invoke_role", roleId: "worker", objective };
       },
       decide(input) {
         const phase = supervisorFormatName(input);
-        if (phase === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
+        if (phase === "supervisor_working_directory") {
+          expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1"))
+            .toEqual(capturedGuidance);
+          return JSON.stringify({ workingDirectory: "." });
+        }
         if (phase === "supervisor_decision") {
-          expect(JSON.stringify(input.messages)).toContain(documents[0]!.content);
+          expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1"))
+            .toEqual(capturedGuidance);
           expect(++routes).toBe(2);
           expect(returnedContext).toBeDefined();
           const child = jsonMessages(input).find(({ kind }) => kind === "runtime_child_result")!;
@@ -114,7 +128,7 @@ test("EA does not invoke SUPER Skill selection or receive its returned-role caps
     policy: "execution-agent-v1", enabled: false, selectSkills,
     decide(input) {
       expect(input.modelStep).toBe("execution.decision");
-      return { action: "respond", acknowledgement: "I will answer the request." };
+      return { action: "respond" };
     },
   });
   await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });

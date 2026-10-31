@@ -1,5 +1,7 @@
+import { isSparkAssistantMessage } from "../lib/spark-message-visibility.js";
+
 function persistedAssistantMessages(snapshot) {
-  return (snapshot?.messages || []).filter((message) => message.role === "assistant" && message.id != null);
+  return (snapshot?.messages || []).filter((message) => isSparkAssistantMessage(message) && message.id != null);
 }
 function messageIdentity(message) { return JSON.stringify([String(message.id), message.createdAt, message.requestId || null]); }
 

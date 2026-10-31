@@ -57,7 +57,6 @@ test("EA 32K and 120K retain identical catalog and control schemas; SYSTEM-first
           output: decision({
             action: "open_capability_scope",
             catalogGroupIds: ["system"],
-            acknowledgement: "I will create the requested file.",
           }),
         },
         {
@@ -65,7 +64,6 @@ test("EA 32K and 120K retain identical catalog and control schemas; SYSTEM-first
           output: decision({
             action: "invoke_capability",
             capabilityId: "run_system_command",
-            intent: "Inspect the selected OS.",
             operationObjective:
               "Inspect the target OS without changing the runtime file root.",
             controlsEvidenceExecutionIds: [],
@@ -99,7 +97,6 @@ test("EA 32K and 120K retain identical catalog and control schemas; SYSTEM-first
           output: decision({
             action: "invoke_capability",
             capabilityId: "write_complete_file",
-            intent: "Create the exact runtime file.",
             operationObjective: `Write exactly ${JSON.stringify(body)}.`,
             selectionControls: { path: "index.html" },
           }),

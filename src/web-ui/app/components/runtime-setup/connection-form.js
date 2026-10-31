@@ -1,3 +1,5 @@
+import { renderSetupPromptCacheField, setupPromptCacheInput } from "./prompt-cache-fields.js";
+import { renderChatgptLogo } from "../chatgpt-accounts/sign-in-button.js";
 import { renderConnectionInspection } from "./connection-inspection.js";
 import { renderSetupReasoningFields, validateSetupReasoningFields } from "./reasoning-fields.js";
 import { escapeAttribute, escapeHtml, textOf } from "../../lib/text-format.js";
@@ -13,6 +15,7 @@ export function renderProviderChoices(state) {
     .map(
       (provider) => `<label class="runtime-provider-option">
     <input type="radio" name="runtimeSetupProvider" value="${escapeAttribute(provider.id)}" data-runtime-setup-field="provider" ${state.provider === provider.id ? "checked" : ""} />
+    ${["openai-chatgpt", "new:openai-chatgpt"].includes(provider.id) ? `<span class="chatgpt-provider-logo">${renderChatgptLogo()}</span>` : ""}
     <span><strong>${escapeHtml(provider.label)}</strong><small>${escapeHtml(provider.description || (provider.id !== "openai" ? "A model on your computer or server" : "A hosted model using your API key"))}</small></span>
   </label>`,
     )
@@ -56,7 +59,9 @@ export function renderConnectionFields(state) {
       value: state.modelId,
       placeholder: "Exact model name",
       readonly: !canEditSetupConnection(state),
-      help: "Enter the model name provided by your service.",
+      help: providerType === "ollama"
+        ? "Use Discover models to check installed names. Saving settings does not verify that this model is installed."
+        : "Enter the model name provided by your service.",
     }) +
     renderConnectionField({
       idPrefix,
@@ -70,7 +75,8 @@ export function renderConnectionFields(state) {
       readonly: !canEditSetupConnection(state),
       help: "Use a value supported by your model. Larger windows need more memory on local servers. You can change this later in Models.",
     });
-  const reasoning = renderSetupReasoningFields(state, !canEditSetupConnection(state));
+  const reasoning = renderSetupReasoningFields(state, !canEditSetupConnection(state)) + renderSetupPromptCacheField(state, !canEditSetupConnection(state));
+  if (providerType === "openai-chatgpt") return '<div data-chatgpt-connection></div>' + model + reasoning;
   if (providerType === "llamacpp") {
     const address = state.existingProvider ? "" : renderConnectionField({
       idPrefix, field: "llamacpp-base-url", label: "llama.cpp address", type: "url",
@@ -89,7 +95,7 @@ export function renderConnectionFields(state) {
     return model + address + key + renderConnectionInspection(state) + reasoning;
   }
   if (providerType === "ollama") {
-    if (state.existingProvider) return model + reasoning;
+    if (state.existingProvider) return model + renderConnectionInspection(state) + reasoning;
     return (
       model +
       renderConnectionField({
@@ -101,7 +107,7 @@ export function renderConnectionFields(state) {
         readonly: !canEditSetupConnection(state),
         placeholder: "http://127.0.0.1:11434",
         help: "Use the address reachable from the computer running ABot.",
-      }) + reasoning
+      }) + renderConnectionInspection(state) + reasoning
     );
   }
   if (credentialConfigured && state.allowCredentialReplacement === false)
@@ -139,7 +145,7 @@ export function validateConnectionFields({
   providerType,
   baseUrl,
   existingProvider = false,
-  supportsThinking, reasoningBudgetMode, reasoningBudgetTokens,
+  supportsThinking, reasoningBudgetMode, reasoningBudgetTokens, promptCache,
 }) {
   const model = validateRuntimeSetupModelId(modelId);
   if (!model.valid)
@@ -159,7 +165,7 @@ export function validateConnectionFields({
   }
   const reasoning = validateSetupReasoningFields({ providerType, supportsThinking, reasoningBudgetMode, reasoningBudgetTokens });
   if (!reasoning.valid) return reasoning;
-  return { valid: true, input: { ...input, ...reasoning.input } };
+  return { valid: true, input: { ...input, ...reasoning.input, ...setupPromptCacheInput(providerType, promptCache) } };
 }
 
 export function showConnectionFieldError(

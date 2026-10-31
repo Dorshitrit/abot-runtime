@@ -1,3 +1,4 @@
+import { presentFailedResponseHistory } from "../lib/failed-response-history.js";
 import { mergeHistoryPage } from "../lib/history-page-messages.js";
 
 export function canRestoreSnapshotQueue(snapshot, waitingRequestId) {
@@ -57,6 +58,7 @@ export function createHistoryPagination({ state, dom, client, selectedEnvironmen
       for (const request of requests) requestIds.add(request.requestId);
       const merge = () => {
         mergeHistoryPage(state, incoming, direction, windowEnd);
+        presentFailedResponseHistory(state.messages, snapshot.requests || []);
         if (direction === "newer" && incoming.length) windowEnd = incoming.at(-1);
         if (direction === "older") older = snapshot.nextCursor || null;
         else newer = snapshot.newerCursor || null;

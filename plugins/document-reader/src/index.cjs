@@ -666,7 +666,7 @@ async function readBoundedRegularFile(absolutePath, options) {
   try {
     handle = await (0, import_promises2.open)(
       absolutePath,
-      import_node_fs.constants.O_RDONLY | import_node_fs.constants.O_NOFOLLOW
+      import_node_fs.constants.O_RDONLY | import_node_fs.constants.O_NOFOLLOW | import_node_fs.constants.O_NONBLOCK
     );
     const before = await handle.stat({ bigint: true });
     if (!before.isFile()) {
@@ -929,10 +929,6 @@ var MAX_RETAINED_TEXT_CHARS = MAX_START_CHAR + MAX_CHARS;
 var MAX_OUTPUT_CHARS = 48e3;
 var MAX_OUTPUT_JSON_BYTES = 64 * 1024;
 var MAX_IDENTITY_CHARS = 512;
-var MAX_ARCHIVE_ENTRIES = 4096;
-var MAX_ARCHIVE_DECLARED_BYTES = 256 * 1024 * 1024;
-var MAX_XML_ENTRY_BYTES = 8 * 1024 * 1024;
-var MAX_TOTAL_XML_BYTES = 24 * 1024 * 1024;
 var MAX_PDF_PAGES = 1e4;
 var PDF_PAGE_BATCH_SIZE = 1;
 var PDF_EXTRACTION_TIMEOUT_MS = 3e4;
@@ -957,6 +953,429 @@ var MIME_TYPE_ALIASES = Object.freeze({
   "text/x-markdown": "text/markdown"
 });
 
+// src/shared/document-text/archive.ts
+var import_jszip = __toESM(require("jszip"), 1);
+
+// src/shared/document-text/limits.ts
+var MAX_ARCHIVE_ENTRIES = 4096;
+var MAX_ARCHIVE_DECLARED_BYTES = 256 * 1024 * 1024;
+var MAX_XML_ENTRY_BYTES = 8 * 1024 * 1024;
+var MAX_TOTAL_XML_BYTES = 24 * 1024 * 1024;
+
+// src/shared/document-text/errors.ts
+var DocumentTextError = class extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+    this.name = "DocumentTextError";
+  }
+  code;
+};
+function failDocumentText(code, message) {
+  throw new DocumentTextError(code, message);
+}
+
+// src/shared/document-text/archive.ts
+var END_OF_CENTRAL_DIRECTORY_SIGNATURE = 101010256;
+var CENTRAL_DIRECTORY_ENTRY_SIGNATURE = 33639248;
+var MAX_END_RECORD_SEARCH_BYTES = 65557;
+function findEndOfCentralDirectory(bytes, view) {
+  if (bytes.byteLength < 22) {
+    failDocumentText("document_archive_invalid", "The OOXML archive is invalid.");
+  }
+  const minimumOffset = Math.max(
+    0,
+    bytes.byteLength - MAX_END_RECORD_SEARCH_BYTES
+  );
+  for (let offset = bytes.byteLength - 22; offset >= minimumOffset; offset -= 1) {
+    if (view.getUint32(offset, true) !== END_OF_CENTRAL_DIRECTORY_SIGNATURE) {
+      continue;
+    }
+    const commentLength = view.getUint16(offset + 20, true);
+    if (offset + 22 + commentLength === bytes.byteLength) return offset;
+  }
+  failDocumentText("document_archive_invalid", "The OOXML archive is invalid.");
+}
+function validateArchiveDirectory(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const endOffset = findEndOfCentralDirectory(bytes, view);
+  const entryCount = view.getUint16(endOffset + 10, true);
+  const diskEntryCount = view.getUint16(endOffset + 8, true);
+  const directoryBytes = view.getUint32(endOffset + 12, true);
+  const directoryOffset = view.getUint32(endOffset + 16, true);
+  const diskNumber = view.getUint16(endOffset + 4, true);
+  const directoryDisk = view.getUint16(endOffset + 6, true);
+  if (diskNumber !== 0 || directoryDisk !== 0 || diskEntryCount !== entryCount || entryCount === 65535 || directoryBytes === 4294967295 || directoryOffset === 4294967295) {
+    failDocumentText(
+      "document_archive_unsupported",
+      "Multi-disk and ZIP64 OOXML archives are not supported."
+    );
+  }
+  if (entryCount > MAX_ARCHIVE_ENTRIES) {
+    failDocumentText(
+      "document_archive_entry_limit",
+      `The OOXML archive exceeds the ${MAX_ARCHIVE_ENTRIES}-entry limit.`
+    );
+  }
+  const directoryEnd = directoryOffset + directoryBytes;
+  if (directoryEnd > endOffset || directoryEnd > bytes.byteLength) {
+    failDocumentText("document_archive_invalid", "The OOXML archive is invalid.");
+  }
+  let offset = directoryOffset;
+  let declaredUncompressedBytes = 0;
+  for (let index = 0; index < entryCount; index += 1) {
+    if (offset + 46 > directoryEnd || view.getUint32(offset, true) !== CENTRAL_DIRECTORY_ENTRY_SIGNATURE) {
+      failDocumentText("document_archive_invalid", "The OOXML archive is invalid.");
+    }
+    const flags = view.getUint16(offset + 8, true);
+    const compressionMethod = view.getUint16(offset + 10, true);
+    const compressedBytes = view.getUint32(offset + 20, true);
+    const uncompressedBytes = view.getUint32(offset + 24, true);
+    const nameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    const entryLength = 46 + nameLength + extraLength + commentLength;
+    if (offset + entryLength > directoryEnd || compressedBytes === 4294967295 || uncompressedBytes === 4294967295) {
+      failDocumentText("document_archive_invalid", "The OOXML archive is invalid.");
+    }
+    if ((flags & 1) !== 0) {
+      failDocumentText(
+        "document_archive_unsupported",
+        "Encrypted OOXML archive entries are not supported."
+      );
+    }
+    if (compressionMethod !== 0 && compressionMethod !== 8) {
+      failDocumentText(
+        "document_archive_unsupported",
+        "The OOXML archive uses an unsupported compression method."
+      );
+    }
+    declaredUncompressedBytes += uncompressedBytes;
+    if (declaredUncompressedBytes > MAX_ARCHIVE_DECLARED_BYTES) {
+      failDocumentText(
+        "document_archive_expansion_limit",
+        "The OOXML archive declares more expanded data than the safe parsing limit."
+      );
+    }
+    offset += entryLength;
+  }
+  if (offset !== directoryEnd) {
+    failDocumentText("document_archive_invalid", "The OOXML archive is invalid.");
+  }
+  return Object.freeze({
+    declaredEntries: entryCount,
+    declaredUncompressedBytes
+  });
+}
+async function loadOfficeArchive(bytes) {
+  const directory = validateArchiveDirectory(bytes);
+  let zip;
+  try {
+    zip = await import_jszip.default.loadAsync(bytes, { checkCRC32: false });
+  } catch {
+    failDocumentText("document_archive_invalid", "The OOXML archive is invalid.");
+  }
+  return Object.freeze({
+    zip,
+    directory,
+    budget: { expandedXmlBytes: 0, processedXmlEntries: 0 }
+  });
+}
+async function readBoundedXml(entry, budget, signal) {
+  if (signal?.aborted) {
+    failDocumentText("document_read_cancelled", "Document reading was cancelled.");
+  }
+  return new Promise((resolve, reject) => {
+    const stream = entry.nodeStream("nodebuffer");
+    const chunks = [];
+    let entryBytes = 0;
+    let settled = false;
+    const cleanup = () => {
+      signal?.removeEventListener("abort", onAbort);
+      stream.removeListener("data", onData);
+      stream.removeListener("error", onError);
+      stream.removeListener("end", onEnd);
+    };
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      stream.destroy();
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    const onAbort = () => {
+      fail(
+        new DocumentTextError(
+          "document_read_cancelled",
+          "Document reading was cancelled."
+        )
+      );
+    };
+    const onData = (chunk) => {
+      if (settled) return;
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      entryBytes += buffer.byteLength;
+      if (entryBytes > MAX_XML_ENTRY_BYTES || budget.expandedXmlBytes + entryBytes > MAX_TOTAL_XML_BYTES) {
+        fail(
+          new DocumentTextError(
+            "document_archive_expansion_limit",
+            "The OOXML document exceeds the safe expanded-text parsing limit."
+          )
+        );
+        return;
+      }
+      chunks.push(buffer);
+    };
+    const onError = (error) => fail(error);
+    const onEnd = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      budget.expandedXmlBytes += entryBytes;
+      budget.processedXmlEntries += 1;
+      resolve(Buffer.concat(chunks, entryBytes).toString("utf8"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    stream.on("data", onData);
+    stream.once("error", onError);
+    stream.once("end", onEnd);
+  });
+}
+function archiveMetadata(archive) {
+  return Object.freeze({
+    declaredEntries: archive.directory.declaredEntries,
+    declaredUncompressedBytes: archive.directory.declaredUncompressedBytes,
+    processedXmlEntries: archive.budget.processedXmlEntries,
+    expandedXmlBytes: archive.budget.expandedXmlBytes,
+    limits: Object.freeze({
+      maxEntries: MAX_ARCHIVE_ENTRIES,
+      maxDeclaredUncompressedBytes: MAX_ARCHIVE_DECLARED_BYTES,
+      maxXmlEntryBytes: MAX_XML_ENTRY_BYTES,
+      maxExpandedXmlBytes: MAX_TOTAL_XML_BYTES
+    })
+  });
+}
+
+// src/shared/document-text/text-accumulator.ts
+function normalizeExtractedText(value) {
+  return value.replaceAll("\0", "").trim();
+}
+var BoundedTextAccumulator = class {
+  #maxCharacters;
+  #parts = [];
+  #returnedCharacters = 0;
+  #totalCharacters = 0;
+  #hasContent = false;
+  constructor(maxCharacters) {
+    this.#maxCharacters = maxCharacters;
+  }
+  append(value, separator = "\n\n") {
+    if (value.length === 0) return;
+    const combined = this.#hasContent ? separator + value : value;
+    this.#hasContent = true;
+    this.#totalCharacters += combined.length;
+    const remaining = this.#maxCharacters - this.#returnedCharacters;
+    if (remaining <= 0) return;
+    const retained = combined.slice(0, remaining);
+    this.#parts.push(retained);
+    this.#returnedCharacters += retained.length;
+  }
+  finish(format) {
+    return Object.freeze({
+      text: this.#parts.join(""),
+      textBounds: Object.freeze({
+        truncated: this.#totalCharacters > this.#returnedCharacters,
+        totalCharacters: this.#totalCharacters,
+        returnedCharacters: this.#returnedCharacters,
+        omittedCharacters: this.#totalCharacters - this.#returnedCharacters,
+        maxCharacters: this.#maxCharacters
+      }),
+      format
+    });
+  }
+};
+
+// src/shared/document-text/xml-validation.ts
+function rejectIncompleteDocumentXml() {
+  return failDocumentText("document_xml_invalid", "The document contains malformed XML.");
+}
+function documentXmlSectionEnd(xml, start, terminator) {
+  const end = xml.indexOf(terminator, start);
+  if (end < 0) rejectIncompleteDocumentXml();
+  return end + terminator.length;
+}
+function assertDocumentXmlStructure(xml) {
+  const openTags = [];
+  const tag = /<(\/?)([A-Za-z_][\w.:-]*)(?:\s+[A-Za-z_][\w.:-]*\s*=\s*(?:"[^"<]*"|'[^'<]*'))*\s*(\/?)>/uy;
+  let cursor = 0;
+  let hasRoot = false;
+  while (cursor < xml.length) {
+    const nextTag = xml.indexOf("<", cursor);
+    const textEnd = nextTag < 0 ? xml.length : nextTag;
+    if (openTags.length === 0 && xml.slice(cursor, textEnd).trim()) {
+      rejectIncompleteDocumentXml();
+    }
+    cursor = textEnd;
+    if (cursor === xml.length) break;
+    if (xml.startsWith("<!--", cursor)) {
+      cursor = documentXmlSectionEnd(xml, cursor + 4, "-->");
+      continue;
+    }
+    if (xml.startsWith("<![CDATA[", cursor)) {
+      if (openTags.length === 0) rejectIncompleteDocumentXml();
+      cursor = documentXmlSectionEnd(xml, cursor + 9, "]]>");
+      continue;
+    }
+    if (xml.startsWith("<?", cursor)) {
+      cursor = documentXmlSectionEnd(xml, cursor + 2, "?>");
+      continue;
+    }
+    tag.lastIndex = cursor;
+    const match = tag.exec(xml);
+    if (!match) rejectIncompleteDocumentXml();
+    cursor = tag.lastIndex;
+    const [, closing, name, selfClosing] = match;
+    if (closing) {
+      if (!/^<\/[A-Za-z_][\w.:-]*\s*>$/u.test(match[0])) rejectIncompleteDocumentXml();
+      if (openTags.pop() !== name) rejectIncompleteDocumentXml();
+      continue;
+    }
+    if (openTags.length === 0 && hasRoot) rejectIncompleteDocumentXml();
+    hasRoot = true;
+    if (!selfClosing) openTags.push(name);
+  }
+  if (!hasRoot || openTags.length > 0) rejectIncompleteDocumentXml();
+}
+
+// src/shared/document-text/ooxml.ts
+function decodeCodePoint(value, radix) {
+  const parsed = Number.parseInt(value, radix);
+  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > 1114111) {
+    return "�";
+  }
+  return String.fromCodePoint(parsed);
+}
+function decodeXml(value) {
+  return value.replace(/&#x([0-9a-f]+);/giu, (_, hex) => decodeCodePoint(hex, 16)).replace(/&#(\d+);/gu, (_, decimal) => decodeCodePoint(decimal, 10)).replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"').replaceAll("&apos;", "'").replaceAll("&amp;", "&");
+}
+function extractTextNodes(xml, tag) {
+  const values = [];
+  const pattern = new RegExp(
+    `<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`,
+    "giu"
+  );
+  for (const match of xml.matchAll(pattern)) {
+    values.push(decodeXml((match[1] ?? "").replace(/<[^>]+>/gu, "")));
+  }
+  return values;
+}
+function numericSuffix(name) {
+  return Number(name.match(/(\d+)\.xml$/u)?.[1] ?? Number.MAX_SAFE_INTEGER);
+}
+function archiveResult(accumulator, archive) {
+  return accumulator.finish(
+    Object.freeze({
+      kind: "archive",
+      archive: archiveMetadata(archive)
+    })
+  );
+}
+async function extractDocxText(bytes, maxCharacters, signal) {
+  signal?.throwIfAborted();
+  const archive = await loadOfficeArchive(bytes);
+  signal?.throwIfAborted();
+  const names = Object.keys(archive.zip.files).filter(
+    (name) => /^word\/(?:document|header\d+|footer\d+|footnotes|endnotes)\.xml$/u.test(
+      name
+    )
+  ).sort(
+    (left, right) => left === "word/document.xml" ? -1 : right === "word/document.xml" ? 1 : left.localeCompare(right)
+  );
+  const accumulator = new BoundedTextAccumulator(maxCharacters);
+  for (const name of names) {
+    const entry = archive.zip.file(name);
+    if (!entry) continue;
+    const xml = await readBoundedXml(entry, archive.budget, signal);
+    assertDocumentXmlStructure(xml);
+    const normalized = xml.replace(/<w:tab\b[^>]*\/>/giu, "	").replace(/<w:br\b[^>]*\/>/giu, "\n").replace(/<\/w:tc>/giu, "	").replace(/<\/w:p>/giu, "\n");
+    const text = normalizeExtractedText(
+      decodeXml(
+        normalized.replace(/<(?!\/?w:t\b)[^>]+>/giu, "").replace(/<\/?w:t\b[^>]*>/giu, "")
+      ).replace(/[ \t]+\n/gu, "\n").replace(/\n{3,}/gu, "\n\n")
+    );
+    accumulator.append(text);
+  }
+  return archiveResult(accumulator, archive);
+}
+async function extractPptxText(bytes, maxCharacters, signal) {
+  signal?.throwIfAborted();
+  const archive = await loadOfficeArchive(bytes);
+  signal?.throwIfAborted();
+  const names = Object.keys(archive.zip.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/u.test(name)).sort((left, right) => numericSuffix(left) - numericSuffix(right));
+  const accumulator = new BoundedTextAccumulator(maxCharacters);
+  for (const [index, name] of names.entries()) {
+    const entry = archive.zip.file(name);
+    if (!entry) continue;
+    const xml = await readBoundedXml(entry, archive.budget, signal);
+    const content = normalizeExtractedText(
+      extractTextNodes(xml, "a:t").filter(Boolean).join("\n")
+    );
+    accumulator.append(`[Slide ${index + 1}]${content ? `
+${content}` : ""}`);
+  }
+  return archiveResult(accumulator, archive);
+}
+function cellValue(attributes, body, sharedStrings) {
+  const type = attributes.match(/\bt="([^"]+)"/u)?.[1];
+  const rawValue = body.match(/<v(?:\s[^>]*)?>([\s\S]*?)<\/v>/iu)?.[1];
+  if (type === "s" && rawValue !== void 0) {
+    const index = Number(rawValue);
+    return Number.isSafeInteger(index) && index >= 0 ? sharedStrings[index] ?? rawValue : rawValue;
+  }
+  if (type === "inlineStr") return extractTextNodes(body, "t").join("");
+  return decodeXml(rawValue ?? "");
+}
+async function extractXlsxText(bytes, maxCharacters, signal) {
+  signal?.throwIfAborted();
+  const archive = await loadOfficeArchive(bytes);
+  signal?.throwIfAborted();
+  const sharedStrings = [];
+  const sharedEntry = archive.zip.file("xl/sharedStrings.xml");
+  if (sharedEntry) {
+    const sharedXml = await readBoundedXml(sharedEntry, archive.budget, signal);
+    for (const match of sharedXml.matchAll(
+      /<si(?:\s[^>]*)?>([\s\S]*?)<\/si>/giu
+    )) {
+      sharedStrings.push(extractTextNodes(match[1] ?? "", "t").join(""));
+    }
+  }
+  const sheetNames = Object.keys(archive.zip.files).filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/u.test(name)).sort((left, right) => numericSuffix(left) - numericSuffix(right));
+  const accumulator = new BoundedTextAccumulator(maxCharacters);
+  for (const [index, name] of sheetNames.entries()) {
+    const entry = archive.zip.file(name);
+    if (!entry) continue;
+    const xml = await readBoundedXml(entry, archive.budget, signal);
+    const rows = [];
+    for (const rowMatch of xml.matchAll(
+      /<row(?:\s[^>]*)?>([\s\S]*?)<\/row>/giu
+    )) {
+      const cells = [];
+      for (const cellMatch of (rowMatch[1] ?? "").matchAll(
+        /<c([^>]*)>([\s\S]*?)<\/c>/giu
+      )) {
+        cells.push(
+          cellValue(cellMatch[1] ?? "", cellMatch[2] ?? "", sharedStrings)
+        );
+      }
+      rows.push(cells.join("	"));
+    }
+    const content = normalizeExtractedText(rows.join("\n"));
+    accumulator.append(`[Sheet ${index + 1}]${content ? `
+${content}` : ""}`);
+  }
+  return archiveResult(accumulator, archive);
+}
+
 // plugins/document-reader/source/errors.ts
 var DocumentReaderError = class extends Error {
   code;
@@ -973,7 +1392,7 @@ function hasNodeErrorCode(error, code) {
   return error instanceof Error && typeof error.code === "string" && error.code === code;
 }
 function rethrowDocumentIoError(error) {
-  if (error instanceof DocumentReaderError) throw error;
+  if (isDocumentReaderFailure(error)) throw error;
   if (hasNodeErrorCode(error, "ENOENT")) {
     failDocument(
       "document_not_found",
@@ -998,7 +1417,7 @@ function rethrowDocumentIoError(error) {
   throw error;
 }
 function documentReaderFailure(error) {
-  if (error instanceof DocumentReaderError) {
+  if (isDocumentReaderFailure(error)) {
     return failureResult({
       errorCode: error.code,
       message: error.message,
@@ -1010,6 +1429,10 @@ function documentReaderFailure(error) {
     fallbackMessage: "Document reading failed.",
     operation: "read_document"
   });
+}
+function isDocumentReaderFailure(error) {
+  if (error instanceof DocumentReaderError) return true;
+  return error instanceof DocumentTextError;
 }
 
 // plugins/document-reader/source/pdf-worker.ts
@@ -1354,354 +1777,6 @@ function failDocumentRead(file, maxBytes) {
   }
 }
 
-// plugins/document-reader/source/archive.ts
-var import_jszip = __toESM(require("jszip"), 1);
-var END_OF_CENTRAL_DIRECTORY_SIGNATURE = 101010256;
-var CENTRAL_DIRECTORY_ENTRY_SIGNATURE = 33639248;
-var MAX_END_RECORD_SEARCH_BYTES = 65557;
-function findEndOfCentralDirectory(bytes, view) {
-  if (bytes.byteLength < 22) {
-    failDocument("document_archive_invalid", "The OOXML archive is invalid.");
-  }
-  const minimumOffset = Math.max(
-    0,
-    bytes.byteLength - MAX_END_RECORD_SEARCH_BYTES
-  );
-  for (let offset = bytes.byteLength - 22; offset >= minimumOffset; offset -= 1) {
-    if (view.getUint32(offset, true) !== END_OF_CENTRAL_DIRECTORY_SIGNATURE) {
-      continue;
-    }
-    const commentLength = view.getUint16(offset + 20, true);
-    if (offset + 22 + commentLength === bytes.byteLength) return offset;
-  }
-  failDocument("document_archive_invalid", "The OOXML archive is invalid.");
-}
-function validateArchiveDirectory(bytes) {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const endOffset = findEndOfCentralDirectory(bytes, view);
-  const entryCount = view.getUint16(endOffset + 10, true);
-  const diskEntryCount = view.getUint16(endOffset + 8, true);
-  const directoryBytes = view.getUint32(endOffset + 12, true);
-  const directoryOffset = view.getUint32(endOffset + 16, true);
-  const diskNumber = view.getUint16(endOffset + 4, true);
-  const directoryDisk = view.getUint16(endOffset + 6, true);
-  if (diskNumber !== 0 || directoryDisk !== 0 || diskEntryCount !== entryCount || entryCount === 65535 || directoryBytes === 4294967295 || directoryOffset === 4294967295) {
-    failDocument(
-      "document_archive_unsupported",
-      "Multi-disk and ZIP64 OOXML archives are not supported."
-    );
-  }
-  if (entryCount > MAX_ARCHIVE_ENTRIES) {
-    failDocument(
-      "document_archive_entry_limit",
-      `The OOXML archive exceeds the ${MAX_ARCHIVE_ENTRIES}-entry limit.`
-    );
-  }
-  const directoryEnd = directoryOffset + directoryBytes;
-  if (directoryEnd > endOffset || directoryEnd > bytes.byteLength) {
-    failDocument("document_archive_invalid", "The OOXML archive is invalid.");
-  }
-  let offset = directoryOffset;
-  let declaredUncompressedBytes = 0;
-  for (let index = 0; index < entryCount; index += 1) {
-    if (offset + 46 > directoryEnd || view.getUint32(offset, true) !== CENTRAL_DIRECTORY_ENTRY_SIGNATURE) {
-      failDocument("document_archive_invalid", "The OOXML archive is invalid.");
-    }
-    const flags = view.getUint16(offset + 8, true);
-    const compressionMethod = view.getUint16(offset + 10, true);
-    const compressedBytes = view.getUint32(offset + 20, true);
-    const uncompressedBytes = view.getUint32(offset + 24, true);
-    const nameLength = view.getUint16(offset + 28, true);
-    const extraLength = view.getUint16(offset + 30, true);
-    const commentLength = view.getUint16(offset + 32, true);
-    const entryLength = 46 + nameLength + extraLength + commentLength;
-    if (offset + entryLength > directoryEnd || compressedBytes === 4294967295 || uncompressedBytes === 4294967295) {
-      failDocument("document_archive_invalid", "The OOXML archive is invalid.");
-    }
-    if ((flags & 1) !== 0) {
-      failDocument(
-        "document_archive_unsupported",
-        "Encrypted OOXML archive entries are not supported."
-      );
-    }
-    if (compressionMethod !== 0 && compressionMethod !== 8) {
-      failDocument(
-        "document_archive_unsupported",
-        "The OOXML archive uses an unsupported compression method."
-      );
-    }
-    declaredUncompressedBytes += uncompressedBytes;
-    if (declaredUncompressedBytes > MAX_ARCHIVE_DECLARED_BYTES) {
-      failDocument(
-        "document_archive_expansion_limit",
-        "The OOXML archive declares more expanded data than the safe parsing limit."
-      );
-    }
-    offset += entryLength;
-  }
-  if (offset !== directoryEnd) {
-    failDocument("document_archive_invalid", "The OOXML archive is invalid.");
-  }
-  return Object.freeze({
-    declaredEntries: entryCount,
-    declaredUncompressedBytes
-  });
-}
-async function loadOfficeArchive(bytes) {
-  const directory = validateArchiveDirectory(bytes);
-  let zip;
-  try {
-    zip = await import_jszip.default.loadAsync(bytes, { checkCRC32: false });
-  } catch {
-    failDocument("document_archive_invalid", "The OOXML archive is invalid.");
-  }
-  return Object.freeze({
-    zip,
-    directory,
-    budget: { expandedXmlBytes: 0, processedXmlEntries: 0 }
-  });
-}
-async function readBoundedXml(entry, budget, signal) {
-  if (signal?.aborted) {
-    failDocument("document_read_cancelled", "Document reading was cancelled.");
-  }
-  return new Promise((resolve, reject) => {
-    const stream = entry.nodeStream("nodebuffer");
-    const chunks = [];
-    let entryBytes = 0;
-    let settled = false;
-    const cleanup = () => {
-      signal?.removeEventListener("abort", onAbort);
-      stream.removeListener("data", onData);
-      stream.removeListener("error", onError);
-      stream.removeListener("end", onEnd);
-    };
-    const fail = (error) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      stream.destroy();
-      reject(error instanceof Error ? error : new Error(String(error)));
-    };
-    const onAbort = () => {
-      fail(
-        new DocumentReaderError(
-          "document_read_cancelled",
-          "Document reading was cancelled."
-        )
-      );
-    };
-    const onData = (chunk) => {
-      if (settled) return;
-      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      entryBytes += buffer.byteLength;
-      if (entryBytes > MAX_XML_ENTRY_BYTES || budget.expandedXmlBytes + entryBytes > MAX_TOTAL_XML_BYTES) {
-        fail(
-          new DocumentReaderError(
-            "document_archive_expansion_limit",
-            "The OOXML document exceeds the safe expanded-text parsing limit."
-          )
-        );
-        return;
-      }
-      chunks.push(buffer);
-    };
-    const onError = (error) => fail(error);
-    const onEnd = () => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      budget.expandedXmlBytes += entryBytes;
-      budget.processedXmlEntries += 1;
-      resolve(Buffer.concat(chunks, entryBytes).toString("utf8"));
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-    stream.on("data", onData);
-    stream.once("error", onError);
-    stream.once("end", onEnd);
-  });
-}
-function archiveMetadata(archive) {
-  return Object.freeze({
-    declaredEntries: archive.directory.declaredEntries,
-    declaredUncompressedBytes: archive.directory.declaredUncompressedBytes,
-    processedXmlEntries: archive.budget.processedXmlEntries,
-    expandedXmlBytes: archive.budget.expandedXmlBytes,
-    limits: Object.freeze({
-      maxEntries: MAX_ARCHIVE_ENTRIES,
-      maxDeclaredUncompressedBytes: MAX_ARCHIVE_DECLARED_BYTES,
-      maxXmlEntryBytes: MAX_XML_ENTRY_BYTES,
-      maxExpandedXmlBytes: MAX_TOTAL_XML_BYTES
-    })
-  });
-}
-
-// plugins/document-reader/source/text-accumulator.ts
-function normalizeExtractedText(value) {
-  return value.replaceAll("\0", "").trim();
-}
-var BoundedTextAccumulator = class {
-  #maxCharacters;
-  #parts = [];
-  #returnedCharacters = 0;
-  #totalCharacters = 0;
-  #hasContent = false;
-  constructor(maxCharacters = MAX_RETAINED_TEXT_CHARS) {
-    this.#maxCharacters = maxCharacters;
-  }
-  append(value, separator = "\n\n") {
-    if (value.length === 0) return;
-    const combined = this.#hasContent ? separator + value : value;
-    this.#hasContent = true;
-    this.#totalCharacters += combined.length;
-    const remaining = this.#maxCharacters - this.#returnedCharacters;
-    if (remaining <= 0) return;
-    const retained = combined.slice(0, remaining);
-    this.#parts.push(retained);
-    this.#returnedCharacters += retained.length;
-  }
-  finish(format) {
-    return Object.freeze({
-      text: this.#parts.join(""),
-      textBounds: Object.freeze({
-        truncated: this.#totalCharacters > this.#returnedCharacters,
-        totalCharacters: this.#totalCharacters,
-        returnedCharacters: this.#returnedCharacters,
-        omittedCharacters: this.#totalCharacters - this.#returnedCharacters,
-        maxCharacters: this.#maxCharacters
-      }),
-      format
-    });
-  }
-};
-function extractedTextResult(value, format = Object.freeze({ kind: "text" })) {
-  const accumulator = new BoundedTextAccumulator();
-  accumulator.append(normalizeExtractedText(value), "");
-  return accumulator.finish(format);
-}
-
-// plugins/document-reader/source/ooxml.ts
-function decodeCodePoint(value, radix) {
-  const parsed = Number.parseInt(value, radix);
-  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > 1114111) {
-    return "�";
-  }
-  return String.fromCodePoint(parsed);
-}
-function decodeXml(value) {
-  return value.replace(/&#x([0-9a-f]+);/giu, (_, hex) => decodeCodePoint(hex, 16)).replace(/&#(\d+);/gu, (_, decimal) => decodeCodePoint(decimal, 10)).replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"').replaceAll("&apos;", "'").replaceAll("&amp;", "&");
-}
-function extractTextNodes(xml, tag) {
-  const values = [];
-  const pattern = new RegExp(
-    `<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`,
-    "giu"
-  );
-  for (const match of xml.matchAll(pattern)) {
-    values.push(decodeXml((match[1] ?? "").replace(/<[^>]+>/gu, "")));
-  }
-  return values;
-}
-function numericSuffix(name) {
-  return Number(name.match(/(\d+)\.xml$/u)?.[1] ?? Number.MAX_SAFE_INTEGER);
-}
-function archiveResult(accumulator, archive) {
-  return accumulator.finish(
-    Object.freeze({
-      kind: "archive",
-      archive: archiveMetadata(archive)
-    })
-  );
-}
-async function extractDocxText(bytes, signal) {
-  const archive = await loadOfficeArchive(bytes);
-  const names = Object.keys(archive.zip.files).filter(
-    (name) => /^word\/(?:document|header\d+|footer\d+|footnotes|endnotes)\.xml$/u.test(
-      name
-    )
-  ).sort(
-    (left, right) => left === "word/document.xml" ? -1 : right === "word/document.xml" ? 1 : left.localeCompare(right)
-  );
-  const accumulator = new BoundedTextAccumulator();
-  for (const name of names) {
-    const entry = archive.zip.file(name);
-    if (!entry) continue;
-    const xml = await readBoundedXml(entry, archive.budget, signal);
-    const normalized = xml.replace(/<w:tab\b[^>]*\/>/giu, "	").replace(/<w:br\b[^>]*\/>/giu, "\n").replace(/<\/w:tc>/giu, "	").replace(/<\/w:p>/giu, "\n");
-    const text = normalizeExtractedText(
-      decodeXml(
-        normalized.replace(/<(?!\/?w:t\b)[^>]+>/giu, "").replace(/<\/?w:t\b[^>]*>/giu, "")
-      ).replace(/[ \t]+\n/gu, "\n").replace(/\n{3,}/gu, "\n\n")
-    );
-    accumulator.append(text);
-  }
-  return archiveResult(accumulator, archive);
-}
-async function extractPptxText(bytes, signal) {
-  const archive = await loadOfficeArchive(bytes);
-  const names = Object.keys(archive.zip.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/u.test(name)).sort((left, right) => numericSuffix(left) - numericSuffix(right));
-  const accumulator = new BoundedTextAccumulator();
-  for (const [index, name] of names.entries()) {
-    const entry = archive.zip.file(name);
-    if (!entry) continue;
-    const xml = await readBoundedXml(entry, archive.budget, signal);
-    const content = normalizeExtractedText(
-      extractTextNodes(xml, "a:t").filter(Boolean).join("\n")
-    );
-    accumulator.append(`[Slide ${index + 1}]${content ? `
-${content}` : ""}`);
-  }
-  return archiveResult(accumulator, archive);
-}
-function cellValue(attributes, body, sharedStrings) {
-  const type = attributes.match(/\bt="([^"]+)"/u)?.[1];
-  const rawValue = body.match(/<v(?:\s[^>]*)?>([\s\S]*?)<\/v>/iu)?.[1];
-  if (type === "s" && rawValue !== void 0) {
-    const index = Number(rawValue);
-    return Number.isSafeInteger(index) && index >= 0 ? sharedStrings[index] ?? rawValue : rawValue;
-  }
-  if (type === "inlineStr") return extractTextNodes(body, "t").join("");
-  return decodeXml(rawValue ?? "");
-}
-async function extractXlsxText(bytes, signal) {
-  const archive = await loadOfficeArchive(bytes);
-  const sharedStrings = [];
-  const sharedEntry = archive.zip.file("xl/sharedStrings.xml");
-  if (sharedEntry) {
-    const sharedXml = await readBoundedXml(sharedEntry, archive.budget, signal);
-    for (const match of sharedXml.matchAll(
-      /<si(?:\s[^>]*)?>([\s\S]*?)<\/si>/giu
-    )) {
-      sharedStrings.push(extractTextNodes(match[1] ?? "", "t").join(""));
-    }
-  }
-  const sheetNames = Object.keys(archive.zip.files).filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/u.test(name)).sort((left, right) => numericSuffix(left) - numericSuffix(right));
-  const accumulator = new BoundedTextAccumulator();
-  for (const [index, name] of sheetNames.entries()) {
-    const entry = archive.zip.file(name);
-    if (!entry) continue;
-    const xml = await readBoundedXml(entry, archive.budget, signal);
-    const rows = [];
-    for (const rowMatch of xml.matchAll(
-      /<row(?:\s[^>]*)?>([\s\S]*?)<\/row>/giu
-    )) {
-      const cells = [];
-      for (const cellMatch of (rowMatch[1] ?? "").matchAll(
-        /<c([^>]*)>([\s\S]*?)<\/c>/giu
-      )) {
-        cells.push(
-          cellValue(cellMatch[1] ?? "", cellMatch[2] ?? "", sharedStrings)
-        );
-      }
-      rows.push(cells.join("	"));
-    }
-    const content = normalizeExtractedText(rows.join("\n"));
-    accumulator.append(`[Sheet ${index + 1}]${content ? `
-${content}` : ""}`);
-  }
-  return archiveResult(accumulator, archive);
-}
-
 // plugins/document-reader/source/pdf-process.ts
 var import_node_child_process2 = require("node:child_process");
 
@@ -1916,6 +1991,13 @@ function extractPdfText(bytes, pdfParseEntrypoint, signal) {
   });
 }
 
+// plugins/document-reader/source/text-accumulator.ts
+function extractedTextResult(value, format = Object.freeze({ kind: "text" })) {
+  const accumulator = new BoundedTextAccumulator(MAX_RETAINED_TEXT_CHARS);
+  accumulator.append(normalizeExtractedText(value), "");
+  return accumulator.finish(format);
+}
+
 // plugins/document-reader/source/extract.ts
 function extractRtfText(source) {
   return source.replace(
@@ -1928,11 +2010,11 @@ async function extractDocumentText(document, bytes, pdfParseEntrypoint, signal) 
     case "application/pdf":
       return extractPdfText(bytes, pdfParseEntrypoint, signal);
     case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-      return extractDocxText(bytes, signal);
+      return extractDocxText(bytes, MAX_RETAINED_TEXT_CHARS, signal);
     case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
-      return extractXlsxText(bytes, signal);
+      return extractXlsxText(bytes, MAX_RETAINED_TEXT_CHARS, signal);
     case "application/vnd.openxmlformats-officedocument.presentationml.presentation":
-      return extractPptxText(bytes, signal);
+      return extractPptxText(bytes, MAX_RETAINED_TEXT_CHARS, signal);
     case "application/json": {
       try {
         const parsed = JSON.parse(

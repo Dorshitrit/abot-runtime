@@ -42,7 +42,6 @@ import {
 
 const REQUEST_PROMPT = "Inspect exact.txt and report the observed result.";
 const FILE_GROUP = "files";
-const EXACT_INTENT = "Observe exact.txt for the requested answer.";
 const EXACT_CONTROLS = Object.freeze({ path: "exact.txt" });
 const EXACT_RESPONSE = [
   "  Exact observation completed.",
@@ -57,8 +56,6 @@ const MEMORY_CANDIDATE = Object.freeze({
 });
 const DIRECT_WRITE_PROMPT =
   "Create project/direct.txt with the exact content `green` followed by one newline.";
-const DIRECT_WRITE_INTENT =
-  "Write green followed by one newline to project/direct.txt.";
 const DIRECT_WRITE_BODY = "green\n";
 
 const observeDescriptor: WorkerCapabilityDescriptor = Object.freeze({
@@ -241,7 +238,6 @@ describe("Execution Agent request runner", () => {
       timeline.push("adapter");
       expect(input).toMatchObject({
         executionId: "capability-execution-1",
-        intent: EXACT_INTENT,
         controls: EXACT_CONTROLS,
         settledCapabilityResults: [],
         call: {
@@ -286,7 +282,6 @@ describe("Execution Agent request runner", () => {
             text: encodeDecision({
               action: "open_capability_scope",
               catalogGroupIds: [FILE_GROUP],
-              acknowledgement: "I will inspect the exact file.",
               title: "Exact file inspection",
             }),
             meta: {},
@@ -296,7 +291,6 @@ describe("Execution Agent request runner", () => {
           expect(timeline).toEqual([
             `model:${EXECUTION_AGENT_DECISION_MODEL_STEP}:1`,
             "title",
-            "acknowledgement",
             `model:${EXECUTION_AGENT_DECISION_MODEL_STEP}:2`,
           ]);
           expect(messages.some((message) => message.role === "tool")).toBe(
@@ -306,7 +300,6 @@ describe("Execution Agent request runner", () => {
             text: encodeDecision({
               action: "invoke_capability",
               capabilityId: observeDescriptor.capabilityId,
-              intent: EXACT_INTENT,
               selectionControls: EXACT_CONTROLS,
               workingDirectory: "project",
             }),
@@ -330,7 +323,7 @@ describe("Execution Agent request runner", () => {
               declaredEffect: "observation",
             },
           });
-          expect(JSON.stringify(lane.action)).not.toContain(EXACT_INTENT);
+          expect(lane.action).not.toHaveProperty("intent");
           expect(lane.result).toEqual({
             kind: EXECUTION_CAPABILITY_RESULT_MESSAGE_KIND,
             authority: "canonical_role_call_ledger",
@@ -381,7 +374,6 @@ describe("Execution Agent request runner", () => {
           expect(timeline).toEqual([
             `model:${EXECUTION_AGENT_DECISION_MODEL_STEP}:1`,
             "title",
-            "acknowledgement",
             `model:${EXECUTION_AGENT_DECISION_MODEL_STEP}:2`,
             "adapter",
             `model:${EXECUTION_AGENT_DECISION_MODEL_STEP}:3`,
@@ -400,10 +392,7 @@ describe("Execution Agent request runner", () => {
       timeline.push("title");
       expect(title).toBe("Exact file inspection");
     });
-    const onAcknowledgement = vi.fn((acknowledgement: string) => {
-      timeline.push("acknowledgement");
-      expect(acknowledgement).toBe("I will inspect the exact file.");
-    });
+    const onAcknowledgement = vi.fn();
     const onAnswerToken = vi.fn((token: string) => {
       timeline.push("answer");
       expect(token).toBe(EXACT_RESPONSE);
@@ -450,7 +439,7 @@ describe("Execution Agent request runner", () => {
       onEvent: vi.fn(),
     });
 
-    await expect(runRequestRunner(request)).resolves.toEqual({
+    await expect(runRequestRunner(request)).resolves.toMatchObject({
       output: EXACT_RESPONSE,
       outputTextMode: "exact",
       memoryCandidates: [MEMORY_CANDIDATE],
@@ -475,16 +464,12 @@ describe("Execution Agent request runner", () => {
     expect(onSessionTitle).toHaveBeenCalledExactlyOnceWith(
       "Exact file inspection",
     );
-    expect(onAcknowledgement).toHaveBeenCalledExactlyOnceWith(
-      "I will inspect the exact file.",
-    );
+    expect(onAcknowledgement).not.toHaveBeenCalled();
     expect(onAnswerToken).toHaveBeenCalledExactlyOnceWith(EXACT_RESPONSE);
     expect(timeline.at(-1)).toBe("answer");
   });
 
   test("preserves a selection-bound target and prior continuation in control refinement", async () => {
-    const firstIntent = "Apply the requested update to exact.txt.";
-    const secondIntent = "Verify the completed update to exact.txt.";
     const operationObjective = "Apply only the bounded edit to exact.txt.";
     const longCommand = `cat <<'EOF' > exact.txt\n${"x".repeat(4_096)}\nEOF`;
     expect(longCommand.length).toBeGreaterThan(4_096);
@@ -546,7 +531,6 @@ describe("Execution Agent request runner", () => {
             text: encodeDecision({
               action: "open_capability_scope",
               catalogGroupIds: [FILE_GROUP],
-              acknowledgement: "I will update the requested file.",
             }),
             meta: {},
           };
@@ -557,7 +541,6 @@ describe("Execution Agent request runner", () => {
             text: encodeDecision({
               action: "invoke_capability",
               capabilityId: descriptor.capabilityId,
-              intent: firstIntent,
               operationObjective,
               controlsEvidenceExecutionIds: [],
               selectionControls: { path: "exact.txt" },
@@ -625,7 +608,6 @@ describe("Execution Agent request runner", () => {
             text: encodeDecision({
               action: "invoke_capability",
               capabilityId: descriptor.capabilityId,
-              intent: secondIntent,
               operationObjective,
               controlsEvidenceExecutionIds: ["capability-execution-1"],
               selectionControls: { path: "exact.txt" },
@@ -652,8 +634,6 @@ describe("Execution Agent request runner", () => {
               },
             },
           ]);
-          expect(JSON.stringify(messages)).not.toContain(firstIntent);
-          expect(JSON.stringify(messages)).not.toContain(secondIntent);
           expect(JSON.stringify(messages)).toContain(operationObjective);
           return {
             text: encodeDecision({
@@ -714,7 +694,7 @@ describe("Execution Agent request runner", () => {
       onEvent: vi.fn(),
     });
 
-    await expect(runRequestRunner(request)).resolves.toEqual({
+    await expect(runRequestRunner(request)).resolves.toMatchObject({
       output: "Updated exact.txt.",
       outputTextMode: "exact",
     });
@@ -757,7 +737,6 @@ describe("Execution Agent request runner", () => {
             text: encodeDecision({
               action: "open_capability_scope",
               catalogGroupIds: [FILE_GROUP],
-              acknowledgement: "I will inspect the requested file.",
             }),
             meta: {},
           };
@@ -776,7 +755,6 @@ describe("Execution Agent request runner", () => {
             text: encodeDecision({
               action: "invoke_capability",
               capabilityId: observeDescriptor.capabilityId,
-              intent: EXACT_INTENT,
               selectionControls: EXACT_CONTROLS,
               workingDirectory: ".",
             }),
@@ -837,7 +815,7 @@ describe("Execution Agent request runner", () => {
       onEvent: vi.fn(),
     });
 
-    await expect(runRequestRunner(request)).resolves.toEqual({
+    await expect(runRequestRunner(request)).resolves.toMatchObject({
       output: "The requested file was observed.",
       outputTextMode: "exact",
     });
@@ -884,7 +862,6 @@ describe("Execution Agent request runner", () => {
           text: encodeDecision({
             action: "open_capability_scope",
             catalogGroupIds: [FILE_GROUP],
-            acknowledgement: "I will inspect the requested file.",
           }),
           meta: {},
         };
@@ -894,7 +871,6 @@ describe("Execution Agent request runner", () => {
           text: encodeDecision({
             action: "invoke_capability",
             capabilityId: updateDescriptor.capabilityId,
-            intent: "Apply the requested update to exact.txt.",
             operationObjective: "Write only the approved update to exact.txt.",
             controlsEvidenceExecutionIds: [],
             selectionControls: EXACT_CONTROLS,
@@ -1003,7 +979,7 @@ describe("Execution Agent request runner", () => {
       onEvent: vi.fn(),
     });
 
-    await expect(runRequestRunner(request)).resolves.toEqual({
+    await expect(runRequestRunner(request)).resolves.toMatchObject({
       output: "The invalid selection was reconsidered safely.",
       outputTextMode: "exact",
     });
@@ -1049,7 +1025,6 @@ describe("Execution Agent request runner", () => {
             text: encodeDecision({
               action: "open_capability_scope",
               catalogGroupIds: [FILE_GROUP],
-              acknowledgement: "I will create the exact requested file.",
               title: "Direct file creation",
             }),
             meta: {},
@@ -1060,7 +1035,6 @@ describe("Execution Agent request runner", () => {
             text: encodeDecision({
               action: "invoke_capability",
               capabilityId: "write_complete_file",
-              intent: DIRECT_WRITE_INTENT,
               operationObjective: DIRECT_WRITE_PROMPT,
               selectionControls: { path: "project/direct.txt" },
               workingDirectory: null,
@@ -1194,7 +1168,7 @@ describe("Execution Agent request runner", () => {
       { executionPolicy: EXECUTION_AGENT_V1_EXECUTION_POLICY },
     );
 
-    await expect(runRequestRunner(request)).resolves.toEqual({
+    await expect(runRequestRunner(request)).resolves.toMatchObject({
       output: "Created project/direct.txt.",
       outputTextMode: "exact",
     });
@@ -1283,7 +1257,6 @@ describe("Execution Agent request runner", () => {
             text: encodeDecision({
               action: "open_capability_scope",
               catalogGroupIds: [FILE_GROUP],
-              acknowledgement: "I will create the exact requested file.",
             }),
             meta: {},
           };
@@ -1340,7 +1313,6 @@ describe("Execution Agent request runner", () => {
             text: encodeDecision({
               action: "invoke_capability",
               capabilityId: "write_complete_file",
-              intent: DIRECT_WRITE_INTENT,
               operationObjective: DIRECT_WRITE_PROMPT,
               selectionControls: { path: "project/direct.txt" },
               ...(decisionCount === 2 ? { workingDirectory: null } : {}),
@@ -1450,7 +1422,7 @@ describe("Execution Agent request runner", () => {
       { executionPolicy: EXECUTION_AGENT_V1_EXECUTION_POLICY },
     );
 
-    await expect(runRequestRunner(request)).resolves.toEqual({
+    await expect(runRequestRunner(request)).resolves.toMatchObject({
       output: "Created project/direct.txt.",
       outputTextMode: "exact",
     });

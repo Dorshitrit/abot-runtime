@@ -26,7 +26,9 @@ export function basketDiscoveryChange(previous: BasketSnapshot, next: BasketSnap
     return !before || !retainsReadyBasketBinding(before, source);
   });
   return Object.freeze({
-    settingsChanged: previous.settings.revision !== next.settings.revision,
+    settingsChanged: previous.settings.enabled !== next.settings.enabled ||
+      previous.settings.embeddingProfileId !== next.settings.embeddingProfileId ||
+      previous.settings.matchMode !== next.settings.matchMode,
     invalidatedSourceIds: Object.freeze(invalidatedSourceIds), readySourcesAdded,
   });
 }

@@ -2,6 +2,7 @@ import type {
   ChatMessage,
   ModelGatewayJsonSchemaFormat,
 } from "../../model-gateway/types.js";
+import type { RequestSteeringSnapshot } from "../request/request-steering.js";
 import type { ModelStep } from "../../shared/model-steps.js";
 import type { ConfiguredStepInstructionPolicy } from "../config/runner/step-instructions.js";
 import { traceDebug } from "../observability/debug-logger.js";
@@ -61,8 +62,10 @@ export async function invokeStructuredModelStep<T>(params: {
   modelStep: ModelStep;
   format: ModelGatewayJsonSchemaFormat;
   messages: ChatMessage[];
+  promptCacheBoundaryBeforeMessage?: ChatMessage;
   timeoutReason: string;
   boundSteeringVersion?: number;
+  callerSteering?: RequestSteeringSnapshot;
   invalidOutputReason: string;
   contextRetention?: "exact";
   configuredInstructionPolicy?: ConfiguredStepInstructionPolicy;
@@ -86,8 +89,11 @@ export async function invokeStructuredModelStep<T>(params: {
     const attempt = await modelStepInvoker.invoke<StructuredModelAttempt<T>>({
       modelStep: params.modelStep,
       messages,
+      ...(params.promptCacheBoundaryBeforeMessage
+        ? { promptCacheBoundaryBeforeMessage: params.promptCacheBoundaryBeforeMessage } : {}),
       timeoutReason: params.timeoutReason,
       boundSteeringVersion: params.boundSteeringVersion,
+      ...(params.callerSteering ? { callerSteering: params.callerSteering } : {}),
       format: params.format,
       contextRetention: params.contextRetention,
       configuredInstructionPolicy: params.configuredInstructionPolicy,

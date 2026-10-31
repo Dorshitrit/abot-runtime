@@ -1,5 +1,5 @@
 import { isAbsolute } from "node:path";
-import { InformationBasketError, type BasketSettings, type BasketSourceStatus } from "./contracts.js";
+import { InformationBasketError, type BasketMatchMode, type BasketSettings, type BasketSourceStatus } from "./contracts.js";
 import type { BasketSnapshot, BasketSourceIndex, StoredBasketSource } from "./index-records.js";
 import { BASKET_LIMITS } from "./limits.js";
 
@@ -13,6 +13,9 @@ export function isBasketSourceId(value: unknown): value is string {
 }
 export function isBasketRevision(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+export function isBasketMatchMode(value: unknown): value is BasketMatchMode {
+  return value === "flexible" || value === "balanced" || value === "strict";
 }
 function failStorage(): never { throw new InformationBasketError("basket_storage_invalid", undefined, 503); }
 function object(value: unknown): Record<string, unknown> {
@@ -34,8 +37,11 @@ function optionalText(value: unknown, maximum: number): string | null {
 function parseSettings(value: unknown): BasketSettings {
   const settings = object(value);
   if (!isBasketRevision(settings.revision) || typeof settings.enabled !== "boolean") return failStorage();
+  if (settings.indexChatUploads !== undefined && typeof settings.indexChatUploads !== "boolean") return failStorage();
+  if (settings.matchMode !== undefined && !isBasketMatchMode(settings.matchMode)) return failStorage();
   return Object.freeze({
-    revision: settings.revision, enabled: settings.enabled,
+    matchMode: settings.matchMode ?? "balanced",
+    revision: settings.revision, enabled: settings.enabled, indexChatUploads: settings.indexChatUploads === true,
     embeddingProfileId: optionalText(settings.embeddingProfileId, 512),
   });
 }

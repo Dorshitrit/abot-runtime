@@ -1,9 +1,12 @@
+import { presentFailedResponseHistory } from "../lib/failed-response-history.js";
+import { isUserInteractionMessage } from "../lib/user-interaction-event.js";
 import { isStoppedRequest, restoreStoppedResponses } from "../lib/request-stop-state.js";
 import { isApprovalPresentation, rememberRequestLifecycle } from "../lib/request-lifecycle-view.js";
 import { textOf } from "../lib/text-format.js";
 import { canRestoreSnapshotQueue } from "./history-pagination.js";
 
 function isBindableResponse(message) {
+  if (isUserInteractionMessage(message)) return false;
   if (message.role !== "assistant" || !message.requestId) return false;
   return !isApprovalPresentation(message);
 }
@@ -66,6 +69,7 @@ export function createConversationRequestHydration({
     updateComposerSendState();
     for (const requestId of streamingRequestIds) activeAssistantForRequest(requestId);
     restoreStoppedResponses(state.messages, requests);
+    presentFailedResponseHistory(state.messages, requests);
     restoreSessionEventState(requestsForEventRestoration(requests, streamingRequestIds, appendEvents), streamingRequestIds, appendEvents);
     for (const requestId of streamingRequestIds) {
       subscribeRequest(requestId);

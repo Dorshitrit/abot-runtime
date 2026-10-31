@@ -1,17 +1,20 @@
-import type { ChatMessage } from "../../../../model-gateway/types.js";
-import type { SessionMemorySettledTurn } from "../../../../sessions/memory/source.js";
 import { projectConfiguredStepMessages } from "../../../config/runner/step-instructions.js";
 import { assessRequestMessagesBudget } from "../../request-context-budget.js";
 import { countModelInputTokens } from "../../../model/input-token-count.js";
 import { invokeStructuredModelStep } from "../../../model/invoke-structured-step.js";
 import { resolveModelContextAdmission } from "../../../model/model-context-budget.js";
 import type { BoundRequestModelInvocationContext } from "../../../request/contracts.js";
+import { isExecutionSessionMemoryScope } from "../../../../sessions/memory/checkpoint-scope.js";
 import { selectLargestFittingPrefix } from "./batching.js";
 import { createSessionMemoryCompactionFormat } from "./format.js";
 import { parseSessionMemoryCompactionOutput } from "./parser.js";
-import { SESSION_MEMORY_COMPACTION_INSTRUCTIONS } from "./prompt.js";
 import { hasSessionMemoryRepairHeadroom } from "./repair-headroom.js";
 import type { SessionMemoryCompactor } from "../contracts.js";
+import {
+  buildSessionMemoryCompactionMessages,
+  type SessionMemoryCompactionBatch,
+} from "./input.js";
+import { foldOversizedExecutionHistoryTurn } from "./turn-fold.js";
 
 const SESSION_MEMORY_MODEL_STEP = "context.compact" as const;
 
@@ -19,27 +22,45 @@ export function createModelSessionMemoryCompactor(): SessionMemoryCompactor {
   return Object.freeze({ compact: generateSessionMemorySummary });
 }
 
-export async function generateSessionMemorySummary(params: {
-  request: BoundRequestModelInvocationContext;
-  previousSummary?: string;
-  turns: readonly SessionMemorySettledTurn[];
-}): Promise<string> {
+export async function generateSessionMemorySummary(
+  params: Parameters<SessionMemoryCompactor["compact"]>[0],
+): Promise<string> {
   if (params.turns.length === 0) {
     throw new Error("session_memory_compaction_turns_empty");
   }
   let summary = params.previousSummary;
   let remaining = params.turns;
   while (remaining.length > 0) {
+    params.onProgress?.({ step: "processing", unit: "turns", completedUnits: params.turns.length - remaining.length, totalUnits: params.turns.length });
     const batch = await selectLargestFittingPrefix({
       entries: remaining,
       fits: (candidate) =>
-        sessionMemoryBatchFits(params.request, summary, candidate),
+        sessionMemoryBatchFits(params.request, summary, {
+          turns: candidate, scope: params.scope,
+        }),
     });
-    if (batch.length === 0) {
-      throw new Error("session_memory_compaction_turn_exceeds_budget");
+    const hasFittingHistoryTurns = batch.length > 0;
+    if (hasFittingHistoryTurns) {
+      summary = await invokeSessionMemoryBatch(params.request, summary, {
+        turns: batch, scope: params.scope,
+      });
+      remaining = remaining.slice(batch.length);
+      params.onProgress?.({ step: "processing", unit: "turns", completedUnits: params.turns.length - remaining.length, totalUnits: params.turns.length });
+      continue;
     }
-    summary = await invokeSessionMemoryBatch(params.request, summary, batch);
-    remaining = remaining.slice(batch.length);
+    if (!isExecutionSessionMemoryScope(params.scope))
+      throw new Error("session_memory_compaction_turn_exceeds_budget");
+    summary = await foldOversizedExecutionHistoryTurn({
+      turn: remaining[0]!,
+      onProgress: (progress) => params.onProgress?.({
+        ...progress, unit: "turns", completedUnits: params.turns.length - remaining.length, totalUnits: params.turns.length,
+      }),
+      previousSummary: summary,
+      fits: (previous, candidate) => sessionMemoryBatchFits(params.request, previous, candidate),
+      invoke: (previous, candidate) => invokeSessionMemoryBatch(params.request, previous, candidate),
+    });
+    remaining = remaining.slice(1);
+    params.onProgress?.({ step: "processing", unit: "turns", completedUnits: params.turns.length - remaining.length, totalUnits: params.turns.length });
   }
   return summary!;
 }
@@ -47,10 +68,10 @@ export async function generateSessionMemorySummary(params: {
 async function sessionMemoryBatchFits(
   request: BoundRequestModelInvocationContext,
   previousSummary: string | undefined,
-  turns: readonly SessionMemorySettledTurn[],
+  batch: SessionMemoryCompactionBatch,
 ): Promise<boolean> {
   const format = createSessionMemoryCompactionFormat();
-  const messages = buildSessionMemoryCompactionMessages(previousSummary, turns);
+  const messages = buildSessionMemoryCompactionMessages(previousSummary, batch);
   const projected = projectConfiguredStepMessages({
     runnerConfig: request.runnerConfig,
     modelStep: SESSION_MEMORY_MODEL_STEP,
@@ -90,13 +111,13 @@ async function sessionMemoryBatchFits(
 async function invokeSessionMemoryBatch(
   request: BoundRequestModelInvocationContext,
   previousSummary: string | undefined,
-  turns: readonly SessionMemorySettledTurn[],
+  batch: SessionMemoryCompactionBatch,
 ): Promise<string> {
   const parsed = await invokeStructuredModelStep({
     request,
     modelStep: SESSION_MEMORY_MODEL_STEP,
     format: createSessionMemoryCompactionFormat(),
-    messages: buildSessionMemoryCompactionMessages(previousSummary, turns),
+    messages: buildSessionMemoryCompactionMessages(previousSummary, batch),
     timeoutReason: "session_memory_compaction_timeout",
     invalidOutputReason: "invalid_session_memory_compaction_output",
     parse(text) {
@@ -117,36 +138,4 @@ async function invokeSessionMemoryBatch(
     },
   });
   return parsed;
-}
-
-function buildSessionMemoryCompactionMessages(
-  previousSummary: string | undefined,
-  turns: readonly SessionMemorySettledTurn[],
-): ChatMessage[] {
-  return [
-    Object.freeze({
-      role: "system" as const,
-      content: SESSION_MEMORY_COMPACTION_INSTRUCTIONS,
-    }),
-    Object.freeze({
-      role: "user" as const,
-      content: JSON.stringify({
-        kind: "runtime_session_memory_compaction_input_v1",
-        authority: "prior_conversation",
-        previousCheckpoint: previousSummary ?? null,
-        settledTurns: turns.map(({ userMessages, assistant }) => ({
-          userMessages: userMessages.map((message) => ({
-            messageId: message.id,
-            content: message.content,
-          })),
-          assistant: {
-            messageId: assistant.id,
-            content: assistant.content,
-          },
-        })),
-        presenceEffect:
-          "summarization_input_only_not_current_request_or_action_authority",
-      }),
-    }),
-  ];
 }

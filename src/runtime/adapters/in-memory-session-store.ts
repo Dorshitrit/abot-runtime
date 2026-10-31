@@ -55,6 +55,7 @@ import type {
   SessionMemoryCheckpointCommitResult,
 } from "../../sessions/memory/contracts.js";
 import { resolveSessionMemoryCheckpointCommit } from "../../sessions/memory/rules.js";
+import { clearSessionMemoryCheckpoints, setSessionMemoryCheckpoint } from "../../sessions/memory/checkpoint-scope.js";
 import { assertSessionKindUnchanged, sessionKindCreationFields } from "../../sessions/spark-session.js";
 import { appendSparkInitiativeRecord } from "../../sessions/assistant-initiative-append.js";
 import type { CreateAssistantConversationInput } from "../../sessions/assistant-initiative.js";
@@ -371,7 +372,7 @@ class InMemorySessionStore {
       if (!result.committed) {
         return result;
       }
-      session.sessionMemoryCheckpoint = result.checkpoint;
+      setSessionMemoryCheckpoint(session, result.checkpoint, command.scope);
       session.updatedAt = toIso(this.now);
       this.saveSession(session);
       return result;
@@ -546,7 +547,7 @@ class InMemorySessionStore {
       nextSession.requests = [];
       nextSession.contextEntries = [];
       nextSession.artifactPaths = [];
-      delete nextSession.sessionMemoryCheckpoint;
+      clearSessionMemoryCheckpoints(nextSession);
       delete nextSession.runtimeModeId;
       nextSession.updatedAt = updatedAt;
       this.saveSession(nextSession);
@@ -624,7 +625,7 @@ class InMemorySessionStore {
       }
       nextSession.messages = nextMessages;
       nextSession.messageCount = nextMessages.length;
-      delete nextSession.sessionMemoryCheckpoint;
+      clearSessionMemoryCheckpoints(nextSession);
       if (nextMessages.length === 0) {
         delete nextSession.runtimeModeId;
       }

@@ -38,7 +38,7 @@ export function retainLearningCandidates(
   const evictionOrder = [...retained].sort((a, b) =>
     a.score - b.score || a.lastReinforcedAt.localeCompare(b.lastReinforcedAt) || a.id.localeCompare(b.id),
   );
-  const sizes = new Map(retained.map((record) => [record.id, Buffer.byteLength(JSON.stringify(record), "utf8") + 1]));
+  const sizes = new Map(retained.map((record) => [record.id, candidateSerializedBytes(record)]));
   let bytes = 2 + [...sizes.values()].reduce((sum, size) => sum + size, 0);
   const removed = new Set<string>();
   for (const record of evictionOrder) {
@@ -47,6 +47,26 @@ export function retainLearningCandidates(
     bytes -= sizes.get(record.id)!;
   }
   return retained.filter((record) => !removed.has(record.id));
+}
+
+/** Index migration must never evict knowledge to make a larger vector fit. */
+export function assertLearningEmbeddingCapacity(
+  previous: readonly LearningCandidateRecord[],
+  updated: readonly LearningCandidateRecord[],
+  policy: MaturationPolicy,
+  now: number,
+): void {
+  validateMaturationPolicy(policy);
+  const liveBytes = (records: readonly LearningCandidateRecord[]) => 2 + records
+    .filter((record) => candidateRetentionDeadline(record, policy) > now)
+    .reduce((bytes, record) => bytes + candidateSerializedBytes(record), 0);
+  const nextBytes = liveBytes(updated);
+  if (nextBytes > policy.maxBytes && nextBytes > liveBytes(previous))
+    throw new Error("learning_embedding_capacity_exceeded");
+}
+
+function candidateSerializedBytes(record: LearningCandidateRecord): number {
+  return Buffer.byteLength(JSON.stringify(record), "utf8") + 1;
 }
 
 function assertPolicyInteger(value: number, minimum: number, maximum: number): void {

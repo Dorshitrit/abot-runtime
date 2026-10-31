@@ -1,3 +1,4 @@
+import { clearRuntimeTraceFiles } from "./log-reset.js";
 import { join } from "node:path";
 
 import { loadRuntimeConfig } from "../config.js";
@@ -114,6 +115,13 @@ export class ProcessDebugLogger {
   /** Waits for every trace write queued before this call to settle. */
   async drain(): Promise<void> {
     await this.writeQueue;
+  }
+
+  clear(traceFile: string, sharedDir: string) {
+    const operation = this.writeQueue.catch(() => undefined)
+      .then(() => clearRuntimeTraceFiles(traceFile, sharedDir));
+    this.writeQueue = operation.then(() => undefined, () => undefined);
+    return operation;
   }
 
   private shouldTrace(): boolean {

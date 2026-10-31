@@ -22,6 +22,9 @@ export interface ComposerWorkspaceController<T extends ComposerWorkspaceDom = Co
   ensureHomeSession(): string;
   finishHomeActivation(scope: ComposerScope): void;
   syncChatDraft(): void;
+  resetSessionDraft(scope: ComposerScope, deleted: boolean): void;
+  preserveResetDraft(scope: ComposerScope): string | undefined;
+  restoreResetDraft(savedSessionId: string): boolean;
 }
 
 export declare function createComposerWorkspaceController<T extends ComposerWorkspaceDom>(options: {

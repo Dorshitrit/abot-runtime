@@ -9,8 +9,7 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -21,10 +20,17 @@ import {
 
 const execute = promisify(execFile);
 const rootDir = fileURLToPath(new URL("../../../", import.meta.url));
+const fixtureRoot = join(rootDir, ".codex/artifacts/source-web-ui-companion-bundle");
 let directory: string;
 
+function isCompanionFixtureSource(source: string): boolean {
+  if (basename(source) === "__tests__") return false;
+  return !/\.test\.[jt]s$/u.test(source);
+}
+
 beforeEach(async () => {
-  directory = await mkdtemp(join(tmpdir(), "abot source web ui "));
+  await mkdir(fixtureRoot, { recursive: true });
+  directory = await mkdtemp(join(fixtureRoot, "source with spaces "));
   await mkdir(join(directory, "scripts"));
   for (const path of [
     "package.json",
@@ -35,7 +41,10 @@ beforeEach(async () => {
     "scripts/runtime-service-web-ui.ts",
     "systemd/user",
   ]) {
-    await cp(join(rootDir, path), join(directory, path), { recursive: true });
+    await cp(join(rootDir, path), join(directory, path), {
+      recursive: true,
+      ...(path === "src" ? { filter: isCompanionFixtureSource } : {}),
+    });
   }
   await symlink(
     join(rootDir, "node_modules"),

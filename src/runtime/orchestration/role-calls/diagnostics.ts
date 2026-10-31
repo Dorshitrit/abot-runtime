@@ -113,6 +113,7 @@ export function traceRoleCallCommit(params: {
         depth: child?.depth,
         activationCount: child?.activationCount,
         objectiveLength: child?.objective?.length ?? 0,
+        workerSteeringVersion: child?.workerSteeringVersion,
         dependencyResultCount: child?.dependencyResultRefs.length ?? 0,
         dependencyResultRefs: child?.dependencyResultRefs ?? [],
         workerCapabilityCatalogGroupIds:
@@ -144,6 +145,7 @@ export function traceRoleCallCommit(params: {
         depth: child?.depth,
         resultRef: effect.resultRef,
         childOutcome: result?.outcome,
+        steeringVersion: result?.steeringVersion,
         summaryLength: result?.summary.length ?? 0,
         planItemIds: effect.planItemIds,
         settledPlanItemCount: effect.planItemIds?.length ?? 0,

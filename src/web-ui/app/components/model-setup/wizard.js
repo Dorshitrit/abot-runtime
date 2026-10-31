@@ -1,4 +1,6 @@
+import { createChatgptSetupBinding } from "../chatgpt-accounts/setup-binding.js";
 import { createConnectionInspection } from "../runtime-setup/connection-inspection.js";
+import { setupPromptCacheState, updateSetupPromptCacheField } from "../runtime-setup/prompt-cache-fields.js";
 import { setupReasoningState, updateSetupReasoningField } from "../runtime-setup/reasoning-fields.js";
 import { defaultSetupProviderAddress } from "../runtime-setup/validation.js";
 import { textOf } from "../../lib/text-format.js";
@@ -38,6 +40,7 @@ export function createModelSetupWizard({
   getEnvironmentId = () => "",
   loadSetup,
   inspectConnection,
+  chatgptClient,
   saveModel,
   applySetup,
   beginRuntimeMutation = () => true,
@@ -53,6 +56,11 @@ export function createModelSetupWizard({
   root.append(dialog);
   const state = {};
   const viewState = createSetupViewState(dialog);
+  const chatgpt = createChatgptSetupBinding({ state, client: chatgptClient, getEnvironmentId,
+    getContainer: () => state.step === 1 && dialog.open ? modelForm : null,
+    getProvider: () => ({ type: selectedModelProvider(state)?.type || state.choice.replace("new:", ""), existing: Boolean(selectedModelProvider(state)) }),
+    getAccountRef: () => selectedModelProvider(state)?.accountRef || state.accountRef || "",
+    render: () => render(), modelField: "model" });
   let generation = 0;
   let modelForm = null;
   let formChoice = "";
@@ -74,11 +82,13 @@ export function createModelSetupWizard({
   };
 
   function reset() {
+    chatgpt.reset();
     connectionInspection.reset();
     clearSecret();
     viewState.reset();
     Object.assign(state, {
       ...setupReasoningState(),
+      ...setupPromptCacheState(),
       providers: [],
       profileIds: [],
       choice: "",
@@ -107,6 +117,7 @@ export function createModelSetupWizard({
     if (state.busy || state.checkingConnection) return false;
     const wasOpen = dialog.open;
     generation += 1;
+    chatgpt.reset();
     clearSecret();
     state.saveOutcomeUncertain = false;
     dialog.close();
@@ -194,6 +205,7 @@ export function createModelSetupWizard({
       formChoice = state.choice;
     }
     modelForm.hidden = state.step !== 1;
+    chatgpt.mount();
     modelForm.inert = state.step !== 1 || Boolean(state.busy);
     const key = modelForm.querySelector('[data-runtime-setup-field="api-key"]');
     if (key) key.required = requiresModelSaveCredential(state);
@@ -294,8 +306,9 @@ export function createModelSetupWizard({
   }
 
   function input(event) {
-    if (state.busy || state.checkingConnection || state.saved || state.step !== 1) return;
+    if (state.busy || state.saved || state.step !== 1) return;
     const field = event.target.dataset.runtimeSetupField;
+    if (["ollama-base-url", "llamacpp-base-url", "api-key"].includes(field)) connectionInspection.reset();
     if (field === "api-key") {
       event.target.removeAttribute("aria-invalid");
       return;
@@ -321,6 +334,7 @@ export function createModelSetupWizard({
     }
     if (field === "connection-id") state.newProviderId = value;
     if (["ollama-base-url", "llamacpp-base-url"].includes(field)) state.baseUrl = value;
+    updateSetupPromptCacheField(state, field, event.target.checked);
     if (updateSetupReasoningField(state, field, event.target.type === "checkbox" ? event.target.checked : value)) {
       const apiKey = readConnectionSecret(modelForm);
       formChoice = "";
@@ -331,6 +345,7 @@ export function createModelSetupWizard({
     const key = modelForm.querySelector('[data-runtime-setup-field="api-key"]');
     if (key) key.required = requiresModelSaveCredential(state);
     event.target.removeAttribute("aria-invalid");
+    if (field === "model-id") connectionInspection.refreshModelWarning();
   }
 
   dialog.addEventListener("input", input);
@@ -351,9 +366,10 @@ export function createModelSetupWizard({
     const resetSuggestedProfile = providerChanged && !state.profileEdited;
     if (resetSuggestedProfile) state.profileId = "";
     state.choice = event.target.value;
+    connectionInspection.reset();
     if (providerChanged) {
       state.baseUrl = defaultSetupProviderAddress(state.choice.replace("new:", ""));
-      Object.assign(state, setupReasoningState());
+      Object.assign(state, setupReasoningState(), setupPromptCacheState());
     }
     state.newProviderId = selectedModelProvider(state)
       ? ""
@@ -399,6 +415,7 @@ export function createModelSetupWizard({
     isOpen: () => dialog.open,
     isBusy: () => Boolean(state.busy),
     dispose: () => {
+      chatgpt.reset();
       generation += 1;
       clearSecret();
       state.saveOutcomeUncertain = false;

@@ -228,7 +228,10 @@ test("ordinary projection cleanup waits for handle settlement and does not label
   const pending = new Promise<void>((resolve) => {
     finish = resolve;
   });
-  const handle = vi.fn(() => pending);
+  const handle = vi.fn<RuntimeEnvironment["requests"]["handle"]>(async (_ws, _message, options) => {
+    await options?.onAccepted?.();
+    return pending;
+  });
   const requests = new LocalRequestExecution(new RealtimeClientHub());
   const owner = {
     ...environment(),

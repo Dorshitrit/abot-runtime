@@ -37,7 +37,7 @@ function fixture() {
   let opened = false;
   const panel = {
     root: new ElementStub(),
-    dom: { settingsButton: new ElementStub(), messagesList: new ElementStub(), launcherButton: new ElementStub() },
+    dom: { settingsButton: new ElementStub(), messagesList: new ElementStub(), launcherButton: new ElementStub(), composerForm: new ElementStub() },
     available: false, isOpen: () => opened,
     setOpen(value: boolean) { if (opened === value) return; opened = value; toggle(value); },
     setAvailable(value: boolean) {
@@ -51,6 +51,7 @@ function fixture() {
     hideNotice: vi.fn(), showNotice: vi.fn(), setUnread: vi.fn(),
   };
   panel.dom.messagesList.parentElement = panel.root;
+  panel.dom.composerForm.parentElement = panel.root;
   capture.panel = panel;
   const conversationState = {
     messages: [] as any[], currentSessionId: "", composerSending: false, activeRequestId: "",

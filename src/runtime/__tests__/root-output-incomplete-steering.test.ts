@@ -1,3 +1,4 @@
+import { ModelOutputIncompleteError } from "../model/provider-completion.js";
 import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
@@ -19,7 +20,7 @@ const PHRASING = {
   failureNotice: "The current model response stopped before completion.",
   nextStep: "Continue from the established state in a follow-up request.",
 };
-const DEGRADED_OUTPUT = `${PHRASING.failureNotice}\n\n${PHRASING.nextStep}`;
+const DEGRADED_OUTPUT = "The model reached its output-token limit before finishing its decision or response.\n\nReview the selected model and reasoning settings before continuing.";
 const FRESH_OUTPUT = "The answer follows the latest request direction.";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
@@ -41,7 +42,6 @@ describe.each(ROOT_OUTPUT_POLICIES)(
           policy.decisionStep,
           policy.decisionStep,
           ...(phase === "response" ? [policy.responseStep] : []),
-          "degraded.finalization",
         ];
         let next = 0;
         const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
@@ -91,7 +91,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
       },
     );
 
-    test("discards degraded framing when a later update arrives during its generation", async () => {
+    test("discards unknown-completion framing when a later update arrives during its generation", async () => {
       const steering = createRequestSteeringInbox({
         requestId: "root-invalid-request",
       });
@@ -113,10 +113,13 @@ describe.each(ROOT_OUTPUT_POLICIES)(
         }
         if (next === 2) {
           expect(JSON.stringify(input.messages)).toContain(FIRST_UPDATE);
-          return {
-            text: "CURRENT_PARTIAL_OUTPUT",
-            meta: { providerCompletionReason: "length" },
-          };
+          // The root knows output is incomplete, but an unknown reason supplies
+          // no verified output-limit explanation and retains model-authored framing.
+          throw new ModelOutputIncompleteError({
+            outputLength: 22,
+            providerCompletionReason: "unknown",
+            steeringVersion: steering.snapshot().version,
+          }, policy.decisionStep);
         }
         if (input.modelStep === "degraded.finalization") {
           expect(steering.snapshot().version).toBe(1);

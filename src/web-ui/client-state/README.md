@@ -54,7 +54,7 @@ reset policy or silently discard an uncertain submission.
 
 ## Clean start and retention
 
-The first opening explains the approved one-time clean start. Browser-only
+The Web UI loads installation preferences directly at startup. Browser-only
 preferences and queued messages are not imported. Conversations, memories,
 configuration and read state remain in their existing stores. Ask is the initial
 permission mode; other modes require an explicit selection.

@@ -1,8 +1,11 @@
+import { createRuntimeMaintenanceRequests } from "./runtime-web-client/runtime-maintenance.js";
+import { createChatgptAccountRequests } from "./runtime-web-client/chatgpt-accounts.js";
 import { createInformationBasketRequests } from "./runtime-web-client/information-basket.js";
 import { createSkillRequests } from "./runtime-web-client/skills.js";
 import { createStepTimeoutRequests } from "./runtime-web-client/step-timeout.js";
 import { createNotificationRequests } from "./runtime-web-client/notifications.js";
 import { createSparkChatRequests } from "./runtime-web-client/spark-chat.js";
+import { createProjectChangesRequests } from "./runtime-web-client/project-changes.js";
 import { createProjectRequests } from "./runtime-web-client/projects.js";
 import { createSystemHostRequests } from "./runtime-web-client/system-host.js";
 import { toolPermissionRequestError } from "../lib/tool-permission-mode.js";
@@ -251,13 +254,15 @@ export function createRuntimeWebClient({
 
     async fetchRequestEvents({
       requestId,
+      sessionId,
       afterSeq = 0,
       environmentId = getEnvironmentId(),
     }) {
+      const sessionQuery = sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : "";
       const response = await fetchImpl(
         `${resolveApiPath(
           `/requests/${encodeURIComponent(requestId)}/events`,
-        )}?afterSeq=${afterSeq}&environment=${environmentQuery(environmentId)}`,
+        )}?afterSeq=${afterSeq}&environment=${environmentQuery(environmentId)}${sessionQuery}`,
       );
       if (response.status === 204 || response.status === 404) return [];
       const text = await response.text();
@@ -372,7 +377,9 @@ export function createRuntimeWebClient({
       origin,
       getConfig,
     }),
+    ...createRuntimeMaintenanceRequests({ requestApi, environmentQuery, getConfig }),
     ...createConfigurationRequests({ requestApi, environmentQuery }),
+    ...createChatgptAccountRequests({ requestApi, getConfig }),
     ...createStepTimeoutRequests({ requestApi, getConfig }),
     ...createSystemHostRequests({ requestApi, getConfig, getEnvironmentId }),
     ...longTermMemoryRequests,
@@ -383,6 +390,7 @@ export function createRuntimeWebClient({
     }),
     ...createScheduleRequests({ requestApi, getEnvironmentId, getConfig }),
     ...createAutomationRequests({ requestApi, getEnvironmentId, getConfig }),
+    ...createProjectChangesRequests({ requestApi, getConfig }),
     ...createProjectRequests({ requestApi, getEnvironmentId, getConfig }),
     ...createToolApprovalRequests({ requestApi, getEnvironmentId, getConfig }),
     ...createNotificationRequests({ requestApi, getEnvironmentId, getConfig }),

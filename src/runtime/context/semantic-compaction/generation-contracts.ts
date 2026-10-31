@@ -1,3 +1,4 @@
+import type { CompactionProgressObserver } from "../../model/context-compaction-progress.js";
 import type { ModelStep } from "../../../shared/model-steps.js";
 import type {
   SemanticCompactionCheckpoint,
@@ -21,6 +22,7 @@ export type SemanticCompactionGenerationParams = Readonly<{
   /** Invocation-local freshness binding; never part of a saved checkpoint. */
   boundSteeringVersion?: number;
   projectionRepair?: ContextCompactionProjectionRepair;
+  onProgress?: CompactionProgressObserver;
   previous?: SemanticCompactionCheckpoint;
   /** Verified EA predecessor evidence only; exclusive with previous and never persisted. */
   inheritedSourceDigests?: readonly SemanticCompactionDigest[];

@@ -6,7 +6,8 @@ export declare function createConversationFileFocus(options: {
   documentRoot: Document;
   viewport: Window;
   onClose: () => void;
+  resolveReturnTarget?: (identity: DOMStringMap | null) => HTMLElement | null;
 }): {
-  show(opener?: HTMLElement): void;
+  show(opener?: HTMLElement, options?: { focusOnOpen?: boolean }): void;
   hide(restoreFocus: boolean): void;
 };

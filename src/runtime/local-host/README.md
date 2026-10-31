@@ -78,9 +78,11 @@ external effects or automatically repeat such work.
 
 While a saved wait exists, the Web composer is frozen and a new request or
 scheduled job in that session is not admitted. The user can cancel the waiting
-request and start another. Previously admitted requests and other sessions retain
-their existing concurrency. Active background tool work keeps its request live;
-the request parks when that work becomes quiescent.
+request and start another. Ordinary requests acquire one exclusive session claim
+before acceptance; another request in that session receives `session_busy`.
+Approval resumption transfers the existing claim to that same request without an
+admission gap. Other sessions remain concurrent. Active background tool work keeps
+its request live; the request parks when that work becomes quiescent.
 
 ## Legacy approval clients
 

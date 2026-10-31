@@ -21,6 +21,8 @@ import {
   type RoleCallWorkResultLineage,
 } from "./work-result-lineage.js";
 
+import { isValidRoleResultSteeringVersion } from "./worker-steering.js";
+import type { RoleCallResultOutcome } from "./worker-steering.js";
 import { isRoleCallResultText } from "./role-result-text.js";
 
 export type CompletedRoleChildResult = Readonly<{
@@ -32,7 +34,8 @@ export type CompletedRoleChildResult = Readonly<{
   workerCapabilityScope?: RoleCallWorkerCapabilityScope;
   workingDirectory?: string;
   dependencyResultRefs: readonly string[];
-  outcome: "completed" | "failed";
+  outcome: RoleCallResultOutcome;
+  steeringVersion?: number;
   summary: string;
   receipt?: RoleCallResultReceipt;
   workLineage?: RoleCallWorkResultLineage;
@@ -161,7 +164,7 @@ export function projectStoredCompletedRoleChild(
     !isBoundedText(child.objective, ROLE_CALL_OBJECTIVE_MAX_LENGTH) ||
     result?.producerCallId !== child.callId ||
     result.roleId !== child.roleId ||
-    (result.outcome !== "completed" && result.outcome !== "failed") ||
+    !isValidRoleResultSteeringVersion(result, child, policy) ||
     !isRoleCallResultText(result.summary) ||
     !isRoleCallResultReceiptValidForStoredResult({
       receipt: result.receipt,
@@ -191,6 +194,7 @@ export function projectStoredCompletedRoleChild(
       : {}),
     dependencyResultRefs: child.dependencyResultRefs,
     outcome: result.outcome,
+    ...(result.steeringVersion !== undefined ? { steeringVersion: result.steeringVersion } : {}),
     summary: result.summary,
     ...(result.receipt ? { receipt: result.receipt } : {}),
     ...(workLineage ? { workLineage } : {}),

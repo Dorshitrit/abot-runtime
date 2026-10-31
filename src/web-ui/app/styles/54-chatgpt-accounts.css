@@ -1,0 +1,106 @@
+.chatgpt-accounts { display: grid; gap: 12px; margin-block: 12px 20px; }
+.chatgpt-accounts p { margin: 0; color: var(--muted); }
+.chatgpt-account-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.chatgpt-accounts select { width: 100%; min-width: 0; }
+.chatgpt-accounts .runtime-setup-field { min-width: 0; }
+.chatgpt-plan-welcome { max-width: 460px; padding: 24px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--text); }
+.chatgpt-plan-welcome::backdrop { background: #0007; }
+.chatgpt-plan-welcome button { margin-block-start: 16px; }
+.chatgpt-account-dialog { box-sizing: border-box; width: min(600px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; padding: 24px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--text); }
+.chatgpt-account-dialog::backdrop { background: #0007; }
+.chatgpt-plan-indicator {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 6px 8px 2px;
+  border-block-start: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+.composer > .chatgpt-plan-indicator { grid-row: 4; }
+.chatgpt-plan-indicator > a,
+.chatgpt-plan-indicator > a:visited {
+  color: var(--muted);
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+.chatgpt-plan-indicator > a:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.chatgpt-plan-indicator > a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+.spark-chat-composer-dock > .chatgpt-plan-indicator { margin-block-start: 6px; }
+.chatgpt-plan-indicator[hidden] { display: none; }
+
+.chatgpt-sign-in { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 44px; padding: 10px 16px; border: 1px solid #000; border-radius: 6px; background: #000; color: #fff; }
+.chatgpt-sign-in:hover:not(:disabled) { background: #222; color: #fff; border-color: #222; }
+.chatgpt-sign-in:disabled { opacity: .55; }
+.chatgpt-logo { display: block; width: 21px; height: 21px; flex: 0 0 21px; }
+.chatgpt-provider-logo { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 29px; height: 29px; border-radius: 4px; background: #000; }
+
+.chatgpt-account-dialog h2 { margin-block: 0 20px; }
+.chatgpt-account-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-lg);
+  line-height: 1.25;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+.chatgpt-account-button:visited { color: var(--text); }
+.chatgpt-account-button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--control-bg-hover);
+  color: var(--text-strong);
+  text-decoration: none;
+}
+.chatgpt-account-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.chatgpt-account-button:disabled { opacity: .5; cursor: default; }
+.chatgpt-account-utilities {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.chatgpt-account-utilities .chatgpt-account-button {
+  border-color: transparent;
+  color: var(--muted);
+}
+.chatgpt-account-utilities .chatgpt-account-disconnect:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 25%, transparent);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+.chatgpt-account-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-block-start: 16px;
+  border-block-start: 1px solid var(--line);
+}
+.chatgpt-account-footer .chatgpt-account-button { min-width: 88px; }
+@media (max-width: 480px) {
+  .chatgpt-account-dialog { padding: 20px; }
+  .chatgpt-account-actions > * { flex: 1 1 100%; }
+}

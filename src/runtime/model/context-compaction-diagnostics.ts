@@ -1,3 +1,4 @@
+import { formatCompactionProgress, type CompactionProgress, type CompactionProgressObserver } from "./context-compaction-progress.js";
 import type { RequestMessagesBudgetAssessment } from "../context/request-context-budget.js";
 import { resolveRequestBudgetInputTokens } from "../context/request-context-budget.js";
 import { traceDebug } from "../observability/debug-logger.js";
@@ -18,6 +19,7 @@ export type ContextCompactionIdentity = Readonly<{
 
 /** One external lifecycle; stage and persistence detail stays in bounded debug data. */
 export class ContextCompactionDiagnostics {
+  private observationVersion = 0;
   private state: "pending" | "open" | "closed" = "pending";
 
   constructor(
@@ -39,6 +41,32 @@ export class ContextCompactionDiagnostics {
       reason: "context_window_threshold",
       compactionScope: this.firstScope,
     });
+  }
+
+  observePreparation(
+    stage: Readonly<{ compactionScope: ModelStepCompactionScope; scopeId: string }>,
+    attempt: number,
+  ): CompactionProgressObserver {
+    const version = ++this.observationVersion;
+    let latest: CompactionProgress | undefined;
+    return (progress) => {
+      if (this.state !== "open") return;
+      if (version !== this.observationVersion) return;
+      if (progress.step === "checking" && !latest) return;
+      const observation = progress.step === "checking" ? { ...latest, ...progress } : progress;
+      latest = observation;
+      try {
+        this.onEvent?.("context.compaction.progress", {
+          ...this.base(), ...observation,
+          compactionScope: stage.compactionScope, scopeId: stage.scopeId,
+          stage: "context_compaction", phase: "progress", attempt,
+          progressAt: Date.now(),
+          status: formatCompactionProgress(observation, stage.compactionScope, attempt),
+        });
+      } catch (error: unknown) {
+        this.trace("progress_delivery_failed", { issueCode: compactionIssueCode(error) });
+      }
+    };
   }
 
   trace(event: string, extra: Record<string, unknown>): void {

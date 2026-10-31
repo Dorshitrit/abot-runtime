@@ -20,7 +20,10 @@ import {
 } from "./context-compaction-diagnostics.js";
 import { isCompactionSteeringSuperseded } from "./model-step-steering.js";
 import { ModelStepTimeoutError } from "../steps/model-step-timeout.js";
-import { prepareProjectionRepair } from "./context-compaction-projection-repair.js";
+import {
+  prepareProjectionRepair,
+  resolveProjectionRepairReason,
+} from "./context-compaction-projection-repair.js";
 
 type CompactionEnvelope = Readonly<{
   messages: readonly ChatMessage[];
@@ -184,7 +187,8 @@ export async function admitCompactedContext(
     for (const [stageIndex, stage] of stages.entries()) {
       activeStage = stage;
       params.assertNotAborted();
-      const outcome = await stage.prepare(current.messages);
+      const onProgress = diagnostics.observePreparation(stage, 1);
+      const outcome = await stage.prepare(current.messages, { onProgress });
       params.assertNotAborted();
       const stageMetadata = {
         stageIndex,
@@ -211,6 +215,7 @@ export async function admitCompactedContext(
       let prepared = outcome.preparation;
       assertPreparationStageBinding(stage, prepared);
       params.assertNotAborted();
+      onProgress({ step: "checking" });
       let candidate = await params.assess(prepared.messages);
       lastCandidate = candidate;
       params.assertNotAborted();
@@ -221,13 +226,22 @@ export async function admitCompactedContext(
         sourceRevision: prepared.sourceRevision,
         coveredSourceCount: prepared.coveredSourceCount,
       };
-      if (!hasReducedProjection(candidate, current.assessment)) {
+      const repairReason = resolveProjectionRepairReason({
+        stage,
+        projectionReduced: hasReducedProjection(candidate, current.assessment),
+        candidateFits: candidate.fits,
+        isFinalStage: stageIndex === stages.length - 1,
+      });
+      if (repairReason) {
         diagnostics.trace("stage", {
           ...candidateMetadata,
-          outcome: "discarded_not_reduced",
+          outcome: repairReason === "projection_not_reduced"
+            ? "discarded_not_reduced"
+            : "discarded_over_budget",
         });
         const repaired = await prepareProjectionRepair({
           stage,
+          reason: repairReason,
           messages: current.messages,
           current: current.assessment,
           rejected: candidate,
@@ -247,14 +261,14 @@ export async function admitCompactedContext(
           sourceRevision: prepared.sourceRevision,
           coveredSourceCount: prepared.coveredSourceCount,
         };
-        if (!hasReducedProjection(candidate, current.assessment)) {
-          diagnostics.trace("stage", {
-            ...candidateMetadata,
-            outcome: "discarded_not_reduced",
-            projectionRepair: true,
-          });
-          continue;
-        }
+      }
+      if (!hasReducedProjection(candidate, current.assessment)) {
+        diagnostics.trace("stage", {
+          ...candidateMetadata,
+          outcome: "discarded_not_reduced",
+          projectionRepair: true,
+        });
+        continue;
       }
       current = { messages: prepared.messages, assessment: candidate };
       retained.push({

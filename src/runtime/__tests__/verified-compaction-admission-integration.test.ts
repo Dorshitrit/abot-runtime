@@ -126,7 +126,7 @@ function refine(f: Fixture, ids: readonly string[]) {
     head: options.head, call: options.call, steeringSnapshot: options.steeringSnapshot,
     capabilities: [evidenceDescriptor], eligibleSessionArtifactPaths: [],
     invocations: [{
-      capabilityId: evidenceDescriptor.capabilityId, intent: "Use selected evidence.",
+      capabilityId: evidenceDescriptor.capabilityId,
       operationObjective: "Use the already observed exact value.",
       selectionControls: { path: "exact.txt" }, controlsEvidenceExecutionIds: ids,
     }],

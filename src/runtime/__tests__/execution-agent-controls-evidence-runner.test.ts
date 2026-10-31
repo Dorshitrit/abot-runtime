@@ -90,13 +90,11 @@ test("C5/C8/C20: EA selects guided exact URLs before direct batch dispatch", asy
       return reply({
         action: "open_capability_scope",
         catalogGroupIds: ["web"],
-        acknowledgement: "I will fetch the located pages.",
       });
     if (decisionCount === 2)
       return reply({
         action: "invoke_capability",
         capabilityId: lookup.capabilityId,
-        intent: "Locate exact URLs.",
         workingDirectory: null,
       });
     if (decisionCount === 3) {
@@ -114,7 +112,6 @@ test("C5/C8/C20: EA selects guided exact URLs before direct batch dispatch", asy
         action: "invoke_capabilities",
         invocations: ["first", "second"].map((ordinal) => ({
           capabilityId: fetch.capabilityId,
-          intent: `Fetch the ${ordinal} page.`,
           selectionControls: { url: exact[ordinal] },
         })),
       });
@@ -151,7 +148,7 @@ test("C16: direct response adds no Controls selection schema, index or evidence"
     );
     return input.modelStep === "execution.response"
       ? { text: "Four.", meta: {} }
-      : reply({ action: "respond", acknowledgement: "I will answer." });
+      : reply({ action: "respond" });
   });
   await expect(runRequestRunner(fixture.request)).resolves.toMatchObject({
     output: "Four.",

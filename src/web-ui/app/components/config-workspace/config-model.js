@@ -1,3 +1,4 @@
+import { parsePromptCacheInput } from "./prompt-cache.js";
 import { parseReasoningBudgetMode } from "./reasoning-budget.js";
 import { parseReasoningModeBudgets } from "./reasoning-mode-budgets.js";
 import {
@@ -293,6 +294,7 @@ export function createConfigWorkspaceModel() {
   function parseConfigInputValue(input, file, path) {
     const type = input.dataset.valueType || "string";
     if (type === "boolean") return input.checked;
+    if (type === "prompt-cache") return parsePromptCacheInput(input.checked);
     if (type === "number") return parseNumericConfigInputValue(input);
     if (type === "reasoning-budget-mode")
       return parseReasoningBudgetMode(input.value, getConfigPathValue(file.config, path));

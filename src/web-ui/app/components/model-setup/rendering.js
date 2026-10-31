@@ -34,6 +34,7 @@ export function renderModelProviderChoices(state) {
     description: `${provider.id} · ${provider.type} · existing connection`,
   }));
   providers.push(
+    { id: "new:openai-chatgpt", label: "ChatGPT", description: "Continue with ChatGPT · use your ChatGPT plan" },
     { id: "new:llamacpp", label: "New llama.cpp connection", description: "A separately running server with token reasoning controls" },
     {
       id: "new:openai",

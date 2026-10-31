@@ -1,3 +1,6 @@
+import {
+  copyExecutionFreshnessToken, isExecutionFreshnessToken,
+} from "../execution/freshness-token.js";
 import { classifyRuntimeErrorType } from "../../../observability/error-type.js";
 import {
   hasRoleCallCapabilityAuthority,
@@ -23,19 +26,6 @@ type LiveCapabilityCall = Readonly<{
 type InitialBindingAuthority =
   | Readonly<{ ok: true; authoritativeCall: RoleCallFrame }>
   | Readonly<{ ok: false; issueCode: string }>;
-
-type SteeringUpdate = Readonly<{ sequence: number; text: string }>;
-
-type SteeringToken = Readonly<{
-  kind: "request_steering_v1";
-  version: number;
-  updates: readonly SteeringUpdate[];
-}>;
-
-type FreshnessSource = Readonly<{
-  token: SteeringToken;
-  isCurrent(): boolean;
-}>;
 
 export function inspectInitialBindingAuthority(params: {
   requestId: string;
@@ -118,16 +108,11 @@ export function normalizeExecutionFreshness(
   if (!isFreshnessSource(input)) return undefined;
   const source = input;
   return Object.freeze({
-    token: Object.freeze({
-      kind: "request_steering_v1" as const,
-      version: input.token.version,
-      updates: Object.freeze(
-        input.token.updates.map(({ sequence, text }) =>
-          Object.freeze({ sequence, text }),
-        ),
-      ),
-    }),
+    token: copyExecutionFreshnessToken(input.token),
     isCurrent: () => source.isCurrent(),
+    ...(source.subscribe
+      ? { subscribe: (listener: () => void) => source.subscribe!(listener) }
+      : {}),
   });
 }
 
@@ -186,6 +171,10 @@ function validateExecutionCall(
   if (currentCall.activationCount !== boundCall.activationCount) {
     return "invocation_attempt_mismatch";
   }
+  if (
+    (currentCall.workerSteeringVersion ?? 0) !==
+    (boundCall.workerSteeringVersion ?? 0)
+  ) return "worker_steering_version_mismatch";
   if (currentCall.workingDirectory !== boundCall.workingDirectory) {
     return "working_directory_mismatch";
   }
@@ -246,40 +235,13 @@ function sameWorkerCapabilityScope(
   );
 }
 
-function isFreshnessSource(input: unknown): input is FreshnessSource {
-  if (typeof input !== "object" || input === null) return false;
-  const candidate = input as Readonly<{
-    token?: unknown;
-    isCurrent?: unknown;
-  }>;
-  if (typeof candidate.isCurrent !== "function") return false;
-  return isSteeringToken(candidate.token);
-}
-
-function isSteeringToken(input: unknown): input is SteeringToken {
-  if (typeof input !== "object" || input === null) return false;
-  const candidate = input as Readonly<{
-    kind?: unknown;
-    version?: unknown;
-    updates?: unknown;
-  }>;
-  if (candidate.kind !== "request_steering_v1") return false;
-  if (!Number.isSafeInteger(candidate.version)) return false;
-  if ((candidate.version as number) < 0) return false;
-  if (!Array.isArray(candidate.updates)) return false;
-  if (candidate.updates.length !== candidate.version) return false;
-  return candidate.updates.every((update, index) =>
-    isValidSteeringUpdate(update, index),
-  );
-}
-
-function isValidSteeringUpdate(
+function isFreshnessSource(
   input: unknown,
-  zeroBasedIndex: number,
-): input is SteeringUpdate {
+): input is WorkerCapabilityExecutionFreshness {
   if (typeof input !== "object" || input === null) return false;
-  const update = input as Readonly<{ sequence?: unknown; text?: unknown }>;
-  if (update.sequence !== zeroBasedIndex + 1) return false;
-  if (typeof update.text !== "string") return false;
-  return update.text.trim().length > 0;
+  const candidate = input as Record<string, unknown>;
+  if (typeof candidate.isCurrent !== "function") return false;
+  if (candidate.subscribe !== undefined && typeof candidate.subscribe !== "function")
+    return false;
+  return isExecutionFreshnessToken(candidate.token);
 }

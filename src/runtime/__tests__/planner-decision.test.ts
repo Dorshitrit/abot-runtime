@@ -1672,7 +1672,7 @@ describe("generic Planner decision contract", () => {
       }),
     ).resolves.toEqual({
       kind: "invoke_role",
-      roleId: "worker",
+      roleId: "worker", workerSteeringVersion: 0,
       objective: delegatedObjective,
       workingDirectory: WORKING_DIRECTORY,
       workerCapabilityScope: WORKER_CAPABILITY_SCOPE,
@@ -1753,7 +1753,7 @@ describe("generic Planner decision contract", () => {
       }),
     ).resolves.toEqual({
       kind: "invoke_role",
-      roleId: "worker",
+      roleId: "worker", workerSteeringVersion: 0,
       workingDirectory: WORKING_DIRECTORY,
       objective: delegatedObjective,
       workerCapabilityScope: WORKER_CAPABILITY_SCOPE,
@@ -1898,7 +1898,7 @@ describe("generic Planner decision contract", () => {
       }),
     ).resolves.toEqual({
       kind: "invoke_role",
-      roleId: "worker",
+      roleId: "worker", workerSteeringVersion: 0,
       workingDirectory: WORKING_DIRECTORY,
       objective: "Perform only the remaining external mutation.",
       workerCapabilityScope: WORKER_CAPABILITY_SCOPE,
@@ -2016,7 +2016,7 @@ describe("generic Planner decision contract", () => {
       }),
     ).resolves.toEqual({
       kind: "invoke_role",
-      roleId: "worker",
+      roleId: "worker", workerSteeringVersion: 0,
       workingDirectory: WORKING_DIRECTORY,
       objective: extensionObjective,
       workerCapabilityScope: WORKER_CAPABILITY_SCOPE,

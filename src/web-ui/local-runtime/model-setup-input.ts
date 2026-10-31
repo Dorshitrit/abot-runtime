@@ -1,3 +1,5 @@
+import { isWebSetupProvider, type WebSetupProvider } from "./setup-provider-choice.js";
+import { readSetupChatGptAccountRef } from "./chatgpt-setup-binding.js";
 import { parseRuntimeModelProfileId } from "../../../scripts/runtime-model-addition.js";
 import {
   parseBaseUrl,
@@ -9,7 +11,8 @@ import { isRecord } from "../../runtime/config/utils.js";
 
 export type NewModelProvider = Readonly<{
   id: string;
-  type: "openai" | "ollama" | "llamacpp";
+  type: WebSetupProvider;
+  accountRef?: string;
   apiKeyEnv?: string;
   useApiKey?: boolean;
   baseUrl?: string;
@@ -108,14 +111,20 @@ function readNewProvider(value: unknown): NewModelProvider {
       "invalid_model_provider",
       "Choose a configured provider or add a new provider.",
     );
-  requireAllowedFields(value, ["id", "type", "baseUrl", "apiKeyEnv", "useApiKey"]);
+  requireAllowedFields(value, ["id", "type", "baseUrl", "apiKeyEnv", "useApiKey", "accountRef"]);
   const id = requireIdentifier(inputString(value, "id")!, "provider");
-  const type = inputString(value, "type");
-  if (type !== "openai" && type !== "ollama" && type !== "llamacpp")
+  const type = inputString(value, "type")!;
+  if (!isWebSetupProvider(type))
     throw new ModelSetupError(
       "invalid_model_provider",
-      "A new provider must use OpenAI, Ollama or llama.cpp.",
+      "Choose OpenAI, Continue with ChatGPT, Ollama or llama.cpp.",
     );
+  let accountRef: string | undefined;
+  try {
+    accountRef = readSetupChatGptAccountRef(type, value.accountRef, { baseUrl: value.baseUrl, apiKeyEnv: value.apiKeyEnv, useApiKey: value.useApiKey });
+  } catch (error) {
+    throw new ModelSetupError("invalid_model_account", (error as Error).message);
+  }
   const address = inputString(value, "baseUrl", true);
   if (address && !supportsProviderAddress(type))
     throw new ModelSetupError(
@@ -141,7 +150,7 @@ function readNewProvider(value: unknown): NewModelProvider {
   }
   if (apiKeyEnv && type !== "llamacpp")
     throw new ModelSetupError("invalid_model_credential", "A custom key environment is available for llama.cpp.");
-  return { id, type, ...(baseUrl ? { baseUrl } : {}), ...(apiKeyEnv ? { apiKeyEnv } : {}), ...(value.useApiKey !== undefined ? { useApiKey: value.useApiKey as boolean } : {}) };
+  return { id, type, ...(accountRef ? { accountRef } : {}), ...(baseUrl ? { baseUrl } : {}), ...(apiKeyEnv ? { apiKeyEnv } : {}), ...(value.useApiKey !== undefined ? { useApiKey: value.useApiKey as boolean } : {}) };
 }
 
 function requireModelIdentifier(model: string): void {
@@ -170,6 +179,7 @@ export function parseModelSetupInput(
     "contextWindowTokens",
     "supportsThinking",
     "reasoningBudget",
+    "promptCache",
     "providerId",
     "newProvider",
     "apiKey",

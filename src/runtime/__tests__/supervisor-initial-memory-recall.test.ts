@@ -84,7 +84,10 @@ test("the builtin overview still reaches direct response without adding a final-
     policy: "supervisor-worker-v1", enabled: false,
     selectSkills: () => ({ action: "read_skills", skillIds: [WHAT_CAN_I_DO_SKILL.skillId] }),
     classifyProcedure(input) {
-      expect(JSON.stringify(input.messages)).not.toContain(WHAT_CAN_I_DO_SKILL.content);
+      expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1"))
+        .toEqual([expect.objectContaining({
+          authority: "passive_reference", purpose: "skill_guidance", document: WHAT_CAN_I_DO_SKILL,
+        })]);
       return { requiresProcedure: false, responseRecommendation: "Explain supported uses." };
     },
     decide: () => { throw new Error("Unexpected legacy routing or child"); },

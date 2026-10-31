@@ -1,3 +1,5 @@
+import { isOptionalRoleCapabilityIntent } from "./capability-intent.js";
+import { isWorkerSteeringVersion } from "./worker-steering.js";
 import { isRuntimeDelegateRoleId, RUNTIME_ROOT_ROLE_ID } from "../roles.js";
 import { normalizeRoleCapabilitySelectionProjection } from "./capability-selection-reconsideration.js";
 import {
@@ -111,6 +113,7 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
           "dependencyResultRefs",
           "plannerPlan",
           "workerCapabilityScope",
+          "workerSteeringVersion",
           "workingDirectory",
         ],
       ) &&
@@ -118,6 +121,7 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
         typeof input.callerCallId === "string" &&
         isRuntimeDelegateRoleId(input.roleId) &&
         typeof input.objective === "string" &&
+        (input.workerSteeringVersion === undefined || isWorkerSteeringVersion(input.workerSteeringVersion)) &&
         (input.dependencyResultRefs === undefined ||
           isUniqueStringArray(input.dependencyResultRefs))
         ? {
@@ -128,6 +132,7 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
               callerCallId: input.callerCallId,
               roleId: input.roleId,
               objective: input.objective,
+              ...(input.workerSteeringVersion !== undefined ? { workerSteeringVersion: input.workerSteeringVersion as number } : {}),
               ...(workerCapabilityScope ? { workerCapabilityScope } : {}),
               ...(workingDirectory !== undefined ? { workingDirectory } : {}),
               ...(input.dependencyResultRefs
@@ -154,12 +159,13 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
           "outcome",
           "summary",
         ],
-        ["receipt"],
+        ["receipt", "steeringVersion"],
       ) &&
         input.authority === "runtime" &&
         typeof input.callerCallId === "string" &&
         typeof input.childCallId === "string" &&
-        (input.outcome === "completed" || input.outcome === "failed") &&
+        (input.outcome === "completed" || input.outcome === "failed" || input.outcome === "yielded") &&
+        (input.steeringVersion === undefined || isWorkerSteeringVersion(input.steeringVersion)) &&
         typeof input.summary === "string" &&
         receipt !== null
         ? {
@@ -171,6 +177,7 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
               childCallId: input.childCallId,
               outcome: input.outcome,
               summary: input.summary,
+              ...(input.steeringVersion !== undefined ? { steeringVersion: input.steeringVersion as number } : {}),
               ...(receipt ? { receipt } : {}),
             },
           }
@@ -186,10 +193,9 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
           "invocationAttempt",
           "capabilityId",
           "declaredEffect",
-          "intent",
           "controlsJson",
         ],
-        ["actionFingerprint"],
+        ["actionFingerprint", "intent"],
       ) &&
         input.authority === "active_role" &&
         typeof input.callId === "string" &&
@@ -197,7 +203,7 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
         typeof input.capabilityId === "string" &&
         isRoleCapabilityDeclaredEffect(input.declaredEffect) &&
         isEligibleActionFingerprintInput(input) &&
-        typeof input.intent === "string" &&
+        isOptionalRoleCapabilityIntent(input.intent) &&
         typeof input.controlsJson === "string"
         ? {
             ok: true,
@@ -208,7 +214,7 @@ export function decodeRoleCallCommand(input: unknown): DecodedRoleCallCommand {
               invocationAttempt: input.invocationAttempt as number,
               capabilityId: input.capabilityId,
               declaredEffect: input.declaredEffect,
-              intent: input.intent,
+              ...(input.intent !== undefined ? { intent: input.intent } : {}),
               controlsJson: input.controlsJson,
               ...(typeof input.actionFingerprint === "string"
                 ? { actionFingerprint: input.actionFingerprint }
@@ -436,14 +442,14 @@ function parseObservationBatchEntries(
       !isRecord(entry) ||
       !exactKeys(
         entry,
-        ["capabilityId", "declaredEffect", "intent", "controlsJson"],
-        ["actionFingerprint"],
+        ["capabilityId", "declaredEffect", "controlsJson"],
+        ["actionFingerprint", "intent"],
       ) ||
       !isRoleCapabilityId(entry.capabilityId) ||
       entry.declaredEffect !== "observation" ||
       (entry.actionFingerprint !== undefined &&
         !isRoleOperationFingerprint(entry.actionFingerprint)) ||
-      typeof entry.intent !== "string" ||
+      !isOptionalRoleCapabilityIntent(entry.intent) ||
       typeof entry.controlsJson !== "string"
     ) {
       return undefined;
@@ -451,7 +457,7 @@ function parseObservationBatchEntries(
     return Object.freeze({
       capabilityId: entry.capabilityId,
       declaredEffect: "observation" as const,
-      intent: entry.intent,
+      ...(entry.intent !== undefined ? { intent: entry.intent } : {}),
       controlsJson: entry.controlsJson,
       ...(typeof entry.actionFingerprint === "string"
         ? { actionFingerprint: entry.actionFingerprint }

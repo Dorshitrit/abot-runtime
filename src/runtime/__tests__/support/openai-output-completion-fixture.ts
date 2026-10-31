@@ -11,7 +11,7 @@ import { createRequestWorkerCapabilityPayloadAuthor } from "../../request/worker
 import { createRootInvalidOutputRequest } from "./root-invalid-output-fixture.js";
 
 export type ResponseEnding = "completed" | "eof" | "done";
-export type ProviderOutput = Readonly<{ text: string; ending?: ResponseEnding }>;
+export type ProviderOutput = Readonly<{ text: string; ending?: ResponseEnding; refusal?: boolean }>;
 export const COMPLETE_RAW_BODY = '{"label":"complete content","count":2}\n';
 
 async function listen(server: Server): Promise<string> {
@@ -30,6 +30,16 @@ async function close(server: Server): Promise<void> {
 
 function responseFrames(output: ProviderOutput, functionName?: string): string {
   const frame = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`;
+  if (output.refusal) {
+    const item = { type: "message", id: "fixture-refusal", role: "assistant", status: "completed",
+      content: [{ type: "refusal", refusal: output.text }] };
+    return [
+      { type: "response.output_item.added", output_index: 0, item },
+      { type: "response.refusal.delta", item_id: item.id, output_index: 0, content_index: 0, delta: output.text },
+      { type: "response.refusal.done", item_id: item.id, output_index: 0, content_index: 0, refusal: output.text },
+      { type: "response.completed", response: { status: "completed", output: [item] } },
+    ].map(frame).join("");
+  }
   const call = functionName === undefined ? undefined : {
     type: "function_call", id: "fixture-function", call_id: "fixture-call",
     name: functionName, arguments: output.text, status: "completed",
@@ -121,7 +131,6 @@ export async function openAICompletionGateway(outputs: readonly ProviderOutput[]
 
 export const mutationDecision = {
   action: "invoke_capability", capabilityId: "write_fixture",
-  intent: "Write the requested document.",
   workingDirectory: ".",
 };
 

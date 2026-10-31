@@ -2,11 +2,7 @@ import WebSocket from "ws";
 import { assertInteractiveSession as assertGlobalInteractiveSession } from "../sessions/index.js";
 import { isAutomationSessionLockedError } from "../sessions/automation-session-origin.js";
 
-import { handleRunRequest } from "../runtime/request/handler.js";
-import type {
-  RequestHandlerOptions,
-  RunRequestMessage,
-} from "../runtime/request/contracts.js";
+import type { RunRequestMessage } from "../runtime/request/contracts.js";
 import type { RuntimeRequestHandler } from "../runtime/composition.js";
 import { traceDebug } from "../runtime/observability/debug-logger.js";
 import { normalizeRuntimeId } from "../shared/agent.js";
@@ -15,6 +11,8 @@ import { loadDotEnvFile } from "../shared/load-dotenv.js";
 import { handleRuntimeAdminBridgeMessage } from "./runtime-admin.js";
 import { handleRuntimeReplayBridgeMessage } from "./runtime-replay.js";
 import { createBridgeRequestSteeringRegistry } from "./request-steering.js";
+import { publishRequestAdmissionFailure } from "./request-admission-failure.js";
+import { createBoundBridgeRequestHandler } from "./bound-request-handler.js";
 import type {
   EventSinkFactory,
   ModelGatewayClient,
@@ -499,6 +497,7 @@ export function startAgentBridge(
         await requestSteering.close(requestId, steeringInbox);
       }
     } catch (error) {
+      publishRequestAdmissionFailure(currentWs, msg, error);
       trace("message.handle_failed", {
         connectionId: currentConnectionId,
         messageType,
@@ -656,35 +655,6 @@ export function startAgentBridge(
           resolve();
         });
         currentWs.close();
-      });
-    },
-  };
-}
-
-function createBoundBridgeRequestHandler(
-  options: Pick<
-    AgentBridgeOptions,
-    | "runtimeConfig"
-    | "eventSinkFactory"
-    | "modelGatewayClient"
-    | "sessionStore"
-    | "attachmentStore"
-    | "toolRegistry"
-  >,
-): RuntimeRequestHandler {
-  const environmentOptions: RequestHandlerOptions = {
-    runtimeConfig: options.runtimeConfig,
-    eventSinkFactory: options.eventSinkFactory,
-    modelGatewayClient: options.modelGatewayClient,
-    sessionStore: options.sessionStore,
-    attachmentStore: options.attachmentStore,
-    toolRegistry: options.toolRegistry,
-  };
-  return {
-    handle(ws, message, requestOptions = {}) {
-      return handleRunRequest(ws, message, {
-        ...environmentOptions,
-        ...requestOptions,
       });
     },
   };

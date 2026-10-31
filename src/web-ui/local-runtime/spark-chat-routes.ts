@@ -19,6 +19,7 @@ export class SparkChatRoutes {
     private readonly environment: (id: string) => RuntimeEnvironment,
     private readonly reads: WebSessionReadStates,
     private readonly notify?: WorkspaceChangeNotifier,
+    private readonly onRead?: (environmentId: string, sessionId: string) => void,
   ) {}
 
   async handle(input: SparkChatRouteRequest): Promise<boolean> {
@@ -39,6 +40,7 @@ export class SparkChatRoutes {
       const session = await ensureSparkSession(environment.services.sessions);
       if (readReceipt) {
         const readState = await this.reads.markVisible(input.environmentId, session.id, input.body?.visibleMessageIds, input.body?.readGeneration, input.body?.visibleMessages);
+        if (readState) this.onRead?.(input.environmentId, session.id);
         this.notify?.(input.environmentId, ["sessions"]);
         sendJson(input.response, 200, { ok: true, readState });
         return true;

@@ -46,7 +46,7 @@ export async function executeBoundWorkerCapability<TContext>(params: {
   currentHead: RoleCallLedgerHead;
   ledger: RoleCallLedger;
   adapter: WorkerCapabilityAdapter<TContext>;
-  intent: string;
+  intent?: string;
   authoringObjective?: string;
   controls: WorkerCapabilityControls;
   diagnostic: WorkerCapabilityDiagnosticContext;
@@ -73,7 +73,7 @@ export async function executeBoundWorkerCapability<TContext>(params: {
     call: params.call,
     ...(assignmentProvenance ? { assignmentProvenance } : {}),
     adapter: params.adapter,
-    intent: params.intent,
+    ...(params.intent !== undefined ? { intent: params.intent } : {}),
     ...(params.authoringObjective
       ? { authoringObjective: params.authoringObjective }
       : {}),
@@ -93,7 +93,7 @@ export async function executeBoundWorkerCapability<TContext>(params: {
     call: params.call,
     invocation: Object.freeze({
       adapter: params.adapter,
-      intent: params.intent,
+      ...(params.intent !== undefined ? { intent: params.intent } : {}),
       ...(params.authoringObjective
         ? { authoringObjective: params.authoringObjective }
         : {}),
@@ -115,7 +115,7 @@ export async function executeBoundWorkerCapabilityBatch<TContext>(params: {
   ledger: RoleCallLedger;
   invocations: readonly Readonly<{
     adapter: WorkerCapabilityAdapter<TContext>;
-    intent: string;
+    intent?: string;
     authoringObjective?: string;
     controls: WorkerCapabilityControls;
   }>[];
@@ -157,7 +157,7 @@ export async function executeBoundWorkerCapabilityBatch<TContext>(params: {
           call: params.call,
           ...(assignmentProvenance ? { assignmentProvenance } : {}),
           adapter: invocation.adapter,
-          intent: invocation.intent,
+          ...(invocation.intent !== undefined ? { intent: invocation.intent } : {}),
           ...(invocation.authoringObjective
             ? { authoringObjective: invocation.authoringObjective }
             : {}),

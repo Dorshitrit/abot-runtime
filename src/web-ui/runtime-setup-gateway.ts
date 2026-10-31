@@ -117,7 +117,7 @@ export class RuntimeSetupGateway {
     return {
       status: "restart_required",
       message:
-        "Configuration saved. An existing model gateway owns this address; restart that gateway to load its new configuration.",
+        `Configuration saved. Another process is listening at ${url.origin}. It may belong to a different ABot installation. For this installation, set modelGatewayUrl in local/runtime.config.json to an unused loopback address, such as http://127.0.0.1:3001, then try again. If MODEL_GATEWAY_URL is set, update it and restart this ABot instance.`,
     };
   }
 

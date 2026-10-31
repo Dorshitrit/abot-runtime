@@ -1,7 +1,10 @@
+import type { RuntimeMaintenanceClient } from "./runtime-web-client/runtime-maintenance.js";
+import type { ChatgptAccountRequests } from "./runtime-web-client/chatgpt-accounts.js";
 import type { MemoryEmbeddingConnectionInput } from "../../local-runtime/memory-embedding-connection-input.js";
 import type { StepTimeoutRequests } from "./runtime-web-client/step-timeout.js";
 import type { NotificationRequests } from "./runtime-web-client/notifications.js";
 import type { SparkChatRequests } from "./runtime-web-client/spark-chat.js";
+import type { ProjectChangesClient } from "./runtime-web-client/project-changes.js";
 import type { ProjectRequests } from "./runtime-web-client/projects.js";
 import type { ToolApprovalRequests } from "./runtime-web-client/tool-approvals.js";
 import type { ConversationFileClient } from "./runtime-web-client/conversation-files.js";
@@ -96,6 +99,7 @@ export declare function createRuntimeWebClient(options: {
   supportsNotifications: NotificationRequests["supportsNotifications"];
   listNotifications: NotificationRequests["listNotifications"];
   markNotificationsRead: NotificationRequests["markNotificationsRead"];
+  markAutomationReportRead: NotificationRequests["markAutomationReportRead"];
   saveNotificationPreferences: NotificationRequests["saveNotificationPreferences"];
   supportsToolApprovals: ToolApprovalRequests["supportsToolApprovals"];
   listToolApprovals: ToolApprovalRequests["listToolApprovals"];
@@ -112,6 +116,19 @@ export declare function createRuntimeWebClient(options: {
   ): Promise<Record<string, unknown>>;
   createSystemHostPairing(): Promise<Record<string, unknown>>;
   revokeSystemHostConnection(): Promise<Record<string, unknown>>;
+  supportsChatgptAccounts: ChatgptAccountRequests["supportsChatgptAccounts"];
+  listChatgptAccounts: ChatgptAccountRequests["listChatgptAccounts"];
+  startChatgptAttempt: ChatgptAccountRequests["startChatgptAttempt"];
+  retryChatgptAttempt: ChatgptAccountRequests["retryChatgptAttempt"];
+  getChatgptAttempt: ChatgptAccountRequests["getChatgptAttempt"];
+  cancelChatgptAttempt: ChatgptAccountRequests["cancelChatgptAttempt"];
+  disconnectChatgptAccount: ChatgptAccountRequests["disconnectChatgptAccount"];
+  acknowledgeChatgptPlan: ChatgptAccountRequests["acknowledgeChatgptPlan"];
+  listChatgptModels: ChatgptAccountRequests["listChatgptModels"];
+  supportsProjectChanges: ProjectChangesClient["supportsProjectChanges"];
+  loadProjectOperationChanges: ProjectChangesClient["loadProjectOperationChanges"];
+  loadProjectChanges: ProjectChangesClient["loadProjectChanges"];
+  loadProjectChangeDiff: ProjectChangesClient["loadProjectChangeDiff"];
   supportsProjects: ProjectRequests["supportsProjects"];
   inspectStepTimeout: StepTimeoutRequests["inspectStepTimeout"];
   increaseStepTimeout: StepTimeoutRequests["increaseStepTimeout"];
@@ -198,6 +215,9 @@ export declare function createRuntimeWebClient(options: {
     ConversationFileClient["openConversationFile"]
   >;
   conversationFileUrl: ConversationFileClient["conversationFileUrl"];
+  supportsRuntimeMaintenance: RuntimeMaintenanceClient["supportsRuntimeMaintenance"];
+  resetRuntimeSessions: RuntimeMaintenanceClient["resetRuntimeSessions"];
+  clearRuntimeLogs: RuntimeMaintenanceClient["clearRuntimeLogs"];
   getRuntimeStatus(environmentId?: string): Promise<Record<string, unknown>>;
   getRuntimeLogs(lines?: number, environmentId?: string): Promise<Record<string, unknown>>;
   getSystemHealth(): Promise<Record<string, unknown>>;
@@ -251,6 +271,7 @@ export declare function createRuntimeWebClient(options: {
   ): Promise<Record<string, unknown>>;
   fetchRequestEvents(options: {
     requestId: string;
+    sessionId?: string;
     afterSeq?: number;
     environmentId?: string;
   }): Promise<unknown[]>;

@@ -171,13 +171,11 @@ export function supervisionStagedFixture(
         return decision({
           action: "open_capability_scope",
           catalogGroupIds: ["other"],
-          acknowledgement: "Inspecting evidence.",
         });
       if (executionTurns <= 4)
         return decision({
           action: "invoke_capability",
           capabilityId: descriptor.capabilityId,
-          intent: "Inspect target.",
           selectionControls: { query: "same-observation" },
           ...(executionTurns === 2 ? { workingDirectory: "." } : {}),
         });

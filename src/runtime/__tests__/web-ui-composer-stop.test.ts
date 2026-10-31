@@ -184,7 +184,7 @@ test("reconnecting during Stop replays the active request and releases the compo
   h.conversationSession.subscribeSession("session-1");
   expect(h.sendRealtime).toHaveBeenLastCalledWith({
     type: "resume_request",
-    requestId: "request-1",
+    requestId: "request-1", sessionId: "session-1",
     environment: "dev",
     afterSeq: 17,
   });

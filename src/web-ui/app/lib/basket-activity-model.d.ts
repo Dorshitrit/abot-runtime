@@ -6,5 +6,6 @@ export interface BasketActivity {
 }
 
 export declare function isBasketStatusEvent(event: unknown): boolean;
+export declare function isBasketDiscoveryEvent(event: unknown): boolean;
 export declare function hasSupervisorBasketActivity(events: unknown[]): boolean;
 export declare function projectBasketActivityEvent(event: unknown): BasketActivity | null;

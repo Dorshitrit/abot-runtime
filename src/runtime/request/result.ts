@@ -6,7 +6,7 @@ export type {
 } from "./approval-continuation.js";
 
 export type RequestObservation = {
-  observationMeta: SessionMessageObservationMeta;
+  observationMeta?: SessionMessageObservationMeta;
   observationContent: string;
 };
 

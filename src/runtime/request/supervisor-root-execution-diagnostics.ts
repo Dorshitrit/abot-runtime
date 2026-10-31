@@ -16,6 +16,7 @@ export type SupervisorRootFailureStage =
   | "recall_memory"
   | "publish_title"
   | "publish_acknowledgement"
+  | "publish_interaction"
   | "apply_root_transition"
   | "invoke_child"
   | "project_resume"

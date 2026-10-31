@@ -1,20 +1,24 @@
 import { setImmediate } from "node:timers/promises";
 import {
-  InformationBasketError, type BasketReadInput, type BasketReadResult, type BasketSearchCandidate,
+  InformationBasketError, type BasketMatchMode, type BasketReadInput, type BasketReadResult, type BasketSearchCandidate,
   type BasketSearchInput, type BasketSearchResult, type InformationBasketOptions,
 } from "./contracts.js";
 import { embedBasketTexts } from "./embedding.js";
 import type { BasketIndexedChunk, BasketSnapshot, StoredBasketSource } from "./index-records.js";
 import { BASKET_LIMITS } from "./limits.js";
 import { basketProfileSignature } from "./profile-binding.js";
+import { basketSourceNameMatchRank } from "./source-name-matching.js";
 import type { BasketStateOwner } from "./state-owner.js";
+
+const MATCH_MODE_MINIMUM_SIMILARITY: Readonly<Record<BasketMatchMode, number>> = Object.freeze({
+  flexible: 0.3, balanced: 0.6, strict: 0.9,
+});
 
 const empty = (): BasketSearchResult => ({ status: "empty", sources: [], omittedCount: 0 });
 const unavailable = (reason: string): BasketSearchResult => ({ status: "unavailable", sources: [], omittedCount: 0, reason });
 
-function hasCurrentBasketSearchSettings(state: BasketSnapshot, settingsRevision: number): boolean {
-  if (!state.settings.enabled) return false;
-  return state.settings.revision === settingsRevision;
+function hasCurrentBasketSearchSettings(state: BasketStateOwner, version: number): boolean {
+  return state.retrievalSettingsVersion() === version;
 }
 function hasCurrentBasketSearchSource(state: BasketSnapshot, candidate: BasketSearchCandidate): boolean {
   return state.sources.some(source => source.sourceId === candidate.sourceId
@@ -26,26 +30,45 @@ function normalizedSimilarity(left: readonly number[], right: readonly number[])
   for (let i = 0; i < left.length; i++) result += left[i]! * right[i]!;
   return Math.max(-1, Math.min(1, result));
 }
+function canIncludeBasketSearchChunk(nameMatchRank: number, score: number, minimumSimilarity: number): boolean {
+  if (nameMatchRank > 0) return true;
+  return score >= minimumSimilarity;
+}
+
+function compareBasketSourceCandidates(
+  left: BasketSearchCandidate, right: BasketSearchCandidate, nameMatchRanks: ReadonlyMap<string, number>,
+): number {
+  const nameOrder = (nameMatchRanks.get(right.sourceId) ?? 0) - (nameMatchRanks.get(left.sourceId) ?? 0);
+  if (nameOrder !== 0) return nameOrder;
+  const scoreOrder = right.score - left.score;
+  if (scoreOrder !== 0) return scoreOrder;
+  return left.sourceId.localeCompare(right.sourceId);
+}
+
 async function rankBasketSources(
   sources: readonly StoredBasketSource[],
   query: readonly number[],
   signal: AbortSignal,
+  minimumSimilarity: number,
+  queryText: string,
 ): Promise<readonly BasketSearchCandidate[]> {
   const candidates: BasketSearchCandidate[] = [];
+  const nameMatchRanks = new Map<string, number>();
   let visited = 0;
   for (const source of sources) {
+    const nameMatchRank = basketSourceNameMatchRank(queryText, source.displayName);
     const matches: { chunk: BasketIndexedChunk; score: number }[] = [];
     for (const chunk of source.index!.chunks) {
       signal.throwIfAborted();
       const score = normalizedSimilarity(query, chunk.vector);
-      if (score >= BASKET_LIMITS.minimumSimilarity) {
-        matches.push({ chunk, score });
-        matches.sort((a, b) => b.score - a.score || a.chunk.startChar - b.chunk.startChar);
-        if (matches.length > 3) matches.pop();
-      }
       if (++visited % 128 === 0) await setImmediate();
+      if (!canIncludeBasketSearchChunk(nameMatchRank, score, minimumSimilarity)) continue;
+      matches.push({ chunk, score });
+      matches.sort((a, b) => b.score - a.score || a.chunk.startChar - b.chunk.startChar);
+      if (matches.length > 3) matches.pop();
     }
     if (!matches.length) continue;
+    nameMatchRanks.set(source.sourceId, nameMatchRank);
     candidates.push(Object.freeze({
       sourceId: source.sourceId, expectedRevision: source.revision,
       displayName: source.displayName, path: source.path, score: matches[0]!.score,
@@ -54,7 +77,7 @@ async function rankBasketSources(
       }))),
     }));
   }
-  return candidates.sort((a, b) => b.score - a.score || a.sourceId.localeCompare(b.sourceId));
+  return candidates.sort((a, b) => compareBasketSourceCandidates(a, b, nameMatchRanks));
 }
 
 export function createBasketSearch(options: InformationBasketOptions & {
@@ -73,6 +96,7 @@ export function createBasketSearch(options: InformationBasketOptions & {
       return unavailable("basket_search_limit_invalid");
     const signal = AbortSignal.any([input.abortSignal, AbortSignal.timeout(BASKET_LIMITS.searchTimeoutMs)]);
     try {
+      const settingsVersion = options.state.retrievalSettingsVersion();
       const snapshot = await options.state.read();
       if (!snapshot.settings.enabled) return unavailable("basket_disabled");
       if (!snapshot.sources.length) return empty();
@@ -86,13 +110,14 @@ export function createBasketSearch(options: InformationBasketOptions & {
       const compatible = ready.filter(source => source.index!.modelFingerprint === embedded.modelFingerprint
         && source.index!.dimensions === embedded.dimensions);
       if (!compatible.length) return unavailable("basket_embedding_binding_changed");
-      const ranked = await rankBasketSources(compatible, embedded.vectors[0]!, signal);
+      const ranked = await rankBasketSources(compatible, embedded.vectors[0]!, signal,
+        MATCH_MODE_MINIMUM_SIMILARITY[snapshot.settings.matchMode], query);
       // Only verified candidates count as matches, including omitted-result counts.
       const candidates = ranked.slice(0, BASKET_LIMITS.maxSearchSources);
       const candidateIds = new Set(candidates.map(candidate => candidate.sourceId));
       await options.validateSources(compatible.filter(source => candidateIds.has(source.sourceId)), signal);
       const current = await options.state.read();
-      if (!hasCurrentBasketSearchSettings(current, snapshot.settings.revision))
+      if (!hasCurrentBasketSearchSettings(options.state, settingsVersion))
         return unavailable("basket_search_superseded");
       const remaining = candidates.filter(candidate => hasCurrentBasketSearchSource(current, candidate));
       const selected: BasketSearchCandidate[] = [];
@@ -112,7 +137,7 @@ export function createBasketSearch(options: InformationBasketOptions & {
       }
       signal.throwIfAborted();
       const finalSnapshot = await options.state.read();
-      if (!hasCurrentBasketSearchSettings(finalSnapshot, snapshot.settings.revision))
+      if (!hasCurrentBasketSearchSettings(options.state, settingsVersion))
         return unavailable("basket_search_superseded");
       const finalSources = selected.filter(candidate => hasCurrentBasketSearchSource(finalSnapshot, candidate));
       const finalRankedCount = remaining.filter(candidate => hasCurrentBasketSearchSource(finalSnapshot, candidate)).length;

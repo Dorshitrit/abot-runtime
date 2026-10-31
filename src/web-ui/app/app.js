@@ -1,3 +1,4 @@
+import { reconcileRuntimeSessionReset } from "./controllers/runtime-session-reset-view.js";
 import { createAppearanceFeature } from "./appearance-feature.js";
 import { createStepTimeoutFeature } from "./step-timeout-feature.js";
 import { createComposerFeature } from "./controllers/composer-feature.js";
@@ -75,6 +76,16 @@ let skills;
 let informationBasket;
 let stepTimeouts;
 const operationsController = createOperationsController({
+  onSessionsReset: (result, environmentId) => reconcileRuntimeSessionReset({
+    result, environmentId, getEnvironmentId: selectedEnvironmentId, state, preferences,
+    clearSessionDraft: (scope, deleted) => composerWorkspace.resetSessionDraft(scope, deleted),
+    preserveSessionDraft: (scope) => composerWorkspace.preserveResetDraft(scope),
+    restoreSessionDraft: (sessionId) => composerWorkspace.restoreResetDraft(sessionId),
+    refreshComposer: () => composerFeature.changed(),
+    clearCurrentSession: () => conversationSession.clearCurrentSessionView(),
+    forgetDeletedSessionPins: (ids) => sessionController.forgetDeletedSessionPins(ids),
+    loadSessions: () => conversationSession.loadSessions(), refreshDashboard: () => dashboardFeature.refresh(),
+  }),
   onSummaryChange: () => configWorkspace?.syncSummary(),
   dom,
   client: runtimeClient,
@@ -636,6 +647,7 @@ function rejectPendingSteers(reason) {
 
 function handleRealtimeMessage(message) {
   observeWorkspaceStateChange(message);
+  operationsController.observeRealtimeMessage(message);
   dashboardFeature?.handleRealtime(message);
   schedulesFeature?.handleRealtime(message);
   passiveLearning?.handleRealtime(message);
@@ -661,6 +673,7 @@ async function loadSessions() {
 }
 
 async function restoreLastSession() {
+  if (composerWorkspace.restoreResetDraft(preferences.sessionIdForEnvironment(selectedEnvironmentId()))) return;
   return conversationSession.restoreLastSession();
 }
 

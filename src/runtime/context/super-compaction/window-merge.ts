@@ -1,9 +1,10 @@
+import type { CompactionProgressObserver } from "../../model/context-compaction-progress.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { BoundRequestModelInvocationContext } from "../../request/contracts.js";
 import type { SemanticCompactionSourceSlice } from "../semantic-compaction/chunking.js";
 import type { SemanticCompactionSource } from "../semantic-compaction/contracts.js";
 import type { SuperCompactionDerivedContext } from "./capsule.js";
-import { invokeSuperCompactionStageText } from "./model-call.js";
+import { doesSuperCompactionStageFit, invokeSuperCompactionStageText } from "./model-call.js";
 
 export type SuperCompactionWindowDraft = Readonly<{
   range: SemanticCompactionSourceSlice["range"];
@@ -21,12 +22,14 @@ type MergeNode = Readonly<{
 
 type MergeParams = Readonly<{
   request: BoundRequestModelInvocationContext;
+  onProgress?: CompactionProgressObserver;
   currentRequest: string;
   assignment: Readonly<Record<string, unknown>>;
   authority?: "prior_conversation" | "settled_evidence";
   source: SemanticCompactionSource;
   previousContinuation?: string;
   maxCharacters: number;
+  continuationMaxCharacters?: number;
   boundSteeringVersion?: number;
   drafts: readonly SuperCompactionWindowDraft[];
 }>;
@@ -66,13 +69,14 @@ export async function mergeSuperCompactionWindows(params: MergeParams): Promise<
         next.push(left);
         continue;
       }
+      params.onProgress?.({ step: "merging", completedBytes: params.drafts.at(-1)!.range.endByteExclusive, totalBytes: params.drafts.at(-1)!.range.totalBytes });
       next.push(await mergeAdjacentDrafts(params, left, right));
     }
     nodes = Object.freeze(next);
   }
   const final = nodes[0]!;
   return Object.freeze({
-    digest: `Supplied source bytes: [${final.range.startByte},${final.range.endByteExclusive})/${final.range.totalBytes}.\n${final.text}`,
+    digest: mergedSourceDigest(final.range, final.text),
     baseMessages: final.baseMessages,
     derived: final.derived,
   });
@@ -125,18 +129,46 @@ async function mergeAdjacentDrafts(
       }),
     }),
   ]);
-  const text = await invokeSuperCompactionStageText({
-    request: params.request,
-    stage: "merge",
-    baseMessages,
-    maxCharacters: params.maxCharacters,
-    boundSteeringVersion: params.boundSteeringVersion,
-  });
+  const joined = [left, right].map((node) =>
+    `Derived range [${node.range.startByte},${node.range.endByteExclusive})/${node.range.totalBytes}:\n${node.text}`,
+  ).join("\n");
+  let text = joined;
+  if (!await canRetainJoinedDrafts(params, range, joined, baseMessages))
+    text = await invokeSuperCompactionStageText({
+      request: params.request,
+      stage: "merge",
+      baseMessages,
+      maxCharacters: params.maxCharacters,
+      boundSteeringVersion: params.boundSteeringVersion,
+    });
   return Object.freeze({
     range,
     text,
     baseMessages,
     derived: Object.freeze({ content: text }),
+  });
+}
+
+function mergedSourceDigest(range: MergeNode["range"], text: string): string {
+  return `Supplied source bytes: [${range.startByte},${range.endByteExclusive})/${range.totalBytes}.\n${text}`;
+}
+
+/** Retain complete derived evidence only within its writing and model-input budgets. */
+async function canRetainJoinedDrafts(
+  params: MergeParams,
+  range: MergeNode["range"],
+  text: string,
+  baseMessages: readonly ChatMessage[],
+): Promise<boolean> {
+  if (mergedSourceDigest(range, text).length > params.maxCharacters) return false;
+  const input = { request: params.request, baseMessages, maxCharacters: params.maxCharacters };
+  if (!await doesSuperCompactionStageFit({ ...input, stage: "merge" })) return false;
+  if (params.continuationMaxCharacters === undefined) return true;
+  return doesSuperCompactionStageFit({
+    ...input,
+    stage: "continuation",
+    maxCharacters: params.continuationMaxCharacters,
+    derived: { content: text },
   });
 }
 

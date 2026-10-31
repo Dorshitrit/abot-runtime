@@ -82,8 +82,8 @@ test("a newly discovered streaming dependency is resumed instead of releasing it
   await f.controller.openSession(scope.sessionId);
   expect(f.state.activeRequestId).toBe("waiting");
   expect(f.sendRealtime).toHaveBeenCalledWith({ type: "subscribe_request", requestId: "waiting" });
-  expect(f.sendRealtime).toHaveBeenCalledWith({ type: "resume_request", requestId: "waiting", afterSeq: 0, environment: "prod" });
-  expect(f.client.fetchRequestEvents).toHaveBeenCalledExactlyOnceWith({ requestId: "waiting", afterSeq: 0, environmentId: "prod" });
+  expect(f.sendRealtime).toHaveBeenCalledWith({ type: "resume_request", requestId: "waiting", sessionId: "chat", afterSeq: 0, environment: "prod" });
+  expect(f.client.fetchRequestEvents).toHaveBeenCalledExactlyOnceWith({ requestId: "waiting", sessionId: "chat", afterSeq: 0, environmentId: "prod" });
   expect(f.drainQueuedMessage).not.toHaveBeenCalled();
   expect(f.state.messages[0]?.id).toBe("visible");
 });

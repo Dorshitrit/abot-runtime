@@ -637,7 +637,7 @@ async function readBoundedRegularFile(absolutePath, options) {
   try {
     handle = await (0, import_promises2.open)(
       absolutePath,
-      import_node_fs.constants.O_RDONLY | import_node_fs.constants.O_NOFOLLOW
+      import_node_fs.constants.O_RDONLY | import_node_fs.constants.O_NOFOLLOW | import_node_fs.constants.O_NONBLOCK
     );
     const before = await handle.stat({ bigint: true });
     if (!before.isFile()) {

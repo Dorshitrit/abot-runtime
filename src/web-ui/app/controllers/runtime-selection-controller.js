@@ -1,3 +1,4 @@
+import { modelProfileLabels } from "../lib/model-profile-labels.js";
 import { escapeAttribute, escapeHtml, textOf } from "../lib/text-format.js";
 import { normalizeToolPermissionMode } from "../lib/tool-permission-mode.js";
 import { createReasoningModeController } from "./reasoning-mode-controller.js";
@@ -210,10 +211,12 @@ export function createRuntimeSelectionController({
       renderAgentMode();
       return;
     }
+    const labels = modelProfileLabels(state.modelProfiles);
     for (const profile of state.modelProfiles) {
       const option = document.createElement("option");
       option.value = profile.id;
-      option.textContent = profile.label || profile.id;
+      option.textContent = labels.get(profile.id);
+      if (profile.provider === "openai-chatgpt") option.dataset.authentication = "chatgpt";
       dom.modelSelect.appendChild(option);
     }
     if (state.defaultModelProfileId)

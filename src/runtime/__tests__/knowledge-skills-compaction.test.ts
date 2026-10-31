@@ -79,7 +79,8 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     fixture.forceCompaction();
     await fixture.runDecision();
     const compactedCalls = fixture.modelInputs.slice(startCompaction);
-    const expectedCompactionSteps = policy === "execution-agent-v1" ? ["context.compact"] : SUPER_COMPACTION_STEPS;
+    const expectedCompactionSteps = policy === "execution-agent-v1" ? ["context.compact"]
+      : SUPER_COMPACTION_STEPS.filter((step) => step !== "super.compact.merge");
     expect(new Set(compactedCalls.filter(({ step }) => isCompactionStep(step)).map(({ step }) => step)))
       .toEqual(new Set(expectedCompactionSteps));
     expect(fixture.measuredInputs.some(({ inputTokens }) => inputTokens === 63_500)).toBe(true);

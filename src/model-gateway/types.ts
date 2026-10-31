@@ -223,6 +223,8 @@ export type ModelGatewayRequest = {
   text?: string;
   prompt?: string;
   messages?: unknown;
+  /** Request-local exclusive prefix boundary in messages; never persisted in history. */
+  promptCacheBoundaryBeforeMessageIndex?: number;
   debugRequestId?: string;
   agentMode?: AgentMode | string;
   taskType?: string;
@@ -240,6 +242,7 @@ export type ModelGatewayInputTokenCountParams = {
   provider: ModelProvider;
   text?: string;
   messages?: unknown;
+  promptCacheBoundaryBeforeMessageIndex?: number;
   agentMode: AgentMode;
   taskType?: string;
   modelStep?: ModelStep;
@@ -306,5 +309,10 @@ export type ModelTokenUsage = {
   outputTokens: number;
   totalTokens: number;
   cachedInputTokens?: number;
+  cacheWriteInputTokens?: number;
+  cacheWriteInputTokensDetails?: {
+    ttl30mTokens: number;
+    ttl12hTokens: number;
+  };
   reasoningTokens?: number;
 };

@@ -684,7 +684,7 @@ describe("model gateway server logging", () => {
               "",
               'data: {"type":"response.completed","response":{}}',
               "",
-            ].join("\n"),
+            ].join("\n") + "\n",
             {
               status: 200,
               headers: {

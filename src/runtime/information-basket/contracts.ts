@@ -1,4 +1,5 @@
 import type { ModelGatewayEmbeddingResult } from "../../model-gateway/types.js";
+import type { RuntimeAttachmentReference, RuntimeAttachmentStore } from "../attachments/store.js";
 import type { ModelGatewayClient, RuntimeConfig } from "../ports.js";
 
 export type BasketSourceStatus =
@@ -16,9 +17,13 @@ export type BasketSource = Readonly<{
   reason: string | null;
 }>;
 
+export type BasketMatchMode = "flexible" | "balanced" | "strict";
+
 export type BasketSettings = Readonly<{
   revision: number;
   enabled: boolean;
+  indexChatUploads: boolean;
+  matchMode: BasketMatchMode;
   embeddingProfileId: string | null;
 }>;
 
@@ -44,6 +49,8 @@ export type BasketView = Readonly<{
 export type BasketSettingsChange = Readonly<{
   expectedRevision: number;
   enabled: boolean;
+  indexChatUploads?: boolean;
+  matchMode?: BasketMatchMode;
   embeddingProfileId: string | null;
 }>;
 
@@ -121,7 +128,15 @@ export type BasketDiscoveryChange = Readonly<{
   readySourcesAdded: boolean;
 }>;
 
+export type BasketChatUpload = Readonly<{
+  settingsRevision: number;
+  sessionId: string;
+  attachment: RuntimeAttachmentReference;
+}>;
+
 export type InformationBasketService = Readonly<{
+  captureChatUpload(): Promise<number | null>;
+  registerChatUpload(input: BasketChatUpload): Promise<void>;
   isReady(): boolean;
   list(input?: Readonly<{ verifySources: boolean; abortSignal?: AbortSignal }>): Promise<BasketView>;
   updateSettings(input: BasketSettingsChange): Promise<BasketView>;
@@ -145,6 +160,7 @@ export type InformationBasketOptions = Readonly<{
   config: RuntimeConfig;
   models: Pick<ModelGatewayClient, "embed">;
   onChanged?: () => void;
+  attachments?: Pick<RuntimeAttachmentStore, "validateAttachmentReferences" | "resolveAttachment">;
 }>;
 
 export class InformationBasketError extends Error {

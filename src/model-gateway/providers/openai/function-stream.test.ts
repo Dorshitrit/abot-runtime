@@ -45,7 +45,7 @@ describe.each(["raw", "chat"] as const)("native function failures: %s", (endpoin
     ["provider failure", { type: "response.failed", response: { error: { message: "provider failure" } } }, "provider failure"],
     ["provider error", { type: "error", error: { message: "transport failed" } }, "transport failed"],
     ["output limit", { type: "response.incomplete", response: { output: [functionCall], incomplete_details: { reason: "max_output_tokens" } } }, "max_output_tokens"],
-    ["refusal", terminal([{ type: "message", content: [{ type: "refusal", refusal: "denied" }] }]), "exactly one call"],
+    ["refusal", terminal([{ type: "message", content: [{ type: "refusal", refusal: "denied" }] }]), "openai response refused"],
     ["EOF", undefined, "not completed"],
     ["DONE sentinel", "[DONE]", "not completed"],
   ])("rejects %s without emitting provisional controls or success", async (_name, event, message) => {

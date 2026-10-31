@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 
 import type {
@@ -28,6 +28,8 @@ export type RuntimeAttachmentResolution = {
 };
 
 export type RuntimeAttachmentStore = {
+  /** Enumerates stored owners, including uploads made before a session was persisted. */
+  listSessionAttachmentOwners?: () => Promise<string[]>;
   saveAttachment: (
     input: RuntimeAttachmentSaveInput,
   ) => Promise<RuntimeAttachmentReference>;
@@ -198,6 +200,19 @@ export function createFileAttachmentStore(
   };
 
   return {
+    async listSessionAttachmentOwners(): Promise<string[]> {
+      try {
+        const entries = await readdir(rootDir, { withFileTypes: true });
+        return entries.filter(entry => entry.isDirectory()).map(entry => {
+          assertSafeOwnerSegment(entry.name);
+          return entry.name;
+        }).sort();
+      } catch (error) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
+        throw error;
+      }
+    },
+
     async saveAttachment(
       input: RuntimeAttachmentSaveInput,
     ): Promise<RuntimeAttachmentReference> {

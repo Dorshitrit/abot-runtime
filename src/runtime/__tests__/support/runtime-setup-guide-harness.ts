@@ -37,6 +37,7 @@ export function createGuideHarness(
       "provider",
       "model-id",
       "context-window",
+      "prompt-cache",
       "ollama-base-url",
       "api-key",
       "embedding-provider",
@@ -211,6 +212,10 @@ export function createGuideHarness(
     open,
     changeProvider: (value: string) =>
       dispatch("change", { runtimeSetupField: "provider" }, value),
+    inputPromptCache: (value: boolean) => {
+      Object.assign(fields["prompt-cache"]!, { type: "checkbox", checked: value });
+      dispatch("input", { runtimeSetupField: "prompt-cache" });
+    },
     inputModel: (value: string) =>
       dispatch("input", { runtimeSetupField: "model-id" }, value),
     inputContextWindow: (value: string) =>

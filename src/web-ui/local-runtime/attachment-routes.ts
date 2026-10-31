@@ -1,3 +1,4 @@
+import { captureAttachmentResourceRegistration } from "./attachment-resource-registration.js";
 import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -89,6 +90,7 @@ export class LocalAttachmentRoutes {
       req.resume();
       return;
     }
+    const registerResource = await captureAttachmentResourceRegistration(req, environment.services.informationBasket);
     let body: Buffer;
     try {
       body = await readBody(req, { maxBytes: MAX_ATTACHMENT_UPLOAD_BYTES });
@@ -111,6 +113,7 @@ export class LocalAttachmentRoutes {
       bytes: body,
       ...(fileName ? { name: fileName } : {}),
     });
+    await registerResource?.(attachment, sessionId);
     sendJson(res, 200, { ok: true, attachment });
   }
 

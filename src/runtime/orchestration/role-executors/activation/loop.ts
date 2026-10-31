@@ -311,6 +311,7 @@ export class RoleActivationLoop<TContext, TValue> {
     }
     traceRoleExecutorCompleted(activation.diagnostic, {
       outcome: result.outcome,
+      ...(result.steeringVersion !== undefined ? { steeringVersion: result.steeringVersion } : {}),
       summaryLength: result.summary.length,
       hasValue: result.value !== undefined,
       turnCount,
@@ -336,6 +337,9 @@ export class RoleActivationLoop<TContext, TValue> {
       expectedHead: activation.before,
       roleId: result.roleId,
       objective: result.objective,
+      ...(result.workerSteeringVersion !== undefined
+        ? { workerSteeringVersion: result.workerSteeringVersion }
+        : {}),
       ...(result.workerCapabilityScope
         ? { workerCapabilityScope: result.workerCapabilityScope }
         : {}),

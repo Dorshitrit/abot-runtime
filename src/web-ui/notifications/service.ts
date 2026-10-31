@@ -2,6 +2,7 @@ import type { RuntimeConfig } from "../../runtime/ports.js";
 import { assertValidSessionId } from "../../sessions/record/rules.js";
 import { loadSessionFile } from "../../sessions/session-store.js";
 import type {
+  AutomationReportRead,
   NotificationDelivery,
   NotificationDesktopState,
   NotificationListQuery,
@@ -9,9 +10,11 @@ import type {
   NotificationReadChange,
   WebNotification,
 } from "./contracts.js";
+import { approvalNotificationKey, automationNotificationIdentity, notificationIdentity } from "./identity.js";
 import { NotificationDeliveryQueue } from "./delivery-queue.js";
 import { projectNotificationEvent } from "./event-projection.js";
 import { WebNotificationStore, notificationStorePath } from "./store.js";
+import { isReplyReadCandidate, synchronizeReplyNotifications, type NotificationReadEvidence } from "./reply-read-sync.js";
 
 type NotificationEnvironment = { services: { config: RuntimeConfig } };
 export type NotificationServiceOptions = {
@@ -25,6 +28,7 @@ export type NotificationServiceOptions = {
     signal: AbortSignal,
   ): Promise<NotificationDelivery>;
   now?: () => number;
+  readEvidence?: NotificationReadEvidence;
 };
 
 function isSuppressedReply(
@@ -85,7 +89,9 @@ export class WebNotificationService {
     });
     const existing = this.stores.get(path);
     if (existing) return existing;
-    const store = new WebNotificationStore(path, environmentId);
+    const store = new WebNotificationStore(path, environmentId, {
+      now: this.now, onPruned: () => this.options.changed(environmentId),
+    });
     const opening = this.reconcileInterruptedDelivery(store).catch((error) => {
       this.stores.delete(path);
       throw error;
@@ -129,6 +135,7 @@ export class WebNotificationService {
       delivery: { status: shouldDeliver ? "pending" : "disabled" },
     });
     if (!result.created) return;
+    if (isReplyReadCandidate(item)) await this.reconcileReplyReads(item.environmentId, item.sessionId);
     this.options.changed(item.environmentId);
     if (!shouldDeliver) return;
     void this.deliveries
@@ -162,8 +169,11 @@ export class WebNotificationService {
   }
 
   private async deliver(store: WebNotificationStore, item: WebNotification) {
+    if (isReplyReadCandidate(item)) await this.reconcileReplyReads(item.environmentId, item.sessionId);
+    const current = await store.get(item.id);
+    if (!current) return;
     const preferences = await store.getPreferences();
-    const delivery = await this.desktopOutcome(item, preferences);
+    const delivery = await this.desktopOutcome(current, preferences);
     await store.updateDelivery(item.id, delivery);
     this.options.changed(item.environmentId);
   }
@@ -175,8 +185,48 @@ export class WebNotificationService {
     );
   }
 
-  list = async (environmentId: string, query?: NotificationListQuery) =>
-    (await this.store(environmentId)).list(query);
+  private async reconcileReplyReads(environmentId: string, sessionId?: string): Promise<void> {
+    if (!this.options.readEvidence) return;
+    const store = await this.store(environmentId);
+    const updated = await synchronizeReplyNotifications(store, environmentId, this.options.readEvidence, sessionId);
+    if (updated) this.options.changed(environmentId);
+  }
+
+  observeRead = (environmentId: string, sessionId: string): void => {
+    if (this.abort.signal.aborted) return;
+    this.queue = this.queue
+      .then(() => this.reconcileReplyReads(environmentId, sessionId))
+      .catch((error) => this.reportFailure(environmentId, error));
+  };
+
+  observeApprovalDecision = (decision: {
+    environmentId: string; requestId: string; approvalId: string;
+  }): void => {
+    if (this.abort.signal.aborted) return;
+    const { environmentId, requestId, approvalId } = decision;
+    const id = notificationIdentity(environmentId, "approval", approvalNotificationKey(requestId, approvalId));
+    this.queue = this.queue
+      .then(() => this.markSourceRead(environmentId, [id]))
+      .then(() => undefined)
+      .catch((error) => this.reportFailure(environmentId, error));
+  };
+
+  markAutomationReportRead = (environmentId: string, report: AutomationReportRead) => {
+    const phases = report.phase === "finished" ? ["started", "finished"] as const : ["started"] as const;
+    return this.markSourceRead(environmentId,
+      phases.map((phase) => automationNotificationIdentity(environmentId, report.runId, phase)));
+  };
+
+  private async markSourceRead(environmentId: string, ids: string[]) {
+    const result = await (await this.store(environmentId)).markSourceRead(ids, this.now());
+    if (result.updated) this.options.changed(environmentId);
+    return result;
+  }
+
+  list = async (environmentId: string, query?: NotificationListQuery) => {
+    await this.reconcileReplyReads(environmentId);
+    return (await this.store(environmentId)).list(query);
+  };
 
   desktop = (_environmentId: string) => this.options.desktop();
 

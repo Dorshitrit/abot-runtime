@@ -17,6 +17,7 @@ export function createConversationStatus({
   documentRoot = document,
 }) {
   const entries = new Map();
+  let progressTimer = null;
 
   function refresh(message, node) {
     const model = present(buildConversationStatus({
@@ -26,9 +27,13 @@ export function createConversationStatus({
       connected: isConnected(),
     }));
     node.hidden = !model;
-    const label = model?.label || "";
+    const elapsed = model?.progressAt
+      ? ` · updated ${Math.max(0, Math.floor((Date.now() - model.progressAt) / 1000))}s ago`
+      : "";
+    const label = (model?.label || "") + elapsed;
     if (node.textContent !== label) node.textContent = label;
     node.classList.toggle("is-animated", Boolean(model?.animate));
+    return Boolean(model?.progressAt);
   }
 
   function createNode(message) {
@@ -50,15 +55,21 @@ export function createConversationStatus({
       `${-(Date.now() % SHIMMER_DURATION_MS)}ms`,
     );
     entries.set(message.id, { message, node });
-    refresh(message, node);
+    render();
     return node;
   }
 
   function render() {
-    for (const { message, node } of entries.values()) refresh(message, node);
+    clearTimeout(progressTimer);
+    let hasProgress = false;
+    for (const { message, node } of entries.values())
+      hasProgress = refresh(message, node) || hasProgress;
+    progressTimer = hasProgress ? setTimeout(render, 1000) : null;
   }
 
   function reset() {
+    clearTimeout(progressTimer);
+    progressTimer = null;
     entries.clear();
   }
 

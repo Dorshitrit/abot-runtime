@@ -15,17 +15,21 @@ import { resolveRequestSteeringInbox } from "../../request/request-steering.js";
 import { buildDegradedFinalizationModelInput } from "./input.js";
 import { parseDegradedFinalizationPhrasing } from "./parser.js";
 import { renderDegradedFinalization } from "./render.js";
+import { renderKnownDegradedFailure } from "./known-failure.js";
 
-/** Requires model-authored framing; failure never substitutes runtime prose. */
+/** Known failures use verified runtime wording; other failures retain model framing. */
 export async function runModelAuthoredDegradedFinalization(params: {
   request: RequestExecutionSeed & BoundRequestModelInvocationContext;
   input: DegradedFinalizationInput;
+  error?: unknown;
   maxResponseChars: number;
 }): Promise<string> {
   params.request.abortSignal.throwIfAborted();
   if (!isUsableDegradedResponseLimit(params.maxResponseChars)) {
     throw new Error("degraded_finalization_response_limit_invalid");
   }
+  const knownFailure = renderKnownDegradedFailure(params);
+  if (knownFailure) return knownFailure;
   const steering = resolveRequestSteeringInbox(
     params.request.requestSteering,
   ).snapshot();

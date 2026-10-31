@@ -55,7 +55,7 @@ async function refineEa(controls: Record<string, unknown>) {
     head, call: activeEvidenceCall(head), capabilities: [evidenceDescriptor],
     eligibleSessionArtifactPaths: [], steeringSnapshot: fixture.steering.snapshot(),
     invocations: [{
-      capabilityId: evidenceDescriptor.capabilityId, intent: "Read selected evidence.",
+      capabilityId: evidenceDescriptor.capabilityId,
       operationObjective: "Use the selected source exactly.",
       selectionControls: { path: "exact.txt" }, controlsEvidenceExecutionIds: [],
     }],

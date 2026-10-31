@@ -11,7 +11,7 @@ import { createAutomationSessionStore } from "./automation-session-store.js";
 import { saveDurableSessionFile } from "./durable-session-commit.js";
 import { cleanupSessionContinuations } from "./request-lifecycle/continuation-cleanup.js";
 import { createSessionRequestLifecycle } from "./request-lifecycle/service.js";
-import { projectSessionRequestLifecycle } from "./request-lifecycle/projection.js";
+import { SessionRequestReplayReader } from "./request-replay-reader.js";
 import type { SessionRequestLifecycleStore } from "./request-lifecycle/contracts.js";
 import {
   createAssistantConversationRecord,
@@ -30,14 +30,11 @@ import {
 import {
   clientVisibleMessages,
   compactRequestEvents,
-  getRequestFinalState,
   getSessionRequest,
   isSameMessageId,
-  normalizeAfterSeq,
   normalizeCursor,
   normalizeLimit,
   normalizeSessionTitle,
-  toClientReplayEvent,
   toEpochMs,
   toSessionListItem,
 } from "./record/projection.js";
@@ -80,6 +77,7 @@ import type {
   SessionMemoryCheckpointCommitResult,
 } from "./memory/contracts.js";
 import { resolveSessionMemoryCheckpointCommit } from "./memory/rules.js";
+import { clearSessionMemoryCheckpoints, setSessionMemoryCheckpoint } from "./memory/checkpoint-scope.js";
 import { assertSessionKindUnchanged, sessionKindCreationFields } from "./spark-session.js";
 import { appendAssistantInitiativeRecord } from "./assistant-initiative-append.js";
 import type { AgentMode } from "../shared/types.js";
@@ -97,6 +95,7 @@ function toIso(now: () => Date): string {
 export class SessionService {
   readonly requestLifecycle: SessionRequestLifecycleStore;
   private readonly sessionsDir: string;
+  private readonly requestReplay: SessionRequestReplayReader;
   private readonly automationAccess = createAutomationSessionAccess();
   private readonly automationSessions: ReturnType<typeof createAutomationSessionStore>;
 
@@ -109,6 +108,9 @@ export class SessionService {
   constructor(options: SessionServiceOptions = {}) {
     this.sessionsDir =
       options.sessionsDir || getDefaultSessionsDir(process.cwd());
+    this.requestReplay = new SessionRequestReplayReader(
+      this.sessionsDir, this.automationAccess.canAccess,
+    );
     this.now = options.now || (() => new Date());
     this.automationSessions = createAutomationSessionStore({
       sessionsDir: this.sessionsDir, now: this.now, access: this.automationAccess,
@@ -227,34 +229,12 @@ export class SessionService {
     return session ? projectSessionSnapshot(session, options) : null;
   }
 
-  async getRequestReplayById(
+  getRequestReplayById(
     requestId: string,
     afterSeq = 0,
+    sessionIdHint?: string,
   ): Promise<SessionRequestReplay | null> {
-    assertValidRequestId(requestId);
-    const normalizedAfterSeq = normalizeAfterSeq(afterSeq);
-    const sessions = await loadAllSessionFiles(this.sessionsDir);
-    for (const session of sessions) {
-      if (!this.automationAccess.canAccess(session.id, session)) continue;
-      const request = getSessionRequest(session, requestId);
-      if (!request) {
-        continue;
-      }
-
-      return {
-        requestId,
-        sessionId: request.sessionId,
-        ...(request.lifecycle
-          ? { lifecycle: projectSessionRequestLifecycle(request) }
-          : {}),
-        ...(request.generation ? { generation: request.generation } : {}),
-        events: request.events
-          .filter((event) => event.seqNo > normalizedAfterSeq)
-          .map(toClientReplayEvent),
-        finalState: getRequestFinalState(request),
-      };
-    }
-    return null;
+    return this.requestReplay.read(requestId, afterSeq, sessionIdHint);
   }
 
   async deleteSession(sessionId: string): Promise<boolean> {
@@ -357,7 +337,7 @@ export class SessionService {
       session.requests = [];
       session.contextEntries = [];
       session.artifactPaths = [];
-      delete session.sessionMemoryCheckpoint;
+      clearSessionMemoryCheckpoints(session);
       delete session.runtimeModeId;
       session.updatedAt = updatedAt;
       if (hadDurableRequests)
@@ -464,7 +444,7 @@ export class SessionService {
       if (!result.committed) {
         return result;
       }
-      session.sessionMemoryCheckpoint = result.checkpoint;
+      setSessionMemoryCheckpoint(session, result.checkpoint, command.scope);
       session.updatedAt = toIso(this.now);
       await saveSessionFile(this.sessionsDir, session);
       return result;
@@ -703,7 +683,7 @@ export class SessionService {
       }
       session.messages = nextMessages;
       session.messageCount = nextMessages.length;
-      delete session.sessionMemoryCheckpoint;
+      clearSessionMemoryCheckpoints(session);
       if (nextMessages.length === 0) {
         delete session.runtimeModeId;
       }

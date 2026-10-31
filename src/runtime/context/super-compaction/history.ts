@@ -5,7 +5,7 @@ import { foldSuperCompactionSource } from "./source-fold.js";
 /** Preserve the shared history source/commit contract with independent SUPER writing. */
 export function createSuperSessionMemoryCompactor(): SessionMemoryCompactor {
   return Object.freeze({
-    async compact({ request, previousSummary, turns }) {
+    async compact({ request, previousSummary, turns, onProgress }) {
       if (turns.length === 0)
         throw new Error("session_memory_compaction_turns_empty");
       const content = JSON.stringify({
@@ -20,8 +20,10 @@ export function createSuperSessionMemoryCompactor(): SessionMemoryCompactor {
           assistant: { id: assistant.id, content: assistant.content },
         })),
       });
+      onProgress?.({ step: "processing", unit: "turns", completedUnits: 0, totalUnits: turns.length });
       const folded = await foldSuperCompactionSource({
         request,
+        onProgress: (progress) => onProgress?.({ ...progress, unit: "turns", completedUnits: 0, totalUnits: turns.length }),
         currentRequest: "",
         authority: "prior_conversation",
         assignment: {
@@ -39,6 +41,7 @@ export function createSuperSessionMemoryCompactor(): SessionMemoryCompactor {
           Math.min(4_000, Math.floor(content.length * 0.4)),
         ),
       });
+      onProgress?.({ step: "processing", unit: "turns", completedUnits: turns.length, totalUnits: turns.length });
       return folded.digest;
     },
   });

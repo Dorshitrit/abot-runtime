@@ -1,6 +1,7 @@
 export interface ConversationStatus {
   label: string;
   animate: boolean;
+  progressAt?: number;
 }
 
 export declare function buildConversationStatus(input?: {

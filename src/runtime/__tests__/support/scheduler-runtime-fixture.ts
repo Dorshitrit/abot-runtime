@@ -100,7 +100,6 @@ export async function createSchedulerRuntimeFixture(
         text: JSON.stringify({
           decision: {
             action: "respond",
-            acknowledgement: "I will apply the conversation preference.",
           },
         }),
         meta: {},

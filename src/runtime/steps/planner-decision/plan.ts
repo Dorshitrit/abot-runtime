@@ -148,7 +148,10 @@ export function projectPlannerDecisionPlanContext(
       planId: plan.definition.planId,
       summary: plan.definition.summary,
       existingItemCount: plan.definition.items.length,
-      maxItems: remainingItemCapacity,
+      maxItems: Math.min(
+        remainingItemCapacity,
+        Math.max(0, head.policy.limits.maxCalls - plan.definition.items.length),
+      ),
     });
   }
   return Object.freeze({

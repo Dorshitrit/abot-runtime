@@ -1,21 +1,22 @@
 import { supportsProviderAddress } from "./runtime-setup-provider-options.js";
-import { parseSetupCommandOptions, requireSetupCommandProviderOptions, type SetupCommandOptions } from "./runtime-setup-command-options.js";
-import { constants } from "node:fs";
-import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { requirePackagedSetupProvider } from "../src/cli/setup-provider-validation.js";
+import { warnSavedOllamaModel } from "../src/cli/setup-model-warning.js";
+import {
+  parseSetupCommandOptions,
+  requireSetupCommandProviderOptions,
+  type SetupCommandOptions,
+} from "./runtime-setup-command-options.js";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { planInitRuntimeFiles } from "./init-runtime-plan.js";
+import { validateInitRuntimeFiles } from "./init-runtime-validation.js";
 import { initializeConfiguredRuntimeDirectories } from "./runtime-setup-directories.js";
 import {
-  buildModelConfig,
-  buildProviderConfig,
-  DEFAULT_ROOT_RESPONSE_METHODOLOGY_FILES,
-  isRecord,
   parseBaseUrl,
   parseProvider,
-  readJsonObject,
   resolveRuntimePackageRoot,
-  writeJsonObject,
   type Provider,
 } from "./runtime-setup-files.js";
 import {
@@ -35,23 +36,6 @@ type InitOptions = SetupCommandOptions & {
 type RunInitRuntimeOptions = Readonly<{
   commandMode?: RuntimeSetupCommandMode;
 }>;
-
-const ENV_FILE = ".env";
-const ENV_EXAMPLE_FILE = "examples/env.example";
-const LOCAL_CONFIG_FILE = "local/runtime.config.json";
-const LOCAL_REQUEST_RUNNER_CONFIG_FILE = "local/request-runner.config.json";
-const LOCAL_MODEL_CONFIG_FILE = "local/models/default.config.json";
-const CONFIG_EXAMPLE_FILE = join("examples", "runtime.config.example.json");
-const REQUEST_RUNNER_CONFIG_EXAMPLE_FILE = join(
-  "examples",
-  "request-runner.config.example.json",
-);
-const MODEL_CONFIG_EXAMPLE_FILE = join(
-  "examples",
-  "models",
-  "default.config.json",
-);
-const REQUIRED_ENV_LINE = "LLM_RUNTIME_CONFIG_FILE=local/runtime.config.json";
 
 function requireValue(argv: string[], index: number, flag: string): string {
   const value = argv[index + 1]?.trim();
@@ -136,7 +120,9 @@ function parseArgs(
     throw new Error("--model is required");
   }
   if (baseUrl && !supportsProviderAddress(provider)) {
-    throw new Error("--base-url is supported only with --provider ollama or llamacpp");
+    throw new Error(
+      "--base-url is supported only with --provider ollama or llamacpp",
+    );
   }
 
   requireSetupCommandProviderOptions(provider, shared);
@@ -164,169 +150,29 @@ function printHelp(commandMode: RuntimeSetupCommandMode): void {
   );
 }
 
-async function exists(path: string): Promise<boolean> {
-  try {
-    await access(path, constants.F_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function writeIfMissing(params: {
-  sourcePath: string;
-  targetPath: string;
-  force: boolean;
-}): Promise<"created" | "overwritten" | "kept"> {
-  const targetExists = await exists(params.targetPath);
-  if (targetExists && !params.force) {
-    return "kept";
-  }
-  await mkdir(dirname(params.targetPath), { recursive: true });
-  await copyFile(params.sourcePath, params.targetPath);
-  return targetExists ? "overwritten" : "created";
-}
-
-function ensureEnvLineContent(raw: string): string {
-  const lines = raw.split(/\r?\n/);
-  const hasConfigLine = lines.some((line) =>
-    line.trim().startsWith("LLM_RUNTIME_CONFIG_FILE="),
-  );
-  if (hasConfigLine) {
-    return raw.endsWith("\n") ? raw : `${raw}\n`;
-  }
-  const terminated = raw.endsWith("\n") ? raw : `${raw}\n`;
-  return `${terminated}${REQUIRED_ENV_LINE}\n`;
-}
-
-async function ensureEnvLine(envPath: string): Promise<boolean> {
-  const raw = await readFile(envPath, "utf-8");
-  const next = ensureEnvLineContent(raw);
-  if (next === raw) {
-    return false;
-  }
-  await writeFile(envPath, next, "utf-8");
-  return true;
-}
-
-async function configureRuntimeProvider(
-  configPath: string,
-  provider: Provider,
-  baseUrl?: string,
-  apiKeyEnv?: string,
-): Promise<void> {
-  const config = await readJsonObject(configPath);
-  const models = isRecord(config.models) ? config.models : {};
-  const { defaults: _ignoredDefaults, ...modelSettings } = models;
-  const providers = {
-    [provider]: buildProviderConfig(provider, baseUrl, apiKeyEnv),
-  };
-
-  config.models = {
-    ...modelSettings,
-    providers,
-    profiles: {
-      default: {
-        configRef: "./models/default.config.json",
-      },
-    },
-  };
-  await writeJsonObject(configPath, config);
-}
-
-async function configureModelProfile(
-  configPath: string,
-  provider: Provider,
-  model: string,
-  options: SetupCommandOptions,
-): Promise<void> {
-  const config = await readJsonObject(configPath);
-  await writeJsonObject(configPath, buildModelConfig(config, provider, model, options.contextWindowTokens, options.modelOptions));
-}
-
-async function configureRunner(configPath: string): Promise<void> {
-  const config = await readJsonObject(configPath);
-  const models = isRecord(config.models) ? config.models : {};
-  const defaults = isRecord(models.defaults) ? models.defaults : {};
-
-  config.models = {
-    ...models,
-    defaults: {
-      ...defaults,
-      profileId: "default",
-    },
-  };
-  await writeJsonObject(configPath, config);
-}
-
 export async function runInitRuntime(
   argv: string[] = process.argv.slice(2),
   runOptions: RunInitRuntimeOptions = {},
 ): Promise<void> {
   const commandMode = runOptions.commandMode ?? "source";
   const options = parseArgs(argv, commandMode);
+  requirePackagedSetupProvider(options.provider, commandMode);
   const templateRoot = resolveRuntimePackageRoot(import.meta.dirname);
-  const envPath = join(options.rootDir, ENV_FILE);
-  const configPath = join(options.rootDir, LOCAL_CONFIG_FILE);
-  const requestRunnerConfigPath = join(
-    options.rootDir,
-    LOCAL_REQUEST_RUNNER_CONFIG_FILE,
-  );
-  const modelConfigPath = join(options.rootDir, LOCAL_MODEL_CONFIG_FILE);
+  const files = await planInitRuntimeFiles(options, templateRoot);
+  await validateInitRuntimeFiles(options.rootDir, files);
 
-  await mkdir(options.rootDir, { recursive: true });
-
-  const envStatus = await writeIfMissing({
-    sourcePath: join(templateRoot, ENV_EXAMPLE_FILE),
-    targetPath: envPath,
-    force: options.force,
-  });
-  const envLineChanged = await ensureEnvLine(envPath);
-  const configStatus = await writeIfMissing({
-    sourcePath: join(templateRoot, CONFIG_EXAMPLE_FILE),
-    targetPath: configPath,
-    force: options.force,
-  });
-  const requestRunnerConfigStatus = await writeIfMissing({
-    sourcePath: join(templateRoot, REQUEST_RUNNER_CONFIG_EXAMPLE_FILE),
-    targetPath: requestRunnerConfigPath,
-    force: options.force,
-  });
-  const modelConfigStatus = await writeIfMissing({
-    sourcePath: join(templateRoot, MODEL_CONFIG_EXAMPLE_FILE),
-    targetPath: modelConfigPath,
-    force: options.force,
-  });
-  const methodologyStatuses = await Promise.all(
-    DEFAULT_ROOT_RESPONSE_METHODOLOGY_FILES.map(async (relativePath) => ({
-      relativePath,
-      status: await writeIfMissing({
-        sourcePath: join(templateRoot, relativePath),
-        targetPath: join(options.rootDir, relativePath),
-        force: options.force,
-      }),
-    })),
-  );
-
-  if (configStatus !== "kept") {
-    await configureRuntimeProvider(
-      configPath,
-      options.provider,
-      options.baseUrl,
-      options.apiKeyEnv,
-    );
+  for (const file of files) {
+    const needsInitFileWrite =
+      file.status !== "kept" || file.envLineChanged === true;
+    if (!needsInitFileWrite) continue;
+    const targetPath = join(options.rootDir, file.relativePath);
+    await mkdir(dirname(targetPath), { recursive: true });
+    await writeFile(targetPath, file.content, {
+      encoding: "utf-8",
+      flag: file.status === "created" ? "wx" : "w",
+    });
   }
-  if (requestRunnerConfigStatus !== "kept") {
-    await configureRunner(requestRunnerConfigPath);
-  }
-  if (modelConfigStatus !== "kept") {
-    await configureModelProfile(
-      modelConfigPath,
-      options.provider,
-      options.model,
-      options,
-    );
-  }
+  const configPath = join(options.rootDir, "local/runtime.config.json");
 
   const runtimeDirectories = await initializeConfiguredRuntimeDirectories(
     options.rootDir,
@@ -340,18 +186,16 @@ export async function runInitRuntime(
       `provider: ${options.provider}`,
       `model: ${options.model}`,
       ...(options.baseUrl ? [`base URL: ${options.baseUrl}`] : []),
-      `.env: ${envStatus}${envLineChanged ? " + config pointer" : ""}`,
-      `${LOCAL_CONFIG_FILE}: ${configStatus}`,
-      `${LOCAL_REQUEST_RUNNER_CONFIG_FILE}: ${requestRunnerConfigStatus}`,
-      `${LOCAL_MODEL_CONFIG_FILE}: ${modelConfigStatus}`,
-      ...methodologyStatuses.map(
-        ({ relativePath, status }) => `${relativePath}: ${status}`,
+      ...files.map(
+        (file) =>
+          `${file.relativePath}: ${file.status}${file.envLineChanged ? " + config pointer" : ""}`,
       ),
       `initialized runtime directories: ${runtimeDirectories.map((directory) => relative(options.rootDir, directory) || ".").join(", ")}`,
       "",
       ...getInitNextSteps(commandMode),
     ].join("\n"),
   );
+  await warnSavedOllamaModel({ commandMode, rootDir: options.rootDir, configPath, profileId: "default" });
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";

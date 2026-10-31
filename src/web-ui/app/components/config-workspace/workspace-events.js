@@ -1,3 +1,4 @@
+import { cleanupModelPromptCache } from "./prompt-cache.js";
 import { activateEditedReasoningBudget, syncActivatedReasoningBudget } from "./reasoning-budget-edit.js";
 import { shouldRefreshReasoningBudgetFields } from "./reasoning-budget.js";
 import { rememberCalibrationDisclosure } from "./calibration-disclosure.js";
@@ -14,6 +15,7 @@ export function createConfigWorkspaceEvents({
   dom,
   eventTarget,
   onAddModel,
+  onChatgptAccounts,
   onRemoveModel,
   applyRawDraft,
   changeRawFile,
@@ -77,6 +79,7 @@ export function createConfigWorkspaceEvents({
     let activatedGeneration;
     mutateConfigFile(element.dataset.kind, element.dataset.id, (config) => {
       applyConfigFieldValue(config, element, path, value);
+      cleanupModelPromptCache(file, state.configDashboard, path);
       activatedGeneration = activateEditedReasoningBudget(
         file, state.configDashboard, path, value, setConfigPathValue,
       );
@@ -214,6 +217,7 @@ export function createConfigWorkspaceEvents({
     const kind = element.dataset.kind;
     const id = element.dataset.id;
     if (dashboardIsBusy()) return;
+    if (action === "chatgpt-accounts") { onChatgptAccounts?.(element.dataset.accountRef || ""); return; }
     if (action === "add-model") {
       onAddModel?.({ providerId: element.dataset.providerId || undefined });
       return;

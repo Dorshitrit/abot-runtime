@@ -17,10 +17,7 @@ import type { ModelGatewayRequest } from "../../types.js";
 
 const PARTIAL_ANSWER = "Partial answer before provider failure.";
 const PROVIDER_FAILURE = "Synthetic midstream provider failure";
-const FAILURE_EXPLANATION = {
-  failureNotice: "Unable to finish the response.",
-  nextStep: "Continue in a new request.",
-};
+const FAILURE_EXPLANATION = "The model service stopped before the response was complete. Try again.";
 const PRESENTATION_FRAME = {
   message: {
     content: JSON.stringify({
@@ -109,13 +106,6 @@ test.each([
       [PRESENTATION_FRAME],
       [DECISION_FRAME],
       failureFrames,
-      [
-        {
-          message: { content: JSON.stringify(FAILURE_EXPLANATION) },
-          done: true,
-          done_reason: "stop",
-        },
-      ],
     ];
     const providerFetch = vi.fn<typeof fetch>(async () => {
       const frames = responses.shift();
@@ -154,13 +144,12 @@ test.each([
       "supervisor.decision",
       "supervisor.decision",
       "supervisor.response",
-      "degraded.finalization",
     ]);
     expect(gatewayRequests.slice(0, 2).map((request) => request.format)).toEqual([
       expect.objectContaining({ name: "supervisor_presentation" }),
       expect.objectContaining({ name: "supervisor_procedure_gate" }),
     ]);
-    expect(providerFetch).toHaveBeenCalledTimes(4);
+    expect(providerFetch).toHaveBeenCalledTimes(3);
     expect(responses).toEqual([]);
     expect(harness.events.filter(({ type }) => type === "completed")).toEqual(
       [],
@@ -181,10 +170,7 @@ test.each([
       status: "failed",
       error: failed[0]!.error,
     });
-    const explanation = [
-      FAILURE_EXPLANATION.failureNotice,
-      FAILURE_EXPLANATION.nextStep,
-    ].join("\n\n");
+    const explanation = FAILURE_EXPLANATION;
     const session = await harness.sessionStore.getSessionById("qa");
     const assistantMessages = session?.messages.filter(
       ({ role }) => role === "assistant",

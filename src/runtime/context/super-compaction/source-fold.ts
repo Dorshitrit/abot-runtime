@@ -1,3 +1,4 @@
+import type { CompactionProgressObserver } from "../../model/context-compaction-progress.js";
 import type { BoundRequestModelInvocationContext } from "../../request/contracts.js";
 import type { SemanticCompactionSource } from "../semantic-compaction/contracts.js";
 import { projectSemanticCompactionUtf8Boundaries } from "../semantic-compaction/chunking.js";
@@ -10,6 +11,7 @@ import {
 
 export async function foldSuperCompactionSource(params: {
   request: BoundRequestModelInvocationContext;
+  onProgress?: CompactionProgressObserver;
   currentRequest: string;
   assignment: Readonly<Record<string, unknown>>;
   authority?: "prior_conversation" | "settled_evidence";
@@ -42,6 +44,7 @@ export async function foldSuperCompactionSource(params: {
       baseMessages: selected.baseMessages,
       boundSteeringVersion: params.boundSteeringVersion,
     };
+    params.onProgress?.({ step: "processing", completedBytes: boundaries[startBoundaryIndex]!.byteOffset, totalBytes: boundaries.at(-1)!.byteOffset });
     const coverage = await invokeSuperCompactionStageText({
       ...invocation,
       stage: "coverage",
@@ -66,6 +69,7 @@ export async function foldSuperCompactionSource(params: {
       }),
     );
     startBoundaryIndex = selected.endBoundaryIndex;
+    params.onProgress?.({ step: "processing", completedBytes: boundaries[startBoundaryIndex]!.byteOffset, totalBytes: boundaries.at(-1)!.byteOffset });
   }
   const merged = await mergeSuperCompactionWindows({ ...params, drafts });
   if (!hasContinuationAssignment(params.continuationMaxCharacters))

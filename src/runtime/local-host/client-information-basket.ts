@@ -2,12 +2,14 @@ import type { InformationBasketService } from "../information-basket/contracts.j
 import type { LocalRuntimeCallHandler } from "./contracts.js";
 
 export type InformationBasketManagement = Pick<InformationBasketService,
-  "list" | "updateSettings" | "browseFiles" | "addSources" | "removeSource" | "refreshSource" | "relinkSource">;
+  "captureChatUpload" | "registerChatUpload" | "list" | "updateSettings" | "browseFiles" | "addSources" | "removeSource" | "refreshSource" | "relinkSource">;
 
 /** Only management crosses local RPC; model reads stay inside the Runtime owner. */
 export function createLocalInformationBasketClient(call: LocalRuntimeCallHandler) {
   const listeners = new Set<() => void>();
   const service: InformationBasketManagement = {
+    captureChatUpload: () => call("informationBasket.captureChatUpload", []) as ReturnType<InformationBasketManagement["captureChatUpload"]>,
+    registerChatUpload: (input) => call("informationBasket.registerChatUpload", [input]) as ReturnType<InformationBasketManagement["registerChatUpload"]>,
     list: () => call("informationBasket.list", []) as ReturnType<InformationBasketManagement["list"]>,
     updateSettings: (input) => call("informationBasket.updateSettings", [input]) as ReturnType<InformationBasketManagement["updateSettings"]>,
     browseFiles: (input) => call("informationBasket.browseFiles", [input]) as ReturnType<InformationBasketManagement["browseFiles"]>,

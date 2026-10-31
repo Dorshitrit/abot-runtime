@@ -8,7 +8,8 @@ import {
   BoundedTextAccumulator,
   normalizeExtractedText,
 } from "./text-accumulator.js";
-import type { ExtractedDocument } from "./types.js";
+import type { ExtractedDocument } from "./contracts.js";
+import { assertDocumentXmlStructure } from "./xml-validation.js";
 
 function decodeCodePoint(value: string, radix: number): string {
   const parsed = Number.parseInt(value, radix);
@@ -59,9 +60,12 @@ function archiveResult(
 
 export async function extractDocxText(
   bytes: Uint8Array,
+  maxCharacters: number,
   signal?: AbortSignal,
 ): Promise<ExtractedDocument> {
+  signal?.throwIfAborted();
   const archive = await loadOfficeArchive(bytes);
+  signal?.throwIfAborted();
   const names = Object.keys(archive.zip.files)
     .filter((name) =>
       /^word\/(?:document|header\d+|footer\d+|footnotes|endnotes)\.xml$/u.test(
@@ -75,11 +79,12 @@ export async function extractDocxText(
           ? 1
           : left.localeCompare(right),
     );
-  const accumulator = new BoundedTextAccumulator();
+  const accumulator = new BoundedTextAccumulator(maxCharacters);
   for (const name of names) {
     const entry = archive.zip.file(name);
     if (!entry) continue;
     const xml = await readBoundedXml(entry, archive.budget, signal);
+    assertDocumentXmlStructure(xml);
     const normalized = xml
       .replace(/<w:tab\b[^>]*\/>/giu, "\t")
       .replace(/<w:br\b[^>]*\/>/giu, "\n")
@@ -101,13 +106,16 @@ export async function extractDocxText(
 
 export async function extractPptxText(
   bytes: Uint8Array,
+  maxCharacters: number,
   signal?: AbortSignal,
 ): Promise<ExtractedDocument> {
+  signal?.throwIfAborted();
   const archive = await loadOfficeArchive(bytes);
+  signal?.throwIfAborted();
   const names = Object.keys(archive.zip.files)
     .filter((name) => /^ppt\/slides\/slide\d+\.xml$/u.test(name))
     .sort((left, right) => numericSuffix(left) - numericSuffix(right));
-  const accumulator = new BoundedTextAccumulator();
+  const accumulator = new BoundedTextAccumulator(maxCharacters);
   for (const [index, name] of names.entries()) {
     const entry = archive.zip.file(name);
     if (!entry) continue;
@@ -139,9 +147,12 @@ function cellValue(
 
 export async function extractXlsxText(
   bytes: Uint8Array,
+  maxCharacters: number,
   signal?: AbortSignal,
 ): Promise<ExtractedDocument> {
+  signal?.throwIfAborted();
   const archive = await loadOfficeArchive(bytes);
+  signal?.throwIfAborted();
   const sharedStrings: string[] = [];
   const sharedEntry = archive.zip.file("xl/sharedStrings.xml");
   if (sharedEntry) {
@@ -156,7 +167,7 @@ export async function extractXlsxText(
   const sheetNames = Object.keys(archive.zip.files)
     .filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/u.test(name))
     .sort((left, right) => numericSuffix(left) - numericSuffix(right));
-  const accumulator = new BoundedTextAccumulator();
+  const accumulator = new BoundedTextAccumulator(maxCharacters);
   for (const [index, name] of sheetNames.entries()) {
     const entry = archive.zip.file(name);
     if (!entry) continue;

@@ -1,6 +1,7 @@
 import type { CheckpointContinuationProjector } from "./semantic-compaction/continuation-projection.js";
 import { readInheritedCompactionCheckpoint } from "./model-step-compaction-inheritance.js";
-import { projectCheckpointMessages, scanCompactionSources, createResultSourceOverrideMap } from "./model-step-compaction-projection.js";
+import { createResultSourceOverrideMap } from "./model-step-compaction-projection.js";
+import { resolveSuperDependencyObservationCompaction } from "./super-dependency-observation-compaction.js";
 import { createVerifiedCompactionProjection } from "./verified-compaction-projection.js";
 import { readOperationSupervisionEvidenceBinding } from "./operation-supervision-evidence-binding.js";
 import { projectOperationSupervisionEvidenceClosure } from "./operation-supervision-evidence-projection.js";
@@ -130,6 +131,7 @@ export function createModelStepCompactionController(
     return {
       sidecar,
       failureOwner,
+      projection: resolveSuperDependencyObservationCompaction(sidecar),
       overrides: createResultSourceOverrideMap(
         sidecar?.sources ?? options.resultSourceOverrides ?? [],
       ),
@@ -165,12 +167,13 @@ export function createModelStepCompactionController(
         sidecar,
         failureOwner,
         overrides: resultSourceOverrides,
+        projection,
       } = sourceProjection(messages);
       const previous = withSuperCompactionFailure(failureOwner, () =>
         readPrevious(messages),
       );
       const evidence = previous ?? inherited;
-      const scanned = scanCompactionSources(
+      const scanned = projection.scanCompactionSources(
         messages,
         scopeId,
         resultSourceOverrides,
@@ -213,6 +216,7 @@ export function createModelStepCompactionController(
         preservationObjective: options.call.objective!,
         boundSteeringVersion: context?.boundSteeringVersion,
         projectionRepair: context?.projectionRepair,
+        onProgress: context?.onProgress,
         consumer: options.consumer,
         ...(previous ? { previous } : {}),
         ...(!previous && inherited
@@ -226,7 +230,7 @@ export function createModelStepCompactionController(
       });
       const preparedMessages = withSuperCompactionFailure(failureOwner, () =>
         reconcileEvidence(
-          projectCheckpointMessages(
+          projection.projectCheckpointMessages(
             messages,
             scopeId,
             candidate,
@@ -243,7 +247,7 @@ export function createModelStepCompactionController(
         preparation: Object.freeze({
           messages: preparedMessages,
           hasExhaustedCompactionSources:
-            scanCompactionSources(
+            projection.scanCompactionSources(
               preparedMessages,
               scopeId,
               resultSourceOverrides,
@@ -265,7 +269,7 @@ export function createModelStepCompactionController(
   return Object.freeze({
     project(messages) {
       verifiedProjection.clear();
-      const { failureOwner, overrides: resultSourceOverrides } =
+      const { failureOwner, overrides: resultSourceOverrides, projection } =
         sourceProjection(messages);
       const previous = withSuperCompactionFailure(failureOwner, () =>
         readPrevious(messages),
@@ -275,7 +279,7 @@ export function createModelStepCompactionController(
       return withSuperCompactionFailure(failureOwner, () =>
         reconcileEvidence(
           evidence
-            ? projectCheckpointMessages(
+            ? projection.projectCheckpointMessages(
                 messages,
                 scopeId,
                 evidence,
@@ -300,9 +304,9 @@ export function createModelStepCompactionController(
         verifiedProjection.contains(messages);
       if (!ownProjection && !options.hasVerifiedCompactedEvidence?.(messages))
         return false;
-      const { sidecar, overrides } = sourceProjection(messages);
+      const { sidecar, overrides, projection } = sourceProjection(messages);
       return (
-        scanCompactionSources(messages, scopeId, overrides, sidecar).length === 0
+        projection.scanCompactionSources(messages, scopeId, overrides, sidecar).length === 0
       );
     },
     getStages() {

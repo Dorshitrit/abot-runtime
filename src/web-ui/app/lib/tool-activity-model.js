@@ -55,6 +55,7 @@ function initialAction(id, evidence, count) {
     id,
     tool: evidence.tool,
     executorRole: evidence.executorRole || "",
+    ...(evidence.presentationRole ? { presentationRole: evidence.presentationRole } : {}),
     roleCallId: evidence.roleCallId || "",
     title: TITLES[evidence.tool] || titleCaseEventValue(evidence.tool),
     target: "",
@@ -99,6 +100,7 @@ function applyEvidence(action, evidence) {
   if (isSettledToolEvent(evidence)) delete action.fileReference;
   if (evidence.fileReference) action.fileReference = evidence.fileReference;
   if (evidence.executorRole) action.executorRole = evidence.executorRole;
+  if (evidence.presentationRole) action.presentationRole = evidence.presentationRole;
   if (evidence.roleCallId) action.roleCallId = evidence.roleCallId;
   if (isExecutedToolEvent(evidence)) action.executed = true;
   if (evidence.target) action.target = evidence.target;

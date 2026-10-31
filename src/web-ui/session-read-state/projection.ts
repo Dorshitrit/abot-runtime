@@ -15,7 +15,7 @@ function messageTimestamp(message: SessionMessageMetadata): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-function cursorIndex(
+export function assistantReadCursorIndex(
   messages: SessionMessageMetadata[],
   cursor?: WebReadCursor,
 ): number {
@@ -64,7 +64,7 @@ export function advanceReadCursor(
   if (nextIndex < 0) return;
   const cursors = new Map(state.cursors);
   const previous = cursors.get(sessionId);
-  const previousIndex = cursorIndex(messages, previous);
+  const previousIndex = assistantReadCursorIndex(messages, previous);
   if (previousIndex >= nextIndex) return;
   const message = messages[nextIndex]!;
   const createdAt = messageTimestamp(message);
@@ -86,7 +86,7 @@ export function projectSessionReadState(
   messages: SessionMessageMetadata[],
 ) {
   const cursor = new Map(state.cursors).get(sessionId);
-  const readIndex = cursorIndex(messages, cursor);
+  const readIndex = assistantReadCursorIndex(messages, cursor);
   const unreadCount = messages.filter((message, index) => {
     if (message.role !== "assistant") return false;
     if (messageTimestamp(message) <= state.initializedAt) return false;

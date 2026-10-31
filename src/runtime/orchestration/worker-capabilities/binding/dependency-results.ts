@@ -1,3 +1,4 @@
+import { assertBoundDependencyObservations } from "../../../context/super-dependency-observations.js";
 import {
   projectRoleCallDependencyResults,
   type RoleCallDependencyResult,
@@ -15,6 +16,7 @@ export function bindCapabilityDependencyResults(
   if (!areCanonicalDependencyResults(supplied, canonical)) {
     throw new Error("worker_dependency_results_invalid");
   }
+  assertBoundDependencyObservations(head, call, supplied);
   return Object.freeze([...supplied]);
 }
 

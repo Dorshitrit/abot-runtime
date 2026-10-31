@@ -65,8 +65,9 @@ test.each([
     fixtures.push(f);
     const answer = docs.map(({ content }) => content).join("\n");
     const invoke = decision({ action: "invoke_capability", capabilityId: "read_skills",
-      intent: "Read both requested references.", selectionControls: { skillIds },
-      ...(policy === "execution-agent-v1" ? { workingDirectory: "." } : {}) });
+      selectionControls: { skillIds },
+      ...(policy === "execution-agent-v1" ? { workingDirectory: "." }
+        : { intent: "Read both requested references." }) });
     const check = (input: KnowledgeModelInput) => {
       if (policy === "execution-agent-v1") {
         expect(exactSkillOutput(input, "read_skills")).toEqual(expected);
@@ -81,7 +82,7 @@ test.each([
     };
     const script = policy === "execution-agent-v1" ? [
       { step: "execution.decision" as const, output: decision({ action: "open_capability_scope",
-        catalogGroupIds: ["knowledge"], acknowledgement: "I will read both references." }) },
+        catalogGroupIds: ["knowledge"] }) },
       { step: "execution.decision" as const, output: readStart },
       { step: "execution.decision" as const, output: (input: KnowledgeModelInput) => {
         check(input); return decision({ action: "respond" });
@@ -97,8 +98,7 @@ test.each([
       } },
       { step: "supervisor.decision" as const, output: (input: KnowledgeModelInput) => {
         expect(supervisorFormatName(input)).toBe("supervisor_procedure_gate");
-        expect(capsules(input, "runtime_core_skill_read_v1")).toEqual([]);
-        for (const doc of docs) expect(JSON.stringify(messages(input))).not.toContain(doc.content);
+        check(input);
         return decision({ requiresProcedure: false, responseRecommendation: "Explain the two supplied references." });
       } },
       { step: "supervisor.response" as const, output: (input: KnowledgeModelInput) => {

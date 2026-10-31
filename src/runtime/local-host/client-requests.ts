@@ -245,7 +245,9 @@ export class LocalRuntimeClientRequests {
       return null;
     }
     if (method === "request.accepted") {
-      this.active.get(String(args[0]))?.accept();
+      const state = this.active.get(String(args[0]));
+      await state?.options.onAccepted?.();
+      state?.accept();
       return null;
     }
     if (method === "request.event") {

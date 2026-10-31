@@ -10,7 +10,7 @@ export const attentionSource: BasketSource = {
 };
 export function basketView(sources: readonly BasketSource[] = [attentionSource]): BasketView {
   return {
-    settings: { revision: 2, enabled: true, embeddingProfileId: "local-embed" }, sources,
+    settings: { matchMode: "balanced" as const, indexChatUploads: false, revision: 2, enabled: true, embeddingProfileId: "local-embed" }, sources,
     embeddingProfiles: [{ id: "local-embed", label: "Local", provider: "ollama", model: "embedding" }],
     supportedExtensions: [".md"],
     limits: { maxSources: 100, maxSourceBytes: 10000, maxReadCharacters: 1000 },

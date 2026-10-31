@@ -17,6 +17,7 @@ import {
   type RegisteredToolStagedPayloadPlan,
 } from "../registered-tool-payload-plan.js";
 import { normalizePayloadAuthoringResult } from "./payload-authoring-result.js";
+import { shouldPreserveFullBoundedTargetContext } from "./payload-target-context-policy.js";
 import {
   executionFreshnessRejection,
   payloadRejection,
@@ -37,6 +38,7 @@ export type StagedOperationPayloadParams = Readonly<{
   sharedState: ToolExecutionSharedState;
   payloadAuthor?: WorkerCapabilityPayloadAuthor;
   allowRelatedArtifactLoading: boolean;
+  preserveFullBoundedTargetContext?: boolean;
   call: Parameters<WorkerCapabilityPayloadAuthor["author"]>[0]["call"];
   assignmentProvenance?: Parameters<
     WorkerCapabilityPayloadAuthor["author"]
@@ -45,7 +47,7 @@ export type StagedOperationPayloadParams = Readonly<{
   descriptor: Parameters<
     WorkerCapabilityPayloadAuthor["author"]
   >[0]["descriptor"];
-  intent: string;
+  intent?: string;
   authoringObjective?: string;
   controls: Readonly<Record<string, unknown>>;
   dependencyResults?: Parameters<
@@ -246,6 +248,9 @@ class PayloadStageRunner {
         stage,
         controls: this.params.controls,
         sharedState: this.params.sharedState,
+        preserveFullBoundedTargetContext: shouldPreserveFullBoundedTargetContext(
+          this.params, stage,
+        ),
         ...(priorParams.value ? { materializedParams: priorParams.value } : {}),
       });
     } catch {
@@ -343,7 +348,7 @@ class PayloadStageRunner {
             ? { dependencyResults: this.params.dependencyResults }
             : {}),
           settledCapabilityResults: this.params.settledCapabilityResults,
-          ...(this.params.executionFreshness
+          ...(this.params.executionFreshness?.token.kind === "request_steering_v1"
             ? { requestSteering: this.params.executionFreshness.token }
             : {}),
           ...(relatedArtifactContexts.length > 0
@@ -374,11 +379,17 @@ class PayloadStageRunner {
         if (error instanceof Error && error.name === "AbortError") {
           throw error;
         }
+        const superseded =
+          this.params.executionFreshness?.token.kind === "worker_steering_v1"
+            ? executionFreshnessRejection(this.params.executionFreshness) : undefined;
+
         return rejectPayloadLifecycle({
           executor: this.params.executor,
           lifecycle: started.lifecycle,
-          code: "payload_author_failed",
-          message: "The capability payload could not be prepared.",
+          code: superseded?.sourceIssueCode ?? "payload_author_failed",
+          message: superseded?.result.summary ??
+            "The capability payload could not be prepared.",
+          ...(superseded ? { fallback: superseded } : {}),
         });
       }
     }

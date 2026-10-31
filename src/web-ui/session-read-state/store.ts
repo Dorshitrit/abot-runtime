@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { resetSessionReadState } from "./reset.js";
 import { readVisibleMessageReceipts, type VisibleMessageReadState } from "./visible-messages.js";
 
 export type WebReadCursor = {
@@ -110,23 +111,7 @@ export class WebReadStateStore {
   }
 
   reset(sessionId: string, now: number): Promise<void> {
-    return this.transaction((state) => {
-      const cursors = new Map(state.cursors);
-      const previous = cursors.get(sessionId);
-      cursors.set(sessionId, {
-        messageId: "",
-        createdAt: 0,
-        lastReadAt: Math.max(
-          now,
-          (previous?.lastReadAt ?? state.initializedAt) + 1,
-        ),
-      });
-      state.cursors = [...cursors];
-      const visible = new Map(state.visibleMessages ?? []);
-      const prior = visible.get(sessionId);
-      visible.set(sessionId, { generation: randomUUID(), revision: Math.max(now, (prior?.revision ?? 0) + 1), messages: [] });
-      state.visibleMessages = [...visible];
-    });
+    return this.transaction((state) => resetSessionReadState(state, sessionId, now));
   }
 
   forget(sessionId: string): Promise<void> {

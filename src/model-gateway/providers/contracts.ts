@@ -6,6 +6,7 @@ import type {
   ResolvedEmbeddingProfile,
   ResolvedModelInvocation,
 } from "../types.js";
+import type { ProviderUserErrorPresentation } from "../protocol/provider-user-error.js";
 
 export type ModelProviderEventSink = Readonly<{
   emit(event: ModelGatewayEvent): void;
@@ -15,6 +16,8 @@ export type ModelProviderInvocationError = Readonly<{
   kind: "error";
   statusCode: number;
   message: string;
+  /** Adapter-owned facts; never decoded from an upstream error body or headers. */
+  presentation?: ProviderUserErrorPresentation;
 }>;
 
 export type ModelProviderChatInvocation = Readonly<{
@@ -83,6 +86,8 @@ export type ModelProviderInvocationParams = Readonly<{
   requestBody: ModelGatewayRequest;
   invocation: ResolvedModelInvocation;
   fetchImpl: typeof fetch;
+  /** The same request lifetime also governs provider credential acquisition. */
+  abortSignal?: AbortSignal;
   inputTokenMeasurement?: ModelProviderInputTokenMeasurement;
 }>;
 

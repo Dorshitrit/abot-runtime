@@ -77,3 +77,5 @@ export function createModelGatewayClient(
       ),
   };
 }
+
+export { readModelGatewayUserMessage } from "./client/user-message.js";

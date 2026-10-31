@@ -63,13 +63,11 @@ export function auditRootPrelude(
     return {
       action: "open_capability_scope",
       catalogGroupIds: ["files"],
-      acknowledgement: "I will inspect the observations and audit the result.",
     };
   }
   if (decisionIndex === 2) {
     const invocations = Array.from({ length: recordCount }, (_, index) => ({
       capabilityId: descriptor.capabilityId,
-      intent: `Observe fixture record ${index + 1}.`,
       selectionControls: { path: `record-${index + 1}.txt` },
     }));
     if (recordCount === 1) {

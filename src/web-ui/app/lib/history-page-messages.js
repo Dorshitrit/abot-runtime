@@ -1,6 +1,9 @@
+import { orderRequestInteractionMessages } from "./request-interaction-messages.js";
+import { isUserInteractionMessage } from "./user-interaction-event.js";
 import { isApprovalPresentation, mergeConversationMessage, sameConversationMessage } from "./request-lifecycle-view.js";
 
 function isRequestResponse(message) {
+  if (isUserInteractionMessage(message)) return false;
   if (message.role !== "assistant") return false;
   if (!message.requestId) return false;
   return !isApprovalPresentation(message);
@@ -42,6 +45,7 @@ export function mergeHistoryPage(state, incoming, direction, windowEnd) {
     const split = end < 0 ? current.length : end + 1;
     state.messages = [...retained(current.slice(0, split)), ...page, ...retained(current.slice(split))];
   }
+  state.messages = orderRequestInteractionMessages(state.messages);
   for (const message of state.messages) {
     if (!isRequestResponse(message)) continue;
     state.requestMessages?.set(message.requestId, message.id);

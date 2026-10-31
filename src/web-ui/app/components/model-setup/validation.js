@@ -40,7 +40,7 @@ function validIdentifier(value, provider) {
 
 export function validateModelDraft(state) {
   const provider = selectedModelProvider(state);
-  if (!provider && !["new:openai", "new:ollama", "new:llamacpp"].includes(state.choice))
+  if (!provider && !["new:openai", "new:openai-chatgpt", "new:ollama", "new:llamacpp"].includes(state.choice))
     return { valid: false, field: "provider", message: "Choose a provider." };
   if (!provider && !validIdentifier(state.newProviderId, true))
     return {
@@ -59,6 +59,8 @@ export function validateModelDraft(state) {
       message:
         "That connection ID already exists. Choose another or use its existing provider.",
     };
+  if (modelProviderType(state) === "openai-chatgpt" && (!state.accountRef || !state.chatgptAccountReady))
+    return { valid: false, field: "account", message: "Connect a ChatGPT account with plan usage enabled." };
   if (state.model.length > 256)
     return {
       valid: false,
@@ -92,6 +94,7 @@ export function validateModelDraft(state) {
 
 export function requiresModelCredential(state) {
   const provider = selectedModelProvider(state);
+  if (modelProviderType(state) === "openai-chatgpt") return false;
   const configured =
     provider?.credentialConfigured === true ||
     state.credentialSavedFor === (provider?.id || state.newProviderId);
@@ -111,6 +114,7 @@ export function modelSetupInput(state, validated, apiKey) {
         newProvider: {
           id: state.newProviderId,
           type: modelProviderType(state),
+          ...(modelProviderType(state) === "openai-chatgpt" ? { accountRef: state.accountRef } : {}),
           ...(modelProviderType(state) === "llamacpp" && (apiKey || state.credentialSavedFor === state.newProviderId) ? { useApiKey: true } : {}),
           ...(validated.input.baseUrl
             ? { baseUrl: validated.input.baseUrl }
@@ -123,6 +127,7 @@ export function modelSetupInput(state, validated, apiKey) {
     contextWindowTokens: validated.input.contextWindowTokens,
     ...(validated.input.supportsThinking !== undefined ? { supportsThinking: validated.input.supportsThinking } : {}),
     ...(validated.input.reasoningBudget ? { reasoningBudget: validated.input.reasoningBudget } : {}),
+    ...(validated.input.promptCache !== undefined ? { promptCache: validated.input.promptCache } : {}),
     ...connection,
     ...(apiKey ? { apiKey } : {}),
   };

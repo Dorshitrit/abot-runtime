@@ -1,3 +1,4 @@
+import { isBasketMatchMode } from "../../runtime/information-basket/snapshot-validation.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { InformationBasketManagement } from "../../runtime/local-host/client-information-basket.js";
 import { BASKET_LIMITS } from "../../runtime/information-basket/limits.js";
@@ -87,13 +88,19 @@ async function dispatchBasketManagement(
     return service.addSources({ paths: body.paths });
   }
   if (action === "settings") {
-    const body = requireBasketBody(input.body, ["expectedRevision", "enabled", "embeddingProfileId"]);
+    const body = requireBasketBody(input.body, ["expectedRevision", "enabled", "embeddingProfileId", "indexChatUploads", "matchMode"]);
+    if (body.indexChatUploads !== undefined && typeof body.indexChatUploads !== "boolean")
+      throw new InformationBasketError("basket_settings_invalid");
+    if (body.matchMode !== undefined && !isBasketMatchMode(body.matchMode))
+      throw new InformationBasketError("basket_settings_invalid");
     if (typeof body.enabled !== "boolean") throw new InformationBasketError("basket_settings_invalid");
     if (body.embeddingProfileId !== null && typeof body.embeddingProfileId !== "string")
       throw new InformationBasketError("basket_profile_invalid");
     return service.updateSettings({
       expectedRevision: readExpectedBasketRevision(body.expectedRevision),
       enabled: body.enabled,
+      ...(body.matchMode === undefined ? {} : { matchMode: body.matchMode }),
+      ...(body.indexChatUploads === undefined ? {} : { indexChatUploads: body.indexChatUploads }),
       embeddingProfileId: body.embeddingProfileId,
     });
   }

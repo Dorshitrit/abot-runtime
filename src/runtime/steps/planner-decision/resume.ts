@@ -101,6 +101,7 @@ export function buildPlannerCompletedChildMessages(
         ? { dependencyResultRefs: child.dependencyResultRefs }
         : {}),
       outcome: child.outcome,
+      ...(child.steeringVersion !== undefined ? { steeringVersion: child.steeringVersion } : {}),
       summary: child.summary,
       ...(workProjection ?? {}),
     }),

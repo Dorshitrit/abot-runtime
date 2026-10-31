@@ -71,6 +71,11 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)("%s delivers 
   if (policy === "supervisor-worker-v1") expect(calls.map(({ modelStep }) => modelStep)).toEqual(expect.arrayContaining(["supervisor.decision", "planner.decision", "worker.decision", "reviewer.decision", "supervisor.response"]));
   expect(result.cleanup).toHaveBeenCalledOnce();
   await expect(result.writer!.writeImage({ bytes: toolImageFixture(), mimeType: "image/png" })).rejects.toThrow("request_closed");
+  if (policy === "execution-agent-v1") {
+    const saved = result.session!.messages.find(({ role }) => role === "assistant")!;
+    expect(saved.observationContent).toContain("Observed two fixture pixels.");
+    expect(JSON.parse(saved.observationContent!).results[0].adapterResult.result).not.toHaveProperty("media");
+  }
   expect(JSON.stringify(result.session)).not.toContain("tool_image_v1");
   expect(JSON.stringify(result.session)).not.toContain("request-tool-media");
   expect(JSON.stringify(result.session)).not.toContain(toolImageFixture().toString("base64"));

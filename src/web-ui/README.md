@@ -33,6 +33,16 @@ An unavailable index may require rereading that session until it is writable.
 The list still enumerates all session
 metadata; pagination and changes to message/event loading are separate work.
 
+Opening an active conversation supplies its known session identity when reading
+request events and resuming the display. The session store verifies the request
+belongs to that session before returning replay; older callers without a usable
+hint still resolve by request identity while reading one session at a time.
+Overlapping reads share only in-flight raw file I/O, with access checks and event
+cursor projection applied separately for each caller. Later reads see fresh
+storage. Approval reattachment uses the replay's verified session identity, so
+refreshing an active conversation does not enumerate unrelated approval waits.
+This read path never starts, resumes execution of, or steers a model request.
+
 The context indicator describes the latest measured model attempt in the
 selected request, including its step and profile. Input count, percentage and
 remaining capacity use the same valid provider measurement, or an explicitly
@@ -250,7 +260,10 @@ Bridge mode hides this workspace. The Web backend records completed agent replie
 when no client is focused on their conversation, failures, pending approvals and
 delivered Co-worker proposals. A cancelled request creates a reply only when the
 runtime supplies its saved stopped-response text. Progress and reconnect replay
-do not create records.
+do not create records. The browser tab favicon shows an orange dot while the
+selected environment has unread notifications, including updates received while
+the tab is in the background. Reading notifications clears the dot when the
+shared unread count reaches zero; focusing the tab alone does not mark them read.
 
 Browsers report the visible, focused chat through `notification_presence` frames.
 Presence is scoped to the environment and conversation, renewed every 20 seconds
@@ -261,10 +274,35 @@ messages read, and opening the inbox does not mark every notification read.
 `notifications/` owns projection, persistence, HTTP routes and delivery. Records
 are scoped by environment and configured sessions path under
 `<runtimeDir>/web-ui/notifications/`. The store uses atomic writes, stable event
-identities and cursor paging. History has no automatic retention deletion.
+identities and cursor paging. History is bounded to 1,000 records and 90 days per
+store. Every store access applies expiry; insertion also enforces the count cap,
+evicting the oldest read records before unread records. Pending delivery and
+manual unread records have no retention exemption. Up to 1,000 removed identities
+are retained for 90 days to suppress recent duplicate delivery; retries do not
+extend these receipts, and deduplication is intentionally bounded to that window.
 Preferences affect desktop delivery only. A stored notification precedes delivery;
 pending records from an earlier process become unconfirmed on restart without
 being resent. A native submission acknowledgment is not a display/read receipt.
+
+Committed conversation read receipts synchronize matching reply notifications.
+Ordinary chat uses its existing cumulative read boundary; SPARK uses exact visible
+message receipts. The shared Web read-state owner verifies current message
+identities without modifying session messages or events. Synchronization runs
+after a successful read, when listing notifications, and when a reply arrives
+later. An accepted tool approval or rejection marks its exact approval notification
+read, through the shared HTTP/WebSocket decision owner. Duplicate or rejected
+commands do not change notification state. Viewing a loaded automation run report
+in Studio or chat marks that run's observed phases read: an active report covers
+only the start, while a terminal report covers both start and finish. Hidden
+reports, run lists and background fetches do not count as viewing. Environment and
+run identities remain isolated. Private source-read receipts cover delayed event
+insertion and survive restart, bounded to 1,000 identities and 90 days. An explicit
+Mark unread remains authoritative until another explicit read/source action or
+retention expiry; repeated rendering of the same report phase is not a new action.
+Because old storage did not distinguish manual unread, the first access
+protects all retained legacy unread records; automatic synchronization starts
+with newly created notifications. Private override and deduplication metadata
+remain bounded and are not added to the HTTP notification representation.
 
 Desktop delivery uses the existing authenticated Computer access connection and
 the `desktop_notifications_v1` capability. It is a transport operation, unavailable
@@ -293,6 +331,22 @@ The shared public HTTP transport validates DNS and redirects, pins the resolved
 public address, and limits response sizes and time. Thumbnail images use an
 opaque same-origin proxy with raster validation. The preview endpoint works
 with both the local Runtime backend and the external bridge backend.
+
+## Work timeline
+
+Conversation activity uses one chronological timeline above the final answer.
+EA progress messages and SUPER acknowledgement/tool intent are interleaved with
+recorded actions using event ordering, without changing model execution.
+Acknowledgement is explicitly tagged; unmarked reasoning is not promoted into
+progress prose. Tool rows retain their status icons, keyboard disclosures and
+file actions, without a visible status suffix or disclosure arrow. Source,
+memory, role and delegation evidence remain available inside the timeline.
+The timeline stays open while working or waiting for approval and collapses
+when a completed final answer is shown. Show timeline reopens it; subsequent
+renders preserve the user's choice. Failed/stopped runs keep their activity
+visible. SPARK shows only ongoing EA updates and the final answer in its assistant
+transcript, using the shared progress-message style. Other events stay hidden;
+actionable approval cards remain separate from the transcript.
 
 ## Files in conversation activity
 
@@ -340,6 +394,52 @@ explicit request start. Clearing or deleting a conversation removes that
 identity; late persisted events and steering cannot restore it. The server
 rechecks the generation and completion after reading, before returning bytes.
 Legacy records remain readable as chat history but do not gain file access.
+
+## Project changes in chat
+
+Expanding a successful file action loads its current changes against Git HEAD
+in the returned-preview area. When available, a unified diff with fixed green/red
+colors and additions/deletions counts replaces the plain excerpt automatically,
+without a second disclosure button. Without Git or an available diff, the
+existing returned excerpt remains unchanged. This is the file's current Git
+state, not a historical diff of that particular tool execution. Recorded
+messages and events stay unchanged.
+
+A project-wide file list and diff also open automatically beside the conversation
+when the viewport is at least 1800 CSS pixels wide and changes are found. There
+is no global changes button below the final answer. Normal-width windows use the
+inline operation preview. Initial checking and empty results remain silent;
+explicit file previews retain priority over the automatic project panel. The
+feature is shared by EA and SUPER, without model calls or model-context changes.
+
+The local backend derives the directory from the saved conversation's project
+binding. Results are limited to that subtree, even when the Git root is an
+ancestor. The comparison includes staged/unstaged changes and untracked files
+against HEAD; an unborn repository uses an empty base. Renames may appear as
+deletion and addition. Ignored files and nested submodule contents are excluded.
+The exact project-root `.abot-file-output-root` marker is excluded from diff
+content and file/line totals; its file and identity checks remain unchanged.
+Other files, including similar names or nested names, are not hidden by this rule.
+
+GET `/web-api/chat/project-changes` accepts only environment and session IDs.
+GET `/web-api/chat/project-changes/file` additionally accepts a server-provided
+file ID and revision. GET `/web-api/chat/project-changes/operation` accepts
+request/execution IDs and binds the file through its recorded successful output,
+request generation and current project-root identity. Browser paths and Git refs
+are never filesystem authority. Changed sources require a refresh.
+
+Git commands run without a shell, with bounded time/output and no optional index
+writes. Git supplies metadata/raw blobs; bounded local comparison and standard
+text/EOL normalization produce previews without invoking external diff, textconv,
+clean or process commands. Repositories with configured clean/process filters or
+partial-clone fetching are unavailable in this version. Binary, oversized and
+unsupported transforms have explicit preview states. The file list is capped at
+200; incomplete line totals stay unknown.
+
+This version supports projects on the Runtime host with Git installed. Bridge,
+Companion-only roots and workspace output receipts outside the project binding
+are not supported. Conversation/environment changes cancel pending previews.
+The feature does not stage, revert, commit or modify files or Git state.
 
 ## Run
 

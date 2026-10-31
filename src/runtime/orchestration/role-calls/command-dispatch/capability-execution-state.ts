@@ -25,7 +25,7 @@ export function createRunningCapabilityExecution(
     invocationAttempt: input.invocationAttempt,
     capabilityId: input.capabilityId,
     declaredEffect: input.declaredEffect,
-    intent: input.intent.trim(),
+    ...(input.intent !== undefined ? { intent: input.intent.trim() } : {}),
     controlsJson: input.controlsJson,
     ...(input.actionFingerprint
       ? { actionFingerprint: input.actionFingerprint }

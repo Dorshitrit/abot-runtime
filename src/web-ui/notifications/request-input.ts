@@ -1,5 +1,6 @@
 import {
   NotificationInputError,
+  type AutomationReportRead,
   type NotificationPreferences,
   type NotificationReadChange,
 } from "./contracts.js";
@@ -60,6 +61,17 @@ export function parseNotificationReadBody(body: Record<string, unknown>): {
     environmentId: parseNotificationEnvironment(environment),
     change: parseNotificationReadChange(change),
   };
+}
+
+export function parseAutomationReportReadBody(body: Record<string, unknown>): {
+  environmentId: string; report: AutomationReportRead;
+} {
+  const environmentId = parseNotificationEnvironment(body.environment);
+  if (!hasOnlyNotificationFields(body, ["environment", "runId", "phase"]) ||
+    !isNotificationIdentifier(body.runId) ||
+    (body.phase !== "started" && body.phase !== "finished"))
+    throw new NotificationInputError("An exact automation run and observed phase are required.");
+  return { environmentId, report: { runId: body.runId, phase: body.phase } };
 }
 
 export function parseNotificationPreferencesBody(

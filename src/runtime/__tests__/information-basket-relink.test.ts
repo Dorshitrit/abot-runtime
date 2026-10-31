@@ -78,7 +78,7 @@ test("invalid paths, revisions and another source's canonical path leave the reg
     { path: join(f.files, "missing.txt"), expectedRevision: f.target.expectedRevision, code: "basket_source_not_found" },
     { path: "relative.txt", expectedRevision: f.target.expectedRevision, code: "basket_source_absolute_path_required" },
     { path: f.files, expectedRevision: f.target.expectedRevision, code: "basket_source_regular_file_required" },
-    { path: await f.source("unsupported.docx", "content"), expectedRevision: f.target.expectedRevision, code: "basket_source_format_unsupported" },
+    { path: await f.source("unsupported.doc", "content"), expectedRevision: f.target.expectedRevision, code: "basket_source_format_unsupported" },
     { path: otherPath, expectedRevision: f.target.expectedRevision, code: "basket_source_path_conflict" },
     { path: `${f.files}/./other.txt`, expectedRevision: f.target.expectedRevision, code: "basket_source_path_conflict" },
     { path: f.path, expectedRevision: f.target.expectedRevision + 1, code: "basket_source_revision_conflict" },

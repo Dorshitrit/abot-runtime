@@ -94,6 +94,7 @@ export function learningFailureReason(error: unknown): string {
     "learning_proposal_source_unknown",
     "learning_knowledge_conflict",
     "learning_embedding_reindex_required",
+    "learning_embedding_capacity_exceeded",
     "learning_memory_protected",
     "learning_receipt_capacity",
     "learning_duplicate_requires_bound_update",

@@ -3,6 +3,8 @@ import {
   parseRuntimeModelProfileId,
 } from "./runtime-model-addition.js";
 import { supportsProviderAddress } from "./runtime-setup-provider-options.js";
+import { requirePackagedSetupProvider } from "../src/cli/setup-provider-validation.js";
+import { warnSavedOllamaModel } from "../src/cli/setup-model-warning.js";
 import { parseSetupCommandOptions, requireSetupCommandProviderOptions, type SetupCommandOptions } from "./runtime-setup-command-options.js";
 import { constants } from "node:fs";
 import { access, mkdir } from "node:fs/promises";
@@ -206,6 +208,7 @@ export async function runAddRuntimeModel(
 ): Promise<void> {
   const commandMode = runOptions.commandMode ?? "source";
   const options = parseArgs(argv, commandMode);
+  requirePackagedSetupProvider(options.provider, commandMode);
   const runtimeConfigPath = join(options.rootDir, RUNTIME_CONFIG_FILE);
   const runnerConfigPath = join(options.rootDir, REQUEST_RUNNER_CONFIG_FILE);
   const modelConfigPath = join(
@@ -249,6 +252,7 @@ export async function runAddRuntimeModel(
     options.model,
     options.contextWindowTokens,
     options.modelOptions,
+    options.label,
   );
 
   await mkdir(dirname(modelConfigPath), { recursive: true });
@@ -272,6 +276,7 @@ export async function runAddRuntimeModel(
       getRestartInstruction(commandMode),
     ].join("\n"),
   );
+  await warnSavedOllamaModel({ commandMode, rootDir: options.rootDir, configPath: runtimeConfigPath, profileId: options.profile });
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";

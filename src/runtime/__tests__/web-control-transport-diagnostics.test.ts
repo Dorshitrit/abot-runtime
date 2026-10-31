@@ -120,7 +120,7 @@ test("resume reports the existing replay result without additional reads or chan
   });
   await vi.waitFor(() => expect(f.sent).toHaveLength(2));
   expect(f.get).toHaveBeenCalledExactlyOnceWith("dev");
-  expect(getRequestReplayById).toHaveBeenCalledExactlyOnceWith("request", 3);
+  expect(getRequestReplayById).toHaveBeenCalledExactlyOnceWith("request", 3, undefined);
   expect(f.sent).toEqual([
     { ...event, environment: "dev" },
     {
@@ -163,8 +163,8 @@ test("missing replay keeps the existing two reads and approval lookup without ne
     expect(diagnostic("resume.dispatch_returned")).toHaveLength(1),
   );
   expect(getRequestReplayById.mock.calls).toEqual([
-    ["missing", 9],
-    ["missing", 9],
+    ["missing", 9, undefined],
+    ["missing", 9, undefined],
   ]);
   expect(list).toHaveBeenCalledOnce();
   expect(f.sent).toEqual([]);

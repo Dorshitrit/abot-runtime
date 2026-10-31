@@ -153,6 +153,7 @@ export async function runSupervisorDecision(
     const gate = procedureEntry
       ? await runSupervisorProcedureGate(request, {
         diagnostic: { ...baseDiagnostic, decisionPhase: "procedure_gate" },
+        skillReadHead: options.skillReadHead,
         boundSteeringVersion: preparation.steeringVersion,
         ...(initialMemoryMessage ? { initialMemoryMessage } : {}),
         ...(memoryRecallMessage ? { memoryRecallMessage } : {}),

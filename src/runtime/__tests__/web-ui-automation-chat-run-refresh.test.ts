@@ -77,7 +77,10 @@ function fixture() {
   const dom = { app, automationChatRunPanel: panel, chatPanel: {},
     sessionsPanel: {}, sessionsToggleButton: {} };
   let environmentId = "dev";
+  let visible = true;
   const client = {
+    supportsNotifications: () => true,
+    markAutomationReportRead: vi.fn(async () => ({ ok: true })),
     getAutomationRun: vi.fn(async (id: string) => ({ run: run(id) })),
     getAutomationStepEvidence: vi.fn(async (id: string, nodeId: string) =>
       ({ evidence: evidence(id, nodeId, "PREVIEW") })),
@@ -85,10 +88,11 @@ function fixture() {
   };
   const projection = createAutomationChatRunProjection({
     dom, client, getEnvironmentId: () => environmentId,
-    onNavigationChange: vi.fn(), returnToStudio: vi.fn(), isVisible: () => true,
+    onNavigationChange: vi.fn(), returnToStudio: vi.fn(), isVisible: () => visible,
   });
   projection.workspaceChanged("chat");
   return { panel, dom, client, projection,
+    setVisible: (value: boolean) => { visible = value; projection.visibilityChanged(); },
     setEnvironment: (value: string) => { environmentId = value; } };
 }
 
@@ -256,4 +260,38 @@ describe("ABot Studio locked chat run refresh", () => {
     expect(panel.innerHTML).not.toContain('id="automation-step-result-chat-run-1"');
     expect(panel.innerHTML).not.toContain("Evidence temporarily unavailable");
   });
+});
+
+it("marks only a visible loaded report phase read and preserves unread through repeated refresh", async () => {
+  vi.useFakeTimers();
+  const f = fixture();
+  f.setVisible(false);
+  await f.projection.open("run-1");
+  expect(f.client.markAutomationReportRead).not.toHaveBeenCalled();
+  f.setVisible(true);
+  expect(f.client.markAutomationReportRead).toHaveBeenCalledExactlyOnceWith({ runId: "run-1", phase: "started" }, "dev");
+  await refresh(f.projection, "run-1");
+  expect(f.client.markAutomationReportRead).toHaveBeenCalledTimes(1);
+  f.client.getAutomationRun.mockResolvedValue({ run: run("run-1", "failed") });
+  await refresh(f.projection, "run-1");
+  expect(f.client.markAutomationReportRead).toHaveBeenLastCalledWith({ runId: "run-1", phase: "finished" }, "dev");
+  expect(f.client.markAutomationReportRead).toHaveBeenCalledTimes(2);
+  f.projection.workspaceChanged("home");
+  await refresh(f.projection, "run-1");
+  expect(f.client.markAutomationReportRead).toHaveBeenCalledTimes(2);
+});
+
+it("does not mark a failed or stale run load read", async () => {
+  const f = fixture();
+  f.client.getAutomationRun.mockRejectedValueOnce(new Error("unavailable"));
+  await f.projection.open("failed-load");
+  expect(f.client.markAutomationReportRead).not.toHaveBeenCalled();
+  const pending = deferred<{ run: ReturnType<typeof run> }>();
+  f.client.getAutomationRun.mockReturnValueOnce(pending.promise);
+  const opening = f.projection.open("stale-run");
+  f.setEnvironment("prod");
+  f.projection.clear();
+  pending.resolve({ run: run("stale-run", "succeeded") });
+  await opening;
+  expect(f.client.markAutomationReportRead).not.toHaveBeenCalled();
 });

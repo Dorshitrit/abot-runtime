@@ -19,6 +19,7 @@ export function createSuperContinuation(
   currentState: string,
 ): SemanticCompactionContinuation {
   return Object.freeze({
+    format: "raw_handoff_v1",
     completed: [],
     currentState,
     findings: [],

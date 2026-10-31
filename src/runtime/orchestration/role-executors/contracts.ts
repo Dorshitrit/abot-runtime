@@ -14,12 +14,14 @@ import type {
   RoleApprovalWait,
 } from "./approval-continuation.js";
 
-export type RoleExecutionOutcome = "completed" | "failed";
+export type RoleExecutionOutcome = "completed" | "failed" | "yielded";
 
 export type RoleExecutionResult<TValue = unknown> = Readonly<{
   kind: "terminal";
   outcome: RoleExecutionOutcome;
   summary: string;
+  /** Runtime-only control receipt; present exactly when the Worker yielded. */
+  steeringVersion?: number;
   receipt?: RoleCallResultReceipt;
   value?: TValue;
 }>;
@@ -67,6 +69,7 @@ export type RoleExecutionChildInvocation = Readonly<{
   kind: "invoke_role";
   roleId: RuntimeDelegateRoleId;
   objective: string;
+  workerSteeringVersion?: number;
   workerCapabilityScope?: RoleCallWorkerCapabilityScope;
   workingDirectory?: string;
   plannerPlan?: RoleCallPlanBinding;
@@ -101,6 +104,7 @@ export type RoleChildInvocationInput<TContext> = Readonly<{
   expectedHead: RoleCallLedgerHead;
   roleId: RuntimeDelegateRoleId;
   objective: string;
+  workerSteeringVersion?: number;
   workerCapabilityScope?: RoleCallWorkerCapabilityScope;
   workingDirectory?: string;
   plannerPlan?: RoleCallPlanBinding;

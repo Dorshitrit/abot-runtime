@@ -102,6 +102,7 @@ export class ChildInvocationTransaction<TContext, TValue> {
       childCallId: entered.call.callId,
       childRoleId: entered.call.roleId,
       outcome: execution.outcome,
+      ...(execution.steeringVersion !== undefined ? { steeringVersion: execution.steeringVersion } : {}),
       summaryLength: execution.summary.length,
       turnCount: this.params.input.turnCount,
     });
@@ -227,6 +228,9 @@ export class ChildInvocationTransaction<TContext, TValue> {
       callerCallId: callerCall.callId,
       roleId: input.roleId,
       objective: input.objective,
+      ...(input.workerSteeringVersion !== undefined
+        ? { workerSteeringVersion: input.workerSteeringVersion }
+        : {}),
       dependencyResultRefs,
       ...(input.workerCapabilityScope
         ? { workerCapabilityScope: input.workerCapabilityScope }
@@ -297,6 +301,9 @@ export class ChildInvocationTransaction<TContext, TValue> {
       childCallId: openedChild.call.callId,
       outcome: execution.outcome,
       summary: execution.summary,
+      ...(execution.steeringVersion !== undefined
+        ? { steeringVersion: execution.steeringVersion }
+        : {}),
       ...(execution.receipt ? { receipt: execution.receipt } : {}),
     });
     if (!returnedResult.ok) {

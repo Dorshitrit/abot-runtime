@@ -1,4 +1,5 @@
 import type WebSocket from "ws";
+import { publishCompletedOutput } from "../../../shared/completion-disposition.js";
 import type {
   SessionActivationExpectation,
   SessionLifecycleMutationResult,
@@ -43,7 +44,8 @@ export class RequestActivationEvents {
       legacyToken: (text) => base.legacyToken(text),
       thinkingDelta: (delta, accumulated) =>
         base.thinkingDelta(delta, accumulated),
-      completed: (output) => base.completed(output),
+      completed: (output, disposition) =>
+        publishCompletedOutput(base, output, disposition),
       failed: (error, details) => base.failed(error, details),
       drain: async () => {
         await base.drain();

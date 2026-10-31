@@ -331,7 +331,7 @@ function assertCompletedGeneration(
     expect(f.envelopes[0]!.newSources).toHaveLength(1);
   }
   expect(
-    f.events.filter(([name]) => name.startsWith("context.compaction.")),
+    f.events.filter(([name]) => /^context\.compaction\.(started|completed|failed)$/u.test(name)),
   ).toEqual([
     ["context.compaction.started", expect.any(Object)],
     [

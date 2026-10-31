@@ -1,3 +1,4 @@
+import JSZip from "jszip";
 import { afterEach, expect, test, vi } from "vitest";
 import createPlugin from "../../../plugins/document-reader/source/index.js";
 import {
@@ -48,3 +49,19 @@ test.each([
     });
   },
 );
+
+
+test("malformed DOCX returns a tool failure without partial document evidence", async () => {
+  const context = await createPortablePluginFixture("document-reader");
+  const zip = new JSZip();
+  zip.file("word/document.xml", "<w:document><w:body><w:p><w:r><w:t>Only surviving prefix");
+  const bytes = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+  vi.mocked(readBoundedRegularFile).mockResolvedValue({ ok: true, bytes, byteCount: bytes.length });
+  const result = await createPlugin(context).handlers.document_reader!(
+    { source: "malformed.docx" },
+    { abortSignal: new AbortController().signal },
+  );
+  expect(result).toMatchObject({ ok: false, errorCode: "document_xml_invalid", producedNewInformation: false });
+  expect(result.data).toBeUndefined();
+  expect(JSON.stringify(result)).not.toContain("Only surviving prefix");
+});

@@ -36,6 +36,7 @@ export async function generateSuperCompactionCandidate(
     : undefined;
   for (const [index, source] of sources.entries()) {
     params.request.abortSignal.throwIfAborted();
+    params.onProgress?.({ step: "processing", unit: "sources", completedUnits: index, totalUnits: sources.length });
     const maxCharacters = sourceCharacterLimits[index]!;
     const existing = params.previous?.sourceDigests[index];
     const retainedText =
@@ -51,10 +52,14 @@ export async function generateSuperCompactionCandidate(
       );
       if (!existing)
         handoff = await continueSuperRetainedSource(params, source, handoff);
+      params.onProgress?.({ step: "processing", unit: "sources", completedUnits: index + 1, totalUnits: sources.length });
       continue;
     }
     const folded = await foldSuperCompactionSource({
       request: params.request,
+      onProgress: (progress) => params.onProgress?.({
+        ...progress, unit: "sources", completedUnits: index, totalUnits: sources.length,
+      }),
       currentRequest: params.request.prompt,
       assignment: {
         ...params.binding,
@@ -66,6 +71,7 @@ export async function generateSuperCompactionCandidate(
       previousContinuation: handoff,
       continuationMaxCharacters: SUPER_CONTINUATION_MAX_CHARACTERS,
     });
+    params.onProgress?.({ step: "processing", unit: "sources", completedUnits: index + 1, totalUnits: sources.length });
     handoff = folded.continuation;
     const digest = folded.digest;
     sourceDigests.push(

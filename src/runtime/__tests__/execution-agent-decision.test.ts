@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest";
 
 import {
   CAPABILITY_CATALOG_GROUP_COUNT_MAX,
-  CAPABILITY_INTENT_MAX_LENGTH,
   type CapabilityDescriptor,
 } from "../orchestration/capability-adapters/index.js";
 import {
@@ -169,42 +168,6 @@ describe("Single Execution Agent structured decision", () => {
       }).schema,
     ).flatMap(readActionEnums);
     expect(fullyActiveScopeActions).not.toContain("extend_capability_scope");
-  });
-
-  test("uses the client-intent bound in every capability schema and parser", () => {
-    const options = {
-      capabilities: [observeFile, observeProject],
-      maxBatchCapabilityExecutions: 2,
-    } as const;
-    const intentMaximums = collectPropertyMaximums(
-      createExecutionAgentDecisionFormat(options).schema,
-      "intent",
-    );
-    expect(intentMaximums.length).toBeGreaterThan(1);
-    expect(new Set(intentMaximums)).toEqual(
-      new Set([CAPABILITY_INTENT_MAX_LENGTH]),
-    );
-
-    const oversizedIntent = "x".repeat(CAPABILITY_INTENT_MAX_LENGTH + 1);
-    expect(
-      parseExecutionAgentDecisionOutput(
-        JSON.stringify({
-          decision: {
-            action: "invoke_capability",
-            capabilityId: observeProject.capabilityId,
-            intent: oversizedIntent,
-          },
-        }),
-        options,
-      ),
-    ).toMatchObject({
-      ok: false,
-      issues: expect.arrayContaining([
-        expect.objectContaining({
-          code: "execution_agent_capability_intent_invalid",
-        }),
-      ]),
-    });
   });
 
   test("accepts only a nonempty unique selection of manifest-projected catalog groups", () => {
@@ -447,7 +410,6 @@ describe("Single Execution Agent structured decision", () => {
         decision: {
           action: "invoke_capability",
           capabilityId: "observe_file",
-          intent: "Inspect the requested file.",
           selectionControls: { path: "index.html" },
         },
       }),
@@ -458,7 +420,6 @@ describe("Single Execution Agent structured decision", () => {
       decision: {
         action: "invoke_capability",
         capabilityId: "observe_file",
-        intent: "Inspect the requested file.",
         selectionControls: { path: "index.html" },
         controls: { path: "index.html" },
       },
@@ -471,7 +432,6 @@ describe("Single Execution Agent structured decision", () => {
     const refinementInvocation = {
       action: "invoke_capability",
       capabilityId: "write_file",
-      intent: "Write the requested file.",
       operationObjective: "Write only the requested content to index.html.",
       controlsEvidenceExecutionIds: [],
       selectionControls: { path: "index.html" },
@@ -487,7 +447,6 @@ describe("Single Execution Agent structured decision", () => {
         decision: {
           action: "invoke_capability",
           capabilityId: "observe_file",
-          intent: "Inspect.",
           selectionControls: { path: "index.html", unknown: true },
         },
       }),
@@ -509,7 +468,6 @@ describe("Single Execution Agent structured decision", () => {
         decision: {
           action: "invoke_capability",
           capabilityId: "observe_file",
-          intent: "Inspect the planned artifact.",
           selectionControls: { path: "site/index.html" },
           workingDirectory: "./site/",
         },
@@ -524,7 +482,6 @@ describe("Single Execution Agent structured decision", () => {
       decision: {
         action: "invoke_capability",
         capabilityId: "observe_file",
-        intent: "Inspect the planned artifact.",
         selectionControls: { path: "site/index.html" },
         controls: { path: "site/index.html" },
         workingDirectory: "site",
@@ -537,7 +494,6 @@ describe("Single Execution Agent structured decision", () => {
           decision: {
             action: "invoke_capability",
             capabilityId: "observe_file",
-            intent: "Inspect.",
             selectionControls: { path: "index.html" },
             workingDirectory: "../site",
           },
@@ -555,7 +511,6 @@ describe("Single Execution Agent structured decision", () => {
           decision: {
             action: "invoke_capability",
             capabilityId: "observe_file",
-            intent: "Inspect.",
             selectionControls: { path: "index.html" },
             workingDirectory: null,
           },
@@ -576,12 +531,10 @@ describe("Single Execution Agent structured decision", () => {
           invocations: [
             {
               capabilityId: "observe_file",
-              intent: "Inspect index.html.",
               selectionControls: { path: "index.html" },
             },
             {
               capabilityId: "observe_project",
-              intent: "Inspect the project tree.",
             },
           ],
         },
@@ -598,13 +551,11 @@ describe("Single Execution Agent structured decision", () => {
         invocations: [
           {
             capabilityId: "observe_file",
-            intent: "Inspect index.html.",
             selectionControls: { path: "index.html" },
             controls: { path: "index.html" },
           },
           {
             capabilityId: "observe_project",
-            intent: "Inspect the project tree.",
             controls: {},
           },
         ],
@@ -624,11 +575,9 @@ describe("Single Execution Agent structured decision", () => {
           invocations: [
             {
               capabilityId: "observe_project",
-              intent: "Inspect the project.",
             },
             {
               capabilityId: "write_file",
-              intent: "Write the file.",
               selectionControls: { path: "index.html" },
             },
           ],
@@ -657,12 +606,10 @@ describe("Single Execution Agent structured decision", () => {
           invocations: [
             {
               capabilityId: "observe_file",
-              intent: "Inspect index.html.",
               selectionControls: { path: "index.html" },
             },
             {
               capabilityId: "observe_file",
-              intent: "Inspect styles.css.",
               selectionControls: { path: "styles.css" },
             },
           ],
@@ -679,11 +626,9 @@ describe("Single Execution Agent structured decision", () => {
           invocations: [
             {
               capabilityId: "observe_project",
-              intent: "Inspect the first requested area.",
             },
             {
               capabilityId: "observe_project",
-              intent: "Inspect the second requested area.",
             },
           ],
         },
@@ -708,12 +653,10 @@ describe("Single Execution Agent structured decision", () => {
           invocations: [
             {
               capabilityId: "observe_file",
-              intent: "Inspect index.html first.",
               selectionControls: { path: "index.html" },
             },
             {
               capabilityId: "observe_file",
-              intent: "Inspect index.html again.",
               selectionControls: { path: "index.html" },
             },
           ],
@@ -747,12 +690,10 @@ describe("Single Execution Agent structured decision", () => {
           invocations: [
             {
               capabilityId: "observe_file",
-              intent: "Inspect index.html.",
               selectionControls: { path: "index.html" },
             },
             {
               capabilityId: "observe_file",
-              intent: "Inspect styles.css.",
               selectionControls: {},
             },
           ],
@@ -893,25 +834,6 @@ function readActionEnums(variant: {
   return isRecord(action) && Array.isArray(action.enum)
     ? (action.enum as string[])
     : [];
-}
-
-function collectPropertyMaximums(value: unknown, property: string): number[] {
-  if (Array.isArray(value)) {
-    return value.flatMap((item) => collectPropertyMaximums(item, property));
-  }
-  if (!isRecord(value)) return [];
-  const properties = isRecord(value.properties) ? value.properties : undefined;
-  const propertySchema = properties?.[property];
-  const currentMaximum =
-    isRecord(propertySchema) && typeof propertySchema.maxLength === "number"
-      ? [propertySchema.maxLength]
-      : [];
-  return [
-    ...currentMaximum,
-    ...Object.values(value).flatMap((item) =>
-      collectPropertyMaximums(item, property),
-    ),
-  ];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,15 +1,14 @@
 import { createBasketPickerController } from "./information-basket-picker-controller.js";
-import { droppedBasketNames, filterBasketSources, isBasketSourceWorking } from "../lib/information-basket-presentation.js";
+import { filterBasketSources, isBasketSourceWorking } from "../lib/information-basket-presentation.js";
 import { normalizeRealtimeMessage } from "../lib/realtime-message.js";
 
 /** One environment-bound management projection. The Runtime owns every persisted source. */
 export function createInformationBasketController({ client, getEnvironmentId, render,
   isVisible = () => true, confirmRemove = async () => false }) {
-  const state = { view: null, pending: [], query: "", filter: "all", selected: [], detailId: "",
+  const state = { view: null, query: "", filter: "all", selected: [], detailId: "",
     loading: false, mutation: "", error: "", message: "", settingsDraft: null, settingsDirty: false };
   let epoch = 0;
   let listRead = 0;
-  let pendingId = 0;
   let errorKind = "";
   let active = false;
   let refreshPending = null;
@@ -17,7 +16,7 @@ export function createInformationBasketController({ client, getEnvironmentId, re
   const picker = createBasketPickerController({ client, getEnvironmentId, render: publish, register,
     getRegistrationError: () => state.error, getSelectionLimit: () => state.view?.limits?.maxSources ?? 200 });
   function snapshot() {
-    const sources = [...state.pending, ...(state.view?.sources || [])];
+    const sources = [...(state.view?.sources || [])];
     return { ...state, sources, visibleSources: filterBasketSources(sources, state.query, state.filter),
       selected: [...state.selected], picker: picker.snapshot(),
       detail: sources.find((source) => source.sourceId === state.detailId) || null };
@@ -28,7 +27,7 @@ export function createInformationBasketController({ client, getEnvironmentId, re
   function canRefreshBasketView() { return active && isVisible() && client.supportsInformationBasket(); }
   function acceptView(view) {
     state.view = view;
-    const availableIds = new Set([...state.pending, ...view.sources].map((source) => source.sourceId));
+    const availableIds = new Set(view.sources.map((source) => source.sourceId));
     state.selected = state.selected.filter((id) => availableIds.has(id));
     if (!availableIds.has(state.detailId)) state.detailId = "";
     if (!state.settingsDirty) state.settingsDraft = { ...view.settings };
@@ -91,20 +90,11 @@ export function createInformationBasketController({ client, getEnvironmentId, re
       }
     }
   }
-  async function register(paths, linkId = "") {
+  async function register(paths) {
     if (!paths.length) return false;
     return mutate("register", (environment) => client.registerInformationBasketSources(paths, environment), () => {
-      if (linkId) state.pending = state.pending.filter((source) => source.sourceId !== linkId);
       state.message = "Sources linked. Original files stay where they are.";
     });
-  }
-  function receiveDrop(files) {
-    if (state.mutation || !client.supportsInformationBasket()) return;
-    const names = droppedBasketNames(files);
-    state.pending.push(...names.map((displayName) => ({ sourceId: `pending-${++pendingId}`, displayName,
-      path: "", status: "pending_path", indexedAt: null, sizeBytes: null, chunkCount: 0 })));
-    state.message = names.length ? "Link each dropped file to its original path before indexing." : "";
-    publish();
   }
   function findSource(id) { return snapshot().sources.find((source) => source.sourceId === id); }
   async function remove(ids) {
@@ -114,14 +104,9 @@ export function createInformationBasketController({ client, getEnvironmentId, re
     const scope = capture();
     if (!await confirmRemove(sources.length)) return false;
     if (!isCurrentBasketScope(scope) || state.mutation) return false;
-    const persisted = sources.filter((source) => source.status !== "pending_path");
-    const pendingIds = new Set(sources.filter((source) => source.status === "pending_path").map((source) => source.sourceId));
-    state.pending = state.pending.filter((source) => !pendingIds.has(source.sourceId));
-    state.selected = state.selected.filter((id) => !pendingIds.has(id));
-    if (!persisted.length) { state.detailId = ""; publish(); return true; }
     return mutate("remove", async (environment) => {
       let result;
-      for (const source of persisted) {
+      for (const source of sources) {
         if (!isCurrentBasketScope(scope)) return result;
         result = await client.removeInformationBasketSource(source.sourceId, source.revision, environment);
       }
@@ -129,7 +114,7 @@ export function createInformationBasketController({ client, getEnvironmentId, re
     }, () => { state.message = "Removed from the basket. Original files were not deleted."; });
   }
   async function reindex(ids) {
-    const sources = ids.map(findSource).filter((source) => source && source.status !== "pending_path" && !isBasketSourceWorking(source));
+    const sources = ids.map(findSource).filter((source) => source && !isBasketSourceWorking(source));
     if (!sources.length) return false;
     const scope = capture();
     return mutate("reindex", async (environment) => {
@@ -143,16 +128,16 @@ export function createInformationBasketController({ client, getEnvironmentId, re
   }
   function changeSettings(field, value) {
     if (!state.settingsDraft || state.mutation) return;
-    if (field !== "enabled" && field !== "embeddingProfileId") return;
+    if (field !== "enabled" && field !== "embeddingProfileId" && field !== "indexChatUploads" && field !== "matchMode") return;
     state.settingsDraft = { ...state.settingsDraft, [field]: value };
     state.settingsDirty = true;
     publish();
   }
   function saveSettings() {
     if (!state.settingsDraft || !state.settingsDirty) return Promise.resolve(false);
-    const { revision, enabled, embeddingProfileId } = state.settingsDraft;
+    const { revision, enabled, embeddingProfileId, indexChatUploads = false, matchMode = "balanced" } = state.settingsDraft;
     return mutate("settings", (environment) => client.saveInformationBasketSettings({
-      expectedRevision: revision, enabled, embeddingProfileId: embeddingProfileId || null,
+      expectedRevision: revision, enabled, indexChatUploads, matchMode, embeddingProfileId: embeddingProfileId || null,
     }, environment), () => { state.settingsDirty = false; state.message = "Resource settings saved."; });
   }
   function environmentChanged() {
@@ -161,7 +146,7 @@ export function createInformationBasketController({ client, getEnvironmentId, re
     refreshPending = null;
     refreshAgain = false;
     errorKind = "";
-    Object.assign(state, { view: null, pending: [], selected: [], detailId: "", loading: false,
+    Object.assign(state, { view: null, selected: [], detailId: "", loading: false,
       mutation: "", error: "", message: "", settingsDraft: null, settingsDirty: false });
     picker.environmentChanged();
     publish();
@@ -174,7 +159,7 @@ export function createInformationBasketController({ client, getEnvironmentId, re
     if (!message.resources?.includes("information-basket")) return;
     void refresh();
   }
-  return { snapshot, refresh, register, receiveDrop, remove, reindex, changeSettings, saveSettings,
+  return { snapshot, refresh, register, remove, reindex, changeSettings, saveSettings,
     picker, environmentChanged, handleRealtime,
     resetSettings() { if (!state.view || state.mutation) return; state.settingsDirty = false; state.settingsDraft = { ...state.view.settings }; publish(); },
     setActive(value) { active = value; if (!active) { state.detailId = ""; picker.close(); } else void refresh(); },
@@ -194,6 +179,5 @@ export function createInformationBasketController({ client, getEnvironmentId, re
       publish();
     },
     showDetails(id) { state.detailId = id; publish(); },
-    link(id) { const source = findSource(id); if (source?.status === "pending_path") void picker.open(source); },
   };
 }

@@ -28,12 +28,10 @@ const model = {
           ? {
               action: "open_capability_scope",
               catalogGroupIds: ["fixture"],
-              acknowledgement: "Checking.",
             }
           : {
               action: "invoke_capability",
               capabilityId: "effect",
-              intent: "Perform exactly one effect.",
               workingDirectory: ".",
             };
     return { text: JSON.stringify({ decision }), meta: {} };

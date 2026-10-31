@@ -74,7 +74,6 @@ describe("Execution Agent operation objective", () => {
     const decision = {
       action: "invoke_capability",
       capabilityId: observation.capabilityId,
-      intent: "Continue the bounded read.",
       selectionControls: controls,
     };
     expect(
@@ -142,12 +141,10 @@ describe("Execution Agent operation objective", () => {
         invocations: [
           {
             capabilityId: inspectPath.capabilityId,
-            intent: "Inspect the exact path.",
             selectionControls: { path: "project/index.html" },
           },
           {
             capabilityId: authoredRange.capabilityId,
-            intent: "Author the bounded inspection.",
             operationObjective,
             controlsEvidenceExecutionIds: [],
             selectionControls: { path: "project/index.html" },
@@ -161,13 +158,11 @@ describe("Execution Agent operation objective", () => {
         invocations: [
           {
             capabilityId: inspectPath.capabilityId,
-            intent: "Inspect the exact path.",
             selectionControls: { path: "project/index.html" },
             controls: { path: "project/index.html" },
           },
           {
             capabilityId: authoredRange.capabilityId,
-            intent: "Author the bounded inspection.",
             operationObjective,
             controlsEvidenceExecutionIds: [],
             selectionControls: { path: "project/index.html" },
@@ -180,7 +175,6 @@ describe("Execution Agent operation objective", () => {
       parseDecision({
         action: "invoke_capability",
         capabilityId: authoredRange.capabilityId,
-        intent: "Author the bounded inspection.",
         selectionControls: { path: "project/index.html" },
       }),
     ).toMatchObject({
@@ -196,7 +190,6 @@ describe("Execution Agent operation objective", () => {
       parseDecision({
         action: "invoke_capability",
         capabilityId: inspectPath.capabilityId,
-        intent: "Inspect the exact path.",
         operationObjective: "Inject an unused instruction.",
         selectionControls: { path: "project/index.html" },
       }),
@@ -213,7 +206,6 @@ describe("Execution Agent operation objective", () => {
       parseDecision({
         action: "invoke_capability",
         capabilityId: authoredRange.capabilityId,
-        intent: "Author the bounded inspection.",
         operationObjective: "x".repeat(
           EXECUTION_AGENT_OPERATION_OBJECTIVE_MAX_LENGTH + 1,
         ),

@@ -84,13 +84,11 @@ function directDecision(index: number, capabilityId: string, channel: string) {
     return {
       action: "open_capability_scope",
       catalogGroupIds: ["fixture"],
-      acknowledgement: "I will inspect the fixture.",
     };
   if (index === 2)
     return {
       action: "invoke_capability",
       capabilityId,
-      intent: "Observe the requested fixture.",
       selectionControls: { channel },
       workingDirectory: ".",
     };

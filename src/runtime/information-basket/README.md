@@ -9,8 +9,8 @@ long-term memory and installed plugins.
 ## Registration and indexing
 
 - Choose an existing file using the Runtime-host filesystem picker, or enter an
-  explicit absolute path. External browser drops retain only display names until
-  the user links a path; they never upload file bytes.
+  explicit absolute path. Browser drag-and-drop is not offered: it cannot provide
+  the original Runtime-host path, and Resources does not upload file copies.
 - The picker supports selecting all supported files in the current folder, including
   paginated entries, without traversing subfolders. Registration is one atomic
   batch bounded by the existing 200-source basket capacity.
@@ -19,8 +19,12 @@ long-term memory and installed plugins.
   caller-supplied paths.
 - Select an existing embedding profile in Resources. Basket settings do not
   enable long-term memory or require a generative summarizer.
-- Text and text-bearing PDFs are supported initially. PDF parsing runs in a
-  bounded isolated process. OCR and Office formats are outside this first version.
+- Text, text-bearing PDFs and DOCX documents are supported. PDF parsing runs in a
+  bounded isolated process. DOCX uses the independent byte-only document-text
+  library, shared through the SDK with optional consumers. Resources never imports
+  or enables an installed plugin. File grants, identities, revisions and complete
+  indexing remain owned here; truncated extraction is rejected. OCR, legacy DOC,
+  other Office formats and live Google Docs are not supported.
 - Indexing reads the source transiently, chunks its contents and embeds the chunks.
   The persisted index contains locators, revisions, hashes and vectors, not a copy
   of the full extracted document. A complete new index is published atomically.
@@ -34,6 +38,26 @@ long-term memory and installed plugins.
   source is rejected atomically. Invalid paths and stale revisions preserve the
   existing registration. Original files and settled conversation evidence remain
   untouched; Relink is not a model capability.
+
+## New chat uploads
+
+Resources includes an opt-in `indexChatUploads` setting, off by default (including
+existing stores). Saving it never scans historical messages or attachments.
+The Web upload route captures the environment owner's settings revision before
+reading the upload body, then registers only a successfully stored, supported file.
+Changing settings during an upload revokes its admission; toggling off and back on
+does not admit an older in-flight upload. Foreign-origin browser uploads cannot register sources. The owner validates session ownership,
+resolves the stored attachment path and commits it through the ordinary registration
+transaction. Exact paths are deduplicated; display names retain the uploaded name.
+
+No second file copy is made. Removing a draft attachment or deleting its chat can
+remove that source file; normal source-health checks then make it unavailable.
+Registration queues the existing index worker and never waits for embeddings.
+Paused or unconfigured indexing leaves it queued. Unsupported uploads remain chat
+attachments only. Registration failure does not fail the upload. Turning the option
+off stops future additions; already registered sources remain until removed.
+Changing only this preference neither interrupts indexing nor invalidates retrieval.
+The management RPC seam is not a model capability and does not enable SUPER access.
 
 ## Agent access
 
@@ -82,9 +106,37 @@ the basket module owns its EA-only availability. Shared Skill request views use
 trusted definition metadata for the same restriction. Other Skills are unchanged.
 
 EA keeps bounded passive metadata and ordinary core capability execution.
+Its passive candidate projection prioritizes display names and exact source IDs and
+revisions within the existing 512-token ceiling. Paths, scores, chunk locators and
+content are excluded. Names may be shortened and omitted sources remain counted;
+mandatory context retains priority. This metadata never triggers a source or Skill read.
+
+Resources settings offer three matching modes: Flexible (0.3), Balanced (0.6),
+and Strict (0.9). Balanced is the default for new and existing stores without a
+saved mode. The mode applies to content similarity in both background discovery
+and explicit search. A complete registered display name or a sequence of at least
+two consecutive complete words from its stem admits that source below the content
+threshold. Complete names rank before word sequences, then content-only matches.
+Name matching ignores case, canonical Unicode encoding and whitespace differences;
+word sequences also allow underscores and dashes between words. File extensions
+are not name words. Single words, word fragments and reordered words receive no
+name priority. Names do not create aliases or infer which source to read.
+Duplicate names retain separate source IDs. The returned score and chunk locators
+still describe the best content matches; no synthetic similarity is assigned.
+Existing ready-index compatibility, provider availability, source verification,
+result limits and cancellation still apply. No index rebuild or storage change is
+required. LIST and selected reads remain independent of similarity. Changing mode invalidates
+pending search results and passive candidates through the existing settings
+notification, without changing source revisions or re-indexing. Old settings clients
+that omit the field preserve the saved mode. Scores measure similarity, not certainty.
+
 The Information Basket Skill declares its required operations and eligible request
 root in its definition. A match alone requires neither a source nor a Skill read.
 Explicit Skill reads in EA remain independent of source readiness.
+EA guidance directs requested file lookups through LIST, SEARCH or READ, including
+when automatic matches are absent; unclear lookup intent calls for clarification.
+Unread content does not establish denied access or justify requesting a re-upload.
+Background matches alone still require no action.
 Read results carry exact source/revision/hash and coverage; longer reads continue
 using explicit offsets. Selected reads become ordinary settled tool evidence.
 
@@ -102,7 +154,11 @@ of the same source revisions for the same user-intent revision is suppressed.
 
 EA operations use the existing `tool.started` / `tool.completed` event path.
 Search events show the returned count and up to five source names; read events
-name the source when known. Empty searches and unavailable lookups are distinct.
+name the source when known. Successful reads also show the returned character
+range and whether more text remains. Nonzero offsets are labelled as continuation
+reads; reaching the end of one range does not claim that earlier ranges were read.
+Old events without coverage retain their original presentation.
+Empty searches and unavailable lookups are distinct.
 Omitted names and further search results have separate counts.
 
 Activity labels are bounded and rendered as inert text. They contain no document

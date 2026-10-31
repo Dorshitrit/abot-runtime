@@ -1,3 +1,4 @@
+import { conversationTitle } from "../lib/conversation-title.js";
 import { confirmDialog } from "../components/confirmation-dialog.js";
 import { createSessionPinUpdates } from "./session-pin-updates.js";
 import {
@@ -34,8 +35,7 @@ export function createSessionController({
 }) {
   let pagination;
   const updatePinnedSessions = createSessionPinUpdates({ state, preferences });
-  const titleOf = (session) =>
-    textOf(session?.displayName || session?.title || session?.id);
+  const titleOf = conversationTitle;
   const byId = (sessionId) =>
     state.sessions.find((session) => textOf(session.id) === sessionId);
   const isPinned = (sessionId) => state.pinnedSessionIds.includes(sessionId);
@@ -137,7 +137,7 @@ export function createSessionController({
 
   function setCurrentTitle(title) {
     if (state.currentSessionId) {
-      dom.sessionTitle.textContent = title || state.currentSessionId;
+      dom.sessionTitle.textContent = conversationTitle({ ...byId(state.currentSessionId), id: state.currentSessionId, title });
     }
   }
 
@@ -367,6 +367,10 @@ export function createSessionController({
     byId,
     clearMessages,
     deleteSession,
+    forgetDeletedSessionPins(sessionIds) {
+      const deleted = new Set(sessionIds);
+      return updatePinnedSessions((pins) => pins.filter((id) => !deleted.has(id)));
+    },
     render,
     setBusy,
     setCurrentTitle,

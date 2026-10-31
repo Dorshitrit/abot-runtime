@@ -1,3 +1,6 @@
+import { decidePlannerWithWorkerSteering } from "./steering.js";
+import { projectSuperWorkerDelegationSteering } from "../../request/super-worker-steering.js";
+import type { RequestSteeringSnapshot } from "../../request/request-steering.js";
 import {
   invokeStructuredModelStep,
   StructuredModelInvalidOutputError,
@@ -45,6 +48,7 @@ type RunPlannerDecisionOptions = Readonly<{
   dependencyHead?: RoleCallLedgerHead;
   progress?: PlannerDecisionProgressSource;
   planContext?: PlannerDecisionPlanContext;
+  steering?: RequestSteeringSnapshot;
 }>;
 
 export async function runPlannerDecision(
@@ -69,6 +73,9 @@ export async function runPlannerDecision(
     const decision = await invokeStructuredModelStep({
       request,
       modelStep: input.modelStep,
+      ...(options.steering
+        ? { boundSteeringVersion: options.steering.version, callerSteering: options.steering }
+        : {}),
       format: input.format,
       messages: input.context.messages,
       contextCompaction: createPlannerCapabilityBriefReadmissionController(
@@ -173,21 +180,27 @@ export const GENERIC_PLANNER_EXECUTOR: RoleExecutor<
       ledger,
       call,
     });
-    const decision = await runPlannerDecision(context, {
+    const { decision, steeringVersion } = await decidePlannerWithWorkerSteering({
+      request: context,
       call,
-      availableChildRoleIds,
-      toolResults,
-      dependencyHead: head,
-      planContext,
-      ...(continuation
-        ? {
-            progress: {
-              kind: "role_child" as const,
-              ledger,
-              commit: continuation.commit,
-            },
-          }
-        : {}),
+      head,
+      decide: (steering) => runPlannerDecision(context, {
+        call,
+        steering,
+        availableChildRoleIds,
+        toolResults,
+        dependencyHead: head,
+        planContext,
+        ...(continuation
+          ? {
+              progress: {
+                kind: "role_child" as const,
+                ledger,
+                commit: continuation.commit,
+              },
+            }
+          : {}),
+      }),
     });
     if (decision.action === "return_result") {
       return Object.freeze({
@@ -207,6 +220,7 @@ export const GENERIC_PLANNER_EXECUTOR: RoleExecutor<
       kind: "invoke_role",
       roleId: decision.roleId,
       objective: decision.objective,
+      ...projectSuperWorkerDelegationSteering(context, decision.roleId, steeringVersion),
       ...(decision.roleId === "worker"
         ? {
             workingDirectory:

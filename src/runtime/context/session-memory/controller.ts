@@ -2,6 +2,7 @@ import {
   SESSION_MEMORY_CHECKPOINT_KIND,
   type SessionMemoryCheckpoint,
 } from "../../../sessions/memory/contracts.js";
+import { getSessionMemoryCheckpoint } from "../../../sessions/memory/checkpoint-scope.js";
 import {
   assertValidSessionMemoryCheckpoint,
   resolveApplicableSessionMemoryCheckpoint,
@@ -19,6 +20,7 @@ import type {
   SessionMemoryRequestProjection,
 } from "./contracts.js";
 import { selectSessionMemoryProjection } from "./selection.js";
+import { coordinateExecutionSessionMemory } from "./execution-coordination.js";
 import {
   validateRequestSessionMemorySnapshot,
   type RequestSessionMemorySnapshot,
@@ -27,7 +29,7 @@ import {
 export function createRequestSessionMemory(
   params: CreateRequestSessionMemoryParams,
 ): RequestSessionMemory {
-  return new RequestSessionMemoryController(params);
+  return coordinateExecutionSessionMemory(new RequestSessionMemoryController(params));
 }
 
 class RequestSessionMemoryController implements RequestSessionMemory {
@@ -47,6 +49,7 @@ class RequestSessionMemoryController implements RequestSessionMemory {
   snapshot(): RequestSessionMemorySnapshot {
     return Object.freeze({
       kind: "request_session_memory_v1",
+      ...(this.source.scope ? { scope: this.source.scope } : {}),
       source: this.source,
       ...(this.checkpoint ? { checkpoint: this.checkpoint } : {}),
       persistedCheckpointRevision: this.persistedCheckpointRevision,
@@ -63,6 +66,7 @@ class RequestSessionMemoryController implements RequestSessionMemory {
 
   async prepare(
     request: Parameters<RequestSessionMemory["prepare"]>[0],
+    onProgress?: Parameters<RequestSessionMemory["prepare"]>[1],
   ): Promise<PreparedSessionMemoryCheckpoint> {
     const currentProjection = this.project();
     if (currentProjection.compactableTurnCount === 0) {
@@ -82,9 +86,11 @@ class RequestSessionMemoryController implements RequestSessionMemory {
       nextCoveredTurnCount,
     );
     const summary = await this.params.compactor.compact({
+      ...(this.source.scope ? { scope: this.source.scope } : {}),
       request,
       ...(this.checkpoint ? { previousSummary: this.checkpoint.summary } : {}),
       turns: compactableTurns,
+      onProgress,
     });
     const expectedCheckpointRevision = this.checkpoint
       ? this.checkpoint.revision
@@ -95,6 +101,7 @@ class RequestSessionMemoryController implements RequestSessionMemory {
       sourceRevision: this.source.sourceRevision,
       coveredMessages: createSessionMemoryMessageReferences(
         this.source.turns.slice(0, nextCoveredTurnCount),
+        this.source.scope,
       ),
       summary,
       createdAt: this.now().toISOString(),
@@ -117,6 +124,7 @@ class RequestSessionMemoryController implements RequestSessionMemory {
           await this.params.repository.compareAndSwapSessionMemoryCheckpoint(
             this.params.sessionId,
             {
+              ...(this.source.scope ? { scope: this.source.scope } : {}),
               expectedSourceRevision: this.source.sourceRevision,
               expectedCheckpointRevision,
               checkpoint,
@@ -137,13 +145,14 @@ function resolveInitialSessionMemoryState(
 ): RequestSessionMemorySnapshot {
   if ("snapshot" in params)
     return validateRequestSessionMemorySnapshot(params.snapshot);
-  const checkpoint = resolveApplicableSessionMemoryCheckpoint(params.session);
+  const checkpoint = resolveApplicableSessionMemoryCheckpoint(params.session, params.scope);
   return Object.freeze({
     kind: "request_session_memory_v1",
-    source: snapshotSessionMemorySource(params.session),
+    ...(params.scope ? { scope: params.scope } : {}),
+    source: snapshotSessionMemorySource(params.session, params.scope),
     ...(checkpoint ? { checkpoint } : {}),
     persistedCheckpointRevision: normalizeCheckpointRevision(
-      params.session.sessionMemoryCheckpoint?.revision,
+      getSessionMemoryCheckpoint(params.session, params.scope)?.revision,
     ),
   });
 }

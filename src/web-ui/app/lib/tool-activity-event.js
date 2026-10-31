@@ -1,3 +1,4 @@
+import { recordedPresentationRole } from "./role-presentation.js";
 import { getRecord, titleCaseEventValue } from "./event-presentation.js";
 import { projectConversationFileReference } from "./conversation-file-reference.js";
 import { computerInputFields } from "./tool-computer-activity-fields.js";
@@ -192,6 +193,7 @@ export function projectToolActivityEvent(message) {
   if (!tool) return null;
   const meta = effectiveToolMetadata(getRecord(message.meta) || {}, tool);
   const completed = name === "tool.completed";
+  const presentationRole = recordedPresentationRole(message.executorRole, message.presentationRole);
   const terminal = isTerminalToolExecutionEvent(name);
   const params = getRecord(meta.params);
   const inputMeta = { ...meta, params };
@@ -207,6 +209,7 @@ export function projectToolActivityEvent(message) {
     tool,
     executionId: boundedText(message.executionId, 200).trim(),
     executorRole: boundedText(message.executorRole, 128).trim(),
+    ...(presentationRole ? { presentationRole } : {}),
     roleCallId: boundedText(message.roleCallId, 200).trim(),
     ...payloadStageMetadata(message),
     beforeExternalExecution: message.stage === "before_external_execution",

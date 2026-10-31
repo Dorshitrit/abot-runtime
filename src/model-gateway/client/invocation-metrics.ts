@@ -1,5 +1,6 @@
 import type { ModelTokenUsage } from "../types.js";
 import type { ModelMetricMessage } from "./contracts.js";
+import { buildCacheUsageMetrics } from "./cache-usage-metrics.js";
 
 function countMessageChars(
   messages: ModelMetricMessage[] | undefined,
@@ -104,7 +105,6 @@ export function buildModelInvocationMetrics(params: {
     params.providerUsage?.outputTokens ?? estimatedOutputTokens;
   const totalTokens =
     params.providerUsage?.totalTokens ?? inputTokens + outputTokens;
-  const cachedInputTokens = params.providerUsage?.cachedInputTokens;
 
   return {
     requestId: params.requestId ?? "",
@@ -134,12 +134,7 @@ export function buildModelInvocationMetrics(params: {
     inputTokens,
     outputTokens,
     totalTokens,
-    ...(cachedInputTokens !== undefined
-      ? {
-          cachedInputTokens,
-          uncachedInputTokens: inputTokens - cachedInputTokens,
-        }
-      : {}),
+    ...buildCacheUsageMetrics(params.providerUsage),
     ...(params.providerUsage?.reasoningTokens !== undefined
       ? { reasoningTokens: params.providerUsage.reasoningTokens }
       : {}),

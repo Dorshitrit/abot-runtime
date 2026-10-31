@@ -43,7 +43,6 @@ const report = (
 const observe = (path: string, establishDirectory = true) => ({
   action: "invoke_capability",
   capabilityId: "fixture.observe",
-  intent: `Inspect ${path}.`,
   selectionControls: { path },
   ...(establishDirectory ? { workingDirectory: "." } : {}),
 });
@@ -52,7 +51,6 @@ function prelude(index: number) {
     return {
       action: "open_capability_scope",
       catalogGroupIds: ["files"],
-      acknowledgement: "I will inspect the requested records.",
     };
   return {
     action: "invoke_planner",
@@ -323,7 +321,6 @@ describe("EA model work-plan declarations through the shared request runner", ()
         return {
           action: "invoke_capability",
           capabilityId: "fixture.update",
-          intent: "Update record-1.txt.",
           workingDirectory: ".",
           operationObjective:
             "Apply the bounded update to the first requested record.",

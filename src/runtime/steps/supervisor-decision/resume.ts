@@ -21,6 +21,15 @@ type SupervisorContinuationParams = Readonly<{
   currentInvocationAttempt: number;
 }>;
 
+/** Only the exact current child return can hand its steering decision to this caller. */
+export function hasSupervisorWorkerSteeringHandoff(
+  params: SupervisorContinuationParams,
+): boolean {
+  const child = validateSupervisorContinuation(params);
+  validateCompletedChild(child, params.currentCallId);
+  return child.roleId === "worker" && child.outcome === "yielded";
+}
+
 /** Rebuild root-owned source returns after reads or capability continuations. */
 export function buildCompletedSupervisorChildContinuationParts(
   head?: RoleCallLedgerHead,
@@ -99,7 +108,7 @@ export function buildSupervisorChildContinuationParts(
 
 function validateSupervisorContinuation(
   params: SupervisorContinuationParams,
-): void {
+): CompletedRoleChildResult {
   if (
     params.resume.callerCallId !== params.currentCallId ||
     params.resume.invocationAttempt !== params.currentInvocationAttempt ||
@@ -118,6 +127,7 @@ function validateSupervisorContinuation(
   ) {
     throw new Error("supervisor_resume_result_mismatch");
   }
+  return returnedChild;
 }
 
 function buildCompletedChildMessages(
@@ -149,6 +159,7 @@ function buildCompletedChildMessages(
         resultRef: child.resultRef,
         roleId: child.roleId,
         outcome: child.outcome,
+      ...(child.steeringVersion !== undefined ? { steeringVersion: child.steeringVersion } : {}),
         summary: child.summary,
         ...(child.workLineage
           ? { dependencyResultRefs: child.dependencyResultRefs }
@@ -181,6 +192,7 @@ function buildCompactCompletedChildMessage(
         : {}),
       dependencyResultRefs: child.dependencyResultRefs,
       outcome: child.outcome,
+      ...(child.steeringVersion !== undefined ? { steeringVersion: child.steeringVersion } : {}),
       summary: child.summary,
       ...projectCompletedChildReceipt(child),
     }),
@@ -200,7 +212,7 @@ function validateCompletedChild(
     !child.resultRef ||
     !isSupervisorDelegateRoleId(child.roleId) ||
     !boundedText(child.objective, SUPERVISOR_OBJECTIVE_MAX_LENGTH) ||
-    (child.outcome !== "completed" && child.outcome !== "failed") ||
+    !hasValidChildReturnOutcome(child) ||
     !isRoleCallResultText(child.summary)
   ) {
     throw new Error("supervisor_resume_child_invalid");
@@ -248,6 +260,7 @@ function hasValidCompletedChildReceiptProjection(
       childCallId: child.childCallId,
       childRoleId: child.roleId,
       outcome: child.outcome,
+      ...(child.steeringVersion !== undefined ? { steeringVersion: child.steeringVersion } : {}),
     });
   }
   const receipt = normalizeRoleCallWorkResultReceipt(child.receipt);
@@ -261,4 +274,10 @@ function hasValidCompletedChildReceiptProjection(
 
 function boundedText(value: string, maximumLength: number): boolean {
   return value.trim().length > 0 && value.length <= maximumLength;
+}
+
+function hasValidChildReturnOutcome(child: CompletedRoleChildResult): boolean {
+  if (child.outcome === "completed" || child.outcome === "failed") return true;
+  if (child.outcome !== "yielded" || child.roleId !== "worker") return false;
+  return Number.isSafeInteger(child.steeringVersion) && child.steeringVersion! > 0;
 }

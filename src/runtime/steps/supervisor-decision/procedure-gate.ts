@@ -1,5 +1,7 @@
 import type { ChatMessage, ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
+import { buildCoreSkillReadContextMessages } from "../../context/core-skill-read-context.js";
 import { projectRequestContext } from "../../context/request-context.js";
+import type { RoleCallLedgerHead } from "../../orchestration/role-calls/index.js";
 import { invokeStructuredModelStep, type StructuredModelParseResult } from "../../model/invoke-structured-step.js";
 import { resolveModelContextBudget } from "../../model/model-context-budget.js";
 import { assertBoundModelStepSteeringCurrent } from "../../model/model-step-steering.js";
@@ -11,6 +13,7 @@ import { SUPERVISOR_DECISION_MODEL_STEP, type SupervisorDecisionDiagnosticContex
 import { projectSupervisorResponseRecommendation, SUPERVISOR_RESPONSE_RECOMMENDATION_MAX_LENGTH } from "./response-recommendation.js";
 import { projectSupervisorProcedureRecall } from "./procedure-recall.js";
 import { projectSupervisorProcedureMemory } from "./procedure-memory.js";
+import { SUPER_SKILL_GUIDANCE_INSTRUCTION } from "../supervisor-skill-instructions.js";
 
 export type SupervisorProcedureGateDecision = Readonly<
   | { requiresProcedure: true }
@@ -82,6 +85,7 @@ function isDirectResponseDecision(record: Record<string, unknown> | undefined): 
 
 type ProcedureGateContextOptions = Readonly<{
   diagnostic: SupervisorDecisionDiagnosticContext;
+  skillReadHead?: RoleCallLedgerHead;
   initialMemoryMessage?: ChatMessage;
   memoryRecallMessage?: ChatMessage;
   boundSteeringVersion?: number;
@@ -100,6 +104,8 @@ function projectProcedureMemoryContext(request: RequestExecutionScope, options: 
 export function buildSupervisorProcedureGateInput(request: RequestExecutionScope, options: ProcedureGateContextOptions) {
   const format = createSupervisorProcedureGateFormat();
   const memory = projectProcedureMemoryContext(request, options);
+  const skillMessages = buildCoreSkillReadContextMessages(options.skillReadHead, "delegate");
+  const hasSkillReadContext = skillMessages.length > 0;
   const budget = resolveModelContextBudget({
     runnerConfig: request.runnerConfig, agentMode: request.agentMode,
     modelStep: SUPERVISOR_DECISION_MODEL_STEP,
@@ -109,9 +115,11 @@ export function buildSupervisorProcedureGateInput(request: RequestExecutionScope
     ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),
   });
   const context = projectRequestContext({
-    instructions: [PROCEDURE_GATE_INSTRUCTIONS, ...(memory ? [memory.instructions] : [])].join("\n"), format,
+    instructions: [PROCEDURE_GATE_INSTRUCTIONS,
+      ...(hasSkillReadContext ? [SUPER_SKILL_GUIDANCE_INSTRUCTION] : []),
+      ...(memory ? [memory.instructions] : [])].join("\n"), format,
     prompt: request.prompt, historyMessages: [], budget,
-    ...(memory ? { referenceMessages: [memory.message] } : {}),
+    referenceMessages: [...skillMessages, ...(memory ? [memory.message] : [])],
     diagnostic: options.diagnostic, onEvent: request.onEvent,
     deferCompactionFailure: true,
   });

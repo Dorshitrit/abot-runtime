@@ -7,7 +7,7 @@ function hasFilePreviewDependencies(options) {
   return Boolean(options.scrollRoot?.parentElement);
 }
 
-function preserveConversationScroll(scrollRoot, change) {
+export function preserveConversationScroll(scrollRoot, change) {
   const top = scrollRoot.scrollTop;
   const left = scrollRoot.scrollLeft;
   const bounds = scrollRoot.getBoundingClientRect();
@@ -31,6 +31,7 @@ export function createConversationFilePreviewFeature(options) {
     return {
       open: undefined,
       canOpen: () => false,
+      isOpen: () => false,
       reset() {},
       syncScope() {},
       setWorkspace() {},
@@ -38,6 +39,7 @@ export function createConversationFilePreviewFeature(options) {
   }
   const { client, getScope, scrollRoot, documentRoot, viewport } = options;
   const host = scrollRoot.parentElement;
+  let open = false;
   const view = createConversationFilePreview({
     host,
     documentRoot,
@@ -48,12 +50,18 @@ export function createConversationFilePreviewFeature(options) {
   const controller = createConversationFilePreviewController({
     client,
     getScope,
-    render: (state) =>
-      preserveConversationScroll(scrollRoot, () => view.render(state)),
+    render: (state) => {
+      open = state.open === true;
+      preserveConversationScroll(scrollRoot, () => view.render(state));
+    },
   });
   return {
-    open: controller.open,
+    open: (reference, opener) => {
+      options.onBeforeOpen?.();
+      return controller.open(reference, opener);
+    },
     canOpen: client.supportsConversationFiles,
+    isOpen: () => open,
     reset: () => controller.close({ restoreFocus: false }),
     syncScope: controller.syncScope,
     setWorkspace(workspace) {

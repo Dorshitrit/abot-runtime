@@ -48,6 +48,7 @@ export function isValidOpenedChildProjection<TContext, TValue>(
     childCall?.parentCallId === callerCall.callId &&
     childCall.roleId === input.roleId &&
     childCall.objective === input.objective &&
+    childCall.workerSteeringVersion === input.workerSteeringVersion &&
     sameWorkerCapabilityScope(
       childCall.workerCapabilityScope,
       input.workerCapabilityScope,

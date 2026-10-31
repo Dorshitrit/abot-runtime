@@ -1,4 +1,5 @@
 import { ModelGatewayInvocationError } from "../../model-gateway/client/invocation-error.js";
+import { inheritModelGatewayUserMessage } from "../../model-gateway/client/user-message.js";
 import { permitsModelContentTrace } from "../../model-gateway/observability/content-trace-policy.js";
 import type { ModelStep } from "../../shared/model-steps.js";
 
@@ -14,6 +15,7 @@ export class ModelProviderFailure extends Error {
     super(cause.message, { cause });
     this.name = "ModelProviderFailure";
     this.stage = `model_provider_${cause.kind}`;
+    inheritModelGatewayUserMessage(this, cause);
   }
 }
 

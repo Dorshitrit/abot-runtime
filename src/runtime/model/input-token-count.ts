@@ -3,6 +3,7 @@ import type {
   ModelGatewayFormat,
   ResolvedModelInvocation,
 } from "../../model-gateway/types.js";
+import { projectPromptCacheBoundary } from "./prompt-cache-boundary.js";
 import type { ModelStep } from "../../shared/model-steps.js";
 import { traceDebug } from "../observability/debug-logger.js";
 import type { RequestModelInvocationView } from "../request/contracts.js";
@@ -12,6 +13,7 @@ export async function countModelInputTokens(params: {
   invocation: ResolvedModelInvocation;
   modelStep: ModelStep;
   messages: readonly ChatMessage[];
+  promptCacheBoundaryBeforeMessage?: ChatMessage;
   format?: ModelGatewayFormat;
   abortSignal?: AbortSignal;
 }): Promise<number | undefined> {
@@ -24,6 +26,7 @@ export async function countModelInputTokens(params: {
   const result = await countInputTokens({
     provider: params.invocation.profile.provider,
     messages: params.messages,
+    ...projectPromptCacheBoundary({ messages: params.messages, beforeMessage: params.promptCacheBoundaryBeforeMessage }),
     agentMode: params.request.agentMode,
     modelStep: params.modelStep,
     ...(params.request.reasoningPreference ? { reasoningPreference: params.request.reasoningPreference } : {}),

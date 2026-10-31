@@ -88,6 +88,7 @@ export async function finalizeInvalidRootOutput(params: {
     response = await runModelAuthoredDegradedFinalization({
       request: params.request,
       input,
+      error: params.error,
       maxResponseChars: head.policy.limits.maxResponseChars,
     });
   } catch (error: unknown) {

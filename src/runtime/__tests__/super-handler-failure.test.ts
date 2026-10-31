@@ -2,6 +2,7 @@ import { createFailureHarness } from "./support/super-handler-failure-fixture.js
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { ModelGatewayInvocationError } from "../../model-gateway/client/invocation-error.js";
+import { readModelGatewayUserMessage } from "../../model-gateway/client.js";
 import {
   configureDebugLogger,
   resetDebugLoggerConfig,
@@ -43,7 +44,7 @@ test.each([
     await harness.run(invoke);
     expect(invoke.mock.calls.map(([input]) => input.modelStep)).toEqual([
       "supervisor.decision",
-      "degraded.finalization",
+      ...(readModelGatewayUserMessage(failure) ? [] : ["degraded.finalization"]),
     ]);
     expect(
       harness.append.mock.calls.filter(([, role]) => role === "assistant"),
@@ -54,7 +55,7 @@ test.each([
       session?.messages.filter(({ role }) => role === "assistant"),
     ).toEqual([
       expect.objectContaining({
-        content: "Unable to finish.\n\nContinue in a new request.",
+        content: readModelGatewayUserMessage(failure) ?? "Unable to finish.\n\nContinue in a new request.",
         grounding: "conversation",
       }),
     ]);
@@ -180,14 +181,12 @@ test("a committed root failure response is still persisted through the outer rou
     invoke.mock.calls.filter(
       ([input]) => input.modelStep === "degraded.finalization",
     ),
-  ).toHaveLength(1);
+  ).toHaveLength(0);
   const assistantWrites = harness.append.mock.calls.filter(
     ([, role]) => role === "assistant",
   );
   expect(assistantWrites).toHaveLength(1);
-  expect(assistantWrites[0]![2]).toBe(
-    `${phrasing.failureNotice}\n\n${phrasing.nextStep}`,
-  );
+  expect(assistantWrites[0]![2]).toContain("model returned an invalid decision or response");
   expect(harness.events.filter(({ type }) => type === "completed")).toEqual([]);
   expect(harness.events.filter(({ type }) => type === "failed")).toEqual([
     expect.objectContaining({ error: "invalid_supervisor_decision" }),

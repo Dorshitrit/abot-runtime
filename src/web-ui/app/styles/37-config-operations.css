@@ -209,3 +209,18 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
+
+.runtime-maintenance {
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.runtime-maintenance h3 { margin: 0; font-size: var(--font-size-lg); font-weight: 500; }
+.runtime-maintenance p { color: var(--muted); font-size: var(--font-size-sm); line-height: 1.6; }
+.runtime-maintenance-actions { display: flex; flex-wrap: wrap; gap: 16px 32px; margin-top: 16px; }
+.runtime-maintenance-actions > div { flex: 1 1 220px; min-width: 0; }
+.runtime-maintenance-actions p { margin: 7px 0 0; }
+.runtime-maintenance-delete { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); }
+.runtime-maintenance-delete:hover { background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.runtime-maintenance-status:empty { display: none; }
+.runtime-maintenance .runtime-maintenance-status.error-text { color: var(--danger); }

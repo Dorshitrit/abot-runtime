@@ -5,10 +5,12 @@ import { ClientStateError } from "./contracts.js";
 import { updatePreference } from "./preferences.js";
 import { WebClientStateStore } from "./store.js";
 import { changeClientQueue } from "./queue.js";
+import type { ClientQueueTargetValidator } from "./queue-target.js";
 
 export class WebClientStateRoutes {
   private readonly store: WebClientStateStore;
-  constructor(rootDir: string, private readonly changed: () => void = () => {}) { this.store = new WebClientStateStore(rootDir); }
+  constructor(rootDir: string, private readonly changed: () => void = () => {},
+    private readonly validateQueueTarget?: ClientQueueTargetValidator) { this.store = new WebClientStateStore(rootDir); }
   async handle(request: IncomingMessage, response: ServerResponse, pathname: string): Promise<boolean> {
     if (pathname !== "/web-ui-state") return false;
     response.setHeader("cache-control", "no-store");
@@ -24,9 +26,12 @@ export class WebClientStateRoutes {
       }
       if (!acceptConfigMutationRequest(request, response)) return true;
       const input = readJsonBody(await readBody(request, { maxBytes: 1024 * 1024 }));
-      const saved = await this.store.transaction((state) => {
+      const saved = await this.store.transaction(async (state) => {
         if (input.kind === "preference") { updatePreference(state.preferences, input); return null; }
-        if (input.kind === "queue") return changeClientQueue(state, input);
+        if (input.kind === "queue") {
+          await this.validateQueueTarget?.(input);
+          return changeClientQueue(state, input);
+        }
         if (input.kind === "introduction") { state.introductionSeen = true; return null; }
         throw new ClientStateError("invalid_state_operation", "Unknown workspace state operation.");
       });

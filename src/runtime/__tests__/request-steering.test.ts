@@ -159,7 +159,7 @@ describe("request steering inbox", () => {
     ]);
   });
 
-  test("defers a newly arrived update without changing an active Worker assignment", async () => {
+  test("returns control for a stale bound Worker invocation without accepting its output", async () => {
     const inbox = createRequestSteeringInbox({ requestId: "request-worker" });
     let resolveWorker:
       | ((value: { text: string; meta: Record<string, unknown> }) => void)
@@ -186,6 +186,7 @@ describe("request steering inbox", () => {
     const resultPromise = invokeModelStep({
       request,
       modelStep: "worker.decision",
+      boundSteeringVersion: 0,
       messages,
       timeoutReason: "test_timeout",
       accept,
@@ -195,10 +196,10 @@ describe("request steering inbox", () => {
     inbox.append({ steerId: "steer-save", text: "Save it to a dated file" });
     resolveWorker?.({ text: "search complete", meta: {} });
 
-    await expect(resultPromise).resolves.toBe("search complete");
+    await expect(resultPromise).rejects.toThrow("model_step_steering_superseded");
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(invoke.mock.calls[0]?.[0]?.messages).toEqual(messages);
-    expect(accept).toHaveBeenCalledTimes(1);
+    expect(accept).not.toHaveBeenCalled();
     expect(inbox.snapshot()).toMatchObject({ version: 1 });
   });
 

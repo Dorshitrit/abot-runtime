@@ -30,6 +30,24 @@ The bridge owns:
 Clients should be able to recover from runtime-backed session snapshots and
 request replay after reconnecting.
 
+## Optional Presentation Fields
+
+A `completed` event may include `disposition: "blocked"` when the execution
+policy has produced a blocked terminal result. The request still has a final
+output, but clients should display it as blocked instead of successful. The
+same field is retained in replay and the request's `finalState`. Existing sinks
+that accept only `completed(output)` remain supported; ordinary completions and
+older records omit the field. Clients should not infer this value from answer
+text.
+
+Role status (`runtime.state`) and tool events may include `presentationRole`
+with `"execution_agent"` or `"auditor"`. These values supply display names for
+the canonical `supervisor` and `reviewer` roles respectively. Canonical role IDs,
+event names, request routing, and stored model history remain unchanged. Use the
+recorded field for live and replayed events; when absent, retain the canonical
+role's existing presentation rather than infer it from the currently selected
+profile.
+
 ## `runtimeId` And Legacy `agentId`
 
 Runtime config and public examples use `runtimeId` to identify the running

@@ -7,7 +7,7 @@ import type { BasketView } from "../information-basket/contracts.js";
 
 const source = { sourceId: "source-a", displayName: "Notes.md", path: "/documents/Notes.md", revision: 3,
   status: "ready" as const, sizeBytes: 100, chunkCount: 2, indexedAt: "2026-10-25T10:00:00Z", reason: null };
-const view: BasketView = { settings: { revision: 2, enabled: true, embeddingProfileId: "local-embed" }, sources: [source],
+const view: BasketView = { settings: { matchMode: "balanced" as const, indexChatUploads: false, revision: 2, enabled: true, embeddingProfileId: "local-embed" }, sources: [source],
   embeddingProfiles: [{ id: "local-embed", label: "Local", provider: "ollama", model: "embedding" }],
   supportedExtensions: [".md"], limits: { maxSources: 100, maxSourceBytes: 10000, maxReadCharacters: 1000 } };
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { resolve, promise }; }
@@ -49,19 +49,14 @@ test("transport sends only paths and expected revisions, scopes calls and refuse
   expect(() => client.listInformationBasket()).toThrow("local Runtime");
 });
 
-test("external drops retain filenames only until a real selected path is registered", async () => {
+test("only explicit Runtime paths are registered through the file picker", async () => {
   const f = fixture(); await activate(f);
-  const file = { name: "Notes.md", get path() { throw Error("Browser path must never be used"); },
-    text() { throw Error("Do not read dropped bytes"); }, arrayBuffer() { throw Error("Do not upload dropped bytes"); } };
-  f.controller.receiveDrop([file]);
-  const pending = f.controller.snapshot().pending[0];
-  expect(pending).toMatchObject({ displayName: "Notes.md", path: "", status: "pending_path" });
+  expect(f.controller.receiveDrop).toBeUndefined();
   expect(f.client.registerInformationBasketSources).not.toHaveBeenCalled();
-  await f.controller.picker.open(pending);
+  await f.controller.picker.open();
   f.controller.picker.select(source.path);
   await f.controller.picker.submit();
   expect(f.client.registerInformationBasketSources).toHaveBeenCalledExactlyOnceWith([source.path], "dev");
-  expect(f.controller.snapshot().pending).toHaveLength(0);
   expect(f.controller.snapshot().picker.open).toBe(false);
 });
 
@@ -117,7 +112,7 @@ test("profile changes save explicitly with revision and environment changes clea
   f.controller.changeSettings("embeddingProfileId", "another");
   expect(f.client.saveInformationBasketSettings).not.toHaveBeenCalled();
   await f.controller.saveSettings();
-  expect(f.client.saveInformationBasketSettings).toHaveBeenCalledExactlyOnceWith({ expectedRevision: 2, enabled: true, embeddingProfileId: "another" }, "dev");
+  expect(f.client.saveInformationBasketSettings).toHaveBeenCalledExactlyOnceWith({ expectedRevision: 2, enabled: true, matchMode: "balanced", indexChatUploads: false, embeddingProfileId: "another" }, "dev");
   f.controller.changeSettings("enabled", false);
   await f.setEnvironment("prod");
   expect(f.controller.snapshot().settingsDraft).toEqual(view.settings);
@@ -151,4 +146,38 @@ test("registration errors remain visible inside the still-open picker", async ()
   f.controller.picker.setPath("/unreadable.md");
   expect(await f.controller.picker.addDraft()).toBe(false);
   expect(f.controller.snapshot().picker).toMatchObject({ open: true, error: "Path is not readable" });
+});
+
+
+test("chat upload opt-in is saved explicitly, reset locally and discarded on environment switch", async () => {
+  const f = fixture(); await activate(f);
+  f.controller.changeSettings("indexChatUploads", true);
+  expect(f.client.saveInformationBasketSettings).not.toHaveBeenCalled();
+  expect(f.controller.snapshot().settingsDraft.indexChatUploads).toBe(true);
+  f.controller.resetSettings();
+  expect(f.controller.snapshot().settingsDraft.indexChatUploads).toBe(false);
+  f.controller.changeSettings("indexChatUploads", true);
+  await f.controller.saveSettings();
+  expect(f.client.saveInformationBasketSettings).toHaveBeenCalledWith({ expectedRevision: 2,
+    enabled: true, matchMode: "balanced", embeddingProfileId: "local-embed", indexChatUploads: true }, "dev");
+  f.controller.changeSettings("indexChatUploads", true);
+  await f.setEnvironment("prod");
+  expect(f.controller.snapshot().settingsDraft.indexChatUploads).toBe(false);
+  expect(f.controller.snapshot().settingsDirty).toBe(false);
+});
+
+
+test("matching mode stays a draft until Save and Reset restores the server choice", async () => {
+  const f = fixture(); await activate(f);
+  expect(f.controller.snapshot().settingsDraft.matchMode).toBe("balanced");
+  f.controller.changeSettings("matchMode", "strict");
+  expect(f.controller.snapshot().settingsDraft.matchMode).toBe("strict");
+  expect(f.client.saveInformationBasketSettings).not.toHaveBeenCalled();
+  f.controller.resetSettings();
+  expect(f.controller.snapshot().settingsDraft.matchMode).toBe("balanced");
+  f.controller.changeSettings("matchMode", "flexible");
+  await f.controller.saveSettings();
+  expect(f.client.saveInformationBasketSettings).toHaveBeenCalledExactlyOnceWith({
+    expectedRevision: 2, enabled: true, indexChatUploads: false, embeddingProfileId: "local-embed", matchMode: "flexible",
+  }, "dev");
 });

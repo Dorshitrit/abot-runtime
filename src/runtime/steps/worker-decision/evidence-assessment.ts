@@ -276,6 +276,10 @@ function assertAssessmentSource(source: WorkerResultAuthorSource, requestId: str
 function createAssessmentFormat(evidenceRefs: readonly string[]): ModelGatewayJsonSchemaFormat {
   return {
     type: "json_schema", name: "worker_evidence_assessment", strict: true,
+    postValidatedSchemaConstraints: [
+      { keyword: "maxLength", path: "/properties/decision/properties/established/maxLength" },
+      { keyword: "maxLength", path: "/properties/decision/properties/remaining/maxLength" },
+    ],
     schema: createStructuredDecisionEnvelopeSchema([{
       type: "object",
       properties: {

@@ -172,6 +172,7 @@ export type SessionCommitTerminalCommand = Readonly<{
   expected: SessionActivationExpectation;
   commandId: string;
   status: "completed" | "failed";
+  disposition?: "blocked";
   cause?: SessionRequestTerminalCause;
   message: SessionTerminalMessage;
   error?: string;

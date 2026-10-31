@@ -19,6 +19,35 @@ function hasCommittedSnapshotOwner(state: AutomationJournalState, runId: string)
     record.snapshot?.attachment.storageRef.split(/[\\/]/u)[0] === runId);
 }
 
+async function readSnapshotMarkerOwner(directory: string, name: string): Promise<string | undefined> {
+  const runId = name.slice(0, -5);
+  requireSnapshotOwner(runId);
+  const content = await readFile(join(directory, name), "utf8").catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return undefined;
+    throw error;
+  });
+  if (content === undefined) return undefined;
+  const marker = JSON.parse(content) as Record<string, unknown>;
+  if (marker?.kind !== MARKER_KIND || marker.runId !== runId) throw new Error("automation_snapshot_marker_invalid");
+  return runId;
+}
+
+/** Discovery never reconciles or deletes a preparation; malformed markers fail closed. */
+export async function readAutomationSnapshotPreparationOwners(runtimeDir: string): Promise<string[]> {
+  const directory = join(runtimeDir, "automation-snapshot-preparations");
+  const entries = await readdir(directory, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  const owners: string[] = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+    const owner = await readSnapshotMarkerOwner(directory, entry.name);
+    if (owner) owners.push(owner);
+  }
+  return owners;
+}
+
 /** Only explicit durable preparation markers authorize orphan cleanup in the shared attachment store. */
 export function createAutomationSnapshotStaging(options: {
   runtimeDir: string;
@@ -94,16 +123,8 @@ export function createAutomationSnapshotStaging(options: {
         continue;
       }
       if (!entry.name.endsWith(".json")) continue;
-      const runId = entry.name.slice(0, -5);
-      requireSnapshotOwner(runId);
-      const content = await readFile(join(directory, entry.name), "utf8").catch((error: NodeJS.ErrnoException) => {
-        if (error.code === "ENOENT") return undefined;
-        throw error;
-      });
-      if (content === undefined) continue;
-      const marker = JSON.parse(content) as Record<string, unknown>;
-      const isOwnedMarker = marker?.kind === MARKER_KIND && marker.runId === runId;
-      if (!isOwnedMarker) throw new Error("automation_snapshot_marker_invalid");
+      const runId = await readSnapshotMarkerOwner(directory, entry.name);
+      if (!runId) continue;
       const committed = hasCommittedSnapshotOwner(state, runId);
       const preparationStillActive = !committed && active.has(runId);
       if (preparationStillActive) continue;

@@ -41,7 +41,6 @@ test.each(["LUNA/index.html", "LUNA/README"])(
             output: decision({
               action: "open_capability_scope",
               catalogGroupIds: ["write"],
-              acknowledgement: "I will create the requested file.",
             }),
           },
           {
@@ -49,7 +48,6 @@ test.each(["LUNA/index.html", "LUNA/README"])(
             output: decision({
               action: "invoke_capability",
               capabilityId: CAPABILITY_ID,
-              intent: "Create the requested file.",
               operationObjective: `Write exactly ${JSON.stringify(body)}.`,
               selectionControls: { path },
               workingDirectory: null,
@@ -150,7 +148,6 @@ test("an unrelated direct response does not select or author a filesystem operat
           step: "execution.decision",
           output: decision({
             action: "respond",
-            acknowledgement: "I will answer the arithmetic question.",
           }),
         },
         { step: "execution.response", output: "Four." },

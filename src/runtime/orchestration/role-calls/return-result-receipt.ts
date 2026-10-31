@@ -33,6 +33,7 @@ export function resolveCanonicalResultReceiptForReturn(params: Readonly<{
   child: RoleCallFrame;
   resultRef: string;
   outcome: RoleCallResult["outcome"];
+  steeringVersion?: number;
   suppliedReceipt?: RoleCallResultReceipt;
   policy: RoleCallPolicy;
   admittedHeadRevision?: number;
@@ -80,6 +81,7 @@ function resolveRuntimeOwnedWorkReceipt(
     child: params.child,
     resultRef: params.resultRef,
     outcome: params.outcome,
+    ...(params.steeringVersion !== undefined ? { steeringVersion: params.steeringVersion } : {}),
     admittedHeadRevision: params.admittedHeadRevision,
     policy: params.policy,
   });

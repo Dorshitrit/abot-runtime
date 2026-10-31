@@ -110,8 +110,8 @@ test.each(["mutation", "mixed"] as const)("an observation batch still rejects ef
   const nonObservation: CapabilityDescriptor = { ...observationDescriptor, capabilityId: "source.change", effect };
   const result = parseExecutionAgentDecisionOutput(JSON.stringify({ decision: {
     action: "invoke_capabilities", invocations: [
-      { capabilityId: observationDescriptor.capabilityId, intent: "Inspect the next window.", selectionControls: observedRange(241, 480) },
-      { capabilityId: nonObservation.capabilityId, intent: "Change the target.", selectionControls: { path: "project/styles.css" },
+      { capabilityId: observationDescriptor.capabilityId, selectionControls: observedRange(241, 480) },
+      { capabilityId: nonObservation.capabilityId, selectionControls: { path: "project/styles.css" },
         operationObjective: "Change the selected source.", controlsEvidenceExecutionIds: [] },
     ],
   } }), { capabilities: [observationDescriptor, nonObservation], maxBatchCapabilityExecutions: 4 });
@@ -143,9 +143,9 @@ test("an ordinary observation and payload observation keep independent control o
     refinementControls: { start_line: 481, end_line: 720 } });
   const parsed = parseExecutionAgentDecisionOutput(JSON.stringify({ decision: {
     action: "invoke_capabilities", invocations: [
-      { capabilityId: observationDescriptor.capabilityId, intent: "Read the next source window.",
+      { capabilityId: observationDescriptor.capabilityId,
         selectionControls: observedRange(241, 480) },
-      { capabilityId: payloadDescriptor.capabilityId, intent: "Extract a bounded source payload.",
+      { capabilityId: payloadDescriptor.capabilityId,
         operationObjective: "Extract the following source window into the requested payload.",
         controlsEvidenceExecutionIds: [], selectionControls: { path: "project/styles.css" } },
     ],

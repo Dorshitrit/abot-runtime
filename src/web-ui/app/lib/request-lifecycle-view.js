@@ -1,3 +1,5 @@
+import { isUserInteractionMessage } from "./user-interaction-event.js";
+
 export function isApprovalPresentation(message) {
   return message?.kind === "tool_approval_request";
 }
@@ -12,19 +14,22 @@ export function projectApprovalContinuations(messages) {
   );
   const responses = new Map();
   for (const message of messages) {
+    const previous = responses.get(message.requestId);
+    if (isUserInteractionMessage(message) && previous) previous.hasLaterInteraction = true;
     if (!isApprovalContinuation(message, approvalRequests)) continue;
-    const first = responses.get(message.requestId)?.first ?? message;
-    responses.set(message.requestId, { first, latest: message });
+    const anchor = previous && !previous.hasLaterInteraction ? previous.anchor : message;
+    responses.set(message.requestId, { anchor, latest: message, hasLaterInteraction: false });
   }
   return messages.flatMap((message) => {
     if (!isApprovalContinuation(message, approvalRequests)) return [message];
-    const { first, latest } = responses.get(message.requestId);
-    if (message !== first) return [];
-    return [{ ...latest, createdAt: first.createdAt }];
+    const { anchor, latest } = responses.get(message.requestId);
+    if (message !== anchor) return [];
+    return [{ ...latest, createdAt: anchor.createdAt }];
   });
 }
 
 function isApprovalContinuation(message, approvalRequests) {
+  if (isUserInteractionMessage(message)) return false;
   if (message.role !== "assistant") return false;
   return approvalRequests.has(message.requestId);
 }
@@ -60,6 +65,7 @@ export function waitingRequest(state) {
 
 export function sameConversationMessage(existing, incoming) {
   if (incoming.id && existing.id === incoming.id) return true;
+  if (isUserInteractionMessage(existing) || isUserInteractionMessage(incoming)) return false;
   if (isApprovalPresentation(existing) || isApprovalPresentation(incoming))
     return false;
   if (!incoming.requestId || existing.requestId !== incoming.requestId)

@@ -31,3 +31,9 @@ Node configuration remains inherited.
 If Windows cannot start or stop the PDF process, the tool returns
 `document_pdf_process_unavailable` and asks the model not to retry or bypass
 the restriction.
+
+Office text extraction uses the independent byte-only document-text library via
+`src/plugin-sdk/document-text.ts`. That library has no plugin configuration,
+Runtime registry, file access or resource index. Disabling this plugin removes
+its tool; it does not disable Resources or the shared extraction code. This
+plugin retains its own path grants, retained-text budget and tool output contract.

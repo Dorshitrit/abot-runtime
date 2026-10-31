@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../../../model-gateway/types.js";
+import { buildCoreSkillReadContextMessages } from "../../context/core-skill-read-context.js";
 import { resolveMemoryRecallSteeringVersion } from "../../long-term-memory/recall-binding.js";
 import { buildSupervisorMemoryRecallContinuationParts } from "./memory-recall-continuation.js";
 import { buildSparkConversationInstructions } from "../../context/spark-conversation-policy.js";
@@ -12,11 +13,12 @@ import { createSupervisorDelegationFormat } from "./delegation-contract.js";
 import { buildSupervisorDelegationInstructions } from "./delegation-prompt.js";
 import { projectSupervisorArtifactPaths } from "./artifact-paths.js";
 import type { buildSupervisorDecisionInput, SupervisorDecisionInputRequest } from "./input.js";
+import { SUPER_SKILL_DELEGATION_INSTRUCTION, SUPER_SKILL_GUIDANCE_INSTRUCTION } from "../supervisor-skill-instructions.js";
 
 /**
- * Initial delegation uses one exact settled conversation turn, not the full routing
- * history or captured Skill bodies. Those remain available to their execution
- * owners. This projection is phase-local and never changes session checkpoints.
+ * Initial delegation uses one exact settled conversation turn and captured Skill
+ * guidance, without the full routing history or capability catalog. Guidance
+ * remains passive and is not copied into objectives or session checkpoints.
  */
 export function buildSupervisorDelegationInput(
   request: SupervisorDecisionInputRequest,
@@ -38,6 +40,8 @@ export function buildSupervisorDelegationInput(
     }));
   }
   const format = createSupervisorDelegationFormat({ allowedRoleIds, allowMemoryRecall });
+  const skillMessages = buildCoreSkillReadContextMessages(options.skillReadHead, "delegate");
+  const hasSkillReadContext = skillMessages.length > 0;
   const budget = resolveModelContextBudget({
     runnerConfig: request.runnerConfig,
     agentMode: request.agentMode,
@@ -49,11 +53,13 @@ export function buildSupervisorDelegationInput(
     buildSupervisorDelegationInstructions({
       allowedRoleIds, allowMemoryRecall, hasMemoryRecallContext: options.memoryRecallMessage !== undefined,
     }),
+    ...(hasSkillReadContext ? [SUPER_SKILL_GUIDANCE_INSTRUCTION, SUPER_SKILL_DELEGATION_INSTRUCTION] : []),
     ...buildSparkConversationInstructions(request.sessionKind),
   ].join("\n");
   const scheduledExecution = projectScheduledExecutionContext(request, instructions, "decision");
   const referenceMessages: ChatMessage[] = [
     ...scheduledExecution.referenceMessages,
+    ...skillMessages,
     ...(!options.memoryRecallMessage && options.initialMemoryMessage ? [options.initialMemoryMessage] : []),
     ...(request.temporalContext ? [buildRequestTemporalContextMessage(request.temporalContext)] : []),
   ];

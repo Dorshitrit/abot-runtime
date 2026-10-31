@@ -1,9 +1,13 @@
+import { createConversationApprovalPresentation } from "./conversation-approval-presentation.js";
+import { createConversationInteraction, projectConversationInteractionEntries } from "./conversation-interaction.js";
+import { isUserInteractionMessage } from "../lib/user-interaction-event.js";
 import { createConversationSchedule } from "./conversation-schedule.js";
 import { createConversationStatus } from "./conversation-status.js";
 import { createConversationReasoning } from "./conversation-reasoning.js";
 import { isNearScrollEnd, pinScrollToEnd } from "../ui-behavior.js";
 import { applyTextDirection, renderMarkdown } from "../lib/text-format.js";
-import { createConversationActivity } from "./conversation-activity.js";
+import { createConversationWorkTimeline } from "./conversation-work-timeline.js";
+import { hasCompletedConversationAnswer } from "../lib/conversation-final-answer.js";
 import { createComposerPlan } from "./composer-plan.js";
 import { buildComposerPlanModel } from "../lib/composer-plan-model.js";
 import {
@@ -13,7 +17,7 @@ import {
 import { createMessageAttachments } from "./message-attachments.js";
 import { createMessageTimestamp } from "./message-timestamp.js";
 import { createMessageLinkPreviews } from "./message-link-previews.js";
-import { projectApprovalContinuations } from "../lib/request-lifecycle-view.js";
+import { isApprovalPresentation, projectApprovalContinuations } from "../lib/request-lifecycle-view.js";
 import { captureApprovalRejectionFocus } from "./tool-approval-rejection-input.js";
 
 export function createConversationView({
@@ -31,10 +35,11 @@ export function createConversationView({
   onOpenSchedule = () => {},
   canOpenSchedule = () => true,
   filePreview = { reset() {}, syncScope() {}, setWorkspace() {} },
+  projectChanges,
   sparkActions = { createNode: () => null },
   scrollBehavior = null,
   preserveMessageHistory = false,
-  createActivityView = createConversationActivity,
+  createActivityView = createConversationWorkTimeline,
   statusPresentation = (model) => model,
   statusPlacement = "bubble",
   emptyState = { title: "What would you like to work on?", copy: "Ask a question, inspect a project, or start a task." },
@@ -43,6 +48,7 @@ export function createConversationView({
   documentRoot = document,
   viewport = window,
 }) {
+  const conversationInteraction = createConversationInteraction({ documentRoot });
   const conversationSchedule = createConversationSchedule({
     documentRoot,
     onOpenJob: onOpenSchedule,
@@ -52,6 +58,8 @@ export function createConversationView({
     documentRoot,
     onOpenFile: filePreview.open,
     canOpenFile: filePreview.canOpen,
+    createFileChanges: projectChanges?.createFileNode,
+    onVisibilityChange: projectChanges?.activateVisible,
   });
   const conversationReasoning = createConversationReasoning({ documentRoot });
   const conversationStatus = createConversationStatus({
@@ -137,9 +145,31 @@ export function createConversationView({
     dom.messagesList.querySelector(".mode-empty-copy").textContent = emptyState.copy;
   }
 
-  function createMessageNode(message) {
+  function createActivityNode(message, updates) {
+    const input = {
+      requestId: message.requestId,
+      streaming: Boolean(message.streaming),
+      ...getActivityForMessage(message),
+      updates,
+    };
+    input.hasFinalAnswer = hasCompletedConversationAnswer(message, input.events);
+    return conversationActivity.createNode(input);
+  }
+
+  function createMessageNode(message, updates) {
+    const progress = conversationActivity.handlesProgressUpdates
+      ? null : conversationInteraction.createNode(updates);
+    if (isUserInteractionMessage(message)) {
+      if (!conversationActivity.handlesProgressUpdates) return progress;
+      return createActivityNode({ ...message, streaming: message.requestId === getActiveRequestId() }, updates);
+    }
     const scheduleNode = conversationSchedule.createNode(message);
     if (scheduleNode) return scheduleNode;
+    if (isApprovalPresentation(message)) return createConversationApprovalPresentation({
+      message, activity: createActivityNode(message, updates), progress,
+      thinking: showReasoning ? conversationReasoning.createNode(message) : null,
+      status: conversationStatus.createNode(message), statusPlacement, documentRoot,
+    });
     const row = documentRoot.createElement("article");
     row.dataset.messageId = String(message.id);
     row.dataset.requestId = message.requestId || "";
@@ -182,18 +212,14 @@ export function createConversationView({
 
     let activity = null;
     if (message.role !== "user" && message.requestId) {
-      const activityInput = {
-        requestId: message.requestId,
-        streaming: Boolean(message.streaming),
-        ...getActivityForMessage(message),
-      };
-      activity = conversationActivity.createNode(activityInput);
+      activity = createActivityNode(message, updates);
       if (activity) bubble.appendChild(activity);
     }
 
     const thinking = showReasoning ? conversationReasoning.createNode(message) : null;
     if (thinking) bubble.appendChild(thinking);
 
+    if (progress) bubble.appendChild(progress);
     bubble.appendChild(body);
     const status = conversationStatus.createNode(message);
     if (status && statusPlacement === "bubble") bubble.appendChild(status);
@@ -219,7 +245,7 @@ export function createConversationView({
     if (initiativeAction) bubble.appendChild(initiativeAction);
     row.appendChild(bubble);
     if (status && statusPlacement === "outside") {
-      const hasVisibleContent = Boolean(message.text || attachments || activity || thinking || linkPreviews || initiativeAction);
+      const hasVisibleContent = Boolean(message.text || attachments || activity || thinking || progress || linkPreviews || initiativeAction);
       bubble.hidden = !hasVisibleContent;
       row.classList.add("message-status-outside");
       row.appendChild(status);
@@ -251,6 +277,7 @@ export function createConversationView({
     const shouldFollow =
       !holdingPosition && !historyPager?.hasNewer() && (viewState.followMessages || isNearScrollEnd(dom.messagesList));
     const messages = preserveMessageHistory ? getMessages() : projectApprovalContinuations(getMessages());
+    projectChanges?.sync({ messages, getActivityForMessage, isLatestWindow: !historyPager?.hasNewer() });
     conversationReasoning.beginRender(messages);
     messageLinkPreviews.reset();
     conversationStatus.reset();
@@ -260,15 +287,17 @@ export function createConversationView({
     );
     dom.messagesList.innerHTML = "";
     if (messages.length === 0) {
+      projectChanges?.finishRender();
       renderEmptyState();
       viewState.followMessages = true;
       updateJumpToLatest();
       scrollBehavior?.afterRender();
       return;
     }
-    for (const message of messages) {
-      dom.messagesList.appendChild(createMessageNode(message));
+    for (const { message, updates } of projectConversationInteractionEntries(messages)) {
+      dom.messagesList.appendChild(createMessageNode(message, updates));
     }
+    projectChanges?.finishRender();
     for (const pendingApproval of getPendingApprovals()) {
       dom.messagesList.appendChild(createApprovalCard(pendingApproval));
     }
@@ -334,6 +363,7 @@ export function createConversationView({
   function reset() {
     holdingPosition = false;
     filePreview.reset();
+    projectChanges?.reset();
     viewState.followMessages = true;
     viewState.scrollSettleVersion += 1;
     cancelScheduledMessageRender();
@@ -368,8 +398,8 @@ export function createConversationView({
   return {
     preserveScroll,
     setHistoryPager: (pager) => { historyPager = pager; },
-    setWorkspace: filePreview.setWorkspace,
-    closeFilePreview: filePreview.reset,
+    setWorkspace: (workspace) => { filePreview.setWorkspace(workspace); projectChanges?.setWorkspace(workspace); },
+    closeFilePreview: () => { filePreview.reset(); projectChanges?.reset(); },
     bind,
     cancelScheduledMessageRender,
     cancelScheduledThinkingRender,

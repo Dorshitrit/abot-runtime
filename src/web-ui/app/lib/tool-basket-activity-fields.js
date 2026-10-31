@@ -24,12 +24,44 @@ function sourceNames(meta, maximum) {
     .filter(Boolean).slice(0, maximum ?? 5);
 }
 
+function basketReadCoverage(meta, action, completed, ok) {
+  if (action !== "read_information_source") return null;
+  if (!completed || ok !== true) return null;
+  const start = count(meta.basketReadStartChar);
+  const end = count(meta.basketReadEndChar);
+  const total = count(meta.basketReadTotalCharacters);
+  if (start === undefined || end === undefined || total === undefined) return null;
+  if (start > end || end > total) return null;
+  return { start, end, total };
+}
+function readCoverageFields(coverage) {
+  if (!coverage) return [];
+  const { start, end, total } = coverage;
+  const format = value => value.toLocaleString("en-US");
+  if (start === end) return [
+    { label: "Characters read", value: `0 of ${format(total)}` },
+    { label: "Read coverage", value: "No characters returned" },
+  ];
+  const status = end < total ? "More remaining" : "End of source reached";
+  return [
+    { label: "Characters read", value: `${format(start + 1)}–${format(end)} of ${format(total)}` },
+    { label: "Read coverage", value: status },
+  ];
+}
+
+function basketActivityTitle(action, coverage) {
+  if (coverage?.start > 0) return "Continue reading source";
+  if (Object.hasOwn(ACTION_TITLES, action)) return ACTION_TITLES[action];
+  return "Information Basket";
+}
+
 /** Basket activity accepts display metadata only; source bodies and generic previews are never projected. */
 export function basketActivityFields(meta, tool, completed, ok) {
   if (tool !== "information_basket") return null;
   const action = typeof meta.basketAction === "string" ? meta.basketAction : "";
   const known = Object.hasOwn(ACTION_TITLES, action);
-  const activityTitle = known ? ACTION_TITLES[action] : "Information Basket";
+  const coverage = basketReadCoverage(meta, action, completed, ok);
+  const activityTitle = basketActivityTitle(action, coverage);
   const sent = known ? [{ label: "Action", value: activityTitle }] : [];
   const received = [];
   const read = action === "read_information_source";
@@ -51,7 +83,7 @@ export function basketActivityFields(meta, tool, completed, ok) {
   return {
     activityTitle,
     target: read ? name : (returned === undefined ? "" : `${returned} ${returned === 1 ? "source" : "sources"}`),
-    sent, received, error,
+    sent, received: [...received, ...readCoverageFields(coverage)], error,
     outcome: completed && ok === true && !read && known &&
       (meta.basketSearchStatus === "empty" || (meta.basketSearchStatus !== "unavailable" && returned === 0)) ? "empty" : "completed",
   };

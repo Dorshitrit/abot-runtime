@@ -27,13 +27,15 @@ describe.skipIf(process.platform !== "win32")(
         const script = join(context.rootDir, "heartbeat.cjs");
         const heartbeat = join(context.rootDir, "heartbeat.txt");
         const pidFile = join(context.rootDir, "child.pid");
+        // File existence does not establish that the child has written its heartbeat.
+        if (reason === "completed") await writeFile(heartbeat, "");
         await writeFile(
           script,
-          `const fs=require('node:fs');fs.writeFileSync('child.pid',String(process.pid));fs.appendFileSync('heartbeat.txt','ready\\n');process.stdout.write('ready\\n');setInterval(()=>fs.appendFileSync('heartbeat.txt','alive\\n'),20);`,
+          `const fs=require('node:fs');fs.writeFileSync('child.pid',String(process.pid));fs.appendFileSync('heartbeat.txt','ready\\n');process.stdout.write('ready\\n');setInterval(()=>fs.appendFileSync('heartbeat.txt','alive\\n'),20);fs.writeFileSync('child.ready','');`,
         );
         const command =
           reason === "completed"
-            ? `Start-Process -FilePath ${quote(process.execPath)} -ArgumentList 'heartbeat.cjs' -NoNewWindow;while(-not (Test-Path -LiteralPath 'heartbeat.txt')) {Start-Sleep -Milliseconds 20}`
+            ? `Start-Process -FilePath ${quote(process.execPath)} -ArgumentList 'heartbeat.cjs' -NoNewWindow;while(-not (Test-Path -LiteralPath 'child.ready')) {Start-Sleep -Milliseconds 20}`
             : `& ${quote(process.execPath)} ${quote(script)}`;
         const manager = createExecProcessManager(
           createExecOutputStore({ stateDir: context.stateDir }),
@@ -88,6 +90,7 @@ describe.skipIf(process.platform !== "win32")(
           expect(await readFile(heartbeat, "utf8")).toBe(final);
         } finally {
           controller.abort();
+          await settled;
           if (snapshot)
             await manager.release(snapshot.processId, reason).catch(() => {});
           if (descendant) {

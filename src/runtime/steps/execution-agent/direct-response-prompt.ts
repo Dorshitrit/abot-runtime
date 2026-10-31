@@ -52,5 +52,5 @@ export function buildRespondDecisionInstruction(params: {
     return "The canonical completion gate is closed: respond is unavailable. Choose an offered action or a truthful blocker.";
   if (params.allowDirectResponse)
     return "Use respond only for a complete honest answer now: either include the complete response or omit it for a separate presentation-only activation of this agent. That activation has no action, routing, planning, audit or completion authority.";
-  return "Use respond only for a complete honest answer now. Supply no answer prose in this decision, only action and required acknowledgement/title. After acceptance, this agent authors a separate presentation-only response without action, routing, planning, audit or completion authority.";
+  return "Use respond only for a complete honest answer now. Supply no answer prose in this decision, only action and any required title. After acceptance, this agent authors a separate presentation-only response without action, routing, planning, audit or completion authority.";
 }

@@ -1,3 +1,5 @@
+import type { SessionRequestAdmissionClaim } from "./session-admission.js";
+import type { RequestUserInteractions } from "../user-interactions/contracts.js";
 import type { InformationBasketService } from "../information-basket/contracts.js";
 import type { ModelReasoningPreference } from "../../shared/model-reasoning.js";
 import type { KnowledgeSkillStore } from "../knowledge-skills/store.js";
@@ -55,6 +57,10 @@ export type RunRequestMessage = {
 export type RequestHandlerOptions = SessionMemoryCompactorComposition & {
   /** Opted-in client; the managed owner supplies the trusted activation below. */
   durableApprovals?: boolean;
+  /** Acknowledges canonical admission before request execution begins. */
+  onAccepted?: () => void | Promise<void>;
+  /** Trusted same-request handoff; never accepted from client JSON. */
+  sessionAdmission?: SessionRequestAdmissionClaim;
   approvalExecution?: RequestApprovalExecution;
   abortSignal?: AbortSignal;
   /** Synchronously close cancellation before final-response persistence starts. */
@@ -118,6 +124,7 @@ export type RequestExecutionSeed = Readonly<{
   toolPermissionMode: ToolPermissionMode;
   toolApprovalController?: ToolApprovalController;
   abortSignal: AbortSignal;
+  userInteractions?: RequestUserInteractions;
   onAcknowledgement: (acknowledgement: string) => void;
   onSessionTitle: (title: string) => Promise<void>;
   onThinkingDelta: (delta: string) => void;
@@ -182,6 +189,7 @@ export type RequestLifecycleRuntime = Readonly<{
 
 /** Client-facing request presentation callbacks. */
 export type RequestPresentation = Readonly<{
+  userInteractions?: RequestExecutionSeed["userInteractions"];
   onAcknowledgement: RequestExecutionSeed["onAcknowledgement"];
   onSessionTitle: RequestExecutionSeed["onSessionTitle"];
   onThinkingDelta: RequestExecutionSeed["onThinkingDelta"];

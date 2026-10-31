@@ -70,14 +70,12 @@ test("EA reads directly from Available Skills through ordinary capabilities with
       expect(fixture.store.read).not.toHaveBeenCalled();
       return decision({
         action: "open_capability_scope", catalogGroupIds: ["knowledge"],
-        acknowledgement: "I will read the requested reference.",
       });
     } },
     { step: "execution.decision", output: (input) => {
       assertAvailableSkills(input);
       return decision({
         action: "invoke_capability", capabilityId: "read_skill",
-        intent: "Read the selected Studio document.",
         workingDirectory: ".",
         selectionControls: { skillId: studio.skillId },
       });
@@ -111,7 +109,17 @@ test("SUPER supplies captured Skills to Planner and Worker without copying guida
   const fixture = await createFixture("supervisor-worker-v1");
   const objective = "Explain the two supplied reference checks.";
   const answer = studio.content + " " + computer.content;
+  let capturedGuidance: ReturnType<typeof messages> | undefined;
   const checkGuidance = (input: KnowledgeModelInput) => {
+    const guidance = messages(input).filter(({ content }) => {
+      try { return JSON.parse(content).kind === "runtime_core_skill_read_v1"; } catch { return false; }
+    });
+    expect(guidance.map(({ role }) => role)).toEqual(["user", "user"]);
+    if (capturedGuidance) expect(guidance).toEqual(capturedGuidance);
+    else capturedGuidance = guidance;
+    for (const capsule of capsules(input, "runtime_core_skill_read_v1")) {
+      expect(capsule).toMatchObject({ authority: "passive_reference", purpose: "skill_guidance" });
+    }
     expect(capsules(input, "runtime_core_skill_read_v1").map(({ document }) => document))
       .toEqual(KNOWLEDGE_FIXTURE_DOCUMENTS);
     expect(capabilityResults(input)).toEqual([]);
@@ -129,20 +137,22 @@ test("SUPER supplies captured Skills to Planner and Worker without copying guida
     } },
     { step: "supervisor.decision", output: (input) => {
       expect(supervisorFormatName(input)).toBe("supervisor_procedure_gate");
-      assertNoStoredContent(input);
-      expect(capsules(input, "runtime_core_skill_read_v1")).toEqual([]);
+      checkGuidance(input);
       return decision({ requiresProcedure: true });
     } },
     { step: "supervisor.decision", output: (input) => {
       expect(supervisorFormatName(input)).toBe("supervisor_delegation");
-      assertNoStoredContent(input);
-      expect(capsules(input, "runtime_core_skill_read_v1")).toEqual([]);
+      checkGuidance(input);
       return decision({
         action: "invoke_role", roleId: "planner",
         objective: "Coordinate an explanation of the two supplied reference checks.",
       });
     } },
-    { step: "supervisor.decision", output: JSON.stringify({ workingDirectory: "." }) },
+    { step: "supervisor.decision", output: (input) => {
+      expect(supervisorFormatName(input)).toBe("supervisor_working_directory");
+      checkGuidance(input);
+      return JSON.stringify({ workingDirectory: "." });
+    } },
     { step: "planner.decision", output: (input) => {
       checkGuidance(input);
       const assignment = capsules(input, "runtime_planner_assignment")[0]!;
@@ -219,7 +229,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
           assertNoStoredContent(input);
         }
         return decision(policy === "execution-agent-v1"
-          ? { action: "respond", acknowledgement: "Hello." }
+          ? { action: "respond" }
           : { requiresProcedure: false, responseRecommendation: "Greet the user briefly." });
       } },
       { step: rootStep + ".response" as "execution.response" | "supervisor.response", output: (input) => {

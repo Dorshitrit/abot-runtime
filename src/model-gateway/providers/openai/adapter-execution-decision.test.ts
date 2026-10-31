@@ -6,10 +6,11 @@ import { resolveModelInvocation } from "../../policy/invocation-policy.js";
 import { createOpenAIProviderAdapter } from "./adapter.js";
 import { nativeRequest, sse } from "./__tests__/native-function-fixture.js";
 
-const contractOptions = { allowPlanner: true };
+const contractOptions = { allowPlanner: true, allowUserInteraction: true };
 const decisionFormat = createExecutionAgentDecisionFormat(contractOptions);
 const decision = {
   action: "invoke_planner",
+  interaction: { kind: "message", text: "אכין תוכנית קצרה ואמשיך למימוש." },
   objective: "Plan the requested connected project, including שלום and local data.",
 };
 const decisionArguments = ` {\n  "decision": ${JSON.stringify(decision)}\n} `;
@@ -106,7 +107,7 @@ describe.each(["chat", "raw"] as const)("OpenAI Execution Agent native decision:
     }
     expect(text).toBe(decisionArguments);
     expect(parseExecutionAgentDecisionOutput(text, contractOptions)).toEqual({ ok: true, decision });
-    expect(parseExecutionAgentDecisionOutput(text, { allowPlanner: false })).toMatchObject({
+    expect(parseExecutionAgentDecisionOutput(text, { allowPlanner: false, allowUserInteraction: true })).toMatchObject({
       ok: false,
       issues: expect.arrayContaining([expect.objectContaining({ code: "execution_agent_planner_not_allowed" })]),
     });

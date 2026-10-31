@@ -1,0 +1,74 @@
+.conversation-progress {
+  width: min(100%, 780px);
+  min-width: 0;
+  margin: 18px 0 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.conversation-progress-heading {
+  margin-bottom: 10px;
+  color: var(--muted-2);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.conversation-progress-list {
+  margin: 0;
+  padding: 0;
+  padding-inline-start: 19px;
+  list-style: none;
+}
+
+.conversation-progress-item {
+  position: relative;
+  min-width: 0;
+  padding: 0 0 12px 0;
+  padding-inline-start: 15px;
+  border-inline-start: 1px solid var(--line);
+}
+
+.conversation-progress-item:last-child {
+  padding-bottom: 0;
+}
+
+.conversation-progress-item::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: -3.5px;
+  top: 0.6em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted-2);
+  box-shadow: 0 0 0 3px var(--bg);
+}
+
+.conversation-progress .conversation-progress-text {
+  color: var(--muted);
+  font-size: var(--font-size-md);
+  line-height: 1.65;
+}
+
+.conversation-progress-text p {
+  margin-bottom: 6px;
+}
+
+.conversation-progress-text :is(h1, h2, h3, h4, h5, h6) {
+  margin: 8px 0 4px;
+  font-size: inherit;
+}
+
+.spark-companion .conversation-progress {
+  margin: 12px 0 16px;
+  padding-bottom: 14px;
+}
+
+.spark-companion .conversation-progress-heading {
+  font-size: 10px;
+}
+
+.spark-companion .conversation-progress .conversation-progress-text {
+  font-size: 12px;
+}

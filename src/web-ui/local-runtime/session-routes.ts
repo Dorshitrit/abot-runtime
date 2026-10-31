@@ -33,6 +33,7 @@ export class WebSessionRoutes {
   constructor(
     private readonly readStates: WebSessionReadStates,
     private readonly notifyChanged?: WorkspaceChangeNotifier,
+    private readonly onRead?: (environmentId: string, sessionId: string) => void,
   ) {}
 
   async handle(request: SessionRouteRequest): Promise<boolean> {
@@ -89,6 +90,7 @@ export class WebSessionRoutes {
         sendJson(response, 404, { ok: false, error: "session_not_found" });
         return true;
       }
+      this.onRead?.(environmentId, sessionId);
       this.notifyChanged?.(environmentId, ["sessions"]);
       sendJson(response, 200, { ok: true, readState });
       return true;

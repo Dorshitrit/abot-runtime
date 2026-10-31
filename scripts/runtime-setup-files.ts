@@ -1,8 +1,10 @@
+import { requireChatGptAccountRef } from "../src/provider-auth/chatgpt/contracts.js";
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import { defaultProviderAddress, parseProviderCredentialEnvironment } from "./runtime-setup-provider-options.js";
+import { applySetupPromptCache } from "./runtime-setup-prompt-cache.js";
 import { buildSetupModelReasoning, type SetupModelOptions } from "./runtime-setup-model-options.js";
 
 export type Provider = string;
@@ -86,7 +88,10 @@ export function buildProviderConfig(
   provider: Provider,
   baseUrl?: string,
   apiKeyEnv?: string,
+  accountRef?: string,
 ): JsonObject {
+  if (provider === "openai-chatgpt")
+    return { type: provider, settings: { accountRef: requireChatGptAccountRef(accountRef) } };
   if (provider === "openai") {
     return {
       type: "openai",
@@ -116,6 +121,7 @@ export function buildModelConfig(
   model: string,
   contextWindowTokens?: number,
   modelOptions: SetupModelOptions = {},
+  label?: string,
 ): JsonObject {
   const context = isRecord(template.context) ? template.context : {};
   const tokenEstimation = isRecord(context.tokenEstimation)
@@ -130,7 +136,8 @@ export function buildModelConfig(
     ? calibration["toolPayload.raw"]
     : {};
   const shouldApplyOllamaSetupCalibration = provider === "ollama";
-  const shouldApplyOpenAiStepTimeouts = provider === "openai";
+  const isOpenAIResponsesSetup = provider === "openai" || provider === "openai-chatgpt";
+  const shouldApplyOpenAiStepTimeouts = isOpenAIResponsesSetup;
   const modelConfig = {
     ...template,
     ...buildSetupModelReasoning(
@@ -153,13 +160,13 @@ export function buildModelConfig(
           },
         }
       : {}),
-    label: model,
+    label: label ?? model,
     provider,
     model,
     ...(contextWindowTokens !== undefined
       ? { contextWindowTokens: parseContextWindowTokens(contextWindowTokens) }
       : {}),
-    ...(provider === "openai"
+    ...(isOpenAIResponsesSetup
       ? {
           execution: {
             policy: "execution-agent-v1",
@@ -183,6 +190,7 @@ export function buildModelConfig(
       },
     },
   };
+  applySetupPromptCache(modelConfig, provider, modelOptions.promptCache);
   if (!shouldApplyOpenAiStepTimeouts) return modelConfig;
   return {
     ...modelConfig,

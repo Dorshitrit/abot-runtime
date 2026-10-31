@@ -5,6 +5,10 @@ import {
   projectRequestContext,
 } from "../../context/request-context.js";
 import { createModelStepCompactionController } from "../../context/model-step-compaction.js";
+import {
+  createExecutionHistoryReferenceMemory,
+  createExecutionHistoryReferenceCompactionController,
+} from "../../context/session-memory/execution-reference-memory.js";
 import { buildRequestTemporalContextMessage } from "../../context/request-temporal-context.js";
 import {
   buildRequestSourceMessage,
@@ -73,6 +77,9 @@ export function buildExecutionControlsRefinementInput(
     callId,
     historyMessages: request.historyMessages,
   });
+  const historyMemory = createExecutionHistoryReferenceMemory(request, {
+    modelStep: CAPABILITY_CONTROLS_MODEL_STEP, callId,
+  });
   const evidence = projectSelectedControlsEvidence({
     requestId: request.requestId,
     head: options.head,
@@ -133,7 +140,7 @@ export function buildExecutionControlsRefinementInput(
     ...(request.temporalContext
       ? [buildRequestTemporalContextMessage(request.temporalContext)]
       : []),
-    buildRequestSourceMessage(requestSource),
+    ...(historyMemory?.project().priorConversationMessages ?? [buildRequestSourceMessage(requestSource)]),
     buildExecutionRefinementStateMessage(options.head, options.call),
     ...appendRequestSteeringContext([], options.steeringSnapshot),
   ]);
@@ -188,17 +195,20 @@ export function buildExecutionControlsRefinementInput(
   });
   return Object.freeze({
     messages: context.messages,
-    contextCompaction: createModelStepCompactionController(request, {
-      call: {
-        roleId: options.call.roleId,
-        callId: options.call.callId,
-        objective: evidence.preservationObjective,
-      },
-      sourceRevision: options.head.revision,
-      scopeId: evidence.scopeId,
-      consumer: CAPABILITY_CONTROLS_MODEL_STEP,
-      hasVerifiedCompactedEvidence: evidence.hasVerifiedCompactedEvidence,
-      allowedConsumers: Object.freeze([CAPABILITY_CONTROLS_MODEL_STEP]),
-    }),
+    contextCompaction: createExecutionHistoryReferenceCompactionController(
+      request, historyMemory,
+      createModelStepCompactionController(request, {
+        call: {
+          roleId: options.call.roleId,
+          callId: options.call.callId,
+          objective: evidence.preservationObjective,
+        },
+        sourceRevision: options.head.revision,
+        scopeId: evidence.scopeId,
+        consumer: CAPABILITY_CONTROLS_MODEL_STEP,
+        hasVerifiedCompactedEvidence: evidence.hasVerifiedCompactedEvidence,
+        allowedConsumers: Object.freeze([CAPABILITY_CONTROLS_MODEL_STEP]),
+      }),
+    ),
   });
 }

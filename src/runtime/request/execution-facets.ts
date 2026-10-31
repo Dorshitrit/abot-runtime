@@ -97,6 +97,7 @@ export function createRequestSeedFacets(
     onEvent: seed.onEvent,
   });
   const presentation = Object.freeze({
+    ...(seed.userInteractions ? { userInteractions: seed.userInteractions } : {}),
     onAcknowledgement: seed.onAcknowledgement,
     onSessionTitle: seed.onSessionTitle,
     onThinkingDelta: seed.onThinkingDelta,

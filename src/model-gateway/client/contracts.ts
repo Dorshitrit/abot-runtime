@@ -25,6 +25,7 @@ export type ModelMetricMessage = {
 export type InvokeModelGatewayParams = StreamCallbacks & {
   text?: string;
   messages?: unknown;
+  promptCacheBoundaryBeforeMessageIndex?: number;
   agentMode: AgentMode;
   taskType?: string;
   modelStep?: ModelStep;

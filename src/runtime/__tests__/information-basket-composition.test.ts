@@ -34,6 +34,12 @@ test("recomposition does not carry basket configuration across Runtime or model 
     created.push(replacedModels);
     expect(replacedModels.informationBasket).toBeDefined();
     expect(replacedModels.informationBasket).not.toBe(bound.informationBasket);
+    const replacedAttachments = recomposeRuntimeEnvironment(fixture.config, bound, {
+      tools: bound.tools, attachments: { ...bound.attachments },
+    });
+    created.push(replacedAttachments);
+    expect(replacedAttachments.informationBasket).toBeDefined();
+    expect(replacedAttachments.informationBasket).not.toBe(bound.informationBasket);
     const replacedConfig = recomposeRuntimeEnvironment({ ...fixture.config, runtimeId: "different-host-binding" }, bound, {});
     created.push(replacedConfig);
     expect(replacedConfig.informationBasket).not.toBe(bound.informationBasket);

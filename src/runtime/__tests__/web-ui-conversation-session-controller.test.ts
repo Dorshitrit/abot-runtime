@@ -247,7 +247,7 @@ describe("web ui conversation session controller", () => {
         { type: "subscribe_request", requestId: "request-active" },
         {
           type: "resume_request",
-          requestId: "request-active",
+          requestId: "request-active", sessionId: "session-1",
           afterSeq: 0,
           environment: "dev",
         },

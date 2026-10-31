@@ -10,6 +10,7 @@ export interface ConversationToolAction {
   id: string;
   tool: string;
   executorRole?: string;
+  presentationRole?: "execution_agent" | "auditor";
   roleCallId?: string;
   title: string;
   target: string;

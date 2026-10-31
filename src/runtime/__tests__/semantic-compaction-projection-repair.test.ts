@@ -12,14 +12,21 @@ import {
   CALIBRATED_COMPACTION_GUIDANCE,
 } from "./support/semantic-compaction-contract-fixture.js";
 
-const projectionRepair = Object.freeze({
+const projectionRepairs = [{
   reason: "projection_not_reduced" as const,
   originalInputTokens: 12000,
   candidateInputTokens: 12300,
   targetInputTokens: 11000,
-});
+}, {
+  reason: "envelope_exceeds_available_input" as const,
+  originalInputTokens: 39_545,
+  candidateInputTokens: 28_708,
+  targetInputTokens: 26_704,
+}];
 
-test.each([false, true])("EA projection repair isolates batch/slice instructions and keeps source/schema bindings (%s)", async (sliced) => {
+test.each(projectionRepairs.flatMap((projectionRepair) =>
+  [false, true].map((sliced) => ({ projectionRepair, sliced })),
+))("EA $projectionRepair.reason repair preserves batch/slice context and bindings (sliced=$sliced)", async ({ projectionRepair, sliced }) => {
   const fixture = semanticContractFixture({ policy: "execution-agent-v1", sliced });
   const originalPolicy = structuredClone(fixture.params.request.modelPolicy);
   const candidate = await generateSemanticCompactionCandidateBatched({

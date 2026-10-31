@@ -254,9 +254,34 @@ is cancelled and released; asynchronous transport cleanup cannot delay the
 accepted result. The trace retains received bytes through the chunk containing
 the terminal frame. Message/item completion is not response completion. The
 same SSE data framing serves lifetime detection and output decoding, including
-LF, CRLF, CR, split UTF-8 and multiline data. Ordinary text retains partial-text
-EOF behavior; structured decisions, native function output and tool payloads
-require response completion. Existing max-output-token handling remains unchanged.
+LF, CRLF, CR, split UTF-8 and multiline data. EOF or `[DONE]` without
+`response.completed` fails for ordinary text as well as structured decisions,
+native function output and tool payloads. Explicit max-output-token handling
+remains unchanged. Provider refusal events and refusal output parts terminate
+with a distinct error before runtime format validation, so a refusal never
+becomes an empty answer or triggers a format-repair invocation.
+
+OpenAI usage preserves optional cache-write input counts and their 30-minute /
+12-hour breakdown. Invalid optional counts are omitted; absent data is not
+invented. Invocation metrics retain `uncachedInputTokens` as all non-read input
+for compatibility and add `ordinaryInputTokens` when explicit cache-read and
+cache-write counts are available. The metrics retain write counts for pricing
+analysis without embedding model prices or treating cache writes as ordinary input.
+
+OpenAI API profiles can opt EA decisions into stable-prefix caching with
+`options.prompt_cache_options: { "mode": "implicit" }`. Enable this only for
+models that support explicit prompt-cache breakpoints (GPT-5.6 and later).
+Without this option, message ordering and provider cache defaults are unchanged.
+For opted-in EA decisions, fixed references and chronological tool evidence
+precede activation-local state; the final provider request places an explicit
+breakpoint immediately before that state while retaining implicit cache lookup.
+The boundary is derived after admission and compaction; if its exact anchor no
+longer exists, the cache hint is omitted. This does not alter context-window
+sizes, token budgets, message roles, stored sources or checkpoints. Changing
+instructions, schemas or compacted evidence can still cause a cache miss;
+cache reuse and latency improvements are not guaranteed. See the
+[OpenAI prompt-caching guide](https://developers.openai.com/api/docs/guides/prompt-caching)
+for supported models and cache-write behavior.
 
 Full provider I/O is written separately to
 `.runtime/shared/logs/model-io.jsonl`. A `provider.request` entry contains the

@@ -1,6 +1,6 @@
 import { createWorkspaceStateStorage } from "./workspace-state-storage.js";
 import { createServerComposerQueue } from "./server-composer-queue.js";
-import { acknowledgeWorkspaceStorage, showWorkspaceStorageFailure } from "../components/workspace-storage-notice.js";
+import { showWorkspaceStorageFailure } from "../components/workspace-storage-notice.js";
 import { createStartupScreen } from "../components/startup-screen.js";
 
 let storage;
@@ -16,7 +16,6 @@ export async function initializeWorkspaceState() {
   storage = createWorkspaceStateStorage({ onError: showWorkspaceStorageFailure });
   try {
     await storage.refresh();
-    await acknowledgeWorkspaceStorage(storage);
     queue = createServerComposerQueue(storage);
     window.addEventListener("focus", () => void storage.refresh().catch(showWorkspaceStorageFailure));
     document.addEventListener("visibilitychange", () => {

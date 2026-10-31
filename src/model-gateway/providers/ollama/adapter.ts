@@ -1,4 +1,4 @@
-import { fetchProviderWithTrace } from "../../model-io-trace.js";
+import { fetchOllamaProviderResponse, resolveOllamaHttpFailurePresentation, isOllamaProviderRequestFailure } from "./request-failures.js";
 import {
   toolMediaSafeError,
   toolMediaSafeMessage,
@@ -81,22 +81,26 @@ export function createOllamaProviderAdapter(options: {
         removedConstraintCount,
       });
 
-      const { response, responseTrace } = await fetchProviderWithTrace({
+      const baseUrl = resolveOllamaBaseUrl(params.invocation, options.fallbackUrl);
+      const fetched = await fetchOllamaProviderResponse({
+        abortSignal: params.abortSignal,
         endpoint: params.endpoint,
         requestBody: params.requestBody,
         invocation: params.invocation,
         fetchImpl: params.fetchImpl,
-        url: `${resolveOllamaBaseUrl(
-          params.invocation,
-          options.fallbackUrl,
-        )}/api/chat`,
+        url: `${baseUrl}/api/chat`,
         headers: { "Content-Type": "application/json" },
         payload,
         decodeResponse: (body) => collectOllamaStream(body),
       });
+      if (isOllamaProviderRequestFailure(fetched)) return fetched;
+      const { response, responseTrace } = fetched;
       if (!response.ok || !response.body) {
         const message = await response.text();
         await responseTrace;
+        const presentation = resolveOllamaHttpFailurePresentation({
+          status: response.status, body: message, model: params.invocation.model, endpoint: baseUrl,
+        });
         return {
           kind: "error" as const,
           statusCode: response.status || 502,
@@ -104,6 +108,7 @@ export function createOllamaProviderAdapter(options: {
             message || "ollama error",
             params.requestBody,
           ),
+          ...(presentation ? { presentation } : {}),
         };
       }
 

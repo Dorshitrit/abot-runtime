@@ -1,3 +1,4 @@
+import { blockedCompletionFields } from "../../shared/completion-disposition.js";
 import type {
   SessionCancelWaitCommand,
   SessionCommitTerminalCommand,
@@ -46,6 +47,14 @@ function hasTerminalCommandReceipt(
   return request.lifecycle.terminalCommandId === commandId;
 }
 
+function hasValidTerminalCompletionDisposition(
+  command: SessionCommitTerminalCommand,
+): boolean {
+  if (command.disposition === undefined) return true;
+  if (command.status !== "completed") return false;
+  return command.disposition === "blocked";
+}
+
 export function commitSessionTerminal(
   context: LifecycleMutationContext,
   command: SessionCommitTerminalCommand,
@@ -64,6 +73,8 @@ export function commitSessionTerminal(
     return rejectLifecycleCommand("invalid_command", request);
   if (command.status !== "completed" && command.status !== "failed")
     return rejectLifecycleCommand("invalid_command", request);
+  if (!hasValidTerminalCompletionDisposition(command))
+    return rejectLifecycleCommand("invalid_command", request);
   request.status = command.status;
   request.lifecycle.terminalCommandId = command.commandId;
   request.lifecycle.terminalCause =
@@ -75,16 +86,15 @@ export function commitSessionTerminal(
   appendTerminalResponse(context, request, command.message);
   const payload =
     command.status === "completed"
-      ? { type: "completed", output: command.message.content }
+      ? {
+          type: "completed",
+          output: command.message.content,
+          ...blockedCompletionFields(command.disposition),
+        }
       : {
           type: "failed",
           error: command.error ?? request.lifecycle.terminalCause,
-          details: {
-            stoppedResponse:
-              command.cause === "request_cancelled"
-                ? command.message.content
-                : undefined,
-          },
+          details: { stoppedResponse: command.message.content },
         };
   const changed = appendLifecycleChangedEvent(context, request);
   const event = appendLifecycleEvent(context, request, payload);

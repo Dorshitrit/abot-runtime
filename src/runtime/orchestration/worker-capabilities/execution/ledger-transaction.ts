@@ -1,3 +1,4 @@
+import { fenceRestoredApprovalExecution } from "./execution-freshness.js";
 import type { CapabilityApprovalGate } from "../approval-contracts.js";
 import { resolvePreparedGroupApproval } from "./approval-group.js";
 import { settleAdmittedPreparedGroup } from "./settle-prepared.js";
@@ -42,7 +43,7 @@ export async function beginAndSettlePreparedSingle<TContext>(params: {
     invocationAttempt: params.call.activationCount,
     capabilityId: params.invocation.adapter.descriptor.capabilityId,
     declaredEffect: params.invocation.adapter.descriptor.effect,
-    intent: params.invocation.intent,
+    ...(params.invocation.intent !== undefined ? { intent: params.invocation.intent } : {}),
     controlsJson: JSON.stringify(params.invocation.prepared.acceptedControls),
     ...(actionFingerprint ? { actionFingerprint } : {}),
     ...(admission ? { admission } : {}),
@@ -79,7 +80,9 @@ export async function beginAndSettlePreparedSingle<TContext>(params: {
     ledger: params.ledger,
     expectedHead: begun.head,
     call: params.call,
-    invocations: [params.invocation],
+    invocations: fenceWorkerInvocations(
+      [params.invocation], params.executionFreshness,
+    ),
     executionIds: [executionId],
     batch: false,
     diagnostic: params.diagnostic,
@@ -145,7 +148,9 @@ export async function beginAndSettlePreparedBatch<TContext>(params: {
     ledger: params.ledger,
     expectedHead: begun.head,
     call: params.call,
-    invocations: params.invocations,
+    invocations: fenceWorkerInvocations(
+      params.invocations, params.executionFreshness,
+    ),
     executionIds,
     batch: true,
     diagnostic: params.diagnostic,
@@ -186,4 +191,15 @@ function stateRejection(phase: "begin" | "settle", code: string): Error {
     return new WorkerCapabilityOperationSupervisionLimitError();
   }
   return new Error(`worker_capability_${phase}_rejected:${code}`);
+}
+
+function fenceWorkerInvocations<TContext>(
+  invocations: readonly PreparedBoundInvocation<TContext>[],
+  freshness: WorkerCapabilityExecutionFreshness | undefined,
+): readonly PreparedBoundInvocation<TContext>[] {
+  if (freshness?.token.kind !== "worker_steering_v1") return invocations;
+  return invocations.map((invocation) => ({
+    ...invocation,
+    prepared: fenceRestoredApprovalExecution(invocation.prepared, freshness),
+  }));
 }

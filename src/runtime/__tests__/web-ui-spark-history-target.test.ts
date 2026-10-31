@@ -35,6 +35,7 @@ async function fixture(unread: boolean) {
   const client = {
     supportsSparkChat: () => true, listModels: async () => ({ profiles: [{ id: "model" }] }),
     loadSparkChat: vi.fn(async () => result),
+    uploadAttachment: vi.fn(async () => ({ id: "draft-file", name: "draft.txt", mimeType: "text/plain", storageRef: "draft-file", sessionId: "spark-companion", environment: "dev" })),
     loadSession: vi.fn<(...args: any[]) => Promise<Record<string, unknown>>>(async () => latest),
     fetchRequestEvents: vi.fn(async (): Promise<Record<string, unknown>[]> => []), markSessionRead: vi.fn(),
   };
@@ -53,7 +54,7 @@ async function fixture(unread: boolean) {
     subscribeConnected.mock.calls[0]![0]();
     await vi.waitFor(() => expect(capture.render).toHaveBeenCalled());
   };
-  return { client, shell, feature, conversation, open, result, reconnect, send };
+  return { client, shell, feature, conversation, open, result, reconnect, send, dom };
 }
 
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
@@ -116,7 +117,7 @@ test.each(["idle", "streaming", "awaiting_approval"])("SPARK reconnect retains t
   if (status !== "idle") expect(f.conversation.state.requestLifecycles.get("req-23").status).toBe(status);
   if (status === "streaming") {
     expect(f.conversation.state.activeRequestId).toBe("req-23");
-    expect(f.client.fetchRequestEvents).toHaveBeenCalledWith({ requestId: "req-23", afterSeq: 0, environmentId: "dev" });
+    expect(f.client.fetchRequestEvents).toHaveBeenCalledWith({ requestId: "req-23", sessionId: "spark-companion", afterSeq: 0, environmentId: "dev" });
     expect(f.send).toHaveBeenCalledWith(expect.objectContaining({ type: "resume_request", requestId: "req-23" }));
   }
   f.client.loadSession.mockResolvedValueOnce({ messages: [message(0)], requests: [], nextCursor: null });
@@ -170,6 +171,39 @@ test("repeated SPARK reconnects resume after received tokens without duplicating
   expect(f.conversation.state.messages.map((entry: any) => entry.id)).toEqual(["1", "2", "assistant-req-23"]);
   expect(f.conversation.state.messages.at(-1).text).toBe("Live text resumed");
   expect(f.client.fetchRequestEvents).toHaveBeenCalledTimes(2);
-  expect(f.client.fetchRequestEvents).toHaveBeenNthCalledWith(1, { requestId: "req-23", afterSeq: 10, environmentId: "dev" });
-  expect(f.client.fetchRequestEvents).toHaveBeenNthCalledWith(2, { requestId: "req-23", afterSeq: 11, environmentId: "dev" });
+  expect(f.client.fetchRequestEvents).toHaveBeenNthCalledWith(1, { requestId: "req-23", sessionId: "spark-companion", afterSeq: 10, environmentId: "dev" });
+  expect(f.client.fetchRequestEvents).toHaveBeenNthCalledWith(2, { requestId: "req-23", sessionId: "spark-companion", afterSeq: 11, environmentId: "dev" });
+});
+
+test("bulk reset drops SPARK uploaded draft files and history while retaining unsent text", async () => {
+  const f = await fixture(false);
+  capture.panelDom.composerInput.value = "Unsent SPARK text";
+  capture.panelDom.composerInput.dispatchEvent(new Event("input"));
+  await f.conversation.attachments.upload({ name: "draft.txt", type: "text/plain" });
+  expect(f.conversation.state.pendingAttachments).toHaveLength(1);
+  const result = { clearedSessionIds: ["spark-companion"] };
+  await f.feature.sessionsReset(result, "prod");
+  expect(f.conversation.state.pendingAttachments).toHaveLength(1);
+  f.result.snapshot = { ...latest, messages: [], nextCursor: null as any };
+  f.result.readState.readGeneration = "after-bulk-reset";
+  await f.feature.sessionsReset(result, "dev");
+  expect(f.conversation.state.pendingAttachments).toEqual([]);
+  expect(f.conversation.state.messages).toEqual([]);
+  expect(f.conversation.session.history.hasNewer()).toBe(false);
+  expect(capture.panelDom.composerInput.value).toBe("Unsent SPARK text");
+});
+
+test("a late bulk reset clears cached SPARK files when its environment is revisited", async () => {
+  const f = await fixture(false);
+  capture.panelDom.composerInput.value = "Keep dev draft text";
+  capture.panelDom.composerInput.dispatchEvent(new Event("input"));
+  await f.conversation.attachments.upload({ name: "draft.txt", type: "text/plain" });
+  f.dom.environmentSelect.value = "prod"; f.feature.environmentChanged();
+  await vi.waitFor(() => expect(f.conversation.state.currentSessionId).toBe("spark-companion"));
+  await f.feature.sessionsReset({ clearedSessionIds: ["spark-companion"] }, "dev");
+  expect(f.conversation.state.messages).toHaveLength(2);
+  f.dom.environmentSelect.value = "dev"; f.feature.environmentChanged();
+  await vi.waitFor(() => expect(f.conversation.state.currentSessionId).toBe("spark-companion"));
+  expect(f.conversation.state.pendingAttachments).toEqual([]);
+  expect(capture.panelDom.composerInput.value).toBe("Keep dev draft text");
 });

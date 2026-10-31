@@ -115,8 +115,6 @@ function createCase(mode: "all" | "expand" | "limited") {
         return {
           action: "open_capability_scope",
           catalogGroupIds: ["files"],
-          acknowledgement:
-            "I will plan, write the artifacts, and audit completion.",
         };
       if (rootDecisions === 2)
         return {
@@ -134,7 +132,6 @@ function createCase(mode: "all" | "expand" | "limited") {
         return {
           action: "invoke_capability",
           capabilityId: "fixture.write",
-          intent: `Write ${record.path}.`,
           selectionControls: { path: record.path },
           ...(rootDecisions === 3 ? { workingDirectory: "." } : {}),
         };

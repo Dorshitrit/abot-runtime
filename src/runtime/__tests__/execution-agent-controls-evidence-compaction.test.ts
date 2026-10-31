@@ -63,7 +63,6 @@ async function refine(
     invocations: [
       {
         capabilityId: evidenceDescriptor.capabilityId,
-        intent: "Complete operation.",
         operationObjective: objective,
         selectionControls: { path: "exact.txt" },
         controlsEvidenceExecutionIds: ids,

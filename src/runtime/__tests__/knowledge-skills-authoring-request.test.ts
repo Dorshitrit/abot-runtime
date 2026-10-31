@@ -28,7 +28,7 @@ test.each(["execution-agent-v1"] as const)(
     let rawCalls = 0;
     const executorStep = policy === "execution-agent-v1" ? "execution.decision" : "worker.decision";
     const call = (capabilityId: string, selectionControls: Record<string, unknown>, objective?: string) =>
-      decision({ action: "invoke_capability", capabilityId, selectionControls, intent: "Save the requested personal guidance.",
+      decision({ action: "invoke_capability", capabilityId, selectionControls,
         ...(objective ? (policy === "execution-agent-v1" ? { operationObjective: objective } : { authoringObjective: objective }) : {}),
         ...(policy === "execution-agent-v1" && capabilityId === "create_skill" ? { workingDirectory: "." } : {}),
         ...(policy === "execution-agent-v1" && capabilityId === "update_skill" ? { controlsEvidenceExecutionIds: [] } : {}) });
@@ -59,7 +59,7 @@ test.each(["execution-agent-v1"] as const)(
     ];
     const script: Step[] = [
       { step: executorStep, output: decision({ action: "open_capability_scope",
-        catalogGroupIds: ["knowledge"], acknowledgement: "I will save your Skill." }) },
+        catalogGroupIds: ["knowledge"] }) },
       ...common,
       { step: "execution.response", output: answer },
     ];

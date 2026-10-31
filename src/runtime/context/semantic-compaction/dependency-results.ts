@@ -1,3 +1,4 @@
+import { projectSuperDependencyObservations, type DependencyObservations } from "../super-dependency-observations.js";
 import { hasSuperContextContract } from "../super-context-policy.js";
 import { assertSuperCompactionCheckpointIntegrity } from "./super-source-integrity.js";
 import type { ModelStep } from "../../../shared/model-steps.js";
@@ -17,7 +18,7 @@ import type { RequestContextCompactionStore } from "./store.js";
 import { SEMANTIC_COMPACTION_EVIDENCE_SCOPE } from "./evidence-scope.js";
 
 export type SemanticCompactionDependencyResult = Readonly<
-  RoleCallDependencyResult &
+  RoleCallDependencyResult & DependencyObservations &
     Readonly<{
       semanticCheckpoints?: readonly SemanticCompactionCheckpoint[];
     }>
@@ -41,7 +42,7 @@ export function projectSemanticCompactionDependencyResults(params: {
     params.call,
   );
   if (!params.store || dependencyResults.length === 0) {
-    return dependencyResults;
+    return projectSuperDependencyObservations(params.head, params.call, dependencyResults);
   }
 
   const callsById = new Map(
@@ -56,7 +57,18 @@ export function projectSemanticCompactionDependencyResults(params: {
     params.prompt,
   );
 
-  return Object.freeze(
+  const usesSuperCheckpointProjection = hasSuperContextContract(
+    params.head.policy.authority, "supervisor",
+  );
+  const representedCheckpointScopes = new Set<string>();
+  const retainFirstCheckpoint = (checkpoint: SemanticCompactionCheckpoint): boolean => {
+    if (!usesSuperCheckpointProjection) return true;
+    if (representedCheckpointScopes.has(checkpoint.scopeId)) return false;
+    representedCheckpointScopes.add(checkpoint.scopeId);
+    return true;
+  };
+
+  const checkpointResults = Object.freeze(
     dependencyResults.map((result) => {
       const lineageCallIds = collectResultLineageCallIds({
         producerCallId: result.producerCallId,
@@ -67,9 +79,7 @@ export function projectSemanticCompactionDependencyResults(params: {
         .store!.findByCallIds(lineageCallIds)
         .filter((checkpoint) => {
           assertValidSemanticCompactionCheckpoint(checkpoint);
-          if (
-            hasSuperContextContract(params.head.policy.authority, "supervisor")
-          ) {
+          if (usesSuperCheckpointProjection) {
             assertSuperCompactionCheckpointIntegrity({
               ...params,
               store: params.store!,
@@ -95,6 +105,8 @@ export function projectSemanticCompactionDependencyResults(params: {
           }
           return checkpoint.allowedConsumers.includes(params.consumer);
         })
+        // Validate every occurrence before omitting already represented continuity.
+        .filter(retainFirstCheckpoint)
         .map((checkpoint) =>
           Object.freeze({
             ...checkpoint,
@@ -109,6 +121,7 @@ export function projectSemanticCompactionDependencyResults(params: {
           });
     }),
   );
+  return projectSuperDependencyObservations(params.head, params.call, checkpointResults);
 }
 
 function collectResultLineageCallIds(params: {

@@ -7,7 +7,7 @@ import { resolveRegisteredToolCapabilityCatalog } from "../adapters/registered-t
 import { createRegisteredToolNormalInvocationExecutor } from "../adapters/registered-tool-normal-invocations.js";
 import { createConfiguredToolRegistry } from "../capabilities/configured-tool-registry.js";
 import { createInformationBasketToolModule } from "../capabilities/information-basket/tool-module.js";
-import { InformationBasketError, type InformationBasketService } from "../information-basket/contracts.js";
+import { InformationBasketError, type BasketReadResult, type InformationBasketService } from "../information-basket/contracts.js";
 
 const sourceId = "basket-9b33376e-e415-44c7-9d1b-fd10f6900407";
 const source = {
@@ -26,7 +26,7 @@ const found = {
   }], omittedCount: 2,
 };
 
-function fixture(options: { presentation?: boolean; search?: unknown; names?: readonly string[]; failRead?: boolean } = {}) {
+function fixture(options: { presentation?: boolean; search?: unknown; names?: readonly string[]; failRead?: boolean; read?: BasketReadResult } = {}) {
   const service = {
     isReady: () => true,
     list: async () => ({ settings: { enabled: true, revision: 1, embeddingProfileId: "fixture" },
@@ -36,7 +36,7 @@ function fixture(options: { presentation?: boolean; search?: unknown; names?: re
     search: async () => options.search ?? found,
     readSource: async () => {
       if (options.failRead) throw new InformationBasketError("basket_source_stale");
-      return read;
+      return options.read ?? read;
     },
   } as unknown as InformationBasketService;
   const declared = createInformationBasketToolModule(service);
@@ -115,5 +115,34 @@ test("failed source reads keep error identity and never manufacture document nam
   expect(result.executed.result).toMatchObject({ ok: false, errorCode: "basket_source_stale" });
   expect(result.completed).toMatchObject({ basketAction: "read_information_source", basketSourceId: sourceId, errorCode: "basket_source_stale" });
   expect(result.completed).not.toHaveProperty("documentName");
+  expect(result.completed).not.toHaveProperty("basketReadStartChar");
+  expect(result.completed).not.toHaveProperty("basketReadEndChar");
+  expect(result.completed).not.toHaveProperty("basketReadTotalCharacters");
   expect(result.completed).not.toHaveProperty("outputPreview");
+});
+
+test.each([
+  { startChar: 0, endChar: 8_000, totalCharacters: 17_740 },
+  { startChar: 8_000, endChar: 17_740, totalCharacters: 17_740 },
+])("read events project settled coverage without changing tool evidence: %j", async coverage => {
+  const result = {
+    ...read, ...coverage, omittedBefore: coverage.startChar,
+    omittedAfter: coverage.totalCharacters - coverage.endChar,
+    nextStartChar: coverage.endChar < coverage.totalCharacters ? coverage.endChar : null,
+  };
+  const current = fixture({ read: result });
+  const baseline = fixture({ read: result, presentation: false });
+  // Request controls deliberately differ: the event must describe the returned range.
+  const controls = { sourceId, expectedRevision: 1, startChar: 0, maxChars: 24_000 };
+  const actual = await current.execute("read_information_source", controls);
+  const original = await baseline.execute("read_information_source", controls);
+  expect(actual.completed).toMatchObject({
+    documentName: source.displayName, basketReadStartChar: coverage.startChar,
+    basketReadEndChar: coverage.endChar, basketReadTotalCharacters: coverage.totalCharacters,
+  });
+  expect(actual.executed.result).toEqual(original.executed.result);
+  expect(captureRegisteredToolResult(actual.executed)).toEqual(captureRegisteredToolResult(original.executed));
+  expect(JSON.stringify(actual.events)).not.toContain("PRIVATE");
+  const started = actual.events.find(([name]) => name === "tool.started")?.[1];
+  expect(started.meta).not.toHaveProperty("basketReadStartChar");
 });

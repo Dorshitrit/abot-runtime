@@ -1,3 +1,5 @@
+import { requireConnectedChatGptSetupAccount } from "./chatgpt-setup-binding.js";
+import { buildProviderConfig } from "../../../scripts/runtime-setup-files.js";
 import { inspectModelSetupConnection } from "./model-connection-inspection.js";
 import { resolveRuntimeSetupCredentialEnvironment } from "./runtime-setup-auth.js";
 import { requireRuntimeSetupEditSettled } from "./runtime-setup-edit-recovery.js";
@@ -84,10 +86,12 @@ export class RuntimeSetupService {
         ? {
             existingModel: {
               provider: existingModel.provider,
+              ...(existingModel.accountRef ? { accountRef: existingModel.accountRef, authentication: "chatgpt" } : {}),
               model: existingModel.model,
               contextWindowTokens: existingModel.contextWindowTokens,
               supportsThinking: existingModel.supportsThinking,
               reasoningBudget: existingModel.reasoningBudget,
+              ...(existingModel.promptCache ? { promptCache: true } : {}),
               ...(existingModel.baseUrl
                 ? { baseUrl: existingModel.baseUrl }
                 : {}),
@@ -95,6 +99,7 @@ export class RuntimeSetupService {
           }
         : {}),
       providers: [
+        { id: "openai-chatgpt", label: "Continue with ChatGPT", requiresApiKey: false, credentialConfigured: false, authentication: "chatgpt" },
         {
           id: "llamacpp",
           label: "llama.cpp",
@@ -145,6 +150,11 @@ export class RuntimeSetupService {
 
   async save(body: Record<string, unknown> | null) {
     const input = parseRuntimeSetupInput(body);
+    try {
+      await requireConnectedChatGptSetupAccount(buildProviderConfig(input.provider, input.baseUrl, undefined, input.accountRef));
+    } catch (error) {
+      throw new RuntimeSetupError("setup_account_unavailable", (error as Error).message, 409);
+    }
     await mkdir(this.options.rootDir, { recursive: true });
     return withFileLock(
       join(this.options.rootDir, ".runtime-setup.lock"),

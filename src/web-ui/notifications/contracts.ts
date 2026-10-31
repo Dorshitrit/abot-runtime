@@ -65,6 +65,7 @@ export type NotificationPage = {
 export type NotificationReadChange =
   | { ids: string[]; read: boolean }
   | { all: true; read: true };
+export type AutomationReportRead = { runId: string; phase: "started" | "finished" };
 export type NotificationReadResult = { updated: number; unreadCount: number };
 export type NotificationDesktopState = {
   available: boolean;

@@ -34,7 +34,6 @@ function createScriptedProjectModel(): ModelGatewayClient {
             decision: {
               action: "open_capability_scope",
               catalogGroupIds: ["files"],
-              acknowledgement: "I will save the requested marker.",
               title: "Project marker",
             },
           }),
@@ -46,7 +45,6 @@ function createScriptedProjectModel(): ModelGatewayClient {
             decision: {
               action: "invoke_capability",
               capabilityId: "save_marker",
-              intent: "Save the marker in the selected working folder.",
               selectionControls: { path: "result.txt", marker: requestId },
               workingDirectory: null,
             },

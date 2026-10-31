@@ -1,5 +1,4 @@
 import {
-  CAPABILITY_INTENT_MAX_LENGTH,
   type CapabilityControl,
   type CapabilityControlsSchema,
 } from "../../orchestration/capability-adapters/index.js";
@@ -40,11 +39,6 @@ export function projectCapabilitySelectionProperties(
         capabilityId: {
           type: "string",
           enum: group.map(({ capabilityId }) => capabilityId),
-        },
-        intent: {
-          type: "string",
-          minLength: 1,
-          maxLength: CAPABILITY_INTENT_MAX_LENGTH,
         },
         ...(requiresExecutionOperationObjective(
           partition,

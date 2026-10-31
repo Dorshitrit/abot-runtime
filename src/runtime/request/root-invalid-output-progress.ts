@@ -1,3 +1,4 @@
+import { projectPlannerRetiredItems } from "./planner-retired-item-projection.js";
 import type { RoleCallLedgerHead } from "../orchestration/role-calls/index.js";
 import type { DegradedFinalizationProgress } from "../steps/degraded-finalization/contract.js";
 import { buildRequestPlanSnapshot } from "./plan-event-projection.js";
@@ -9,9 +10,10 @@ export function projectInvalidOutputProgress(
   const root = head.state.calls.find(
     (call) => call.callId === head.state.rootCallId,
   );
+  const plannerPlans = head.state.plans.map(projectPlannerRetiredItems);
   const plans = root?.adoptedWorkPlan
-    ? [root.adoptedWorkPlan, ...head.state.plans]
-    : head.state.plans;
+    ? [root.adoptedWorkPlan, ...plannerPlans]
+    : plannerPlans;
   if (plans.length === 0) return null;
   const items = plans.flatMap((plan) => buildRequestPlanSnapshot(plan).items);
   return {

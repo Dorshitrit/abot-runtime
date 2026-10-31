@@ -63,8 +63,8 @@ export function updateSessionRuntimeMode(
   return sessionService.updateSessionRuntimeMode(sessionId, runtimeModeId);
 }
 
-export function getRequestReplayById(requestId: string, afterSeq = 0) {
-  return sessionService.getRequestReplayById(requestId, afterSeq);
+export function getRequestReplayById(requestId: string, afterSeq = 0, sessionIdHint?: string) {
+  return sessionService.getRequestReplayById(requestId, afterSeq, sessionIdHint);
 }
 
 export function deleteSession(sessionId: string) {

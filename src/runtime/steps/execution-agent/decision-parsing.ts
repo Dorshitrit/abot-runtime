@@ -3,6 +3,7 @@ import {
   parseDirectResponseMemoryCandidates,
 } from "./direct-response-contract.js";
 import { readStructuredDecisionEnvelope } from "../../model/structured-decision-envelope.js";
+import { parseDecisionWithInteraction } from "./interaction-decision.js";
 import { parseDecisionWithWorkPlan } from "./work-plan-decision-parsing.js";
 import {
   isMemoryRecallDecisionRecord,
@@ -51,7 +52,9 @@ export function parseExecutionAgentDecisionOutput(
   return parseDecisionWithWorkPlan(
     text,
     options,
-    parseExecutionAgentActionOutput,
+    (actionText, contract) => parseDecisionWithInteraction(
+      actionText, contract, parseExecutionAgentActionOutput,
+    ),
   );
 }
 

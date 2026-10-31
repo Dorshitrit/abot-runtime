@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { createSemanticCompactionSha256Fingerprint as hash } from "../context/semantic-compaction/contracts.js";
 import { createRequestContextCompactionStore } from "../context/semantic-compaction/store.js";
 import { StructuredModelInvalidOutputError } from "../model/invoke-structured-step.js";
+import { ModelOutputIncompleteError } from "../model/provider-completion.js";
 import {
   configureDebugLogger,
   resetDebugLoggerConfig,
@@ -96,7 +97,9 @@ test("root failure rechecks source health after explanation authoring before com
   );
   const ledger = await createRootInvalidOutputLedger();
   const head = ledger.current();
-  const error = outputFailure();
+  const error = new ModelOutputIncompleteError({
+    outputLength: 0, providerCompletionReason: "unknown",
+  }, "supervisor.decision");
   await expect(
     finalizeInvalidRootOutput({
       request,

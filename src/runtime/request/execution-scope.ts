@@ -74,6 +74,7 @@ export type RequestCapabilityExecutionView = Readonly<
     | "longTermMemory"
     | "memoryRecallLimit"
     | "scheduledExecution"
+    | "userInteractions"
   >
 > &
   BoundRequestModelInvocationContext;

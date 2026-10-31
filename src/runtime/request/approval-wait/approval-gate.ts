@@ -1,3 +1,4 @@
+import type { WorkerCapabilityExecutionFreshness } from "../../orchestration/worker-capabilities/contracts.js";
 import type {
   CapabilityApprovalGate,
   BoundApprovalDecision,
@@ -15,11 +16,12 @@ export function createRequestApprovalGate(params: {
   onEvent(name: string, payload: Record<string, unknown>): void;
 }): CapabilityApprovalGate {
   return {
-    async resolve(group) {
+    async resolve(group, freshness) {
       params.signal.throwIfAborted();
+      if (isWorkerSteeringSuperseded(freshness)) return { kind: "superseded" };
       if (!params.resources.hasActiveWork())
         return { kind: "awaiting_approval" };
-      return resolveWhileWorkIsActive(group, params);
+      return resolveWhileWorkIsActive(group, params, freshness);
     },
   };
 }
@@ -27,6 +29,7 @@ export function createRequestApprovalGate(params: {
 async function resolveWhileWorkIsActive(
   group: PreparedApprovalGroup,
   params: Parameters<typeof createRequestApprovalGate>[0],
+  freshness?: WorkerCapabilityExecutionFreshness,
 ): ReturnType<CapabilityApprovalGate["resolve"]> {
   const controller = params.controller;
   if (!controller) throw new Error("tool_approval_unavailable");
@@ -60,13 +63,22 @@ async function resolveWhileWorkIsActive(
       decision,
     });
   });
+  let unsubscribe = () => {};
+  const superseded = new Promise<"superseded">((resolve) => {
+    if (freshness?.token.kind !== "worker_steering_v1") return;
+    unsubscribe =
+      freshness.subscribe?.(() => resolve("superseded")) ?? unsubscribe;
+    if (!freshness.isCurrent()) resolve("superseded");
+  });
   const allDecided = Promise.all(tasks).then(() => "decided" as const);
   const quiescent = params.resources
     .waitForQuiescence(waiting.signal)
     .then(() => "quiescent" as const);
   try {
-    const result = await Promise.race([allDecided, quiescent]);
+    const result = await Promise.race([allDecided, quiescent, superseded]);
     params.signal.throwIfAborted();
+    if (result === "superseded" || isWorkerSteeringSuperseded(freshness))
+      return { kind: "superseded" };
     if (result === "decided") return { kind: "decisions", decisions };
     if (
       decisions.length ===
@@ -76,8 +88,16 @@ async function resolveWhileWorkIsActive(
     }
     return { kind: "awaiting_approval", decisions };
   } finally {
+    unsubscribe();
     waiting.abort(new Error(WAIT_PARKED));
     params.signal.removeEventListener("abort", abort);
     await Promise.allSettled([...tasks, quiescent]);
   }
+}
+
+function isWorkerSteeringSuperseded(
+  freshness: WorkerCapabilityExecutionFreshness | undefined,
+): boolean {
+  if (freshness?.token.kind !== "worker_steering_v1") return false;
+  return !freshness.isCurrent();
 }

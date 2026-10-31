@@ -83,7 +83,6 @@ export function rootRespondOutput(policyId: RequestExecutionPolicyId): string {
   return JSON.stringify({
     decision: {
       action: "respond",
-      acknowledgement: "I will report the established result.",
     },
   });
 }

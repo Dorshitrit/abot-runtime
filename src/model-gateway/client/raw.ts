@@ -1,3 +1,6 @@
+import { fetchModelGatewayResponse } from "./invocation-error.js";
+import { attachModelGatewayHttpUserMessage } from "./user-message.js";
+import { PROVIDER_USER_ERROR_HEADER } from "../protocol/provider-user-error.js";
 import { MODEL_STEPS } from "../../shared/model-steps.js";
 import { traceDebug } from "../../runtime/observability/debug-logger.js";
 import { normalizeModelTokenUsage } from "../protocol/usage.js";
@@ -34,7 +37,7 @@ export async function invokeRawModelGatewayWithOptions(
     promptLength: params.prompt.length,
   });
 
-  const response = await fetch(url + "/raw", {
+  const response = await fetchModelGatewayResponse(url + "/raw", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -62,7 +65,8 @@ export async function invokeRawModelGatewayWithOptions(
       ...(modelPolicy ? { modelPolicy } : {}),
       ...(params.format ? { format: params.format } : {}),
     }),
-  });
+  }, params.abortSignal, { preserveErrorIdentity: true });
+  params.abortSignal.throwIfAborted();
 
   traceDebug("model-gateway.client", "raw.response.received", {
     requestId,
@@ -72,15 +76,16 @@ export async function invokeRawModelGatewayWithOptions(
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
+    params.abortSignal.throwIfAborted();
     traceDebug("model-gateway.client", "raw.response.error", {
       requestId,
       status: response.status,
       bodyLength: errorText.length,
       ...(permitsModelContentTrace(modelStep, params.prompt) ? { bodyPreview: errorText.slice(0, 400) } : { contentOmitted: true }),
     });
-    throw new Error(
+    throw attachModelGatewayHttpUserMessage(new Error(
       `bridge_raw_failed:${response.status}:${toolMediaSafeMessage(errorText || "empty error body", params.prompt)}`,
-    );
+    ), response.status, response.headers.get(PROVIDER_USER_ERROR_HEADER), permitsModelContentTrace(modelStep, params.prompt));
   }
 
   const parsed = await response.json().catch(() => ({}));

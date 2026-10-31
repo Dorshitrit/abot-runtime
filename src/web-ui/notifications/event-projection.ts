@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { approvalNotificationKey, notificationIdentity } from "./identity.js";
 import { isSparkSession } from "../../sessions/spark-session.js";
 import { hasAutomationSessionOrigin } from "../../sessions/automation-session-origin.js";
 import type { WebNotification, NotificationKind } from "./contracts.js";
@@ -76,9 +76,7 @@ function readNotificationEvent(
     const approvalId = eventText(event.approvalId);
     if (!hasNotificationIdentity(requestId)) return;
     if (!hasNotificationIdentity(approvalId)) return;
-    const key = createHash("sha256")
-      .update(JSON.stringify([requestId, approvalId]))
-      .digest("hex");
+    const key = approvalNotificationKey(requestId, approvalId);
     return {
       kind: "approval",
       key,
@@ -118,9 +116,7 @@ export function projectNotificationEvent(
   if (!projected) return;
   if (!hasNotificationIdentity(projected.key)) return;
   if (!hasNotificationIdentity(projected.sessionId)) return;
-  const id = createHash("sha256")
-    .update(JSON.stringify([environmentId, projected.kind, projected.key]))
-    .digest("hex");
+  const id = notificationIdentity(environmentId, projected.kind, projected.key);
   const requestId = eventText(event.requestId);
   return {
     id,

@@ -4,6 +4,7 @@ import { buildDegradedFinalizationFallback } from "../steps/degraded-finalizatio
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { resolveRoleCallTransactions } from "../orchestration/role-calls/index.js";
 import { StructuredModelInvalidOutputError } from "../model/invoke-structured-step.js";
+import { ModelOutputIncompleteError } from "../model/provider-completion.js";
 import {
   configureDebugLogger,
   resetDebugLoggerConfig,
@@ -148,7 +149,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
       );
     });
 
-    test("discards degraded phrasing superseded by fresh steering", async () => {
+    test("discards unknown-failure phrasing superseded by fresh steering", async () => {
       const steering = createRequestSteeringInbox({
         requestId: "root-invalid-request",
       });
@@ -166,14 +167,18 @@ describe.each(ROOT_OUTPUT_POLICIES)(
             meta: {},
           };
         }
-        if (input.modelStep === policy.decisionStep)
+        if (input.modelStep === policy.decisionStep) {
+          if (steering.snapshot().version === 0)
+            throw new ModelOutputIncompleteError({
+              outputLength: 0,
+              providerCompletionReason: "unknown",
+              steeringVersion: 0,
+            }, policy.decisionStep);
           return {
-            text:
-              steering.snapshot().version === 0
-                ? "invalid"
-                : rootRespondOutput(policy.policyId),
+            text: rootRespondOutput(policy.policyId),
             meta: {},
           };
+        }
         return { text: "Fresh result after steering.", meta: {} };
       }));
       const request = createRootInvalidOutputRequest(invoke, policy.policyId, {
@@ -184,7 +189,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
 
       expect(result.output).toBe("Fresh result after steering.");
       expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([
-        ...Array<string>(3).fill(policy.decisionStep),
+        policy.decisionStep,
         "degraded.finalization",
         policy.decisionStep,
         policy.responseStep,
@@ -195,7 +200,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
       expect(JSON.stringify(result)).not.toContain("STALE");
     });
 
-    test("exhausts malformed degraded phrasing without committing any substitute answer", async () => {
+    test("preserves the primary failure when the verified notice cannot fit", async () => {
       const ledger = await createRootInvalidOutputLedger(policy.policyId, 8);
       const initialHead = ledger.current();
       const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async () => ({
@@ -208,14 +213,8 @@ describe.each(ROOT_OUTPUT_POLICIES)(
         runRootExecutionKernel({ request, ledger }),
       ).rejects.toMatchObject({
         name: "StructuredModelInvalidOutputError",
-        message:
-          policy.policyId === "supervisor-worker-v1"
-            ? policy.invalidDecision
-            : "invalid_degraded_finalization_output",
-        modelStep:
-          policy.policyId === "supervisor-worker-v1"
-            ? policy.decisionStep
-            : "degraded.finalization",
+        message: policy.invalidDecision,
+        modelStep: policy.decisionStep,
         repairAttempts: 2,
       });
       expect(ledger.current()).toBe(initialHead);
@@ -227,26 +226,26 @@ describe.each(ROOT_OUTPUT_POLICIES)(
       });
       expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([
         ...Array<string>(3).fill(policy.decisionStep),
-        ...Array<string>(
-          policy.policyId === "supervisor-worker-v1" ? 0 : 3,
-        ).fill("degraded.finalization"),
       ]);
       expect(request.onAnswerToken).not.toHaveBeenCalled();
     });
 
-    test("propagates degraded provider failure without committing an answer", async () => {
+    test("preserves policy behavior when unknown-failure authoring fails", async () => {
       const ledger = await createRootInvalidOutputLedger(policy.policyId);
       const initialHead = ledger.current();
       const failure = new Error("degraded_provider_connection_failed");
       const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
         if (input.modelStep === "degraded.finalization") throw failure;
-        return { text: "invalid", meta: {} };
+        throw new ModelOutputIncompleteError({
+          outputLength: 0,
+          providerCompletionReason: "unknown",
+        }, policy.decisionStep);
       }));
       const request = createRootInvalidOutputRequest(invoke, policy.policyId);
 
       if (policy.policyId === "supervisor-worker-v1") {
         const expected = buildDegradedFinalizationFallback({
-          problem: { stage: policy.decisionStep, code: policy.invalidDecision },
+          problem: { stage: policy.decisionStep, code: "output_incomplete" },
           progress: null,
         });
         await expect(
@@ -265,7 +264,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
       );
       expect(ledger.current()).toBe(initialHead);
       expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([
-        ...Array<string>(3).fill(policy.decisionStep),
+        policy.decisionStep,
         "degraded.finalization",
       ]);
       expect(request.onAnswerToken).not.toHaveBeenCalled();

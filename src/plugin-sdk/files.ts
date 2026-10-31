@@ -73,7 +73,7 @@ export async function readBoundedRegularFile(
   try {
     handle = await open(
       absolutePath,
-      constants.O_RDONLY | constants.O_NOFOLLOW,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     );
     const before = await handle.stat({ bigint: true });
     if (!before.isFile()) {

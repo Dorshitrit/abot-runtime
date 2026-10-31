@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { SessionRequestAdmission } from "../request/session-admission.js";
+import { SessionRequestAdmission, type SessionRequestAdmissionClaim } from "../request/session-admission.js";
 
 function createGate() {
   let open!: () => void;
@@ -10,20 +10,70 @@ function createGate() {
 }
 
 describe("shared session request admission", () => {
-  test("a reservation acquired during the saved-approval read still excludes the request", async () => {
-    const checking = createGate(); const checked = createGate();
-    const hasSavedWait = vi.fn(async () => { checking.open(); await checked.waiting; return false; });
+  test("claims the session before reading saved approvals and rejects competing work", async () => {
+    const checking = createGate();
+    const checked = createGate();
+    const hasSavedWait = vi.fn(async () => {
+      checking.open();
+      await checked.waiting;
+      return false;
+    });
     const admission = new SessionRequestAdmission(() => false, hasSavedWait);
-    const execute = vi.fn(async () => "after reservation");
+    const execute = vi.fn(async () => "admitted");
+    const competing = vi.fn(async () => "must not execute");
     const running = admission.run("session", execute);
     await checking.waiting;
-    const release = admission.tryReserve("session")!;
-    expect(release).toBeTypeOf("function");
+    expect(admission.tryReserve("session")).toBeNull();
+    await expect(admission.run("session", competing)).rejects.toThrow("session_busy");
+    expect(hasSavedWait).toHaveBeenCalledOnce();
+    expect(competing).not.toHaveBeenCalled();
     checked.open();
-    await Promise.resolve(); await Promise.resolve();
-    try { expect(execute).not.toHaveBeenCalled(); }
-    finally { release(); await running; }
+    await expect(running).resolves.toBe("admitted");
     expect(execute).toHaveBeenCalledOnce();
+  });
+
+  test("checks saved waits under a reservation and releases it on blocked or failed reads", async () => {
+    const checking = createGate();
+    const checked = createGate();
+    const admission = new SessionRequestAdmission(() => false, async () => {
+      checking.open();
+      await checked.waiting;
+      return true;
+    });
+    const reservation = admission.tryReserveAvailable("session");
+    await checking.waiting;
+    const execute = vi.fn(async () => undefined);
+    const ordinary = admission.run("session", execute);
+    const rejected = expect(ordinary).rejects.toThrow("session_awaiting_approval");
+    expect(execute).not.toHaveBeenCalled();
+    expect(admission.tryReserve("session")).toBeNull();
+    checked.open();
+    await expect(reservation).resolves.toBeNull();
+    await rejected;
+    expect(admission.isIdle()).toBe(true);
+    const failed = new SessionRequestAdmission(() => false, async () => {
+      throw new Error("storage_failed");
+    });
+    await expect(failed.tryReserveAvailable("session")).rejects.toThrow("storage_failed");
+    expect(failed.isIdle()).toBe(true);
+  });
+
+  test.each(["close", "delete"])("a reservation cannot survive %s during its saved-state read", async (change) => {
+    const checking = createGate();
+    const checked = createGate();
+    let deleted = false;
+    const admission = new SessionRequestAdmission(() => deleted, async () => {
+      checking.open();
+      await checked.waiting;
+      return false;
+    });
+    const reservation = admission.tryReserveAvailable("session");
+    await checking.waiting;
+    if (change === "close") admission.close();
+    if (change === "delete") deleted = true;
+    checked.open();
+    await expect(reservation).resolves.toBeNull();
+    expect(admission.isIdle()).toBe(true);
   });
 
   test("closing admission rejects queued work immediately while idle waits for actual reservations and requests", async () => {
@@ -53,26 +103,57 @@ describe("shared session request admission", () => {
     expect(idle).toHaveBeenCalledOnce();
   });
 
-  test("preserves concurrent ordinary requests and reserves only when all finish", async () => {
+  test("rejects a competing session request while other sessions run concurrently", async () => {
     const admission = new SessionRequestAdmission(() => false);
     const first = createGate();
-    const second = createGate();
+    const other = createGate();
     const executeFirst = vi.fn(() => first.waiting);
-    const executeSecond = vi.fn(() => second.waiting);
+    const executeSecond = vi.fn(async () => "must not execute");
+    const executeOther = vi.fn(() => other.waiting);
     const firstRun = admission.run("session", executeFirst);
-    const secondRun = admission.run("session", executeSecond);
+    const otherRun = admission.run("other", executeOther);
+    await expect(admission.run("session", executeSecond)).rejects.toThrow("session_busy");
     expect(executeFirst).toHaveBeenCalledOnce();
-    expect(executeSecond).toHaveBeenCalledOnce();
+    expect(executeSecond).not.toHaveBeenCalled();
+    expect(executeOther).toHaveBeenCalledOnce();
     expect(admission.tryReserve("session")).toBeNull();
     first.open();
     await firstRun;
-    expect(admission.tryReserve("session")).toBeNull();
-    second.open();
-    await secondRun;
     const release = admission.tryReserve("session");
     expect(release).toBeTypeOf("function");
-    expect(admission.tryReserve("session")).toBeNull();
     release!();
+    other.open();
+    await otherRun;
+  });
+
+  test("only an exact claim may span the handoff to a saved request's resumed runner", async () => {
+    const admission = new SessionRequestAdmission(() => false);
+    const execution = createGate();
+    let resumed!: Promise<void>;
+    let claimed!: SessionRequestAdmissionClaim;
+    await admission.run("session", async (claim) => {
+      claimed = claim;
+      resumed = admission.run("session", () => execution.waiting, true, claim);
+    }, true);
+    const competing = vi.fn(async () => undefined);
+    await expect(admission.run("session", competing, true)).rejects.toThrow("session_busy");
+    await expect(admission.run("session", competing, true, { sessionId: "session" })).rejects.toThrow("session_admission_claim_invalid");
+    expect(admission.tryReserve("session")).toBeNull();
+    execution.open();
+    await resumed;
+    await expect(admission.run("session", competing, true, claimed)).rejects.toThrow("session_admission_claim_invalid");
+    await admission.run("session", competing);
+    expect(competing).toHaveBeenCalledOnce();
+  });
+
+  test("saved waits still exclude fresh requests after a new admission owner starts", async () => {
+    let waiting = true;
+    const admission = new SessionRequestAdmission(() => false, async () => waiting);
+    const execute = vi.fn(async () => "next request");
+    await expect(admission.run("session", execute)).rejects.toThrow("session_awaiting_approval");
+    expect(execute).not.toHaveBeenCalled();
+    waiting = false;
+    await expect(admission.run("session", execute)).resolves.toBe("next request");
   });
 
   test("ordinary requests arriving during a scheduled reservation wait while other sessions proceed", async () => {

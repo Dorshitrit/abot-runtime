@@ -43,7 +43,7 @@ describe("long-term memory management routes", () => {
       items: [
         {
           id: "memory-1",
-          content: "The user's name is Dor.",
+          content: "The user's name is Alex.",
           tags: ["identity"],
           origin: "passive_response",
           createdAt: "2026-08-26T10:00:00.000Z",
@@ -91,7 +91,7 @@ describe("long-term memory management routes", () => {
     const create = vi.fn(async () => ({ record: createManualRecord() }));
     const update = vi.fn(async () => ({
       record: createManualRecord({
-        content: "The user's preferred name is Dor.",
+        content: "The user's preferred name is Alex.",
         updatedAt: "2026-08-26T11:00:00.000Z",
       }),
       updated: true,
@@ -104,7 +104,7 @@ describe("long-term memory management routes", () => {
     const rejected = await fetch(
       `${baseUrl}/web-api/runtime/memory/records`,
       jsonRequest("POST", {
-        content: "The user's name is Dor.",
+        content: "The user's name is Alex.",
         tags: ["identity"],
         provenance: { kind: "manual" },
       }),
@@ -115,14 +115,14 @@ describe("long-term memory management routes", () => {
     const created = await fetch(
       `${baseUrl}/web-api/runtime/memory/records`,
       jsonRequest("POST", {
-        content: "The user's name is Dor.",
+        content: "The user's name is Alex.",
         tags: ["identity"],
       }),
     );
     expect(created.status).toBe(201);
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: "The user's name is Dor.",
+        content: "The user's name is Alex.",
         tags: ["identity"],
         source: "web_ui",
         context: { abortSignal: expect.any(AbortSignal) },
@@ -132,7 +132,7 @@ describe("long-term memory management routes", () => {
     const updated = await fetch(
       `${baseUrl}/web-api/runtime/memory/records/memory-1`,
       jsonRequest("PATCH", {
-        content: "The user's preferred name is Dor.",
+        content: "The user's preferred name is Alex.",
         tags: ["identity"],
         expectedUpdatedAt: "2026-08-26T10:00:00.000Z",
       }),
@@ -218,7 +218,7 @@ function createService(
 function createPassiveRecord(): LongTermMemoryRecord {
   return Object.freeze({
     id: "memory-1",
-    content: "The user's name is Dor.",
+    content: "The user's name is Alex.",
     tags: Object.freeze(["identity"]),
     provenance: Object.freeze({
       kind: "passive_response" as const,
@@ -235,7 +235,7 @@ function createManualRecord(
 ): LongTermMemoryRecord {
   return Object.freeze({
     id: "memory-1",
-    content: "The user's name is Dor.",
+    content: "The user's name is Alex.",
     tags: Object.freeze(["identity"]),
     provenance: Object.freeze({
       kind: "manual" as const,

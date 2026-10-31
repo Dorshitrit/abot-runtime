@@ -197,6 +197,7 @@ async function saveRuntimeSetupScaffold(
     params.input.provider,
     params.input.baseUrl,
     resolveRuntimeSetupCredentialEnvironment(params.input.provider, providers[params.input.provider], params.input.apiKey),
+    params.input.accountRef,
   );
   const ownedProviders = await recoverSetupProviderOwnership(
     params.source,

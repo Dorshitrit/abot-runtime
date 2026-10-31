@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
+import { isCanonicalOptionalRoleCapabilityIntent } from "./capability-intent.js";
 
 import { exactKeys, isRecord } from "../../validation/strict-record.js";
 import {
   isRoleCapabilityId,
   ROLE_CAPABILITY_INVOCATION_CONTROLS_JSON_MAX_LENGTH,
-  ROLE_CAPABILITY_INVOCATION_INTENT_MAX_LENGTH,
   ROLE_CAPABILITY_SELECTION_INVOCATION_LIMIT_MAX,
   type RoleCallFrame,
   type RoleCapabilitySelectionProjection,
@@ -52,12 +52,9 @@ export function normalizeRoleCapabilitySelectionProjection(
   const invocations = input.invocations.map((entry) => {
     if (
       !isRecord(entry) ||
-      !exactKeys(entry, ["capabilityId", "intent", "selectionControlsJson"]) ||
+      !exactKeys(entry, ["capabilityId", "selectionControlsJson"], ["intent"]) ||
       !isRoleCapabilityId(entry.capabilityId) ||
-      typeof entry.intent !== "string" ||
-      entry.intent.length === 0 ||
-      entry.intent.length > ROLE_CAPABILITY_INVOCATION_INTENT_MAX_LENGTH ||
-      entry.intent.trim() !== entry.intent ||
+      !isCanonicalOptionalRoleCapabilityIntent(entry.intent) ||
       typeof entry.selectionControlsJson !== "string" ||
       entry.selectionControlsJson.length < 2 ||
       entry.selectionControlsJson.length >
@@ -69,7 +66,7 @@ export function normalizeRoleCapabilitySelectionProjection(
     }
     return Object.freeze({
       capabilityId: entry.capabilityId,
-      intent: entry.intent,
+      ...(entry.intent !== undefined ? { intent: entry.intent } : {}),
       selectionControlsJson: entry.selectionControlsJson,
     });
   });
@@ -89,7 +86,7 @@ export function createRoleCapabilitySelectionProjection(
     action: "invoke_capability" | "invoke_capabilities";
     invocations: readonly Readonly<{
       capabilityId: string;
-      intent: string;
+      intent?: string;
       selectionControls?: Readonly<Record<string, unknown>>;
     }>[];
     workingDirectory: string | null;
@@ -100,7 +97,7 @@ export function createRoleCapabilitySelectionProjection(
     action: input.action,
     invocations: input.invocations.map((invocation) => ({
       capabilityId: invocation.capabilityId,
-      intent: invocation.intent,
+      ...(invocation.intent !== undefined ? { intent: invocation.intent } : {}),
       selectionControlsJson: canonicalizeControls(
         invocation.selectionControls ?? {},
       ),

@@ -501,7 +501,6 @@ function expectRequestTimeline(
     "events.event.session.messages.updated",
     "events.state.model",
     "runner.enter",
-    "events.thinking",
     "events.event.thinking.delta",
     "events.thinking",
     "events.event.thinking.delta",
@@ -615,6 +614,14 @@ function expectPersistedEvents(
       name: undefined,
     },
   ]);
+  expect(requestEvents[1]?.payload).toMatchObject({
+    name: "thinking.delta", presentationKind: "acknowledgement",
+    delta: `ack:${fixture.requestId}\n\n`, text: `ack:${fixture.requestId}\n\n`,
+  });
+  expect(requestEvents[2]?.payload).toMatchObject({
+    name: "thinking.delta", delta: `thought:${fixture.requestId}`, text: `thought:${fixture.requestId}`,
+  });
+  expect(requestEvents[2]?.payload).not.toHaveProperty("presentationKind");
   expect(requestEvents.at(-1)?.payload).toMatchObject({
     output: fixture.finalOutput,
   });

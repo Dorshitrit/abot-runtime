@@ -22,6 +22,7 @@ import type {
 export const EXECUTION_AGENT_ROOT_CONTRACT: RequestRootContractAdapter =
   Object.freeze({
     contractId: "execution_agent",
+    supportedInteractionKinds: Object.freeze(["message"] as const),
     decisionModelStep: EXECUTION_AGENT_DECISION_MODEL_STEP,
     responseModelStep: EXECUTION_AGENT_RESPONSE_MODEL_STEP,
     deferRespondPresentation: true,
@@ -35,7 +36,7 @@ export const EXECUTION_AGENT_ROOT_CONTRACT: RequestRootContractAdapter =
         head: options.head,
         call: options.callFrame,
         steeringSnapshot: requestSteering.snapshot(),
-        includeAcknowledgement: options.includeAcknowledgement,
+        includeAcknowledgement: false,
         includeTitle: options.includeTitle,
         allowPlanner: options.allowedRoleIds.includes("planner"),
         allowAuditor: options.allowedRoleIds.includes("reviewer"),
@@ -56,6 +57,9 @@ export const EXECUTION_AGENT_ROOT_CONTRACT: RequestRootContractAdapter =
               }
             : {}),
         },
+        ...("interaction" in outcome.decision && outcome.decision.interaction
+          ? { interaction: outcome.decision.interaction }
+          : {}),
         steeringVersion: outcome.steeringVersion,
       });
     },
@@ -84,9 +88,6 @@ function projectKernelDecision(
   steeringVersion: number,
 ): RootContractDecision {
   const presentation = {
-    ...(decision.acknowledgement !== undefined
-      ? { acknowledgement: decision.acknowledgement }
-      : {}),
     ...(decision.title !== undefined ? { title: decision.title } : {}),
   };
   switch (decision.action) {
@@ -123,7 +124,6 @@ function projectKernelDecision(
       return Object.freeze({
         action: "invoke_capability" as const,
         capabilityId: decision.capabilityId,
-        intent: decision.intent,
         ...(decision.authoringObjective ? { authoringObjective: decision.authoringObjective } : {}),
         controls: decision.controls,
         ...(decision.workingDirectory !== undefined
@@ -141,7 +141,6 @@ function projectKernelDecision(
           decision.invocations.map((invocation) =>
             Object.freeze({
               capabilityId: invocation.capabilityId,
-              intent: invocation.intent,
               ...(invocation.authoringObjective ? { authoringObjective: invocation.authoringObjective } : {}),
               controls: invocation.controls!,
             }),

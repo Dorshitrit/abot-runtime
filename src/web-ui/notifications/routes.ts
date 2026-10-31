@@ -3,6 +3,7 @@ import { acceptConfigMutationRequest } from "../local-runtime/config-mutation-re
 import { readBody, readJsonBody, sendJson } from "../local-runtime/http.js";
 import {
   NotificationInputError,
+  type AutomationReportRead,
   type NotificationDesktopState,
   type NotificationListQuery,
   type NotificationPage,
@@ -12,6 +13,7 @@ import {
 } from "./contracts.js";
 import { parseNotificationListQuery } from "./query.js";
 import {
+  parseAutomationReportReadBody,
   parseNotificationEnvironment,
   parseNotificationPreferencesBody,
   parseNotificationReadBody,
@@ -27,6 +29,7 @@ export type WebNotificationAccess = {
     id: string,
     change: NotificationReadChange,
   ): Promise<NotificationReadResult>;
+  markAutomationReportRead(id: string, report: AutomationReportRead): Promise<NotificationReadResult>;
   setPreferences(
     id: string,
     preferences: NotificationPreferences,
@@ -36,6 +39,7 @@ export type WebNotificationAccess = {
 const notificationPaths = [
   "/web-api/notifications",
   "/web-api/notifications/read",
+  "/web-api/notifications/automation-report-read",
   "/web-api/notifications/preferences",
 ];
 
@@ -151,6 +155,14 @@ export class WebNotificationRoutes {
       const page = await this.access.list(environmentId, query);
       const desktop = await this.access.desktop(environmentId);
       sendJson(response, 200, { ok: true, ...page, desktop });
+      return;
+    }
+    if (path === "/web-api/notifications/automation-report-read" && request.method === "POST") {
+      if (!acceptConfigMutationRequest(request, response)) return;
+      assertNotificationMutationHasNoQuery(url);
+      const { environmentId, report } = parseAutomationReportReadBody(await readNotificationMutationBody(request));
+      if (rejectUnknownNotificationEnvironment(this.access, environmentId, response)) return;
+      sendJson(response, 200, { ok: true, ...(await this.access.markAutomationReportRead(environmentId, report)) });
       return;
     }
     if (isNotificationReadRequest(path, request.method)) {

@@ -17,6 +17,7 @@ function serializeDiagnosticError(error: unknown): {
 export function emitOpenAISchemaDiagnostics(
   requestId: string,
   diagnostics: readonly OpenAISchemaProjectionDiagnostic[],
+  provider = "openai",
 ): void {
   for (const diagnostic of diagnostics) {
     traceDebug(
@@ -24,7 +25,7 @@ export function emitOpenAISchemaDiagnostics(
       "schema.projection.instruction_injected",
       {
         requestId,
-        provider: "openai",
+        provider,
         action: diagnostic.action,
         schemaName: diagnostic.schemaName,
         reason: diagnostic.reason,
@@ -47,7 +48,7 @@ export function emitOpenAIMessageOutputDiagnostic(
       typeof params.requestBody.modelStep === "string"
         ? params.requestBody.modelStep
         : "",
-    provider: "openai",
+    provider: params.invocation.profile.provider,
     endpoint: params.endpoint,
     ...diagnostic,
   });
@@ -83,7 +84,7 @@ export function emitOpenAIStreamTermination(params: {
       typeof requestBody.modelStep === "string" ? requestBody.modelStep : "",
     profileId: invocation.profile.id,
     providerId: invocation.profile.providerId,
-    provider: "openai",
+    provider: invocation.profile.provider,
     model: invocation.model,
     elapsedMs: Date.now() - params.startedAt,
     outcome: params.outcome,

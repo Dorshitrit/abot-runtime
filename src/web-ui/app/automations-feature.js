@@ -1,3 +1,4 @@
+import { createAutomationReportReadObserver } from "./components/automations/report-read.js";
 import { createAutomationsController } from "./controllers/automations-controller.js";
 import { createAutomationsWorkspace } from "./components/automations/workspace.js";
 import { createAutomationChatRunProjection } from "./components/automations/chat-run-projection.js";
@@ -18,13 +19,27 @@ export function createAutomationsFeature({
     };
   }
   let view;
+  let displayedReport = null;
+  const reportReads = createAutomationReportReadObserver({ client, getEnvironmentId });
+  const isVisible = () => documentRoot.visibilityState !== "hidden";
+  const observeReport = () => reportReads.observe(displayedReport?.run,
+    shell.activeWorkspace() === "automations" && isVisible() && Boolean(displayedReport?.selectedRunId),
+    displayedReport?.environmentId);
   const controller = createAutomationsController({
-    client, getEnvironmentId, onNavigationChange,
+    client, getEnvironmentId, onNavigationChange, isVisible,
     isEditingDirty: () => view?.isDirty() || false,
-    render: (snapshot) => view?.render(snapshot),
+    render: (snapshot) => {
+      if (!view) return;
+      view.render(snapshot);
+      displayedReport = {
+        selectedRunId: snapshot.selectedRunId, environmentId: getEnvironmentId(),
+        run: !snapshot.loading && snapshot.run?.id === snapshot.selectedRunId ? snapshot.run : null,
+      };
+      observeReport();
+    },
   });
   const chatRun = createAutomationChatRunProjection({
-    dom, client, getEnvironmentId, onNavigationChange,
+    dom, client, getEnvironmentId, onNavigationChange, isVisible,
     returnToStudio: async (run) => {
       const environmentId = getEnvironmentId(), runId = chatRun.runId();
       const isCurrent = controller.captureActionScope();
@@ -62,6 +77,7 @@ export function createAutomationsFeature({
   shell.subscribeWorkspaceChange((workspace) => {
     controller.setWorkspaceActive(workspace === "automations");
     chatRun.workspaceChanged(workspace);
+    observeReport();
   });
   dom.environmentSelect.addEventListener("change", () => queueMicrotask(() => {
     controller.environmentChanged();
@@ -70,6 +86,7 @@ export function createAutomationsFeature({
   documentRoot.addEventListener("visibilitychange", () => {
     controller.visibilityChanged();
     chatRun.visibilityChanged();
+    observeReport();
   });
   realtime.subscribeMessages?.((message) => {
     controller.handleRealtime(message);

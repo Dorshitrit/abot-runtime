@@ -18,7 +18,7 @@ afterEach(() => {
 
 test.each(["eof", "done"] as const)("valid decision ending at %s cannot execute a capability", async (ending) => {
   const fixture = await openAICompletionGateway([
-    { text: decisionOutput({ action: "open_capability_scope", catalogGroupIds: ["files"], acknowledgement: "I will write the document." }) },
+    { text: decisionOutput({ action: "open_capability_scope", catalogGroupIds: ["files"] }) },
     { text: decisionOutput(mutationDecision), ending },
   ]);
   try {
@@ -38,7 +38,7 @@ test.each(["eof", "done"] as const)("valid decision ending at %s cannot execute 
 
 test("the same completed decision executes the capability and finishes normally", async () => {
   const fixture = await openAICompletionGateway([
-    { text: decisionOutput({ action: "open_capability_scope", catalogGroupIds: ["files"], acknowledgement: "I will write the document." }) },
+    { text: decisionOutput({ action: "open_capability_scope", catalogGroupIds: ["files"] }) },
     { text: decisionOutput(mutationDecision) },
     { text: decisionOutput({ action: "respond" }) },
     { text: "The document was written." },

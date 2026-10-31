@@ -1,17 +1,11 @@
 import type {
   LongTermMemoryEmbeddingClient,
-  LongTermMemoryRecord,
   LongTermMemoryRepository,
   LongTermMemoryRepositorySnapshot,
-  MemoryVectorIndexEntry,
 } from "./contracts.js";
 import { embedLongTermMemoryTexts } from "./embedding-batches.js";
 import { scoreMemory, type ScoredMemory } from "./policies/scoring.js";
-
-type PendingVectorIndexAddition = Readonly<{
-  entry: MemoryVectorIndexEntry;
-  sourceContent: string;
-}>;
+import { ensureCurrentVectorIndex, matchesEmbeddingBinding } from "./vector-index.js";
 
 export async function searchRankedLongTermMemories(params: {
   repository: LongTermMemoryRepository;
@@ -54,118 +48,6 @@ export async function searchRankedLongTermMemories(params: {
   });
 }
 
-async function ensureCurrentVectorIndex(params: {
-  repository: LongTermMemoryRepository;
-  embeddings: LongTermMemoryEmbeddingClient;
-  snapshot: LongTermMemoryRepositorySnapshot;
-  modelFingerprint: string;
-  dimensions: number;
-  context: Readonly<{
-    abortSignal: AbortSignal;
-    debugRequestId?: string;
-  }>;
-}): Promise<LongTermMemoryRepositorySnapshot> {
-  const currentEntries = selectCurrentEntries(params);
-  const indexedIds = new Set(currentEntries.map(({ memoryId }) => memoryId));
-  const missing = params.snapshot.records.filter(
-    (record) => !indexedIds.has(record.id),
-  );
-  if (missing.length === 0) {
-    return params.snapshot;
-  }
-  const additions = await embedMissingRecords({ ...params, missing });
-  return params.repository.update((current) => ({
-    records: current.records,
-    vectors: mergeCurrentVectorIndex({
-      snapshot: current,
-      modelFingerprint: params.modelFingerprint,
-      dimensions: params.dimensions,
-      additions,
-    }),
-  }));
-}
-
-async function embedMissingRecords(params: {
-  embeddings: LongTermMemoryEmbeddingClient;
-  missing: readonly LongTermMemoryRecord[];
-  modelFingerprint: string;
-  dimensions: number;
-  context: Readonly<{
-    abortSignal: AbortSignal;
-    debugRequestId?: string;
-  }>;
-}): Promise<readonly PendingVectorIndexAddition[]> {
-  const embedded = await embedLongTermMemoryTexts({
-    embeddings: params.embeddings,
-    texts: params.missing.map(({ content }) => content),
-    abortSignal: params.context.abortSignal,
-    ...(params.context.debugRequestId
-      ? { debugRequestId: params.context.debugRequestId }
-      : {}),
-    expectedBinding: {
-      modelFingerprint: params.modelFingerprint,
-      dimensions: params.dimensions,
-    },
-  });
-  return Object.freeze(
-    params.missing.map((record, index) =>
-      Object.freeze({
-        entry: Object.freeze({
-          memoryId: record.id,
-          modelFingerprint: params.modelFingerprint,
-          dimensions: params.dimensions,
-          vector: embedded.vectors[index]!,
-        }),
-        sourceContent: record.content,
-      }),
-    ),
-  );
-}
-
-function selectCurrentEntries(params: {
-  snapshot: LongTermMemoryRepositorySnapshot;
-  modelFingerprint: string;
-  dimensions: number;
-}): readonly MemoryVectorIndexEntry[] {
-  return params.snapshot.vectors.filter(
-    (entry) =>
-      entry.modelFingerprint === params.modelFingerprint &&
-      entry.dimensions === params.dimensions,
-  );
-}
-
-function mergeCurrentVectorIndex(params: {
-  snapshot: LongTermMemoryRepositorySnapshot;
-  modelFingerprint: string;
-  dimensions: number;
-  additions: readonly PendingVectorIndexAddition[];
-}): readonly MemoryVectorIndexEntry[] {
-  const recordsById = new Map(
-    params.snapshot.records.map((record) => [record.id, record]),
-  );
-  const applicableAdditions = params.additions.filter((addition) =>
-    matchesEmbeddingSource(recordsById.get(addition.entry.memoryId), addition),
-  );
-  const additionsById = new Map(
-    applicableAdditions.map(({ entry }) => [entry.memoryId, entry]),
-  );
-  const retained = selectCurrentEntries(params).filter(
-    (entry) =>
-      recordsById.has(entry.memoryId) && !additionsById.has(entry.memoryId),
-  );
-  return Object.freeze([
-    ...retained,
-    ...applicableAdditions.map(({ entry }) => entry),
-  ]);
-}
-
-function matchesEmbeddingSource(
-  record: LongTermMemoryRecord | undefined,
-  addition: PendingVectorIndexAddition,
-): boolean {
-  return record?.content === addition.sourceContent;
-}
-
 function rankSnapshot(params: {
   snapshot: LongTermMemoryRepositorySnapshot;
   query: string;
@@ -174,7 +56,7 @@ function rankSnapshot(params: {
   dimensions: number;
 }): readonly ScoredMemory[] {
   const vectors = new Map(
-    selectCurrentEntries(params).map((entry) => [entry.memoryId, entry.vector]),
+    params.snapshot.vectors.filter((entry) => matchesEmbeddingBinding(entry, params)).map((entry) => [entry.memoryId, entry.vector]),
   );
   const newestTimestampMs = Math.max(
     0,

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ModelGatewayClient } from "../ports.js";
+import { ModelOutputIncompleteError } from "../model/provider-completion.js";
+import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import {
   configureDebugLogger,
   resetDebugLoggerConfig,
@@ -21,14 +23,24 @@ beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => resetDebugLoggerConfig());
 
 test.each([
-  [
-    "The request could not be completed.",
-    "Continue from the recorded progress.",
-  ],
-  ["לא ניתן היה להשלים את הבקשה.", "אפשר להמשיך מההתקדמות שנשמרה."],
+  {
+    cause: "known invalid",
+    failureNotice: "ABot could not complete the request because the model returned an invalid decision or response.",
+    nextStep: "Try again or choose a different model. Any work already performed still needs to be checked.",
+  },
+  {
+    cause: "unknown English",
+    failureNotice: "The request could not be completed.",
+    nextStep: "Continue from the recorded progress.",
+  },
+  {
+    cause: "unknown Hebrew",
+    failureNotice: "לא ניתן היה להשלים את הבקשה.",
+    nextStep: "אפשר להמשיך מההתקדמות שנשמרה.",
+  },
 ])(
-  "invalid root output preserves progress without adding a fixed heading: %s",
-  async (failureNotice, nextStep) => {
+  "$cause root failure preserves progress without adding a fixed heading",
+  async ({ cause, failureNotice, nextStep }) => {
     const fixture = await createModelWorkPlanEventFixture();
     const sourceResultRef = await fixture.returnSource();
     const adopted = await fixture.update({
@@ -43,16 +55,15 @@ test.each([
     expect(adopted.ok).toBe(true);
     const before = fixture.ledger.current();
     const plan = before.state.calls[0]!.adoptedWorkPlan;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => ({
-      text:
-        input.modelStep === "degraded.finalization"
-          ? JSON.stringify({
-              failureNotice,
-              nextStep,
-            })
-          : "invalid",
-      meta: {},
-    }));
+    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+      if (input.modelStep === "degraded.finalization")
+        return { text: JSON.stringify({ failureNotice, nextStep }), meta: {} };
+      if (cause !== "known invalid")
+        throw new ModelOutputIncompleteError({
+          outputLength: 0, providerCompletionReason: "unknown",
+        }, "execution.decision");
+      return { text: "invalid", meta: {} };
+    });
     const request = createRootInvalidOutputRequest(
       invoke,
       "execution-agent-v1",
@@ -85,11 +96,14 @@ test.each([
       before.state.results,
     );
     expect(fixture.ledger.current().state.phase).toBe("completed");
-    const degraded = invoke.mock.calls.find(
+    const degraded = invoke.mock.calls.filter(
       ([input]) => input.modelStep === "degraded.finalization",
-    )![0];
-    expect(JSON.stringify(degraded.messages)).not.toContain("Write release");
-    expect(JSON.stringify(degraded.messages)).not.toContain("Verify release");
+    );
+    expect(degraded).toHaveLength(cause === "known invalid" ? 0 : 1);
+    if (degraded[0]) {
+      expect(JSON.stringify(degraded[0][0].messages)).not.toContain("Write release");
+      expect(JSON.stringify(degraded[0][0].messages)).not.toContain("Verify release");
+    }
   },
 );
 
@@ -100,14 +114,16 @@ test("empty plans do not manufacture progress", async () => {
 });
 
 test.each(ROOT_OUTPUT_POLICIES)(
-  "$policyId bounds overlong degraded phrasing with its own attempt policy",
+  "$policyId bounds overlong unknown-cause degraded phrasing with its own attempt policy",
   async (policy) => {
     const ledger = await createRootInvalidOutputLedger(policy.policyId);
     const maxResponseChars = ledger.current().policy.limits.maxResponseChars;
     let degradedAttempts = 0;
-    const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
+    const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
       if (input.modelStep !== "degraded.finalization")
-        return { text: "invalid", meta: {} };
+        throw new ModelOutputIncompleteError({
+          outputLength: 0, providerCompletionReason: "unknown",
+        }, policy.decisionStep);
       degradedAttempts += 1;
       return {
         text: JSON.stringify({
@@ -119,7 +135,7 @@ test.each(ROOT_OUTPUT_POLICIES)(
         }),
         meta: {},
       };
-    });
+    }));
     const request = createRootInvalidOutputRequest(invoke, policy.policyId);
     const result = await runRootExecutionKernel({ request, ledger });
     const superPolicy = policy.policyId === "supervisor-worker-v1";
@@ -127,8 +143,8 @@ test.each(ROOT_OUTPUT_POLICIES)(
       superPolicy
         ? buildDegradedFinalizationFallback({
             problem: {
-              code: policy.invalidDecision,
-              stage: policy.decisionStep,
+              code: "output_incomplete",
+              stage: "provider_completion",
             },
             progress: null,
           })

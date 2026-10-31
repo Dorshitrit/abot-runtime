@@ -1,3 +1,4 @@
+import type { RoleCallFrame } from "../orchestration/role-calls/index.js";
 import { isDeepStrictEqual } from "node:util";
 import type { WorkerCapabilityExecutionFreshness } from "../orchestration/worker-capabilities/contracts.js";
 import {
@@ -34,6 +35,16 @@ export function restoreApprovalExecutionFreshness(
 ): WorkerCapabilityExecutionFreshness | undefined {
   if (token === undefined) return undefined;
   const inbox = resolveRequestSteeringInbox(requestSteering);
+  if (token.kind === "worker_steering_v1") {
+    if (
+      !Number.isSafeInteger(token.version) || token.version < 0 ||
+      token.version > inbox.snapshot().version
+    )
+      throw new Error("request_approval_steering_mismatch");
+    if (!hasLiveSteeringInbox(inbox))
+      throw new Error("request_approval_steering_superseded");
+    return bindWorkerExecutionFreshness(inbox, token);
+  }
   const current = createRootExecutionFreshness({
     requestSteering: inbox,
     steeringVersion: token.version,
@@ -51,4 +62,38 @@ function hasLiveSteeringInbox(
   inbox: ReturnType<typeof resolveRequestSteeringInbox>,
 ): boolean {
   return inbox.isCurrent(inbox.snapshot().version);
+}
+
+export function createWorkerExecutionFreshness(params: {
+  requestSteering: ReturnType<typeof resolveRequestSteeringInbox>;
+  call: RoleCallFrame;
+}): WorkerCapabilityExecutionFreshness {
+  return bindWorkerExecutionFreshness(
+    params.requestSteering,
+    Object.freeze({
+      kind: "worker_steering_v1",
+      callId: params.call.callId,
+      version: params.call.workerSteeringVersion ?? 0,
+    }),
+  );
+}
+
+function bindWorkerExecutionFreshness(
+  inbox: ReturnType<typeof resolveRequestSteeringInbox>,
+  token: Extract<
+    WorkerCapabilityExecutionFreshness["token"], { kind: "worker_steering_v1" }
+  >,
+): WorkerCapabilityExecutionFreshness {
+  return Object.freeze({
+    token,
+    isCurrent: () => inbox.isCurrent(token.version),
+    subscribe(listener: () => void) {
+      const notify = () => {
+        if (!inbox.isCurrent(token.version)) listener();
+      };
+      const unsubscribe = inbox.subscribe?.(notify) ?? (() => {});
+      notify();
+      return unsubscribe;
+    },
+  });
 }

@@ -7,6 +7,7 @@ export type BasketStateOwner = ReturnType<typeof createBasketStateOwner>;
 /** One cached committed snapshot; indexing promises never become request state. */
 export function createBasketStateOwner(repository: BasketRepository, onChanged?: () => void) {
   let current: BasketSnapshot | undefined;
+  let retrievalSettingsVersion = 0;
   let loading: Promise<BasketSnapshot> | undefined;
   let pending: Promise<unknown> = Promise.resolve();
   const listeners = new Set<(change: BasketDiscoveryChange) => void>();
@@ -20,6 +21,7 @@ export function createBasketStateOwner(repository: BasketRepository, onChanged?:
   return Object.freeze({
     read,
     snapshot: () => current,
+    retrievalSettingsVersion: () => retrievalSettingsVersion,
     update(change: (state: BasketSnapshot) => BasketSnapshot): Promise<BasketSnapshot> {
       const operation = pending.then(async () => {
         await read();
@@ -30,6 +32,7 @@ export function createBasketStateOwner(repository: BasketRepository, onChanged?:
           return next;
         });
         current = snapshot;
+        if (committedChange?.settingsChanged) retrievalSettingsVersion += 1;
         if (committedChange) for (const listener of listeners) {
           try { listener(committedChange); } catch { /* A consumer cannot undo committed storage. */ }
         }

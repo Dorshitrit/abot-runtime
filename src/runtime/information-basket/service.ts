@@ -1,3 +1,4 @@
+import { createBasketChatUploads } from "./chat-uploads.js";
 import { createHash } from "node:crypto";
 import { hostname } from "node:os";
 import { join } from "node:path";
@@ -49,7 +50,10 @@ export function createInformationBasketService(options: InformationBasketOptions
     return pending;
   };
   const list = createBasketSourceListing({ config: options.config, state, health, work });
+  const uploads = createBasketChatUploads({ state, attachments: options.attachments,
+    register: management.register, isStarted: () => started });
   return Object.freeze({
+    ...uploads,
     isReady: () => isBasketRetrievalReady({ ...options, snapshot: state.snapshot(), started }),
     list,
     async updateSettings(input) { await management.updateSettings(input); return list(); },

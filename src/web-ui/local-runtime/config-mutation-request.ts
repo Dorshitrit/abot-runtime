@@ -15,7 +15,7 @@ function hasJsonContentType(request: IncomingMessage): boolean {
   return value.split(";", 1)[0].trim().toLowerCase() === "application/json";
 }
 
-function hasSameOrigin(request: IncomingMessage): boolean {
+export function hasSameOrigin(request: IncomingMessage): boolean {
   const origin = request.headers.origin;
   if (!origin) return true;
   try {

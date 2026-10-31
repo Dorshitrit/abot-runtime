@@ -1,3 +1,4 @@
+import { isDependencyObservationList } from "../../context/super-dependency-observations.js";
 import {
   isRoleCallResultText,
   ROLE_CALL_OBJECTIVE_MAX_LENGTH,
@@ -26,7 +27,7 @@ export function isWorkerPayloadDependencyContextValid(
     const producerObjective = candidate.producerObjective;
     return (
       keys.length >= 5 &&
-      keys.length <= 7 &&
+      keys.length <= 8 &&
       keys.every(
         (key) =>
           key === "resultRef" ||
@@ -35,15 +36,16 @@ export function isWorkerPayloadDependencyContextValid(
           key === "roleId" ||
           key === "outcome" ||
           key === "summary" ||
-          key === "semanticCheckpoints",
+          key === "semanticCheckpoints" || key === "observations",
       ) &&
       candidate.resultRef === call.dependencyResultRefs[index] &&
       typeof candidate.producerCallId === "string" &&
       candidate.producerCallId.length > 0 &&
       isOptionalProducerObjectiveValid(producerObjective) &&
       isRuntimeDelegateRoleId(candidate.roleId) &&
-      (candidate.outcome === "completed" || candidate.outcome === "failed") &&
+      isWorkerPayloadDependencyOutcomeValid(candidate.roleId, candidate.outcome) &&
       isRoleCallResultText(candidate.summary) &&
+      (candidate.observations === undefined || isDependencyObservationList(candidate.observations)) &&
       (semanticCheckpoints === undefined ||
         (Array.isArray(semanticCheckpoints) &&
           semanticCheckpoints.length > 0 &&
@@ -54,6 +56,15 @@ export function isWorkerPayloadDependencyContextValid(
           )))
     );
   });
+}
+
+function isWorkerPayloadDependencyOutcomeValid(
+  roleId: unknown,
+  outcome: unknown,
+): boolean {
+  if (outcome === "completed" || outcome === "failed") return true;
+  if (outcome !== "yielded") return false;
+  return roleId === "worker";
 }
 
 function isOptionalProducerObjectiveValid(value: unknown): boolean {

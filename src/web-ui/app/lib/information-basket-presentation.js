@@ -1,7 +1,7 @@
 const STATUS_LABELS = Object.freeze({
   ready: "Ready", queued: "Queued", indexing: "Indexing", stale: "Source changed",
   missing: "Source missing", failed: "Index failed", unsupported: "Unsupported format",
-  unavailable: "Unavailable", pending_path: "Needs source path",
+  unavailable: "Unavailable",
 });
 export function basketStatusLabel(status) { return STATUS_LABELS[status] || "Unavailable"; }
 export function isBasketSourceWorking(source) { return ["queued", "indexing"].includes(source.status); }
@@ -29,7 +29,4 @@ export function basketSize(value) {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-}
-export function droppedBasketNames(files) {
-  return Array.from(files || []).map((file) => String(file.name || "").trim()).filter(Boolean).slice(0, 100);
 }

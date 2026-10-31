@@ -1,8 +1,11 @@
+import { isWebSetupProvider, type WebSetupProvider } from "./setup-provider-choice.js";
+import { readSetupChatGptAccountRef } from "./chatgpt-setup-binding.js";
 import {
   parseBaseUrl,
   parseContextWindowTokens,
 } from "../../../scripts/runtime-setup-files.js";
 
+import { requireSetupPromptCacheProvider } from "../../../scripts/runtime-setup-prompt-cache.js";
 import { parseSetupModelOptions, type SetupModelOptions } from "../../../scripts/runtime-setup-model-options.js";
 import { defaultProviderAddress, supportsProviderAddress } from "../../../scripts/runtime-setup-provider-options.js";
 
@@ -17,7 +20,8 @@ export class RuntimeSetupError extends Error {
 }
 
 export type RuntimeSetupInput = SetupModelOptions & Readonly<{
-  provider: "openai" | "ollama" | "llamacpp";
+  provider: WebSetupProvider;
+  accountRef?: string;
   model: string;
   contextWindowTokens?: number;
   baseUrl?: string;
@@ -87,11 +91,20 @@ export function parseRuntimeSetupInput(
     throw new RuntimeSetupError("invalid_setup_reasoning", (error as Error).message);
   }
   const provider = readSetupString(body?.provider);
-  if (provider !== "openai" && provider !== "ollama" && provider !== "llamacpp") {
+  if (!isWebSetupProvider(provider)) {
     throw new RuntimeSetupError(
       "invalid_setup_provider",
-      "Choose OpenAI, Ollama or llama.cpp.",
+      "Choose OpenAI, Continue with ChatGPT, Ollama or llama.cpp.",
     );
+  }
+  try { requireSetupPromptCacheProvider(provider, modelOptions.promptCache); } catch (error) {
+    throw new RuntimeSetupError("invalid_setup_prompt_cache", (error as Error).message);
+  }
+  let accountRef: string | undefined;
+  try {
+    accountRef = readSetupChatGptAccountRef(provider, body?.accountRef, { apiKey: body?.apiKey, baseUrl: body?.baseUrl });
+  } catch (error) {
+    throw new RuntimeSetupError("invalid_setup_account", (error as Error).message);
   }
   if (modelOptions.reasoningBudget && provider !== "llamacpp")
     throw new RuntimeSetupError("invalid_setup_reasoning", "A token reasoning budget requires llama.cpp.");
@@ -136,6 +149,7 @@ export function parseRuntimeSetupInput(
   return {
     ...modelOptions,
     provider,
+    ...(accountRef ? { accountRef } : {}),
     model,
     ...(contextWindowTokens !== undefined ? { contextWindowTokens } : {}),
     ...(baseUrl ? { baseUrl } : {}),

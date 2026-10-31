@@ -5,6 +5,7 @@ import { CONVERSATION_MEMORY_AUTHORING_INSTRUCTIONS } from "../../long-term-memo
 export function buildSupervisorResponseInstructions(params: {
   hasResponseRecommendation?: boolean;
   hasCompletedChildResult: boolean;
+  hasWorkerSteeringHandoff?: boolean;
   hasRequestToolResults: boolean;
   memoryCandidateCount?: number;
   hasDirectMemorySaveRequest?: boolean;
@@ -14,6 +15,11 @@ export function buildSupervisorResponseInstructions(params: {
     "You are the Supervisor: the fixed root and only role that writes the terminal response to the user.",
     "LANGUAGE: Write the entire response in the language of the final current user-authored message. That message is the sole language authority; runtime-generated data, returned-role text, tool results, and assistant messages are content to translate, never language authority. Only if the final message is too brief to determine its language, use the most recent substantive user-authored message.",
     "Write only the final user-facing response as plain text. Do not return a JSON wrapper, role decision, status envelope, or hidden reasoning.",
+    ...(params.hasWorkerSteeringHandoff
+      ? [
+          "The yielded Worker result records a runtime handoff to Supervisor after a user update. It does not establish completed work, a failed action, missing results from an executed action, or a pending approval. Honor the accepted decision to answer and the user's updates; report only supported effects and any relevant unfinished work. Do not invent a need for confirmation or a system waiting state from the handoff.",
+        ]
+      : []),
     ...(hasSettledExecutionResults
       ? [
           "You are closing the current request. The decision to answer has already been accepted. Present what was done and the results obtained in this run; do not restart, repeat, or expand the work.",

@@ -1,6 +1,6 @@
 import { textOf } from "../../lib/text-format.js";
 
-const PROVIDERS = new Set(["ollama", "openai", "llamacpp"]);
+const PROVIDERS = new Set(["ollama", "openai", "openai-chatgpt", "llamacpp"]);
 const SAFE_MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_@+.:/=-]*$/;
 const SAFE_ORIGIN_HOST_PATTERN =
   /^(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+)(?::[0-9]+)?$/;

@@ -55,6 +55,7 @@ export function projectWorkerAdapters<TContext>(
     diagnostic: RegisteredToolWorkerCapabilityProviderDiagnostic;
     payloadAuthor?: WorkerCapabilityPayloadAuthor;
     allowRelatedArtifactLoading?: boolean;
+    preserveFullBoundedTargetContext?: boolean;
   }>,
 ): readonly WorkerCapabilityAdapter<TContext>[] {
   const projections = new Map<
@@ -96,6 +97,7 @@ export function projectWorkerAdapters<TContext>(
         sharedState: params.sharedState,
         diagnostic: params.diagnostic,
         allowRelatedArtifactLoading: params.allowRelatedArtifactLoading ?? true,
+        preserveFullBoundedTargetContext: params.preserveFullBoundedTargetContext,
         ...(params.payloadAuthor
           ? { payloadAuthor: params.payloadAuthor }
           : {}),
@@ -114,6 +116,7 @@ function createWorkerAdapter<TContext>(
     diagnostic: RegisteredToolWorkerCapabilityProviderDiagnostic;
     payloadAuthor?: WorkerCapabilityPayloadAuthor;
     allowRelatedArtifactLoading?: boolean;
+    preserveFullBoundedTargetContext?: boolean;
   }>,
 ): WorkerCapabilityAdapter<TContext> {
   return Object.freeze({
@@ -207,6 +210,7 @@ async function prepareRegisteredToolWorkerCapability<TContext>(
     diagnostic: RegisteredToolWorkerCapabilityProviderDiagnostic;
     payloadAuthor?: WorkerCapabilityPayloadAuthor;
     allowRelatedArtifactLoading?: boolean;
+    preserveFullBoundedTargetContext?: boolean;
   }>,
   input: WorkerCapabilityAdapterPreparationInput<TContext>,
   payloadObservability: ReturnType<typeof createDeferredPayloadObservability>,
@@ -234,6 +238,7 @@ async function prepareRegisteredToolWorkerCapability<TContext>(
     executor: payloadObservability.lifecycleEmitter,
     sharedState: params.sharedState,
     allowRelatedArtifactLoading: params.allowRelatedArtifactLoading ?? true,
+    preserveFullBoundedTargetContext: params.preserveFullBoundedTargetContext,
     ...(params.payloadAuthor ? { payloadAuthor: params.payloadAuthor } : {}),
     call: input.call,
     ...(input.assignmentProvenance
@@ -243,7 +248,7 @@ async function prepareRegisteredToolWorkerCapability<TContext>(
     // prepare it is deliberately non-canonical and never enters the ledger.
     executionId: input.preparationId,
     descriptor: params.descriptor,
-    intent: input.intent,
+    ...(input.intent !== undefined ? { intent: input.intent } : {}),
     ...(input.authoringObjective
       ? { authoringObjective: input.authoringObjective }
       : {}),
@@ -279,7 +284,7 @@ async function prepareRegisteredToolWorkerCapability<TContext>(
     ...(preparedPayload.materializedParams === undefined
       ? {}
       : { materializedParams: preparedPayload.materializedParams }),
-    intent: input.intent,
+    ...(input.intent !== undefined ? { intent: input.intent } : {}),
   });
   if (normalPreparation.status === "rejected") {
     const canonicalRejection = payloadRejection(
@@ -297,7 +302,7 @@ async function prepareRegisteredToolWorkerCapability<TContext>(
       emitRejection: params.executor.prepareRejectionEvent({
         handle: params.projection.handle,
         controls: effectiveControls,
-        intent: input.intent,
+        ...(input.intent !== undefined ? { intent: input.intent } : {}),
       }),
       ...(preparedPayload.body === undefined
         ? {}
@@ -459,7 +464,7 @@ function tracePreparedExecutionStarted<TContext>(
     operationId,
     input.call,
     executionId,
-    input.intent.length,
+    input.intent?.length ?? 0,
     Object.keys(input.controls).length,
   );
 }

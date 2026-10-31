@@ -1,3 +1,4 @@
+import type { ChatGptAuthRoutes } from "../chatgpt-auth/routes.js";
 import type {
   AppliedGatewayConfigurations,
   RuntimeSetupGatewayRestorePoint,
@@ -11,6 +12,7 @@ import type { ModelProviderAdapterRegistry } from "../../model-gateway/index.js"
 export type JsonObject = Record<string, unknown>;
 
 export type LocalRuntimeBackendOptions = {
+  chatGptAuthRoutes?: ChatGptAuthRoutes;
   rootDir?: string;
   configPath?: string;
   defaultEnvironmentId: string;

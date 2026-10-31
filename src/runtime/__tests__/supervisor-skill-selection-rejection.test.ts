@@ -83,7 +83,10 @@ test.each([2, 3])("a valid correction on attempt %s still reads the requested ba
     policy: "supervisor-worker-v1", enabled: false,
     selectSkills: () => ++selections === validAttempt ? read(first.skillId) : duplicate(first.skillId),
     classifyProcedure(input) {
-      expect(JSON.stringify(input.messages)).not.toContain(first.content);
+      expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1"))
+        .toEqual([expect.objectContaining({
+          authority: "passive_reference", purpose: "skill_guidance", document: first,
+        })]);
       return { requiresProcedure: false, responseRecommendation: "Answer with the accepted guidance." };
     },
     onInput(input) {
@@ -111,7 +114,10 @@ test("a refused batch after child return keeps prior guidance and a later child 
     },
     classifyProcedure: () => ({ requiresProcedure: true }),
     delegate(input) {
-      expect(JSON.stringify(input.messages)).not.toContain(first.content);
+      expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1"))
+        .toEqual([expect.objectContaining({
+          authority: "passive_reference", purpose: "skill_guidance", document: first,
+        })]);
       return { action: "invoke_role", roleId: "worker", objective: `Complete verification ${++routes}.` };
     },
     decide(input) {
@@ -144,20 +150,18 @@ test.each([
   { label: "additional fields", output: { ...duplicate(first.skillId), objective: "Extra work." } },
 ])("$label remains a fatal selection rejection after the existing repairs", async ({ output }) => {
   const selectSkills = vi.fn(() => output);
+  const decide = vi.fn(() => { throw new Error("unexpected_model_call_after_rejected_selection"); });
   const f = fixture({
-    policy: "supervisor-worker-v1", enabled: false, selectSkills,
-    decide(input) {
-      expect(input.modelStep).toBe("degraded.finalization");
-      return JSON.stringify({ failureNotice: "The request could not be completed.", nextStep: "Please try again." });
-    },
+    policy: "supervisor-worker-v1", enabled: false, selectSkills, decide,
   });
   await expect(runRequestRunner(f.request)).resolves.toMatchObject({
-    disposition: "blocked", output: expect.stringContaining("The request could not be completed."),
+    disposition: "blocked", output: expect.stringContaining("model returned an invalid decision or response."),
   });
   expect(selectSkills).toHaveBeenCalledTimes(3);
   expect(f.store.read).not.toHaveBeenCalled();
   expect(f.gatewayInvoke.mock.calls.some(([input]) => supervisorFormatName(input) === "supervisor_decision")).toBe(false);
-  expect(f.gatewayInvoke.mock.calls.filter(([input]) => input.modelStep === "degraded.finalization")).toHaveLength(1);
+  expect(decide).not.toHaveBeenCalled();
+  expectNoDegradedFinalization(f);
 });
 
 test.each(["provider", "cancellation"] as const)("%s on the final duplicate repair propagates without routing or closing the window", async (kind) => {
@@ -196,7 +200,10 @@ test("steering during the final rejection leaves the stale window open for a fre
     },
     classifyProcedure(input) {
       expect(JSON.stringify(input.messages)).toContain(update);
-      expect(JSON.stringify(input.messages)).not.toContain(first.content);
+      expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1"))
+        .toEqual([expect.objectContaining({
+          authority: "passive_reference", purpose: "skill_guidance", document: first,
+        })]);
       return { requiresProcedure: false, responseRecommendation: "Answer the updated request." };
     },
     onInput(input) {

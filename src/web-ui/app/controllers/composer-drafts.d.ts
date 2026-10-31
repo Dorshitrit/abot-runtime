@@ -44,6 +44,7 @@ export interface ComposerDraft {
 }
 
 export interface ComposerDrafts {
+  resetSessionData(scope: ComposerScope): void;
   clearAttachments(scope: ComposerScope): ComposerAttachment[];
   open(scope: ComposerScope): ComposerDraft;
   restore(snapshot: ComposerDraftSnapshot): void;

@@ -205,6 +205,85 @@ describe("Information Basket activity display", () => {
     for (const message of messages) expect(node.textContent).toContain(message);
   });
 
+
+  test.each([false, true])("distinguishes returned read windows in live/replay cards (replay=%s)", async replay => {
+    const events = [
+      toolEvent("read_information_source", 1, { name: "tool.started", ok: undefined }),
+      toolEvent("read_information_source", 2, { executionId: "basket-1", meta: {
+        basketAction: "read_information_source", documentName: NAME, itemCount: 1,
+        basketReadStartChar: 0, basketReadEndChar: 8_000, basketReadTotalCharacters: 17_740,
+      } }),
+      toolEvent("read_information_source", 3, { name: "tool.started", ok: undefined }),
+      toolEvent("read_information_source", 4, { executionId: "basket-3", meta: {
+        basketAction: "read_information_source", documentName: NAME, itemCount: 1,
+        basketReadStartChar: 8_000, basketReadEndChar: 17_740, basketReadTotalCharacters: 17_740,
+      } }),
+    ];
+    const retained = await projected(events, replay);
+    const model = buildConversationActivityModel({ requestId: "request-1", events: retained });
+    expect(model.toolCount).toBe(2);
+    expect(model.toolActions.map(entry => entry.title)).toEqual(["Read information source", "Continue reading source"]);
+    expect(model.toolActions.map(entry => entry.status)).toEqual(["completed", "completed"]);
+    expect(fields(model.toolActions[0]!)).toMatchObject({
+      "Characters read": "1–8,000 of 17,740", "Read coverage": "More remaining",
+    });
+    expect(fields(model.toolActions[1]!)).toMatchObject({
+      "Characters read": "8,001–17,740 of 17,740", "Read coverage": "End of source reached",
+    });
+    const node = render(retained);
+    for (const text of ["Continue reading source", "1–8,000 of 17,740", "8,001–17,740 of 17,740",
+      "More remaining", "End of source reached"]) expect(node.textContent).toContain(text);
+    expect(formatEventDetail(events[3]!)).toContain("8,001–17,740 of 17,740");
+  });
+
+  test("an isolated tail read describes its range without claiming earlier text was read", () => {
+    const event = toolEvent("read_information_source", 1, { meta: {
+      basketAction: "read_information_source", documentName: NAME, itemCount: 1,
+      basketReadStartChar: 8_000, basketReadEndChar: 17_740, basketReadTotalCharacters: 17_740,
+    } });
+    expect(fields(action(event))).toMatchObject({
+      "Characters read": "8,001–17,740 of 17,740", "Read coverage": "End of source reached",
+    });
+  });
+
+  test.each([0, 17_740])("empty read windows do not invent a character range (total=%s)", total => {
+    const event = toolEvent("read_information_source", 1, { meta: {
+      basketAction: "read_information_source", itemCount: 1,
+      basketReadStartChar: total, basketReadEndChar: total, basketReadTotalCharacters: total,
+    } });
+    expect(fields(action(event))).toMatchObject({
+      "Characters read": `0 of ${total.toLocaleString("en-US")}`, "Read coverage": "No characters returned",
+    });
+  });
+
+  test.each([
+    {}, { basketReadStartChar: 8_000 }, { basketReadStartChar: "8000", basketReadEndChar: 17_740, basketReadTotalCharacters: 17_740 },
+    { basketReadStartChar: -1, basketReadEndChar: 8_000, basketReadTotalCharacters: 17_740 },
+    { basketReadStartChar: 0.5, basketReadEndChar: 8_000, basketReadTotalCharacters: 17_740 },
+    { basketReadStartChar: 8_000, basketReadEndChar: 7_999, basketReadTotalCharacters: 17_740 },
+    { basketReadStartChar: 0, basketReadEndChar: 17_741, basketReadTotalCharacters: 17_740 },
+    { basketReadStartChar: 0, basketReadEndChar: 8_000, basketReadTotalCharacters: Number.MAX_SAFE_INTEGER + 1 },
+  ])("legacy or invalid coverage retains the original read presentation: %j", coverage => {
+    const event = toolEvent("read_information_source", 1, { meta: {
+      basketAction: "read_information_source", documentName: NAME, itemCount: 1, ...coverage,
+    } });
+    expect(action(event).title).toBe("Read information source");
+    expect(fields(action(event))).toEqual({ "Sources read": "1", Document: NAME });
+  });
+
+  test.each([
+    { name: "tool.started", ok: undefined, basketAction: "read_information_source" },
+    { name: "tool.completed", ok: false, basketAction: "read_information_source" },
+    { name: "tool.completed", ok: true, basketAction: "search_information_sources" },
+  ])("does not claim read coverage for pending, failed or unrelated operations: %j", ({ basketAction, ...extra }) => {
+    const event = toolEvent(basketAction, 1, { ...extra, meta: {
+      basketAction, basketReadStartChar: 8_000, basketReadEndChar: 17_740, basketReadTotalCharacters: 17_740,
+    } });
+    expect(action(event).title).not.toBe("Continue reading source");
+    expect(fields(action(event))).not.toHaveProperty("Characters read");
+    expect(fields(action(event))).not.toHaveProperty("Read coverage");
+  });
+
   test("unrelated tool previews retain their existing behavior", () => {
     const event = toolEvent("read_information_source", 1, { tool: "read_file", meta: {
       path: "notes.txt", outputPreview: "Existing file preview", inputPreview: "Existing input preview",

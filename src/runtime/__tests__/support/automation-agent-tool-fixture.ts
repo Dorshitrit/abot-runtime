@@ -43,10 +43,9 @@ export function scriptToolUsingAgent(fixture: Fixture, policy: Policy) {
   fixture.invoke.mockImplementation(withSupervisorPreparation(async (input) => {
     if (input.modelStep === "execution.decision") {
       const action = [
-        { action: "open_capability_scope", catalogGroupIds: ["identity_probe"],
-          acknowledgement: "I will inspect the fixture." },
+        { action: "open_capability_scope", catalogGroupIds: ["identity_probe"] },
         { action: "invoke_capability", capabilityId: operation.operationId,
-          intent: "Observe the fixture.", workingDirectory: "project" },
+          workingDirectory: "project" },
         { action: "respond" },
       ][executionDecisions++ % 3];
       return { text: JSON.stringify({ decision: action }), meta: {} };

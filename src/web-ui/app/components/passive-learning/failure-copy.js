@@ -86,6 +86,7 @@ const groups = [
   ]],
   ["The underlying knowledge changed before this review could be saved.", ["learning_knowledge_conflict"]],
   ["Learning needs its embeddings updated before this review can be saved.", ["learning_embedding_reindex_required"]],
+  ["The new embeddings exceed the learning storage limit. Existing knowledge was preserved; choose a smaller embedding model or increase the configured storage limit.", ["learning_embedding_capacity_exceeded"]],
   ["The review tried to change a memory protected by a manual edit.", ["learning_memory_protected"]],
   ["The review could not be saved because its receipt storage limit was reached.", ["learning_receipt_capacity"]],
   ["The proposed memory duplicates an existing item and needs an update instead.", ["learning_duplicate_requires_bound_update"]],

@@ -1,3 +1,4 @@
+import { ModelOutputIncompleteError } from "../model/provider-completion.js";
 import { withSupervisorPreparation, supervisorFormatName } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
@@ -23,21 +24,38 @@ afterEach(() => {
 
 const fallback = buildDegradedFinalizationFallback({
   problem: {
-    stage: "supervisor.decision",
-    code: "invalid_supervisor_decision",
+    stage: "provider_completion",
+    code: "output_incomplete",
   },
   progress: null,
 });
 
+function unknownCompletion() {
+  return new ModelOutputIncompleteError({
+    outputLength: 0, providerCompletionReason: "unknown",
+  }, "supervisor.decision");
+}
+
+test("SUPER known invalid output commits one blocked notice without invoking a finalizer", async () => {
+  const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async () => ({
+    text: "invalid", meta: {},
+  })));
+  const request = createRootInvalidOutputRequest(invoke);
+  const ledger = await createRootInvalidOutputLedger();
+  const result = await runRootExecutionKernel({ request, ledger });
+  expect(result.disposition).toBe("blocked");
+  expect(result.output).toContain("model returned an invalid decision or response");
+  expect(ledger.current().state.rootResponse).toBe(result.output);
+  expect(ledger.current().state.capabilityExecutions).toEqual([]);
+  expect(invoke.mock.calls.filter(([input]) => input.modelStep === "degraded.finalization")).toEqual([]);
+});
+
 test.each(["invalid", "provider_failure"] as const)(
-  "SUPER failed %s finalizer makes one attempt and commits a blocked fallback",
+  "SUPER unknown-cause %s finalizer makes one attempt and commits a blocked fallback",
   async (outcome) => {
     const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
-      if (
-        input.modelStep === "degraded.finalization" &&
-        outcome === "provider_failure"
-      )
-        throw new Error("provider_connection_failed");
+      if (input.modelStep !== "degraded.finalization") throw unknownCompletion();
+      if (outcome === "provider_failure") throw new Error("provider_connection_failed");
       return { text: "invalid", meta: {} };
     }));
     const request = createRootInvalidOutputRequest(invoke);
@@ -52,6 +70,11 @@ test.each(["invalid", "provider_failure"] as const)(
       ),
     ).toHaveLength(1);
     expect(ledger.current().state.rootResponse).toBe(fallback);
+    expect(request.superFailureFinalization!.primaryError()).toMatchObject({
+      name: "ModelOutputIncompleteError",
+      modelStep: "supervisor.decision",
+      providerCompletionReason: "unknown",
+    });
   },
 );
 
@@ -70,7 +93,7 @@ test("SUPER discards stale finalizer phrasing without replenishing its authoring
         meta: {},
       };
     }
-    return { text: "invalid", meta: {} };
+    throw unknownCompletion();
   }));
   const request = createRootInvalidOutputRequest(
     invoke,
@@ -100,13 +123,10 @@ test("SUPER still accepts healthy work after finalizer steering invalidation", a
         meta: {},
       };
     }
+    const isInitialDecision = input.modelStep === "supervisor.decision" && steering.snapshot().version === 0;
+    if (isInitialDecision) throw unknownCompletion();
     if (input.modelStep === "supervisor.decision")
-      return {
-        text: steering.snapshot().version
-          ? rootRespondOutput("supervisor-worker-v1")
-          : "invalid",
-        meta: {},
-      };
+      return { text: rootRespondOutput("supervisor-worker-v1"), meta: {} };
     return { text: "Current answer", meta: {} };
   }));
   const request = createRootInvalidOutputRequest(

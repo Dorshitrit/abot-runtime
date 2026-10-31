@@ -67,7 +67,8 @@
   display: none;
 }
 
-.conversation-role-card {
+.conversation-role-card,
+.conversation-work-role {
   --role-accent: var(--accent);
 }
 
@@ -98,23 +99,29 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--role-accent) 8%, transparent);
 }
 
-.conversation-role-card[data-role="planner"] {
+.conversation-role-card[data-role="planner"],
+.conversation-work-role[data-role="planner"] {
   --role-accent: #8ebcff;
 }
 
-.conversation-role-card[data-role="worker"] {
+.conversation-role-card[data-role="worker"],
+.conversation-work-role[data-role="worker"] {
   --role-accent: #c7a1ef;
 }
 
-.conversation-role-card[data-role="researcher"] {
+.conversation-role-card[data-role="researcher"],
+.conversation-work-role[data-role="researcher"] {
   --role-accent: #7dd4e7;
 }
 
-.conversation-role-card[data-role="reviewer"] {
+.conversation-role-card[data-role="reviewer"],
+.conversation-work-role[data-role="reviewer"] {
   --role-accent: var(--amber);
 }
 
-.conversation-role-card[data-role="unknown"] {
+.conversation-role-card[data-role="unknown"],
+.conversation-work-role[data-role="unknown"],
+.conversation-work-role[data-role="context"] {
   --role-accent: var(--muted);
 }
 

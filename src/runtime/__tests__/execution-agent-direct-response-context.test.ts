@@ -27,7 +27,6 @@ afterEach(() => {
 const respond = (response?: string) => JSON.stringify({
   decision: {
     action: "respond",
-    acknowledgement: "I will answer.",
     ...(response === undefined ? {} : { response }),
   },
 });

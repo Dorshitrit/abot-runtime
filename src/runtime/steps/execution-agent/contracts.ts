@@ -1,3 +1,4 @@
+import type { UserInteractionProposal } from "../../user-interactions/contracts.js";
 import { MODEL_STEPS } from "../../../shared/model-steps.js";
 import type { MemoryRecallDecision } from "../memory-recall-decision.js";
 import type { MemoryCandidate } from "../../long-term-memory/contracts.js";
@@ -86,8 +87,6 @@ export type ExecutionAgentBlockedDecision = Readonly<
 
 export type ExecutionAgentCapabilityInvocation = Readonly<{
   capabilityId: string;
-  /** Client-facing presentation metadata; never execution input. */
-  intent: string;
   /** Request-local bounded operation consumed by controls and payload authoring. */
   operationObjective?: string;
   /** Transient selection of canonical evidence for remaining-controls authoring. */
@@ -141,7 +140,10 @@ type ExecutionAgentAction =
   | ExecutionAgentInvokeAuditorDecision;
 
 export type ExecutionAgentDecision = ExecutionAgentAction &
-  Readonly<{ workPlan?: ExecutionWorkPlanReport }>;
+  Readonly<{
+    workPlan?: ExecutionWorkPlanReport;
+    interaction?: UserInteractionProposal;
+  }>;
 
 /** Runtime-only transition emitted when controls refinement exhausts validation. */
 export type ExecutionAgentReconsiderCapabilitySelectionDecision = Readonly<{
@@ -171,10 +173,10 @@ export type ExecutionAgentResolvedDecision =
       keyof ExecutionAgentCapabilityInvocation
     > &
       ExecutionAgentResolvedCapabilityInvocation &
-      Pick<ExecutionAgentDecision, "workPlan">)
+      Pick<ExecutionAgentDecision, "workPlan" | "interaction">)
   | (Omit<ExecutionAgentInvokeCapabilitiesDecision, "invocations"> & {
       invocations: readonly ExecutionAgentResolvedCapabilityInvocation[];
-    } & Pick<ExecutionAgentDecision, "workPlan">)
+    } & Pick<ExecutionAgentDecision, "workPlan" | "interaction">)
   | ExecutionAgentReconsiderCapabilitySelectionDecision;
 
 export type ExecutionAgentDecisionOutcome = Readonly<{
@@ -208,6 +210,7 @@ export type ExecutionAgentDecisionContractOptions = Readonly<{
   activeCapabilityCatalogGroupIds?: readonly string[] | null;
   maxBatchCapabilityExecutions?: number;
   includeAcknowledgement?: boolean;
+  allowUserInteraction?: boolean;
   includeTitle?: boolean;
   allowRespond?: boolean;
   directResponseMaxLength?: number;

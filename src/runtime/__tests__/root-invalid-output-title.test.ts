@@ -1,3 +1,4 @@
+import { ModelOutputIncompleteError } from "../model/provider-completion.js";
 import { writeFile } from "node:fs/promises";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type WebSocket from "ws";
@@ -24,13 +25,12 @@ const phrasing = {
   failureNotice: "The final answer failed validation.",
   nextStep: "Continue from the established state.",
 };
-const degradedResponse = `${phrasing.failureNotice}\n\n${phrasing.nextStep}`;
+const degradedResponse = "ABot could not complete the request because the model returned an invalid decision or response.\n\nTry again or choose a different model. Any work already performed still needs to be checked.";
 const title = "Established result";
 const respond = (value = title) =>
   JSON.stringify({
     decision: {
       action: "respond",
-      acknowledgement: "I will report the result.",
       title: value,
     },
   });
@@ -127,7 +127,7 @@ test.each(["valid", "invalid"] as const)(
       invoke.mock.calls.filter(
         ([input]) => input.modelStep === "degraded.finalization",
       ),
-    ).toHaveLength(responseOutcome === "invalid" ? 1 : 0);
+    ).toHaveLength(0);
   },
 );
 
@@ -179,10 +179,13 @@ test("discards a stale deferred title and publishes the fresh decision title", a
       steering.append({ steerId: "fresh", text: "Use the fresh direction." });
       return { text: JSON.stringify(phrasing), meta: {} };
     }
-    return {
-      text: steering.snapshot().version === 0 ? "" : "Fresh answer.",
-      meta: {},
-    };
+    if (steering.snapshot().version === 0)
+      throw new ModelOutputIncompleteError({
+        outputLength: 0,
+        providerCompletionReason: "unknown",
+        steeringVersion: 0,
+      }, "execution.response");
+    return { text: "Fresh answer.", meta: {} };
   });
   const request = createRootInvalidOutputRequest(invoke, "execution-agent-v1", {
     shouldGenerateSessionTitle: true,
@@ -214,6 +217,12 @@ test.each([
           text: failureKind === "decision_invalid" ? "invalid" : respond(),
           meta: {},
         };
+      const needsUnknownCompletion = input.modelStep !== "degraded.finalization" &&
+        ["degraded_invalid", "degraded_provider", "abort"].includes(failureKind);
+      if (needsUnknownCompletion)
+        throw new ModelOutputIncompleteError({
+          outputLength: 0, providerCompletionReason: "unknown",
+        }, "execution.response");
       if (input.modelStep !== "degraded.finalization")
         return { text: "", meta: {} };
       if (failureKind === "degraded_provider") throw failure;

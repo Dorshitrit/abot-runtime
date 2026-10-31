@@ -74,13 +74,13 @@ test("EA retains discovery when opening knowledge pushes context above the compa
       assertCatalog(input);
       const { budget } = assessContext(input);
       expect(budget.estimatedInputTokens).toBeLessThan(budget.compactionTriggerInputTokens);
-      return decision({ action: "open_capability_scope", catalogGroupIds: ["knowledge"], acknowledgement: "I will consult it." });
+      return decision({ action: "open_capability_scope", catalogGroupIds: ["knowledge"] });
     } },
     { step: "execution.decision", output: input => {
       assertAboveCompactionThreshold(input);
       assertCatalog(input);
       return decision({
-        action: "invoke_capability", capabilityId: "read_skill", intent: "Read the reference.",
+        action: "invoke_capability", capabilityId: "read_skill",
         workingDirectory: ".", selectionControls: { skillId: skill.skillId },
       });
     } },
@@ -112,8 +112,8 @@ test("SUPER retains discovery above the compaction threshold and reads directly"
     } },
     { step: "supervisor.decision", output: input => {
       expect(supervisorFormatName(input)).toBe("supervisor_procedure_gate");
-      expect(capsules(input, "runtime_core_skill_read_v1")).toEqual([]);
-      expect(JSON.stringify(messages(input))).not.toContain(skill.content);
+      expect(capsules(input, "runtime_core_skill_read_v1").map(({ document }) => document))
+        .toEqual([skill]);
       return decision({ requiresProcedure: false, responseRecommendation: "Explain the supplied reference." });
     } },
     { step: "supervisor.response", output: input => {

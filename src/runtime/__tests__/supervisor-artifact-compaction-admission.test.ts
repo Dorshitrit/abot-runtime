@@ -22,6 +22,7 @@ const steeringText = "Keep the requested update in the existing project.";
 function countWithProviderOverhead(
   fixture: ReturnType<typeof createArtifactReadmissionFixture>,
   input: Parameters<NonNullable<ModelGatewayClient["countInputTokens"]>>[0],
+  overheadTokens = 25,
 ) {
   const invocation = resolveModelInvocation(input);
   return {
@@ -29,7 +30,7 @@ function countWithProviderOverhead(
       fixture.assess(
         modelMessages(input),
         input.format as ModelGatewayJsonSchemaFormat,
-      ).estimatedInputTokens + 25,
+      ).estimatedInputTokens + overheadTokens,
     profileId: invocation.profile.id,
     provider: invocation.profile.provider,
     model: invocation.model,
@@ -47,11 +48,16 @@ function appendSteering(
   ).toBe(true);
 }
 
-test.each(["supervisor_delegation", "supervisor_working_directory"] as const)(
-  "provider-count pressure removes optional paths before semantic compaction in %s",
-  async (phase) => {
+test.each([
+  ["supervisor_delegation", 80],
+  ["supervisor_delegation", 4_000],
+  ["supervisor_working_directory", 80],
+  ["supervisor_working_directory", 4_000],
+] as const)(
+  "provider-count pressure removes optional paths before semantic compaction in %s with %i-character methodology",
+  async (phase, methodologyLength) => {
     const options = {
-      methodology: "fixture policy " + "m".repeat(80),
+      methodology: "fixture policy " + "m".repeat(methodologyLength),
       calibration: "fixture calibration " + "c".repeat(80),
       ...(phase === "supervisor_working_directory"
         ? { objective: "Update the saved summary. " + "א".repeat(7000) }
@@ -73,11 +79,30 @@ test.each(["supervisor_delegation", "supervisor_working_directory"] as const)(
       modelMessages(initial),
       initial.format as ModelGatewayJsonSchemaFormat,
     ).estimatedInputTokens;
-    const contextWindowTokens = Math.ceil((estimated + 10) / 0.7);
+    // Admit every phase locally, regardless of their relative prompt lengths.
+    const largestEnvelope = Math.max(
+      ...ample.inputs().map((input) =>
+        ample.assess(
+          modelMessages(input),
+          input.format as ModelGatewayJsonSchemaFormat,
+        ).estimatedInputTokens,
+      ),
+    );
+    const contextWindowTokens = Math.ceil((largestEnvelope + 100) / 0.7);
+    const triggerTokens = Math.ceil(contextWindowTokens * 0.7);
+    // Use the same provider overhead before and after optional-path removal.
+    // Only the selected phase should cross the measured admission threshold.
+    const phaseOverheadTokens = triggerTokens - estimated + 25;
     let fixture: ReturnType<typeof createArtifactReadmissionFixture>;
     const countInputTokens = vi.fn<
       NonNullable<ModelGatewayClient["countInputTokens"]>
-    >(async (input) => countWithProviderOverhead(fixture, input));
+    >(async (input) =>
+      countWithProviderOverhead(
+        fixture,
+        input,
+        modelFormatName(input) === phase ? phaseOverheadTokens : 25,
+      ),
+    );
     fixture = createArtifactReadmissionFixture({
       ...options,
       contextWindowTokens,
@@ -96,9 +121,22 @@ test.each(["supervisor_delegation", "supervisor_working_directory"] as const)(
     expect(modelMessages(phaseCounts[1]!).filter(isArtifactMessage)).toEqual(
       [],
     );
+    expect(fixture.assess(
+      modelMessages(phaseCounts[0]!),
+      phaseCounts[0]!.format as ModelGatewayJsonSchemaFormat,
+    ).estimatedInputTokens).toBeLessThan(triggerTokens);
+    const phaseMeasurements = await Promise.all(
+      countInputTokens.mock.results
+        .filter((_, index) =>
+          modelFormatName(countInputTokens.mock.calls[index]![0]) === phase,
+        )
+        .map(({ value }) => value),
+    );
+    expect(phaseMeasurements[0]!.inputTokens).toBeGreaterThan(triggerTokens);
+    expect(phaseMeasurements[1]!.inputTokens).toBeLessThan(triggerTokens);
     expect(countInputTokens.mock.calls.map(([input]) => modelFormatName(input))).toEqual(
       phase === "supervisor_delegation"
-        ? ["supervisor_procedure_gate", phase, phase, "supervisor_working_directory", "supervisor_working_directory"]
+        ? ["supervisor_procedure_gate", phase, phase, "supervisor_working_directory"]
         : ["supervisor_procedure_gate", "supervisor_delegation", phase, phase],
     );
     const result = fixture

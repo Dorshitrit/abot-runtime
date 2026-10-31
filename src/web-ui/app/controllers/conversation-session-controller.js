@@ -1,3 +1,5 @@
+import { isAcknowledgementPresentationEvent } from "../lib/conversation-work-timeline-model.js";
+import { isUserInteractionMessage } from "../lib/user-interaction-event.js";
 import { beginConversationNavigation, canNavigateConversation } from "./conversation-navigation-intent.js";
 import {
   captureContextReplayScope,
@@ -134,6 +136,7 @@ export function createConversationSessionController({
     if (
       requestId &&
       message.role === "assistant" &&
+      !isUserInteractionMessage(message) &&
       !isApprovalPresentation(message)
     ) {
       state.requestMessages.set(requestId, message.id);
@@ -145,7 +148,7 @@ export function createConversationSessionController({
     const existing = state.messages.find(
       (message) => message.id === existingId,
     );
-    if (existing && !isApprovalPresentation(existing)) return existing;
+    if (existing && !isUserInteractionMessage(existing) && !isApprovalPresentation(existing)) return existing;
 
     const message = {
       id: `assistant-${requestId}`,
@@ -237,6 +240,7 @@ export function createConversationSessionController({
     const thinkingByRequest = new Map();
     for (const event of events) {
       if (event.name !== "thinking.delta" || !event.requestId) continue;
+      if (isAcknowledgementPresentationEvent(event)) continue;
       const current = thinkingByRequest.get(event.requestId) || "";
       const accumulated = textOf(event.text);
       const delta = textOf(event.delta);
@@ -250,6 +254,7 @@ export function createConversationSessionController({
         (message) =>
           message.role === "assistant" &&
           message.requestId === requestId &&
+          !isUserInteractionMessage(message) &&
           !isApprovalPresentation(message),
       );
       if (assistant) assistant.thinkingText = thinkingText;
@@ -324,6 +329,7 @@ export function createConversationSessionController({
     sendRealtime({
       type: "resume_request",
       requestId,
+      sessionId: state.currentSessionId,
       afterSeq: state.lastSeqByRequest.get(requestId) || 0,
       environment: selectedEnvironmentId(),
     });
@@ -332,6 +338,7 @@ export function createConversationSessionController({
   async function fetchRequestEvents(requestId, afterSeq = 0) {
     const rawEvents = await client.fetchRequestEvents({
       requestId,
+      sessionId: state.currentSessionId,
       afterSeq,
       environmentId: selectedEnvironmentId(),
     });
@@ -460,7 +467,7 @@ export function createConversationSessionController({
     resetLiveRequestView();
     state.sessionViewVersion = viewVersion;
     sessions.setCurrentTitle(
-      sessions.titleOf(sessions.byId(sessionId)) || sessionId,
+      sessions.titleOf(sessions.byId(sessionId)) || "Untitled conversation",
     );
     applyConversationChrome();
     applyModelSelection();
@@ -500,7 +507,7 @@ export function createConversationSessionController({
       selectedEnvironmentId(),
       state.currentSessionId,
     );
-    sessions.setCurrentTitle(state.currentSessionId);
+    sessions.setCurrentTitle("New conversation");
     subscribeSession(state.currentSessionId);
     return state.currentSessionId;
   }

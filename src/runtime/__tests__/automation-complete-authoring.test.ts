@@ -91,7 +91,6 @@ describe("complete automation authoring through the ordinary request handler", (
       activation += 1;
       if (activation === 1) return { text: JSON.stringify({ decision: {
         action: "open_capability_scope", catalogGroupIds: ["automations"],
-        acknowledgement: "I will design and save the connected draft without running it.",
       } }), meta: {} };
       const catalogMessage = messages.find((message) => message.content.startsWith('{"kind":"runtime_execution_capability_catalog_v1"'));
       const capabilities = JSON.parse(catalogMessage!.content).capabilities as { capabilityId: string }[];
@@ -100,7 +99,7 @@ describe("complete automation authoring through the ordinary request handler", (
         "list_drafts", "prepare_draft", "read_draft", "save_agent", "validate_draft",
       ]);
       if (activation === 2) return { text: JSON.stringify({ decision: {
-        action: "invoke_capability", capabilityId: "browse_catalog", intent: "Discover the available workflow tools and models.",
+        action: "invoke_capability", capabilityId: "browse_catalog",
         selectionControls: { offset: 0 }, workingDirectory: ".",
       } }), meta: {} };
       if (activation === 3) {
@@ -113,7 +112,7 @@ describe("complete automation authoring through the ordinary request handler", (
         expect(chosen).toHaveLength(3);
         modelProfileId = discovery.models.items[0]!.id;
         return { text: JSON.stringify({ decision: {
-          action: "invoke_capability", capabilityId: "prepare_draft", intent: "Read the selected contracts and complete authoring reference.",
+          action: "invoke_capability", capabilityId: "prepare_draft",
           selectionControls: { operationRefs: chosen.map(({ ref }) => ref) },
         } }), meta: {} };
       }
@@ -133,7 +132,7 @@ describe("complete automation authoring through the ordinary request handler", (
         }
         expect(await fixture.service.list()).toEqual([]);
         return { text: JSON.stringify({ decision: {
-          action: "invoke_capability", capabilityId: "create_automation_draft", intent: "Save the complete connected draft.",
+          action: "invoke_capability", capabilityId: "create_automation_draft",
           operationObjective: assignment,
           selectionControls: { title: "Daily technology editorial" },
         } }), meta: {} };
@@ -143,7 +142,7 @@ describe("complete automation authoring through the ordinary request handler", (
         expect(created.revision).toBe(1);
         expect(Object.keys(created.aliases).sort()).toEqual(["article", "inventory", "queries", "root", "save", "search"]);
         return { text: JSON.stringify({ decision: {
-          action: "invoke_capability", capabilityId: "validate_draft", intent: "Check the saved draft before handing it back.",
+          action: "invoke_capability", capabilityId: "validate_draft",
           selectionControls: { automationId: created.automationId },
         } }), meta: {} };
       }

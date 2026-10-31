@@ -1,4 +1,13 @@
 import { createHash } from "node:crypto";
+import {
+  isValidSemanticCompactionContinuation,
+  type SemanticCompactionContinuation,
+} from "./continuation-contract.js";
+export {
+  SEMANTIC_COMPACTION_TEXT_MAX_LENGTH,
+  SEMANTIC_COMPACTION_LIST_MAX_COUNT,
+  type SemanticCompactionContinuation,
+} from "./continuation-contract.js";
 
 import {
   MODEL_STEPS,
@@ -6,8 +15,6 @@ import {
 } from "../../../shared/model-steps.js";
 
 export const CONTEXT_COMPACTION_MODEL_STEP = MODEL_STEPS.CONTEXT_COMPACTION;
-export const SEMANTIC_COMPACTION_TEXT_MAX_LENGTH = 2_000;
-export const SEMANTIC_COMPACTION_LIST_MAX_COUNT = 24;
 export const SEMANTIC_COMPACTION_ID_MAX_LENGTH = 256;
 export const SEMANTIC_COMPACTION_SCOPE_ID_MAX_LENGTH = 512;
 export const SEMANTIC_COMPACTION_CONTEXT_LANE = "role_continuation" as const;
@@ -29,19 +36,6 @@ export type SemanticCompactionDigest = SemanticCompactionSourceIdentity &
   Readonly<{
     digest: string;
   }>;
-
-export type SemanticCompactionContinuation = Readonly<{
-  completed: readonly string[];
-  currentState: string;
-  findings: readonly string[];
-  evidenceRefs: readonly string[];
-  artifacts: readonly string[];
-  decisions: readonly string[];
-  failedApproaches: readonly string[];
-  openWork: readonly string[];
-  blockers: readonly string[];
-  nextStep: string;
-}>;
 
 export type SemanticCompactionCheckpointBinding = Readonly<{
   requestId: string;
@@ -165,7 +159,7 @@ export function assertValidSemanticCompactionCheckpoint(
     }
     sourceRefs.add(sourceDigest.sourceRef);
   }
-  if (!isValidContinuation(checkpoint.continuation)) {
+  if (!isValidSemanticCompactionContinuation(checkpoint.continuation)) {
     throw new Error("context_compaction_checkpoint_content_invalid");
   }
 }
@@ -188,43 +182,6 @@ export function isSemanticCompactionCheckpointApplicable(
     checkpoint.objectiveFingerprint === applicability.objectiveFingerprint &&
     checkpoint.contextLane === applicability.contextLane &&
     checkpoint.allowedConsumers.includes(applicability.consumer)
-  );
-}
-
-function isValidContinuation(
-  continuation: SemanticCompactionContinuation,
-): boolean {
-  return (
-    continuation !== null &&
-    typeof continuation === "object" &&
-    isBoundedText(
-      continuation.currentState,
-      SEMANTIC_COMPACTION_TEXT_MAX_LENGTH,
-    ) &&
-    isBoundedText(
-      continuation.nextStep,
-      SEMANTIC_COMPACTION_TEXT_MAX_LENGTH,
-    ) &&
-    [
-      continuation.completed,
-      continuation.findings,
-      continuation.evidenceRefs,
-      continuation.artifacts,
-      continuation.decisions,
-      continuation.failedApproaches,
-      continuation.openWork,
-      continuation.blockers,
-    ].every(isBoundedTextList)
-  );
-}
-
-function isBoundedTextList(value: readonly string[]): boolean {
-  return (
-    Array.isArray(value) &&
-    value.length <= SEMANTIC_COMPACTION_LIST_MAX_COUNT &&
-    value.every((entry) =>
-      isBoundedText(entry, SEMANTIC_COMPACTION_TEXT_MAX_LENGTH),
-    )
   );
 }
 

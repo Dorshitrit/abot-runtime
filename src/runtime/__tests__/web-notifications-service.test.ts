@@ -289,6 +289,7 @@ test("a persisted interrupted delivery becomes uncertain and is never replayed",
   const store = new WebNotificationStore(
     notificationStorePath({ ...paths, environmentId: "dev" }),
     "dev",
+    { now: () => now },
   );
   await store.upsert(item);
   const service = createService();

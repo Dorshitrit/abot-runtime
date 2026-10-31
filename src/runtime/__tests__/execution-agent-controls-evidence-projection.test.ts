@@ -67,7 +67,6 @@ async function refine(
     invocations: [
       {
         capabilityId: evidenceDescriptor.capabilityId,
-        intent: "Apply selected evidence.",
         operationObjective: "Use the selected source exactly.",
         selectionControls: { path: "exact.txt" },
         controlsEvidenceExecutionIds: ids,

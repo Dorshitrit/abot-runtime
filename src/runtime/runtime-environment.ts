@@ -126,7 +126,7 @@ export function createRuntimeEnvironment(
     (usesDefaultToolRegistry ? createRuntimeKnowledgeSkillStore(config.paths.runtimeDir) : undefined);
   const models = overrides.models ?? createDefaultModelGatewayClient(config);
   const informationBasket = overrides.informationBasket ??
-    (usesDefaultToolRegistry ? createInformationBasketService({ config, models }) : undefined);
+    (usesDefaultToolRegistry ? createInformationBasketService({ config, models, attachments }) : undefined);
   const tools =
     overrides.tools ??
     createDefaultToolRegistry(config, {
@@ -376,7 +376,8 @@ export function recomposeRuntimeEnvironment(
     resolved.tools === undefined || resolved.tools === bound?.tools;
   const preservesBasketBinding = preservesSkillStoreBinding &&
     bound?.config === config &&
-    (resolved.models === undefined || resolved.models === bound?.models);
+    (resolved.models === undefined || resolved.models === bound?.models) &&
+    (resolved.attachments === undefined || resolved.attachments === bound?.attachments);
   return createRuntimeEnvironment(config, {
     ...resolved,
     sessions,

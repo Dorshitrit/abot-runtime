@@ -163,7 +163,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
             return {
               action: "recall_memory",
               query: RECALL_QUERY,
-              acknowledgement: "I will recall the relevant preference.",
+              ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will recall the relevant preference." } : {}),
             };
           }
           expect(JSON.stringify(input.messages)).toContain(STEERING);
@@ -204,30 +204,23 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
       );
     });
 
-    test(policy === "supervisor-worker-v1"
-      ? "rejects stale recall before retrieval when steering arrives during returned decision acceptance"
-      : "rejects stale recall before retrieval when steering arrives during acknowledgement", async () => {
+    test("rejects stale recall before retrieval when steering arrives during returned decision acceptance", async () => {
       let decisionCount = 0;
       const harness = createRecallAfterChildHarness({
         policy,
         decide(input) {
           decisionCount += 1;
           if (decisionCount === 1) {
-            if (policy === "supervisor-worker-v1") harness.requestSteering.append({
-              steerId: "before-recall", text: STEERING,
-            });
+            harness.requestSteering.append({ steerId: "before-recall", text: STEERING });
             return {
               action: "recall_memory", query: RECALL_QUERY,
-              acknowledgement: "I will check the saved preference.",
+              ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will check the saved preference." } : {}),
             };
           }
           expect(recallCapsules(input)).toEqual([]);
           expect(JSON.stringify(input.messages)).toContain(STEERING);
           return policy === "supervisor-worker-v1" ? { action: "respond" } : responseDecision(policy);
         },
-      });
-      if (policy === "execution-agent-v1") vi.mocked(harness.request.onAcknowledgement).mockImplementation(() => {
-        harness.requestSteering.append({ steerId: "before-recall", text: STEERING });
       });
       await expect(runRequestRunner(harness.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
       expect(harness.memory.retrieve.mock.calls.map(([input]) => input.query)).toEqual([REQUEST_PROMPT]);
@@ -244,7 +237,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
             return {
               action: "recall_memory",
               query: RECALL_QUERY,
-              acknowledgement: "I will check memory.",
+              ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will check memory." } : {}),
             };
           if (decisionCount === 2) {
             expect(recallCapsules(input)).toHaveLength(1);
@@ -282,7 +275,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
           return {
             action: "recall_memory",
             query: RECALL_QUERY,
-            acknowledgement: "I will check memory.",
+            ...(policy === "supervisor-worker-v1" ? { acknowledgement: "I will check memory." } : {}),
           };
         },
       });

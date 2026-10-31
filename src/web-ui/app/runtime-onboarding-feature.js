@@ -36,6 +36,7 @@ export function createRuntimeOnboardingFeature({
     });
     return createRuntimeSetupGuide({
       ...common,
+      chatgptClient: runtimeClient,
       loadSetup: () => runtimeClient.getRuntimeSetup(),
       inspectConnection: (input) => runtimeClient.inspectModelConnection(input, selectedEnvironmentId()),
       openConfiguration: () => dom.modelsWorkspaceButton?.click(),

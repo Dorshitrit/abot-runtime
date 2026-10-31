@@ -1,3 +1,4 @@
+import type { RequestSteeringSnapshot } from "../request/request-steering.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { ModelStep } from "../../shared/model-steps.js";
 import type { ConfiguredStepInstructionPolicy } from "../config/runner/step-instructions.js";
@@ -31,9 +32,13 @@ export type ModelStepOptionalContextProjection = (
 export type ModelStepInvocationInput<T> = Readonly<{
   modelStep: ModelStep;
   messages: ChatMessage[];
+  /** Invocation-local exact reference; never serialized with message or session state. */
+  promptCacheBoundaryBeforeMessage?: ChatMessage;
   timeoutReason: string;
   /** A frozen caller decision; supersession returns control instead of retrying this step. */
   boundSteeringVersion?: number;
+  /** Exact user updates returned to a Planner by its own yielded Worker. */
+  callerSteering?: RequestSteeringSnapshot;
   format?: "json" | Record<string, unknown>;
   /** Exact input bypasses compaction, but must fit the shared input budget. */
   contextRetention?: "exact";

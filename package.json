@@ -11,6 +11,7 @@
     "@vscode/ripgrep": "1.18.0",
     "dotenv": "^17.4.1",
     "htmlparser2": "10.0.0",
+    "jose": "6.2.13",
     "jszip": "^3.10.1",
     "pdf-parse": "2.4.5",
     "postcss": "^8.5.26",
@@ -48,6 +49,10 @@
       "import": "./dist/src/plugin-sdk/computer-access.js",
       "types": "./dist/src/plugin-sdk/computer-access.d.ts"
     },
+    "./plugin-sdk/document-text": {
+      "import": "./dist/src/plugin-sdk/document-text.js",
+      "types": "./dist/src/plugin-sdk/document-text.d.ts"
+    },
     "./runtime": {
       "import": "./dist/src/runtime/index.js",
       "types": "./dist/src/runtime/index.d.ts"
@@ -84,6 +89,7 @@
     "dist/src/capabilities/",
     "dist/src/workspace/",
     "dist/src/model-gateway/",
+    "dist/src/provider-auth/",
     "dist/src/plugin-contract/",
     "dist/src/plugin-sdk/",
     "dist/src/web-ui/",
@@ -97,6 +103,7 @@
     "docs/bridge-compatibility.md",
     "docs/configuration.md",
     "docs/installation.md",
+    "docs/continue-with-chatgpt.md",
     "docs/llamacpp.md",
     "docs/windows-companion-store.md",
     "docs/known-limitations.md",
@@ -184,5 +191,5 @@
   },
   "type": "module",
   "types": "./dist/src/runtime/index.d.ts",
-  "version": "2.1.0"
+  "version": "2.2.0"
 }

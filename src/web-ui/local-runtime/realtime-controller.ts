@@ -5,7 +5,7 @@ import { RuntimeEnvironmentRegistry } from "./environment-registry.js";
 import { getNumber, getString, requestEnvironmentId } from "./http.js";
 import { RealtimeClientHub } from "./realtime-hub.js";
 import { LocalRequestExecution } from "./request-execution.js";
-import { ManagedWebToolApprovals } from "./managed-tool-approvals.js";
+import { ManagedWebToolApprovals, type WebToolApprovalAcceptedObserver } from "./managed-tool-approvals.js";
 import { diagnosticErrorType } from "../../runtime/observability/request-control-diagnostics.js";
 import { traceWebRequestControl } from "./request-control-observation.js";
 
@@ -16,10 +16,12 @@ export class LocalRealtimeController {
     private readonly environments: RuntimeEnvironmentRegistry,
     private readonly requests: LocalRequestExecution,
     private readonly clients: RealtimeClientHub,
+    onApprovalAccepted?: WebToolApprovalAcceptedObserver,
   ) {
     this.approvals = new ManagedWebToolApprovals(
       (id) => environments.get(id),
       requests,
+      onApprovalAccepted,
     );
   }
 
@@ -104,12 +106,14 @@ export class LocalRealtimeController {
     let replay = await environment.services.sessions.getRequestReplayById(
       requestId,
       getNumber(message.afterSeq),
+      getString(message.sessionId) || undefined,
     );
     if (!replay?.finalState) {
-      await this.approvals.resume(environmentId, requestId);
+      await this.approvals.resume(environmentId, requestId, replay?.sessionId);
       replay = await environment.services.sessions.getRequestReplayById(
         requestId,
         getNumber(message.afterSeq),
+        replay?.sessionId || getString(message.sessionId) || undefined,
       );
     }
     for (const event of replay?.events ?? []) {

@@ -18,6 +18,7 @@ import type { RoleCapabilitySelectionReconsiderationCause } from "./reconsiderat
 import type { RoleCallResultReceipt } from "./result-receipt.js";
 import type { RoleInitialMemory, RoleMemoryRecall, RoleMemoryRecallCommand, RoleMemoryRecallCommitEffect, RoleMemoryRecallTransactions } from "./memory-recall-contract.js";
 import type { AdoptedModelWorkPlan, UpdateModelWorkPlanCommand, ModelWorkPlanCommitEffect, ModelWorkPlanTransactions } from "./work-plan-contracts.js";
+import type { RoleCallResultOutcome } from "./worker-steering.js";
 import type { RoleBasketReference } from "./basket-reference.js";
 import type { RecordRoleSkillReadCommand, RoleSkillRead, RoleSkillReadCommitEffect } from "./skill-read.js";
 
@@ -118,7 +119,7 @@ export type RoleCapabilitySelectionProjection = Readonly<{
   action: "invoke_capability" | "invoke_capabilities";
   invocations: readonly Readonly<{
     capabilityId: string;
-    intent: string;
+    intent?: string;
     selectionControlsJson: string;
   }>[];
   workingDirectory: string | null;
@@ -142,6 +143,7 @@ export type RoleCallFrame = Readonly<{
   depth: number;
   objective: string | null;
   workerCapabilityScope?: RoleCallWorkerCapabilityScope;
+  workerSteeringVersion?: number;
   workingDirectory?: string;
   dependencyResultRefs: readonly string[];
   status: RoleCallFrameStatus;
@@ -157,7 +159,8 @@ export type RoleCallResult = Readonly<{
   resultRef: string;
   producerCallId: string;
   roleId: RuntimeDelegateRoleId;
-  outcome: "completed" | "failed";
+  outcome: RoleCallResultOutcome;
+  steeringVersion?: number;
   summary: string;
   receipt?: RoleCallResultReceipt;
 }>;
@@ -166,7 +169,8 @@ export type RoleCallPlanItemStatus =
   | "pending"
   | "in_progress"
   | "done"
-  | "blocked";
+  | "blocked"
+  | "retired";
 
 export type RoleCallPlanProposal = Readonly<{
   summary: string;
@@ -214,6 +218,7 @@ export type RoleCallPlanItemState = Readonly<{
   itemId: string;
   status: RoleCallPlanItemStatus;
   childCallId: string | null;
+  retiredBySteeringVersion?: number;
 }>;
 
 export type RoleCallPlanState = Readonly<{
@@ -241,7 +246,7 @@ export type RoleCapabilityExecution = Readonly<{
   invocationAttempt: number;
   capabilityId: string;
   declaredEffect: RoleCapabilityDeclaredEffect;
-  intent: string;
+  intent?: string;
   controlsJson: string;
   actionFingerprint?: RoleOperationFingerprint;
   status: RoleCapabilityExecutionStatus;
@@ -304,6 +309,7 @@ export type OpenChildRoleCallCommand = Readonly<{
   roleId: RuntimeDelegateRoleId;
   objective: string;
   workerCapabilityScope?: RoleCallWorkerCapabilityScope;
+  workerSteeringVersion?: number;
   workingDirectory?: string;
   dependencyResultRefs?: readonly string[];
   plannerPlan?: RoleCallPlanBinding;
@@ -314,7 +320,8 @@ export type ReturnChildRoleCallCommand = Readonly<{
   type: "return_child";
   callerCallId: string;
   childCallId: string;
-  outcome: "completed" | "failed";
+  outcome: RoleCallResultOutcome;
+  steeringVersion?: number;
   summary: string;
   receipt?: RoleCallResultReceipt;
 }>;
@@ -326,7 +333,7 @@ export type BeginRoleCapabilityExecutionCommand = Readonly<{
   invocationAttempt: number;
   capabilityId: string;
   declaredEffect: RoleCapabilityDeclaredEffect;
-  intent: string;
+  intent?: string;
   controlsJson: string;
   actionFingerprint?: RoleOperationFingerprint;
 }>;
@@ -348,7 +355,7 @@ export type SettleRoleCapabilityExecutionCommand = Readonly<{
 export type RoleCapabilityObservationBatchEntry = Readonly<{
   capabilityId: string;
   declaredEffect: "observation";
-  intent: string;
+  intent?: string;
   controlsJson: string;
   actionFingerprint?: RoleOperationFingerprint;
 }>;

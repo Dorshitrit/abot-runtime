@@ -93,3 +93,23 @@ describe("Information Basket core tool", () => {
       .toMatchObject({ ok: false, errorCode: "basket_source_reference_invalid" });
   });
 });
+
+
+test("explicit name searches return the registered source below the strict content threshold", async () => {
+  const f = await fixture();
+  const current = await f.service.list();
+  await f.service.updateSettings({ expectedRevision: current.settings.revision,
+    enabled: true, embeddingProfileId: "fixture", matchMode: "strict" });
+  // The fixture embeds 'orange' queries perpendicular to this file's body.
+  const prepared = await f.prepare("search_information_sources", { query: "orange fixture.txt" });
+  if (prepared.status !== "prepared") throw new Error("fixture_not_prepared");
+  const executed = await prepared.execute();
+  if (executed.status !== "executed") throw new Error("fixture_not_executed");
+  expect(executed.result.ok).toBe(true);
+  expect(JSON.parse(executed.result.output)).toMatchObject({ status: "found", omittedCount: 0,
+    sources: [{ sourceId: f.source.sourceId, expectedRevision: f.source.revision,
+      displayName: "fixture.txt", score: 0 }] });
+  const missing = await f.module.implementation({ action: "search_information_sources", query: "orange unrelated.txt" });
+  expect(JSON.parse(missing.output)).toEqual({ status: "empty", sources: [], omittedCount: 0 });
+  expect(f.requestToolApproval).not.toHaveBeenCalled();
+});

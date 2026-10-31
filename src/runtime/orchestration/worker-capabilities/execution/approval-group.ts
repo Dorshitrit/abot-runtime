@@ -1,3 +1,4 @@
+import { hasSuperContextContract } from "../../../context/super-context-policy.js";
 import { projectSupervisorSkillCapabilityAdapters } from "../supervisor-skill-authority.js";
 import { fenceRestoredApprovalExecution } from "./execution-freshness.js";
 import { restorePreparationRejection } from "./preparation-rejection.js";
@@ -46,7 +47,7 @@ export async function resolvePreparedGroupApproval<TContext>(params: {
         executionId: params.executionIds[index]!,
         capabilityId: adapter.descriptor.capabilityId,
         declaredEffect: adapter.descriptor.effect,
-        intent,
+        ...(intent !== undefined ? { intent } : {}),
         ...(authoringObjective ? { authoringObjective } : {}),
         controls: prepared.acceptedControls,
         actionFingerprint: prepared.actionFingerprint,
@@ -72,7 +73,12 @@ export async function resolvePreparedGroupApproval<TContext>(params: {
   );
   if (!isDeepStrictEqual(group, JSON.parse(JSON.stringify(group))))
     throw new Error("prepared_approval_snapshot_not_serializable");
-  const resolution = await params.gate.resolve(group);
+  const resolution = await params.gate.resolve(group, params.executionFreshness);
+  if (resolution.kind === "superseded") return undefined;
+  if (
+    params.executionFreshness?.token.kind === "worker_steering_v1" &&
+    !params.executionFreshness.isCurrent()
+  ) return undefined;
   if (resolution.kind === "awaiting_approval") {
     validateDecisions(group, resolution.decisions ?? [], false);
     return Object.freeze({
@@ -120,6 +126,7 @@ export async function restoreCapabilityApprovalGroup<TContext>(params: {
     )
   )
     throw new Error("prepared_approval_freshness_mismatch");
+  assertWorkerApprovalFreshness(head, call, params.executionFreshness);
   const adapters = projectSupervisorSkillCapabilityAdapters({ head, call, adapters: params.adapters });
   const running = head.state.capabilityExecutions.filter(
     (entry) => entry.status === "running",
@@ -153,7 +160,7 @@ export async function restoreCapabilityApprovalGroup<TContext>(params: {
           {
             context: params.context,
             call,
-            intent: entry.intent,
+            ...(entry.intent !== undefined ? { intent: entry.intent } : {}),
             controls: entry.controls,
             ...(entry.authoringObjective
               ? { authoringObjective: entry.authoringObjective }
@@ -174,7 +181,7 @@ export async function restoreCapabilityApprovalGroup<TContext>(params: {
       return {
         adapter,
         prepared,
-        intent: entry.intent,
+        ...(entry.intent !== undefined ? { intent: entry.intent } : {}),
         controls: entry.controls,
       };
     }),
@@ -191,7 +198,10 @@ export async function restoreCapabilityApprovalGroup<TContext>(params: {
   };
   return Object.freeze({
     async execute(decisions: readonly BoundApprovalDecision[]) {
-      applyDecisions(group, invocations, decisions);
+      const staleWorker =
+        params.executionFreshness?.token.kind === "worker_steering_v1" &&
+        !params.executionFreshness.isCurrent();
+      if (!staleWorker) applyDecisions(group, invocations, decisions);
       return settleAdmittedPreparedGroup({
         ledger: params.ledger,
         expectedHead: head,
@@ -261,4 +271,22 @@ export async function resumeCapabilityApprovalGroup<TContext>(
 ) {
   const prepared = await restoreCapabilityApprovalGroup(params);
   return prepared.execute(params.decisions);
+}
+
+function assertWorkerApprovalFreshness(
+  head: ReturnType<RoleCallLedger["current"]>,
+  call: RoleCallFrame,
+  freshness: WorkerCapabilityExecutionFreshness | undefined,
+): void {
+  if (freshness?.token.kind !== "worker_steering_v1") return;
+  if (
+    !hasSuperContextContract(head.policy.authority, "delegated.worker") ||
+    call.roleId !== "worker" || call.parentCallId === null
+  )
+    throw new Error("prepared_approval_freshness_mismatch");
+  if (
+    freshness.token.callId !== call.callId ||
+    freshness.token.version !== (call.workerSteeringVersion ?? 0)
+  )
+    throw new Error("prepared_approval_freshness_mismatch");
 }

@@ -26,7 +26,7 @@ async function fixture() {
     sessionsDir: join(root, "sessions"),
     environmentId: "dev",
   });
-  return { root, path, store: new WebNotificationStore(path, "dev") };
+  return { root, path, store: new WebNotificationStore(path, "dev", { now: () => 5000 }) };
 }
 
 function notification(id: string, createdAt = 1000): WebNotification {
@@ -114,7 +114,7 @@ describe("persistent Web UI notification history", () => {
     expect((await store.upsert(notification("reply-1"))).created).toBe(true);
     await store.markRead({ ids: ["reply-1"], read: true }, 2000);
     await store.updateDelivery("reply-1", { status: "submitted" });
-    const restarted = new WebNotificationStore(path, "dev");
+    const restarted = new WebNotificationStore(path, "dev", { now: () => 5000 });
     const duplicate = await restarted.upsert({
       ...notification("reply-1"),
       body: "Replayed event",
@@ -136,7 +136,7 @@ describe("persistent Web UI notification history", () => {
 
   test("serializes independent store instances without losing concurrent insertions or preferences", async () => {
     const { path, store } = await fixture();
-    const other = new WebNotificationStore(path, "dev");
+    const other = new WebNotificationStore(path, "dev", { now: () => 5000 });
     const preferences = {
       ...defaultNotificationPreferences(),
       desktopEnabled: false,
@@ -154,7 +154,7 @@ describe("persistent Web UI notification history", () => {
     expect(page.unreadCount).toBe(60);
     expect(page.preferences).toEqual(preferences);
     expect(
-      await new WebNotificationStore(path, "dev").getPreferences(),
+      await new WebNotificationStore(path, "dev", { now: () => 5000 }).getPreferences(),
     ).toEqual(preferences);
   });
 
@@ -215,15 +215,15 @@ describe("persistent Web UI notification history", () => {
     await store.upsert(notification("a"));
     await store.upsert(notification("b"));
     const cursor = (await store.list({ limit: 1 })).nextCursor!;
-    const production = new WebNotificationStore(productionPath, "prod");
+    const production = new WebNotificationStore(productionPath, "prod", { now: () => 5000 });
     expect(() => production.list({ before: cursor })).toThrow(
       "another environment",
     );
     expect((await production.list()).items).toEqual([]);
     expect(
-      (await new WebNotificationStore(movedPath, "dev").list()).items,
+      (await new WebNotificationStore(movedPath, "dev", { now: () => 5000 }).list()).items,
     ).toEqual([]);
-    await expect(new WebNotificationStore(path, "prod").list()).rejects.toThrow(
+    await expect(new WebNotificationStore(path, "prod", { now: () => 5000 }).list()).rejects.toThrow(
       "environment mismatch",
     );
   });

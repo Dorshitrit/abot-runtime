@@ -376,7 +376,7 @@ export function createLongTermMemorySetup({
       return "This provider does not expose model discovery. Enter its embedding model ID manually.";
     }
     return state.models.length
-      ? `Found ${state.models.length} installed model${state.models.length === 1 ? "" : "s"}.`
+      ? `Found ${state.models.length} installed model${state.models.length === 1 ? "" : "s"}. Embedding support is not verified.`
       : "The provider returned no installed models.";
   }
 

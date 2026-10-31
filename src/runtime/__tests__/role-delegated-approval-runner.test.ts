@@ -1,3 +1,5 @@
+import type { ChatMessage } from "../../model-gateway/types.js";
+import { createRequestSteeringInbox } from "../request/request-steering.js";
 import { workerEvidenceReply } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
@@ -29,8 +31,21 @@ const capabilityDecision = {
 };
 const decision = (value: unknown) => JSON.stringify({ decision: value });
 
-function createDelegatedApprovalFixture() {
+function createDelegatedApprovalFixture(options: { settledArtifact?: boolean } = {}) {
   const approval = createApprovalRunnerFixture();
+  if (options.settledArtifact) approval.prepare.mockResolvedValueOnce({
+    actionFingerprint: `sha256:${"c".repeat(64)}`,
+    acceptedControls: {}, snapshot: { observed: true },
+    execute: async () => ({
+      outcome: "succeeded", observedEffect: "observation", summary: "Existing artifact observed.",
+      references: [{ kind: "tool_target", target: "existing-artifact.txt" }],
+      exactResult: {
+        kind: "generic_capability_result_v1", authority: "capability_adapter", status: "executed", ok: true,
+        payload: { observed: true },
+        references: [{ kind: "tool_target", target: "existing-artifact.txt" }],
+      },
+    }),
+  });
   const onEvent = vi.fn();
   const invokeRaw = vi.fn<ModelGatewayClient["invokeRaw"]>(async () => {
     throw new Error("unexpected raw gateway call");
@@ -62,12 +77,12 @@ function createDelegatedApprovalFixture() {
           meta: {},
         };
       }
-      if (input.modelStep === "worker.evidence") return workerEvidenceReply(input, workerCount === 0);
+      if (input.modelStep === "worker.evidence") return workerEvidenceReply(input, workerCount < (options.settledArtifact ? 2 : 1));
       if (input.modelStep === "worker.decision") {
         workerCount += 1;
         return {
           text: decision(
-            workerCount === 1
+            workerCount <= (options.settledArtifact ? 2 : 1)
               ? capabilityDecision
               : { action: "return_result" },
           ),
@@ -86,13 +101,20 @@ function createDelegatedApprovalFixture() {
       throw new Error(`unexpected model step: ${input.modelStep}`);
     }, { selectSkills }),
   );
+  let requestCount = 0;
   const makeRequest = () => {
+    const requestSteering = requestCount++ === 0 ? approval.requestSteering
+      : createRequestSteeringInbox({ requestId: "runner-approval" });
+    if (requestSteering !== approval.requestSteering) {
+      for (const update of approval.requestSteering.snapshot().updates) requestSteering.append(update);
+    }
     const request = deriveTestRequestExecutionScope(
       rebindTestRequestExecutionPolicy(
         approval.makeRequest(),
         SUPERVISOR_WORKER_V1_EXECUTION_POLICY,
       ),
       {
+        requestSteering,
         runnerConfig: {
           models: { defaults: { profileId: "unused", steps: {} } },
           context: {
@@ -133,7 +155,7 @@ function createDelegatedApprovalFixture() {
     onEvent.mock.calls
       .filter(([name]) => name === "role.delegated")
       .map(([, payload]) => payload);
-  return { ...approval, makeRequest, invoke, invokeRaw, delegations, store, selectSkills };
+  return { ...approval, makeRequest, invoke, invokeRaw, delegations, store, selectSkills, onEvent };
 }
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
@@ -237,4 +259,41 @@ describe("SUPER delegation events across saved approval continuation", () => {
       );
     },
   );
+});
+
+test("steering during approval artifact persistence resumes the caller without an old approval decision", async () => {
+  const fixture = createDelegatedApprovalFixture({ settledArtifact: true });
+  let persisted = 0;
+  const persistArtifactPaths = vi.fn(async () => {
+    if (++persisted === 1) {
+      await Promise.resolve();
+      expect(fixture.requestSteering.append({ steerId: "stop-while-parking", text: "Stop the current work." }).ok).toBe(true);
+    }
+  });
+  const outcome = await runRequestRunner(fixture.makeRequest(), { durableApproval: true, persistArtifactPaths });
+  expect(outcome).toEqual({ kind: "completed", result: { output: "The delegated action settled." } });
+  expect(fixture.performed).not.toHaveBeenCalled();
+  expect(fixture.executed).not.toHaveBeenCalled();
+  expect(fixture.appliedDecisions).not.toHaveBeenCalled();
+  expect(fixture.restore).toHaveBeenCalledOnce();
+  expect(fixture.invoke.mock.calls.filter(([input]) => input.modelStep === "worker.result")).toHaveLength(0);
+  const childResults = fixture.invoke.mock.calls.flatMap(([input]) => (input.messages as ChatMessage[]).flatMap(({ content }) => {
+    try {
+      const capsule = JSON.parse(content);
+      return capsule.kind === "runtime_child_result" ? [capsule] : [];
+    } catch { return []; }
+  }));
+  expect(childResults).toContainEqual(expect.objectContaining({ outcome: "yielded", steeringVersion: 1 }));
+  expect(persistArtifactPaths).toHaveBeenCalledTimes(2);
+});
+
+test("current SUPER Worker approval wait seals live steering after artifact persistence", async () => {
+  const fixture = createDelegatedApprovalFixture({ settledArtifact: true });
+  const persistArtifactPaths = vi.fn(async () => undefined);
+  const outcome = await runRequestRunner(fixture.makeRequest(), { durableApproval: true, persistArtifactPaths });
+  expect(outcome.kind).toBe("awaiting_approval");
+  expect(persistArtifactPaths).toHaveBeenCalledOnce();
+  expect(fixture.requestSteering.append({ steerId: "after-park", text: "Stop." })).toEqual({ ok: false, reason: "request_not_active" });
+  expect(fixture.restore).not.toHaveBeenCalled();
+  expect(fixture.executed).not.toHaveBeenCalled();
 });

@@ -90,6 +90,11 @@ function readRotatedTimestampFromName(
   return parseRotationTimestamp(timestamp);
 }
 
+/** Matches only the timestamped siblings owned by this trace file. */
+export function isOwnedRotatedLogName(traceFile: string, entryName: string): boolean {
+  return readRotatedTimestampFromName(traceFile, entryName) !== null;
+}
+
 async function rotateActiveLogIfNeeded(
   traceFile: string,
   rotation: RuntimeLogRotationConfig,

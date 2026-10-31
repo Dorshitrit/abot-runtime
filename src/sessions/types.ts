@@ -101,6 +101,7 @@ export type SessionRequestFinalState =
   | {
       status: "completed";
       output: unknown;
+      disposition?: "blocked";
       completedAt: number;
     }
   | {
@@ -241,4 +242,5 @@ export type SessionRecord = {
   contextEntries?: SessionContextEntry[];
   requests?: SessionRequestRecord[];
   sessionMemoryCheckpoint?: SessionMemoryCheckpoint;
+  executionSessionMemoryCheckpoint?: SessionMemoryCheckpoint;
 };

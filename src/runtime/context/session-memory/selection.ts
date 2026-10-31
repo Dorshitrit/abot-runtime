@@ -1,6 +1,9 @@
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { SessionMemoryCheckpoint } from "../../../sessions/memory/contracts.js";
 import type { SessionMessage } from "../../../sessions/types.js";
+import { isExecutionSessionMemoryScope } from "../../../sessions/memory/checkpoint-scope.js";
+import { projectExecutionHistoryContent } from "../../../sessions/memory/execution-observation.js";
+import type { SessionMemoryScope } from "../../../sessions/memory/contracts.js";
 import { isAssistantInitiativeMessage } from "../../../sessions/assistant-initiative.js";
 import {
   resolveCoveredTurnCount,
@@ -31,9 +34,11 @@ export function selectSessionMemoryProjection(params: {
   const historyMessages = params.source.historyMessages.filter(function retainsOriginalHistoryMessage(message) {
     return uncoveredMessageIds.has(message.id);
   });
+  const protectedTurnCount = isExecutionSessionMemoryScope(params.source.scope)
+    ? 0 : SESSION_MEMORY_PROTECTED_TURN_COUNT;
   const compactableTurnCount = Math.max(
     0,
-    uncoveredTurns.length - SESSION_MEMORY_PROTECTED_TURN_COUNT,
+    uncoveredTurns.length - protectedTurnCount,
   );
   const priorConversationMessages: readonly ChatMessage[] = params.checkpoint
     ? Object.freeze([
@@ -46,7 +51,7 @@ export function selectSessionMemoryProjection(params: {
   return Object.freeze({
     priorConversationMessages,
     historyMessages: Object.freeze(
-      historyMessages.map(toRequestHistoryMessage),
+      historyMessages.map((message) => toRequestHistoryMessage(message, params.source.scope)),
     ),
     compactableTurnCount,
     checkpointRevision: params.checkpoint?.revision ?? 0,
@@ -56,11 +61,12 @@ export function selectSessionMemoryProjection(params: {
 
 function toRequestHistoryMessage(
   message: SessionMessage,
+  scope?: SessionMemoryScope,
 ): RequestHistoryMessage {
   return Object.freeze({
     id: message.id,
     role: message.role,
-    content: message.content,
+    content: isExecutionSessionMemoryScope(scope) ? projectExecutionHistoryContent(message) : message.content,
     createdAt: message.createdAt,
     ...(message.requestId ? { requestId: message.requestId } : {}),
     ...(isAssistantInitiativeMessage(message) ? { assistantInitiativeId: message.initiative!.proposalId } : {}),

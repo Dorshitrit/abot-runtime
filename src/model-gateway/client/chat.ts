@@ -1,3 +1,5 @@
+import { attachModelGatewayHttpUserMessage } from "./user-message.js";
+import { PROVIDER_USER_ERROR_HEADER } from "../protocol/provider-user-error.js";
 import { traceDebug } from "../../runtime/observability/debug-logger.js";
 import { permitsModelContentTrace } from "../observability/content-trace-policy.js";
 import type {
@@ -84,10 +86,10 @@ export async function invokeModelGatewayWithOptions(
         ? { bodyPreview: errorText.slice(0, 400) }
         : { contentOmitted: true }),
     });
-    throw new ModelGatewayInvocationError(
+    throw attachModelGatewayHttpUserMessage(new ModelGatewayInvocationError(
       "http",
       `bridge_request_failed:${response.status}:${permitsModelContentTrace(params.modelStep, params.messages) ? errorText || "empty error body" : "content omitted"}`,
-    );
+    ), response.status, response.headers.get(PROVIDER_USER_ERROR_HEADER), permitsModelContentTrace(params.modelStep, params.messages));
   }
 
   if (!response.body) {

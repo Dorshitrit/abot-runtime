@@ -14,6 +14,7 @@ import {
 import { resolveModelContextBudget } from "../../model/model-context-budget.js";
 import type { RequestExecutionSeed } from "../../request/contracts.js";
 import { buildSupervisorContinuationPart } from "../supervisor-decision/index.js";
+import { hasSupervisorWorkerSteeringHandoff } from "../supervisor-decision/resume.js";
 import {
   SUPERVISOR_RESPONSE_MODEL_STEP,
   type SupervisorResponseCallIdentity,
@@ -61,6 +62,12 @@ export function buildSupervisorResponseInput(
     [buildSupervisorResponseInstructions({
       hasResponseRecommendation: responseRecommendationMessage !== undefined,
       hasCompletedChildResult: options.resume !== undefined,
+      hasWorkerSteeringHandoff: options.resume !== undefined &&
+        hasSupervisorWorkerSteeringHandoff({
+          resume: options.resume,
+          currentCallId: options.call.callId,
+          currentInvocationAttempt: options.call.invocationAttempt,
+        }),
       hasRequestToolResults: options.toolResults.results.length > 0,
       ...(options.memoryCandidateCount !== undefined ? { memoryCandidateCount: options.memoryCandidateCount } : {}),
       ...(options.hasDirectMemorySaveRequest !== undefined ? { hasDirectMemorySaveRequest: options.hasDirectMemorySaveRequest } : {}),

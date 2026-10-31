@@ -1,3 +1,5 @@
+import { attachModelGatewayInvocationUserMessage } from "./user-message.js";
+
 export type ModelGatewayInvocationFailureKind =
   | "network"
   | "http"
@@ -14,6 +16,7 @@ export class ModelGatewayInvocationError extends Error {
   ) {
     super(message, options);
     this.name = "ModelGatewayInvocationError";
+    attachModelGatewayInvocationUserMessage(this, kind);
   }
 }
 
@@ -42,11 +45,14 @@ export async function fetchModelGatewayResponse(
   url: string,
   init: RequestInit,
   abortSignal: AbortSignal,
+  options: Readonly<{ preserveErrorIdentity?: boolean }> = {},
 ): Promise<Response> {
   try {
     return await fetch(url, init);
   } catch (error: unknown) {
     if (abortSignal.aborted) throw error;
-    throw wrapModelGatewayTransportError("network", error);
+    if (!options.preserveErrorIdentity) throw wrapModelGatewayTransportError("network", error);
+    if (error instanceof Error) attachModelGatewayInvocationUserMessage(error, "network");
+    throw error;
   }
 }

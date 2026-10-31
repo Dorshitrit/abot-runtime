@@ -7,9 +7,9 @@ import {
   MAX_ARCHIVE_ENTRIES,
   MAX_TOTAL_XML_BYTES,
   MAX_XML_ENTRY_BYTES,
-} from "./constants.js";
-import { DocumentReaderError, failDocument } from "./errors.js";
-import type { ArchiveExtractionMetadata } from "./types.js";
+} from "./limits.js";
+import { DocumentTextError, failDocumentText } from "./errors.js";
+import type { ArchiveExtractionMetadata } from "./contracts.js";
 
 const END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
 const CENTRAL_DIRECTORY_ENTRY_SIGNATURE = 0x02014b50;
@@ -33,7 +33,7 @@ export type LoadedOfficeArchive = Readonly<{
 
 function findEndOfCentralDirectory(bytes: Uint8Array, view: DataView): number {
   if (bytes.byteLength < 22) {
-    failDocument("document_archive_invalid", "The OOXML archive is invalid.");
+    failDocumentText("document_archive_invalid", "The OOXML archive is invalid.");
   }
   const minimumOffset = Math.max(
     0,
@@ -50,7 +50,7 @@ function findEndOfCentralDirectory(bytes: Uint8Array, view: DataView): number {
     const commentLength = view.getUint16(offset + 20, true);
     if (offset + 22 + commentLength === bytes.byteLength) return offset;
   }
-  failDocument("document_archive_invalid", "The OOXML archive is invalid.");
+  failDocumentText("document_archive_invalid", "The OOXML archive is invalid.");
 }
 
 export function validateArchiveDirectory(bytes: Uint8Array): ArchiveDirectory {
@@ -70,20 +70,20 @@ export function validateArchiveDirectory(bytes: Uint8Array): ArchiveDirectory {
     directoryBytes === 0xffffffff ||
     directoryOffset === 0xffffffff
   ) {
-    failDocument(
+    failDocumentText(
       "document_archive_unsupported",
       "Multi-disk and ZIP64 OOXML archives are not supported.",
     );
   }
   if (entryCount > MAX_ARCHIVE_ENTRIES) {
-    failDocument(
+    failDocumentText(
       "document_archive_entry_limit",
       `The OOXML archive exceeds the ${MAX_ARCHIVE_ENTRIES}-entry limit.`,
     );
   }
   const directoryEnd = directoryOffset + directoryBytes;
   if (directoryEnd > endOffset || directoryEnd > bytes.byteLength) {
-    failDocument("document_archive_invalid", "The OOXML archive is invalid.");
+    failDocumentText("document_archive_invalid", "The OOXML archive is invalid.");
   }
 
   let offset = directoryOffset;
@@ -93,7 +93,7 @@ export function validateArchiveDirectory(bytes: Uint8Array): ArchiveDirectory {
       offset + 46 > directoryEnd ||
       view.getUint32(offset, true) !== CENTRAL_DIRECTORY_ENTRY_SIGNATURE
     ) {
-      failDocument("document_archive_invalid", "The OOXML archive is invalid.");
+      failDocumentText("document_archive_invalid", "The OOXML archive is invalid.");
     }
     const flags = view.getUint16(offset + 8, true);
     const compressionMethod = view.getUint16(offset + 10, true);
@@ -108,23 +108,23 @@ export function validateArchiveDirectory(bytes: Uint8Array): ArchiveDirectory {
       compressedBytes === 0xffffffff ||
       uncompressedBytes === 0xffffffff
     ) {
-      failDocument("document_archive_invalid", "The OOXML archive is invalid.");
+      failDocumentText("document_archive_invalid", "The OOXML archive is invalid.");
     }
     if ((flags & 0x1) !== 0) {
-      failDocument(
+      failDocumentText(
         "document_archive_unsupported",
         "Encrypted OOXML archive entries are not supported.",
       );
     }
     if (compressionMethod !== 0 && compressionMethod !== 8) {
-      failDocument(
+      failDocumentText(
         "document_archive_unsupported",
         "The OOXML archive uses an unsupported compression method.",
       );
     }
     declaredUncompressedBytes += uncompressedBytes;
     if (declaredUncompressedBytes > MAX_ARCHIVE_DECLARED_BYTES) {
-      failDocument(
+      failDocumentText(
         "document_archive_expansion_limit",
         "The OOXML archive declares more expanded data than the safe parsing limit.",
       );
@@ -132,7 +132,7 @@ export function validateArchiveDirectory(bytes: Uint8Array): ArchiveDirectory {
     offset += entryLength;
   }
   if (offset !== directoryEnd) {
-    failDocument("document_archive_invalid", "The OOXML archive is invalid.");
+    failDocumentText("document_archive_invalid", "The OOXML archive is invalid.");
   }
   return Object.freeze({
     declaredEntries: entryCount,
@@ -148,7 +148,7 @@ export async function loadOfficeArchive(
   try {
     zip = await JSZip.loadAsync(bytes, { checkCRC32: false });
   } catch {
-    failDocument("document_archive_invalid", "The OOXML archive is invalid.");
+    failDocumentText("document_archive_invalid", "The OOXML archive is invalid.");
   }
   return Object.freeze({
     zip,
@@ -163,7 +163,7 @@ export async function readBoundedXml(
   signal?: AbortSignal,
 ): Promise<string> {
   if (signal?.aborted) {
-    failDocument("document_read_cancelled", "Document reading was cancelled.");
+    failDocumentText("document_read_cancelled", "Document reading was cancelled.");
   }
   return new Promise<string>((resolve, reject) => {
     const stream = entry.nodeStream("nodebuffer") as Readable;
@@ -186,7 +186,7 @@ export async function readBoundedXml(
     };
     const onAbort = () => {
       fail(
-        new DocumentReaderError(
+        new DocumentTextError(
           "document_read_cancelled",
           "Document reading was cancelled.",
         ),
@@ -201,7 +201,7 @@ export async function readBoundedXml(
         budget.expandedXmlBytes + entryBytes > MAX_TOTAL_XML_BYTES
       ) {
         fail(
-          new DocumentReaderError(
+          new DocumentTextError(
             "document_archive_expansion_limit",
             "The OOXML document exceeds the safe expanded-text parsing limit.",
           ),

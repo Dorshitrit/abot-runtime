@@ -1,3 +1,4 @@
+import { parseRequestInput } from "./input.js";
 import { handleRunRequest } from "./handler.js";
 import type { RequestHandlerOptions } from "./contracts.js";
 import { SESSION_MEMORY_COMPACTORS } from "../context/super-compaction/history-routing.js";
@@ -24,24 +25,27 @@ export function createBoundRuntimeRequestHandler(
   };
   return Object.freeze({
     async handle(ws, message, requestOptions = {}) {
-      const releaseLearning = services.passiveLearning?.beginInteractive();
-      const invoke = () =>
-        handleRunRequest(ws, message, {
-          ...environmentOptions,
-          ...requestOptions,
-        });
-      try {
-        if (services.requestAdmission) {
-          return await services.requestAdmission.run(
-            typeof message.sessionId === "string" ? message.sessionId : "",
-            invoke,
-            Boolean(requestOptions.approvalExecution?.resume),
-          );
+      const invoke = async () => {
+        await requestOptions.onAccepted?.();
+        const releaseLearning = services.passiveLearning?.beginInteractive();
+        try {
+          return await handleRunRequest(ws, message, {
+            ...environmentOptions,
+            ...requestOptions,
+          });
+        } finally {
+          releaseLearning?.();
         }
-        return await invoke();
-      } finally {
-        releaseLearning?.();
+      };
+      if (services.requestAdmission) {
+        return services.requestAdmission.run(
+          parseRequestInput(message).sessionId,
+          invoke,
+          Boolean(requestOptions.approvalExecution?.resume),
+          requestOptions.sessionAdmission,
+        );
       }
+      return invoke();
     },
   });
 }

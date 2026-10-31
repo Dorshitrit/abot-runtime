@@ -1,4 +1,6 @@
 import { hasSuperContextContract } from "../context/super-context-policy.js";
+import { blockedCompletionFields } from "../../shared/completion-disposition.js";
+import { readModelGatewayUserMessage } from "../../model-gateway/client.js";
 import { TerminalResponseAppend } from "../session/terminal-response.js";
 import { boundedSuperFailureCode } from "../steps/degraded-finalization/super.js";
 import type { SuperFailureFinalization } from "./super-failure-explanation.js";
@@ -249,6 +251,7 @@ class RequestHandlingSession {
       throw new Error(this.lifecycle.timedOutReason);
     await finalizeRequest({
       rawOutput: result.output,
+      disposition: result.disposition,
       outputTextMode: result.outputTextMode,
       events: this.events,
       lifecycle: this.lifecycle,
@@ -261,7 +264,7 @@ class RequestHandlingSession {
       finalObservation: result.finalObservation,
       memoryCandidates: result.memoryCandidates,
       longTermMemory: this.dependencies.longTermMemory,
-      ...this.terminalResponsePersister(),
+      ...this.terminalResponsePersister(result.disposition),
       composeInvalidFinalOutput: () =>
         this.superFailureFinalization
           ? this.superFailureFinalization
@@ -296,12 +299,15 @@ class RequestHandlingSession {
     };
   }
 
-  private terminalResponsePersister(): {
+  private terminalResponsePersister(
+    disposition?: RequestCompletionDisposition,
+  ): {
     persistResponse?: (message: SessionTerminalMessage) => Promise<void>;
   } {
     if (this.durable)
       return {
-        persistResponse: (message) => this.commitTerminal(message, "completed"),
+        persistResponse: (message) =>
+          this.commitTerminal(message, "completed", disposition),
       };
     if (this.terminalResponse)
       return {
@@ -357,6 +363,7 @@ class RequestHandlingSession {
   private async commitTerminal(
     message: SessionTerminalMessage,
     status: "completed" | "failed",
+    disposition?: RequestCompletionDisposition,
   ): Promise<void> {
     const store = this.dependencies.sessionStore.requestLifecycle!;
     await this.durable!.commit((expected) =>
@@ -364,6 +371,7 @@ class RequestHandlingSession {
         expected,
         commandId: randomUUID(),
         status,
+        ...blockedCompletionFields(disposition),
         message,
       }),
     );
@@ -405,7 +413,7 @@ class RequestHandlingSession {
         commandId: randomUUID(),
         cause: classifyRequestTerminalCause(this.lifecycle.signal),
         error: message,
-        message: this.ordinaryFailureMessage(),
+        message: this.ordinaryFailureMessage(primary),
         ...(this.superFailurePolicy
           ? {
               prepareFailure: async () => ({
@@ -423,6 +431,9 @@ class RequestHandlingSession {
       return;
     }
     const details: Record<string, unknown> = {};
+    const providerMessage = readModelGatewayUserMessage(primary);
+    const canPresentProviderFailure = !this.lifecycle.signal.aborted && providerMessage !== undefined;
+    if (canPresentProviderFailure) details.stoppedResponse = providerMessage;
     if (this.lifecycle.timedOutReason) details.stage = "timeout";
     if (this.canPersistSuperFailure()) {
       const terminalMessage = await this.prepareSuperFailureMessage(primary);
@@ -473,11 +484,12 @@ class RequestHandlingSession {
     return error instanceof Error ? error.message : "unknown error";
   }
 
-  private ordinaryFailureMessage(): SessionTerminalMessage {
+  private ordinaryFailureMessage(error?: unknown): SessionTerminalMessage {
     return createRequestFailureMessage({
       cause: classifyRequestTerminalCause(this.lifecycle.signal),
       partialAnswer: this.callbacks?.getAnswerText() ?? "",
       thinkingTrace: this.callbacks?.getThinkingTrace(),
+      error,
     });
   }
 

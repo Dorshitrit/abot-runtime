@@ -135,6 +135,9 @@ export function createScopeSurface(
   const { facets, policy, modelInvocation, modelSteps, capabilities } = input;
   return createFrozenSurface<RequestExecutionScope>({
     ...requestSeedDescriptors(facets, policy.selection, true),
+    ...(facets.presentation.userInteractions
+      ? { userInteractions: enumerableGetter(() => facets.presentation.userInteractions!) }
+      : {}),
     ...(facets.session.sessionKind
       ? { sessionKind: enumerableGetter(() => facets.session.sessionKind!) }
       : {}),

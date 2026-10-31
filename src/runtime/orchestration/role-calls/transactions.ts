@@ -1,3 +1,4 @@
+import { omitAbsentRoleCapabilityIntent } from "./capability-intent.js";
 import type {
   BeginRoleCapabilityBatchTransactionInput,
   BeginRoleCapabilityExecutionTransactionInput,
@@ -79,6 +80,7 @@ export function createRoleCallTransactions(
             childCallId: input.childCallId,
             outcome: input.outcome,
             summary: input.summary,
+            ...(input.steeringVersion !== undefined ? { steeringVersion: input.steeringVersion } : {}),
             ...(input.receipt ? { receipt: input.receipt } : {}),
           },
         }),
@@ -104,7 +106,7 @@ export function createRoleCallTransactions(
             invocationAttempt: input.invocationAttempt,
             capabilityId: input.capabilityId,
             declaredEffect: input.declaredEffect,
-            intent: input.intent,
+            ...(input.intent !== undefined ? { intent: input.intent } : {}),
             controlsJson: input.controlsJson,
             ...(input.actionFingerprint
               ? { actionFingerprint: input.actionFingerprint }
@@ -141,7 +143,7 @@ export function createRoleCallTransactions(
             type: "begin_capability_batch",
             callId: input.callId,
             invocationAttempt: input.invocationAttempt,
-            entries: input.entries,
+            entries: input.entries.map(omitAbsentRoleCapabilityIntent),
           },
         }),
         input,
@@ -334,6 +336,9 @@ function createOpenChildCommand(
     roleId: input.roleId,
     objective: input.objective,
     dependencyResultRefs: input.dependencyResultRefs,
+    ...(input.workerSteeringVersion !== undefined
+      ? { workerSteeringVersion: input.workerSteeringVersion }
+      : {}),
     ...(input.workerCapabilityScope
       ? { workerCapabilityScope: input.workerCapabilityScope }
       : {}),

@@ -1,3 +1,5 @@
+import { shouldUseStableExecutionContextPrefix } from "../../../model-gateway/policy/context-prefix-policy.js";
+import { findExecutionActivationBoundary, projectExecutionContextPrefix } from "./context-prefix.js";
 import { projectExecutionChildContinuations } from "./child-continuation.js";
 import { informationBasketModelInstructions } from "../../information-basket/model-guidance.js";
 import { projectInformationBasketCandidates, type BasketCandidateProjection } from "../../information-basket/candidate-context.js";
@@ -9,7 +11,7 @@ import {
 import { canAuthorDirectResponseMemory, resolveDirectResponseOffer } from "./direct-response-policy.js";
 import { buildDirectResponseInstructions } from "./direct-response-prompt.js";
 import { traceDebug } from "../../observability/debug-logger.js";
-import { buildSparkConversationInstructions } from "../../context/spark-conversation-policy.js";
+import { buildSparkConversationInstructions, buildSparkProgressInteractionInstructions } from "../../context/spark-conversation-policy.js";
 import type {
   ChatMessage,
   ModelGatewayJsonSchemaFormat,
@@ -17,6 +19,7 @@ import type {
 import type { RequestContextProjection } from "../../context/request-context-contracts.js";
 import { projectRequestContext } from "../../context/request-context.js";
 import { projectRootSessionMemory } from "../../context/session-memory/root-projection.js";
+import { hasExecutionHistoryReference } from "../../context/session-memory/execution-reference-memory.js";
 import { buildConversationMemoryAvailabilityInstructions } from "../../long-term-memory/conversation-authoring/prompt.js";
 import { buildConversationMemoryAuthoringPlainTextMessage } from "../../long-term-memory/conversation-authoring/plain-text-context.js";
 import type { ExecutionMemoryProjection } from "../../long-term-memory/initial-context.js";
@@ -87,6 +90,7 @@ export type ExecutionAgentInput = Readonly<{
   capabilities: readonly CapabilityDescriptor[];
   eligibleSessionArtifactPaths: readonly string[];
   basketCandidates?: BasketCandidateProjection;
+  promptCacheBoundaryBeforeMessage?: ChatMessage;
 }>;
 
 type BuildExecutionAgentInputOptions = Readonly<{
@@ -162,6 +166,7 @@ export function buildExecutionAgentInput(
     includeAcknowledgement: options.includeAcknowledgement,
     includeTitle: options.includeTitle,
     allowRespond: true,
+    allowUserInteraction: request.userInteractions !== undefined,
     allowPlanner: options.allowPlanner,
     allowAuditor: availableAuditCriterionIds.length > 0,
     availableAuditCriterionIds,
@@ -189,11 +194,13 @@ export function buildExecutionAgentInput(
       hasMemoryRecallContext: memoryRecallMessage !== undefined,
       hasCapabilities: capabilities.length > 0,
       hasControlsEvidenceSelection,
+      hasExecutionHistoryReference: hasExecutionHistoryReference(request.sessionMemory),
       hasCapabilityCatalogGroups: capabilityCatalogGroups.length > 0,
       capabilityScopeAction,
       allowPlanner: options.allowPlanner,
       availableAuditCriterionCount: availableAuditCriterionIds.length,
       allowRespond: true,
+      allowUserInteraction: contract.allowUserInteraction,
       includeAcknowledgement: options.includeAcknowledgement,
       includeTitle: options.includeTitle,
       includeWorkingDirectory: options.call.workingDirectory === undefined,
@@ -208,6 +215,7 @@ export function buildExecutionAgentInput(
       request.longTermMemory?.enabled === true,
     ),
     ...buildSparkConversationInstructions(request.sessionKind),
+    ...buildSparkProgressInteractionInstructions(request.sessionKind, contract.allowUserInteraction),
   ].join("\n");
   const scheduledExecution = projectScheduledExecutionContext(
     request,
@@ -229,36 +237,42 @@ export function buildExecutionAgentInput(
       options.call,
     );
   const childContinuations = projectExecutionChildContinuations(options.head, options.call);
-  const referenceMessages = [
-    ...(filesystemMessage ? [filesystemMessage] : []),
-    ...scheduledExecution.referenceMessages,
-    ...(automaticMemoryMessage ? [automaticMemoryMessage] : []),
-    ...(directMemoryAuthoring?.context
-      ? [buildConversationMemoryAuthoringPlainTextMessage(directMemoryAuthoring.context)] : []),
-    ...(request.temporalContext
-      ? [buildRequestTemporalContextMessage(request.temporalContext)]
-      : []),
-    buildExecutionDecisionStateMessage(
-      options.head,
-      options.call,
-      options.steeringSnapshot.version,
-      hasControlsEvidenceSelection
-        ? contract.eligibleControlsEvidenceExecutionIds
-        : undefined,
-      childContinuations.map(({ resultRef }) => resultRef),
-    ),
-    ...(operationSupervisionEvidenceMessage
-      ? [operationSupervisionEvidenceMessage]
-      : []),
+  const interactionContext = request.userInteractions?.projectContext();
+  const directMemoryMessage = directMemoryAuthoring?.context
+    ? buildConversationMemoryAuthoringPlainTextMessage(directMemoryAuthoring.context) : undefined;
+  const stateMessage = buildExecutionDecisionStateMessage(
+    options.head,
+    options.call,
+    options.steeringSnapshot.version,
+    hasControlsEvidenceSelection ? contract.eligibleControlsEvidenceExecutionIds : undefined,
+    childContinuations.map(({ resultRef }) => resultRef),
+  );
+  const catalogMessages = [
     buildExecutionCapabilityGroupCatalogMessage(
       knownGroupIds,
       resolveRequestCapabilityBriefEntries(
         resolveRequestWorkerCapabilities(request), capabilityCatalogGroups,
       ),
     ),
-    ...(capabilities.length > 0
-      ? [buildExecutionCapabilityCatalogMessage(capabilities)]
-      : []),
+    ...(capabilities.length > 0 ? [buildExecutionCapabilityCatalogMessage(capabilities)] : []),
+  ];
+  const activationMessages = [
+    ...(interactionContext ? [interactionContext] : []),
+    ...(filesystemMessage ? [filesystemMessage] : []),
+    ...(directMemoryMessage ? [directMemoryMessage] : []),
+    stateMessage,
+    ...(operationSupervisionEvidenceMessage ? [operationSupervisionEvidenceMessage] : []),
+  ];
+  const referenceMessages = [
+    ...(interactionContext ? [interactionContext] : []),
+    ...(filesystemMessage ? [filesystemMessage] : []),
+    ...scheduledExecution.referenceMessages,
+    ...(automaticMemoryMessage ? [automaticMemoryMessage] : []),
+    ...(directMemoryMessage ? [directMemoryMessage] : []),
+    ...(request.temporalContext ? [buildRequestTemporalContextMessage(request.temporalContext)] : []),
+    stateMessage,
+    ...(operationSupervisionEvidenceMessage ? [operationSupervisionEvidenceMessage] : []),
+    ...catalogMessages,
   ];
   const continuationMessages = buildExecutionContinuationMessages(
     options.head,
@@ -308,12 +322,27 @@ export function buildExecutionAgentInput(
     context: { ...contextInput, instructions: instructionsWithSkills },
     additionalBudgetMessages: appendRequestSteeringContext([], options.steeringSnapshot),
   }) : undefined;
-  if (basketCandidates) referenceMessages.push(basketCandidates.message);
-  const context = projectRequestContext({
+  if (basketCandidates) {
+    referenceMessages.push(basketCandidates.message);
+    activationMessages.push(basketCandidates.message);
+  }
+  const projectedContext = projectRequestContext({
     ...contextInput,
     instructions: instructionsWithSkills,
   });
+  const useStablePrefix = shouldUseStableExecutionContextPrefix({
+    agentMode: request.agentMode,
+    modelStep: EXECUTION_AGENT_DECISION_MODEL_STEP,
+    modelPreference: request.modelPreference,
+    modelPolicy: request.modelPolicy,
+  });
+  const context = useStablePrefix ? projectExecutionContextPrefix({
+    context: projectedContext, referenceMessages, catalogMessages, activationMessages,
+  }) : projectedContext;
+  const promptCacheBoundaryBeforeMessage = useStablePrefix
+    ? findExecutionActivationBoundary(context.messages, activationMessages) : undefined;
   return Object.freeze({
+    ...(promptCacheBoundaryBeforeMessage ? { promptCacheBoundaryBeforeMessage } : {}),
     context,
     messages: appendRequestSteeringContext(
       context.messages,

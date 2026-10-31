@@ -75,8 +75,7 @@ function canExecuteWithSelectedControls(
  * Loads guidance for staged capabilities, then asks the same Execution Agent
  * to complete only their remaining controls. Ordinary observations already
  * received their guidance at decision and need no second model step. Identity,
- * selection controls, and ordering remain immutable. Client intent is retained
- * separately for lifecycle presentation. This is not a child-role call.
+ * selection controls, and ordering remain immutable. This is not a child-role call.
  */
 export async function refineExecutionCapabilityInvocations(
   request: RequestExecutionScope,
@@ -345,7 +344,6 @@ function freezeInvocation(
   if (!controls) throw new Error("execution_capability_controls_missing");
   return Object.freeze({
     capabilityId: invocation.capabilityId,
-    intent: invocation.intent,
     ...(descriptor.requiresPayloadAuthoringObjective === true
       ? { authoringObjective: invocation.operationObjective! }
       : {}),

@@ -1,6 +1,7 @@
 import type { InformationBasketService } from "../information-basket/contracts.js";
 import { createInformationBasketCandidateSource, type InformationBasketCandidateSource } from "../information-basket/request-candidates.js";
 import { allowsAutomaticPayloadArtifactLoading } from "./execution-payload-artifact-policy.js";
+import { preservesFullSuperPayloadTargetContext } from "./super-payload-target-policy.js";
 import { bindKnowledgeSkillsToRequest } from "../knowledge-skills/request-store.js";
 import type { KnowledgeSkillStore } from "../knowledge-skills/store.js";
 import {
@@ -97,6 +98,9 @@ export function createRequestWorkerCapabilityProvider(
       {
         getRequestToolRegistry,
         allowRelatedArtifactLoading: allowsAutomaticPayloadArtifactLoading(
+          params.executionPolicyAuthority,
+        ),
+        preserveFullBoundedTargetContext: preservesFullSuperPayloadTargetContext(
           params.executionPolicyAuthority,
         ),
         requestId: params.request.requestId,

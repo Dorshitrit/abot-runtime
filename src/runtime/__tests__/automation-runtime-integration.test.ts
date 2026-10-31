@@ -204,7 +204,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     fixture.invoke.mockImplementation(withSupervisorPreparation(async (input) => {
       if (input.modelStep === "execution.decision") return {
         text: JSON.stringify({ decision: {
-          action: "respond", acknowledgement: "I have the result.",
+          action: "respond",
         } }), meta: {},
       };
       if (input.modelStep === "supervisor.decision") return {

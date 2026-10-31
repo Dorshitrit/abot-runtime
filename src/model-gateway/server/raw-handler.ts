@@ -7,6 +7,7 @@ import type {
 } from "./contracts.js";
 import { respondToGatewayHandlerError } from "./errors.js";
 import { sendJson, sendText } from "./http-response.js";
+import { sendProviderError } from "./provider-error-response.js";
 import {
   applyConfiguredModelPolicy,
   emitResolvedModelInvocation,
@@ -61,6 +62,7 @@ export function createRawHandler(options: ModelGatewayHandlerOptions = {}) {
 
       const result = await providerAdapter.invoke({
         endpoint: "raw",
+        abortSignal,
         requestBody: effectiveRequestBody,
         invocation,
         fetchImpl: createContextGuardedProviderFetch({
@@ -75,7 +77,7 @@ export function createRawHandler(options: ModelGatewayHandlerOptions = {}) {
         return;
       }
       if (result.kind === "error") {
-        return sendText(response, result.statusCode, result.message);
+        return sendProviderError(response, result, effectiveRequestBody);
       }
       if (result.kind !== "raw") {
         throw new Error("model_provider_adapter_raw_result_invalid");

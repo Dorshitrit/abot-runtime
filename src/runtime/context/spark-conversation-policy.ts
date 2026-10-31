@@ -16,3 +16,16 @@ export function buildSparkConversationInstructions(
     "Earlier assistant turns, including suggestions you initiated, are your own prior messages in this conversation. Use the supplied conversation chronology to resolve what the user refers to and answer questions about what you said. An empty long-term-memory recall does not mean the supplied conversation is missing; do not claim you cannot remember or access a message that is present in that history. Previous suggestions are assistant history, not pending assignments or permission to act. Ground familiarity in available conversation and permitted memory; do not invent memories, observations, screen access or completed work.",
   ];
 }
+
+/** Opt-in conversational progress style; only the invoking decision adapter supplies support. */
+export function buildSparkProgressInteractionInstructions(
+  sessionKind: "spark" | undefined,
+  enabled: boolean,
+): readonly string[] {
+  if (sessionKind !== "spark") return [];
+  if (!enabled) return [];
+  return [
+    "When a SPARK conversation needs work beyond an immediate reply, prefer a brief, friendly update that reassures the user you are looking into it before starting that work. Use the available interaction message naturally to keep the conversation flowing; a simple acknowledgement that you are checking or working on it can be enough.",
+    "During longer work, share a useful finding or change of direction when it helps the user stay connected. These conversational updates remain optional. Avoid narrating every tool call or repeating a recent reassurance; do not delay an immediate answer to send one. Promise no completion time and claim no progress or result beyond the available evidence.",
+  ];
+}

@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
 import { isAssistantInitiativeMessage } from "../assistant-initiative.js";
+import { assertSessionMemoryScope, isExecutionSessionMemoryScope } from "./checkpoint-scope.js";
+import { readExecutionToolObservation } from "./execution-observation.js";
 
 import type { SessionMessage, SessionRecord } from "../types.js";
 import type {
   SessionMemoryCheckpoint,
   SessionMemoryMessageReference,
+  SessionMemoryScope,
 } from "./contracts.js";
 
 export type SessionMemorySettledTurn = Readonly<{
@@ -13,6 +16,7 @@ export type SessionMemorySettledTurn = Readonly<{
 }>;
 
 export type SessionMemorySourceSnapshot = Readonly<{
+  scope?: SessionMemoryScope;
   sourceRevision: string;
   /** Settled history, including standalone assistant conversation units. */
   historyMessages: readonly SessionMessage[];
@@ -22,11 +26,14 @@ export type SessionMemorySourceSnapshot = Readonly<{
 
 export function snapshotSessionMemorySource(
   session: Pick<SessionRecord, "messages">,
+  scope?: SessionMemoryScope,
 ): SessionMemorySourceSnapshot {
+  assertSessionMemoryScope(scope);
   const turns = collectSettledConversationTurns(session.messages);
   const historyMessages = Object.freeze(turns.flatMap(turnMessages));
-  const messageReferences = Object.freeze(historyMessages.map(createMessageReference));
+  const messageReferences = Object.freeze(historyMessages.map((message) => createMessageReference(message, scope)));
   return Object.freeze({
+    ...(scope ? { scope } : {}),
     sourceRevision: fingerprint(
       messageReferences.map(({ fingerprint: value }) => value).join("\n"),
     ),
@@ -62,8 +69,9 @@ export function resolveCoveredTurnCount(
 
 export function createSessionMemoryMessageReferences(
   turns: readonly SessionMemorySettledTurn[],
+  scope?: SessionMemoryScope,
 ): readonly SessionMemoryMessageReference[] {
-  return Object.freeze(turns.flatMap(turnMessages).map(createMessageReference));
+  return Object.freeze(turns.flatMap(turnMessages).map((message) => createMessageReference(message, scope)));
 }
 
 function collectSettledConversationTurns(
@@ -146,7 +154,9 @@ function findLastIndex<T>(
 
 function createMessageReference(
   message: SessionMessage,
+  scope?: SessionMemoryScope,
 ): SessionMemoryMessageReference {
+  const observationContent = projectExecutionObservationFingerprintContent(message, scope);
   return Object.freeze({
     messageId: message.id,
     fingerprint: fingerprint(
@@ -157,9 +167,20 @@ function createMessageReference(
         createdAt: message.createdAt,
         requestId: message.requestId ?? null,
         ...(message.initiative ? { initiative: message.initiative } : {}),
+        ...(observationContent ? { observationContent } : {}),
       }),
     ),
   });
+}
+
+function projectExecutionObservationFingerprintContent(
+  message: SessionMessage,
+  scope: SessionMemoryScope | undefined,
+): string | undefined {
+  if (!isExecutionSessionMemoryScope(scope)) return undefined;
+  if (message.role !== "assistant") return undefined;
+  if (!readExecutionToolObservation(message)) return undefined;
+  return message.observationContent;
 }
 
 function turnMessages(

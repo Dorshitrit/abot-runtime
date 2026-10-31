@@ -40,7 +40,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
           return {
             action: "recall_memory",
             query: RECALL_QUERY,
-            ...(decisions === 1
+            ...(policy === "supervisor-worker-v1" && decisions === 1
               ? { acknowledgement: "I will check the saved preference." }
               : {}),
           };

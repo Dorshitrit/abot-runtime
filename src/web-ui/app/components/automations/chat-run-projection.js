@@ -1,3 +1,4 @@
+import { createAutomationReportReadObserver } from "./report-read.js";
 import { createEventRefresh } from "../../lib/event-refresh.js";
 import { createAutomationLiveView } from "./live-view.js";
 import { renderAutomationRun } from "./run.js";
@@ -24,6 +25,8 @@ export function createAutomationChatRunProjection({
   isVisible = () => document.visibilityState !== "hidden",
 }) {
   const liveView = createAutomationLiveView(dom.automationChatRunPanel);
+  const reportReads = createAutomationReportReadObserver({ client, getEnvironmentId });
+  let reportEnvironment = "";
   let runId = "";
   let run = null;
   let error = "";
@@ -61,6 +64,7 @@ export function createAutomationChatRunProjection({
     }
     if (!showing) {
       liveView.clear();
+      reportReads.observe(null, false);
       return;
     }
     dom.automationChatRunPanel.setAttribute("aria-busy", String(loading));
@@ -70,6 +74,13 @@ export function createAutomationChatRunProjection({
       stepEvidence, stepEvidenceLoading, stepEvidenceError,
       feedback: loading ? "Loading saved run…" : "",
     }, { locked: true }));
+    reportEnvironment = getEnvironmentId();
+    observeReport();
+  }
+
+  function observeReport() {
+    reportReads.observe(!loading && run?.id === runId ? run : null,
+      chatActive && Boolean(runId) && isVisible(), reportEnvironment);
   }
 
   function clear({ notify = true } = {}) {
@@ -275,6 +286,9 @@ export function createAutomationChatRunProjection({
       if (isRunChange(message, getEnvironmentId(), runId)) eventRefresh.schedule();
     },
     reconnect: () => eventRefresh.schedule(),
-    visibilityChanged: () => eventRefresh.schedule(),
+    visibilityChanged() {
+      observeReport();
+      eventRefresh.schedule();
+    },
   };
 }

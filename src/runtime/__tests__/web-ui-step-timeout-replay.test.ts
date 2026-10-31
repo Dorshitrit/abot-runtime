@@ -89,7 +89,7 @@ describe("timeout suggestions from trusted conversation replay", () => {
     await vi.waitFor(() => expect(f.notice().hidden).toBe(false));
     expect(f.client.inspectStepTimeout).toHaveBeenCalledOnce();
     expect(f.sendRealtime).toHaveBeenCalledWith({
-      type: "resume_request", requestId: "request-1", afterSeq: 51, environment: "dev",
+      type: "resume_request", requestId: "request-1", sessionId: "session-1", afterSeq: 51, environment: "dev",
     });
     expect(f.state.lastSeqByRequest.get("request-1")).toBe(51);
   });

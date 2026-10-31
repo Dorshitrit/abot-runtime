@@ -10,6 +10,7 @@ export type WorkerPayloadDependencyResult = Readonly<
     | "outcome"
     | "summary"
     | "semanticCheckpoints"
+    | "observations"
   >
 >;
 
@@ -32,6 +33,7 @@ export function projectWorkerPayloadDependencyResults(
         roleId: result.roleId,
         outcome: result.outcome,
         summary: result.summary,
+        ...(result.observations ? { observations: result.observations } : {}),
         ...(result.semanticCheckpoints
           ? { semanticCheckpoints: result.semanticCheckpoints }
           : {}),

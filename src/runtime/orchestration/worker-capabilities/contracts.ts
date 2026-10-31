@@ -151,21 +151,11 @@ export type WorkerCapabilityDescriptor = Readonly<{
 
 export type WorkerCapabilityControls = Readonly<Record<string, unknown>>;
 
-/**
- * Optional root-owned admission fence carried through the shared capability
- * engine. Worker bindings omit it, so their adapter and payload contracts stay
- * byte-compatible.
- */
+/** Canonical execution guard; Worker tokens carry no model-visible user context. */
 export type WorkerCapabilityExecutionFreshness = Readonly<{
-  token: Readonly<{
-    kind: "request_steering_v1";
-    version: number;
-    updates: readonly Readonly<{
-      sequence: number;
-      text: string;
-    }>[];
-  }>;
+  token: import("./execution/freshness-token.js").CapabilityExecutionFreshnessToken;
   isCurrent(): boolean;
+  subscribe?(onSuperseded: () => void): () => void;
 }>;
 
 export type WorkerCapabilityAdapterResult =
@@ -200,7 +190,7 @@ export type WorkerCapabilityAdapterExecutionInput<TContext> = Readonly<{
   assignmentProvenance?: WorkerCapabilityPayloadSourceProvenance;
   executionId: string;
   /** Client-facing presentation metadata for lifecycle events only. */
-  intent: string;
+  intent?: string;
   /** Accepted payload assignment; forbidden for non-payload calls. */
   authoringObjective?: string;
   controls: WorkerCapabilityControls;
@@ -309,7 +299,7 @@ export type WorkerCapabilityAdapter<TContext> = Readonly<{
 export type WorkerCapabilityAdapterRestoreInput<TContext> = Readonly<{
   context: TContext;
   call: RoleCallFrame;
-  intent: string;
+  intent?: string;
   authoringObjective?: string;
   controls: WorkerCapabilityControls;
   executionFreshness?: WorkerCapabilityExecutionFreshness;
@@ -344,7 +334,7 @@ export type WorkerCapabilityBinding<TContext> = Readonly<{
   execute(
     input: Readonly<{
       capabilityId: string;
-      intent: unknown;
+      intent?: unknown;
       authoringObjective?: unknown;
       controls: unknown;
     }>,
@@ -353,7 +343,7 @@ export type WorkerCapabilityBinding<TContext> = Readonly<{
     input: Readonly<{
       invocations: readonly Readonly<{
         capabilityId: string;
-        intent: unknown;
+        intent?: unknown;
         authoringObjective?: unknown;
         controls: unknown;
       }>[];

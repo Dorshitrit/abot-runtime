@@ -11,6 +11,6 @@ export type ModelReasoningLevel =
   | "xhigh";
 
 export type OutboundBridgeMessage =
-  | { type: "completed"; requestId: string; output: string }
+  | { type: "completed"; requestId: string; output: string; disposition?: "blocked" }
   | { type: "failed"; requestId: string; error: string }
   | { type: "event"; requestId: string; name: string; [key: string]: unknown };

@@ -18,7 +18,7 @@ export function healthSource(number: number): StoredBasketSource {
 export async function healthState(count = 1) {
   let stored: BasketSnapshot = {
     schemaVersion: 1, hostNamespace: "fixture",
-    settings: { revision: 1, enabled: true, embeddingProfileId: "fixture" },
+    settings: { matchMode: "balanced" as const, indexChatUploads: false, revision: 1, enabled: true, embeddingProfileId: "fixture" },
     sources: Array.from({ length: count }, (_, index) => healthSource(index)),
   };
   const update = vi.fn(async (change: (state: BasketSnapshot) => BasketSnapshot) => {

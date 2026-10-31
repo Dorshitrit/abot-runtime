@@ -1,8 +1,10 @@
+import { projectSelectedDependencyObservations } from "./super-dependency-observation-lineage.js";
 import { projectCurrentRequestToolResults } from "./request-tool-results-supersession.js";
 import { projectCanonicalRequestToolResult } from "./canonical-capability-result.js";
 import type { RoleCallLedgerHead } from "../orchestration/role-calls/index.js";
 import type { SemanticCompactionSource } from "./semantic-compaction/contracts.js";
 import {
+  createCapabilityResultCompactionSource,
   isCanonicalSuperCapabilitySourceCall,
   projectCanonicalCapabilityResultCompactionSources,
 } from "./capability-result-compaction-source.js";
@@ -46,8 +48,9 @@ export function bindSuperWorkerCompactionSources<T extends object>(
         execution.callId === callId && execution.status === "settled",
     )
     .map((execution) => projectCanonicalRequestToolResult(head, execution));
+  const dependencyObservations = projectSelectedDependencyObservations(head, call);
   const eligibleExecutionIds = Object.freeze(
-    projectCurrentRequestToolResults(results)
+    [...projectCurrentRequestToolResults(results), ...dependencyObservations]
       .filter(
         (result) => result.summaryProjection !== "superseded_target_evidence",
       )
@@ -60,10 +63,10 @@ export function bindSuperWorkerCompactionSources<T extends object>(
     requestId: head.state.requestId,
     callId,
     sourceRevision: head.revision,
-    sources: projectCanonicalCapabilityResultCompactionSources({
-      head,
-      callId,
-    }),
+    sources: Object.freeze([
+      ...projectCanonicalCapabilityResultCompactionSources({ head, callId }),
+      ...dependencyObservations.map(createCapabilityResultCompactionSource),
+    ]),
   };
   Object.defineProperty(sidecarFields, "head", {
     value: head,

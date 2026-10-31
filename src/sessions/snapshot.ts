@@ -1,7 +1,7 @@
 import type { SessionRecord, SessionSnapshot, SessionSnapshotMessage, SessionRequestRecord } from "./types.js";
 import { clientVisibleMessages, filterMessagesAfter, createMessageRequestIdResolver, toEpochMs, toMessageIdForUi, toSnapshotMessage, toSnapshotRequest } from "./record/projection.js";
 
-export type SessionMessageIdentity = Pick<SessionSnapshotMessage, "id" | "role" | "createdAt" | "requestId">;
+export type SessionMessageIdentity = Pick<SessionSnapshotMessage, "id" | "role" | "createdAt" | "requestId" | "kind">;
 export type SessionSnapshotOptions = {
   afterMessageId?: string | number | null;
   includeRequests?: boolean;
@@ -83,6 +83,7 @@ export function projectSessionSnapshot(session: SessionRecord, options: SessionS
     nextCursor: null,
   };
   const messageIndex: SessionMessageIdentity[] = visible.map((message) => ({
+    ...(message.kind ? { kind: message.kind } : {}),
     id: toMessageIdForUi(message.id), role: message.role, createdAt: toEpochMs(message.createdAt),
     requestId: resolveRequestId(message),
   }));

@@ -20,6 +20,7 @@ import { PendingToolApprovals } from "./pending-tool-approvals.js";
 import { createWorkspaceChangeNotifier } from "./workspace-notifications.js";
 import type { LocalPendingToolApproval } from "../../runtime/local-host/request-approval-contracts.js";
 import { attachApprovalRequest } from "./approval-request-attachment.js";
+import { RequestAdmissionResponse } from "./request-admission-response.js";
 import {
   publicSparkChatAdmissionFailure,
   resolveSparkChatRequest,
@@ -165,14 +166,19 @@ export class LocalRequestExecution {
       this.activeRequests.get(requestId),
       "ordinary",
     );
+    const admission = new RequestAdmissionResponse();
     void this.run(
       environment,
       request,
       environmentId,
       sessionId,
       requestSteering,
+      admission.accept,
     )
+      .then(admission.accept)
       .catch((error) => {
+        if (admission.rejectAdmission(error)) return;
+        admission.accept();
         this.publish({
           type: "failed",
           requestId,
@@ -192,6 +198,11 @@ export class LocalRequestExecution {
           removed,
         );
       });
+    const failure = await admission.result;
+    if (failure) {
+      sendJson(res, 409, failure);
+      return;
+    }
     sendJson(res, 200, { ok: true, requestId, sessionId });
   }
 
@@ -331,6 +342,7 @@ export class LocalRequestExecution {
     environmentId: string,
     sessionId: string,
     requestSteering: RequestSteeringInbox,
+    onAccepted: () => void,
   ): Promise<void> {
     const localWs = {
       send: (data: string) =>
@@ -340,6 +352,7 @@ export class LocalRequestExecution {
       toolApprovalController: this.toolApprovals,
       requestSteering,
       durableApprovals: true,
+      onAccepted,
     });
   }
 

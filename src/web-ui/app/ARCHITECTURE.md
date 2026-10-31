@@ -30,7 +30,7 @@ their guards. Environment transitions suppress intermediate history entries;
 rejected Back or Forward navigation restores the accepted history entry. The URL
 never contains drafts, credentials, approval choices, or mutation payloads.
 
-`conversation-activity.js` owns only request-scoped activity presentation. `realtime-event-controller.js` preserves sequence authority, associates events and progress with their exact `requestId`, and injects those values into the conversation view. `realtime-transport.js` only parses and transports frames; it does not reduce application state.
+`conversation-work-timeline.js` owns the default request work timeline and its final-answer disclosure state; `conversation-work-timeline-model.js` interleaves recorded evidence and authored updates. `conversation-activity.js` retains the shared request activity summary/model and the earlier reusable agent-card presentation. `realtime-event-controller.js` preserves sequence authority, associates events and progress with their exact `requestId`, and injects those values into the conversation view. `realtime-transport.js` only parses and transports frames; it does not reduce application state.
 
 `composer-context-window.js` presents the existing context estimate as one compact composer indicator. It selects the active assistant request, or the newest conversation message only when it is a request-linked assistant message while idle. A pending user turn, an assistant message without a request ID, or missing metrics hides the indicator instead of falling back to an earlier request. Context metric updates refresh it independently of message tokens; session-view resets clear it. Estimated usage, provider-reported usage, and compaction remain distinct, and provider usage stays bound to the matching model invocation.
 
@@ -42,11 +42,13 @@ Tool activity is presented as one evolving action per `(requestId, executionId)`
 `tool-activity-event.js` retains only bounded display fields; `tool-activity-model.js`
 combines payload, approval, execution, and outcome events without guessing from
 tool names or event adjacency. `conversation-tools.js` renders compact disclosures
-inside the executing agent's card, preserving expansion and scroll across updates.
+in the ordered work timeline, preserving action expansion across updates. The
+timeline reuses complete tool disclosures; status icons stay visible while status
+text remains accessible without a visible trailing label or chevron.
 The canonical role call supplies `executorRole` and `roleCallId`; explicit identity
 takes precedence over the currently active role, including late completions.
 Older events use the recorded role-stage association when available. Actions
-without recorded ownership appear in an explicitly unattributed card.
+without recorded ownership retain an explicitly unattributed role label.
 Prepared input is distinguished from input sent to an executed tool. Source
 truncation and preview clipping remain separate, and an absent outcome never
 implies success. Existing uncorrelated history supplies independent outcome rows;
@@ -69,8 +71,8 @@ summaries. Other tools retain their existing preview policy. Bounded Runtime
 `information_basket` status messages keep their exact filename punctuation and
 casing, and do not count as tool invocations or override the active-tool status.
 `basket-activity-model.js` projects these recorded statuses into a separate Sources
-section in a positively identified Supervisor card, using the same ordered events
-for live and replay views. Passive matches remain distinct from explicit search/read
+section at their recorded timeline positions, retaining role evidence and using
+the same ordered events for live and replay views. Passive matches remain distinct from explicit search/read
 statuses. Counts and names use the existing bounded display labels; the UI never
 parses outcomes or pairs starts with completions from text or adjacency. A Started
 row records an observed start, not an inferred running execution. Basket events do
@@ -87,7 +89,7 @@ Terminal failures preserve recorded result fields and clipping flags. Old events
 without declared input/output evidence remain unavailable; the UI never guesses
 commands from rationale or opaque parameter summaries.
 
-Web sources appear in a separate Activity section alongside role cards and the event timeline. `web-source-event.js` projects only successful `web_search` and `web_fetch` completions; `web-sources.js` validates bounded plugin receipts and groups them by recorded call. `conversation-sources.js` renders links and retrieval/presentation states without interpreting answer text. Source-bearing events retain their own identity before display grouping, and stored session events use the same projection as live events. Session switching clears them with the existing Activity state.
+Web sources appear inside the collapsible work timeline, after the ordered activity entries. `web-source-event.js` projects only successful `web_search` and `web_fetch` completions; `web-sources.js` validates bounded plugin receipts and groups them by recorded call. `conversation-sources.js` renders links and retrieval/presentation states without interpreting answer text. Source-bearing events retain their own identity before display grouping, and stored session events use the same projection as live events. Session switching clears them with the existing Activity state.
 
 The optional `meta.webSources` version 1 receipt describes the final bounded **tool output**, not whether a later model invocation consumed or cited it. Older events can show found/fetched URLs with unknown output visibility; absent or unsupported receipts never imply full content. Favicons are best-effort browser requests to the source origin's `/favicon.ico`, loaded lazily with no referrer and a local fallback. No third-party icon service or server proxy is used. Source URL policy rejects unsafe schemes and credentials, and prevents automatic image loads for local/private IP literals; origin DNS, redirects, cookies, and browser image policy remain browser concerns. Icons carry no evidence and never block tool execution.
 
@@ -116,6 +118,16 @@ Dashboard Job suggestions are inert data in `dashboard-job-templates.js`. They o
 Read tracking belongs only to the native Web UI backend. `session-read-state/service.ts` reads canonical session snapshots and projects unread assistant replies; `store.ts` persists the UI cursors in an environment-specific sidecar under `runtimeDir/web-ui/read-state/`. Runtime session files, model context and Runtime contracts remain unchanged. A persisted initialization timestamp treats existing history as read and tracks later replies, including newly created Job conversations. Read acknowledgements resolve only the displayed persisted assistant message or its exact completed request ID. Cursors advance monotonically and survive server restarts; invalid boundaries never acknowledge unseen replies. Browser consumers retain newer read revisions when older responses arrive late.
 
 The native conversation list uses the existing `SessionService` disk reader and canonical client-visible projections once per refresh. It avoids offset pagination over changing conversation order and avoids sending all request-event histories through the managed Runtime RPC. Only Web UI read-state sidecars are written by this projection. Clearing messages keeps a fresh read revision so subsequent unread replies can replace the previous read receipt.
+
+`session-read-state/assistant-read-evidence.ts` projects only verified assistant
+read receipts for notification synchronization, independently of initialization
+baselines. The local backend shares that read-state service with both chat routes
+and `notifications/reply-read-sync.ts`. Committed normal/SPARK reads schedule
+reply-only synchronization; listing and late insertion close arrival races.
+Manual unread overrides and a one-time protection of legacy unread records live
+only in notification storage. `notifications/retention.ts` caps each store at
+1,000 items/90 days and keeps deduplication receipts separately bounded; it never
+changes source messages, request events, approvals or model context.
 
 Read-state persistence is an optional Web UI projection. `session-read-state/availability.ts` isolates sidecar failures from listing, loading, clearing and deleting conversations. A failure returns `readStateStatus: "unavailable"` and unknown counts, preserves the sidecar for diagnosis, and leaves read acknowledgements unsuccessful. The browser keeps the last known receipt, labels unavailable tracking explicitly and resumes normal counts after a healthy list refresh. Canonical session and attachment failures remain errors. Workspace visibility is committed before change callbacks attempt to acknowledge visible messages, including drawer closure and responsive layout changes.
 
@@ -148,6 +160,33 @@ the preview reader's held-descriptor guarantee. The receipt
 is presentation-only: the optional filesystem report callback feeds event
 metadata, never the canonical tool result or model context. No file registry or
 historical content snapshot is created.
+
+## Project Git changes
+
+`project-changes/` owns read-only Git inspection separately from orchestration
+and tool execution. Session project bindings supply path authority; the browser
+supplies environment/session identifiers and opaque file/revision selections.
+The operation endpoint additionally reuses recorded file-output authorization,
+request-generation checks and current root identity to associate a tool action
+with a project file. It never infers a file from displayed tool text.
+
+The owner bounds subprocess work, file reads and preview output, rejects
+unsupported content filters/partial clones, and checks for stale source state.
+Git supplies metadata and raw blobs; bounded local line comparison and built-in
+text/EOL normalization produce inert previews. Effective attributes and Git
+newline settings participate in revision validation. The exact root marker is
+filtered only from displayed changes/counts, not from identity checks. No model
+context, request event or canonical session data is written.
+
+Operation-details composition loads a file comparison lazily, keeps ownership
+checks across rerenders/scope changes, and displays it in the returned-preview
+area automatically, replacing only its plain excerpt when a diff is available;
+otherwise the original preview stays visible without a Git control. The side
+panel uses the same diff renderer, with automatic presentation
+only on very wide viewports; it must not steal focus or replace an explicit file
+preview. Initial loading/empty results remain silent. Both surfaces state that
+the comparison is the current file against Git, not historical tool attribution.
+Fixed green/red diff colors remain independent of theme accent/status colors.
 
 ## Styles
 

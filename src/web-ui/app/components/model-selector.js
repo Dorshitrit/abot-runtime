@@ -1,8 +1,11 @@
+import { syncChatgptPlanIndicator } from "./chatgpt-plan-indicator.js";
+
 function modelOptions(select) {
   return [...select.options].map((option) => ({
     value: option.value,
     label: option.label || option.textContent || option.value,
     disabled: option.disabled,
+    usingChatgptPlan: option.dataset?.authentication === "chatgpt",
   }));
 }
 
@@ -47,6 +50,7 @@ export function createModelSelector({
   function render() {
     const options = modelOptions(select);
     const selected = selectedOption() || options[0] || null;
+    syncChatgptPlanIndicator({ anchor: button, documentRoot, usingPlan: selected?.usingChatgptPlan === true });
     button.disabled = select.disabled || options.length === 0;
     button.setAttribute("aria-expanded", open ? "true" : "false");
     button.classList.toggle("open", open);

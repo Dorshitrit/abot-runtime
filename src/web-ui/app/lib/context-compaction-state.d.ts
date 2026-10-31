@@ -6,6 +6,7 @@ export type ContextCompactionCycle = Readonly<{
   profileId: string;
   status: "pending" | "completed" | "failed" | "interrupted" | "conflicted";
   started: Record<string, unknown> | null;
+  progress?: Record<string, unknown>;
   terminals: ReadonlyArray<{
     event: Record<string, unknown>;
     fingerprint: string;

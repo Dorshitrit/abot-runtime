@@ -1,5 +1,6 @@
 import { readExecutionChildResultEvidence, type ExecutionChildResultReference } from "./support/execution-child-result-evidence.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { readExecutionToolObservation } from "../../sessions/memory/execution-observation.js";
 import {
   configureDebugLogger,
   resetDebugLoggerConfig,
@@ -239,10 +240,23 @@ describe("Auditor evidence selection through the shared request runner", () => {
       JSON.stringify(fixture.records.map(({ exactResult }) => exactResult))
         .length,
     ).toBeGreaterThan(48_000);
-    await expect(runRequestRunner(fixture.request)).resolves.toEqual({
+    const result = await runRequestRunner(fixture.request);
+    expect(result).toEqual({
       output: AUDIT_RUNNER_FINAL,
       outputTextMode: "exact",
+      finalObservation: { observationContent: expect.any(String) },
     });
+    if (!("output" in result)) throw new Error("expected_completed_request");
+    const observation = readExecutionToolObservation({
+      requestId: fixture.request.requestId,
+      observationContent: result.finalObservation?.observationContent,
+    });
+    expect(observation?.results).toEqual(fixture.records.map((record) => expect.objectContaining({
+      executionId: record.executionId,
+      capabilityId: "fixture.observe",
+      representation: "original",
+      adapterResult: record.exactResult,
+    })));
     expect(new Set(auditIds).size).toBe(2);
     expect(selections).toBe(1);
     expect(reviews).toBe(2);

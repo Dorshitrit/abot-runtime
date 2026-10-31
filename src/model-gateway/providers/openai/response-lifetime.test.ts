@@ -27,18 +27,18 @@ describe("OpenAI response lifetime", () => {
   });
 
   test.each([
-    ["[DONE]", { text: "answer", thinking: "" }],
     [{ type: "response.incomplete", response: { incomplete_details: { reason: "max_output_tokens" } } }, { text: "answer", thinking: "", doneReason: "max_output_tokens" }],
   ])("retains the existing terminal meaning for %j", async (terminal, expected) => {
     const fixture = openResponse();
     const result = collectOpenAIResponsesStream(fixture.response.body!);
     fixture.controller.enqueue(bytes(frame({ type: "response.output_text.delta", delta: "answer" })
-      + (terminal === "[DONE]" ? "data: [DONE]\n\n" : frame(terminal))));
+      + frame(terminal)));
     await expect(result).resolves.toEqual(expected);
     expect(fixture.cancel).toHaveBeenCalledOnce();
   });
 
   test.each([
+    ["[DONE]", "not completed"],
     [{ type: "error", message: "provider failure" }, "provider failure"],
     [{ type: "response.failed", response: { error: { message: "response failed" } } }, "response failed"],
     [{ type: "response.incomplete", response: { incomplete_details: { reason: "content_filter" } } }, "content_filter"],
@@ -48,7 +48,7 @@ describe("OpenAI response lifetime", () => {
       const events: ModelGatewayEvent[] = [];
       const operation = mode === "raw" ? collectOpenAIResponsesStream(fixture.response.body!)
         : forwardOpenAIResponsesStream(fixture.response.body!, { emit: (event) => events.push(event) });
-      fixture.controller.enqueue(bytes(frame(terminal)));
+      fixture.controller.enqueue(bytes(terminal === "[DONE]" ? "data: [DONE]\n\n" : frame(terminal)));
       if (mode === "raw") await expect(operation).rejects.toThrow(message);
       else { await operation; expect(events).toEqual([{ type: "error", error: expect.stringContaining(message) }]); }
       expect(fixture.cancel).toHaveBeenCalledOnce();
@@ -68,11 +68,11 @@ describe("OpenAI response lifetime", () => {
     expect(events.at(-1)).toMatchObject({ type: "done" });
   });
 
-  test("EOF without a terminal keeps legacy partial-text behavior", async () => {
+  test("EOF without response completion rejects partial text", async () => {
     const fixture = openResponse();
     fixture.controller.enqueue(bytes(frame({ type: "response.output_text.delta", delta: "partial" })));
     fixture.controller.close();
-    await expect(collectOpenAIResponsesStream(fixture.response.body!)).resolves.toEqual({ text: "partial", thinking: "" });
+    await expect(collectOpenAIResponsesStream(fixture.response.body!)).rejects.toThrow("not completed");
     expect(fixture.cancel).not.toHaveBeenCalled();
     expect(fixture.upstream.locked).toBe(false);
   });

@@ -37,7 +37,7 @@ export const observedRange = (start: number, end: number) => ({
 
 export const observationDecision = (controls: Record<string, unknown>) => ({
   action: "invoke_capability", capabilityId: observationDescriptor.capabilityId,
-  intent: "Inspect the selected source window.", selectionControls: controls,
+  selectionControls: controls,
 });
 
 export function observationCapsule(messages: readonly ChatMessage[], kind: string) {
@@ -144,8 +144,7 @@ export function createObservationControlsFixture(options: {
     if (step === "execution.response") return { text: "The requested source windows were inspected.", meta: {} };
     if (step !== "execution.decision") throw new Error(`unexpected_observation_step:${step}`);
     rootCalls += 1;
-    if (rootCalls === 1) return encode({ action: "open_capability_scope", catalogGroupIds: ["read"],
-      acknowledgement: "I will inspect the requested source windows." });
+    if (rootCalls === 1) return encode({ action: "open_capability_scope", catalogGroupIds: ["read"] });
     const batch = batches[rootCalls - 2];
     if (!batch) return encode({ action: "respond" });
     const workingDirectory = rootCalls === 2 ? { workingDirectory: null } : {};

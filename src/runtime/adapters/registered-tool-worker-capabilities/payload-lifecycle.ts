@@ -28,6 +28,7 @@ export async function prepareOperationPayload(
     sharedState: ToolExecutionSharedState;
     payloadAuthor?: WorkerCapabilityPayloadAuthor;
     allowRelatedArtifactLoading: boolean;
+    preserveFullBoundedTargetContext?: boolean;
     call: Parameters<WorkerCapabilityPayloadAuthor["author"]>[0]["call"];
     assignmentProvenance?: Parameters<
       WorkerCapabilityPayloadAuthor["author"]
@@ -36,7 +37,7 @@ export async function prepareOperationPayload(
     descriptor: Parameters<
       WorkerCapabilityPayloadAuthor["author"]
     >[0]["descriptor"];
-    intent: string;
+    intent?: string;
     authoringObjective?: string;
     controls: Readonly<Record<string, unknown>>;
     dependencyResults?: Parameters<
@@ -70,6 +71,7 @@ export async function prepareOperationPayload(
       executor: params.executor,
       sharedState: params.sharedState,
       allowRelatedArtifactLoading: params.allowRelatedArtifactLoading,
+      preserveFullBoundedTargetContext: params.preserveFullBoundedTargetContext,
       ...(params.payloadAuthor ? { payloadAuthor: params.payloadAuthor } : {}),
       call: params.call,
       ...(params.assignmentProvenance
@@ -77,7 +79,7 @@ export async function prepareOperationPayload(
         : {}),
       executionId: params.executionId,
       descriptor: params.descriptor,
-      intent: params.intent,
+      ...(params.intent !== undefined ? { intent: params.intent } : {}),
       ...(params.authoringObjective
         ? { authoringObjective: params.authoringObjective }
         : {}),
@@ -107,7 +109,7 @@ export async function prepareOperationPayload(
   const lifecycle = {
     handle: params.projection.handle,
     controls: params.controls,
-    intent: params.intent,
+    ...(params.intent !== undefined ? { intent: params.intent } : {}),
   };
   const started = params.executor.emitPayloadLifecycle({
     ...lifecycle,
@@ -150,7 +152,7 @@ export async function prepareOperationPayload(
         ? { dependencyResults: params.dependencyResults }
         : {}),
       settledCapabilityResults: params.settledCapabilityResults,
-      ...(params.executionFreshness
+      ...(params.executionFreshness?.token.kind === "request_steering_v1"
         ? { requestSteering: params.executionFreshness.token }
         : {}),
       ...(relatedArtifactContexts.length > 0
@@ -166,11 +168,17 @@ export async function prepareOperationPayload(
     if (error instanceof Error && error.name === "AbortError") {
       throw error;
     }
+    const superseded =
+      params.executionFreshness?.token.kind === "worker_steering_v1"
+        ? executionFreshnessRejection(params.executionFreshness) : undefined;
+
     return rejectPayloadLifecycle({
       executor: params.executor,
       lifecycle,
-      code: "payload_author_failed",
-      message: "The capability payload could not be prepared.",
+      code: superseded?.sourceIssueCode ?? "payload_author_failed",
+      message: superseded?.result.summary ??
+        "The capability payload could not be prepared.",
+      ...(superseded ? { fallback: superseded } : {}),
     });
   }
   const superseded = executionFreshnessRejection(params.executionFreshness);

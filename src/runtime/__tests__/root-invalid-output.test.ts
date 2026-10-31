@@ -1,6 +1,5 @@
 import { rootWorkCalls } from "./support/root-invalid-output-fixture.js";
 import { withSupervisorPreparation, supervisorFormatName } from "./support/supervisor-model-phases.js";
-import { buildDegradedFinalizationFallback } from "../steps/degraded-finalization/fallback.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   configureDebugLogger,
@@ -9,7 +8,6 @@ import {
 import type { ModelGatewayClient } from "../ports.js";
 import { runRootExecutionKernel } from "../request/root-execution-kernel.js";
 import { runRequestRunner } from "../request/runner.js";
-import { renderDegradedFinalization } from "../steps/degraded-finalization/render.js";
 import {
   createRootInvalidOutputLedger,
   createRootInvalidOutputRequest,
@@ -41,19 +39,14 @@ describe.each(ROOT_OUTPUT_POLICIES)(
       const request = createRootInvalidOutputRequest(invoke, policy.policyId);
       const ledger = await createRootInvalidOutputLedger(policy.policyId);
       const result = await runRootExecutionKernel({ request, ledger });
-      const expected = renderDegradedFinalization({
-        input: {
-          problem: { stage: policy.decisionStep, code: policy.invalidDecision },
-          progress: null,
-        },
-        phrasing,
-      });
+      const expected = result.output;
+      expect(expected).toContain("model returned an invalid decision or response");
+      expect(expected).not.toContain(phrasing.nextStep);
 
       expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([
         policy.decisionStep,
         policy.decisionStep,
         policy.decisionStep,
-        "degraded.finalization",
       ]);
       expect(result.output).toBe(expected);
       expect(result.finalObservation).toBeUndefined();
@@ -71,7 +64,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
       expect(request.modelGatewayClient.invokeRaw).not.toHaveBeenCalled();
     });
 
-    test("preserves response repairs and each policy's degraded attempt budget", async () => {
+    test("preserves response repairs and presents the known failure without another model attempt", async () => {
       const phrasing = {
         failureNotice: "I could not produce a reliable final answer.",
         nextStep: "Continue using the established state.",
@@ -91,20 +84,13 @@ describe.each(ROOT_OUTPUT_POLICIES)(
       }));
       const request = createRootInvalidOutputRequest(invoke, policy.policyId);
       const result = await runRequestRunner(request);
-      const expected =
-        policy.policyId === "supervisor-worker-v1"
-          ? buildDegradedFinalizationFallback({
-              problem: { stage: "raw_response", code: policy.invalidResponse },
-              progress: null,
-            })
-          : `${phrasing.failureNotice}\n\n${phrasing.nextStep}`;
+      const expected = result.output;
+      expect(expected).toContain("model returned an invalid decision or response");
+      expect(degradedAttempts).toBe(0);
 
       expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([
         policy.decisionStep,
         ...Array<string>(policy.responseAttempts).fill(policy.responseStep),
-        ...Array<string>(
-          policy.policyId === "supervisor-worker-v1" ? 1 : 2,
-        ).fill("degraded.finalization"),
       ]);
       expect(result.output).toBe(expected);
       expect(result.finalObservation).toBeUndefined();

@@ -105,7 +105,11 @@ test("SUPER reads multiple supplied Skills directly without LIST, waking Worker 
       return { action: "read_skills", skillIds: documents.map(({ skillId }) => skillId) };
     },
     classifyProcedure(input) {
-      assertNoSkillGuidance(input, documents);
+      assertSkillSnapshot(input, {
+        readId: "skill-read-1", skillIds: documents.map(({ skillId }) => skillId),
+        documents: documents.map(({ content }) => content),
+      });
+      expect(skillActionIndexes(input)).toEqual([]);
       return { requiresProcedure: false, responseRecommendation };
     },
     onInput(input) {
@@ -197,11 +201,17 @@ test("hands the read snapshot to Planner and its Worker without objective copies
       return { action: "read_skills", skillIds: [document.skillId] };
     },
     classifyProcedure(input) {
-      assertNoSkillGuidance(input, [document]);
+      assertSkillSnapshot(input, {
+        readId: "skill-read-1", skillIds: [document.skillId], documents: [document.content],
+      });
+      expect(skillActionIndexes(input)).toEqual([]);
       return { requiresProcedure: true };
     },
     delegate(input) {
-      assertNoSkillGuidance(input, [document]);
+      assertSkillSnapshot(input, {
+        readId: "skill-read-1", skillIds: [document.skillId], documents: [document.content],
+      });
+      expect(skillActionIndexes(input)).toEqual([]);
       return { action: "invoke_role", roleId: "planner", objective };
     },
     decide(input) {

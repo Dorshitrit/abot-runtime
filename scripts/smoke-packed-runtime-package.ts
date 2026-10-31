@@ -1,4 +1,5 @@
 import { verifyPackedLlamaCppSetup } from "./packed-llamacpp-setup-probe.js";
+import { verifyPackedCliModelSetup } from "./packed-cli-model-setup-probe.js";
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import {
@@ -261,38 +262,8 @@ try {
 
   const cliConsumerDir = join(tempDir, "cli-consumer");
   await mkdir(cliConsumerDir, { recursive: true });
-  const initOutput = execFileSync(
-    process.execPath,
-    [
-      cliPath,
-      "init",
-      "--provider",
-      "ollama",
-      "--model",
-      "consumer-local-model",
-    ],
-    { cwd: cliConsumerDir, encoding: "utf-8", stdio: "pipe" },
-  );
-  const addModelOutput = execFileSync(
-    process.execPath,
-    [
-      cliPath,
-      "add-model",
-      "--profile",
-      "hosted",
-      "--provider",
-      "openai",
-      "--model",
-      "consumer-hosted-model",
-      "--default",
-    ],
-    { cwd: cliConsumerDir, encoding: "utf-8", stdio: "pipe" },
-  );
-  const memoryStatusOutput = execFileSync(
-    process.execPath,
-    [cliPath, "memory", "status"],
-    { cwd: cliConsumerDir, encoding: "utf-8", stdio: "pipe" },
-  );
+  const { initOutput, addModelOutput, memoryStatusOutput } =
+    await verifyPackedCliModelSetup(cliPath, cliConsumerDir, packageDir);
   if (
     !initOutput.includes("Start ABot with npx abot start") ||
     /npm run (?:model-gateway|dev|web-ui)/u.test(initOutput) ||
@@ -446,6 +417,11 @@ try {
     consumerNodeModules,
   );
   await mkdir(dirname(consumerPackageLink), { recursive: true });
+  await writeFile(
+    join(consumerDir, "package.json"),
+    JSON.stringify({ name: "abot-packed-consumer", private: true, type: "module" }),
+    "utf-8",
+  );
   await symlink(packageDir, consumerPackageLink, "dir");
   await Promise.all([
     prepareConsumerConfig(packageDir, consumerDir),

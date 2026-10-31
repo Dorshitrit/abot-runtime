@@ -1,5 +1,6 @@
-import type { LongTermMemoryEmbeddingClient, LongTermMemoryRepository, MemoryVectorIndexEntry } from "../contracts.js";
+import type { LongTermMemoryEmbeddingClient, LongTermMemoryRepository, LongTermMemoryRepositorySnapshot, MemoryVectorIndexEntry } from "../contracts.js";
 import { embedLongTermMemoryTexts } from "../embedding-batches.js";
+import { ensureCurrentVectorIndex, matchesEmbeddingBinding } from "../vector-index.js";
 import { assertObservationBatchReplayable } from "../observation-receipt-retention.js";
 import type { ApplyLearningDecisionsInput, LearningMemoryReceipt, LearningMemoryService } from "./contracts.js";
 import { prepareLearningKnowledge } from "./context.js";
@@ -44,7 +45,7 @@ export function createLearningMemoryService(options: {
         ...snapshot.records.map((record) => ({ kind: "memory" as const, id: record.id, version: record.updatedAt })),
       ];
     },
-    prepare: (input) => prepareLearningKnowledge({ ...options, ...input, now: now(), embeddings: reserveLearningEmbeddings(options.embeddings, input.beforeEmbedding) }),
+    prepare: (input) => prepareLearningKnowledge({ ...options, ...input, now, embeddings: reserveLearningEmbeddings(options.embeddings, input.beforeEmbedding) }),
     async list() {
       const snapshot = await options.repository.read();
       return (snapshot.learningCandidates ?? []).filter((record) => isCandidateUnexpired(record, now()));
@@ -70,9 +71,15 @@ export function createLearningMemoryService(options: {
         assertLearningReviewAdmitted(initial.learningReceipts ?? [], now());
         diagnostics.enter("binding");
         assertCurrentLearningDecisionBindings(initial, input, now());
-        const binding = currentLearningEmbeddingBinding(initial, now());
         diagnostics.enter("embedding");
-        const vectors = await prepareDecisionEmbeddings(reserveLearningEmbeddings(options.embeddings, input.beforeEmbedding), input, binding);
+        const embeddings = reserveLearningEmbeddings(options.embeddings, input.beforeEmbedding);
+        const vectors = await prepareDecisionEmbeddings(embeddings, input);
+        const binding = await resolveApplyEmbeddingBinding(embeddings, initial, vectors, input, now());
+        if (binding) {
+          const indexed = await ensureCurrentVectorIndex({ ...options, embeddings, snapshot: initial, ...binding, now,
+            context: { abortSignal: input.abortSignal, debugRequestId: `learning:${input.batchId}` } });
+          currentLearningEmbeddingBinding(indexed, now());
+        }
         diagnostics.embedded(vectors.size);
         diagnostics.enter("commit");
         let receipt: LearningMemoryReceipt | undefined;
@@ -97,7 +104,7 @@ export function createLearningMemoryService(options: {
   });
 }
 
-async function prepareDecisionEmbeddings(embeddings: LongTermMemoryEmbeddingClient, input: ApplyLearningDecisionsInput, expectedBinding: Pick<MemoryVectorIndexEntry, "modelFingerprint" | "dimensions"> | undefined): Promise<ReadonlyMap<string, Omit<MemoryVectorIndexEntry, "memoryId">>> {
+async function prepareDecisionEmbeddings(embeddings: LongTermMemoryEmbeddingClient, input: ApplyLearningDecisionsInput): Promise<ReadonlyMap<string, Omit<MemoryVectorIndexEntry, "memoryId">>> {
   const changed = input.decisions.filter((decision) => {
     if (decision.action === "remove") return false;
     const target = input.context.entries.find((entry) => entry.kind === decision.targetKind && entry.id === decision.targetId);
@@ -105,6 +112,25 @@ async function prepareDecisionEmbeddings(embeddings: LongTermMemoryEmbeddingClie
   });
   const texts = [...new Set(changed.map(({ content }) => content))];
   if (!texts.length) return new Map();
-  const result = await embedLongTermMemoryTexts({ embeddings, texts, abortSignal: input.abortSignal, debugRequestId: `learning:${input.batchId}`, ...(expectedBinding ? { expectedBinding } : {}) });
+  const result = await embedLongTermMemoryTexts({ embeddings, texts, abortSignal: input.abortSignal, debugRequestId: `learning:${input.batchId}` });
   return new Map(texts.map((content, index) => [content, { modelFingerprint: result.modelFingerprint, dimensions: result.dimensions, vector: result.vectors[index]! }]));
+}
+
+async function resolveApplyEmbeddingBinding(
+  embeddings: LongTermMemoryEmbeddingClient,
+  snapshot: LongTermMemoryRepositorySnapshot,
+  changed: ReadonlyMap<string, Omit<MemoryVectorIndexEntry, "memoryId">>,
+  input: ApplyLearningDecisionsInput,
+  now: number,
+): Promise<Pick<MemoryVectorIndexEntry, "modelFingerprint" | "dimensions"> | undefined> {
+  const actual = changed.values().next().value;
+  if (actual) return actual;
+  const candidates = (snapshot.learningCandidates ?? []).filter((candidate) => isCandidateUnexpired(candidate, now));
+  const vectors = [...snapshot.vectors, ...candidates.map(({ embedding }) => embedding)];
+  const first = vectors[0];
+  if (!first || vectors.every((vector) => matchesEmbeddingBinding(vector, first))) return undefined;
+  // No changed content supplies a binding for scheduled/no-change reviews.
+  const content = snapshot.records[0]?.content ?? candidates[0]?.content;
+  if (!content) return undefined;
+  return embedLongTermMemoryTexts({ embeddings, texts: [content], abortSignal: input.abortSignal, debugRequestId: `learning:${input.batchId}` });
 }

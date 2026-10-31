@@ -3,6 +3,7 @@ import { vi } from "vitest";
 import type { ModelGatewayClient } from "../../ports.js";
 import { SUPERVISOR_WORKER_V1_EXECUTION_POLICY } from "../../request/role-executor-composition.js";
 import { createApprovalRunnerFixture } from "./request-approval-runner-fixture.js";
+import { createRequestSteeringInbox } from "../../request/request-steering.js";
 import {
   deriveTestRequestExecutionScope,
   rebindTestRequestExecutionPolicy,
@@ -98,13 +99,22 @@ export function createPlannerReturnApprovalFixture(approved: boolean) {
       throw new Error(`unexpected model step: ${input.modelStep}`);
     }),
   );
-  const makeRequest = () =>
-    deriveTestRequestExecutionScope(
+  let requestCount = 0;
+  const makeRequest = () => {
+    const requestSteering = requestCount++ === 0
+      ? approval.requestSteering
+      : createRequestSteeringInbox({ requestId: "runner-approval" });
+    if (requestSteering !== approval.requestSteering) {
+      for (const update of approval.requestSteering.snapshot().updates)
+        requestSteering.append(update);
+    }
+    return deriveTestRequestExecutionScope(
       rebindTestRequestExecutionPolicy(
         approval.makeRequest(),
         SUPERVISOR_WORKER_V1_EXECUTION_POLICY,
       ),
       {
+        requestSteering,
         runnerConfig: {
           models: { defaults: { profileId: "unused", steps: {} } },
           context: {
@@ -137,6 +147,7 @@ export function createPlannerReturnApprovalFixture(approved: boolean) {
         onEvent,
       },
     );
+  };
   const events = (eventName: string) =>
     onEvent.mock.calls
       .filter(([name]) => name === eventName)

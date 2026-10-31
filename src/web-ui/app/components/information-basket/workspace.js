@@ -7,10 +7,12 @@ import { createBasketLibraryControls } from "./library-controls.js";
 
 export function createInformationBasketWorkspace({ root, actions, documentRoot = document }) {
   root.innerHTML = `<div class="basket-workspace"><div class="basket-heading"><div><h3>Your information basket</h3><p>Your sources, ready for every conversation.</p></div><span class="basket-scope">Personal · All chats</span></div>
-    <section class="basket-drop" aria-label="Add source files" data-basket-drop><div class="basket-drop-art" aria-hidden="true"><span>${basketIcon("file")}</span>${basketIcon("basket")}</div><div class="basket-drop-copy"><h3>Drop your sources here</h3><p>Documents, notes, and the things you work with.</p><span>Original files stay where they are.</span></div><div class="basket-drop-actions"><button type="button" class="primary-button" data-basket-choose>${basketIcon("folder")} Choose files</button><span>or drag a file here</span></div></section>
+    <section class="basket-add" aria-label="Add source files" data-basket-add-sources><div class="basket-add-art" aria-hidden="true"><span>${basketIcon("file")}</span>${basketIcon("basket")}</div><div class="basket-add-copy"><h3>Add your sources</h3><p>Documents, notes, and the things you work with.</p><span>Original files stay where they are.</span></div><div class="basket-add-actions"><button type="button" class="primary-button" data-basket-choose>${basketIcon("folder")} Choose files</button></div></section>
     <section class="basket-settings" aria-label="Resource indexing settings">
       <div class="basket-settings-heading"><span class="basket-settings-icon" aria-hidden="true">${basketIcon("index")}</span><div><h4>Resource indexing</h4><p>Choose how your sources become searchable.</p></div><label class="basket-enabled"><span>Enable resources</span><input type="checkbox" role="switch" data-basket-enabled></label></div>
-      <div class="basket-settings-controls"><label class="basket-profile-label">Embedding profile<select data-basket-profile aria-label="Embedding profile"></select></label><div class="basket-settings-actions"><span class="basket-settings-pending" data-basket-settings-pending hidden>Unsaved changes</span><button type="button" class="basket-text-button" data-basket-settings-reset hidden>Reset changes</button><button type="button" class="primary-button" data-basket-settings-save>Save settings</button></div></div>
+      <div class="basket-settings-controls"><label class="basket-profile-label">Embedding profile<select data-basket-profile aria-label="Embedding profile"></select></label><label class="basket-profile-label basket-match-label">Source matching<select data-basket-match-mode aria-label="Source matching" aria-describedby="basket-match-help"><option value="flexible">Flexible · 0.3</option><option value="balanced">Balanced · 0.6</option><option value="strict">Strict · 0.9</option></select></label><div class="basket-settings-actions"><span class="basket-settings-pending" data-basket-settings-pending hidden>Unsaved changes</span><button type="button" class="basket-text-button" data-basket-settings-reset hidden>Reset changes</button><button type="button" class="primary-button" data-basket-settings-save>Save settings</button></div></div>
+      <p class="basket-note basket-match-help" id="basket-match-help">Flexible includes weaker matches. Strict shows only very similar sources. Similarity does not guarantee relevance.</p>
+      <div class="basket-chat-uploads"><div><label for="basket-chat-uploads">Add new chat uploads</label><p class="basket-note" id="basket-chat-uploads-help">Automatically add supported files uploaded after you enable this. Earlier uploads stay unchanged. Sources remain linked to the chat files.</p></div><label class="basket-enabled"><span class="basket-accessible-label">Add new chat uploads</span><input id="basket-chat-uploads" type="checkbox" role="switch" aria-describedby="basket-chat-uploads-help" data-basket-chat-uploads></label></div>
       <p class="basket-note basket-formats" data-basket-formats></p>
     </section>
     <p class="basket-feedback" role="alert" data-basket-error hidden></p><p class="basket-feedback" role="status" aria-live="polite" data-basket-message hidden></p>
@@ -34,32 +36,18 @@ export function createInformationBasketWorkspace({ root, actions, documentRoot =
     if (button.hasAttribute("data-basket-settings-save")) void actions.saveSettings();
     if (button.hasAttribute("data-basket-settings-reset")) actions.resetSettings();
     if (button.hasAttribute("data-basket-detail")) actions.showDetails(button.dataset.basketDetail);
-    if (button.hasAttribute("data-basket-link")) actions.link(button.dataset.basketLink);
     if (button.hasAttribute("data-basket-reindex")) void actions.reindex([button.dataset.basketReindex]);
     if (button.hasAttribute("data-basket-remove")) void actions.remove([button.dataset.basketRemove]);
     if (button.hasAttribute("data-basket-bulk-index")) void actions.reindex(selectedIds());
     if (button.hasAttribute("data-basket-bulk-remove")) void actions.remove(selectedIds());
   });
   find("[data-basket-enabled]").addEventListener("change", (event) => actions.changeSettings("enabled", event.target.checked));
+  find("[data-basket-chat-uploads]").addEventListener("change", (event) => actions.changeSettings("indexChatUploads", event.target.checked));
   find("[data-basket-profile]").addEventListener("change", (event) => actions.changeSettings("embeddingProfileId", event.target.value || null));
+  find("[data-basket-match-mode]").addEventListener("change", (event) => actions.changeSettings("matchMode", event.target.value));
   root.addEventListener("change", (event) => {
     if (event.target.hasAttribute?.("data-basket-select-all")) actions.selectVisible(event.target.checked);
     if (event.target.hasAttribute?.("data-basket-select")) actions.select(event.target.dataset.basketSelect, event.target.checked);
-  });
-  const drop = find("[data-basket-drop]");
-  drop.addEventListener("dragover", (event) => {
-    event.preventDefault();
-    drop.classList.add("is-dragging");
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "link";
-  });
-  drop.addEventListener("dragleave", (event) => {
-    if (drop.contains(event.relatedTarget)) return;
-    drop.classList.remove("is-dragging");
-  });
-  drop.addEventListener("drop", (event) => {
-    event.preventDefault();
-    drop.classList.remove("is-dragging");
-    actions.receiveDrop(event.dataTransfer?.files || []);
   });
   function renderSettings(snapshot) {
     const { settingsDraft: settings, view } = snapshot;
@@ -72,6 +60,10 @@ export function createInformationBasketWorkspace({ root, actions, documentRoot =
     if (profilesMarkup !== nextProfiles) { find("[data-basket-profile]").innerHTML = nextProfiles; profilesMarkup = nextProfiles; }
     find("[data-basket-profile]").value = currentId;
     find("[data-basket-profile]").disabled = !view || Boolean(snapshot.mutation);
+    find("[data-basket-match-mode]").value = settings?.matchMode || "balanced";
+    find("[data-basket-match-mode]").disabled = !view || Boolean(snapshot.mutation);
+    find("[data-basket-chat-uploads]").checked = settings?.indexChatUploads === true;
+    find("[data-basket-chat-uploads]").disabled = !view || Boolean(snapshot.mutation);
     find("[data-basket-enabled]").checked = settings?.enabled === true;
     find("[data-basket-enabled]").disabled = !view || Boolean(snapshot.mutation);
     find("[data-basket-settings-save]").disabled = !snapshot.settingsDirty || Boolean(snapshot.mutation);

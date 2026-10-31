@@ -26,7 +26,7 @@ function source(index: number, status: BasketSource["status"]): BasketSource {
 
 function serviceFixture(sources: readonly BasketSource[]) {
   const view: BasketView = {
-    settings: { enabled: true, embeddingProfileId: "fixture", revision: 1 }, sources,
+    settings: { matchMode: "balanced" as const, indexChatUploads: false, enabled: true, embeddingProfileId: "fixture", revision: 1 }, sources,
     embeddingProfiles: [], supportedExtensions: [".txt"],
     limits: { maxSources: 200, maxSourceBytes: 1024, maxReadCharacters: 1000 },
   };

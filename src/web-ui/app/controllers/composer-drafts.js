@@ -105,6 +105,12 @@ export function createComposerDrafts() {
     open,
     restore: (captured) => open(captured.scope).restore(captured),
     clearAttachments: (scope) => records.get(scopeKey(scope))?.clearAttachments() ?? [],
+    resetSessionData(scope) {
+      const draft = records.get(scopeKey(scope));
+      if (!draft) return;
+      draft.clearAttachments();
+      draft.setRelease(null);
+    },
     assignSession(draft, sessionId) {
       if (draft.scope.sessionId) return draft;
       if (draft.uploading) throw new Error("Cannot assign a conversation while a file is uploading.");

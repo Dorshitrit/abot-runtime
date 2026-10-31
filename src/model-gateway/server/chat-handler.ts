@@ -8,6 +8,7 @@ import type {
 import { respondToGatewayHandlerError } from "./errors.js";
 import { writeChatStreamResponse } from "./chat-stream-response.js";
 import { sendText } from "./http-response.js";
+import { sendProviderError } from "./provider-error-response.js";
 import type { InputTokenMeasurementStore } from "./input-token-measurements.js";
 import {
   applyConfiguredModelPolicy,
@@ -71,6 +72,7 @@ export function createChatHandler(
 
       const result = await providerAdapter.invoke({
         endpoint: "chat",
+        abortSignal,
         requestBody: effectiveRequestBody,
         invocation,
         ...(inputTokenMeasurement ? { inputTokenMeasurement } : {}),
@@ -87,7 +89,7 @@ export function createChatHandler(
         return;
       }
       if (result.kind === "error") {
-        return sendText(response, result.statusCode, result.message);
+        return sendProviderError(response, result, effectiveRequestBody);
       }
       if (result.kind !== "chat") {
         throw new Error("model_provider_adapter_chat_result_invalid");

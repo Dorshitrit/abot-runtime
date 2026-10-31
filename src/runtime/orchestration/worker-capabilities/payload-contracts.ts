@@ -116,7 +116,10 @@ export type WorkerCapabilityPayloadContext =
           invocationAttempt: number;
           objectiveSource: "runtime_request_source_plus_steering_v1";
           steeringVersion: number;
-          updates: WorkerCapabilityExecutionFreshness["token"]["updates"];
+          updates: Extract<
+            WorkerCapabilityExecutionFreshness["token"],
+            { kind: "request_steering_v1" }
+          >["updates"];
         }>;
         acceptedCapability: Readonly<{
           capabilityId: string;
@@ -182,7 +185,9 @@ export type WorkerCapabilityPayloadAuthor = Readonly<{
       targetContext?: WorkerCapabilityPayloadTargetContext;
       relatedArtifactContexts?: readonly WorkerCapabilityPayloadRelatedArtifactContext[];
       /** Required for a direct-root payload and forbidden for a Worker payload. */
-      requestSteering?: WorkerCapabilityExecutionFreshness["token"];
+      requestSteering?: Extract<
+        WorkerCapabilityExecutionFreshness["token"], { kind: "request_steering_v1" }
+      >;
     }>,
   ): Promise<WorkerCapabilityPayloadAuthoringResult>;
 }>;

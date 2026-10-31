@@ -1,4 +1,5 @@
 import type { ModelTokenUsage } from "../types.js";
+import { normalizeCacheWriteUsage } from "./cache-write-usage.js";
 
 function readNonNegativeInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0
@@ -11,6 +12,8 @@ export function buildModelTokenUsage(params: {
   outputTokens: unknown;
   totalTokens?: unknown;
   cachedInputTokens?: unknown;
+  cacheWriteInputTokens?: unknown;
+  cacheWriteInputTokensDetails?: unknown;
   reasoningTokens?: unknown;
 }): ModelTokenUsage | undefined {
   const inputTokens = readNonNegativeInteger(params.inputTokens);
@@ -23,7 +26,7 @@ export function buildModelTokenUsage(params: {
   const cachedInputTokens = readNonNegativeInteger(params.cachedInputTokens);
   const reasoningTokens = readNonNegativeInteger(params.reasoningTokens);
 
-  return {
+  const usage: ModelTokenUsage = {
     inputTokens,
     outputTokens,
     totalTokens: reportedTotal ?? inputTokens + outputTokens,
@@ -33,6 +36,15 @@ export function buildModelTokenUsage(params: {
     ...(reasoningTokens !== undefined && reasoningTokens <= outputTokens
       ? { reasoningTokens }
       : {}),
+  };
+  return {
+    ...usage,
+    ...normalizeCacheWriteUsage({
+      inputTokens,
+      cachedInputTokens: usage.cachedInputTokens,
+      cacheWriteInputTokens: params.cacheWriteInputTokens,
+      cacheWriteInputTokensDetails: params.cacheWriteInputTokensDetails,
+    }),
   };
 }
 
@@ -48,6 +60,8 @@ export function normalizeModelTokenUsage(
     outputTokens: usage.outputTokens,
     totalTokens: usage.totalTokens,
     cachedInputTokens: usage.cachedInputTokens,
+    cacheWriteInputTokens: usage.cacheWriteInputTokens,
+    cacheWriteInputTokensDetails: usage.cacheWriteInputTokensDetails,
     reasoningTokens: usage.reasoningTokens,
   });
 }

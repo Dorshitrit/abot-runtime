@@ -277,6 +277,7 @@ export async function resolveRegisteredToolPayloadTargetContext(params: {
   stage: RegisteredToolPayloadStage;
   controls: Readonly<Record<string, unknown>>;
   sharedState: ToolExecutionSharedState;
+  preserveFullBoundedTargetContext?: boolean;
   materializedParams?: Readonly<Record<string, string>>;
 }): Promise<RegisteredToolPayloadTargetContext | undefined> {
   if (!params.stage.targetContext) {
@@ -311,6 +312,7 @@ export async function resolveRegisteredToolPayloadTargetContext(params: {
       targetParam,
       targetPath: rawTarget,
       rawContent,
+      preserveFullBoundedTargetContext: params.preserveFullBoundedTargetContext,
       materializedParams: params.materializedParams,
     });
   }
@@ -338,6 +340,7 @@ function resolveBoundedTargetContext(params: {
   targetParam: string;
   targetPath: string;
   rawContent: string;
+  preserveFullBoundedTargetContext?: boolean;
   materializedParams?: Readonly<Record<string, string>>;
 }): RegisteredToolPayloadTargetContext | undefined {
   const stageIndex = params.plan.stages.indexOf(params.stage);
@@ -382,19 +385,19 @@ function resolveBoundedTargetContext(params: {
   }
   const writableStartLine = Math.min(...(bounds as number[]));
   const writableEndLine = Math.max(...(bounds as number[]));
-  const contextStartLine = Math.max(
-    1,
-    writableStartLine - params.plan.groundingWindow,
-  );
-  const contextEndLine = Math.min(
-    lines.length,
-    writableEndLine + params.plan.groundingWindow,
-  );
+  const contextStartLine = params.preserveFullBoundedTargetContext
+    ? 1
+    : Math.max(1, writableStartLine - params.plan.groundingWindow);
+  const contextEndLine = params.preserveFullBoundedTargetContext
+    ? lines.length
+    : Math.min(lines.length, writableEndLine + params.plan.groundingWindow);
   return Object.freeze({
     targetParam: params.targetParam,
     targetPath: params.targetPath,
     presentation: "bounded" as const,
-    content: lines.slice(contextStartLine - 1, contextEndLine).join("\n"),
+    content: params.preserveFullBoundedTargetContext
+      ? params.rawContent
+      : lines.slice(contextStartLine - 1, contextEndLine).join("\n"),
     sourceRange: Object.freeze({
       contextStartLine,
       contextEndLine,

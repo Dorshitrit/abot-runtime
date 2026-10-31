@@ -114,7 +114,7 @@ test("D21: partial finalization snapshot keeps committed history and source inve
   expect(compact).not.toHaveBeenCalled();
   expect(
     fixture.events
-      .filter(({ name }) => name.startsWith("context.compaction."))
+      .filter(({ name }) => /^context\.compaction\.(started|completed|failed)$/u.test(name))
       .map(({ name }) => name),
   ).toEqual(["context.compaction.started", "context.compaction.failed"]);
 });

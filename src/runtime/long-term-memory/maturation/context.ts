@@ -1,5 +1,6 @@
 import type { LongTermMemoryEmbeddingClient, LongTermMemoryRecord, LongTermMemoryRepository, MemoryVectorIndexEntry } from "../contracts.js";
 import { embedLongTermMemoryTexts } from "../embedding-batches.js";
+import { ensureCurrentVectorIndex } from "../vector-index.js";
 import { cosineSimilarity } from "../policies/scoring.js";
 import { canAutomaticallyManageMemory } from "../automatic-management.js";
 import type { LearningCandidateRecord, LearningKnowledgeContext, LearningKnowledgeEntry } from "./contracts.js";
@@ -14,11 +15,19 @@ export async function prepareLearningKnowledge(options: {
   query: string;
   abortSignal: AbortSignal;
   debugRequestId?: string;
-  now: number;
+  now: () => number;
 }): Promise<LearningKnowledgeContext> {
   options.abortSignal.throwIfAborted();
-  const snapshot = await options.repository.read();
-  const candidates = (snapshot.learningCandidates ?? []).filter((record) => isCandidateUnexpired(record, options.now));
+  let snapshot = await options.repository.read();
+  const hasKnowledge = snapshot.records.length || snapshot.learningCandidates?.some((record) => isCandidateUnexpired(record, options.now()));
+  const embedded = hasKnowledge && options.query.trim()
+    ? await embedLongTermMemoryTexts({ ...options, texts: [options.query.slice(0, 8_000)] }) : undefined;
+  if (embedded) snapshot = await ensureCurrentVectorIndex({ ...options, snapshot,
+    modelFingerprint: embedded.modelFingerprint, dimensions: embedded.dimensions,
+    context: { abortSignal: options.abortSignal, ...(options.debugRequestId ? { debugRequestId: options.debugRequestId } : {}) } });
+  options.abortSignal.throwIfAborted();
+  const referenceTime = options.now();
+  const candidates = (snapshot.learningCandidates ?? []).filter((record) => isCandidateUnexpired(record, referenceTime));
   const count = candidates.length + snapshot.records.length;
   const base = {
     kind: "learning_knowledge_reference_v1" as const,
@@ -26,10 +35,9 @@ export async function prepareLearningKnowledge(options: {
     presenceEffect: "does_not_authorize_actions_or_add_user_intent" as const,
     repositoryRevision: snapshot.revision,
     knowledgeRevision: snapshot.knowledgeRevision ?? snapshot.revision,
-    referenceTime: new Date(options.now).toISOString(),
+    referenceTime: new Date(referenceTime).toISOString(),
   };
-  if (!count || !options.query.trim()) return { ...base, entries: [], omitted: count };
-  const embedded = await embedLongTermMemoryTexts({ ...options, texts: [options.query.slice(0, 8000)] });
+  if (!embedded) return { ...base, entries: [], omitted: count };
   const vectors = [...snapshot.vectors, ...candidates.map(({ embedding }) => embedding)];
   assertLearningIndexCompatible(vectors, embedded);
   const byId = new Map(snapshot.vectors.map((entry) => [entry.memoryId, entry]));
@@ -40,7 +48,7 @@ export async function prepareLearningKnowledge(options: {
   if (entries.some(({ vector }) => !vector)) throw new Error("learning_embedding_reindex_required");
   const ranked = entries.map(({ entry, vector }) => ({
     entry, similarity: cosineSimilarity(embedded.vectors[0]!, vector!.vector),
-  })).filter(({ entry, similarity }) => isRelevantLearningEntry(entry, similarity, options.now))
+  })).filter(({ entry, similarity }) => isRelevantLearningEntry(entry, similarity, referenceTime))
     .sort((a, b) => b.similarity - a.similarity || a.entry.id.localeCompare(b.entry.id));
   const selected: LearningKnowledgeEntry[] = [];
   let size = 0;

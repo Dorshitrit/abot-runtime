@@ -22,6 +22,9 @@ import {
   type RequestExecutionScope,
 } from "../../request/execution-scope.js";
 import type { RequestRoleExecutionHandoff } from "../../request/result.js";
+import { createWorkerExecutionFreshness } from "../../request/capability-execution-freshness.js";
+import { ownsSuperWorkerSteering } from "../../request/super-worker-steering.js";
+import { resolveRequestSteeringInbox } from "../../request/request-steering.js";
 import type { RoleExecutor } from "../../orchestration/role-executors/index.js";
 import { traceDebug } from "../../observability/debug-logger.js";
 import {
@@ -316,6 +319,11 @@ export const GENERIC_WORKER_EXECUTOR: RoleExecutor<
       call,
       ledger,
       adapters: workerCapabilities.provider.getAdapters(),
+      ...(ownsSuperWorkerSteering(context, call)
+        ? { executionFreshness: createWorkerExecutionFreshness({
+            requestSteering: resolveRequestSteeringInbox(context.requestSteering), call,
+          }) }
+        : {}),
       ...(context.approvalGate ? { approvalGate: context.approvalGate } : {}),
       ...projectWorkerPayloadDependencyInput(dependencyResults),
     });

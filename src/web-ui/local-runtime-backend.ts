@@ -16,8 +16,10 @@ import { LocalRequestExecution } from "./local-runtime/request-execution.js";
 import { createWorkspaceChangeNotifier } from "./local-runtime/workspace-notifications.js";
 import { createLearningChangeNotifier } from "./local-runtime/learning-notifications.js";
 import { WebNotificationService } from "./notifications/service.js";
+import { WebSessionReadStates } from "./session-read-state/service.js";
 import { WebNotificationRoutes } from "./notifications/routes.js";
 import { DesktopNotificationDelivery } from "./notifications/desktop-delivery.js";
+import { validateRuntimeQueueTarget } from "./client-state/queue-target.js";
 
 export type { LocalRuntimeBackendOptions } from "./local-runtime/contracts.js";
 
@@ -54,6 +56,7 @@ export class LocalRuntimeWebBackend {
     const desktop = new DesktopNotificationDelivery(
       options.rootDir ?? process.cwd(),
     );
+    const readStates = new WebSessionReadStates((id) => this.environments.get(id));
     this.notifications = new WebNotificationService({
       hasEnvironment: (id) => {
         const configured = this.environments.environmentConfig();
@@ -71,6 +74,7 @@ export class LocalRuntimeWebBackend {
           environment,
           resources: ["notifications"],
         }),
+      readEvidence: (environment, session) => readStates.assistantReadEvidence(environment, session),
       desktop: () => desktop.status(),
       deliver: (item, signal) => desktop.send(item, signal),
     });
@@ -80,12 +84,16 @@ export class LocalRuntimeWebBackend {
       this.environments,
       requests,
       createWorkspaceChangeNotifier(clients),
+      readStates,
+      this.notifications.observeRead,
+      this.notifications.observeApprovalDecision,
     );
     this.realtime = new LocalRealtimeController(
       resolvedOptions,
       this.environments,
       requests,
       clients,
+      this.notifications.observeApprovalDecision,
     );
     this.controls = new LocalRuntimeControlRoutes(requests);
   }
@@ -143,6 +151,10 @@ export class LocalRuntimeWebBackend {
       });
       return true;
     }
+  }
+
+  validateQueueTarget(input: Record<string, unknown>): Promise<void> {
+    return validateRuntimeQueueTarget(input, (id) => this.environments.get(id).services.sessions);
   }
 
   handleRealtimeConnection(client: WebSocket): void {

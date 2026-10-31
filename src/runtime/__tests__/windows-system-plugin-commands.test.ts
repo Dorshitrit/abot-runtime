@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { createSystemHandlers } from "../../computer-access/handlers.js";
@@ -46,7 +46,7 @@ test.skipIf(process.platform !== "win32")("cancelling an active native command r
     command: `[IO.File]::AppendAllText(${powershellLiteral(marker)}, '1'); [Console]::Out.Write('password=synthetic-cancel-secret'); Start-Sleep -Seconds 30` },
     { abortSignal: controller.signal });
   try {
-    await vi.waitFor(async () => expect((await stat(marker)).isFile()).toBe(true), { timeout: 15_000, interval: 50 });
+    await vi.waitFor(async () => expect(await readFile(marker, "utf8")).toBe("1"), { timeout: 15_000, interval: 50 });
     controller.abort();
     const receipt = await pending;
     expect(receipt.ok).toBe(false);

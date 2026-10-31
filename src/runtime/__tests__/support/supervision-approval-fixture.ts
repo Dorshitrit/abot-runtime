@@ -156,7 +156,6 @@ export function supervisionApprovalFixture() {
         return encode({
           action: "open_capability_scope",
           catalogGroupIds: ["files"],
-          acknowledgement: "Checking the target.",
         });
       if (steering.snapshot().version > 0 || selected)
         return encode({ action: "respond" });
@@ -164,14 +163,12 @@ export function supervisionApprovalFixture() {
         return encode({
           action: "invoke_capability",
           capabilityId: "read_source",
-          intent: "Read the source.",
           ...(rootTurns === 2 ? { workingDirectory: "." } : {}),
         });
       selected = true;
       return encode({
         action: "invoke_capability",
         capabilityId: descriptor.capabilityId,
-        intent: "Apply the target.",
         operationObjective: `Apply only ${TARGET}.`,
         controlsEvidenceExecutionIds: needsSource
           ? ["capability-execution-2"]

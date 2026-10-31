@@ -1,3 +1,4 @@
+import { requireConnectedChatGptSetupAccount } from "./chatgpt-setup-binding.js";
 import { requiresProviderCredential } from "./runtime-setup-auth.js";
 import { RuntimeSetupError } from "./runtime-setup-input.js";
 import {
@@ -21,7 +22,7 @@ import type { ModelSetupOptions } from "./model-setup-catalog.js";
 export function buildNewModelProvider(selection: NewModelProvider, apiKey?: string) {
   const apiKeyEnv = selection.apiKeyEnv ??
     (selection.type === "llamacpp" && (apiKey || selection.useApiKey) ? isolatedProviderCredentialName(selection.id) : undefined);
-  const config = buildProviderConfig(selection.type, selection.baseUrl, apiKeyEnv);
+  const config = buildProviderConfig(selection.type, selection.baseUrl, apiKeyEnv, selection.accountRef);
   const needsIsolatedCredentialBinding = selection.type === "openai";
   if (needsIsolatedCredentialBinding)
     config.apiKeyEnv = isolatedProviderCredentialName(selection.id);
@@ -70,6 +71,11 @@ export async function prepareModelCredential(
   provider: Record<string, unknown>,
   apiKey?: string,
 ) {
+  try {
+    await requireConnectedChatGptSetupAccount(provider);
+  } catch (error) {
+    throw new ModelSetupError("model_account_unavailable", (error as Error).message, 409);
+  }
   const requiresApiKey = requiresProviderCredential(provider);
   if (!requiresApiKey) {
     if (apiKey)

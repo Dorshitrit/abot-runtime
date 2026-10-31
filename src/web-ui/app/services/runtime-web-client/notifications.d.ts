@@ -1,4 +1,5 @@
 import type {
+  AutomationReportRead,
   NotificationDesktopState,
   NotificationListQuery,
   NotificationPage,
@@ -15,6 +16,10 @@ export interface NotificationRequests {
   ): Promise<{ ok: true; desktop: NotificationDesktopState } & NotificationPage>;
   markNotificationsRead(
     input: NotificationReadChange,
+    environmentId?: string,
+  ): Promise<{ ok: true } & NotificationReadResult>;
+  markAutomationReportRead(
+    input: AutomationReportRead,
     environmentId?: string,
   ): Promise<{ ok: true } & NotificationReadResult>;
   saveNotificationPreferences(

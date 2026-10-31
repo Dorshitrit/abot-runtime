@@ -46,7 +46,7 @@ function inputBlockLabel(field, executed) {
 /** Render recorded evidence consistently in approval and activity surfaces. */
 export function createConversationToolEvidence(
   action,
-  { documentRoot = document, hideRepeatedTarget = false } = {},
+  { documentRoot = document, hideRepeatedTarget = false, createFileChanges } = {},
 ) {
   function element(tag, className, value = "") {
     const node = documentRoot.createElement(tag);
@@ -61,8 +61,8 @@ export function createConversationToolEvidence(
     return node;
   }
 
-  function evidencePanel(title, fields, blocks = []) {
-    if (hasNoDisplayEvidence(fields, blocks)) return null;
+  function evidencePanel(title, fields, blocks = [], includeFileChanges = false) {
+    if (hasNoDisplayEvidence(fields, blocks) && !includeFileChanges) return null;
     const panel = element("section", "conversation-tool-evidence");
     panel.setAttribute("aria-label", title);
     if (hasRecordedFields(fields)) {
@@ -81,6 +81,7 @@ export function createConversationToolEvidence(
       }
       panel.appendChild(list);
     }
+    const excerpts = [];
     for (const block of blocks) {
       const content = element("div", "conversation-tool-text-block");
       content.appendChild(
@@ -93,9 +94,12 @@ export function createConversationToolEvidence(
       );
       preview.setAttribute("aria-label", block.label);
       content.appendChild(preview);
-      panel.appendChild(content);
+      excerpts.push(content);
     }
-    return panel;
+    const changes = includeFileChanges ? createFileChanges?.(excerpts[0] || null) : null;
+    if (changes) panel.appendChild(changes);
+    panel.append(...excerpts);
+    return panel.children.length ? panel : null;
   }
 
   const input = (action.sent || []).filter(
@@ -126,6 +130,7 @@ export function createConversationToolEvidence(
             },
           ]
         : [],
+      true,
     ),
   ].filter(Boolean);
   if (panels.length === 0) return null;

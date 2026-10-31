@@ -1,7 +1,9 @@
+import type { CompactionProgressObserver } from "../../model/context-compaction-progress.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type {
   SessionMemoryCheckpoint,
   SessionMemoryRepository,
+  SessionMemoryScope,
 } from "../../../sessions/memory/contracts.js";
 import type { SessionRecord } from "../../../sessions/types.js";
 import type { SessionMemorySettledTurn } from "../../../sessions/memory/source.js";
@@ -31,18 +33,22 @@ export type RequestSessionMemory = Readonly<{
   project(): SessionMemoryRequestProjection;
   prepare(
     request: BoundRequestModelInvocationContext,
+    onProgress?: CompactionProgressObserver,
   ): Promise<PreparedSessionMemoryCheckpoint>;
 }>;
 
 export type SessionMemoryCompactor = Readonly<{
   compact(params: {
+    scope?: SessionMemoryScope;
     request: BoundRequestModelInvocationContext;
     previousSummary?: string;
     turns: readonly SessionMemorySettledTurn[];
+    onProgress?: CompactionProgressObserver;
   }): Promise<string>;
 }>;
 
 export type CreateRequestSessionMemoryParams = Readonly<{
+  scope?: SessionMemoryScope;
   sessionId: string;
   repository: SessionMemoryRepository;
   compactor: SessionMemoryCompactor;

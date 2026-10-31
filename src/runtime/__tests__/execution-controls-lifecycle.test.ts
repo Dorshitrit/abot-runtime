@@ -82,11 +82,23 @@ test.each(["count", "admission", "compaction", "refinement"] as const)(
       expect(
         fixture.calls.filter(({ step }) => step === "context.compact"),
       ).toHaveLength(1);
-      expect(
-        fixture.events
-          .filter(({ name }) => name.startsWith("context.compaction."))
-          .map(({ name }) => name),
-      ).toEqual(["context.compaction.started", "context.compaction.completed"]);
+      const compactionEvents = fixture.events.filter(({ name }) =>
+        name.startsWith("context.compaction."),
+      );
+      expect(compactionEvents[0]?.name).toBe("context.compaction.started");
+      expect(compactionEvents.at(-1)?.name).toBe("context.compaction.completed");
+      const progress = compactionEvents.slice(1, -1);
+      expect(progress.length).toBeGreaterThan(0);
+      for (const event of progress) {
+        expect(event).toMatchObject({
+          name: "context.compaction.progress",
+          data: {
+            invocationId: compactionEvents[0]!.data!.invocationId,
+            compactionScope: "active_request",
+            phase: "progress",
+          },
+        });
+      }
       expect(request.contextCompactionStore!.snapshot!().checkpoints).toEqual([
         expect.objectContaining({
           allowedConsumers: ["capability.controls"],

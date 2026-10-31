@@ -1,3 +1,4 @@
+import { projectUnsharedSuperDependencyResults } from "../../../context/super-dependency-observations.js";
 import { resolveConfiguredStepInstructionMetadata } from "../../../config/runner/step-instructions.js";
 import {
   assessRequestMessagesBudget,
@@ -224,6 +225,13 @@ export function buildWorkerAssignmentPrompt(
       ...(capabilitySelectionRejection ? { capabilitySelectionRejection } : {}),
     });
   }
+  const projectedDependencies = options.evidenceAssessment && capabilityExecutionPending
+    ? projectUnsharedSuperDependencyResults(
+        dependencyResults, options.evidenceAssessment.contextMessages,
+        session.canonicalState.canonicalSource?.head.policy.authority,
+        callIdentity,
+      )
+    : dependencyResults;
   const identity = {
     callId: callIdentity.callId,
     parentCallId: callIdentity.parentCallId,
@@ -233,7 +241,7 @@ export function buildWorkerAssignmentPrompt(
     ...(options.call.workingDirectory !== undefined
       ? { workingDirectory: options.call.workingDirectory }
       : {}),
-    ...(dependencyResults.length > 0 ? { dependencyResults } : {}),
+    ...(projectedDependencies.length > 0 ? { dependencyResults: projectedDependencies } : {}),
     ...(operationSupervision ? { operationSupervision } : {}),
   };
 

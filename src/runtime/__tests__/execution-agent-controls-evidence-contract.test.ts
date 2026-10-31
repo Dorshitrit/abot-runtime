@@ -36,7 +36,6 @@ const evidence = Object.freeze(["execution-first", "execution-second"]);
 function selection(capabilityId: string = remaining.capabilityId) {
   return {
     capabilityId,
-    intent: "Author the bounded inspection.",
     operationObjective: "Complete the bounded operation on exact.txt.",
     selectionControls: { path: "exact.txt" },
   };

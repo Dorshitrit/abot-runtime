@@ -55,6 +55,7 @@ export interface ConversationSessionClient {
   ): Promise<Record<string, unknown>>;
   fetchRequestEvents(options: {
     requestId: string;
+    sessionId?: string;
     afterSeq: number;
     environmentId: string;
   }): Promise<unknown[]>;

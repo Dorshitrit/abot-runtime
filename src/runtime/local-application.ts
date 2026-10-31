@@ -1,3 +1,4 @@
+import { createLocalMaintenanceClient } from "./local-host/client-maintenance.js";
 import { join } from "node:path";
 import { loadRuntimeConfig } from "./config.js";
 import type { RuntimeConfig } from "./ports.js";
@@ -59,6 +60,7 @@ export function createLocalRuntimeApplication(
   const services = Object.freeze({
     config,
     ...createLocalServiceClients(call),
+    maintenance: createLocalMaintenanceClient(call),
     longTermMemory: memory.service,
     passiveLearning: learning.service,
     informationBasket: basket.service,

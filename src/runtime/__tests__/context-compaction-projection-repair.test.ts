@@ -5,43 +5,12 @@ import {
   ADMISSION_MESSAGES,
   createAdmissionController,
   createAdmissionFixture,
-  createAdmissionStage,
 } from "./support/compaction-admission-fixture.js";
+
+import { createProjectionRepairStage } from "./support/compaction-projection-repair-fixture.js";
 
 afterEach(() => vi.restoreAllMocks());
 
-function createProjectionRepairStage(
-  scope: "session_history" | "active_request",
-) {
-  const stage = createAdmissionStage(scope, "unused");
-  const firstCommit = vi.fn<() => void | Promise<void>>();
-  const repairCommit = vi.fn<() => void | Promise<void>>();
-  stage.prepare.mockImplementation(async (messages, context) => ({
-    kind: "prepared",
-    preparation: {
-      messages: [
-        ...messages,
-        {
-          role: "system",
-          content: `${scope}:${context?.projectionRepair ? "repair" : "first"}`,
-        },
-      ],
-      scopeId: stage.scopeId,
-      sourceRevision: scope === "session_history" ? "history-revision" : 2,
-      coveredSourceCount: 1,
-      hasExhaustedCompactionSources: true,
-      commit: context?.projectionRepair ? repairCommit : firstCommit,
-    },
-  }));
-  return {
-    ...stage,
-    ...(scope === "active_request"
-      ? { supportsProjectionRepair: true as const }
-      : {}),
-    firstCommit,
-    repairCommit,
-  };
-}
 
 function compactionEvents(harness: ReturnType<typeof createAdmissionFixture>) {
   return harness.events
@@ -129,7 +98,7 @@ describe("bounded projection repair admission", () => {
     expect(history.prepare).toHaveBeenCalledOnce();
     expect(active.prepare).toHaveBeenCalledTimes(2);
     expect(history.prepare.mock.calls[0]![0]).toEqual(ADMISSION_MESSAGES);
-    expect(history.prepare.mock.calls[0]![1]).toBeUndefined();
+    expect(history.prepare.mock.calls[0]![1]).toEqual({ onProgress: expect.any(Function) });
     expect(active.prepare.mock.calls[0]![0].at(-1)?.content).toBe(
       "session_history:first",
     );

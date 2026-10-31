@@ -4,7 +4,7 @@ import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/d
 import { createRequestExecutionScope } from "../request/execution-scope.js";
 import { runRequestRunner } from "../request/runner.js";
 import { SUPERVISOR_SKILL_READ_STATE_KIND } from "../steps/supervisor-decision/skill-read-state.js";
-import { createMemoryRecallHarness, FINAL_RESPONSE, REQUEST_PROMPT, modelMessages, type RecallModelInput } from "./support/memory-recall-runner.js";
+import { createMemoryRecallHarness, FINAL_RESPONSE, REQUEST_PROMPT, jsonMessages, modelMessages, type RecallModelInput } from "./support/memory-recall-runner.js";
 import { defaultSupervisorPresentation, supervisorFormatName } from "./support/supervisor-model-phases.js";
 
 const skill = {
@@ -42,7 +42,7 @@ function finishWorker(input: RecallModelInput) {
 
 const invokeWorker = { action: "invoke_role", roleId: "worker", objective: "Explain the requested distinction." };
 
-test("publishes presentation once, selects from lean metadata, then classifies without Skill bodies and answers with captured guidance", async () => {
+test("publishes presentation once, selects from lean metadata, then classifies and answers with captured guidance", async () => {
   let selections = 0;
   const f = fixture({
     policy: "supervisor-worker-v1", enabled: false,
@@ -71,7 +71,11 @@ test("publishes presentation once, selects from lean metadata, then classifies w
     },
     classifyProcedure(input) {
       expect(supervisorFormatName(input)).toBe("supervisor_procedure_gate");
-      expect(JSON.stringify(input.messages)).not.toContain(skill.content);
+      expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1"))
+        .toEqual([expect.objectContaining({
+          authority: "passive_reference", purpose: "skill_guidance", document: skill,
+        })]);
+      expect(JSON.stringify(input.messages)).not.toContain(irrelevant.content);
       for (const action of ["list_skills", "read_skills"])
         expect(JSON.stringify(input.format)).not.toContain(`"${action}"`);
       return { requiresProcedure: false, responseRecommendation: "Answer with the accepted guidance." };
@@ -137,7 +141,7 @@ test("EA keeps its existing decision path and never invokes SUPER preparation", 
   const present = vi.fn();
   const selectSkills = vi.fn();
   const f = fixture({ policy: "execution-agent-v1", enabled: false, present, selectSkills, decide: () => ({
-    action: "respond", acknowledgement: "I will answer the request.", title: "Handle the request",
+    action: "respond", title: "Handle the request",
   }) });
   await expect(runRequestRunner(f.request)).resolves.toMatchObject({ output: FINAL_RESPONSE });
   expect(present).not.toHaveBeenCalled();
@@ -202,7 +206,9 @@ test.each([true, false])("complete supplied metadata offers every candidate with
       return read ? { action: "read_skills", skillIds: [target.skillId] } : { action: "continue" };
     },
     classifyProcedure(input) {
-      expect(JSON.stringify(input.messages)).not.toContain(target.content);
+      expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1")
+        .map(({ document }) => document)).toEqual(read ? [target] : []);
+      if (!read) expect(JSON.stringify(input.messages)).not.toContain(target.content);
       return { requiresProcedure: false, responseRecommendation: "Answer the current request." };
     },
     onInput(input) {
@@ -319,7 +325,7 @@ test.each(["name", "unknown", "duplicate", "mixed"])("repairs an invalid %s batc
   expect(f.store.list).toHaveBeenCalledTimes(2); // One snapshot per SUPER entry; repair reuses its snapshot.
 });
 
-test("persistent repeated IDs exhaust exactly two repairs and use existing failure finalization", async () => {
+test("persistent repeated IDs exhaust exactly two repairs and use deterministic failure finalization", async () => {
   let selections = 0;
   const f = fixture({
     policy: "supervisor-worker-v1", enabled: false,
@@ -331,9 +337,7 @@ test("persistent repeated IDs exhaust exactly two repairs and use existing failu
     delegate: () => invokeWorker,
     decide(input) {
       if (supervisorFormatName(input) === "supervisor_decision") return invokeWorker;
-      if (input.modelStep !== "degraded.finalization") return finishWorker(input);
-      expect(input.modelStep).toBe("degraded.finalization");
-      return JSON.stringify({ failureNotice: "The request could not be completed.", nextStep: "Please try again." });
+      return finishWorker(input);
     },
   });
   const request = createRequestExecutionScope({
@@ -346,7 +350,7 @@ test("persistent repeated IDs exhaust exactly two repairs and use existing failu
   });
   await expect(runRequestRunner(request)).resolves.toMatchObject({
     disposition: "blocked",
-    output: expect.stringContaining("The request could not be completed."),
+    output: expect.stringContaining("model returned an invalid decision or response."),
   });
   expect(selections).toBe(4); // First successful selection, then initial rejection and two repairs.
   expect(f.store.read.mock.calls).toEqual([[skill.skillId]]);
@@ -354,6 +358,6 @@ test("persistent repeated IDs exhaust exactly two repairs and use existing failu
   expect(f.gatewayInvoke.mock.calls.map(([input]) => supervisorFormatName(input) ?? input.modelStep)).toEqual([
     "supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate", "supervisor_delegation", "supervisor_working_directory",
     "worker.evidence", "worker.result", "supervisor_skill_selection",
-    "supervisor_skill_selection", "supervisor_skill_selection", "degraded.finalization",
+    "supervisor_skill_selection", "supervisor_skill_selection",
   ]);
 });

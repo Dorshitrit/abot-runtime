@@ -13,7 +13,7 @@ const decode = (value: string) =>
     .replace(/&amp;/g, "&");
 const escape = (value: string) =>
   value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-const voidTags = new Set(["INPUT", "BR", "HR"]);
+const voidTags = new Set(["INPUT", "BR", "HR", "IMG"]);
 type FakeDocument = {
   activeElement: FakeElement | null;
   body: FakeElement;
@@ -127,6 +127,9 @@ export class FakeElement {
   }
   hasAttribute(name: string) {
     return this.attributes.has(name);
+  }
+  getAttribute(name: string) {
+    return this.attributes.get(name) ?? null;
   }
   removeAttribute(name: string) {
     this.attributes.delete(name);

@@ -1,3 +1,4 @@
+import type { ModelStepCompactionPreparationContext } from "../../model/context-compaction-contracts.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type {
   ModelStepContextCompactionController,
@@ -5,6 +6,7 @@ import type {
 } from "../../model/model-step-port.js";
 import type { BoundRequestModelInvocationContext, RequestExecutionSeed } from "../../request/contracts.js";
 import { replaceSessionMemoryProjection } from "./message-replacement.js";
+import { coordinateExecutionHistoryProjection } from "./execution-coordination.js";
 
 export function createSessionMemoryAwareCompactionController(
   request: BoundRequestModelInvocationContext & Pick<RequestExecutionSeed, "sessionId" | "sessionMemory">,
@@ -15,7 +17,7 @@ export function createSessionMemoryAwareCompactionController(
     return activeRequestController;
   }
   const inputProjection = sessionMemory.project();
-  return Object.freeze({
+  return coordinateExecutionHistoryProjection(sessionMemory, Object.freeze({
     project(messages: readonly ChatMessage[]) {
       const currentProjection = sessionMemory.project();
       const projected = replaceSessionMemoryProjection({
@@ -38,8 +40,9 @@ export function createSessionMemoryAwareCompactionController(
           scopeId,
           async prepare(
             messages: readonly ChatMessage[],
+            context?: ModelStepCompactionPreparationContext,
           ): Promise<ModelStepCompactionStageOutcome> {
-            const prepared = await sessionMemory.prepare(request);
+            const prepared = await sessionMemory.prepare(request, context?.onProgress);
             return Object.freeze({
               kind: "prepared",
               preparation: Object.freeze({
@@ -67,5 +70,5 @@ export function createSessionMemoryAwareCompactionController(
         activeRequestController.hasExhaustedVerifiedCompactionSources?.(messages) === true
       );
     },
-  });
+  }));
 }

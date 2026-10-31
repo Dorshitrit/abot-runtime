@@ -1,3 +1,6 @@
+import { bindWorkerPayloadSteering } from "./worker-payload-steering.js";
+import { projectPayloadDependencyObservationScope } from "../context/super-dependency-observations.js";
+import { projectSuperPayloadContract } from "./super-payload-contract-projection.js";
 import {
   buildRuntimeFilesystemScopeMessage,
   type RuntimeFilesystemScope,
@@ -39,6 +42,9 @@ import type {
 } from "./contracts.js";
 import { buildWorkerCapabilityPayloadRepairHint } from "./worker-capability-payload-prompts.js";
 import { projectExecutionPayloadCompactedEvidence } from "./execution-payload-compacted-evidence.js";
+import { createExecutionPayloadHistoryMemory, usesLegacyPayloadRequestSource } from "./execution-payload-history.js";
+import { createExecutionHistoryReferenceCompactionController } from "../context/session-memory/execution-reference-memory.js";
+import type { RequestSessionMemory } from "../context/session-memory/contracts.js";
 import { projectPayloadSettledEvidence } from "./payload-settled-evidence.js";
 import { rootPayloadCompactionScopeId } from "../orchestration/worker-capabilities/payload-compaction-transport.js";
 import {
@@ -115,7 +121,9 @@ export function createRequestWorkerCapabilityPayloadAuthor(
         model: Object.freeze({
           invoke: (input: WorkerCapabilityPayloadModelRequest) =>
             invokePayloadModel(
-              request,
+              bindWorkerPayloadSteering(
+                request, authorInput.call, executionPolicyAuthority,
+              ),
               input,
               buildRuntimeFilesystemScopeMessage({
                 scope: filesystemScope,
@@ -143,31 +151,35 @@ async function invokePayloadModel(
       callId: payloadContextCallId(input.context),
     });
   try {
-    const projection = payloadMessages(request, input, filesystemMessage);
+    const historyMemory = createExecutionPayloadHistoryMemory(input, request, executionPolicyAuthority);
+    const projection = payloadMessages(request, input, filesystemMessage, historyMemory, executionPolicyAuthority);
     return await invokeRepairableRawModelStep({
       request,
       modelStep: input.modelStep,
       messages: projection.messages,
-      contextCompaction: createSupervisorSkillPayloadCompactionController(
-        input, request, createPolicyModelStepCompactionController(request, {
-          consumer: input.modelStep,
-          hasVerifiedCompactedEvidence: projection.hasVerifiedCompactedEvidence,
-          call: payloadCompactionCall(request.prompt, input),
-          sourceRevision:
-            input.superWorkerCompaction?.sourceRevision ??
-            payloadCompactionSourceRevision(input.context),
-          ...(input.superWorkerCompaction
-            ? {
-                superWorkerCompaction: input.superWorkerCompaction,
-                requireSuperWorkerSources: true,
-              }
-            : {}),
-          allowedConsumers: compactionOptions.allowedConsumers,
-          scopeId: compactionOptions.scopeId,
-          resultSourceOverrides:
-            compactionOptions.resultSourceOverrides ??
-            projection.resultSourceOverrides,
-        }, executionPolicyAuthority),
+      contextCompaction: createExecutionHistoryReferenceCompactionController(
+        request, historyMemory,
+        createSupervisorSkillPayloadCompactionController(
+          input, request, createPolicyModelStepCompactionController(request, {
+            consumer: input.modelStep,
+            hasVerifiedCompactedEvidence: projection.hasVerifiedCompactedEvidence,
+            call: payloadCompactionCall(request.prompt, input),
+            sourceRevision:
+              input.superWorkerCompaction?.sourceRevision ??
+              payloadCompactionSourceRevision(input.context),
+            ...(input.superWorkerCompaction
+              ? {
+                  superWorkerCompaction: input.superWorkerCompaction,
+                  requireSuperWorkerSources: true,
+                }
+              : {}),
+            allowedConsumers: compactionOptions.allowedConsumers,
+            scopeId: compactionOptions.scopeId,
+            resultSourceOverrides:
+              compactionOptions.resultSourceOverrides ??
+              projection.resultSourceOverrides,
+          }, executionPolicyAuthority),
+        ),
       ),
       timeoutReason: "worker_capability_payload_timeout",
       ...(input.responseFormat ? { format: input.responseFormat } : {}),
@@ -273,6 +285,8 @@ function payloadMessages(
   request: RequestWorkerCapabilityPayloadContext,
   input: WorkerCapabilityPayloadModelRequest,
   filesystemMessage?: ChatMessage,
+  historyMemory?: RequestSessionMemory,
+  executionPolicyAuthority?: ExecutionPolicyAuthoritySnapshot,
 ): Readonly<{
   messages: ChatMessage[];
   resultSourceOverrides: readonly SemanticCompactionSource[];
@@ -289,8 +303,9 @@ function payloadMessages(
     ...(request.modelPolicy ? { modelPolicy: request.modelPolicy } : {}),
   });
   const conversation = projectSupervisorSkillPayloadHistory(input, request);
+  const historyReferences = historyMemory?.project().priorConversationMessages;
   const requestSource =
-    input.requestSourceProjection === "full_request"
+    usesLegacyPayloadRequestSource(input, historyReferences !== undefined)
       ? projectRequestSource({
           requestId: request.requestId,
           prompt: request.prompt,
@@ -299,7 +314,7 @@ function payloadMessages(
           historyMessages: conversation ? [] : request.historyMessages,
         })
       : undefined;
-  const projectedContext = projectPayloadContext(input.context, request);
+  const projectedContext = projectPayloadContext(input.context, request, executionPolicyAuthority);
   traceDebug("runtime.worker_capability_payload_context", "projected", {
     requestId: request.requestId,
     modelStep: input.modelStep,
@@ -315,15 +330,17 @@ function payloadMessages(
     hasTargetContext: input.context.targetContext !== undefined,
     requestSourceProjection: input.requestSourceProjection,
   });
-  const canonicalContext = `Canonical runtime context:\n${JSON.stringify(projectedContext.metadata)}`;
+  const contractProjection = projectSuperPayloadContract(input, executionPolicyAuthority, projectedContext.metadata);
+  const canonicalContext = `Canonical runtime context:\n${JSON.stringify(contractProjection.metadata)}`;
   try {
     const messages = projectRequestContext({
-      instructions: input.instructions,
+      instructions: contractProjection.instructions,
       ...(conversation ?? { historyMessages: [] }),
       prompt: canonicalContext,
       referenceMessages: [
         ...projectPayloadSkillGuidance(input),
         ...(filesystemMessage ? [filesystemMessage] : []),
+        ...(historyReferences ?? []),
         ...(requestSource ? [projectSupervisorSkillPayloadRequestSource(
           input, buildRequestSourceMessage(requestSource), request.attachments,
         )] : []),
@@ -422,6 +439,7 @@ function payloadCompactionOptions(
 function projectPayloadContext(
   context: PayloadContext,
   request: RequestWorkerCapabilityPayloadContext,
+  executionPolicyAuthority?: ExecutionPolicyAuthoritySnapshot,
 ): Readonly<{
   metadata: Readonly<Record<string, unknown>>;
   relatedArtifactMessages: readonly ChatMessage[];
@@ -453,7 +471,9 @@ function projectPayloadContext(
   const adapterEvidence = projectPayloadSettledEvidence(
     compactedEvidence.results,
   );
-  const baseMetadata: Record<string, unknown> = { ...context };
+  const baseMetadata: Record<string, unknown> = {
+    ...projectPayloadDependencyObservationScope(context, executionPolicyAuthority),
+  };
   delete baseMetadata.targetContext;
   delete baseMetadata.relatedArtifactContexts;
   return Object.freeze({

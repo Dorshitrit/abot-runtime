@@ -1,3 +1,4 @@
+import { ChatGptWebIntegration } from "./chatgpt-auth/web-integration.js";
 import type {
   AppliedGatewayConfigurations,
   RuntimeSetupGatewayRestorePoint,
@@ -278,9 +279,12 @@ export function startWebUiServer(
     ((path: string, applied?: AppliedGatewayConfigurations) =>
       setupGateway.activate(path, applied));
   const wss = new WebSocketServer({ noServer: true });
+  const allowPublishedLoopback = allowsPublishedLoopbackAuthority(options.host);
+  const chatGptWeb = options.backend === "runtime" ? new ChatGptWebIntegration({ allowPublishedLoopback }) : null;
   const localRuntimeBackend =
     options.backend === "runtime"
       ? new LocalRuntimeWebBackend({
+          chatGptAuthRoutes: chatGptWeb?.routes,
           rootDir: options.rootDir,
           configPath: options.configPath,
           defaultEnvironmentId: options.defaultEnvironmentId,
@@ -342,7 +346,7 @@ export function startWebUiServer(
     for (const client of wss.clients) {
       if (client.readyState === 1) client.send(JSON.stringify({ type: "workspace_changed", resources: ["client-state"] }));
     }
-  });
+  }, localRuntimeBackend ? (input) => localRuntimeBackend.validateQueueTarget(input) : undefined);
   const systemHost = localRuntimeBackend
     ? new WebSystemHostService(
         rootDir,
@@ -350,7 +354,6 @@ export function startWebUiServer(
         (environmentId) => localRuntimeBackend.nativePermissions(environmentId),
       )
     : null;
-  const allowPublishedLoopback = allowsPublishedLoopbackAuthority(options.host);
   const server = createServer((req, res) => {
     void (async () => {
       if (
@@ -364,6 +367,7 @@ export function startWebUiServer(
         return;
       if (await handleLinkPreview(req, res)) return;
       const pathname = new URL(req.url || "/", "http://localhost").pathname;
+      if (await chatGptWeb?.handle(req, res, pathname)) return;
       if (await clientState.handle(req, res, pathname)) return;
       if (await systemHost?.handleHttp(req, res, pathname)) return;
       if (pathname === "/web-config") {
@@ -492,7 +496,7 @@ export function startWebUiServer(
       schedulerStartup,
       () =>
         closeRuntimeSetupServices(
-          async () => localRuntimeBackend?.stop(),
+          async () => { chatGptWeb?.close(); await localRuntimeBackend?.stop(); },
           () => setupGateway.close(),
           async () => systemHost?.close(),
         ),

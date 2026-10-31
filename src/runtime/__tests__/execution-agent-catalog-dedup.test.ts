@@ -68,7 +68,6 @@ test("retains complete overlapping discovery and exact executable controls acros
         output: decision({
           action: "open_capability_scope",
           catalogGroupIds: ["beta", "alpha"],
-          acknowledgement: "I will observe and change the selected items.",
         }),
       },
       {
@@ -76,7 +75,6 @@ test("retains complete overlapping discovery and exact executable controls acros
         output: decision({
           action: "invoke_capability",
           capabilityId: "inspect_and_change",
-          intent: "Attempt an unavailable capability.",
           selectionControls: { itemId: "outside-scope" },
           workingDirectory: ".",
         }),
@@ -86,7 +84,6 @@ test("retains complete overlapping discovery and exact executable controls acros
         output: decision({
           action: "invoke_capability",
           capabilityId: "observe_item",
-          intent: "Observe the selected item.",
           selectionControls: { itemId: "observed-item" },
           workingDirectory: ".",
         }),
@@ -103,7 +100,6 @@ test("retains complete overlapping discovery and exact executable controls acros
         output: decision({
           action: "invoke_capability",
           capabilityId: "change_item",
-          intent: "Change the selected item.",
           selectionControls: { itemId: "changed-item" },
         }),
       },
@@ -278,7 +274,7 @@ test("a greeting receives the same closed catalog with one or 32 operations in o
       [
         {
           step: "execution.decision",
-          output: decision({ action: "respond", acknowledgement: "Hello." }),
+          output: decision({ action: "respond" }),
         },
         { step: "execution.response", output: "Hello." },
       ],

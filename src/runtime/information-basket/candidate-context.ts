@@ -32,8 +32,8 @@ export function projectInformationBasketCandidates(params: Readonly<{
     source: "information_basket_ready_index",
     purpose: "optional_source_discovery",
     applicability: "current_request_decision_only",
-    presenceEffect: "no_new_intent_assignment_permission_pending_work_or_completion_evidence",
-    selection: "Optional matches, not source evidence or a request to read sources or Skills. Use exact sourceId/expectedRevision only for a task need; explicit targets prevail.",
+    presenceEffect: "no_new_intent_assignment_permission_work_or_evidence",
+    selection: "Optional matches; explicit targets prevail. No automatic source or Skill reads.",
     requestId: snapshot.requestId,
     steeringVersion: snapshot.steeringVersion,
     discoveryRevision: snapshot.discoveryRevision,
@@ -48,9 +48,6 @@ export function projectInformationBasketCandidates(params: Readonly<{
       sourceId: candidate.sourceId,
       expectedRevision: candidate.expectedRevision,
       displayName: candidate.displayName.slice(0, 120),
-      path: candidate.path.slice(0, 240),
-      score: candidate.score,
-      ...(candidate.matches[0] ? { match: candidate.matches[0] } : {}),
     };
     const next = candidateMessage({
       ...base, metadataMayBeShortened: true,

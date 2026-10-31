@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { readExecutionToolObservation } from "../../sessions/memory/execution-observation.js";
 
 import { validateModelGatewayMessages } from "../../model-gateway/message-contract.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
@@ -157,7 +158,6 @@ describe("Execution Agent operation supervision context", () => {
           return decision({
             action: "open_capability_scope",
             catalogGroupIds: [FILE_GROUP],
-            acknowledgement: "I will update the exact file.",
           });
         case 2:
           expect(
@@ -254,10 +254,22 @@ describe("Execution Agent operation supervision context", () => {
       onEvent,
     });
 
-    await expect(runRequestRunner(request)).resolves.toEqual({
+    const result = await runRequestRunner(request);
+    expect(result).toEqual({
       output: "Updated the exact file.",
       outputTextMode: "exact",
+      finalObservation: { observationContent: expect.any(String) },
     });
+    if (!("output" in result)) throw new Error("expected_completed_request");
+    const observation = readExecutionToolObservation({
+      requestId: request.requestId,
+      observationContent: result.finalObservation?.observationContent,
+    });
+    expect(observation?.results).toEqual(exactResults.map((summary, index) => expect.objectContaining({
+      executionId: `capability-execution-${index + 1}`, capabilityId: descriptor.capabilityId, representation: "original",
+      adapterResult: expect.objectContaining({ payload: { outcome: "succeeded", observedEffect: "observation",
+        summary, referenceData: `${summary}-reference` } }),
+    })));
     expect(execute).toHaveBeenCalledTimes(2);
     expect(prepare).toHaveBeenCalledTimes(3);
     expect(executedControls).toEqual([
@@ -275,7 +287,6 @@ function invokeCapabilityDecision(includeWorkingDirectory: boolean) {
   return decision({
     action: "invoke_capability",
     capabilityId: descriptor.capabilityId,
-    intent: "Apply the exact requested update.",
     operationObjective: OPERATION_OBJECTIVE,
     controlsEvidenceExecutionIds: [],
     selectionControls: { path: TARGET_PATH },

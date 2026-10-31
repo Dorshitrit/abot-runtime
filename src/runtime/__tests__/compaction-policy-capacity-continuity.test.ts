@@ -32,7 +32,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
     expect(pressured.counts.map(({ inputTokens }) => inputTokens)).toEqual(pressured.pressureCounts);
     expect(pressured.rootInputs).toHaveLength(1);
     const lifecycle = pressured.events.filter(({ name }) =>
-      name.startsWith("context.compaction."),
+      /^context\.compaction\.(started|completed|failed)$/u.test(name),
     );
     expect(lifecycle.map(({ name }) => name)).toEqual([
       "context.compaction.started",

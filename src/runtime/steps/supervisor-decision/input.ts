@@ -45,7 +45,7 @@ import {
   buildSupervisorDecisionInstructions,
   buildSupervisorMemoryAvailabilityInstructions,
 } from "./prompt.js";
-import { buildSupervisorContinuationPart } from "./resume.js";
+import { buildSupervisorContinuationPart, hasSupervisorWorkerSteeringHandoff } from "./resume.js";
 import { buildSupervisorMemoryRecallContinuationParts } from "./memory-recall-continuation.js";
 import { canRecommendDirectSupervisorResponse } from "./response-recommendation.js";
 
@@ -151,14 +151,16 @@ export function buildSupervisorDecisionInput(
       requestId: request.requestId,
       modelStep: SUPERVISOR_DECISION_MODEL_STEP,
     } satisfies SupervisorDecisionDiagnosticContext);
-  const roleContinuationPart = options.resume
-    ? buildSupervisorContinuationPart({
+  const continuation = options.resume
+    ? {
         resume: options.resume,
         currentCallId: requireSupervisorCallId(diagnostic),
         currentInvocationAttempt:
           requireSupervisorInvocationAttempt(diagnostic),
-      })
+      }
     : undefined;
+  const roleContinuationPart = continuation
+    ? buildSupervisorContinuationPart(continuation) : undefined;
   const roleContinuationParts = roleContinuationPart ? [roleContinuationPart] : [];
   const initialMemoryMessage = options.memoryRecallMessage
     ? undefined
@@ -199,6 +201,8 @@ export function buildSupervisorDecisionInput(
       includeResponseRecommendation,
       allowedRoleIds,
       hasCompletedChildResult: options.resume !== undefined,
+      hasWorkerSteeringHandoff: continuation !== undefined &&
+        hasSupervisorWorkerSteeringHandoff(continuation),
       hasRequestToolResults: options.toolResults.results.length > 0,
       workerCapabilityAffordances,
       availableWorkerCapabilityCatalog,

@@ -27,6 +27,7 @@ export function sameCallIdentity(
     left.roleId === right.roleId &&
     left.depth === right.depth &&
     left.objective === right.objective &&
+    left.workerSteeringVersion === right.workerSteeringVersion &&
     left.workingDirectory === right.workingDirectory &&
     left.resultRef === right.resultRef &&
     sameWorkerCapabilityScope(

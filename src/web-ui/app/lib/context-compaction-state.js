@@ -70,10 +70,14 @@ function canConfirmCompactionTerminal(event, requestTerminal) {
 
 export function reduceContextCompaction(cycles, event, requestTerminal = null) {
   const phase = event.name?.replace("context.compaction.", "");
-  if (!["started", "completed", "failed"].includes(phase)) return cycles;
+  if (!["started", "progress", "completed", "failed"].includes(phase)) return cycles;
   if (typeof event.invocationId !== "string" || !event.invocationId.trim())
     return cycles;
   const previous = cycles.get(event.invocationId);
+  if (phase === "progress") {
+    if (!canAdvanceCompactionProgress(previous, event)) return cycles;
+    return new Map(cycles).set(event.invocationId, { ...previous, progress: event });
+  }
   if (previous && hasConflictingCycleBinding(previous, event)) {
     return new Map(cycles).set(event.invocationId, {
       ...previous,
@@ -169,4 +173,13 @@ export function projectContextCompactions(cycles) {
     lastCompactionEvent,
     openCompactionCount,
   };
+}
+
+function canAdvanceCompactionProgress(cycle, event) {
+  if (!cycle?.started || cycle.status !== "pending") return false;
+  if (hasConflictingCycleBinding(cycle, event)) return false;
+  if (!["processing", "merging", "checking"].includes(event.step)) return false;
+  if (typeof event.status !== "string" || !event.status.trim()) return false;
+  if (!Number.isFinite(event.progressAt) || event.progressAt <= 0) return false;
+  return canReplaceContextWindowEvidence(cycle.progress || cycle.started, event);
 }

@@ -1,3 +1,4 @@
+import { projectAssistantReadEvidence, type AssistantReadEvidence } from "./assistant-read-evidence.js";
 import { sessionListOverview } from "./overview.js";
 import { sessionMetadataPage } from "./pagination.js";
 import { sidebarMetadataPage, type SidebarSessionPageQuery } from "./sidebar-pagination.js";
@@ -11,6 +12,8 @@ import { listSessionMetadata } from "../../sessions/metadata/store.js";
 import { isSparkSession } from "../../sessions/spark-session.js";
 import { markVisibleAssistantMessages, projectVisibleSessionReadState, visibleReadMessageIds, visibleReadObservations } from "./visible-messages.js";
 import { WebReadStateStore } from "./store.js";
+import { resetConversationReadStates } from "./reset.js";
+import type { RuntimeSessionsResetResult } from "../../runtime/local-host/maintenance-contracts.js";
 import {
   captureReadStateAvailability,
   unavailableSessionReadState,
@@ -65,6 +68,23 @@ export class WebSessionReadStates {
     await captureReadStateAvailability(() =>
       this.store(environmentId).reset(sessionId, this.now()),
     );
+  }
+
+  resetConversations(environmentId: string, operation: () => Promise<RuntimeSessionsResetResult>): Promise<RuntimeSessionsResetResult> {
+    return resetConversationReadStates(this.store(environmentId), operation, this.now);
+  }
+
+  async assistantReadEvidence(environmentId: string, sessionId: string): Promise<AssistantReadEvidence> {
+    const result = await captureReadStateAvailability(() =>
+      this.store(environmentId).transaction(async (state): Promise<AssistantReadEvidence> => {
+        const sessions = this.getEnvironment(environmentId).services.sessions;
+        const snapshot = await sessions.getSessionSnapshot(sessionId, { includeRequests: false, identitiesOnly: true });
+        if (!snapshot) return { status: "unavailable" };
+        return projectAssistantReadEvidence(state, snapshot);
+      }),
+    );
+    if (result.readStateStatus === "unavailable") return { status: "unavailable" };
+    return result.value;
   }
 
   async project(environmentId: string, snapshot: SessionSnapshot) {

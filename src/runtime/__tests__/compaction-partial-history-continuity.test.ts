@@ -62,7 +62,7 @@ describe.each(policies)("%s partial history commit continuity", (policy) => {
       expect(interrupted.rootInputs).toEqual([]);
       expect(historyCommit).toHaveBeenCalledOnce();
       expect(activeCommit).toHaveBeenCalledTimes(failure === "active_commit_failure" ? 1 : 0);
-      expect(interrupted.events.filter(({ name }) => name.startsWith("context.compaction."))
+      expect(interrupted.events.filter(({ name }) => /^context\.compaction\.(started|completed|failed)$/u.test(name))
         .map(({ name }) => name))
         .toEqual(["context.compaction.started", "context.compaction.failed"]);
       expect(interrupted.events.find(({ name }) => name === "context.compaction.failed"))
@@ -151,7 +151,7 @@ describe.each(policies)("%s partial history commit continuity", (policy) => {
       expect(extended.coveredMessages.slice(saved.coveredMessages.length).map(({ messageId }) => messageId))
         .toEqual(expectedNewIds);
       expect(pressured.sessionMemory.project().compactableTurnCount).toBe(0);
-      expect(pressured.events.filter(({ name }) => name.startsWith("context.compaction."))
+      expect(pressured.events.filter(({ name }) => /^context\.compaction\.(started|completed|failed)$/u.test(name))
         .map(({ name }) => name))
         .toEqual(["context.compaction.started", "context.compaction.completed"]);
       expect(pressured.request.contextCompactionStore!.snapshot!().checkpoints)

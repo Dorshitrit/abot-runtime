@@ -88,6 +88,39 @@ through `@abot-ai/runtime/model-gateway`; its config uses that adapter's `type` 
 may place adapter-owned JSON-safe values under `settings`. Merely naming an
 unknown type never selects a fallback provider.
 
+For OpenAI API models that support explicit cache boundaries (GPT-5.6+ or a
+compatible model), **Optimize prompt caching** is available in initial setup,
+Add Model, and the Models configuration editor. The optimization applies only
+to Execution Agent decisions (`execution.decision`). It is unchecked by default;
+unchecked keeps the provider's ordinary caching behavior. Enable it only when
+the selected model supports the feature. It does not change the context window,
+output budget, or cache retention time.
+
+The equivalent setup flag works for both initialization and model addition:
+
+```bash
+npx abot init --provider openai --model <model-id> --prompt-cache true
+npx abot add-model --profile <profile-id> --provider openai --model <model-id> --prompt-cache true
+```
+
+For a source checkout, use `npm run init --` or `npm run add-model --` with the
+same arguments. Omit the flag or use `--prompt-cache false` to keep provider
+defaults for a new profile. The choice is saved on the model profile as:
+
+```json
+{
+  "options": {
+    "prompt_cache_options": { "mode": "implicit" }
+  }
+}
+```
+
+Turning the option off removes only `prompt_cache_options`; other model options
+are preserved. Changing the profile to a provider type other than OpenAI API
+also clears this option. Apply the saved configuration and restart through the
+existing configuration flow. Continue with ChatGPT, Ollama and llama.cpp do
+not expose this option.
+
 The setup commands recommend the Execution Agent policy for OpenAI profiles
 and write it automatically to the generated model config:
 

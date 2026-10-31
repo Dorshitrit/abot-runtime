@@ -45,7 +45,7 @@ test("readiness requires local settings, gateway and a compatible committed read
   };
   const snapshot: BasketSnapshot = {
     schemaVersion: 1, hostNamespace: "fixture",
-    settings: { enabled: true, revision: 1, embeddingProfileId: "fixture" }, sources: [source],
+    settings: { matchMode: "balanced" as const, indexChatUploads: false, enabled: true, revision: 1, embeddingProfileId: "fixture" }, sources: [source],
   };
   const input = { snapshot, config: f.config, models: { embed: f.embed }, started: true };
   const sources = (value: readonly StoredBasketSource[]) => ({ ...input, snapshot: { ...snapshot, sources: value } });

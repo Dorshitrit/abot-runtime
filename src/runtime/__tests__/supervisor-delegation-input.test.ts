@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { RequestHistoryMessage } from "../context/request-context-contracts.js";
 import type { RequestToolResultsView } from "../context/request-tool-results.js";
+import { buildCoreSkillReadContextMessages, CORE_SKILL_READ_MESSAGE_KIND } from "../context/core-skill-read-context.js";
 import { buildRequestTemporalContextMessage } from "../context/request-temporal-context.js";
 import { SESSION_ARTIFACT_PATHS_MESSAGE_KIND } from "../context/session-artifact-paths.js";
 import type { RequestSessionMemory } from "../context/session-memory/contracts.js";
@@ -74,7 +75,7 @@ test("an initial request without a complete prior turn adds no fabricated source
   expect(input.context.omittedHistoryMessageIds).toEqual([]);
 });
 
-test("captured Skill bodies and capability catalogs stay outside delegation even when supplied", async () => {
+test("delegation receives exact captured Skill capsules while capability catalogs remain outside", async () => {
   const f = await createCoreSkillContextFixture();
   await f.read();
   const head = f.ledger.current();
@@ -85,7 +86,20 @@ test("captured Skill bodies and capability catalogs stay outside delegation even
     availableWorkerCapabilityCatalog: [{ groupId: "write", memberCount: 1, effects: ["mutation"] }],
   });
   const serialized = JSON.stringify(input.context.messages);
-  expect(serialized).not.toContain(CORE_SKILL_DOCUMENT.content);
+  const captured = input.context.messages.filter(({ content }) => {
+    try { return JSON.parse(content).kind === CORE_SKILL_READ_MESSAGE_KIND; }
+    catch { return false; }
+  });
+  expect(captured).toEqual(buildCoreSkillReadContextMessages(head));
+  expect(captured).toHaveLength(1);
+  expect(captured[0]!.role).toBe("user");
+  expect(JSON.parse(captured[0]!.content)).toMatchObject({
+    authority: "passive_reference", purpose: "skill_guidance",
+    requestId: f.request.requestId,
+    read: { operation: "read_skills", selectors: [CORE_SKILL_DOCUMENT.skillId] },
+    document: CORE_SKILL_DOCUMENT,
+  });
+  expect(input.context.budget.parts.referenceInputTokens).toBeGreaterThan(0);
   expect(serialized).not.toContain("CAPABILITY_DESCRIPTION_SENTINEL");
   expect(serialized).not.toContain("runtime_execution_capability_catalog_v1");
   expect(input.workerCapabilityAffordances).toEqual([]);

@@ -13,7 +13,7 @@ export const informationBasketToolContract = {
     },
     {
       operationId: "search_information_sources",
-      summary: "Search indexed content for candidate sources; matches are not source evidence.",
+      summary: "Search registered file names and indexed content for candidate sources; matches are not source evidence.",
       effect: "read_only", approval: "request_policy", fixedParams: { action: "search_information_sources" },
       input: { type: "object", additionalProperties: false,
         properties: { query: { type: "string", minLength: 1, maxLength: BASKET_LIMITS.maxQueryCharacters } },

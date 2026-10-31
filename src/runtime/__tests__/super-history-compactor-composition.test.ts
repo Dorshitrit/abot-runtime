@@ -51,6 +51,9 @@ test.each(["supervisor-worker-v1", "execution-agent-v1"] as const)(
     const create = vi.spyOn(sessionMemory, "createRequestSessionMemory");
     await f.runOrdinaryRequest("Answer briefly.");
     expect(create).toHaveBeenCalledOnce();
+    expect(create.mock.calls[0]![0].scope).toBe(
+      policy === "execution-agent-v1" ? "execution_agent" : undefined,
+    );
     expect(create.mock.calls[0]![0].compactor).toBe(
       policy === "supervisor-worker-v1" ? pair.super : pair.legacy,
     );

@@ -147,7 +147,7 @@ export function traceSupervisorChildResultProjected(params: {
         ...counts,
         [child.outcome]: counts[child.outcome] + 1,
       }),
-      { completed: 0, failed: 0 },
+      { completed: 0, failed: 0, yielded: 0 },
     ),
     completedChildObjectiveLength: params.resume.completedChildren.reduce(
       (total, child) => total + child.objective.length,

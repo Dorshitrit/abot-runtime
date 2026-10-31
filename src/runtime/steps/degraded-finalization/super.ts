@@ -14,6 +14,7 @@ import { buildDegradedFinalizationFallback } from "./fallback.js";
 import { buildDegradedFinalizationModelInput } from "./input.js";
 import { parseDegradedFinalizationPhrasing } from "./parser.js";
 import { renderDegradedFinalization } from "./render.js";
+import { resolveKnownFailurePhrasing } from "./known-failure.js";
 
 export type SuperFailureExplanation = Readonly<{
   output: string;
@@ -26,6 +27,7 @@ export type SuperFailureExplanation = Readonly<{
 export async function runSuperDegradedFinalization(params: {
   request: RequestExecutionSeed;
   input: DegradedFinalizationInput;
+  error?: unknown;
   maxResponseChars: number;
   steeringVersion: number;
   readBudgets?: () => RequestExecutionBudgets;
@@ -34,6 +36,18 @@ export async function runSuperDegradedFinalization(params: {
     params.input,
     params.steeringVersion,
   );
+  if (params.request.abortSignal.aborted)
+    return withSecondary(fallback, boundedSuperFailureCode(params.request.abortSignal.reason));
+  const hasCurrentSteering = resolveRequestSteeringInbox(params.request.requestSteering)
+    .isCurrent(params.steeringVersion);
+  if (!hasCurrentSteering)
+    return withSecondary(fallback, "degraded_finalization_steering_superseded");
+  const knownPhrasing = resolveKnownFailurePhrasing(params.error);
+  if (knownPhrasing) {
+    const output = renderBoundedSuperFailure(params.input, knownPhrasing, params.maxResponseChars);
+    if (!output) return withSecondary(fallback, "degraded_finalization_response_limit_invalid");
+    return Object.freeze({ output, source: "runtime_fallback", steeringVersion: params.steeringVersion });
+  }
   const attemptRejection = resolveSuperFailureAttemptRejection(params);
   if (attemptRejection) {
     traceDebug("runtime.degraded_finalization", "super.skipped", {
@@ -129,8 +143,6 @@ function resolveSuperFailureAttemptRejection(params: {
   steeringVersion: number;
   readBudgets?: () => RequestExecutionBudgets;
 }): string | undefined {
-  if (params.request.abortSignal.aborted)
-    return boundedSuperFailureCode(params.request.abortSignal.reason);
   const config =
     params.request.runnerConfig.steps[DEGRADED_FINALIZATION_STEP_ID];
   if (!config) return "missing_degraded_finalization_config";
@@ -139,12 +151,6 @@ function resolveSuperFailureAttemptRejection(params: {
   if (config.timeoutMs <= 0) return "degraded_finalization_timeout_invalid";
   if (hasExpiredRequestBudget(params.readBudgets?.()))
     return "request_deadline_exhausted";
-  if (
-    !resolveRequestSteeringInbox(params.request.requestSteering).isCurrent(
-      params.steeringVersion,
-    )
-  )
-    return "degraded_finalization_steering_superseded";
   if (
     !fitsSuperFailureResponse(
       createSuperFailureFallback(params.input, params.steeringVersion).output,

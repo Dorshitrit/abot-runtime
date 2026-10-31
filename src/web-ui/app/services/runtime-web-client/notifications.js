@@ -17,6 +17,12 @@ export function createNotificationRequests({ requestApi, getConfig, getEnvironme
         method: "POST", body: JSON.stringify({ ...input, environment: environmentId }),
       });
     },
+    markAutomationReportRead(input, environmentId = getEnvironmentId()) {
+      requireNotifications();
+      return requestApi("/notifications/automation-report-read", {
+        method: "POST", body: JSON.stringify({ ...input, environment: environmentId }),
+      });
+    },
     saveNotificationPreferences(input, environmentId = getEnvironmentId()) {
       requireNotifications();
       return requestApi("/notifications/preferences", {

@@ -11,9 +11,24 @@ import type {
 import type { ContextCompactionDiagnostics } from "./context-compaction-diagnostics.js";
 import { assertPreparationStageBinding } from "./context-compaction-stage-plan.js";
 
+export function resolveProjectionRepairReason(params: Readonly<{
+  stage: ModelStepCompactionStage;
+  projectionReduced: boolean;
+  candidateFits: boolean;
+  isFinalStage: boolean;
+}>): ContextCompactionProjectionRepair["reason"] | undefined {
+  if (!params.projectionReduced) return "projection_not_reduced";
+  if (params.candidateFits) return undefined;
+  if (!params.isFinalStage) return undefined;
+  if (params.stage.compactionScope !== "active_request") return undefined;
+  if (!params.stage.supportsProjectionRepair) return undefined;
+  return "envelope_exceeds_available_input";
+}
+
 /** One retry of an opted-in active stage, from its unchanged canonical input. */
 export async function prepareProjectionRepair(params: Readonly<{
   stage: ModelStepCompactionStage;
+  reason: ContextCompactionProjectionRepair["reason"];
   messages: readonly ChatMessage[];
   current: RequestMessagesBudgetAssessment;
   rejected: RequestMessagesBudgetAssessment;
@@ -29,7 +44,7 @@ export async function prepareProjectionRepair(params: Readonly<{
   if (!params.stage.supportsProjectionRepair) return undefined;
   const originalInputTokens = resolveRequestBudgetInputTokens(params.current.budget);
   const projectionRepair: ContextCompactionProjectionRepair = Object.freeze({
-    reason: "projection_not_reduced",
+    reason: params.reason,
     originalInputTokens,
     candidateInputTokens: resolveRequestBudgetInputTokens(params.rejected.budget),
     targetInputTokens: Math.max(0, Math.min(
@@ -45,7 +60,8 @@ export async function prepareProjectionRepair(params: Readonly<{
   };
   params.assertNotAborted();
   params.diagnostics.trace("projection_repair", { ...metadata, outcome: "started" });
-  const outcome = await params.stage.prepare(params.messages, { projectionRepair });
+  const onProgress = params.diagnostics.observePreparation(params.stage, 2);
+  const outcome = await params.stage.prepare(params.messages, { projectionRepair, onProgress });
   params.assertNotAborted();
   if (outcome.kind === "unavailable") {
     params.diagnostics.trace("projection_repair", {
@@ -59,6 +75,7 @@ export async function prepareProjectionRepair(params: Readonly<{
   assertPreparationStageBinding(params.stage, prepared);
   assertUnchangedRepairSourceBinding(params.preparation, prepared);
   params.assertNotAborted();
+  onProgress({ step: "checking" });
   const assessment = await params.assess(prepared.messages);
   params.assertNotAborted();
   params.diagnostics.trace("projection_repair", {

@@ -1,3 +1,4 @@
+import { emitRuntimeStatus } from "../../events/runtime-status.js";
 import {
   invokeStructuredModelStep,
   StructuredModelInvalidOutputError,
@@ -44,6 +45,11 @@ export const EXECUTION_AGENT_AUDITOR_EXECUTOR: RoleExecutor<
         assignment,
         "auditor_continuation_unsupported",
       );
+    emitRuntimeStatus(context, {
+      stage: "reviewer",
+      phase: "reviewing",
+      message: "Auditing the recorded results...",
+    });
     const objective = parseExecutionAgentAuditObjective(call.objective!);
     const source = projectAuditorWorkEvidence(head, assignment.callerCallId);
     const state = projectAuditorInputState(

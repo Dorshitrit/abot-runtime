@@ -1,5 +1,4 @@
 import {
-  CAPABILITY_INTENT_MAX_LENGTH,
   materializeCapabilityControlsIfComplete,
   validateCapabilitySelectionControls,
   type CapabilityControls,
@@ -28,7 +27,6 @@ import {
   asRecord,
   exactKeys,
   issue,
-  validateBoundedText,
 } from "./decision-validation.js";
 
 export function parseCapabilityCatalogGroupIds(
@@ -129,7 +127,6 @@ export function parseCapabilityInvocation(
   const baseExpectedKeys = [
     ...(params.includesAction ? ["action"] : []),
     "capabilityId",
-    "intent",
   ];
   if (!record) {
     params.issues.push(
@@ -191,14 +188,6 @@ export function parseCapabilityInvocation(
   if (!params.includesAction) {
     exactKeys(record, expectedKeys, params.issues, params.path);
   }
-  const intent = validateBoundedText({
-    value: record.intent,
-    maximumLength: CAPABILITY_INTENT_MAX_LENGTH,
-    code: "execution_agent_capability_intent_invalid",
-    path: `${params.path}.intent`,
-    label: "Capability intent",
-    issues: params.issues,
-  });
   const operationObjective = parseExecutionOperationObjective({
     value: record.operationObjective,
     required:
@@ -269,7 +258,6 @@ export function parseCapabilityInvocation(
   if (
     !capability ||
     (params.observationOnly && capability.effect !== "observation") ||
-    intent === undefined ||
     !operationObjective.ok ||
     !evidenceSelection.ok
   ) {
@@ -279,7 +267,6 @@ export function parseCapabilityInvocation(
     expectedKeys,
     value: Object.freeze({
       capabilityId: capability.capabilityId,
-      intent,
       ...(operationObjective.value
         ? { operationObjective: operationObjective.value }
         : {}),

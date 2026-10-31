@@ -1,3 +1,4 @@
+import { chatGptSetupMetadata } from "./chatgpt-setup-binding.js";
 import { requiresProviderCredential } from "./runtime-setup-auth.js";
 import { readDefaultContextWindowTokens } from "../../../scripts/runtime-setup-files.js";
 import { getConfigDashboardSnapshot } from "../config-dashboard-backend.js";
@@ -46,6 +47,7 @@ export async function getModelSetupCatalog(options: ModelSetupOptions) {
           type,
           label: id,
           requiresApiKey,
+          ...chatGptSetupMetadata(provider),
           ...(type === "llamacpp" ? { supportsOptionalApiKey: true } : {}),
           credentialConfigured:
             requiresApiKey &&

@@ -17,13 +17,14 @@ export function renderModelSetupEntry(runtime, models) {
       return `<article class="config-provider-card">
         <div class="config-provider-identity"><h3>${escapeHtml(id)}</h3>${hasDistinctProviderType ? `<span>${escapeHtml(providerType)}</span>` : ""}</div>
         <footer><span>${count} ${count === 1 ? "model" : "models"}</span>
+        ${providerType === "openai-chatgpt" ? `<button type="button" data-config-action="chatgpt-accounts" data-account-ref="${escapeHtml(provider.settings?.accountRef || "")}">ChatGPT account</button>` : ""}
         </footer>
       </article>`;
     })
     .join("");
   return `<div class="config-model-setup-entry">
     <header><div><h2>Models and providers</h2><p>Add a model using a saved connection or connect a new provider.</p></div>
-      <button type="button" data-config-action="add-model">Add model</button>
+      <div class="chatgpt-account-actions"><button type="button" data-config-action="chatgpt-accounts">ChatGPT accounts</button><button type="button" data-config-action="add-model">Add model</button></div>
     </header>
     ${cards ? `<div class="config-provider-grid" aria-label="Configured providers">${cards}</div>` : ""}
   </div>`;

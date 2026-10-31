@@ -69,6 +69,7 @@ export function createSuperFailureFinalization(params: {
           runSuperDegradedFinalization({
             request,
             input: { ...input.input, problem },
+            error: primary!.error,
             maxResponseChars: input.maxResponseChars,
             steeringVersion,
             ...(params.readBudgets ? { readBudgets: params.readBudgets } : {}),

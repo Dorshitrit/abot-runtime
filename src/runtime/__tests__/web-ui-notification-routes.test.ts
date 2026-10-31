@@ -34,6 +34,7 @@ async function fixture() {
       message: "Connect Computer access",
     })),
     markRead: vi.fn(async () => ({ updated: 1, unreadCount: 0 })),
+    markAutomationReportRead: vi.fn(async () => ({ updated: 2, unreadCount: 0 })),
     setPreferences: vi.fn(async (_id, preferences) => preferences),
   };
   const routes = new WebNotificationRoutes(access);
@@ -230,4 +231,21 @@ describe("Web UI notification HTTP routes", () => {
     ).toBe(405);
     expect((await request("/web-api/other")).status).toBe(404);
   });
+});
+
+test("automation report reads require an exact environment, run and observed phase", async () => {
+  const { request, origin, access } = await fixture();
+  const body = { environment: "dev", runId: "run-1", phase: "finished" };
+  const post = (value: unknown, path = "/web-api/notifications/automation-report-read", extra = {}) =>
+    request(path, { method: "POST", headers: { "content-type": "application/json", origin, ...extra },
+      body: JSON.stringify(value) });
+  expect((await post(body)).status).toBe(200);
+  expect(access.markAutomationReportRead).toHaveBeenCalledExactlyOnceWith("dev", { runId: "run-1", phase: "finished" });
+  for (const value of [{}, { ...body, environment: undefined }, { ...body, runId: "" },
+    { ...body, phase: "pending" }, { ...body, all: true }, { ...body, read: false }])
+    expect((await post(value)).status).toBe(400);
+  expect((await post({ ...body, environment: "missing" })).status).toBe(404);
+  expect((await post(body, "/web-api/notifications/automation-report-read?environment=dev")).status).toBe(400);
+  expect((await post(body, undefined, { origin: "https://unrelated.test" })).status).toBe(403);
+  expect(access.markAutomationReportRead).toHaveBeenCalledTimes(1);
 });

@@ -80,6 +80,7 @@ export type RegisteredToolPreparedNormalInvocation = Readonly<{
     executionId?: string,
     executorIdentity?: ToolEventExecutorIdentity,
     selectedReferences?: readonly CapabilityResultReference[],
+    executionFreshness?: import("../../../orchestration/worker-capabilities/contracts.js").WorkerCapabilityExecutionFreshness,
   ): Promise<RegisteredToolNormalInvocationResult>;
 }>;
 

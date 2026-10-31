@@ -215,6 +215,7 @@ export type SessionStore = SessionMemoryRepository & {
   getRequestReplayById: (
     requestId: string,
     afterSeq?: number,
+    sessionIdHint?: string,
   ) => Promise<SessionRequestReplay | null>;
   updateSessionTitle: (
     sessionId: string,
@@ -351,6 +352,7 @@ export type WorkspaceProvider = {
 export type ModelGatewayInvokeParams = StreamCallbacks & {
   text?: string;
   messages?: unknown;
+  promptCacheBoundaryBeforeMessageIndex?: number;
   agentMode: AgentMode;
   taskType?: string;
   modelStep?: ModelStep;
@@ -424,7 +426,7 @@ export type EventSink = {
     delta: string,
     accumulatedText: string,
   ) => void | Promise<void>;
-  completed: (output: string) => void | Promise<void>;
+  completed: (output: string, disposition?: "blocked") => void | Promise<void>;
   failed: (
     error: string,
     details?: Record<string, unknown>,

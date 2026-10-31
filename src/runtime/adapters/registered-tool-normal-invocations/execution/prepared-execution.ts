@@ -1,3 +1,7 @@
+import {
+  resolveApprovalBeforeWorkerDispatch, workerDispatchRejection,
+} from "./steering-admission.js";
+import type { WorkerCapabilityExecutionFreshness } from "../../../orchestration/worker-capabilities/contracts.js";
 import type { CapabilityResultReference } from "../../../orchestration/capability-adapters/result.js";
 import {
   createRegisteredToolResultBudget,
@@ -27,7 +31,7 @@ import {
   type ToolEventExecutorIdentity,
 } from "../shared/event-metadata.js";
 import { rejectNormalInvocation } from "../shared/rejection.js";
-import { requestNormalInvocationApproval, requiresRegisteredToolActionApproval } from "./approval.js";
+import { requiresRegisteredToolActionApproval } from "./approval.js";
 import { createPreparedInvocationRejectionEmitter } from "./rejection-event.js";
 import { createFileOutputPresentation } from "./file-output-presentation.js";
 import { executeWithToolResources } from "./tool-media-execution.js";
@@ -114,10 +118,12 @@ export function createPreparedNormalInvocation(params: {
       executionId?: string,
       executorIdentity?: ToolEventExecutorIdentity,
       selectedReferences?: readonly CapabilityResultReference[],
+      executionFreshness?: WorkerCapabilityExecutionFreshness,
     ) =>
       executePreparedNormalInvocation({
         ...params,
         selectedReferences,
+        ...(executionFreshness ? { executionFreshness } : {}),
         ...(approvalRequest ? { approvalRequest } : {}),
         ...(decision ? { decision, decisionRecorded } : {}),
         ...(executionId ? { executionId } : {}),
@@ -127,6 +133,7 @@ export function createPreparedNormalInvocation(params: {
 }
 
 async function executePreparedNormalInvocation(params: {
+  executionFreshness?: WorkerCapabilityExecutionFreshness;
   selectedReferences?: readonly CapabilityResultReference[];
   executionId?: string;
   executorIdentity?: ToolEventExecutorIdentity;
@@ -150,7 +157,7 @@ async function executePreparedNormalInvocation(params: {
     selectedReferences: params.selectedReferences,
   });
   assertRegisteredToolResultMetadataFits(resultBudget);
-  const approval = await requestNormalInvocationApproval({
+  const approval = await resolveApprovalBeforeWorkerDispatch({
     requiresExplicitApproval: params.requiresApproval === true,
     requiredByOperationPolicy: params.requiresApproval === true ||
       params.approvalRequest !== undefined ||
@@ -180,7 +187,7 @@ async function executePreparedNormalInvocation(params: {
     force:
       params.source.operation.approval === "always" ||
       params.target.operation.approval === "always",
-  });
+  }, params.executionFreshness);
   if (!approval.ok) return approval.rejection;
   params.executor.abortSignal.throwIfAborted();
   const effectExecutionId = params.executionId ?? randomUUID();
@@ -209,6 +216,14 @@ async function executePreparedNormalInvocation(params: {
     });
   }
   params.executor.abortSignal.throwIfAborted();
+
+  const steeringRejection = workerDispatchRejection(params.executionFreshness);
+  if (steeringRejection) {
+    await params.executor.effectPersistence?.afterEffect({
+      executionId: effectExecutionId, outcome: steeringRejection,
+    });
+    return steeringRejection;
+  }
 
   const startedCopy = buildToolLifecycleEventCopy(
     params.target.registration.definition,

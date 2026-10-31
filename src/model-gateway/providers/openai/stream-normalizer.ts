@@ -1,4 +1,6 @@
 import { readOpenAIFunctionResult } from "./function-result.js";
+import { isOpenAIRefusalEvent } from "./refusal.js";
+import { OpenAICompletedFunctionItems } from "./completed-function-items.js";
 import { buildModelTokenUsage } from "../../protocol/usage.js";
 import type { ModelTokenUsage } from "../../types.js";
 import type { ModelProviderEventSink } from "../contracts.js";
@@ -12,6 +14,8 @@ export type { OpenAIMessageOutputNormalizationDiagnostic } from "./structured-me
 
 export type OpenAIResponsesStreamOptions = Readonly<{
   structuredOutput?: boolean;
+  requireCompletedResponse?: boolean;
+  assembleCompletedFunctionItems?: boolean;
   functionOutputName?: string;
   onMessageOutputDiagnostic?: (
     diagnostic: OpenAIMessageOutputNormalizationDiagnostic,
@@ -40,11 +44,17 @@ function readOpenAIUsage(data: unknown): ModelTokenUsage | undefined {
   const usage = readRecord(response.usage);
   const inputDetails = readRecord(usage.input_tokens_details);
   const outputDetails = readRecord(usage.output_tokens_details);
+  const cacheWriteDetails = readRecord(inputDetails.cache_write_tokens_details);
   return buildModelTokenUsage({
     inputTokens: usage.input_tokens,
     outputTokens: usage.output_tokens,
     totalTokens: usage.total_tokens,
     cachedInputTokens: inputDetails.cached_tokens,
+    cacheWriteInputTokens: inputDetails.cache_write_tokens,
+    cacheWriteInputTokensDetails: {
+      ttl30mTokens: cacheWriteDetails.ttl_30m_tokens,
+      ttl12hTokens: cacheWriteDetails.ttl_12h_tokens,
+    },
     reasoningTokens: outputDetails.reasoning_tokens,
   });
 }
@@ -83,9 +93,14 @@ function isStreamError(event: NormalizedOpenAIStreamEvent): boolean {
 
 export class OpenAIResponsesStreamNormalizer {
   private readonly structuredOutput = new OpenAIStructuredMessageOutput();
+  private readonly completedFunctionItems?: OpenAICompletedFunctionItems;
   private terminal = false;
 
-  constructor(private readonly options: OpenAIResponsesStreamOptions) {}
+  constructor(private readonly options: OpenAIResponsesStreamOptions) {
+    if (options.assembleCompletedFunctionItems && options.functionOutputName) {
+      this.completedFunctionItems = new OpenAICompletedFunctionItems();
+    }
+  }
 
   get hasTerminated(): boolean {
     return this.terminal;
@@ -96,9 +111,13 @@ export class OpenAIResponsesStreamNormalizer {
       return [];
     }
     const event = readRecord(data);
+    this.completedFunctionItems?.observe(event);
     const isFailedResponse = event.type === "response.failed";
     if (isFailedResponse) {
       return this.fail(readOpenAIError(event.response));
+    }
+    if (isOpenAIRefusalEvent(event)) {
+      return this.fail("openai response refused");
     }
     if (event.type === "response.output_text.delta") {
       return this.consumeTextDelta(event);
@@ -120,9 +139,7 @@ export class OpenAIResponsesStreamNormalizer {
   }
 
   finish(): NormalizedOpenAIStreamEvent[] {
-    const events = this.end();
-    if (this.terminal) return events;
-    return this.complete(undefined);
+    return this.end();
   }
 
   private consumeTextDelta(
@@ -144,6 +161,7 @@ export class OpenAIResponsesStreamNormalizer {
     data: unknown,
   ): NormalizedOpenAIStreamEvent[] {
     const reason = readOpenAIIncompleteReason(data);
+    if (this.options.requireCompletedResponse) return this.fail(`openai response incomplete: ${reason}`);
     if (!this.options.functionOutputName && reason === "max_output_tokens") {
       return this.complete(readOpenAIUsage(data), reason, readRecord(data).response);
     }
@@ -157,14 +175,11 @@ export class OpenAIResponsesStreamNormalizer {
     return contentEvents(this.structuredOutput.observeItem(event));
   }
 
-  // Transport endings cannot authorize decisions or payloads. Ordinary text
-  // retains its legacy partial-output behavior.
+  // A transport ending alone cannot establish that any model output completed.
   end(): NormalizedOpenAIStreamEvent[] {
     if (this.terminal) return [];
     if (this.options.functionOutputName) return this.fail("openai function response not completed");
-    const requiresCompletedMessage = this.options.structuredOutput === true;
-    if (requiresCompletedMessage) return this.fail("openai response not completed");
-    return [];
+    return this.fail("openai response not completed");
   }
 
   private finishStructuredOutput(response?: unknown): NormalizedOpenAIStreamEvent[] {
@@ -183,9 +198,16 @@ export class OpenAIResponsesStreamNormalizer {
   }
 
   private finishFunctionOutput(response: unknown, name: string): NormalizedOpenAIStreamEvent[] {
-    const result = readOpenAIFunctionResult(response, name);
+    const projected = this.completedFunctionItems?.project(response) ?? { response };
+    if ("error" in projected) return [{ type: "error", error: projected.error }];
+    const result = readOpenAIFunctionResult(projected.response, name);
     if ("error" in result) return [{ type: "error", error: result.error }];
     return [{ type: "content", text: result.text }];
+  }
+
+  private hasRequiredCompletedResponse(response: unknown): boolean {
+    if (!this.options.requireCompletedResponse) return true;
+    return readRecord(response).status === "completed";
   }
 
   private complete(
@@ -195,6 +217,9 @@ export class OpenAIResponsesStreamNormalizer {
   ): NormalizedOpenAIStreamEvent[] {
     if (this.terminal) {
       return [];
+    }
+    if (!this.hasRequiredCompletedResponse(response)) {
+      return this.fail("openai response not completed");
     }
     const pending = this.options.functionOutputName
       ? this.finishFunctionOutput(response, this.options.functionOutputName)

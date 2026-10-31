@@ -15,7 +15,7 @@ import { createToolApprovalCard } from "./components/tool-approval-card.js";
 import { createComposerActions } from "./components/composer-actions.js";
 import { normalizeRealtimeMessage } from "./lib/realtime-message.js";
 import { createSparkChatResults } from "./components/spark-chat/results.js";
-import { sparkMessageStatus, sparkWorkingStatus } from "./lib/spark-chat-presentation.js";
+import { sparkConversationMessages, sparkMessageStatus, sparkWorkingStatus } from "./lib/spark-chat-presentation.js";
 import { createSparkChatEmptyState } from "./components/spark-chat/empty-state.js";
 import { createSparkHandoffActions } from "./components/spark-chat/handoff-actions.js";
 import { createSparkMascotActivity } from "./components/spark-chat/mascot-activity.js";
@@ -86,7 +86,7 @@ export function createSparkChatConversation({
     emptyState: createSparkChatEmptyState({ getConfiguration, onOpenModelSettings }),
     showReasoning: false,
     showContextWindow: false,
-    getMessages: () => state.messages,
+    getMessages: () => sparkConversationMessages(state.messages),
     getActiveRequestId: () => state.activeRequestId,
     isConnected,
     getActivityForMessage: (message) => ({
@@ -221,6 +221,11 @@ export function createSparkChatConversation({
       state.connected = isConnected();
       draftView.display(); composer.changed(); updateSendState(); renderActivityStatus();
       if (!state.messages.length) render();
+    },
+    clearResetDraftData(environmentId, sessionIds) {
+      for (const sessionId of sessionIds) drafts.resetSessionData({ environmentId, sessionId });
+      if (environmentId !== getEnvironmentId()) return;
+      draftView.display(); composer.changed();
     },
     reset() {
       steer.rejectAll("SPARK environment changed.");

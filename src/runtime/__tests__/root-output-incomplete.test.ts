@@ -1,6 +1,5 @@
 import { rootWorkCalls } from "./support/root-invalid-output-fixture.js";
 import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
-import { buildDegradedFinalizationFallback } from "../steps/degraded-finalization/fallback.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ModelOutputIncompleteError } from "../model/provider-completion.js";
 import {
@@ -19,8 +18,8 @@ import {
 
 const PARTIAL_OUTPUT = "UNTRUSTED_PARTIAL_ROOT_OUTPUT";
 const PHRASING = {
-  failureNotice: "The final model output stopped before completion.",
-  nextStep: "Continue from the established state in a follow-up request.",
+  failureNotice: "The model reached its output-token limit before finishing its decision or response.",
+  nextStep: "Review the selected model and reasoning settings before continuing.",
 };
 const DEGRADED_OUTPUT = `${PHRASING.failureNotice}\n\n${PHRASING.nextStep}`;
 
@@ -34,18 +33,11 @@ describe.each(ROOT_OUTPUT_POLICIES)(
   "$policyId root provider output limit",
   (policy) => {
     test.each(["decision", "response"] as const)(
-      "replaces incomplete %s with one model-authored canonical degraded result",
+      "replaces incomplete %s with one deterministic canonical degraded result",
       async (phase) => {
         const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
-          if (input.modelStep === "degraded.finalization") {
-            expect(JSON.stringify(input.messages)).toContain(
-              "output_incomplete",
-            );
-            expect(JSON.stringify(input.messages)).not.toContain(
-              PARTIAL_OUTPUT,
-            );
-            return { text: JSON.stringify(PHRASING), meta: {} };
-          }
+          if (input.modelStep === "degraded.finalization")
+            throw new Error("known_output_limit_must_not_invoke_authoring");
           if (phase === "response" && input.modelStep === policy.decisionStep)
             return { text: rootRespondOutput(policy.policyId), meta: {} };
           return {
@@ -73,8 +65,9 @@ describe.each(ROOT_OUTPUT_POLICIES)(
         expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([
           policy.decisionStep,
           ...(phase === "response" ? [policy.responseStep] : []),
-          "degraded.finalization",
         ]);
+        expect(result.output).not.toContain(PARTIAL_OUTPUT);
+        expect(invoke.mock.calls.filter(([input]) => input.modelStep === "degraded.finalization")).toEqual([]);
         expect(request.modelGatewayClient.invokeRaw).not.toHaveBeenCalled();
       },
     );
@@ -104,7 +97,7 @@ describe.each(ROOT_OUTPUT_POLICIES)(
     });
 
     test.each(["provider", "incomplete", "invalid"] as const)(
-      "propagates a %s failure of degraded finalization without a substitute answer",
+      "does not call a presentation model that would return a %s failure",
       async (degradedFailure) => {
         const failure = new Error("degraded_provider_failed");
         const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
@@ -117,56 +110,30 @@ describe.each(ROOT_OUTPUT_POLICIES)(
           if (degradedFailure === "provider") throw failure;
           return {
             text: "invalid degraded output",
-            meta:
-              degradedFailure === "incomplete"
-                ? { providerCompletionReason: "length" }
-                : {},
+            meta: degradedFailure === "incomplete" ? { providerCompletionReason: "length" } : {},
           };
         }));
         const request = createRootInvalidOutputRequest(invoke, policy.policyId);
         const ledger = await createRootInvalidOutputLedger(policy.policyId);
         const initialHead = ledger.current();
-        const running = runRootExecutionKernel({ request, ledger });
-        if (policy.policyId === "supervisor-worker-v1") {
-          const expected = buildDegradedFinalizationFallback({
-            problem: {
-              stage: "provider_completion",
-              code: "output_incomplete",
-              cause: "model_output_limit",
-              modelStep: policy.decisionStep,
-            },
-            progress: null,
-          });
-          await expect(running).resolves.toMatchObject({
-            output: expected,
-            disposition: "blocked",
-          });
-          expect(ledger.current().state.rootResponse).toBe(expected);
-          expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([
-            policy.decisionStep,
-            "degraded.finalization",
-          ]);
-          return;
-        }
-        if (degradedFailure === "provider") {
-          await expect(running).rejects.toBe(failure);
-        } else {
-          await expect(running).rejects.toMatchObject({
-            modelStep: "degraded.finalization",
-            message:
-              degradedFailure === "incomplete"
-                ? "output_incomplete"
-                : "invalid_degraded_finalization_output",
-          });
-        }
-        expect(ledger.current()).toBe(initialHead);
-        expect(ledger.current().state.rootResponse).toBeNull();
-        expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([
-          policy.decisionStep,
-          ...Array<string>(degradedFailure === "invalid" ? 3 : 1).fill(
-            "degraded.finalization",
-          ),
+        const result = await runRootExecutionKernel({ request, ledger });
+
+        expect(result.output).toBe(DEGRADED_OUTPUT);
+        expect(result.output).not.toContain(PARTIAL_OUTPUT);
+        expect(result.disposition).toBe(policy.policyId === "supervisor-worker-v1" ? "blocked" : undefined);
+        expect(ledger.current()).not.toBe(initialHead);
+        expect(ledger.current().state).toMatchObject({
+          phase: "completed",
+          activeCallId: null,
+          rootResponse: DEGRADED_OUTPUT,
+          results: [],
+          capabilityExecutions: [],
+        });
+        expect(ledger.current().state.calls).toEqual([
+          expect.objectContaining({ status: "completed", activationCount: 1 }),
         ]);
+        expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([policy.decisionStep]);
+        expect(invoke.mock.calls.filter(([input]) => input.modelStep === "degraded.finalization")).toEqual([]);
         expect(request.onAnswerToken).not.toHaveBeenCalled();
       },
     );

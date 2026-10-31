@@ -18,6 +18,7 @@ import {
 import { isNonToolTimelineEvent } from "../lib/tool-timeline.js";
 import { buildMemoryActivities, isMemoryRetrievalEvent } from "../lib/memory-activity-model.js";
 import { createConversationMemoryActivity } from "./conversation-memory-activity.js";
+import { isBasketDiscoveryEvent } from "../lib/basket-activity-model.js";
 
 function textOf(value, fallback = "") {
   return typeof value === "string" ? value : fallback;
@@ -141,8 +142,11 @@ export function buildConversationActivityModel({
     requestId: normalizedRequestId, events: scopedEvents, streaming,
   });
   const timeline = buildEventTimelineEntries(scopedEvents.filter(
-    (event) => !isMemoryRetrievalEvent(event),
+    (event) => !isMemoryRetrievalEvent(event) && !isBasketDiscoveryEvent(event),
   ));
+  const roleCards = buildConversationRoleCards({
+    requestId: normalizedRequestId, events: scopedEvents, streaming,
+  });
   const progress = normalizeProgress(taskProgress, normalizedRequestId);
   const contextWindowModel = projectContextWindowDisplay(
     contextWindow,
@@ -164,11 +168,7 @@ export function buildConversationActivityModel({
     requestId: normalizedRequestId,
     events: timeline,
     memoryActivities,
-    roleCards: buildConversationRoleCards({
-      requestId: normalizedRequestId,
-      events: scopedEvents,
-      streaming,
-    }),
+    roleCards,
     sources: buildConversationSources(scopedEvents),
     toolActions: buildConversationToolActions({
       requestId: normalizedRequestId,
@@ -188,7 +188,7 @@ export function buildConversationActivityModel({
         "Working"
       : "",
     openByDefault: Boolean(streaming),
-    hasContent: Boolean(progress || timeline.length > 0 || memoryActivities.length > 0),
+    hasContent: Boolean(progress || timeline.length > 0 || memoryActivities.length > 0 || roleCards.length > 0),
   };
 }
 

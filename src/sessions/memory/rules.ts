@@ -1,10 +1,12 @@
 import type { SessionRecord } from "../types.js";
+import { getSessionMemoryCheckpoint } from "./checkpoint-scope.js";
 import {
   SESSION_MEMORY_CHECKPOINT_KIND,
   SESSION_MEMORY_SUMMARY_MAX_CHARACTERS,
   type SessionMemoryCheckpoint,
   type SessionMemoryCheckpointCommit,
   type SessionMemoryCheckpointCommitResult,
+  type SessionMemoryScope,
 } from "./contracts.js";
 import {
   resolveCoveredTurnCount,
@@ -30,7 +32,7 @@ export function resolveSessionMemoryCheckpointCommit(
   session: SessionRecord,
   command: SessionMemoryCheckpointCommit,
 ): SessionMemoryCheckpointCommitResult {
-  const source = snapshotSessionMemorySource(session);
+  const source = snapshotSessionMemorySource(session, command.scope);
   if (source.sourceRevision !== command.expectedSourceRevision) {
     return Object.freeze({
       committed: false as const,
@@ -38,7 +40,7 @@ export function resolveSessionMemoryCheckpointCommit(
     });
   }
   const currentCheckpointRevision =
-    session.sessionMemoryCheckpoint?.revision ?? 0;
+    getSessionMemoryCheckpoint(session, command.scope)?.revision ?? 0;
   if (currentCheckpointRevision !== command.expectedCheckpointRevision) {
     return Object.freeze({
       committed: false as const,
@@ -63,8 +65,9 @@ export function resolveSessionMemoryCheckpointCommit(
 
 export function resolveApplicableSessionMemoryCheckpoint(
   session: SessionRecord,
+  scope?: SessionMemoryScope,
 ): SessionMemoryCheckpoint | undefined {
-  const checkpoint = session.sessionMemoryCheckpoint;
+  const checkpoint = getSessionMemoryCheckpoint(session, scope);
   if (!checkpoint) {
     return undefined;
   }
@@ -73,7 +76,7 @@ export function resolveApplicableSessionMemoryCheckpoint(
   } catch {
     return undefined;
   }
-  const source = snapshotSessionMemorySource(session);
+  const source = snapshotSessionMemorySource(session, scope);
   return resolveCoveredTurnCount(source, checkpoint) === undefined
     ? undefined
     : checkpoint;

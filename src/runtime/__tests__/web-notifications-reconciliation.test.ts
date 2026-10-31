@@ -69,6 +69,7 @@ function history(
   return {
     version: 1,
     environmentId,
+    readSyncInitialized: true,
     preferences: {
       desktopEnabled: true,
       kinds: { reply: true, failure: false, approval: true, proposal: false, automation: true },
@@ -108,6 +109,7 @@ async function fixture(state = history()) {
     changed: vi.fn(),
     desktop: async () => ({ available: true }),
     deliver,
+    now: () => 5000,
   });
   services.push(service);
   vi.clearAllMocks();
@@ -117,7 +119,7 @@ async function fixture(state = history()) {
     otherState,
     service,
     deliver,
-    store: new WebNotificationStore(path, "dev"),
+    store: new WebNotificationStore(path, "dev", { now: () => 5000 }),
   };
 }
 
@@ -185,7 +187,7 @@ test.each([true, false])(
 test("reconciliation uses the shared transaction order and retains concurrent preference and read updates", async () => {
   const state = history();
   const f = await fixture(state);
-  const other = new WebNotificationStore(f.path, "dev");
+  const other = new WebNotificationStore(f.path, "dev", { now: () => 5000 });
   const preferences = { ...state.preferences, desktopEnabled: false };
   const first = state.items[0].id;
   await Promise.all([
@@ -206,4 +208,20 @@ test("reconciliation uses the shared transaction order and retains concurrent pr
   expect(saved.items.some((item) => item.delivery.status === "pending")).toBe(
     false,
   );
+});
+
+
+test("legacy unread migration commits once atomically without changing saved read or delivery values", async () => {
+  const original = history("dev", false);
+  delete original.readSyncInitialized;
+  const f = await fixture(original);
+  await f.store.initialize();
+  expect(historyIo(f.path)).toEqual({ reads: 1, writes: 1, replacements: 1 });
+  const saved = JSON.parse(await readFile(f.path, "utf8")) as NotificationStoreState;
+  expect(saved.items).toEqual(original.items);
+  expect(saved.readSyncInitialized).toBe(true);
+  expect(saved.manualUnreadIds).toEqual(original.items.filter((item) => item.readAt === null).map((item) => item.id));
+  vi.clearAllMocks();
+  await new WebNotificationStore(f.path, "dev", { now: () => 5000 }).initialize();
+  expect(historyIo(f.path)).toEqual({ reads: 1, writes: 0, replacements: 0 });
 });

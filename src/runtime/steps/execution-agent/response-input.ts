@@ -72,6 +72,7 @@ export function buildExecutionAgentResponseInput(
       options.call,
     );
   const sessionMemory = projectRootSessionMemory(request);
+  const interactionContext = request.userInteractions?.projectContext();
   const automationFormat = automationResponseFormat(request.automationOutputContract);
   const scheduledExecution = projectScheduledExecutionContext(
     request,
@@ -97,6 +98,7 @@ export function buildExecutionAgentResponseInput(
     prompt: request.prompt,
     ...(request.attachments ? { attachments: request.attachments } : {}),
     referenceMessages: [
+      ...(interactionContext ? [interactionContext] : []),
       ...scheduledExecution.referenceMessages,
       buildExecutionResponseAssignmentMessage(
         options.head,

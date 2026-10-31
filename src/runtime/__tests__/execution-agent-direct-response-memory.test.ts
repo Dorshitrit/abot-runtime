@@ -34,9 +34,7 @@ const CANDIDATE = {
   reinforced: true, explicitRequestQuote: null,
 };
 type Scenario = "direct" | "deferred" | "tool" | "retry" | "steer" | "cancel" | "provider_failure" | "persistence_failure";
-const decision = (body: Record<string, unknown>, acknowledge = true) => JSON.stringify({
-  decision: { ...(acknowledge ? { acknowledgement: "I will answer." } : {}), ...body },
-});
+const decision = (body: Record<string, unknown>) => JSON.stringify({ decision: body });
 const authored = (content = CANDIDATE.content) => JSON.stringify({
   finalResponse: ANSWER, memoryCandidates: [{ ...CANDIDATE, content }],
 });
@@ -145,11 +143,10 @@ async function memoryHandlerFixture(enabled: boolean, scenario: Scenario) {
         return { text: decision({ action: "open_capability_scope", catalogGroupIds: ["other"] }), meta: {} };
       if (scenario === "tool" && decisions === 2)
         return { text: decision({ action: "invoke_capability", capabilityId: registration.toolName,
-          intent: "Observe the requested fixture.", workingDirectory: "." }, false), meta: {} };
+          workingDirectory: "." }), meta: {} };
       return { text: decision({ action: "respond", ...(scenario === "direct" ? {
         response: ANSWER, ...(enabled ? { memoryCandidates: [CANDIDATE] } : {}),
-      } : {}) },
-        scenario !== "tool"), meta: {} };
+      } : {}) }), meta: {} };
     }
     expect(input.modelStep).toBe("execution.response");
     responses += 1;

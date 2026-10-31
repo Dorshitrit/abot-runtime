@@ -1,3 +1,4 @@
+import { createLocalRuntimeMaintenance, isLocalMaintenanceMethod } from "./app-maintenance.js";
 import type WebSocket from "ws";
 import {
   createRuntimeApplication,
@@ -50,6 +51,7 @@ export async function createLocalRuntimeOwner(
     ...overrides,
     scheduledRequestOptions: (run) => controls.scheduled(run),
   });
+  const maintenance = createLocalRuntimeMaintenance({ services: application.services, activity });
   const memory = new LocalMemoryDispatcher(application.services.longTermMemory);
   const savedApprovals = new SavedRequestApprovals(
     application,
@@ -89,6 +91,7 @@ export async function createLocalRuntimeOwner(
   let shutdown: Promise<void> | undefined;
   return {
     call(method, args, peer) {
+      if (isLocalMaintenanceMethod(method)) return maintenance.call(method, args);
       return activity.run(async () => {
         if (isLocalNativePermissionMethod(method))
           return nativePermissions.call(method, args, peer);
@@ -253,10 +256,12 @@ async function runPeerRequest(
   } as WebSocket;
   let diagnosticStage = "acceptance";
   try {
-    await peer.callClient("request.accepted", [message.requestId]);
-    activity.assertAcceptingRequests();
-    diagnosticStage = "execution";
-    traceLocalRequest("run.execution_started", diagnosticFields);
+    options.onAccepted = async () => {
+      await peer.callClient("request.accepted", [message.requestId]);
+      activity.assertAcceptingRequests();
+      diagnosticStage = "execution";
+      traceLocalRequest("run.execution_started", diagnosticFields);
+    };
     const result = await application.requests.handle(socket, message, options);
     traceLocalRequest("run.handler_settled", {
       ...diagnosticFields,

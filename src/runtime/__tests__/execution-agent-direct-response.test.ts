@@ -21,7 +21,6 @@ function respond(response?: unknown, title?: string): string {
   return JSON.stringify({
     decision: {
       action: "respond",
-      acknowledgement: "I will answer the question.",
       ...(response === undefined ? {} : { response }),
       ...(title === undefined ? {} : { title }),
     },

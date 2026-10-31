@@ -17,10 +17,10 @@ export function createAppearanceDialog({ mount, onOpen, onSelect, onSelectNaviga
   const dialog = doc.createElement("dialog");
   dialog.className = "appearance-dialog";
   dialog.setAttribute("aria-labelledby", "appearance-title");
-  dialog.innerHTML = `<form class="appearance-form">
+  dialog.innerHTML = `<form class="appearance-form"><div class="appearance-content">
     <header class="appearance-heading">
       <h2 id="appearance-title">Appearance</h2>
-      <button type="button" class="appearance-close" aria-label="Close appearance">×</button>
+      <button type="button" class="appearance-close" aria-label="Close appearance" autofocus>×</button>
     </header>
     <p class="appearance-description">Choose your workspace colors and sidebar layout.</p>
     <fieldset class="appearance-palettes"><legend class="sr-only">Color palette</legend></fieldset>
@@ -29,7 +29,7 @@ export function createAppearanceDialog({ mount, onOpen, onSelect, onSelectNaviga
       <label><input type="radio" name="navigation-display" value="icons"><span>Icons only</span></label>
     </fieldset>
     <p class="appearance-status" role="status" aria-live="polite"></p>
-    <footer class="appearance-footer"><button type="button" class="appearance-cancel">Cancel</button>
+    </div><footer class="appearance-footer"><button type="button" class="appearance-cancel">Cancel</button>
       <button type="submit" class="appearance-save">Apply</button></footer>
   </form>`;
   const choices = dialog.querySelector(".appearance-palettes");

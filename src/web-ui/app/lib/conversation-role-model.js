@@ -1,3 +1,4 @@
+import { recordedPresentationRole, rolePresentation } from "./role-presentation.js";
 import {
   eventTone,
   formatEventDetail,
@@ -18,6 +19,7 @@ import { projectToolActivityEvent } from "./tool-activity-event.js";
 import { correlateToolApprovalActivity } from "./tool-approval-activity.js";
 import {
   hasSupervisorBasketActivity,
+  isBasketDiscoveryEvent,
   isBasketStatusEvent,
   projectBasketActivityEvent,
 } from "./basket-activity-model.js";
@@ -158,6 +160,7 @@ function roleActivitySummary(event) {
 function createRoleGroup(role, event) {
   return {
     role,
+    presentationRole: recordedPresentationRole(role, event?.presentationRole),
     phase: "",
     latestEvent: event,
     latestRoleEvent: null,
@@ -183,6 +186,7 @@ function canShowActiveRoles(streaming, terminalSeen) {
 }
 
 function buildRoleCard(group, activeRole, streaming) {
+  const presentation = rolePresentation(group.role, group.presentationRole);
   const failed = isFailedRoleActivity(group.latestEvent);
   const active = isActiveRoleActivity(group, activeRole, streaming);
   const toolCount = countToolInvocations(group.toolEvents);
@@ -194,11 +198,11 @@ function buildRoleCard(group, activeRole, streaming) {
   return {
     id: group.role,
     role: group.role,
-    title:
+    title: presentation?.title ?? (
       group.role === "supervisor" && !roleIdentityRecorded
         ? "Root agent"
-        : ROLE_TITLES[group.role],
-    responsibility: ROLE_RESPONSIBILITIES[group.role],
+        : ROLE_TITLES[group.role]),
+    responsibility: presentation?.responsibility ?? ROLE_RESPONSIBILITIES[group.role],
     phaseLabel: titleCaseEventValue(group.phase),
     summary: latestRoleAction(group),
     ...(group.skillActivities.length > 0
@@ -247,7 +251,7 @@ export function buildConversationRoleCards({
       continue;
     }
 
-    const basketActivity = supervisorBasketIdentified
+    const basketActivity = supervisorBasketIdentified || isBasketDiscoveryEvent(event)
       ? projectBasketActivityEvent(event)
       : null;
     if (basketActivity) {
@@ -283,6 +287,7 @@ export function buildConversationRoleCards({
         group.phase = textOf(event.phase);
         group.latestEvent = event;
         group.latestRoleEvent = event;
+        group.presentationRole = recordedPresentationRole(stage, event.presentationRole) || group.presentationRole;
         group.summarySupersededByReturn = false;
         if (isSupervisorSkillActivity(event)) {
           group.skillActivities.push({
@@ -317,6 +322,7 @@ export function buildConversationRoleCards({
     const owner = action.executorRole || "unknown";
     const group = groups.get(owner) || createRoleGroup(owner, {});
     group.toolActions.push(action);
+    group.presentationRole = recordedPresentationRole(owner, action.presentationRole) || group.presentationRole;
     groups.set(owner, group);
   }
 

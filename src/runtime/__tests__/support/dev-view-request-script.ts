@@ -12,7 +12,6 @@ export const DEV_VIEW_REQUEST_FINAL = "The selected file section was read.";
 const invocation = {
   action: "invoke_capability",
   capabilityId: "inspect_target",
-  intent: "Read the requested section.",
   selectionControls: { path: "notes.txt" },
 };
 
@@ -21,7 +20,6 @@ function rootDecision(turn: number) {
     return {
       action: "open_capability_scope",
       catalogGroupIds: ["read"],
-      acknowledgement: "I will read the requested section.",
     };
   if (turn === 2)
     return {
@@ -105,7 +103,7 @@ export function createDevViewRequestScript(
     if (input.modelStep === "worker.decision") {
       workerTurns += 1;
       expect(workerTurns).toBeLessThanOrEqual(2);
-      return { text: JSON.stringify({ decision: invocation }), meta: {} };
+      return { text: JSON.stringify({ decision: { ...invocation, intent: "Read the requested section." } }), meta: {} };
     }
     rootTurns += 1;
     if (rootTurns >= 2) {

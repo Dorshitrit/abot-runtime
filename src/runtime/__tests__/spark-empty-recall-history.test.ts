@@ -33,7 +33,8 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
           decisionCount += 1;
           if (decisionCount === 1) {
             expect(recallCapsules(input)).toEqual([]);
-            return { action: "recall_memory", query, acknowledgement: "Checking saved facts." };
+            return { action: "recall_memory", query,
+              ...(policy === "supervisor-worker-v1" ? { acknowledgement: "Checking saved facts." } : {}) };
           }
           expect(decisionCount).toBe(2);
           expect(recallCapsules(input)).toEqual([expect.objectContaining({

@@ -97,6 +97,7 @@ export function findAppDom(documentRoot = document) {
     sendNextButton: documentRoot.getElementById("sendNextButton"),
     refreshRuntimeButton: documentRoot.getElementById("refreshRuntimeButton"),
     runtimeStatus: documentRoot.getElementById("runtimeStatus"),
+    runtimeMaintenance: documentRoot.getElementById("runtimeMaintenance"),
     refreshLogsButton: documentRoot.getElementById("refreshLogsButton"),
     runtimeLogs: documentRoot.getElementById("runtimeLogs"),
     refreshHealthButton: documentRoot.getElementById("refreshHealthButton"),

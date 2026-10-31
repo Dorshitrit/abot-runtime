@@ -1,3 +1,8 @@
+import {
+  resolveInvocationSteeringContext,
+  modelStepSteeringDisposition,
+  isUnboundSteeringDeferred,
+} from "./model-step-steering-context.js";
 import { resolveContextCompactionTriggerRatio } from "../context/request-context-budget.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import { resolveModelInvocationStep } from "../../shared/model-step-registry.js";
@@ -21,6 +26,7 @@ import {
   projectModelStepTimeoutEvent,
   type ModelStepTimeoutIdentity,
 } from "./model-step-timeout-event.js";
+import { projectPromptCacheBoundary } from "./prompt-cache-boundary.js";
 import { createModelContextAssessment } from "./model-context-assessment.js";
 import { admitOptionalModelContext } from "./optional-context-admission.js";
 import {
@@ -281,11 +287,13 @@ class ModelStepInvocation<T> {
     const projectedMessages = contextCompaction
       ? contextCompaction.project(configuredInstructionProjection.messages)
       : configuredInstructionProjection.messages;
-    let messages = this.input.ownsRequestSteering
-      ? appendRequestSteeringContext(projectedMessages, steeringSnapshot)
+    const steeringContext = resolveInvocationSteeringContext(
+      params, this.input.ownsRequestSteering, steeringSnapshot,
+    );
+    let messages = steeringContext
+      ? appendRequestSteeringContext(projectedMessages, steeringContext)
       : [...projectedMessages];
-    const steeringContextIncluded =
-      this.input.ownsRequestSteering && steeringSnapshot.updates.length > 0;
+    const steeringContextIncluded = (steeringContext?.updates.length ?? 0) > 0;
     const admission = resolveModelContextAdmission({
       runnerConfig: request.runnerConfig,
       agentMode: request.agentMode,
@@ -412,9 +420,9 @@ class ModelStepInvocation<T> {
       steeringVersion: steeringSnapshot.version,
       steeringUpdateCount: steeringSnapshot.updates.length,
       steeringContextIncluded,
-      steeringDisposition: this.input.ownsRequestSteering
-        ? "supervisor_owned"
-        : "deferred_to_supervisor",
+      steeringDisposition: modelStepSteeringDisposition(
+        params, this.input.ownsRequestSteering,
+      ),
       configuredInstructionBlockCount:
         configuredInstructionProjection.blockCount,
       configuredInstructionCharacterCount:
@@ -471,7 +479,9 @@ class ModelStepInvocation<T> {
       return "superseded";
     }
     if (
-      !ownsRequestSteering &&
+      isUnboundSteeringDeferred(
+        ownsRequestSteering, params.boundSteeringVersion,
+      ) &&
       !requestSteering.isCurrent(steeringSnapshot.version)
     ) {
       const current = requestSteering.snapshot();
@@ -577,6 +587,7 @@ class ModelStepAttempt {
     return invokeModelProvider(params.modelStep, () =>
       request.modelGatewayClient.invoke({
         messages: this.input.messages,
+        ...projectPromptCacheBoundary({ messages: this.input.messages, beforeMessage: params.promptCacheBoundaryBeforeMessage }),
         agentMode: request.agentMode,
         modelStep: params.modelStep,
         ...(request.reasoningPreference ? { reasoningPreference: request.reasoningPreference } : {}),

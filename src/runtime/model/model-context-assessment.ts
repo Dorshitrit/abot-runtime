@@ -9,7 +9,7 @@ import type { ModelStepInvocationInput } from "./model-step-port.js";
 /** Measures every candidate through the same media, provider-count and estimate path. */
 export function createModelContextAssessment(input: {
   request: RequestModelInvocationView;
-  params: Pick<ModelStepInvocationInput<unknown>, "modelStep" | "format">;
+  params: Pick<ModelStepInvocationInput<unknown>, "modelStep" | "format" | "promptCacheBoundaryBeforeMessage">;
   admission: ResolvedModelContextAdmission;
   assertCurrent(): void;
 }) {
@@ -36,6 +36,8 @@ export function createModelContextAssessment(input: {
       invocation: admission.invocation,
       modelStep: params.modelStep,
       messages: projected,
+      ...(params.promptCacheBoundaryBeforeMessage
+        ? { promptCacheBoundaryBeforeMessage: params.promptCacheBoundaryBeforeMessage } : {}),
       ...(params.format !== undefined ? { format: params.format } : {}),
     });
     assertCurrent();

@@ -133,9 +133,9 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       const rootStep = policy === "execution-agent-v1" ? "execution.decision" : "supervisor.decision";
       const root = fixture.invoke.mock.calls.find(([input]) => input.modelStep === rootStep)![0];
       const text = scheduledModelMessages(root).map(({ content }) => content).join("\\n");
-      expect(text).toContain("[entry-0]:");
+      expect(text).toContain("[entry-0]");
       expect(text).toContain("Partial catalog");
-      expect(text).not.toContain("[entry-999]:");
+      expect(text).not.toContain("[entry-999]");
       expect(text).toContain("DISPLAY_NAME");
       expect(text).not.toContain(documents[0]!.name);
       expect(text).not.toContain(document.content);

@@ -1,3 +1,4 @@
+import { listAutomationAttachmentOwners } from "./attachment-owners.js";
 import type { RuntimeConfig, ToolRegistry } from "../ports.js";
 import type {
   SchedulerAutomationRun,
@@ -318,6 +319,7 @@ export function createAutomationService(options: {
   }
 
   return {
+    listAttachmentOwners: () => listAutomationAttachmentOwners({ runtimeDir: options.config.paths.runtimeDir, persistence: options.persistence }),
     list,
     create,
     getDraft: drafts.get,

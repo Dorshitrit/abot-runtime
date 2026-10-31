@@ -1,3 +1,4 @@
+import { isValidRoleResultSteeringVersion } from "./worker-steering.js";
 import { exactKeys, isRecord } from "../../validation/strict-record.js";
 import {
   ROLE_CALL_RESULT_MAX_LENGTH,
@@ -35,6 +36,7 @@ export type CanonicalRoleCallWorkResultReceiptInput = Readonly<{
   child: RoleCallFrame;
   resultRef: string;
   outcome: RoleCallResult["outcome"];
+  steeringVersion?: number;
   policy: RoleCallPolicy;
   admittedHeadRevision: number | undefined;
 }>;
@@ -91,6 +93,7 @@ export function createCanonicalRoleCallWorkResultReceipt(
     producer: input.child,
     resultRef: input.resultRef,
     outcome: input.outcome,
+    ...(input.steeringVersion !== undefined ? { steeringVersion: input.steeringVersion } : {}),
     sourceRevision,
   });
   if (!lineage) return null;
@@ -186,7 +189,7 @@ function hasCanonicalReturnBinding(
   }
   if (input.child.parentCallId !== input.caller.callId) return false;
   if (!input.caller.childCallIds.includes(input.child.callId)) return false;
-  return input.outcome === "completed" || input.outcome === "failed";
+  return isValidRoleResultSteeringVersion(input, input.child, input.policy);
 }
 
 function isStoredResultBoundToReceipt(

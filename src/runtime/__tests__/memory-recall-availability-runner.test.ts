@@ -90,7 +90,7 @@ function availabilityHarness(options: {
         query: options.changingQuery
           ? `Saved preference ${decisions.length}`
           : RECALL_QUERY,
-        ...(decisions.length === 1
+        ...(options.policy === "supervisor-worker-v1" && decisions.length === 1
           ? { acknowledgement: "I will check the stored preference." }
           : {}),
       };

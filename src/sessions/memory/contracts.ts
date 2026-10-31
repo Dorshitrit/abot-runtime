@@ -3,6 +3,8 @@ export const SESSION_MEMORY_CHECKPOINT_KIND =
 
 export const SESSION_MEMORY_SUMMARY_MAX_CHARACTERS = 12_000;
 
+export type SessionMemoryScope = "execution_agent";
+
 export type SessionMemoryMessageReference = Readonly<{
   messageId: string;
   fingerprint: string;
@@ -18,6 +20,7 @@ export type SessionMemoryCheckpoint = Readonly<{
 }>;
 
 export type SessionMemoryCheckpointCommit = Readonly<{
+  scope?: SessionMemoryScope;
   expectedSourceRevision: string;
   expectedCheckpointRevision: number;
   checkpoint: SessionMemoryCheckpoint;

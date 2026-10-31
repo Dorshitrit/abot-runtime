@@ -16,11 +16,13 @@ afterEach(async () => {
     server.close((error) => error ? reject(error) : resolve());
   })));
 });
-const view = { settings: { revision: 1, enabled: true, embeddingProfileId: "embed" },
+const view = { settings: { matchMode: "balanced" as const, indexChatUploads: false, revision: 1, enabled: true, embeddingProfileId: "embed" },
   sources: [], embeddingProfiles: [], supportedExtensions: [".txt", ".pdf"],
   limits: { maxSources: 100, maxSourceBytes: 10485760, maxReadCharacters: 12000 } };
 function fixtureService() {
   return {
+    captureChatUpload: vi.fn(async () => null),
+    registerChatUpload: vi.fn(async () => undefined),
     list: vi.fn(async () => view),
     updateSettings: vi.fn(async () => view),
     addSources: vi.fn(async () => view),
@@ -155,4 +157,30 @@ test("relink rejects invalid bodies and cross-origin writes and preserves stable
   const response = await fetch(target, json("POST", { expectedRevision: 1, path: "/new.txt" }));
   expect(response.status).toBe(409);
   expect(await response.json()).toEqual({ ok: false, error: "basket_source_path_conflict" });
+});
+
+
+test("settings route accepts only a boolean chat upload opt-in", async () => {
+  const service = fixtureService();
+  const base = await serve(() => service);
+  const settings = { expectedRevision: 1, enabled: true, embeddingProfileId: "embedding" };
+  expect((await fetch(`${base}/settings`, json("POST", { ...settings, indexChatUploads: true }))).status).toBe(200);
+  expect(service.updateSettings).toHaveBeenLastCalledWith({ ...settings, indexChatUploads: true });
+  for (const indexChatUploads of [null, "true", 1])
+    expect((await fetch(`${base}/settings`, json("POST", { ...settings, indexChatUploads }))).status).toBe(400);
+  expect(service.updateSettings).toHaveBeenCalledTimes(1);
+});
+
+
+test("settings route accepts the three matching modes and rejects arbitrary thresholds", async () => {
+  const service = fixtureService();
+  const base = await serve(() => service);
+  const settings = { expectedRevision: 1, enabled: true, embeddingProfileId: "embedding" };
+  for (const matchMode of ["flexible", "balanced", "strict"]) {
+    expect((await fetch(`${base}/settings`, json("POST", { ...settings, matchMode }))).status).toBe(200);
+    expect(service.updateSettings).toHaveBeenLastCalledWith({ ...settings, matchMode });
+  }
+  for (const matchMode of [null, "", "perfect", 0.6, true])
+    expect((await fetch(`${base}/settings`, json("POST", { ...settings, matchMode }))).status).toBe(400);
+  expect(service.updateSettings).toHaveBeenCalledTimes(3);
 });

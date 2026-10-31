@@ -174,6 +174,7 @@ export function resolveRequestMessages(params: {
 export function buildChatGatewayRequestBody(
   params: Readonly<{
     text?: string;
+    promptCacheBoundaryBeforeMessageIndex?: number;
     agentMode: AgentMode;
     taskType?: string;
     modelStep?: ModelStep;
@@ -191,6 +192,9 @@ export function buildChatGatewayRequestBody(
   return {
     ...(params.text !== undefined ? { text: params.text } : {}),
     messages,
+    ...(params.promptCacheBoundaryBeforeMessageIndex !== undefined
+      ? { promptCacheBoundaryBeforeMessageIndex: params.promptCacheBoundaryBeforeMessageIndex }
+      : {}),
     ...(requestId ? { debugRequestId: requestId } : {}),
     agentMode: params.agentMode,
     ...(typeof params.taskType === "string"

@@ -88,7 +88,10 @@ test("each direct Worker, Planner and Reviewer return opens one selection, while
     classifyProcedure: () => ({ requiresProcedure: true }),
     delegate(input) {
       expect(selections).toBe(++routes);
-      expect(JSON.stringify(input.messages)).not.toContain(documents[0]!.content);
+      expect(jsonMessages(input).filter(({ kind }) => kind === "runtime_core_skill_read_v1"))
+        .toEqual([expect.objectContaining({
+          authority: "passive_reference", purpose: "skill_guidance", document: documents[0],
+        })]);
       return { action: "invoke_role", roleId: "worker", objective };
     },
     decide(input) {

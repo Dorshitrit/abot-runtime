@@ -23,11 +23,14 @@ afterEach(async () => {
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
 });
 
-test.each([false, true])(
-  "EA %s: no related-file IO; collected evidence reaches RAW and selected edit target remains available",
-  async (staged) => {
+test.each([
+  ["execution-agent-v1", false], ["execution-agent-v1", true],
+  ["supervisor-worker-v1", false], ["supervisor-worker-v1", true],
+] as const)(
+  "%s staged=%s: no related-file IO; collected evidence reaches RAW and selected edit target remains available",
+  async (policy, staged) => {
     const root = await fixtureRoot();
-    const fixture = await createPayloadArtifactPolicyFixture(root, "execution-agent-v1", staged);
+    const fixture = await createPayloadArtifactPolicyFixture(root, policy, staged);
     vi.mocked(fs.readFile).mockClear();
     vi.mocked(fs.stat).mockClear();
 
@@ -66,31 +69,11 @@ test.each([false, true])(
   },
 );
 
-test.each([false, true])(
-  "SUPER %s preserves declared related-file loading with the same model and root call shape",
-  async (staged) => {
-    const root = await fixtureRoot();
-    const fixture = await createPayloadArtifactPolicyFixture(root, "supervisor-worker-v1", staged);
-    vi.mocked(fs.readFile).mockClear();
-    vi.mocked(fs.stat).mockClear();
-
-    expect(await fixture.write()).toMatchObject({ outcome: "succeeded" });
-
-    expect(fs.stat).toHaveBeenCalledWith(join(root, "incidental.txt"));
-    expect(fs.readFile).toHaveBeenCalledWith(join(root, "incidental.txt"), "utf8");
-    const text = JSON.stringify(fixture.invoke.mock.calls.flatMap(([input]) => input.messages));
-    expect(text).toContain(INCIDENTAL_CONTENT);
-    expect(text).toContain("DISK_CHANGED_AFTER_OBSERVATION");
-    expect(text).toContain("runtime_payload_related_artifact_content_v1");
-    if (staged) expect(text).toContain("selected target first line");
-  },
-);
-
-test("unspecified and SUPER policy preserve the legacy provider behavior", () => {
+test("request policies disable implicit loading while unspecified providers retain legacy behavior", () => {
   expect(allowsAutomaticPayloadArtifactLoading(undefined)).toBe(true);
   expect(allowsAutomaticPayloadArtifactLoading(
     resolveRequestExecutionPolicy("supervisor-worker-v1").authority,
-  )).toBe(true);
+  )).toBe(false);
   expect(allowsAutomaticPayloadArtifactLoading(
     resolveRequestExecutionPolicy("execution-agent-v1").authority,
   )).toBe(false);

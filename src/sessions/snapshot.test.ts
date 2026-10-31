@@ -70,3 +70,19 @@ describe("session history pages", () => {
     expect(projectSessionSnapshot(session, { afterMessageId: 1 }).messages.map((message) => message.id)).toEqual([2, 3]);
   });
 });
+
+
+test("compact read identities preserve presentation kind without changing public history", () => {
+  const session = conversation(3);
+  session.messages[0]!.kind = "tool_approval_request";
+  session.messages[1]!.kind = "terminal";
+  const original = structuredClone(session);
+  for (const options of [{ identitiesOnly: true }, { page: { limit: 1 } }]) {
+    const snapshot = projectSessionSnapshot(session, options);
+    expect(snapshot.messageIndex?.map((message) => message.kind)).toEqual(["tool_approval_request", "terminal", undefined]);
+    expect(snapshot.messageIndex?.every((message) => !("text" in message))).toBe(true);
+  }
+  expect(projectSessionSnapshot(session).messages.map((message) => message.kind))
+    .toEqual(["tool_approval_request", "terminal", undefined]);
+  expect(session).toEqual(original);
+});

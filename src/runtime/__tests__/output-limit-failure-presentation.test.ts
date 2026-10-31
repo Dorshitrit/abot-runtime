@@ -26,7 +26,7 @@ const phrasing = {
   failureNotice: "The model's output capacity ended before the response finished.",
   nextStep: "Review the selected model and reasoning settings before continuing.",
 };
-const authoredOutput = `${phrasing.failureNotice}\n\n${phrasing.nextStep}`;
+const knownOutput = "The model reached its output-token limit before finishing its decision or response.\n\nReview the selected model and reasoning settings before continuing.";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(async () => {
@@ -56,16 +56,8 @@ describe.each(ROOT_OUTPUT_POLICIES)("$policyId failure delivery", (policy) => {
       const harness = await createFailureHarness(policy.policyId);
       const failingStep = phase === "decision" ? policy.decisionStep : policy.responseStep;
       const invoke = vi.fn<ModelGatewayClient["invoke"]>(withSupervisorPreparation(async (input) => {
-        if (input.modelStep === "degraded.finalization") {
-          expect(readProblem(input)).toEqual({
-            stage: "provider_completion",
-            code: "output_incomplete",
-            cause: "model_output_limit",
-            modelStep: failingStep,
-          });
-          expect(JSON.stringify(input.messages)).not.toContain(privateProviderText);
-          return { text: JSON.stringify(phrasing), meta: {} };
-        }
+        if (input.modelStep === "degraded.finalization")
+          throw new Error("known_output_limit_must_not_invoke_authoring");
         if (input.modelStep === failingStep) {
           return {
             text: privateProviderText,
@@ -77,23 +69,28 @@ describe.each(ROOT_OUTPUT_POLICIES)("$policyId failure delivery", (policy) => {
       await harness.run(invoke);
       const session = await harness.sessionStore.getSessionById("failure-session");
       expect(session?.messages.filter(({ role }) => role === "assistant")).toEqual([
-        expect.objectContaining({ content: authoredOutput }),
+        expect.objectContaining({ content: knownOutput }),
       ]);
       expect(rootWorkCalls(invoke).map(([input]) => input.modelStep)).toEqual([
         policy.decisionStep,
         ...(phase === "response" ? [policy.responseStep] : []),
-        "degraded.finalization",
       ]);
-      expect(harness.events.filter(({ type }) => type === "completed")).toEqual([
-        expect.objectContaining({ output: authoredOutput }),
+      expect(invoke.mock.calls.filter(([input]) => input.modelStep === "degraded.finalization")).toEqual([]);
+      expect(JSON.stringify(session?.messages)).not.toContain(privateProviderText);
+      const completed = harness.events.filter(({ type }) => type === "completed");
+      expect(completed).toEqual([
+        expect.objectContaining({ output: knownOutput }),
       ]);
+      expect(completed[0]?.disposition).toBe(
+        policy.policyId === "supervisor-worker-v1" ? "blocked" : undefined,
+      );
       expect(harness.events.filter(({ type }) => type === "failed")).toEqual([]);
     },
   );
 });
 
 test.each([false, true])(
-  "SUPER outer output failure preserves its cause when explanation authoring fails: %s",
+  "SUPER outer output failure preserves its cause without calling explanation authoring: %s",
   async (authoringFails) => {
     const harness = await createFailureHarness();
     const primary = incompleteError("worker.result");
@@ -109,12 +106,7 @@ test.each([false, true])(
       return { text: JSON.stringify(phrasing), meta: {} };
     }));
     await harness.run(invoke);
-    const expected = authoringFails
-      ? buildDegradedFinalizationFallback({
-          problem: { stage: "decide", code: "output_incomplete", ...projectOutputLimitCause(primary) },
-          progress: null,
-        })
-      : authoredOutput;
+    const expected = knownOutput;
     const session = await harness.sessionStore.getSessionById("failure-session");
     expect(session?.messages.filter(({ role }) => role === "assistant")).toEqual([
       expect.objectContaining({ content: expected }),
@@ -122,7 +114,8 @@ test.each([false, true])(
     expect(harness.events.filter(({ type }) => type === "failed")).toEqual([
       expect.objectContaining({ error: "output_incomplete" }),
     ]);
-    expect(rootWorkCalls(invoke)).toHaveLength(2);
+    expect(rootWorkCalls(invoke)).toHaveLength(1);
+    expect(invoke.mock.calls.filter(([input]) => input.modelStep === "degraded.finalization")).toEqual([]);
   },
 );
 

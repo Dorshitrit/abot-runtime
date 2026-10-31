@@ -19,6 +19,12 @@ These modules must not choose semantic workflow. They enforce the ledger,
 continuation, and registration contracts around decisions made by role
 executors. Transporting a receipt does not grant it completion authority.
 
+The request composition decorates SUPER Workers with assignment-bound steering.
+A superseded Worker returns a runtime-issued `yielded` control receipt through
+the same exact-caller child transaction. It does not claim completed or failed
+work; settled capability evidence remains canonical. Generic role activation
+does not interpret user updates or select the caller's next action.
+
 Recognized model-output validation failures after repair exhaustion, typed
 provider/transport failures, output truncation, and local model-step timeouts
 bound to the active child step are contained around the active executor call.

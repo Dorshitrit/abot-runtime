@@ -41,7 +41,7 @@ export function emptyBasketSnapshot(hostNamespace: string): BasketSnapshot {
   return Object.freeze({
     schemaVersion: 1,
     hostNamespace,
-    settings: Object.freeze({ revision: 1, enabled: true, embeddingProfileId: null }),
+    settings: Object.freeze({ revision: 1, enabled: true, indexChatUploads: false, matchMode: "balanced", embeddingProfileId: null }),
     sources: Object.freeze([]),
   });
 }

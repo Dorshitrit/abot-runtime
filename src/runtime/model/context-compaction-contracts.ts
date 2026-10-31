@@ -1,10 +1,11 @@
+import type { CompactionProgressObserver } from "./context-compaction-progress.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 
 export type ModelStepCompactionScope = "session_history" | "active_request";
 
 /** Feedback from the consumer envelope, local to one additional compaction cycle. */
 export type ContextCompactionProjectionRepair = Readonly<{
-  reason: "projection_not_reduced";
+  reason: "projection_not_reduced" | "envelope_exceeds_available_input";
   originalInputTokens: number;
   candidateInputTokens: number;
   targetInputTokens: number;
@@ -12,6 +13,7 @@ export type ContextCompactionProjectionRepair = Readonly<{
 
 export type ModelStepCompactionPreparationContext = Readonly<{
   boundSteeringVersion?: number;
+  onProgress?: CompactionProgressObserver;
   projectionRepair?: ContextCompactionProjectionRepair;
 }>;
 

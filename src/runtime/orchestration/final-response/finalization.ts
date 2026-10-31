@@ -4,6 +4,7 @@ import type {
   SessionThinkingTraceEntry,
 } from "../../../sessions/types.js";
 import type { AgentMode } from "../../../shared/types.js";
+import { publishCompletedOutput } from "../../../shared/completion-disposition.js";
 import type { EventSink, SessionStore } from "../../ports.js";
 import { defaultRuntimeSessionStore } from "../../adapters/default-session-adapters.js";
 import type { SessionTerminalMessage } from "../../../sessions/request-lifecycle/contracts.js";
@@ -15,6 +16,7 @@ export async function finalizeResponse(params: {
   requestId: string;
   agentMode: AgentMode;
   output: string;
+  disposition?: "blocked";
   grounding?: SessionMessageGrounding;
   observationMeta?: SessionMessageObservationMeta;
   observationContent?: string;
@@ -47,5 +49,5 @@ export async function finalizeResponse(params: {
   }
   params.afterPersist?.();
   params.events.event("thinking.completed");
-  params.events.completed(params.output);
+  publishCompletedOutput(params.events, params.output, params.disposition);
 }

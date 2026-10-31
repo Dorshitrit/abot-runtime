@@ -4,6 +4,133 @@ All notable changes to this project should be documented in this file.
 
 This project follows semantic versioning after the first public release.
 
+## 2.2.0 - 2026-10-30
+
+ABot 2.2.0 adds Continue with ChatGPT, expands Resources and introduces Git
+change previews and confirmed Runtime cleanup. It improves progress reporting,
+context compaction and notifications, preserves tool evidence across longer
+conversations, and strengthens steering and request isolation.
+
+### Added
+
+- Connect local installations with Continue with ChatGPT during onboarding or
+  model setup, and manage connected accounts and available models in the Web UI.
+  Local Docker installations use the loopback-published Web UI port for sign-in
+  callbacks on macOS, Linux and Windows.
+- Index DOCX documents in Resources without enabling Document Reader. The new
+  document-text plugin SDK also provides bounded DOCX, PPTX and XLSX extraction.
+- Opt in to adding supported new chat uploads to Resources automatically, using
+  their existing stored files. Choose Flexible, Balanced or Strict source matching.
+- Execution Agent can publish optional progress messages during continuing work,
+  including SPARK Chat.
+- View current Git changes from successful file-action previews, with a
+  project-wide changes panel on wide screens.
+- Enable optional OpenAI prompt-cache optimization for Execution Agent decisions.
+- Discover installed Ollama models during setup, assign profile labels and
+  inspect the installed version with `abot --version`.
+- Show live context-compaction progress for active requests and conversation
+  history, including processed sources or turns, bytes, processing and budget-check
+  stages, and time since the latest update.
+- Reset the selected Runtime environment's conversations, SPARK history and
+  uploaded files, or clear its current runtime log and rotated archives, through
+  separate confirmed Web UI actions.
+
+### Changed
+
+- Chat combines progress messages, tool actions and role activity in one
+  chronological timeline that collapses after a completed answer.
+- The browser-tab icon indicates unread notifications. Reading a conversation
+  synchronizes its reply notifications while explicit Mark unread is preserved.
+  Notification history is limited to 1,000 records and 90 days per store.
+- Resources read activity shows returned ranges, continuation reads and whether
+  more text remains. Source selection and settings dialogs are clearer.
+- Execution Agent retains settled tool observations in session history and
+  compacts them with the surrounding conversation. Decision controls and payload
+  authors receive bounded passive references instead of duplicate history.
+- SUPER receives selected Skills during procedure selection and delegation,
+  and gathers required source evidence explicitly instead of automatically
+  loading related files.
+- Resources prioritizes complete registered file names and sequences of at least
+  two consecutive words from a file name, even below the content-similarity
+  threshold. Requested file lookups use explicit listing, search or reads when
+  automatic matches are absent; background matches alone do not require action.
+- SPARK's assistant transcript shows ongoing Execution Agent updates and the
+  final answer, with actionable approval cards kept separate.
+- SUPER retains ordered compaction drafts directly when they fit the digest and
+  model-input budgets, avoiding unnecessary model merge calls.
+- Skill discovery prioritizes Skill identities before shortening descriptions,
+  keeping more entries discoverable within the existing context budget.
+
+### Fixed
+
+- Keep ChatGPT connection forms responsive after account-loading failures and
+  during sign-in polling. Show local-connection restrictions without repeatedly
+  loading accounts or replacing unrelated setup inputs.
+
+- Steering returns an active SUPER Worker to its exact caller at a safe boundary,
+  preserving settled evidence. Stale approvals cannot authorize execution, and
+  Planner can retire the unfinished remainder of its plan.
+- Preserve selected dependency observations through SUPER handoffs and bounded
+  edits, deduplicate compaction sources and reuse matching checkpoints.
+- Reject malformed DOCX XML and incomplete extraction before publishing a
+  Resources index.
+- Validate initialization candidates before writing active configuration, and
+  report unsupported CLI providers and startup failures clearly.
+- Reject truncated OpenAI streams and refusals, and retain structured function
+  results delivered in completed stream items.
+- Preserve actionable provider and model-output failure explanations in saved
+  conversations and replay. Present blocked outcomes and execution roles accurately.
+- Prevent overlapping requests within one session before history, model calls or
+  tools begin. Rejected drafts are preserved; other sessions can run concurrently.
+- Reduce memory pressure when refreshing active conversations by loading request
+  replay from the matching session and sharing overlapping file reads, while
+  preserving access checks and fresh replay.
+- Preserve complete SUPER compaction handoffs through saved checkpoints when
+  they fit the measured token budgets.
+- Retry Execution Agent compaction once from the original evidence when a smaller
+  result still exceeds the available input budget.
+- Rebuild stored-memory and unexpired learning-candidate embeddings together when
+  switching embedding models. Preserve candidate identity, evidence and retention
+  deadlines, and reject capacity failures without partially replacing the index.
+- Mark approval notifications read after an accepted approval or rejection, and
+  automation notifications after viewing the corresponding report in Studio or
+  chat. Hidden reports and background fetches do not count as viewing.
+- Exclude approval controls from SPARK unread counts and remove repetitive generic
+  processing rows from conversation activity.
+
+### Upgrade notes
+
+- ChatGPT sign-in requires the Runtime and browser on the same computer; WSL
+  requires localhost callback forwarding. Remote and Bridge sign-in are not
+  supported. Configure embeddings separately; this provider has no exact input
+  token counting or automatic fallback to API billing.
+- Automatic upload indexing defaults off and does not backfill older attachments.
+  Indexed uploads remain linked to chat-owned files; deleting those files can
+  make their Resources entries unavailable.
+- Resources defaults to Balanced matching (0.6), including existing stores without
+  a saved mode. The previous threshold was 0.35, so fewer content-only matches may
+  be returned. Flexible matching (0.3) broadens retrieval without reindexing.
+  File-name matching also needs no reindexing, but still requires a compatible
+  ready index and available embedding provider; it does not change similarity scores.
+- Resources adds DOCX support only; PPTX and XLSX extraction in the shared SDK
+  does not make those formats available in Resources. OCR is not included.
+- Git previews compare current files with Git HEAD, not the historical change
+  made by an individual action. They require Git and a project on the Runtime
+  host; Bridge and Companion-only roots are not supported.
+- Prompt-cache optimization defaults off and applies only to supported OpenAI API
+  models and Execution Agent decision calls.
+- Integrations should handle `session_busy` and `session_awaiting_approval`:
+  HTTP 409 from the Web API, or a failed event through Bridge. Completed results
+  may include `disposition: "blocked"`; role and tool events may include
+  `presentationRole`. Existing canonical roles and event names are preserved.
+- Runtime reset actions require the local Runtime backend and are unavailable in
+  Bridge mode. Session reset permanently removes conversation uploads and attached
+  schedules, including SPARK history and uploads. Standalone automations and their
+  retained inputs, long-term memory and learning settings are preserved; SPARK can
+  receive new messages afterward. Reset requires idle execution and verified,
+  separate environment storage; session reset also requires resolving pending
+  approvals. Log clearing preserves shared service logs.
+
 ## 2.1.0 - 2026-10-26
 
 ABot 2.1.0 adds personal Resources for Execution Agent, improves context

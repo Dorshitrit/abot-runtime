@@ -21,7 +21,7 @@ import { workerCapabilityBindingRejection } from "./binding-rejection.js";
 
 export type PreparedCapabilityInvocation<TContext> = Readonly<{
   adapter: WorkerCapabilityAdapter<TContext>;
-  intent: string;
+  intent?: string;
   authoringObjective?: string;
   controls: WorkerCapabilityControls;
 }>;
@@ -33,7 +33,7 @@ type CapabilityLookupIssueCodes = Readonly<{
 }>;
 
 type NormalizedText =
-  | Readonly<{ ok: true; value: string }>
+  | Readonly<{ ok: true; value?: string }>
   | Readonly<{ ok: false; issueCode: string }>;
 
 type NormalizedAuthoringObjective =
@@ -193,13 +193,13 @@ export class CapabilityInvocationPreparer<TContext> {
 
   #traceSelectionResolved(
     adapter: WorkerCapabilityAdapter<TContext>,
-    intent: string,
+    intent: string | undefined,
     controls: WorkerCapabilityControls,
   ): void {
     traceWorkerCapabilitySelectionResolved(
       this.#diagnostic,
       adapter.descriptor,
-      intent.length,
+      intent?.length ?? 0,
       Object.keys(controls).length,
     );
   }
@@ -215,13 +215,13 @@ export class CapabilityInvocationPreparer<TContext> {
 
 function createPreparedInvocation<TContext>(params: {
   adapter: WorkerCapabilityAdapter<TContext>;
-  intent: string;
+  intent?: string;
   authoringObjective?: string;
   controls: WorkerCapabilityControls;
 }): PreparedCapabilityInvocation<TContext> {
   return {
     adapter: params.adapter,
-    intent: params.intent,
+    ...(params.intent !== undefined ? { intent: params.intent } : {}),
     ...(params.authoringObjective
       ? { authoringObjective: params.authoringObjective }
       : {}),
@@ -230,6 +230,7 @@ function createPreparedInvocation<TContext>(params: {
 }
 
 function normalizeCapabilityIntent(input: unknown): NormalizedText {
+  if (input === undefined) return { ok: true };
   if (typeof input !== "string") {
     return { ok: false, issueCode: "intent_invalid" };
   }

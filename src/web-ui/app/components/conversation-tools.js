@@ -38,6 +38,7 @@ export function createConversationTools({
   documentRoot = document,
   onOpenFile,
   canOpenFile,
+  createFileChanges,
 } = {}) {
   const requests = new Map();
 
@@ -153,6 +154,8 @@ export function createConversationTools({
     const groups = createConversationToolEvidence(action, {
       documentRoot,
       hideRepeatedTarget: true,
+      createFileChanges: createFileChanges ? (excerpt) => createFileChanges({ requestId, action, details, excerpt,
+        isCurrentAction: () => isCurrentDisclosure(requestId, request, action.id, details) }) : undefined,
     });
     if (groups) body.appendChild(groups);
     const notice = evidenceNotice(action, groups);

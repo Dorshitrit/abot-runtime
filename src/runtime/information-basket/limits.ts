@@ -18,7 +18,6 @@ export const BASKET_LIMITS = Object.freeze({
   healthTimeoutMs: 8_000,
   maxDimensions: 8_192,
   maxSearchSources: 8,
-  minimumSimilarity: 0.35,
   previewCharacters: 400,
   maxPdfPages: 1_000,
   pdfTimeoutMs: 30_000,
@@ -28,5 +27,5 @@ export const BASKET_TEXT_EXTENSIONS = Object.freeze([
   ".txt", ".md", ".csv", ".json", ".log", ".yaml", ".yml",
 ]);
 export const BASKET_SUPPORTED_EXTENSIONS = Object.freeze([
-  ...BASKET_TEXT_EXTENSIONS, ".pdf",
+  ...BASKET_TEXT_EXTENSIONS, ".pdf", ".docx",
 ]);

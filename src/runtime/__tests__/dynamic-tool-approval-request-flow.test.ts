@@ -1,3 +1,4 @@
+import { createRequestSteeringInbox } from "../request/request-steering.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type {
   ToolCallAdapter,
@@ -55,8 +56,9 @@ function requestFixture(policy: SnapshotPolicy) {
   const executionPolicy = resolveRequestExecutionPolicy(policy);
   const onEvent = vi.fn();
   const resolveApproval = vi.fn(async () => ({ kind: "awaiting_approval" as const }));
-  const makeRequest = () => createTestRequestExecutionScopeWithCapabilities({
+  const makeRequest = (requestSteering = base.requestSteering) => createTestRequestExecutionScopeWithCapabilities({
     ...base.makeRequest(),
+    requestSteering,
     prompt: "Observe the selected fixture once.",
     toolPermissionMode: "full_plus",
     modelGatewayClient: gateway,
@@ -121,7 +123,12 @@ describe.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
         expect(f.onEvent.mock.calls.some(([name]) => name === "tool.started")).toBe(false);
 
         const persisted = JSON.parse(JSON.stringify(waiting.continuation));
-        const resumedRequest = f.makeRequest();
+        // Durable resume hydrates a new live inbox after the old request parks.
+        const resumedSteering = policy === "supervisor-worker-v1"
+          ? createRequestSteeringInbox({ requestId: request.requestId }) : undefined;
+        for (const update of request.requestSteering!.snapshot().updates)
+          resumedSteering?.append({ steerId: update.steerId, text: update.text });
+        const resumedRequest = f.makeRequest(resumedSteering);
         const resumed = await runRequestRunner(resumedRequest, {
           durableApproval: true,
           continuation: persisted,

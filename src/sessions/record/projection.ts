@@ -1,4 +1,5 @@
 import { isAssistantInitiativeMessage } from "../assistant-initiative-message.js";
+import { blockedCompletionFields } from "../../shared/completion-disposition.js";
 import { projectSessionRequestLifecycle } from "../request-lifecycle/projection.js";
 import type {
   SessionMessageSource,
@@ -10,9 +11,16 @@ import type {
   SessionSnapshotRequest,
 } from "../types.js";
 
+function isAcknowledgementPresentationEvent(payload: Record<string, unknown>): boolean {
+  if (payload.type !== "event") return false;
+  if (payload.name !== "thinking.delta") return false;
+  return payload.presentationKind === "acknowledgement";
+}
+
 function getRequestEventCompactionKey(
   payload: Record<string, unknown>,
 ): string {
+  if (isAcknowledgementPresentationEvent(payload)) return "";
   const type = typeof payload.type === "string" ? payload.type : "";
   const name = typeof payload.name === "string" ? payload.name : "";
   if (type === "token") {
@@ -110,6 +118,7 @@ export function getRequestFinalState(
       return {
         status: "completed",
         output: event.payload.output,
+        ...blockedCompletionFields(event.payload.disposition),
         completedAt: toEpochMs(event.timestamp),
       };
     }

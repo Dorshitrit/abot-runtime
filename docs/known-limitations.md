@@ -43,6 +43,21 @@ OpenAI through the model gateway.
 Provider secrets belong in environment variables or a host secret store. They
 must not be committed in runtime config.
 
+## Local Model Quality and Resources
+
+A model can return valid structured output and still choose an unsuitable tool,
+skip a needed tool, or give an unsupported answer. Successful installation and
+an arithmetic chat do not establish reliable agent behavior. Check tool-backed
+tasks against known file contents and inspect the recorded tool results before
+relying on a model for similar work.
+
+Small local models may need several attempts to complete a task, and CPU-only
+execution can make each model step slow. A larger configured context window also
+increases resource requirements. Set the profile's `contextWindowTokens` to a
+value your model and machine can support; reducing it reduces the room available
+for instructions, conversation history, and tool evidence. ABot does not infer
+available RAM or automatically tune this setting for the host.
+
 ## Model Invocation Timeouts
 
 Model-step timeouts currently use a fixed wall-clock deadline. A local provider

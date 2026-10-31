@@ -7,6 +7,8 @@ import type {
 } from "./pending-tool-approvals.js";
 import { getString } from "./http.js";
 
+export type WebToolApprovalAcceptedObserver = (decision: WebToolApprovalDecision) => void;
+
 function matchesApprovalScope(
   pending: LocalPendingToolApproval,
   decision: WebToolApprovalDecision,
@@ -29,6 +31,7 @@ export class ManagedWebToolApprovals {
   constructor(
     private readonly environment: (id: string) => RuntimeEnvironment,
     private readonly requests: LocalRequestExecution,
+    private readonly onAccepted?: WebToolApprovalAcceptedObserver,
   ) {}
 
   async list(environmentId: string): Promise<PendingWebToolApproval[]> {
@@ -77,12 +80,16 @@ export class ManagedWebToolApprovals {
           }
         : {}),
     });
+    if (result.accepted && !result.duplicate) {
+      try { this.onAccepted?.(decision); }
+      catch (error) { console.error("Approval notification update failed:", error); }
+    }
     return result.accepted;
   }
 
-  async resume(environmentId: string, requestId: string): Promise<void> {
+  async resume(environmentId: string, requestId: string, sessionId?: string): Promise<void> {
     const environment = this.environment(environmentId);
-    const pending = await environment.approvals.list();
+    const pending = await environment.approvals.list(sessionId);
     const entry = pending.find(
       (value) => value.request.requestId === requestId,
     );
@@ -155,6 +162,8 @@ export class ManagedWebToolApprovals {
     if (hasRequiredEvent) return active!;
     const replay = await environment.services.sessions.getRequestReplayById(
       pending.request.requestId,
+      0,
+      pending.sessionId,
     );
     if (replay?.sessionId !== pending.sessionId) return [];
     return replay.events;

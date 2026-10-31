@@ -1,3 +1,4 @@
+import { emitRuntimeStatus } from "../../events/runtime-status.js";
 import { projectExecutionAgentMemory } from "../../long-term-memory/initial-context.js";
 import { assertBoundModelStepSteeringCurrent } from "../../model/model-step-steering.js";
 import { resolveRequestSteeringInbox } from "../../request/request-steering.js";
@@ -60,6 +61,11 @@ export async function runExecutionAgentDecision(
     resolveRequestSteeringInbox(request.requestSteering),
     options.steeringSnapshot.version,
   );
+  emitRuntimeStatus(request, {
+    stage: "supervisor",
+    phase: "working",
+    message: "Processing the request...",
+  });
   const memoryContext = projectExecutionAgentMemory(
     request, options.head.state.initialMemory, options.steeringSnapshot,
   );
@@ -74,6 +80,8 @@ export async function runExecutionAgentDecision(
     modelStep: input.modelStep,
     format: input.format,
     messages: input.messages,
+    ...(input.promptCacheBoundaryBeforeMessage
+      ? { promptCacheBoundaryBeforeMessage: input.promptCacheBoundaryBeforeMessage } : {}),
     ...(input.basketCandidates ? { optionalContextProjection: input.basketCandidates.remove } : {}),
     contextCompaction: createSessionMemoryAwareCompactionController(
       request,

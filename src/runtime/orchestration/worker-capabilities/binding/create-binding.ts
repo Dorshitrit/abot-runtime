@@ -1,3 +1,4 @@
+import { hasSuperContextContract } from "../../../context/super-context-policy.js";
 import type { CapabilityApprovalGate } from "../approval-contracts.js";
 import {
   parseRoleCallWorkerCapabilityScope,
@@ -43,12 +44,13 @@ export function createRoleCapabilityBinding<TContext>(params: {
     params.requestId,
     boundCall,
   );
+  const initialHead = readInitialLedgerHead(params.ledger, emptyDiagnostic);
   const executionFreshness = resolveBoundExecutionFreshness({
+    initialHead,
     boundCall,
     supplied: params.executionFreshness,
     emptyDiagnostic,
   });
-  const initialHead = readInitialLedgerHead(params.ledger, emptyDiagnostic);
   const authority = inspectInitialBindingAuthority({
     requestId: params.requestId,
     boundCall,
@@ -115,14 +117,17 @@ function createEmptyBindingDiagnostic(
 }
 
 function resolveBoundExecutionFreshness(params: {
+  initialHead: RoleCallLedgerHead;
   boundCall: RoleCallFrame;
   supplied: WorkerCapabilityExecutionFreshness | undefined;
   emptyDiagnostic: WorkerCapabilityDiagnosticContext;
 }): WorkerCapabilityExecutionFreshness | undefined {
-  const executionFreshness =
-    params.boundCall.parentCallId === null
-      ? normalizeExecutionFreshness(params.supplied)
-      : undefined;
+  const normalized = normalizeExecutionFreshness(params.supplied);
+  const executionFreshness = canBindExecutionFreshness(
+    params.boundCall, normalized, params.initialHead,
+  )
+    ? normalized
+    : undefined;
   const hasInvalidFreshness =
     params.supplied !== undefined && !executionFreshness;
   if (!hasInvalidFreshness) return executionFreshness;
@@ -187,4 +192,20 @@ function createBindingDiagnostic<TContext>(params: {
     filteredCapabilityCount:
       params.capabilityScope.filteredCapabilityIds.length,
   });
+}
+
+function canBindExecutionFreshness(
+  call: RoleCallFrame,
+  freshness: WorkerCapabilityExecutionFreshness | undefined,
+  head: RoleCallLedgerHead,
+): boolean {
+  if (!freshness) return true;
+  if (call.parentCallId === null)
+    return freshness.token.kind === "request_steering_v1";
+  if (!hasSuperContextContract(head.policy.authority, "delegated.worker"))
+    return false;
+  if (call.roleId !== "worker") return false;
+  if (freshness.token.kind !== "worker_steering_v1") return false;
+  if (freshness.token.callId !== call.callId) return false;
+  return freshness.token.version === (call.workerSteeringVersion ?? 0);
 }

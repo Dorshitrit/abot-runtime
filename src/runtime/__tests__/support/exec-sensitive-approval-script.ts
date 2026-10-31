@@ -70,7 +70,6 @@ export function createExecApprovalScript(
             decision: {
               action: "open_capability_scope",
               catalogGroupIds: [catalogGroup],
-              acknowledgement: "I will perform the fixture actions.",
             },
           }),
           meta: {},
@@ -81,7 +80,6 @@ export function createExecApprovalScript(
       ? {
           action: "invoke_capability",
           capabilityId: action.capabilityId,
-          intent: "Perform the exact fixture action.",
           ...(policy === "execution-agent-v1"
             ? {
                 ...(requiresAuthoredControls(action)
@@ -89,7 +87,7 @@ export function createExecApprovalScript(
                   : {}),
                 ...(selectedActions === 0 ? { workingDirectory: "." } : {}),
               }
-            : {}),
+            : { intent: "Perform the exact fixture action." }),
         }
       : {
           action: policy === "execution-agent-v1" ? "respond" : "return_result",

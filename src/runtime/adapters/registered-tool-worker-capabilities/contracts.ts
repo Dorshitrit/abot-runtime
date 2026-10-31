@@ -32,6 +32,7 @@ export type RegisteredToolWorkerCapabilityProviderParams = Readonly<{
   toolApprovalController?: ToolApprovalController;
   payloadAuthor?: WorkerCapabilityPayloadAuthor;
   allowRelatedArtifactLoading?: boolean;
+  preserveFullBoundedTargetContext?: boolean;
   loadActionSkillContext?(toolName: string): Promise<string>;
   nextApprovalId(): string;
   onEvent?(name: string, payload: Record<string, unknown>): void;

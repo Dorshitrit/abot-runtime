@@ -14,6 +14,8 @@
 @import url("./styles/24-conversation-role-cards.css");
 @import url("./styles/25-conversation-sources.css");
 @import url("./styles/26-message-content.css");
+@import url("./styles/26-conversation-progress.css");
+@import url("./styles/26-conversation-work-timeline.css");
 @import url("./styles/27-conversation-tools.css");
 @import url("./styles/27-conversation-skills.css");
 @import url("./styles/27-conversation-basket.css");
@@ -78,3 +80,5 @@
 @import url("./styles/66-navigation-scroll.css");
 @import url("./styles/67-confirmation-dialog.css");
 @import url("./styles/68-step-timeout.css");
+@import url("./styles/53-project-changes.css");
+@import url("./styles/54-chatgpt-accounts.css");

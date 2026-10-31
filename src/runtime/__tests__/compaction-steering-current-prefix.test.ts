@@ -59,13 +59,13 @@ test.each([false, true])(
   },
 );
 
-test("SUPER finishes its real coverage/content/merge pipeline before applying pending steering once", async () => {
+test("SUPER finishes extraction and lossless joins before applying pending steering once", async () => {
   const f = createSuperFixture();
   expect(f.request.executionPolicy.authority.id).toBe("supervisor-worker-v1");
   await expect(f.run()).resolves.toBe("accepted");
   expect(f.compactionSteps()).toContain("super.compact.coverage");
   expect(f.compactionSteps()).toContain("super.compact.content");
-  expect(f.compactionSteps()).toContain("super.compact.merge");
+  expect(f.compactionSteps()).not.toContain("super.compact.merge");
   expect(f.compactionSteps()).toContain("super.compact.continuation");
   const checkpoints = f.request.contextCompactionStore!.snapshot!().checkpoints;
   expect(checkpoints).toHaveLength(1);
@@ -82,7 +82,7 @@ test("SUPER finishes its real coverage/content/merge pipeline before applying pe
   const parents = f.invoke.mock.calls.filter(([input]) => input.modelStep === "supervisor.decision");
   expect(parents).toHaveLength(1);
   assertCurrentSteeringCapsule(parents[0]![0].messages as readonly ChatMessage[]);
-  expect(f.events.filter(([name]) => name.startsWith("context.compaction.")).map(([name]) => name))
+  expect(f.events.filter(([name]) => /^context\.compaction\.(started|completed|failed)$/u.test(name)).map(([name]) => name))
     .toEqual(["context.compaction.started", "context.compaction.completed"]);
 });
 
@@ -92,7 +92,7 @@ test("Stop still interrupts the real SUPER pipeline before later stages or check
   expect(f.compactionSteps()).toEqual(["super.compact.coverage"]);
   expect(f.request.contextCompactionStore!.snapshot!().checkpoints).toEqual([]);
   expect(f.invoke.mock.calls.some(([input]) => input.modelStep === "supervisor.decision")).toBe(false);
-  expect(f.events.filter(([name]) => name.startsWith("context.compaction.")).map(([name]) => name))
+  expect(f.events.filter(([name]) => /^context\.compaction\.(started|completed|failed)$/u.test(name)).map(([name]) => name))
     .toEqual(["context.compaction.started", "context.compaction.failed"]);
 });
 

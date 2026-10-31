@@ -132,8 +132,8 @@ test("managed client releases the request RPC and receives the resumed activatio
   const presentation = saved.messages.find(
     (message) => message.kind === "tool_approval_request",
   );
-  expect(presentation?.content).toContain("Perform the exact fixture action.");
-  expect(presentation?.content).not.toContain("Tool approval required.");
+  expect(presentation?.content).toBe("Tool approval required.");
+  expect(presentation?.content).not.toContain("Perform the exact fixture action.");
   const approvalIdentity = {
     executionId: expect.any(String),
     executorRole: "supervisor",

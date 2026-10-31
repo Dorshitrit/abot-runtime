@@ -92,7 +92,7 @@ function isReturnedPlanner(
 function isMatchingPlannerResult(
   result: RoleCallResult | undefined,
   child: ReturnedPlanner,
-): result is RoleCallResult {
+): result is RoleCallResult & Readonly<{ outcome: "completed" | "failed" }> {
   if (!result) return false;
   if (result.producerCallId !== child.callId || result.roleId !== child.roleId)
     return false;

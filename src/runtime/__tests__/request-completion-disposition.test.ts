@@ -40,7 +40,7 @@ test.each([
   f.invoke.mockImplementation(async (input) => {
     if (disposition === "blocked") {
       if (!input.modelStep?.endsWith(".decision")) throw new Error("unexpected_response_authoring");
-      return { text: JSON.stringify({ decision: { action: "blocked", response: RESPONSE, acknowledgement: "I checked the prerequisite." } }), meta: {} };
+      return { text: JSON.stringify({ decision: { action: "blocked", response: RESPONSE } }), meta: {} };
     }
     if (input.modelStep?.endsWith(".response")) return { text: RESPONSE, meta: {} };
     return defaultInvoke(input);

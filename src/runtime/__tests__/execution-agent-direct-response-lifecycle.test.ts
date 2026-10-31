@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 const respond = (response: string) => JSON.stringify({
-  decision: { action: "respond", response, acknowledgement: "I will answer." },
+  decision: { action: "respond", response },
 });
 
 test("discards a completed direct answer superseded by STEER before publishing", async () => {

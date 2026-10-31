@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
-import type { SessionMemoryCheckpoint } from "../../../sessions/memory/contracts.js";
+import type { SessionMemoryCheckpoint, SessionMemoryScope } from "../../../sessions/memory/contracts.js";
+import { assertSessionMemoryScope } from "../../../sessions/memory/checkpoint-scope.js";
 import { assertValidSessionMemoryCheckpoint } from "../../../sessions/memory/rules.js";
 import {
   resolveCoveredTurnCount,
@@ -9,6 +10,7 @@ import {
 
 export type RequestSessionMemorySnapshot = Readonly<{
   kind: "request_session_memory_v1";
+  scope?: SessionMemoryScope;
   source: SessionMemorySourceSnapshot;
   checkpoint?: SessionMemoryCheckpoint;
   persistedCheckpointRevision: number;
@@ -23,9 +25,12 @@ export function validateRequestSessionMemorySnapshot(
     throw new Error("session_memory_snapshot_revision_invalid");
   if (snapshot.persistedCheckpointRevision < 0)
     throw new Error("session_memory_snapshot_revision_invalid");
+  assertSessionMemoryScope(snapshot.scope);
+  if (snapshot.scope !== snapshot.source.scope)
+    throw new Error("session_memory_snapshot_scope_invalid");
   const source = snapshotSessionMemorySource({
     messages: [...snapshot.source.historyMessages],
-  });
+  }, snapshot.scope);
   if (!isDeepStrictEqual(source, snapshot.source))
     throw new Error("session_memory_snapshot_source_invalid");
   if (snapshot.checkpoint)
