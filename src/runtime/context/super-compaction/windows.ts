@@ -6,9 +6,6 @@ import type { SemanticCompactionUtf8Boundary } from "../semantic-compaction/chun
 import { createSuperCompactionCapsule } from "./capsule.js";
 import { doesSuperCompactionPipelineFit } from "./model-call.js";
 
-// Bound authoring work even when a much larger source fits the input window.
-export const SUPER_COMPACTION_WINDOW_BYTES = 4_096;
-
 export async function selectSuperCompactionWindow(params: {
   request: BoundRequestModelInvocationContext;
   currentRequest: string;
@@ -26,15 +23,8 @@ export async function selectSuperCompactionWindow(params: {
 }): Promise<
   Readonly<{ endBoundaryIndex: number; baseMessages: readonly ChatMessage[] }>
 > {
-  const startByte = params.boundaries[params.startBoundaryIndex]!.byteOffset;
   let low = params.startBoundaryIndex + 1;
-  let high = low;
-  while (
-    high < params.boundaries.length &&
-    isWithinSourceWorkWindow(params.boundaries[high]!.byteOffset, startByte)
-  )
-    high += 1;
-  high -= 1;
+  let high = params.boundaries.length - 1;
   const maximum = await admitWindow(high);
   if (maximum) return maximum;
   high -= 1;
@@ -81,8 +71,4 @@ export async function selectSuperCompactionWindow(params: {
     if (!fits) return undefined;
     return Object.freeze({ endBoundaryIndex, baseMessages });
   }
-}
-
-function isWithinSourceWorkWindow(endByte: number, startByte: number): boolean {
-  return endByte - startByte <= SUPER_COMPACTION_WINDOW_BYTES;
 }

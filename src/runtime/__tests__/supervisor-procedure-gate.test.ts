@@ -106,7 +106,7 @@ test("the provider projection retains the two variants with domain-validated rec
     .toEqual({ ok: true, decision: { requiresProcedure: false, responseRecommendation: "Answer briefly." } });
 });
 
-test("projects only instructions and the exact current request, excluding history and attachments", () => {
+test("projects only instructions and the exact current request when no settled history exists", () => {
   const f = fixture();
   const input = buildSupervisorProcedureGateInput(f.request, { diagnostic: f.diagnostic });
   expect(input.modelStep).toBe("supervisor.decision");

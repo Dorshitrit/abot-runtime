@@ -1,3 +1,4 @@
+import { assertSupervisorReceiptCompactionSource, isSupervisorReceiptCompactionSource } from "./supervisor-receipt-source.js";
 import { projectSelectedDependencyObservations } from "../super-dependency-observation-lineage.js";
 import { CompactionSourceInvariantError } from "../compaction-source-invariant.js";
 import type {
@@ -193,6 +194,10 @@ function assertOwnedSource(
       "context_compaction_source_materialization_missing",
       source.sourceRef,
     );
+  if (isSupervisorReceiptCompactionSource(source)) {
+    assertSupervisorReceiptCompactionSource({ source, head: params.head, ...(scopeCall ? { scopeCall } : {}) });
+    return;
+  }
   const execution = params.head.state.capabilityExecutions.find(
     (candidate) => candidate.executionId === source.sourceRef,
   );

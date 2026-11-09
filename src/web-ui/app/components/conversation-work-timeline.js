@@ -1,3 +1,4 @@
+import { isGenericDelegatedProgressEvent } from "../lib/delegated-progress-presentation.js";
 import { buildConversationActivityModel } from "./conversation-activity.js";
 import { buildConversationWorkTimeline } from "../lib/conversation-work-timeline-model.js";
 import { summarizeConversationTools } from "../lib/tool-activity-model.js";
@@ -34,6 +35,7 @@ function timelineFacts(model) {
 
 function timelineRole(entry, model) {
   if (entry.role === "context") return { title: "Context management", responsibility: "" };
+  if (entry.role === "memory") return { title: "Memory", responsibility: "" };
   const role = entry.role === "root" ? "supervisor" : entry.role;
   const card = model.roleCards.find((candidate) => candidate.role === role);
   if (card) return { title: card.title, responsibility: card.responsibility };
@@ -141,8 +143,9 @@ export function createConversationWorkTimeline({ documentRoot = document, onOpen
     const rows = renderDisclosureRows(requestId, entries);
     let previousRole = "";
     for (const entry of entries) {
-      const row = entryRow(entry, rows);
-      if (!row) continue;
+      const roleOnly = entry.kind === "event" && isGenericDelegatedProgressEvent(entry.event);
+      const row = roleOnly ? null : entryRow(entry, rows);
+      if (!row && !roleOnly) continue;
       const role = timelineRole(entry, model);
       if (role.title !== previousRole) {
         const label = element("li", "conversation-work-role");
@@ -152,6 +155,7 @@ export function createConversationWorkTimeline({ documentRoot = document, onOpen
         list.appendChild(label);
         previousRole = role.title;
       }
+      if (!row) continue;
       row.classList.add("conversation-work-entry");
       row.dataset.entryId = entry.id;
       row.dataset.kind = entry.kind;

@@ -133,14 +133,17 @@ transport owns. `ResolvedModelInvocation.think` is exact: an adapter must map
 `none` to its native disabled form or fail explicitly; only `undefined` permits
 omission. The shared `generation` contract has no output-cap field, so
 there is no configurable or calibrated per-step output cap. Ollama maps
-`temperature` and `topP` to `options`, and supplies a finite `num_predict`
-from the physical context remaining after the final projected provider input.
-Registered core-decision steps also apply their shared output-token limit.
+`temperature` and `topP` to `options`. By default, it supplies a finite
+`num_predict` from the physical context remaining after estimating the final
+projected provider input. No model step or reasoning mode adds an automatic
+2,048-token limit; reasoning and visible output share the provider allowance.
 A strict JSON schema never lowers this allowance: schema shape does not bound
 legal JSON whitespace or serialized escaping and therefore cannot establish a
 safe provider token ceiling. Schema projection and validation remain unchanged.
-Provider-native `options.num_predict` remains available, and
-`OLLAMA_NUM_PREDICT` remains its explicit environment override. Ollama maps the
+An explicit positive `OLLAMA_NUM_PREDICT` overrides provider-native
+`options.num_predict`, which overrides the calculated default for every model
+step, including decisions. Explicit overrides retain provider-native semantics
+and are not clamped to the estimated remainder. Ollama maps the
 profile's effective `contextWindowTokens` to `options.num_ctx` on every chat
 and raw request. A configured
 `options.num_ctx` may select a lower stable allocation, but calibration cannot

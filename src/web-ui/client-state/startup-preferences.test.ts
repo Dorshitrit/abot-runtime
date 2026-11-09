@@ -9,6 +9,7 @@ import { bootstrapWebApp } from "../app/app-bootstrap.js";
 import { createWorkspaceStateStorage } from "../app/services/workspace-state-storage.js";
 
 vi.mock("../app/spark-chat-feature.js", () => ({ createSparkChatFeature: () => ({ bind() {}, environmentChanged() {} }) }));
+vi.mock("../app/spark-home-feature.js", () => ({ createSparkHomeFeature: () => ({ environmentChanged() {} }) }));
 vi.mock("../app/automations-feature.js", () => ({ createAutomationsFeature: () => ({ refreshAvailability() {} }) }));
 vi.mock("../app/controllers/spark-handoff-navigation.js", () => ({ createSparkHandoffNavigation: () => ({}) }));
 afterEach(() => vi.unstubAllGlobals());

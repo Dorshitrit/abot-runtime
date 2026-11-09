@@ -31,6 +31,10 @@ vi.mock("ws", async (original) => {
   }
   return { ...actual, default: ControlledHandshakeSocket };
 });
+vi.mock("../../../computer-access/companion/process-owner-identity.js", () => ({
+  requireCurrentProcessOwnerIdentity: vi.fn(async () => "fixture-owner-incarnation"),
+  isProcessOwnerAlive: vi.fn(async () => true),
+}));
 vi.mock("../../adapters/long-term-memory/file-lock/acquisition.js", () => ({
   acquireFileLock: vi.fn(async () => {
     throw new Error("long_term_memory_store_lock_timeout");

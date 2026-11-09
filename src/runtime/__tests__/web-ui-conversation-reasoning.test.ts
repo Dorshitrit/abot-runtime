@@ -63,4 +63,32 @@ describe("conversation reasoning disclosure", () => {
     }
     expect(view.createNode({ id: "empty" })).toBeNull();
   });
+
+  test("mounts an empty hidden disclosure and updates each bound message independently", () => {
+    const { view } = setup();
+    const first = { id: "first", thinkingText: "" };
+    const second = { id: "second", thinkingText: "Old thought" };
+    view.beginRender([first, second]);
+    const empty = view.createNode(first, { allowEmpty: true }) as unknown as Disclosure;
+    const other = view.createNode(second) as unknown as Disclosure;
+    expect(empty.hidden).toBe(true);
+    first.thinkingText = "First thought";
+    second.thinkingText = "Updated second thought";
+    expect(view.update([first, second])).toBe(true);
+    expect(empty.hidden).toBe(false);
+    expect(empty.children[0].getAttribute("aria-label")).toBe(first.thinkingText);
+    expect(other.children[0].getAttribute("aria-label")).toBe(second.thinkingText);
+  });
+
+  test("skips identical text and leaves detached disclosures untouched after reset", () => {
+    const { view, message, render } = setup();
+    const node = render();
+    const content = node.children[0].children[0];
+    expect(view.update([message])).toBe(false);
+    expect(node.children[0].children[0]).toBe(content);
+    view.reset();
+    message.thinkingText = "New conversation's thought";
+    expect(view.update([message])).toBe(false);
+    expect(node.children[0].getAttribute("aria-label")).toBe("A thought with more detail.");
+  });
 });

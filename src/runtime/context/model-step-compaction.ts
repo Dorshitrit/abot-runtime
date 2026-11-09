@@ -1,3 +1,4 @@
+import type { SupervisorToolEvidence } from "./supervisor-tool-evidence.js";
 import type { CheckpointContinuationProjector } from "./semantic-compaction/continuation-projection.js";
 import { readInheritedCompactionCheckpoint } from "./model-step-compaction-inheritance.js";
 import { createResultSourceOverrideMap } from "./model-step-compaction-projection.js";
@@ -47,6 +48,7 @@ type ModelStepCompactionOptions = Readonly<{
   resultSourceOverrides?: readonly SemanticCompactionSource[];
   inheritedCheckpoint?: SemanticCompactionCheckpoint;
   superWorkerCompaction?: SuperWorkerCompactionSidecar;
+  supervisorToolEvidence?: SupervisorToolEvidence;
   requireSuperWorkerSources?: boolean;
   consumer?: ModelStep;
   superFailureOwner?: SuperCompactionFailureOwner;
@@ -133,7 +135,8 @@ export function createModelStepCompactionController(
     return {
       sidecar,
       failureOwner,
-      projection: resolveSuperDependencyObservationCompaction(sidecar),
+      projection: options.supervisorToolEvidence?.compaction ??
+        resolveSuperDependencyObservationCompaction(sidecar),
       overrides: createResultSourceOverrideMap(
         sidecar?.sources ?? options.resultSourceOverrides ?? [],
       ),
@@ -216,6 +219,18 @@ export function createModelStepCompactionController(
           reason: evidence ? "no_new_sources" : "no_eligible_sources",
         });
       }
+      const projectCandidate = (candidate: SemanticCompactionCheckpoint) =>
+        withSuperCompactionFailure(failureOwner, () =>
+          reconcileEvidence(
+            projection.projectCheckpointMessages(
+              messages, scopeId, candidate, resultSourceOverrides,
+              failureOwner !== undefined, undefined,
+              { replacesScopeId: inherited?.scopeId, projectContinuation: options.projectContinuation },
+            ),
+            candidate,
+          ),
+        );
+      const canRetainProjection = context?.canRetainProjection;
       const candidate = await generateCandidate({
         request: withModelAbortSignal(request, context?.abortSignal),
         scopeId,
@@ -227,25 +242,16 @@ export function createModelStepCompactionController(
         onProgress: context?.onProgress,
         consumer: options.consumer,
         ...generationSources,
+        ...(canRetainProjection ? {
+          canRetainCandidate: (candidate: SemanticCompactionCheckpoint) =>
+            canRetainProjection(projectCandidate(candidate)),
+        } : {}),
         ...(sidecar || failureOwner
           ? { registrationMode: "atomic" as const }
           : {}),
         ...(failureOwner ? { failureOwner } : {}),
       });
-      const preparedMessages = withSuperCompactionFailure(failureOwner, () =>
-        reconcileEvidence(
-          projection.projectCheckpointMessages(
-            messages,
-            scopeId,
-            candidate,
-            resultSourceOverrides,
-            failureOwner !== undefined,
-            undefined,
-            { replacesScopeId: inherited?.scopeId, projectContinuation: options.projectContinuation },
-          ),
-          candidate,
-        ),
-      );
+      const preparedMessages = projectCandidate(candidate);
       return Object.freeze({
         kind: "prepared",
         preparation: Object.freeze({
@@ -306,8 +312,10 @@ export function createModelStepCompactionController(
         projectedCheckpoint !== undefined &&
         store.get(projectedCheckpoint.scopeId) === projectedCheckpoint &&
         verifiedProjection.contains(messages);
-      if (!ownProjection && !options.hasVerifiedCompactedEvidence?.(messages))
-        return false;
+      const hasVerifiedCompactedEvidence = ownProjection ||
+        options.supervisorToolEvidence?.hasVerifiedCompactedEvidence(messages) ||
+        options.hasVerifiedCompactedEvidence?.(messages);
+      if (!hasVerifiedCompactedEvidence) return false;
       const { sidecar, overrides, projection } = sourceProjection(messages);
       return (
         projection.scanCompactionSources(messages, scopeId, overrides, sidecar).length === 0

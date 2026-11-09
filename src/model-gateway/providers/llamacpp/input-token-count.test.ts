@@ -5,6 +5,7 @@ import type { ModelGatewayRequest } from "../../types.js";
 import { createProviderEnvelopeFingerprint } from "../envelope-budget.js";
 import { countLlamaCppInputTokens } from "./input-token-count.js";
 import { buildLlamaCppChatPayload } from "./payload.js";
+import { renderLlamaCppTemplate } from "./__tests__/render-template-fixture.js";
 
 function request(baseUrl = "http://llamacpp.test"): ModelGatewayRequest {
   return {
@@ -31,7 +32,14 @@ function request(baseUrl = "http://llamacpp.test"): ModelGatewayRequest {
   };
 }
 
-function count(fetchImpl: typeof fetch, requestBody = request()) {
+function count(countFetch: typeof fetch, requestBody = request()) {
+  const fetchImpl: typeof fetch = async (url, init) => {
+    if (String(url).endsWith("/apply-template")) {
+      const probe = JSON.parse(String(init?.body));
+      return Response.json({ prompt: renderLlamaCppTemplate(probe.messages) });
+    }
+    return countFetch(url, init);
+  };
   return countLlamaCppInputTokens({ endpoint: "chat", requestBody,
     invocation: resolveModelInvocation(requestBody), fetchImpl });
 }

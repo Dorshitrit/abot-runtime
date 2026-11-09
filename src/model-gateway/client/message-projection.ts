@@ -16,6 +16,7 @@ import type {
   ModelGatewayPolicyConfig,
   ModelPreference,
 } from "../types.js";
+import { isInvocationContextMessage } from "../protocol/invocation-context.js";
 import type { ModelMetricMessage } from "./contracts.js";
 
 function isChatMessage(value: unknown): value is ChatMessage {
@@ -137,38 +138,37 @@ function toRequestMessage(message: ChatMessage): ChatMessage {
   };
 }
 
-export function resolveRequestMessages(params: {
+type ChatGatewayMessageProjection = {
+  messages: ChatMessage[];
+  invocationContextMessageIndices?: number[];
+};
+
+/** Bind producer permissions to positions in this specific normalized request. */
+export function projectChatGatewayMessages(params: {
   text?: string;
   messages?: unknown;
-}): ChatMessage[] {
+}): ChatGatewayMessageProjection {
   validateModelGatewayMessages(params.messages);
-  const rawMessages = Array.isArray(params.messages) ? params.messages : [];
-  const baseMessages = rawMessages.flatMap((message) => {
-    if (isChatMessage(message)) {
-      return [toRequestMessage(message)];
-    }
-    return [];
-  });
+  const source = Array.isArray(params.messages) ? params.messages : [];
+  const messages: ChatMessage[] = [];
+  const invocationContextMessageIndices: number[] = [];
+  for (const message of source) {
+    if (!isChatMessage(message)) continue;
+    if (isInvocationContextMessage(message)) invocationContextMessageIndices.push(messages.length);
+    messages.push(toRequestMessage(message));
+  }
   const promptText = typeof params.text === "string" ? params.text.trim() : "";
+  if (promptText) appendPromptText(messages, promptText);
+  return invocationContextMessageIndices.length ? { messages, invocationContextMessageIndices } : { messages };
+}
 
-  if (promptText.length === 0) {
-    return baseMessages;
+function appendPromptText(messages: ChatMessage[], promptText: string): void {
+  const last = messages.at(-1);
+  if (last?.role === "user" && last.attachments?.length) {
+    messages[messages.length - 1] = { ...last, content: `${last.content}\n\n${promptText}` };
+    return;
   }
-  if (baseMessages.length === 0) {
-    return [{ role: "user", content: promptText }];
-  }
-  const lastMessage = baseMessages[baseMessages.length - 1];
-  if (lastMessage?.role === "user" && lastMessage.attachments?.length) {
-    return [
-      ...baseMessages.slice(0, -1),
-      {
-        ...lastMessage,
-        content: `${lastMessage.content}\n\n${promptText}`,
-      },
-    ];
-  }
-
-  return [...baseMessages, { role: "user", content: promptText }];
+  messages.push({ role: "user", content: promptText });
 }
 
 export function buildChatGatewayRequestBody(
@@ -185,13 +185,13 @@ export function buildChatGatewayRequestBody(
     debugRequestId?: string;
     format?: "json" | Record<string, unknown>;
   }>,
-  messages: readonly ChatMessage[],
+  projection: ChatGatewayMessageProjection,
   modelPolicy: ModelGatewayPolicyConfig | undefined,
 ): Record<string, unknown> {
   const requestId = params.debugRequestId?.trim() ?? "";
   return {
     ...(params.text !== undefined ? { text: params.text } : {}),
-    messages,
+    ...projection,
     ...(params.promptCacheBoundaryBeforeMessageIndex !== undefined
       ? { promptCacheBoundaryBeforeMessageIndex: params.promptCacheBoundaryBeforeMessageIndex }
       : {}),

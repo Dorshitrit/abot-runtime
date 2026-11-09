@@ -11,6 +11,7 @@ import {
   resolvePriorCompactionSourceDigests,
 } from "./inherited-source-digests.js";
 import { registerSemanticCompactionSources } from "./generation-source-registration.js";
+import { projectCompactionSourceInput } from "../compaction-source-input.js";
 import {
   resolveRequestBudgetInputTokens,
 } from "../request-context-budget.js";
@@ -229,7 +230,8 @@ async function generateSemanticCompactionSlicedSource(
   params: SemanticCompactionGenerationParams,
   source: SemanticCompactionSource,
 ): Promise<SemanticCompactionCandidate> {
-  const boundaries = projectSemanticCompactionUtf8Boundaries(source.content);
+  const inputSource = projectCompactionSourceInput(source);
+  const boundaries = projectSemanticCompactionUtf8Boundaries(inputSource.content);
   if (boundaries.length < 2) {
     throw new Error("context_compaction_source_slice_empty");
   }
@@ -251,7 +253,7 @@ async function generateSemanticCompactionSlicedSource(
     while (low <= high) {
       const endBoundaryIndex = Math.floor((low + high) / 2);
       const slice = createSemanticCompactionSourceSlice({
-        source,
+        source: inputSource,
         boundaries,
         startBoundaryIndex,
         endBoundaryIndex,
@@ -349,7 +351,7 @@ function prepareSemanticCompactionSliceInput(
   slice: SemanticCompactionSourceSlice,
   state: SemanticCompactionFoldState | undefined,
 ) {
-  const checkpointBudget = prepareReplacementCompactionBudget(params, [slice]);
+  const checkpointBudget = prepareReplacementCompactionBudget(params);
   const { expectedSources, checkpointTokenAllowance } = checkpointBudget;
   const format = createSemanticCompactionFormat(
     expectedSources,

@@ -1,3 +1,4 @@
+import { isGenericDelegatedProgressEvent } from "./delegated-progress-presentation.js";
 import { recordedPresentationRole, rolePresentation } from "./role-presentation.js";
 import {
   eventTone,
@@ -150,6 +151,7 @@ function isFailedRoleActivity(event) {
 }
 
 function roleActivitySummary(event) {
+  if (isGenericDelegatedProgressEvent(event)) return "";
   return (
     textOf(event.summary).trim() ||
     formatEventDetail(event) ||

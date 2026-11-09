@@ -756,9 +756,6 @@ function runtimeToolPathErrorCode(error) {
   }
   return error.code;
 }
-function isRuntimeToolPathError(error) {
-  return runtimeToolPathErrorCode(error) !== void 0;
-}
 
 // src/plugin-sdk/plugin.ts
 function defineRuntimePlugin(definition) {
@@ -946,8 +943,47 @@ function projectInspectionFailure(error, signal) {
 }
 
 // plugins/project-orientation/source/manifest-summary.ts
+var import_promises4 = require("node:fs/promises");
+
+// plugins/project-orientation/source/project-target.ts
 var import_promises3 = require("node:fs/promises");
 var import_node_path4 = require("node:path");
+function resolveProjectEntry(context, parent, name) {
+  const path = import_node_path4.posix.join(parent.logicalPath, name);
+  try {
+    return resolvePluginPath(context, path, {
+      requirePath: true,
+      allowedLocations: ["agent_work", "workspace"]
+    });
+  } catch (error) {
+    const code = runtimeToolPathErrorCode(error);
+    if (code !== "runtime_tool_path_symlink_escape") throw error;
+    const entry = JSON.stringify(sanitizeJsonText(name));
+    throw new ProjectInspectionError(
+      code,
+      `Project scan stopped at ${entry}. The link target could not be verified within the allowed directory.`
+    );
+  }
+}
+function isMissingProjectTarget(error) {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+async function readProjectTargetInfo(absolutePath, signal) {
+  try {
+    return await (0, import_promises3.stat)(absolutePath);
+  } catch (error) {
+    throwIfProjectInspectionCancelled(signal);
+    if (isMissingProjectTarget(error)) {
+      throw new ProjectInspectionError(
+        "project_target_not_found",
+        "The requested project directory does not exist."
+      );
+    }
+    throw error;
+  }
+}
+
+// plugins/project-orientation/source/manifest-summary.ts
 var PACKAGE_JSON_MAX_BYTES = 256 * 1024;
 var PACKAGE_SCRIPT_LIMIT = 100;
 var MANIFEST_IDENTITY_MAX_CHARS = 256;
@@ -962,9 +998,6 @@ var KNOWN_MANIFESTS = Object.freeze([
   "vite.config.ts",
   "vite.config.js"
 ]);
-function logicalChild(parent, name) {
-  return parent.logicalPath === "." ? name : import_node_path4.posix.join(parent.logicalPath, name);
-}
 function stringField(record, key) {
   const value = record[key];
   return typeof value === "string" ? sanitizeJsonText(value).slice(0, MANIFEST_IDENTITY_MAX_CHARS) : void 0;
@@ -980,15 +1013,11 @@ function boundedScriptName(value) {
   return [...sanitizeJsonText(value)].slice(0, SCRIPT_NAME_MAX_CHARS).join("");
 }
 async function existingChild(context, root, name) {
+  const child = resolveProjectEntry(context, root, name);
   try {
-    const child = resolvePluginPath(context, logicalChild(root, name), {
-      requirePath: true,
-      allowedLocations: ["agent_work", "workspace"]
-    });
-    const info = await (0, import_promises3.stat)(child.absolutePath);
+    const info = await (0, import_promises4.stat)(child.absolutePath);
     return info.isFile() ? child : void 0;
   } catch (error) {
-    if (isRuntimeToolPathError(error)) throw error;
     const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
     if (code === "ENOENT" || code === "ENOTDIR") return void 0;
     throw error;
@@ -1054,13 +1083,9 @@ async function readProjectManifests(context, root, signal) {
 }
 
 // plugins/project-orientation/source/tree.ts
-var import_promises4 = require("node:fs/promises");
-var import_node_path5 = require("node:path");
+var import_promises5 = require("node:fs/promises");
 var IGNORED_NAMES = /* @__PURE__ */ new Set([".git", "node_modules", "dist", "coverage"]);
 var PROJECT_SCAN_ENTRY_LIMIT = 1e3;
-function childLogicalPath(parent, childName) {
-  return parent.logicalPath === "." ? childName : import_node_path5.posix.join(parent.logicalPath, childName);
-}
 function relativeEntryPath(root, child) {
   if (child.logicalPath === root.logicalPath) return ".";
   if (root.logicalPath === ".") return child.logicalPath;
@@ -1079,7 +1104,7 @@ async function collectProjectTree(context, root, depth, signal) {
     const current = queue.shift();
     if (!current) break;
     const names = [];
-    const directory = await (0, import_promises4.opendir)(current.target.absolutePath);
+    const directory = await (0, import_promises5.opendir)(current.target.absolutePath);
     for await (const entry of directory) {
       throwIfProjectInspectionCancelled(signal);
       scannedEntries += 1;
@@ -1095,11 +1120,8 @@ async function collectProjectTree(context, root, depth, signal) {
     names.sort(compareNames);
     for (const name of names) {
       throwIfProjectInspectionCancelled(signal);
-      const child = resolvePluginPath(context, childLogicalPath(current.target, name), {
-        requirePath: true,
-        allowedLocations: ["agent_work", "workspace"]
-      });
-      const info = await (0, import_promises4.stat)(child.absolutePath);
+      const child = resolveProjectEntry(context, current.target, name);
+      const info = await (0, import_promises5.stat)(child.absolutePath);
       const path = relativeEntryPath(root, child);
       if (info.isDirectory()) {
         entries.push(Object.freeze({ path, kind: "directory" }));
@@ -1113,26 +1135,6 @@ async function collectProjectTree(context, root, depth, signal) {
   }
   throwIfProjectInspectionCancelled(signal);
   return Object.freeze({ entries: Object.freeze(entries), scannedEntries });
-}
-
-// plugins/project-orientation/source/project-target.ts
-var import_promises5 = require("node:fs/promises");
-function isMissingProjectTarget(error) {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
-}
-async function readProjectTargetInfo(absolutePath, signal) {
-  try {
-    return await (0, import_promises5.stat)(absolutePath);
-  } catch (error) {
-    throwIfProjectInspectionCancelled(signal);
-    if (isMissingProjectTarget(error)) {
-      throw new ProjectInspectionError(
-        "project_target_not_found",
-        "The requested project directory does not exist."
-      );
-    }
-    throw error;
-  }
 }
 
 // plugins/project-orientation/source/page-cursor.ts

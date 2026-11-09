@@ -137,8 +137,8 @@ function renderAgentEditor(node, catalog, producers) {
     ${renderBindingFields(node.inputs, null, { name: "inputs", allowAdd: true, producers })}
     ${renderModelChoice(node, catalog)}
     ${renderReasoningModeField(node.agentMode || "fast", catalog?.models?.find((model) => model.id === node.modelProfileId), undefined, node.reasoningPreference)}
-    <label>Role instructions<textarea name="roleInstructions" dir="auto">${escapeHtml(node.roleInstructions || "")}</textarea></label>
-    <label>Prompt<textarea name="prompt" dir="auto" required>${escapeHtml(node.prompt || "")}</textarea></label>
+    <label>Role instructions<textarea spellcheck="false" name="roleInstructions" dir="auto">${escapeHtml(node.roleInstructions || "")}</textarea></label>
+    <label>Prompt<textarea spellcheck="false" name="prompt" dir="auto" required>${escapeHtml(node.prompt || "")}</textarea></label>
     <details class="automation-node-contract"><summary>Result contract · ${node.result?.kind === "json" ? "Structured JSON" : "Text"}</summary>
       <label>Result<select name="resultKind"><option value="text"${node.result?.kind !== "json" ? " selected" : ""}>Text</option><option value="json"${node.result?.kind === "json" ? " selected" : ""}>Structured JSON</option></select></label>
       <label>JSON schema<textarea name="resultSchema" spellcheck="false">${escapeHtml(node.result?.kind === "json" ? JSON.stringify(node.result.schema, null, 2) : "")}</textarea></label>

@@ -1,3 +1,4 @@
+import { markInvocationContextMessage } from "../../model-gateway/protocol/invocation-context.js";
 import type {
   ChatMessage,
   ModelTokenEstimationConfig,
@@ -92,7 +93,7 @@ export function projectCapabilityBriefAtHeadroom(
     if (!fitsCapabilityBriefBudget(estimatedTokens, budgetTokens)) continue;
     return Object.freeze({
       level,
-      message,
+      message: markInvocationContextMessage(message),
       estimatedTokens,
       budgetTokens,
       reason: "complete_catalog",

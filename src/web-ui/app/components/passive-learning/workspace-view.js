@@ -6,8 +6,8 @@ import { learningApplicationsMarkup } from "./applications-view.js";
 import { computerUpdateNoticeMarkup } from "./computer-update-notice.js";
 import { macCollectionRestartNoticeMarkup } from "./macos-collection-restart-notice.js";
 
-const sections = ["insights", "activity", "applications", "chat", "settings", "usage"];
-const labels = { insights: "Knowledge", activity: "Activity", applications: "Applications", chat: "Chat", settings: "Settings", usage: "Resources" };
+const sections = ["insights", "activity", "applications", "chat", "home", "settings", "usage"];
+const labels = { insights: "Knowledge", activity: "Activity", applications: "Applications", chat: "Chat", home: "HOME", settings: "Settings", usage: "Resources" };
 
 export function learningWorkspaceMarkup(timeZone) {
   const tabs = sections.map((key, index) => `<button type="button" role="tab" id="learning-${key}-tab" data-learning-tab="${key}" aria-controls="learning-${key}-panel" aria-selected="${index === 0}" tabindex="${index === 0 ? "0" : "-1"}">${labels[key]}</button>`).join("");
@@ -34,6 +34,7 @@ export function learningWorkspaceMarkup(timeZone) {
     </section>
     <section class="passive-learning-panel" id="learning-applications-panel" role="tabpanel" tabindex="0" aria-labelledby="learning-applications-tab" data-learning-panel="applications" hidden>${learningApplicationsMarkup()}</section>
     <section class="passive-learning-panel" id="learning-chat-panel" role="tabpanel" tabindex="0" aria-labelledby="learning-chat-tab" data-learning-panel="chat" hidden></section>
+    <section class="passive-learning-panel" id="learning-home-panel" role="tabpanel" tabindex="0" aria-labelledby="learning-home-tab" data-learning-panel="home" hidden></section>
     <section class="passive-learning-panel" id="learning-settings-panel" role="tabpanel" tabindex="0" aria-labelledby="learning-settings-tab" data-learning-panel="settings" hidden>
       ${learningSettingsMarkup(timeZone)}
       <details class="passive-learning-setup" data-learning-setup><summary data-learning-connection-title>Computer connection</summary>

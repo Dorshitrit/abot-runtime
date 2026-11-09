@@ -224,3 +224,8 @@
   .passive-learning-observation-body { padding: 14px; }
   .passive-learning-detail pre { padding: 12px; }
 }
+.co-worker-candidate-actions { display: flex; align-items: center; gap: 16px; margin-top: 10px; }
+.co-worker-candidate-actions button { appearance: none; background: transparent; border: 0; border-radius: 3px; color: var(--muted); padding: 3px 0; font: inherit; font-size: 12px; cursor: pointer; }
+.co-worker-candidate-actions button:hover:not(:disabled) { background: transparent; color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.co-worker-candidate-actions button:disabled { opacity: .5; cursor: default; }
+.co-worker-candidate-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }

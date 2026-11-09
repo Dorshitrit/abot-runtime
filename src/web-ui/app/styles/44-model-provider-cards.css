@@ -40,7 +40,8 @@
   gap: 8px;
 }
 .config-provider-card {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   min-width: 0;
@@ -69,10 +70,82 @@
   overflow-wrap: anywhere;
 }
 .config-provider-card footer {
-  flex: none;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 6px;
 }
-.config-provider-card footer span {
-  white-space: nowrap;
+.config-provider-usage {
+  text-align: end;
+}
+.provider-editor-dialog {
+  box-sizing: border-box;
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+}
+.provider-editor-dialog::backdrop { background: #0007; }
+.provider-editor-dialog h2 { margin: 0 0 16px; overflow-wrap: anywhere; }
+.provider-editor-dialog [data-provider-fields] { display: grid; gap: 14px; }
+.provider-editor-dialog [data-provider-status] { color: var(--muted); }
+.provider-editor-dialog footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.provider-editor-dialog footer button {
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.config-model-provider-group {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.config-model-provider-models {
+  display: grid;
+}
+.config-model-provider-heading {
+  display: flex;
+  align-items: baseline;
+  cursor: pointer;
+  list-style: none;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--config-line);
+  background: var(--config-surface);
+  color: var(--config-copy);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.config-model-provider-heading::-webkit-details-marker {
+  display: none;
+}
+.config-model-provider-heading::before {
+  content: "";
+  align-self: center;
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border: solid currentColor;
+  border-width: 0 1px 1px 0;
+  transform: rotate(-45deg);
+}
+.config-model-provider-group[open] > summary::before {
+  transform: rotate(45deg);
+}
+.config-model-provider-heading:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.config-model-provider-heading small {
+  margin-inline-start: auto;
+  color: var(--config-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
 }
 @media (max-width: 520px) {
   .config-model-setup-entry > header {

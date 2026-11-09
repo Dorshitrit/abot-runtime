@@ -19,6 +19,7 @@ import {
 } from "./mutations.js";
 import { listMemoryRecords, readMemoryStatus } from "./queries.js";
 import { searchManagedMemories } from "./search.js";
+import { createManagedCandidateActions } from "./candidate-actions.js";
 
 type LongTermMemoryManagementWithClear = LongTermMemoryManagementService &
   Readonly<{ clear(): Promise<MemoryClearResult> }>;
@@ -30,7 +31,7 @@ export function createLongTermMemoryManagement(params: {
   now?: () => Date;
   createId?: () => string;
 }): LongTermMemoryManagementWithClear {
-  return Object.freeze({
+  const management: LongTermMemoryManagementWithClear = {
     status: () => readMemoryStatus(params),
     list: (input) =>
       runManagementOperation(() => listMemoryRecords(params.repository, input)),
@@ -67,6 +68,11 @@ export function createLongTermMemoryManagement(params: {
       ),
     clear: () =>
       runManagementOperation(() => clearManagedMemories(params.repository)),
+  };
+  const candidates = createManagedCandidateActions({ repository: params.repository, management });
+  return Object.freeze({ ...management,
+    promoteCandidate: (input) => runActiveManagementOperation(params, input.context, () => candidates.promoteCandidate(input)),
+    deleteCandidate: (input) => runManagementOperation(() => candidates.deleteCandidate(input)),
   });
 }
 

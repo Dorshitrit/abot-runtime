@@ -75,11 +75,11 @@ test("allows only the existing two repairs and returns the model's final valid a
   const originalMessages = invoke.mock.calls[0]![0].messages as ChatMessage[];
   for (const [call] of invoke.mock.calls.slice(1)) {
     const messages = call.messages as ChatMessage[];
-    expect(messages.slice(0, originalMessages.length)).toEqual(
-      originalMessages,
-    );
-    expect(messages).toHaveLength(originalMessages.length + 1);
-    expect(messages.at(-1)?.role).toBe("system");
+    expect(messages).toEqual([
+      originalMessages[0],
+      { role: "system", content: expect.any(String) },
+      ...originalMessages.slice(1),
+    ]);
   }
 });
 

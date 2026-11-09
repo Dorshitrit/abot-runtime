@@ -7,6 +7,8 @@ import { installLocalMacCompanion } from "../../computer-access/companion/local-
 import { COMPANION_RELEASE_VERSION } from "../../computer-access/companion/release-version.js";
 import { COMPUTER_CAPABILITY } from "../../computer-access/computer/native-validation.js";
 import { OBSERVATION_CAPABILITY } from "../../computer-access/companion/observation-protocol.js";
+import { HOST_SECRET_PROTECTION_CAPABILITY } from "../../computer-access/companion/secret-protection-protocol.js";
+import { SYSTEM_OUTPUT_CAPABILITY } from "../../computer-access/companion/command-output-protocol.js";
 import { hostCompanionFixture, nextHostMessage } from "./support/host-companion-fixture.js";
 
 vi.mock("../../computer-access/companion/local-installation.js", async (original) => ({
@@ -38,7 +40,7 @@ test.skipIf(process.platform === "win32")("local setup completes real pairing an
       const ready = nextHostMessage(active);
       active.send(JSON.stringify({ type: "hello", version: 1, identity, hostId: grant.hostId,
         companionVersion: COMPANION_RELEASE_VERSION,
-        capabilities: [OBSERVATION_CAPABILITY, COMPUTER_CAPABILITY] }));
+        capabilities: [OBSERVATION_CAPABILITY, COMPUTER_CAPABILITY, HOST_SECRET_PROTECTION_CAPABILITY, SYSTEM_OUTPUT_CAPABILITY] }));
       expect(await ready).toMatchObject({ type: "ready" });
     });
     expect(await fixture.api("/connect-local", "POST", fixture.base)).toEqual({ status: 200, body: { ok: true } });

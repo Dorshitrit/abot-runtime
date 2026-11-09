@@ -49,7 +49,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
       expect(messages.filter((message) => message.role === "user" && message.content === text)).toHaveLength(1);
       expect(messages.filter((message) => message.role === "user").some((message) => message.content === brief)).toBe(false);
       const phase = supervisorFormatName(input);
-      const preparation = ["supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate"].includes(phase ?? "");
+      const preparation = ["supervisor_presentation", "supervisor_skill_selection"].includes(phase ?? "");
       expect(messages.filter((message) => message.content === brief).map(({ role }) => role)).toEqual(preparation ? [] : ["assistant"]);
       expect(messages.some((message) => message.content.includes(companionPolicy))).toBe(false);
     }

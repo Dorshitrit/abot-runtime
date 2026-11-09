@@ -64,9 +64,10 @@ describe("Planner result disclosure", () => {
 
   test("shows subsequent actual planning separately from older failed history", () => {
     const { render } = renderer();
-    const node = render([receipt({ outcome: "failed", eventSequence: 4 }), planning(6)]);
+    const node = render([receipt({ outcome: "failed", eventSequence: 4 }),
+      { ...planning(6), message: "Checking revised requirements" }]);
     expect(node.querySelector(".conversation-role-return-label")?.textContent).toBe("Planner failed");
-    expect(node.querySelector(".conversation-role-action")?.textContent).toBe("Planning The Delegated Work");
+    expect(node.querySelector(".conversation-role-action")?.textContent).toBe("Checking revised requirements");
   });
 
   test("preserves expansion per child across rerenders and new equal-text receipts", () => {
@@ -122,6 +123,7 @@ describe("Planner result disclosure", () => {
     const { render } = renderer();
     const node = render([planning()]);
     expect(node.querySelector(".conversation-role-return")).toBeNull();
-    expect(node.querySelector(".conversation-role-action")?.textContent).toBe("Planning The Delegated Work");
+    expect(node.querySelector(".conversation-role-action")).toBeNull();
+    expect(node.querySelector(".conversation-role-title")?.textContent).toBe("Planner");
   });
 });

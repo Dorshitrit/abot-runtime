@@ -1,3 +1,4 @@
+import { isInvocationContextMessage } from "../../model-gateway/protocol/invocation-context.js";
 import { describe, expect, test } from "vitest";
 
 import {
@@ -52,6 +53,8 @@ describe("request temporal context", () => {
     const message = buildRequestTemporalContextMessage(temporalContext);
 
     expect(Object.isFrozen(message)).toBe(true);
+    expect(isInvocationContextMessage(message)).toBe(true);
+    expect(isInvocationContextMessage({ ...message })).toBe(false);
     expect(message.role).toBe("system");
     expect(JSON.parse(message.content)).toEqual({
       kind: REQUEST_TEMPORAL_CONTEXT_MESSAGE_KIND,

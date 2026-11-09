@@ -104,10 +104,10 @@ function connectionStageContent(stage, snapshot, invitation, disabled) {
   return {
     status: update ? "Update needed" : "Not connected",
     step: update ? "Update Companion" : "Connect your Windows computer",
-    copy: update ? "Update Companion from Microsoft Store, then return here to reconnect."
+    copy: update ? "A compatible Companion update is required. Check Microsoft Store, then return here to reconnect."
       : "Companion lets ABot work with files, apps and desktop tools on this computer.",
-    action: `<a class="system-host-card-primary" href="${companionStoreUrl}" target="_blank" rel="noopener noreferrer"><svg class="system-host-store-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16v14H4ZM8 7V5a4 4 0 0 1 8 0v2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 10h3v3H8Zm5 0h3v3h-3Zm-5 5h3v3H8Zm5 0h3v3h-3Z" fill="currentColor"/></svg><span>${update ? "Update in Microsoft Store" : "Install from Microsoft Store"}</span></a>${connectionButton(update ? "I already updated it" : "I already have it", disabled, true)}`,
-    help: update ? "Your saved connection is kept during an update." : "Install once from Microsoft Store, then return here to connect.",
+    action: `<a class="system-host-card-primary" href="${companionStoreUrl}" target="_blank" rel="noopener noreferrer"><svg class="system-host-store-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16v14H4ZM8 7V5a4 4 0 0 1 8 0v2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 10h3v3H8Zm5 0h3v3h-3Zm-5 5h3v3H8Zm5 0h3v3h-3Z" fill="currentColor"/></svg><span>${update ? "Check Microsoft Store" : "Install from Microsoft Store"}</span></a>${connectionButton(update ? "I already updated it" : "I already have it", disabled, true)}`,
+    help: update ? "Your saved connection is kept during an update. If no update is offered, check again after a compatible version is published." : "Install once from Microsoft Store, then return here to connect.",
   };
 }
 

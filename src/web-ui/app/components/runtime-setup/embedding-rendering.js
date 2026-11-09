@@ -43,7 +43,8 @@ export function renderEmbeddingSetup(state, providerType, configuredProvider) {
   const providers = embeddingProviderOptions(state.providers);
   return `<div class="runtime-embedding-fields">
     ${state.status?.enabled ? '<p class="runtime-setup-feedback">Memory is already configured. You can keep it or test and save changes.</p>' : ""}
-    <label class="runtime-setup-field"><span>Embedding provider</span><select data-runtime-setup-field="embedding-provider">${providers.map((provider) => `<option value="${escapeAttribute(provider.id)}" ${state.provider === provider.id ? "selected" : ""}>${escapeHtml(provider.label)}</option>`).join("")}</select></label>
+    <label class="runtime-setup-field"><span>Embedding provider</span><select data-runtime-setup-field="embedding-provider"><option value="" disabled ${!state.provider ? "selected" : ""}>Choose an embedding provider</option>${providers.map((provider) => `<option value="${escapeAttribute(provider.id)}" ${state.provider === provider.id ? "selected" : ""}>${escapeHtml(provider.label)}</option>`).join("")}</select></label>
+    ${!state.provider ? '<p class="runtime-setup-feedback">Choose a separate connection for embeddings. OpenAI requires an API key; Ollama and llama.cpp servers without authentication can be used without one.</p>' : ""}
     ${providerType === "llamacpp" && !configuredProvider ? field("embedding-connection-id", "Connection ID", state.newProviderId, "text", "A separate connection keeps your chat server settings unchanged.") : ""}
     ${field("embedding-model", "Embedding model ID", state.model, "text", "Choose a model that supports embeddings. ABot will not install or select one for you.")}
     <datalist id="runtimeEmbeddingModels">${state.models.map((model) => `<option value="${escapeAttribute(model)}"></option>`).join("")}</datalist>

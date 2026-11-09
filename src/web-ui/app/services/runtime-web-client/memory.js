@@ -106,6 +106,18 @@ export function createLongTermMemoryRequests({
       });
     },
 
+    promoteLearningCandidate({ environmentId = getEnvironmentId(), id, revision }) {
+      return requestApi(`/runtime/memory/candidates/${encodeURIComponent(id)}/promote`, {
+        method: "POST", body: JSON.stringify({ environment: environmentId, revision }),
+      });
+    },
+
+    deleteLearningCandidate({ environmentId = getEnvironmentId(), id, revision }) {
+      return requestApi(`/runtime/memory/candidates/${encodeURIComponent(id)}`, {
+        method: "DELETE", body: JSON.stringify({ environment: environmentId, revision }),
+      });
+    },
+
     updateLongTermMemory({
       environmentId = getEnvironmentId(),
       id,

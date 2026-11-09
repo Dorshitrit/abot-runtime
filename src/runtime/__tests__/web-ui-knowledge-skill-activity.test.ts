@@ -98,13 +98,13 @@ describe("knowledge Skill tool activity", () => {
   test("one multiple-read activity shows requested IDs and then canonical names", () => {
     const params = { action: "read_skills", skillIds: ["abot-studio", "computer-use"] };
     const started = declaredEvent(params, undefined, { name: "tool.started", eventSequence: 1, ok: undefined });
-    const completed = declaredEvent(params, "ABot Studio, Computer Use");
+    const completed = declaredEvent(params, "ABot Studio, Desktop GUI Interaction");
     expect(actions([started], true)[0]).toMatchObject({
       title: "Read skills", target: "abot-studio, computer-use", status: "running",
     });
     expect(actions([started, completed])).toHaveLength(1);
     expect(actions([started, completed])[0]).toMatchObject({
-      title: "Read skills", target: "ABot Studio, Computer Use", status: "completed", preview: "",
+      title: "Read skills", target: "ABot Studio, Desktop GUI Interaction", status: "completed", preview: "",
     });
     expect(JSON.stringify(actions([started, completed]))).not.toContain("PRIVATE");
   });
@@ -223,7 +223,7 @@ describe("knowledge Skill tool activity", () => {
     const params = { action: "read_skill", skillId: "computer-use" };
     const events = [
       declaredEvent(params, undefined, { name: "tool.started", eventSequence: 1, ok: undefined }),
-      declaredEvent(params, "Computer Use"),
+      declaredEvent(params, "Desktop GUI Interaction"),
     ];
     const live = createPlanLifecycleHarness();
     events.forEach(live.realtime.handle);
@@ -249,11 +249,11 @@ describe("knowledge Skill tool activity", () => {
     const events = [
       declaredEvent(a, undefined, { name: "tool.started", eventSequence: 1 }),
       declaredEvent(b, undefined, { name: "tool.started", executionId: "read-2", eventSequence: 2 }),
-      declaredEvent(b, "Computer Use", { executionId: "read-2", eventSequence: 3 }),
+      declaredEvent(b, "Desktop GUI Interaction", { executionId: "read-2", eventSequence: 3 }),
       declaredEvent(a, "ABot Studio", { eventSequence: 4 }),
     ];
     const expected = actions(events);
-    expect(expected.map(({ target }) => target)).toEqual(["ABot Studio", "Computer Use"]);
+    expect(expected.map(({ target }) => target)).toEqual(["ABot Studio", "Desktop GUI Interaction"]);
     expect(expected[0]!.id).not.toBe(expected[1]!.id);
     expect(actions([events[3]!, events[2]!, ...events, events[3]!])).toEqual(expected);
   });

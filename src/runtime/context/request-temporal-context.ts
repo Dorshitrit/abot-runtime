@@ -1,3 +1,4 @@
+import { markInvocationContextMessage } from "../../model-gateway/protocol/invocation-context.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 
 export const REQUEST_TEMPORAL_CONTEXT_MESSAGE_KIND =
@@ -63,7 +64,7 @@ export function buildRequestTemporalContextMessage(
     timeZone: context.timeZone,
     passive: "relative_time_reference_not_user_intent",
   });
-  return Object.freeze({
+  return markInvocationContextMessage({
     role: "system" as const,
     content: JSON.stringify(capsule),
   });

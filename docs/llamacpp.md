@@ -33,6 +33,29 @@ that failed call. Cancellation aborts counting. The count measures input size,
 not server capacity: `contextWindowTokens` must still match the server's effective
 context allocation.
 
+## Multiple system messages
+
+When a system message occurs after the first turn, the adapter checks the active
+server template with synthetic markers at `POST /apply-template`. This renders a
+prompt without generating an answer. The adapter first checks the original
+message order. If the template loses or reorders markers, it can join consecutive
+opening system messages in their original order and verify that layout. The user
+turns and any later system messages keep their original positions.
+The probe verifies marker presence and order. The server template determines
+which model role receives each message in the rendered prompt.
+
+The native count uses the selected layout. Before generation, a request with a
+matching measurement checks that exact layout against the active server template
+again. If the layout loses or reorders markers, generation stops before sending
+the request. A fresh count can select a different layout for a later request.
+The token count reflects the template and tokenizer active at measurement time.
+Requests without a matching measurement check the available layouts before
+generation. A template that cannot preserve the order returns
+`llamacpp_system_message_order_unsupported`. Use
+a server template that preserves the reported message shape. An unavailable
+render check returns `llamacpp_system_message_render_unavailable`. Simple
+requests with at most one system message at the start use the existing chat path.
+
 ## Prepare the server
 
 Use the official [llama.cpp server guide](https://github.com/ggml-org/llama.cpp/blob/620d2225cc436ab0b001e3200e590e3b286ef9ab/tools/server/README.md)

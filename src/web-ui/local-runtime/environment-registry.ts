@@ -31,6 +31,7 @@ import type {
 import { inspectRuntimeSetupRequirement } from "./runtime-availability.js";
 import { readSavedModelCatalog } from "./saved-model-catalog.js";
 import type { LearningChangedEvent } from "../../runtime/passive-learning/contracts.js";
+import type { SparkHomeChanged } from "../../runtime/local-host/client-spark-home-events.js";
 
 export class RuntimeEnvironmentRegistry {
   private readonly environments = new Map<string, RuntimeEnvironment>();
@@ -49,8 +50,10 @@ export class RuntimeEnvironmentRegistry {
     private readonly options: LocalRuntimeBackendOptions,
     private readonly schedulerBindings: {
       requestOptions?: LocalRuntimeApplicationOptions["scheduledRequestOptions"];
+      homeAppearance?: LocalRuntimeApplicationOptions["sparkHomeAppearance"];
       publish?: (event: Record<string, unknown>) => void;
       publishInformationBasket?: (environmentId: string) => void;
+      publishSparkHome?: (environmentId: string, change: SparkHomeChanged) => void;
       publishLearning?: (
         environmentId: string,
         event?: LearningChangedEvent,
@@ -303,6 +306,7 @@ export class RuntimeEnvironmentRegistry {
   ): RuntimeEnvironment {
     const environment = createLocalRuntimeApplication(config, {
       scheduledRequestOptions: this.schedulerBindings.requestOptions,
+      sparkHomeAppearance: this.schedulerBindings.homeAppearance,
     });
     // Capture before startup; restored owners keep their prior immutable snapshot.
     this.gatewayConfigurations.set(environment, gatewayConfiguration);
@@ -311,6 +315,9 @@ export class RuntimeEnvironmentRegistry {
     }
     environment.subscribeInformationBasketEvents?.(() =>
       this.schedulerBindings.publishInformationBasket?.(environmentId),
+    );
+    environment.subscribeSparkHomeEvents?.(change =>
+      this.schedulerBindings.publishSparkHome?.(environmentId, change),
     );
     environment.subscribeLearningEvents?.((event) =>
       this.schedulerBindings.publishLearning?.(environmentId, event),

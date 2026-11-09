@@ -1,11 +1,17 @@
 import { syncChatgptPlanIndicator } from "./chatgpt-plan-indicator.js";
+import { groupModelSelectorOptions } from "../lib/model-selector-options.js";
+import { renderModelSelectorMenu } from "./model-selector-menu.js";
+import { renderSelectedModelLabel } from "./model-selector-label.js";
 
 function modelOptions(select) {
   return [...select.options].map((option) => ({
     value: option.value,
     label: option.label || option.textContent || option.value,
     disabled: option.disabled,
+    providerId: option.dataset?.providerId || "",
+    providerLabel: option.dataset?.providerLabel || "",
     usingChatgptPlan: option.dataset?.authentication === "chatgpt",
+    executionPolicy: option.dataset?.executionPolicy,
   }));
 }
 
@@ -20,6 +26,7 @@ export function createModelSelector({
 }) {
   let open = false;
   let bound = false;
+  let browsedProviderId = null;
 
   function selectedOption() {
     return modelOptions(select).find((option) => option.value === select.value);
@@ -27,63 +34,79 @@ export function createModelSelector({
 
   function setOpen(next, { restoreFocus = false } = {}) {
     open = Boolean(next) && !select.disabled && modelOptions(select).length > 0;
-    render();
+    browsedProviderId = null;
+    render({ restoreMenuFocus: false });
     if (open) {
       onOpen();
-      viewport.requestAnimationFrame(() => {
-        menu
-          .querySelector('[role="menuitemradio"][aria-checked="true"]')
-          ?.focus();
-      });
+      focusMenu();
     } else if (restoreFocus) {
       button.focus();
     }
   }
 
+  function focusMenu({ providerId = null, modelId = null, selectorAction = null } = {}) {
+    viewport.requestAnimationFrame(() => {
+      if (!open) return;
+      const items = [...menu.querySelectorAll('[data-selector-item="true"]:not(:disabled)')];
+      const action = items.find((item) => item.dataset.selectorAction === selectorAction);
+      const provider = items.find((item) => item.dataset.providerId === providerId);
+      const model = items.find((item) => item.dataset.modelId === modelId);
+      const active = items.find((item) => item.getAttribute("data-selector-active") === "true");
+      const firstModel = items.find((item) => item.dataset.modelId);
+      (action || model || provider || active || firstModel || items[0])?.focus();
+    });
+  }
+
+  function browseProvider(providerId) {
+    browsedProviderId = providerId;
+    render({ restoreMenuFocus: false });
+    focusMenu();
+  }
+
+  function showProviders() {
+    const previousProvider = browsedProviderId;
+    browsedProviderId = null;
+    render({ restoreMenuFocus: false });
+    focusMenu({ providerId: previousProvider });
+  }
+
   function choose(value) {
-    if (!modelOptions(select).some((option) => option.value === value)) return;
+    const option = modelOptions(select).find((option) => option.value === value);
+    if (!option || option.disabled || select.disabled) return;
     select.value = value;
     select.dispatchEvent(new Event("change", { bubbles: true }));
     setOpen(false, { restoreFocus: true });
   }
 
-  function render() {
+  function render({ restoreMenuFocus = true } = {}) {
+    const focused = documentRoot.activeElement;
+    const hadMenuFocus = open && menu.contains(focused);
     const options = modelOptions(select);
+    const groups = groupModelSelectorOptions(options);
+    if (!groups.some((group) => group.id === browsedProviderId)) browsedProviderId = null;
     const selected = selectedOption() || options[0] || null;
     syncChatgptPlanIndicator({ anchor: button, documentRoot, usingPlan: selected?.usingChatgptPlan === true });
     button.disabled = select.disabled || options.length === 0;
+    if (button.disabled) {
+      open = false;
+      browsedProviderId = null;
+    }
     button.setAttribute("aria-expanded", open ? "true" : "false");
     button.classList.toggle("open", open);
     const label = selected?.label || "No models configured";
-    valueLabel.textContent = label;
-    button.title = `Model: ${label}`;
-    button.setAttribute("aria-label", `Model: ${label}`);
+    renderSelectedModelLabel({
+      valueLabel, button, documentRoot, provider: selected?.providerLabel, model: label,
+      executionPolicy: button.disabled ? undefined : selected?.executionPolicy,
+    });
     menu.hidden = !open;
     menu.classList.toggle("open", open);
     menu.setAttribute("role", "menu");
-    menu.replaceChildren();
-    for (const option of options) {
-      const item = documentRoot.createElement("button");
-      const active = option.value === select.value;
-      item.type = "button";
-      item.className = `model-select-option${active ? " selected" : ""}`;
-      item.setAttribute("role", "menuitemradio");
-      item.setAttribute("aria-checked", active ? "true" : "false");
-      item.tabIndex = active ? 0 : -1;
-      item.disabled = option.disabled;
-      item.dataset.modelId = option.value;
-
-      const label = documentRoot.createElement("span");
-      label.className = "model-select-option-label";
-      label.textContent = option.label;
-      const check = documentRoot.createElement("span");
-      check.className = "model-select-check";
-      check.setAttribute("aria-hidden", "true");
-      check.textContent = active ? "✓" : "";
-      item.append(label, check);
-      item.addEventListener("click", () => choose(option.value));
-      menu.appendChild(item);
-    }
+    renderModelSelectorMenu({
+      menu, groups, providerId: browsedProviderId,
+      selectedValue: select.value, documentRoot,
+      onBrowse: browseProvider, onBack: showProviders, onChoose: choose,
+    });
+    if (restoreMenuFocus && hadMenuFocus && open) focusMenu(focused.dataset);
   }
 
   function moveFocus(event) {
@@ -91,19 +114,15 @@ export function createModelSelector({
       return;
     }
     const items = [
-      ...menu.querySelectorAll('[role="menuitemradio"]:not(:disabled)'),
+      ...menu.querySelectorAll('[data-selector-item="true"]:not(:disabled)'),
     ];
     if (items.length === 0) return;
     event.preventDefault();
     const current = Math.max(0, items.indexOf(documentRoot.activeElement));
-    const next =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? items.length - 1
-          : (current + (event.key === "ArrowDown" ? 1 : -1) + items.length) %
-            items.length;
-    items[next]?.focus();
+    if (event.key === "Home") return items[0]?.focus();
+    if (event.key === "End") return items.at(-1)?.focus();
+    const direction = event.key === "ArrowDown" ? 1 : -1;
+    items[(current + direction + items.length) % items.length]?.focus();
   }
 
   function bind() {

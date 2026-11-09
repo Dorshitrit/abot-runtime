@@ -92,6 +92,8 @@ export function createConversationView({
   });
   let historyPager;
   let holdingPosition = false;
+  let renderedMessageLayout = "";
+  const outsideReasoningBubbles = new Map();
   const viewState = {
     followMessages: true,
     messageRenderTimer: 0,
@@ -167,7 +169,7 @@ export function createConversationView({
     if (scheduleNode) return scheduleNode;
     if (isApprovalPresentation(message)) return createConversationApprovalPresentation({
       message, activity: createActivityNode(message, updates), progress,
-      thinking: showReasoning ? conversationReasoning.createNode(message) : null,
+      thinking: showReasoning ? conversationReasoning.createNode(message, { allowEmpty: true }) : null,
       status: conversationStatus.createNode(message), statusPlacement, documentRoot,
     });
     const row = documentRoot.createElement("article");
@@ -216,7 +218,7 @@ export function createConversationView({
       if (activity) bubble.appendChild(activity);
     }
 
-    const thinking = showReasoning ? conversationReasoning.createNode(message) : null;
+    const thinking = showReasoning ? conversationReasoning.createNode(message, { allowEmpty: message.role !== "user" }) : null;
     if (thinking) bubble.appendChild(thinking);
 
     if (progress) bubble.appendChild(progress);
@@ -245,8 +247,10 @@ export function createConversationView({
     if (initiativeAction) bubble.appendChild(initiativeAction);
     row.appendChild(bubble);
     if (status && statusPlacement === "outside") {
-      const hasVisibleContent = Boolean(message.text || attachments || activity || thinking || progress || linkPreviews || initiativeAction);
-      bubble.hidden = !hasVisibleContent;
+      const hasOtherVisibleContent = Boolean(message.text || attachments || activity || progress || linkPreviews || initiativeAction);
+      const hasVisibleThinking = Boolean(thinking && !thinking.hidden);
+      bubble.hidden = !hasOtherVisibleContent && !hasVisibleThinking;
+      outsideReasoningBubbles.set(message.id, { bubble, hasOtherVisibleContent });
       row.classList.add("message-status-outside");
       row.appendChild(status);
     }
@@ -274,9 +278,10 @@ export function createConversationView({
       }),
     );
     const previousScrollTop = dom.messagesList.scrollTop;
-    const shouldFollow =
-      !holdingPosition && !historyPager?.hasNewer() && (viewState.followMessages || isNearScrollEnd(dom.messagesList));
+    const shouldFollow = shouldFollowMessageUpdates();
     const messages = preserveMessageHistory ? getMessages() : projectApprovalContinuations(getMessages());
+    renderedMessageLayout = messageLayoutKey(messages);
+    outsideReasoningBubbles.clear();
     projectChanges?.sync({ messages, getActivityForMessage, isLatestWindow: !historyPager?.hasNewer() });
     conversationReasoning.beginRender(messages);
     messageLinkPreviews.reset();
@@ -303,6 +308,16 @@ export function createConversationView({
     }
     restoreRejectionFocus();
     historyPager?.renderControls(dom.messagesList);
+    restoreScrollAfterRender(previousScrollTop, shouldFollow);
+  }
+
+  function shouldFollowMessageUpdates() {
+    if (holdingPosition) return false;
+    if (historyPager?.hasNewer()) return false;
+    return viewState.followMessages || isNearScrollEnd(dom.messagesList);
+  }
+
+  function restoreScrollAfterRender(previousScrollTop, shouldFollow) {
     if (scrollBehavior) {
       scrollBehavior.afterRender();
       if (historyPager?.hasNewer()) dom.jumpToLatestButton.hidden = false;
@@ -310,18 +325,41 @@ export function createConversationView({
     }
     if (shouldFollow) {
       scrollToEnd();
-    } else {
-      dom.messagesList.scrollTop = previousScrollTop;
-      viewState.followMessages = false;
-      updateJumpToLatest();
+      return;
     }
+    dom.messagesList.scrollTop = previousScrollTop;
+    viewState.followMessages = false;
+    updateJumpToLatest();
+  }
+
+  function messageLayoutKey(messages) {
+    return JSON.stringify(messages.map(({ id, role, kind, streaming }) => [id, role, kind, Boolean(streaming)]));
+  }
+
+  function renderThinking() {
+    if (!showReasoning) return;
+    const messages = preserveMessageHistory ? getMessages() : projectApprovalContinuations(getMessages());
+    const canReuseMessageLayout = renderedMessageLayout === messageLayoutKey(messages);
+    if (!canReuseMessageLayout) {
+      render();
+      return;
+    }
+    const previousScrollTop = dom.messagesList.scrollTop;
+    const shouldFollow = shouldFollowMessageUpdates();
+    if (!conversationReasoning.update(messages)) return;
+    for (const message of messages) {
+      const host = outsideReasoningBubbles.get(message.id);
+      if (!host) continue;
+      host.bubble.hidden = !host.hasOtherVisibleContent && !message.thinkingText;
+    }
+    restoreScrollAfterRender(previousScrollTop, shouldFollow);
   }
 
   function scheduleThinkingRender() {
     if (viewState.thinkingRenderTimer) return;
     viewState.thinkingRenderTimer = viewport.setTimeout(() => {
       viewState.thinkingRenderTimer = 0;
-      render();
+      renderThinking();
     }, 180);
   }
 
@@ -362,6 +400,8 @@ export function createConversationView({
 
   function reset() {
     holdingPosition = false;
+    renderedMessageLayout = "";
+    outsideReasoningBubbles.clear();
     filePreview.reset();
     projectChanges?.reset();
     viewState.followMessages = true;

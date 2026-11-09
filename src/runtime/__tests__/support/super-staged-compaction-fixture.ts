@@ -195,22 +195,30 @@ export function stagedSuperFixture(
   });
   const countInputTokens = vi.fn<
     NonNullable<ModelGatewayClient["countInputTokens"]>
-  >(async (input) => ({
-    inputTokens:
+  >(async (input) => {
+    let inputTokens = 1000;
+    // Exercise multiple windows through measured envelope pressure, not a byte cap.
+    if (input.modelStep?.startsWith("super.compact.")) {
+      inputTokens = Buffer.byteLength(JSON.stringify(input.messages), "utf8") * 2;
+    } else if (
       input.modelStep === "worker.evidence" &&
       decodeCapsules(input.messages as readonly ChatMessage[]).some(
         (capsule) =>
           capsule.kind === "runtime_request_tool_results_v1" &&
           JSON.stringify(capsule.results).includes(STAGED_RAW_MARKER),
       )
-        ? 24000
-        : 1000,
-    profileId,
-    provider: "openai",
-    model: "staged-test",
-    contextWindowTokens: 32000,
-    source: "provider_input_token_count",
-  }));
+    ) {
+      inputTokens = 24000;
+    }
+    return {
+      inputTokens,
+      profileId,
+      provider: "openai",
+      model: "staged-test",
+      contextWindowTokens: 32000,
+      source: "provider_input_token_count",
+    };
+  });
   const original = createTestRequestExecutionScope({
     requestId: `staged-super-${throughPlanner}`,
     sessionId: "staged-session",

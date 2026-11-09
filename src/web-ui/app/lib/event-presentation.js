@@ -1,3 +1,4 @@
+import { isGenericDelegatedProgressEvent } from "./delegated-progress-presentation.js";
 import { isBlockedCompletion } from "./completion-presentation.js";
 import { failureResponseText, presentFailureText } from "./failure-presentation.js";
 import { basketActivitySummary, basketStatusLabel } from "./tool-basket-activity-fields.js";
@@ -29,6 +30,7 @@ export function buildEventTimelineEntries(events) {
   const entries = [];
   for (const event of events) {
     if (isGenericRequestProcessingEvent(event)) continue;
+    if (isGenericDelegatedProgressEvent(event)) continue;
     const name = textOf(event.name || event.rawType || event.type);
     if (!name) continue;
     const summary = textOf(event.summary);
@@ -65,6 +67,13 @@ export function titleCaseEventValue(value) {
     .filter(Boolean)
     .map((part) => part[0].toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function isSupervisorSkillReadTitle(message, name) {
+  if (message.type !== "event") return false;
+  if (message.stage !== "supervisor") return false;
+  if (message.phase !== "skills") return false;
+  return ["Read Skills: ", "Read skill: "].some((prefix) => name.startsWith(prefix));
 }
 
 export function formatToolName(rawTool) {
@@ -202,6 +211,7 @@ export function formatEventLabel(message) {
     }
     return toolName ? `Using ${toolName}` : "Using a tool";
   }
+  if (isSupervisorSkillReadTitle(message, name)) return name;
   return titleCaseEventValue(name) || "Event";
 }
 

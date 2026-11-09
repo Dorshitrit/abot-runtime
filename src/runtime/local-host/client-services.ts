@@ -1,4 +1,5 @@
 import type { PersonalSkillManagementService } from "../knowledge-skills/personal-contracts.js";
+import { createLocalSparkHomeClients } from "./client-spark-home.js";
 import type { SessionStore } from "../ports.js";
 import type { RuntimeProjectService } from "../projects/contracts.js";
 import type { RuntimeAttachmentStore } from "../attachments/store.js";
@@ -45,5 +46,5 @@ export function createLocalServiceClients(call: LocalRuntimeCallHandler) {
   const personalSkills = service<PersonalSkillManagementService>(
     "personalSkills", LOCAL_PERSONAL_SKILL_METHODS,
   );
-  return { sessions, attachments, scheduler, automations, projects, personalSkills };
+  return { sessions, attachments, scheduler, automations, projects, personalSkills, ...createLocalSparkHomeClients(call) };
 }

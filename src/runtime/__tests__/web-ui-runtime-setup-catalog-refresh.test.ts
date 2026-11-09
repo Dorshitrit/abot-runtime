@@ -20,7 +20,7 @@ function element() {
   const options: Array<{ value: string; textContent: string }> = [];
   return {
     value: "", innerHTML: "", textContent: "", hidden: false, disabled: false,
-    title: "", options, classList: { toggle: vi.fn() },
+    title: "", options, dataset: {}, classList: { toggle: vi.fn() },
     setAttribute: vi.fn(), focus: vi.fn(), querySelectorAll: () => [],
     append: vi.fn(),
     appendChild: (option: { value: string; textContent: string }) => options.push(option),

@@ -4,6 +4,7 @@ import { shouldRefreshReasoningBudgetFields } from "./reasoning-budget.js";
 import { rememberCalibrationDisclosure } from "./calibration-disclosure.js";
 import { textOf } from "../../lib/text-format.js";
 import { resolveModelExecutionRoute } from "./config-model.js";
+import { configuredProviderConnections } from "./provider-connections.js";
 import {
   setModelPluginEnabled,
   setModelCapabilityEnabled,
@@ -16,6 +17,7 @@ export function createConfigWorkspaceEvents({
   eventTarget,
   onAddModel,
   onChatgptAccounts,
+  onProviderAction,
   onRemoveModel,
   applyRawDraft,
   changeRawFile,
@@ -217,6 +219,13 @@ export function createConfigWorkspaceEvents({
     const kind = element.dataset.kind;
     const id = element.dataset.id;
     if (dashboardIsBusy()) return;
+    if (action === "edit-provider" || action === "delete-provider") {
+      const files = state.configDashboard?.files;
+      const connection = configuredProviderConnections(files?.runtime, files?.models || [])
+        .find(({ id }) => id === element.dataset.providerId);
+      if (connection) void onProviderAction?.(action, connection);
+      return;
+    }
     if (action === "chatgpt-accounts") { onChatgptAccounts?.(element.dataset.accountRef || ""); return; }
     if (action === "add-model") {
       onAddModel?.({ providerId: element.dataset.providerId || undefined });

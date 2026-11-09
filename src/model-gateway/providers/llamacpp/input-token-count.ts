@@ -4,7 +4,7 @@ import type {
   ModelProviderInputTokenCountResult,
 } from "../contracts.js";
 import { createProviderEnvelopeFingerprint } from "../envelope-budget.js";
-import { buildLlamaCppChatPayload } from "./payload.js";
+import { prepareLlamaCppSystemMessages } from "./system-message-packing.js";
 import { resolveLlamaCppProviderSettings } from "./settings.js";
 
 function readLlamaCppInputTokenCount(value: unknown): number | undefined {
@@ -34,7 +34,9 @@ export async function countLlamaCppInputTokens(
       ),
     };
   }
-  const payload = buildLlamaCppChatPayload(params);
+  const prepared = await prepareLlamaCppSystemMessages(params, settings, params.fetchImpl, "count");
+  if (prepared.kind === "error") return prepared;
+  const { payload } = prepared;
   const response = await params.fetchImpl(`${settings.apiUrl}/chat/completions/input_tokens`, {
     method: "POST",
     headers: settings.headers,

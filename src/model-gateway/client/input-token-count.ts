@@ -10,7 +10,7 @@ import type {
 import type { ModelGatewayClientOptions } from "./contracts.js";
 import {
   buildChatGatewayRequestBody,
-  resolveRequestMessages,
+  projectChatGatewayMessages,
 } from "./message-projection.js";
 import { resolveClientOptions } from "./options.js";
 
@@ -114,11 +114,11 @@ export async function countModelGatewayInputTokensWithOptions(
   if (!clientOptions.inputTokenCountProviders.has(provider)) {
     return undefined;
   }
-  const requestMessages = resolveRequestMessages(params);
+  const projection = projectChatGatewayMessages(params);
   const modelPolicy = params.modelPolicy ?? clientOptions.modelPolicy;
   const requestBody = buildChatGatewayRequestBody(
     params,
-    requestMessages,
+    projection,
     modelPolicy,
   );
   const cacheKey = createInputTokenCountCacheKey(provider, requestBody);
@@ -134,7 +134,7 @@ export async function countModelGatewayInputTokensWithOptions(
     url: `${clientOptions.baseUrl}/input-tokens`,
     provider,
     modelStep: params.modelStep,
-    messageCount: requestMessages.length,
+    messageCount: projection.messages.length,
   });
   const diagnostics = new InputTokenCountDiagnostics("model-gateway.client", requestBody);
   diagnostics.setProvider(provider);
@@ -155,7 +155,7 @@ export async function countModelGatewayInputTokensWithOptions(
     if (!response.ok) {
       const errorText = await response.text().catch(() => "");
       throw new Error(
-        `bridge_input_token_count_failed:${response.status}:${toolMediaSafeMessage(errorText || "empty error body", requestMessages)}`,
+        `bridge_input_token_count_failed:${response.status}:${toolMediaSafeMessage(errorText || "empty error body", projection.messages)}`,
       );
     }
     diagnostics.setPhase("bridge_parse");

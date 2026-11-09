@@ -408,39 +408,6 @@ describe("read-only Agent Plugins parity", () => {
     expect(JSON.stringify(result)).not.toContain(fixture.agentWorkDir);
   });
 
-  test("local-search fails closed when ripgrep cannot represent a path as UTF-8 text", async () => {
-    if (process.platform === "win32") return;
-    const fixture = await createFixture();
-    await mkdir(join(fixture.agentWorkDir, "src"));
-    const invalidPath = Buffer.concat([
-      Buffer.from(join(fixture.agentWorkDir, "src", "invalid-")),
-      Buffer.from([0xff]),
-    ]);
-    await writeFile(invalidPath, "unsupported-encoding-token\n");
-    const handler = loadEntrypoint("local-search")(fixture.context).handlers
-      .local_search;
-
-    const content = await handler?.(
-      { query: "unsupported-encoding-token", path: "src", mode: "content" },
-      fixture.context,
-    );
-    expect(content).toMatchObject({
-      ok: false,
-      errorCode: "local_search_result_encoding_unsupported",
-    });
-    expect(JSON.stringify(content)).not.toContain(fixture.agentWorkDir);
-
-    const names = await handler?.(
-      { query: "invalid", path: "src", mode: "names" },
-      fixture.context,
-    );
-    expect(names).toMatchObject({
-      ok: false,
-      errorCode: "local_search_result_encoding_unsupported",
-    });
-    expect(JSON.stringify(names)).not.toContain(fixture.agentWorkDir);
-  });
-
   test("local-search preserves exact reusable paths and rejects ambiguous aliases", async () => {
     const fixture = await createFixture();
     await mkdir(join(fixture.agentWorkDir, "src"));

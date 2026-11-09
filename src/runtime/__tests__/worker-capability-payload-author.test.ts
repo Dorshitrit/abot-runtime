@@ -1,3 +1,4 @@
+import { readOpeningRepairInstruction } from "./support/repair-attempt-instruction.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { ModelGatewayClient } from "../ports.js";
@@ -600,9 +601,7 @@ describe("neutral Worker capability payload author", () => {
     const initialMessages = asChatMessages(invoke.mock.calls[0]![0].messages);
     const repairMessages = asChatMessages(invoke.mock.calls[1]![0].messages);
     expect(repairMessages).toHaveLength(initialMessages.length + 1);
-    expect(repairMessages.at(-1)).toMatchObject({
-      role: "system",
-    });
+    expect(readOpeningRepairInstruction(repairMessages).content).toContain("payload_body_too_small");
     const logs = consoleLog.mock.calls.map(
       ([line]) => JSON.parse(String(line)) as Record<string, unknown>,
     );
@@ -730,7 +729,7 @@ describe("neutral Worker capability payload author", () => {
     ).resolves.toEqual({ status: "authored", body: "replacement" });
     expect(invoke).toHaveBeenCalledTimes(2);
     expect(
-      asChatMessages(invoke.mock.calls[1]![0].messages).at(-1),
+      readOpeningRepairInstruction(asChatMessages(invoke.mock.calls[1]![0].messages)),
     ).toMatchObject({
       role: "system",
       content: expect.stringContaining("payload_body_too_small"),
@@ -889,7 +888,7 @@ describe("neutral Worker capability payload author", () => {
     });
     expect(invoke).toHaveBeenCalledTimes(2);
     expect(
-      asChatMessages(invoke.mock.calls[1]![0].messages).at(-1),
+      readOpeningRepairInstruction(asChatMessages(invoke.mock.calls[1]![0].messages)),
     ).toMatchObject({
       role: "system",
       content: expect.stringContaining("payload_model_output_invalid"),
@@ -975,7 +974,7 @@ describe("neutral Worker capability payload author", () => {
     expect(
       invoke.mock.calls
         .slice(1)
-        .map((call) => asChatMessages(call[0].messages).at(-1)),
+        .map((call) => readOpeningRepairInstruction(asChatMessages(call[0].messages))),
     ).toEqual([
       expect.objectContaining({
         role: "system",

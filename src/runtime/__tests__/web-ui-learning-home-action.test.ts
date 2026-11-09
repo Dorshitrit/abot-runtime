@@ -96,7 +96,7 @@ describe("Home Co-worker quick action", () => {
   });
 
   test("a capable connected Companion still allows authorized collection on native Windows", async () => {
-    const status = { paired: true, connected: true, connectionId: "native-windows-companion", capabilities: ["computer_control_v1", "passive-observations-v1"] } as const;
+    const status = { paired: true, connected: true, connectionId: "native-windows-companion", capabilities: ["computer_control_v1", "passive-observations-v1", "host_secret_protection_v1", "system_command_output_v1"] } as const;
     const readiness = await readHostReadiness(status, {
       facts: { platform: "win32", kernelRelease: "Windows_NT" },
     });

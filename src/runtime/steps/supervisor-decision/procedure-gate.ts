@@ -1,6 +1,6 @@
 import type { ChatMessage, ModelGatewayJsonSchemaFormat } from "../../../model-gateway/types.js";
 import { buildCoreSkillReadContextMessages } from "../../context/core-skill-read-context.js";
-import { projectRequestContext } from "../../context/request-context.js";
+import { projectLatestSettledConversationTurn, projectRequestContext } from "../../context/request-context.js";
 import type { RoleCallLedgerHead } from "../../orchestration/role-calls/index.js";
 import { invokeStructuredModelStep, type StructuredModelParseResult } from "../../model/invoke-structured-step.js";
 import { resolveModelContextBudget } from "../../model/model-context-budget.js";
@@ -14,6 +14,7 @@ import { projectSupervisorResponseRecommendation, SUPERVISOR_RESPONSE_RECOMMENDA
 import { projectSupervisorProcedureRecall } from "./procedure-recall.js";
 import { projectSupervisorProcedureMemory } from "./procedure-memory.js";
 import { SUPER_SKILL_GUIDANCE_INSTRUCTION } from "../supervisor-skill-instructions.js";
+import { SUPERVISOR_HISTORY_INSTRUCTIONS } from "./history-instructions.js";
 
 export type SupervisorProcedureGateDecision = Readonly<
   | { requiresProcedure: true }
@@ -21,6 +22,7 @@ export type SupervisorProcedureGateDecision = Readonly<
 >;
 
 const PROCEDURE_GATE_INSTRUCTIONS = [
+  ...SUPERVISOR_HISTORY_INSTRUCTIONS,
   "Decide only whether fulfilling the current user request requires a procedure before answering.",
   "requiresProcedure=true: work must be carried out, observed or changed before a grounded final reply can fulfill the request.",
   "requiresProcedure=false: the requested outcome is a direct conversational answer, explanation, or necessary clarification.",
@@ -91,7 +93,11 @@ type ProcedureGateContextOptions = Readonly<{
   boundSteeringVersion?: number;
 }>;
 
-function projectProcedureMemoryContext(request: RequestExecutionScope, options: ProcedureGateContextOptions) {
+function projectProcedureMemoryContext(request: RequestExecutionScope, options: ProcedureGateContextOptions): Readonly<{
+  instructions: string;
+  message?: ChatMessage;
+  continuationMessages?: readonly ChatMessage[];
+}> | undefined {
   if (!request.longTermMemory?.enabled) return undefined;
   if (!options.memoryRecallMessage) return projectSupervisorProcedureMemory(options.initialMemoryMessage);
   return projectSupervisorProcedureRecall(options.memoryRecallMessage, {
@@ -118,8 +124,12 @@ export function buildSupervisorProcedureGateInput(request: RequestExecutionScope
     instructions: [PROCEDURE_GATE_INSTRUCTIONS,
       ...(hasSkillReadContext ? [SUPER_SKILL_GUIDANCE_INSTRUCTION] : []),
       ...(memory ? [memory.instructions] : [])].join("\n"), format,
-    prompt: request.prompt, historyMessages: [], budget,
-    referenceMessages: [...skillMessages, ...(memory ? [memory.message] : [])],
+    prompt: request.prompt, budget,
+    historyMessages: projectLatestSettledConversationTurn(request.historyMessages) ?? [],
+    // Keep the source turn whole; exact admission rejects an oversized envelope.
+    historyRetention: "compaction_managed",
+    referenceMessages: [...skillMessages, ...(memory?.message ? [memory.message] : [])],
+    ...(memory?.continuationMessages ? { continuationMessages: memory.continuationMessages } : {}),
     diagnostic: options.diagnostic, onEvent: request.onEvent,
     deferCompactionFailure: true,
   });

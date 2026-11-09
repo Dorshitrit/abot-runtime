@@ -1,3 +1,4 @@
+import { projectInitialMemoryMessage } from "../long-term-memory/initial-context.js";
 import { canRootReadSkills } from "./root-skill-read.js";
 import { isSupervisorSkillWriteCapabilityId } from "../orchestration/worker-capabilities/supervisor-skill-authority.js";
 import { isSupervisorSkillWriteSelection } from "../steps/supervisor-skill-authoring/contract.js";
@@ -33,6 +34,7 @@ export const SUPERVISOR_ROOT_CONTRACT: RequestRootContractAdapter =
         decision: { action: "respond" as const },
         steeringVersion: resolveRequestSteeringInbox(request.requestSteering).snapshot().version,
       };
+      const initialMemoryMessage = projectInitialMemoryMessage(options.head.state.initialMemory);
       const outcome = await runSupervisorDecision(request, {
         call: options.call,
         skillReadHead: options.head,
@@ -48,9 +50,7 @@ export const SUPERVISOR_ROOT_CONTRACT: RequestRootContractAdapter =
         allowedRoleIds: options.allowedRoleIds,
         availableWorkerCapabilityCatalog: options.availableWorkerCapabilityCatalog,
         availableSkillWriteOperationIds: options.availableSkillWriteOperationIds,
-        ...(options.head.state.initialMemory?.message
-          ? { initialMemoryMessage: options.head.state.initialMemory.message }
-          : {}),
+        ...(initialMemoryMessage ? { initialMemoryMessage } : {}),
         ...(options.memoryRecallMessage
           ? { memoryRecallMessage: options.memoryRecallMessage }
           : {}),
@@ -75,15 +75,14 @@ export const SUPERVISOR_ROOT_CONTRACT: RequestRootContractAdapter =
       };
     },
     async authorResponse(request, options) {
+      const initialMemoryMessage = projectInitialMemoryMessage(options.head.state.initialMemory);
       return runSupervisorAuthoredResponse(request, {
         responseRecommendation: options.responseRecommendation,
         responseRecommendationOrigin: options.responseRecommendationOrigin,
         call: options.call,
         skillReadHead: options.head,
         toolResults: options.toolResults,
-        ...(options.head.state.initialMemory?.message
-          ? { initialMemoryMessage: options.head.state.initialMemory.message }
-          : {}),
+        ...(initialMemoryMessage ? { initialMemoryMessage } : {}),
         ...(options.memoryRecallMessage
           ? { memoryRecallMessage: options.memoryRecallMessage }
           : {}),

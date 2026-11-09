@@ -248,6 +248,7 @@ describe("startAgentBridge lifecycle", () => {
             providerId: "openai",
             provider: "openai",
             model: "gpt-5.6-terra",
+            executionPolicy: "supervisor-worker-v1",
             supportsThinking: true,
             capabilities: {
               inputModalities: ["text"],
@@ -261,6 +262,7 @@ describe("startAgentBridge lifecycle", () => {
             providerId: "openai",
             provider: "openai",
             model: "gpt-5.6-luna",
+            executionPolicy: "supervisor-worker-v1",
             supportsThinking: true,
             capabilities: {
               inputModalities: ["text"],

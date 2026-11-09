@@ -20,6 +20,8 @@ import { WebSessionReadStates } from "./session-read-state/service.js";
 import { WebNotificationRoutes } from "./notifications/routes.js";
 import { DesktopNotificationDelivery } from "./notifications/desktop-delivery.js";
 import { validateRuntimeQueueTarget } from "./client-state/queue-target.js";
+import { createSavedAppearanceReferenceReader } from "./client-state/appearance-reference.js";
+import { createSparkHomeChangeNotifier } from "./local-runtime/spark-home-notifications.js";
 
 export type { LocalRuntimeBackendOptions } from "./local-runtime/contracts.js";
 
@@ -47,9 +49,11 @@ export class LocalRuntimeWebBackend {
     this.clients = clients;
     const requests = new LocalRequestExecution(clients);
     this.environments = new RuntimeEnvironmentRegistry(resolvedOptions, {
+      homeAppearance: createSavedAppearanceReferenceReader(options.rootDir ?? process.cwd()),
       requestOptions: (run) => requests.scheduledRequestOptions(run),
       publish: (event) => requests.publishScheduled(event),
       publishLearning: createLearningChangeNotifier(clients),
+      publishSparkHome: createSparkHomeChangeNotifier(clients),
       publishInformationBasket: (environmentId) =>
         createWorkspaceChangeNotifier(clients)(environmentId, ["information-basket"]),
     });

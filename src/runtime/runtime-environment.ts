@@ -5,6 +5,7 @@ import { createRuntimeKnowledgeSkillStore } from "./knowledge-skills/personal-st
 import { createRuntimeProjectService } from "./projects/service.js";
 import { traceDebug } from "./observability/debug-logger.js";
 import { createRuntimePassiveLearning } from "./adapters/passive-learning-runtime.js";
+import { createSparkHomeRuntime } from "./spark-home/runtime.js";
 import {
   createDefaultAttachmentStore,
   createDefaultEventSinkFactory,
@@ -278,7 +279,12 @@ export function createRuntimeEnvironment(
       );
     }
   });
+  const sparkHome = createSparkHomeRuntime({
+    config, sessions: sessionLifecycle.store, models, tools, memory: longTermMemory,
+    passiveLearning, resources: informationBasket, sparkHomeAppearance: overrides.sparkHomeAppearance,
+  });
   const services: RuntimeEnvironmentServices = Object.freeze({
+    ...sparkHome,
     config,
     sessions: sessionLifecycle.store,
     projects: createRuntimeProjectService(config, sessionLifecycle.store),
@@ -347,6 +353,7 @@ export function createRuntimeEnvironment(
       unsubscribeInjectedLearning?.();
       unsubscribeInjectedLearning = undefined;
       await Promise.all([
+        sparkHome.sparkHomeGeneration.stop(),
         informationBasket?.stop(),
         passiveLearning.stop(),
         scheduling.stop(),
@@ -387,6 +394,7 @@ export function recomposeRuntimeEnvironment(
     knowledgeSkillStore: resolved.knowledgeSkillStore ??
       (preservesSkillStoreBinding ? bound?.knowledgeSkillStore : undefined),
     scheduledRequestOptions: previous?.scheduledRequestOptions,
+    sparkHomeAppearance: resolved.sparkHomeAppearance ?? previous?.sparkHomeAppearance,
   }, bound?.[SESSION_MEMORY_COMPACTORS]).services;
 }
 

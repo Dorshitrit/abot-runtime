@@ -67,6 +67,7 @@ import { RuntimeMaintenanceRoutes } from "./runtime-maintenance-routes.js";
 import { createRuntimeSessionResetClientState } from "../client-state/session-reset.js";
 import { AutomationRoutes } from "./automation-routes.js";
 import { SparkChatRoutes } from "./spark-chat-routes.js";
+import { createSparkHomeApi } from "./spark-home-api.js";
 
 function sendRuntimeSetupRequired(
   res: ServerResponse,
@@ -104,6 +105,7 @@ export class LocalRuntimeApiRouter {
   private readonly maintenance: RuntimeMaintenanceRoutes;
   private readonly automations: AutomationRoutes;
   private readonly sparkChat: SparkChatRoutes;
+  private readonly sparkHome: ReturnType<typeof createSparkHomeApi>;
 
   constructor(
     private readonly options: ResolvedLocalRuntimeBackendOptions,
@@ -202,6 +204,7 @@ export class LocalRuntimeApiRouter {
       onSessionRead,
     );
     this.sparkChat = new SparkChatRoutes((id) => this.environments.get(id), this.readStates, notifyWorkspaceChanged, onSessionRead);
+    this.sparkHome = createSparkHomeApi(id => this.environments.get(id).services);
     this.schedules = new ScheduleManagementRoutes((id) =>
       this.environments.get(id),
     );
@@ -349,6 +352,7 @@ export class LocalRuntimeApiRouter {
       return;
     }
     if (await this.sparkChat.handle({ method, route, body, environmentId, request: req, response: res })) return;
+    if (await this.sparkHome.handle({ method, route, body, environmentId, request: req, response: res })) return;
 
     if (
       await this.learning.handle({

@@ -4,6 +4,7 @@ import type { MemoryEmbeddingConnectionInput } from "../../local-runtime/memory-
 import type { StepTimeoutRequests } from "./runtime-web-client/step-timeout.js";
 import type { NotificationRequests } from "./runtime-web-client/notifications.js";
 import type { SparkChatRequests } from "./runtime-web-client/spark-chat.js";
+import type { SparkHomeRequests } from "./runtime-web-client/spark-home.js";
 import type { ProjectChangesClient } from "./runtime-web-client/project-changes.js";
 import type { ProjectRequests } from "./runtime-web-client/projects.js";
 import type { ToolApprovalRequests } from "./runtime-web-client/tool-approvals.js";
@@ -90,7 +91,7 @@ export declare function createRuntimeWebClient(options: {
   fetchImpl?: typeof fetch;
   origin?: string;
   onMemoryDeleted?: (environmentId: string, id: string) => Promise<unknown> | void;
-}): {
+}): SparkHomeRequests & {
   supportsSparkChat: SparkChatRequests["supportsSparkChat"];
   loadSparkChat: SparkChatRequests["loadSparkChat"];
   configureSparkChat: SparkChatRequests["configureSparkChat"];
@@ -299,6 +300,21 @@ export declare function createRuntimeWebClient(options: {
     input: ModelRemovalInput,
     environmentId?: string,
   ): Promise<Record<string, unknown>>;
+  updateRuntimeProvider(
+    input: {
+      providerId: string;
+      expectedRevision: string;
+      baseUrl?: string;
+      keepAlive?: string;
+      apiKeyEnv?: string;
+      accountRef?: string;
+    },
+    environmentId?: string,
+  ): Promise<{ ok: true; providerId: string; restartRequired: true }>;
+  removeRuntimeProvider(
+    input: { providerId: string; expectedRevision: string },
+    environmentId?: string,
+  ): Promise<{ ok: true; providerId: string; restartRequired: true }>;
   loadConfigDashboard(
     environmentId?: string,
     options?: { settled?: boolean },

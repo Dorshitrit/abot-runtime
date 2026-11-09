@@ -1,3 +1,4 @@
+import { readOpeningRepairInstruction } from "./support/repair-attempt-instruction.js";
 import { withSupervisorPreparation } from "./support/supervisor-model-phases.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ModelGatewayAttachment } from "../../model-gateway/types.js";
@@ -1945,18 +1946,18 @@ describe("Supervisor decision feasibility contract", () => {
       const secondRepairMessages = invoke.mock.calls[2]?.[0].messages;
       expect(firstRepairMessages).toHaveLength(2);
       expect(secondRepairMessages).toHaveLength(2);
-      expect(firstRepairMessages?.[1]).toMatchObject({
+      expect(firstRepairMessages?.[0]).toMatchObject({
         role: "system",
         content: expect.stringContaining("decision.requiredField"),
       });
-      expect(firstRepairMessages?.[1]?.content).toContain("Repair attempt: 1");
-      expect(secondRepairMessages?.[1]?.content).toContain("Repair attempt: 2");
-      expect(firstRepairMessages?.[1]?.content).not.toContain(rejectedOutput);
-      expect(secondRepairMessages?.[1]?.content).not.toContain(
+      expect(firstRepairMessages?.[0]?.content).toContain("Repair attempt: 1");
+      expect(secondRepairMessages?.[0]?.content).toContain("Repair attempt: 2");
+      expect(firstRepairMessages?.[0]?.content).not.toContain(rejectedOutput);
+      expect(secondRepairMessages?.[0]?.content).not.toContain(
         rejectedCorrection,
       );
-      expect(secondRepairMessages?.[1]?.content).not.toBe(
-        firstRepairMessages?.[1]?.content,
+      expect(secondRepairMessages?.[0]?.content).not.toBe(
+        firstRepairMessages?.[0]?.content,
       );
 
       const logs = consoleLog.mock.calls.map(
@@ -2349,11 +2350,8 @@ describe("Supervisor decision feasibility contract", () => {
       "supervisor_working_directory",
       "supervisor_working_directory",
     ]);
-    const repairMessages = invoke.mock.calls[3]?.[0].messages as readonly {
-      role: string;
-      content: string;
-    }[];
-    expect(repairMessages.at(-1)).toMatchObject({
+    const repairMessages = invoke.mock.calls[3]?.[0].messages as readonly { role: string; content: string }[];
+    expect(readOpeningRepairInstruction(repairMessages)).toMatchObject({
       role: "system",
       content: expect.stringContaining(
         "supervisor_working_directory_shape_invalid",

@@ -31,6 +31,7 @@ export function createToolApprovalRejectionInput({
   const title = documentRoot.createElement("span");
   title.textContent = "Why are you rejecting this action?";
   const input = documentRoot.createElement("textarea");
+  input.setAttribute("spellcheck", "false");
   input.className = "tool-approval-rejection-text";
   input.dir = "auto";
   input.rows = 3;

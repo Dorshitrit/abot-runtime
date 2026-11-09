@@ -8,20 +8,23 @@ import { createEnvironmentTransition } from "../../web-ui/app/controllers/enviro
 import { createWorkspaceShellHarness } from "./support/workspace-shell-harness.js";
 
 function control(value = "") {
-  const options: Array<{ value: string; textContent: string }> = [];
+  const options: Array<{ value: string; textContent: string; dataset: Record<string, string> }> = [];
   return {
-    value, options, hidden: false, disabled: false, title: "", textContent: "",
+    value, options, hidden: false, disabled: false, title: "", textContent: "", dataset: {},
     get innerHTML() { return ""; },
     set innerHTML(_value: string) { options.length = 0; },
     classList: { toggle: vi.fn() }, setAttribute: vi.fn(), focus: vi.fn(),
     querySelectorAll: () => [], append: vi.fn(),
-    appendChild: (option: { value: string; textContent: string }) => options.push(option),
+    appendChild: (option: { value: string; textContent: string; dataset: Record<string, string> }) => options.push(option),
   };
 }
 
 const catalog = {
   defaultProfileId: "model-a",
-  profiles: [{ id: "model-a" }, { id: "model-b" }],
+  profiles: [
+    { id: "model-a", label: "GPT-OSS 120B", provider: "ollama", executionPolicy: "supervisor-worker-v1" },
+    { id: "model-b", label: "GPT-OSS 120B", provider: "llamacpp", executionPolicy: "execution-agent-v1" },
+  ],
   availability: { status: "ready" },
 };
 
@@ -100,6 +103,19 @@ async function fixture() {
 
 afterEach(() => vi.unstubAllGlobals());
 
+test("catalog presentation keeps provider metadata separate from the saved profile identity", async () => {
+  const f = await fixture();
+  expect(f.dom.modelSelect.options).toMatchObject([
+    { value: "model-a", textContent: "GPT-OSS 120B", dataset: { providerId: "ollama", providerLabel: "Ollama", executionPolicy: "supervisor-worker-v1" } },
+    { value: "model-b", textContent: "GPT-OSS 120B", dataset: { providerId: "llamacpp", providerLabel: "llama.cpp", executionPolicy: "execution-agent-v1" } },
+  ]);
+  f.state.sessionModels["dev-chat"] = "model-b";
+  f.selection.applyModelSelection();
+  expect(f.dom.modelSelect.value).toBe("model-b");
+  expect(f.selection.selectedModelPreference()).toEqual({ profileId: "model-b" });
+  expect(f.saved).not.toHaveBeenCalled();
+});
+
 test("automatic Home navigation during an environment change preserves the destination's model preference", async () => {
   const f = await fixture();
   const pending = deferredCatalog();
@@ -113,6 +129,7 @@ test("automatic Home navigation during an environment change preserves the desti
   expect(f.dom.environmentSelect.value).toBe("prod");
   await vi.waitFor(() => expect(f.shell.activeWorkspace()).toBe("home"));
   expect(f.listModels).toHaveBeenLastCalledWith("prod");
+  expect(f.dom.modelSelect.options.every((option) => option.dataset.executionPolicy === undefined)).toBe(true);
   expect(f.state.sessionModels).toEqual(originalSessions);
   expect(f.state.lastModelByEnvironment).toEqual(originalEnvironments);
   expect(f.saved).not.toHaveBeenCalled();
@@ -123,6 +140,7 @@ test("automatic Home navigation during an environment change preserves the desti
   expect(await change).toBe(true);
   expect(f.dom.modelSelect.value).toBe("model-b");
   expect(f.state.lastModelByEnvironment.prod).toBe("model-b");
+  expect(f.dom.modelSelect.options[1].dataset.executionPolicy).toBe("execution-agent-v1");
   f.dom.modelSelect.value = "model-a";
   f.selection.rememberModelSelection();
   expect(f.saved).toHaveBeenCalledOnce();
@@ -144,4 +162,33 @@ test("a same-environment catalog refresh still allows saving a model selection",
   pending.resolve(catalog);
   await refresh;
   expect(f.dom.modelSelect.value).toBe("model-b");
+});
+
+test("a late catalog response cannot restore the previous environment's execution route", async () => {
+  const f = await fixture();
+  const pending = deferredCatalog();
+  f.listModels.mockImplementationOnce(() => pending.promise);
+  const oldRead = f.selection.loadModels();
+  f.dom.environmentSelect.value = "prod";
+  f.listModels.mockResolvedValueOnce({
+    ...catalog,
+    profiles: catalog.profiles.map((profile) => ({ ...profile, executionPolicy: "execution-agent-v1" })),
+  });
+  await f.selection.loadModels();
+  pending.resolve(catalog);
+  expect(await oldRead).toBe(false);
+  expect(f.dom.modelSelect.options.every((option) => option.dataset.executionPolicy === "execution-agent-v1")).toBe(true);
+});
+
+test("failed and legacy catalog reads do not retain an execution route", async () => {
+  const f = await fixture();
+  f.listModels.mockRejectedValueOnce(new Error("unavailable"));
+  expect(await f.selection.loadModels()).toBe(false);
+  expect(f.dom.modelSelect.options.every((option) => option.dataset.executionPolicy === undefined)).toBe(true);
+  f.listModels.mockResolvedValueOnce({
+    ...catalog,
+    profiles: catalog.profiles.map((profile) => ({ ...profile, executionPolicy: "" })),
+  });
+  await f.selection.loadModels();
+  expect(f.dom.modelSelect.options.every((option) => option.dataset.executionPolicy === undefined)).toBe(true);
 });

@@ -98,7 +98,7 @@ describe("bounded projection repair admission", () => {
     expect(history.prepare).toHaveBeenCalledOnce();
     expect(active.prepare).toHaveBeenCalledTimes(2);
     expect(history.prepare.mock.calls[0]![0]).toEqual(ADMISSION_MESSAGES);
-    expect(history.prepare.mock.calls[0]![1]).toEqual({ onProgress: expect.any(Function) });
+    expect(history.prepare.mock.calls[0]![1]).toEqual({ onProgress: expect.any(Function), canRetainProjection: expect.any(Function) });
     expect(active.prepare.mock.calls[0]![0].at(-1)?.content).toBe(
       "session_history:first",
     );

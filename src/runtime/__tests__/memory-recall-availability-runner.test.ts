@@ -4,6 +4,7 @@ import {
   configureDebugLogger,
   resetDebugLoggerConfig,
 } from "../observability/debug-logger.js";
+import type { RecallProjection } from "../long-term-memory/recall-context.js";
 import { runRequestRunner } from "../request/runner.js";
 import {
   createMemoryRecallHarness,
@@ -132,6 +133,25 @@ function expectNormalCompletion(
   }
 }
 
+function expectResponseRecalls(input: RecallModelInput, decisionCapsules: ReturnType<typeof recallCapsules>): void {
+  const expected = decisionCapsules.flatMap(({ recalls }) => recalls as readonly RecallProjection[]);
+  const actual = recallCapsules(input).flatMap(({ recalls }) => recalls);
+  if (input.modelStep === "execution.response") {
+    expect(actual).toEqual(expected);
+    return;
+  }
+  const messages = modelMessages(input);
+  expect(actual).toEqual(expected.map(({ query, ...receipt }) => receipt));
+  for (const receipt of expected) {
+    const resultIndex = messages.findIndex(message => message.role === "tool" && message.toolCallId === receipt.recallId);
+    expect(resultIndex).toBeGreaterThan(0);
+    const action = messages[resultIndex - 1]!;
+    expect(action).toMatchObject({ role: "assistant", toolCalls: [{ name: "recall_memory", callId: receipt.recallId }] });
+    expect(JSON.parse(action.toolCalls![0]!.arguments)).toEqual({ action: "recall_memory", query: receipt.query });
+    expect(JSON.parse(messages[resultIndex]!.content).recalls[0].recallId).toBe(receipt.recallId);
+  }
+}
+
 describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
   "%s memory recall availability",
   (policy) => {
@@ -177,9 +197,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
           ),
         );
         expect(responses.length).toBeGreaterThan(0);
-        for (const [input] of responses)
-          expect(recallCapsules(input).flatMap(({ recalls }) => recalls))
-            .toEqual(capsules.flatMap(({ recalls }) => recalls));
+        for (const [input] of responses) expectResponseRecalls(input, capsules);
       },
     );
 
@@ -201,9 +219,7 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
             String(input.modelStep),
           ),
         );
-        for (const [input] of responses)
-          expect(recallCapsules(input).flatMap(({ recalls }) => recalls))
-            .toEqual(capsules.flatMap(({ recalls }) => recalls));
+        for (const [input] of responses) expectResponseRecalls(input, capsules);
       },
     );
 

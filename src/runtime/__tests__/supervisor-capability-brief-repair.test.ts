@@ -1,3 +1,4 @@
+import { readOpeningRepairInstruction } from "./support/repair-attempt-instruction.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ToolAvailabilityEntry } from "../../capabilities/tool-types.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
@@ -167,12 +168,12 @@ function assertRepairIsolation(inputs: readonly ModelInput[]) {
   const original = nonBrief(inputs[0]!);
   for (const input of inputs.slice(1, 3)) {
     const repaired = nonBrief(input);
-    expect(repaired.slice(0, -1)).toEqual(original);
+    const repair = readOpeningRepairInstruction(repaired);
+    expect(repaired.filter((message) => message !== repair)).toEqual(original);
     expect(repaired).toHaveLength(original.length + 1);
-    expect(repaired.at(-1)?.role).toBe("system");
     expect(input.format).toEqual(inputs[0]!.format);
   }
-  expect(nonBrief(inputs[1]!).at(-1)).not.toEqual(nonBrief(inputs[2]!).at(-1));
+  expect(readOpeningRepairInstruction(nonBrief(inputs[1]!))).not.toEqual(readOpeningRepairInstruction(nonBrief(inputs[2]!)));
 }
 
 beforeEach(() => configureDebugLogger({ enabled: false }));

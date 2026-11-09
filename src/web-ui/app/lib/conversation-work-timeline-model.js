@@ -183,6 +183,11 @@ function isContextManagementDiagnostic(event) {
   return CONTEXT_MANAGEMENT_EVENTS.has(eventName(event));
 }
 
+function isMemorySaveDiagnostic(event) {
+  if (event.type !== "event") return false;
+  return eventName(event) === "memory.save.queued";
+}
+
 function isCanonicalPlanDiagnostic(event) {
   if (event.type !== "event") return false;
   if (event.stage === "development_plan") return true;
@@ -223,6 +228,7 @@ function projectNonToolEntry(record, memoryActivities, memorySeen, planRole) {
   }
   if (!isTimelineDiagnosticEvent(event)) return null;
   if (isContextManagementDiagnostic(event)) return { ...base, kind: "event", role: "context", event };
+  if (isMemorySaveDiagnostic(event)) return { ...base, kind: "event", role: "memory", event };
   const role = isCanonicalPlanDiagnostic(event) ? planRole : base.role;
   return { ...base, kind: "event", role, event };
 }

@@ -1,6 +1,7 @@
 import type { CompactionProgressObserver } from "../../model/context-compaction-progress.js";
 import type { ModelStep } from "../../../shared/model-steps.js";
 import type {
+  SemanticCompactionCandidate,
   SemanticCompactionCheckpoint,
   SemanticCompactionCheckpointBinding,
   SemanticCompactionDigest,
@@ -24,6 +25,8 @@ export type SemanticCompactionGenerationParams = Readonly<{
   projectionRepair?: ContextCompactionProjectionRepair;
   onProgress?: CompactionProgressObserver;
   previous?: SemanticCompactionCheckpoint;
+  /** Invocation-local consumer admission for retained SUPER digests. */
+  canRetainCandidate?(candidate: SemanticCompactionCandidate): Promise<boolean>;
   /** Verified EA predecessor evidence only; exclusive with previous and never persisted. */
   inheritedSourceDigests?: readonly SemanticCompactionDigest[];
   /** Model step that will consume the checkpoint. */

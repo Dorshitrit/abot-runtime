@@ -3,84 +3,43 @@ import { describe, expect, test, vi } from "vitest";
 import { createDashboardWorkspace } from "../../web-ui/app/components/dashboard/workspace.js";
 // @ts-expect-error Browser-only module has no declaration surface.
 import { renderDashboardAutomations } from "../../web-ui/app/components/dashboard/automations.js";
-import { ContextElement } from "./support/composer-context-window-dom.js";
+import { createHomeWidgetsHarness, type HomeWidgetElement } from "./support/home-widgets-harness.js";
 
 function dashboardHarness(passiveLearning?: { mountHome: ReturnType<typeof vi.fn> }) {
-  const element = () => ({
-    innerHTML: "",
-    hidden: false,
-    disabled: false,
-    setAttribute: vi.fn(),
-    ownerDocument: { activeElement: null },
-    querySelectorAll: () => [],
-    contains: () => false,
-  });
-  const refs = {
-    learning: element(),
-    learningContent: element(),
-    automations: element(),
-    resources: element(),
-    overview: element(),
-    activity: element(),
-    conversations: element(),
-    composer: element(),
-    setup: element(),
-    note: element(),
-    approvals: Object.assign(new ContextElement("section"), { innerHTML: "" }),
-    content: Object.assign(new ContextElement("div"), { innerHTML: "" }),
-    dock: Object.assign(new ContextElement("div"), { innerHTML: "" }),
-  };
-  const nodes: Record<string, ReturnType<typeof element>> = {
-    "[data-dashboard-learning]": refs.learning,
-    "[data-dashboard-learning-content]": refs.learningContent,
-    "[data-dashboard-automations]": refs.automations,
-    "[data-dashboard-resources]": refs.resources,
-    ".home-overview": refs.overview,
-    "[data-dashboard-activity]": refs.activity,
-    "[data-dashboard-conversations]": refs.conversations,
-    "[data-dashboard-approvals]": refs.approvals as unknown as ReturnType<
-      typeof element
-    >,
-    ".home-workspace-content": refs.content as unknown as ReturnType<
-      typeof element
-    >,
-    "[data-dashboard-approval-dock]": refs.dock as unknown as ReturnType<
-      typeof element
-    >,
-    "[data-dashboard-composer]": refs.composer,
-    "[data-dashboard-setup]": refs.setup,
-    ".home-composer-note": refs.note,
-  };
-  type Button = { dataset: Record<string, string>; disabled?: boolean };
-  type Click = { target: { closest: () => Button } };
-  let click = (_event: Click) => {};
-  const root = {
-    ownerDocument: {
-      createElement: (tagName: string) => new ContextElement(tagName),
-    },
-    innerHTML: "",
-    classList: { add: vi.fn(), toggle: vi.fn() },
-    querySelector: (selector: string) => nodes[selector],
-    contains: () => true,
-    addEventListener: (_type: string, listener: typeof click) => {
-      click = listener;
-    },
-  };
+  const harness = createHomeWidgetsHarness(1600, false);
+  const root = harness.root;
   const actions = {
-    createJob: vi.fn(),
-    continueConversation: vi.fn(),
-    openJobs: vi.fn(),
-    openConversation: vi.fn(),
-    refresh: vi.fn(),
+    createJob: vi.fn(), continueConversation: vi.fn(), openJobs: vi.fn(),
+    openConversation: vi.fn(), refresh: vi.fn(),
   };
   const workspace = createDashboardWorkspace({ root, actions, passiveLearning });
+  const node = (selector: string) => root.querySelector(selector) as HomeWidgetElement;
+  const refs = {
+    learning: node("[data-dashboard-learning]"),
+    learningContent: node("[data-dashboard-learning-content]"),
+    automations: node("[data-dashboard-automations]"),
+    resources: node("[data-dashboard-resources]"),
+    overview: node(".home-overview"),
+    activity: node("[data-dashboard-activity]"),
+    conversations: node("[data-dashboard-conversations]"),
+    composer: node("[data-dashboard-composer]"),
+    setup: node("[data-dashboard-setup]"),
+    note: node(".home-composer-note"),
+    approvals: node("[data-dashboard-approvals]"),
+    content: node(".home-workspace-content"),
+    dock: node("[data-dashboard-approval-dock]"),
+  };
   return {
-    workspace,
-    root,
-    refs,
-    actions,
-    click: (dataset: Record<string, string>, disabled = false) =>
-      click({ target: { closest: () => ({ dataset, disabled }) } }),
+    workspace, root, refs, actions,
+    click(dataset: Record<string, string>, disabled = false) {
+      const button = harness.createElement("button");
+      Object.assign(button.dataset, dataset);
+      button.disabled = disabled;
+      const panel = dataset.dashboardAction === "conversations" ? refs.conversations : refs.activity;
+      panel.append(button);
+      button.dispatch("click");
+      button.remove();
+    },
   };
 }
 
@@ -166,6 +125,8 @@ describe("dashboard presentation interactions", () => {
   test("keeps the shared composer host and contents intact through card updates", () => {
     const { workspace, refs } = dashboardHarness();
     refs.composer.innerHTML = "<form data-existing-composer>Draft</form>";
+    const composer = refs.composer.querySelector("[data-existing-composer]");
+    const markup = refs.composer.innerHTML;
     workspace.render(loaded);
     workspace.render({
       ...loaded,
@@ -173,9 +134,8 @@ describe("dashboard presentation interactions", () => {
       runs: [{ id: "run-one", title: "Done", status: "succeeded" }],
     });
     expect(workspace.composerHost).toBe(refs.composer);
-    expect(refs.composer.innerHTML).toBe(
-      "<form data-existing-composer>Draft</form>",
-    );
+    expect(refs.composer.innerHTML).toBe(markup);
+    expect(refs.composer.querySelector("[data-existing-composer]")).toBe(composer);
     expect(refs.conversations.innerHTML).toContain(
       'data-session-id="session-one"',
     );

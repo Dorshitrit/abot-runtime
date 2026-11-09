@@ -1,5 +1,6 @@
 import { createConversationFileFocus } from "./conversation-file-focus.js";
 import { createProjectDiff } from "./project-diff.js";
+import { createProjectChangesResizing } from "./conversation-panel-resizing.js";
 
 export function projectChangesCountLabel(changes) {
   if (changes.truncated) return `Showing ${changes.files.length} of ${changes.totalFiles} files`;
@@ -49,6 +50,7 @@ export function createProjectChangesPreview({ host, documentRoot = document, vie
   const footer = element("footer", "conversation-file-footer", "Read only · Submodule contents excluded");
   panel.append(header, toolbar, body, footer);
   host.append(backdrop, panel);
+  const resizing = createProjectChangesResizing({ host, panel, documentRoot, viewport });
   const focus = createConversationFileFocus({
     panel, backdrop, host, closeButton: close, documentRoot, viewport, onClose,
     resolveReturnTarget: () => host.querySelector("#composerInput"),
@@ -96,7 +98,9 @@ export function createProjectChangesPreview({ host, documentRoot = document, vie
   function render(state) {
     const restoreComposerFocus = open && state.restoreFocus && panel.contains(documentRoot.activeElement);
     panel.hidden = !state.open;
+    host.classList.toggle("has-project-changes-preview", state.open);
     if (!state.open) {
+      resizing.sync();
       if (open) host.classList.remove("has-file-preview");
       open = false;
       focus.hide(state.restoreFocus);
@@ -108,6 +112,7 @@ export function createProjectChangesPreview({ host, documentRoot = document, vie
     }
     open = true;
     host.classList.add("has-file-preview");
+    resizing.sync();
     focus.show(state.opener, { focusOnOpen: false });
     refresh.disabled = state.loading;
     body.setAttribute("aria-busy", String(state.loading));

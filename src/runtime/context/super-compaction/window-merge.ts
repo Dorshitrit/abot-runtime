@@ -18,6 +18,7 @@ type MergeNode = Readonly<{
   text: string;
   baseMessages: readonly ChatMessage[];
   derived: SuperCompactionDerivedContext;
+  retainedMerge: boolean;
 }>;
 
 type MergeParams = Readonly<{
@@ -29,6 +30,8 @@ type MergeParams = Readonly<{
   source: SemanticCompactionSource;
   previousContinuation?: string;
   maxCharacters: number;
+  /** Active SUPER may join intermediate drafts; the final source keeps its writing bound. */
+  allowIntermediateJoins?: true;
   continuationMaxCharacters?: number;
   boundSteeringVersion?: number;
   drafts: readonly SuperCompactionWindowDraft[];
@@ -53,6 +56,7 @@ export async function mergeSuperCompactionWindows(params: MergeParams): Promise<
         draft.content,
       ].join("\n"),
       baseMessages: draft.baseMessages,
+      retainedMerge: false,
       derived: Object.freeze({
         coverage: draft.coverage,
         content: draft.content,
@@ -94,7 +98,45 @@ async function mergeAdjacentDrafts(
     endByteExclusive: right.range.endByteExclusive,
     totalBytes: left.range.totalBytes,
   });
-  const baseMessages: readonly ChatMessage[] = Object.freeze([
+  [left, right] = await prepareMergeChildren(params, left, right);
+  const baseMessages = buildMergeBaseMessages(params, left, right, range);
+  const joined = joinDrafts(left, right);
+  const retained = await canRetainJoinedDrafts(params, range, joined, baseMessages);
+  let text = joined;
+  if (!retained)
+    text = await invokeSuperCompactionStageText({
+      request: params.request,
+      stage: "merge",
+      baseMessages,
+      maxCharacters: params.maxCharacters,
+      boundSteeringVersion: params.boundSteeringVersion,
+    });
+  return Object.freeze({
+    range,
+    text,
+    baseMessages,
+    derived: Object.freeze({ content: text }),
+    retainedMerge: retained && canDeferIntermediateMerge(params, range, joined),
+  });
+}
+
+function joinDrafts(left: MergeNode, right: MergeNode): string {
+  return [left, right].map((node) =>
+    `Derived range [${node.range.startByte},${node.range.endByteExclusive})/${node.range.totalBytes}:\n${node.text}`,
+  ).join("\n");
+}
+
+function buildMergeBaseMessages(
+  params: MergeParams,
+  left: MergeNode,
+  right: MergeNode,
+  range: MergeNode["range"] = {
+    startByte: left.range.startByte,
+    endByteExclusive: right.range.endByteExclusive,
+    totalBytes: left.range.totalBytes,
+  },
+): readonly ChatMessage[] {
+  return Object.freeze([
     Object.freeze({
       role: "user" as const,
       content: JSON.stringify({
@@ -129,23 +171,64 @@ async function mergeAdjacentDrafts(
       }),
     }),
   ]);
-  const joined = [left, right].map((node) =>
-    `Derived range [${node.range.startByte},${node.range.endByteExclusive})/${node.range.totalBytes}:\n${node.text}`,
-  ).join("\n");
-  let text = joined;
-  if (!await canRetainJoinedDrafts(params, range, joined, baseMessages))
-    text = await invokeSuperCompactionStageText({
+}
+
+/** Complete a deferred merge only when the next parent actually needs smaller children. */
+async function prepareMergeChildren(
+  params: MergeParams,
+  left: MergeNode,
+  right: MergeNode,
+): Promise<[MergeNode, MergeNode]> {
+  const children: [MergeNode, MergeNode] = [left, right];
+  if (!hasDeferredMerge(children)) return children;
+  for (const index of [0, 1] as const) {
+    if (await doesMergePipelineInputFit(params, ...children))
+      return children;
+    const child = children[index];
+    if (!child.retainedMerge) continue;
+    if (!await doesMergeInputFit(params, child.baseMessages))
+      throw new Error("super_compaction_input_exceeds_budget");
+    const text = await invokeSuperCompactionStageText({
       request: params.request,
       stage: "merge",
-      baseMessages,
+      baseMessages: child.baseMessages,
       maxCharacters: params.maxCharacters,
       boundSteeringVersion: params.boundSteeringVersion,
     });
-  return Object.freeze({
-    range,
-    text,
-    baseMessages,
-    derived: Object.freeze({ content: text }),
+    children[index] = Object.freeze({
+      ...child, text, derived: Object.freeze({ content: text }), retainedMerge: false,
+    });
+  }
+  // Once all deferred children are reduced, the normal parent merge can still
+  // shrink their joined text. Only an oversized frozen base makes that futile.
+  if (!await doesMergePipelineInputFit(params, ...children, true))
+    throw new Error("super_compaction_input_exceeds_budget");
+  return children;
+}
+
+function hasDeferredMerge(children: readonly MergeNode[]): boolean {
+  return children.some((child) => child.retainedMerge);
+}
+
+async function doesMergePipelineInputFit(
+  params: MergeParams, left: MergeNode, right: MergeNode,
+  modelWrittenParent = false,
+): Promise<boolean> {
+  const baseMessages = buildMergeBaseMessages(params, left, right);
+  if (!await doesMergeInputFit(params, baseMessages)) return false;
+  if (params.continuationMaxCharacters === undefined) return true;
+  // Prepare the frozen base before authoring. Measure the actual join rather
+  // than treating a writing target as a hard limit on the next stage's input.
+  return doesSuperCompactionStageFit({
+    request: params.request, stage: "continuation", baseMessages,
+    maxCharacters: params.continuationMaxCharacters,
+    derived: { content: modelWrittenParent ? "" : joinDrafts(left, right) },
+  });
+}
+
+function doesMergeInputFit(params: MergeParams, baseMessages: readonly ChatMessage[]): Promise<boolean> {
+  return doesSuperCompactionStageFit({
+    request: params.request, stage: "merge", baseMessages, maxCharacters: params.maxCharacters,
   });
 }
 
@@ -153,14 +236,16 @@ function mergedSourceDigest(range: MergeNode["range"], text: string): string {
   return `Supplied source bytes: [${range.startByte},${range.endByteExclusive})/${range.totalBytes}.\n${text}`;
 }
 
-/** Retain complete derived evidence only within its writing and model-input budgets. */
+/** Preserve the final-source writing bound and admit exact intermediate joins by stage input. */
 async function canRetainJoinedDrafts(
   params: MergeParams,
   range: MergeNode["range"],
   text: string,
   baseMessages: readonly ChatMessage[],
 ): Promise<boolean> {
-  if (mergedSourceDigest(range, text).length > params.maxCharacters) return false;
+  const digest = mergedSourceDigest(range, text);
+  if (digest.length > params.maxCharacters && !canDeferIntermediateMerge(params, range, text))
+    return false;
   const input = { request: params.request, baseMessages, maxCharacters: params.maxCharacters };
   if (!await doesSuperCompactionStageFit({ ...input, stage: "merge" })) return false;
   if (params.continuationMaxCharacters === undefined) return true;
@@ -170,6 +255,19 @@ async function canRetainJoinedDrafts(
     maxCharacters: params.continuationMaxCharacters,
     derived: { content: text },
   });
+}
+
+function canDeferIntermediateMerge(
+  params: MergeParams, range: MergeNode["range"], text: string,
+): boolean {
+  if (!params.allowIntermediateJoins) return false;
+  if (coversCompleteSource(range)) return false;
+  return mergedSourceDigest(range, text).length > params.maxCharacters;
+}
+
+function coversCompleteSource(range: MergeNode["range"]): boolean {
+  if (range.startByte !== 0) return false;
+  return range.endByteExclusive === range.totalBytes;
 }
 
 function assertCompleteWindowDraftCoverage(

@@ -1,3 +1,4 @@
+import type { SupervisorToolEvidence } from "../../context/supervisor-tool-evidence.js";
 import { projectSupervisorSkillReadContext } from "../../context/core-skill-read-context.js";
 import type { RoleCallLedgerHead } from "../../orchestration/role-calls/index.js";
 import { buildSparkConversationInstructions } from "../../context/spark-conversation-policy.js";
@@ -78,6 +79,7 @@ export function buildSupervisorDecisionInput(
   request: SupervisorDecisionInputRequest,
   options: Readonly<{
     toolResults: RequestToolResultsView;
+    supervisorToolEvidence?: SupervisorToolEvidence;
     skillReadHead?: RoleCallLedgerHead;
     includeAcknowledgement?: boolean;
     includeTitle?: boolean;
@@ -172,9 +174,10 @@ export function buildSupervisorDecisionInput(
     ...(request.temporalContext
       ? [buildRequestTemporalContextMessage(request.temporalContext)]
       : []),
-    ...(options.toolResults.results.length > 0
-      ? [buildRequestToolResultsMessage(options.toolResults)]
-      : []),
+    ...(options.supervisorToolEvidence?.buildMessages() ??
+      (options.toolResults.results.length > 0
+        ? [buildRequestToolResultsMessage(options.toolResults)]
+        : [])),
   ];
   const budget = resolveModelContextBudget({
     runnerConfig: request.runnerConfig,

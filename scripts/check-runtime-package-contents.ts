@@ -47,6 +47,40 @@ for (const path of paths) {
 
 const requiredPaths = [
   ...[
+    "runtime/spark-home/runtime", "runtime/spark-home/generation/service",
+    "runtime/spark-home/generation/resource-read-budget",
+    "runtime/spark-home/widgets/catalog", "runtime/long-term-memory/management/candidate-actions",
+    "runtime/spark-home/widgets/slots", "runtime/spark-home/widgets/publication",
+    "web-ui/local-runtime/spark-home-widget-slots", "web-ui/local-runtime/spark-home-widget-bridge",
+    "web-ui/local-runtime/memory-candidate-routes",
+    "runtime/spark-home/settings/service", "runtime/spark-home/calibration/service",
+    "runtime/spark-home/authoring-context/index", "runtime/spark-home/preferences",
+    "runtime/local-host/client-spark-home", "runtime/local-host/client-spark-home-events",
+    "web-ui/local-runtime/spark-home-api", "web-ui/client-state/appearance-reference",
+    "web-ui/local-runtime/spark-home-metrics-routes", "web-ui/system-metrics/contracts",
+    "web-ui/system-metrics/system-files", "web-ui/system-metrics/environment",
+    "web-ui/system-metrics/linux-cgroup-paths", "web-ui/system-metrics/linux-cgroups",
+    "web-ui/system-metrics/observation", "web-ui/system-metrics/sampler", "web-ui/system-metrics/temperature",
+    "web-ui/system-metrics/macos-memory",
+  ].flatMap(modulePath => [`dist/src/${modulePath}.js`, `dist/src/${modulePath}.d.ts`]),
+  "dist/src/web-ui/app/spark-home-feature.js",
+  "dist/src/web-ui/app/lib/spark-home-run-feedback.js",
+  "dist/src/web-ui/app/spark-home-calibration-feature.js",
+  "dist/src/web-ui/app/styles/55-spark-home.css",
+  "dist/src/web-ui/app/styles/55-spark-home-settings.css",
+  "dist/src/web-ui/app/styles/55-spark-home-calibration.css",
+  ...["cards", "host", "dashboard-mounts", "management-dialog", "management-dom", "management-leave", "management-session",
+    "metrics-card", "metrics-mounts", "metrics-presentation"]
+    .map(name => `dist/src/web-ui/app/components/system-widgets/${name}.js`),
+  "dist/src/web-ui/app/components/dashboard/widget-mounts.js",
+  "dist/src/web-ui/app/components/spark-home/widget-overlay.js",
+  "dist/src/web-ui/app/components/passive-learning/candidate-actions.js",
+  "dist/src/web-ui/app/controllers/knowledge-candidate-actions.js",
+  "dist/src/web-ui/app/controllers/system-widgets-controller.js",
+  "dist/src/web-ui/app/controllers/system-metrics-controller.js",
+  "dist/src/web-ui/app/styles/56-system-widgets.css",
+  "dist/src/web-ui/app/styles/56-system-metrics.css",
+  ...[
     "model-gateway/policy/provider-token-estimation",
     "model-gateway/protocol/provider-context-overflow",
     "model-gateway/providers/openai/context-overflow",
@@ -708,8 +742,17 @@ const totalSize = pack.files.reduce((sum, file) => sum + file.size, 0);
 // Automation snapshot ownership adds one production module and its declaration.
 // Published-loopback ChatGPT callbacks add five modules and their declarations.
 // ChatGPT context admission/recovery adds seven modules and their declarations.
-const maxFileCount = 4_803;
-const maxUnpackedSizeBytes = 14_505_000;
+// Conversation/Git panel resizing and delegated-status presentation add five Web assets.
+// Manual isolated HOME adds 123 emitted modules, declarations and Web assets.
+// Reusable system widgets and manual candidate actions add 21 modules/declarations/assets.
+// Shared Dashboard previews add two Web mount adapters.
+// HOME's shared slot parser, publication guard and failure feedback add five emitted files.
+// llama.cpp packing, render inspection, invocation reference binding and layouts add four modules and their declarations.
+// Bounded llama.cpp render-response classification adds one module and its declaration.
+// Model route labels and bounded llama.cpp render diagnostics add one Web asset and one module/declaration pair.
+// The live system monitor adds ten module/declaration pairs and five Web assets.
+const maxFileCount = 5_020;
+const maxUnpackedSizeBytes = 15_070_000;
 
 if (paths.length > maxFileCount) {
   fail(`package includes too many files: ${paths.length} > ${maxFileCount}`);

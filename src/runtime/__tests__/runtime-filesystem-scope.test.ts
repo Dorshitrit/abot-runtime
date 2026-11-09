@@ -1,3 +1,4 @@
+import { isInvocationContextMessage } from "../../model-gateway/protocol/invocation-context.js";
 import { isAbsolute, resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 import {
@@ -86,6 +87,8 @@ describe("runtime filesystem scope", () => {
     const capsule = JSON.parse(message.content as string);
     expect(message.role).toBe("system");
     expect(Object.isFrozen(message)).toBe(true);
+    expect(isInvocationContextMessage(message)).toBe(true);
+    expect(isInvocationContextMessage({ ...message })).toBe(false);
     expect(capsule).toMatchObject({
       kind: "runtime_filesystem_scope_v1",
       authority: "canonical_runtime_state",

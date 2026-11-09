@@ -112,14 +112,14 @@ describe("Committed role delegation projection", () => {
     expect(model.roleCards.find((card) => card.role === "worker")?.summary).toBe("worker working");
   });
 
-  test("retains existing skills and resumed status alongside delegation history", async () => {
+  test("retains existing skills and resumed role ownership while hiding its generic status", async () => {
     const { model } = await project([
       { ...role("supervisor", "skills", 1), message: "Read Skills: Research" },
       delegation(),
       { ...role("supervisor", "resuming", 3), message: "Processing The Delegated Result" },
     ], false);
     expect(model.roleCards[0]).toMatchObject({
-      title: "Supervisor", summary: "Processing The Delegated Result", active: true,
+      title: "Supervisor", summary: "", active: true,
       skillActivities: [{ summary: "Read Skills: Research", tone: "active" }],
       delegations: [expect.objectContaining({ childRole: "planner" })],
     });

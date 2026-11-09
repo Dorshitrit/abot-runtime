@@ -40,6 +40,18 @@ export function createConfigurationRequests({ requestApi, environmentQuery }) {
         body: JSON.stringify(input),
       });
     },
+    updateRuntimeProvider(input, environmentId) {
+      return requestApi(scoped("/runtime/config/providers", environmentId), {
+        method: "PUT",
+        body: JSON.stringify(input),
+      });
+    },
+    removeRuntimeProvider(input, environmentId) {
+      return requestApi(scoped("/runtime/config/providers", environmentId), {
+        method: "DELETE",
+        body: JSON.stringify(input),
+      });
+    },
     getRuntimePlugins(environmentId) {
       return requestApi(scoped("/runtime/plugins", environmentId));
     },

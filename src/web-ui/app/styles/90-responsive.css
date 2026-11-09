@@ -39,9 +39,12 @@
 
   .config-model-list {
     position: static;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     max-height: none;
     border: 1px solid var(--config-line);
+  }
+
+  .config-model-provider-models {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .config-model-list-title {
@@ -445,7 +448,7 @@
     width: 100%;
   }
 
-  .config-model-list {
+  .config-model-provider-models {
     grid-template-columns: 1fr;
   }
 

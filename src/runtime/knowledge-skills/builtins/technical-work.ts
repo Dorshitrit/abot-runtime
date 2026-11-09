@@ -2,10 +2,10 @@ import type { KnowledgeSkillDocument } from "../store.js";
 
 export const TECHNICAL_WORK_SKILL: KnowledgeSkillDocument = Object.freeze({
   skillId: "technical-work",
-  name: "Technical Work",
+  name: "Coding and Development",
   description:
     "Build, modify, debug and verify software, scripts and configuration.",
-  content: `# Technical Work
+  content: `# Coding and Development
 
 Use this guidance for building, changing, debugging or verifying software, scripts and configuration. Apply only what the current request or assigned task needs. It adds no work, permissions or tool availability.
 

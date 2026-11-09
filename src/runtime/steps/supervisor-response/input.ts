@@ -1,5 +1,6 @@
+import type { SupervisorToolEvidence } from "../../context/supervisor-tool-evidence.js";
 import { buildSparkConversationInstructions } from "../../context/spark-conversation-policy.js";
-import type { RequestContextProjection } from "../../context/request-context-contracts.js";
+import type { RequestContextPinnedPart, RequestContextProjection } from "../../context/request-context-contracts.js";
 import type {
   ChatMessage,
   ModelGatewayJsonSchemaFormat,
@@ -13,8 +14,11 @@ import {
 } from "../../context/request-tool-results.js";
 import { resolveModelContextBudget } from "../../model/model-context-budget.js";
 import type { RequestExecutionSeed } from "../../request/contracts.js";
-import { buildSupervisorContinuationPart } from "../supervisor-decision/index.js";
-import { hasSupervisorWorkerSteeringHandoff } from "../supervisor-decision/resume.js";
+import { projectResponseMemoryRecall } from "../../long-term-memory/recall-continuation.js";
+import { interleaveSupervisorMemoryRecalls } from "../supervisor-decision/memory-recall-continuation.js";
+import {
+  buildSupervisorChildContinuationParts, buildSupervisorContinuationPart, hasSupervisorWorkerSteeringHandoff,
+} from "../supervisor-decision/resume.js";
 import {
   SUPERVISOR_RESPONSE_MODEL_STEP,
   type SupervisorResponseCallIdentity,
@@ -111,9 +115,11 @@ type SupervisorResponseInputOptions = Readonly<{
   responseRecommendationOrigin?: "skill_authoring_no_save";
   call: SupervisorResponseCallIdentity;
   toolResults: RequestToolResultsView;
+  supervisorToolEvidence?: SupervisorToolEvidence;
   skillReadHead?: RoleCallLedgerHead;
   resume?: SupervisorResponseResumeContext;
-  longTermMemoryMessage?: ChatMessage;
+  initialMemoryMessage?: ChatMessage;
+  memoryRecallMessage?: ChatMessage;
   memoryAuthoringMessage?: ChatMessage;
   memoryCandidateCount?: number;
   hasDirectMemorySaveRequest?: boolean;
@@ -137,32 +143,18 @@ function buildSupervisorInput(
     modelStep: SUPERVISOR_RESPONSE_MODEL_STEP,
     ...options.call,
   };
-  const decisionContinuationPart = options.resume
-    ? buildSupervisorContinuationPart({
-        resume: options.resume,
-        currentCallId: options.call.callId,
-        currentInvocationAttempt: options.call.invocationAttempt,
-      })
-    : undefined;
-  if (decisionContinuationPart && !decisionContinuationPart.compactMessages) {
-    throw new Error("supervisor_response_result_projection_unavailable");
-  }
-  const roleContinuationPart =
-    decisionContinuationPart?.compactMessages !== undefined
-      ? Object.freeze({
-          ...decisionContinuationPart,
-          messages: decisionContinuationPart.compactMessages,
-        })
-      : undefined;
+  const recall = options.memoryRecallMessage ? projectResponseMemoryRecall(options.memoryRecallMessage) : undefined;
+  const continuationParts = buildResponseContinuationParts(options, recall);
   const referenceMessages = [
     ...(contract.referenceMessages ?? []),
     ...(contract.responseRecommendationMessage
       ? [contract.responseRecommendationMessage]
       : []),
-    ...(options.toolResults.results.length > 0
-      ? [buildRequestToolResultsMessage(options.toolResults)]
-      : []),
-    ...(options.longTermMemoryMessage ? [options.longTermMemoryMessage] : []),
+    ...(options.supervisorToolEvidence?.buildMessages() ??
+      (options.toolResults.results.length > 0
+        ? [buildRequestToolResultsMessage(options.toolResults)]
+        : [])),
+    ...(!recall && options.initialMemoryMessage ? [options.initialMemoryMessage] : []),
   ];
   const budget = resolveModelContextBudget({
     runnerConfig: request.runnerConfig,
@@ -175,16 +167,14 @@ function buildSupervisorInput(
   });
   const sessionMemory = projectRootSessionMemory(request);
   const context = projectRequestContext({
-    instructions: contract.instructions,
+    instructions: recall?.omissionNotice ? [contract.instructions, recall.omissionNotice].join("\n\n") : contract.instructions,
     ...sessionMemory,
     ...(contract.format ? { format: contract.format } : {}),
     prompt: request.prompt,
     currentMessagePlacement: "after_continuation",
     ...(request.attachments ? { attachments: request.attachments } : {}),
     ...(referenceMessages.length > 0 ? { referenceMessages } : {}),
-    ...(roleContinuationPart
-      ? { continuationParts: [roleContinuationPart] }
-      : {}),
+    ...(continuationParts.length > 0 ? { continuationParts } : {}),
     budget,
     diagnostic,
     ...(request.onEvent ? { onEvent: request.onEvent } : {}),
@@ -200,7 +190,7 @@ function buildSupervisorInput(
     responseRecommendationLength: contract.responseRecommendationMessage
       ? (options.responseRecommendation?.length ?? 0)
       : 0,
-    continuationMessageCount: roleContinuationPart?.messages.length ?? 0,
+    continuationMessageCount: continuationParts.reduce((count, part) => count + part.messages.length, 0),
     completedChildResultCount: options.resume?.completedChildren.length ?? 0,
     completedChildSummaryLength:
       options.resume?.completedChildren.reduce(
@@ -210,4 +200,26 @@ function buildSupervisorInput(
   });
 
   return { context, modelStep: SUPERVISOR_RESPONSE_MODEL_STEP };
+}
+
+/** Terminal authors see one compact receipt per child, even when recalls are interleaved. */
+function buildResponseContinuationParts(
+  options: SupervisorResponseInputOptions,
+  recall: ReturnType<typeof projectResponseMemoryRecall> | undefined,
+): readonly RequestContextPinnedPart[] {
+  const childContext = options.resume && {
+    resume: options.resume,
+    currentCallId: options.call.callId,
+    currentInvocationAttempt: options.call.invocationAttempt,
+  };
+  if (recall) {
+    const children = childContext && buildSupervisorChildContinuationParts(childContext).map(compactChildPart);
+    return interleaveSupervisorMemoryRecalls(recall.continuations, options.call.callId, children);
+  }
+  return childContext ? [compactChildPart(buildSupervisorContinuationPart(childContext))] : [];
+}
+
+function compactChildPart(part: RequestContextPinnedPart): RequestContextPinnedPart {
+  if (!part.compactMessages) throw new Error("supervisor_response_result_projection_unavailable");
+  return Object.freeze({ ...part, messages: part.compactMessages });
 }

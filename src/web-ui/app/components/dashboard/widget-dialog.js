@@ -30,9 +30,14 @@ export function createHomeWidgetDialog({ root, onClosed }) {
     return previous.entry;
   }
 
+  function restoreDialogHost() {
+    if (dialog.parentElement !== root) root.appendChild(dialog);
+  }
+
   function close({ restoreFocus = true } = {}) {
     const entry = restorePanel();
     if (dialog.open) dialog.close();
+    restoreDialogHost();
     if (entry) onClosed(entry, restoreFocus);
   }
 
@@ -43,9 +48,10 @@ export function createHomeWidgetDialog({ root, onClosed }) {
     empty.hidden = !borrowed.entry.element.hidden;
   }
 
-  function open(entry) {
+  function open(entry, { host = root } = {}) {
     if (borrowed?.entry === entry) return;
     close({ restoreFocus: false });
+    if (dialog.parentElement !== host) host.appendChild(dialog);
     const element = entry.element;
     borrowed = { entry, parent: element.parentNode, nextSibling: element.nextSibling };
     title.textContent = entry.label;
@@ -66,6 +72,7 @@ export function createHomeWidgetDialog({ root, onClosed }) {
   dialog.addEventListener("close", () => {
     if (dialog.open) return;
     const entry = restorePanel();
+    restoreDialogHost();
     if (entry) onClosed(entry, true);
   });
   dialog.addEventListener("click", (event) => {
@@ -77,7 +84,7 @@ export function createHomeWidgetDialog({ root, onClosed }) {
   });
   return {
     open, close, refresh,
-    isExpanded: (element) => borrowed?.entry.element === element,
+    isExpanded: (element, button) => borrowed?.entry.element === element && (!button || borrowed.entry.button === button),
     dispose() { close({ restoreFocus: false }); dialog.remove(); },
   };
 }

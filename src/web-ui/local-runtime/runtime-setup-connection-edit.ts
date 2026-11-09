@@ -101,14 +101,23 @@ export async function editRuntimeSetupConnection(params: {
           const contextWindowTokens =
             params.input.contextWindowTokens ??
             params.draft.modelConfig.contextWindowTokens;
+          const saved = params.draft.modelConfig;
+          const sameModel = saved.provider === providerId && saved.model === params.input.model;
+          const options = { ...setupConfigMap(saved.options) };
+          if (!sameModel) delete options.temperature;
+          const generation = setupConfigMap(saved.generation);
+          if (sameModel && Object.hasOwn(generation, "temperature"))
+            modelTemplate.generation = { ...setupConfigMap(modelTemplate.generation), temperature: generation.temperature };
           const modelConfig = buildModelConfig(
-            { ...modelTemplate, options: params.draft.modelConfig.options },
+            { ...modelTemplate, options: { ...setupConfigMap(modelTemplate.options), ...options } },
             providerId,
             params.input.model,
             typeof contextWindowTokens === "number"
               ? contextWindowTokens
               : undefined,
             params.input,
+            undefined,
+            !sameModel,
           );
           const memory = setupConfigMap(source.config.longTermMemory);
           const retained = retainSetupConnectionProviders({

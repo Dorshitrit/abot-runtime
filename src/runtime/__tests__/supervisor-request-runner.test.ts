@@ -259,12 +259,12 @@ describe("Supervisor-root request runner slice", () => {
         modelStep: SUPERVISOR_DECISION_MODEL_STEP,
         debugRequestId: request.requestId,
         format: expect.objectContaining({
-          type: "json_schema",
-          name: "supervisor_procedure_gate",
-          strict: true,
+          type: "json_schema", name: "supervisor_procedure_gate", strict: true,
         }),
         messages: [
           expect.objectContaining({ role: "system" }),
+          { role: "user", content: "We are discussing one request owner." },
+          { role: "assistant", content: "The Supervisor can be that owner." },
           { role: "user", content: "What do you think?" },
         ],
       }),
@@ -1645,7 +1645,7 @@ describe("Supervisor-root request runner slice", () => {
                 capabilityId: "inspect_system_state",
                 outcome: "succeeded",
                 observedEffect: "observation",
-                summary: observation,
+                adapterResult: { result: { output: observation } },
               },
             ],
           });

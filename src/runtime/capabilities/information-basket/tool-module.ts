@@ -47,7 +47,7 @@ export function createInformationBasketToolModule(service: InformationBasketServ
     },
     definition: {
       name: CORE_TOOL_CONTRACTS.informationBasket.name,
-      description: "List, search and read registered reference sources when needed for the current request. Consult the Information Basket Skill for usage guidance.",
+      description: "List, search and read only sources registered in Resources (Information Basket), not general filesystem files. Consult the Information Basket Skill when these sources are needed.",
       routingCapability: "semantic_lookup", catalogGroups: ["knowledge"], developmentRoles: ["inspect"],
       controlsRefinement: "mechanical_when_complete",
       eventPresentation: INFORMATION_BASKET_EVENT_PRESENTATION,

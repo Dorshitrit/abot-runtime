@@ -1,5 +1,6 @@
 import { escapeAttribute, escapeHtml } from "../../lib/text-format.js";
 import { learningTimeLabel } from "./presentation.js";
+import { candidateActionsMarkup } from "./candidate-actions.js";
 
 const pageSize = 20;
 const views = new WeakMap();
@@ -11,7 +12,7 @@ export function learningKnowledgeMarkup() {
         <p>Patterns from conversations and computer activity.</p></div><span data-learning-threshold></span></div>
       <p class="co-worker-knowledge-note" data-learning-candidate-note role="status" hidden></p>
       <div class="co-worker-knowledge-list" data-learning-candidates></div>
-      <p class="co-worker-knowledge-note">Not used as memory yet. Promotion also requires two independent reinforcements. Scores are model judgments, not probabilities.</p>
+      <p class="co-worker-knowledge-note">Not used as memory yet. Save useful candidates yourself, or let automatic promotion wait for two independent reinforcements. Scores are model judgments, not probabilities.</p>
       <nav class="co-worker-knowledge-pagination" data-learning-pagination aria-label="Candidate pages" hidden>
         <button type="button" data-learning-knowledge-page="previous" aria-label="Previous candidates">Previous</button>
         <span data-learning-page-summary aria-live="polite"></span>
@@ -61,13 +62,13 @@ function renderCandidates(view) {
   const threshold = boundedScore(snapshot.status?.preferences?.maturation?.promotionScore) ?? 90;
   setText(host, "[data-learning-threshold]", `Promote at ${threshold}`);
   setText(host, "[data-learning-candidate-count]", String(candidates.length));
-  const note = snapshot.candidateError ? `Candidates could not be refreshed: ${snapshot.candidateError}` : "";
+  const note = snapshot.candidateActionError || (snapshot.candidateError ? `Candidates could not be refreshed: ${snapshot.candidateError}` : "");
   setText(host, "[data-learning-candidate-note]", note);
   host.querySelector("[data-learning-candidate-note]").hidden = !note;
   const empty = snapshot.loadingCandidates ? "Loading candidates…"
     : snapshot.candidateError ? "Candidates are unavailable. Refresh to try again."
       : "No candidates yet. Useful patterns will appear here as ABot learns.";
-  const markup = candidates.length ? candidates.slice(offset, offset + pageSize).map(candidateMarkup).join("")
+  const markup = candidates.length ? candidates.slice(offset, offset + pageSize).map(candidate => candidateMarkup(candidate, snapshot.pendingCandidateId)).join("")
     : `<p class="co-worker-knowledge-empty">${escapeHtml(empty)}</p>`;
   replaceList(view, "candidateMarkup", "[data-learning-candidates]", markup);
   host.querySelector("[data-learning-pagination]").hidden = candidates.length <= pageSize;
@@ -90,7 +91,7 @@ function renderMemories(view) {
   replaceList(view, "memoryMarkup", "[data-learning-saved]", markup);
 }
 
-function candidateMarkup(candidate) {
+function candidateMarkup(candidate, pendingCandidateId) {
   const score = boundedScore(candidate.score);
   const reinforcements = Array.isArray(candidate.reinforcements) ? candidate.reinforcements.length : 0;
   const evidenceMarkup = "<span>" + Math.min(2, reinforcements) + " / 2 independent reinforcements</span>";
@@ -98,11 +99,13 @@ function candidateMarkup(candidate) {
   const scoreMarkup = score === null ? "Not scored" : `<meter min="0" max="100" value="${score}" aria-label="Model assessment: ${score} out of 100">${score}</meter><span>${score} / 100</span>`;
   return `<article class="co-worker-record" data-learning-candidate-id="${escapeAttribute(candidate.id)}">
     ${recordContentMarkup(candidate.content)}
+    ${candidate.replacement ? '<p class="co-worker-knowledge-note">Suggested update to an existing memory.</p>' : ""}
     <div class="co-worker-record-footer"><span class="co-worker-record-score">${scoreMarkup}</span>
       ${dates || candidate.reason ? `<details class="co-worker-record-details"><summary>Why this candidate</summary>
         ${candidate.reason ? `<p class="co-worker-record-reason" dir="auto">${escapeHtml(candidate.reason)}</p>` : ""}
         <div class="co-worker-record-meta">${evidenceMarkup}${dates}</div></details>` : ""}
     </div>
+    ${candidateActionsMarkup(candidate, pendingCandidateId)}
   </article>`;
 }
 

@@ -1,3 +1,4 @@
+import { readOpeningRepairInstruction } from "./support/repair-attempt-instruction.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { ModelGatewayClient } from "../ports.js";
@@ -504,7 +505,7 @@ describe("Supervisor terminal response", () => {
     const firstMessages = readModelMessages(invoke.mock.calls[0]![0].messages);
     const repairMessages = readModelMessages(invoke.mock.calls[1]![0].messages);
     expect(repairMessages).toHaveLength(firstMessages.length + 1);
-    expect(repairMessages.at(-1)).toMatchObject({ role: "system" });
+    expect(readOpeningRepairInstruction(repairMessages).content).toContain("supervisor_response_empty");
     const logs = consoleLog.mock.calls.map(
       ([line]) => JSON.parse(String(line)) as Record<string, unknown>,
     );
@@ -560,7 +561,7 @@ describe("Supervisor terminal response", () => {
 
       expect(invoke).toHaveBeenCalledTimes(2);
       expect(
-        readModelMessages(invoke.mock.calls[1]![0].messages).at(-1)?.content,
+        readOpeningRepairInstruction(readModelMessages(invoke.mock.calls[1]![0].messages)).content,
       ).toContain("supervisor_response_internal_envelope");
     },
   );

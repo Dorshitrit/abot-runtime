@@ -1,3 +1,4 @@
+import { isSummaryRepresentedByRegisteredOutput } from "./capability-result-output-summary.js";
 import { isDeepStrictEqual } from "node:util";
 import { readBoundRequestToolResultsView } from "./request-tool-results-message-binding.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
@@ -160,7 +161,7 @@ function isExactProjectedResult(
     result.outcome === receipt.outcome &&
     result.declaredEffect === receipt.declaredEffect &&
     result.observedEffect === receipt.observedEffect &&
-    result.summary === receipt.summary &&
+    hasExactProjectedSummary(result.summary, expected) &&
     result.referenceData === receipt.referenceData &&
     isDeepStrictEqual(result.references, receipt.references);
   return (
@@ -168,6 +169,18 @@ function isExactProjectedResult(
     isDeepStrictEqual(result.acceptedAction, expected.acceptedAction) &&
     isDeepStrictEqual(result.adapterResult, expected.adapterResult)
   );
+}
+
+function hasExactProjectedSummary(
+  summary: unknown,
+  expected: ExactEvidence,
+): boolean {
+  if (summary === expected.receipt.summary) return true;
+  if (summary !== undefined) return false;
+  return isSummaryRepresentedByRegisteredOutput({
+    summary: expected.receipt.summary,
+    adapterResult: expected.adapterResult,
+  });
 }
 
 function assertExact(valid: boolean): asserts valid {

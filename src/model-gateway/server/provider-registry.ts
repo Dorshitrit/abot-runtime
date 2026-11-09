@@ -14,6 +14,7 @@ export function resolveProviderAdapters(
     options.providerAdapters ??
     createBuiltInModelProviderAdapterRegistry({
       ollamaUrl: options.ollamaUrl ?? resolveOllamaUrl(),
+      fetchImpl: options.fetchImpl ?? fetch,
       additionalAdapters: options.additionalProviderAdapters,
     })
   );

@@ -10,6 +10,7 @@ import { resolveSemanticCompactionInstructions } from "./execution-evidence-inst
 import { buildMinimalSemanticCompactionInstructions } from "./minimal-instructions.js";
 import { bindSemanticCompactionSourceSlots } from "./source-slots.js";
 import { resolvePriorCompactionSourceDigests } from "./inherited-source-digests.js";
+import { projectCompactionSourceInput } from "../compaction-source-input.js";
 
 export type SemanticCompactionFoldState = Readonly<{
   continuation: SemanticCompactionContinuation;
@@ -43,7 +44,7 @@ export function buildSemanticCompactionMessages(
             }
           : {}),
         newSources: bindSemanticCompactionSourceSlots(
-          params.sources,
+          params.sources.map(projectCompactionSourceInput),
           resolvePriorCompactionSourceDigests(params).length,
         ),
       }),
@@ -61,7 +62,7 @@ export function buildSemanticCompactionSliceMessages(
       role: "system" as const,
       content: [
         resolveGenerationInstructions(params),
-        "The supplied source is one exact contiguous UTF-8 range of a larger canonical source.",
+        "The supplied source is one exact contiguous UTF-8 range of the full compactor input representation; its ranges and hashes describe those supplied bytes, while the runtime binds each returned sourceKey to the original canonical source identity.",
         "Return all replacement source digests and one replacement continuation. For the sliced source, preserve every previously supplied range plus this range; do not treat ranges as separate sources. partialSourceFold is the latest summary of the covered ranges and replaces the older checkpoint for this generation.",
       ].join("\n"),
     }),

@@ -185,6 +185,20 @@ describe("unified work timeline rendering", () => {
     expect(descendants(node, ".conversation-work-role-title").map((row) => row.textContent)).toEqual(["Root agent"]);
     expect(f.renderer.createNode({ requestId, events: [], updates: [] })).toBeNull();
   });
+
+  test("renders memory queue notifications under Memory without an unrecorded executor warning", () => {
+    const f = setup();
+    const events = [event("tool.completed", 2, { tool: "read_file", executionId: "read-1", executorRole: "supervisor", ok: true }),
+      event("memory.save.queued", 3, { stage: "long_term_memory" })];
+    const node = f.render({ events, updates: [update("Starting", 1)] });
+    expect(descendants(node, ".conversation-work-role-title").map((row) => row.textContent)).toEqual(["Root agent", "Memory"]);
+    const memoryHeading = descendants(node, ".conversation-work-role").at(-1)!;
+    expect(memoryHeading.dataset.role).toBe("memory");
+    expect(memoryHeading.querySelector(".conversation-work-role-description")).toBeNull();
+    expect(node.textContent).toContain("Memory Save Queued");
+    expect(node.textContent).not.toContain("Unattributed actions");
+    expect(node.textContent).not.toContain("Executor not recorded");
+  });
 });
 
 test("Agents timeline omits repeated generic processing rows while keeping skills and tools", () => {

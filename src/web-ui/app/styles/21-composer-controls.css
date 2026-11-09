@@ -30,12 +30,6 @@
   min-width: 0;
 }
 
-.model-control {
-  flex: 0 1 auto;
-  min-width: 120px;
-  max-width: 220px;
-}
-
 .agent-mode-control {
   flex: none;
 }
@@ -76,7 +70,6 @@
 }
 
 .agent-mode-button > span:last-child,
-.model-select-button > span,
 .permission-mode-label {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -98,27 +91,6 @@
   color: var(--muted);
   font-size: var(--font-size-xs);
   font-weight: 400;
-}
-
-.model-select-button {
-  justify-content: space-between;
-}
-
-.model-select-button > svg:not(.model-select-icon) {
-  flex: none;
-  width: 13px;
-  height: 13px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.7;
-  opacity: 0.75;
-  transition: transform 120ms ease;
-}
-
-.model-select-button.open > svg:not(.model-select-icon) {
-  transform: rotate(180deg);
 }
 
 .agent-mode-button::after,
@@ -173,11 +145,6 @@
   width: 260px;
 }
 
-.model-select-menu {
-  left: 0;
-  width: max(100%, 240px);
-}
-
 .permission-mode-menu {
   left: 0;
   min-width: 180px;
@@ -210,26 +177,6 @@
 .permission-mode-option.selected {
   border-color: transparent;
   background: var(--control-bg-hover);
-}
-
-.model-select-option {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 18px;
-  gap: 10px;
-  align-items: center;
-  min-height: 38px;
-  padding: 7px 9px;
-  font-size: var(--font-size-lg);
-  font-weight: 400;
-}
-
-.model-select-option-label {
-  overflow-wrap: anywhere;
-}
-
-.model-select-check {
-  color: var(--accent);
-  text-align: center;
 }
 
 .agent-mode-option {
@@ -323,47 +270,6 @@
     right: auto;
     left: 0;
     width: min(280px, 100%);
-  }
-}
-
-@container (max-width: 320px) {
-  .model-control {
-    flex: none;
-    width: 32px;
-    min-width: 32px;
-    max-width: 32px;
-  }
-
-  .model-select-button {
-    justify-content: center;
-    width: 32px;
-    padding: 0;
-  }
-
-  .model-select-button > span {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-
-  .model-select-button .model-select-icon {
-    display: block;
-    width: 16px;
-    height: 16px;
-    fill: none;
-    stroke: currentColor;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 1.7;
-    opacity: 1;
-  }
-
-  .model-select-button > svg:not(.model-select-icon) {
-    display: none;
   }
 }
 

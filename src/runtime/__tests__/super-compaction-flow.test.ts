@@ -8,7 +8,7 @@ import { createCompactionRequest } from "./support/compaction-chunking-request-f
 import { prepareSuperCheckpointBudget } from "../context/super-compaction/checkpoint-budget.js";
 import { generateSuperCompactionCandidate } from "../context/super-compaction/run.js";
 import { createSuperSessionMemoryCompactor } from "../context/super-compaction/history.js";
-import { SUPER_COMPACTION_WINDOW_BYTES } from "../context/super-compaction/windows.js";
+import { resolveModelInvocation } from "../../model-gateway/invocation-policy.js";
 import {
   createSemanticCompactionSha256Fingerprint,
   type SemanticCompactionSource,
@@ -22,6 +22,7 @@ import type { SemanticCompactionGenerationParams } from "../context/semantic-com
 function fixture(
   options: {
     incomplete?: boolean;
+    measuredWindows?: boolean;
     coverageOutput?: string;
     contentOutput?: string;
     mergeOutput?: string;
@@ -64,6 +65,13 @@ function fixture(
     requestId: "super-flow",
     prompt: "Investigate TTL behavior",
     invoke,
+    ...(options.measuredWindows ? { countInputTokens: async (input) => {
+      const invocation = resolveModelInvocation(input);
+      return { inputTokens: Math.ceil(Buffer.byteLength(JSON.stringify(input.messages)) / 2),
+        profileId: invocation.profile.id, provider: invocation.profile.provider,
+        model: invocation.model, contextWindowTokens: invocation.profile.contextWindowTokens,
+        source: "provider_input_token_count" as const };
+    } } : {}),
   });
   const configuration = projectSuperCompactionConfiguration(
     original,
@@ -106,7 +114,7 @@ function fixture(
 
 describe("independent SUPER compaction flow", () => {
   test("extracts contiguous independent windows and shares each unit context between its stages", async () => {
-    const f = fixture();
+    const f = fixture({ measuredWindows: true });
     const candidate = await generateSuperCompactionCandidate(f.params);
     expect(f.calls.length).toBeGreaterThan(3);
     const slices: SemanticCompactionSourceSlice[] = [];
@@ -123,14 +131,13 @@ describe("independent SUPER compaction flow", () => {
       ]);
       expect(new Set(stages.map((call) => call.capsule)).size).toBe(1);
       const slice = stages[0]!.data.sourceSlice;
-      expect(
-        slice.range.endByteExclusive - slice.range.startByte,
-      ).toBeLessThanOrEqual(SUPER_COMPACTION_WINDOW_BYTES);
+      expect(slice.range.endByteExclusive).toBeGreaterThan(slice.range.startByte);
       expect(slice.range.startByte).toBe(
         slices.at(-1)?.range.endByteExclusive ?? 0,
       );
       slices.push(slice);
     }
+    expect(slices.length).toBeGreaterThan(1);
     expect(
       f.calls.filter((call) => call.step === "super.compact.continuation"),
     ).toHaveLength(1);

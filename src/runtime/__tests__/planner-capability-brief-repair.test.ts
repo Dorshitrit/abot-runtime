@@ -1,3 +1,4 @@
+import { readOpeningRepairInstruction } from "./support/repair-attempt-instruction.js";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import type { ToolAvailabilityEntry } from "../../capabilities/tool-types.js";
 import type { ModelGatewayClient } from "../ports.js";
@@ -62,15 +63,16 @@ test("fresh Planner repair shrinks only the shared optional brief before admissi
   ).toContain(fixture.entries[0]!.pluginDescription!.trim());
   for (const input of inputs.slice(1)) {
     const messages = modelMessages(input);
-    expect(nonBrief(messages).slice(0, -1)).toEqual(original);
+    const repair = readOpeningRepairInstruction(nonBrief(messages));
+    expect(nonBrief(messages).filter((message) => message !== repair)).toEqual(original);
     expect(nonBrief(messages)).toHaveLength(original.length + 1);
     expect(input.format).toEqual(inputs[0]!.format);
     expect(
       messages.find(isCapabilityBriefMessage)?.content ?? "",
     ).not.toContain(fixture.entries[0]!.summary);
   }
-  expect(nonBrief(modelMessages(inputs[1]!)).at(-1)).not.toEqual(
-    nonBrief(modelMessages(inputs[2]!)).at(-1),
+  expect(readOpeningRepairInstruction(nonBrief(modelMessages(inputs[1]!)))).not.toEqual(
+    readOpeningRepairInstruction(nonBrief(modelMessages(inputs[2]!))),
   );
 });
 

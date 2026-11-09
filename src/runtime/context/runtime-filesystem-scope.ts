@@ -1,3 +1,4 @@
+import { markInvocationContextMessage } from "../../model-gateway/protocol/invocation-context.js";
 import { isAbsolute } from "node:path";
 import type { ChatMessage } from "../../model-gateway/types.js";
 
@@ -62,7 +63,7 @@ export function buildRuntimeFilesystemScopeMessage(
     )
   )
     return undefined;
-  return Object.freeze({
+  return markInvocationContextMessage({
     role: "system" as const,
     content: JSON.stringify({
       kind: RUNTIME_FILESYSTEM_SCOPE_KIND,

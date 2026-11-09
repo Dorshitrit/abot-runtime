@@ -69,16 +69,17 @@ export async function prepareSuperCheckpointBudget(
   });
 }
 
-export async function assertSuperCheckpointFits(
+export async function doesSuperCheckpointFit(
   params: SemanticCompactionGenerationParams,
   candidate: SemanticCompactionCandidate,
   budget: ReturnType<typeof prepareReplacementCompactionBudget>,
-): Promise<void> {
+): Promise<boolean> {
   for (const consumer of budget.consumers) {
     const tokens = await measureCheckpoint(params, candidate, consumer);
     if (!isWithinCheckpointAllowance(tokens, consumer.checkpointTokenAllowance))
-      throw new Error("context_compaction_checkpoint_tokens_exceeded");
+      return false;
   }
+  return true;
 }
 
 async function measureCheckpoint(

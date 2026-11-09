@@ -10,10 +10,12 @@ function nativeReasoningBudgetTokens(budget: ModelReasoningBudget): number {
   return budget.tokens;
 }
 
+export type LlamaCppChatPayload = Record<string, unknown> & { messages: Record<string, unknown>[] };
+
 export function buildLlamaCppChatPayload(
   { requestBody, invocation, endpoint }: Pick<ModelProviderInvocationParams, "requestBody" | "invocation" | "endpoint">,
-): Record<string, unknown> {
-  const payload: Record<string, unknown> = {
+): LlamaCppChatPayload {
+  const payload: LlamaCppChatPayload = {
     model: invocation.model,
     messages: projectLlamaCppMessages(requestBody, invocation, endpoint),
     stream: true,

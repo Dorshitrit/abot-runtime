@@ -86,6 +86,18 @@ The Store supplies the replacement package; the Runtime does not overwrite
 Store-owned executable files. Store updates are intended to preserve the user's
 saved pairing.
 
+Computer access readiness checks the connected Companion's required capabilities,
+not its release number alone. A connected package that lacks protected results
+must not be displayed as ready. "Check Microsoft Store" directs the user to
+the existing app listing; it does not confirm that Microsoft has published an update.
+
+When distributing already-supported Companion behavior to Store users, build a
+higher MSIX version under the same identity. Do not raise the shared Companion
+release solely to order Store packages: doing so also requires otherwise-compatible
+Mac and Linux companions to update. Before submission, check the latest package
+version in Partner Center and verify an in-place upgrade preserves pairing and
+reconnects with the required capabilities.
+
 The Store identity is owned by
 `src/computer-access/companion/windows-store/identity.ts`. Packaging and the
 Companion must use this same identity. Do not create another copy of protocol

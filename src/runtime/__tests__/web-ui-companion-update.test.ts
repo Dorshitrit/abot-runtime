@@ -103,3 +103,31 @@ test("Home omits the duplicate update notice while Spark keeps its update action
     feature.setWorkspace("config");
   }
 });
+
+test("a capability upgrade notice follows readiness even at the current release", () => {
+  const root = createRoot();
+  const hostConnection = {
+    paired: true, connected: true,
+    companion: { installedVersion: 12, availableVersion: 12, updateAvailable: false },
+    readiness: { ready: false, route: "companion", companionUpdateRequired: true },
+  };
+  const snapshot = { status: null, models: [], batches: [], selectedBatch: null, hostConnection };
+  const configure = vi.fn();
+  const openComputerAccess = vi.fn();
+  const view = createPassiveLearningMemory({
+    actions: { snapshot: () => snapshot, configure, refresh: vi.fn(), selectBatch: vi.fn() },
+    showActivityMemories: vi.fn(), openComputerAccess,
+  });
+  view.mount(root as never);
+  expect(root.querySelector("[data-learning-update]")?.hidden).toBe(false);
+  root.querySelector("[data-learning-open-update]")!.dispatch("click");
+  expect(openComputerAccess).toHaveBeenCalledOnce();
+  expect(configure).not.toHaveBeenCalled();
+  view.render({
+    ...snapshot,
+    hostConnection: { ...hostConnection, readiness: { ready: true, route: "companion" } },
+  });
+  expect(root.querySelector("[data-learning-update]")?.hidden).toBe(true);
+  view.render({ ...snapshot, hostConnection: { ...hostConnection, connected: false } });
+  expect(root.querySelector("[data-learning-update]")?.hidden).toBe(true);
+});

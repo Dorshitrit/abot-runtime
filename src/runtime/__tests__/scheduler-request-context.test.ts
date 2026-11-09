@@ -95,9 +95,18 @@ describe("Root scheduled request context", () => {
         const messages = scheduledModelMessages(input);
         expectOneActivePrompt(messages, SCHEDULED_PROMPT);
         const phase = supervisorFormatName(input);
-        if (["supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate"].includes(phase ?? "")) {
+        if (["supervisor_presentation", "supervisor_skill_selection"].includes(phase ?? "")) {
           expect(originMessages(messages)).toEqual([]);
           expect(JSON.stringify(messages)).not.toContain("Earlier preference: use brief answers.");
+          continue;
+        }
+        if (phase === "supervisor_procedure_gate") {
+          expect(originMessages(messages)).toEqual([]);
+          expect(messages.filter(({ role }) => role !== "system")).toEqual([
+            { role: "user", content: "Earlier preference: use brief answers." },
+            { role: "assistant", content: "I will keep the answer brief." },
+            { role: "user", content: SCHEDULED_PROMPT },
+          ]);
           continue;
         }
         expect(originMessages(messages)).toEqual([
@@ -188,8 +197,16 @@ describe("Root scheduled request context", () => {
         expect(messages[0].content).toBe(instructions[index]);
         expectOneActivePrompt(messages, prompt);
         const phase = supervisorFormatName(input);
-        if (["supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate"].includes(phase ?? "")) {
+        if (["supervisor_presentation", "supervisor_skill_selection"].includes(phase ?? "")) {
           expect(JSON.stringify(messages)).not.toContain(SCHEDULED_PROMPT);
+          return;
+        }
+        if (phase === "supervisor_procedure_gate") {
+          expect(messages.filter(({ role }) => role !== "system")).toEqual([
+            { role: "user", content: SCHEDULED_PROMPT },
+            { role: "assistant", content: "The scheduled answer preserves the earlier preference." },
+            { role: "user", content: prompt },
+          ]);
           return;
         }
         expect(JSON.stringify(messages)).toContain(SCHEDULED_PROMPT);

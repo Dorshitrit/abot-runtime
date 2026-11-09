@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
+  createChatHandler,
   createInputTokenCountHandler,
   type GatewayResponse,
 } from "../../server.js";
+import { createInputTokenMeasurementStore } from "../../server/input-token-measurements.js";
+import type { ModelGatewayRequest } from "../../types.js";
+import { completedFunction, controlsFormat, frame } from "./__tests__/native-function-fixture.js";
 
 function createResponse(): GatewayResponse & { body: string } {
   return {
@@ -111,5 +115,59 @@ describe("OpenAI input token counting", () => {
       contextWindowTokens: 128_000,
       source: "provider_input_token_count",
     });
+  });
+
+  test("counts the same ordered role, tool and repair inputs sent to Responses", async () => {
+    process.env.TEST_OPENAI_COUNT_KEY = "test-key";
+    const call = { callId: "read-1", name: "read_file", arguments: ' { "path": "שלום.txt" } ' };
+    const receipt = "exact result\n";
+    const policy = { role: "system", content: "Role policy." } as const;
+    const reference = { role: "system", content: "Passive reference." } as const;
+    const user = { role: "user", content: "Answer from the result." } as const;
+    const repair = { role: "system", content: "Use the settled tool result." } as const;
+    const request: ModelGatewayRequest = {
+      modelStep: "capability.controls", format: controlsFormat,
+      messages: [
+        policy, reference, user,
+        { role: "assistant", content: "", toolCalls: [call] },
+        { role: "tool", content: receipt, toolCallId: call.callId, toolName: call.name },
+        repair,
+      ],
+    };
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ input_tokens: 21 }))
+      .mockResolvedValueOnce(new Response(frame(completedFunction), {
+        headers: { "Content-Type": "text/event-stream" },
+      }));
+    // A stale or unmatched measurement makes the final guard reject this envelope.
+    const modelPolicy = {
+      ...OPENAI_POLICY,
+      profiles: { luna: { ...OPENAI_POLICY.profiles.luna, contextWindowTokens: 22 } },
+    };
+    const options = { modelPolicy, fetchImpl };
+    const measurements = createInputTokenMeasurementStore();
+    const count = createResponse();
+    await createInputTokenCountHandler(options, measurements)(request, count);
+    expect(JSON.parse(count.body).inputTokens).toBe(21);
+    const output = createResponse();
+    await createChatHandler(options, measurements)(request, output);
+
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
+      "https://openai-count.test/v1/responses/input_tokens",
+      "https://openai-count.test/v1/responses",
+    ]);
+    const [countRequest, generationRequest] = fetchImpl.mock.calls;
+    const counted = JSON.parse(String(countRequest![1]?.body));
+    const dispatched = JSON.parse(String(generationRequest![1]?.body));
+    expect(counted.input).toEqual([
+      policy, reference, user,
+      { type: "function_call", call_id: call.callId, name: call.name, arguments: call.arguments },
+      { type: "function_call_output", call_id: call.callId, output: receipt }, repair,
+    ]);
+    expect(counted.tools).toMatchObject([{ type: "function", name: controlsFormat.name, parameters: controlsFormat.schema }]);
+    const { stream, temperature, top_p, ...generationInput } = dispatched;
+    expect({ stream, temperature, top_p }).toEqual({ stream: true, temperature: 0.2, top_p: 0.9 });
+    expect(generationInput).toEqual(counted);
+    expect(output.body).toContain('"type":"done"');
   });
 });

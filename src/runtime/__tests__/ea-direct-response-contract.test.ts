@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ModelGatewayPolicyConfig, ModelStepCalibrationConfig } from "../../model-gateway/types.js";
-import { resolveModelStepOutputTokenLimit } from "../../shared/model-step-registry.js";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
 import type { ModelGatewayClient } from "../ports.js";
 import type { ConversationMemoryAuthoringContext } from "../long-term-memory/conversation-authoring/context.js";
@@ -205,12 +204,6 @@ test("an unresolved response profile cannot silently enable inline answering", a
   expect(offer).toEqual({ reason: "response_configuration" });
   expect(respondVariants(input.format.schema)).toHaveLength(1);
 });
-
-test("the shared owner still caps decisions at 2048 output tokens without capping response", () => {
-  expect(resolveModelStepOutputTokenLimit("execution.decision")).toBe(2_048);
-  expect(resolveModelStepOutputTokenLimit("execution.response")).toBeUndefined();
-});
-
 
 test("direct memory authoring requires its candidate lane and binds proposals to server-owned user evidence", () => {
   const content = "The user prefers concise explanations.";

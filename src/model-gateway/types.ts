@@ -224,6 +224,8 @@ export type ModelGatewayRequest = {
   text?: string;
   prompt?: string;
   messages?: unknown;
+  /** Positions of producer-declared, invocation-wide system references in this request only. */
+  invocationContextMessageIndices?: readonly number[];
   /** Request-local exclusive prefix boundary in messages; never persisted in history. */
   promptCacheBoundaryBeforeMessageIndex?: number;
   debugRequestId?: string;

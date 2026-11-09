@@ -1,3 +1,4 @@
+import { isInvocationContextMessage } from "../../model-gateway/protocol/invocation-context.js";
 import { workerEvidenceDecision } from "./support/worker-evidence-script.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { runRequestRunner } from "../request/runner.js";
@@ -62,9 +63,13 @@ test("SUPER retains startup facts for separate candidate and RAW authoring after
   for (const input of inputs) {
     const gate = supervisorFormatName(input) === "supervisor_procedure_gate";
     expect(modelMessages(input).filter(entry => entry.content === initialMessage.content)).toEqual(gate ? [] : [initialMessage]);
+    const reference = modelMessages(input).find(({ content }) => content.includes(MEMORY_RECORD.content))!;
+    expect(isInvocationContextMessage(reference)).toBe(true);
+    expect(isInvocationContextMessage({ ...reference })).toBe(false);
     expect(JSON.stringify(input.messages)).toContain(MEMORY_RECORD.content);
     expect(modelMessages(input).filter(entry => entry.role === "user" && entry.content === REQUEST_PROMPT)).toHaveLength(1);
   }
+  expect(isInvocationContextMessage(initialMessage)).toBe(false);
   expect(inputs[1]!.format).toMatchObject({ name: "supervisor_memory_candidates" });
   expect(inputs[2]).not.toHaveProperty("format");
   expect(f.memory.retrieve.mock.calls.map(([input]) => input.query)).toEqual([REQUEST_PROMPT]);
@@ -78,7 +83,8 @@ test("a model-selected recall replaces the initial reference for subsequent deci
     delegate: () => ({ action: "invoke_role", roleId: "worker", objective: "Determine the saved preference needed for the answer." }),
     retrieve: async ({ query }) => ({ available: true,
       records: [{ ...MEMORY_RECORD, content: query === REQUEST_PROMPT ? MEMORY_RECORD.content : "Explicitly recalled preference." }],
-      ...(query === REQUEST_PROMPT ? { message: initialMessage } : {}),
+      // The service may reuse a message object for automatic and explicit lookups.
+      message: initialMessage,
     }),
     decide(input) {
       if (supervisorFormatName(input) === "supervisor_working_directory") return JSON.stringify({ workingDirectory: "." });
@@ -105,6 +111,8 @@ test("a model-selected recall replaces the initial reference for subsequent deci
   const response = f.invoke.mock.calls.at(-1)![0];
   expect(modelMessages(response)).not.toContainEqual(initialMessage);
   expect(JSON.stringify(recallCapsules(response))).toContain("Explicitly recalled preference.");
+  const recalled = modelMessages(response).find(({ content }) => content.includes("Explicitly recalled preference."))!;
+  expect(isInvocationContextMessage(recalled)).toBe(false);
 });
 
 test("steering retains the startup reference without an automatic refresh", async () => {

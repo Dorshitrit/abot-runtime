@@ -12,6 +12,7 @@ import type { ModelStepContextCompactionController, ModelStepOptionalContextProj
 import { resolveOutputIncompleteError } from "./provider-completion.js";
 import {
   STRUCTURED_MODEL_MAX_REPAIR_ATTEMPTS,
+  buildModelRepairAttemptMessages,
   buildStructuredModelRepairHint,
 } from "./repair-prompts.js";
 
@@ -193,10 +194,7 @@ export async function invokeStructuredModelStep<T>(params: {
       sameRoleCall: true,
     });
     previousRejectedOutput = attempt.rejectedOutput;
-    messages = [
-      ...params.messages,
-      Object.freeze({ role: "system" as const, content: repairHint }),
-    ];
+    messages = buildModelRepairAttemptMessages(params.messages, repairHint);
   }
 
   throw new Error("structured_model_repair_state_invalid");

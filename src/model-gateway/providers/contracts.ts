@@ -99,6 +99,7 @@ export type ModelProviderInputTokenCountParams = Readonly<{
   requestBody: ModelGatewayRequest;
   invocation: ResolvedModelInvocation;
   fetchImpl: typeof fetch;
+  abortSignal?: AbortSignal;
 }>;
 
 /**

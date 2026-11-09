@@ -1,3 +1,4 @@
+import { createSupervisorToolEvidence } from "../../context/supervisor-tool-evidence.js";
 import { resolveMemoryRecallSteeringVersion } from "../../long-term-memory/recall-binding.js";
 import type { RequestToolResultsView } from "../../context/request-tool-results.js";
 import { createPolicyModelStepCompactionController } from "../../context/super-compaction/routing.js";
@@ -104,10 +105,16 @@ export async function runSupervisorDecision(
     rootCallId: options.call.rootCallId,
     ...(options.resume ? { returnedResultRef: options.resume.returnedResultRef } : {}),
   });
+  const supervisorToolEvidence = createSupervisorToolEvidence(request, {
+    head: options.skillReadHead,
+    callId: options.call.callId,
+    toolResults: options.toolResults,
+  });
   const contextCompaction = createSessionMemoryAwareCompactionController(
     request,
     createPolicyModelStepCompactionController(request, {
       consumer: SUPERVISOR_DECISION_MODEL_STEP,
+      ...(supervisorToolEvidence ? { supervisorToolEvidence } : {}),
       superFailureOwner: superCompactionFailureOwner(
         request.executionPolicy.authority,
         {
@@ -181,6 +188,7 @@ export async function runSupervisorDecision(
       ...(initialMemoryMessage ? { initialMemoryMessage } : {}),
       ...buildSupervisorCapabilityBriefOptions(request, options),
       toolResults: options.toolResults,
+      ...(supervisorToolEvidence ? { supervisorToolEvidence } : {}),
       ...(options.skillReadHead ? { skillReadHead: options.skillReadHead } : {}),
       includeAcknowledgement: false,
       includeTitle: false,

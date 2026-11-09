@@ -1,0 +1,15 @@
+.spark-home-settings { display: grid; gap: 20px; max-width: 920px; }
+.spark-home-settings .co-worker-settings-card > p:first-of-type { min-height: 0; }
+.spark-home-settings .co-worker-setting-field:first-child { margin-top: 0; }
+.spark-home-settings textarea {
+  width: 100%; min-height: 124px; padding: 10px 12px; resize: vertical;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--control-fill);
+  color: var(--text); font: inherit; line-height: 1.65; box-shadow: none;
+}
+.spark-home-settings textarea:focus-visible { outline: 1px solid var(--line-strong); outline-offset: 1px; }
+.spark-home-settings textarea::placeholder { color: var(--muted); }
+.spark-home-settings select { max-width: 440px; }
+.spark-home-settings-future { padding: 4px 0; color: var(--muted); }
+.spark-home-settings-future h4 { margin: 0; font-size: var(--font-size-sm); font-weight: 400; }
+.spark-home-settings-future p { margin: 6px 0 0; font-size: var(--font-size-xs); line-height: 1.65; }
+.spark-home-settings [hidden] { display: none !important; }

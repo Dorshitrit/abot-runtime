@@ -1,3 +1,4 @@
+import { readOpeningRepairInstruction } from "./support/repair-attempt-instruction.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelGatewayClient } from "../ports.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
@@ -82,8 +83,9 @@ describe("request payload member integrity", () => {
     const repair = invoke.mock.calls[1]![0];
     expect(repair.format).toEqual(initial.format);
     const repairMessages = repair.messages as readonly ChatMessage[];
-    expect(repairMessages.slice(0, -1)).toEqual(initial.messages);
-    expect(JSON.stringify(repairMessages.at(-1))).toContain("payload_model_output_invalid");
+    const instruction = readOpeningRepairInstruction(repairMessages);
+    expect(repairMessages.filter((message) => message !== instruction)).toEqual(initial.messages);
+    expect(instruction.content).toContain("payload_model_output_invalid");
   });
 
   it("rejects repeated duplicate payloads after exactly the existing repair budget", async () => {

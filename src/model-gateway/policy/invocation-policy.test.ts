@@ -713,58 +713,6 @@ describe("model gateway invocation policy", () => {
     }
   });
 
-  test("enforces the core decision output limit ahead of Ollama overrides", () => {
-    const previousNumPredict = process.env.OLLAMA_NUM_PREDICT;
-    const buildPayload = (modelStep: string) =>
-      buildOllamaPayload({
-        modelStep,
-        modelPolicy: {
-          providers: OLLAMA_TEST_PROVIDERS,
-          profiles: {
-            local: {
-              provider: "ollama",
-              model: "local-model",
-              contextWindowTokens: 32_768,
-              options: {
-                num_predict: 640,
-              },
-            },
-          },
-          defaults: {
-            profileId: "local",
-          },
-        },
-      });
-
-    try {
-      delete process.env.OLLAMA_NUM_PREDICT;
-      expect(buildPayload(MODEL_STEPS.WORKER_DECISION)).toHaveProperty(
-        "options.num_predict",
-        2_048,
-      );
-
-      process.env.OLLAMA_NUM_PREDICT = "960";
-      expect(buildPayload(MODEL_STEPS.WORKER_DECISION)).toHaveProperty(
-        "options.num_predict",
-        2_048,
-      );
-      expect(buildPayload(MODEL_STEPS.WORKER_RESULT)).toHaveProperty(
-        "options.num_predict",
-        960,
-      );
-      expect(buildPayload(MODEL_STEPS.CAPABILITY_CONTROLS)).toHaveProperty(
-        "options.num_predict",
-        960,
-      );
-    } finally {
-      if (previousNumPredict === undefined) {
-        delete process.env.OLLAMA_NUM_PREDICT;
-      } else {
-        process.env.OLLAMA_NUM_PREDICT = previousNumPredict;
-      }
-    }
-  });
-
   test("keeps a core decision below its physical Ollama remainder", () => {
     const payload = buildOllamaRawPayload({
       modelStep: MODEL_STEPS.WORKER_DECISION,

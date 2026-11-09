@@ -73,6 +73,32 @@ describe.each([
     expect(result.output).toContain(query);
   }, 20_000);
 
+  test.skipIf(process.platform === "win32")(
+    "rejects a non-UTF-8 filename when the filesystem supports creating it",
+    async ({ skip }) => {
+      const { root, search } = await fixture();
+      const filename = Buffer.concat([
+        Buffer.from(join(root, "needle-")),
+        Buffer.from([0xff]),
+      ]);
+      try {
+        await writeFile(filename, "needle\n");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EILSEQ") throw error;
+        skip("The fixture filesystem rejects non-UTF-8 filenames.");
+        return;
+      }
+      for (const mode of ["names", "content"]) {
+        const result = await search({ query: "needle", path: ".", mode });
+        expect(result).toMatchObject({
+          ok: false,
+          errorCode: "local_search_result_encoding_unsupported",
+        });
+        expect(JSON.stringify(result)).not.toContain(root);
+      }
+    },
+  );
+
   test("preserves workspace and request-specific authority", async () => {
     const { context, root, search } = await fixture();
     await writeFile(join(root, "needle-default.txt"), "default");

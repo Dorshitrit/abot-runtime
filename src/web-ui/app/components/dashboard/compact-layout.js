@@ -1,5 +1,6 @@
 import { createHomeWidgetCard } from "./widget-card.js";
 import { createHomeWidgetDialog } from "./widget-dialog.js";
+import { createDashboardWidgetMounts } from "./widget-mounts.js";
 
 export const HOME_WIDGET_MEDIA_QUERY = "(max-width: 1440px)";
 const widgetOrder = ["learning", "conversations", "approvals", "activity", "automations", "resources", "computer"];
@@ -16,6 +17,12 @@ export function createCompactHomeLayout({
   let compact = false;
   let grid;
   let dialog;
+  const mounts = createDashboardWidgetMounts({
+    getEntry: id => entries.get(id), canUseDashboardWidgetHost: () => enabled && workspace === "home",
+    open(entry) { ensureDialog(); dialog.open(entry, { host: homeRegion || root }); entry.onOpen?.(); dialog.refresh(); },
+    close(element, button) { if (dialog?.isExpanded(element, button)) dialog.close({ restoreFocus: false }); },
+    isExpanded: (element, button) => dialog?.isExpanded(element, button) === true,
+  });
 
   function canShowCompactHome() {
     if (!enabled) return false;
@@ -24,7 +31,19 @@ export function createCompactHomeLayout({
 
   function canOpenWidget(entry) {
     if (!compact || workspace !== "home") return false;
+    if (!entry?.button) return false;
     return Boolean(entry?.isAvailable());
+  }
+
+  function ensureDialog() {
+    if (dialog) return;
+    dialog = createHomeWidgetDialog({
+      root,
+      onClosed(entry, restoreFocus) {
+        const canFocus = entry.canRestoreFocus ? entry.canRestoreFocus() : canOpenWidget(entry);
+        if (restoreFocus && canFocus) entry.button.focus({ preventScroll: true });
+      },
+    });
   }
 
   function ensureSurface() {
@@ -34,12 +53,7 @@ export function createCompactHomeLayout({
     grid.setAttribute("aria-label", "Home overview");
     grid.hidden = true;
     content.appendChild(grid);
-    dialog = createHomeWidgetDialog({
-      root,
-      onClosed(entry, restoreFocus) {
-        if (restoreFocus && canOpenWidget(entry)) entry.button.focus({ preventScroll: true });
-      },
-    });
+    ensureDialog();
   }
 
   function open(id) {
@@ -54,11 +68,12 @@ export function createCompactHomeLayout({
   function refresh() {
     for (const entry of entries.values()) {
       const available = entry.isAvailable();
-      entry.button.hidden = !available;
-      if (!available && dialog.isExpanded(entry.element)) dialog.close({ restoreFocus: false });
+      if (entry.button) entry.button.hidden = !available;
+      if (!available && dialog?.isExpanded(entry.element)) dialog.close({ restoreFocus: false });
       const summary = entry.getSummary();
-      entry.render(summary);
+      entry.render?.(summary);
     }
+    mounts.refresh();
     dialog?.refresh();
   }
 
@@ -66,16 +81,18 @@ export function createCompactHomeLayout({
     const next = canShowCompactHome();
     if (next === compact) return;
     const focused = root.ownerDocument.activeElement;
+    const externalExpanded = mounts.isExpanded();
     const focusedEntry = [...entries.values()].find((entry) => entry.element.contains(focused) || entry.button === focused);
     const expandedEntry = [...entries.values()].find((entry) => dialog?.isExpanded(entry.element));
-    dialog?.close({ restoreFocus: false });
+    if (!externalExpanded) dialog?.close({ restoreFocus: false });
     compact = next;
     homeRegion?.classList.toggle("home-widgets-compact", compact);
     if (grid) grid.hidden = !compact;
     refresh();
+    if (externalExpanded) return;
     if (!enabled || workspace !== "home") return;
     if (compact && focusedEntry?.isAvailable()) {
-      focusedEntry.button.focus({ preventScroll: true });
+      focusedEntry.button?.focus({ preventScroll: true });
       return;
     }
     if (compact) return;
@@ -96,38 +113,43 @@ export function createCompactHomeLayout({
 
   function register({ id, label, icon = "neutral", element, getSummary,
     isAvailable = () => true, emptyMessage, onOpen, getReturnParent }) {
-    if (!media || !element) return () => {};
+    if (!element) return () => {};
     ensureSurface();
-    const { button, render } = createHomeWidgetCard({ documentRoot: root.ownerDocument, id, label, icon });
-    const entry = { id, label, element, getSummary, isAvailable, emptyMessage, onOpen, getReturnParent, button, render };
+    const { button, render } = grid ? createHomeWidgetCard({ documentRoot: root.ownerDocument, id, label, icon }) : {};
+    const entry = { id, label, icon, element, getSummary, isAvailable, emptyMessage, onOpen, getReturnParent, button, render };
     entries.set(id, entry);
-    element.classList.add("home-widget-source");
+    if (button) element.classList.add("home-widget-source");
     const position = widgetOrder.indexOf(id);
     const following = [...entries.values()].find((candidate) => widgetOrder.indexOf(candidate.id) > position);
-    grid.insertBefore(button, following?.button || null);
-    button.addEventListener("click", () => open(id));
+    grid?.insertBefore(button, following?.button || null);
+    button?.addEventListener("click", () => open(id));
     refresh();
     return () => {
-      if (dialog.isExpanded(element)) dialog.close({ restoreFocus: false });
-      element.classList.remove("home-widget-source");
-      button.remove();
+      if (dialog?.isExpanded(element)) dialog.close({ restoreFocus: false });
+      if (button) element.classList.remove("home-widget-source");
+      button?.remove();
       entries.delete(id);
+      mounts.refresh();
     };
   }
 
   media?.addEventListener("change", reconcileViewport);
   return {
-    register, refresh, open,
+    register, refresh, open, mount: mounts.mount,
     isExpanded: (element) => dialog?.isExpanded(element) === true,
     close: (options) => dialog?.close(options),
-    setEnabled(value) { enabled = value; reconcileViewport(); },
+    setEnabled(value) { enabled = value; reconcileViewport(); mounts.refresh(); },
     setWorkspace(value) {
       workspace = value;
       if (value !== "home") dialog?.close({ restoreFocus: false });
+      mounts.refresh();
     },
     dispose() {
+      mounts.dispose();
       dialog?.dispose();
-      for (const entry of entries.values()) entry.element.classList.remove("home-widget-source");
+      for (const entry of entries.values()) {
+        if (entry.button) entry.element.classList.remove("home-widget-source");
+      }
       entries.clear();
       grid?.remove();
       homeRegion?.classList.remove("home-widgets-compact");

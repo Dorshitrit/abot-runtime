@@ -14,6 +14,8 @@ export type ContextCompactionProjectionRepair = Readonly<{
 export type ModelStepCompactionPreparationContext = Readonly<{
   boundSteeringVersion?: number;
   onProgress?: CompactionProgressObserver;
+  /** Assess one retained candidate through the current consumer's full input. */
+  canRetainProjection?(messages: readonly ChatMessage[]): Promise<boolean>;
   projectionRepair?: ContextCompactionProjectionRepair;
   /** One rejected provider call may replace covered summaries from original sources. */
   recompactFromSources?: true;

@@ -72,6 +72,7 @@ export function createInputTokenCountHandler(
       diagnostics.setPhase("provider_count");
       const result = await providerAdapter.countInputTokens({
         endpoint: "chat",
+        abortSignal,
         requestBody: effectiveRequestBody,
         invocation,
         fetchImpl: createAbortBoundProviderFetch({

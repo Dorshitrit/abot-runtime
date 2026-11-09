@@ -8,7 +8,10 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { resolveSearchRoot } from "../../../plugins/local-search/source/paths.js";
 import { spawnRipgrepProcess } from "../../../plugins/local-search/source/ripgrep-process.js";
-import { runRipgrepPathSearch } from "../../../plugins/local-search/source/ripgrep.js";
+import {
+  runRipgrepContentSearch,
+  runRipgrepPathSearch,
+} from "../../../plugins/local-search/source/ripgrep.js";
 import { spawnDirectoryAuthorityCommand } from "../../shared/directory-authority/index.js";
 import { createRuntimeToolPathResolver } from "../capabilities/runtime-target-path.js";
 
@@ -78,6 +81,40 @@ afterEach(async () => {
       .splice(0)
       .map((root) => rm(root, { recursive: true, force: true })),
   );
+});
+
+describe("local-search ripgrep output encoding", () => {
+  const invalidPath = Buffer.from([0xff]);
+  test.each([
+    {
+      mode: "names",
+      search: runRipgrepPathSearch,
+      args: ["--files", "--null"],
+      output: Buffer.concat([invalidPath, Buffer.from([0])]),
+    },
+    {
+      mode: "content",
+      search: runRipgrepContentSearch,
+      args: ["--json", "needle"],
+      output: Buffer.from(JSON.stringify({
+        type: "match",
+        data: {
+          line_number: 1,
+          path: { bytes: invalidPath.toString("base64") },
+          lines: { text: "needle\n" },
+        },
+      }) + "\n"),
+    },
+  ])("rejects a non-UTF-8 path in $mode results", async ({ search, args, output }) => {
+    const child = fakeChild();
+    vi.mocked(spawn).mockReturnValue(child);
+    const failure = expect(search(args, "/unused", 5)).rejects.toMatchObject({
+      code: "local_search_result_encoding_unsupported",
+    });
+    child.stdout.emit("data", output);
+    child.emit("close", null);
+    await failure;
+  });
 });
 
 describe("local-search macOS directory authority", () => {

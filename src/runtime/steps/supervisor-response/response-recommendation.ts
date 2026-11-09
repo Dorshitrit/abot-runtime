@@ -1,4 +1,5 @@
 import type { RoleCallLedgerHead } from "../../orchestration/role-calls/index.js";
+import { markInvocationContextMessage } from "../../../model-gateway/protocol/invocation-context.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { RequestToolResultsView } from "../../context/request-tool-results.js";
 import {
@@ -31,8 +32,8 @@ export function buildSupervisorResponseRecommendationMessage(
     throw new Error("supervisor_response_recommendation_scope_invalid");
   }
   const { limitations, ...semantics } = supervisorResponseRecommendationSemantics(options.responseRecommendationOrigin);
-  return Object.freeze({
-    role: "system",
+  const message = Object.freeze({
+    role: "system" as const,
     content: JSON.stringify({
       kind: SUPERVISOR_RESPONSE_RECOMMENDATION_KIND,
       authority: "accepted_supervisor_decision",
@@ -43,6 +44,8 @@ export function buildSupervisorResponseRecommendationMessage(
       limitations,
     }),
   });
+  // A no-save outcome is bound to the preceding skill attempt. Only direct answer guidance spans this invocation.
+  return options.responseRecommendationOrigin === "skill_authoring_no_save" ? message : markInvocationContextMessage(message);
 }
 
 function canProjectSupervisorResponseRecommendation(

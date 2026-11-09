@@ -143,6 +143,7 @@ describe("init-runtime", () => {
         "execution.response",
       ]);
       expect(modelConfig).toMatchObject({ label: model, provider, model });
+      expect(modelConfig.generation).toEqual(provider === "ollama" ? { temperature: 0 } : undefined);
       if (provider === "openai") {
         expect(modelConfig.execution).toEqual({
           policy: "execution-agent-v1",
@@ -320,6 +321,7 @@ describe("init-runtime", () => {
     expect(first.status, first.stderr).toBe(0);
     const modelPath = join(targetRoot, "local", "models", "default.config.json");
     const existingModel = await readJson(modelPath);
+    delete existingModel.generation;
     delete asRecord(existingModel.context).tokenEstimation;
     delete asRecord(asRecord(existingModel.calibration)["context.compact"]).generation;
     const originalModel = JSON.stringify(existingModel);

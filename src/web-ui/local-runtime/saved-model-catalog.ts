@@ -15,12 +15,16 @@ export function readSavedModelCatalog(
     profileId: environmentId,
     env: process.env,
   });
-  const platformPolicy = buildRuntimeModelConfiguration(source.config, {
+  const modelConfiguration = buildRuntimeModelConfiguration(source.config, {
     mainConfigPath: source.path,
-  }).modelPolicy;
+  });
   const runnerConfig = readConfiguredSetupRunner(source);
   if (!runnerConfig) throw new Error("requestRunner.configRef is required");
   return projectRuntimeModelCatalog(
-    createRequestModelPolicy({ platformPolicy, runnerConfig }),
+    createRequestModelPolicy({
+      platformPolicy: modelConfiguration.modelPolicy,
+      runnerConfig,
+    }),
+    modelConfiguration.executionPolicies,
   );
 }

@@ -5,6 +5,7 @@ import type { RuntimeAttachmentStore } from "../attachments/store.js";
 import type { SessionStore } from "../ports.js";
 import type { RuntimeProjectService } from "../projects/contracts.js";
 import type { SchedulerService } from "../scheduler/contracts.js";
+import { dispatchLocalSparkHomeService, isLocalSparkHomeService } from "./app-spark-home-services.js";
 import type { AutomationService } from "../automations/service.js";
 
 export const LOCAL_SESSION_METHODS = [
@@ -123,6 +124,7 @@ export async function dispatchLocalServiceCall(
   method: string,
   args: readonly unknown[],
 ): Promise<unknown> {
+  if (isLocalSparkHomeService(method)) return dispatchLocalSparkHomeService(services, method, args);
   const [service, operation, extra] = method.split(".");
   if (!operation || extra) throw new Error("local_runtime_method_unknown");
   if (service === "informationBasket")

@@ -149,7 +149,7 @@ describe("compact memory activity", () => {
     const node = render([
       event("started", 1), event("completed", 2),
       { requestId: "request-1", eventSequence: 3, name: "runtime.state",
-        stage: "supervisor", phase: "skills", message: "Read Skills: Technical Work" },
+        stage: "supervisor", phase: "skills", message: "Read Skills: Coding and Development" },
     ]);
     expect(node.classList.contains("conversation-activity-group")).toBe(false);
     expect(nodes(node, "conversation-memory-row")).toHaveLength(1);
@@ -158,7 +158,7 @@ describe("compact memory activity", () => {
     expect(bubble?.querySelector(".conversation-skill-collection")).not.toBeNull();
     expect(node.querySelector(".conversation-role-card")).not.toBeNull();
     expect(node.querySelector(".conversation-skill-collection")).not.toBeNull();
-    expect(node.textContent).toContain("Technical Work");
+    expect(node.textContent).toContain("Coding and Development");
     expect(nodes(node, "conversation-activity-event").map((item) => item.textContent).join(" "))
       .not.toContain("Memory Retrieval");
   });

@@ -17,8 +17,6 @@ export type ModelInvocationFormat = "text" | "json" | "raw";
 
 export type ModelInvocationAttachmentPolicy = "conversation" | "none";
 
-export type ModelInvocationOutputTokenPolicy = "core_decision";
-
 export type RegisteredModelInvocationStepDefinition = {
   readonly id: string;
   readonly owner: ModelInvocationStepOwner;
@@ -26,7 +24,6 @@ export type RegisteredModelInvocationStepDefinition = {
   readonly lane: ModelInvocationLane;
   readonly defaultFormat: ModelInvocationFormat;
   readonly outputContract: string;
-  readonly outputTokenPolicy?: ModelInvocationOutputTokenPolicy;
   readonly attachmentPolicy?: ModelInvocationAttachmentPolicy;
 };
 

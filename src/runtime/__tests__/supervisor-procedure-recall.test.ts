@@ -1,5 +1,8 @@
+import { isInvocationContextMessage } from "../../model-gateway/protocol/invocation-context.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ChatMessage } from "../../model-gateway/types.js";
+import type { RequestHistoryMessage } from "../context/request-context-contracts.js";
+import type { RequestSessionMemory } from "../context/session-memory/contracts.js";
 import type { LongTermMemoryRecord } from "../long-term-memory/contracts.js";
 import { projectLongTermMemoryMessage } from "../long-term-memory/projection.js";
 import { configureDebugLogger, resetDebugLoggerConfig } from "../observability/debug-logger.js";
@@ -7,6 +10,7 @@ import { buildSupervisorDelegationInput } from "../steps/supervisor-decision/del
 import { buildSupervisorProcedureGateInput } from "../steps/supervisor-decision/procedure-gate.js";
 import { projectSupervisorProcedureRecall } from "../steps/supervisor-decision/procedure-recall.js";
 import { createMemoryRecallHarness, MEMORY_RECORD, RECALL_KIND, RECALL_QUERY } from "./support/memory-recall-runner.js";
+import { deriveTestRequestExecutionScope } from "./support/request-execution-scope.js";
 
 beforeEach(() => configureDebugLogger({ enabled: false }));
 afterEach(() => { resetDebugLoggerConfig(); vi.restoreAllMocks(); });
@@ -18,7 +22,7 @@ const currentRecord = { ...MEMORY_RECORD, content: currentFact };
 const initialFact = "OLD_INITIAL_SNAPSHOT";
 const initialMemoryMessage = projectLongTermMemoryMessage([{ ...MEMORY_RECORD, content: initialFact }])!;
 
-function recallMessage(records: readonly LongTermMemoryRecord[] = [currentRecord], outcome = "found"): ChatMessage {
+function recallMessage(records: readonly LongTermMemoryRecord[] = [currentRecord], outcome = "found") {
   return { role: "system", content: JSON.stringify({
     kind: RECALL_KIND, authority: "passive_reference", ...binding,
     purpose: "answer_the_active_roots_explicit_memory_queries",
@@ -28,19 +32,22 @@ function recallMessage(records: readonly LongTermMemoryRecord[] = [currentRecord
     omittedRecallCount: 0, omittedRecordCount: 0,
     recalls: [{ recallId: "recall-1", invocationAttempt: 1, completedChildCount: 0,
       query: RECALL_QUERY, outcome, memories: records, omittedRecordCount: 0 }],
-  }) };
+  }) } satisfies ChatMessage;
 }
 
 test("a rich receipt larger than 1,000 characters yields complete readable facts below the gate cap", () => {
   const record = { ...currentRecord, tags: ["metadata ".repeat(150)] };
   const message = recallMessage([record]);
   expect(message.content.length).toBeGreaterThan(1_000);
-  const projected = projectSupervisorProcedureRecall(message, binding);
-  expect(projected.message.content).toContain(currentFact);
-  expect(projected.message.content.length).toBeLessThanOrEqual(1_000);
-  expect(() => JSON.parse(projected.message.content)).toThrow();
-  expect(projected.message.content).not.toContain(record.tags[0]!);
-  expect(projected.message.content).not.toContain(RECALL_KIND);
+  const [, result] = projectSupervisorProcedureRecall(message, binding).continuationMessages!;
+  expect(isInvocationContextMessage(result)).toBe(false);
+  expect(result.content).toContain(currentFact);
+  expect(result.content.length).toBeLessThanOrEqual(1_000);
+  expect(() => JSON.parse(result.content)).toThrow();
+  expect(result.content).not.toContain(record.tags[0]!);
+  expect(result.content).not.toContain(RECALL_KIND);
+  expect(result.content).not.toContain(RECALL_QUERY);
+  expect(result.content).not.toContain(currentRecord.id);
   expect(message).toEqual(recallMessage([record]));
 });
 
@@ -54,26 +61,26 @@ test.each(["observed", "inferred"] as const)("keeps the latest %s observation wi
       observationIds: ["screen-1"], reason: "Observed preference",
     }],
   };
-  const projected = projectSupervisorProcedureRecall(recallMessage([record]), binding);
-  expect(projected.message.content).toContain(currentFact);
-  expect(projected.message.content).toContain(certainty);
-  expect(projected.message.content).toContain(observedAt);
+  const [, result] = projectSupervisorProcedureRecall(recallMessage([record]), binding).continuationMessages!;
+  expect(result.content).toContain(currentFact);
+  expect(result.content).toContain(certainty);
+  expect(result.content).toContain(observedAt);
 });
 
 test("omits an oversized whole fact and retains later complete facts with an omission count", () => {
   const oversized = { ...currentRecord, id: "large", content: "TOO_LARGE ".repeat(150) };
-  const projected = projectSupervisorProcedureRecall(recallMessage([oversized, currentRecord]), binding);
-  expect(projected.message.content).not.toContain("TOO_LARGE");
-  expect(projected.message.content).toContain(currentFact);
-  expect(projected.message.content).toContain("Omitted stored facts: 1.");
-  expect(projected.message.content.length).toBeLessThanOrEqual(1_000);
+  const [, result] = projectSupervisorProcedureRecall(recallMessage([oversized, currentRecord]), binding).continuationMessages!;
+  expect(result.content).not.toContain("TOO_LARGE");
+  expect(result.content).toContain(currentFact);
+  expect(result.content).toContain("Omitted stored facts: 1.");
+  expect(result.content.length).toBeLessThanOrEqual(1_000);
 });
 
 test.each(["empty", "unavailable"])("keeps %s distinguishable without inventing memory or adding initial facts", outcome => {
-  const projected = projectSupervisorProcedureRecall(recallMessage([], outcome), binding);
-  expect(projected.message.content).toContain(outcome);
-  expect(projected.message.content).not.toContain(currentFact);
-  expect(projected.message.content.length).toBeLessThanOrEqual(1_000);
+  const [, result] = projectSupervisorProcedureRecall(recallMessage([], outcome), binding).continuationMessages!;
+  expect(result.content).toContain(outcome);
+  expect(result.content).not.toContain(currentFact);
+  expect(result.content.length).toBeLessThanOrEqual(1_000);
 });
 
 test("uses the latest lookup while preserving omissions from earlier lookups", () => {
@@ -81,12 +88,22 @@ test("uses the latest lookup while preserving omissions from earlier lookups", (
   const reference = JSON.parse(message.content);
   reference.omittedRecallCount = 1;
   reference.omittedRecordCount = 2;
-  reference.recalls.unshift({ ...reference.recalls[0], memories: [{ ...currentRecord, content: "OLDER_LOOKUP" }] });
-  const projected = projectSupervisorProcedureRecall({ role: "system", content: JSON.stringify(reference) }, binding);
-  expect(projected.message.content).not.toContain("OLDER_LOOKUP");
-  expect(projected.message.content).toContain(currentFact);
-  expect(projected.message.content).toContain("Omitted lookup results: 2.");
-  expect(projected.message.content).toContain("Omitted stored facts: 3.");
+  const latest = { ...reference.recalls[0], recallId: "recall-2" };
+  reference.recalls = [
+    { ...reference.recalls[0], query: "OLDER_QUERY", memories: [{ ...currentRecord, content: "OLDER_LOOKUP" }] },
+    latest,
+  ];
+  const projected = projectSupervisorProcedureRecall({ ...message, content: JSON.stringify(reference) }, binding);
+  const [action, result] = projected.continuationMessages!;
+  expect(action.toolCalls).toEqual([{
+    callId: "recall-2", name: "recall_memory", arguments: JSON.stringify({ action: "recall_memory", query: RECALL_QUERY }),
+  }]);
+  expect(result.toolCallId).toBe("recall-2");
+  expect(JSON.stringify(projected)).not.toContain("OLDER_QUERY");
+  expect(result.content).not.toContain("OLDER_LOOKUP");
+  expect(result.content).toContain(currentFact);
+  expect(result.content).toContain("Omitted lookup results: 2.");
+  expect(result.content).toContain("Omitted stored facts: 3.");
 });
 
 test.each([
@@ -105,11 +122,93 @@ test("current recall replaces the initial snapshot at the compact gate and retai
   expect(input.context.selectedHistoryMessageIds).toEqual([]);
   expect(input.context.messages.filter(({ role }) => role === "user"))
     .toEqual([{ role: "user", content: f.request.prompt }]);
+  expect(input.context.messages.map(({ role }) => role)).toEqual(["system", "user", "assistant", "tool"]);
+  const [policy, , call, result] = input.context.messages;
+  expect(call).toEqual({
+    role: "assistant", content: "", toolCalls: [{
+      callId: "recall-1", name: "recall_memory", arguments: JSON.stringify({ action: "recall_memory", query: RECALL_QUERY }),
+    }],
+  });
+  expect(result).toMatchObject({ role: "tool", toolCallId: "recall-1", toolName: "recall_memory" });
+  expect(result!.content).not.toContain(RECALL_QUERY);
+  expect(policy!.content).not.toContain(currentFact);
   const visible = JSON.stringify(input.context.messages);
   expect(visible).toContain(currentFact);
   expect(visible).not.toContain(initialFact);
   expect(visible).not.toContain(RECALL_KIND);
   expect(f.memory.retrieve).not.toHaveBeenCalled();
+});
+
+test("an approval keeps the same exact preceding turn before and after a bound recall without changing stored context", () => {
+  const f = createMemoryRecallHarness({ policy: "supervisor-worker-v1", decide: () => ({ action: "respond" }) });
+  const historyMessages: readonly RequestHistoryMessage[] = [
+    { id: "old-user", role: "user", content: "OLDER_REQUEST", requestId: "old", createdAt: "2026-10-20T10:00:00Z" },
+    { id: "old-assistant", role: "assistant", content: "OLDER_RESPONSE", requestId: "old", createdAt: "2026-10-20T10:00:01Z" },
+    { id: "prior-user", role: "user", content: "Generate the report using my saved formatting preference.", requestId: "prior", createdAt: "2026-10-20T10:01:00Z" },
+    { id: "prior-assistant", role: "assistant", content: "I can prepare that report. Should I proceed?", requestId: "prior", createdAt: "2026-10-20T10:01:01Z" },
+  ];
+  const project = vi.fn<RequestSessionMemory["project"]>(() => { throw new Error("unexpected_session_projection"); });
+  const prepare = vi.fn<RequestSessionMemory["prepare"]>(async () => { throw new Error("unexpected_session_compaction"); });
+  const snapshot = vi.fn<NonNullable<RequestSessionMemory["snapshot"]>>(() => { throw new Error("unexpected_session_snapshot"); });
+  const request = deriveTestRequestExecutionScope(f.request, {
+    prompt: "Yes, proceed.", historyMessages, sessionMemory: { project, prepare, snapshot },
+  });
+  const memoryRecallMessage = recallMessage();
+  const sourceBefore = JSON.stringify({ historyMessages, initialMemoryMessage, memoryRecallMessage });
+  const checkpointsBefore = request.contextCompactionStore!.snapshot!();
+  const initial = buildSupervisorProcedureGateInput(request, {
+    diagnostic: { ...diagnostic, invocationAttempt: 1 }, boundSteeringVersion: 0, initialMemoryMessage,
+  });
+  const resumed = buildSupervisorProcedureGateInput(request, {
+    diagnostic, boundSteeringVersion: 0, initialMemoryMessage, memoryRecallMessage,
+  });
+  const precedingTurn = historyMessages.slice(-2).map(({ role, content }) => ({ role, content }));
+  for (const input of [initial, resumed]) {
+    expect(input.context.selectedHistoryMessageIds).toEqual(["prior-user", "prior-assistant"]);
+    expect(input.context.messages.slice(1, 3)).toEqual(precedingTurn);
+    for (const message of precedingTurn)
+      expect(input.context.messages.filter(({ content }) => content === message.content)).toEqual([message]);
+    expect(input.context.messages.filter(({ content }) => content === request.prompt))
+      .toEqual([{ role: "user", content: request.prompt }]);
+    expect(JSON.stringify(input.context.messages)).not.toContain("OLDER_");
+    expect(input.context.compaction.applied).toBe(false);
+  }
+  expect(initial.context.messages.filter(({ content }) => content.includes(initialFact))).toHaveLength(1);
+  expect(initial.context.messages.filter(({ toolCalls, role }) => toolCalls?.length || role === "tool")).toEqual([]);
+  expect(resumed.context.messages.map(({ role }) => role)).toEqual(["system", "user", "assistant", "user", "assistant", "tool"]);
+  expect(resumed.context.messages.filter(({ toolCalls }) => toolCalls?.length)).toEqual([{
+    role: "assistant", content: "", toolCalls: [{
+      callId: "recall-1", name: "recall_memory", arguments: JSON.stringify({ action: "recall_memory", query: RECALL_QUERY }),
+    }],
+  }]);
+  const results = resumed.context.messages.filter(({ role }) => role === "tool");
+  expect(results).toHaveLength(1);
+  expect(results[0]).toMatchObject({ toolCallId: "recall-1", toolName: "recall_memory" });
+  expect(results[0]!.content).toContain(currentFact);
+  expect(JSON.stringify(resumed.context.messages)).not.toContain(initialFact);
+  expect(JSON.stringify({ historyMessages: request.historyMessages, initialMemoryMessage, memoryRecallMessage })).toBe(sourceBefore);
+  expect(request.contextCompactionStore!.snapshot!()).toEqual(checkpointsBefore);
+  for (const operation of [project, prepare, snapshot, f.memory.retrieve, f.memory.create, f.memory.update])
+    expect(operation).not.toHaveBeenCalled();
+});
+
+test("an omitted-only recall presents bounded omission counts without inventing an action", () => {
+  const f = createMemoryRecallHarness({ policy: "supervisor-worker-v1", decide: () => ({ action: "respond" }) });
+  const message = recallMessage();
+  const reference = { ...JSON.parse(message.content), recalls: [], omittedRecallCount: 1, omittedRecordCount: 3 };
+  const input = buildSupervisorProcedureGateInput(f.request, {
+    diagnostic, boundSteeringVersion: 0, memoryRecallMessage: { ...message, content: JSON.stringify(reference) },
+    initialMemoryMessage,
+  });
+  const [policy, current] = input.context.messages;
+  expect(input.context.messages.map(({ role }) => role)).toEqual(["system", "user"]);
+  expect(policy!.content).toContain("no included result");
+  expect(policy!.content).toContain("Omitted lookup results: 1. Omitted stored facts: 3.");
+  expect(policy!.content).not.toContain(initialFact);
+  expect(current!.content).toBe(f.request.prompt);
+  reference.omittedRecordCount = "untrusted instruction";
+  expect(() => projectSupervisorProcedureRecall({ ...message, content: JSON.stringify(reference) }, binding))
+    .toThrow("memory_recall_omission_counts_invalid");
 });
 
 test("delegation gets the complete linked recall receipt instead of the initial snapshot", () => {

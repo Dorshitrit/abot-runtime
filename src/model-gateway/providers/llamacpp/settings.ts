@@ -11,10 +11,10 @@ export function resolveLlamaCppUrls(baseUrl: string): { apiUrl: string; serverUr
 }
 
 export function resolveLlamaCppProviderSettings(config?: ModelGatewayProviderConfig): {
-  apiUrl: string; headers: Record<string, string>;
+  apiUrl: string; serverUrl: string; headers: Record<string, string>;
 } {
   if (!config?.baseUrl?.trim()) throw new TypeError("llamacpp_base_url_required");
-  const { apiUrl } = resolveLlamaCppUrls(config.baseUrl.trim());
+  const urls = resolveLlamaCppUrls(config.baseUrl.trim());
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (config.apiKeyEnv !== undefined) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(config.apiKeyEnv)) {
@@ -24,5 +24,5 @@ export function resolveLlamaCppProviderSettings(config?: ModelGatewayProviderCon
     if (!apiKey) throw new TypeError(`missing llama.cpp API key env: ${config.apiKeyEnv}`);
     headers.Authorization = `Bearer ${apiKey}`;
   }
-  return { apiUrl, headers };
+  return { ...urls, headers };
 }

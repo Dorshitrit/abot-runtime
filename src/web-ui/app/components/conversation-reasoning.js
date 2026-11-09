@@ -12,24 +12,23 @@ export function createConversationReasoning({ documentRoot = document } = {}) {
     }
   }
 
-  function createNode(message) {
-    if (!message.thinkingText) return null;
+  function createNode(message, { allowEmpty = false } = {}) {
+    const shouldMountReasoning = allowEmpty || Boolean(message.thinkingText);
+    if (!shouldMountReasoning) return null;
     const details = documentRoot.createElement("details");
     details.className = "conversation-reasoning";
     details.open = expandedMessages.has(message.id);
     const summary = documentRoot.createElement("summary");
     summary.className = "conversation-reasoning-toggle";
-    summary.setAttribute("aria-label", message.thinkingText);
     const content = documentRoot.createElement("div");
     content.className = "thinking-body";
-    applyTextDirection(content, message.thinkingText);
-    content.innerHTML = renderMarkdown(message.thinkingText);
-    content.inert = !details.open;
     summary.appendChild(content);
     details.appendChild(summary);
-    renderedMessages.set(message.id, details);
+    const binding = { details, summary, content, text: undefined };
+    renderedMessages.set(message.id, binding);
+    updateNode(message);
     details.addEventListener("toggle", () => {
-      if (renderedMessages.get(message.id) !== details) return;
+      if (renderedMessages.get(message.id) !== binding) return;
       content.inert = !details.open;
       if (details.open) expandedMessages.add(message.id);
       else expandedMessages.delete(message.id);
@@ -37,10 +36,32 @@ export function createConversationReasoning({ documentRoot = document } = {}) {
     return details;
   }
 
+  function updateNode(message) {
+    const binding = renderedMessages.get(message.id);
+    if (!binding) return false;
+    const text = message.thinkingText || "";
+    if (binding.text === text) return false;
+    binding.text = text;
+    binding.details.hidden = !text;
+    binding.summary.setAttribute("aria-label", text);
+    applyTextDirection(binding.content, text);
+    binding.content.innerHTML = renderMarkdown(text);
+    binding.content.inert = !binding.details.open;
+    return true;
+  }
+
+  function update(messages) {
+    let changed = false;
+    for (const message of messages) {
+      if (updateNode(message)) changed = true;
+    }
+    return changed;
+  }
+
   function reset() {
     expandedMessages.clear();
     renderedMessages.clear();
   }
 
-  return { beginRender, createNode, reset };
+  return { beginRender, createNode, update, reset };
 }

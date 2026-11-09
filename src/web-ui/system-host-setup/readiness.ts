@@ -7,6 +7,8 @@ import { resolveSystemTarget } from "../../computer-access/targets.js";
 import type { HostStatus } from "../../computer-access/companion/protocol.js";
 import { OBSERVATION_CAPABILITY } from "../../computer-access/companion/observation-protocol.js";
 import { COMPUTER_CAPABILITY } from "../../computer-access/computer/native-validation.js";
+import { HOST_SECRET_PROTECTION_CAPABILITY } from "../../computer-access/companion/secret-protection-protocol.js";
+import { SYSTEM_OUTPUT_CAPABILITY } from "../../computer-access/companion/command-output-protocol.js";
 
 export type HostSetupPlatform = "windows" | "macos" | "linux";
 export type HostReadiness = Readonly<{
@@ -32,11 +34,13 @@ function classifyHostEnvironment(
   return "native";
 }
 
-function isCompanionComputerControlReady(status: HostStatus): boolean {
+function isCompanionAccessReady(status: HostStatus): boolean {
   if (!status.connected) return false;
   if (status.companion?.updateAvailable) return false;
   if (!status.capabilities?.includes(OBSERVATION_CAPABILITY)) return false;
-  return status.capabilities.includes(COMPUTER_CAPABILITY);
+  if (!status.capabilities.includes(COMPUTER_CAPABILITY)) return false;
+  if (!status.capabilities.includes(HOST_SECRET_PROTECTION_CAPABILITY)) return false;
+  return status.capabilities.includes(SYSTEM_OUTPUT_CAPABILITY);
 }
 
 function isCompanionNewerThanRuntime(status: HostStatus): boolean {
@@ -55,7 +59,7 @@ function readPairedCompanionReadiness(
     platforms: [],
     restartRequired: false,
   };
-  if (isCompanionComputerControlReady(status))
+  if (isCompanionAccessReady(status))
     return { ...base, ready: true, message: "Connected computer is ready." };
   if (isCompanionNewerThanRuntime(status))
     return {
@@ -79,9 +83,7 @@ function readPairedCompanionReadiness(
     companionUpdateRequired: true,
     platforms: status.identity ? [status.identity.os] : [],
     message:
-      status.companion?.updateAvailable === false
-        ? "Reinstall this computer's connection for computer tools and background collection. Your existing pairing is kept."
-        : "Update this computer's connection for computer tools and background collection. Your existing pairing is kept.",
+      "A compatible Companion update is required for computer tools and background collection. Your existing pairing is kept.",
   };
 }
 

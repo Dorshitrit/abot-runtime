@@ -29,6 +29,8 @@ import {
   traceLocalRequestFailure,
 } from "./local-request-diagnostics.js";
 import type { RequestSteeringAppendResult } from "../request/request-steering.js";
+import { SparkHomeAppearanceHost } from "../spark-home/appearance-host.js";
+import { bindSparkHomeOwnerActivity } from "./spark-home-owner-activity.js";
 
 export async function createLocalRuntimeOwner(
   config: RuntimeConfig,
@@ -47,10 +49,13 @@ export async function createLocalRuntimeOwner(
   const controls = new LocalRequestControls(publish);
   const activity = new LocalRuntimeOwnerActivity();
   const nativePermissions = new LocalNativePermissions();
+  const homeAppearance = new SparkHomeAppearanceHost();
   const application = createRuntimeApplication(config, {
     ...overrides,
     scheduledRequestOptions: (run) => controls.scheduled(run),
+    sparkHomeAppearance: () => homeAppearance.read(),
   });
+  const unsubscribeHome = bindSparkHomeOwnerActivity(application.services.sparkHomeGeneration, activity, publish);
   const maintenance = createLocalRuntimeMaintenance({ services: application.services, activity });
   const memory = new LocalMemoryDispatcher(application.services.longTermMemory);
   const savedApprovals = new SavedRequestApprovals(
@@ -85,6 +90,7 @@ export async function createLocalRuntimeOwner(
     unsubscribe();
     unsubscribeLearning?.();
     unsubscribeBasket?.();
+    unsubscribeHome();
     await application.stop();
     throw error;
   }
@@ -93,6 +99,11 @@ export async function createLocalRuntimeOwner(
     call(method, args, peer) {
       if (isLocalMaintenanceMethod(method)) return maintenance.call(method, args);
       return activity.run(async () => {
+        if (method === "sparkHomeHost.register") {
+          if (args.length) throw new Error("spark_home_host_registration_invalid");
+          homeAppearance.register(peer);
+          return null;
+        }
         if (isLocalNativePermissionMethod(method))
           return nativePermissions.call(method, args, peer);
         if (method === "controls.register") return controls.register(peer);
@@ -194,6 +205,7 @@ export async function createLocalRuntimeOwner(
       unsubscribe();
       unsubscribeLearning?.();
       unsubscribeBasket?.();
+      unsubscribeHome();
       listeners.clear();
       shutdown = application.stop();
       return shutdown;

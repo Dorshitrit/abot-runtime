@@ -7,6 +7,8 @@ import { createSparkChatFeature } from "../../web-ui/app/spark-chat-feature.js";
 import { createConversationView } from "../../web-ui/app/components/conversation-view.js";
 // @ts-expect-error Browser presentation.
 import { createSparkChatEmptyState } from "../../web-ui/app/components/spark-chat/empty-state.js";
+// @ts-expect-error Browser-only workspace view has no declaration surface.
+import { learningWorkspaceMarkup } from "../../web-ui/app/components/passive-learning/workspace-view.js";
 import { FakeElement } from "./support/model-setup-wizard-harness.js";
 
 const capture = vi.hoisted(() => ({ conversation: null as any, queue: null as any, panel: null as any, empty: null as any }));
@@ -39,14 +41,8 @@ async function harness(modelProfileId: string | null, profiles = [{ id: "model" 
   capture.queue = createSparkQueueFixture().queue;
   const baseDom = sparkDom(); baseDom.environmentSelect.value = "dev";
   const learningRoot = fakeDocument.createElement("div") as FakeElement;
-  for (const view of ["insights", "activity", "applications", "chat", "settings", "usage"]) {
-    const tab = fakeDocument.createElement("button"); tab.setAttribute("data-learning-tab", view);
-    const panel = fakeDocument.createElement("section"); panel.setAttribute("data-learning-panel", view); panel.hidden = true;
-    learningRoot.append(tab); learningRoot.append(panel);
-  }
-  const selector = fakeDocument.createElement("select") as FakeElement;
-  selector.setAttribute("data-learning-setting", "proactiveModelProfileId");
-  learningRoot.querySelector('[data-learning-panel="settings"]')!.append(selector);
+  learningRoot.innerHTML = learningWorkspaceMarkup("UTC");
+  const selector = learningRoot.querySelector('[data-learning-setting="proactiveModelProfileId"]')!;
   const dom = new Proxy(baseDom, { get: (target, key) => key === "learningRoot" ? learningRoot : Reflect.get(target, key) });
   const panelDom = sparkDom();
   let toggle = (_value: boolean) => {};

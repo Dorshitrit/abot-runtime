@@ -4,7 +4,7 @@ import { buildOpenAIResponsesPayload } from "../providers/openai.js";
 import { buildOllamaPayload } from "../providers/ollama.js";
 import { createOpenAIProviderAdapter } from "../providers/openai/adapter.js";
 import { validateModelGatewayMessages } from "../message-contract.js";
-import { resolveRequestMessages } from "./message-projection.js";
+import { projectChatGatewayMessages } from "./message-projection.js";
 import { countModelGatewayInputTokensWithOptions } from "./input-token-count.js";
 import { toolImageFixture, toolImageMessages } from "../../runtime/__tests__/support/tool-media-fixture.js";
 import { RequestToolMediaStore } from "../../runtime/attachments/request-tool-media.js";
@@ -32,7 +32,7 @@ function request(provider: "ollama" | "openai", messages: ChatMessage[]): ModelG
 
 test.each(["root", "worker"] as const)("%s pixels survive client validation and reach both provider payloads in the original evidence lane", async (lane) => {
   const messages = await imageMessages(lane);
-  expect(resolveRequestMessages({ messages })).toEqual(messages);
+  expect(projectChatGatewayMessages({ messages }).messages).toEqual(messages);
   const openai = buildOpenAIResponsesPayload(request("openai", messages)).input as Record<string, unknown>[];
   const ollama = buildOllamaPayload(request("ollama", messages)).messages as Record<string, unknown>[];
   const pixels = toolImageFixture().toString("base64");

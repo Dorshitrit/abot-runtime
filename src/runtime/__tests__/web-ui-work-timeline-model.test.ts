@@ -171,4 +171,25 @@ describe("unified work timeline chronology", () => {
     expect(entries[2]).toMatchObject({ action: { status: "completed", executorRole: "unknown" } });
   });
 
+  test("attributes canonical memory queue diagnostics to memory without assigning them an agent executor", () => {
+    const raw = event("memory.save.queued", 1, { stage: "long_term_memory", candidateCount: 2 });
+    const replay = event("Memory Save Queued", undefined, { eventName: "memory.save.queued", seqNo: 2,
+      stage: "long_term_memory", summary: "Saved source details" });
+    const original = structuredClone([raw, replay]);
+    const entries = build([raw, replay]);
+    expect(entries.map((entry) => entry.role)).toEqual(["memory", "memory"]);
+    expect(entries.filter((entry) => entry.kind === "event").map((entry) => entry.event)).toEqual(original);
+    expect([raw, replay]).toEqual(original);
+  });
+
+  test("does not infer memory ownership from display words or apply it to ownerless tool executions", () => {
+    const entries = build([
+      event("custom.notice", 1, { summary: "Memory Save Queued" }),
+      tool("tool.completed", 2, { executionId: "missing-owner", executorRole: "", stage: "long_term_memory", ok: true }),
+      event("memory.save.queued", 3, { stage: "long_term_memory" }),
+    ]);
+    expect(entries.map((entry) => entry.role)).toEqual(["unknown", "unknown", "memory"]);
+    expect(entries[1]).toMatchObject({ kind: "tool", action: { executorRole: "unknown", status: "completed" } });
+  });
+
 });

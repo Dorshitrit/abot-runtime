@@ -36,6 +36,27 @@ function modelEditor() {
 }
 
 describe("Configuration model presentation", () => {
+  test("opens only the first provider by default and retains each group's disclosure on redraw", () => {
+    const models = [
+      { id: "a", config: { provider: "local" } },
+      { id: "b", config: { provider: "cloud" } },
+      { id: "c", config: { provider: "local" } },
+      { id: "orphan", config: null },
+    ];
+    const { renderModelList } = createConfigModelRendering({ state: { selectedConfigModelId: "b" } });
+    function groups(markup: string) {
+      return [...markup.matchAll(/<details\b([^>]*)>([\s\S]*?)<\/details>/gu)].map(([, attrs, body]) => ({
+        open: /\sopen\b/u.test(attrs),
+        ids: [...body.matchAll(/data-model-id="([^"]+)"/gu)].map((match) => match[1]),
+      }));
+    }
+    expect(groups(renderModelList(models))).toEqual([
+      { open: true, ids: ["a", "c"] }, { open: false, ids: ["b"] }, { open: false, ids: ["orphan"] },
+    ]);
+    const disclosure = new Map([["local", false], ["cloud", true], ["", true]]);
+    expect(groups(renderModelList(models, disclosure)).map((group) => group.open)).toEqual([false, true, true]);
+  });
+
   test("starts the entire calibration section closed while keeping all profile controls mounted", () => {
     const { state, render } = modelEditor();
     let markup = render();

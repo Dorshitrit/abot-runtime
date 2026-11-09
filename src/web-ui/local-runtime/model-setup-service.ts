@@ -32,11 +32,12 @@ import {
 } from "./model-setup-provider.js";
 import { validateModelAddition } from "./model-setup-validation.js";
 import {
-  buildModelSetupProfile,
+  prepareModelSetupProfile,
   modelSetupResult,
 } from "./model-setup-identity.js";
 import { recoverCommittedModelAddition } from "./model-setup-retry.js";
 import { removeRuntimeModelDeclaration } from "./model-removal.js";
+import { changeRuntimeModelProvider } from "./model-provider-connection.js";
 import {
   isDiscoveredModelSetupProfileAtTarget,
   withModelSetupProfile,
@@ -123,6 +124,14 @@ export class ModelSetupService {
     );
   }
 
+  async updateProvider(body: Record<string, unknown>) {
+    return changeRuntimeModelProvider(await this.canonicalOptions(), body, "update");
+  }
+
+  async removeProvider(body: Record<string, unknown>) {
+    return changeRuntimeModelProvider(await this.canonicalOptions(), body, "remove");
+  }
+
   async add(body: Record<string, unknown>) {
     const input = parseModelSetupInput(body);
     const options = await this.canonicalOptions();
@@ -178,12 +187,12 @@ export class ModelSetupService {
         409,
       );
     const provider = planModelProvider(modelConfigMap(models.providers), input);
-    const profile = await buildModelSetupProfile(provider, input);
+    const prepared = await prepareModelSetupProfile(provider, input);
     const addition = {
       profileId: input.profileId,
       providerId: provider.id,
       provider: provider.config,
-      profile,
+      profile: prepared.profile,
     };
     await validateModelAddition(
       mergeRuntimeModelAddition(source, addition).config,
@@ -198,7 +207,7 @@ export class ModelSetupService {
       options,
       transaction,
       input.profileId,
-      profile,
+      prepared,
       async (declaration, assertProfileUnchanged) => {
         const candidate = mergeRuntimeModelAddition(source, {
           ...addition,

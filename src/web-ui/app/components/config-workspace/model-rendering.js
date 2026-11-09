@@ -3,12 +3,27 @@ import { isTokenBudgetModel, renderReasoningBudget, renderReasoningEffort } from
 import { renderReasoningModeBudgets } from "./reasoning-mode-budgets.js";
 import { configRequiresRawRepair } from "./raw-config-repair.js";
 import { escapeAttribute, escapeHtml, textOf } from "../../lib/text-format.js";
+import { groupModelSelectorOptions } from "../../lib/model-selector-options.js";
 import { isConfigObject } from "./config-model.js";
 import { renderModelPluginPermissions } from "./model-plugin-permissions.js";
 
 function modelListStatus(model, hasImage) {
   if (model.registered === false) return "Not registered";
   return hasImage ? "image input" : "text input";
+}
+
+function renderModelButton(model, selectedId) {
+  const active = model.id === selectedId;
+  const modalities = model.config?.capabilities?.inputModalities;
+  const hasImage = Array.isArray(modalities) && modalities.includes("image");
+  return `
+    <button class="config-model-button ${active ? "active" : ""}"
+      type="button" data-config-action="select-model"
+      data-model-id="${escapeAttribute(model.id)}"
+      aria-pressed="${active}" ${active ? 'aria-current="true"' : ""}>
+      <span>${escapeHtml(model.config?.label || model.id)}</span>
+      <small>${escapeHtml(modelListStatus(model, hasImage))}</small>
+    </button>`;
 }
 
 function renderModelRegistrationAction(model) {
@@ -32,35 +47,30 @@ export function createConfigModelRendering({
   renderFileActions,
   renderSelectOptions,
 }) {
-  function renderModelList(models) {
+  function renderModelList(models, providerDisclosure = new Map()) {
+    const groups = groupModelSelectorOptions(models.map((model) => ({
+      providerId: textOf(model.config?.provider),
+      model,
+    })));
     return `
       <div class="config-model-list" aria-label="Model profiles">
         <div class="config-model-list-title">
           <span>Model profiles</span>
           <small>${escapeHtml(String(models.length))}</small>
         </div>
-        ${models
-          .map((model) => {
-            const active = model.id === state.selectedConfigModelId;
-            const capabilities = model.config?.capabilities?.inputModalities;
-            const hasImage =
-              Array.isArray(capabilities) && capabilities.includes("image");
+        ${groups
+          .map(({ id, options }, index) => {
+            const provider = id || "Unassigned provider";
+            const open = providerDisclosure.get(id) ?? (index === 0);
             return `
-              <button
-                class="config-model-button ${active ? "active" : ""}"
-                type="button"
-                data-config-action="select-model"
-                data-model-id="${escapeAttribute(model.id)}"
-                aria-pressed="${active ? "true" : "false"}"
-                ${active ? 'aria-current="true"' : ""}
-              >
-                <span>${escapeHtml(model.config?.label || model.id)}</span>
-                <small>
-                  <span>${escapeHtml(model.config?.provider || "-")}</span>
-                  <span>${escapeHtml(modelListStatus(model, hasImage))}</span>
-                </small>
-              </button>
-            `;
+              <details class="config-model-provider-group" data-model-provider="${escapeAttribute(id)}" ${open ? "open" : ""}>
+                <summary class="config-model-provider-heading">
+                  <span>${escapeHtml(provider)}</span><small>${options.length}</small>
+                </summary>
+                <div class="config-model-provider-models">
+                  ${options.map(({ model }) => renderModelButton(model, state.selectedConfigModelId)).join("")}
+                </div>
+              </details>`;
           })
           .join("")}
       </div>

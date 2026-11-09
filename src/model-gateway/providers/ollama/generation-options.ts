@@ -11,11 +11,7 @@ export function readOptionalPositiveIntEnv(name: string): number | undefined {
 function resolveNumPredict(params: {
   baseOptions: Record<string, unknown>;
   derivedNumPredict: number;
-  enforceDerivedNumPredict: boolean;
 }): number | undefined {
-  if (params.enforceDerivedNumPredict) {
-    return params.derivedNumPredict;
-  }
   const environmentOverride = readOptionalPositiveIntEnv("OLLAMA_NUM_PREDICT");
   if (environmentOverride !== undefined) {
     return environmentOverride;
@@ -34,7 +30,6 @@ export function buildOllamaOptions(params: {
   };
   contextWindowTokens: number;
   derivedNumPredict: number;
-  enforceDerivedNumPredict: boolean;
 }): Record<string, unknown> {
   const options: Record<string, unknown> = {
     ...params.baseOptions,
@@ -57,22 +52,15 @@ export function buildOllamaOptions(params: {
 export function deriveOllamaNumPredict(params: {
   payload: Readonly<Record<string, unknown>>;
   invocation: ResolvedModelInvocation;
-  outputTokenLimit?: number;
 }): number {
   const estimatedInputTokens = estimateProviderEnvelopeInputTokens(
     params.payload,
     params.invocation.profile.context.tokenEstimation,
   );
-  const physicalRemainingTokens = Math.max(
-    1,
-    params.invocation.profile.contextWindowTokens - estimatedInputTokens,
-  );
+  // Ollama counts thinking and answer tokens against the same generation budget.
   return Math.max(
     1,
-    Math.min(
-      physicalRemainingTokens,
-      params.outputTokenLimit ?? physicalRemainingTokens,
-    ),
+    params.invocation.profile.contextWindowTokens - estimatedInputTokens,
   );
 }
 

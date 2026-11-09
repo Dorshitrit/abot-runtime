@@ -1,0 +1,43 @@
+.spark-home-frame-host { position: relative; isolation: isolate; overflow: hidden; }
+.spark-home-widget-overlay { position: absolute; inset: 0; overflow: hidden; pointer-events: none; contain: layout paint; }
+.spark-home-native-widget { position: absolute; pointer-events: auto; overflow: hidden; box-sizing: border-box; }
+.system-widget-card { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; overflow: hidden;
+  color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  font: 13px/1.5 var(--font-family, system-ui); text-align: start; }
+/* Let the generated HOME design supply the surface behind native cards. */
+.spark-home-native-widget > .system-widget-card,
+.spark-home-native-widget > .home-widget,
+.spark-home-native-widget > .home-widget:hover {
+  background: transparent; }
+.system-widget-card > header { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+.system-widget-origin { display: block; color: var(--muted); font-size: 10px; letter-spacing: .08em; }
+.system-widget-card h3 { color: var(--text-strong); margin: 2px 0 0; font-size: 14px; font-weight: 550; }
+.system-widget-content { overflow: auto; min-height: 0; padding: 0 16px 14px; }
+.system-widget-card button { appearance: none; padding: 3px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+  color: var(--text); font: inherit; text-align: start; cursor: pointer; }
+.system-widget-card button:hover:not(:disabled) { color: var(--text-strong); text-decoration: underline; text-underline-offset: 3px; background: transparent; }
+.system-widget-card button:focus-visible { outline: 1px solid var(--text); outline-offset: 3px; }
+.system-widget-card button:disabled { opacity: .45; cursor: default; }
+.system-widget-card .co-worker-candidate-actions { display: flex; flex-wrap: wrap; gap: 16px; }
+.system-widget-card .co-worker-candidate-actions button { margin: 0; padding: 3px 0; }
+.system-widget-card [data-candidate-action="delete"] { color: var(--muted); }
+.system-widget-note, .system-widget-list small, .system-widget-card footer { color: var(--muted); font-size: 12px; }
+.system-widget-list { padding: 0; margin: 0; list-style: none; }
+.system-widget-list > li { padding: 12px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.system-widget-list > li:last-child { border-bottom: 0; }
+.system-widget-list p { margin: 0 0 8px; white-space: pre-wrap; }
+.system-widget-list small { display: block; }
+.system-widget-card footer { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding-top: 12px; }
+.system-management-dialog { width: min(1080px, calc(100vw - 40px)); max-height: calc(100dvh - 40px); padding: 0;
+  box-sizing: border-box; border: 1px solid var(--line-strong, var(--line)); border-radius: 14px;
+  background: var(--bg); color: var(--text); box-shadow: 0 20px 80px #0007; }
+.system-management-dialog::backdrop { background: #0008; backdrop-filter: blur(3px); }
+.system-management-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 24px; border-bottom: 1px solid var(--line); }
+.system-management-header h2 { margin: 0; font-size: 18px; font-weight: 550; }
+.system-management-close { padding: 4px 8px; border: 0; background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
+.system-management-body { padding: 24px; overflow: auto; max-height: calc(100dvh - 150px); box-sizing: border-box; }
+.system-management-dialog [hidden] { display: none !important; }
+@media (max-width: 600px) { .system-management-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  .system-management-header, .system-management-body { padding: 14px; }
+  .system-management-body .skills-layout { grid-template-columns: 1fr; }
+}

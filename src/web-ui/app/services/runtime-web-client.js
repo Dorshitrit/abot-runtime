@@ -5,6 +5,7 @@ import { createSkillRequests } from "./runtime-web-client/skills.js";
 import { createStepTimeoutRequests } from "./runtime-web-client/step-timeout.js";
 import { createNotificationRequests } from "./runtime-web-client/notifications.js";
 import { createSparkChatRequests } from "./runtime-web-client/spark-chat.js";
+import { createSparkHomeRequests } from "./runtime-web-client/spark-home.js";
 import { createProjectChangesRequests } from "./runtime-web-client/project-changes.js";
 import { createProjectRequests } from "./runtime-web-client/projects.js";
 import { createSystemHostRequests } from "./runtime-web-client/system-host.js";
@@ -397,5 +398,6 @@ export function createRuntimeWebClient({
     ...createSkillRequests({ requestApi, getEnvironmentId, getConfig }),
     ...createInformationBasketRequests({ requestApi, getEnvironmentId, getConfig }),
     ...createSparkChatRequests({ requestApi, getEnvironmentId, getConfig }),
+    ...createSparkHomeRequests({ requestApi, resolveApiPath, getEnvironmentId, getConfig }),
   };
 }

@@ -1,6 +1,7 @@
 import {
   mkdir,
   readFile,
+  rmdir,
   symlink,
   truncate,
   writeFile,
@@ -142,20 +143,33 @@ describe.each([
     }
   });
 
-  test("rejects a junction outside the root while traversing the tree", async () => {
+  test.each([
+    { name: "redirect", broken: false },
+    { name: "package.json", broken: false },
+    { name: "broken link", broken: true },
+  ])("identifies the blocked entry $name when scanning a directory", async ({ name, broken }) => {
     const { context, root, inspect } = await fixture();
-    const outside = join(context.rootDir, "private");
+    const outside = join(context.rootDir, "private-target");
     await mkdir(outside);
-    await writeFile(join(outside, "private-name.txt"), "private body");
-    await symlink(
-      outside,
-      join(root, "redirect"),
-      process.platform === "win32" ? "junction" : "dir",
-    );
+    await symlink(outside, join(root, name), process.platform === "win32" ? "junction" : "dir");
+    if (broken) {
+      await rmdir(outside);
+    } else {
+      await writeFile(join(outside, "private-name.txt"), "private body");
+    }
+
     const refused = await inspect({ path: "." });
-    expect(refused.ok).toBe(false);
-    expect(refused.errorCode).toMatch(/^runtime_tool_path_/);
+    expect(refused).toMatchObject({
+      ok: false,
+      errorCode: "runtime_tool_path_symlink_escape",
+      error: expect.stringContaining(JSON.stringify(name)),
+      output: refused.error,
+      producedNewInformation: false,
+    });
     expect(refused.data).toBeUndefined();
+    expect(refused.output).toContain("within the allowed directory");
+    expect(refused.output).not.toContain(context.rootDir);
+    expect(refused.output).not.toContain("private-target");
     expect(refused.output).not.toContain("private-name");
   });
 

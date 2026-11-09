@@ -1,3 +1,4 @@
+import { isInvocationContextMessage } from "../../model-gateway/protocol/invocation-context.js";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ChatMessage, ModelGatewayAttachment } from "../../model-gateway/types.js";
 import { validateModelGatewayMessages } from "../../model-gateway/message-contract.js";
@@ -70,7 +71,10 @@ test("serialized initial targets rebind current user evidence without another lo
   expect(projected.authoringContext!.evidence.observedAt).toBe("2026-10-15T10:00:00.000Z");
   expect(projected.authoringContext!.userMessages).toEqual([f.request.prompt, "Remember that I prefer kilometres."]);
   expect(projected.authoringContext!.targets.get("k1")).toEqual(knowledge.entries[0]);
-  const shown = JSON.parse(projected.authoringContext!.message.content).entries;
+  const { message } = projected.authoringContext!;
+  expect(isInvocationContextMessage(message)).toBe(true);
+  expect(isInvocationContextMessage({ ...message })).toBe(false);
+  const shown = JSON.parse(message.content).entries;
   expect(shown).toEqual([expect.objectContaining({ ref: "k1", content: knowledge.entries[0]!.content })]);
   expect(shown[0]).not.toHaveProperty("id");
   expect(f.retrieve).toHaveBeenCalledOnce(); expect(f.prepare).toHaveBeenCalledOnce();
@@ -128,6 +132,10 @@ test.each(["direct", "deferred"])("%s authoring ignores extra knowledge fields a
   ] });
   f.invoke.mockImplementation(async input => {
     const messages = input.messages as readonly ChatMessage[];
+    const startup = messages.find(({ content }) => content === "Stored units reference")!;
+    const authoring = messages.find(({ content }) => content.includes(knowledge.entries[0]!.content))!;
+    expect(isInvocationContextMessage(startup)).toBe(true);
+    expect(isInvocationContextMessage(authoring)).toBe(true);
     expect(JSON.stringify(messages)).not.toContain("untrusted-extra");
     expect(JSON.stringify(messages)).not.toContain("forged-ref");
     expect(JSON.stringify(messages)).toContain(knowledge.entries[0]!.content);
@@ -199,7 +207,11 @@ test.each([...textMemoryMessages, ...toolMemoryMessages])("retains the existing 
   const saved = JSON.parse(JSON.stringify(ledger.current().state.initialMemory));
   expect(hasInitialMemoryContext(saved, "execution-agent-v1")).toBe(true);
   expect(await prepareInitialMemory(f.request, saved)).toEqual(initialMemory);
-  expect(projectExecutionAgentMemory(f.request, saved, f.requestSteering.snapshot()).memoryMessage).toEqual(message);
+  const projected = projectExecutionAgentMemory(f.request, saved, f.requestSteering.snapshot()).memoryMessage!;
+  expect(projected).toEqual(message);
+  expect(isInvocationContextMessage(projected)).toBe(message.role === "system" && !message.attachments?.length);
+  expect(isInvocationContextMessage(saved.message)).toBe(false);
+  expect(isInvocationContextMessage(message)).toBe(false);
   expect(f.retrieve).toHaveBeenCalledOnce();
   expect(f.prepare).toHaveBeenCalledOnce();
 });

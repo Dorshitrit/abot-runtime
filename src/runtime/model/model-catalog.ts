@@ -6,8 +6,13 @@ import type {
 } from "../../model-gateway/types.js";
 import { loadRequestRunnerConfig } from "../config/runner/loader.js";
 import { createRequestModelPolicy } from "../config/runner/model-policy.js";
+import type {
+  RequestExecutionPolicyId,
+  RuntimeModelExecutionPolicies,
+} from "../config/model-execution-policy.js";
 import type { RuntimeConfig } from "../ports.js";
 import { resolvedModelStepSupportsImageAttachments } from "./model-step-capability-policy.js";
+import { resolveModelSelection } from "./model-selection.js";
 
 export type RuntimeModelCatalogProfile = {
   id: string;
@@ -19,6 +24,7 @@ export type RuntimeModelCatalogProfile = {
   reasoningControls?: { budgetTokens: boolean };
   capabilities: ModelGatewayProfileCapabilities;
   supportsImageInput: boolean;
+  executionPolicy?: RequestExecutionPolicyId;
 };
 
 export type RuntimeModelCatalog = {
@@ -28,6 +34,7 @@ export type RuntimeModelCatalog = {
 
 export function projectRuntimeModelCatalog(
   modelPolicy: ModelGatewayPolicyConfig | undefined,
+  modelExecutionPolicies?: RuntimeModelExecutionPolicies,
 ): RuntimeModelCatalog {
   const providers = modelPolicy?.providers ?? {};
   const configuredProfiles = modelPolicy?.profiles ?? {};
@@ -63,6 +70,12 @@ export function projectRuntimeModelCatalog(
         providerId,
         provider: providerConfig.type,
         model: profile.model,
+        executionPolicy: resolveModelSelection({
+          agentMode: "auto",
+          modelPreference: { profileId: id },
+          modelPolicy,
+          modelExecutionPolicies,
+        }).execution.policy,
         supportsThinking: profile.supportsThinking === true,
         ...(supportsModelReasoningBudget({ provider: providerConfig.type, supportsThinking: profile.supportsThinking }) ? { reasoningControls: { budgetTokens: true } } : {}),
         capabilities: profile.capabilities ?? {
@@ -95,5 +108,6 @@ export function loadRuntimeModelCatalog(
       platformPolicy: config.models,
       runnerConfig,
     }),
+    config.modelExecutionPolicies,
   );
 }

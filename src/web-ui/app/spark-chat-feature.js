@@ -223,7 +223,7 @@ export function createSparkChatFeature({ dom, state: appState, client, shell, re
     if (["chat_message", "completed", "failed", "chat_read_state"].includes(message.type)) void sync.refresh();
   }
   return {
-    open, environmentChanged,
+    open, environmentChanged, openModelSettings, homeActivityRoot: panel.dom.homeActivity, isOpen: panel.isOpen,
     async sessionsReset(result, scope) {
       conversation.clearResetDraftData(scope, result.clearedSessionIds);
       if (scope !== getEnvironmentId()) return;

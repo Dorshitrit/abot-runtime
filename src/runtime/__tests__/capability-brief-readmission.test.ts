@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 import type { ToolAvailabilityEntry } from "../../capabilities/tool-types.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
+import { projectChatGatewayMessages } from "../../model-gateway/client/message-projection.js";
 import {
   isCapabilityBriefMessage,
   projectCapabilityBriefAtHeadroom,
@@ -101,6 +102,16 @@ test("does not resolve options or inject a brief removed by the base controller"
   expect(fixture.onReadmitted).not.toHaveBeenCalled();
 });
 
+test("only the admitted catalog instance carries placement permission across re-admission", () => {
+  const fixture = createFixture();
+  expect(projectChatGatewayMessages({ messages: fixture.messages }).invocationContextMessageIndices).toEqual([2]);
+  const copied = fixture.messages.map((message) => ({ ...message }));
+  const readmitted = fixture.wrapped.project(copied);
+  expect(readmitted).toEqual(fixture.messages);
+  expect(readmitted[2]).toBe(copied[2]);
+  expect(projectChatGatewayMessages({ messages: readmitted }).invocationContextMessageIndices).toBeUndefined();
+});
+
 test("ample headroom returns the exact base projection without notification or mutation", () => {
   const fixture = createFixture();
   const projected = [...fixture.messages];
@@ -129,6 +140,7 @@ test("resolves fresh options after projection and preserves every nonbrief at it
   expect(fixture.project).toHaveBeenCalledExactlyOnceWith(fixture.messages);
   expect(result).not.toBe(projected);
   expect(result.findIndex(isCapabilityBriefMessage)).toBe(2);
+  expect(projectChatGatewayMessages({ messages: result }).invocationContextMessageIndices).toEqual([2]);
   for (const index of [0, 1, 3, 4])
     expect(result[index]).toBe(projected[index]);
   expect(fixture.onReadmitted).toHaveBeenCalledExactlyOnceWith(
@@ -168,6 +180,7 @@ test.each(["additional messages", "schema"] as const)(
     });
     const result = fixture.wrapped.project(fixture.messages);
     expect(result.some(isCapabilityBriefMessage)).toBe(false);
+    expect(projectChatGatewayMessages({ messages: result }).invocationContextMessageIndices).toBeUndefined();
     expect(result).toEqual(
       fixture.messages.filter((message) => !isCapabilityBriefMessage(message)),
     );

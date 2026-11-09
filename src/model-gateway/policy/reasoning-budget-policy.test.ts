@@ -203,7 +203,7 @@ describe("profile-bound reasoning budgets", () => {
     ];
     const body = buildChatGatewayRequestBody(
       { agentMode: "fast", reasoningPreference },
-      messages,
+      { messages },
       policy(),
     );
     expect(body.reasoningPreference).toEqual(reasoningPreference);

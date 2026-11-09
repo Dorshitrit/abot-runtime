@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "web",
   "version": "0.1.0",
-  "description": "Search the public web and read content from public URLs.",
+  "description": "Discover public pages with web_search; read content from exact known public HTTP(S) URLs with web_fetch.",
   "extensions": {
     "ai.abot.compatibility": {
       "version": 1,
@@ -94,7 +94,7 @@
           }
         },
         "web_fetch": {
-          "description": "Fetch readable text from one or more real public http(s) domain URLs. This capability cannot access local files, configured work paths, file URLs, localhost, or private-network targets. Provide url for one page, or urls for up to three pages.",
+          "description": "Read page content from exact public HTTP(S) URLs supplied by the user or found in search results or retrieved content. Copy URLs unchanged; never invent or repair article paths. Use web_search to discover pages when no exact URL is available. Cannot access local files, configured work paths, file URLs, localhost, or private-network targets. Provide url for one page, or urls for up to three pages.",
           "routingCapability": "web_lookup",
           "developmentRoles": ["auxiliary"],
           "eventPresentation": {
@@ -106,7 +106,7 @@
           "skills": ["web_fetch_skill"],
           "operations": {
             "fetch_one": {
-              "summary": "Fetch readable content from one real public http(s) domain URL; never use this operation for local files, configured work paths, localhost, or private-network targets.",
+              "summary": "Read one public HTTP(S) URL already supplied by the user or found in search results or retrieved content. Copy it unchanged; never invent or repair article paths. Cannot access local files, configured work paths, file URLs, localhost, or private-network targets.",
               "outputChannels": {"text": "content", "data": "metadata"},
               "input": {
                 "type": "object",
@@ -124,7 +124,7 @@
               "approval": "request_policy"
             },
             "fetch_many": {
-              "summary": "Fetch readable content from up to three real public http(s) domain URLs; never use this operation for local files, configured work paths, localhost, or private-network targets.",
+              "summary": "Read up to three public HTTP(S) URLs already supplied by the user or found in search results or retrieved content. Copy them unchanged; never invent or repair article paths. Cannot access local files, configured work paths, file URLs, localhost, or private-network targets.",
               "outputChannels": {"text": "content", "data": "metadata"},
               "input": {
                 "type": "object",

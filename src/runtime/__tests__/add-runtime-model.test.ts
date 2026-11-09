@@ -67,7 +67,9 @@ describe("add-runtime-model", () => {
       "models",
       "default.config.json",
     );
-    const existingModel = await readFile(existingModelPath, "utf-8");
+    const customProfile = { ...await readJson(existingModelPath), generation: { temperature: 0.7 } };
+    const existingModel = JSON.stringify(customProfile);
+    await writeFile(existingModelPath, existingModel, "utf-8");
     const runnerPath = join(targetRoot, "local", "request-runner.config.json");
     const existingRunner = await readFile(runnerPath, "utf-8");
 
@@ -347,6 +349,7 @@ describe("add-runtime-model", () => {
       join(targetRoot, "local", "models", "second-local.config.json"),
     );
     expect(profile).toMatchObject({
+      generation: { temperature: 0 },
       context: {
         tokenEstimation: {
           asciiCharactersPerToken: 3,

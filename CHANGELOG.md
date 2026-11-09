@@ -4,6 +4,64 @@ All notable changes to this project should be documented in this file.
 
 This project follows semantic versioning after the first public release.
 
+## 2.3.0 - 2026-11-09
+
+ABot 2.3.0 introduces SPARK HOME, improves model and provider management,
+and preserves more useful context across longer conversations and local model
+chat templates.
+
+### Added
+
+- Generate and calibrate SPARK HOME explicitly in an isolated workspace, with
+  reusable dashboard and management widgets, actionable approval waits,
+  cancellation, and bounded resource reads.
+- View native live system metrics from HOME, with host and container scope
+  reflected in the reported readings.
+- Inspect and act on memory candidates from the knowledge interface.
+- Select a provider before a model, manage saved provider connections, and see
+  model routes and SPARK provider details in the interface.
+- Resize chat panels and choose an embedding provider explicitly when setting up
+  Continue with ChatGPT.
+
+### Changed
+
+- Newly created Ollama and llama.cpp model profiles default to temperature zero;
+  existing configured profiles keep their settings.
+- Ollama decision calls use the configured output budget without an additional
+  fixed token cap.
+- Built-in Skills have clearer display names with their intended casing.
+- Computer Use and web-fetch guidance more clearly describe desktop interaction
+  and source retrieval.
+
+### Fixed
+
+- Require the connected Companion's computer-access and protected-result
+  capabilities before reporting readiness, and show compatible-update guidance
+  without implying that a Microsoft Store update is already available.
+  Preserve existing pairing.
+- Use OS process identity for new Runtime and Scheduler leases so a reused PID
+  after restart does not retain stale ownership. Keep live owners and
+  conservatively retain leases for live PIDs with missing or unverifiable
+  identity.
+- Avoid duplicate copies of exact tool output in Worker and compaction input,
+  preserving canonical receipts, distinct summaries, and source identities.
+- Size SUPER compaction windows by measured model budgets and reuse saved
+  summaries while the full continuation fits, reducing repeated compaction.
+- Reuse verified child tool evidence on Supervisor return and limit Reviewer
+  compacted evidence to executions in the declared review scope.
+- Preserve settled tool history, recalled memory, and Supervisor evidence through
+  procedure decisions and final response authoring.
+- Retain SUPER compaction evidence within measured input budgets and defer
+  handoff compaction until continuation admission requires it.
+- Preserve system instructions and producer-scoped context through llama.cpp
+  chat templates, recheck the counted layout before dispatch, and recognize
+  Jinja template refusals returned as HTTP 500 responses. Template inspection
+  honors the original request lifetime and supports bounded diagnostics.
+- Keep model-picker keyboard focus stable during catalog refresh, make HOME
+  widget layout and lifecycle more reliable, and stabilize thinking updates.
+- Identify blocked project entries accurately and handle non-UTF-8 search paths
+  portably.
+
 ## 2.2.1 - 2026-10-31
 
 ### Fixed

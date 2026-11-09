@@ -124,7 +124,7 @@ export function createConfigWorkspaceView({
     syncDashboardSummary();
   }
 
-  function renderConfigDashboard() {
+  function renderConfigDashboard({ revealProvider } = {}) {
     modelPluginViewState?.capture();
     const dashboard = state.configDashboard;
     if (!dashboard?.files) {
@@ -138,6 +138,11 @@ export function createConfigWorkspaceView({
     if (!selectedConfigModelIsAvailable(models)) {
       state.selectedConfigModelId = models[0]?.id || "";
     }
+    const providerDisclosure = new Map(Array.from(
+      dom.configDashboard.querySelectorAll("details[data-model-provider]"),
+      (details) => [details.dataset.modelProvider, details.open],
+    ));
+    if (revealProvider !== undefined) providerDisclosure.set(revealProvider, true);
     ensureRawSelection();
     const repairNeeded = configFileEntries().some((file) =>
       configRequiresRawRepair(
@@ -158,7 +163,7 @@ export function createConfigWorkspaceView({
           `<section class="config-section models-section">
             ${renderModelSetupEntry(runtime, models)}
             <div class="config-model-layout">
-              ${renderModelList(models)}
+              ${renderModelList(models, providerDisclosure)}
               ${renderSelectedModelEditor(models)}
             </div>
           </section>`,
@@ -196,10 +201,11 @@ export function createConfigWorkspaceView({
 
   function selectModel(profileId) {
     const models = state.configDashboard?.files?.models || [];
-    if (!models.some((model) => model.id === profileId)) return false;
+    const model = models.find((item) => item.id === profileId);
+    if (!model) return false;
     state.selectedConfigModelId = profileId;
     state.activeCategory = "models";
-    renderConfigDashboard();
+    renderConfigDashboard({ revealProvider: textOf(model.config?.provider) });
     onNavigationChange();
     return true;
   }

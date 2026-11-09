@@ -37,7 +37,7 @@ test("Skill selection accepts the full eight-ID bound without changing order", (
   });
 });
 
-test.each(["Computer Use", "unknown-guide", "Computer-use", "already-read-guide"])(
+test.each(["Desktop GUI Interaction", "unknown-guide", "Computer-use", "already-read-guide"])(
   "Skill selection atomically rejects a mixed batch containing ineligible ID %s", (ineligibleId) => {
     const skillIds = Object.freeze(["computer-use", ineligibleId]);
     const result = parse({ action: "read_skills", skillIds });

@@ -1,5 +1,6 @@
 import { createEventRefresh } from "../lib/event-refresh.js";
 import { learningFailureCopy } from "../components/passive-learning/failure-copy.js";
+import { createKnowledgeCandidateActions } from "./knowledge-candidate-actions.js";
 
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
@@ -66,11 +67,20 @@ export function createPassiveLearningController({
   }
   const snapshot = () => ({
     ...state,
+    ...candidateActions.snapshot(),
     environmentId,
     learningActive: learningActive(),
     homeActive: homeActive(),
   });
   const publish = () => render(snapshot());
+  const candidateActions = createKnowledgeCandidateActions({ client, getEnvironmentId, isRuntimeReady,
+    getCandidates: () => state.candidates, onChange: publish,
+    onCommitted: ({ id }) => {
+      revision += 1;
+      state.candidates = state.candidates.filter(candidate => candidate.id !== id);
+      markStale();
+    },
+  });
   function currentRead(readEnvironmentId, readRevision) {
     if (!isRuntimeReady()) return false;
     if (readRevision !== revision) return false;
@@ -219,6 +229,7 @@ export function createPassiveLearningController({
   }
 
   function resetEnvironment() {
+    candidateActions.reset();
     eventRefresh.cancel();
     runtimeReady = isRuntimeReady();
     revision += 1;
@@ -405,6 +416,8 @@ export function createPassiveLearningController({
 
   return Object.freeze({
     snapshot,
+    promoteCandidate: candidateActions.promoteCandidate,
+    deleteCandidate: candidateActions.deleteCandidate,
     runtimeAvailabilityChanged,
     publish,
     restartCollection,

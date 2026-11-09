@@ -84,16 +84,18 @@ export function createDashboardWorkspace({ root, actions, passiveLearning }) {
       ),
     refresh: () => actions.refresh(),
   };
-  root.addEventListener("click", (event) => {
+  function handlePanelAction(panel, event) {
     const button = event.target.closest("button[data-dashboard-action], button[data-dashboard-resource-action]");
-    if (!button || !root.contains(button) || button.disabled) return;
+    if (!button || !panel.contains(button) || button.disabled) return;
     if (button.dataset.dashboardResourceAction) {
       void actions.resourceAction?.(button.dataset.dashboardResourceAction,
         button.dataset.sourceId, Number(button.dataset.sourceRevision));
       return;
     }
     handlers[button.dataset.dashboardAction]?.(button);
-  });
+  }
+  for (const panel of [activity, conversations, approvals, automationPanel, resourcesPanel])
+    panel.addEventListener("click", event => handlePanelAction(panel, event));
 
   function render(snapshot) {
     currentSnapshot = snapshot;

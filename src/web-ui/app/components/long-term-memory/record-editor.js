@@ -28,7 +28,7 @@ export function renderMemoryRecordEditor(view) {
       </div>
       <label>
         <span>What should ABot remember?</span>
-        <textarea data-memory-editor-content rows="3" required ${busy ? "disabled" : ""}>${escapeHtml(content)}</textarea>
+        <textarea spellcheck="false" data-memory-editor-content rows="3" required ${busy ? "disabled" : ""}>${escapeHtml(content)}</textarea>
       </label>
       <label>
         <span>Tags <small>Separate with commas</small></span>

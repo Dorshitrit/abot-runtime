@@ -1,16 +1,15 @@
 import { opendir, stat } from "node:fs/promises";
-import { posix } from "node:path";
 
 import type {
   ResolvedRuntimeToolPath,
   RuntimePluginLoadContext,
 } from "../../../src/plugin-sdk/index.js";
-import { resolvePluginPath } from "../../../src/plugin-sdk/index.js";
 
 import {
   ProjectInspectionError,
   throwIfProjectInspectionCancelled,
 } from "./inspection-failure.js";
+import { resolveProjectEntry } from "./project-target.js";
 
 const IGNORED_NAMES = new Set([".git", "node_modules", "dist", "coverage"]);
 export const PROJECT_SCAN_ENTRY_LIMIT = 1_000;
@@ -24,15 +23,6 @@ export type ProjectTreeListing = Readonly<{
   entries: readonly ProjectTreeEntry[];
   scannedEntries: number;
 }>;
-
-function childLogicalPath(
-  parent: ResolvedRuntimeToolPath,
-  childName: string,
-): string {
-  return parent.logicalPath === "."
-    ? childName
-    : posix.join(parent.logicalPath, childName);
-}
 
 function relativeEntryPath(
   root: ResolvedRuntimeToolPath,
@@ -84,10 +74,7 @@ export async function collectProjectTree(
     names.sort(compareNames);
     for (const name of names) {
       throwIfProjectInspectionCancelled(signal);
-      const child = resolvePluginPath(context, childLogicalPath(current.target, name), {
-        requirePath: true,
-        allowedLocations: ["agent_work", "workspace"],
-      });
+      const child = resolveProjectEntry(context, current.target, name);
       const info = await stat(child.absolutePath);
       const path = relativeEntryPath(root, child);
       if (info.isDirectory()) {

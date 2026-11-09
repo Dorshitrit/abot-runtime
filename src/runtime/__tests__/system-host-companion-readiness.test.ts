@@ -5,11 +5,19 @@ import {
   COMPANION_RELEASE_VERSION,
 } from "../../computer-access/companion/release-version.js";
 import { COMPUTER_CAPABILITY } from "../../computer-access/computer/native-validation.js";
+import { HOST_SECRET_PROTECTION_CAPABILITY } from "../../computer-access/companion/secret-protection-protocol.js";
+import { SYSTEM_OUTPUT_CAPABILITY } from "../../computer-access/companion/command-output-protocol.js";
+import { OBSERVATION_CAPABILITY } from "../../computer-access/companion/observation-protocol.js";
 import { readHostReadiness } from "../../web-ui/system-host-setup/readiness.js";
 // @ts-expect-error Browser-only module.
 import { createSystemHostConnectionManager } from "../../web-ui/app/components/system-host/manager.js";
 // @ts-expect-error Browser-only module.
 import { renderSystemHostConnection } from "../../web-ui/app/components/system-host/rendering.js";
+
+const accessCapabilities = [
+  OBSERVATION_CAPABILITY, COMPUTER_CAPABILITY,
+  HOST_SECRET_PROTECTION_CAPABILITY, SYSTEM_OUTPUT_CAPABILITY,
+];
 
 function companionStatus(
   os: "windows" | "macos" | "linux",
@@ -79,7 +87,7 @@ test.each([COMPANION_RELEASE_VERSION, COMPANION_RELEASE_VERSION + 1])(
   "advertised computer support at release %s makes the companion ready without a required update",
   async (version) => {
     const readiness = await readHostReadiness(
-      companionStatus("macos", version, [COMPUTER_CAPABILITY, "passive-observations-v1"]),
+      companionStatus("macos", version, accessCapabilities),
       { facts: { platform: "darwin", kernelRelease: "Darwin" } },
     );
     expect(readiness).toMatchObject({
@@ -169,9 +177,10 @@ test("known newer release metadata still prevents offering an offline downgrade"
 });
 
 test("a failed Windows replacement keeps Store connection available without unpairing until a capable companion reconnects", async () => {
-  let status: HostStatus = companionStatus("windows", 2, [
-    "passive-observations-v1",
-  ]);
+  let status: HostStatus = companionStatus(
+    "windows", COMPANION_RELEASE_VERSION,
+    accessCapabilities.filter((capability) => capability !== HOST_SECRET_PROTECTION_CAPABILITY),
+  );
   const requestStoreConnection = vi.fn(async () => ({
     ok: true,
     launchUrl: "abot-companion://connect?invitation=private_test_invitation",
@@ -208,6 +217,8 @@ test("a failed Windows replacement keeps Store connection available without unpa
   try {
     manager.setActive(true);
     await vi.waitFor(() => expect(manager.state.busy).toBe(false));
+    expect(manager.state.snapshot.readiness.ready).toBe(false);
+    expect(root.innerHTML).toContain("https://apps.microsoft.com/detail/9PK2FDQQLQS9");
     expect(await manager.install("windows")).toBe(true);
     status = { paired: true, connected: false, identity: status.identity };
     await manager.load(true);
@@ -220,9 +231,7 @@ test("a failed Windows replacement keeps Store connection available without unpa
     expect(downloadSetup).not.toHaveBeenCalled();
     expect(revokeConnection).not.toHaveBeenCalled();
 
-    status = companionStatus("windows", COMPANION_RELEASE_VERSION, [
-      COMPUTER_CAPABILITY, "passive-observations-v1",
-    ]);
+    status = companionStatus("windows", COMPANION_RELEASE_VERSION, accessCapabilities);
     await manager.load();
     expect(manager.state.snapshot.readiness.ready).toBe(true);
     expect(manager.state.windowsStoreInvitation).toBeNull();
@@ -232,3 +241,35 @@ test("a failed Windows replacement keeps Store connection available without unpa
     manager.dispose();
   }
 });
+
+test.each(accessCapabilities)(
+  "current release without %s keeps computer access unavailable",
+  async (missingCapability) => {
+    for (const os of ["windows", "macos", "linux"] as const) {
+      const status = companionStatus(
+        os, COMPANION_RELEASE_VERSION,
+        accessCapabilities.filter((capability) => capability !== missingCapability),
+      );
+      expect(status.companion?.updateAvailable).toBe(false);
+      const readiness = await readHostReadiness(status, {
+        facts: { platform: "linux", kernelRelease: "Linux", containerMarker: true },
+      });
+      expect(readiness).toMatchObject({
+        ready: false, route: "companion",
+        companionUpdateRequired: true, platforms: [os],
+      });
+      expect(renderSystemHostConnection({ snapshot: { ...status, readiness }, supported: true }))
+        .toContain('data-tone="unavailable"');
+    }
+  },
+);
+
+test.each(["windows", "macos", "linux"] as const)(
+  "a protected current-release %s companion remains ready without a version bump",
+  async (os) => {
+    const status = companionStatus(os, COMPANION_RELEASE_VERSION, accessCapabilities);
+    expect(await readHostReadiness(status, {
+      facts: { platform: "linux", kernelRelease: "Linux", containerMarker: true },
+    })).toMatchObject({ ready: true, platforms: [] });
+  },
+);

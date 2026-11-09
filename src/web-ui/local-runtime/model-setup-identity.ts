@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { join } from "node:path";
 import {
   buildModelConfig,
@@ -9,7 +10,7 @@ import type { planModelProvider } from "./model-setup-provider.js";
 
 type ModelProviderPlan = ReturnType<typeof planModelProvider>;
 
-export async function buildModelSetupProfile(
+export async function prepareModelSetupProfile(
   provider: ModelProviderPlan,
   input: ModelSetupInput,
 ) {
@@ -19,17 +20,30 @@ export async function buildModelSetupProfile(
       "examples/models/default.config.json",
     ),
   );
-  return {
+  const buildProfile = (applyCreationTemperature: boolean) => ({
     ...buildModelConfig(
       template,
       String(provider.config.type),
       input.model,
       input.contextWindowTokens,
       input,
+      undefined,
+      applyCreationTemperature,
     ),
     provider: provider.id,
+  });
+  const profile = buildProfile(true);
+  return {
+    profile,
+    matchesSaved(saved: Record<string, unknown>) {
+      if (isDeepStrictEqual(saved, profile)) return true;
+      // Profiles created before the sampling default must match that entire earlier shape.
+      return isDeepStrictEqual(saved, buildProfile(false));
+    },
   };
 }
+
+export type PreparedModelSetupProfile = Awaited<ReturnType<typeof prepareModelSetupProfile>>;
 
 export function modelSetupResult(
   provider: ModelProviderPlan,

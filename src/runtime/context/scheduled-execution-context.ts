@@ -1,3 +1,4 @@
+import { markInvocationContextMessage } from "../../model-gateway/protocol/invocation-context.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { RequestExecutionSeed } from "../request/contracts.js";
 
@@ -56,7 +57,7 @@ export function projectScheduledExecutionContext(
       SCHEDULED_EXECUTION_PHASE_POLICY[phase],
     ].join("\n\n"),
     referenceMessages: Object.freeze([
-      Object.freeze({
+      markInvocationContextMessage({
         role: "system" as const,
         content: JSON.stringify(capsule),
       }),

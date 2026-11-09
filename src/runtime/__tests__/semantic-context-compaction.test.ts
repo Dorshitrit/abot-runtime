@@ -563,6 +563,10 @@ describe("semantic request-context compaction", () => {
         }),
       ]),
     });
+    const checkpointBeforeHandoff = contextCompactionStore.get(
+      `worker:${call.callId}:request-tool-results`,
+    );
+    const modelCountBeforeHandoff = modelInputs.length;
     authorResult = true;
     await expect(
       runWorkerDecision(request, {
@@ -579,22 +583,8 @@ describe("semantic request-context compaction", () => {
     expect(JSON.stringify(handoffWorkerInput?.messages)).toContain(
       "RAW_EVIDENCE_5",
     );
-    const handoffCompactionInputs = modelInputs.filter(
-      ({ modelStep }) => modelStep === "super.compact.coverage",
-    );
-    expect(handoffCompactionInputs).toHaveLength(compactionInputs.length + 1);
-    const handoffContinuation = modelInputs
-      .filter(({ modelStep }) => modelStep === "super.compact.continuation")
-      .at(-1)!;
-    expect(
-      JSON.parse(readModelMessages(handoffContinuation.messages)[1]!.content)
-        .baseCapsule,
-    ).toMatchObject({
-      sourceSlice: {
-        sourceRef: "execution-5",
-        content: JSON.stringify(handoffRequestToolResults.results.at(-1)!),
-      },
-    });
+    expect(modelInputs.slice(modelCountBeforeHandoff).map(({ modelStep }) => modelStep))
+      .toEqual([WORKER_DECISION_MODEL_STEP, WORKER_RESULT_MODEL_STEP]);
     const resultAuthorInputs = modelInputs.filter(
       ({ modelStep }) => modelStep === WORKER_RESULT_MODEL_STEP,
     );
@@ -606,29 +596,12 @@ describe("semantic request-context compaction", () => {
     expect(resultAuthorMessages).toContain("evidence/source-1.md");
     expect(resultAuthorMessages).toContain("Task-relevant execution-1 facts.");
     expect(resultAuthorMessages).toContain("Task-relevant execution-4 facts.");
-    expect(resultAuthorMessages).toContain("Task-relevant execution-5 facts.");
+    expect(resultAuthorMessages).toContain("RAW_EVIDENCE_5");
     expect(resultAuthorMessages).not.toContain("RAW_EVIDENCE_1");
     expect(resultAuthorMessages).not.toContain("RAW_EVIDENCE_4");
-    expect(resultAuthorMessages).not.toContain("RAW_EVIDENCE_5");
     expect(
       contextCompactionStore.get(`worker:${call.callId}:request-tool-results`),
-    ).toMatchObject({
-      sourceRevision: 12,
-      sourceDigests: expect.arrayContaining([
-        {
-          sourceRef: "execution-5",
-          sourceFingerprint: createSemanticCompactionSha256Fingerprint(
-            JSON.stringify(handoffRequestToolResults.results.at(-1)!),
-          ),
-          digest: expect.stringContaining("Task-relevant execution-5 facts."),
-        },
-      ]),
-      continuation: {
-        currentState: [1, 2, 3, 4, 5]
-          .map((index) => `Task-relevant execution-${index} facts.`)
-          .join("\n"),
-      },
-    });
+    ).toBe(checkpointBeforeHandoff);
 
     authorResult = false;
     const remediationCall: RoleCallFrame = Object.freeze({
@@ -702,7 +675,7 @@ describe("semantic request-context compaction", () => {
     expect(remediationMessages).not.toContain("RAW_EVIDENCE_7");
     const remediationSources = modelInputs
       .filter(({ modelStep }) => modelStep === "super.compact.coverage")
-      .slice(handoffCompactionInputs.length)
+      .slice(compactionInputs.length)
       .flatMap(({ messages }) => {
         const payload = JSON.parse(
           readModelMessages(messages)[1]!.content,

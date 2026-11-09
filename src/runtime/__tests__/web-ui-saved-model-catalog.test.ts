@@ -97,6 +97,10 @@ test.each(["default", "step-specific"])(
 );
 
 test("active-owner catalog keeps its applied model configuration after saved files change", async () => {
+  await fixture.writeModelProfile("default", {
+    ...await fixture.readModelProfile("default"),
+    execution: { policy: "execution-agent-v1" },
+  });
   vi.mocked(createLocalRuntimeApplication).mockImplementation(
     (config) =>
       ({
@@ -107,9 +111,14 @@ test("active-owner catalog keeps its applied model configuration after saved fil
   );
   const active = registry.get("prod");
   const before = registry.modelCatalog("prod");
+  expect(before.profiles[0]?.executionPolicy).toBe("execution-agent-v1");
   const runner = await savedRunner();
   const cached = loadRequestRunnerConfig({ configPath: runner.configPath });
   await renameSavedProfile(runner);
+  await fixture.writeModelProfile("repaired", {
+    ...await fixture.readModelProfile("repaired"),
+    execution: { policy: "supervisor-worker-v1" },
+  });
 
   expect(registry.modelCatalog("prod")).toEqual(before);
   expect(registry.modelCatalog("prod").defaultProfileId).toBe("default");
@@ -117,6 +126,21 @@ test("active-owner catalog keeps its applied model configuration after saved fil
   expect(loadRequestRunnerConfig({ configPath: runner.configPath })).toBe(
     cached,
   );
+});
+
+test("a no-owner catalog reads execution policy from the saved profile without starting an owner", async () => {
+  vi.mocked(createLocalRuntimeApplication).mockClear();
+  const profile = await fixture.readModelProfile("default");
+  await fixture.writeModelProfile("default", {
+    ...profile, execution: { policy: "execution-agent-v1" },
+  });
+  expect(registry.modelCatalog("prod").profiles[0]?.executionPolicy).toBe("execution-agent-v1");
+
+  await fixture.writeModelProfile("default", {
+    ...profile, execution: { policy: "supervisor-worker-v1" },
+  });
+  expect(registry.modelCatalog("prod").profiles[0]?.executionPolicy).toBe("supervisor-worker-v1");
+  expect(createLocalRuntimeApplication).not.toHaveBeenCalled();
 });
 
 test("a saved catalog retains the existing unknown environment rejection", () => {

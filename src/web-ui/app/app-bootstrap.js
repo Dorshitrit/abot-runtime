@@ -4,8 +4,10 @@ import { createPreferenceViewSync } from "./controllers/preference-view-sync.js"
 import { textOf } from "./lib/text-format.js";
 import { createAutomationsFeature } from "./automations-feature.js";
 import { createSparkChatFeature } from "./spark-chat-feature.js";
+import { createSparkHomeFeature } from "./spark-home-feature.js";
 import { canRestoreSparkAddress, sparkNotificationReference } from "./lib/spark-chat-address.js";
 import { createSparkHandoffNavigation } from "./controllers/spark-handoff-navigation.js";
+import { prepareSystemWidgetEnvironmentChange } from "./components/system-widgets/management-leave.js";
 
 export async function bootstrapWebApp({
   state,
@@ -39,7 +41,11 @@ export async function bootstrapWebApp({
     captureHandoffNavigation: createSparkHandoffNavigation({ state, getEnvironmentId: () => dom.environmentSelect.value,
       shell, conversation: navigation?.conversation, onNavigationChange: () => routes?.sync() }),
     onOpenSchedule: (jobId) => schedules.openJob(jobId) });
-  navigation?.bindings.setEnvironmentChangePreparation(spark.prepareEnvironmentChange, spark.refreshComposerSubmissionState);
+  const sparkHome = createSparkHomeFeature({ dom, dashboard, spark, client, shell, realtime,
+    getEnvironmentId: () => dom.environmentSelect.value });
+  navigation?.bindings.setEnvironmentChangePreparation(
+    () => prepareSystemWidgetEnvironmentChange(spark.prepareEnvironmentChange, sparkHome.prepareEnvironmentChange),
+    spark.refreshComposerSubmissionState);
   notifications?.setCompanionChat?.(spark);
   operations.setCompanionResetHandler?.(spark.sessionsReset);
   const automations = createAutomationsFeature({
@@ -106,6 +112,7 @@ export async function bootstrapWebApp({
   navigation?.bindings.initializeEnvironment?.();
   learning?.environmentChanged();
   spark.environmentChanged();
+  sparkHome.environmentChanged();
   learning?.setWorkspace(shell.activeWorkspace());
   homeComposer.environmentChanged();
   selection.renderAgentPicker();

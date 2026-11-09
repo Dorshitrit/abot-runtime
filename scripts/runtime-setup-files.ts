@@ -122,6 +122,7 @@ export function buildModelConfig(
   contextWindowTokens?: number,
   modelOptions: SetupModelOptions = {},
   label?: string,
+  applyCreationTemperature = true,
 ): JsonObject {
   const context = isRecord(template.context) ? template.context : {};
   const tokenEstimation = isRecord(context.tokenEstimation)
@@ -190,6 +191,7 @@ export function buildModelConfig(
       },
     },
   };
+  if (applyCreationTemperature) applyLocalTemperatureDefault(modelConfig, provider);
   applySetupPromptCache(modelConfig, provider, modelOptions.promptCache);
   if (!shouldApplyOpenAiStepTimeouts) return modelConfig;
   return {
@@ -200,6 +202,16 @@ export function buildModelConfig(
       "toolPayload.raw": { timeoutMs: 300_000, ...rawPayload },
     },
   };
+}
+
+function applyLocalTemperatureDefault(profile: JsonObject, provider: Provider): void {
+  if (provider !== "llamacpp" && provider !== "ollama") return;
+  // Ollama's generation settings take precedence over its native options on the wire.
+  if (provider === "ollama" && isRecord(profile.options) && Object.hasOwn(profile.options, "temperature")) return;
+  const generation = profile.generation;
+  if (generation !== undefined && !isRecord(generation)) return;
+  if (generation && Object.hasOwn(generation, "temperature")) return;
+  profile.generation = { ...generation, temperature: 0 };
 }
 
 export function parseContextWindowTokens(value: unknown): number | undefined {

@@ -18,13 +18,14 @@ export function createSparkChatPanel({ documentRoot = document, launcherAnchor }
         <div class="messages-list spark-messages" data-spark="messagesList" role="log" aria-label="SPARK messages" tabindex="0"></div>
         <button type="button" class="jump-to-latest" data-spark="jumpToLatestButton" hidden>Latest ↓</button>
       </div>
+      <div data-spark="homeActivity" hidden></div>
       <div class="spark-chat-composer-dock">
         <div data-spark="composerPlan"></div><div data-spark="composerContextWindow"></div>
         <form class="spark-compose" data-spark="composerForm">
           <div class="attachment-preview" data-spark="attachmentPreview"></div>
           <div class="spark-input-row">
             <button type="button" class="spark-input-icon" data-spark="attachmentButton" aria-label="Attach a file" title="Attach a file">＋</button>
-            <textarea data-spark="composerInput" rows="1" dir="auto" aria-label="Message SPARK" placeholder="Message SPARK…"></textarea>
+            <textarea spellcheck="false" data-spark="composerInput" rows="1" dir="auto" aria-label="Message SPARK" placeholder="Message SPARK…"></textarea>
             <button type="button" class="spark-input-icon spark-stop" data-spark="stopButton" aria-label="Stop response" title="Stop response" hidden><span aria-hidden="true">■</span></button>
             <div class="composer-submit-control" data-spark="composerSubmitControl">
               <button type="submit" class="send-button" data-spark="sendButton" aria-label="Send"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 11 6-6 6 6M12 5v14" /></svg><span class="sr-only" data-spark="sendButtonLabel">Send</span></button>

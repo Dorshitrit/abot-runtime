@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createConversationActivity } from "../../web-ui/app/components/conversation-activity.js";
 import { projectToolActivityEvent } from "../../web-ui/app/lib/tool-activity-event.js";
+import { formatEventLabel } from "../../web-ui/app/lib/event-presentation.js";
 import { enrichEventPayload } from "../events/event-status.js";
 import { ContextElement } from "./support/composer-context-window-dom.js";
 
@@ -21,7 +22,7 @@ function readEvent(overrides: Record<string, unknown> = {}) {
     requestId: "request-1", eventSequence: 2, executionId: "skill-1",
     name: "tool.completed", tool: "abot_skills", executorRole: "worker", ok: true,
     meta: { skillAction: "read_skills", skillIds: ["technical-work", "review"],
-      skillTitle: "Technical Work, Review (Code, Tests)" },
+      skillTitle: "Coding and Development, Review (Code, Tests)" },
     ...overrides,
   };
 }
@@ -33,16 +34,17 @@ function child(root: HTMLElement, selector: string): Element {
 }
 
 describe("Skill collection presentation", () => {
-  test("groups Supervisor phase evidence without parsing names or counting tools", () => {
-    const summary = 'Read Skills: סקירה (קוד, בדיקות), <img src=x> Technical Work';
-    const node = createActivity()([{
-      requestId: "request-1", eventSequence: 1, name: "runtime.state",
+  test.each([false, true])("preserves Supervisor Skill names and punctuation (enriched=%s)", (enriched) => {
+    const summary = 'Read Skills: סקירה (קוד, בדיקות), <img src=x> Coding and Development';
+    const event = {
+      type: "event", requestId: "request-1", eventSequence: 1, name: "runtime.state",
       stage: "supervisor", phase: "skills", message: summary,
-    }]);
+    };
+    const node = createActivity()([enriched ? enrichEventPayload(event) : event]);
     const collection = child(node, ".conversation-skill-collection");
     expect(collection.getAttribute("aria-label")).toBe("Skill activity");
     const row = child(node, ".conversation-role-skill-activity");
-    expect(row.textContent).toBe('סקירה (קוד, בדיקות), <img src=x> Technical Work');
+    expect(row.textContent).toBe('סקירה (קוד, בדיקות), <img src=x> Coding and Development');
     expect(row.getAttribute("title")).toBe(summary);
     expect(row.getAttribute("dir")).toBe("auto");
     expect(row.tagName).toBe("li");
@@ -52,9 +54,18 @@ describe("Skill collection presentation", () => {
     expect(node.querySelector(".conversation-tool")).toBeNull();
   });
 
+  test.each([
+    { stage: "supervisor", phase: "routing" },
+    { stage: "worker", phase: "skills" },
+    { stage: "supervisor", phase: "skills" },
+  ])("keeps generic formatting for events without a Supervisor Skill read title: %j", (scope) => {
+    expect(formatEventLabel({ type: "event", name: "working_on api.v2", ...scope }))
+      .toBe("Working On Api V2");
+  });
+
   test("collects ordinary reads into one row while keeping diagnostics separate and in order", () => {
     const messages = [
-      "Read Skills: Technical Work", "Read Skills: ABot Studio",
+      "Read Skills: Coding and Development", "Read Skills: ABot Studio",
       "Skill lookup failed: knowledge_skill_not_found",
       "Read Skills: Review (Code, Tests)",
       "Skill lookup failed: knowledge_skill_store_unavailable",
@@ -70,7 +81,7 @@ describe("Skill collection presentation", () => {
     expect(first.children.map((node) => node.className)).toEqual([
       "conversation-skill-icon", "conversation-skill-read-label", "conversation-skill-items",
     ]);
-    expect(first.children[2]!.children.map((item) => item.textContent)).toEqual(["Technical Work", "ABot Studio"]);
+    expect(first.children[2]!.children.map((item) => item.textContent)).toEqual(["Coding and Development", "ABot Studio"]);
     expect(first.children[2]!.children.map((item) => item.getAttribute("title"))).toEqual(messages.slice(0, 2));
     expect(groups[1]!.querySelector(".conversation-role-skill-activity")?.dataset.tone).toBe("neutral");
     expect(groups[2]!.querySelector(".conversation-role-skill-activity")?.getAttribute("title")).toBe(messages[3]);
@@ -102,7 +113,7 @@ describe("Skill collection presentation", () => {
     expect(action.classList.contains("is-skill-read")).toBe(true);
     expect(action.classList.contains("is-completed")).toBe(true);
     expect(child(action as unknown as HTMLElement, ".conversation-tool-target").textContent)
-      .toBe("Technical Work, Review (Code, Tests)");
+      .toBe("Coding and Development, Review (Code, Tests)");
     expect(child(action as unknown as HTMLElement, ".conversation-skill-icon").getAttribute("aria-hidden")).toBe("true");
     action.open = true;
     action.dispatch("toggle");
@@ -137,7 +148,7 @@ describe("Skill collection presentation", () => {
     expect(projectToolActivityEvent(event)?.skillRead).toBeUndefined();
     const node = createActivity()([event, {
       requestId: "request-1", eventSequence: 3, name: "runtime.state",
-      stage: "worker", phase: "working", message: "Read Skills: Technical Work",
+      stage: "worker", phase: "working", message: "Read Skills: Coding and Development",
     }]);
     expect(node.querySelector(".conversation-skill-collection")).toBeNull();
     expect(child(node, ".conversation-tool").classList.contains("is-skill-read")).toBe(false);

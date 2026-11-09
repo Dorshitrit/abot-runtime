@@ -74,6 +74,12 @@ export type MemoryDeleteResult = Readonly<{
   deleted: boolean;
 }>;
 
+export type MemoryCandidateActionInput = Readonly<{ id: string; revision: number }>;
+export type MemoryCandidatePromoteInput = MemoryCandidateActionInput & Readonly<{
+  source: MemoryManagementSource;
+  context: LongTermMemoryManagementContext;
+}>;
+
 export type LongTermMemoryManagementService = Readonly<{
   status(): Promise<LongTermMemoryStatus>;
   list(input?: MemoryListInput): Promise<MemoryListResult>;
@@ -81,4 +87,6 @@ export type LongTermMemoryManagementService = Readonly<{
   create(input: MemoryCreateInput): Promise<MemoryCreateResult>;
   update(input: MemoryUpdateInput): Promise<MemoryUpdateResult>;
   delete(input: MemoryDeleteInput): Promise<MemoryDeleteResult>;
+  promoteCandidate?(input: MemoryCandidatePromoteInput): Promise<MemoryCreateResult>;
+  deleteCandidate?(input: MemoryCandidateActionInput): Promise<MemoryDeleteResult>;
 }>;

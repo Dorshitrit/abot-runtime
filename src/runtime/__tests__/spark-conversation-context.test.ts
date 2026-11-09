@@ -77,11 +77,19 @@ describe("SPARK canonical conversation policy", () => {
         expect(messages[0].role).toBe("system");
         expect(messages.filter((message) => message.role === "user" && message.content === prompt)).toHaveLength(1);
         const phase = supervisorFormatName(input);
-        if (["supervisor_presentation", "supervisor_skill_selection", "supervisor_procedure_gate"].includes(phase ?? "")) {
+        expect(JSON.stringify(messages)).not.toContain("Relevant stored context");
+        expect(JSON.stringify(messages)).not.toContain("A saved, tentative interest in the earlier idea.");
+        if (["supervisor_presentation", "supervisor_skill_selection"].includes(phase ?? "")) {
           expect(messages[0].content).not.toContain(policyBlock);
           expect(messages.filter(({ role }) => role !== "system")).toEqual([{ role: "user", content: prompt }]);
-          expect(JSON.stringify(messages)).not.toContain("Relevant stored context");
-          expect(JSON.stringify(messages)).not.toContain("A saved, tentative interest in the earlier idea.");
+          continue;
+        }
+        if (phase === "supervisor_procedure_gate") {
+          expect(messages[0].content).not.toContain(policyBlock);
+          expect(messages.filter(({ role }) => role !== "system")).toEqual([
+            { role: "assistant", content: "An earlier idea you may want to consider." },
+            { role: "user", content: prompt },
+          ]);
           continue;
         }
         expect(messages[0].content.split(policyBlock)).toHaveLength(2);
@@ -94,8 +102,6 @@ describe("SPARK canonical conversation policy", () => {
           { role: "assistant", content: "An earlier idea you may want to consider." },
           { role: "user", content: prompt },
         ]);
-        expect(JSON.stringify(messages)).not.toContain("Relevant stored context");
-        expect(JSON.stringify(messages)).not.toContain("A saved, tentative interest in the earlier idea.");
         expect(messages.filter(({ role }) => role === "system").flatMap(({ content }) => {
           try { return [JSON.parse(content).kind]; } catch { return []; }
         })).not.toContain("runtime_spark_initiative_reference_v1");

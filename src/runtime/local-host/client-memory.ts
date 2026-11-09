@@ -48,6 +48,8 @@ export function createLocalMemoryClient(
     create: (input: unknown) => invoke("create", input),
     update: (input: unknown) => invoke("update", input),
     delete: (input: unknown) => invoke("delete", input),
+    promoteCandidate: (input: unknown) => invoke("promoteCandidate", input),
+    deleteCandidate: (input: unknown) => invoke("deleteCandidate", input),
     clear: () => invoke("clear"),
     retrieve: (input: unknown) => invoke("retrieve", input),
     processCandidates: (input: unknown) => invoke("processCandidates", input),

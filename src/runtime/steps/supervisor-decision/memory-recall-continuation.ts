@@ -18,6 +18,22 @@ export function buildSupervisorMemoryRecallContinuationParts(params: {
   const children = params.resume
     ? buildSupervisorChildContinuationParts({ ...params, resume: params.resume })
     : [];
+  return interleaveSupervisorMemoryRecalls(recalls, params.currentCallId, children);
+}
+
+/** A terminal caller can have no child snapshot after a capability continuation. */
+export function interleaveSupervisorMemoryRecalls(
+  recalls: readonly MemoryRecallContinuation[],
+  currentCallId: string,
+  children?: readonly RequestContextPinnedPart[],
+): readonly RequestContextPinnedPart[] {
+  const recallPart = (recall: MemoryRecallContinuation): RequestContextPinnedPart => Object.freeze({
+    sourceRef: `memory-recall:${currentCallId}:${recall.invocationAttempt}`,
+    category: "role_continuation",
+    retention: "exact",
+    messages: recall.messages,
+  });
+  if (!children) return Object.freeze(recalls.map(recallPart));
   if (!hasBoundRecallChildPositions(recalls, children.length)) {
     throw new Error("memory_recall_child_position_invalid");
   }
@@ -25,12 +41,7 @@ export function buildSupervisorMemoryRecallContinuationParts(params: {
   for (let childIndex = 0; childIndex <= children.length; childIndex++) {
     for (const recall of recalls) {
       if (recall.completedChildCount !== childIndex) continue;
-      parts.push(Object.freeze({
-        sourceRef: `memory-recall:${params.currentCallId}:${recall.invocationAttempt}`,
-        category: "role_continuation",
-        retention: "exact",
-        messages: recall.messages,
-      }));
+      parts.push(recallPart(recall));
     }
     const child = children[childIndex];
     if (child) parts.push(child);

@@ -8,14 +8,11 @@ export type {
   ModelInvocationFormat,
   ModelInvocationAttachmentPolicy,
   ModelInvocationLane,
-  ModelInvocationOutputTokenPolicy,
   ModelInvocationRole,
   ModelInvocationStepDefinition,
   ModelInvocationStepOwner,
   RegisteredModelInvocationStepDefinition,
 } from "./model-step-registry.types.js";
-
-export const CORE_DECISION_OUTPUT_TOKEN_LIMIT = 2_048;
 
 export const MODEL_INVOCATION_STEP_REGISTRY =
   GENERATED_MODEL_INVOCATION_STEP_REGISTRY;
@@ -58,15 +55,6 @@ export function resolveModelInvocationStep(
   }
 
   return undefined;
-}
-
-export function resolveModelStepOutputTokenLimit(
-  modelStep: unknown,
-): number | undefined {
-  const definition = resolveModelInvocationStep(modelStep);
-  return definition?.outputTokenPolicy === "core_decision"
-    ? CORE_DECISION_OUTPUT_TOKEN_LIMIT
-    : undefined;
 }
 
 export function isRegisteredModelStepInLane(

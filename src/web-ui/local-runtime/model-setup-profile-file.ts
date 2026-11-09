@@ -1,6 +1,6 @@
 import { lstat, rm } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
-import { isDeepStrictEqual } from "node:util";
+import type { PreparedModelSetupProfile } from "./model-setup-identity.js";
 import {
   canonicalConfigFilePath,
   readConfigFileSnapshot,
@@ -44,10 +44,10 @@ export async function isDiscoveredModelSetupProfileAtTarget(
 
 function matchesRequestedModelSetupProfile(
   snapshot: ConfigFileSnapshot,
-  profile: Record<string, unknown>,
+  prepared: PreparedModelSetupProfile,
 ): boolean {
   if (snapshot.invalidJson) return false;
-  return isDeepStrictEqual(snapshot.config, profile);
+  return prepared.matchesSaved(snapshot.config);
 }
 
 function requireProfileInsideWorkspace(rootDir: string, path: string): void {
@@ -115,7 +115,7 @@ export async function withModelSetupProfile<T>(
   options: ProfileFileOptions,
   root: ConfigFileTransaction,
   profileId: string,
-  profile: Record<string, unknown>,
+  prepared: PreparedModelSetupProfile,
   commit: (
     declaration: { configRef: string },
     assertProfileUnchanged: () => Promise<void>,
@@ -133,13 +133,13 @@ export async function withModelSetupProfile<T>(
       const createdByThisAddition = !target.snapshot.exists;
       if (
         !createdByThisAddition &&
-        !matchesRequestedModelSetupProfile(target.snapshot, profile)
+        !matchesRequestedModelSetupProfile(target.snapshot, prepared)
       )
         rejectExistingModelFile();
       const rootRevision = root.snapshot.revision;
       if (createdByThisAddition) {
         await requireAbsentModelProfileEntry(declaredPath);
-        await target.write(profile);
+        await target.write(prepared.profile);
       }
       const profileRevision = target.snapshot.revision;
       const assertProfileUnchanged = async () => {

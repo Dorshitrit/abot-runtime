@@ -16,7 +16,7 @@ import {
 import {
   buildChatGatewayRequestBody,
   resolveMetricMessages,
-  resolveRequestMessages,
+  projectChatGatewayMessages,
 } from "./message-projection.js";
 import { resolveClientOptions } from "./options.js";
 import {
@@ -33,13 +33,13 @@ export async function invokeModelGatewayWithOptions(
   const url = clientOptions.baseUrl;
   const requestId =
     typeof params.debugRequestId === "string" ? params.debugRequestId : "";
-  const requestMessages = resolveRequestMessages(params);
+  const projection = projectChatGatewayMessages(params);
   const metricMessages = resolveMetricMessages(params);
   const startedAt = Date.now();
   const modelPolicy = params.modelPolicy ?? clientOptions.modelPolicy;
   const requestBody = buildChatGatewayRequestBody(
     params,
-    requestMessages,
+    projection,
     modelPolicy,
   );
 
@@ -52,7 +52,7 @@ export async function invokeModelGatewayWithOptions(
     modelPreference: params.modelPreference,
     modelPolicyDefaultProfileId: modelPolicy?.defaults?.profileId,
     textLength: typeof params.text === "string" ? params.text.length : 0,
-    messageCount: requestMessages.length,
+    messageCount: projection.messages.length,
   });
 
   const serializedRequestBody = JSON.stringify(requestBody);

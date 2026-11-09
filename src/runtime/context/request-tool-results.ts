@@ -1,3 +1,5 @@
+import { projectSingleCopyOutputSummary } from "./capability-result-output-summary.js";
+import { readSuperWorkerCompactionSidecar } from "./super-worker-compaction-sidecar.js";
 import { projectCompactedCapabilityResultReceipt } from "./compacted-capability-result-receipt.js";
 import { projectCurrentRequestToolResults } from "./request-tool-results-supersession.js";
 export { projectCurrentRequestToolResults } from "./request-tool-results-supersession.js";
@@ -162,7 +164,7 @@ export function buildRequestToolResultsMessage(
       authority: "reference_data",
       sourceRevision: view.sourceRevision,
       ...(view.scope ? { coverage: view.scope } : {}),
-      results,
+      results: projectWorkerOutputSummaries(view, results),
     }),
   );
 }
@@ -247,8 +249,11 @@ export function buildCompactedRequestToolResultsMessage(
         continuation: checkpoint.continuation,
         coveredResults,
       },
-      results: modelVisibleResults.filter(
-        ({ executionId }) => !coveredExecutionIds.has(executionId),
+      results: projectWorkerOutputSummaries(
+        view,
+        modelVisibleResults.filter(
+          ({ executionId }) => !coveredExecutionIds.has(executionId),
+        ),
       ),
     }),
   );
@@ -264,6 +269,15 @@ function projectModelVisibleRequestToolResults(
   results: readonly RequestToolResult[],
 ): readonly RequestToolResult[] {
   return Object.freeze(results.map(projectSingleCopyCapabilityResult));
+}
+
+/** Only bound Worker views have canonical sources independent of display bytes. */
+function projectWorkerOutputSummaries(
+  view: RequestToolResultsView,
+  results: readonly RequestToolResult[],
+) {
+  if (!readSuperWorkerCompactionSidecar(view)) return results;
+  return results.map(projectSingleCopyOutputSummary);
 }
 
 function traceProjection(

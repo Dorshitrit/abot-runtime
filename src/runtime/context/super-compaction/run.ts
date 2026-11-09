@@ -7,10 +7,8 @@ import {
 import type { SemanticCompactionGenerationParams } from "../semantic-compaction/generation-contracts.js";
 import { assertBoundModelStepSteeringCurrent } from "../../model/model-step-steering.js";
 import { resolveRequestSteeringInbox } from "../../request/request-steering.js";
-import {
-  prepareSuperCheckpointBudget,
-  assertSuperCheckpointFits,
-} from "./checkpoint-budget.js";
+import { prepareSuperCheckpointBudget } from "./checkpoint-budget.js";
+import { fitSuperRetainedDigests } from "./retained-digests.js";
 import {
   continueSuperRetainedSource,
   createSuperContinuation,
@@ -18,6 +16,7 @@ import {
 } from "./continuation.js";
 import { foldSuperCompactionSource } from "./source-fold.js";
 import { prepareSuperSourceInventory } from "./source-inventory.js";
+import { projectCompactionSourceInput } from "../compaction-source-input.js";
 
 /** SUPER authors bounded ranges; the shared controller alone projects and commits. */
 export async function generateSuperCompactionCandidate(
@@ -39,19 +38,23 @@ export async function generateSuperCompactionCandidate(
     params.onProgress?.({ step: "processing", unit: "sources", completedUnits: index, totalUnits: sources.length });
     const maxCharacters = sourceCharacterLimits[index]!;
     const existing = params.previous?.sourceDigests[index];
+    if (existing) {
+      sourceDigests.push(existing);
+      params.onProgress?.({ step: "processing", unit: "sources", completedUnits: index + 1, totalUnits: sources.length });
+      continue;
+    }
+    const inputSource = projectCompactionSourceInput(source);
     const retainedText =
-      existing?.digest ??
       `Retained source (verbatim):\n${source.content}\nEnd of retained source.`;
     if (hasBoundedSourceText(retainedText, maxCharacters)) {
       sourceDigests.push(
         Object.freeze({
           sourceRef: source.sourceRef,
           sourceFingerprint: source.sourceFingerprint,
-          digest: retainedText,
+          digest: `Retained source (verbatim):\n${inputSource.content}\nEnd of retained source.`,
         }),
       );
-      if (!existing)
-        handoff = await continueSuperRetainedSource(params, source, handoff);
+      handoff = await continueSuperRetainedSource(params, inputSource, handoff);
       params.onProgress?.({ step: "processing", unit: "sources", completedUnits: index + 1, totalUnits: sources.length });
       continue;
     }
@@ -65,8 +68,9 @@ export async function generateSuperCompactionCandidate(
         ...params.binding,
         preservationObjective: params.preservationObjective,
       },
-      source,
+      source: inputSource,
       maxCharacters,
+      allowIntermediateJoins: true,
       boundSteeringVersion: params.boundSteeringVersion,
       previousContinuation: handoff,
       continuationMaxCharacters: SUPER_CONTINUATION_MAX_CHARACTERS,
@@ -93,9 +97,11 @@ export async function generateSuperCompactionCandidate(
     continuation,
   });
   assertValidSemanticCompactionCheckpoint(candidate);
-  await assertSuperCheckpointFits(params, candidate, budget);
+  const fitted = await fitSuperRetainedDigests(
+    params, candidate, sources, sourceCharacterLimits, budget,
+  );
   assertBoundModelStepSteeringCurrent(steering, params.boundSteeringVersion);
-  return candidate;
+  return fitted;
 }
 
 function hasBoundedSourceText(text: string, maxCharacters: number): boolean {

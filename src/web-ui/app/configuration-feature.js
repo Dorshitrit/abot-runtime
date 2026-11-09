@@ -6,6 +6,7 @@ import { createComputerAccessFeature } from "./computer-access-feature.js";
 import { createHomeGuidance } from "./components/home-guidance/home-guidance.js";
 import { createConfigWorkspace } from "./components/config-workspace.js";
 import { createModelRemovalController } from "./components/config-workspace/model-removal.js";
+import { createProviderManagement } from "./components/config-workspace/provider-management.js";
 import { createLongTermMemorySetup } from "./components/long-term-memory-setup.js";
 import { createMemoryEmbeddingConnectionFeature } from "./components/long-term-memory/embedding-connection-feature.js";
 import { createLongTermMemoryManager } from "./components/long-term-memory/manager.js";
@@ -30,6 +31,10 @@ export function createConfigurationFeature({
   let activation;
   let modelSetup;
   let modelRemoval;
+  const providerManagement = createProviderManagement({
+    root: dom.configDashboard.parentElement, runtimeClient, getEnvironmentId: selectedEnvironmentId,
+    getWorkspace: () => configWorkspace, onSaved: () => activation.markPending(),
+  });
   const chatgptSettings = createChatgptAccountSettings({ root: dom.configDashboard.parentElement, client: runtimeClient, getEnvironmentId: selectedEnvironmentId });
   const memoryConnection = createMemoryEmbeddingConnectionFeature({
     root: dom.memoryWorkspacePanel,
@@ -171,6 +176,14 @@ export function createConfigurationFeature({
     onRemoveModel: (model) => {
       if (modelSetup?.isOpen() || memoryConnection.isOpen()) return;
       return modelRemoval.remove(model);
+    },
+    onProviderAction: (action, connection) => {
+      if (modelSetup?.isOpen() || memoryConnection.isOpen()) return;
+      if (pluginManager.hasConfigurationDraft()) {
+        configWorkspace.setStatus("Finish or cancel plugin configuration before changing a provider.", "error-text");
+        return;
+      }
+      return providerManagement.manage(action, connection);
     },
     dom: {
       refreshConfigButton: dom.refreshConfigButton,

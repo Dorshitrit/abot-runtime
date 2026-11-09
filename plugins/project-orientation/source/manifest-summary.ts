@@ -1,14 +1,11 @@
 import { stat } from "node:fs/promises";
-import { posix } from "node:path";
 
 import type {
   ResolvedRuntimeToolPath,
   RuntimePluginLoadContext,
 } from "../../../src/plugin-sdk/index.js";
 import {
-  isRuntimeToolPathError,
   readBoundedRegularFile,
-  resolvePluginPath,
   sanitizeJsonText,
 } from "../../../src/plugin-sdk/index.js";
 
@@ -16,6 +13,7 @@ import {
   failProjectManifestRead,
   throwIfProjectInspectionCancelled,
 } from "./inspection-failure.js";
+import { resolveProjectEntry } from "./project-target.js";
 
 const PACKAGE_JSON_MAX_BYTES = 256 * 1024;
 const PACKAGE_SCRIPT_LIMIT = 100;
@@ -42,12 +40,6 @@ export type ProjectManifestSummary = Readonly<{
   identityTruncated?: boolean;
   status?: "invalid_json" | "too_large";
 }>;
-
-function logicalChild(parent: ResolvedRuntimeToolPath, name: string): string {
-  return parent.logicalPath === "."
-    ? name
-    : posix.join(parent.logicalPath, name);
-}
 
 function stringField(
   record: Readonly<Record<string, unknown>>,
@@ -76,15 +68,11 @@ async function existingChild(
   root: ResolvedRuntimeToolPath,
   name: string,
 ): Promise<ResolvedRuntimeToolPath | undefined> {
+  const child = resolveProjectEntry(context, root, name);
   try {
-    const child = resolvePluginPath(context, logicalChild(root, name), {
-      requirePath: true,
-      allowedLocations: ["agent_work", "workspace"],
-    });
     const info = await stat(child.absolutePath);
     return info.isFile() ? child : undefined;
   } catch (error) {
-    if (isRuntimeToolPathError(error)) throw error;
     const code =
       error && typeof error === "object" && "code" in error
         ? String((error as { code?: unknown }).code)

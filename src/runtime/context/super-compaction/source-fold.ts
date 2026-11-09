@@ -17,6 +17,7 @@ export async function foldSuperCompactionSource(params: {
   authority?: "prior_conversation" | "settled_evidence";
   source: SemanticCompactionSource;
   maxCharacters: number;
+  allowIntermediateJoins?: true;
   boundSteeringVersion?: number;
   previousContinuation?: string;
   continuationMaxCharacters?: number;

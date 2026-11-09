@@ -67,7 +67,7 @@ function renderEnum(property, draft, common) {
 
 function renderTextarea(common, value, attributes = "") {
   const rendered = value.replace(/\r\n?/gu, "\n");
-  return `<textarea ${common}${attributes} dir="auto" data-schema-original="${escapeHtml(JSON.stringify(value))}" data-schema-rendered="${escapeHtml(JSON.stringify(rendered))}" rows="5">\n${escapeHtml(value)}</textarea>`;
+  return `<textarea spellcheck="false" ${common}${attributes} dir="auto" data-schema-original="${escapeHtml(JSON.stringify(value))}" data-schema-rendered="${escapeHtml(JSON.stringify(rendered))}" rows="5">\n${escapeHtml(value)}</textarea>`;
 }
 
 function renderScalar(property, draft, label, { item = false, multiline = false } = {}) {
@@ -75,7 +75,7 @@ function renderScalar(property, draft, label, { item = false, multiline = false 
   const value = draft.value ?? "";
   const common = `${marker} aria-label="${escapeHtml(label)}"`;
   if (draft.invalid)
-    return `<label class="automation-schema-invalid">Saved value (JSON)${renderTextarea(common, value, ' data-schema-invalid="true" spellcheck="false"')}<small>The saved value has the wrong type. Correct its JSON value before saving.</small></label>`;
+    return `<label class="automation-schema-invalid">Saved value (JSON)${renderTextarea(common, value, ' data-schema-invalid="true"')}<small>The saved value has the wrong type. Correct its JSON value before saving.</small></label>`;
   if (property.enum) return renderEnum(property, draft, common);
   if (property.type === "boolean")
     return `<select ${common}><option value=""${value === "" ? " selected" : ""}>Choose a value</option>${["true", "false"].map((choice) => `<option value="${choice}"${choice === value ? " selected" : ""}>${choice}</option>`).join("")}</select>`;

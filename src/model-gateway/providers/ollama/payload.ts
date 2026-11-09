@@ -1,4 +1,3 @@
-import { resolveModelStepOutputTokenLimit } from "../../../shared/model-step-registry.js";
 import { validateModelGatewayMessages } from "../../protocol/message-contract.js";
 import { resolveModelInvocation } from "../../policy/invocation-policy.js";
 import {
@@ -63,19 +62,14 @@ function applyFormatProjection(params: {
 function applyGenerationOptions(params: {
   payload: Record<string, unknown>;
   invocation: ResolvedModelInvocation;
-  outputTokenLimit?: number;
 }): void {
   params.payload.options = buildOllamaOptions({
     baseOptions: params.invocation.profile.options,
     generation: params.invocation.profile.generation,
     contextWindowTokens: params.invocation.profile.contextWindowTokens,
-    enforceDerivedNumPredict: params.outputTokenLimit !== undefined,
     derivedNumPredict: deriveOllamaNumPredict({
       payload: params.payload,
       invocation: params.invocation,
-      ...(params.outputTokenLimit !== undefined
-        ? { outputTokenLimit: params.outputTokenLimit }
-        : {}),
     }),
   });
 }
@@ -86,9 +80,6 @@ export function buildOllamaPayload(
 ): Record<string, unknown> {
   validateModelGatewayMessages(requestBody.messages);
   const invocation = resolveModelInvocation(requestBody);
-  const outputTokenLimit = resolveModelStepOutputTokenLimit(
-    requestBody.modelStep,
-  );
   const baseMessages =
     Array.isArray(requestBody.messages) && requestBody.messages.length > 0
       ? requestBody.messages.map(toOllamaMessage)
@@ -122,7 +113,6 @@ export function buildOllamaPayload(
   applyGenerationOptions({
     payload,
     invocation,
-    ...(outputTokenLimit !== undefined ? { outputTokenLimit } : {}),
   });
   return payload;
 }
@@ -132,9 +122,6 @@ export function buildOllamaRawPayload(
   payloadOptions: OllamaPayloadBuildOptions = {},
 ): Record<string, unknown> {
   const invocation = resolveModelInvocation(requestBody);
-  const outputTokenLimit = resolveModelStepOutputTokenLimit(
-    requestBody.modelStep,
-  );
   const messages = prependInstructionMessages({
     messages: [
       { role: "user", content: resolveOllamaRawUserContent(requestBody) },
@@ -161,7 +148,6 @@ export function buildOllamaRawPayload(
   applyGenerationOptions({
     payload,
     invocation,
-    ...(outputTokenLimit !== undefined ? { outputTokenLimit } : {}),
   });
   return payload;
 }

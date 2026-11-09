@@ -87,7 +87,7 @@ export function createScheduleForm({
     <div class="schedule-section-heading"><h3>${job ? "Edit schedule" : "New schedule"}</h3></div>
     <label>Title<input name="title" required maxlength="200" value="${escapeHtml(values.title || "")}" placeholder="Give this task a name" dir="auto"></label>
     <label>Conversation<select name="sessionId" required ${job ? "disabled" : ""}><option value="">Choose a conversation</option>${options(sessionOptions, createsConversation ? "__new_conversation__" : values.sessionId || currentSessionId)}</select></label>
-    <label>Task prompt<textarea name="prompt" rows="5" required dir="auto" placeholder="What should ABot do when this schedule runs?">${escapeHtml(values.prompt || "")}</textarea></label>
+    <label>Task prompt<textarea spellcheck="false" name="prompt" rows="5" required dir="auto" placeholder="What should ABot do when this schedule runs?">${escapeHtml(values.prompt || "")}</textarea></label>
     <div class="schedule-form-grid">${scheduleFields(values)}</div>
     <div class="schedule-form-grid"><label>Model<select name="modelProfileId" required><option value="">Choose a model</option>${options(modelOptions, values.modelProfileId)}</select></label>
     ${renderReasoningModeField(values.agentMode || "reasoning", models.find((model) => model.id === values.modelProfileId), modes.filter((mode) => mode !== "auto"), values.reasoningPreference)}</div>

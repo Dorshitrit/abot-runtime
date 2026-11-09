@@ -170,7 +170,9 @@ describe("Windows Store connection", () => {
     });
     await h.activate();
     expect(h.root.innerHTML).toContain(`href="${storeUrl}"`);
-    expect(h.root.innerHTML).toContain("Update in Microsoft Store");
+    expect(h.root.innerHTML).toContain('data-system-host-store-stage="start"');
+    expect(h.root.innerHTML).toContain("data-system-host-store-connect");
+    expect(h.root.innerHTML).toContain('data-tone="unavailable"');
     expect(h.root.innerHTML).not.toContain('data-system-host-install="windows"');
     expect(await h.manager.install("windows")).toBe(true);
     expect(h.dependencies.requestStoreConnection).toHaveBeenCalledOnce();

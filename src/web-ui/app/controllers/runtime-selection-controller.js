@@ -1,4 +1,4 @@
-import { modelProfileLabels } from "../lib/model-profile-labels.js";
+import { modelSelectorOptions } from "../lib/model-selector-options.js";
 import { escapeAttribute, escapeHtml, textOf } from "../lib/text-format.js";
 import { normalizeToolPermissionMode } from "../lib/tool-permission-mode.js";
 import { createReasoningModeController } from "./reasoning-mode-controller.js";
@@ -139,9 +139,19 @@ export function createRuntimeSelectionController({
     textOf(state.sessionModels[getComposerSessionId()]) ||
     textOf(state.lastModelByEnvironment[selectedEnvironmentId()]);
 
+  function clearStaleModelExecutionPolicies() {
+    if (!hasModelCatalogFromAnotherEnvironment()) return;
+    for (const option of dom.modelSelect.options) delete option.dataset.executionPolicy;
+  }
+
+  function syncModelSelector() {
+    clearStaleModelExecutionPolicies();
+    modelSelector.sync();
+  }
+
   function applyModelSelection() {
     if (!dom.modelSelect.options.length) {
-      modelSelector.sync();
+      syncModelSelector();
       renderAgentMode();
       return;
     }
@@ -155,7 +165,7 @@ export function createRuntimeSelectionController({
     ) {
       dom.modelSelect.value = target;
     }
-    modelSelector.sync();
+    syncModelSelector();
     renderAgentMode();
   }
 
@@ -207,16 +217,18 @@ export function createRuntimeSelectionController({
       option.value = "";
       option.textContent = "No models configured";
       dom.modelSelect.appendChild(option);
-      modelSelector.sync();
+      syncModelSelector();
       renderAgentMode();
       return;
     }
-    const labels = modelProfileLabels(state.modelProfiles);
-    for (const profile of state.modelProfiles) {
+    for (const model of modelSelectorOptions(state.modelProfiles)) {
       const option = document.createElement("option");
-      option.value = profile.id;
-      option.textContent = labels.get(profile.id);
-      if (profile.provider === "openai-chatgpt") option.dataset.authentication = "chatgpt";
+      option.value = model.value;
+      option.textContent = model.label;
+      option.dataset.providerId = model.providerId;
+      option.dataset.providerLabel = model.providerLabel;
+      if (model.executionPolicy) option.dataset.executionPolicy = model.executionPolicy;
+      if (model.usingChatgptPlan) option.dataset.authentication = "chatgpt";
       dom.modelSelect.appendChild(option);
     }
     if (state.defaultModelProfileId)
@@ -228,6 +240,7 @@ export function createRuntimeSelectionController({
   async function loadModels() {
     const revision = ++modelCatalogLoadRevision;
     const environmentId = selectedEnvironmentId();
+    syncModelSelector();
     renderAgentMode();
     onModelCatalogLoading();
     let payload = null;

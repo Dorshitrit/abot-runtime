@@ -1,3 +1,4 @@
+import { markInvocationContextMessage } from "../../model-gateway/protocol/invocation-context.js";
 import type { RequestExecutionScope } from "../request/execution-scope.js";
 import type { ChatMessage, ModelGatewayAttachment } from "../../model-gateway/types.js";
 import { resolveRequestSteeringInbox, type RequestSteeringSnapshot } from "../request/request-steering.js";
@@ -47,6 +48,13 @@ function usesInitialMemory(request: RequestExecutionScope): boolean {
   return request.executionPolicy.authority.id === "supervisor-worker-v1";
 }
 
+/** Create the invocation view from the initial ledger slot without marking a shared retrieval or checkpoint object. */
+export function projectInitialMemoryMessage(initial: RoleInitialMemory | undefined): ChatMessage | undefined {
+  const message = initial?.message;
+  if (message?.role !== "system" || message.attachments?.length) return message;
+  return markInvocationContextMessage({ ...message });
+}
+
 export function projectExecutionAgentMemory(
   request: RequestExecutionScope,
   initial: RoleInitialMemory | undefined,
@@ -58,8 +66,10 @@ export function projectExecutionAgentMemory(
         ...initial.knowledge, referenceTime: new Date().toISOString(),
       })
     : undefined;
+  // The final response uses the authoring targets from this initial snapshot.
+  if (authoringContext) markInvocationContextMessage(authoringContext.message);
   return Object.freeze({
-    memoryMessage: initial?.message,
+    memoryMessage: projectInitialMemoryMessage(initial),
     authoringContext,
     authoringEnabled: canAuthorConversationMemory(request, authoringContext),
   });

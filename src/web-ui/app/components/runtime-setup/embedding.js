@@ -115,6 +115,8 @@ export function createEmbeddingSetupStep({
       matching.find((provider) => provider.id === connectionProvider) ||
       matching[0];
     if (preferred) return preferred.id;
+    const needsSeparateEmbeddingChoice = connectionProvider === "openai-chatgpt";
+    if (needsSeparateEmbeddingChoice) return saved?.id || "";
     return saved?.id || state.providers[0]?.id || "new:openai";
   }
 
@@ -213,6 +215,12 @@ export function createEmbeddingSetupStep({
 
   async function submit() {
     if (state.busy || !state.loaded) return;
+    const hasEmbeddingProviderSelection = Boolean(state.provider);
+    if (!hasEmbeddingProviderSelection) {
+      state.error = "Choose an embedding provider, or skip this step for now.";
+      onChange();
+      return;
+    }
     const apiKey = apiKeyValue();
     if (hasUnchangedEmbeddingSelection() && !apiKey) return onComplete();
     const model = validateRuntimeSetupModelId(state.model);

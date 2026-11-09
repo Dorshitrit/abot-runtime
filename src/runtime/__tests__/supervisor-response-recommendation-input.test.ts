@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
+import { isInvocationContextMessage } from "../../model-gateway/protocol/invocation-context.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { RequestToolResultsView } from "../context/request-tool-results.js";
 import {
@@ -213,6 +214,8 @@ describe("Supervisor response-recommendation projection", () => {
     const capsules = projected.filter(isRecommendationCapsule);
     expect(capsules).toHaveLength(1);
     expect(capsules[0].role).toBe("system");
+    expect(isInvocationContextMessage(capsules[0])).toBe(true);
+    expect(isInvocationContextMessage({ ...capsules[0] })).toBe(false);
     expect(JSON.parse(capsules[0].content)).toMatchObject({
       kind: SUPERVISOR_RESPONSE_RECOMMENDATION_KIND,
       authority: "accepted_supervisor_decision",
@@ -253,6 +256,17 @@ describe("Supervisor response-recommendation projection", () => {
       baseline.context.selectedHistoryMessageIds,
     );
     expect(omitted.context.messages.some(isRecommendationCapsule)).toBe(false);
+  });
+
+  test("keeps the no-save outcome bound to the preceding skill attempt", () => {
+    const response = buildSupervisorResponseInput(request, {
+      call, toolResults: EMPTY_RESULTS,
+      responseRecommendation: RESPONSE_RECOMMENDATION,
+      responseRecommendationOrigin: "skill_authoring_no_save",
+    });
+    const [notice] = response.context.messages.filter(isRecommendationCapsule);
+    expect(JSON.parse(notice!.content).outcome).toBe("no_save");
+    expect(isInvocationContextMessage(notice!)).toBe(false);
   });
 
   test("keeps the recommendation out of memory-candidate authoring", () => {

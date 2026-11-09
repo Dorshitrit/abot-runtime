@@ -1,5 +1,9 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import {
+  isProcessOwnerAlive,
+  requireCurrentProcessOwnerIdentity,
+} from "../../computer-access/companion/process-owner-identity.js";
 import { acquireFileLock } from "../adapters/long-term-memory/file-lock/acquisition.js";
 import type { SchedulerStore } from "./contracts.js";
 import { SchedulerJournalStore } from "./journal-store.js";
@@ -38,10 +42,11 @@ export function createFileSchedulerStore(
     acquire: async () => {
       if (releaseOwner) throw new Error("scheduler_store_in_use");
       await mkdir(directory, { recursive: true, mode: 0o700 });
+      const ownerIdentity = await requireCurrentProcessOwnerIdentity();
       try {
         releaseOwner = await acquireFileLock(
           join(directory, "scheduler.owner"),
-          { waitMs: 0 },
+          { waitMs: 0, ownerIdentity, processIsAlive: isProcessOwnerAlive },
         );
       } catch (error) {
         if (isOwnerContention(error)) throw new Error("scheduler_store_in_use");

@@ -1,3 +1,4 @@
+import { isInvocationContextMessage, markInvocationContextMessage } from "../../../model-gateway/protocol/invocation-context.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import { LONG_TERM_MEMORY_MESSAGE_KIND } from "../../long-term-memory/projection.js";
 
@@ -27,8 +28,9 @@ export function projectSupervisorProcedureMemory(message: ChatMessage | undefine
   }
   const content = [MEMORY_HEADING, ...paragraphs].join("\n\n");
   if (content.length > MAX_MEMORY_CHARACTERS) return undefined;
+  const projected = Object.freeze({ role: "system" as const, content });
   return Object.freeze({
-    message: Object.freeze({ role: "system", content }),
+    message: isInvocationContextMessage(message) ? markInvocationContextMessage(projected) : projected,
     instructions: MEMORY_INSTRUCTIONS,
   });
 }

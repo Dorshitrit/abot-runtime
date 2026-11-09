@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { ModelGatewayClient } from "../../ports.js";
 import type { RequestRunnerConfig } from "../../config/runner/contracts.js";
 import { projectRequestToolResults } from "../../context/request-tool-results.js";
@@ -24,6 +25,7 @@ export const LATE_HANDOFF_MARKER = "LATE_CANONICAL_HANDOFF_MARKER";
 export async function createWorkerHandoffFixture(
   options: {
     lateEvidence?: boolean;
+    pressureStep?: "worker.evidence" | "worker.result";
     duringCompaction?: (state: {
       ledger: RoleCallLedger;
       call: RoleCallFrame;
@@ -42,6 +44,29 @@ export async function createWorkerHandoffFixture(
     modelStep: "worker.decision",
   });
   const abort = new AbortController();
+  const lateExecutionId = options.lateEvidence
+    ? view.results.at(-1)!.executionId
+    : undefined;
+  const measurements: Array<{
+    modelStep: string | undefined;
+    inputTokens: number;
+    messages: readonly ChatMessage[];
+  }> = [];
+  const countInputTokens = vi.fn<NonNullable<ModelGatewayClient["countInputTokens"]>>(
+    async (input) => {
+      const messages = input.messages as readonly ChatMessage[];
+      const hasLateCanonicalEvidence = lateExecutionId !== undefined &&
+        messages.some((message) => hasUncompactedHandoffResult(message, lateExecutionId));
+      const inputTokens = input.modelStep === options.pressureStep && hasLateCanonicalEvidence
+        ? 95_000
+        : Math.ceil(Buffer.byteLength(JSON.stringify(messages), "utf8") / 4);
+      measurements.push({ modelStep: input.modelStep, inputTokens, messages });
+      return {
+        inputTokens, profileId: "test", provider: "ollama", model: "test",
+        contextWindowTokens: 128000, source: "provider_input_token_count" as const,
+      };
+    },
+  );
   const invoke = vi.fn<ModelGatewayClient["invoke"]>(async (input) => {
     if (input.modelStep === "worker.evidence")
       return {
@@ -99,7 +124,7 @@ export async function createWorkerHandoffFixture(
         },
       },
     },
-    modelGatewayClient: { invoke, invokeRaw: vi.fn() },
+    modelGatewayClient: { invoke, invokeRaw: vi.fn(), countInputTokens },
     contextCompactionStore: base.store,
     workerCapabilityProvider: {
       getDescriptors: () => [],
@@ -144,14 +169,27 @@ export async function createWorkerHandoffFixture(
     request,
     decisionOptions,
     invoke,
+    measurements,
+    countInputTokens,
     abort,
-    refresh: () =>
+    buildInput: () => buildWorkerDecisionInput(request, decisionOptions),
+    refresh: (input = buildWorkerDecisionInput(request, decisionOptions)) =>
       completeWorkerHandoffEvidence(
         request,
         decisionOptions,
-        buildWorkerDecisionInput(request, decisionOptions),
+        input,
       ),
   };
+}
+
+function hasUncompactedHandoffResult(message: ChatMessage, executionId: string): boolean {
+  if (!message.content.startsWith("{")) return false;
+  const record = JSON.parse(message.content) as {
+    kind?: string;
+    results?: Array<{ executionId?: string }>;
+  };
+  if (record.kind !== "runtime_request_tool_results_v1") return false;
+  return record.results?.some((result) => result.executionId === executionId) ?? false;
 }
 
 async function appendLateHandoffEvidence(ledger: RoleCallLedger) {

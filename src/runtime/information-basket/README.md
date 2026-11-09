@@ -133,8 +133,12 @@ that omit the field preserve the saved mode. Scores measure similarity, not cert
 The Information Basket Skill declares its required operations and eligible request
 root in its definition. A match alone requires neither a source nor a Skill read.
 Explicit Skill reads in EA remain independent of source readiness.
-EA guidance directs requested file lookups through LIST, SEARCH or READ, including
-when automatic matches are absent; unclear lookup intent calls for clarification.
+EA guidance scopes LIST, SEARCH and READ to sources registered in Resources,
+including when automatic matches are absent. These operations do not discover
+arbitrary filesystem files. Ordinary project/local file tasks use the relevant
+offered file/document capabilities; an explicit path does not imply Resources
+registration or require a basket lookup. Unclear registered-source lookup intent
+calls for clarification.
 Unread content does not establish denied access or justify requesting a re-upload.
 Background matches alone still require no action.
 Read results carry exact source/revision/hash and coverage; longer reads continue

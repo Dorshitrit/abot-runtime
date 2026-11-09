@@ -17,8 +17,10 @@ import { createLocalServiceClients } from "./local-host/client-services.js";
 import { createLocalInformationBasketClient } from "./local-host/client-information-basket.js";
 import { createLocalLearningClient } from "./local-host/client-learning.js";
 import { createLocalNativePermissionClient } from "./local-host/client-native-permissions.js";
+import type { SparkHomeAppearanceOptions } from "./spark-home/application-contracts.js";
+import { createLocalSparkHomeEvents } from "./local-host/client-spark-home-events.js";
 
-export type LocalRuntimeApplicationOptions = Readonly<{
+export type LocalRuntimeApplicationOptions = SparkHomeAppearanceOptions & Readonly<{
   scheduledRequestOptions?: (run: SchedulerRun) => RuntimeRequestOptions;
 }>;
 
@@ -53,6 +55,7 @@ export function createLocalRuntimeApplication(
   );
   const learning = createLocalLearningClient(call);
   const basket = createLocalInformationBasketClient(call);
+  const homeEvents = createLocalSparkHomeEvents();
   const nativePermissions = createLocalNativePermissionClient((method, args) => {
     if (stopped || !connection) return Promise.reject(new Error("local_runtime_not_started"));
     return connection.call(method, args);
@@ -71,6 +74,8 @@ export function createLocalRuntimeApplication(
     if (!reconnected) return;
     if (options.scheduledRequestOptions)
       await connection!.call("controls.register", []);
+    if (options.sparkHomeAppearance)
+      await connection!.call("sparkHomeHost.register", []);
   }
 
   async function connect(): Promise<void> {
@@ -87,6 +92,7 @@ export function createLocalRuntimeApplication(
         // Basket observers survive explicit same-owner reconnect until application shutdown.
       });
       current.setClientHandler(async (method, args) => {
+        if (method === "sparkHome.appearance") return options.sparkHomeAppearance?.();
         if (method === "memory.event") {
           memory.handleEvent(args);
           return null;
@@ -97,10 +103,12 @@ export function createLocalRuntimeApplication(
         client.receive(event);
         learning.receive(event);
         basket.receive(event);
+        homeEvents.receive(event);
       });
       if (options.scheduledRequestOptions) {
         await current.call("controls.register", []);
       }
+      if (options.sparkHomeAppearance) await current.call("sparkHomeHost.register", []);
     } catch (error) {
       await current.close();
       throw error;
@@ -134,6 +142,7 @@ export function createLocalRuntimeApplication(
         client.close();
         learning.close();
         basket.close();
+        homeEvents.close();
         await connection?.close();
       }
     },
@@ -148,11 +157,13 @@ export function createLocalRuntimeApplication(
       client.close();
       learning.close();
       basket.close();
+      homeEvents.close();
       return closing;
     },
     subscribeScheduledEvents: client.subscribe.bind(client),
     subscribeLearningEvents: learning.subscribe,
     subscribeInformationBasketEvents: basket.subscribe,
+    subscribeSparkHomeEvents: homeEvents.subscribe,
   });
 }
 

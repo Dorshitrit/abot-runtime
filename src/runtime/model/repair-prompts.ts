@@ -1,3 +1,5 @@
+import type { ChatMessage } from "../../model-gateway/types.js";
+
 type RepairIssue = Readonly<{
   code: string;
   path: string;
@@ -36,4 +38,16 @@ export function buildStructuredModelRepairHint(
       : ["1. Rebuild the complete decision from the supplied schema."]),
     "Follow the supplied schema for absent values: use null when the schema requires the property, and omit it only when omission is allowed.",
   ].join("\n");
+}
+
+/** Bind the latest validator guidance to a fresh attempt, keeping the original turns intact. */
+export function buildModelRepairAttemptMessages(
+  originalMessages: readonly ChatMessage[],
+  repairHint: string,
+): ChatMessage[] {
+  const firstTurn = originalMessages.findIndex((message) => message.role !== "system");
+  const endOfInstructions = firstTurn === -1 ? originalMessages.length : firstTurn;
+  const messages = [...originalMessages];
+  messages.splice(endOfInstructions, 0, Object.freeze({ role: "system", content: repairHint }));
+  return messages;
 }

@@ -10,13 +10,14 @@ import { createChatGptProviderAdapter } from "./openai-chatgpt/adapter.js";
 
 export function createBuiltInModelProviderAdapterRegistry(options: {
   ollamaUrl: string;
+  fetchImpl?: typeof fetch;
   additionalAdapters?: readonly ModelProviderAdapter[];
 }): ModelProviderAdapterRegistry {
   return createModelProviderAdapterRegistry([
     createOllamaProviderAdapter({ fallbackUrl: options.ollamaUrl }),
     createOpenAIProviderAdapter(),
     createChatGptProviderAdapter(),
-    createLlamaCppProviderAdapter(),
+    createLlamaCppProviderAdapter(options.fetchImpl),
     ...(options.additionalAdapters ?? []),
   ]);
 }

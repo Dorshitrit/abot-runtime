@@ -1,3 +1,4 @@
+import { readOpeningRepairInstruction } from "./support/repair-attempt-instruction.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { ModelGatewayClient } from "../ports.js";
@@ -3689,10 +3690,9 @@ describe("generic Worker capability decision boundary", () => {
           meta: {},
         };
       }
-      expect(asChatMessages(input.messages).at(-1)).toMatchObject({
-        role: "system",
-        content: expect.stringContaining("worker_terminal_action_unavailable"),
-      });
+      expect(readOpeningRepairInstruction(asChatMessages(input.messages)).content).toContain(
+        "worker_terminal_action_unavailable",
+      );
       return {
         text: workerDecisionText({
           action: "invoke_capability",
@@ -3775,10 +3775,9 @@ describe("generic Worker capability decision boundary", () => {
         };
       }
       expect(input.modelStep).toBe(CAPABILITY_CONTROLS_MODEL_STEP);
-      expect(asChatMessages(input.messages).at(-1)).toMatchObject({
-        role: "system",
-        content: expect.stringContaining("worker_terminal_action_unavailable"),
-      });
+      expect(readOpeningRepairInstruction(asChatMessages(input.messages)).content).toContain(
+        "worker_terminal_action_unavailable",
+      );
       return {
         text: workerDecisionText({
           action: "invoke_capability",
@@ -3873,16 +3872,9 @@ describe("generic Worker capability decision boundary", () => {
       }
       expect(executionMessages).toBeDefined();
       const messages = asChatMessages(input.messages);
-      expect(messages.slice(0, -1)).toEqual(executionMessages);
-      expect(messages.at(-1)).toMatchObject({
-        role: "system",
-        content: expect.stringContaining(
-          "worker_capability_controls_required_missing",
-        ),
-      });
-      expect(JSON.stringify(input.messages)).toContain(
-        "worker_capability_controls_required_missing",
-      );
+      const instruction = readOpeningRepairInstruction(messages);
+      expect(messages.filter((message) => message !== instruction)).toEqual(executionMessages);
+      expect(instruction.content).toContain("worker_capability_controls_required_missing");
       return {
         text: workerDecisionText({
           action: "invoke_capability",

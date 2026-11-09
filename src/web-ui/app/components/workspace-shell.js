@@ -13,6 +13,7 @@ import { createWorkspaceTransitions } from "./workspace-transitions.js";
 import { captureSessionListViewport, restoreSessionListViewport } from "./session-list-viewport.js";
 import { isConfigurationWorkspace, renderConfigurationPageHeading } from "../lib/configuration-pages.js";
 import { createWorkspaceRailScroll } from "./workspace-rail-scroll.js";
+import { createConversationSidebarResizing } from "./conversation-panel-resizing.js";
 
 export function createWorkspaceShell({
   dom,
@@ -29,6 +30,7 @@ export function createWorkspaceShell({
     toastTimer: 0,
     bound: false,
   };
+  const sidebarResizing = createConversationSidebarResizing({ dom, viewport });
   let navigationRevision = 0;
   const workspaceListeners = new Set();
   const runtimeAvailabilityListeners = new Set();
@@ -174,6 +176,7 @@ export function createWorkspaceShell({
     );
     dom.sessionsToggleButton.hidden = !showSessionsToggle;
     dom.closeSessionsButton.hidden = sessions.docked;
+    sidebarResizing.sync();
 
     setCurrentPage(dom.chatWorkspaceButton, chatWorkspace);
     setCurrentPage(dom.homeWorkspaceButton, homeWorkspace);

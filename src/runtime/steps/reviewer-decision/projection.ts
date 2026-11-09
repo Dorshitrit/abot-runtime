@@ -301,6 +301,11 @@ function projectReviewerCompactedReferenceData(
       params.scopedTopLevelCallIds.has(topLevelCallId)
     );
   });
+  const reviewedExecutionIds = new Set(
+    params.head.state.capabilityExecutions
+      .filter(({ callId }) => callIds.includes(callId))
+      .map(({ executionId }) => executionId),
+  );
   const projected = new Map<string, string>();
   for (const checkpoint of store.findByCallIds(callIds)) {
     if (hasSuperContextContract(params.head.policy.authority, "supervisor")) {
@@ -324,6 +329,7 @@ function projectReviewerCompactedReferenceData(
       continue;
     }
     for (const digest of checkpoint.sourceDigests) {
+      if (!reviewedExecutionIds.has(digest.sourceRef)) continue;
       if (
         !store.materializeSource(digest.sourceRef, digest.sourceFingerprint) ||
         projected.has(digest.sourceRef)

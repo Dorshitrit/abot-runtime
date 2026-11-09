@@ -1,0 +1,25 @@
+.system-metrics-card {
+  contain: layout paint style;
+  font-variant-numeric: tabular-nums;
+}
+.system-metrics-card .system-metrics-header { padding: 12px 16px 9px; }
+.system-metrics-scope {
+  max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px;
+  color: var(--muted); font-size: 11px;
+}
+.system-metrics-body { display: grid; gap: 13px; padding: 13px 16px 8px; }
+.system-metrics-row { min-width: 0; }
+.system-metrics-line, .system-metrics-temperature { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.system-metrics-value { color: var(--text-strong); font-weight: 550; white-space: nowrap; }
+.system-metrics-line .system-metrics-value { font-size: 18px; line-height: 1.2; }
+.system-metrics-track { height: 4px; margin: 7px 0 4px; overflow: hidden; border-radius: 3px; background: var(--line); }
+.system-metrics-fill { height: 100%; background: var(--accent, var(--text)); transform: scaleX(0); transform-origin: left; }
+.system-metrics-detail { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--muted); }
+.system-metrics-temperature { font-size: 12px; }
+.system-metrics-card .system-metrics-footer {
+  margin-top: auto; padding: 5px 16px 10px; flex-wrap: nowrap; font-size: 10px; line-height: 1.4;
+}
+.system-metrics-status::before { content: ""; display: inline-block; width: 5px; height: 5px; margin-inline-end: 6px; border-radius: 50%; background: var(--muted); }
+.system-metrics-card[data-metrics-status="live"] .system-metrics-status::before { background: var(--accent, var(--text)); }
+.system-metrics-cadence { white-space: nowrap; }

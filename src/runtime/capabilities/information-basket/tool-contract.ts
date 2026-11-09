@@ -6,14 +6,14 @@ export const informationBasketToolContract = {
   operations: [
     {
       operationId: "list_information_sources",
-      summary: "List READY source metadata; paginate with nextCursor.",
+      summary: "List READY sources registered in Resources (Information Basket); paginate with nextCursor.",
       effect: "read_only", approval: "request_policy", fixedParams: { action: "list_information_sources" },
       input: { type: "object", additionalProperties: false,
         properties: { cursor: { type: "string", minLength: 1, maxLength: 80 } }, required: [] },
     },
     {
       operationId: "search_information_sources",
-      summary: "Search registered file names and indexed content for candidate sources; matches are not source evidence.",
+      summary: "Search only Resources (Information Basket) sources by registered name or indexed content, not general filesystem files; matches are not source evidence.",
       effect: "read_only", approval: "request_policy", fixedParams: { action: "search_information_sources" },
       input: { type: "object", additionalProperties: false,
         properties: { query: { type: "string", minLength: 1, maxLength: BASKET_LIMITS.maxQueryCharacters } },
@@ -22,7 +22,7 @@ export const informationBasketToolContract = {
     },
     {
       operationId: "read_information_source",
-      summary: "Read a bounded source window by exact sourceId and expectedRevision; paginate with nextStartChar.",
+      summary: "Read a bounded window of a registered Resources source by exact sourceId and expectedRevision; paths are not accepted. Paginate with nextStartChar.",
       effect: "read_only", approval: "request_policy", fixedParams: { action: "read_information_source" },
       input: { type: "object", additionalProperties: false,
         properties: {

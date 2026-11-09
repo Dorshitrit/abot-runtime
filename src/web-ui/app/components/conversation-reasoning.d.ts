@@ -4,6 +4,7 @@ export declare function createConversationReasoning(options?: {
   documentRoot?: Document;
 }): {
   beginRender(messages: ReasoningMessage[]): void;
-  createNode(message: ReasoningMessage): HTMLDetailsElement | null;
+  createNode(message: ReasoningMessage, options?: { allowEmpty?: boolean }): HTMLDetailsElement | null;
+  update(messages: ReasoningMessage[]): boolean;
   reset(): void;
 };

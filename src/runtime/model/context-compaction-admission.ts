@@ -95,6 +95,16 @@ function fitsCompactionTarget(assessment: RequestMessagesBudgetAssessment, targe
   return resolveRequestBudgetInputTokens(assessment.budget) <= target;
 }
 
+function canRetainCompactionProjection(
+  candidate: RequestMessagesBudgetAssessment,
+  stageInput: RequestMessagesBudgetAssessment,
+  targetInputTokens: number | undefined,
+): boolean {
+  if (!candidate.fits) return false;
+  if (!fitsCompactionTarget(candidate, targetInputTokens)) return false;
+  return hasReducedProjection(candidate, stageInput);
+}
+
 function canAdmitReusedCompactedContext(
   assessment: RequestMessagesBudgetAssessment,
   controller: ModelStepContextCompactionController | undefined,
@@ -201,8 +211,17 @@ export async function admitCompactedContext(
       activeStage = stage;
       params.assertNotAborted();
       const onProgress = diagnostics.observePreparation(stage, 1);
+      const stageInput = current.assessment;
       const prepare = () => stage.prepare(current.messages, {
         onProgress,
+        async canRetainProjection(messages) {
+          params.assertNotAborted();
+          const candidate = await params.assess(messages);
+          params.assertNotAborted();
+          return canRetainCompactionProjection(
+            candidate, stageInput, params.providerOverflowRepair?.targetInputTokens,
+          );
+        },
         ...(params.providerOverflowRepair ? {
           projectionRepair: params.providerOverflowRepair,
           recompactFromSources: true as const,

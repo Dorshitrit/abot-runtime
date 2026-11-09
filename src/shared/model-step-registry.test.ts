@@ -3,10 +3,8 @@ import { createRequire } from "node:module";
 import { describe, expect, expectTypeOf, test } from "vitest";
 
 import {
-  CORE_DECISION_OUTPUT_TOKEN_LIMIT,
   MODEL_INVOCATION_STEP_REGISTRY,
   resolveModelInvocationStep,
-  resolveModelStepOutputTokenLimit,
   type ModelStep,
 } from "./model-step-registry.js";
 import { resolveRuntimeModelRole } from "./model-role-policy.js";
@@ -49,49 +47,6 @@ describe("model invocation step registry", () => {
     ).toBe(true);
     expect(isMainModelStep(MODEL_STEPS.CONTEXT_COMPACTION)).toBe(false);
     expect(isMainModelStep(MODEL_STEPS.TOOL_PAYLOAD_RAW)).toBe(false);
-  });
-
-  test("marks only explicit runtime-core decisions with the fixed output policy", () => {
-    const coreDecisionSteps = [
-      MODEL_STEPS.SUPERVISOR_DECISION,
-      MODEL_STEPS.WORKER_EVIDENCE,
-      MODEL_STEPS.WORKER_DECISION,
-      MODEL_STEPS.PLANNER_DECISION,
-      MODEL_STEPS.REVIEWER_DECISION,
-      MODEL_STEPS.EXECUTION_DECISION,
-      MODEL_STEPS.AUDITOR_DECISION,
-    ];
-    expect(CORE_DECISION_OUTPUT_TOKEN_LIMIT).toBe(2_048);
-    expect(
-      Object.values(MODEL_INVOCATION_STEP_REGISTRY)
-        .filter(
-          (definition) =>
-            "outputTokenPolicy" in definition &&
-            definition.outputTokenPolicy === "core_decision",
-        )
-        .map((definition) => definition.id),
-    ).toEqual(coreDecisionSteps);
-    for (const modelStep of coreDecisionSteps) {
-      expect(resolveModelInvocationStep(modelStep)).toMatchObject({
-        owner: "runtime-core",
-        outputTokenPolicy: "core_decision",
-      });
-      expect(resolveModelStepOutputTokenLimit(modelStep)).toBe(2_048);
-    }
-
-    for (const modelStep of [
-      MODEL_STEPS.SUPERVISOR_RESPONSE,
-      MODEL_STEPS.WORKER_RESULT,
-      MODEL_STEPS.CAPABILITY_CONTROLS,
-      MODEL_STEPS.PLANNER_GRAPH,
-      MODEL_STEPS.DEGRADED_FINALIZATION,
-      MODEL_STEPS.EXECUTION_RESPONSE,
-      MODEL_STEPS.CONTEXT_COMPACTION,
-      MODEL_STEPS.TOOL_PAYLOAD_RAW,
-      "unregistered.decision",
-    ]) {
-      expect(resolveModelStepOutputTokenLimit(modelStep)).toBeUndefined();
-    }
   });
 
   test.each([

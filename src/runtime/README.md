@@ -30,7 +30,9 @@ The production path is:
    capability actions.
    After presentation and Skills preparation, a new Supervisor request first
    classifies whether a procedure is required, using the current request,
-   short system policy, captured Skill guidance and optional bounded passive memory as readable text.
+   the latest settled conversation turn, short system policy, captured Skill
+   guidance and optional bounded passive memory as readable text. The source
+   turn stays whole; exact admission can reject it when it exceeds the budget.
    Configured routing methodology is excluded from this gate and its budget.
    Direct replies proceed to response authoring with the existing full memory.
    Procedural requests separately choose Worker/Planner and a bounded objective,
@@ -129,8 +131,8 @@ CREATE/UPDATE. An older request already waiting for approval retains its recorde
 approval through resume. Available Skills projects bounded metadata from the same
 Store; document bodies enter context only after an explicit read.
 
-The packaged read-only catalog contains ABot Studio, Computer Use, Skill Creator,
-Technical Work and What Can I Do? The latter explains supported uses while
+The packaged read-only catalog contains ABot Studio, Desktop GUI Interaction, Skill Creator,
+Coding and Development and What Can I Do? The latter explains supported uses while
 distinguishing them from the tools actually enabled for a request. The documents
 are packaged source content, not tool action-Skills or system instructions.
 They supply procedural reference under the current objective without granting

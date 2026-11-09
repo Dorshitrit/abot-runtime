@@ -37,7 +37,7 @@ function renderer() {
 }
 
 describe("Supervisor delegation disclosure", () => {
-  test("renders recipient and exact long RTL objective once with independent status", () => {
+  test("renders recipient and exact long RTL objective without redundant generic status", () => {
     const { render } = renderer();
     const objective = "  בדוק את המקורות\n".repeat(500).slice(0, 8_192);
     const node = render([
@@ -52,7 +52,7 @@ describe("Supervisor delegation disclosure", () => {
     expect(objectives[0]!.textContent).toBe(objective);
     expect(objectives[0]!.getAttribute("dir")).toBe("auto");
     expect(node.querySelector(".conversation-role-delegation-label")?.textContent).toBe("Delegated to Planner");
-    expect(node.querySelector(".conversation-role-action")?.textContent).toBe("Processing The Delegated Result");
+    expect(node.querySelector(".conversation-role-action")).toBeNull();
     expect((node.querySelector(".conversation-role-delegation") as Detail).open).toBe(false);
     expect(node.querySelector(".conversation-role-delegation-toggle")?.tagName).toBe("summary");
     expect(node.querySelector(".conversation-role-title")?.textContent).toBe("Supervisor");
@@ -114,6 +114,6 @@ describe("Supervisor delegation disclosure", () => {
       stage: "supervisor", phase: "resuming", message: "Processing The Delegated Result",
     }]);
     expect(node.querySelector(".conversation-role-delegation")).toBeNull();
-    expect(node.querySelector(".conversation-role-action")?.textContent).toBe("Processing The Delegated Result");
+    expect(node.querySelector(".conversation-role-action")).toBeNull();
   });
 });

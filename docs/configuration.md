@@ -88,6 +88,11 @@ through `@abot-ai/runtime/model-gateway`; its config uses that adapter's `type` 
 may place adapter-owned JSON-safe values under `settings`. Merely naming an
 unknown type never selects a fallback provider.
 
+GUI setup, `abot init`, and `abot add-model` default new llama.cpp and Ollama
+profiles to `generation.temperature: 0`. You can change it in the Models
+configuration editor or set a temperature for an individual calibration step.
+Existing profiles keep their sampling settings.
+
 For OpenAI API models that support explicit cache boundaries (GPT-5.6+ or a
 compatible model), **Optimize prompt caching** is available in initial setup,
 Add Model, and the Models configuration editor. The optimization applies only
@@ -404,11 +409,15 @@ subtracted while projecting messages so the prompt does not consume the whole
 context window; it is never forwarded to a provider as an output limit. Model
 steps may vary their prompt contract, timeout, format, or other generation
 controls, but configuration does not define a shared per-step output-token cap.
-The Ollama adapter still sends a finite provider-native `num_predict`, derived
-mechanically from the final provider input and the physical context remainder.
-Registered core-decision steps additionally retain their internal output-token
-limit. Output schema size does not impose another generation limit; schema
-projection, validation, input estimation, and compaction remain unchanged.
+By default, the Ollama adapter sends a finite provider-native `num_predict`
+derived from the physical context remaining after estimating the final provider
+input. No model step or reasoning mode adds an automatic 2,048-token limit;
+reasoning and visible output share the provider allowance. An explicit positive
+`OLLAMA_NUM_PREDICT` overrides `options.num_predict` in the model profile, which
+overrides the calculated default, including for decisions. These explicit
+overrides are not clamped to the estimated remainder. Output schema size does
+not impose another generation limit; schema projection, validation, input
+estimation, and compaction remain unchanged.
 
 The required context fields remain explicit. Unknown fields, unknown step ids,
 and invalid explicit overrides are rejected during configuration loading;

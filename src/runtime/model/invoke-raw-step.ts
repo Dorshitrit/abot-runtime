@@ -1,3 +1,4 @@
+import { buildModelRepairAttemptMessages } from "./repair-prompts.js";
 import type { ChatMessage } from "../../model-gateway/types.js";
 import type { ModelStep } from "../../shared/model-steps.js";
 import { traceDebug } from "../observability/debug-logger.js";
@@ -196,10 +197,7 @@ export async function invokeRepairableRawModelStep(params: {
       sameRoleCall: true,
     });
     previousRejectedOutput = attempt.rejectedOutput;
-    messages = [
-      ...params.messages,
-      Object.freeze({ role: "system" as const, content: repairHint }),
-    ];
+    messages = buildModelRepairAttemptMessages(params.messages, repairHint);
   }
 
   throw new Error("raw_model_repair_state_invalid");

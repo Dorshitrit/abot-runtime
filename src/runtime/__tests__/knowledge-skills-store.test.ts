@@ -54,10 +54,10 @@ describe("core knowledge document store", () => {
     const metadata = builtinKnowledgeSkillStore.list();
     expect(metadata.map(({ skillId, name }) => ({ skillId, name }))).toEqual([
       { skillId: "abot-studio", name: "ABot Studio" },
-      { skillId: "computer-use", name: "Computer Use" },
+      { skillId: "computer-use", name: "Desktop GUI Interaction" },
       { skillId: "information-basket", name: "Information Basket" },
       { skillId: "skill-creator", name: "Skill Creator" },
-      { skillId: "technical-work", name: "Technical Work" },
+      { skillId: "technical-work", name: "Coding and Development" },
       { skillId: "what-can-i-do", name: "What Can I Do?" },
     ]);
     for (const entry of metadata) {

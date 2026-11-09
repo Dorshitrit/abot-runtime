@@ -1,3 +1,5 @@
+import { createSupervisorToolEvidence, type SupervisorToolEvidence } from "../../context/supervisor-tool-evidence.js";
+import { markInvocationContextMessage } from "../../../model-gateway/protocol/invocation-context.js";
 import { resolveMemoryRecallSteeringVersion } from "../../long-term-memory/recall-binding.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { RoleCallLedgerHead } from "../../orchestration/role-calls/index.js";
@@ -98,12 +100,17 @@ export async function runSupervisorAuthoredResponse(
       ? options.steeringSnapshot?.version
       : undefined);
   assertBoundModelStepSteeringCurrent(requestSteering, boundSteeringVersion);
-  const memoryMessage = memoryEnabled
-    ? options.memoryRecallMessage ?? options.initialMemoryMessage
+  const memoryToolEvidence = memoryEnabled
+    ? createSupervisorToolEvidence(request, {
+        head: options.skillReadHead,
+        callId: options.call.callId,
+        toolResults: options.toolResults,
+      })
     : undefined;
   const inputOptions = {
     ...options,
-    ...(memoryMessage ? { longTermMemoryMessage: memoryMessage } : {}),
+    memoryRecallMessage: memoryEnabled ? options.memoryRecallMessage : undefined,
+    initialMemoryMessage: memoryEnabled ? options.initialMemoryMessage : undefined,
   };
   const memoryAuthoringContext = memoryEnabled
     ? await prepareConversationMemoryAuthoring(request, steeringSnapshot)
@@ -119,15 +126,22 @@ export async function runSupervisorAuthoredResponse(
         ...(memoryAuthoringContext ? { memoryAuthoringContext } : {}),
         messages: buildSupervisorMemoryAuthoringInput(request, {
           ...inputOptions,
+          ...(memoryToolEvidence ? { supervisorToolEvidence: memoryToolEvidence } : {}),
           ...(memoryAuthoringContext
-            ? { memoryAuthoringMessage: memoryAuthoringContext.message }
+            ? { memoryAuthoringMessage: markInvocationContextMessage(memoryAuthoringContext.message) }
             : {}),
         }).context.messages,
-        contextCompaction: createSupervisorResponseCompaction(request, options),
+        contextCompaction: createSupervisorResponseCompaction(request, options, memoryToolEvidence),
       })
     : Object.freeze([]);
+  const supervisorToolEvidence = createSupervisorToolEvidence(request, {
+    head: options.skillReadHead,
+    callId: options.call.callId,
+    toolResults: options.toolResults,
+  });
   const input = buildSupervisorResponseInput(request, {
     ...inputOptions,
+    ...(supervisorToolEvidence ? { supervisorToolEvidence } : {}),
     ...(memoryEnabled ? { memoryCandidateCount: memoryCandidates.length } : {}),
     ...(memoryEnabled
       ? {
@@ -158,7 +172,7 @@ export async function runSupervisorAuthoredResponse(
       request,
       modelStep: input.modelStep,
       messages: input.context.messages,
-      contextCompaction: createSupervisorResponseCompaction(request, options),
+      contextCompaction: createSupervisorResponseCompaction(request, options, supervisorToolEvidence),
       timeoutReason: "supervisor_response_timeout",
       ...(request.automationOutputContract
         ? { format: automationResponseFormat(request.automationOutputContract) }
@@ -202,11 +216,13 @@ function createSupervisorResponseCompaction(
     call: SupervisorResponseCallIdentity;
     toolResults: RequestToolResultsView;
   }>,
+  supervisorToolEvidence?: SupervisorToolEvidence,
 ) {
   return createSessionMemoryAwareCompactionController(
     request,
     createPolicyModelStepCompactionController(request, {
       consumer: SUPERVISOR_RESPONSE_MODEL_STEP,
+      ...(supervisorToolEvidence ? { supervisorToolEvidence } : {}),
       superFailureOwner: superCompactionFailureOwner(
         request.executionPolicy.authority,
         {

@@ -4,12 +4,12 @@ import type { ModelProviderAdapter } from "../contracts.js";
 import { emitLlamaCppStreamTermination } from "./diagnostics.js";
 import { embedWithLlamaCpp } from "./embeddings.js";
 import { countLlamaCppInputTokens } from "./input-token-count.js";
-import { buildLlamaCppChatPayload } from "./payload.js";
+import { prepareLlamaCppSystemMessages } from "./system-message-packing.js";
 import { bindLlamaCppResponseLifetime } from "./response-lifetime.js";
 import { resolveLlamaCppProviderSettings } from "./settings.js";
 import { collectLlamaCppChatStream, forwardLlamaCppChatStream } from "./stream.js";
 
-export function createLlamaCppProviderAdapter(): ModelProviderAdapter {
+export function createLlamaCppProviderAdapter(renderFetch?: typeof fetch): ModelProviderAdapter {
   return Object.freeze({
     type: "llamacpp",
     supportsImageInput: false,
@@ -23,7 +23,9 @@ export function createLlamaCppProviderAdapter(): ModelProviderAdapter {
           error instanceof Error ? error.message : "llamacpp_configuration_invalid", params.requestBody,
         ) };
       }
-      const payload = buildLlamaCppChatPayload(params);
+      const prepared = await prepareLlamaCppSystemMessages(params, settings, renderFetch ?? params.fetchImpl);
+      if (prepared.kind === "error") return prepared;
+      const { payload } = prepared;
       const { response, responseTrace } = await fetchProviderWithTrace({
         endpoint: params.endpoint, requestBody: params.requestBody, invocation: params.invocation,
         fetchImpl: async (input, init) => bindLlamaCppResponseLifetime(await params.fetchImpl(input, init)),

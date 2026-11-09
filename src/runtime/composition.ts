@@ -1,4 +1,5 @@
 import type { InformationBasketService } from "./information-basket/contracts.js";
+import type { SparkHomeApplicationServices, SparkHomeAppearanceOptions } from "./spark-home/application-contracts.js";
 import type { PersonalSkillManagementService } from "./knowledge-skills/personal-contracts.js";
 import type { KnowledgeSkillStore } from "./knowledge-skills/store.js";
 import type WebSocket from "ws";
@@ -35,7 +36,7 @@ import type { RequestSteeringAppendResult } from "./request/request-steering.js"
 import type { PassiveLearningService } from "./passive-learning/contracts.js";
 import type { AutomationService } from "./automations/service.js";
 
-export type RuntimeEnvironmentServices = SessionMemoryCompactorComposition & Readonly<{
+export type RuntimeEnvironmentServices = SessionMemoryCompactorComposition & SparkHomeApplicationServices & Readonly<{
   config: RuntimeConfig;
   sessions: SessionStore;
   projects?: RuntimeProjectService;
@@ -129,7 +130,7 @@ export type RuntimeDependencyOverrides = Partial<
   >
 >;
 
-export type RuntimeApplicationOverrides = RuntimeDependencyOverrides & {
+export type RuntimeApplicationOverrides = RuntimeDependencyOverrides & SparkHomeAppearanceOptions & {
   scheduledRequestOptions?: (run: SchedulerRun) => RuntimeRequestOptions;
 };
 

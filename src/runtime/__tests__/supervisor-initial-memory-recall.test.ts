@@ -25,12 +25,14 @@ test.each(["found", "empty", "unavailable", "oversized"] as const)(
       policy: "supervisor-worker-v1",
       classifyProcedure(input) {
         if (++gates === 1) return { requiresProcedure: true };
-        const references = modelMessages(input).filter(({ role }) => role === "system").slice(1);
-        expect(references).toHaveLength(1);
-        expect(references[0]!.content).toContain(receiptOutcome);
-        expect(references[0]!.content.length).toBeLessThanOrEqual(1_000);
-        if (outcome === "found") expect(references[0]!.content).toContain(record.content);
-        if (outcome === "oversized") expect(references[0]!.content).not.toContain("WHOLE_LARGE_FACT");
+        const messages = modelMessages(input);
+        expect(messages.map(({ role }) => role)).toEqual(["system", "user", "assistant", "tool"]);
+        const result = messages.at(-1)!;
+        expect(result).toMatchObject({ role: "tool", toolCallId: "recall-1", toolName: "recall_memory" });
+        expect(result.content).toContain(receiptOutcome);
+        expect(result.content.length).toBeLessThanOrEqual(1_000);
+        if (outcome === "found") expect(result.content).toContain(record.content);
+        if (outcome === "oversized") expect(result.content).not.toContain("WHOLE_LARGE_FACT");
         expect(recallCapsules(input)).toEqual([]);
         return { requiresProcedure: false, responseRecommendation: "Answer using the lookup outcome." };
       },
@@ -53,12 +55,15 @@ test.each(["found", "empty", "unavailable", "oversized"] as const)(
     expect(calls.flatMap(input => supervisorFormatName(input) ?? [])).toEqual([
       "supervisor_presentation", "supervisor_procedure_gate", "supervisor_delegation", "supervisor_procedure_gate",
     ]);
-    for (const input of calls.filter(input => input.modelStep === "supervisor.response"))
+    for (const input of calls.filter(input => input.modelStep === "supervisor.response")) {
+      const action = modelMessages(input).find(message => message.toolCalls?.[0]?.name === "recall_memory");
+      expect(JSON.parse(action!.toolCalls![0]!.arguments)).toEqual({ action: "recall_memory", query: RECALL_QUERY });
       expect(recallCapsules(input)).toEqual([expect.objectContaining({
         callId: "call-1", steeringVersion: 0,
-        recalls: [expect.objectContaining({ outcome: receiptOutcome, query: RECALL_QUERY, completedChildCount: 0,
+        recalls: [expect.objectContaining({ outcome: receiptOutcome, completedChildCount: 0,
           memories: outcome === "found" || outcome === "oversized" ? [record] : [] })],
       })]);
+    }
     expect(JSON.stringify(vi.mocked(f.request.onEvent).mock.calls)).not.toContain('"name":"role.delegated"');
     expect(f.request.onAcknowledgement).toHaveBeenCalledOnce();
   },

@@ -1,4 +1,8 @@
 import { join } from "node:path";
+import {
+  isProcessOwnerAlive,
+  requireCurrentProcessOwnerIdentity,
+} from "../../computer-access/companion/process-owner-identity.js";
 import { acquireFileLock } from "../adapters/long-term-memory/file-lock/acquisition.js";
 import type {
   LocalRuntimeConnection,
@@ -31,9 +35,10 @@ export async function createLocalRuntimeConnection(
 ): Promise<LocalRuntimeConnection> {
   if (!options.identity) throw new Error("local_runtime_identity_required");
   await ensurePrivateRuntimeDirectory(options.directory);
+  const ownerIdentity = await requireCurrentProcessOwnerIdentity();
   const deadline = Date.now() + (options.startupTimeoutMs ?? 10_000);
   for (;;) {
-    const release = await tryAcquireRuntimeOwner(options.directory);
+    const release = await tryAcquireRuntimeOwner(options.directory, ownerIdentity);
     if (release) return establishRuntimeOwner(options, release);
     const connected = await connectToPublishedRuntimeOwner(options, deadline);
     if (connected)
@@ -100,10 +105,13 @@ async function establishRuntimeOwner(
 
 async function tryAcquireRuntimeOwner(
   directory: string,
+  ownerIdentity: string,
 ): Promise<(() => Promise<void>) | undefined> {
   try {
     return await acquireFileLock(join(directory, "owner"), {
       waitMs: 0,
+      ownerIdentity,
+      processIsAlive: isProcessOwnerAlive,
       releaseMode: "synchronous",
     });
   } catch (error) {

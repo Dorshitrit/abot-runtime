@@ -11,6 +11,19 @@ import { ModelSetupService } from "./model-setup-service.js";
 export class ModelSetupRoutes {
   constructor(private readonly service: ModelSetupService) {}
 
+  private selectMutation(method: string, route: string) {
+    switch (`${method} ${route}`) {
+      case "POST runtime/config/models":
+        return this.service.add.bind(this.service);
+      case "DELETE runtime/config/models":
+        return this.service.remove.bind(this.service);
+      case "PUT runtime/config/providers":
+        return this.service.updateProvider.bind(this.service);
+      case "DELETE runtime/config/providers":
+        return this.service.removeProvider.bind(this.service);
+    }
+  }
+
   async handle(params: {
     method: string;
     route: string;
@@ -18,9 +31,11 @@ export class ModelSetupRoutes {
     response: ServerResponse;
   }): Promise<boolean> {
     if (
-      !["runtime/config/models", "runtime/config/models/setup"].includes(
-        params.route,
-      )
+      ![
+        "runtime/config/models",
+        "runtime/config/models/setup",
+        "runtime/config/providers",
+      ].includes(params.route)
     )
       return false;
     params.response.setHeader("cache-control", "no-store");
@@ -33,25 +48,21 @@ export class ModelSetupRoutes {
           ok: true,
           ...(await this.service.catalog()),
         });
-      } else if (
-        params.route === "runtime/config/models" &&
-        ["POST", "DELETE"].includes(params.method)
-      ) {
-        assertConfigMutationRequest(params.request);
-        const body = readJsonBody(
-          await readBody(params.request, { maxBytes: 16_384 }),
-        );
-        sendJson(params.response, 200, {
-          ok: true,
-          ...(params.method === "DELETE"
-            ? await this.service.remove(body)
-            : await this.service.add(body)),
-        });
-      } else
+        return true;
+      }
+      const mutate = this.selectMutation(params.method, params.route);
+      if (!mutate) {
         sendJson(params.response, 405, {
           ok: false,
           error: "method_not_allowed",
         });
+        return true;
+      }
+      assertConfigMutationRequest(params.request);
+      const body = readJsonBody(
+        await readBody(params.request, { maxBytes: 16_384 }),
+      );
+      sendJson(params.response, 200, { ok: true, ...(await mutate(body)) });
     } catch (error) {
       const known =
         error instanceof ModelSetupError ||

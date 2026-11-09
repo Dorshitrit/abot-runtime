@@ -14,6 +14,7 @@ import {
   sendMemoryManagementError,
 } from "./memory-management-response.js";
 import { withHttpRequestAbortSignal } from "./request-abort.js";
+import { handleMemoryCandidateRoute, isMemoryCandidateRoute } from "./memory-candidate-routes.js";
 
 type ResolveMemoryManagementService = (
   environmentId: string,
@@ -55,6 +56,10 @@ export class LongTermMemoryManagementRoutes {
     request: MemoryManagementRouteRequest,
     service: LongTermMemoryManagementService,
   ): Promise<void> {
+    if (isMemoryCandidateRoute(request.segments)) {
+      await handleMemoryCandidateRoute(request, service);
+      return;
+    }
     if (request.route === RECORDS_ROUTE) {
       await this.handleCollection(request, service);
       return;
@@ -160,6 +165,7 @@ export class LongTermMemoryManagementRoutes {
 function isMemoryManagementRoute(
   request: MemoryManagementRouteRequest,
 ): boolean {
+  if (isMemoryCandidateRoute(request.segments)) return true;
   if (request.route === RECORDS_ROUTE || request.route === SEARCH_ROUTE) {
     return true;
   }

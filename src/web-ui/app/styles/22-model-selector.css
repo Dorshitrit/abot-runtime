@@ -1,0 +1,211 @@
+/* Provider identity stays visible both in the menu and in the selected value. */
+.model-control {
+  flex: 0 1 auto;
+  min-width: 120px;
+  max-width: 340px;
+}
+
+.model-select-button {
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--control-bg);
+  color: var(--text);
+}
+
+.model-select-value {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.model-select-provider {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+}
+
+.model-select-separator {
+  flex: none;
+  color: var(--muted-2);
+}
+
+.model-select-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.model-select-route {
+  flex: none;
+  margin-inline-start: 3px;
+  padding-inline-start: 8px;
+  border-inline-start: 1px solid var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.model-select-button > svg:not(.model-select-icon) {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+  opacity: 0.75;
+  transition: transform 120ms ease;
+}
+
+.model-select-button.open > svg:not(.model-select-icon) {
+  transform: rotate(180deg);
+}
+
+.model-select-menu {
+  left: 0;
+  width: max(100%, 340px);
+  max-width: calc(100vw - 32px);
+  max-height: min(480px, max(120px, calc(100dvh - 240px)));
+  gap: 0;
+  padding: 8px;
+  border-radius: 13px;
+}
+
+.model-select-menu-title {
+  margin-bottom: 3px;
+  padding: 7px 9px 11px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font-size: var(--font-size-lg);
+  font-weight: 500;
+}
+
+.model-select-group-label {
+  padding: 13px 10px 5px;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.model-select-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 43px;
+  padding: 10px;
+  font-size: var(--font-size-lg);
+  font-weight: 400;
+}
+
+.model-select-option-label {
+  overflow-wrap: anywhere;
+}
+
+.model-select-check {
+  color: var(--accent);
+  text-align: center;
+}
+
+.model-select-provider-option,
+.model-select-back {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-color: transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--font-size-lg);
+  font-weight: 400;
+  text-align: left;
+  box-shadow: none;
+}
+
+.model-select-provider-option {
+  justify-content: space-between;
+  width: 100%;
+  min-height: 66px;
+  padding: 10px;
+}
+
+.model-select-provider-description {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.model-select-provider-count {
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+}
+
+.model-select-back {
+  margin-bottom: 4px;
+  padding: 8px;
+}
+
+.model-select-provider-option:hover:not(:disabled),
+.model-select-back:hover {
+  background: var(--control-bg-hover);
+}
+
+@container (max-width: 500px) {
+  .model-select-value {
+    display: grid;
+    gap: 0;
+    text-align: left;
+  }
+
+  .model-select-separator {
+    display: none;
+  }
+
+  .model-select-provider,
+  .model-select-name {
+    grid-column: 1;
+    max-width: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .model-select-route {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+
+  .model-select-button {
+    padding-block: 3px;
+  }
+}
+
+@container (max-width: 400px) {
+  .composer-model-controls {
+    padding-inline: 0;
+  }
+
+  .model-control {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .model-select-menu {
+    width: min(320px, 100%);
+  }
+}

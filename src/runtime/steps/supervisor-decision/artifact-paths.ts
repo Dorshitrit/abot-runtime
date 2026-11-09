@@ -1,3 +1,4 @@
+import { markInvocationContextMessage } from "../../../model-gateway/protocol/invocation-context.js";
 import type {
   ChatMessage,
   ModelGatewayJsonSchemaFormat,
@@ -38,21 +39,30 @@ export function projectSupervisorArtifactPaths(params: Readonly<{
     context: { ...params.context, instructions },
     additionalBudgetMessages: params.additionalBudgetMessages,
   });
-  const artifactPaths = buildSessionArtifactPathsMessage({
-    targets: params.targets,
-    applicable: true,
-    applicability: "supervisor_objective_and_working_directory_reference_only",
-    maxTargets: 8,
-    fits: (message) =>
-      estimateMessageTokens(message, params.context.budget.tokenEstimation) <=
-      headroom,
-  });
-  if (!artifactPaths) return undefined;
+  const message = buildSupervisorArtifactReference(params.targets, (candidate) =>
+    estimateMessageTokens(candidate, params.context.budget.tokenEstimation) <= headroom,
+  );
+  if (!message) return undefined;
   return {
     instructions,
     baseInstructions: params.context.instructions,
-    message: artifactPaths.message,
+    message,
   };
+}
+
+function buildSupervisorArtifactReference(
+  targets: readonly string[],
+  fits: (message: ChatMessage) => boolean,
+): ChatMessage | undefined {
+  const projection = buildSessionArtifactPathsMessage({
+    targets,
+    applicable: true,
+    applicability: "supervisor_objective_and_working_directory_reference_only",
+    maxTargets: 8,
+    fits,
+  });
+  if (!projection) return undefined;
+  return markInvocationContextMessage(projection.message);
 }
 
 /** Exact phases may omit this bound optional reference without invoking compaction. */
@@ -127,27 +137,20 @@ export function createSupervisorArtifactPathsReadmissionController(
         budget: admission.budget,
         format: options.format,
       });
-      const artifactPaths = buildSessionArtifactPathsMessage({
-        targets: request.sessionArtifactPaths ?? [],
-        applicable: true,
-        applicability:
-          "supervisor_objective_and_working_directory_reference_only",
-        maxTargets: 8,
-        fits: (message) =>
-          estimateMessageTokens(message, admission.budget.tokenEstimation) <=
-          headroom,
-      });
-      if (!artifactPaths) return projected;
+      const message = buildSupervisorArtifactReference(request.sessionArtifactPaths ?? [], (candidate) =>
+        estimateMessageTokens(candidate, admission.budget.tokenEstimation) <= headroom,
+      );
+      if (!message) return projected;
       // The current prompt follows the reference and survives compaction verbatim.
       const insertionIndex = followingMessage
         ? withInstructions.indexOf(followingMessage)
         : withInstructions.length;
       if (insertionIndex < 0)
         throw new Error("supervisor_artifact_path_position_binding_invalid");
-      admittedArtifactMessage = artifactPaths.message;
+      admittedArtifactMessage = message;
       return [
         ...withInstructions.slice(0, insertionIndex),
-        artifactPaths.message,
+        message,
         ...withInstructions.slice(insertionIndex),
       ];
     },

@@ -6,7 +6,7 @@ import {
   type ModelSetupOptions,
 } from "./model-setup-catalog.js";
 import {
-  buildModelSetupProfile,
+  prepareModelSetupProfile,
   modelSetupResult,
 } from "./model-setup-identity.js";
 import { ModelSetupError, type ModelSetupInput } from "./model-setup-input.js";
@@ -71,12 +71,8 @@ export async function recoverCommittedModelAddition(
     provider.config,
   );
   if (!savedProviderMatchesRequest) rejectModelProfileCollision();
-  const expectedProfile = await buildModelSetupProfile(provider, input);
-  const savedProfileMatchesRequest = isDeepStrictEqual(
-    saved.profile,
-    expectedProfile,
-  );
-  if (!savedProfileMatchesRequest) rejectModelProfileCollision();
+  const expectedProfile = await prepareModelSetupProfile(provider, input);
+  if (!expectedProfile.matchesSaved(saved.profile)) rejectModelProfileCollision();
   const credential = await prepareModelCredential(
     options,
     provider.config,

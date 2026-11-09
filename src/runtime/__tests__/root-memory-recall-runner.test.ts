@@ -125,7 +125,8 @@ describe.each<RecallPolicy>(["supervisor-worker-v1", "execution-agent-v1"])(
           ),
         ).toHaveLength(1);
         const isPostRecallDecision = input === inputs[1];
-        expect(messages.some(({ role }) => role === "tool")).toBe(isPostRecallDecision);
+        const isSupervisorResponse = input.modelStep === "supervisor.response";
+        expect(messages.some(({ role }) => role === "tool")).toBe(isPostRecallDecision || isSupervisorResponse);
       }
       const forbiddenSteps = new Set([
         "planner.decision",

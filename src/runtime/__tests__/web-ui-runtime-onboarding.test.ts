@@ -19,6 +19,7 @@ function fakeElement(overrides: Record<string, unknown> = {}) {
     innerHTML: "",
     hidden: false,
     disabled: false,
+    dataset: {},
     title: "",
     options,
     classList: { toggle: vi.fn() },

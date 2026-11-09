@@ -1,3 +1,4 @@
+import { markInvocationContextMessage } from "../../../model-gateway/protocol/invocation-context.js";
 import type { ChatMessage } from "../../../model-gateway/types.js";
 import type { LearningKnowledgeEntry } from "../maturation/contracts.js";
 import type { ConversationMemoryAuthoringContext } from "./context.js";
@@ -9,7 +10,7 @@ export const CONVERSATION_MEMORY_PLAIN_TEXT_HEADER =
 export function buildConversationMemoryAuthoringPlainTextMessage(
   context: Pick<ConversationMemoryAuthoringContext, "targets" | "omitted">,
 ): ChatMessage {
-  return Object.freeze({
+  return markInvocationContextMessage({
     role: "system" as const,
     content: [
       CONVERSATION_MEMORY_PLAIN_TEXT_HEADER,

@@ -3,6 +3,42 @@
 import type { RegisteredModelInvocationStepDefinition } from "./model-step-registry.types.js";
 
 export const GENERATED_MODEL_INVOCATION_STEP_REGISTRY = {
+  SPARK_HOME_CALIBRATION: {
+    id: "spark_home.calibration",
+    owner: "runtime-core",
+    role: "utility",
+    lane: "utility",
+    defaultFormat: "raw",
+    outputContract: "spark_home_calibration",
+    attachmentPolicy: "none",
+  },
+  SPARK_HOME_PLAN: {
+    id: "spark_home.plan",
+    owner: "runtime-core",
+    role: "utility",
+    lane: "utility",
+    defaultFormat: "json",
+    outputContract: "spark_home_plan",
+    attachmentPolicy: "none",
+  },
+  SPARK_HOME_FOLLOWUP: {
+    id: "spark_home.followup",
+    owner: "runtime-core",
+    role: "utility",
+    lane: "utility",
+    defaultFormat: "json",
+    outputContract: "spark_home_followup",
+    attachmentPolicy: "none",
+  },
+  SPARK_HOME_HTML: {
+    id: "spark_home.html",
+    owner: "runtime-core",
+    role: "utility",
+    lane: "utility",
+    defaultFormat: "raw",
+    outputContract: "spark_home_html",
+    attachmentPolicy: "none",
+  },
   LEARNING_BATCH: {
     id: "learning.batch",
     owner: "runtime-core",
@@ -19,7 +55,6 @@ export const GENERATED_MODEL_INVOCATION_STEP_REGISTRY = {
     lane: "main",
     defaultFormat: "json",
     outputContract: "supervisor_decision",
-    outputTokenPolicy: "core_decision",
     attachmentPolicy: "conversation",
   },
   SUPERVISOR_RESPONSE: {
@@ -38,7 +73,6 @@ export const GENERATED_MODEL_INVOCATION_STEP_REGISTRY = {
     lane: "main",
     defaultFormat: "json",
     outputContract: "worker_evidence",
-    outputTokenPolicy: "core_decision",
     attachmentPolicy: "none",
   },
   WORKER_DECISION: {
@@ -48,7 +82,6 @@ export const GENERATED_MODEL_INVOCATION_STEP_REGISTRY = {
     lane: "main",
     defaultFormat: "json",
     outputContract: "worker_decision",
-    outputTokenPolicy: "core_decision",
     attachmentPolicy: "none",
   },
   WORKER_RESULT: {
@@ -76,7 +109,6 @@ export const GENERATED_MODEL_INVOCATION_STEP_REGISTRY = {
     lane: "main",
     defaultFormat: "json",
     outputContract: "planner_decision",
-    outputTokenPolicy: "core_decision",
     attachmentPolicy: "none",
   },
   PLANNER_GRAPH: {
@@ -95,7 +127,6 @@ export const GENERATED_MODEL_INVOCATION_STEP_REGISTRY = {
     lane: "main",
     defaultFormat: "json",
     outputContract: "reviewer_decision",
-    outputTokenPolicy: "core_decision",
     attachmentPolicy: "none",
   },
   DEGRADED_FINALIZATION: {
@@ -113,7 +144,6 @@ export const GENERATED_MODEL_INVOCATION_STEP_REGISTRY = {
     lane: "main",
     defaultFormat: "json",
     outputContract: "execution_agent_decision",
-    outputTokenPolicy: "core_decision",
     attachmentPolicy: "conversation",
   },
   EXECUTION_RESPONSE: {
@@ -132,7 +162,6 @@ export const GENERATED_MODEL_INVOCATION_STEP_REGISTRY = {
     lane: "main",
     defaultFormat: "json",
     outputContract: "auditor_decision",
-    outputTokenPolicy: "core_decision",
     attachmentPolicy: "none",
   },
   CONTEXT_COMPACTION: {
