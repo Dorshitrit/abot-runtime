@@ -1,5 +1,5 @@
 import type { RequestSteeringSnapshot } from "../request/request-steering.js";
-import type { ChatMessage } from "../../model-gateway/types.js";
+import type { ChatMessage, ModelStructuredOutputRepair } from "../../model-gateway/types.js";
 import type { ModelStep } from "../../shared/model-steps.js";
 import type { ConfiguredStepInstructionPolicy } from "../config/runner/step-instructions.js";
 import type { ModelStepContextCompactionController } from "./context-compaction-contracts.js";
@@ -42,6 +42,8 @@ export type ModelStepInvocationInput<T> = Readonly<{
   /** Exact user updates returned to a Planner by its own yielded Worker. */
   callerSteering?: RequestSteeringSnapshot;
   format?: "json" | Record<string, unknown>;
+  /** Attempt-local format repair; never persisted or projected into messages. */
+  structuredOutputRepair?: ModelStructuredOutputRepair;
   /** Exact input bypasses compaction, but must fit the shared input budget. */
   contextRetention?: "exact";
   /** Isolated internal phases may omit the semantic step's configured guidance. */

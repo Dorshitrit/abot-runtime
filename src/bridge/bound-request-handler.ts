@@ -1,4 +1,5 @@
 import { handleRunRequest } from "../runtime/request/handler.js";
+import { handleCommandRun, validateCommandRequest } from "../runtime/commands/run.js";
 import { parseRequestInput } from "../runtime/request/input.js";
 import { SessionRequestAdmission } from "../runtime/request/session-admission.js";
 import type { RequestHandlerOptions } from "../runtime/request/contracts.js";
@@ -31,8 +32,10 @@ export function createBoundBridgeRequestHandler(
     ),
   );
   return {
-    handle(ws, message, requestOptions = {}) {
+    async handle(ws, message, requestOptions = {}) {
+      const command = message.command === undefined ? undefined : validateCommandRequest(message);
       return admission.run(parseRequestInput(message).sessionId, async () => {
+        if (command) return handleCommandRun(ws, message, command, { ...environmentOptions, ...requestOptions });
         await requestOptions.onAccepted?.();
         return handleRunRequest(ws, message, {
           ...environmentOptions,

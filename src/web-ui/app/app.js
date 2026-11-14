@@ -2,6 +2,7 @@ import { reconcileRuntimeSessionReset } from "./controllers/runtime-session-rese
 import { createAppearanceFeature } from "./appearance-feature.js";
 import { createStepTimeoutFeature } from "./step-timeout-feature.js";
 import { createComposerFeature } from "./controllers/composer-feature.js";
+import { latestCommandRun } from "./lib/command-runs.js";
 import { isWorkspaceChange } from "./lib/workspace-change.js";
 import { prepareEnvironmentWorkspaceChanges } from "./controllers/environment-workspace-preparation.js";
 import { createAppState } from "./app-state.js";
@@ -291,6 +292,7 @@ conversationView = createConversationView({
   getFileEnvironmentId: selectedEnvironmentId,
   getFileSessionId: () => state.currentSessionId,
   getMessages: () => state.messages,
+  getCommandRun: () => latestCommandRun(state, { environmentId: selectedEnvironmentId(), sessionId: state.currentSessionId }),
   getActiveRequestId: () => state.activeRequestId,
   isConnected: () => state.connected,
   getActivityForMessage: (message) => ({

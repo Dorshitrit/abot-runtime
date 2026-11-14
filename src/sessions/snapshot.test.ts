@@ -60,6 +60,18 @@ describe("session history pages", () => {
     const older = projectSessionSnapshot(session, { page: { limit: 2, cursor: page.nextCursor } });
     expect(older.requests.map((request) => request.requestId)).toEqual(["request-42", "request-43"]);
   });
+  test("latest-page reload retains the last command result without creating a message anchor", () => {
+    const session = conversation(5);
+    for (const request of session.requests!.slice(0, 2)) {
+      request.events[0]!.payload.requestKind = "command";
+      session.messages = session.messages.filter((message) => message.requestId !== request.requestId);
+    }
+    const page = projectSessionSnapshot(session, { page: { limit: 1 } });
+    expect(page.requests.map((request) => request.requestId)).toEqual(["request-2", "request-5"]);
+    expect(page.messages.map((message) => message.requestId)).toEqual(["request-5"]);
+    const older = projectSessionSnapshot(session, { page: { limit: 1, cursor: page.nextCursor } });
+    expect(older.requests.map((request) => request.requestId)).toEqual(["request-4"]);
+  });
   test("read identities preserve legacy inferred request IDs without bodies or events", () => {
     const session = conversation(3);
     for (const message of session.messages) delete message.requestId;

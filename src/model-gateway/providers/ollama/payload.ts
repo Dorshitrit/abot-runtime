@@ -21,6 +21,7 @@ import {
   resolveOllamaRawUserContent,
   toOllamaMessage,
 } from "./message-projection.js";
+import { resolveOllamaChatThinking } from "./structured-repair.js";
 
 export { readOptionalPositiveIntEnv } from "./generation-options.js";
 
@@ -105,10 +106,13 @@ export function buildOllamaPayload(
     payloadOptions,
   });
 
-  if (invocation.think === "none") {
-    payload.think = false;
-  } else if (invocation.think) {
-    payload.think = invocation.think;
+  const thinking = resolveOllamaChatThinking({
+    requestedThinking: invocation.think,
+    structuredOutputRepair: requestBody.structuredOutputRepair,
+    projectedFormat: formatProjection.format,
+  });
+  if (thinking !== undefined) {
+    payload.think = thinking;
   }
   applyGenerationOptions({
     payload,

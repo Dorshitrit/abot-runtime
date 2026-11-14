@@ -1,0 +1,63 @@
+.composer {
+  position: relative;
+}
+
+.composer-command-menu {
+  position: absolute;
+  bottom: 100%;
+  inset-inline: 0;
+  z-index: 12;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel, #171b24);
+  box-shadow: 0 8px 24px #0003;
+}
+.composer-command-menu[hidden] {
+  display: none;
+}
+.composer-command-menu button {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.composer-command-menu button[aria-selected="true"],
+.composer-command-menu button:hover {
+  background: var(--accent-soft, #ffffff14);
+}
+.conversation-command-status {
+  margin: 14px auto;
+  padding: 10px 14px;
+  max-width: min(100%, 72ch);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.conversation-command-status[hidden] {
+  display: none;
+}
+.conversation-command-status[data-status="running"] {
+  color: var(--text);
+}
+.conversation-command-status[data-status="failed"] {
+  color: var(--danger, #c63c45);
+}
+.conversation-command-status summary {
+  cursor: pointer;
+  margin-top: 4px;
+}
+.conversation-command-status pre {
+  white-space: pre-wrap;
+  max-height: 180px;
+  overflow: auto;
+}

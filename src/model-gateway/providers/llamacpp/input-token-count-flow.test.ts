@@ -303,7 +303,7 @@ describe("llama.cpp counted admission and final dispatch", () => {
   const scope = { agentWorkRoot: "/workspace", hostPathSyntax: "posix" } as const;
   const supervisorScope = buildRuntimeFilesystemScopeMessage({ scope, canSelectWorkingDirectory: true })!;
   const workerScope = buildRuntimeFilesystemScopeMessage({
-    scope, workingDirectory: "site", capabilities: [{ runtimePathControlIds: ["path"] }],
+    scope, workingDirectory: "site", capabilities: [{ capabilityId: "write_target", runtimePathControlIds: ["path"] }],
   })!;
   const prior = { role: "user", content: "Prepare a summary." };
   const current = { role: "user", content: "Schedule it for tomorrow." };

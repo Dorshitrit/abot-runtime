@@ -55,6 +55,9 @@ export class ModelStepAttempt {
         abortSignal: this.input.stepAbort.signal,
         debugRequestId: request.requestId,
         ...(params.format === undefined ? {} : { format: params.format }),
+        ...(params.structuredOutputRepair
+          ? { structuredOutputRepair: params.structuredOutputRepair }
+          : {}),
         onThinking: this.input.onThinking,
       }),
       ),

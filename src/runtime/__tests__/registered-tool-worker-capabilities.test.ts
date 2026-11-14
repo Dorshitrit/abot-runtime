@@ -816,9 +816,9 @@ describe("registered ordinary tool Worker capability provider", () => {
           controls: { path: "workspace/shared.txt" },
           settledCapabilityResults: [],
         }),
-      ).rejects.toThrow(
-        "registered_tool_worker_capability_execution:runtime_target_path_outside_working_directory",
-      );
+      ).resolves.toMatchObject({ outcome: "failed", observedEffect: "none",
+        exactResult: { code: "runtime_tool_path_outside_working_directory", stage: "before_external_execution" },
+      });
       expect(execute).not.toHaveBeenCalled();
     } finally {
       await rm(agentWorkDir, { recursive: true, force: true });
@@ -872,9 +872,9 @@ describe("registered ordinary tool Worker capability provider", () => {
         controls: { path: "../outside-secret.txt" },
         settledCapabilityResults: [],
       }),
-    ).rejects.toThrow(
-      "registered_tool_worker_capability_execution:runtime_target_path_traversal",
-    );
+    ).resolves.toMatchObject({ outcome: "failed", observedEffect: "none",
+      exactResult: { code: "runtime_tool_path_traversal", stage: "before_external_execution" },
+    });
     expect(author).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
     const logs = consoleLog.mock.calls.map(
@@ -884,8 +884,8 @@ describe("registered ordinary tool Worker capability provider", () => {
       expect.arrayContaining([
         expect.objectContaining({
           scope: "runtime.registered_tool_worker_capabilities",
-          event: "adapter.execution_failed",
-          protocolIssueCode: "runtime_target_path_traversal",
+          event: "adapter.execution_completed",
+          sourceIssueCode: "runtime_tool_path_traversal",
         }),
       ]),
     );

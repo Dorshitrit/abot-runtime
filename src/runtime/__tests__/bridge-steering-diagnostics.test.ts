@@ -25,6 +25,32 @@ const message = {
   text: "private",
 };
 
+test("correlates steering with the exact request ID instead of a trimmed alias", async () => {
+  const requestId = " r ";
+  const steer = vi.fn(async () => ({
+    ok: true as const,
+    duplicate: false,
+    update: { steerId: "s", text: "private", sequence: 1 },
+  }));
+  const registry = createBridgeRequestSteeringRegistry(steer);
+  const inbox = registry.open(requestId);
+  const { ws, frames } = socket();
+  try {
+    await registry.handleMessage(ws, { ...message, requestId });
+    await registry.handleMessage(ws, message);
+    expect(steer).toHaveBeenCalledExactlyOnceWith(requestId, {
+      steerId: "s",
+      text: "private",
+    });
+    expect(frames).toMatchObject([
+      { requestId, accepted: true },
+      { requestId: "r", accepted: false, reason: "request_not_active" },
+    ]);
+  } finally {
+    await registry.close(requestId, inbox);
+  }
+});
+
 test("retains missing-request rejection and records it before ACK transport failure", async () => {
   const steer = vi.fn();
   const registry = createBridgeRequestSteeringRegistry(steer);

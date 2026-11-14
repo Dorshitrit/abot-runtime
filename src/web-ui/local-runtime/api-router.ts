@@ -1,4 +1,5 @@
 import { InformationBasketRoutes } from "./information-basket-routes.js";
+import { handleChatCommandCatalog } from "./chat-command-catalog.js";
 import { PersonalSkillManagementRoutes } from "./skill-management-routes.js";
 import { StepTimeoutRoutes } from "./step-timeout-routes.js";
 import { StepTimeoutService } from "./step-timeout-service.js";
@@ -556,6 +557,7 @@ export class LocalRuntimeApiRouter {
     )
       return;
 
+    if (handleChatCommandCatalog(method, route, res)) return;
     if (method === "POST" && route === "chat/messages") {
       await this.requests.start(
         res,

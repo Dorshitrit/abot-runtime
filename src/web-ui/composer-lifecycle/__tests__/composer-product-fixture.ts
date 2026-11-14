@@ -74,9 +74,9 @@ export async function composerProductFixture(options: { fetchImpl?: typeof fetch
     scheduleTask: vi.fn(), isConversationVisible: () => false, createSessionId: () => "new-chat",
   } as any);
   const activateRequest = session.activateRequestForScope;
-  session.activateRequestForScope = (scope, requestId) => {
+  session.activateRequestForScope = (scope, requestId, kind) => {
     activated.push(requestId);
-    activateRequest(scope, requestId);
+    activateRequest(scope, requestId, kind);
   };
   const shell = {
     showToast: vi.fn(), navigationRevision: () => 0,

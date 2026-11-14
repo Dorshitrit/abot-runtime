@@ -2,6 +2,9 @@ import { afterEach, expect, test, vi } from "vitest";
 import { WebSocketServer } from "ws";
 import { startAgentBridge, type AgentBridgeHandle } from "../../bridge/start-agent-bridge.js";
 import type { SessionStore } from "../ports.js";
+import type WebSocket from "ws";
+import { publishRequestAdmissionFailure } from "../../bridge/request-admission-failure.js";
+import { RuntimeCommandInputError } from "../commands/catalog.js";
 
 let server: WebSocketServer | undefined;
 let handle: AgentBridgeHandle | undefined;
@@ -10,6 +13,18 @@ afterEach(async () => {
   for (const client of server?.clients ?? []) client.terminate();
   await new Promise<void>((resolve) => server ? server.close(() => resolve()) : resolve());
   server = undefined;
+});
+
+test.each([new Error("session_busy"), new RuntimeCommandInputError("command_mode_not_supported")])("a rejected command retains its event-only identity: %s", (error) => {
+  const send = vi.fn();
+  const command = { name: "compact", mode: "run" };
+  publishRequestAdmissionFailure({ send } as unknown as WebSocket, {
+    type: "run_request", requestId: "command", sessionId: "session", command,
+  }, error);
+  expect(JSON.parse(send.mock.calls[0]![0])).toEqual({
+    type: "failed", requestId: "command", sessionId: "session", requestKind: "command",
+    command, name: "command.failed", error: error.message,
+  });
 });
 
 test.each(["session_busy", "session_awaiting_approval"])("a rejected Bridge request receives a correlated %s terminal frame", async (error) => {

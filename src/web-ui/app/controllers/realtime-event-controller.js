@@ -1,4 +1,5 @@
 import { isBlockedCompletion } from "../lib/completion-presentation.js";
+import { createCommandEventController } from "./command-event-controller.js";
 import { recordedPresentationRole } from "../lib/role-presentation.js";
 import { failureResponseText } from "../lib/failure-presentation.js";
 import { isAcknowledgementPresentationEvent } from "../lib/conversation-work-timeline-model.js";
@@ -110,6 +111,7 @@ export function createRealtimeEventController({
   drainQueuedComposerMessage,
   loadSessions,
 }) {
+  const commandEvents = createCommandEventController({ state, selectedEnvironmentId, recordControlEvent, trackSeq, settleTerminal, renderActivityStatus, updateComposerSendState, setMessageActivityStatus });
   const lifecycleController = createRequestLifecycleController({
     state,
     onAcceptedLifecycle: (message) =>
@@ -176,6 +178,7 @@ export function createRealtimeEventController({
   }
 
   function recordEvent(message) {
+    if (commandEvents.handle(message)) return;
     if (!hasCurrentAcknowledgementScope(state, message, selectedEnvironmentId())) return;
     if (isUserInteractionEvent(message)) {
       if (!acceptsUserInteractionScope(state, message, selectedEnvironmentId())) return;
@@ -344,6 +347,7 @@ export function createRealtimeEventController({
 
   function handle(rawMessage) {
     const message = normalizeRealtimeMessage(rawMessage);
+    if (commandEvents.handle(message)) return;
     if (message.type === "tool_approval_ack") {
       if (
         !ownsToolApprovalAcknowledgement(

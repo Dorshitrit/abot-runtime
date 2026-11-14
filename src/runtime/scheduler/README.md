@@ -159,6 +159,16 @@ Jobs accept explicit `full_access` or `full_plus` tool permission. Omitted creat
 input defaults to Full; edits preserve the saved permission unless explicitly
 changed. Unsupported values are rejected.
 
+Request Job creation and editing call the executor's optional synchronous
+`validateRequestJob` policy inside the storage transaction before changing Jobs
+or pending runs. Edits validate the complete merged candidate. The Runtime
+adapter uses ordinary request reasoning admission to reject explicit controls
+unsupported by the selected model; tools and Web management share this boundary.
+Omitting reasoning controls on create inherits profile policy; omission on a
+same-model edit retains the saved preference, while explicit clearing removes it.
+Existing history is not rewritten. Execution-time validation remains necessary
+for legacy Jobs and model configuration changes after a Job was saved.
+
 Run records keep immutable prompt, title, model profile, agent mode, tool permission,
 time zone, and Job revision snapshots. Historical runs without tool permission
 retain Full authority. The Runtime adapter submits the captured run permission.

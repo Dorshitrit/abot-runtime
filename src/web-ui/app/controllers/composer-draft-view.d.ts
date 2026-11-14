@@ -1,6 +1,7 @@
 import type { ComposerDraft } from "./composer-drafts.js";
 
 export interface ComposerInputSurface {
+  readonly element?: ComposerDraftInput;
   value: string;
   readonly style: { height: string };
   readonly scrollHeight: number;

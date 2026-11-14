@@ -1,6 +1,6 @@
 import { historyPageOptions, publicHistorySnapshot } from "./history-pagination.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { ensureSparkSession } from "../../sessions/spark-session.js";
+import { ensureSparkChatSession } from "../../runtime/spark-chat/service.js";
 import type { RuntimeEnvironment, JsonObject } from "./contracts.js";
 import type { WebSessionReadStates } from "../session-read-state/service.js";
 import type { WorkspaceChangeNotifier } from "./workspace-notifications.js";
@@ -37,7 +37,7 @@ export class SparkChatRoutes {
     try {
       const update = input.method === "PUT" ? readSparkChatConfigurationUpdate(input.body) : undefined;
       const environment = this.environment(input.environmentId);
-      const session = await ensureSparkSession(environment.services.sessions);
+      const session = await ensureSparkChatSession(environment.services.sessions);
       if (readReceipt) {
         const readState = await this.reads.markVisible(input.environmentId, session.id, input.body?.visibleMessageIds, input.body?.readGeneration, input.body?.visibleMessages);
         if (readState) this.onRead?.(input.environmentId, session.id);

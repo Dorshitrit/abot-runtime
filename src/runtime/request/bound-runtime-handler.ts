@@ -1,7 +1,9 @@
 import { parseRequestInput } from "./input.js";
+import { handleCommandRun, validateCommandRequest } from "../commands/run.js";
 import { handleRunRequest } from "./handler.js";
 import type { RequestHandlerOptions } from "./contracts.js";
 import { SESSION_MEMORY_COMPACTORS } from "../context/super-compaction/history-routing.js";
+import { createSparkChatAccess } from "../spark-chat/service.js";
 import type {
   RuntimeEnvironmentServices,
   RuntimeRequestHandler,
@@ -24,11 +26,16 @@ export function createBoundRuntimeRequestHandler(
     longTermMemory: services.longTermMemory,
   };
   return Object.freeze({
+    sparkChat: services.passiveLearning
+      ? createSparkChatAccess({ ...services, passiveLearning: services.passiveLearning })
+      : undefined,
     async handle(ws, message, requestOptions = {}) {
+      const command = message.command === undefined ? undefined : validateCommandRequest(message);
       const invoke = async () => {
-        await requestOptions.onAccepted?.();
+        if (!command) await requestOptions.onAccepted?.();
         const releaseLearning = services.passiveLearning?.beginInteractive();
         try {
+          if (command) return await handleCommandRun(ws, message, command, { ...environmentOptions, ...requestOptions });
           return await handleRunRequest(ws, message, {
             ...environmentOptions,
             ...requestOptions,

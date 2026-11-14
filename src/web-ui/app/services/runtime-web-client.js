@@ -110,6 +110,7 @@ export function createRuntimeWebClient({
   });
 
   return {
+    listRuntimeCommands() { return requestApi("/chat/commands"); },
     getRuntimeStatus(environmentId = getEnvironmentId()) {
       return requestApi(`/runtime/status?environment=${environmentQuery(environmentId)}`);
     },
@@ -302,6 +303,7 @@ export function createRuntimeWebClient({
 
     async postChatMessage({
       text,
+      command,
       attachments,
       environmentId = getEnvironmentId(),
       sessionId,
@@ -323,6 +325,7 @@ export function createRuntimeWebClient({
         method: "POST",
         body: JSON.stringify({
           text,
+          ...(command ? { command } : {}),
           environment: environmentId,
           sessionId,
           agentMode,

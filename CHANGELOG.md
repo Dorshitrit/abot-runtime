@@ -4,6 +4,39 @@ All notable changes to this project should be documented in this file.
 
 This project follows semantic versioning after the first public release.
 
+## 2.3.1 - 2026-11-14
+
+### Added
+
+- Web UI `/compact` for idle sessions, preserving original messages and context
+  budgets.
+- Recoverable tool approvals and SPARK companion chat for compatible Bridge
+  clients, using Runtime-owned state, model settings and permissions.
+
+### Fixed
+
+- Improve recovery from invalid Ollama structured output by disabling thinking
+  only for schema-repair attempts, preserving initial-call settings and existing
+  retry limits.
+- Restore approval delivery after reconnects and retain saved waits across
+  Runtime restarts.
+- Keep reconnect backoff across registration failures until registration succeeds.
+- Reduce memory use by coalescing cumulative response and thinking snapshots
+  while preserving lifecycle events and ordering.
+- Validate explicit reasoning controls before saving new or updated schedules.
+- Retry once with the OpenAI provider's default reasoning after an explicit
+  unsupported-effort rejection, in token counting, chat and raw responses.
+- Expose sanitized path-rejection diagnostics and clarify offered tools'
+  filesystem boundaries without changing permissions.
+- Close interrupted composer commands without rerunning them, and preserve
+  completed status across history refresh and replay.
+
+### Upgrade notes
+
+- Bridge approvals and SPARK require compatible relay and client versions.
+  Legacy behavior remains available; old live-only approvals are not converted.
+- SPARK Bridge support covers chat, not management or proactive activity.
+
 ## 2.3.0 - 2026-11-09
 
 ABot 2.3.0 introduces SPARK HOME, improves model and provider management,

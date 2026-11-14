@@ -105,6 +105,108 @@ while the feature is absent and may enable steering after the runtime
 reconnects and advertises it. No separate runtime flag or client refresh is
 required.
 
+## Recoverable Tool Approvals
+
+Managed request handlers expose an optional `approvalControls` transport facet.
+When that complete facet is available, registration advertises
+`request_approvals_v1`. Embedded or standalone handlers without it retain their
+existing live approval behavior. A bridge opts a new `run_request` into saved
+approvals with `approvalMode: "durable_v1"`; omitting it keeps the legacy path.
+Requesting it from an unsupported handler fails instead of silently downgrading.
+
+The runtime remains the authority for pending approvals, decisions and execution.
+The transport does not reconstruct permission from replayed events, introduce an
+approval expiry, or store executable continuations. Saved waits use the same
+mechanism as the Web UI and survive a runtime restart. Old live-only requests
+cannot be converted into saved waits from historical events.
+
+To recover a particular request, send:
+
+```json
+{
+  "type": "request.approvals.request",
+  "correlationId": "recovery-call-id",
+  "sessionId": "session-id",
+  "requestId": "request-id"
+}
+```
+
+The corresponding `request.approvals.response` echoes all three identities and
+returns `ok`, current pending `approvals`, safe `lifecycle` metadata and
+`finalState`. Each pending entry contains the approval `request`; a saved entry
+also includes `wait: { generation, waitId, revision }`. Recovery attaches event
+delivery only for the exact request. It does not approve, rerun or resume work.
+An empty list alone is not evidence that a request completed.
+
+Decisions use a separate correlated call:
+
+```json
+{
+  "type": "request.approval.decide.request",
+  "correlationId": "decision-call-id",
+  "sessionId": "session-id",
+  "requestId": "request-id",
+  "approvalId": "approval-id",
+  "generation": "saved-request-generation",
+  "waitId": "saved-wait-id",
+  "revision": 3,
+  "commandId": "stable-decision-id",
+  "approved": true
+}
+```
+
+The `request.approval.decide.response` echoes the routing identities and returns
+the owner's decision `result`. A successful transport send is not acceptance.
+Use the identity shown with the approval, rather than replacing a stale identity
+with the latest one. Preserve `commandId` when reconciling an uncertain outcome;
+the owner uses its existing decision receipts to avoid consuming a decision twice.
+Resumed events continue on the normal request stream. Neither recovery nor
+decision handling guarantees exactly-once external tool effects after a crash.
+
+The external bridge must authenticate clients and preserve its own bounded
+owner/runtime/session/request routing bindings across its restart. Those bindings
+authorize access to the runtime's current state; they are not approval state.
+Never infer ownership or permission from a client-provided identifier, a session
+snapshot or replay. Scope recovery and decision responses to the active runtime
+connection, and discard responses from replaced connections.
+
+## SPARK Companion Chat
+
+Handlers with the optional `sparkChat` facet advertise `spark_chat_v1`.
+The feature indicates protocol support, not that a SPARK model is configured.
+Open the environment's canonical companion with a correlated request:
+
+```json
+{ "type": "spark.chat.open.request", "correlationId": "open-spark" }
+```
+
+The `spark.chat.open.response` echoes `correlationId` and returns `ok: true`,
+`sessionId`, `modelProfileId`, `toolPermissionMode` and `readiness`. Readiness is
+`ready`, `model_required` or `model_unavailable`. Opening creates or reuses the
+marked SPARK session without starting a model request. A conflicting unmarked
+session is rejected instead of being converted. Load its messages and waiting
+requests through the existing session snapshot and approval recovery commands.
+
+Send messages through `run_request` with the returned `sessionId` and an explicit
+`toolPermissionMode`. The external relay must validate that mode against the
+authenticated client's runtime grant, just as it does for an ordinary request.
+At every new SPARK request, the runtime rereads its SPARK preferences and requires
+the incoming mode to match. A missing or changed mode fails with
+`spark_chat_permission_mismatch`; refresh the SPARK state and let the user retry.
+Do not automatically resend a request whose outcome is unknown.
+
+The runtime applies the configured SPARK model rather than the ordinary chat's
+model selection. Missing or unavailable models fail before execution. Model
+availability is checked against the running environment's configuration; chat
+availability does not depend on its collection or proactive-activity toggles.
+An unsupported handler rejects SPARK requests with `spark_chat_unsupported`
+instead of creating an ordinary conversation under the reserved identifier.
+
+Existing steering, event replay and negotiated durable approvals remain in use.
+Resuming a saved approval retains its captured request policy; it does not reread
+SPARK settings or start a new request. This capability does not expose SPARK
+configuration writes, autonomous notifications, jobs or dashboard management.
+
 ## Web UI Transport
 
 The Web UI server supports two transport backends:

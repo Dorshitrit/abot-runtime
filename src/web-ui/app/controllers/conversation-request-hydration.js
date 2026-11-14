@@ -1,4 +1,5 @@
 import { presentFailedResponseHistory } from "../lib/failed-response-history.js";
+import { isCommandRequest, rememberCommandRun } from "../lib/command-runs.js";
 import { isUserInteractionMessage } from "../lib/user-interaction-event.js";
 import { isStoppedRequest, restoreStoppedResponses } from "../lib/request-stop-state.js";
 import { isApprovalPresentation, rememberRequestLifecycle } from "../lib/request-lifecycle-view.js";
@@ -44,6 +45,11 @@ export function createConversationRequestHydration({
     if (scope.sessionId !== state.currentSessionId) return false;
     return viewVersion === state.sessionViewVersion;
   }
+  function canRestoreStreamingRequest(request, scope) {
+    if (!isStreamingRequest(request)) return false;
+    if (!isCommandRequest(request)) return true;
+    return rememberCommandRun(state, scope, request.requestId);
+  }
   async function restore(requests, { appendEvents = false } = {}) {
     const scope = { environmentId: selectedEnvironmentId(), sessionId: state.currentSessionId };
     const viewVersion = state.sessionViewVersion;
@@ -62,19 +68,24 @@ export function createConversationRequestHydration({
     for (const request of requests) rememberRequestLifecycle(state, request.lifecycle);
     applyConversationChrome();
     renderSessions();
-    const streamingRequestIds = new Set(requests
-      .filter(isStreamingRequest)
+    const streamingRequests = requests.filter((request) => canRestoreStreamingRequest(request, scope));
+    const streamingRequestIds = new Set(streamingRequests
       .map((request) => textOf(request.requestId)));
     state.activeRequestId = [...streamingRequestIds][0] || "";
+    for (const request of streamingRequests) {
+      if (!isCommandRequest(request)) activeAssistantForRequest(request.requestId);
+    }
     updateComposerSendState();
-    for (const requestId of streamingRequestIds) activeAssistantForRequest(requestId);
-    restoreStoppedResponses(state.messages, requests);
-    presentFailedResponseHistory(state.messages, requests);
+    const chatRequests = requests.filter((request) => !isCommandRequest(request));
+    restoreStoppedResponses(state.messages, chatRequests);
+    presentFailedResponseHistory(state.messages, chatRequests);
     restoreSessionEventState(requestsForEventRestoration(requests, streamingRequestIds, appendEvents), streamingRequestIds, appendEvents);
-    for (const requestId of streamingRequestIds) {
+    for (const request of streamingRequests) {
+      const requestId = textOf(request.requestId);
       subscribeRequest(requestId);
       await replayRequestEvents(requestId, viewVersion);
       if (!isCurrentHydration(scope, viewVersion)) return false;
+      if (!canRestoreStreamingRequest(request, scope)) continue;
       resumeRequest(requestId);
     }
     if (state.activeRequestId) { renderMessages(); return true; }

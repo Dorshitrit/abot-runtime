@@ -130,8 +130,9 @@ slot on the selected model profile.
 
 Provider-specific request builders translate only the shared controls that the
 transport owns. `ResolvedModelInvocation.think` is exact: an adapter must map
-`none` to its native disabled form or fail explicitly; only `undefined` permits
-omission. The shared `generation` contract has no output-cap field, so
+`none` to its native disabled form; only `undefined` permits initial omission.
+The OpenAI adapter may fall back to the provider default after an explicit
+unsupported-effort rejection, as described below. The shared `generation` contract has no output-cap field, so
 there is no configurable or calibrated per-step output cap. Ollama maps
 `temperature` and `topP` to `options`. By default, it supplies a finite
 `num_predict` from the physical context remaining after estimating the final
@@ -181,7 +182,19 @@ explicit `reasoning.effort=none`. LOW (wire value `fast`), REASONING and DEEP
 select reasoning effort without adding a separate output cap. The provider enforces
 output capacity; the input context guard and configured sampling controls retain their existing
 semantics. This policy does not discover model capabilities or assume support
-for a particular effort level.
+for a particular effort level. If the OpenAI Responses API rejects the request
+with HTTP 400, `type: invalid_request_error`, `param: reasoning.effort`, and
+`code: unsupported_value` or `unsupported_parameter`, the adapter retries once
+without the effort override. The provider selects its own default; no model names
+or guessed effort mappings are involved. Sampling controls are also omitted on
+this retry because they may be incompatible with the provider's default reasoning.
+The rule applies to input-token counting, chat and raw responses. It does not
+retry authentication failures, rate limits, timeouts, other parameter errors or
+accepted streams. A second rejection is returned normally. ChatGPT account
+transport and other providers retain their existing behavior.
+The `reasoning.provider_default` diagnostic records the requested effort and
+agent mode without prompt content. Fallback does not rewrite the user's saved
+preference or create an inferred model-capability cache.
 
 For `capability.controls`, `execution.decision` and `context.compact` requests with an object JSON
 schema, OpenAI receives one forced native function with that schema as its
@@ -419,3 +432,14 @@ accumulate implementation logic.
 
 Keep orchestration decisions in `src/runtime`. Keep provider names, options,
 thinking support, and model-profile selection in this layer.
+
+Structured decision repair carries the attempt-local `structuredOutputRepair`
+marker only after the owning parser rejects a complete response and the runtime
+detects invalid JSON or a known schema violation. Schema-valid domain rejections
+keep ordinary repair. The marker never enters conversation history or saved
+preferences and does not add a retry. For an Ollama chat repair with a projected
+schema and explicitly active thinking, the adapter sends `think: false` for that
+attempt; initial calls, raw generation and other providers retain their settings.
+This compatibility fallback trades reasoning for format enforcement on the repair
+only. The original parser still decides acceptance. Projection diagnostics record
+requested/effective thinking and the override reason without copying model output.

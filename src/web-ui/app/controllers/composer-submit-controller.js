@@ -1,4 +1,5 @@
 import { resolveComposerPrimaryAction } from "../ui-behavior.js";
+import { hasActiveCommandRun } from "../lib/command-runs.js";
 import { createComposerStopController } from "./composer-stop-controller.js";
 import { hasWaitingApproval, waitingRequest } from "../lib/request-lifecycle-view.js";
 
@@ -22,6 +23,7 @@ export function createComposerSubmitController({
     return allowsActiveRequest && queue.isCurrentDraining();
   }
   function cannotSubmit() {
+    if (hasActiveCommandRun(state, getDraft().scope)) return true;
     if (stopping.isStopping()) return true;
     if (allowsActiveRequest && hasWaitingApproval(state)) return true;
     if (getSubmissionBlock()) return true;

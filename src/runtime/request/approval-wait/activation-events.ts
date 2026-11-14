@@ -10,6 +10,7 @@ import type {
 } from "../../../sessions/request-lifecycle/contracts.js";
 import type { EventSink, EventSinkFactory } from "../../ports.js";
 import { traceDebug } from "../../observability/debug-logger.js";
+import { RequestEventWriteQueue } from "../../events/request-event-write-queue.js";
 
 type AcceptedMutation = Extract<
   SessionLifecycleMutationResult,
@@ -19,7 +20,7 @@ type AcceptedMutation = Extract<
 /** Execution events and lifecycle transitions share the canonical session queue. */
 export class RequestActivationEvents {
   readonly events: EventSink;
-  private tail: Promise<void> = Promise.resolve();
+  private readonly writes: RequestEventWriteQueue;
   private persistenceError: unknown;
   private sealed = false;
 
@@ -29,6 +30,10 @@ export class RequestActivationEvents {
     factory: EventSinkFactory,
     private readonly ws: WebSocket,
   ) {
+    this.writes = new RequestEventWriteQueue(
+      (payload) => this.persistEvent(payload),
+      (error) => { this.persistenceError ??= error; },
+    );
     const transport = {
       send: (data: string) => this.enqueue(JSON.parse(data)),
     } as WebSocket;
@@ -49,7 +54,7 @@ export class RequestActivationEvents {
       failed: (error, details) => base.failed(error, details),
       drain: async () => {
         await base.drain();
-        await this.tail;
+        await this.writes.drain();
         if (this.persistenceError) throw this.persistenceError;
       },
       dispose: () => {
@@ -72,7 +77,7 @@ export class RequestActivationEvents {
     // Draining is an observation, not a queue reservation: steering can emit
     // another event before this continuation runs. Claim this same queue before
     // reading the revision so no event can race the lifecycle commit.
-    const committed = this.tail.then(async () => {
+    return this.writes.runBarrier(async () => {
       if (this.persistenceError) throw this.persistenceError;
       const result = await operation(this.expectation());
       if (!result.accepted)
@@ -82,11 +87,6 @@ export class RequestActivationEvents {
       this.publishCommitted(result.events);
       return result;
     });
-    this.tail = committed.then(
-      () => undefined,
-      () => undefined,
-    );
-    return committed;
   }
 
   /** A failed event write cannot turn a committed wait into an execution failure. */
@@ -106,7 +106,7 @@ export class RequestActivationEvents {
     }>,
   ): Promise<SessionRequestLifecycleSnapshot> {
     this.sealed = true;
-    await this.tail;
+    await this.writes.drain();
     const current = await this.store.get(
       this.current.sessionId,
       this.current.requestId,
@@ -166,26 +166,21 @@ export class RequestActivationEvents {
 
   private enqueue(payload: Record<string, unknown>): void {
     if (this.sealed) return;
-    this.tail = this.tail
-      .then(async () => {
-        const hasStreamingActivation = this.current.status === "streaming";
-        if (!hasStreamingActivation) return;
-        if (this.persistenceError) return;
-        const result = await this.store.appendActivationEvent(
-          this.current.sessionId,
-          {
-            expected: this.expectation(),
-            payload,
-          },
-        );
-        if (!result.accepted)
-          throw new Error(`request_event_rejected:${result.reason}`);
-        this.current = result.current;
-        this.publishCommitted(result.events);
-      })
-      .catch((error: unknown) => {
-        this.persistenceError ??= error;
-      });
+    this.writes.enqueue(payload);
+  }
+
+  private async persistEvent(payload: Record<string, unknown>): Promise<void> {
+    const hasStreamingActivation = this.current.status === "streaming";
+    if (!hasStreamingActivation) return;
+    if (this.persistenceError) return;
+    const result = await this.store.appendActivationEvent(
+      this.current.sessionId,
+      { expected: this.expectation(), payload },
+    );
+    if (!result.accepted)
+      throw new Error(`request_event_rejected:${result.reason}`);
+    this.current = result.current;
+    this.publishCommitted(result.events);
   }
 
   private publishCommitted(events: readonly Record<string, unknown>[]): void {

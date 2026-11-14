@@ -72,6 +72,7 @@ export function createSchedulerJob(
     return context.store.update((state) => {
       if (context.deletedSessions.has(job.sessionId))
         throw new Error("scheduler_session_deleted");
+      context.executor.validateRequestJob?.(job);
       state.jobs.push(job);
       return job;
     });
@@ -95,6 +96,7 @@ export function updateSchedulerJob(
         const editable = pickEditableFields(patch);
         const input = { ...job, ...editable, reasoningPreference: editable.reasoningPreference === null ? undefined : (editable.reasoningPreference ?? job.reasoningPreference) };
         validateSchedulerJobInput(input);
+        context.executor.validateRequestJob?.(input);
         const now = context.now();
         const schedule = normalizeSchedulerScheduleUpdate(
           job.schedule,

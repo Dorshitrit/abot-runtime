@@ -158,6 +158,25 @@ function createHarness() {
 }
 
 describe("web ui conversation session controller", () => {
+  test.each(["streaming", "failed", "completed"])("restores a %s command without an assistant row", async (status) => {
+    const harness = createHarness();
+    const terminal = status !== "streaming";
+    const event = {
+      type: terminal ? status : "event", requestId: "command-1", sessionId: "session-1", seqNo: 1,
+      name: terminal ? "context.compaction.completed" : "command.started",
+      requestKind: "command", command: { name: "compact", mode: "run" },
+    };
+    harness.client.loadSession.mockResolvedValue({
+      title: "Session", readState: { unreadCount: 0 }, messages: [],
+      requests: [{ requestId: "command-1", status, events: [event] }],
+    });
+    harness.client.fetchRequestEvents.mockResolvedValue([event]);
+    await harness.controller.openSession("session-1");
+    expect(harness.state.messages).toHaveLength(0);
+    expect(harness.state.requestMessages.size).toBe(0);
+    expect(harness.state.activeRequestId).toBe(terminal ? "" : "command-1");
+  });
+
   test("an empty ordinary view rejects background SPARK messages without a request ID", () => {
     const harness = createHarness();
     expect(harness.controller.shouldAcceptRealtimeMessage({ sessionId: "spark", type: "chat_message" })).toBe(false);

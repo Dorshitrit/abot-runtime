@@ -48,7 +48,12 @@ same captured owner endpoint; it never elects a replacement owner or resends a r
 
 ## Saved ASK approvals
 
-Web requests opt into `durableApprovals`. When approval is the only remaining
+Web requests and negotiated managed Bridge requests opt into `durableApprovals`.
+The managed request facade exposes `approvalControls` for scoped pending reads,
+decisions, attachment and resumed event delivery. The Bridge advertises
+`request_approvals_v1` only when that facet is available, and opts in only for a
+`run_request` carrying `approvalMode: "durable_v1"`.
+When approval is the only remaining
 work, the request saves an `awaiting_approval` interaction in its existing session
 record and returns. Its runner, request RPC, approval callbacks, timers and tool
 resources retire. Restart leaves this saved response pending. Startup interrupts
@@ -86,7 +91,7 @@ its request live; the request parks when that work becomes quiescent.
 
 ## Legacy approval clients
 
-Clients without `durableApprovals`, including existing Bridge and scheduler
+Clients without `durableApprovals`, including legacy Bridge and scheduler
 callers, retain live-owner approvals. Elapsed time and connection loss cannot
 become a user rejection. Their `attach(...)` restores delivery before a late
 decision; stale callbacks cannot decide after replacement. Scheduled requests

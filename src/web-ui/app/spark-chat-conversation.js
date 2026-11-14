@@ -2,6 +2,7 @@ import { canChooseReasoningBudget, isReasoningPreference } from "./lib/reasoning
 import { createConversationReasoningPreferences } from "./services/conversation-reasoning-preferences.js";
 import { canChooseReasoning } from "./lib/reasoning-controls.js";
 import { createComposerFeature } from "./controllers/composer-feature.js";
+import { latestCommandRun } from "./lib/command-runs.js";
 import { createComposerDrafts } from "./controllers/composer-drafts.js";
 import { createComposerDraftView } from "./controllers/composer-draft-view.js";
 import { workspaceQueue, workspaceStorage } from "./services/workspace-state.js";
@@ -87,6 +88,7 @@ export function createSparkChatConversation({
     showReasoning: false,
     showContextWindow: false,
     getMessages: () => sparkConversationMessages(state.messages),
+    getCommandRun: () => latestCommandRun(state, { environmentId: getEnvironmentId(), sessionId: state.currentSessionId }),
     getActiveRequestId: () => state.activeRequestId,
     isConnected,
     getActivityForMessage: (message) => ({

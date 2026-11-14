@@ -24,6 +24,7 @@ export function createComposerDraftView({ input, getDraft, isVisible = () => tru
   }
 
   const surface = {
+    element: input,
     get value() { return current().text; },
     set value(value) {
       const draft = getDraft();

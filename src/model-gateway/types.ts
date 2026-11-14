@@ -220,6 +220,9 @@ export type ResolvedEmbeddingProfile = Readonly<{
   options: Readonly<Record<string, unknown>>;
 }>;
 
+/** Caller-observed format failure; applies to this repair attempt only. */
+export type ModelStructuredOutputRepair = "json_schema_violation";
+
 export type ModelGatewayRequest = {
   text?: string;
   prompt?: string;
@@ -236,6 +239,7 @@ export type ModelGatewayRequest = {
   reasoningOverride?: ModelReasoningLevel | string;
   reasoningPreference?: ModelReasoningPreference;
   format?: unknown;
+  structuredOutputRepair?: ModelStructuredOutputRepair;
   modelPreference?: ModelPreference;
   modelPolicy?: ModelGatewayPolicyConfig;
 };

@@ -115,7 +115,7 @@ test("EA 32K and 120K retain identical catalog and control schemas; SYSTEM-first
         ).toEqual([]);
         if (input.modelStep === "execution.decision") executionTurn += 1;
         if (input.modelStep === "execution.decision" && executionTurn === 2) {
-          assertFilesystemScope(input, root, null, true);
+          assertFilesystemScope(input, root, null, true, {});
           expect(
             capsules(input, "runtime_execution_capability_catalog_v1")[0],
           ).toMatchObject({
@@ -127,7 +127,9 @@ test("EA 32K and 120K retain identical catalog and control schemas; SYSTEM-first
           (input.modelStep === "execution.decision" && executionTurn >= 4) ||
           input.modelStep === "tool_payload.raw"
         ) {
-          assertFilesystemScope(input, root, "LUNA", false);
+          assertFilesystemScope(input, root, "LUNA", false, {
+            write_complete_file: ["path"],
+          });
         } else {
           expect(capsules(input, RUNTIME_FILESYSTEM_SCOPE_KIND)).toEqual([]);
         }
@@ -165,6 +167,9 @@ test("EA 32K and 120K retain identical catalog and control schemas; SYSTEM-first
             capabilities: capsules(
               input,
               "runtime_execution_capability_catalog_v1",
+            ),
+            pathControls: capsules(input, RUNTIME_FILESYSTEM_SCOPE_KIND).map(
+              (scope) => (scope.applicability as Record<string, unknown>).pathControls,
             ),
             schema: input.format,
           })),

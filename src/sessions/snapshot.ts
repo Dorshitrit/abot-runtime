@@ -58,12 +58,17 @@ function messageWindow(sessionId: string, messages: SessionRecord["messages"], p
   };
 }
 
-function isRequiredPageRequest(request: SessionRequestRecord, ids: Set<string | null>, waitingRequestId?: string, continuation = false): boolean {
+function isRequiredPageRequest(request: SessionRequestRecord, ids: Set<string | null>, waitingRequestId?: string, continuation = false, latestCommandId?: string): boolean {
   if (ids.has(request.requestId)) return true;
   if (continuation) return false;
+  if (request.requestId === latestCommandId) return true;
   if (request.requestId === waitingRequestId) return true;
   if (request.status === "streaming") return true;
   return request.status === "awaiting_approval";
+}
+
+function hasCommandRequestEvents(request: SessionRequestRecord): boolean {
+  return request.events.some((event) => event.payload.requestKind === "command");
 }
 
 export function projectSessionSnapshot(session: SessionRecord, options: SessionSnapshotOptions = {}): SessionSnapshot {
@@ -91,9 +96,11 @@ export function projectSessionSnapshot(session: SessionRecord, options: SessionS
   const page = messageWindow(session.id, visible, options.page!, resolveRequestId);
   const messages = page.selected.map((message) => toSnapshotMessage(session.id, message, requests, resolveRequestId));
   const ids = new Set(messages.map((message) => message.requestId));
+  // Event-only runs have no message anchor; retain the latest command's feedback.
+  const latestCommandId = requests.filter(hasCommandRequestEvents).at(-1)?.requestId;
   return {
     ...base, messages, messageIndex, nextCursor: page.nextCursor, newerCursor: page.newerCursor,
     requests: options.includeRequests === false ? [] : requests
-      .filter((request) => isRequiredPageRequest(request, ids, options.page?.waitingRequestId, Boolean(options.page?.cursor))).map(toSnapshotRequest),
+      .filter((request) => isRequiredPageRequest(request, ids, options.page?.waitingRequestId, Boolean(options.page?.cursor), latestCommandId)).map(toSnapshotRequest),
   };
 }

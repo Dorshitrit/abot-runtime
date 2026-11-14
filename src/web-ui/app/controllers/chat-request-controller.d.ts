@@ -4,7 +4,7 @@ import type { ComposerScope } from "./composer-drafts.js";
 import type { ComposerSubmissionAttempt, ComposerSubmissionSettings } from "./composer-submission-lifecycle.js";
 
 type RuntimeWebClient = ReturnType<typeof createRuntimeWebClient>;
-export type ComposerChatClient = Pick<RuntimeWebClient, "postChatMessage" | "stopChatRequest">;
+export type ComposerChatClient = Pick<RuntimeWebClient, "postChatMessage" | "stopChatRequest"> & Partial<Pick<RuntimeWebClient, "listRuntimeCommands">>;
 export type ComposerChatSession = Pick<ReturnType<typeof createConversationSessionController>, "appendLocalUserMessage" | "activateRequestForScope">;
 export type ComposerChatAttempt = ComposerSubmissionAttempt<ComposerSubmissionSettings>;
 

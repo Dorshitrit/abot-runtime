@@ -127,12 +127,27 @@ describe.skipIf(process.platform === "win32")(
             controls: { path: "C:/namespace-project/index.html" },
             settledCapabilityResults: [],
           }),
-        ).rejects.toThrow(
-          "registered_tool_worker_capability_execution:runtime_tool_path_namespace_invalid",
-        );
+        ).resolves.toMatchObject({
+          outcome: "failed",
+          observedEffect: "none",
+          exactResult: {
+            kind: "runtime_capability_rejection_v1",
+            authority: "runtime",
+            status: "rejected",
+            stage: "before_external_execution",
+            code: "runtime_tool_path_namespace_invalid",
+          },
+        });
         expect(author).not.toHaveBeenCalled();
         expect(execute).not.toHaveBeenCalled();
-        expect(onEvent).not.toHaveBeenCalled();
+        expect(onEvent.mock.calls).toEqual([
+          ["tool.failed", expect.objectContaining({
+            tool: "namespace_writer",
+            executionId: "capability-execution-1",
+            stage: "before_external_execution",
+            error: "runtime_tool_path_namespace_invalid",
+          })],
+        ]);
       },
     );
   },

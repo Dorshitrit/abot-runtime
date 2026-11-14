@@ -16,6 +16,7 @@ import {
 import { bindOpenAIResponseLifetime } from "./response-lifetime.js";
 import { resolveOpenAIFunctionOutputName } from "./function-output.js";
 import { requiresSingleMessageOutput } from "./message-output-policy.js";
+import { fetchWithOpenAIReasoningFallback } from "./reasoning-fallback.js";
 
 export async function invokeOpenAIResponses(
   params: ModelProviderInvocationParams,
@@ -42,24 +43,30 @@ export async function invokeOpenAIResponses(
     onMessageOutputDiagnostic: (diagnostic: OpenAIMessageOutputNormalizationDiagnostic) =>
       emitOpenAIMessageOutputDiagnostic(params, diagnostic),
   };
-  const { response, responseTrace } = await fetchProviderWithTrace({
-    endpoint: params.endpoint,
+  const { result: { response, responseTrace } } = await fetchWithOpenAIReasoningFallback({
+    payload,
     requestBody: params.requestBody,
     invocation: params.invocation,
-    fetchImpl: async (input, init) => bindOpenAIResponseLifetime(
-      await params.fetchImpl(input, {
-        ...init,
-        ...(params.abortSignal ? { signal: params.abortSignal } : {}),
-      }),
-      completionOptions,
-    ),
-    url: options.url,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${options.accessToken}`,
-    },
-    payload,
-    decodeResponse: (body) => collectOpenAIResponsesStream(body, completionOptions),
+    abortSignal: params.abortSignal,
+    send: (attemptPayload) => fetchProviderWithTrace({
+      endpoint: params.endpoint,
+      requestBody: params.requestBody,
+      invocation: params.invocation,
+      fetchImpl: async (input, init) => bindOpenAIResponseLifetime(
+        await params.fetchImpl(input, {
+          ...init,
+          ...(params.abortSignal ? { signal: params.abortSignal } : {}),
+        }),
+        completionOptions,
+      ),
+      url: options.url,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${options.accessToken}`,
+      },
+      payload: attemptPayload,
+      decodeResponse: (body) => collectOpenAIResponsesStream(body, completionOptions),
+    }),
   });
   if (!response.ok || !response.body) {
     const message = await response.text();

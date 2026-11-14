@@ -1,4 +1,5 @@
 import { confirmDialog } from "../components/confirmation-dialog.js";
+import { createComposerCommands } from "./composer-commands.js";
 import { createComposerDrafts } from "./composer-drafts.js";
 import { createComposerSubmissionLifecycle, ComposerSubmissionRefused } from "./composer-submission-lifecycle.js";
 import { createComposerAttachmentsController } from "./composer-attachments-controller.js";
@@ -39,9 +40,11 @@ export function createComposerFeature({
     isCurrentComposerScope: isCurrentScope, applyConversationChrome, renderSessions });
   queue = createComposerQueueController({ queue: sessionQueue, drafts, lifecycle, getDraft, requests, getSettings,
     isCurrentScope, reportFailure, reportRecovery, onChange: changed, confirmTakeover: confirmReview });
+  const commands = createComposerCommands({ state, client, lifecycle, queue, conversationSession, reportFailure, changed });
 
   function createSurface({ surfaceDom, currentDraft, ensureDraftSession, visible, supportsImages,
     available = isComposerAvailable, prepareSend = () => true, allowsActiveRequest = true }) {
+    const commandMenu = commands.attachMenu({ form: surfaceDom.composerForm, input: surfaceDom.composerInput, visible });
     const attachments = createComposerAttachmentsController({
       getDraft: currentDraft, dom: surfaceDom, shell, client, selectedEnvironmentId: getEnvironmentId,
       selectedModelSupportsImageInput: supportsImages, ensureSession: ensureBoundSession,
@@ -64,6 +67,7 @@ export function createComposerFeature({
       changed();
     } });
     function render() {
+      void commandMenu.render();
       if (!visible()) { notice.render([]); return; }
       attachments.render();
       submit.updateSendState();
@@ -85,6 +89,7 @@ export function createComposerFeature({
       const settings = { ...configured, ...(configured.reasoningPreference ? { reasoningPreference: { ...configured.reasoningPreference } } : {}) };
       if (!draft.scope.sessionId) { ensureBoundSession(); draft = currentDraft(); }
       const activeRequestId = allowsActiveRequest ? state.activeRequestId : "";
+      if (commands.handles(draft.text)) return commands.submit({ draft, settings, activeRequestId, prepareSend });
       return lifecycle.submit({ draft, action, settings,
         prepare: async (attempt) => {
           if (attempt.payload.release && activeRequestId)

@@ -135,6 +135,7 @@ export async function admitCompactedContext(
       abortSignal: AbortSignal;
       identity: ContextCompactionIdentity;
       onEvent?: (name: string, extra?: Record<string, unknown>) => void;
+      triggerReason?: "user_command";
       providerOverflowRepair?: ContextCompactionProjectionRepair;
     }>,
 ): Promise<CompactionEnvelope> {
@@ -146,7 +147,7 @@ export async function admitCompactedContext(
     params.assessment,
     stages[0]?.compactionScope,
     params.onEvent,
-    params.providerOverflowRepair ? "provider_context_overflow" : undefined,
+    params.providerOverflowRepair ? "provider_context_overflow" : params.triggerReason,
   );
   let current: CompactionEnvelope = params;
   const retained: RetainedStage[] = [];

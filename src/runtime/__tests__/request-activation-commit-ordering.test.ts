@@ -31,6 +31,39 @@ async function ownedFixture() {
   return { ...f, owner, published };
 }
 
+test("coalesced thinking preserves delta text, replay and lifecycle commit order", async () => {
+  const f = await ownedFixture();
+  f.owner.events.thinkingDelta("א", "א");
+  f.owner.events.thinkingDelta("ב", "אב");
+  f.owner.events.event("tool.completed", { executionId: "tool-1" });
+  f.owner.events.thinkingDelta("ג", "אבג");
+  await f.owner.commit((expected) => f.service.requestLifecycle.commitTerminal("conversation", {
+    expected, commandId: "terminal", status: "completed", message: { content: "done" },
+  }));
+  const thinking = f.published.filter((event) => event.name === "thinking.delta");
+  expect(thinking.map((event) => event.delta).join("")).toBe("אבג");
+  expect(thinking.map((event) => event.text)).toEqual(["אב", "אבג"]);
+  const replay = await f.service.getRequestReplayById("request", 0, "conversation");
+  expect(replay?.events.filter((event) => event.name === "thinking.delta")).toEqual(thinking);
+  expect(f.published.slice(0, 3).map((event) => event.name)).toEqual(["thinking.delta", "tool.completed", "thinking.delta"]);
+  expect(f.published.at(-1)?.type).toBe("completed");
+  expect(f.published.map((event) => event.seqNo)).toEqual(f.published.map((_, index) => index + 1));
+  f.owner.events.dispose();
+});
+
+test("a failed snapshot write prevents later delivery and surfaces through drain", async () => {
+  const f = await ownedFixture();
+  const failure = new Error("snapshot_write_failed");
+  const append = vi.spyOn(f.service.requestLifecycle, "appendActivationEvent").mockRejectedValue(failure);
+  f.owner.events.thinkingDelta("a", "a");
+  f.owner.events.thinkingDelta("b", "ab");
+  f.owner.events.event("tool.completed", { executionId: "tool-1" });
+  await expect(f.owner.events.drain()).rejects.toBe(failure);
+  expect(append).toHaveBeenCalledTimes(1);
+  expect(f.published).toEqual([]);
+  f.owner.events.dispose();
+});
+
 test.each(["terminal", "wait"] as const)(
   "%s commit reserves the event queue; a later event cannot invalidate its revision",
   async (transition) => {

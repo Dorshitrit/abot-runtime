@@ -1,4 +1,5 @@
 import { createSavedApprovalDecisionQueue } from "./saved-approval-decision-queue.js";
+import { recoverInterruptedRequests } from "./startup-request-recovery.js";
 import type { SessionRequestAdmissionClaim } from "../request/session-admission.js";
 import { randomUUID } from "node:crypto";
 import type WebSocket from "ws";
@@ -93,27 +94,7 @@ export class SavedRequestApprovals {
   }
 
   async recover(): Promise<void> {
-    if (!this.store) return;
-    const sessions = await this.application.services.sessions.getAllSessions();
-    for (const session of sessions) {
-      for (const request of session.requests ?? []) {
-        if (request.status !== "streaming" || !request.lifecycle) continue;
-        const current = await this.store.get(session.id, request.requestId);
-        if (!current?.activation || current.status !== "streaming") continue;
-        await this.store.interruptActivation(session.id, {
-          expected: {
-            requestId: current.requestId,
-            generation: current.generation,
-            revision: current.revision,
-            ...current.activation,
-          },
-          commandId: randomUUID(),
-          message: {
-            content: "The running task was interrupted by a runtime restart.",
-          },
-        });
-      }
-    }
+    await recoverInterruptedRequests(this.application.services.sessions);
   }
 
   async list(sessionId?: unknown): Promise<LocalPendingToolApproval[]> {

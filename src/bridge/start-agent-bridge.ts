@@ -25,6 +25,10 @@ import type {
 import type { RuntimeAttachmentStore } from "../runtime/attachments/store.js";
 import { loadRuntimeModelCatalog } from "../runtime/model/model-catalog.js";
 import { REQUEST_STEERING_FEATURE } from "../runtime/request/request-steering.js";
+import { createBridgeApprovalAccess } from "./request-approval-access.js";
+import { REQUEST_APPROVALS_FEATURE, refuseUnsupportedApprovalMessage } from "./request-approval-protocol.js";
+import { SPARK_CHAT_FEATURE } from "../runtime/spark-chat/contracts.js";
+import { handleSparkChatBridgeMessage, resolveBridgeSparkRequest } from "./spark-chat-access.js";
 
 export type AgentBridgeOptions = {
   runtimeConfig?: RuntimeConfig;
@@ -67,6 +71,7 @@ export type AgentBridgeConnectionStatus = {
 
 type PendingToolApproval = {
   requestId: string;
+  allowLegacyResponse: boolean;
   resolve: (decision: ToolApprovalDecision) => void;
 };
 
@@ -207,6 +212,16 @@ export function startAgentBridge(
   const requestSteering = createBridgeRequestSteeringRegistry(
     requestHandler.steer,
   );
+  const approvalAccess = requestHandler.approvalControls && options.sessionStore
+    ? createBridgeApprovalAccess({
+        controls: requestHandler.approvalControls, sessions: options.sessionStore,
+        currentSocket: () => stopped ? undefined : ws,
+        legacyController: () => createToolApprovalController(), steer: requestHandler.steer,
+      })
+    : undefined;
+  const features = [REQUEST_STEERING_FEATURE,
+    ...(approvalAccess ? [REQUEST_APPROVALS_FEATURE] : []),
+    ...(requestHandler.sparkChat ? [SPARK_CHAT_FEATURE] : [])];
 
   function getStatus(): AgentBridgeConnectionStatus {
     return {
@@ -281,7 +296,7 @@ export function startAgentBridge(
     statusTimer = undefined;
   }
 
-  function createToolApprovalController(): ToolApprovalController {
+  function createToolApprovalController(allowLegacyResponse = true): ToolApprovalController {
     return {
       requestToolApproval: (request, options) =>
         new Promise<ToolApprovalDecision>((resolve) => {
@@ -309,6 +324,7 @@ export function startAgentBridge(
           });
           pendingToolApprovals.set(request.approvalId, {
             requestId: request.requestId,
+            allowLegacyResponse,
             resolve: complete,
           });
           trace("tool_approval.pending", {
@@ -336,6 +352,7 @@ export function startAgentBridge(
       trace("tool_approval.unknown_response", { approvalId });
       return true;
     }
+    if (!pending.allowLegacyResponse) return true;
     pending.resolve({
       approved: msg.approved === true,
       reason: getString(msg.reason).trim() || undefined,
@@ -387,7 +404,7 @@ export function startAgentBridge(
     const payload = {
       type: "register",
       agentId: runtimeId,
-      features: [REQUEST_STEERING_FEATURE],
+      features,
       ...(modelCatalog ? { modelCatalog } : {}),
     };
     currentWs.send(JSON.stringify(payload), (error) => {
@@ -404,7 +421,7 @@ export function startAgentBridge(
         modelCatalogSchemaVersion: modelCatalog?.schemaVersion,
         modelProfileCount: modelCatalog?.profiles.length ?? 0,
         defaultModelProfileId: modelCatalog?.defaultProfileId,
-        features: [REQUEST_STEERING_FEATURE],
+        features,
       });
     });
   }
@@ -414,6 +431,7 @@ export function startAgentBridge(
     currentConnectionId: number,
     raw: WebSocket.RawData,
   ): Promise<void> {
+    if (stopped || ws !== currentWs) return;
     lastMessageAt = Date.now();
     let parsed: unknown;
     try {
@@ -436,6 +454,7 @@ export function startAgentBridge(
 
     if (messageType === "registered") {
       registered = true;
+      reconnectAttempt = 0;
       lastRegisteredAt = Date.now();
       traceLifecycle("registered", { connectionId: currentConnectionId });
       logStatus("registered");
@@ -443,6 +462,9 @@ export function startAgentBridge(
     }
 
     try {
+      if (await handleSparkChatBridgeMessage(currentWs, msg, requestHandler.sparkChat)) return;
+      if (refuseUnsupportedApprovalMessage(currentWs, msg, Boolean(approvalAccess))) return;
+      if (await approvalAccess?.handleMessage(currentWs, msg)) return;
       if (
         await handleRuntimeAdminBridgeMessage(currentWs, msg, {
           rootDir: options.runtimeConfig?.paths.rootDir,
@@ -468,7 +490,9 @@ export function startAgentBridge(
       }
       if (msg.type !== "run_request") return;
       const sessionId = getString(msg.sessionId).trim();
-      const requestId = getString(msg.requestId).trim();
+      const requestId = getString(msg.requestId);
+      const request = await resolveBridgeSparkRequest(requestHandler.sparkChat,
+        { ...msg, requestId, sessionId } as RunRequestMessage);
       try {
         if (sessionId) {
           if (options.sessionStore)
@@ -477,22 +501,20 @@ export function startAgentBridge(
         }
       } catch (error) {
         if (!isAutomationSessionLockedError(error)) throw error;
-        currentWs.send(
-          JSON.stringify({
-            type: "failed",
-            requestId,
-            sessionId,
-            error: "automation_session_locked",
-          }),
-        );
+        publishRequestAdmissionFailure(currentWs, { ...msg, requestId, sessionId }, error);
         return;
       }
       const steeringInbox = requestSteering.open(requestId);
       try {
-        await requestHandler.handle(currentWs, msg as RunRequestMessage, {
-          toolApprovalController: createToolApprovalController(),
+        const durableApprovals = approvalAccess?.acceptsMode(msg) === true;
+        const run = (requestSocket: WebSocket) => requestHandler.handle(requestSocket, request, {
+          toolApprovalController: createToolApprovalController(!durableApprovals),
           requestSteering: steeringInbox,
+          ...(durableApprovals ? { durableApprovals: true } : {}),
         });
+        if (approvalAccess && sessionId && requestId)
+          await approvalAccess.runRequest(currentWs, sessionId, requestId, run);
+        else await run(currentWs);
       } finally {
         await requestSteering.close(requestId, steeringInbox);
       }
@@ -565,7 +587,6 @@ export function startAgentBridge(
         currentWs.close();
         return;
       }
-      reconnectAttempt = 0;
       lastOpenAt = Date.now();
       lastPongAt = lastOpenAt;
       traceLifecycle("socket.open", { connectionId: currentConnectionId });
@@ -593,6 +614,7 @@ export function startAgentBridge(
     });
 
     currentWs.on("close", (code, reasonBuffer) => {
+      approvalAccess?.disconnect(currentWs);
       if (ws !== currentWs) {
         return;
       }
@@ -626,6 +648,7 @@ export function startAgentBridge(
     getStatus,
     stop: async () => {
       stopped = true;
+      approvalAccess?.stop();
       clearReconnectTimer();
       clearHeartbeatTimer();
       clearStatusTimer();

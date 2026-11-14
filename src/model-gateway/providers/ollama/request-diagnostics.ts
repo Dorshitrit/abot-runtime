@@ -5,6 +5,7 @@ import type { ModelProviderInvocationParams } from "../contracts.js";
 import { resolveConfiguredOllamaBaseUrl } from "./base-url.js";
 import type { OllamaProviderTiming } from "./stream-normalizer.js";
 import { readEffectiveOption } from "./options.js";
+import { projectOllamaThinkingDiagnostics } from "./structured-repair.js";
 
 function readRecord(value: unknown): Record<string, unknown> | undefined {
   const isRecord =
@@ -88,6 +89,13 @@ export function emitOllamaRequestProjection(params: {
     providerId: invocation.profile.providerId,
     provider: "ollama",
     model: invocation.model,
+    ...projectOllamaThinkingDiagnostics({
+      endpoint,
+      requestedThinking: invocation.think,
+      effectiveThinking: params.payload.think,
+      structuredOutputRepair: requestBody.structuredOutputRepair,
+      projectedFormat,
+    }),
     requestedFormatKind: resolveRequestedFormatKind(requestBody.format),
     providerFormatKind: resolveProviderFormatKind(projectedFormat),
     providerSchemaCharacterCount: projectedSchema

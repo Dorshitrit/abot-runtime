@@ -1,6 +1,7 @@
 import type {
   ChatMessage,
   ModelGatewayJsonSchemaFormat,
+  ModelStructuredOutputRepair,
 } from "../../model-gateway/types.js";
 import type { RequestSteeringSnapshot } from "../request/request-steering.js";
 import type { ModelStep } from "../../shared/model-steps.js";
@@ -10,6 +11,7 @@ import type { BoundRequestModelInvocationContext } from "../request/contracts.js
 import { resolveRequestModelStepInvoker } from "./invoke-step.js";
 import type { ModelStepContextCompactionController, ModelStepOptionalContextProjection } from "./model-step-port.js";
 import { resolveOutputIncompleteError } from "./provider-completion.js";
+import { resolveStructuredOutputRepair } from "./structured-output-repair.js";
 import {
   STRUCTURED_MODEL_MAX_REPAIR_ATTEMPTS,
   buildModelRepairAttemptMessages,
@@ -80,6 +82,7 @@ export async function invokeStructuredModelStep<T>(params: {
   const modelStepInvoker = resolveRequestModelStepInvoker(params.request);
   let messages = params.messages;
   let previousRejectedOutput: string | undefined;
+  let structuredOutputRepair: ModelStructuredOutputRepair | undefined;
 
   for (
     let repairAttempt = 0;
@@ -96,6 +99,7 @@ export async function invokeStructuredModelStep<T>(params: {
       boundSteeringVersion: params.boundSteeringVersion,
       ...(params.callerSteering ? { callerSteering: params.callerSteering } : {}),
       format: params.format,
+      ...(structuredOutputRepair ? { structuredOutputRepair } : {}),
       contextRetention: params.contextRetention,
       configuredInstructionPolicy: params.configuredInstructionPolicy,
       ...(params.optionalContextProjection
@@ -175,6 +179,10 @@ export async function invokeStructuredModelStep<T>(params: {
       return attempt.value;
     }
 
+    structuredOutputRepair = resolveStructuredOutputRepair(
+      attempt.rejectedOutput,
+      params.format,
+    );
     const repairHint = buildStructuredModelRepairHint({
       repairAttempt: repairAttempt + 1,
       stage: attempt.error.validationStage,
@@ -190,6 +198,7 @@ export async function invokeStructuredModelStep<T>(params: {
       issues: projectIssues(attempt.error.issues),
       issueCount: attempt.error.issues.length,
       repairHintLength: repairHint.length,
+      ...(structuredOutputRepair ? { structuredOutputRepair } : {}),
       repeatedInvalidOutput: attempt.error.repeatedInvalidOutput,
       sameRoleCall: true,
     });

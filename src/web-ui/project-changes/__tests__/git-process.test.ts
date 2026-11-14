@@ -19,11 +19,15 @@ describe("bounded read-only Git process", () => {
     const executable = join(fixture.root, "git-fixture");
     await writeFile(executable, `#!${process.execPath}\nif(process.argv.includes('wait')) setTimeout(()=>{},10000); else if(process.argv.includes('large')) process.stdout.write('x'.repeat(2000)); else process.stdout.write(JSON.stringify(process.argv.slice(2)));\n`);
     await chmod(executable, 0o700);
-    const read = createProjectGitRead(executable, fixture.root, undefined, { timeoutMs: 100 });
+    const read = createProjectGitRead(executable, fixture.root);
     const result = await read(["literal", "; touch sentinel"]);
     expect(JSON.parse(result.stdout.toString())).toContain("; touch sentinel");
     expect(JSON.parse(result.stdout.toString())).toContain("--no-replace-objects");
-    await expect(read(["wait"])).rejects.toMatchObject({ code: "project_changes_unavailable" });
+    const readWithTimeout = createProjectGitRead(executable, fixture.root, undefined, { timeoutMs: 100 });
+    await expect(readWithTimeout(["wait"])).rejects.toMatchObject({
+      code: "project_changes_unavailable",
+      message: "Git did not finish within the preview time limit.",
+    });
     await expect(read(["large"], { maxBytes: 100 })).rejects.toMatchObject({ code: "project_changes_too_large" });
     await expect(createProjectGitRead(executable, fixture.root, AbortSignal.abort())([])).rejects.toMatchObject({ code: "project_changes_unavailable" });
   });

@@ -9,7 +9,9 @@ import {
 } from "../context/runtime-filesystem-scope.js";
 
 const root = resolve("agent-work");
-const pathCapability = Object.freeze({ runtimePathControlIds: ["path"] });
+const pathCapability = Object.freeze({
+  capabilityId: "inspect_target", runtimePathControlIds: ["path"],
+});
 
 describe("runtime filesystem scope", () => {
   test("captures the exact bound root once without inventing other roots", () => {
@@ -41,14 +43,14 @@ describe("runtime filesystem scope", () => {
 
   test.each([
     { descriptors: [], select: false, expected: false },
-    { descriptors: [{}], select: false, expected: false },
+    { descriptors: [{ capabilityId: "plain" }], select: false, expected: false },
     {
-      descriptors: [{ runtimePathControlIds: [] }],
+      descriptors: [{ capabilityId: "plain", runtimePathControlIds: [] }],
       select: false,
       expected: false,
     },
     { descriptors: [pathCapability], select: false, expected: true },
-    { descriptors: [{}], select: true, expected: true },
+    { descriptors: [{ capabilityId: "plain" }], select: true, expected: true },
   ])(
     "uses descriptor path metadata or cwd authority: $expected",
     ({ descriptors, select, expected }) => {
@@ -95,7 +97,10 @@ describe("runtime filesystem scope", () => {
       provenance: "request_bound_agent_work_directory",
       agentWorkRoot: exactRoot,
       workingDirectory: "project/subdirectory",
-      applicability: { canSelectWorkingDirectory: false },
+      applicability: {
+        canSelectWorkingDirectory: false,
+        pathControls: { inspect_target: ["path"] },
+      },
     });
     expect(capsule).not.toHaveProperty("workspaceDir");
     expect(capsule).not.toHaveProperty("target");
@@ -134,5 +139,31 @@ describe("runtime filesystem scope", () => {
     expect(project("project-b").workingDirectory).toBe("project-b");
     expect(project("project-a").workingDirectory).toBe("project-a");
     expect(scope).not.toHaveProperty("workingDirectory");
+  });
+
+  test("binds only offered path controls without inferring scope from tool names", () => {
+    const capabilities = Object.freeze([
+      pathCapability,
+      Object.freeze({ capabilityId: "execute_command" }),
+      Object.freeze({ capabilityId: "read_unscoped", runtimePathControlIds: [] }),
+      Object.freeze({ capabilityId: "custom_operation", runtimePathControlIds: ["source", "target"] }),
+    ]);
+    const original = JSON.stringify(capabilities);
+    const project = (offered: typeof capabilities) => JSON.parse(
+      buildRuntimeFilesystemScopeMessage({
+        scope: captureRuntimeFilesystemScope(root), capabilities: offered,
+        canSelectWorkingDirectory: true,
+      })!.content as string,
+    );
+    const capsule = project(capabilities);
+    expect(capsule.applicability.pathControls).toEqual({
+      inspect_target: ["path"], custom_operation: ["source", "target"],
+    });
+    expect(project([pathCapability]).applicability.pathControls).toEqual({
+      inspect_target: ["path"],
+    });
+    expect(project([{ capabilityId: "execute_command" }]).applicability.pathControls).toEqual({});
+    expect(capsule).not.toHaveProperty("target");
+    expect(JSON.stringify(capabilities)).toBe(original);
   });
 });

@@ -5,6 +5,7 @@ import type {
 import { createProviderEnvelopeFingerprint } from "../envelope-budget.js";
 import { buildOpenAIInputTokenCountPayload } from "./payload.js";
 import { resolveOpenAIProviderSettings } from "./settings.js";
+import { fetchWithOpenAIReasoningFallback } from "./reasoning-fallback.js";
 import { toolMediaSafeError, toolMediaSafeMessage } from "../../observability/tool-media-privacy.js";
 
 function readInputTokenCount(body: unknown): number | undefined {
@@ -33,18 +34,23 @@ export async function countOpenAIInputTokens(
     };
   }
 
-  const payload = buildOpenAIInputTokenCountPayload(params.requestBody);
-  const response = await params.fetchImpl(
-    `${settings.baseUrl}/responses/input_tokens`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${settings.apiKey}`,
-      },
-      body: JSON.stringify(payload),
-    },
-  ).catch((error) => { throw toolMediaSafeError(error, params.requestBody); });
+  const { result: { response }, payload } = await fetchWithOpenAIReasoningFallback({
+    payload: buildOpenAIInputTokenCountPayload(params.requestBody),
+    requestBody: params.requestBody,
+    invocation: params.invocation,
+    abortSignal: params.abortSignal,
+    send: async (attemptPayload) => ({
+      response: await params.fetchImpl(`${settings.baseUrl}/responses/input_tokens`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${settings.apiKey}`,
+        },
+        body: JSON.stringify(attemptPayload),
+        signal: params.abortSignal,
+      }),
+    }),
+  }).catch((error) => { throw toolMediaSafeError(error, params.requestBody); });
   if (!response.ok) {
     const message = await response.text().catch(() => "");
     return {

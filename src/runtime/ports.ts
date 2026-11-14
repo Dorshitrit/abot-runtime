@@ -37,6 +37,7 @@ import type {
   ModelPreference,
   ModelReasoningPreference,
   ModelTokenUsage,
+  ModelStructuredOutputRepair,
 } from "../model-gateway/types.js";
 import type { RuntimeAttachmentStore } from "./attachments/store.js";
 import type { RuntimeAttachmentReference } from "../shared/attachments.js";
@@ -350,6 +351,7 @@ export type WorkspaceProvider = {
 };
 
 export type ModelGatewayInvokeParams = StreamCallbacks & {
+  structuredOutputRepair?: ModelStructuredOutputRepair;
   text?: string;
   messages?: unknown;
   promptCacheBoundaryBeforeMessageIndex?: number;

@@ -10,6 +10,7 @@ import type {
   ModelGatewayPolicyConfig,
   ModelPreference,
   ModelTokenUsage,
+  ModelStructuredOutputRepair,
 } from "../types.js";
 
 export type ModelMetricMessage = {
@@ -23,6 +24,7 @@ export type ModelMetricMessage = {
 };
 
 export type InvokeModelGatewayParams = StreamCallbacks & {
+  structuredOutputRepair?: ModelStructuredOutputRepair;
   text?: string;
   messages?: unknown;
   promptCacheBoundaryBeforeMessageIndex?: number;

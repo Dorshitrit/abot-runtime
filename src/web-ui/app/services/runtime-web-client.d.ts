@@ -283,6 +283,7 @@ export declare function createRuntimeWebClient(options: {
   }): Promise<{ accepted: boolean; reason?: string }>;
   postChatMessage(options: {
     text: string;
+    command?: import("../../../runtime/commands/contracts.js").RuntimeCommandInvocation;
     attachments: unknown[];
     environmentId?: string;
     sessionId: string;
@@ -291,6 +292,7 @@ export declare function createRuntimeWebClient(options: {
     modelPreference?: Record<string, unknown> | null;
     reasoningPreference?: import("../../../shared/model-reasoning.js").ModelReasoningPreference;
   }): Promise<string>;
+  listRuntimeCommands(): Promise<{ commands: readonly import("../../../runtime/commands/contracts.js").RuntimeCommandDefinition[] }>;
   loadModelSetup(environmentId?: string): Promise<Record<string, unknown>>;
   addRuntimeModel(
     input: ModelSetupInput,

@@ -11,6 +11,7 @@ export type RuntimeFilesystemScope = Readonly<{
 }>;
 
 type RuntimePathCapability = Readonly<{
+  capabilityId: string;
   runtimePathControlIds?: readonly string[];
 }>;
 
@@ -46,6 +47,16 @@ export function needsRuntimeFilesystemScope(
   );
 }
 
+function projectRuntimePathControls(
+  capabilities: readonly RuntimePathCapability[],
+): Readonly<Record<string, readonly string[]>> {
+  return Object.fromEntries(capabilities.flatMap((descriptor) => {
+    const controls = descriptor.runtimePathControlIds ?? [];
+    if (controls.length === 0) return [];
+    return [[descriptor.capabilityId, controls]];
+  }));
+}
+
 /** Passive root meaning only; selected targets remain in their existing lane. */
 export function buildRuntimeFilesystemScopeMessage(
   input: Readonly<{
@@ -78,6 +89,9 @@ export function buildRuntimeFilesystemScopeMessage(
         relativePathBase: "agentWorkRoot_plus_canonical_workingDirectory",
         absolutePathSyntax: "runtime_host",
         allowedLocations: "defined_and_validated_by_each_operation",
+        pathControls: projectRuntimePathControls(input.capabilities ?? []),
+        pathRules:
+          "Mapped controls use Runtime-managed paths. Absolute paths do not bypass configured roots or an established working-directory boundary. For an out-of-scope target, explain the access limit rather than assuming access. Other controls retain their operation-specific rules; this reference does not define a process sandbox.",
       },
       presenceEffect:
         "Reference only. Does not add user intent, authorization, a Desktop location, OS-target mapping, or completion evidence. SYSTEM target paths belong to the selected OS independently of this runtime filesystem root.",

@@ -1,6 +1,7 @@
 # Exec Skill
 
 - Use `exec` for shell work needed by the user's task. Prefer dedicated capabilities when they express that work directly.
+- Prefer simple commands. Preserve stderr when diagnosing failures; do not hide it merely to simplify output.
 - `exec` uses non-interactive `/bin/bash` on Linux/macOS (including WSL) and Windows PowerShell on native Windows. Use the syntax of that shell. It executes on the Runtime host; it does not target a paired computer.
 - Supply an explicit existing `cwd`. `.` and relative paths start from the configured agent-work directory, not an implicit Worker directory. `workspace/...` selects the configured workspace; absolute host directories are accepted.
 - To create a project, select an existing parent `cwd` and create its directory in the command. A selected project provides working context, not a filesystem sandbox.

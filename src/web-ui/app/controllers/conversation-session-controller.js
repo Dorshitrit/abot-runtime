@@ -1,4 +1,5 @@
 import { isAcknowledgementPresentationEvent } from "../lib/conversation-work-timeline-model.js";
+import { rememberCommandRun, hasActiveCommandRun } from "../lib/command-runs.js";
 import { isUserInteractionMessage } from "../lib/user-interaction-event.js";
 import { beginConversationNavigation, canNavigateConversation } from "./conversation-navigation-intent.js";
 import {
@@ -384,7 +385,7 @@ export function createConversationSessionController({
     }
     if (!isContextReplayCurrent(replayScope, state, selectedEnvironmentId()))
       return;
-    if (afterSeq === 0) resetAssistantForReplay(requestId);
+    if (afterSeq === 0 && !hasActiveCommandRun(state, { environmentId: selectedEnvironmentId(), sessionId: state.currentSessionId })) resetAssistantForReplay(requestId);
     for (const event of bindContextReplayEvents(events, replayScope))
       handleRealtimeMessage(event);
   }
@@ -557,10 +558,11 @@ export function createConversationSessionController({
     renderMessages();
   }
 
-  function activateRequestForScope(scope, requestId) {
+  function activateRequestForScope(scope, requestId, kind = "chat") {
     if (!isCurrentComposerScope(scope)) return;
+    if (kind === "command" && !rememberCommandRun(state, scope, requestId)) return;
     state.activeRequestId = requestId;
-    activeAssistantForRequest(requestId);
+    if (kind !== "command") activeAssistantForRequest(requestId);
     subscribeRequest(requestId);
     resumeRequest(requestId);
     updateComposerSendState();

@@ -159,13 +159,15 @@ test("SUPER carries one captured filesystem root through cwd, Planner, Worker, p
       typeof input.format === "object" &&
       input.format?.name === "supervisor_working_directory"
     ) {
-      assertFilesystemScope(input, root, null, true);
+      assertFilesystemScope(input, root, null, true, {});
     } else if (
       ["worker.evidence", "worker.decision", "worker.result", "capability.controls", "tool_payload.raw"].includes(
         input.modelStep!,
       )
     ) {
-      assertFilesystemScope(input, root, "LUNA", false);
+      assertFilesystemScope(input, root, "LUNA", false, {
+        write_complete_file: ["path"],
+      });
     } else {
       expect(capsules(input, RUNTIME_FILESYSTEM_SCOPE_KIND)).toEqual([]);
     }

@@ -15,7 +15,7 @@ import {
   createSuperFailureFinalization,
   type SuperFailureFinalization,
 } from "./super-failure-explanation.js";
-import { RequestModelStepInvoker } from "../model/invoke-step.js";
+import { bindModelInvocation } from "../model/bound-invocation.js";
 import type { ToolAvailabilitySource } from "../capabilities/tool-availability.js";
 import type { WorkerCapabilityAdapterProvider } from "../orchestration/worker-capabilities/index.js";
 import type {
@@ -146,9 +146,7 @@ export function createRequestExecutionScope(
     input.executionPolicy,
   );
   const modelInvocation = createModelInvocationView(facets);
-  const modelSteps = Object.freeze(
-    new RequestModelStepInvoker(modelInvocation, facets.lifecycle.onEvent),
-  );
+  const { modelSteps } = bindModelInvocation(modelInvocation, facets.lifecycle.onEvent);
   const executionContext = createCapabilityExecutionView(
     facets,
     policy.selection,

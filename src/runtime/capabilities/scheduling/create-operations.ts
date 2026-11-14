@@ -14,7 +14,7 @@ function createScheduleOperation(
 ): ToolNormalInvocationOperation {
   return {
     operationId: `create_${kind}`,
-    summary: `Schedule a future request in this conversation using the current model. Write prompt as the complete instruction the assistant must execute when this Job runs. For reminders, explicitly ask it to remind the user to act; preserve the exact action and target. For delegated work, retain the work itself. Put timing in the schedule fields and ask for missing timing details before creating. ${timingSummary}`,
+    summary: `Schedule a future request in this conversation with the current model. The prompt must fully instruct the assistant: explicitly remind the user of the exact action/target, or retain the delegated work. Put timing in schedule fields; ask if missing. Omit reasoningMode or use inherit for profile defaults; other modes require numeric reasoning support. ${timingSummary}`,
     effect: "mutating",
     approval: "request_policy",
     fixedParams: { action: "create", scheduleKind: kind },

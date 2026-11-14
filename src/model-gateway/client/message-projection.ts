@@ -15,6 +15,7 @@ import type {
   ModelGatewayAttachment,
   ModelGatewayPolicyConfig,
   ModelPreference,
+  ModelStructuredOutputRepair,
 } from "../types.js";
 import { isInvocationContextMessage } from "../protocol/invocation-context.js";
 import type { ModelMetricMessage } from "./contracts.js";
@@ -173,6 +174,7 @@ function appendPromptText(messages: ChatMessage[], promptText: string): void {
 
 export function buildChatGatewayRequestBody(
   params: Readonly<{
+    structuredOutputRepair?: ModelStructuredOutputRepair;
     text?: string;
     promptCacheBoundaryBeforeMessageIndex?: number;
     agentMode: AgentMode;
@@ -215,6 +217,9 @@ export function buildChatGatewayRequestBody(
       : {}),
     ...(modelPolicy ? { modelPolicy } : {}),
     ...(params.format !== undefined ? { format: params.format } : {}),
+    ...(params.structuredOutputRepair
+      ? { structuredOutputRepair: params.structuredOutputRepair }
+      : {}),
   };
 }
 

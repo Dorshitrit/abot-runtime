@@ -1,5 +1,8 @@
 import type { ToolExecutionSharedState } from "../../../capabilities/tool-types.js";
-import { scopeRuntimeTargetPath } from "../../capabilities/runtime-target-path.js";
+import {
+  RuntimeToolPathError,
+  scopeRuntimeTargetPath,
+} from "../../capabilities/runtime-target-path.js";
 import {
   validateWorkerCapabilityControls,
   type WorkerCapabilityDescriptor,
@@ -39,6 +42,7 @@ export function resolveEffectiveOperationTargetControls(
         }),
       ] as const;
     } catch (error: unknown) {
+      if (error instanceof RuntimeToolPathError) throw error;
       const issueCode =
         error instanceof TypeError ? safeIssueCode(error.message) : undefined;
       throw executionProtocolError(

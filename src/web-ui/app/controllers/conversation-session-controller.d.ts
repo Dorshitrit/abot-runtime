@@ -130,6 +130,7 @@ export declare function createConversationSessionController(
   activateRequestForScope(
     scope: { environmentId: string; sessionId: string },
     requestId: string,
+    kind?: "chat" | "command",
   ): void;
   activeAssistantForRequest(requestId: string): ConversationSessionMessage;
   addOrMergeMessage(message: ConversationSessionMessage): void;

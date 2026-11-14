@@ -22,9 +22,7 @@ import type {
   RegisteredToolNormalInvocationProjection,
 } from "../registered-tool-normal-invocations.js";
 import {
-  traceRegisteredToolWorkerCapabilityExecutionCompleted,
   traceRegisteredToolWorkerCapabilityExecutionFailed,
-  traceRegisteredToolWorkerCapabilityExecutionStarted,
   type RegisteredToolWorkerCapabilityProviderDiagnostic,
 } from "../registered-tool-worker-capability-diagnostics.js";
 import {
@@ -32,19 +30,15 @@ import {
   RegisteredToolWorkerCapabilityExecutionError,
 } from "./errors.js";
 import {
-  executionFreshnessRejection,
   payloadRejection,
   prepareOperationPayload,
 } from "./payload-lifecycle.js";
-import {
-  attachTargetReferences,
-  observeExternalResult,
-  projectSelectedTargetReferences,
-} from "./result-observer.js";
+import { projectSelectedTargetReferences } from "./result-observer.js";
 import { resolveEffectiveOperationTargetControls } from "./runtime-path-controls.js";
-import { createRegisteredToolPreparationAttemptFingerprint } from "../registered-tool-normal-invocations/shared/action-fingerprint.js";
 import { createWorkerCapabilityPreparationFailureFingerprint } from "../../orchestration/worker-capabilities/preparation-fingerprint.js";
 import { createDeferredPayloadObservability } from "./payload-observability.js";
+import { preparedRuntimeRejection } from "./prepared-rejection.js";
+import { runtimePathRejection } from "./runtime-path-rejection.js";
 
 export function projectWorkerAdapters<TContext>(
   params: Readonly<{
@@ -160,6 +154,23 @@ async function prepareRegisteredToolWorkerAdapter<TContext>(
     );
   } catch (error: unknown) {
     if (error instanceof Error && error.name === "AbortError") throw error;
+    const rejectedExecution = runtimePathRejection(error);
+    if (rejectedExecution) {
+      return preparedRuntimeRejection({
+        params,
+        input,
+        operationId,
+        effectiveControls: input.controls,
+        selectedTargetReferences: [],
+        rejectedExecution,
+        payloadObservability,
+        emitRejection: params.executor.prepareRejectionEvent({
+          handle: params.projection.handle,
+          controls: input.controls,
+          ...(input.intent !== undefined ? { intent: input.intent } : {}),
+        }),
+      });
+    }
     const actionFingerprint =
       createWorkerCapabilityPreparationFailureFingerprint({
         capabilityId: params.descriptor.capabilityId,
@@ -322,113 +333,6 @@ async function prepareRegisteredToolWorkerCapability<TContext>(
   );
 }
 
-function preparedRuntimeRejection<TContext>(input: {
-  params: Parameters<typeof prepareRegisteredToolWorkerCapability<TContext>>[0];
-  input: WorkerCapabilityAdapterPreparationInput<TContext>;
-  operationId: string;
-  effectiveControls: Readonly<Record<string, unknown>>;
-  selectedTargetReferences: ReturnType<typeof projectSelectedTargetReferences>;
-  rejectedExecution: ReturnType<typeof payloadRejection>;
-  payloadObservability: ReturnType<typeof createDeferredPayloadObservability>;
-  emitRejection?: ReturnType<
-    RegisteredToolNormalInvocationExecutor["prepareRejectionEvent"]
-  >;
-  payload?: string;
-  materializedParams?: Readonly<Record<string, string>>;
-}): WorkerCapabilityPreparedExecution {
-  return Object.freeze({
-    actionFingerprint: createRegisteredToolPreparationAttemptFingerprint({
-      operationId: input.operationId,
-      controls: input.effectiveControls,
-      rejectionCode: input.rejectedExecution.sourceIssueCode,
-      ...(input.payload === undefined ? {} : { payload: input.payload }),
-      ...(input.materializedParams === undefined
-        ? {}
-        : { materializedParams: input.materializedParams }),
-    }),
-    acceptedControls: input.effectiveControls,
-    snapshot: createPreparedRejectionSnapshot(
-      input.operationId,
-      createRegisteredToolPreparationAttemptFingerprint({
-        operationId: input.operationId,
-        controls: input.effectiveControls,
-        rejectionCode: input.rejectedExecution.sourceIssueCode,
-        ...(input.payload === undefined ? {} : { payload: input.payload }),
-        ...(input.materializedParams === undefined
-          ? {}
-          : { materializedParams: input.materializedParams }),
-      }),
-      input.effectiveControls,
-      attachTargetReferences(
-        {
-          ...input.rejectedExecution.result,
-          exactResult: input.rejectedExecution.exactResult,
-        },
-        input.selectedTargetReferences,
-      ),
-    ),
-    onAdmitted: input.payloadObservability.release,
-    execute: async (executionId: string) => {
-      try {
-        input.payloadObservability.release(executionId);
-        tracePreparedExecutionStarted(
-          input.params,
-          input.input,
-          input.operationId,
-          executionId,
-        );
-        input.emitRejection?.({
-          executionId,
-          executorIdentity: input.input.call,
-          errorCode: input.rejectedExecution.sourceIssueCode,
-        });
-        return completeRuntimeRejection({ ...input, executionId });
-      } catch (error: unknown) {
-        tracePreparedExecutionFailed(
-          input.params,
-          input.input,
-          input.operationId,
-          executionId,
-          error,
-        );
-        throw error;
-      }
-    },
-  });
-}
-
-function completeRuntimeRejection<TContext>(input: {
-  params: Parameters<typeof prepareRegisteredToolWorkerCapability<TContext>>[0];
-  input: WorkerCapabilityAdapterPreparationInput<TContext>;
-  operationId: string;
-  executionId: string;
-  selectedTargetReferences: ReturnType<typeof projectSelectedTargetReferences>;
-  rejectedExecution: ReturnType<typeof payloadRejection>;
-}): WorkerCapabilityAdapterResult {
-  const canonicalResult = Object.freeze({
-    ...input.rejectedExecution.result,
-    exactResult: input.rejectedExecution.exactResult,
-  });
-  const preparedResult = attachTargetReferences(
-    canonicalResult,
-    input.selectedTargetReferences,
-  );
-  traceRegisteredToolWorkerCapabilityExecutionCompleted(
-    input.params.diagnostic,
-    input.operationId,
-    input.input.call,
-    input.executionId,
-    preparedResult,
-    "rejected",
-    {
-      sourceIssueCode: input.rejectedExecution.sourceIssueCode,
-      summaryProjection: "runtime_rejection",
-      completionActions: Object.freeze([]),
-    },
-  );
-  return preparedResult;
-}
-
 function assertPreparedCapabilityScope<TContext>(
   params: Parameters<typeof prepareRegisteredToolWorkerCapability<TContext>>[0],
   input: WorkerCapabilityAdapterPreparationInput<TContext>,
@@ -451,22 +355,6 @@ function assertPreparedCapabilityScope<TContext>(
         : error;
     throw scopedError;
   }
-}
-
-function tracePreparedExecutionStarted<TContext>(
-  params: Parameters<typeof prepareRegisteredToolWorkerCapability<TContext>>[0],
-  input: WorkerCapabilityAdapterPreparationInput<TContext>,
-  operationId: string,
-  executionId: string,
-): void {
-  traceRegisteredToolWorkerCapabilityExecutionStarted(
-    params.diagnostic,
-    operationId,
-    input.call,
-    executionId,
-    input.intent?.length ?? 0,
-    Object.keys(input.controls).length,
-  );
 }
 
 function tracePreparedExecutionFailed<TContext>(

@@ -231,6 +231,8 @@ export interface SchedulerRunOutcome {
   error?: string;
 }
 export interface SchedulerExecutor {
+  /** Synchronous admission policy, checked before a request Job is persisted. */
+  validateRequestJob?(input: Readonly<CreateSchedulerJobInput>): void;
   sessionExists(sessionId: string): Promise<boolean>;
   tryReserve(
     sessionId: string,

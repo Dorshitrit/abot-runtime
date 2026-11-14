@@ -49,8 +49,10 @@ export function assertFilesystemScope(
   root: string,
   workingDirectory: string | null,
   canSelectWorkingDirectory: boolean,
+  pathControls?: Readonly<Record<string, readonly string[]>>,
 ) {
-  expect(capsules(input, RUNTIME_FILESYSTEM_SCOPE_KIND)).toEqual([
+  const scope = capsules(input, RUNTIME_FILESYSTEM_SCOPE_KIND);
+  expect(scope).toEqual([
     expect.objectContaining({
       role: "system",
       authority: "canonical_runtime_state",
@@ -61,6 +63,10 @@ export function assertFilesystemScope(
       applicability: expect.objectContaining({ canSelectWorkingDirectory }),
     }),
   ]);
+  if (pathControls !== undefined) {
+    expect((scope[0]!.applicability as Record<string, unknown>).pathControls)
+      .toEqual(pathControls);
+  }
 }
 
 export async function filesystemScopeFixture(

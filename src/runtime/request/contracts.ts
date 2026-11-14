@@ -52,6 +52,7 @@ export type RunRequestMessage = {
   reasoningPreference?: unknown;
   toolPermissionMode?: unknown;
   attachments?: unknown;
+  command?: unknown;
 };
 
 export type RequestHandlerOptions = SessionMemoryCompactorComposition & {

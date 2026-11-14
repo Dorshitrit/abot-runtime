@@ -14,6 +14,7 @@ import type {
   SchedulerRunOutcome,
 } from "../scheduler/contracts.js";
 import { createSchedulerExecutorDispatch } from "./scheduler-executor-dispatch.js";
+import { validateScheduledReasoningPreference } from "./scheduler-reasoning-validation.js";
 import type { SessionRequestAdmission } from "../request/session-admission.js";
 import { withScheduledExecution } from "../request/scheduled-execution.js";
 import { resolveModelSelection } from "../model/model-selection.js";
@@ -171,6 +172,8 @@ export function createRuntimeScheduler(options: {
     ...createSchedulerExecutorDispatch({
       admission: options.admission,
       request: {
+        validateRequestJob: (input) =>
+          validateScheduledReasoningPreference(input, options.config.models),
         tryReserve: (sessionId) =>
           options.admission.tryReserveAvailable(sessionId),
         sessionExists: async (sessionId) => {

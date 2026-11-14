@@ -17,7 +17,7 @@ describe("filesystem scope binding and admission", () => {
     const capsule = buildRuntimeFilesystemScopeMessage({
       scope,
       workingDirectory: "project",
-      capabilities: [{ runtimePathControlIds: ["path"] }],
+      capabilities: [{ capabilityId: "write_target", runtimePathControlIds: ["path"] }],
     })!;
     const historyMessages = Object.freeze(
       Array.from({ length: 20 }, (_, index) =>
@@ -36,7 +36,7 @@ describe("filesystem scope binding and admission", () => {
       historyMessages,
       prompt: "Write the current requested target.",
       budget: {
-        contextWindowTokens: 1500,
+        contextWindowTokens: 2000,
         outputReserveTokens: 150,
         safetyReserveTokens: 150,
         attachmentReserveTokens: 0,

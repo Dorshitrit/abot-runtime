@@ -6,8 +6,16 @@ import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import JSZip from "jszip";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import type { NativeAutostartOptions } from "../../computer-access/companion/autostart.js";
 import type { NativeHostConnection } from "../../computer-access/companion/native-state.js";
 
+vi.mock("../../computer-access/companion/native-runtime-installation.js", () => ({
+  prepareNativeCompanionRuntime: async (startup: NativeAutostartOptions) => startup,
+}));
+vi.mock("../../computer-access/companion/install-link-registration.js", () => ({
+  installCompanionInstallLinks: vi.fn(async () => {}),
+  uninstallCompanionInstallLinks: vi.fn(async () => {}),
+}));
 vi.mock("../../computer-access/companion/notification-installation.js", () => ({
   installDesktopNotificationIdentity: vi.fn(async () => {}),
   uninstallDesktopNotificationIdentity: vi.fn(async () => {}),
@@ -161,36 +169,55 @@ printf '%s\\n' "$@" > "$HOME/setup-arguments"
   };
 }
 
-test.each(["macos", "linux"] as const)(
-  "%s installer → entry → existing startup keeps the originally paired Runtime URL when downloaded from a different local alias",
-  async (platform) => {
-    const { bundle, payload } = await runCachedInstaller(platform);
-    expect(JSON.parse(payload)).toEqual({
+async function assertPairedUpgradeStartup(bundle: string, payload: string) {
+  expect(JSON.parse(payload)).toEqual({
+    url: installerInput.url,
+    code: installerInput.code,
+    upgradeHostId: saved.hostId,
+  });
+  await runHostCompanionEntry(["setup"], {
+    cliPath: bundle,
+    input: Readable.from([payload]),
+  });
+  expect(resolveNativeRuntimeAddress).toHaveBeenCalledExactlyOnceWith(saved.url);
+  expect(mocks.install).toHaveBeenCalledWith(
+    expect.objectContaining({ cliPath: bundle }),
+  );
+  expect(mocks.stopOwned).toHaveBeenCalledOnce();
+  expect(mocks.state.isConnected).toHaveBeenCalledWith(
+    saved.hostId,
+    "upgraded-build",
+    expect.any(Number),
+  );
+  expect(mocks.connect).not.toHaveBeenCalled();
+  expect(mocks.state.write).not.toHaveBeenCalled();
+  expect(await mocks.state.read()).toBe(saved);
+}
+
+test("setup entry preserves the paired Runtime URL on every host", async () => {
+  await assertPairedUpgradeStartup(
+    "/fixture/companion.mjs",
+    JSON.stringify({
       url: installerInput.url,
       code: installerInput.code,
       upgradeHostId: saved.hostId,
-    });
-    await runHostCompanionEntry(["setup"], {
-      cliPath: bundle,
-      input: Readable.from([payload]),
-    });
-    expect(resolveNativeRuntimeAddress).toHaveBeenCalledExactlyOnceWith(
-      saved.url,
-    );
-    expect(mocks.install).toHaveBeenCalledWith(
-      expect.objectContaining({ cliPath: bundle }),
-    );
-    expect(mocks.stopOwned).toHaveBeenCalledOnce();
-    expect(mocks.state.isConnected).toHaveBeenCalledWith(
-      saved.hostId,
-      "upgraded-build",
-      expect.any(Number),
-    );
-    expect(mocks.connect).not.toHaveBeenCalled();
-    expect(mocks.state.write).not.toHaveBeenCalled();
-    expect(await mocks.state.read()).toBe(saved);
-  },
-);
+    }),
+  );
+});
+
+for (const { platform, host } of [
+  { platform: "macos", host: "darwin" },
+  { platform: "linux", host: "linux" },
+] as const) {
+  const canRunInstallerOnHost = process.platform === host;
+  test.runIf(canRunInstallerOnHost)(
+    `${platform} installer → entry → existing startup keeps the originally paired Runtime URL when downloaded from a different local alias`,
+    async () => {
+      const { bundle, payload } = await runCachedInstaller(platform);
+      await assertPairedUpgradeStartup(bundle, payload);
+    },
+  );
+}
 
 test.each(["different-host", "missing-state"])(
   "an upgrade with %s cannot replace registration, send credentials or begin pairing",

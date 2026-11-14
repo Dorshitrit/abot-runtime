@@ -35,6 +35,7 @@ import { SessionRequestAdmission } from "./request/session-admission.js";
 import type { RequestSteeringAppendResult } from "./request/request-steering.js";
 import type { PassiveLearningService } from "./passive-learning/contracts.js";
 import type { AutomationService } from "./automations/service.js";
+import type { SparkChatAccess } from "./spark-chat/contracts.js";
 
 export type RuntimeEnvironmentServices = SessionMemoryCompactorComposition & SparkHomeApplicationServices & Readonly<{
   config: RuntimeConfig;
@@ -71,6 +72,8 @@ export type RuntimeRequestOptions = Pick<
 >;
 
 export type RuntimeRequestHandler = Readonly<{
+  sparkChat?: SparkChatAccess;
+  approvalControls?: import("./request/approval-controls.js").RuntimeRequestApprovalControls;
   cancel?: (
     requestId: string,
     sessionId: string,

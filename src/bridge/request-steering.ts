@@ -56,7 +56,7 @@ export function createBridgeRequestSteeringRegistry(
       if (message.type !== "steer_request") {
         return false;
       }
-      const requestId = readString(message.requestId).trim();
+      const requestId = readString(message.requestId);
       const steerId = readString(message.steerId).trim();
       const text = readString(message.text).trim();
       const current = active.get(requestId);

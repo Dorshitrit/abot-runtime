@@ -3,6 +3,7 @@ import { createConversationInteraction, projectConversationInteractionEntries } 
 import { isUserInteractionMessage } from "../lib/user-interaction-event.js";
 import { createConversationSchedule } from "./conversation-schedule.js";
 import { createConversationStatus } from "./conversation-status.js";
+import { createConversationCommandStatus } from "./conversation-command-status.js";
 import { createConversationReasoning } from "./conversation-reasoning.js";
 import { isNearScrollEnd, pinScrollToEnd } from "../ui-behavior.js";
 import { applyTextDirection, renderMarkdown } from "../lib/text-format.js";
@@ -24,6 +25,7 @@ export function createConversationView({
   dom,
   getMessages,
   getActiveRequestId = () => "",
+  getCommandRun = () => null,
   isConnected = () => true,
   getActivityForMessage,
   getPendingApproval,
@@ -49,6 +51,7 @@ export function createConversationView({
   viewport = window,
 }) {
   const conversationInteraction = createConversationInteraction({ documentRoot });
+  const commandStatus = createConversationCommandStatus({ container: dom.messagesList, getCommandRun, isLatestWindow: () => !historyPager?.hasNewer(), documentRoot });
   const conversationSchedule = createConversationSchedule({
     documentRoot,
     onOpenJob: onOpenSchedule,
@@ -294,19 +297,23 @@ export function createConversationView({
     if (messages.length === 0) {
       projectChanges?.finishRender();
       renderEmptyState();
+      commandStatus.render();
       viewState.followMessages = true;
       updateJumpToLatest();
       scrollBehavior?.afterRender();
       return;
     }
     for (const { message, updates } of projectConversationInteractionEntries(messages)) {
-      dom.messagesList.appendChild(createMessageNode(message, updates));
+      const row = createMessageNode(message, updates);
+      row.dataset.createdAt = String(message.createdAt);
+      dom.messagesList.appendChild(row);
     }
     projectChanges?.finishRender();
     for (const pendingApproval of getPendingApprovals()) {
       dom.messagesList.appendChild(createApprovalCard(pendingApproval));
     }
     restoreRejectionFocus();
+    commandStatus.render();
     historyPager?.renderControls(dom.messagesList);
     restoreScrollAfterRender(previousScrollTop, shouldFollow);
   }
@@ -315,6 +322,13 @@ export function createConversationView({
     if (holdingPosition) return false;
     if (historyPager?.hasNewer()) return false;
     return viewState.followMessages || isNearScrollEnd(dom.messagesList);
+  }
+
+  function renderActivityStatus() {
+    const previousScrollTop = dom.messagesList.scrollTop;
+    const shouldFollow = shouldFollowMessageUpdates();
+    conversationStatus.render();
+    if (commandStatus.render()) restoreScrollAfterRender(previousScrollTop, shouldFollow);
   }
 
   function restoreScrollAfterRender(previousScrollTop, shouldFollow) {
@@ -444,7 +458,7 @@ export function createConversationView({
     cancelScheduledMessageRender,
     cancelScheduledThinkingRender,
     render,
-    renderActivityStatus: conversationStatus.render,
+    renderActivityStatus,
     renderContextWindow,
     reset,
     scheduleMessageRender,

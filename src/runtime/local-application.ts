@@ -19,6 +19,7 @@ import { createLocalLearningClient } from "./local-host/client-learning.js";
 import { createLocalNativePermissionClient } from "./local-host/client-native-permissions.js";
 import type { SparkHomeAppearanceOptions } from "./spark-home/application-contracts.js";
 import { createLocalSparkHomeEvents } from "./local-host/client-spark-home-events.js";
+import { createSparkChatAccess } from "./spark-chat/service.js";
 
 export type LocalRuntimeApplicationOptions = SparkHomeAppearanceOptions & Readonly<{
   scheduledRequestOptions?: (run: SchedulerRun) => RuntimeRequestOptions;
@@ -130,7 +131,14 @@ export function createLocalRuntimeApplication(
 
   return Object.freeze({
     services,
-    requests: client.requests as RuntimeRequestHandler,
+    requests: Object.freeze({
+      ...client.requests,
+      sparkChat: createSparkChatAccess(services),
+      approvalControls: Object.freeze({
+        ...client.approvals,
+        subscribeEvents: client.subscribe.bind(client),
+      }),
+    }) as RuntimeRequestHandler,
     approvals: client.approvals,
     nativePermissions,
     start,

@@ -3,6 +3,9 @@ import type WebSocket from "ws";
 import { isAutomationSessionLockedError } from "../../sessions/automation-session-origin.js";
 
 import type { RunRequestMessage } from "../../runtime/request/contracts.js";
+import { validateCommandRequest } from "../../runtime/commands/run.js";
+import { RuntimeCommandInputError } from "../../runtime/commands/catalog.js";
+import { appendRequestReplayEvent } from "../../shared/request-event-snapshots.js";
 import type { SchedulerRun } from "../../runtime/scheduler/contracts.js";
 import type { RuntimeRequestOptions } from "../../runtime/composition.js";
 import {
@@ -110,10 +113,10 @@ export class LocalRequestExecution {
   ): Promise<void> {
     const text = getString(body.text).trim();
     const sessionId = getString(body.sessionId).trim();
-    if (!text || !sessionId) {
+    if ((!text && body.command === undefined) || !sessionId) {
       sendJson(res, 400, {
         ok: false,
-        error: !text ? "text_required" : "sessionId_required",
+        error: !sessionId ? "sessionId_required" : "text_required",
       });
       return;
     }
@@ -148,7 +151,15 @@ export class LocalRequestExecution {
       reasoningPreference: body.reasoningPreference,
       toolPermissionMode: body.toolPermissionMode,
       attachments: Array.isArray(body.attachments) ? body.attachments : [],
+      ...(body.command !== undefined ? { command: body.command } : {}),
     };
+    try {
+      if (request.command !== undefined) validateCommandRequest(request);
+    } catch (error) {
+      if (!(error instanceof RuntimeCommandInputError)) throw error;
+      sendJson(res, 400, { ok: false, error: error.code });
+      return;
+    }
     this.activeRequests.set(requestId, {
       requestId,
       sessionId,
@@ -185,6 +196,7 @@ export class LocalRequestExecution {
           sessionId,
           environment: environmentId,
           error: error instanceof Error ? error.message : String(error),
+          ...(request.command !== undefined ? { requestKind: "command", command: request.command, name: "command.failed" } : {}),
         });
       })
       .finally(() => {
@@ -351,7 +363,7 @@ export class LocalRequestExecution {
     await environment.requests.handle(localWs, request, {
       toolApprovalController: this.toolApprovals,
       requestSteering,
-      durableApprovals: true,
+      durableApprovals: request.command === undefined,
       onAccepted,
     });
   }
@@ -385,7 +397,7 @@ export class LocalRequestExecution {
       active.lastEventAt = Date.now();
       active.lastEventName =
         getString(payload.name) || getString(payload.type) || "event";
-      active.events.push(payload);
+      appendRequestReplayEvent(active.events, payload);
       if (payload.type === "completed") {
         active.finalState = {
           status: "completed",

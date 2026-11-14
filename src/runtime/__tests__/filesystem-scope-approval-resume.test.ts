@@ -100,12 +100,14 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
         typeof input.format === "object" &&
         input.format?.name === "supervisor_working_directory";
       if (cwdPhase) {
-        assertFilesystemScope(input, originalRoot, null, true);
+        assertFilesystemScope(input, originalRoot, null, true, {});
       } else if (
         input.modelStep === "capability.controls" ||
         ["worker.evidence", "worker.decision", "worker.result"].includes(input.modelStep!)
       ) {
-        assertFilesystemScope(input, originalRoot, "LUNA", false);
+        assertFilesystemScope(input, originalRoot, "LUNA", false, {
+          save_file: ["path"],
+        });
       } else if (input.modelStep === "execution.decision") {
         const catalog = capsules(
           input,
@@ -119,6 +121,7 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
             originalRoot,
             rootEstablished ? "LUNA" : null,
             !rootEstablished,
+            { save_file: ["path"] },
           );
         else expect(capsules(input, RUNTIME_FILESYSTEM_SCOPE_KIND)).toEqual([]);
       } else expect(capsules(input, RUNTIME_FILESYSTEM_SCOPE_KIND)).toEqual([]);
@@ -221,6 +224,15 @@ test.each(["execution-agent-v1", "supervisor-worker-v1"] as const)(
         await resumed.call("request.approval.decide", [command], peer),
       ).toEqual({ accepted: true, duplicate: true });
       await resumed.whenIdle?.();
+      const resumedScopes = model.invoke.mock.calls.slice(beforeResume).flatMap(
+        ([input]) => capsules(input, RUNTIME_FILESYSTEM_SCOPE_KIND),
+      );
+      expect(resumedScopes.length).toBeGreaterThan(0);
+      for (const scope of resumedScopes) {
+        expect(scope).toMatchObject({ agentWorkRoot: originalRoot, workingDirectory: "LUNA" });
+        expect((scope.applicability as Record<string, unknown>).pathControls)
+          .toEqual({ save_file: ["path"] });
+      }
       expect(execute).toHaveBeenCalledOnce();
       expect(
         await readFile(join(originalRoot, "LUNA", "approved.txt"), "utf8"),

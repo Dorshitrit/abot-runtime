@@ -27,7 +27,7 @@ function updateScheduleOperation(
 ): ToolNormalInvocationOperation {
   return {
     operationId: `update_${kind}`,
-    summary: `Replace this conversation's Job recurrence. Ask for missing timing details before updating. Omit timeZone, modelProfileId and agentMode to retain saved settings. ${timingSummary}`,
+    summary: `Replace this conversation's Job recurrence; ask for missing timing. Omit timeZone, modelProfileId and agentMode to retain saved settings. Omit reasoningMode to retain its setting for the same model; inherit clears it. Other modes require numeric reasoning support. ${timingSummary}`,
     effect: "mutating",
     approval: "request_policy",
     fixedParams: { action: "update", scheduleKind: kind },
@@ -50,7 +50,7 @@ export const scheduleUpdateOperations: readonly ToolNormalInvocationOperation[] 
     {
       operationId: "update",
       summary:
-        "Edit a Job's title, prompt, model, mode or time zone in this conversation while retaining its recurrence. Choose a kind-specific update operation to replace timing. modelProfileId must identify an available configured model; omitted settings keep their saved values.",
+        "Edit this conversation's Job title, prompt, model, mode or time zone, retaining recurrence. Use a kind-specific update to replace timing. modelProfileId must name an available configured model; omitted settings retain saved values. Omit reasoningMode to retain its setting for the same model; inherit clears it. Other modes require numeric reasoning support.",
       effect: "mutating",
       approval: "request_policy",
       fixedParams: { action: "update" },

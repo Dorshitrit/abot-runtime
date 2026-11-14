@@ -1,6 +1,7 @@
 import { isAssistantInitiativeMessage } from "../assistant-initiative-message.js";
 import { blockedCompletionFields } from "../../shared/completion-disposition.js";
 import { projectSessionRequestLifecycle } from "../request-lifecycle/projection.js";
+import { requestEventSnapshotKey } from "../../shared/request-event-snapshots.js";
 import type {
   SessionMessageSource,
   SessionRecord,
@@ -10,27 +11,6 @@ import type {
   SessionSnapshotMessage,
   SessionSnapshotRequest,
 } from "../types.js";
-
-function isAcknowledgementPresentationEvent(payload: Record<string, unknown>): boolean {
-  if (payload.type !== "event") return false;
-  if (payload.name !== "thinking.delta") return false;
-  return payload.presentationKind === "acknowledgement";
-}
-
-function getRequestEventCompactionKey(
-  payload: Record<string, unknown>,
-): string {
-  if (isAcknowledgementPresentationEvent(payload)) return "";
-  const type = typeof payload.type === "string" ? payload.type : "";
-  const name = typeof payload.name === "string" ? payload.name : "";
-  if (type === "token") {
-    return "token";
-  }
-  if (type === "event" && name === "thinking.delta") {
-    return "event:thinking.delta";
-  }
-  return "";
-}
 
 function shouldStoreRequestEvent(payload: Record<string, unknown>): boolean {
   const type = typeof payload.type === "string" ? payload.type : "";
@@ -46,12 +26,12 @@ export function compactRequestEvents(
     if (!shouldStoreRequestEvent(event.payload)) {
       continue;
     }
-    const compactionKey = getRequestEventCompactionKey(event.payload);
+    const compactionKey = requestEventSnapshotKey(event.payload);
     if (compactionKey) {
       const last = compacted[compacted.length - 1];
       if (
         last &&
-        getRequestEventCompactionKey(last.payload) === compactionKey
+        requestEventSnapshotKey(last.payload) === compactionKey
       ) {
         compacted[compacted.length - 1] = event;
         continue;
